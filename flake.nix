@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
+    xdg-desktop-portal-umbriel.url = "git+https://github.com/noctalia-dev/xdg-desktop-portal-umbriel";
     scenefx = {
       url = "git+https://github.com/noctalia-dev/scenefx?ref=umbriel";
       flake = false;
@@ -14,6 +15,7 @@
       self,
       nixpkgs,
       scenefx,
+      xdg-desktop-portal-umbriel,
     }:
     let
       inherit (nixpkgs.lib) genAttrs getExe;
@@ -36,12 +38,14 @@
     {
       overlays.default = final: prev: {
         umbriel = final.callPackage ./nix/package.nix { inherit scenefx; };
+        xdg-desktop-portal-umbriel = self.packages.${final.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel;
       };
 
       packages = forEachSystem (
         { pkgs, ... }:
         {
           default = pkgs.callPackage ./nix/package.nix { inherit scenefx; };
+          xdg-desktop-portal-umbriel = xdg-desktop-portal-umbriel.packages.${pkgs.stdenv.hostPlatform.system}.default;
         }
       );
 
@@ -65,30 +69,42 @@
       );
 
       homeModules.default =
-        { pkgs, lib, ... }:
+        { pkgs, lib, ... }@args:
         {
-          imports = [ ./nix/home-module.nix ];
-          programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          imports = [
+            (import ./nix/home-module.nix (args // {
+              xdg-desktop-portal-umbriel = self.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel;
+            }))
+          ];
+          wayland.windowManager.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
 
       hjemModules.default =
         { pkgs, lib, ... }:
         {
           imports = [ ./nix/hjem-module.nix ];
-          programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          rum.desktops.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
 
       finixModules.default =
-        { pkgs, lib, ... }:
+        { pkgs, lib, ... }@args:
         {
-          imports = [ ./nix/finix-module.nix ];
+          imports = [
+            (import ./nix/finix-module.nix (args // {
+              xdg-desktop-portal-umbriel = self.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel;
+            }))
+          ];
           programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
 
       nixosModules.default =
-        { pkgs, lib, ... }:
+        { pkgs, lib, ... }@args:
         {
-          imports = [ ./nix/nixos-module.nix ];
+          imports = [
+            (import ./nix/nixos-module.nix (args // {
+              xdg-desktop-portal-umbriel = self.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel;
+            }))
+          ];
           programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
     };

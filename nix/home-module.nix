@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  xdg-desktop-portal-umbriel ? pkgs.xdg-desktop-portal-umbriel or null,
   ...
 }:
 let
@@ -10,6 +11,12 @@ let
   cfg = config.wayland.windowManager.umbriel;
 
   configFile = tomlFormat.generate "umbriel-config.toml" cfg.config;
+
+  portals =
+    lib.optionals (xdg-desktop-portal-umbriel != null) [
+      xdg-desktop-portal-umbriel
+    ]
+    ++ [ pkgs.xdg-desktop-portal-gtk ];
 in
 {
   options.wayland.windowManager.umbriel = {
@@ -52,10 +59,7 @@ in
         };
       };
       
-      extraPortals = [
-        # pkgs.xdg-desktop-portal-umbriel
-        pkgs.xdg-desktop-portal-gtk
-      ];
+      extraPortals = portals;
 
       configPackages = [
         cfg.package

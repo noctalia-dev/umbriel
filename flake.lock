@@ -13,10 +13,24 @@
         "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1785828668,
+        "narHash": "sha256-VFlH/0nM6kkWQox9IaTqx2eCT3pmkr8bB7iVZ1bkaLs=",
+        "rev": "e72e4f299401a3689d4b3d5fc6496b11db7064eb",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1047536.e72e4f299401/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
+      }
+    },
     "root": {
       "inputs": {
         "nixpkgs": "nixpkgs",
-        "scenefx": "scenefx"
+        "scenefx": "scenefx",
+        "xdg-desktop-portal-umbriel": "xdg-desktop-portal-umbriel"
       }
     },
     "scenefx": {
@@ -34,6 +48,24 @@
         "ref": "umbriel",
         "type": "git",
         "url": "https://github.com/noctalia-dev/scenefx"
+      }
+    },
+    "xdg-desktop-portal-umbriel": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1787324663,
+        "narHash": "sha256-/2bD6z4CNZZu7dVz/DPoin/CH921902FZOUe7f1q1hg=",
+        "ref": "refs/heads/main",
+        "rev": "90171b7aafa3d94594b7ae3ba68428730cde1f45",
+        "revCount": 11,
+        "type": "git",
+        "url": "https://github.com/noctalia-dev/xdg-desktop-portal-umbriel"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://github.com/noctalia-dev/xdg-desktop-portal-umbriel"
       }
     }
   },

@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  xdg-desktop-portal-umbriel ? pkgs.xdg-desktop-portal-umbriel or null,
   ...
 }:
 let
@@ -10,6 +11,12 @@ let
   cfg = config.programs.umbriel;
 
   configFile = tomlFormat.generate "umbriel-config.toml" cfg.config;
+
+  portals =
+    lib.optionals (xdg-desktop-portal-umbriel != null) [
+      xdg-desktop-portal-umbriel
+    ]
+    ++ [ pkgs.xdg-desktop-portal-gtk ];
 in
 {
   options.programs.umbriel = {
@@ -51,10 +58,7 @@ in
       cfg.package
     ];
 
-    xdg.portal.extraPortals = [
-      # pkgs.xdg-desktop-portal-umbriel
-      pkgs.xdg-desktop-portal-gtk
-    ];
+    xdg.portal.extraPortals = portals;
 
     xdg.portal.configPackages = [
       cfg.package
