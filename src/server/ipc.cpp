@@ -322,7 +322,7 @@ namespace umbriel {
         if (!event.is_string()) {
           return R"({"err":"malformed request"})";
         }
-        const std::string& name = event.get_ref<const std::string&>();
+        const auto& name = event.get_ref<const std::string&>();
         if (name == "theme") {
           requested |= Ipc::kEventTheme;
         } else if (name == "overview") {

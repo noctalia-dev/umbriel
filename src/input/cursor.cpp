@@ -336,7 +336,7 @@ namespace umbriel {
   }
 
   int Cursor::onHotCornerTimer(void* data) {
-    Cursor* cursor = static_cast<Cursor*>(data);
+    auto* cursor = static_cast<Cursor*>(data);
     cursor->m_hotCornerPending = false;
     size_t cornerIndex = 0;
     if (const Keybind* action = cursor->hotCornerAction(&cornerIndex);

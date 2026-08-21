@@ -967,7 +967,7 @@ namespace umbriel {
   }
 
   void Server::onIpcWindowsIdle(void* data) {
-    Server* server = static_cast<Server*>(data);
+    auto* server = static_cast<Server*>(data);
     server->m_ipcWindowsIdle = nullptr;
     if (server->m_ipc != nullptr) {
       server->m_ipc->notifyWindowsChanged();

@@ -1,5 +1,5 @@
-#include <cstdio>
 #include <cstring>
+#include <print>
 #include <string_view>
 #include <wayland-client.h>
 
@@ -26,13 +26,13 @@ namespace {
 
 int main(int argc, char** argv) {
   if (argc != 3 || (std::strcmp(argv[2], "present") != 0 && std::strcmp(argv[2], "absent") != 0)) {
-    std::fprintf(stderr, "usage: global-client INTERFACE present|absent\n");
+    std::println(stderr, "usage: global-client INTERFACE present|absent");
     return 2;
   }
 
   wl_display* display = wl_display_connect(nullptr);
   if (display == nullptr) {
-    std::fprintf(stderr, "global-client: cannot connect to WAYLAND_DISPLAY\n");
+    std::println(stderr, "global-client: cannot connect to WAYLAND_DISPLAY");
     return 2;
   }
 
@@ -44,15 +44,15 @@ int main(int argc, char** argv) {
   wl_display_disconnect(display);
 
   if (!roundtripOk) {
-    std::fprintf(stderr, "global-client: registry roundtrip failed\n");
+    std::println(stderr, "global-client: registry roundtrip failed");
     return 2;
   }
 
   const bool expected = std::strcmp(argv[2], "present") == 0;
   if (state.found != expected) {
-    std::fprintf(
-        stderr, "global-client: %.*s was %s, expected %s\n", static_cast<int>(state.wanted.size()), state.wanted.data(),
-        state.found ? "present" : "absent", expected ? "present" : "absent"
+    std::println(
+        stderr, "global-client: {} was {}, expected {}", state.wanted, state.found ? "present" : "absent",
+        expected ? "present" : "absent"
     );
     return 1;
   }
