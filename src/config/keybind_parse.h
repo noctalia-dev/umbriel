@@ -40,6 +40,7 @@ namespace umbriel {
     WindowCycleWidth,
     WindowSetWidth,
     ToggleMaximize,
+    ToggleMaximizeToEdges,
     ToggleFullscreen,
     ToggleFloating,
     TogglePinned,

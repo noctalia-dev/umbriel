@@ -334,10 +334,14 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(parseAction("window-center", bind));
   CHECK(bind.action == KeybindAction::WindowCenter);
 
+  CHECK(parseAction("window-toggle-maximize-to-edges", bind));
+  CHECK(bind.action == KeybindAction::ToggleMaximizeToEdges);
+
   // Argument-free actions reject arguments.
   CHECK(!parseAction("workspace-next:1", bind));
   CHECK(!parseAction("output-focus-left:DP-1", bind));
   CHECK(!parseAction("window-center:x", bind));
+  CHECK(!parseAction("window-toggle-maximize-to-edges:x", bind));
 }
 
 UMBRIEL_TEST(parsesWorkspaceSelectors) {

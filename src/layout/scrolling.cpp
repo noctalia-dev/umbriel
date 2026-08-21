@@ -62,9 +62,10 @@ namespace umbriel {
       return any ? maxWidth : 0;
     }
 
-    bool columnIsFullscreen(const Column& column, const Layout& layout) {
+    bool columnFillsViewport(const Column& column, const Layout& layout) {
       for (const View* view : column.views) {
-        if (view != nullptr && layout.constraintsFor(view).fullscreen) {
+        const LayoutConstraints constraints = layout.constraintsFor(view);
+        if (view != nullptr && (constraints.fullscreen || constraints.maximizedToEdges)) {
           return true;
         }
       }
@@ -100,7 +101,7 @@ namespace umbriel {
     }
     const Column& column = m_columns[static_cast<size_t>(columnIndex)];
     // Fullscreen columns fill the entire viewport, bypassing widthFrac and size-hint clamps.
-    if (columnIsFullscreen(column, *this)) {
+    if (columnFillsViewport(column, *this)) {
       return std::max(1, viewportWidth);
     }
     // Gap-aware: reserve one inter-column gap per column so N columns whose fractions sum to 1 tile exactly across the
@@ -158,7 +159,7 @@ namespace umbriel {
       return false;
     }
     const Column& column = m_columns[static_cast<size_t>(columnIndex)];
-    return column.savedWidthFrac > 0.0 || columnIsFullscreen(column, *this);
+    return column.savedWidthFrac > 0.0 || columnFillsViewport(column, *this);
   }
 
   void ScrollingLayout::insertView(View* view, int columnIndex) {

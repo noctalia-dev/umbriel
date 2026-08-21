@@ -70,8 +70,8 @@ Install a C++23 compiler, Meson, Ninja, pkg-config, wayland-scanner, and develop
 Wayland, xkbcommon, libinput, pixman, libdrm, Cairo, Pango, tomlplusplus, and nlohmann-json. Then build Umbriel:
 
 ```sh
-just debug
 just release
+just install
 ```
 
 `jemalloc` is optional but recommended on glibc: it returns freed memory to the OS promptly and bounds heap

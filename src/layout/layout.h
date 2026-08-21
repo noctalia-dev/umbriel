@@ -27,6 +27,7 @@ namespace umbriel {
     int maxWidth = 0;  // 0 = unlimited
     int maxHeight = 0; // 0 = unlimited
     bool fullscreen = false;
+    bool maximizedToEdges = false;
 
     [[nodiscard]] int clampWidth(int width) const {
       width = width < minWidth ? minWidth : width;

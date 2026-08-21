@@ -201,6 +201,7 @@ namespace umbriel {
         {"window-toggle-floating", "", KeybindAction::ToggleFloating},
         {"window-toggle-fullscreen", "", KeybindAction::ToggleFullscreen},
         {"window-toggle-maximize", "", KeybindAction::ToggleMaximize},
+        {"window-toggle-maximize-to-edges", "", KeybindAction::ToggleMaximizeToEdges},
         {"window-toggle-pinned", "", KeybindAction::TogglePinned},
         {"workspace-move-to-output-down", "", KeybindAction::WorkspaceMoveToOutputDown},
         {"workspace-move-to-output-left", "", KeybindAction::WorkspaceMoveToOutputLeft},
@@ -458,6 +459,7 @@ namespace umbriel {
     add(KeybindAction::WindowCycleWidth, XKB_KEY_r);
     add(KeybindAction::ToggleFullscreen, XKB_KEY_f);
     add(KeybindAction::ToggleMaximize, XKB_KEY_f, WLR_MODIFIER_CTRL);
+    add(KeybindAction::ToggleMaximizeToEdges, XKB_KEY_m);
     add(KeybindAction::ToggleFloating, XKB_KEY_t);
     add(KeybindAction::TogglePinned, XKB_KEY_p);
     // Overview must not repeat: holding the key would thrash open/close.

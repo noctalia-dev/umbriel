@@ -373,6 +373,18 @@ UMBRIEL_TEST(fullscreenColumnFillsTheViewportIgnoringFractions) {
   CHECK(!fixture.layout.isFullWidth(1));
 }
 
+UMBRIEL_TEST(maximizedToEdgesColumnFillsTheViewportIgnoringFractions) {
+  Fixture fixture;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 1.0 / 3));
+  fixture.layout.setConstraints([](const View* view) {
+    return LayoutConstraints{.maximizedToEdges = view == stub(0)};
+  });
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+  CHECK(fixture.layout.isFullWidth(0));
+  CHECK(!fixture.layout.isFullWidth(1));
+}
+
 UMBRIEL_TEST(unsetConstraintsMeanUnconstrained) {
   Fixture fixture;
   fixture.addColumns(1);

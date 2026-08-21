@@ -297,6 +297,7 @@ namespace {
     case A::WindowClose:
     case A::ToggleFloating:
     case A::ToggleMaximize:
+    case A::ToggleMaximizeToEdges:
     case A::ToggleFullscreen:
       return Group::Windows;
     case A::WorkspaceSwitch:

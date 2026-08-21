@@ -96,6 +96,7 @@ These take no argument.
 | `window-cycle-width` | Cycle the focused column through its preset widths. |
 | `window-toggle-fullscreen` | Toggle fullscreen for the focused window. |
 | `window-toggle-maximize` | Toggle the focused column's full-width state. |
+| `window-toggle-maximize-to-edges` | Toggle maximization of the focused window to the usable area's edges, without gaps or borders. Layer-shell exclusive zones remain visible. |
 | `layout-scroll-left` / `layout-scroll-right` | Scroll the active workspace's scrolling-layout viewport; a no-op on a dwindle workspace. |
 | `config-reload` | Reload the config file, the same reload that runs automatically when the file changes on disk. |
 

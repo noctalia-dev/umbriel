@@ -97,6 +97,7 @@ namespace umbriel {
     // width fraction, clamped to [0.1, 1.0].
     bool modifyFocusedWidth(double delta);
     bool toggleFocusedFullWidth();
+    bool toggleFocusedMaximizedToEdges();
     bool toggleFocusedFullscreen();
     bool toggleFocusedFloating();
     void ensureFocusedVisible();
@@ -114,6 +115,7 @@ namespace umbriel {
 
   private:
     void applyPositions(bool animate);
+    [[nodiscard]] wlr_box tiledTargetBox(const View* view, const wlr_box& usable) const;
     // Pull the scroll offset back into [0, maxScroll]. Only for removals: a
     // touchpad swipe overscrolls on purpose.
     void clampScrollToRange();

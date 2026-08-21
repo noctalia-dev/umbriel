@@ -394,6 +394,13 @@ namespace umbriel {
       return true;
     }
 
+    bool actionToggleMaximizeToEdges(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->toggleFocusedMaximizedToEdges();
+      }
+      return true;
+    }
+
     bool actionToggleFullscreen(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = activeWorkspace(server)) {
         workspace->toggleFocusedFullscreen();
@@ -772,6 +779,7 @@ namespace umbriel {
         &actionCycleWidth,
         &actionSetWidth,
         &actionToggleMaximize,
+        &actionToggleMaximizeToEdges,
         &actionToggleFullscreen,
         &actionToggleFloating,
         &actionTogglePinned,

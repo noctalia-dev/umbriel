@@ -321,6 +321,7 @@ unit_tests = [
   ['cheatsheet-rows', ['tests/cheatsheet_rows.cpp'], []],
   ['border-ring', ['tests/border_ring.cpp'], []],
   ['floating', ['tests/floating.cpp'], []],
+  ['maximize', ['tests/maximize.cpp'], []],
   ['config-section', ['tests/config_section.cpp'], []],
   ['config-change', ['tests/config_change.cpp'], []],
   ['config-load', ['tests/config_load.cpp'], [umbriel_core_dep]],

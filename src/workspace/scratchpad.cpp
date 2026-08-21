@@ -275,13 +275,17 @@ namespace umbriel {
   }
 
   void ScratchpadManager::remove(View* view) {
-    if (view != nullptr) {
-      view->setScratchpadBorder(false);
+    const auto entry =
+        std::ranges::find_if(m_entries, [view](const Entry& candidate) { return candidate.view == view; });
+    if (entry == m_entries.end()) {
+      return;
     }
+    view->reparentShadow(nullptr);
+    view->setScratchpadBorder(false);
     if (m_focusedView == view) {
       m_focusedView = nullptr;
     }
-    std::erase_if(m_entries, [view](const Entry& entry) { return entry.view == view; });
+    m_entries.erase(entry);
   }
 
   void ScratchpadManager::moveOutput(Output* from, Output* to) {

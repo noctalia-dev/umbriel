@@ -188,6 +188,7 @@ follows_mouse = false
 "Mod+Return" = "spawn:kitty"
 "Mod+T" = "window-toggle-floating"
 "Mod+P" = "window-toggle-pinned"
+"Mod+M" = "window-toggle-maximize-to-edges"
 "Mod+Shift+Q" = "window-close"
 "Mod+Shift+Space" = "window-move-to-scratchpad"
 "Mod+Space" = "scratchpad-toggle"

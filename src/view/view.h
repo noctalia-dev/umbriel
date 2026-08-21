@@ -50,6 +50,7 @@ namespace umbriel {
     // True while an unfullscreen configure with size 0x0 is unacknowledged;
     // Workspace::arrange must not impose the column size yet.
     [[nodiscard]] bool awaitingUnfullscreenSize() const { return m_pendingUnfullscreenSize; }
+    [[nodiscard]] bool maximizedToEdges() const { return m_maximizedToEdges; }
     // Fullscreen for layout purposes: a view inside the unfullscreen grace keeps its fullscreen slot and presentation
     // so the strip does not reflow (and no resize leaks) while the client decides how to respond.
     [[nodiscard]] bool layoutFullscreen() const;
@@ -110,7 +111,7 @@ namespace umbriel {
     bool centerFloating();
     // Animate the presented size toward a layout-assigned size. Called by Workspace::arrange when it configures the
     // client, so the animation owns the presented size before the clip can report the final size.
-    void beginResizeAnimation(int width, int height);
+    void beginResizeAnimation(int width, int height, bool allowFullscreen = false);
     void setOutputClip(const wlr_box* screenIntersection, const wlr_box& target, const wlr_box& outputBox);
     // Drop the per-output clip so the view renders unclipped (e.g. a window
     // dragged across a monitor boundary spans both outputs).
@@ -119,9 +120,11 @@ namespace umbriel {
     void cancelFadeAnimation();
     void cancelPositionAnimation();
     // Size/position to the full output and drop tile clips (exclusive zones do not apply).
-    void applyFullscreenLayout();
+    void applyFullscreenLayout(bool animate = false);
     // Compositor-driven fullscreen toggle (keybind); client requests use handleRequestFullscreen.
     void toggleFullscreen();
+    void setMaximizedToEdges(bool maximized);
+    void toggleMaximizedToEdges();
     // Detach from the scrolling layout (float) or re-insert as a tiled column.
     void setFloating(bool floating, bool focus = true);
     void toggleFloating();
@@ -295,6 +298,9 @@ namespace umbriel {
     // placement snaps (avoids animating from the default (0,0) world origin).
     bool m_positioned = false;
     bool m_tiled = false;
+    bool m_maximizedToEdges = false;
+    wlr_box m_fullscreenRestoreBox{};
+    bool m_hasFullscreenRestoreBox = false;
     bool m_pinned = false;
     bool m_restoreTiledAfterUnpin = false;
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen BEFORE the layout attach, so the client

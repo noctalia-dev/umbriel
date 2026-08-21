@@ -463,6 +463,9 @@ namespace umbriel {
     }
 
     setActiveConstraint(nullptr);
+    if (view->maximizedToEdges()) {
+      view->setMaximizedToEdges(false);
+    }
     if (tiled) {
       Workspace* workspace = view->workspace();
       if (workspace == nullptr || workspace->group() == nullptr || workspace->group()->output() == nullptr) {
