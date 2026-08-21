@@ -32,32 +32,30 @@ in
 
       default = null;
     };
+
   };
 
+  # not copying nixos module - taking module from upstreaming finix
+  # aka niri, labwc, sway, mango
+
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = cfg.package != null;
-        message = "programs.umbriel.package cannot be null when programs.umbriel.enable is true";
-      }
-    ];
-    
     environment.systemPackages = [
       cfg.package
       pkgs.tomlplusplus
-    ];
 
-    services.displayManager.sessionPackages = [
-      cfg.package
-    ];
-
-    xdg.portal.extraPortals = [
-      # pkgs.xdg-desktop-portal-umbriel
-      pkgs.xdg-desktop-portal-gtk
-    ];
-
-    xdg.portal.configPackages = [
-      cfg.package
+      (
+        lib.hiPrio (
+          pkgs.writeTextDir  "share/wayland-sessions/umbriel.desktop" ''
+            [Desktop Entry]
+            Encoding=UTF-8
+            Name=Umbriel
+            DesktopNames=umbriel;wlroots
+            Comment=Umbrel, a Wayland compositor built on wlroots and SceneFX
+            Exec=${lib.getExe' pkgs.dbus "dbus-run-session"} -- ${lib.getExe' cfg.package "start-umbriel"}
+            Type=Application
+          ''
+        )    
+      )
     ];
 
     environment.etc."xdg/umbriel/config.toml".source =
@@ -65,4 +63,4 @@ in
       then cfg.configFile
       else configFile;
   };
-}
+}  

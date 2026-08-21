@@ -78,6 +78,13 @@
           programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
 
+      finixModules.default =
+        { pkgs, lib, ... }:
+        {
+          imports = [ ./nix/finix-module.nix ];
+          programs.umbriel.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
+
       nixosModules.default =
         { pkgs, lib, ... }:
         {

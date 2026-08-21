@@ -5,22 +5,14 @@
   ...
 }:
 let
-  cfg = config.programs.umbriel;
   tomlFormat = pkgs.formats.toml { };
 
-  generateConfig =
-    format: name: value:
-    if lib.isString value then
-      pkgs.writeText name value
-    else if builtins.isPath value || lib.isStorePath value then
-      value
-    else
-      format.generate name value;
+  cfg = config.wayland.windowManager.umbriel;
 
-  generateToml = generateConfig tomlFormat;
+  configFile = tomlFormat.generate "umbriel-config.toml" cfg.config;
 in
 {
-  options.programs.umbriel = {
+  options.wayland.windowManager.umbriel = {
     enable = lib.mkEnableOption "Umbriel, a Wayland compositor built on wlroots and SceneFX.";
 
     package = lib.mkOption {
@@ -29,52 +21,50 @@ in
       description = "The umbriel package to install.";
     };
 
-    settings = lib.mkOption {
-      type =
-        with lib.types;
-        nullOr (oneOf [
-          tomlFormat.type
-          str
-          path
-        ]);
-      default = null;
-      description = ''
-        Configuration written to {file}`$XDG_CONFIG_HOME/umbriel/config.toml`.
-        Leave null to use the configuration packaged with Umbriel.
+    config = lib.mkOption {
+      type = tomlFormat.type;
 
-        Can be written as:
-          - A Nix attrset (converted to TOML via nixpkgs' tomlFormat)
-          - A raw TOML string
-          - A path to a `.toml` file
-
-        See {file}`examples/config.toml` in the Umbriel repository for every available option.
-      '';
-      example = lib.literalExpression ''
-        general.autostart = [ "noctalia" ];
-
-        layout.gap = 5;
-
-        input.keyboard.layout = "de";
-
-        keybinds = {
-          "Mod+Return" = "spawn:kitty";
-          "Mod+Q" = "window-close";
-          "Mod+R" = "spawn:noctalia msg panel-toggle launcher";
-        };
-      '';
+      default = {};
     };
+
+    configFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+
+      default = null;
+    };
+
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = lib.optional (cfg.package != null) cfg.package;
+    home.packages = [
+      cfg.package
+    ];
 
-    xdg.configFile = lib.mkIf (cfg.settings != null) {
-      "umbriel/config.toml" = {
-        source = generateToml "umbriel-config.toml" cfg.settings;
-        force = true;
+    xdg.portal = {
+      enable = true;
+      config = {
+        common = {
+          default = "*";
+        };
+        
+        umbriel = {
+          default = [ "gtk" ];
+        };
       };
-    };
-  };
+      
+      extraPortals = [
+        # pkgs.xdg-desktop-portal-umbriel
+        pkgs.xdg-desktop-portal-gtk
+      ];
 
-  _class = "homeManager";
+      configPackages = [
+        cfg.package
+      ];
+    };
+
+    xdg.configFile."umbriel/config.toml".source =
+      if cfg.configFile != null
+      then cfg.configFile
+      else configFile;
+  };
 }
