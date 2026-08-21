@@ -9,14 +9,12 @@ let
   cfg = config.wayland.windowManager.umbriel;
   tomlFormat = pkgs.formats.toml { };
 
-  generateConfig =
-    format: name: value:
-    if lib.isString value then
-      pkgs.writeText name value
-    else if builtins.isPath value || lib.isStorePath value then
-      value
-    else
-      format.generate name value;
+  generateConfig = format: name: value:
+    if lib.isString value
+    then pkgs.writeText name value
+    else if builtins.isPath value || lib.isStorePath value
+    then value
+    else format.generate name value;
 
   generateToml = generateConfig tomlFormat;
 
