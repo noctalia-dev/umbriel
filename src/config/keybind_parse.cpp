@@ -177,6 +177,7 @@ namespace umbriel {
         {"window-close", "[<window-id>]", KeybindAction::WindowClose, ActionArgKind::OptionalWindowId},
         {"window-consume-left", "", KeybindAction::WindowConsumeLeft},
         {"window-cycle-width", "", KeybindAction::WindowCycleWidth},
+        {"window-cycle-width-back", "", KeybindAction::WindowCycleWidthBack},
         {"window-expel-right", "", KeybindAction::WindowExpelRight},
         {"window-focus", "<window-id>", KeybindAction::WindowFocusId, ActionArgKind::WindowId},
         {"window-focus-down", "", KeybindAction::WindowFocusDown},

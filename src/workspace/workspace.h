@@ -92,7 +92,7 @@ namespace umbriel {
     bool consumeFocusedLeft();
     bool expelFocusedRight();
     bool moveFocusedVertical(int direction);
-    bool cycleFocusedWidth();
+    bool cycleFocusedWidth(int direction);
     bool setFocusedWidth(double fraction);
     // Incremental width change: apply `delta` to the focused column's current
     // width fraction, clamped to [0.1, 1.0].
