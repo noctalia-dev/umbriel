@@ -1383,6 +1383,10 @@ namespace umbriel {
       setFullscreen(true);
     }
 
+    if (rule.defaultMaximizeToEdges && *rule.defaultMaximizeToEdges) {
+      setMaximizedToEdges(true);
+    }
+
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onViewMapped(this);
     }
@@ -2175,6 +2179,12 @@ namespace umbriel {
         && *rule.defaultFullscreen
         && !m_toplevel->scheduled.fullscreen) {
       setFullscreen(true);
+    }
+
+    if (changedInitialRule(rule.defaultMaximizeToEdges, initiallyApplied.defaultMaximizeToEdges)
+        && *rule.defaultMaximizeToEdges
+        && !m_maximizedToEdges) {
+      setMaximizedToEdges(true);
     }
 
     if (changedInitialRule(rule.defaultMaximize, initiallyApplied.defaultMaximize)
