@@ -227,6 +227,14 @@ follows_mouse = false
 # default_focused = false
 # default_pinned = true
 
+# [[window_rule]]
+# match.app_id = "^discord$"
+# default_maximize_to_edges = true
+#
+# [[window_rule]]
+# match.title = "^Discord Updater$"
+# default_maximize_to_edges = false
+
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true
