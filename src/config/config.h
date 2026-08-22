@@ -144,6 +144,7 @@ namespace umbriel {
     std::optional<double> defaultWidth;  // column width fraction override
     std::optional<int> defaultWorkspace; // 1-64
     std::optional<bool> defaultFullscreen;
+    std::optional<bool> defaultMaximizeToEdges;
     std::optional<bool> defaultMaximize;
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
@@ -167,6 +168,7 @@ namespace umbriel {
           && defaultWidth == other.defaultWidth
           && defaultWorkspace == other.defaultWorkspace
           && defaultFullscreen == other.defaultFullscreen
+          && defaultMaximizeToEdges == other.defaultMaximizeToEdges
           && defaultMaximize == other.defaultMaximize
           && defaultFocused == other.defaultFocused
           && defaultPinned == other.defaultPinned
@@ -188,6 +190,7 @@ namespace umbriel {
     std::optional<double> defaultWidth;
     std::optional<int> defaultWorkspace;
     std::optional<bool> defaultFullscreen;
+    std::optional<bool> defaultMaximizeToEdges;
     std::optional<bool> defaultMaximize;
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;

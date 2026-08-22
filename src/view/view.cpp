@@ -1454,7 +1454,11 @@ namespace umbriel {
 
     // Fullscreen after workspace + focus so the view lands in the right place.
     if (rule.defaultFullscreen && *rule.defaultFullscreen) {
-      setFullscreen(true);
+        setFullscreen(true);
+    }
+
+    if (rule.defaultMaximizeToEdges && *rule.defaultMaximizeToEdges) {
+      setMaximizedToEdges(true);
     }
 
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
@@ -2238,7 +2242,13 @@ namespace umbriel {
     if (changedInitialRule(rule.defaultFullscreen, initiallyApplied.defaultFullscreen)
         && *rule.defaultFullscreen
         && !m_toplevel->scheduled.fullscreen) {
-      setFullscreen(true);
+        setFullscreen(true);
+    }
+
+    if (changedInitialRule(rule.defaultMaximizeToEdges, initiallyApplied.defaultMaximizeToEdges)
+        && *rule.defaultMaximizeToEdges
+        && !m_maximizedToEdges) {
+      setMaximizedToEdges(true);
     }
 
     if (changedInitialRule(rule.defaultMaximize, initiallyApplied.defaultMaximize)
