@@ -11,10 +11,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$UMBRIEL" msg "spawn:sh -c 'exec -a $MARKER sleep 120'" > /dev/null
+"$UMBRIEL" msg "spawn:sleep 120; : # $MARKER" > /dev/null
 
 for _ in $(seq 40); do
-  CHILD=$(pgrep -f "$MARKER" | head -1)
+  CHILD=$(pgrep -f "$MARKER" | head -1 || true)
   [[ -n $CHILD ]] && break
   sleep 0.25
 done
