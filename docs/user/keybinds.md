@@ -94,6 +94,7 @@ These take no argument.
 | `window-consume-left` | Pull the focused window into the column to its left. |
 | `window-expel-right` | Pop the focused window out of its column into a new column to the right. |
 | `window-cycle-width` | Cycle the focused column through its preset widths. |
+| `window-cycle-width-back` | Cycle the focused column through its preset widths in reverse. |
 | `window-toggle-fullscreen` | Toggle fullscreen for the focused window. |
 | `window-toggle-maximize` | Toggle the focused column's full-width state. |
 | `window-toggle-maximize-to-edges` | Toggle maximization of the focused window to the usable area's edges, without gaps or borders. Layer-shell exclusive zones remain visible. |
