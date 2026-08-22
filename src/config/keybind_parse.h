@@ -38,6 +38,7 @@ namespace umbriel {
     WindowConsumeLeft,
     WindowExpelRight,
     WindowCycleWidth,
+    WindowCycleWidthBack,
     WindowSetWidth,
     ToggleMaximize,
     ToggleMaximizeToEdges,

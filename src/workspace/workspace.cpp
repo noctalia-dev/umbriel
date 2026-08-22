@@ -595,12 +595,12 @@ namespace umbriel {
     return true;
   }
 
-  bool Workspace::cycleFocusedWidth() {
+  bool Workspace::cycleFocusedWidth(int direction) {
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }
     const int column = m_layout->columnOf(m_focusedView);
-    if (!m_layout->cycleWidth(column)) {
+    if (!m_layout->cycleWidth(column, direction)) {
       return false;
     }
     wlr_xdg_toplevel_set_maximized(m_focusedView->toplevel(), false);

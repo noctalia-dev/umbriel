@@ -280,6 +280,7 @@ namespace {
     case A::WindowConsumeLeft:
     case A::WindowExpelRight:
     case A::WindowCycleWidth:
+    case A::WindowCycleWidthBack:
     case A::WindowSetWidth:
     case A::WindowModifyWidth:
     case A::WindowCenter:
