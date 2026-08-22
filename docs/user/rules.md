@@ -46,6 +46,7 @@ opening settings do not overwrite user changes made in the meantime.
 | `default_width` | float | Scrolling only. Column width fraction (0.1-1.0). Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the column within or between scrolling workspaces retains its current width. Ignored in dwindle. |
 | `default_workspace` | int | Place on workspace N from 1 to 64. On dynamic outputs, values beyond the current count clamp to the last workspace. |
 | `default_fullscreen` | bool | Open in fullscreen. |
+| `default_maximize_to_edges` | bool | Open maximized to edges, expanding the window to the usable area's edges, without gaps or borders. Layer-shell exclusive zones remain visible. |
 | `default_maximize` | bool | Open maximized. For tiled windows, Umbriel expands the column to full width without changing the layout when the client requests maximize. Floating windows fill the usable area. |
 | `default_focused` | bool | Take focus when opening on the active workspace. Defaults to `true`; set to `false` to preserve the existing focus. |
 | `default_pinned` | bool | Open pinned above regular windows and keep the window visible across workspace changes. Pinning makes a tiled window floating. |
