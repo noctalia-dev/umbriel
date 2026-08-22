@@ -19,6 +19,13 @@ pkgs.mkShell {
     findutils
     gdb
     xwayland-satellite
+
+    foot
+    jq
+    imagemagick
+    grim
+    python3
+    procps
   ];
 
   shellHook = ''
