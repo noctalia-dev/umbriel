@@ -27,7 +27,12 @@
   scenefx,
 }:
 let
-  inherit (builtins) baseNameOf head match readFile;
+  inherit (builtins)
+    baseNameOf
+    head
+    match
+    readFile
+    ;
   source = ../.;
   version = head (match ".*\n  version: '([0-9][^']+)'.*" (readFile ../meson.build));
 in

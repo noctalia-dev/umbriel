@@ -6,15 +6,17 @@
   ...
 }:
 let
-  cfg = config.wayland.windowManager.umbriel;
+  cfg = config.programs.umbriel;
   tomlFormat = pkgs.formats.toml { };
 
-  generateConfig = format: name: value:
-    if lib.isString value
-    then pkgs.writeText name value
-    else if builtins.isPath value || lib.isStorePath value
-    then value
-    else format.generate name value;
+  generateConfig =
+    format: name: value:
+    if lib.isString value then
+      pkgs.writeText name value
+    else if builtins.isPath value || lib.isStorePath value then
+      value
+    else
+      format.generate name value;
 
   generateToml = generateConfig tomlFormat;
 
@@ -40,7 +42,7 @@ let
         rawConfig;
 in
 {
-  options.wayland.windowManager.umbriel = {
+  options.programs.umbriel = {
     enable = lib.mkEnableOption "Umbriel, a Wayland compositor built on wlroots and SceneFX.";
 
     package = lib.mkOption {
@@ -59,7 +61,7 @@ in
         ]);
       default = null;
       description = ''
-        Configuration written to {file}`$XDG_CONFIG_HOME/umbriel/config.toml`.
+        Configuration written to {file}`/etc/xdg/umbriel/config.toml`.
         Leave null to use the configuration packaged with Umbriel.
 
         Can be written as:
@@ -97,35 +99,34 @@ in
     };
   };
 
+  # not copying nixos module - taking module from upstreaming finix
+  # aka niri, labwc, sway, mango
+
   config = lib.mkIf cfg.enable {
-    home.packages = [
+    environment.systemPackages = [
       cfg.package
+      pkgs.tomlplusplus
+
+      (lib.hiPrio (
+        pkgs.writeTextDir "share/wayland-sessions/umbriel.desktop" ''
+          [Desktop Entry]
+          Encoding=UTF-8
+          Name=Umbriel
+          DesktopNames=umbriel;wlroots
+          Comment=Umbrel, a Wayland compositor built on wlroots and SceneFX
+          Exec=${lib.getExe' pkgs.dbus "dbus-run-session"} -- ${lib.getExe' cfg.package "start-umbriel"}
+          Type=Application
+        ''
+      ))
     ];
 
     xdg.portal = {
       enable = true;
-      config = {
-        common = {
-          default = "*";
-        };
-
-        umbriel = {
-          default = [ "gtk" ];
-        };
-      };
-
-      extraPortals = portals;
-
-      configPackages = [
-        cfg.package
-      ];
+      portals = portals;
     };
 
-    xdg.configFile = lib.mkIf (cfg.configFile != null || cfg.config != null) {
-      "umbriel/config.toml" = {
-        source = configSource;
-        force = true;
-      };
+    environment.etc = lib.mkIf (cfg.configFile != null || cfg.config != null) {
+      "xdg/umbriel/config.toml".source = configSource;
     };
   };
 }
