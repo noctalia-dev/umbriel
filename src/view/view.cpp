@@ -15,6 +15,7 @@
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr.h"
 // clang-format on
 #include "workspace/scratchpad.h"
@@ -487,6 +488,10 @@ namespace umbriel {
     m_dragOpacity = kDragOpacity;
     setFadeAlpha(m_fadeAlpha);
     m_effectiveOpacityCommitPending = false;
+    if (m_pinned) {
+      wlr_scene_node_place_above(&m_server->dragShadowTree()->node, &m_server->pinnedTree()->node);
+      wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->dragShadowTree()->node);
+    }
     wlr_scene_node_reparent(&m_sceneTree->node, m_server->dragTree());
     reparentShadow(m_server->dragShadowTree());
     setNodeEnabled(true);
@@ -498,6 +503,10 @@ namespace umbriel {
     m_dragOpacity = 1.0F;
     m_effectiveOpacityCommitPending = false;
     setFadeAlpha(m_fadeAlpha);
+    wlr_scene_node_place_below(
+        &m_server->dragTree()->node, &m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_TOP)->node
+    );
+    wlr_scene_node_place_below(&m_server->dragShadowTree()->node, &m_server->dragTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(this)) {
       scratchpad->restorePresentation(this);
