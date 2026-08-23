@@ -207,6 +207,13 @@ UMBRIEL_TEST(groupTitlesArePlainTextNotMarkup) {
   }
 }
 
+UMBRIEL_TEST(crossWorkspaceDirectionalActionsUseExpectedGroups) {
+  CHECK(umbriel::groupForAction(KeybindAction::WindowFocusOrWorkspaceUp) == umbriel::Group::Focus);
+  CHECK(umbriel::groupForAction(KeybindAction::WindowFocusOrWorkspaceDown) == umbriel::Group::Focus);
+  CHECK(umbriel::groupForAction(KeybindAction::WindowMoveOrWorkspaceUp) == umbriel::Group::MoveSize);
+  CHECK(umbriel::groupForAction(KeybindAction::WindowMoveOrWorkspaceDown) == umbriel::Group::MoveSize);
+}
+
 UMBRIEL_TEST(everyActionMapsToAGroupWithATitle) {
   // groupForAction has no default arm to fall through to, so a new action that
   // is never grouped would show up here.

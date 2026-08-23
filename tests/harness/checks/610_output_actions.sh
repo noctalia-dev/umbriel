@@ -108,6 +108,103 @@ if [[ $returned_workspace != "$start_workspace" ]]; then
   exit 1
 fi
 
+# The cross-workspace variants first use an available vertical neighbor. Only
+# the workspace boundary falls through to workspace navigation.
+spawn_client vertical-local
+wait_for_windows 2
+local_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "vertical-local") | .id')
+accepts "window-focus:$local_id"
+accepts "window-consume-left"
+stacked=false
+for _ in $(seq 40); do
+  if "$UMBRIEL" windows --json | jq -e \
+      'length == 2 and (.[0].workspace == .[1].workspace) and ([.[].y] | unique | length == 2)' > /dev/null; then
+    stacked=true
+    break
+  fi
+  sleep 0.1
+done
+if [[ $stacked != true ]]; then
+  echo "expected two rows in one column before vertical navigation"
+  exit 1
+fi
+read -r top_id bottom_id <<< "$("$UMBRIEL" windows --json | jq -r 'sort_by(.y) | "\(.[0].id) \(.[1].id)"')"
+accepts "window-focus:$top_id"
+accepts "window-focus-or-workspace-down"
+bottom_active=false
+for _ in $(seq 40); do
+  bottom_active=$("$UMBRIEL" windows --json | jq -r --arg id "$bottom_id" '.[] | select(.id == $id) | .active')
+  [[ $bottom_active == true ]] && break
+  sleep 0.1
+done
+if [[ $bottom_active != true ]]; then
+  echo "expected focus-down variant to use the lower row before changing workspaces"
+  exit 1
+fi
+if ! "$UMBRIEL" windows --json | jq -e --arg workspace "$start_workspace" \
+    'all(.[]; .workspace == $workspace)' > /dev/null; then
+  echo "vertical neighbor focus unexpectedly changed workspaces"
+  exit 1
+fi
+
+accepts "window-move-or-workspace-up"
+local_moved=false
+for _ in $(seq 40); do
+  local_moved=$("$UMBRIEL" windows --json | jq -r --arg id "$bottom_id" --arg other "$top_id" \
+    '([.[] | select(.id == $id) | .y][0]) < ([.[] | select(.id == $other) | .y][0])')
+  [[ $local_moved == true ]] && break
+  sleep 0.1
+done
+if [[ $local_moved != true ]]; then
+  echo "expected move-up variant to reorder rows before changing workspaces"
+  exit 1
+fi
+accepts "window-close"
+wait_for_windows 1
+
+accepts "window-focus-or-workspace-down"
+active_now=true
+for _ in $(seq 40); do
+  active_now=$("$UMBRIEL" windows --json | jq -r '.[0].active')
+  [[ $active_now == false ]] && break
+  sleep 0.1
+done
+if [[ $active_now != false ]]; then
+  echo "expected focus-down variant to switch at the workspace boundary"
+  exit 1
+fi
+accepts "window-focus-or-workspace-up"
+for _ in $(seq 40); do
+  active_now=$("$UMBRIEL" windows --json | jq -r '.[0].active')
+  [[ $active_now == true ]] && break
+  sleep 0.1
+done
+if [[ $active_now != true ]]; then
+  echo "expected focus-up variant to return and restore focus"
+  exit 1
+fi
+
+accepts "window-move-or-workspace-down"
+for _ in $(seq 40); do
+  returned_workspace=$("$UMBRIEL" windows --json | jq -r '.[0].workspace')
+  [[ $returned_workspace == "$moved_workspace" ]] && break
+  sleep 0.1
+done
+if [[ $returned_workspace != "$moved_workspace" ]]; then
+  echo "expected move-down variant to cross the workspace boundary"
+  exit 1
+fi
+accepts "window-move-or-workspace-up"
+for _ in $(seq 40); do
+  returned_workspace=$("$UMBRIEL" windows --json | jq -r '.[0].workspace')
+  [[ $returned_workspace == "$start_workspace" ]] && break
+  sleep 0.1
+done
+if [[ $returned_workspace != "$start_workspace" ]]; then
+  echo "expected move-up variant to return to $start_workspace"
+  exit 1
+fi
+
 # window-modify-width: Headless output is 1280x720 with the shipped defaults (gap 8, border 2): viewport 1260, so -0.2 shrinks a column by about 252px.
 # The exact geometry math lives in 110_scrolling_layout.sh (624 wide at 0.5).
 before_w=$(jq -r '.[0].w' <<< "$("$UMBRIEL" windows --json)")
@@ -309,4 +406,4 @@ if [[ $min_h -ge 600 ]]; then
   exit 1
 fi
 
-echo "directional actions reject on one output; workspace moves preserve width and other actions behave"
+echo "local and cross-workspace actions, width preservation, centering, and layout switching behave"
