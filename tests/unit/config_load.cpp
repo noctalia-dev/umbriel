@@ -530,6 +530,8 @@ repeat_rate = 25
 [input.touchpad]
 tap = true
 natural_scroll = true
+accel_profile = "adaptive"
+sensitivity = 0.1
 
 [input.mouse]
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
@@ -546,6 +548,8 @@ repeat_delay = 250
 name = "Acme Precision Touchpad"
 tap = false
 natural_scroll = false
+accel_profile = "flat"
+sensitivity = -0.5
 
 [[input.device]]
 name = "Acme Gaming Mouse"
@@ -563,6 +567,11 @@ sensitivity = -0.5
   CHECK_EQ(input.mouse.accelProfile.step, 0.2);
   CHECK_EQ(input.mouse.accelProfile.points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
   CHECK_EQ(input.mouse.sensitivity, 0.25);
+  CHECK(input.touchpad.accelProfile.has_value());
+  if (input.touchpad.accelProfile.has_value()) {
+    CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
+  }
+  CHECK(input.touchpad.sensitivity == std::optional<double>(0.1));
   CHECK_EQ(input.devices.size(), size_t{3});
 
   const auto* keyboard = input.findDevice("Acme Split Keyboard");
@@ -579,6 +588,11 @@ sensitivity = -0.5
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
+    CHECK(touchpad->accelProfile.has_value());
+    if (touchpad->accelProfile.has_value()) {
+      CHECK(touchpad->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
+    }
+    CHECK(touchpad->sensitivity == std::optional<double>(-0.5));
   }
 
   const auto* mouse = input.findDevice("Acme Gaming Mouse");
@@ -597,6 +611,12 @@ UMBRIEL_TEST(mouseAccelerationDefaultsToFlat) {
   const umbriel::Config defaults;
   CHECK(defaults.input.mouse.accelProfile.kind == umbriel::AccelProfile::Kind::Flat);
   CHECK_EQ(defaults.input.mouse.sensitivity, 0.0);
+}
+
+UMBRIEL_TEST(touchpadAccelerationDefaultsToUnset) {
+  const umbriel::Config defaults;
+  CHECK(!defaults.input.touchpad.accelProfile.has_value());
+  CHECK(!defaults.input.touchpad.sensitivity.has_value());
 }
 
 UMBRIEL_TEST(touchpadTapDefaultsToEnabled) {

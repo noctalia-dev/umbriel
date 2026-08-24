@@ -66,6 +66,19 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
   {
     Config after;
+    after.input.touchpad.accelProfile.emplace();
+    after.input.touchpad.accelProfile->kind = AccelProfile::Kind::Flat;
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.input);
+    CHECK(ConfigEffects::between(before, after).input);
+  }
+  {
+    Config after;
+    after.input.touchpad.sensitivity = 0.5;
+    CHECK(ConfigChange::between(before, after).input);
+  }
+  {
+    Config after;
     after.input.middleClickPaste = !after.input.middleClickPaste;
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.input);
