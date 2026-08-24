@@ -2142,11 +2142,12 @@ namespace umbriel {
       m_refullscreenOnTile = false;
     }
     // Leaving column maximize when entering real fullscreen avoids a stale
-    // widthFrac=1.0 column after the client leaves fullscreen.
+    // widthFrac=1.0 column after the client leaves fullscreen. Toggle it off
+    // so ScrollingLayout restores the width saved when maximize was enabled.
     if (fullscreen && m_tiled && m_workspace != nullptr) {
       const int column = m_workspace->layout().columnOf(this);
       if (m_workspace->layout().isFullWidth(column)) {
-        m_workspace->layout().clearFullWidthState(column);
+        m_workspace->layout().toggleFullWidth(column);
         wlr_xdg_toplevel_set_maximized(m_toplevel, false);
       }
     }
