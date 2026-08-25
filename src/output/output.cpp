@@ -529,9 +529,21 @@ namespace umbriel {
       wl_list_remove(&m_requestState.link);
       wl_list_remove(&m_destroy.link);
     }
-    // Workspace destructors reparent leftover views onto the server trees, so the group has to go before the roots it
-    // hangs under.
     m_workspaceGroup.reset();
+    for (uint32_t layer = 0; layer < kLayerCount; ++layer) {
+      if (m_layerTrees[layer] != nullptr) {
+        wlr_scene_node_destroy(&m_layerTrees[layer]->node);
+        m_layerTrees[layer] = nullptr;
+      }
+    }
+    if (m_popupTree != nullptr) {
+      wlr_scene_node_destroy(&m_popupTree->node);
+      m_popupTree = nullptr;
+    }
+    if (m_optimizedBlur != nullptr) {
+      wlr_scene_node_destroy(&m_optimizedBlur->node);
+      m_optimizedBlur = nullptr;
+    }
     for (wlr_scene_tree* root : {m_viewRoot, m_fullscreenRoot, m_pinnedRoot, m_pinnedShadowRoot}) {
       if (root != nullptr) {
         wlr_scene_node_destroy(&root->node);
