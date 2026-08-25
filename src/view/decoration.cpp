@@ -137,10 +137,10 @@ namespace umbriel {
 
   void ViewDecoration::updateBlur(
       wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
-      const wlr_box* clip, float alpha
+      const wlr_box* clip, float surfaceOpacity, float blurAlpha
   ) {
-    m_blur.update(tree, surface, nodeBox, geometry, radius, clip, m_blurOptions);
-    m_blur.setAlpha(alpha);
+    m_blur.setAlpha(blurAlpha);
+    m_blur.update(tree, surface, nodeBox, geometry, radius, clip, m_blurOptions, surfaceOpacity);
   }
 
   void ViewDecoration::hideBlur() { m_blur.hide(); }
@@ -191,9 +191,9 @@ namespace umbriel {
 
   void ViewDecoration::hideShadow() { m_shadow.hide(); }
 
-  void ViewDecoration::setAlpha(float alpha) {
-    m_shadow.setAlpha(alpha);
-    m_blur.setAlpha(alpha);
+  void ViewDecoration::setAlpha(float decorationAlpha, float blurAlpha) {
+    m_shadow.setAlpha(decorationAlpha);
+    m_blur.setAlpha(blurAlpha);
   }
 
   void ViewDecoration::hideEffects() {

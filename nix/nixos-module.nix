@@ -8,6 +8,9 @@ let
   cfg = config.programs.umbriel;
 in
 {
+  # Disable the nixpkgs module to avoid conflicts
+  disabledModules = [ "programs/wayland/umbriel.nix" ];
+
   options.programs.umbriel = {
     enable = lib.mkEnableOption "Umbriel, a Wayland compositor built on wlroots and SceneFX.";
 

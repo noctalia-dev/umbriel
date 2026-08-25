@@ -398,6 +398,7 @@ namespace umbriel {
         std::string options;
         int repeatRate = 25;
         int repeatDelay = 600;
+        bool numlockToggle = false;
         bool operator==(const Keyboard&) const = default;
       } keyboard;
 
@@ -411,7 +412,7 @@ namespace umbriel {
 
       struct Mouse {
         std::optional<bool> naturalScroll;
-        AccelProfile accelProfile;
+        std::optional<AccelProfile> accelProfile;
         double sensitivity = 0.0;
         int scrollWheelStep = 60;
         bool operator==(const Mouse&) const = default;

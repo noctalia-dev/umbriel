@@ -256,8 +256,11 @@ namespace umbriel {
       wlr_scene_buffer_set_dest_size(entry->buffer, contentW, contentH);
       wlr_scene_buffer_set_corner_radii(entry->buffer, corner_radii_all(radius));
       const wlr_box blurBox{0, 0, contentW, contentH};
-      card.blur.setAlpha(entry->buffer->opacity);
-      card.blur.update(card.tree, surface, blurBox, geometry, radius, nullptr, view->blurOptions(), entry->buffer);
+      card.blur.setAlpha(1.0F);
+      card.blur.update(
+          card.tree, surface, blurBox, geometry, radius, nullptr, view->blurOptions(), entry->buffer->opacity,
+          entry->buffer
+      );
       blurUpdated = true;
     }
     if (!blurUpdated) {
@@ -351,6 +354,7 @@ namespace umbriel {
       wlr_scene_buffer_set_opacity(entry.buffer, source->opacity);
       wlr_scene_buffer_set_transfer_function(entry.buffer, source->transfer_function);
       wlr_scene_buffer_set_primaries(entry.buffer, source->primaries);
+      wlr_scene_buffer_set_luminance_multiplier(entry.buffer, source->luminance_multiplier);
       wlr_scene_buffer_set_color_encoding(entry.buffer, source->color_encoding);
       wlr_scene_buffer_set_color_range(entry.buffer, source->color_range);
     }
@@ -534,6 +538,7 @@ namespace umbriel {
       wlr_scene_buffer_set_opacity(copy, source->opacity);
       wlr_scene_buffer_set_transfer_function(copy, source->transfer_function);
       wlr_scene_buffer_set_primaries(copy, source->primaries);
+      wlr_scene_buffer_set_luminance_multiplier(copy, source->luminance_multiplier);
       wlr_scene_buffer_set_color_encoding(copy, source->color_encoding);
       wlr_scene_buffer_set_color_range(copy, source->color_range);
       wlr_scene_buffer_set_filter_mode(copy, WLR_SCALE_FILTER_BILINEAR);

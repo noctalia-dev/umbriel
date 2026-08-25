@@ -70,7 +70,7 @@ namespace umbriel {
     [[nodiscard]] uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
     std::unique_ptr<ResizeGrab> beginResize(View* view, uint32_t edges, const wlr_box& usable) override;
 
-    bool cycleWidth(int columnIndex) override;
+    bool cycleWidth(int columnIndex, int direction) override;
     bool toggleFullWidth(int columnIndex) override;
     [[nodiscard]] bool isFullWidth(int columnIndex) const override;
     bool setWidthFraction(int columnIndex, double fraction) override;

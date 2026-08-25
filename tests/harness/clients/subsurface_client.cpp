@@ -2,8 +2,9 @@
 // surface exactly, which is how Firefox presents (all chrome and web content live in one MozContainer subsurface over a
 // mostly empty GTK parent). The parent buffer is opaque red and the child buffer opaque blue, so a screenshot tells
 // which surface a pixel came from and whether the compositor rounded the subsurface to the window corner radius. Prints
-// "mapped" once both surfaces are up, then keeps the connection alive until the harness kills it.
-// Usage: subsurface-client [title [width height]]. The dimensions are a fallback: a configure with a size adopts it.
+// "mapped" once both surfaces are up, then keeps the connection alive until the harness kills it. The optional
+// "animate" mode continually damages only the child, matching Firefox's independent MozContainer commits.
+// Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"
 
@@ -35,6 +36,7 @@ namespace {
     xdg_toplevel* toplevel = nullptr;
     wl_surface* child = nullptr;
     wl_subsurface* subsurface = nullptr;
+    wl_callback* childFrame = nullptr;
     Buffer parentBuffer;
     Buffer childBuffer;
     int width = 640;
@@ -42,7 +44,34 @@ namespace {
     int presentedWidth = 0;
     int presentedHeight = 0;
     bool mapped = false;
+    bool animateChild = false;
   };
+
+  void requestChildFrame(State& state);
+
+  void childFrameDone(void* data, wl_callback* callback, uint32_t /*time*/) {
+    auto& state = *static_cast<State*>(data);
+    wl_callback_destroy(callback);
+    state.childFrame = nullptr;
+    if (!state.animateChild || state.child == nullptr) {
+      return;
+    }
+    requestChildFrame(state);
+    wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
+    wl_surface_commit(state.child);
+  }
+
+  constexpr wl_callback_listener kChildFrameListener = {
+      .done = childFrameDone,
+  };
+
+  void requestChildFrame(State& state) {
+    if (state.childFrame != nullptr) {
+      return;
+    }
+    state.childFrame = wl_surface_frame(state.child);
+    wl_callback_add_listener(state.childFrame, &kChildFrameListener, &state);
+  }
 
   void destroyBuffer(Buffer& buffer) {
     if (buffer.resource != nullptr) {
@@ -102,6 +131,9 @@ namespace {
 
     wl_surface_attach(state.child, child.resource, 0, 0);
     wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
+    if (state.animateChild) {
+      requestChildFrame(state);
+    }
     wl_surface_commit(state.child);
 
     wl_surface_attach(state.surface, parent.resource, 0, 0);
@@ -193,6 +225,7 @@ int main(int argc, char** argv) {
   if (argc > 3) {
     state.height = std::max(1, std::atoi(argv[3]));
   }
+  state.animateChild = argc > 4 && std::strcmp(argv[4], "animate") == 0;
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
     std::println(stderr, "subsurface-client: cannot connect to WAYLAND_DISPLAY");
@@ -232,6 +265,9 @@ int main(int argc, char** argv) {
   while (wl_display_dispatch(state.display) >= 0) {
   }
 
+  if (state.childFrame != nullptr) {
+    wl_callback_destroy(state.childFrame);
+  }
   if (state.subsurface != nullptr) {
     wl_subsurface_destroy(state.subsurface);
   }

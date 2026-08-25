@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
+#include "output/hdr_format.h"
 #include "scene/node.h"
 #include "server/server.h"
 #include "server/wine_color_manager.h"
@@ -137,7 +138,8 @@ namespace umbriel {
     m_lastHdrRequested = hdrRequested;
     bool hdrAttempted = false;
 
-    bool enableVrr = false;
+    bool vrrRequested = false;
+    bool vrrStaged = false;
     if (enabled) {
       if (rule != nullptr && rule->mode) {
         if (wlr_output_is_wl(m_output)) {
@@ -182,10 +184,11 @@ namespace umbriel {
       if (rule != nullptr && rule->transform) {
         wlr_output_state_set_transform(&state, static_cast<wl_output_transform>(*rule->transform));
       }
-      enableVrr = configuredVrrEnabled();
+      vrrRequested = configuredVrrEnabled();
       if (m_output->adaptive_sync_supported) {
-        wlr_output_state_set_adaptive_sync_enabled(&state, enableVrr);
-      } else if (enableVrr) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
+        vrrStaged = vrrRequested;
+      } else if (vrrRequested) {
         kLog.warn("output '{}': VRR requested but adaptive sync is not supported", m_output->name);
       }
 
@@ -206,10 +209,42 @@ namespace umbriel {
               .max_cll = 0,
               .max_fall = 0,
           };
-          wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB2101010);
-          hdrAttempted = wlr_output_state_set_image_description(&state, &description);
-          if (!hdrAttempted) {
+          if (!wlr_output_state_set_image_description(&state, &description)) {
             hdrFallback = "failed to stage HDR image description";
+          } else {
+            const wlr_drm_format_set* primaryFormats =
+                wlr_output_get_primary_formats(m_output, m_server->allocator()->buffer_caps);
+            const auto selectFormat = [&]() {
+              return selectHdrRenderFormat(m_output->render_format, [&](uint32_t format) {
+                if (primaryFormats != nullptr && wlr_drm_format_set_get(primaryFormats, format) == nullptr) {
+                  return false;
+                }
+                wlr_output_state_set_render_format(&state, format);
+                return wlr_output_test_state(m_output, &state);
+              });
+            };
+
+            std::optional<uint32_t> renderFormat = selectFormat();
+            if (!renderFormat && vrrStaged) {
+              wlr_output_state_set_adaptive_sync_enabled(&state, false);
+              vrrStaged = false;
+              renderFormat = selectFormat();
+              if (renderFormat) {
+                kLog.warn("output '{}': HDR is incompatible with VRR, keeping VRR disabled", m_output->name);
+              } else {
+                wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
+                vrrStaged = vrrRequested;
+              }
+            }
+            if (renderFormat) {
+              hdrAttempted = true;
+              kLog.info(
+                  "output '{}': selected HDR render format {}", m_output->name,
+                  *renderFormat == DRM_FORMAT_XRGB2101010 ? "XR30" : "XB30"
+              );
+            } else {
+              hdrFallback = "backend rejected all 10-bit HDR render formats";
+            }
           }
         }
       }
@@ -223,17 +258,27 @@ namespace umbriel {
       wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
     }
 
-    bool committed = wlr_output_commit_state(m_output, &state);
-    if (!committed && enableVrr && m_output->adaptive_sync_supported) {
-      kLog.warn("output '{}': failed to enable VRR, retrying with VRR disabled", m_output->name);
-      wlr_output_state_set_adaptive_sync_enabled(&state, false);
-      committed = wlr_output_commit_state(m_output, &state);
-    }
+    const auto commitConfiguredState = [&]() {
+      bool success = wlr_output_commit_state(m_output, &state);
+      if (!success && vrrStaged) {
+        kLog.warn("output '{}': configured state commit failed, retrying with VRR disabled", m_output->name);
+        wlr_output_state_set_adaptive_sync_enabled(&state, false);
+        vrrStaged = false;
+        success = wlr_output_commit_state(m_output, &state);
+      }
+      return success;
+    };
+
+    bool committed = commitConfiguredState();
     if (!committed && hdrAttempted) {
       setHdrFallbackReason("HDR commit rejected by backend");
       wlr_output_state_set_image_description(&state, nullptr);
       wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
-      committed = wlr_output_commit_state(m_output, &state);
+      if (m_output->adaptive_sync_supported) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
+        vrrStaged = vrrRequested;
+      }
+      committed = commitConfiguredState();
     }
     wlr_output_state_finish(&state);
     if (!committed) {
@@ -765,7 +810,18 @@ namespace umbriel {
       wlr_output_state_init(&state);
 
       bool commitOk = false;
-      if (wlr_scene_output_build_state(m_sceneOutput, &state, nullptr)) {
+      int captureLocks = m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
+      if (wlr_export_dmabuf_manager_v1* manager = m_server->exportDmabufManager()) {
+        wlr_export_dmabuf_frame_v1* frame;
+        wl_list_for_each(frame, &manager->frames, link) {
+          if (frame->output == m_output) {
+            --captureLocks;
+          }
+        }
+      }
+      wlr_scene_output_state_options sceneOptions{};
+      sceneOptions.capture_sdr = hdrActive() && captureLocks > 0;
+      if (wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions)) {
         // Hardware gamma only (DRM). Nested Wayland has no gamma LUT; leave that alone.
         // Apply only when dirty: uploading the LUT every frame stalls the compositor.
         bool gammaPending = false;

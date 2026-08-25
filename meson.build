@@ -82,6 +82,15 @@ if pkgconfig.found()
       'scenefx/types/wlr_scene.h',
       'wlr_scene_output_set_sdr_white_level',
       args: scenefx_cflags,
+    ) and cpp.has_header_symbol(
+      'scenefx/types/wlr_scene.h',
+      'wlr_scene_buffer_set_luminance_multiplier',
+      args: scenefx_cflags,
+    ) and cpp.has_member(
+      'struct wlr_scene_output_state_options',
+      'capture_sdr',
+      prefix: '#include <scenefx/types/wlr_scene.h>',
+      args: scenefx_cflags,
     )
   endif
 endif
@@ -98,6 +107,8 @@ else
     not scenefx_header_source.contains('wlr_scene_blur_set_ignore_alpha')
     or not scenefx_header_source.contains('wlr_scene_tree_set_clip')
     or not scenefx_header_source.contains('wlr_scene_output_set_sdr_white_level')
+    or not scenefx_header_source.contains('wlr_scene_buffer_set_luminance_multiplier')
+    or not scenefx_header_source.contains('capture_sdr')
   )
     error('SceneFX submodule must provide Umbriel patched APIs')
   endif
@@ -413,10 +424,12 @@ unit_tests = [
   ['scene-node', ['tests/unit/scene_node.cpp'], []],
   ['scene-clip', ['tests/unit/scene_clip.cpp'], [wayland_server_dep]],
   ['presentation', ['tests/unit/presentation.cpp'], [umbriel_core_dep]],
+  ['window-opacity-blur', ['tests/unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
   ['value-parse', ['tests/unit/value_parse.cpp'], []],
   ['keybind-parse', ['tests/unit/keybind_parse.cpp'], []],
   ['modifier-tap', ['tests/unit/modifier_tap.cpp'], []],
   ['output-direction', ['tests/unit/output_direction.cpp'], []],
+  ['hdr-format', ['tests/unit/hdr_format.cpp'], []],
   ['scrolling-layout', ['tests/unit/scrolling_layout.cpp'], []],
   ['dwindle-layout', ['tests/unit/dwindle_layout.cpp'], []],
   ['cheatsheet-rows', ['tests/unit/cheatsheet_rows.cpp'], []],
@@ -493,6 +506,14 @@ unmap_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that creates a grabbed XDG popup and reports its dismissal.
+popup_client = executable(
+  'popup-client',
+  ['tests/harness/clients/popup_client.cpp', xdg_shell_client_h, xdg_shell_client_c],
+  dependencies: [wayland_client_dep],
+)
+
+
 # Harness helper whose whole content is drawn by a full-window desynchronized
 # wl_subsurface, the way Firefox presents its chrome and web content.
 subsurface_client = executable(
@@ -525,6 +546,7 @@ alias_target(
   global_client,
   workspace_client,
   unmap_client,
+  popup_client,
   subsurface_client,
   idle_inhibit_client,
 )

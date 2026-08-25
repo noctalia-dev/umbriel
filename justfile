@@ -49,6 +49,9 @@ release: (build "release")
 install: (build "release")
     meson install -C build-release --no-rebuild
 
+uninstall:
+    sudo ninja -C build-release uninstall
+
 run m=mode startup="": (build m)
     #!/usr/bin/env bash
     set -euo pipefail

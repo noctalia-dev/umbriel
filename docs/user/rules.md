@@ -91,7 +91,7 @@ offset would otherwise place it completely off-screen.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `opacity` | float | Surface opacity (0.0-1.0). |
+| `opacity` | float | Surface opacity (0.0-1.0). With blur enabled, the translucent surface reveals a full-strength blurred backdrop, matching equivalent alpha supplied by the client. |
 | `blur` | bool | Enable/disable blur for this window. |
 | `blur_popups` | bool | Enable/disable blur for its XDG popups. |
 | `blur_ignore_alpha` | float | Skip blur where surface alpha is below this threshold (0.0-1.0). Applies to the window and its popups. |
@@ -106,6 +106,7 @@ offset would otherwise place it completely off-screen.
 # Enable blur for every window
 [[window_rule]]
 blur = true
+blur_optimized = true
 
 # Narrow columns for terminals and file managers
 [[window_rule]]

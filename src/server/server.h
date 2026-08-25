@@ -26,6 +26,7 @@ struct wlr_image_description_v1_data;
 struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
+struct wlr_export_dmabuf_manager_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_idle_inhibit_manager_v1;
 struct wlr_idle_notifier_v1;
@@ -125,6 +126,7 @@ namespace umbriel {
     [[nodiscard]] wlr_allocator* allocator() const { return m_allocator; }
     [[nodiscard]] wlr_scene* scene() const { return m_scene; }
     [[nodiscard]] wlr_color_manager_v1* colorManager() const { return m_colorManager; }
+    [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
     [[nodiscard]] WineColorManager* wineColorManager() const { return m_wineColorManager.get(); }
     [[nodiscard]] const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
     void updateColorPreferences();
@@ -422,6 +424,7 @@ namespace umbriel {
     wlr_foreign_toplevel_manager_v1* m_foreignToplevelManager = nullptr;
     wlr_ext_foreign_toplevel_list_v1* m_extForeignToplevelList = nullptr;
     wlr_ext_foreign_toplevel_image_capture_source_manager_v1* m_toplevelCaptureSourceManager = nullptr;
+    wlr_export_dmabuf_manager_v1* m_exportDmabufManager = nullptr;
     wlr_ext_workspace_manager_v1* m_workspaceManager = nullptr;
     wlr_session_lock_manager_v1* m_sessionLockManager = nullptr;
     wlr_pointer_constraints_v1* m_pointerConstraints = nullptr;

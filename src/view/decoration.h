@@ -51,7 +51,7 @@ namespace umbriel {
     void applyRule(const ResolvedWindowRule& rule);
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
-        const wlr_box* clip, float alpha
+        const wlr_box* clip, float surfaceOpacity, float blurAlpha
     );
     void hideBlur();
 
@@ -64,8 +64,9 @@ namespace umbriel {
     void updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius);
     void hideShadow();
 
-    // Blur and shadow together, for fade animations.
-    void setAlpha(float alpha);
+    // Shadows follow the full view opacity. Blur follows only transition
+    // opacity, otherwise a window rule attenuates the backdrop twice.
+    void setAlpha(float decorationAlpha, float blurAlpha);
     // Both effects off, without touching the border ring (unmap path).
     void hideEffects();
 

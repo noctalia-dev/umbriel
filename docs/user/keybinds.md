@@ -79,11 +79,12 @@ set.
 A second `session-quit` while the confirmation is open also quits. While the
 session is locked, `session-quit` quits without the dialog.
 
-Workspace selectors use exact names, including numeric names such as `1`.
-Unique names resolve globally; duplicate names resolve on the preferred output.
-Add `/output` to target another output explicitly. On a dynamic output, a
-numeric target first uses the preferred output. If the number is beyond the
-current workspace list, Umbriel uses the last workspace.
+Workspace selectors use exact names. Numeric selectors prefer the focused
+output: an exact numeric name wins, otherwise the number selects that 1-based
+position in a static custom-named workspace list. On a dynamic output, a number
+beyond the current workspace list selects the last workspace. Unique names
+resolve globally; duplicate names resolve on the preferred output. Add
+`/output` to target another output explicitly.
 
 When `workspace-switch` targets a workspace on another monitor, the cursor warps
 to the center of that monitor, so focus follows the switch.
@@ -103,6 +104,7 @@ These take no argument.
 | `window-consume-left` | Pull the focused window into the column to its left. |
 | `window-expel-right` | Pop the focused window out of its column into a new column to the right. |
 | `window-cycle-width` | Cycle the focused column through its preset widths. |
+| `window-cycle-width-back` | Cycle the focused column through its preset widths in reverse. |
 | `window-toggle-fullscreen` | Toggle fullscreen for the focused window. |
 | `window-toggle-maximize` | Toggle the focused column's full-width state. |
 | `window-toggle-maximize-to-edges` | Toggle maximization of the focused window to the usable area's edges, without gaps or borders. Layer-shell exclusive zones remain visible. |
@@ -141,6 +143,9 @@ window fullscreen removes its pinned state.
 focused output, by index. They do not wrap around: `workspace-previous` on the
 first workspace is a silent no-op. On a dynamic output, `workspace-next` reaches
 the trailing empty workspace, which becomes active as usual.
+
+`workspace-move-down` and `workspace-move-up` move the focused workspace up or down
+on the focused output. They do not wrap around either.
 
 The matching window actions can be bound independently:
 

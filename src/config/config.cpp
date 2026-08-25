@@ -752,7 +752,8 @@ namespace umbriel {
               .text("variant", in.keyboard.variant)
               .text("options", in.keyboard.options)
               .integer("repeat_rate", 0, 1000, in.keyboard.repeatRate)
-              .integer("repeat_delay", 0, 10000, in.keyboard.repeatDelay);
+              .integer("repeat_delay", 0, 10000, in.keyboard.repeatDelay)
+              .boolean("numlock_toggle", in.keyboard.numlockToggle);
         });
         if (const toml::node* keyboardNode = s.node("keyboard");
             keyboardNode != nullptr && !validateKeyboardInput(in.keyboard, keyboardNode->source(), "input.keyboard")) {

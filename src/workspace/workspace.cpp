@@ -15,7 +15,9 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <utility>
 #include "wlr.h"
 // clang-format on
 
@@ -187,7 +189,7 @@ namespace umbriel {
     m_group->reconcileDynamic();
   }
 
-  View* Workspace::removeView(View* view, std::optional<std::pair<double, double>> focusPoint, bool reconcile) {
+  View* Workspace::removeView(View* view, bool reconcile) {
     if (view == nullptr) {
       return nullptr;
     }
@@ -198,41 +200,14 @@ namespace umbriel {
       );
       view->reparentShadow(nullptr);
     }
-    const int removedColumn = m_layout->columnOf(view);
-    View* adjacentReplacement = m_focusedView == view ? focusReplacementForRemoval(view) : nullptr;
+    View* replacement = m_focusedView == view ? focusReplacementForRemoval(view) : nullptr;
     detachFromLayout(view);
     std::erase(m_views, view);
     updateUrgent();
     std::erase(m_floatingStack, view);
     std::erase(m_switchViews, view);
 
-    View* replacement = nullptr;
     if (m_focusedView == view) {
-      m_focusedView = nullptr;
-      if (focusPoint && m_group != nullptr && m_group->output() != nullptr) {
-        wlr_box usable = m_group->output()->usableArea();
-        if (usable.width <= 0 || usable.height <= 0) {
-          wlr_output_layout_get_box(m_group->server()->outputLayout(), m_group->output()->wlr(), &usable);
-        }
-        if (usable.width > 0 && usable.height > 0) {
-          // Removal changes both column indices and the scrolling offset. Refresh layout targets before deciding which
-          // survivor now occupies a stationary pointer; the scene nodes catch up on the next frame.
-          m_layout->arrange(usable);
-          for (View* candidate : m_views) {
-            if (candidate == nullptr || !candidate->mapped() || !candidate->tiled()) {
-              continue;
-            }
-            const wlr_box box = m_layout->targetBox(candidate);
-            if (wlr_box_contains_point(&box, focusPoint->first, focusPoint->second)) {
-              replacement = candidate;
-              break;
-            }
-          }
-        }
-      }
-      if (replacement == nullptr && removedColumn >= 0) {
-        replacement = adjacentReplacement;
-      }
       m_focusedView = replacement;
     }
     // Re-anchor the strip on whatever is focused now, the way every other focus-moving operation does. Activating an
@@ -673,12 +648,12 @@ namespace umbriel {
     return scrollingVertical() ? moveLaneAlongStrip(direction) : moveWithinLane(direction);
   }
 
-  bool Workspace::cycleFocusedWidth() {
+  bool Workspace::cycleFocusedWidth(int direction) {
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }
     const int column = m_layout->columnOf(m_focusedView);
-    if (!m_layout->cycleWidth(column)) {
+    if (!m_layout->cycleWidth(column, direction)) {
       return false;
     }
     wlr_xdg_toplevel_set_maximized(m_focusedView->toplevel(), false);
@@ -1000,6 +975,41 @@ namespace umbriel {
     return result;
   }
 
+  bool WorkspaceGroup::moveActiveWorkspace(int direction) {
+    if (m_active == nullptr || m_workspaces.size() < 2 || direction == 0 || m_output == nullptr) {
+      return false;
+    }
+    const size_t index = m_active->index();
+    const auto target = static_cast<std::ptrdiff_t>(index) + direction;
+    if (target < 0 || target >= static_cast<std::ptrdiff_t>(m_workspaces.size())) {
+      return false;
+    }
+    if (m_dynamic && direction > 0) {
+      const bool targetIsTrailingEmpty = static_cast<size_t>(target) == m_workspaces.size() - 1
+          && !m_workspaces[static_cast<size_t>(target)]->hasViews();
+      if (targetIsTrailingEmpty) {
+        return false;
+      }
+    }
+    slideFinish();
+    std::swap(m_workspaces[index], m_workspaces[static_cast<size_t>(target)]);
+    if (m_dynamic) {
+      refreshDynamicWorkspaceMetadata();
+      if (m_workspaces.back()->hasViews()) {
+        appendDynamicWorkspace();
+      }
+    } else {
+      for (const size_t slot : {index, static_cast<size_t>(target)}) {
+        Workspace* moved = m_workspaces[slot].get();
+        moved->rename(moved->name(), slot);
+      }
+    }
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onWorkspaceInventoryChanged(this);
+    }
+    return true;
+  }
+
   void WorkspaceGroup::reconcileInventory() {
     slideFinish();
     const char* outputName = m_output->wlr()->name != nullptr ? m_output->wlr()->name : "output";
@@ -1180,15 +1190,16 @@ namespace umbriel {
     if (Workspace* workspace = workspaceNamed(name)) {
       return workspace;
     }
-    if (!m_dynamic || name.empty() || !std::ranges::all_of(name, [](char value) {
-          return value >= '0' && value <= '9';
-        })) {
+    if (name.empty() || !std::ranges::all_of(name, [](char value) { return value >= '0' && value <= '9'; })) {
       return nullptr;
     }
     size_t index = 0;
     const auto [end, error] = std::from_chars(name.data(), name.data() + name.size(), index);
     if (error != std::errc{} || end != name.data() + name.size() || index < 1 || m_workspaces.empty()) {
       return nullptr;
+    }
+    if (!m_dynamic) {
+      return index <= m_workspaces.size() ? m_workspaces[index - 1].get() : nullptr;
     }
     return m_workspaces.back().get();
   }

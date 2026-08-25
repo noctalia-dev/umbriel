@@ -301,16 +301,32 @@ UMBRIEL_TEST(cycleWidthWalksThePresets) {
   fixture.addColumns(1);
   CHECK(fixture.layout.setWidthFraction(0, 1.0 / 3));
 
-  CHECK(fixture.layout.cycleWidth(0));
+  CHECK(fixture.layout.cycleWidth(0, 1));
   const double second = fixture.layout.widthFraction(0);
   CHECK(std::fabs(second - 0.5) < 1e-6);
 
-  CHECK(fixture.layout.cycleWidth(0));
+  CHECK(fixture.layout.cycleWidth(0, 1));
   CHECK(std::fabs(fixture.layout.widthFraction(0) - 2.0 / 3) < 1e-6);
 
   // Wraps back to the first preset.
-  CHECK(fixture.layout.cycleWidth(0));
+  CHECK(fixture.layout.cycleWidth(0, 1));
   CHECK(std::fabs(fixture.layout.widthFraction(0) - 1.0 / 3) < 1e-6);
+}
+
+UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 2.0 / 3));
+
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  CHECK(std::fabs(fixture.layout.widthFraction(0) - 0.5) < 1e-6);
+
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  CHECK(std::fabs(fixture.layout.widthFraction(0) - 1.0 / 3) < 1e-6);
+
+  // Wraps back to the last preset.
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  CHECK(std::fabs(fixture.layout.widthFraction(0) - 2.0 / 3) < 1e-6);
 }
 
 UMBRIEL_TEST(toggleFullWidthRestoresThePreviousFraction) {

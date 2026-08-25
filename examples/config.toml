@@ -143,6 +143,7 @@ variant = ""
 options = ""                   # XKB options, e.g. "grp:alt_shift_toggle"
 repeat_rate = 25               # 0-1000 Hz
 repeat_delay = 600             # 0-10000 ms
+numlock_toggle = true # true enables NumLock when a keyboard connects; false leaves it off
 
 [input.touchpad]
 tap = true                      # enabled by default; false disables tap-to-click
@@ -152,7 +153,7 @@ tap = true                      # enabled by default; false disables tap-to-clic
 
 [input.mouse]
 # natural_scroll = false
-accel_profile = "flat"         # "flat", "adaptive", or "custom <step> <points...>"
+# accel_profile = "flat"       # omitted preserves the device's libinput default
 sensitivity = 0.0              # pointer speed, -1.0 to 1.0
 scroll_wheel_step = 60         # 1-1000
 # Override only the listed settings for an exact, case-sensitive device name.
@@ -219,6 +220,8 @@ follows_mouse = false
 # "Mod+Period" = "workspace-next"
 # "Mod+Shift+Comma" = "window-move-to-workspace-previous"
 # "Mod+Shift+Period" = "window-move-to-workspace-next"
+# "Mod+Ctrl+Comma" = "workspace-move-up"
+# "Mod+Ctrl+Period" = "workspace-move-down"
 # "Mod+Ctrl+H" = "output-focus-left"
 # "Mod+Shift+O" = "dpms-off"        # input activity powers displays back on
 # "Mod+Ctrl+O" = "dpms-off:DP-1"   # target one connector
@@ -227,6 +230,21 @@ follows_mouse = false
 # "Mod+Shift+T" = "workspace-set-layout:toggle"
 
 # Window and layer rules (see docs/user/rules.md) ---------------------------
+
+# Blur all windows
+[[window_rule]]
+blur = true
+blur_optimized = true
+
+[[window_rule]]
+match.app_id = "^dev.noctalia.Noctalia$"
+default_floating = true
+default_size = [1020, 900]
+
+[[window_rule]]
+match.app_id = "^dev.noctalia.UmbrielSharePicker$"
+default_floating = true
+default_size = [800, 600]
 
 # [[window_rule]]
 # match.app_id = "firefox"
@@ -242,16 +260,6 @@ follows_mouse = false
 # default_position = { x = 0, y = 0, anchor = "bottom_right" }
 # default_focused = false
 # default_pinned = true
-
-[[window_rule]]
-match.app_id = "^dev.noctalia.Noctalia$"
-default_floating = true
-default_size = [1020, 900]
-
-[[window_rule]]
-match.app_id = "^dev.noctalia.UmbrielSharePicker$"
-default_floating = true
-default_size = [800, 600]
 
 # Layer rules (see docs/user/rules.md#layer-rules) ---------------------------
 

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Workspace selectors resolve, and bad ones report a useful error. The selector logic is the densest branch in the action dispatch: qualified `<workspace>/<output>` addresses one group, an unqualified numeric selector prefers the focused output's dynamic group, and an unqualified name falls back to a unique match anywhere before failing. The failure paths carry the messages users actually see, so they are asserted by text, not just by status.
+# Workspace selectors resolve, and bad ones report a useful error. The selector logic is the densest branch in the action dispatch: qualified `<workspace>/<output>` addresses one group, an unqualified numeric selector prefers the focused output's position, and an unqualified name falls back to a unique match anywhere before failing. The failure paths carry the messages users actually see, so they are asserted by text, not just by status.
 set -euo pipefail
+
+readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/workspace-client}"
+
+if [[ ! -x $WORKSPACE ]]; then
+  echo "workspace client not built at $WORKSPACE"
+  exit 1
+fi
 
 accepts() {
   if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
@@ -35,4 +42,17 @@ rejects_with "workspace-switch:1/NOPE" "unknown output: NOPE"
 rejects_with "workspace-switch:nosuchname" "unknown workspace: nosuchname"
 rejects_with "window-move-to-workspace:1/NOPE" "unknown output: NOPE"
 
-echo "selectors resolve; unknown output and unknown workspace both reported"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output.HEADLESS-1]
+workspaces = ["一", "二", "三"]
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+
+accepts "workspace-switch:2"
+if [[ $("$WORKSPACE") != "二" ]]; then
+  echo "numeric selector did not select static workspace position 2: $("$WORKSPACE")"
+  exit 1
+fi
+
+echo "selectors resolve by name or focused position; unknown targets are reported"

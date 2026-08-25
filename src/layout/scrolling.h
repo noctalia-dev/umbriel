@@ -51,7 +51,7 @@ namespace umbriel {
     [[nodiscard]] InitialSize
     initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction) const override;
 
-    bool cycleWidth(int columnIndex) override;
+    bool cycleWidth(int columnIndex, int direction) override;
     bool toggleFullWidth(int columnIndex) override;
     bool setWidthFraction(int columnIndex, double fraction) override;
     void clearFullWidthState(int columnIndex) override;

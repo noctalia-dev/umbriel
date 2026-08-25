@@ -45,7 +45,7 @@ namespace umbriel {
 
   void SurfaceBlur::update(
       wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox, int cornerRadius,
-      const wlr_box* clipBox, const SurfaceBlurOptions& options, wlr_scene_buffer* maskSource
+      const wlr_box* clipBox, const SurfaceBlurOptions& options, float surfaceOpacity, wlr_scene_buffer* maskSource
   ) {
     const Config::Appearance::Blur& cfg = config().appearance.blur;
     wlr_box drawBox = nodeBox;
@@ -58,12 +58,13 @@ namespace umbriel {
       }
     }
     // A compositor opacity below 1 makes even a client-declared opaque surface
-    // reveal the backdrop, so it also requires a blur node.
+    // reveal the backdrop, so it also requires a blur node. Its opacity does
+    // not attenuate the blur itself: client-provided alpha does not either.
     const bool want = cfg.enabled
         && options.enabled.value_or(false)
         && drawBox.width > 0
         && drawBox.height > 0
-        && (m_alpha < 1.0F || isTransparent(surface, surfaceBox));
+        && (surfaceOpacity < 1.0F || isTransparent(surface, surfaceBox));
     if (!want) {
       if (m_node != nullptr) {
         wlr_scene_node_set_enabled(&m_node->node, false);

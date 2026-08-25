@@ -71,7 +71,7 @@ not built and will rot unnoticed.
 `verify.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless
 instance is booted per check, the check runs in its own process group with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`
 already pointing at that instance, and the harness kills the group and asserts the instance exited cleanly. Boot plus
-teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. Four rules follow:
+teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. Five rules follow:
 
 - A check must pass in a plain `just verify` run, with no environment overrides.
 - A check starts from a pristine instance (no windows, overview closed, workspace 1 focused, `$UMBRIEL_CONFIG` holding
@@ -85,6 +85,10 @@ teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces.
   and `WAYLAND_DISPLAY`, so a missing prefix used to query the developer's live session instead of the instance.
 - Never retain `$!` from a backgrounded shell *function*. Bash forks a subshell, so the captured pid is the wrapper and
   a signal to it leaves the client running. Background the client binary directly when a pid must be kept.
+- Never size a wait to an animation. `appearance.animation_ms` defaults to 200ms, so a multi-second `sleep` ahead of a
+  screenshot is dead time on every run, and it still races a slower machine. Grab until two consecutive frames match
+  and keep the fixed wait down to a primer that only covers dispatch, as `650_two_output_containment` does. Its settle
+  loop is the barrier; the primers around it are 0.3s.
 
 Check names group by topic, and the leading number is the group: `0xx` session, IPC, and config reload, `1xx` layout,
 `2xx` workspaces, `3xx` overview, `4xx` drag, `5xx` input and seat, `6xx` output and display, `7xx` rendering. Numbers

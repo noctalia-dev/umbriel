@@ -411,6 +411,7 @@ variant = ""      # XKB variant
 options = ""      # XKB options, comma-separated
 repeat_rate = 25  # 0-1000 Hz, 0 disables
 repeat_delay = 600 # 0-10000 ms
+numlock_toggle = true # true enables NumLock when a keyboard connects; false leaves it off
 ```
 
 `layout` takes a comma-separated list to load several layouts at once
@@ -457,15 +458,16 @@ under the device's current profile.
 ```toml
 [input.mouse]
 natural_scroll = false
-accel_profile = "flat"  # "flat", "adaptive", or a custom curve
+# accel_profile = "flat"  # "flat", "adaptive", or a custom curve
 sensitivity = 0.0        # -1.0 to 1.0
 scroll_wheel_step = 60  # 1-1000, pixels per step for layout-scroll-left/right
 ```
 
-Mouse acceleration is disabled by default by selecting libinput's `flat`
-profile. Set `accel_profile = "adaptive"` to enable acceleration. `sensitivity`
-controls pointer speed independently of the selected profile. A custom curve can
-be supplied with this syntax:
+Omitting `accel_profile` preserves each device's libinput default, which is
+usually `adaptive` for a mouse. Set `accel_profile = "flat"` to disable
+speed-dependent acceleration, or set it to `adaptive` explicitly to override a
+different device default. `sensitivity` controls pointer speed independently of
+the selected profile. A custom curve can be supplied with this syntax:
 
 ```toml
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
@@ -473,9 +475,10 @@ accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
 
 The first number is the positive input-speed step, followed by at least two
 non-negative output-speed points. Libinput interpolates between them.
-`sensitivity` has no effect when a custom profile is selected.
-Omit `natural_scroll` to preserve each device's default. `layout-scroll-left`
-and `layout-scroll-right` clamp to the strip bounds, so the columns never park
+`sensitivity` has no effect when a custom profile is selected. Omit
+`natural_scroll` or `accel_profile` to preserve each device's corresponding
+libinput default. `layout-scroll-left` and `layout-scroll-right` clamp to the
+strip bounds, so the columns never park
 past either edge. Wheel-triggered scrolling uses twice `scroll_wheel_step`
 during an active tiled window drag.
 

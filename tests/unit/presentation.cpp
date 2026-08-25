@@ -6,10 +6,10 @@
 #include "wlr.h"
 // clang-format on
 
-// A fullscreen client whose buffer does not match the output is centered rather than scaled, and that centering lives in
-// the scene node's position. The wlroots xdg scene helper rewrites that position to (-geometry.x, -geometry.y) on every
-// commit, so the offset has to be re-applied afterwards or an oversized fullscreen buffer drifts to the top left on the
-// next frame the client draws.
+// A fullscreen client whose buffer does not match the output is centered rather than scaled, and that centering lives
+// in the scene node's position. The wlroots xdg scene helper rewrites that position to (-geometry.x, -geometry.y) on
+// every commit, so the offset has to be re-applied afterwards or an oversized fullscreen buffer drifts to the top left
+// on the next frame the client draws.
 UMBRIEL_TEST(fullscreenCenteringSurvivesSceneReconfiguration) {
   wlr_scene* scene = wlr_scene_create();
   CHECK(scene != nullptr);

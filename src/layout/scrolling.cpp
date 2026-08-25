@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 // wlr_box and WLR_EDGE_* only. Layout geometry must not pull src/wlr.h, which
 // drags SceneFX and the renderer into a translation unit that does arithmetic.
@@ -454,16 +455,22 @@ namespace umbriel {
     return {.x = it->x, .y = it->y, .width = it->width, .height = it->height};
   }
 
-  bool ScrollingLayout::cycleWidth(int columnIndex) {
+  bool ScrollingLayout::cycleWidth(int columnIndex, int direction) {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size())) {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
     const auto& presets = m_config->widthPresets;
-    const auto it = std::ranges::find_if(presets, [current = column.widthFrac](double preset) {
-      return preset > current + 0.0001;
-    });
-    column.widthFrac = it == presets.end() ? presets[0] : *it;
+    const double current = column.widthFrac;
+    if (direction < 0) {
+      const auto it = std::ranges::find_if(presets | std::views::reverse, [current](double preset) {
+        return preset < current - 0.0001;
+      });
+      column.widthFrac = it == presets.rend() ? presets.back() : *it;
+    } else {
+      const auto it = std::ranges::find_if(presets, [current](double preset) { return preset > current + 0.0001; });
+      column.widthFrac = it == presets.end() ? presets[0] : *it;
+    }
     column.savedWidthFrac = 0.0;
     return true;
   }

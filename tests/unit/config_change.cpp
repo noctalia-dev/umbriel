@@ -59,7 +59,7 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
   {
     Config after;
-    after.input.mouse.accelProfile.kind = AccelProfile::Kind::Adaptive;
+    after.input.mouse.accelProfile = AccelProfile{};
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.input);
     CHECK(!change.appearance);

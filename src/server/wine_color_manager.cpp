@@ -38,6 +38,7 @@ namespace umbriel {
     struct Description {
       wlr_image_description_v1_data data{};
       Luminances luminances;
+      float luminanceMultiplier = 1.0F;
     };
 
     std::string readProcessFile(pid_t pid, std::string_view name, bool binary = false) {
@@ -107,7 +108,8 @@ namespace umbriel {
           && a.max_fall == b.max_fall
           && left.luminances.min == right.luminances.min
           && left.luminances.max == right.luminances.max
-          && left.luminances.reference == right.luminances.reference;
+          && left.luminances.reference == right.luminances.reference
+          && left.luminanceMultiplier == right.luminanceMultiplier;
     }
 
     bool primariesSet(const wlr_color_primaries& primaries) {
@@ -692,6 +694,7 @@ namespace umbriel {
       description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
       description.data.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB;
       description.luminances = {.min = 0.0F, .max = 10000.0F, .reference = 203.0F};
+      description.luminanceMultiplier = 80.0F / 203.0F;
       manager->createReadyImageDescription(managerResource, id, description, false);
     }
 
@@ -900,23 +903,26 @@ namespace umbriel {
       }
     }
 
-    void applySurfaceColor(wlr_surface* surface, const wlr_image_description_v1_data* description) {
+    void applySurfaceColor(wlr_surface* surface, const Description* description) {
       struct ApplyContext {
         wlr_surface* surface;
         wlr_color_transfer_function transferFunction;
         wlr_color_named_primaries primaries;
+        float luminanceMultiplier;
       } context{
           .surface = surface,
           .transferFunction = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22,
           .primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,
+          .luminanceMultiplier = 1.0F,
       };
       if (description != nullptr) {
         context.transferFunction = wlr_color_manager_v1_transfer_function_to_wlr(
-            static_cast<wp_color_manager_v1_transfer_function>(description->tf_named)
+            static_cast<wp_color_manager_v1_transfer_function>(description->data.tf_named)
         );
         context.primaries = wlr_color_manager_v1_primaries_to_wlr(
-            static_cast<wp_color_manager_v1_primaries>(description->primaries_named)
+            static_cast<wp_color_manager_v1_primaries>(description->data.primaries_named)
         );
+        context.luminanceMultiplier = description->luminanceMultiplier;
       }
       wlr_scene_node_for_each_buffer(
           &server.scene()->tree.node,
@@ -928,6 +934,7 @@ namespace umbriel {
             }
             wlr_scene_buffer_set_transfer_function(buffer, context->transferFunction);
             wlr_scene_buffer_set_primaries(buffer, context->primaries);
+            wlr_scene_buffer_set_luminance_multiplier(buffer, context->luminanceMultiplier);
           },
           &context
       );
@@ -947,10 +954,15 @@ namespace umbriel {
               return;
             }
             const auto found = context->surfaces->find(sceneSurface->surface);
-            if (found == context->surfaces->end() || !found->second->currentSet) {
+            if (found == context->surfaces->end()) {
               return;
             }
-            const wlr_image_description_v1_data& description = found->second->currentDescription.data;
+            if (!found->second->currentSet) {
+              wlr_scene_buffer_set_luminance_multiplier(buffer, 1.0F);
+              return;
+            }
+            const Description& currentDescription = found->second->currentDescription;
+            const wlr_image_description_v1_data& description = currentDescription.data;
             wlr_scene_buffer_set_transfer_function(
                 buffer,
                 wlr_color_manager_v1_transfer_function_to_wlr(
@@ -963,6 +975,7 @@ namespace umbriel {
                     static_cast<wp_color_manager_v1_primaries>(description.primaries_named)
                 )
             );
+            wlr_scene_buffer_set_luminance_multiplier(buffer, currentDescription.luminanceMultiplier);
           },
           &context
       );

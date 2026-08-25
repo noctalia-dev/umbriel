@@ -493,7 +493,7 @@ namespace umbriel {
     return verticalSibling(view, direction);
   }
 
-  bool DwindleLayout::cycleWidth(int columnIndex) {
+  bool DwindleLayout::cycleWidth(int columnIndex, int direction) {
     Node* node = nodeAtFlatIndex(columnIndex);
     const std::vector<WidthSplit> splits = widthSplits(node);
     if (splits.empty()) {
@@ -504,8 +504,16 @@ namespace umbriel {
       current *= widthShare(split);
     }
     const auto& presets = m_config->widthPresets;
-    const auto it = std::ranges::find_if(presets, [current](double preset) { return preset > current + 0.0001; });
-    const double next = (it == presets.end()) ? presets[0] : *it;
+    double next = 0.0;
+    if (direction < 0) {
+      const auto it = std::ranges::find_if(presets | std::views::reverse, [current](double preset) {
+        return preset < current - 0.0001;
+      });
+      next = it == presets.rend() ? presets.back() : *it;
+    } else {
+      const auto it = std::ranges::find_if(presets, [current](double preset) { return preset > current + 0.0001; });
+      next = it == presets.end() ? presets[0] : *it;
+    }
     return applyWidthFraction(splits, next);
   }
 

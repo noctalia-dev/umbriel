@@ -563,9 +563,10 @@ sensitivity = -0.5
   const auto& input = store.config().input;
 
   CHECK(result.success);
-  CHECK(input.mouse.accelProfile.kind == umbriel::AccelProfile::Kind::Custom);
-  CHECK_EQ(input.mouse.accelProfile.step, 0.2);
-  CHECK_EQ(input.mouse.accelProfile.points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
+  CHECK(input.mouse.accelProfile.has_value());
+  CHECK(input.mouse.accelProfile->kind == umbriel::AccelProfile::Kind::Custom);
+  CHECK_EQ(input.mouse.accelProfile->step, 0.2);
+  CHECK_EQ(input.mouse.accelProfile->points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
   CHECK_EQ(input.mouse.sensitivity, 0.25);
   CHECK(input.touchpad.accelProfile.has_value());
   if (input.touchpad.accelProfile.has_value()) {
@@ -607,9 +608,9 @@ sensitivity = -0.5
   CHECK(input.findDevice("Acme") == nullptr);
 }
 
-UMBRIEL_TEST(mouseAccelerationDefaultsToFlat) {
+UMBRIEL_TEST(mouseAccelerationPreservesDeviceProfileByDefault) {
   const umbriel::Config defaults;
-  CHECK(defaults.input.mouse.accelProfile.kind == umbriel::AccelProfile::Kind::Flat);
+  CHECK(!defaults.input.mouse.accelProfile.has_value());
   CHECK_EQ(defaults.input.mouse.sensitivity, 0.0);
 }
 
@@ -676,7 +677,7 @@ accel_profile = "custom 0.2 1.0"
   const umbriel::ConfigReloadResult result = store.reload();
 
   CHECK(result.success);
-  CHECK(store.config().input.mouse.accelProfile.kind == umbriel::AccelProfile::Kind::Flat);
+  CHECK(!store.config().input.mouse.accelProfile.has_value());
   CHECK(containsDiagnostic(store, "custom <step> <points...>"));
 }
 

@@ -306,7 +306,7 @@ namespace umbriel {
     wl_signal_add(&m_idleInhibitManager->events.new_inhibitor, &m_newIdleInhibitor);
 
     wlr_screencopy_manager_v1_create(m_display);
-    wlr_export_dmabuf_manager_v1_create(m_display);
+    m_exportDmabufManager = wlr_export_dmabuf_manager_v1_create(m_display);
     wlr_ext_output_image_capture_source_manager_v1_create(m_display, 1);
     wlr_ext_image_copy_capture_manager_v1_create(m_display, 1);
 

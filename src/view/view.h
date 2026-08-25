@@ -8,8 +8,10 @@
 
 #include <array>
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <wayland-server-core.h>
 
 extern "C" {
@@ -22,6 +24,7 @@ struct wlr_output;
 struct wlr_scene;
 struct wlr_scene_tree;
 struct wlr_scene_rect;
+struct wlr_surface;
 struct wlr_xdg_popup;
 struct wlr_xdg_toplevel;
 
@@ -156,6 +159,14 @@ namespace umbriel {
     // compositor-owned relocate drag, including overview card drags.
     static constexpr float kDragOpacity = 0.75F;
 
+    struct OpacitySurfaceWatch {
+      View* view = nullptr;
+      wlr_surface* surface = nullptr;
+      wl_listener commit{};
+      wl_listener newSubsurface{};
+      wl_listener destroy{};
+    };
+
     static void onMap(wl_listener* listener, void* data);
     static void onUnmap(wl_listener* listener, void* data);
     static void onCommit(wl_listener* listener, void* data);
@@ -171,6 +182,9 @@ namespace umbriel {
     static void onForeignClose(wl_listener* listener, void* data);
     static void onForeignDestroy(wl_listener* listener, void* data);
     static void onExtForeignDestroy(wl_listener* listener, void* data);
+    static void onOpacitySurfaceCommit(wl_listener* listener, void* data);
+    static void onOpacitySurfaceNewSubsurface(wl_listener* listener, void* data);
+    static void onOpacitySurfaceDestroy(wl_listener* listener, void* data);
 
     static void onCaptureSourceDestroy(wl_listener* listener, void* data);
     void handleMap();
@@ -211,6 +225,9 @@ namespace umbriel {
     // commit or clip change) resets buffer opacity, so this must run afterward while opacity is below 1.
     [[nodiscard]] float effectiveOpacity() const { return m_fadeAlpha * m_ruleOpacity * m_dragOpacity; }
     void applyEffectiveOpacity();
+    void watchOpacitySurfaceTree(wlr_surface* root);
+    void watchOpacitySurface(wlr_surface* surface);
+    void clearOpacitySurfaceWatches();
     void beginCloseAnimation();
     void applyPresentedSize();
     // Scale-then-crop presentation of the primary buffer during a size
@@ -345,10 +362,10 @@ namespace umbriel {
     bool m_initialRulesSettled = false;
     float m_ruleOpacity = 1.0F;
     float m_dragOpacity = 1.0F;
-    // wlroots restores a committed scene buffer to the client-provided alpha.
-    // Restore any compositor-managed opacity on the frame after all commit
-    // listeners have run.
+    // wlroots restores a committed scene buffer to the client-provided alpha. Root and subsurface watches set this so
+    // compositor-managed opacity is restored on the frame after every scene helper commit listener has run.
     bool m_effectiveOpacityCommitPending = false;
+    std::vector<std::unique_ptr<OpacitySurfaceWatch>> m_opacitySurfaceWatches;
     bool m_hasMaximizeRestoreBox = false;
     wlr_box m_maximizeRestoreBox{};
     FloatingGeometry m_floating;

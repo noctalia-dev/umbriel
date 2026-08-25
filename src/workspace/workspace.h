@@ -75,8 +75,7 @@ namespace umbriel {
     void syncFloatingStack(View* view);
     void restackFloatingViews();
     void addView(View* view, bool attachToLayout = true);
-    View*
-    removeView(View* view, std::optional<std::pair<double, double>> focusPoint = std::nullopt, bool reconcile = true);
+    View* removeView(View* view, bool reconcile = true);
     void layoutAttach(View* view, std::optional<double> initialWidth = std::nullopt);
     void layoutDetach(View* view, bool animate = false);
     void arrange(bool animate = true);
@@ -96,7 +95,7 @@ namespace umbriel {
     bool consumeFocusedLeft();
     bool expelFocusedRight();
     bool moveFocusedVertical(int direction);
-    bool cycleFocusedWidth();
+    bool cycleFocusedWidth(int direction);
     bool setFocusedWidth(double fraction);
     // Incremental width change: apply `delta` to the focused column's current
     // width fraction, clamped to [0.1, 1.0].
@@ -183,6 +182,7 @@ namespace umbriel {
     // Insert an empty numbered workspace into a dynamic group and renumber the following workspaces. Static configured
     // groups cannot be extended this way and return null.
     Workspace* insertDynamicWorkspace(size_t index);
+    bool moveActiveWorkspace(int direction);
     void reconcileInventory();
     void refreshLayouts();
     void reconcileDynamic();

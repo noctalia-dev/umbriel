@@ -122,7 +122,7 @@ namespace umbriel {
 
     [[nodiscard]] virtual View* focusVerticalLeaf(const View* /*view*/, int /*direction*/) const { return nullptr; }
 
-    virtual bool cycleWidth(int columnIndex) = 0;
+    virtual bool cycleWidth(int columnIndex, int direction) = 0;
     virtual bool toggleFullWidth(int columnIndex) = 0;
     virtual bool setWidthFraction(int columnIndex, double fraction) = 0;
     virtual void clearFullWidthState(int columnIndex) = 0;

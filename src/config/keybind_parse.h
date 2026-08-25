@@ -38,6 +38,7 @@ namespace umbriel {
     WindowConsumeLeft,
     WindowExpelRight,
     WindowCycleWidth,
+    WindowCycleWidthBack,
     WindowSetWidth,
     ToggleMaximize,
     ToggleMaximizeToEdges,
@@ -90,6 +91,8 @@ namespace umbriel {
     WorkspaceSetLayout,
     DpmsOff,
     DpmsOn,
+    WorkspaceMoveDown,
+    WorkspaceMoveUp,
     Count,
   };
 

@@ -25,6 +25,12 @@ namespace umbriel {
         m_virtual(wlr_input_device_get_virtual_keyboard(device) != nullptr),
         m_deviceName(device->name != nullptr ? device->name : "") {
     applyConfig();
+    if (!m_virtual && config().input.keyboard.numlockToggle && m_keyboard->keymap != nullptr) {
+      const xkb_mod_index_t numLock = xkb_keymap_mod_get_index(m_keyboard->keymap, XKB_MOD_NAME_NUM);
+      if (numLock != XKB_MOD_INVALID) {
+        wlr_keyboard_notify_modifiers(m_keyboard, 0, 0, 1U << numLock, 0);
+      }
+    }
 
     m_modifiers.notify = onModifiers;
     wl_signal_add(&m_keyboard->events.modifiers, &m_modifiers);

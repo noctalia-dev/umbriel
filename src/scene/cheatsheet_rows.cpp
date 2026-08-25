@@ -280,6 +280,7 @@ namespace {
     case A::WindowConsumeLeft:
     case A::WindowExpelRight:
     case A::WindowCycleWidth:
+    case A::WindowCycleWidthBack:
     case A::WindowSetWidth:
     case A::WindowModifyWidth:
     case A::WindowCenter:
@@ -306,6 +307,8 @@ namespace {
     case A::WindowMoveToWorkspacePrevious:
     case A::WorkspaceNext:
     case A::WorkspacePrevious:
+    case A::WorkspaceMoveDown:
+    case A::WorkspaceMoveUp:
     case A::WorkspaceSetLayout:
     case A::WorkspaceMoveToOutputLeft:
     case A::WorkspaceMoveToOutputRight:

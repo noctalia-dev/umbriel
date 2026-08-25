@@ -425,6 +425,30 @@ UMBRIEL_TEST(resizeBoundaryRejectsAScreenFacingEdge) {
   CHECK(!fixture.layout.setResizeBoundary(stub(0), WLR_EDGE_LEFT, 0.75));
 }
 
+UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
+  Fixture fixture;
+  fixture.config.widthPresets = {1.0 / 3.0, 0.5, 2.0 / 3.0};
+  fixture.addLeaves(2);
+  fixture.layout.arrange(kUsable);
+
+  const int span = kUsable.width - 2 * fixture.config.edgePad - fixture.config.totalGap;
+
+  CHECK(fixture.layout.setWidthFraction(0, 2.0 / 3.0));
+
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * 0.5)) <= 2);
+
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * (1.0 / 3.0))) <= 2);
+
+  // Wraps back to the last preset.
+  CHECK(fixture.layout.cycleWidth(0, -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * (2.0 / 3.0))) <= 2);
+}
+
 // The scrolling-only API is no longer reachable from a DwindleLayout at all: scroll offsets, column positions, and row
 // weights moved onto ScrollingLayout, so the question a previous test asked here ("does dwindle answer 0?") cannot be
 // compiled any more. That is the point. Callers reach those through Workspace::scrollingLayout(), which is null for a

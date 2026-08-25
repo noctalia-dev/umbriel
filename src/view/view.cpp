@@ -132,6 +132,7 @@ namespace umbriel {
 
     m_commit.notify = onCommit;
     wl_signal_add(&m_toplevel->base->surface->events.commit, &m_commit);
+    watchOpacitySurfaceTree(m_toplevel->base->surface);
     m_destroy.notify = onDestroy;
     wl_signal_add(&m_toplevel->events.destroy, &m_destroy);
 
@@ -183,6 +184,7 @@ namespace umbriel {
       m_acceptClientMaximizeIdle = nullptr;
     }
     m_server->unregisterAnimatable(this);
+    clearOpacitySurfaceWatches();
     setWorkspace(nullptr);
     if (m_map.link.next != nullptr) {
       wl_list_remove(&m_map.link);
@@ -235,7 +237,7 @@ namespace umbriel {
       m_workspace = nullptr;
       // Keep an empty destination alive until this view has been attached.
       // addView() reconciles the group after the transfer is complete.
-      previous->removeView(this, std::nullopt, !sameGroup);
+      previous->removeView(this, !sameGroup);
     }
     m_workspace = workspace;
     if (m_workspace != nullptr) {
@@ -343,11 +345,29 @@ namespace umbriel {
     setBorderFocused(true);
     setForeignActivated(true);
 
-    if (!withKeyboard || seat->keyboard_state.focused_surface == surface) {
+    if (!withKeyboard) {
       return;
+    }
+
+    // Re-focusing the popup's owning toplevel must preserve its active XDG
+    // keyboard grab. Ending that grab tells wlroots to dismiss the popup.
+    if (seat->keyboard_state.focused_surface == surface) {
+      return;
+    }
+
+    // A popup can still own wlroots' keyboard grab when its dismissing click
+    // reaches another view. Let that click transfer the seat immediately
+    // instead of losing the enter to a popup that is about to disappear. A
+    // data-device drag is different: it deliberately owns the grab until the
+    // initiating button is released, and FocusManager replays the selected
+    // view when that happens.
+    if (seat->drag == nullptr && wlr_seat_keyboard_has_grab(seat)) {
+      wlr_seat_keyboard_end_grab(seat);
     }
     if (wlr_keyboard* keyboard = wlr_seat_get_keyboard(seat)) {
       wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+    } else {
+      wlr_seat_keyboard_notify_enter(seat, surface, nullptr, 0, nullptr);
     }
   }
 
@@ -375,7 +395,7 @@ namespace umbriel {
         &effective
     );
     setBorderFocused(m_borderFocusedState);
-    m_decoration.setAlpha(effective);
+    m_decoration.setAlpha(effective, m_fadeAlpha);
   }
 
   void View::applyEffectiveOpacity() {
@@ -393,6 +413,46 @@ namespace umbriel {
         },
         &effective
     );
+  }
+
+  void View::watchOpacitySurfaceTree(wlr_surface* root) {
+    if (root == nullptr) {
+      return;
+    }
+    wlr_surface_for_each_surface(
+        root,
+        [](wlr_surface* surface, int /*sx*/, int /*sy*/, void* data) {
+          static_cast<View*>(data)->watchOpacitySurface(surface);
+        },
+        this
+    );
+  }
+
+  void View::watchOpacitySurface(wlr_surface* surface) {
+    if (surface == nullptr || std::ranges::any_of(m_opacitySurfaceWatches, [surface](const auto& watch) {
+          return watch->surface == surface;
+        })) {
+      return;
+    }
+    auto watch = std::make_unique<OpacitySurfaceWatch>();
+    watch->view = this;
+    watch->surface = surface;
+    watch->commit.notify = onOpacitySurfaceCommit;
+    wl_signal_add(&surface->events.commit, &watch->commit);
+    watch->newSubsurface.notify = onOpacitySurfaceNewSubsurface;
+    wl_signal_add(&surface->events.new_subsurface, &watch->newSubsurface);
+    watch->destroy.notify = onOpacitySurfaceDestroy;
+    wl_signal_add(&surface->events.destroy, &watch->destroy);
+    m_opacitySurfaceWatches.push_back(std::move(watch));
+  }
+
+  void View::clearOpacitySurfaceWatches() {
+    for (const auto& watch : m_opacitySurfaceWatches) {
+      wl_list_remove(&watch->commit.link);
+      wl_list_remove(&watch->newSubsurface.link);
+      wl_list_remove(&watch->destroy.link);
+    }
+    m_opacitySurfaceWatches.clear();
   }
 
   void View::cancelFadeAnimation() {
@@ -498,6 +558,10 @@ namespace umbriel {
     m_dragOpacity = kDragOpacity;
     setFadeAlpha(m_fadeAlpha);
     m_effectiveOpacityCommitPending = false;
+    if (m_pinned) {
+      wlr_scene_node_place_above(&m_server->dragShadowTree()->node, &m_server->pinnedTree()->node);
+      wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->dragShadowTree()->node);
+    }
     wlr_scene_node_reparent(&m_sceneTree->node, m_server->dragTree());
     reparentShadow(m_server->dragShadowTree());
     setNodeEnabled(true);
@@ -509,6 +573,8 @@ namespace umbriel {
     m_dragOpacity = 1.0F;
     m_effectiveOpacityCommitPending = false;
     setFadeAlpha(m_fadeAlpha);
+    wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
+    wlr_scene_node_place_below(&m_server->dragShadowTree()->node, &m_server->dragTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(this)) {
       scratchpad->restorePresentation(this);
@@ -705,6 +771,32 @@ namespace umbriel {
   void View::onCommit(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_commit);
     self->handleCommit();
+  }
+
+  void View::onOpacitySurfaceCommit(wl_listener* listener, void* /*data*/) {
+    OpacitySurfaceWatch* watch;
+    watch = wl_container_of(listener, watch, commit);
+    if (watch->view->effectiveOpacity() < 1.0F) {
+      watch->view->m_effectiveOpacityCommitPending = true;
+      watch->view->scheduleFrame();
+    }
+  }
+
+  void View::onOpacitySurfaceNewSubsurface(wl_listener* listener, void* data) {
+    OpacitySurfaceWatch* watch;
+    watch = wl_container_of(listener, watch, newSubsurface);
+    auto* subsurface = static_cast<wlr_subsurface*>(data);
+    watch->view->watchOpacitySurfaceTree(subsurface->surface);
+  }
+
+  void View::onOpacitySurfaceDestroy(wl_listener* listener, void* /*data*/) {
+    OpacitySurfaceWatch* watch;
+    watch = wl_container_of(listener, watch, destroy);
+    View* view = watch->view;
+    wl_list_remove(&watch->commit.link);
+    wl_list_remove(&watch->newSubsurface.link);
+    wl_list_remove(&watch->destroy.link);
+    std::erase_if(view->m_opacitySurfaceWatches, [watch](const auto& candidate) { return candidate.get() == watch; });
   }
 
   void View::onDestroy(wl_listener* listener, void* /*data*/) {
@@ -972,7 +1064,7 @@ namespace umbriel {
     const wlr_box nodeBox{0, 0, contentWidth, contentHeight};
     m_decoration.updateBlur(
         m_sceneTree, m_toplevel->base->surface, nodeBox, m_toplevel->base->geometry, surfaceRadius(), nullptr,
-        effectiveOpacity()
+        effectiveOpacity(), m_fadeAlpha
     );
   }
 
@@ -1082,6 +1174,7 @@ namespace umbriel {
           wlr_scene_buffer_set_opacity(copy, src->opacity);
           wlr_scene_buffer_set_transfer_function(copy, src->transfer_function);
           wlr_scene_buffer_set_primaries(copy, src->primaries);
+          wlr_scene_buffer_set_luminance_multiplier(copy, src->luminance_multiplier);
           wlr_scene_buffer_set_color_encoding(copy, src->color_encoding);
           wlr_scene_buffer_set_color_range(copy, src->color_range);
           ++c->buffersCopied;
@@ -1481,6 +1574,20 @@ namespace umbriel {
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onViewUnmapped(this);
     }
+    // Choose the layout neighbor while this view still belongs to the layout. Waiting for destroy loses that position,
+    // and focus-follows-mouse used to replace it with whichever survivor happened to sit under the stationary pointer.
+    if (m_workspace != nullptr && m_workspace->focusedView() == this) {
+      View* replacement = m_workspace->focusReplacementForRemoval(this);
+      if (replacement != nullptr) {
+        if (m_workspace->active() && !m_server->sessionLocked()) {
+          m_server->focusView(replacement, FocusReason::Directional);
+        } else {
+          m_workspace->setFocusedView(replacement);
+        }
+      } else {
+        m_workspace->setFocusedView(nullptr);
+      }
+    }
     beginCloseAnimation();
     cancelFadeAnimation();
     cancelSizeAnimation();
@@ -1643,12 +1750,6 @@ namespace umbriel {
       updateBlur();
       updateShadow();
     }
-    // A client commit resets scene-buffer opacity. The scene helper performs
-    // that reset after this listener, so restore every compositor-managed
-    // opacity on the following frame once all commit listeners have run.
-    if (effectiveOpacity() < 1.0F) {
-      m_effectiveOpacityCommitPending = true;
-    }
     updateForeignState();
     if (Output* output = currentOutput()) {
       output->updateHdr();
@@ -1676,6 +1777,8 @@ namespace umbriel {
       m_captureSourceDestroy.link.next = nullptr;
       m_captureSource = nullptr;
     }
+
+    clearOpacitySurfaceWatches();
 
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);

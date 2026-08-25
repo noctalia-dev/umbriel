@@ -213,7 +213,15 @@ namespace umbriel {
 
   void FocusManager::clearKeyboardFocus() {
     deactivateViews(nullptr);
-    wlr_seat_keyboard_notify_clear_focus(m_server.seat()->wlr());
+    wlr_seat* seat = m_server.seat()->wlr();
+    // Overview and other compositor-owned states must not leave an xdg popup
+    // grab intercepting both this clear and the later focus restoration. Keep
+    // an active data-device drag intact because its completion performs an
+    // explicit focus replay.
+    if (seat->drag == nullptr && wlr_seat_keyboard_has_grab(seat)) {
+      wlr_seat_keyboard_end_grab(seat);
+    }
+    wlr_seat_keyboard_notify_clear_focus(seat);
     m_server.refreshOutputPolicies();
   }
 

@@ -51,12 +51,22 @@ namespace umbriel {
     }
 
     wlr_seat* seat = m_server->seat()->wlr();
-    if (seat->keyboard_state.focused_surface == surface) {
+    // Session lock takes the entire seat. Cancel any popup or drag keyboard
+    // grab left by the unlocked desktop before delivering the lock surface's
+    // enter, otherwise the first key can disappear into that stale grab.
+    bool endedGrab = false;
+    if (wlr_seat_keyboard_has_grab(seat)) {
+      wlr_seat_keyboard_end_grab(seat);
+      endedGrab = true;
+    }
+    if (!endedGrab && seat->keyboard_state.focused_surface == surface) {
       return;
     }
 
     if (wlr_keyboard* keyboard = wlr_seat_get_keyboard(seat)) {
       wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+    } else {
+      wlr_seat_keyboard_notify_enter(seat, surface, nullptr, 0, nullptr);
     }
     m_server->refreshOutputPolicies();
   }
