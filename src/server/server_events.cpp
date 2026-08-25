@@ -1320,6 +1320,9 @@ namespace umbriel {
   }
 
   void Server::removeOutput(Output* output) {
+    if (m_scratchpadManager != nullptr) {
+      m_scratchpadManager->releaseOutput(output);
+    }
     m_overview->onOutputRemoved(output);
     m_gestures->cancelForOutput(output);
     if (!m_cursor->isPassthrough()) {
