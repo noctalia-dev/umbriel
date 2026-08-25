@@ -777,7 +777,11 @@ namespace umbriel {
 
   bool View::animatesOn(const Output* output) const {
     const Workspace* workspace = m_workspace;
-    return workspace != nullptr && workspace->group() != nullptr && workspace->group()->output() == output;
+    if (workspace != nullptr && workspace->group() != nullptr) {
+      return workspace->group()->output() == output;
+    }
+    // Scratchpad views have no workspace; fall back to the output we are physically on.
+    return currentOutput() == output;
   }
 
   bool View::hasActiveAnimations() const {
@@ -1174,7 +1178,7 @@ namespace umbriel {
     }
 
     Output* output =
-        m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : nullptr;
+        m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
     if (output == nullptr) {
       return;
     }
@@ -1259,6 +1263,17 @@ namespace umbriel {
   Output* View::currentOutput() const {
     if (m_workspace != nullptr && m_workspace->group() != nullptr && m_workspace->group()->output() != nullptr) {
       return m_workspace->group()->output();
+    }
+    // Scratchpad / floating views with no workspace: find the output containing the view's scene coordinates.
+    if (m_sceneTree != nullptr && m_server != nullptr && m_server->outputLayout() != nullptr) {
+      wlr_output* wlrOut = wlr_output_layout_output_at(
+          m_server->outputLayout(),
+          m_sceneTree->node.x + (m_toplevel ? m_toplevel->current.width / 2 : 0),
+          m_sceneTree->node.y + (m_toplevel ? m_toplevel->current.height / 2 : 0)
+      );
+      if (wlrOut != nullptr) {
+        return m_server->outputFromWlr(wlrOut);
+      }
     }
     return m_server->outputFromWlr(m_server->preferredOutput());
   }
