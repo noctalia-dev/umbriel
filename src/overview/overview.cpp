@@ -91,12 +91,7 @@ namespace umbriel {
   Overview::~Overview() {
     m_server->unregisterAnimatable(this);
     m_anim.snap(0.0);
-    for (const auto& state : m_outputs) {
-      for (const auto& card : state->cards) {
-        destroyCard(card.get());
-      }
-    }
-    m_outputs.clear();
+    teardown();
   }
 
   double Overview::zoom() const {
