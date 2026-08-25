@@ -14,7 +14,38 @@
 namespace umbriel {
 
   ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root, wlr_scene_tree* shadowRoot)
-      : m_server(&server), m_root(root), m_shadowRoot(shadowRoot) {}
+      : m_server(&server), m_root(root), m_shadowRoot(shadowRoot) {
+    m_server->registerAnimatable(this);
+  }
+
+  ScratchpadManager::~ScratchpadManager() {
+    m_server->unregisterAnimatable(this);
+    for (auto& [output, rect] : m_dimRects) {
+      wlr_scene_node_destroy(&rect->node);
+    }
+  }
+
+  bool ScratchpadManager::tickAnimations(uint64_t /*nowMsec*/) {
+    if (m_hidingViews.empty()) {
+      return false;
+    }
+    std::erase_if(m_hidingViews, [](View* view) {
+      if (view->presentedOpacity() > 0.002F) {
+        return false;
+      }
+      view->setNodeEnabled(false);
+      return true;
+    });
+    return true;
+  }
+
+  bool ScratchpadManager::animatesOn(const Output* output) const {
+    return std::ranges::any_of(m_hidingViews, [this, output](const View* view) {
+      return std::ranges::any_of(m_entries, [view, output](const Entry& entry) {
+        return entry.view == view && entry.output == output;
+      });
+    });
+  }
 
   bool ScratchpadManager::contains(const View* view) const {
     return std::ranges::any_of(m_entries, [view](const Entry& entry) { return entry.view == view; });
@@ -46,50 +77,13 @@ namespace umbriel {
     if (view->toplevel()->scheduled.fullscreen || view->toplevel()->current.fullscreen) {
       view->toggleFullscreen();
     }
-    if (entry.returnTiled) {
-      const int x = view->sceneTree()->node.x;
-      const int y = view->sceneTree()->node.y;
-      view->setFloating(true);
-      view->cancelPositionAnimation();
-      view->setPosition(x, y);
-    }
-    if (sourceOutput != nullptr && sourceOutput != output) {
-      auto usableArea = [this](Output* candidate) {
-        wlr_box area = candidate->usableArea();
-        if (area.width <= 0 || area.height <= 0) {
-          wlr_output_layout_get_box(m_server->outputLayout(), candidate->wlr(), &area);
-        }
-        return area;
-      };
-      const wlr_box sourceArea = usableArea(sourceOutput);
-      const wlr_box targetArea = usableArea(output);
-      if (sourceArea.width > 0 && sourceArea.height > 0 && targetArea.width > 0 && targetArea.height > 0) {
-        const auto& scheduled = view->toplevel()->scheduled;
-        const int width = std::max(1, scheduled.width);
-        const int height = std::max(1, scheduled.height);
-        const double scale = std::min(
-            static_cast<double>(targetArea.width) / static_cast<double>(sourceArea.width),
-            static_cast<double>(targetArea.height) / static_cast<double>(sourceArea.height)
-        );
-        const int scaledWidth = std::max(1, static_cast<int>(std::lround(static_cast<double>(width) * scale)));
-        const int scaledHeight = std::max(1, static_cast<int>(std::lround(static_cast<double>(height) * scale)));
-        if (scaledWidth != width || scaledHeight != height) {
-          wlr_xdg_toplevel_set_size(view->toplevel(), scaledWidth, scaledHeight);
-        }
+    // Geometry is left as-is, not resized or centered - a tiled window floats in place at its current position.
+    const int x = view->sceneTree()->node.x;
+    const int y = view->sceneTree()->node.y;
+    view->setFloating(true);
+    view->cancelPositionAnimation();
+    view->setPosition(x, y);
 
-        const double xFraction =
-            static_cast<double>(view->sceneTree()->node.x - sourceArea.x) / static_cast<double>(sourceArea.width);
-        const double yFraction =
-            static_cast<double>(view->sceneTree()->node.y - sourceArea.y) / static_cast<double>(sourceArea.height);
-        const int x = targetArea.x + static_cast<int>(std::lround(xFraction * static_cast<double>(targetArea.width)));
-        const int y = targetArea.y + static_cast<int>(std::lround(yFraction * static_cast<double>(targetArea.height)));
-        view->cancelPositionAnimation();
-        view->setPosition(
-            std::clamp(x, targetArea.x, targetArea.x + std::max(0, targetArea.width - scaledWidth)),
-            std::clamp(y, targetArea.y, targetArea.y + std::max(0, targetArea.height - scaledHeight))
-        );
-      }
-    }
     view->setWorkspace(nullptr);
     wlr_scene_node_reparent(&view->sceneTree()->node, m_root);
     view->reparentShadow(m_shadowRoot);
@@ -112,12 +106,95 @@ namespace umbriel {
     } else {
       std::erase(m_visibleOutputs, output);
     }
+    wlr_box targetArea = output->usableArea();
+    if (targetArea.width <= 0 || targetArea.height <= 0) {
+      wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &targetArea);
+    }
+    const auto& scAnim = config().appearance.animations.scratchpad;
     for (const Entry& entry : m_entries) {
-      if (entry.output == output && entry.view != nullptr) {
-        entry.view->setOnActiveWorkspace(visible);
-        entry.view->setNodeEnabled(visible);
+      if (entry.output != output || entry.view == nullptr) {
+        continue;
+      }
+      View* view = entry.view;
+      view->setOnActiveWorkspace(visible);
+      if (visible) {
+        std::erase(m_hidingViews, view);
+        view->cancelPositionAnimation();
+        view->setNodeEnabled(true);
+        // Reposition only if the window's center would land off this output's usable area; never resize.
+        const int width = view->presentation().width();
+        const int height = view->presentation().height();
+        if (width > 0 && height > 0) {
+          const int centerX = view->sceneTree()->node.x + width / 2;
+          const int centerY = view->sceneTree()->node.y + height / 2;
+          const bool centerOnTarget = centerX >= targetArea.x && centerX < targetArea.x + targetArea.width
+              && centerY >= targetArea.y && centerY < targetArea.y + targetArea.height;
+          if (!centerOnTarget) {
+            const int newX = targetArea.x + std::max(0, (targetArea.width - width) / 2);
+            const int newY = targetArea.y + std::max(0, (targetArea.height - height) / 2);
+            view->snapPosition(newX, newY);
+          }
+        }
+        if (scAnim.enabled && scAnim.durationMs > 0) {
+          view->setFadeAlpha(0.0F);
+          view->animateFadeTo(1.0F, scAnim.durationMs, scAnim.curve);
+        } else {
+          view->setFadeAlpha(1.0F);
+        }
+      } else {
+        if (scAnim.enabled && scAnim.durationMs > 0) {
+          view->animateFadeTo(0.0F, scAnim.durationMs, scAnim.curve);
+          if (std::ranges::find(m_hidingViews, view) == m_hidingViews.end()) {
+            m_hidingViews.push_back(view);
+          }
+        } else {
+          view->setFadeAlpha(0.0F);
+          view->setNodeEnabled(false);
+        }
       }
     }
+    updateDim(output);
+  }
+
+  wlr_scene_rect* ScratchpadManager::dimRectFor(Output* output) {
+    if (const auto it = m_dimRects.find(output); it != m_dimRects.end()) {
+      return it->second;
+    }
+    static constexpr float kBlack[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+    wlr_scene_rect* rect = wlr_scene_rect_create(m_root, 1, 1, kBlack);
+    wlr_scene_node_lower_to_bottom(&rect->node);
+    wlr_scene_node_set_enabled(&rect->node, false);
+    m_dimRects.emplace(output, rect);
+    return rect;
+  }
+
+  void ScratchpadManager::updateDim(Output* output) {
+    if (output == nullptr) {
+      return;
+    }
+    wlr_scene_rect* rect = dimRectFor(output);
+    const bool visible = std::ranges::find(m_visibleOutputs, output) != m_visibleOutputs.end();
+    const double dim = config().appearance.animations.scratchpad.dim;
+    if (!visible || dim <= 0.0) {
+      wlr_scene_node_set_enabled(&rect->node, false);
+      return;
+    }
+    wlr_box box{};
+    wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
+    wlr_scene_node_set_position(&rect->node, box.x, box.y);
+    wlr_scene_rect_set_size(rect, box.width, box.height);
+    const float color[4] = {0.0F, 0.0F, 0.0F, static_cast<float>(dim)};
+    wlr_scene_rect_set_color(rect, color);
+    wlr_scene_node_set_enabled(&rect->node, true);
+  }
+
+  void ScratchpadManager::releaseOutput(Output* output) {
+    const auto it = m_dimRects.find(output);
+    if (it == m_dimRects.end()) {
+      return;
+    }
+    wlr_scene_node_destroy(&it->second->node);
+    m_dimRects.erase(it);
   }
 
   bool ScratchpadManager::toggle(Output* output) {
@@ -249,6 +326,7 @@ namespace umbriel {
     if (m_focusedView == view) {
       m_focusedView = nullptr;
     }
+    std::erase(m_hidingViews, view);
     Output* restoreOutput = m_server->outputFromName(entry.returnOutput);
     if (restoreOutput == nullptr) {
       restoreOutput = output;
@@ -285,6 +363,7 @@ namespace umbriel {
     if (m_focusedView == view) {
       m_focusedView = nullptr;
     }
+    std::erase(m_hidingViews, view);
     m_entries.erase(entry);
   }
 

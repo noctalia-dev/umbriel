@@ -1325,8 +1325,11 @@ namespace umbriel {
       }
     }
     kLog.debug("slide workspace {} → {} on {}", m_slide.base->name(), target->name(), m_output->wlr()->name);
+    const auto& wsAnim = config().appearance.animations.workspaces;
+    const int dur = wsAnim.enabled ? wsAnim.durationMs : config().appearance.animationMs;
+    const auto& curve = wsAnim.enabled ? wsAnim.curve : config().appearance.animationCurve;
     m_slideAnim.snap(m_slide.progress);
-    m_slideAnim.retarget(static_cast<double>(delta), config().appearance.animationMs, Easing::EaseOutCubic);
+    m_slideAnim.retarget(static_cast<double>(delta), dur, curve);
     wlr_output_schedule_frame(m_output->wlr());
   }
 
