@@ -36,6 +36,7 @@ namespace umbriel {
     void updateBorderGeometry(int contentWidth, int contentHeight);
     // `alpha` premultiplies the border color so a fading view's ring fades with it.
     void setBorderColor(bool focused, bool scratchpad, float alpha);
+    void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight) const;

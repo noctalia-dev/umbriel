@@ -69,6 +69,13 @@ namespace umbriel {
     const auto& baseColor = scratchpad
         ? (focused ? config().appearance.scratchpadBorderFocused : config().appearance.scratchpadBorderUnfocused)
         : (focused ? config().appearance.borderFocused : config().appearance.borderUnfocused);
+    setBorderRawColor(baseColor, alpha);
+  }
+
+  void ViewDecoration::setBorderRawColor(const std::array<float, 4>& baseColor, float alpha) {
+    if (m_borderTree == nullptr) {
+      return;
+    }
     float color[4];
     premultiplied(color, baseColor, alpha);
     if (m_borderRect != nullptr) {

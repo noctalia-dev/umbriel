@@ -385,7 +385,8 @@ namespace umbriel {
   }
 
   void View::setFadeAlpha(float alpha) {
-    m_fadeAlpha = alpha;
+    // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
+    m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     float effective = effectiveOpacity();
     wlr_scene_node_for_each_buffer(
         &m_sceneTree->node,
@@ -631,7 +632,10 @@ namespace umbriel {
     if (m_presentation.targeting(width, height)) {
       return;
     }
-    m_presentation.animateTo(width, height, config().appearance.animationMs);
+    const auto& moveAnim = config().appearance.animations.windowsMove;
+    const int dur = moveAnim.enabled ? moveAnim.durationMs : config().appearance.animationMs;
+    const auto& curve = moveAnim.enabled ? moveAnim.curve : config().appearance.animationCurve;
+    m_presentation.animateTo(width, height, dur, curve);
     scheduleFrame();
   }
 
@@ -641,6 +645,24 @@ namespace umbriel {
     m_positioned = true;
     wlr_scene_node_set_position(&m_sceneTree->node, x, y);
     m_decoration.setShadowPosition(x, y);
+  }
+
+  void View::snapPosition(int x, int y) {
+    setPosition(x, y);
+  }
+
+  void View::animatePositionTo(int x, int y, int durationMs, const AnimationCurve& curve) {
+    m_posX.snap(m_sceneTree->node.x);
+    m_posY.snap(m_sceneTree->node.y);
+    m_posX.retarget(x, durationMs, curve);
+    m_posY.retarget(y, durationMs, curve);
+    scheduleFrame();
+  }
+
+  void View::animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve) {
+    m_fade.snap(m_fadeAlpha);
+    m_fade.retarget(toAlpha, durationMs, curve);
+    scheduleFrame();
   }
 
   void View::setDragPosition(int x, int y) {
@@ -665,10 +687,13 @@ namespace umbriel {
       return;
     }
     // Animate from wherever the node visually is, not from the last target.
+    const auto& moveAnim = config().appearance.animations.windowsMove;
+    const int dur = moveAnim.enabled ? moveAnim.durationMs : config().appearance.animationMs;
+    const auto& curve = moveAnim.enabled ? moveAnim.curve : config().appearance.animationCurve;
     m_posX.snap(fromX);
-    m_posX.retarget(x, config().appearance.animationMs);
+    m_posX.retarget(x, dur, curve);
     m_posY.snap(fromY);
-    m_posY.retarget(y, config().appearance.animationMs);
+    m_posY.retarget(y, dur, curve);
     scheduleFrame();
   }
 
@@ -719,6 +744,11 @@ namespace umbriel {
       }
       active = active || m_fade.animating();
     }
+
+    if (m_borderColorAnim.tick(nowMsec)) {
+      m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
+      active = active || m_borderColorAnim.animating();
+    }
     // Unfullscreen grace: the compositor asked the client to leave fullscreen with a size-0x0 configure. A compliant
     // client commits its own windowed geometry (handleCommit ends the grace and tiles it); a client that re-requests
     // fullscreen cancels it in setFullscreen. Expiry means the client ignored the state change entirely: some game
@@ -755,6 +785,7 @@ namespace umbriel {
         || m_posY.animating()
         || sizeAnimating()
         || m_fade.animating()
+        || m_borderColorAnim.animating()
         || m_pendingUnfullscreenSize;
   }
 
@@ -977,7 +1008,23 @@ namespace umbriel {
   void View::setBorderFocused(bool focused) {
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
-    m_decoration.setBorderColor(focused, m_scratchpadBorder, effectiveOpacity());
+    if (focusChanged && m_mapped && config().appearance.dimUnfocused > 0.0) {
+      setFadeAlpha(m_fadeAlpha);
+    }
+
+    const auto& targetBase = m_scratchpadBorder
+        ? (focused ? config().appearance.scratchpadBorderFocused : config().appearance.scratchpadBorderUnfocused)
+        : (focused ? config().appearance.borderFocused : config().appearance.borderUnfocused);
+
+    const auto& borderAnim = config().appearance.animations.border;
+    if (m_mapped && focusChanged && borderAnim.enabled && borderAnim.durationMs > 0) {
+      m_borderColorAnim.retarget(targetBase, borderAnim.durationMs, borderAnim.curve);
+      scheduleFrame();
+    } else {
+      m_borderColorAnim.snap(targetBase);
+      m_decoration.setBorderColor(focused, m_scratchpadBorder, effectiveOpacity());
+    }
+
     if (focusChanged && m_mapped) {
       applyDynamicRules();
     }
@@ -1528,9 +1575,88 @@ namespace umbriel {
       m_server->focusView(this);
     }
     if (m_onActiveWorkspace) {
-      setFadeAlpha(0.0F);
-      m_fade.snap(0.0);
-      m_fade.retarget(1.0, std::max(1, config().appearance.animationMs / 2));
+      const auto& app = config().appearance;
+      const auto& winIn = app.animations.windowsIn;
+      const int openDur = winIn.enabled ? winIn.durationMs : (app.openAnimationMs > 0 ? app.openAnimationMs : app.animationMs);
+      const auto& curve = winIn.enabled ? winIn.curve : app.animationCurve;
+      std::string style = winIn.enabled ? winIn.style : "popin";
+      if (!winIn.enabled) {
+        switch (app.openAnimation) {
+        case Config::Appearance::OpenAnimationStyle::Popin: style = "popin"; break;
+        case Config::Appearance::OpenAnimationStyle::Zoom: style = "zoom"; break;
+        case Config::Appearance::OpenAnimationStyle::Slide: style = "slide"; break;
+        case Config::Appearance::OpenAnimationStyle::Fade: style = "fade"; break;
+        case Config::Appearance::OpenAnimationStyle::None: style = "none"; break;
+        }
+      }
+
+      if (style == "popin" || style == "pop_in") {
+        setFadeAlpha(0.0F);
+        m_fade.snap(0.0);
+        m_fade.retarget(1.0, openDur, curve);
+
+        const int targetW = m_presentation.width();
+        const int targetH = m_presentation.height();
+        if (targetW > 0 && targetH > 0) {
+          const double scale = std::clamp(app.openScale, 0.1, 1.0);
+          const int startW = std::max(1, static_cast<int>(targetW * scale));
+          const int startH = std::max(1, static_cast<int>(targetH * scale));
+          const int targetX = m_sceneTree->node.x;
+          const int targetY = m_sceneTree->node.y;
+          const int startX = targetX + (targetW - startW) / 2;
+          const int startY = targetY + (targetH - startH) / 2;
+
+          m_presentation.setSize(startW, startH);
+          m_presentation.animateTo(targetW, targetH, openDur, curve);
+          wlr_scene_node_set_position(&m_sceneTree->node, startX, startY);
+          m_posX.snap(startX);
+          m_posY.snap(startY);
+          m_posX.retarget(targetX, openDur, curve);
+          m_posY.retarget(targetY, openDur, curve);
+        }
+      } else if (style == "zoom") {
+        setFadeAlpha(0.0F);
+        m_fade.snap(0.0);
+        m_fade.retarget(1.0, openDur, curve);
+
+        const int targetW = m_presentation.width();
+        const int targetH = m_presentation.height();
+        if (targetW > 0 && targetH > 0) {
+          const int startW = std::max(1, targetW / 2);
+          const int startH = std::max(1, targetH / 2);
+          const int targetX = m_sceneTree->node.x;
+          const int targetY = m_sceneTree->node.y;
+          const int startX = targetX + (targetW - startW) / 2;
+          const int startY = targetY + (targetH - startH) / 2;
+
+          m_presentation.setSize(startW, startH);
+          m_presentation.animateTo(targetW, targetH, openDur, curve);
+          wlr_scene_node_set_position(&m_sceneTree->node, startX, startY);
+          m_posX.snap(startX);
+          m_posY.snap(startY);
+          m_posX.retarget(targetX, openDur, curve);
+          m_posY.retarget(targetY, openDur, curve);
+        }
+      } else if (style == "slide" || style == "slide_up") {
+        setFadeAlpha(0.0F);
+        m_fade.snap(0.0);
+        m_fade.retarget(1.0, openDur, curve);
+
+        const int targetX = m_sceneTree->node.x;
+        const int targetY = m_sceneTree->node.y;
+        const int startY = targetY + 60;
+        wlr_scene_node_set_position(&m_sceneTree->node, targetX, startY);
+        m_posX.snap(targetX);
+        m_posY.snap(startY);
+        m_posY.retarget(targetY, openDur, curve);
+      } else if (style == "fade") {
+        setFadeAlpha(0.0F);
+        m_fade.snap(0.0);
+        m_fade.retarget(1.0, openDur, curve);
+      } else {
+        setFadeAlpha(1.0F);
+        m_fade.snap(1.0);
+      }
       scheduleFrame();
     }
 

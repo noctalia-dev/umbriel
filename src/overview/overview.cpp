@@ -872,7 +872,7 @@ namespace umbriel {
     m_targetProgress = target;
     m_progressFrom = m_progress;
     m_anim.snap(0.0);
-    m_anim.retarget(1.0, std::max(1, config().appearance.animationMs), Easing::EaseOutCubic);
+    m_anim.retarget(1.0, std::max(1, config().appearance.animationMs), config().appearance.animationCurve);
     // Animations only tick from an output frame; kick one so the zoom starts on
     // an idle desktop (the value itself clocks from its first tick).
     scheduleFrames();

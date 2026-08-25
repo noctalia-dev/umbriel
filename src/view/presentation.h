@@ -40,7 +40,7 @@ namespace umbriel {
     [[nodiscard]] bool targeting(int width, int height) const;
     // Start from the presented size, not the committed one: mid-animation
     // retargets must continue from what is on screen.
-    void animateTo(int width, int height, int durationMs);
+    void animateTo(int width, int height, int durationMs, const AnimationCurve& curve = AnimationCurve{});
     void snapTo(int width, int height);
     // Advance both axes. Returns true when the presented size moved this tick,
     // which is the caller's cue to re-derive everything drawn from it.

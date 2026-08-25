@@ -30,11 +30,11 @@ namespace umbriel {
     return animating() && width == static_cast<int>(m_animW.target()) && height == static_cast<int>(m_animH.target());
   }
 
-  void ViewPresentation::animateTo(int width, int height, int durationMs) {
+  void ViewPresentation::animateTo(int width, int height, int durationMs, const AnimationCurve& curve) {
     m_animW.snap(m_width);
-    m_animW.retarget(width, durationMs);
+    m_animW.retarget(width, durationMs, curve);
     m_animH.snap(m_height);
-    m_animH.retarget(height, durationMs);
+    m_animH.retarget(height, durationMs, curve);
   }
 
   void ViewPresentation::snapTo(int width, int height) {
