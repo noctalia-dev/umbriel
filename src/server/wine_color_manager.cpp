@@ -200,6 +200,23 @@ namespace umbriel {
     ~Impl() {
       if (global != nullptr) {
         wl_global_destroy(global);
+        global = nullptr;
+      }
+      while (!outputs.empty()) {
+        auto* output = *outputs.begin();
+        destroyManagedOutput(output, true);
+      }
+      while (!surfaces.empty()) {
+        auto* surface = surfaces.begin()->second;
+        wl_resource_set_user_data(surface->resource, nullptr);
+        wl_list_remove(&surface->commit.link);
+        wl_list_remove(&surface->destroy.link);
+        surfaces.erase(surfaces.begin());
+        delete surface;
+      }
+      while (!feedbacks.empty()) {
+        auto* feedback = *feedbacks.begin();
+        destroySurfaceFeedback(feedback, true);
       }
     }
 

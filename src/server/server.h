@@ -476,9 +476,10 @@ namespace umbriel {
     class CloseSnapshot : public Animatable {
     public:
       CloseSnapshot(
-          Output* output, wlr_scene_tree* tree, std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects,
-          int durationMs, const AnimationCurve& curve = AnimationCurve{.easing = Easing::EaseOutCubic},
-          std::string style = "popout", double closeScale = 0.85
+          Server& server, Output* output, wlr_scene_tree* tree,
+          std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects, int durationMs,
+          const AnimationCurve& curve = AnimationCurve{.easing = Easing::EaseOutCubic}, std::string style = "popout",
+          double closeScale = 0.85
       );
       ~CloseSnapshot() override;
 
@@ -490,6 +491,7 @@ namespace umbriel {
       [[nodiscard]] bool animatesOn(const Output* output) const override { return m_output == output; }
 
     private:
+      Server* m_server = nullptr;
       wlr_scene_tree* m_tree = nullptr;
       Output* m_output = nullptr;
       AnimatedValue m_alpha;
@@ -505,6 +507,7 @@ namespace umbriel {
     // values would move them out from under it on reallocation.
     std::vector<std::unique_ptr<CloseSnapshot>> m_closeSnapshots;
     std::vector<Animatable*> m_animatables;
+    std::vector<Animatable*> m_animatablesScratch;
 
     std::unique_ptr<Seat> m_seat;
     std::unique_ptr<InputMethodRelay> m_inputMethodRelay;

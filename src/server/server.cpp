@@ -664,10 +664,11 @@ namespace umbriel {
   }
 
   Server::CloseSnapshot::CloseSnapshot(
-      Output* output, wlr_scene_tree* tree, std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects,
-      int durationMs, const AnimationCurve& curve, std::string style, double closeScale
+      Server& server, Output* output, wlr_scene_tree* tree,
+      std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects, int durationMs,
+      const AnimationCurve& curve, std::string style, double closeScale
   )
-      : m_tree(tree), m_output(output), m_style(std::move(style)), m_rects(std::move(rects)) {
+      : m_server(&server), m_tree(tree), m_output(output), m_style(std::move(style)), m_rects(std::move(rects)) {
     if (m_tree != nullptr) {
       m_origX = m_tree->node.x;
       m_origY = m_tree->node.y;
@@ -694,6 +695,9 @@ namespace umbriel {
   }
 
   Server::CloseSnapshot::~CloseSnapshot() {
+    if (m_server != nullptr) {
+      m_server->unregisterAnimatable(this);
+    }
     if (m_tree != nullptr) {
       wlr_scene_node_destroy(&m_tree->node);
     }
@@ -746,12 +750,8 @@ namespace umbriel {
     m_lastAnimTickMsec = nowMsec;
 
     bool active = false;
-    // Iterate a copy so a registration during the pass cannot invalidate the walk. Nothing unregisters mid-pass:
-    // snapshots are reaped below rather than from their own tick, and no owner destroys another. The phase order is
-    // what makes that hold, since finishing the overview calls focusView, which reorders the view registry after every
-    // view has already ticked.
-    const std::vector<Animatable*> owners = m_animatables;
-    for (Animatable* owner : owners) {
+    m_animatablesScratch.assign(m_animatables.begin(), m_animatables.end());
+    for (Animatable* owner : m_animatablesScratch) {
       active = owner->tickAnimations(nowMsec) || active;
     }
 
@@ -805,7 +805,7 @@ namespace umbriel {
     }
 
     auto snapshot = std::make_unique<CloseSnapshot>(
-        output, tree, std::move(rects), dur, curve, style, config().appearance.openScale
+        *this, output, tree, std::move(rects), dur, curve, style, config().appearance.openScale
     );
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
