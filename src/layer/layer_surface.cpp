@@ -9,6 +9,8 @@
 #include "view/popup.h"
 #include "wlr.h"
 
+#include <algorithm>
+
 namespace umbriel {
 
   namespace {
@@ -64,10 +66,12 @@ namespace umbriel {
     m_newPopup.notify = onNewPopup;
     wl_signal_add(&m_layerSurface->events.new_popup, &m_newPopup);
 
+    m_server->registerAnimatable(this);
     notifyOutputScale();
   }
 
   LayerSurface::~LayerSurface() {
+    m_server->unregisterAnimatable(this);
     if (m_map.link.next != nullptr) {
       wl_list_remove(&m_map.link);
       wl_list_remove(&m_unmap.link);
@@ -75,6 +79,94 @@ namespace umbriel {
       wl_list_remove(&m_destroy.link);
       wl_list_remove(&m_newPopup.link);
     }
+  }
+
+  bool LayerSurface::tickAnimations(uint64_t nowMsec) {
+    if (!m_fade.tick(nowMsec)) {
+      return false;
+    }
+    applyFadeAlpha();
+    return true;
+  }
+
+  bool LayerSurface::animatesOn(const Output* out) const { return output() == out; }
+
+  void LayerSurface::applyFadeAlpha() {
+    if (m_scene == nullptr) {
+      return;
+    }
+    // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
+    float alpha = std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
+    wlr_scene_node_for_each_buffer(
+        &m_scene->tree->node,
+        [](wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {
+          wlr_scene_buffer_set_opacity(buffer, *static_cast<float*>(data));
+        },
+        &alpha
+    );
+  }
+
+  void LayerSurface::beginCloseAnimation() {
+    Output* out = output();
+    const auto& fadeCfg = config().appearance.animations.fade;
+    if (out == nullptr || m_scene == nullptr || !fadeCfg.enabled || fadeCfg.durationMs <= 0) {
+      return;
+    }
+
+    wlr_scene_tree* snap = wlr_scene_tree_create(out->layerTree(m_layerSurface->current.layer));
+    if (snap == nullptr) {
+      return;
+    }
+    wlr_scene_node_set_position(&snap->node, m_scene->tree->node.x, m_scene->tree->node.y);
+
+    struct CopyCtx {
+      wlr_scene_tree* snap;
+      int rootX;
+      int rootY;
+      int buffersCopied;
+    };
+    CopyCtx ctx{snap, m_scene->tree->node.x, m_scene->tree->node.y, 0};
+    wlr_scene_node_for_each_buffer(
+        &m_scene->tree->node,
+        [](wlr_scene_buffer* src, int sx, int sy, void* data) {
+          auto* c = static_cast<CopyCtx*>(data);
+          if (src->buffer == nullptr || !src->node.enabled) {
+            return;
+          }
+          wlr_scene_buffer* copy = wlr_scene_buffer_create(c->snap, src->buffer);
+          if (copy == nullptr) {
+            return;
+          }
+          wlr_scene_node_set_position(&copy->node, sx - c->rootX, sy - c->rootY);
+          if (src->dst_width > 0 && src->dst_height > 0) {
+            wlr_scene_buffer_set_dest_size(copy, src->dst_width, src->dst_height);
+          }
+          if (src->src_box.width > 0 && src->src_box.height > 0) {
+            wlr_scene_buffer_set_source_box(copy, &src->src_box);
+          }
+          wlr_scene_buffer_set_transform(copy, src->transform);
+          wlr_scene_buffer_set_corner_radii(copy, src->corners);
+          wlr_scene_buffer_set_opacity(copy, src->opacity);
+          wlr_scene_buffer_set_transfer_function(copy, src->transfer_function);
+          wlr_scene_buffer_set_primaries(copy, src->primaries);
+          wlr_scene_buffer_set_luminance_multiplier(copy, src->luminance_multiplier);
+          wlr_scene_buffer_set_color_encoding(copy, src->color_encoding);
+          wlr_scene_buffer_set_color_range(copy, src->color_range);
+          ++c->buffersCopied;
+        },
+        &ctx
+    );
+
+    if (ctx.buffersCopied == 0) {
+      wlr_scene_node_destroy(&snap->node);
+      return;
+    }
+
+    m_server->animateCloseSnapshot(
+        out, snap, {},
+        Server::CloseSnapshotOverrides{.durationMs = fadeCfg.durationMs, .curve = fadeCfg.curve, .style = "fade"}
+    );
+    wlr_output_schedule_frame(out->wlr());
   }
 
   Output* LayerSurface::output() const {
@@ -240,13 +332,29 @@ namespace umbriel {
       focus();
     }
     updateBlur();
+
+    const auto& fadeCfg = config().appearance.animations.fade;
+    if (fadeCfg.enabled && fadeCfg.durationMs > 0) {
+      m_fade.snap(0.0);
+      applyFadeAlpha();
+      m_fade.retarget(1.0, fadeCfg.durationMs, fadeCfg.curve);
+      if (Output* out = output()) {
+        wlr_output_schedule_frame(out->wlr());
+      }
+    } else {
+      m_fade.snap(1.0);
+      applyFadeAlpha();
+    }
   }
 
   void LayerSurface::handleUnmap() {
+    // Snapshot before any other unmap bookkeeping runs: the live buffer is still valid here.
+    beginCloseAnimation();
     const bool hadFocus = hasKeyboardFocus();
     m_mapped = false;
     m_server->updateIdleInhibit();
     m_blur.hide();
+    m_fade.snap(1.0);
     // Avoid sending configures while unmapping (wrong serial / client abort).
     m_arrangingOut = true;
     if (Output* out = output()) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/config.h"
+#include "core/animation.h"
 #include "scene/node.h"
 #include "scene/surface_blur.h"
 
@@ -16,7 +17,7 @@ namespace umbriel {
   class Output;
   class Server;
 
-  class LayerSurface : public SceneNode {
+  class LayerSurface : public SceneNode, public Animatable {
   public:
     LayerSurface(Server& server, wlr_layer_surface_v1* layerSurface);
     ~LayerSurface();
@@ -41,6 +42,11 @@ namespace umbriel {
     void notifyOutputScale();
     [[nodiscard]] Output* output() const;
 
+    [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+    bool tickAnimations(uint64_t nowMsec) override;
+    [[nodiscard]] bool hasActiveAnimations() const override { return m_fade.animating(); }
+    [[nodiscard]] bool animatesOn(const Output* output) const override;
+
   private:
     friend class Server;
 
@@ -58,12 +64,15 @@ namespace umbriel {
     void reparentToLayer(uint32_t layer);
     void updateBlur();
     void applyConfig();
+    void applyFadeAlpha();
+    void beginCloseAnimation();
 
     Server* m_server = nullptr;
     wlr_layer_surface_v1* m_layerSurface = nullptr;
     wlr_scene_layer_surface_v1* m_scene = nullptr;
     SurfaceBlur m_blur;
     ResolvedLayerRule m_rule;
+    AnimatedValue m_fade{1.0};
     bool m_mapped = false;
     bool m_arrangingOut = false;
 
