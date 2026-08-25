@@ -97,7 +97,7 @@ namespace umbriel {
   [[nodiscard]] std::string colorToHex(const std::array<float, 4>& color);
   [[nodiscard]] std::optional<std::array<float, 4>> parseColorHex(std::string_view hex);
 
-  // Registry for named animation curves (supporting custom named beziers and springs like in Hyprland)
+  // Registry for named animation curves (supporting custom named beziers and springs)
   class CurveRegistry {
   public:
     static void registerCurve(std::string_view name, const AnimationCurve& curve);

@@ -217,9 +217,10 @@ namespace umbriel {
         m_curves["easeinoutbounce"] = AnimationCurve{.easing = Easing::EaseInOutBounce};
         m_curves["bounce"] = AnimationCurve{.easing = Easing::EaseOutBounce};
 
-        // Hyprland / Umbriel defaults
+        // Default built-in animation curves
         m_curves["snappy"] = AnimationCurve{.easing = Easing::Snappy};
         m_curves["default"] = AnimationCurve{.easing = Easing::Snappy};
+        m_curves["easeoutquint"] = AnimationCurve{.easing = Easing::CustomBezier, .bezier = {0.23, 1.0, 0.32, 1.0}};
 
         // Standard Named Springs
         m_curves["defaultspring"] = AnimationCurve{
@@ -257,53 +258,60 @@ namespace umbriel {
     if (x >= 1.0) {
       return 1.0;
     }
+    if (!std::isfinite(x)) {
+      return 0.0;
+    }
 
-    // Clamping control points x to [0, 1] ensures monotonic X(t)
     const double cx1 = std::clamp(x1, 0.0, 1.0);
     const double cx2 = std::clamp(x2, 0.0, 1.0);
 
-    auto sampleX = [cx1, cx2](double t) {
-      return 3.0 * (1.0 - t) * (1.0 - t) * t * cx1 + 3.0 * (1.0 - t) * t * t * cx2 + t * t * t;
-    };
-    auto sampleY = [y1, y2](double t) {
-      return 3.0 * (1.0 - t) * (1.0 - t) * t * y1 + 3.0 * (1.0 - t) * t * t * y2 + t * t * t;
-    };
-    auto sampleXDerivative = [cx1, cx2](double t) {
-      return 3.0 * (1.0 - t) * (1.0 - t) * cx1 + 6.0 * (1.0 - t) * t * (cx2 - cx1) + 3.0 * t * t * (1.0 - cx2);
-    };
+    const double cx = 3.0 * cx1;
+    const double bx = 3.0 * (cx2 - cx1) - cx;
+    const double ax = 1.0 - cx - bx;
 
-    // Newton-Raphson iteration
+    const double cy = 3.0 * y1;
+    const double by = 3.0 * (y2 - y1) - cy;
+    const double ay = 1.0 - cy - by;
+
+    auto evalX = [ax, bx, cx](double t) noexcept { return ((ax * t + bx) * t + cx) * t; };
+    auto evalY = [ay, by, cy](double t) noexcept { return ((ay * t + by) * t + cy) * t; };
+    auto evalDx = [ax, bx, cx](double t) noexcept { return (3.0 * ax * t + 2.0 * bx) * t + cx; };
+
+    // Newton-Raphson iteration (fast quadratic convergence)
     double t = x;
-    for (int i = 0; i < 12; ++i) {
-      const double currentX = sampleX(t) - x;
+    for (int i = 0; i < 8; ++i) {
+      const double currentX = evalX(t) - x;
       if (std::abs(currentX) < 1e-7) {
-        return sampleY(t);
+        return evalY(t);
       }
-      const double dX = sampleXDerivative(t);
-      if (std::abs(dX) < 1e-7) {
+      const double dX = evalDx(t);
+      if (std::abs(dX) < 1e-6) {
         break;
       }
-      t -= currentX / dX;
-      t = std::clamp(t, 0.0, 1.0);
+      const double nextT = t - currentX / dX;
+      if (nextT < 0.0 || nextT > 1.0) {
+        break;
+      }
+      t = nextT;
     }
 
-    // Binary search / bisection fallback
-    double t0 = 0.0;
-    double t1 = 1.0;
+    // Bounded bisection fallback (guaranteed monotonic convergence)
+    double minT = 0.0;
+    double maxT = 1.0;
     t = x;
-    while (t0 < t1) {
-      const double currentX = sampleX(t);
-      if (std::abs(currentX - x) < 1e-7) {
-        return sampleY(t);
+    for (int i = 0; i < 12; ++i) {
+      const double guessX = evalX(t);
+      if (std::abs(guessX - x) < 1e-7) {
+        return evalY(t);
       }
-      if (x > currentX) {
-        t0 = t;
+      if (x > guessX) {
+        minT = t;
       } else {
-        t1 = t;
+        maxT = t;
       }
-      t = (t1 + t0) * 0.5;
+      t = 0.5 * (minT + maxT);
     }
-    return sampleY(t);
+    return evalY(t);
   }
 
   double solveSpring(double damping, double stiffness, double linear) {
@@ -337,6 +345,12 @@ namespace umbriel {
   double solveSpringPhysics(
       double from, double to, double velocity, double elapsedSec, const SpringConfig& config, double* outVelocity
   ) {
+    if (!std::isfinite(from) || !std::isfinite(to) || !std::isfinite(velocity)) {
+      if (outVelocity != nullptr) {
+        *outVelocity = 0.0;
+      }
+      return to;
+    }
     if (elapsedSec <= 0.0) {
       if (outVelocity != nullptr) {
         *outVelocity = velocity;
@@ -344,10 +358,10 @@ namespace umbriel {
       return from;
     }
 
-    const double m = std::max(0.001, config.mass);
-    const double k = std::max(0.001, config.stiffness);
+    const double m = std::max(1e-4, std::isfinite(config.mass) ? config.mass : 1.0);
+    const double k = std::max(1e-4, std::isfinite(config.stiffness) ? config.stiffness : 100.0);
     const double w0 = std::sqrt(k / m);
-    const double zeta = std::max(0.0, config.damping);
+    const double zeta = std::max(0.0, std::isfinite(config.damping) ? config.damping : 0.75);
     const double beta = zeta * w0;
     const double x0 = from - to;
     const double v0 = velocity;
@@ -357,7 +371,7 @@ namespace umbriel {
     double posOffset = 0.0;
     double vel = 0.0;
 
-    if (std::abs(zeta - 1.0) < 1e-4) {
+    if (std::abs(zeta - 1.0) < 1e-5) {
       // Critically damped
       posOffset = env * (x0 + (v0 + w0 * x0) * t);
       vel = env * (v0 - (v0 + w0 * x0) * w0 * t);
@@ -377,6 +391,13 @@ namespace umbriel {
       const double c2 = (v0 + beta * x0) / wd;
       posOffset = env * (x0 * coshVal + c2 * sinhVal);
       vel = env * ((v0 * coshVal) + (c2 * wd - beta * x0) * sinhVal - beta * c2 * coshVal);
+    }
+
+    if (std::abs(posOffset) < 1e-4 && std::abs(vel) < 1e-4) {
+      if (outVelocity != nullptr) {
+        *outVelocity = 0.0;
+      }
+      return to;
     }
 
     if (outVelocity != nullptr) {
