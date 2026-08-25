@@ -490,6 +490,322 @@ namespace umbriel {
       });
     }
 
+    std::optional<BezierCurve> parseBezier(const toml::node& node) {
+      if (const auto* arr = node.as_array()) {
+        if (arr->size() == 4) {
+          const auto x1 = (*arr)[0].value<double>();
+          const auto y1 = (*arr)[1].value<double>();
+          const auto x2 = (*arr)[2].value<double>();
+          const auto y2 = (*arr)[3].value<double>();
+          if (x1 && y1 && x2 && y2 && std::isfinite(*x1) && std::isfinite(*y1) && std::isfinite(*x2)
+              && std::isfinite(*y2)) {
+            return BezierCurve{.x1 = *x1, .y1 = *y1, .x2 = *x2, .y2 = *y2};
+          }
+        }
+      } else if (const auto str = node.value<std::string>()) {
+        double x1 = 0.05;
+        double y1 = 0.9;
+        double x2 = 0.1;
+        double y2 = 1.05;
+        if (std::sscanf(str->c_str(), "%lf,%lf,%lf,%lf", &x1, &y1, &x2, &y2) == 4
+            || std::sscanf(str->c_str(), "%lf %lf %lf %lf", &x1, &y1, &x2, &y2) == 4) {
+          return BezierCurve{.x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2};
+        }
+      }
+      return std::nullopt;
+    }
+
+    std::optional<SpringConfig> parseSpring(const toml::node& node) {
+      if (const auto* tbl = node.as_table()) {
+        double damping = 0.75;
+        double stiffness = 100.0;
+        if (const auto d = tbl->get("damping")) {
+          if (auto v = d->value<double>()) {
+            damping = *v;
+          }
+        }
+        if (const auto s = tbl->get("stiffness")) {
+          if (auto v = s->value<double>()) {
+            stiffness = *v;
+          }
+        }
+        return SpringConfig{.damping = damping, .stiffness = stiffness};
+      }
+      if (const auto* arr = node.as_array()) {
+        if (arr->size() >= 2) {
+          const auto d = (*arr)[0].value<double>();
+          const auto s = (*arr)[1].value<double>();
+          if (d && s && std::isfinite(*d) && std::isfinite(*s)) {
+            return SpringConfig{.damping = *d, .stiffness = *s};
+          }
+        }
+      }
+      if (const auto str = node.value<std::string>()) {
+        double damping = 0.75;
+        double stiffness = 100.0;
+        if (std::sscanf(str->c_str(), "%lf,%lf", &damping, &stiffness) == 2
+            || std::sscanf(str->c_str(), "%lf %lf", &damping, &stiffness) == 2) {
+          return SpringConfig{.damping = damping, .stiffness = stiffness};
+        }
+      }
+      return std::nullopt;
+    }
+
+    std::optional<AnimationCurve> parseAnimationCurve(
+        std::string_view str,
+        const std::map<std::string, BezierCurve>& beziers = {},
+        const std::map<std::string, SpringConfig>& springs = {}
+    ) {
+      std::string s = lowercase(str);
+
+      for (const auto& [name, curve] : beziers) {
+        if (lowercase(name) == s) {
+          return AnimationCurve{.easing = Easing::CustomBezier, .bezier = curve};
+        }
+      }
+      for (const auto& [name, spring] : springs) {
+        if (lowercase(name) == s) {
+          return AnimationCurve{.easing = Easing::Spring, .spring = spring};
+        }
+      }
+
+      return CurveRegistry::parse(str);
+    }
+
+    std::optional<AnimationCurve> readCurveNode(
+        const toml::node* node,
+        std::string_view context,
+        const std::map<std::string, BezierCurve>& beziers = {},
+        const std::map<std::string, SpringConfig>& springs = {}
+    ) {
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      if (const auto* str = node->as_string()) {
+        if (auto c = parseAnimationCurve(str->get(), beziers, springs)) {
+          return c;
+        }
+        warnAt(node->source(), R"(invalid curve "{}" in {})", str->get(), context);
+        return std::nullopt;
+      }
+      if (const auto* arr = node->as_array()) {
+        if (arr->size() == 4) {
+          if (auto b = parseBezier(*node)) {
+            return AnimationCurve{.easing = Easing::CustomBezier, .bezier = *b};
+          }
+        } else if (arr->size() == 2) {
+          if (auto sp = parseSpring(*node)) {
+            return AnimationCurve{.easing = Easing::Spring, .spring = *sp};
+          }
+        }
+        warnAt(node->source(), R"(invalid curve array in {})", context);
+        return std::nullopt;
+      }
+      if (node->is_table()) {
+        if (auto sp = parseSpring(*node)) {
+          return AnimationCurve{.easing = Easing::Spring, .spring = *sp};
+        }
+        warnAt(node->source(), R"(invalid curve table in {})", context);
+        return std::nullopt;
+      }
+      warnAt(node->source(), R"(invalid curve format in {})", context);
+      return std::nullopt;
+    }
+
+    std::optional<Config::Appearance::OpenAnimationStyle> parseOpenAnimationStyle(std::string_view str) {
+      std::string s = lowercase(str);
+      if (s == "popin" || s == "pop_in" || s == "pop") {
+        return Config::Appearance::OpenAnimationStyle::Popin;
+      }
+      if (s == "zoom" || s == "scale") {
+        return Config::Appearance::OpenAnimationStyle::Zoom;
+      }
+      if (s == "slide" || s == "slide_up") {
+        return Config::Appearance::OpenAnimationStyle::Slide;
+      }
+      if (s == "fade") {
+        return Config::Appearance::OpenAnimationStyle::Fade;
+      }
+      if (s == "none" || s == "disabled" || s == "off") {
+        return Config::Appearance::OpenAnimationStyle::None;
+      }
+      return std::nullopt;
+    }
+
+    void parseAnimationsTable(
+        const toml::table& tbl, std::string_view context, Config::Animations& anim, Config::Appearance& appearance
+    ) {
+      Section s(tbl, std::string(context), configStore().mutableDiagnostics());
+      s.boolean("enabled", anim.enabled);
+
+      if (const toml::node* node = s.take("beziers")) {
+        if (const auto* bTable = node->as_table()) {
+          for (const auto& [name, val] : *bTable) {
+            if (auto b = parseBezier(val)) {
+              anim.beziers[std::string(name.str())] = *b;
+            } else {
+              warnAt(val.source(), "invalid bezier curve '{}' in {}.beziers", name.str(), context);
+            }
+          }
+        } else {
+          warnAt(node->source(), "{}.beziers must be a table", context);
+        }
+      }
+
+      if (const toml::node* node = s.take("springs")) {
+        if (const auto* spTable = node->as_table()) {
+          for (const auto& [name, val] : *spTable) {
+            if (auto sp = parseSpring(val)) {
+              anim.springs[std::string(name.str())] = *sp;
+            } else {
+              warnAt(val.source(), "invalid spring config '{}' in {}.springs", name.str(), context);
+            }
+          }
+        } else {
+          warnAt(node->source(), "{}.springs must be a table", context);
+        }
+      }
+
+      int defaultDuration = appearance.animationMs;
+      s.integer("duration_ms", 1, 10000, defaultDuration).integer("animation_ms", 1, 10000, defaultDuration);
+      if (defaultDuration != appearance.animationMs) {
+        appearance.animationMs = defaultDuration;
+        anim.windowsMove.durationMs = defaultDuration;
+        anim.workspaces.durationMs = defaultDuration;
+        anim.border.durationMs = defaultDuration;
+      }
+
+      if (const toml::node* node = s.take("curve")) {
+        if (auto c = readCurveNode(node, context, anim.beziers, anim.springs)) {
+          appearance.animationCurve = *c;
+          anim.windowsMove.curve = *c;
+          anim.workspaces.curve = *c;
+          anim.border.curve = *c;
+        }
+      }
+      if (const toml::node* node = s.take("animation_curve")) {
+        if (auto c = readCurveNode(node, context, anim.beziers, anim.springs)) {
+          appearance.animationCurve = *c;
+          anim.windowsMove.curve = *c;
+          anim.workspaces.curve = *c;
+          anim.border.curve = *c;
+        }
+      }
+
+      auto readWindowIn = [&](Section& winIn, std::string_view ctx) {
+        winIn.boolean("enabled", anim.windowsIn.enabled)
+            .integer("duration_ms", 1, 10000, anim.windowsIn.durationMs)
+            .text("style", anim.windowsIn.style);
+        if (const toml::node* node = winIn.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.windowsIn.curve = *c;
+          }
+        }
+      };
+
+      auto readWindowOut = [&](Section& winOut, std::string_view ctx) {
+        winOut.boolean("enabled", anim.windowsOut.enabled)
+            .integer("duration_ms", 1, 10000, anim.windowsOut.durationMs)
+            .text("style", anim.windowsOut.style);
+        if (const toml::node* node = winOut.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.windowsOut.curve = *c;
+          }
+        }
+      };
+
+      auto readWindowMove = [&](Section& winMove, std::string_view ctx) {
+        winMove.boolean("enabled", anim.windowsMove.enabled)
+            .integer("duration_ms", 1, 10000, anim.windowsMove.durationMs)
+            .text("style", anim.windowsMove.style);
+        if (const toml::node* node = winMove.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.windowsMove.curve = *c;
+          }
+        }
+      };
+
+      auto readWorkspaces = [&](Section& ws, std::string_view ctx) {
+        ws.boolean("enabled", anim.workspaces.enabled)
+            .integer("duration_ms", 1, 10000, anim.workspaces.durationMs)
+            .text("style", anim.workspaces.style);
+        if (const toml::node* node = ws.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.workspaces.curve = *c;
+          }
+        }
+      };
+
+      auto readScratchpad = [&](Section& sp, std::string_view ctx) {
+        sp.boolean("enabled", anim.scratchpad.enabled)
+            .integer("duration_ms", 1, 10000, anim.scratchpad.durationMs)
+            .real("dim", 0.0, 1.0, anim.scratchpad.dim);
+        if (const toml::node* node = sp.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.scratchpad.curve = *c;
+          }
+        }
+      };
+
+      auto readBorder = [&](Section& b, std::string_view ctx) {
+        b.boolean("enabled", anim.border.enabled).integer("duration_ms", 1, 10000, anim.border.durationMs);
+        if (const toml::node* node = b.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.border.curve = *c;
+          }
+        }
+      };
+
+      auto readDim = [&](Section& d, std::string_view ctx) {
+        d.boolean("enabled", anim.dimUnfocused.enabled)
+            .integer("duration_ms", 1, 10000, anim.dimUnfocused.durationMs)
+            .real("dim", 0.0, 1.0, anim.dimUnfocused.dim)
+            .real("factor", 0.0, 1.0, anim.dimUnfocused.dim)
+            .real("value", 0.0, 1.0, anim.dimUnfocused.dim)
+            .real("dim_unfocused", 0.0, 1.0, anim.dimUnfocused.dim);
+        if (const toml::node* node = d.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.dimUnfocused.curve = *c;
+          }
+        }
+      };
+
+      auto readFade = [&](Section& f, std::string_view ctx) {
+        f.boolean("enabled", anim.fade.enabled).integer("duration_ms", 1, 10000, anim.fade.durationMs);
+        if (const toml::node* node = f.take("curve")) {
+          if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
+            anim.fade.curve = *c;
+          }
+        }
+      };
+
+      s.sub("windows_in", [&](Section& sub) { readWindowIn(sub, std::string(context) + ".windows_in"); });
+      s.sub("window_in", [&](Section& sub) { readWindowIn(sub, std::string(context) + ".window_in"); });
+      s.sub("windows_out", [&](Section& sub) { readWindowOut(sub, std::string(context) + ".windows_out"); });
+      s.sub("window_out", [&](Section& sub) { readWindowOut(sub, std::string(context) + ".window_out"); });
+      s.sub("windows_move", [&](Section& sub) { readWindowMove(sub, std::string(context) + ".windows_move"); });
+      s.sub("window_move", [&](Section& sub) { readWindowMove(sub, std::string(context) + ".window_move"); });
+      s.sub("workspaces", [&](Section& sub) { readWorkspaces(sub, std::string(context) + ".workspaces"); });
+      s.sub("workspace", [&](Section& sub) { readWorkspaces(sub, std::string(context) + ".workspace"); });
+      s.sub("scratchpad", [&](Section& sub) { readScratchpad(sub, std::string(context) + ".scratchpad"); });
+      s.sub("border", [&](Section& sub) { readBorder(sub, std::string(context) + ".border"); });
+      s.sub("dim_unfocused", [&](Section& sub) { readDim(sub, std::string(context) + ".dim_unfocused"); });
+      s.sub("dim", [&](Section& sub) { readDim(sub, std::string(context) + ".dim"); });
+      s.sub("fade", [&](Section& sub) { readFade(sub, std::string(context) + ".fade"); });
+
+      // Synchronize with Appearance
+      appearance.openAnimationMs = anim.windowsIn.durationMs;
+      appearance.animationMs = anim.windowsMove.durationMs;
+      appearance.animationCurve = anim.windowsMove.curve;
+      if (auto style = parseOpenAnimationStyle(anim.windowsIn.style)) {
+        appearance.openAnimation = *style;
+      }
+      if (anim.dimUnfocused.dim > 0.0) {
+        appearance.dimUnfocused = anim.dimUnfocused.dim;
+      }
+      appearance.animations = anim;
+    }
+
     void readAppearance(Section& root, Config& loaded) {
       auto& a = loaded.appearance;
       root.sub("appearance", [&](Section& s) {
@@ -505,7 +821,68 @@ namespace umbriel {
             .color("backdrop_color", a.backdropColor)
             .integer("animation_ms", 1, 10000, a.animationMs)
             .real("drag_opacity", 0.0, 1.0, a.dragOpacity)
+            .integer("open_animation_ms", 1, 10000, a.openAnimationMs)
+            .real("open_scale", 0.1, 1.0, a.openScale)
+            .real("dim_unfocused", 0.0, 1.0, a.dimUnfocused)
             .boolean("prefer_no_csd", a.preferNoCsd);
+
+        if (const toml::node* node = s.take("animation_curve")) {
+          if (const auto value = node->value<std::string>()) {
+            if (auto curve = parseAnimationCurve(*value, loaded.animations.beziers, loaded.animations.springs)) {
+              a.animationCurve = *curve;
+            } else {
+              warnAt(node->source(), R"(invalid animation_curve "{}")", *value);
+            }
+          }
+        }
+        if (const toml::node* node = s.take("curve")) {
+          if (const auto value = node->value<std::string>()) {
+            if (auto curve = parseAnimationCurve(*value, loaded.animations.beziers, loaded.animations.springs)) {
+              a.animationCurve = *curve;
+            } else {
+              warnAt(node->source(), R"(invalid curve "{}")", *value);
+            }
+          }
+        }
+        if (const toml::node* node = s.take("open_animation")) {
+          if (const auto value = node->value<std::string>()) {
+            if (auto style = parseOpenAnimationStyle(*value)) {
+              a.openAnimation = *style;
+            } else {
+              warnAt(node->source(), R"(invalid open_animation "{}")", *value);
+            }
+          }
+        }
+
+        // Seed per-event durations/curves still at their struct default from the top-level values; an explicit
+        // [appearance.animations.*] sub-table below overrides these field-by-field.
+        if (a.animations.windowsMove.durationMs == Config::Animations::WindowMove{}.durationMs) {
+          a.animations.windowsMove.durationMs = a.animationMs;
+        }
+        if (a.animations.workspaces.durationMs == Config::Animations::Workspaces{}.durationMs) {
+          a.animations.workspaces.durationMs = a.animationMs;
+        }
+        if (a.animations.border.durationMs == Config::Animations::Border{}.durationMs) {
+          a.animations.border.durationMs = a.animationMs;
+        }
+        if (a.animations.windowsMove.curve == Config::Animations::WindowMove{}.curve) {
+          a.animations.windowsMove.curve = a.animationCurve;
+        }
+        if (a.animations.workspaces.curve == Config::Animations::Workspaces{}.curve) {
+          a.animations.workspaces.curve = a.animationCurve;
+        }
+        if (a.animations.border.curve == Config::Animations::Border{}.curve) {
+          a.animations.border.curve = a.animationCurve;
+        }
+
+        if (const toml::node* node = s.take("animations")) {
+          if (const auto* tbl = node->as_table()) {
+            parseAnimationsTable(*tbl, "appearance.animations", loaded.animations, loaded.appearance);
+          } else {
+            warnAt(node->source(), "appearance.animations must be a table");
+          }
+        }
+
         s.sub("blur", [&](Section& blur) {
           blur.boolean("enabled", a.blur.enabled)
               .boolean("optimized", a.blur.optimized)
@@ -524,6 +901,16 @@ namespace umbriel {
               .color("color", a.shadow.color);
         });
       });
+    }
+
+    void readAnimations(Section& root, Config& loaded) {
+      if (const toml::node* node = root.take("animations")) {
+        if (const auto* table = node->as_table()) {
+          parseAnimationsTable(*table, "animations", loaded.animations, loaded.appearance);
+        } else {
+          warnAt(node->source(), "ignoring animations (expected table)");
+        }
+      }
     }
 
     void readOverview(Section& root, Config& loaded) {
@@ -1314,6 +1701,7 @@ namespace umbriel {
         {
           Section root(result.merged, "", store.mutableDiagnostics());
           readColors(root, loaded);
+          readAnimations(root, loaded);
           readAppearance(root, loaded);
           readOverview(root, loaded);
           readHotCorners(root, loaded);
@@ -1328,6 +1716,10 @@ namespace umbriel {
           readLayerRules(root, loaded);
           readWorkspaces(root, loaded);
         }
+
+        // loaded.appearance.animations is authoritative (parseAnimationsTable already writes it directly); mirror
+        // it into the legacy top-level field rather than the reverse, or this would clobber it with stale defaults.
+        loaded.animations = loaded.appearance.animations;
 
         // Reject config if any error-level diagnostics were emitted.
         const bool hasErrors = std::ranges::any_of(configStore().diagnostics(), [](const ConfigDiagnostic& d) {

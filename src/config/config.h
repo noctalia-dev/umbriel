@@ -3,12 +3,14 @@
 #include "config/config_diag.h"
 #include "config/keybind_parse.h"
 #include "config/value_parse.h"
+#include "core/animation.h"
 #include "layout/layout.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <regex>
 #include <string>
@@ -294,6 +296,17 @@ namespace umbriel {
       std::array<float, 4> backdropColor{0.0F, 0.0F, 0.0F, 1.0F};
       int animationMs = 200;
       double dragOpacity = 0.75;
+      AnimationCurve animationCurve{.easing = Easing::Snappy};
+      enum class OpenAnimationStyle {
+        Fade,
+        Popin,
+        Zoom,
+        Slide,
+        None,
+      } openAnimation = OpenAnimationStyle::Popin;
+      double openScale = 0.85;
+      int openAnimationMs = 220;
+      double dimUnfocused = 0.0;
       struct Blur {
         bool enabled = true;
         bool optimized = true;
@@ -314,6 +327,76 @@ namespace umbriel {
         bool operator==(const Shadow&) const = default;
       } shadow;
       bool preferNoCsd = true;
+
+      struct Animations {
+        bool enabled = true;
+        std::map<std::string, BezierCurve> beziers;
+        std::map<std::string, SpringConfig> springs;
+
+        struct WindowIn {
+          bool enabled = true;
+          int durationMs = 220;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          std::string style = "popin";
+          bool operator==(const WindowIn&) const = default;
+        } windowsIn;
+
+        struct WindowOut {
+          bool enabled = true;
+          int durationMs = 200;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          std::string style = "popin";
+          bool operator==(const WindowOut&) const = default;
+        } windowsOut;
+
+        struct WindowMove {
+          bool enabled = true;
+          int durationMs = 200;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          std::string style = "slide";
+          bool operator==(const WindowMove&) const = default;
+        } windowsMove;
+
+        struct Workspaces {
+          bool enabled = true;
+          int durationMs = 250;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          std::string style = "slide";
+          bool operator==(const Workspaces&) const = default;
+        } workspaces;
+
+        struct Scratchpad {
+          bool enabled = true;
+          int durationMs = 250;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          double dim = 0.2; // dims the rest of the output while shown, matching Hyprland's dim_special default
+          bool operator==(const Scratchpad&) const = default;
+        } scratchpad;
+
+        struct Border {
+          bool enabled = true;
+          int durationMs = 200;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          bool operator==(const Border&) const = default;
+        } border;
+
+        struct DimUnfocused {
+          bool enabled = true;
+          int durationMs = 200;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          double dim = 0.0;
+          bool operator==(const DimUnfocused&) const = default;
+        } dimUnfocused;
+
+        struct Fade {
+          bool enabled = true;
+          int durationMs = 200;
+          AnimationCurve curve{.easing = Easing::Snappy};
+          bool operator==(const Fade&) const = default;
+        } fade;
+
+        bool operator==(const Animations&) const = default;
+      } animations;
 
       [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
       bool operator==(const Appearance&) const = default;
@@ -471,6 +554,9 @@ namespace umbriel {
       [[nodiscard]] const Device* findDevice(std::string_view name) const;
       bool operator==(const Input&) const = default;
     } input;
+
+    using Animations = Appearance::Animations;
+    Animations animations;
 
     std::vector<Keybind> keybinds;
     std::vector<OutputRule> outputs;
