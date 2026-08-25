@@ -236,6 +236,90 @@ Drop shadow behind windows (tiled and floating). Hidden while fullscreen.
 | `offset_y` | int   | `2`         | Vertical shadow offset (-200 to 200).                                  |
 | `color`    | color | `#0000007F` | Shadow color.                                                          |
 
+### Animations
+
+Per-event duration, curve, and (where applicable) style, on top of the
+top-level `animation_ms` fallback. Values below are the built-in defaults.
+
+```toml
+[appearance.animations]
+enabled = true
+
+[appearance.animations.windows_in]
+enabled = true
+duration_ms = 220
+curve = "snappy"
+style = "popin"       # "popin", "zoom", "slide", "fade", "none"
+
+[appearance.animations.windows_out]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+style = "popin"       # "popout", "zoom", "slide", or falls through to a plain fade
+
+[appearance.animations.windows_move]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
+[appearance.animations.workspaces]
+enabled = true
+duration_ms = 250
+curve = "snappy"
+style = "slide"        # "slide" or "fade"
+
+[appearance.animations.scratchpad]
+enabled = true
+duration_ms = 250
+curve = "snappy"
+dim = 0.2               # 0.0-1.0: dims the rest of the output while a scratchpad window is shown
+
+[appearance.animations.border]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
+[appearance.animations.dim_unfocused]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+dim = 0.0               # 0.0-1.0
+
+[appearance.animations.fade]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+```
+
+| Key                            | Type   | Default   | Description                                                                    |
+| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------- |
+| `enabled`                       | bool   | `true`    | Master switch for the per-event overrides below. When off, everything falls back to `appearance.animation_ms`/`animation_curve`. |
+| `windows_in.*`                  |        |           | Window open.                                                                    |
+| `windows_out.*`                 |        |           | Window close (plays on a scene-tree snapshot of the closing window).            |
+| `windows_move.*`                |        |           | Move/resize animation, including maximize/tile transitions.                     |
+| `workspaces.*`                  |        |           | Workspace switch. `style = "fade"` matches Hyprland's stock default; `"slide"` is the umbriel default. |
+| `scratchpad.*`                  |        |           | Scratchpad (special workspace) show/hide. Always a plain fade in place — the window is never resized or centered, matching Hyprland. `dim` controls the background dim behind it. |
+| `border.*`                      |        |           | Focus-ring color transition (interpolated in OkLab color space).                |
+| `dim_unfocused.*`                | | | Opacity dim applied to unfocused windows; `dim` is the dim amount (0 = off). |
+| `fade.*`                        |        |           | Generic fade used where no more specific category applies (e.g. layer-shell surfaces). |
+
+Each `*.curve` accepts a named preset (`linear`, `ease`, `easeout`, `snappy`,
+`bounce`, `elastic`, ... — see below), a raw bezier as `"x1,y1,x2,y2"`, or a
+spring as `"spring: damping,stiffness"`.
+
+Custom named curves can be registered once and reused by name:
+
+```toml
+[appearance.animations.beziers]
+myBezier = [0.05, 0.9, 0.1, 1.05]
+
+[appearance.animations.springs]
+myBounce = { damping = 0.5, stiffness = 200 }
+```
+
+Then reference them as `curve = "myBezier"` or `curve = "myBounce"` in any of
+the sections above.
+
 ## Overview
 
 ```toml
