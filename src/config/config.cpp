@@ -739,7 +739,11 @@ namespace umbriel {
       auto readScratchpad = [&](Section& sp, std::string_view ctx) {
         sp.boolean("enabled", anim.scratchpad.enabled)
             .integer("duration_ms", 1, 10000, anim.scratchpad.durationMs)
-            .real("dim", 0.0, 1.0, anim.scratchpad.dim);
+            .real("dim", 0.0, 1.0, anim.scratchpad.dim)
+            .boolean("blur", anim.scratchpad.blur)
+            .real("scale", 0.0, 1.0, anim.scratchpad.scale)
+            .boolean("maximize", anim.scratchpad.maximize)
+            .boolean("fullscreen", anim.scratchpad.fullscreen);
         if (const toml::node* node = sp.take("curve")) {
           if (auto c = readCurveNode(node, ctx, anim.beziers, anim.springs)) {
             anim.scratchpad.curve = *c;

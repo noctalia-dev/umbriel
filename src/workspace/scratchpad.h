@@ -8,6 +8,7 @@
 
 struct wlr_scene_tree;
 struct wlr_scene_rect;
+struct wlr_scene_blur;
 
 namespace umbriel {
 
@@ -22,7 +23,9 @@ namespace umbriel {
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(uint64_t nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override { return !m_hidingViews.empty(); }
+    [[nodiscard]] bool hasActiveAnimations() const override {
+      return !m_hidingViews.empty() || m_fadeAnim.animating();
+    }
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
     [[nodiscard]] bool contains(const View* view) const;
@@ -52,7 +55,8 @@ namespace umbriel {
 
     void setVisible(Output* output, bool visible);
     wlr_scene_rect* dimRectFor(Output* output);
-    void updateDim(Output* output);
+    wlr_scene_blur* blurNodeFor(Output* output);
+    void updateDimAndBlur(Output* output);
 
     Server* m_server = nullptr;
     wlr_scene_tree* m_root = nullptr;
@@ -61,8 +65,9 @@ namespace umbriel {
     std::vector<Output*> m_visibleOutputs;
     // Views mid fade-out on hide, still enabled until tickAnimations disables the node once the fade completes.
     std::vector<View*> m_hidingViews;
-    // One backdrop rect per output, dimming everything behind a shown scratchpad window (Hyprland's dim_special).
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
+    std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
+    AnimatedValue m_fadeAnim{0.0};
     View* m_focusedView = nullptr;
   };
 

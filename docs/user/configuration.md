@@ -297,8 +297,8 @@ curve = "snappy"
 | `windows_in.*`                  |        |           | Window open.                                                                    |
 | `windows_out.*`                 |        |           | Window close (plays on a scene-tree snapshot of the closing window).            |
 | `windows_move.*`                |        |           | Move/resize animation, including maximize/tile transitions.                     |
-| `workspaces.*`                  |        |           | Workspace switch. `style = "fade"` matches Hyprland's stock default; `"slide"` is the umbriel default. |
-| `scratchpad.*`                  |        |           | Scratchpad (special workspace) show/hide. Always a plain fade in place — the window is never resized or centered, matching Hyprland. `dim` controls the background dim behind it. |
+| `workspaces.*`                  |        |           | Workspace switch (`style = "slide"` or `"fade"`). |
+| `scratchpad.*`                  |        |           | Scratchpad show/hide. Configurable with `dim` (backdrop dimming), `blur` (backdrop blur), `scale` (centered scale factor), `maximize`, and `fullscreen`. |
 | `border.*`                      |        |           | Focus-ring color transition (interpolated in OkLab color space).                |
 | `dim_unfocused.*`                | | | Opacity dim applied to unfocused windows; `dim` is the dim amount (0 = off). |
 | `fade.*`                        |        |           | Generic fade used where no more specific category applies (e.g. layer-shell surfaces). |

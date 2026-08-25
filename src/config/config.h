@@ -369,7 +369,11 @@ namespace umbriel {
           bool enabled = true;
           int durationMs = 250;
           AnimationCurve curve{.easing = Easing::Snappy};
-          double dim = 0.2; // dims the rest of the output while shown, matching Hyprland's dim_special default
+          double dim = 0.2; // dims the rest of the output while shown
+          bool blur = true; // blurs the rest of the output while shown
+          double scale = 0.85; // auto-sizes and centers scratchpad window (0.0 to preserve geometry)
+          bool maximize = false; // automatically maximize scratchpad window to edges
+          bool fullscreen = false; // automatically fullscreen scratchpad window
           bool operator==(const Scratchpad&) const = default;
         } scratchpad;
 
