@@ -83,15 +83,12 @@ namespace umbriel {
   }
 
   // Color space conversions and interpolation helpers
-  [[nodiscard]] std::array<float, 4> lerpColor(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  );
-  [[nodiscard]] std::array<float, 4> lerpColorLinear(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  );
-  [[nodiscard]] std::array<float, 4> lerpColorOkLab(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  );
+  [[nodiscard]] std::array<float, 4>
+  lerpColor(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress);
+  [[nodiscard]] std::array<float, 4>
+  lerpColorLinear(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress);
+  [[nodiscard]] std::array<float, 4>
+  lerpColorOkLab(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress);
   void premultipliedColor(float out[4], const std::array<float, 4>& base, float opacity = 1.0f);
   [[nodiscard]] std::array<float, 4> premultipliedColor(const std::array<float, 4>& base, float opacity = 1.0f);
   [[nodiscard]] std::string colorToHex(const std::array<float, 4>& color);
@@ -102,13 +99,11 @@ namespace umbriel {
   public:
     static void registerCurve(std::string_view name, const AnimationCurve& curve);
     static void registerBezier(std::string_view name, double x1, double y1, double x2, double y2);
-    static void registerSpring(
-        std::string_view name, double damping = 0.75, double stiffness = 100.0, double mass = 1.0
-    );
+    static void
+    registerSpring(std::string_view name, double damping = 0.75, double stiffness = 100.0, double mass = 1.0);
     [[nodiscard]] static std::optional<AnimationCurve> lookup(std::string_view name);
-    [[nodiscard]] static AnimationCurve get(
-        std::string_view name, const AnimationCurve& fallback = AnimationCurve{.easing = Easing::EaseOutCubic}
-    );
+    [[nodiscard]] static AnimationCurve
+    get(std::string_view name, const AnimationCurve& fallback = AnimationCurve{.easing = Easing::EaseOutCubic});
     [[nodiscard]] static bool has(std::string_view name);
     static bool unregisterCurve(std::string_view name);
     static void resetToDefaults();
@@ -181,7 +176,7 @@ namespace umbriel {
     double m_target = 0.0;
     double m_current = 0.0;
     double m_velocity = 0.0;
-    double m_progress = 1.0; // linear fraction as of the last tick(); 1.0 when never animating
+    double m_progress = 1.0;  // linear fraction as of the last tick(); 1.0 when never animating
     uint64_t m_startMsec = 0; // 0 = clock starts on the first tick
     uint64_t m_durationMsec = 1;
     AnimationCurve m_curve{.easing = Easing::EaseOutCubic};
@@ -208,9 +203,8 @@ namespace umbriel {
     void retarget(const std::array<float, 4>& to, int durationMs, std::string_view curveName);
     void retarget(float r, float g, float b, float a, int durationMs, const AnimationCurve& curve = AnimationCurve{});
     void retargetBezier(const std::array<float, 4>& to, int durationMs, double x1, double y1, double x2, double y2);
-    void retargetSpring(
-        const std::array<float, 4>& to, int durationMs, double damping = 0.75, double stiffness = 100.0
-    );
+    void
+    retargetSpring(const std::array<float, 4>& to, int durationMs, double damping = 0.75, double stiffness = 100.0);
 
     // Advances the color animation
     bool tick(uint64_t nowMsec);

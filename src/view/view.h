@@ -227,7 +227,8 @@ namespace umbriel {
     // Re-apply the effective fade, rule, and drag opacity to surface buffers. wlroots scene surface reconfigure (on
     // commit or clip change) resets buffer opacity, so this must run afterward while opacity is below 1.
     [[nodiscard]] float effectiveOpacity() const {
-      const float dim = (m_borderFocusedState || !m_mapped) ? 1.0F : static_cast<float>(1.0 - config().appearance.dimUnfocused);
+      const float dim =
+          (m_borderFocusedState || !m_mapped) ? 1.0F : static_cast<float>(1.0 - config().appearance.dimUnfocused);
       // Overshooting curves (e.g. default "Snappy") can push this past [0, 1]; wlr_scene_buffer_set_opacity asserts.
       return std::clamp(m_fadeAlpha * m_ruleOpacity * m_dragOpacity * dim, 0.0F, 1.0F);
     }

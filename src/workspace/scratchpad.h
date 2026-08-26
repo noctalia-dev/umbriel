@@ -23,9 +23,7 @@ namespace umbriel {
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(uint64_t nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override {
-      return !m_hidingViews.empty() || m_fadeAnim.animating();
-    }
+    [[nodiscard]] bool hasActiveAnimations() const override { return !m_hidingViews.empty() || m_fadeAnim.animating(); }
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
     [[nodiscard]] bool contains(const View* view) const;

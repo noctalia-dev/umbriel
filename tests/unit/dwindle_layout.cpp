@@ -540,8 +540,10 @@ UMBRIEL_TEST(resizeEdgesComeFromTileThirds) {
   // vertical boundary is resizable, so leaf 1 resizes only from its left third.
   const wlr_box right = fixture.layout.targetBox(stub(1));
   const double rightCenterY = right.y + right.height / 2.0;
-  CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), right.x + right.width / 6.0, rightCenterY),
-           static_cast<uint32_t>(WLR_EDGE_LEFT));
+  CHECK_EQ(
+      fixture.layout.resizeEdgesAt(stub(1), right.x + right.width / 6.0, rightCenterY),
+      static_cast<uint32_t>(WLR_EDGE_LEFT)
+  );
   CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), right.x + right.width / 2.0, rightCenterY), 0U);
   // Right third proposes the screen-facing right edge, which sanitize drops.
   CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), right.x + 5.0 * right.width / 6.0, rightCenterY), 0U);
@@ -562,8 +564,10 @@ UMBRIEL_TEST(cornerNinthGrabsBothInternalBoundaries) {
 
   const wlr_box box = fixture.layout.targetBox(stub(1));
   // Bottom-left corner ninth: left third and bottom third both back internal boundaries.
-  CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), box.x + box.width / 6.0, box.y + 5.0 * box.height / 6.0),
-           static_cast<uint32_t>(WLR_EDGE_LEFT | WLR_EDGE_BOTTOM));
+  CHECK_EQ(
+      fixture.layout.resizeEdgesAt(stub(1), box.x + box.width / 6.0, box.y + 5.0 * box.height / 6.0),
+      static_cast<uint32_t>(WLR_EDGE_LEFT | WLR_EDGE_BOTTOM)
+  );
   // Top-right corner ninth proposes right and top, both screen-facing, so nothing survives sanitize.
   CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), box.x + 5.0 * box.width / 6.0, box.y + box.height / 6.0), 0U);
 }

@@ -177,8 +177,10 @@ namespace umbriel {
         if (width > 0 && height > 0) {
           const int centerX = view->sceneTree()->node.x + width / 2;
           const int centerY = view->sceneTree()->node.y + height / 2;
-          const bool centerOnTarget = centerX >= targetArea.x && centerX < targetArea.x + targetArea.width
-              && centerY >= targetArea.y && centerY < targetArea.y + targetArea.height;
+          const bool centerOnTarget = centerX >= targetArea.x
+              && centerX < targetArea.x + targetArea.width
+              && centerY >= targetArea.y
+              && centerY < targetArea.y + targetArea.height;
           if (!centerOnTarget) {
             const int newX = targetArea.x + std::max(0, (targetArea.width - width) / 2);
             const int newY = targetArea.y + std::max(0, (targetArea.height - height) / 2);
@@ -500,8 +502,12 @@ namespace umbriel {
             const int newY = dstArea.y + static_cast<int>(std::lround(yFrac * dstArea.height));
             entry.view->cancelPositionAnimation();
             entry.view->setPosition(
-                std::clamp(newX, dstArea.x, dstArea.x + std::max(0, dstArea.width - entry.view->toplevel()->current.width)),
-                std::clamp(newY, dstArea.y, dstArea.y + std::max(0, dstArea.height - entry.view->toplevel()->current.height))
+                std::clamp(
+                    newX, dstArea.x, dstArea.x + std::max(0, dstArea.width - entry.view->toplevel()->current.width)
+                ),
+                std::clamp(
+                    newY, dstArea.y, dstArea.y + std::max(0, dstArea.height - entry.view->toplevel()->current.height)
+                )
             );
           }
         }

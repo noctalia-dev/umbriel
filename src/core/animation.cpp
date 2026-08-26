@@ -92,8 +92,12 @@ namespace umbriel {
         }
 
         // 2. Bezier syntax: "bezier: x1, y1, x2, y2", "cubic-bezier(x1, y1, x2, y2)", or "x1, y1, x2, y2"
-        if (s.starts_with("bezier:") || s.starts_with("cubic-bezier:") || s.starts_with("cubic_bezier:")
-            || s.starts_with("bezier,") || s.starts_with("cubic-bezier(") || s.starts_with("bezier(")) {
+        if (s.starts_with("bezier:")
+            || s.starts_with("cubic-bezier:")
+            || s.starts_with("cubic_bezier:")
+            || s.starts_with("bezier,")
+            || s.starts_with("cubic-bezier(")
+            || s.starts_with("bezier(")) {
           auto pos = s.find_first_of(":(,");
           std::string params = (pos != std::string::npos) ? s.substr(pos + 1) : s;
           if (!params.empty() && params.back() == ')') {
@@ -232,8 +236,7 @@ namespace umbriel {
             .spring = {.damping = 0.5, .stiffness = 120.0, .mass = 1.0, .initialVelocity = 0.0}
         };
         m_curves["smooth"] = AnimationCurve{
-            .easing = Easing::Spring,
-            .spring = {.damping = 0.9, .stiffness = 90.0, .mass = 1.0, .initialVelocity = 0.0}
+            .easing = Easing::Spring, .spring = {.damping = 0.9, .stiffness = 90.0, .mass = 1.0, .initialVelocity = 0.0}
         };
         m_curves["stiff"] = AnimationCurve{
             .easing = Easing::Spring,
@@ -330,16 +333,14 @@ namespace umbriel {
     if (zeta < 0.9999) {
       const double wd = w0 * std::sqrt(1.0 - zeta * zeta);
       return 1.0
-          - std::exp(-zeta * w0 * t)
-              * (std::cos(wd * t) + (zeta / std::sqrt(1.0 - zeta * zeta)) * std::sin(wd * t));
+          - std::exp(-zeta * w0 * t) * (std::cos(wd * t) + (zeta / std::sqrt(1.0 - zeta * zeta)) * std::sin(wd * t));
     }
     if (zeta <= 1.0001) {
       return 1.0 - std::exp(-w0 * t) * (1.0 + w0 * t);
     }
     const double wd = w0 * std::sqrt(zeta * zeta - 1.0);
     return 1.0
-        - std::exp(-zeta * w0 * t)
-            * (std::cosh(wd * t) + (zeta / std::sqrt(zeta * zeta - 1.0)) * std::sinh(wd * t));
+        - std::exp(-zeta * w0 * t) * (std::cosh(wd * t) + (zeta / std::sqrt(zeta * zeta - 1.0)) * std::sinh(wd * t));
   }
 
   double solveSpringPhysics(
@@ -612,9 +613,7 @@ namespace umbriel {
     return linear;
   }
 
-  std::array<float, 4> lerpColor(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  ) {
+  std::array<float, 4> lerpColor(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress) {
     const float t = static_cast<float>(progress);
     return {
         std::clamp(from[0] + (to[0] - from[0]) * t, 0.0f, 1.0f),
@@ -624,9 +623,8 @@ namespace umbriel {
     };
   }
 
-  std::array<float, 4> lerpColorLinear(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  ) {
+  std::array<float, 4>
+  lerpColorLinear(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress) {
     const float t = static_cast<float>(progress);
     const float lR = sRGBToLinear(from[0]) + (sRGBToLinear(to[0]) - sRGBToLinear(from[0])) * t;
     const float lG = sRGBToLinear(from[1]) + (sRGBToLinear(to[1]) - sRGBToLinear(from[1])) * t;
@@ -688,9 +686,8 @@ namespace umbriel {
     };
   }
 
-  std::array<float, 4> lerpColorOkLab(
-      const std::array<float, 4>& from, const std::array<float, 4>& to, double progress
-  ) {
+  std::array<float, 4>
+  lerpColorOkLab(const std::array<float, 4>& from, const std::array<float, 4>& to, double progress) {
     const float t = static_cast<float>(progress);
     const OkLabColor okFrom = sRGBToOkLab(from);
     const OkLabColor okTo = sRGBToOkLab(to);
@@ -796,29 +793,19 @@ namespace umbriel {
     registryImpl().registerCurve(name, c);
   }
 
-  std::optional<AnimationCurve> CurveRegistry::lookup(std::string_view name) {
-    return registryImpl().lookup(name);
-  }
+  std::optional<AnimationCurve> CurveRegistry::lookup(std::string_view name) { return registryImpl().lookup(name); }
 
   AnimationCurve CurveRegistry::get(std::string_view name, const AnimationCurve& fallback) {
     return lookup(name).value_or(fallback);
   }
 
-  bool CurveRegistry::has(std::string_view name) {
-    return registryImpl().has(name);
-  }
+  bool CurveRegistry::has(std::string_view name) { return registryImpl().has(name); }
 
-  bool CurveRegistry::unregisterCurve(std::string_view name) {
-    return registryImpl().unregisterCurve(name);
-  }
+  bool CurveRegistry::unregisterCurve(std::string_view name) { return registryImpl().unregisterCurve(name); }
 
-  void CurveRegistry::resetToDefaults() {
-    registryImpl().reset();
-  }
+  void CurveRegistry::resetToDefaults() { registryImpl().reset(); }
 
-  std::optional<AnimationCurve> CurveRegistry::parse(std::string_view str) {
-    return registryImpl().parse(str);
-  }
+  std::optional<AnimationCurve> CurveRegistry::parse(std::string_view str) { return registryImpl().parse(str); }
 
   // AnimatedValue
   void AnimatedValue::snap(double value) {
@@ -874,9 +861,7 @@ namespace umbriel {
     }
 
     const uint64_t elapsed = nowMsec - std::min(nowMsec, m_startMsec);
-    const double linear = std::clamp(
-        static_cast<double>(elapsed) / static_cast<double>(m_durationMsec), 0.0, 1.0
-    );
+    const double linear = std::clamp(static_cast<double>(elapsed) / static_cast<double>(m_durationMsec), 0.0, 1.0);
     m_progress = linear;
 
     const double prevCurrent = m_current;
@@ -907,9 +892,7 @@ namespace umbriel {
     m_animating = false;
   }
 
-  void AnimatedColor::snap(float r, float g, float b, float a) {
-    snap(std::array<float, 4>{r, g, b, a});
-  }
+  void AnimatedColor::snap(float r, float g, float b, float a) { snap(std::array<float, 4>{r, g, b, a}); }
 
   void AnimatedColor::retarget(const std::array<float, 4>& to, int durationMs, Easing easing) {
     retarget(to, durationMs, AnimationCurve{.easing = easing});
@@ -942,9 +925,7 @@ namespace umbriel {
     retarget(to, durationMs, c);
   }
 
-  void AnimatedColor::retargetSpring(
-      const std::array<float, 4>& to, int durationMs, double damping, double stiffness
-  ) {
+  void AnimatedColor::retargetSpring(const std::array<float, 4>& to, int durationMs, double damping, double stiffness) {
     AnimationCurve c;
     c.easing = Easing::Spring;
     c.spring = {damping, stiffness, 1.0, 0.0};
@@ -962,9 +943,7 @@ namespace umbriel {
     }
 
     const uint64_t elapsed = nowMsec - std::min(nowMsec, m_startMsec);
-    const double linear = std::clamp(
-        static_cast<double>(elapsed) / static_cast<double>(m_durationMsec), 0.0, 1.0
-    );
+    const double linear = std::clamp(static_cast<double>(elapsed) / static_cast<double>(m_durationMsec), 0.0, 1.0);
     m_progress = linear;
 
     if (linear >= 1.0) {

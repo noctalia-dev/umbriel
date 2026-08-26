@@ -647,9 +647,7 @@ namespace umbriel {
     m_decoration.setShadowPosition(x, y);
   }
 
-  void View::snapPosition(int x, int y) {
-    setPosition(x, y);
-  }
+  void View::snapPosition(int x, int y) { setPosition(x, y); }
 
   void View::animatePositionTo(int x, int y, int durationMs, const AnimationCurve& curve) {
     m_posX.snap(m_sceneTree->node.x);
@@ -1267,8 +1265,7 @@ namespace umbriel {
     // Scratchpad / floating views with no workspace: find the output containing the view's scene coordinates.
     if (m_sceneTree != nullptr && m_server != nullptr && m_server->outputLayout() != nullptr) {
       wlr_output* wlrOut = wlr_output_layout_output_at(
-          m_server->outputLayout(),
-          m_sceneTree->node.x + (m_toplevel ? m_toplevel->current.width / 2 : 0),
+          m_server->outputLayout(), m_sceneTree->node.x + (m_toplevel ? m_toplevel->current.width / 2 : 0),
           m_sceneTree->node.y + (m_toplevel ? m_toplevel->current.height / 2 : 0)
       );
       if (wlrOut != nullptr) {
@@ -1592,16 +1589,27 @@ namespace umbriel {
     if (m_onActiveWorkspace) {
       const auto& app = config().appearance;
       const auto& winIn = app.animations.windowsIn;
-      const int openDur = winIn.enabled ? winIn.durationMs : (app.openAnimationMs > 0 ? app.openAnimationMs : app.animationMs);
+      const int openDur =
+          winIn.enabled ? winIn.durationMs : (app.openAnimationMs > 0 ? app.openAnimationMs : app.animationMs);
       const auto& curve = winIn.enabled ? winIn.curve : app.animationCurve;
       std::string style = winIn.enabled ? winIn.style : "popin";
       if (!winIn.enabled) {
         switch (app.openAnimation) {
-        case Config::Appearance::OpenAnimationStyle::Popin: style = "popin"; break;
-        case Config::Appearance::OpenAnimationStyle::Zoom: style = "zoom"; break;
-        case Config::Appearance::OpenAnimationStyle::Slide: style = "slide"; break;
-        case Config::Appearance::OpenAnimationStyle::Fade: style = "fade"; break;
-        case Config::Appearance::OpenAnimationStyle::None: style = "none"; break;
+        case Config::Appearance::OpenAnimationStyle::Popin:
+          style = "popin";
+          break;
+        case Config::Appearance::OpenAnimationStyle::Zoom:
+          style = "zoom";
+          break;
+        case Config::Appearance::OpenAnimationStyle::Slide:
+          style = "slide";
+          break;
+        case Config::Appearance::OpenAnimationStyle::Fade:
+          style = "fade";
+          break;
+        case Config::Appearance::OpenAnimationStyle::None:
+          style = "none";
+          break;
         }
       }
 
