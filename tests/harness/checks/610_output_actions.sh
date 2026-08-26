@@ -367,6 +367,17 @@ if [[ $min_h -ge 600 ]]; then
   exit 1
 fi
 
+# column-center is a deliberate no-op outside the scrolling layout.
+sleep 0.5
+dwindle_geometry=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
+accepts "column-center"
+sleep 0.2
+after_center=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
+if [[ $after_center != "$dwindle_geometry" ]]; then
+  echo "column-center changed dwindle geometry: $dwindle_geometry -> $after_center"
+  exit 1
+fi
+
 # The runtime switch must survive a window open: reconcileDynamic re-resolves
 # the configured layout, and the override keeps dwindle in force.
 spawn_client dwindle-d

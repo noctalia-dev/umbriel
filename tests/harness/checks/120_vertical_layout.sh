@@ -4,6 +4,7 @@ set -euo pipefail
 
 readonly EXPECT_W=1260
 readonly EXPECT_H=344
+readonly EXPECT_CENTER_Y=$(( (720 - EXPECT_H) / 2 ))
 
 spawn_client() {
   foot --title="vertical-harness-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
@@ -56,4 +57,30 @@ if ! jq -e '[.[].y] | unique | length == 2' <<< "$windows" > /dev/null; then
   exit 1
 fi
 
-echo "2 clients tiled in vertical lanes at ${EXPECT_W}x${EXPECT_H}"
+# Column centering follows the vertical layout's primary axis.
+"$UMBRIEL" msg column-center > /dev/null
+center_y=0
+for _ in $(seq 40); do
+  center_y=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "vertical-harness-b") | .y')
+  [[ $center_y -eq $EXPECT_CENTER_Y ]] && break
+  sleep 0.1
+done
+if [[ $center_y -ne $EXPECT_CENTER_Y ]]; then
+  echo "expected last vertical column centered at y=$EXPECT_CENTER_Y, got y=$center_y"
+  exit 1
+fi
+
+"$UMBRIEL" msg window-focus-up > /dev/null
+"$UMBRIEL" msg column-center > /dev/null
+center_y=0
+for _ in $(seq 40); do
+  center_y=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "vertical-harness-a") | .y')
+  [[ $center_y -eq $EXPECT_CENTER_Y ]] && break
+  sleep 0.1
+done
+if [[ $center_y -ne $EXPECT_CENTER_Y ]]; then
+  echo "expected first vertical column centered at y=$EXPECT_CENTER_Y, got y=$center_y"
+  exit 1
+fi
+
+echo "2 clients tiled in vertical lanes at ${EXPECT_W}x${EXPECT_H}, edge columns center"

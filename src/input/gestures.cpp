@@ -266,6 +266,7 @@ namespace umbriel {
         m_scrollWorkspace = ws;
         m_viewportPrimary = ws->scrollViewportExtent();
         m_scrollStart = scrolling->scroll();
+        m_scrollStartCentered = scrolling->centeredRest();
         ws->markArrange(false);
         m_state = State::Scroll;
       } else {
@@ -304,11 +305,15 @@ namespace umbriel {
         return;
       }
       const auto maxScroll = static_cast<double>(scrolling->maxScroll(m_viewportPrimary));
-      if (target < 0) {
-        target = std::max(target * kOverscrollCompress, -0.1 * m_viewportPrimary);
+      // The strip can rest past its own edge (a centered end column sits half a viewport out), so measure the
+      // rubber-band from where it is rather than from the edges, or the first finger movement yanks it back in.
+      const double restLow = std::min(m_scrollStart, 0.0);
+      const double restHigh = std::max(m_scrollStart, maxScroll);
+      if (target < restLow) {
+        target = std::max(restLow + (target - restLow) * kOverscrollCompress, restLow - 0.1 * m_viewportPrimary);
       }
-      if (target > maxScroll) {
-        target = std::min(maxScroll + (target - maxScroll) * kOverscrollCompress, maxScroll + 0.1 * m_viewportPrimary);
+      if (target > restHigh) {
+        target = std::min(restHigh + (target - restHigh) * kOverscrollCompress, restHigh + 0.1 * m_viewportPrimary);
       }
       scrolling->setScroll(target);
       m_scrollWorkspace->markArrange(false);
@@ -461,7 +466,7 @@ namespace umbriel {
       return;
     }
     if (cancelled) {
-      scrolling->setScroll(m_scrollStart);
+      scrolling->setScroll(m_scrollStart, m_scrollStartCentered);
       m_scrollWorkspace->markArrange(true);
     } else {
       // Snap to the column nearest the viewport center.
@@ -511,6 +516,8 @@ namespace umbriel {
         m_scrollWorkspace->ensureFocusedVisible();
         m_scrollWorkspace->markArrange(true);
       }
+      scrolling->setScroll(std::clamp(layout.scroll(), 0.0, maxScroll));
+      m_scrollWorkspace->markArrange(true);
     }
     m_scrollWorkspace = nullptr;
     m_state = State::Idle;

@@ -335,7 +335,20 @@ namespace umbriel {
     m_columns.insert(m_columns.begin() + destination, std::move(column));
   }
 
-  void ScrollingLayout::setScroll(double scroll) { m_scroll = scroll; }
+  void ScrollingLayout::setScroll(double scroll, bool centeredRest) {
+    m_scroll = scroll;
+    m_centeredRest = centeredRest;
+  }
+
+  bool ScrollingLayout::centerColumn(int columnIndex, int viewportPrimary) {
+    if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size()) || viewportPrimary <= 0) {
+      return false;
+    }
+    const double target = static_cast<double>(columnX(columnIndex, viewportPrimary))
+        - (viewportPrimary - columnWidth(columnIndex, viewportPrimary)) / 2.0;
+    setScroll(target, true);
+    return true;
+  }
 
   double ScrollingLayout::targetScrollForEnsureVisible(int columnIndex, int viewportPrimary) const {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size()) || viewportPrimary <= 0) {
@@ -344,12 +357,11 @@ namespace umbriel {
     const int x = columnX(columnIndex, viewportPrimary);
     const int width = columnWidth(columnIndex, viewportPrimary);
     const double max = static_cast<double>(std::max(0, totalWidth(viewportPrimary) - viewportPrimary));
-    // Already fully on screen: never move the strip. In particular, a column flush against an edge must not jump when
-    // it receives focus. Still bounded: a touchpad swipe parks the strip past an edge on purpose, and the edge column
-    // stays fully visible while it does, so returning that overscroll verbatim would make every reveal a no-op and
-    // leave the strip resting outside its own range.
+    // Already fully on screen: never move the strip, including one parked past an edge on purpose (column-center
+    // overshoots the range so edge columns can sit in the middle). A touchpad swipe that left the strip outside its
+    // range springs back where the gesture ends, in Gestures::finishScroll.
     if (m_scroll <= static_cast<double>(x) && m_scroll >= static_cast<double>(x + width - viewportPrimary)) {
-      return std::clamp(m_scroll, 0.0, max);
+      return m_centeredRest ? m_scroll : std::clamp(m_scroll, 0.0, max);
     }
 
     // Move by the shortest distance that reveals the whole column. A column entering from the right lands flush against
@@ -383,7 +395,9 @@ namespace umbriel {
   }
 
   void ScrollingLayout::ensureVisible(int columnIndex, int viewportPrimary) {
-    m_scroll = targetScrollForEnsureVisible(columnIndex, viewportPrimary);
+    const double target = targetScrollForEnsureVisible(columnIndex, viewportPrimary);
+    m_centeredRest = m_centeredRest && target == m_scroll;
+    m_scroll = target;
   }
 
   void ScrollingLayout::arrange(const wlr_box& usable) {

@@ -702,6 +702,19 @@ namespace umbriel {
     return true;
   }
 
+  bool Workspace::centerFocusedColumn() {
+    ScrollingLayout* scrolling = scrollingLayout();
+    if (scrolling == nullptr || m_focusedView == nullptr) {
+      return false;
+    }
+    const int column = scrolling->columnOf(m_focusedView);
+    if (!scrolling->centerColumn(column, scrollViewportExtent())) {
+      return false;
+    }
+    markArrange();
+    return true;
+  }
+
   bool Workspace::modifyFocusedWidth(double delta) {
     const int column = m_layout->columnOf(m_focusedView);
     if (column < 0) {

@@ -104,6 +104,7 @@ These take no argument.
 | `window-move-to-workspace-next` / `window-move-to-workspace-previous` | Move the focused window to the adjacent workspace and follow it. These actions do not wrap around. |
 | `column-move-left` / `column-move-right` | Move the focused window's column left or right. |
 | `window-move-or-output-left` / `window-move-or-output-right` | Move the focused window's column left or right; if already at the edge, move the column to the output in that direction instead. |
+| `column-center` | Center the focused column in the scrolling viewport; a no-op on a dwindle workspace. |
 | `window-move-up` / `window-move-down` | Move the focused window up or down within its column. |
 | `window-move-or-workspace-up` / `window-move-or-workspace-down` | Move the focused window up or down within its column; at the boundary, move it to the adjacent workspace. |
 | `window-move-or-output-up` / `window-move-or-output-down` | Move the focused window up or down within its column; if already at the edge, move the column to the output in that direction instead. |

@@ -229,7 +229,8 @@ follows_mouse = false
 # "Mod+Shift+O" = "dpms-off"        # input activity powers displays back on
 # "Mod+Ctrl+O" = "dpms-off:DP-1"   # target one connector
 # "Mod+Minus" = "window-modify-width:-0.1"
-# "Mod+C" = "window-center"
+# "Mod+C" = "column-center"
+# "Mod+Shift+C" = "window-center"
 # "Mod+Shift+T" = "workspace-set-layout:toggle"
 
 # Media and volume (see docs/user/keybinds.md#example-media-and-brightness-keys)

@@ -151,6 +151,7 @@ namespace umbriel {
         {"cheatsheet-close", "", KeybindAction::CheatsheetClose},
         {"cheatsheet-open", "", KeybindAction::CheatsheetOpen},
         {"cheatsheet-toggle", "", KeybindAction::CheatsheetToggle},
+        {"column-center", "", KeybindAction::ColumnCenter},
         {"column-move-left", "", KeybindAction::ColumnMoveLeft},
         {"column-move-right", "", KeybindAction::ColumnMoveRight},
         {"column-move-to-output-down", "", KeybindAction::ColumnMoveToOutputDown},
