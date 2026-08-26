@@ -26,16 +26,20 @@
   makeBinaryWrapper,
 }:
 let
-  inherit (builtins) baseNameOf head match readFile;
-  source =
-    lib.throwIf (!builtins.pathExists (../. + "/subprojects/scenefx/meson.build")) ''
-      umbriel: subprojects/scenefx is missing.
+  inherit (builtins)
+    baseNameOf
+    head
+    match
+    readFile
+    ;
+  source = lib.throwIf (!builtins.pathExists (../. + "/subprojects/scenefx/meson.build")) ''
+    umbriel: subprojects/scenefx is missing.
 
-      This flake needs a Git submodule, which the `github:` fetcher cannot
-      fetch because it downloads a tarball. Use the Git fetcher instead:
+    This flake needs a Git submodule, which the `github:` fetcher cannot
+    fetch because it downloads a tarball. Use the Git fetcher instead:
 
-        inputs.umbriel.url = "git+https://github.com/noctalia-dev/umbriel";
-    '' ../.;
+      inputs.umbriel.url = "git+https://github.com/noctalia-dev/umbriel";
+  '' ../.;
   version = head (match ".*\n  version: '([0-9][^']+)'.*" (readFile ../meson.build));
 in
 stdenv.mkDerivation {
