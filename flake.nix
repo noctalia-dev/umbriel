@@ -54,5 +54,9 @@
       nixosModules.default = withDefaultPackage (
         import ./nix/nixos-module.nix { inherit xdg-desktop-portal-umbriel; }
       );
+
+      finixModules.default = withDefaultPackage (
+        import ./nix/finix-module.nix { inherit xdg-desktop-portal-umbriel; }
+      );
     };
 }
