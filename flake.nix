@@ -35,6 +35,8 @@
         };
     in
     {
+      formatter = forEachSystem (pkgs: pkgs.nixfmt-tree);
+
       overlays.default = final: _: {
         umbriel = final.callPackage ./nix/package.nix { };
       };
