@@ -1,3 +1,4 @@
+{ xdg-desktop-portal-umbriel }:
 {
   config,
   pkgs,
@@ -22,7 +23,8 @@ in
 
     portalPackage = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
-      default = null;
+      default = xdg-desktop-portal-umbriel.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      defaultText = lib.literalExpression "the xdg-desktop-portal-umbriel flake's package";
       description = ''
         The xdg-desktop-portal-umbriel package to install.
       '';

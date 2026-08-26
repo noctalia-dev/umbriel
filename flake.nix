@@ -4,10 +4,19 @@
   inputs = {
     self.submodules = true;
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
+    xdg-desktop-portal-umbriel = {
+      url = "github:noctalia-dev/xdg-desktop-portal-umbriel";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      xdg-desktop-portal-umbriel,
+      ...
+    }:
     let
       systems = [
         "x86_64-linux"
@@ -42,6 +51,8 @@
 
       homeModules.default = withDefaultPackage ./nix/home-module.nix;
       hjemModules.default = withDefaultPackage ./nix/hjem-module.nix;
-      nixosModules.default = withDefaultPackage ./nix/nixos-module.nix;
+      nixosModules.default = withDefaultPackage (
+        import ./nix/nixos-module.nix { inherit xdg-desktop-portal-umbriel; }
+      );
     };
 }
