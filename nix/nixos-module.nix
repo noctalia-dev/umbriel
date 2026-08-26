@@ -52,6 +52,12 @@ in
         # Required for greetd / noctalia-greeter to discover the session (Name=Umbriel).
         # Plain systemPackages .desktop files are not enough; NixOS aggregates via this.
         services.displayManager.sessionPackages = [ cfg.package ];
+
+        systemd.packages = [ cfg.package ];
+        systemd.user.services.umbriel = {
+          restartIfChanged = false;
+          enableDefaultPath = false;
+        };
       })
 
       (lib.mkIf (cfg.portalPackage != null) {
