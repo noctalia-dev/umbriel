@@ -268,6 +268,8 @@ namespace {
       return Group::Apps;
     case A::WindowFocusLeft:
     case A::WindowFocusRight:
+    case A::WindowFocusOrOutputLeft:
+    case A::WindowFocusOrOutputRight:
     case A::WindowFocusUp:
     case A::WindowFocusDown:
     case A::WindowFocusOrWorkspaceUp:
@@ -278,6 +280,8 @@ namespace {
       return Group::Focus;
     case A::ColumnMoveLeft:
     case A::ColumnMoveRight:
+    case A::WindowMoveOrOutputLeft:
+    case A::WindowMoveOrOutputRight:
     case A::WindowMoveUp:
     case A::WindowMoveDown:
     case A::WindowMoveOrWorkspaceUp:
