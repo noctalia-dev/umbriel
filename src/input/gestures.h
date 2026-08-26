@@ -1,5 +1,7 @@
 #pragma once
 
+#include "input/swipe_tracker.h"
+
 #include <cstdint>
 #include <wayland-server-core.h>
 
@@ -42,10 +44,13 @@ namespace umbriel {
     void handleHoldEnd(void* data);
 
     void cancelActive();
-    void finishScroll(bool cancelled);
+    void finishScroll(bool cancelled, uint32_t timeMsec);
     void finishSwitch(bool cancelled);
     void finishOverview(bool cancelled);
     void silentCancel();
+
+    // Finger travel that moves the strip by one viewport width.
+    [[nodiscard]] double scrollNormFactor() const;
 
     Server* m_server = nullptr;
     State m_state = State::Idle;
@@ -56,7 +61,9 @@ namespace umbriel {
     // Scroll state (horizontal 3-finger).
     Workspace* m_scrollWorkspace = nullptr;
     double m_scrollStart = 0;
+    bool m_scrollStartCentered = false;
     int m_viewportPrimary = 0;
+    SwipeTracker m_scrollTracker;
 
     // Switch state (vertical 3-finger).
     WorkspaceGroup* m_switchGroup = nullptr;

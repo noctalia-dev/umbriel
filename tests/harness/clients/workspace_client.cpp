@@ -11,6 +11,7 @@
 namespace {
   struct Workspace {
     ext_workspace_handle_v1* handle = nullptr;
+    std::string id;
     std::string name;
     uint32_t state = 0;
     bool removed = false;
@@ -24,7 +25,9 @@ namespace {
     bool done = false;
   };
 
-  void workspaceId(void*, ext_workspace_handle_v1*, const char*) {}
+  void workspaceId(void* data, ext_workspace_handle_v1*, const char* id) {
+    static_cast<Workspace*>(data)->id = id != nullptr ? id : "";
+  }
 
   void workspaceName(void* data, ext_workspace_handle_v1*, const char* name) {
     static_cast<Workspace*>(data)->name = name != nullptr ? name : "";
@@ -108,7 +111,9 @@ namespace {
   };
 } // namespace
 
-int main() {
+// Default output is the active workspace of each group, one per line. `--all` lists every workspace as "id<TAB>name".
+int main(int argc, char** argv) {
+  const bool listAll = argc > 1 && std::string_view(argv[1]) == "--all";
   wl_display* display = wl_display_connect(nullptr);
   if (display == nullptr) {
     std::println(stderr, "workspace-client: cannot connect to WAYLAND_DISPLAY");
@@ -126,8 +131,16 @@ int main() {
 
   int active = 0;
   for (const auto& workspace : state.workspaces) {
-    if (!workspace->removed && (workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) != 0) {
-      std::println("{}", workspace->name);
+    if (workspace->removed) {
+      continue;
+    }
+    if (listAll) {
+      std::println("{}\t{}", workspace->id, workspace->name);
+    }
+    if ((workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) != 0) {
+      if (!listAll) {
+        std::println("{}", workspace->name);
+      }
       ++active;
     }
   }
@@ -144,7 +157,7 @@ int main() {
   wl_registry_destroy(state.registry);
   wl_display_disconnect(display);
 
-  if (!state.done || active != 1) {
+  if (!state.done || (!listAll && active != 1)) {
     std::println(stderr, "workspace-client: expected one active workspace, got {}", active);
     return 1;
   }

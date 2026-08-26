@@ -4,8 +4,13 @@
 #include "core/log.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
+#include "output/frame_schedule.h"
 #include "output/hdr_format.h"
+#include "overview/overview.h"
+#include "scene/cheatsheet.h"
+#include "scene/config_banner.h"
 #include "scene/node.h"
+#include "scene/quit_confirm.h"
 #include "server/server.h"
 #include "server/wine_color_manager.h"
 #include "view/view.h"
@@ -22,6 +27,7 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("output");
+    constexpr int kFrameRetryDelayMs = 16;
 
     const OutputRule* findRule(const char* name) {
       for (const OutputRule& rule : config().outputs) {
@@ -43,8 +49,14 @@ namespace umbriel {
     m_requestState.notify = onRequestState;
     wl_signal_add(&m_output->events.request_state, &m_requestState);
 
+    m_present.notify = onPresent;
+    wl_signal_add(&m_output->events.present, &m_present);
+
     m_destroy.notify = onDestroy;
     wl_signal_add(&m_output->events.destroy, &m_destroy);
+
+    m_frameRetryTimer =
+        wl_event_loop_add_timer(wl_display_get_event_loop(m_server->display()), onFrameRetryTimer, this);
 
     applyCursorConfig();
     (void)applyConfiguredState();
@@ -94,6 +106,64 @@ namespace umbriel {
   float Output::configuredSdrWhite() const {
     const OutputRule* rule = findRule(m_output->name);
     return rule != nullptr ? rule->sdrWhite : 203.0F;
+  }
+
+  bool Output::configuredTearingAllowed() const {
+    const OutputRule* rule = findRule(m_output->name);
+    return rule != nullptr && rule->allowTearing;
+  }
+
+  View* Output::tearingCandidate() const {
+    const Workspace* workspace = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    if (workspace == nullptr) {
+      return nullptr;
+    }
+    const auto eligible = [this](View* view) {
+      return view != nullptr
+          && view->mapped()
+          && view->onActiveWorkspace()
+          && view->currentOutput() == this
+          && view->layoutFullscreen()
+          && view->toplevel()->current.fullscreen;
+    };
+    if (View* focused = workspace->focusedView(); eligible(focused)) {
+      return focused;
+    }
+    const std::vector<View*> views = workspace->allViews();
+    const auto candidate = std::ranges::find_if(views, eligible);
+    return candidate != views.end() ? *candidate : nullptr;
+  }
+
+  bool Output::clientTearingHintAsync(const View* view) const {
+    if (view == nullptr || m_server->tearingControlManager() == nullptr) {
+      return false;
+    }
+    return wlr_tearing_control_manager_v1_surface_hint_from_surface(
+               m_server->tearingControlManager(), view->toplevel()->base->surface
+           )
+        == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+  }
+
+  bool Output::tearingEligible(View* view) const {
+    if (view == nullptr || tearingCandidate() != view) {
+      return false;
+    }
+    return tearingEnabled(configuredTearingAllowed(), view->resolvedRules().allowTearing, clientTearingHintAsync(view));
+  }
+
+  bool Output::tearingRequested() const { return tearingEligible(tearingCandidate()); }
+
+  std::optional<bool> Output::lastPresentationVsync() const {
+    if (!m_lastPresentationFlags || *m_lastPresentationFlags == 0) {
+      return std::nullopt;
+    }
+    return (*m_lastPresentationFlags & WLR_OUTPUT_PRESENT_VSYNC) != 0;
+  }
+
+  void Output::resetTearingState() {
+    m_tearingFallbackReason.clear();
+    m_tearingRecovery.reset();
+    wlr_output_schedule_frame(m_output);
   }
 
   void Output::setHdrFallbackReason(std::string_view reason) {
@@ -347,11 +417,7 @@ namespace umbriel {
         || (!view->layoutFullscreen() && !view->toplevel()->current.fullscreen)) {
       return false;
     }
-    const wlr_image_description_v1_data* description =
-        m_server->surfaceImageDescription(view->toplevel()->base->surface);
-    return description != nullptr
-        && description->tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
-        && description->primaries_named == WP_COLOR_MANAGER_V1_PRIMARIES_BT2020;
+    return m_server->surfaceTreeHdrDescription(view->toplevel()->base->surface) != nullptr;
   }
 
   View* Output::findAutoHdrCandidate() const {
@@ -513,6 +579,10 @@ namespace umbriel {
   }
 
   Output::~Output() {
+    if (m_frameRetryTimer != nullptr) {
+      wl_event_source_remove(m_frameRetryTimer);
+      m_frameRetryTimer = nullptr;
+    }
     if (m_animationRenderLocked) {
       wlr_output_lock_attach_render(m_output, false);
       m_animationRenderLocked = false;
@@ -527,6 +597,7 @@ namespace umbriel {
     if (m_frame.link.next != nullptr) {
       wl_list_remove(&m_frame.link);
       wl_list_remove(&m_requestState.link);
+      wl_list_remove(&m_present.link);
       wl_list_remove(&m_destroy.link);
     }
     // Workspace destructors reparent leftover views onto the server trees, so the group has to go before the roots it
@@ -708,10 +779,30 @@ namespace umbriel {
     self->handleRequestState(data);
   }
 
+  void Output::onPresent(wl_listener* listener, void* data) {
+    Output* self;
+    self = wl_container_of(listener, self, m_present);
+    self->handlePresent(data);
+  }
+
   void Output::onDestroy(wl_listener* listener, void* /*data*/) {
     Output* self;
     self = wl_container_of(listener, self, m_destroy);
     self->handleDestroy();
+  }
+
+  int Output::onFrameRetryTimer(void* data) {
+    auto* self = static_cast<Output*>(data);
+    if (outputFrameAllowed(self->m_server->stopping(), self->m_server->session())) {
+      wlr_output_schedule_frame(self->m_output);
+    }
+    return 0;
+  }
+
+  void Output::armFrameRetry() {
+    if (m_frameRetryTimer != nullptr && outputFrameAllowed(m_server->stopping(), m_server->session())) {
+      wl_event_source_timer_update(m_frameRetryTimer, kFrameRetryDelayMs);
+    }
   }
 
   void Output::applyMode(int width, int height) {
@@ -774,10 +865,14 @@ namespace umbriel {
   }
 
   void Output::handleFrame() {
-    // A failed DRM commit can immediately queue another frame after logind revokes device access.
-    // Stop before that retry loop can keep the final event-loop dispatch alive.
-    if (m_server->stopping()) {
+    // A failed DRM commit can immediately queue another frame after logind revokes device access. Stop before that
+    // retry loop can keep the final event-loop dispatch alive. A null session belongs to a nested or headless backend
+    // and remains renderable.
+    if (!outputFrameAllowed(m_server->stopping(), m_server->session())) {
       return;
+    }
+    if (m_frameRetryTimer != nullptr) {
+      wl_event_source_timer_update(m_frameRetryTimer, 0);
     }
 
     flushDirty();
@@ -811,6 +906,49 @@ namespace umbriel {
       colorManager->applySurfaceDescriptions();
     }
 
+    const int externalRenderLocks = m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
+    const bool captureActive = externalRenderLocks > 0;
+    View* tearingView = tearingCandidate();
+    const bool tearingPolicyRequested = tearingEligible(tearingView);
+
+    bool tearingFrameEligible = tearingPolicyRequested;
+    if (!configuredTearingAllowed()) {
+      m_tearingFallbackReason.clear();
+    } else if (tearingView == nullptr) {
+      m_tearingFallbackReason.clear();
+    } else if (const std::optional<bool> rule = tearingView->resolvedRules().allowTearing; rule && !*rule) {
+      m_tearingFallbackReason.clear();
+    } else if (!tearingView->resolvedRules().allowTearing && !clientTearingHintAsync(tearingView)) {
+      m_tearingFallbackReason.clear();
+    } else if (m_server->sessionLocked()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "session locked";
+    } else if (m_server->overview() != nullptr && m_server->overview()->active()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "overview active";
+    } else if (m_server->configBanner() != nullptr && m_server->configBanner()->visible()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "configuration banner visible";
+    } else if (m_server->cheatsheet() != nullptr && m_server->cheatsheet()->visible()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "cheatsheet visible";
+    } else if (m_server->quitConfirm() != nullptr && m_server->quitConfirm()->visible()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "quit confirmation visible";
+    } else if (animationsActive) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "output animation active";
+    } else if (captureActive) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "output capture active";
+    } else if (m_tearingRecovery.regularCommitPending()) {
+      tearingFrameEligible = false;
+      m_tearingFallbackReason = "recovering from failed async commit";
+    } else {
+      m_tearingFallbackReason.clear();
+    }
+    const bool requestTearing = m_tearingRecovery.requestTearing(tearingFrameEligible);
+
     if (m_output->width <= 0 || m_output->height <= 0) {
       // Output not configured yet; no clients can be presenting on it either.
       return;
@@ -821,6 +959,7 @@ namespace umbriel {
     // video players) block on wl_surface.frame before submitting their next buffer. If we skip frame_done on the
     // "nothing to render" path, they never commit again -> damage stays clean -> wlr_scene_output_needs_frame returns
     // false forever -> compositor parks in epoll_wait. (Reproducible with any mailbox/FIFO Vulkan game.)
+    bool commitFailed = false;
     if (wlr_scene_output_needs_frame(m_sceneOutput) || m_gammaDirty) {
       m_inFrame = true;
 
@@ -828,7 +967,7 @@ namespace umbriel {
       wlr_output_state_init(&state);
 
       bool commitOk = false;
-      int captureLocks = m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
+      int captureLocks = externalRenderLocks;
       if (wlr_export_dmabuf_manager_v1* manager = m_server->exportDmabufManager()) {
         wlr_export_dmabuf_frame_v1* frame;
         wl_list_for_each(frame, &manager->frames, link) {
@@ -862,19 +1001,51 @@ namespace umbriel {
           }
         }
 
+        const bool hasBuffer = (state.committed & WLR_OUTPUT_STATE_BUFFER) != 0;
+        bool commitTearing = requestTearing && hasBuffer;
+        const bool recoveringFromFailedCommit = m_tearingRecovery.regularCommitPending();
+        bool backendRejectedTearing = false;
+        if (commitTearing) {
+          state.tearing_page_flip = true;
+          if (!wlr_output_test_state(m_output, &state)) {
+            state.tearing_page_flip = false;
+            commitTearing = false;
+            backendRejectedTearing = true;
+            m_tearingRecovery.forceRegularCommit();
+            m_tearingFallbackReason = "backend rejected async page flip";
+          }
+        }
+
         commitOk = wlr_output_commit_state(m_output, &state);
+        if (hasBuffer) {
+          m_tearingRecovery.recordCommit(commitTearing, commitOk);
+        }
         if (commitOk && gammaPending) {
           m_gammaDirty = false;
+        }
+        if (commitOk && hasBuffer) {
+          m_lastCommitTearing = commitTearing;
+          m_trackingPresentation = true;
+          m_trackedPresentationCommitSeq = m_output->commit_seq;
+          m_lastPresentationPresented.reset();
+          m_lastPresentationFlags.reset();
+          if (commitTearing) {
+            m_tearingFallbackReason.clear();
+          } else if (
+              recoveringFromFailedCommit && !backendRejectedTearing && !m_tearingRecovery.regularCommitPending()
+          ) {
+            m_tearingFallbackReason = "recovered with regular page flip";
+          }
+        } else if (commitTearing) {
+          m_tearingFallbackReason = "async page flip commit failed";
+        } else if (hasBuffer && m_tearingRecovery.regularCommitPending()) {
+          m_tearingFallbackReason = "regular recovery commit failed";
         }
       }
 
       wlr_output_state_finish(&state);
       m_inFrame = false;
-
-      if (!commitOk) {
-        // Retry on next vblank; scene may have changed or backend may have recovered.
-        wlr_output_schedule_frame(m_output);
-      }
+      commitFailed = !commitOk;
     }
 
     // A request_state that arrived mid-commit is applied now that we're out of it.
@@ -883,9 +1054,26 @@ namespace umbriel {
       applyMode(m_deferredWidth, m_deferredHeight);
     }
 
-    // Keep this output ticking on the next vblank while it owns an animation.
-    if (animationsActive) {
+    if (commitFailed && m_output->idle_frame != nullptr) {
+      // Damage, animation, or deferred output work can schedule another idle frame while this frame callback is still
+      // running. Remove it before arming the timer, otherwise the idle dispatcher can still recurse without returning
+      // to signals.
+      wl_event_source_remove(m_output->idle_frame);
+      m_output->idle_frame = nullptr;
+    }
+
+    // A failed commit has no vblank to pace an immediate retry. Defer it so event-loop signal and session sources get
+    // dispatched first. This also replaces animation scheduling for the failed frame, otherwise the animation path
+    // would recreate the same immediate retry loop.
+    switch (outputFrameFollowup(m_server->stopping(), m_server->session(), commitFailed, animationsActive)) {
+    case OutputFrameFollowup::Schedule:
       wlr_output_schedule_frame(m_output);
+      break;
+    case OutputFrameFollowup::RetryDelayed:
+      armFrameRetry();
+      break;
+    case OutputFrameFollowup::None:
+      break;
     }
 
     // Unconditional: see comment above. Never gate this on commit success.
@@ -917,15 +1105,39 @@ namespace umbriel {
     wlr_output_schedule_frame(m_output);
   }
 
+  void Output::handlePresent(void* data) {
+    const auto* event = static_cast<const wlr_output_event_present*>(data);
+    if (!m_trackingPresentation || event->commit_seq != m_trackedPresentationCommitSeq) {
+      return;
+    }
+    m_trackingPresentation = false;
+    m_lastPresentationPresented = event->presented;
+    if (event->presented) {
+      m_lastPresentationFlags = event->flags;
+    } else {
+      m_lastPresentationFlags.reset();
+      if (m_lastCommitTearing) {
+        m_tearingRecovery.forceRegularCommit();
+        m_tearingFallbackReason = "async page flip was not presented";
+        wlr_damage_ring_add_whole(&m_sceneOutput->damage_ring);
+        if (outputFrameAllowed(m_server->stopping(), m_server->session())) {
+          wlr_output_schedule_frame(m_output);
+        }
+      }
+    }
+  }
+
   void Output::handleDestroy() {
     if (m_output->data == this) {
       m_output->data = nullptr;
     }
     wl_list_remove(&m_frame.link);
     wl_list_remove(&m_requestState.link);
+    wl_list_remove(&m_present.link);
     wl_list_remove(&m_destroy.link);
     m_frame.link.next = nullptr;
     m_requestState.link.next = nullptr;
+    m_present.link.next = nullptr;
     m_destroy.link.next = nullptr;
     if (m_optimizedBlur != nullptr && m_server->scene() != nullptr) {
       wlr_scene_node_destroy(&m_optimizedBlur->node);

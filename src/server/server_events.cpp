@@ -21,10 +21,23 @@
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
+#include <algorithm>
+#include <charconv>
+#include <limits>
+#include <optional>
+#include <vector>
+
 namespace umbriel {
 
   namespace {
     constexpr Logger kLog("server");
+
+    // Dynamic workspaces are numbered, static ones can be named; sort the numbers by value and push names to the end.
+    size_t workspaceOrder(std::string_view name) {
+      size_t index = 0;
+      const auto [end, error] = std::from_chars(name.data(), name.data() + name.size(), index);
+      return error == std::errc{} && end == name.data() + name.size() ? index : std::numeric_limits<size_t>::max();
+    }
 
     View* viewForSurface(Server& server, wlr_surface* surface) {
       if (surface == nullptr) {
@@ -344,12 +357,18 @@ namespace umbriel {
         }
         reassignOutputViews(output.get(), fallback);
       }
+      scheduleDisplacedViewRestore();
       updateOutputManagerConfig();
       // A disabled output must not keep keyboard focus: pull it onto a live one.
       refocus();
       // Scale may have changed; every surface must hear about it or clients
       // like xwayland-satellite keep mapping input with the stale scale.
       refreshSurfaceScales();
+    }
+    if (effects.tearingPolicy) {
+      for (const auto& output : m_outputs) {
+        output->resetTearingState();
+      }
     }
     if (effects.workspaceInventory) {
       for (const auto& output : m_outputs) {
@@ -973,7 +992,12 @@ namespace umbriel {
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }
 
   void Server::addOutput(wlr_output* output) {
+    if (!m_pendingOutputName.empty()) {
+      // Before the Output exists: adding it to the layout advertises the name to clients, and it cannot change after.
+      wlr_output_set_name(output, m_pendingOutputName.c_str());
+    }
     m_outputs.push_back(std::make_unique<Output>(*this, output));
+    scheduleDisplacedViewRestore();
     markDirty(Dirty::Backdrop | Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
     if (m_sessionLocked) {
       updateLockBlank();
@@ -1387,16 +1411,127 @@ namespace umbriel {
     Workspace* targetWorkspace = destination != nullptr && destination->workspaceGroup() != nullptr
         ? destination->workspaceGroup()->active()
         : nullptr;
+    const char* sourceName = source->wlr()->name;
     if (sourceGroup != nullptr) {
+      // Record every home before the first move; setWorkspace empties workspaces as views leave and a dynamic group
+      // renumbers what is left, under the windows that have not been read yet.
+      std::vector<View*> leaving;
       for (const auto& view : m_registry.all()) {
         Workspace* workspace = view->workspace();
-        if (workspace != nullptr && workspace->group() == sourceGroup) {
-          view->setWorkspace(targetWorkspace);
+        if (workspace == nullptr || workspace->group() != sourceGroup) {
+          continue;
+        }
+        if (!view->displacedHome() && sourceName != nullptr) {
+          if (view->floating()) {
+            // Capture this before moving any view. A later output loss may encounter the same displaced view on a
+            // temporary fallback, but its home geometry must remain the one recorded here.
+            view->rememberFloatingPosition();
+          }
+          view->markDisplaced({.outputName = sourceName, .workspaceName = workspace->name()});
+        }
+        leaving.push_back(view.get());
+      }
+      for (View* view : leaving) {
+        const bool floating = view->floating();
+        view->setWorkspace(targetWorkspace);
+        if (floating && targetWorkspace != nullptr) {
+          // This output is only a refuge while the recorded home is absent. Present the saved geometry here without
+          // replacing it, since another output can disappear before this animation finishes during VT deactivation.
+          view->restoreFloatingPosition(false);
         }
       }
     }
     if (m_scratchpadManager != nullptr) {
       m_scratchpadManager->moveOutput(source, destination);
+    }
+  }
+
+  // Deferred to idle: outputs come back one at a time, and a returning one has no workspace group until addOutput is
+  // done with it.
+  void Server::scheduleDisplacedViewRestore() {
+    if (m_displacedRestoreIdle != nullptr) {
+      return;
+    }
+    m_displacedRestoreIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onDisplacedRestoreIdle, this);
+    if (m_displacedRestoreIdle == nullptr) {
+      kLog.error("failed to register displaced window restore idle source");
+      restoreDisplacedViews();
+    }
+  }
+
+  void Server::onDisplacedRestoreIdle(void* data) {
+    auto* server = static_cast<Server*>(data);
+    server->m_displacedRestoreIdle = nullptr;
+    server->restoreDisplacedViews();
+  }
+
+  void Server::restoreDisplacedViews() {
+    Output* fallback = outputFromWlr(preferredOutput());
+    if (fallback == nullptr) {
+      return;
+    }
+    std::vector<View*> displaced;
+    for (const auto& entry : m_registry.all()) {
+      if (entry->displacedHome()) {
+        displaced.push_back(entry.get());
+      }
+    }
+    // Restore in workspace order; a dynamic group only grows workspace N+1 once N is occupied, and a higher home
+    // reaching it first lands on the trailing empty workspace instead.
+    std::ranges::sort(displaced, [](const View* lhs, const View* rhs) {
+      const View::DisplacedHome& left = *lhs->displacedHome();
+      const View::DisplacedHome& right = *rhs->displacedHome();
+      if (left.outputName != right.outputName) {
+        return left.outputName < right.outputName;
+      }
+      const size_t leftIndex = workspaceOrder(left.workspaceName);
+      const size_t rightIndex = workspaceOrder(right.workspaceName);
+      return leftIndex != rightIndex ? leftIndex < rightIndex : left.workspaceName < right.workspaceName;
+    });
+    size_t restored = 0;
+    for (View* view : displaced) {
+      const View::DisplacedHome home = *view->displacedHome();
+      Output* target = outputFromName(home.outputName);
+      WorkspaceGroup* group = target != nullptr ? target->workspaceGroup() : nullptr;
+      const bool atHome = group != nullptr;
+      if (!atHome) {
+        // The home output is still gone: rescue only a view left with no workspace at all, and leave the rest put.
+        if (view->workspace() != nullptr) {
+          continue;
+        }
+        group = fallback->workspaceGroup();
+        if (group == nullptr) {
+          continue;
+        }
+      }
+      Workspace* workspace = atHome ? group->workspaceForSelector(home.workspaceName) : nullptr;
+      if (workspace == nullptr) {
+        workspace = group->active();
+      }
+      if (workspace == nullptr) {
+        continue;
+      }
+      if (atHome) {
+        view->clearDisplaced();
+      }
+      if (workspace == view->workspace()) {
+        continue;
+      }
+      const bool floating = view->floating();
+      view->setWorkspace(workspace);
+      if (floating) {
+        view->restoreFloatingPosition(atHome);
+      }
+      ++restored;
+    }
+    if (m_scratchpadManager != nullptr) {
+      restored += m_scratchpadManager->restoreDisplaced(fallback);
+    }
+    if (restored > 0) {
+      kLog.info("restored {} displaced windows", restored);
+      refreshSurfaceScales();
+      refocus();
+      scheduleIpcWindowsEvent();
     }
   }
 

@@ -220,6 +220,11 @@ namespace umbriel {
 
   wlr_scene_tree* View::captureTree() const { return m_captureScene != nullptr ? &m_captureScene->tree : nullptr; }
 
+  void View::moveToWorkspace(Workspace* workspace, bool attachToLayout) {
+    m_displacedHome.reset();
+    setWorkspace(workspace, attachToLayout);
+  }
+
   void View::setWorkspace(Workspace* workspace, bool attachToLayout) {
     if (workspace != nullptr
         && m_server->scratchpadManager() != nullptr
@@ -243,11 +248,25 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       m_workspace->addView(this, attachToLayout);
     } else {
+      // A pinned view normally hangs below output-owned clipping roots. Park both of its scene branches on the
+      // server-owned pinned roots before the last output is destroyed, then addView() can rehome them when an output
+      // returns. Leaving either branch under the dying output frees nodes that the live View still owns.
+      if (m_pinned) {
+        wlr_scene_node_reparent(&m_sceneTree->node, m_server->pinnedTree());
+        reparentShadow(m_server->pinnedShadowTree());
+      }
       setOnActiveWorkspace(true);
     }
     notifyOutputScale();
-    if (m_mapped && m_onActiveWorkspace) {
-      enterForeignOutput();
+    if (m_mapped) {
+      if (m_workspace != nullptr && m_onActiveWorkspace) {
+        enterForeignOutput();
+      } else if (m_workspace == nullptr) {
+        // An unassigned view has no output to advertise. In particular, the preferred output may be the one currently
+        // being destroyed, and foreign-toplevel output membership installs a bind listener that must be gone before
+        // wlr_output_finish completes.
+        leaveForeignOutput();
+      }
     }
     if (m_mapped) {
       m_server->scheduleIpcWindowsEvent();
@@ -260,6 +279,9 @@ namespace umbriel {
         output->updateVrr();
         output->updateHdr();
       }
+    }
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onViewWorkspaceChanged(this);
     }
   }
 
@@ -921,16 +943,17 @@ namespace umbriel {
     m_floating.rememberPositionFraction({m_sceneTree->node.x, m_sceneTree->node.y}, floatingUsableArea());
   }
 
-  void View::restoreFloatingPosition() {
+  void View::restoreFloatingPosition(bool rememberRestored) {
     if (m_tiled) {
       return;
     }
     const wlr_box usable = floatingUsableArea();
     if (const std::optional<FloatingPoint> origin = m_floating.restoredOrigin(usable)) {
       animateTo(origin->x, origin->y);
-      // Re-anchor on the new usable area so a second cross-output move lands
-      // proportionally again instead of reusing a stale fraction.
-      m_floating.rememberPositionFraction(*origin, usable);
+      if (rememberRestored) {
+        // Re-anchor on the new usable area so a second deliberate cross-output move lands proportionally again.
+        m_floating.rememberPositionFraction(*origin, usable);
+      }
       return;
     }
     clampFloatingPosition();
@@ -1294,6 +1317,8 @@ namespace umbriel {
     }
     return m_server->outputFromWlr(m_server->preferredOutput());
   }
+
+  std::optional<bool> View::tearingRuleOverride() { return resolvedRules().allowTearing; }
 
   void View::notifyOutputScale() {
     Output* output = currentOutput();
@@ -1864,6 +1889,7 @@ namespace umbriel {
       m_pendingUnfullscreenSize = false;
       m_unfullscreenGraceStartMsec = 0;
       if (m_mapped && m_tiled && m_workspace != nullptr) {
+        m_workspace->snapVisible(this);
         m_workspace->markArrange(true);
       }
     }
@@ -2028,24 +2054,21 @@ namespace umbriel {
       m_unfullscreenGraceStartMsec = 0;
     }
     cancelSizeAnimation();
-    if (m_tiled && m_workspace != nullptr && maximized) {
-      const int column = m_workspace->layout().columnOf(this);
-      if (column >= 0 && m_workspace->layout().isFullWidth(column)) {
-        m_workspace->layout().clearFullWidthState(column);
-      }
-    }
 
     m_maximizedToEdges = maximized;
+    bool columnFullWidth = false;
+    if (!maximized && m_tiled && m_workspace != nullptr && !m_toplevel->scheduled.fullscreen) {
+      const int column = m_workspace->layout().columnOf(this);
+      columnFullWidth = column >= 0 && m_workspace->layout().isFullWidth(column);
+    }
     if (m_tiled) {
-      wlr_xdg_toplevel_set_maximized(m_toplevel, maximized);
+      wlr_xdg_toplevel_set_maximized(m_toplevel, maximized || columnFullWidth);
     } else {
       setMaximized(maximized);
     }
     showDecorations(!maximized && !m_toplevel->scheduled.fullscreen);
     if (m_workspace != nullptr) {
-      if (maximized) {
-        m_workspace->ensureFocusedVisible();
-      }
+      m_workspace->snapVisible(this);
       m_workspace->markArrange(true);
     }
     updateForeignState();
@@ -2063,20 +2086,23 @@ namespace umbriel {
     );
 
     const bool requested = m_toplevel->requested.fullscreen;
+    const FullscreenRequestDisposition disposition = m_deferredUnfullscreen.observeClientRequest(
+        requested, m_toplevel->scheduled.activated, m_toplevel->scheduled.fullscreen
+    );
 
-    // Redundant request (wine spams set_fullscreen while already fullscreen): ack with a configure, but skip the
-    // reparent/scroll-snap/arrange churn that a full setFullscreen() would run: that churn is visible flicker.
-    if (requested == m_toplevel->scheduled.fullscreen) {
+    if (disposition == FullscreenRequestDisposition::Acknowledge) {
+      // Wine spams set_fullscreen while already fullscreen. Acknowledge without the visible reparent, scroll snap, and
+      // arrange churn that a full setFullscreen() would run. Observing this newer request also clears any parked
+      // unfullscreen, so activation cannot apply stale client intent.
       wlr_xdg_surface_schedule_configure(m_toplevel->base);
       return;
     }
 
-    // Wine unfullscreens games when they lose focus (minimize-on-focus-loss). Honoring that rips the game out of the
-    // fullscreen strip the moment the user scrolls away. Deny unfullscreen from deactivated windows; the scheduled
-    // configure re-asserts the fullscreen state (spec-compliant).
-    if (!requested && !m_toplevel->scheduled.activated) {
+    if (disposition == FullscreenRequestDisposition::Park) {
+      // Wine games commonly unfullscreen when they lose focus. Park that request briefly instead of ripping the game
+      // out of the fullscreen strip; xdg or foreign activation consumes it, while expiry preserves fullscreen.
       kLog.debug(
-          "request_fullscreen denied for deactivated '{}'", m_toplevel->app_id != nullptr ? m_toplevel->app_id : "?"
+          "request_fullscreen parked for deactivated '{}'", m_toplevel->app_id != nullptr ? m_toplevel->app_id : "?"
       );
       wlr_xdg_surface_schedule_configure(m_toplevel->base);
       return;
@@ -2090,6 +2116,7 @@ namespace umbriel {
       m_pendingUnfullscreenSize = false;
       m_unfullscreenGraceStartMsec = 0;
       if (m_tiled && m_workspace != nullptr) {
+        m_workspace->snapVisible(this);
         m_workspace->markArrange(true);
       }
     }
@@ -2102,6 +2129,19 @@ namespace umbriel {
     setFullscreen(!m_toplevel->scheduled.fullscreen);
   }
 
+  void View::applyDeferredUnfullscreen() {
+    if (!m_deferredUnfullscreen.takeOnActivation() || !m_toplevel->base->initialized) {
+      return;
+    }
+    if (m_toplevel->scheduled.fullscreen || m_toplevel->current.fullscreen) {
+      kLog.debug(
+          "deferred unfullscreen applied on activation for '{}'",
+          m_toplevel->app_id != nullptr ? m_toplevel->app_id : "?"
+      );
+      setFullscreen(false);
+    }
+  }
+
   void View::toggleFloating() { setFloating(m_tiled); }
 
   void View::restorePinnedSceneParent() {
@@ -2109,14 +2149,11 @@ namespace umbriel {
       return;
     }
     Output* output = currentOutput();
-    if (output == nullptr) {
-      return;
-    }
     // Ordering stays on the server-level trees; only the content hangs under the output's clipped roots.
     wlr_scene_node_place_above(&m_server->pinnedShadowTree()->node, &m_server->fullscreenTree()->node);
     wlr_scene_node_place_above(&m_server->pinnedTree()->node, &m_server->pinnedShadowTree()->node);
-    wlr_scene_node_reparent(&m_sceneTree->node, output->pinnedRoot());
-    reparentShadow(output->pinnedShadowRoot());
+    wlr_scene_node_reparent(&m_sceneTree->node, output != nullptr ? output->pinnedRoot() : m_server->pinnedTree());
+    reparentShadow(output != nullptr ? output->pinnedShadowRoot() : m_server->pinnedShadowTree());
     setNodeEnabled(true);
     raiseToTop();
   }
@@ -2336,13 +2373,14 @@ namespace umbriel {
     // setFullscreen(true) is not re-run on this path, so its scroll snap does not happen; without it the strip can rest
     // showing the neighbor column beside a viewport-wide fullscreen column.
     if (wantFullscreen && m_workspace != nullptr) {
-      m_workspace->ensureFocusedVisible();
+      m_workspace->snapVisible(this);
       m_workspace->markArrange(false);
     }
     updateForeignState();
   }
 
   void View::setFullscreen(bool fullscreen) {
+    m_deferredUnfullscreen.clear();
     kLog.debug(
         "set_fullscreen '{}' [{}] -> {} (tiled={}, ws_active={})",
         m_toplevel->app_id != nullptr ? m_toplevel->app_id : "?", static_cast<const void*>(this), fullscreen, m_tiled,
@@ -2368,15 +2406,6 @@ namespace umbriel {
     if (!fullscreen) {
       m_refullscreenOnTile = false;
     }
-    // Leaving column maximize when entering real fullscreen avoids a stale
-    // widthFrac=1.0 column after the client leaves fullscreen.
-    if (fullscreen && m_tiled && m_workspace != nullptr) {
-      const int column = m_workspace->layout().columnOf(this);
-      if (m_workspace->layout().isFullWidth(column)) {
-        m_workspace->layout().clearFullWidthState(column);
-        wlr_xdg_toplevel_set_maximized(m_toplevel, false);
-      }
-    }
     if (fullscreen) {
       if (m_pinned) {
         m_pinned = false;
@@ -2398,7 +2427,7 @@ namespace umbriel {
       wlr_scene_node_raise_to_top(&m_sceneTree->node);
       // Snap scroll to the now viewport-wide column and reflow neighbors.
       if (m_workspace != nullptr) {
-        m_workspace->ensureFocusedVisible();
+        m_workspace->snapVisible(this);
         // arrange() sends the full-output size even when this workspace is hidden.
         m_workspace->markArrange(true);
       }
@@ -2438,6 +2467,8 @@ namespace umbriel {
           wlr_xdg_toplevel_set_size(m_toplevel, 0, 0);
           // The grace countdown runs on frame ticks; make sure one is coming.
           scheduleFrame();
+        } else {
+          m_workspace->snapVisible(this);
         }
         m_workspace->markArrange(!m_xwayland);
       } else if (!restoreFloating) {

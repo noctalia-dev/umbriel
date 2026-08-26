@@ -193,16 +193,19 @@ namespace umbriel {
       return result;
     }
     bool atStripStartEdge(double primaryWorld, int primaryOrigin) {
-      return primaryWorld <= static_cast<double>(primaryOrigin + kScrollingEdgeDropWidth);
+      return primaryWorld >= static_cast<double>(primaryOrigin - kScrollingEdgeDropWidth)
+          && primaryWorld <= static_cast<double>(primaryOrigin + kScrollingEdgeDropWidth);
     }
 
     bool atStripEndEdge(double primaryWorld, int primaryOrigin, int primaryExtent) {
-      return primaryWorld >= static_cast<double>(primaryOrigin + primaryExtent - kScrollingEdgeDropWidth);
+      const int edge = primaryOrigin + primaryExtent;
+      return primaryWorld >= static_cast<double>(edge - kScrollingEdgeDropWidth)
+          && primaryWorld <= static_cast<double>(edge + kScrollingEdgeDropWidth);
     }
 
     ScrollingTarget computeScrollingTarget(
         const Workspace& workspace, const ScrollingLayout& layout, const wlr_box& usable, double scroll, double worldX,
-        double worldY
+        double worldY, const DropTargetOptions& options
     ) {
       const bool v = workspace.scrollingVertical();
       const int edgePad = workspace.layoutConfig().edgePad;
@@ -216,9 +219,10 @@ namespace umbriel {
       const int crossOrigin = v ? usable.x : usable.y;
       const int crossExtent = v ? usable.width : usable.height;
 
-      // Reserve the viewport's extreme primary edges as stable prepend and
-      // append targets when the strip extends beyond the viewport.
-      if (columnCount > 0 && layout.maxScroll(viewportPrimary) > 0) {
+      // Reserve a bounded band around the viewport's primary edges as stable
+      // prepend and append targets when the strip overflows. Overview cards
+      // projected beyond the viewport remain ordinary content targets.
+      if (options.reserveScrollingViewportEdges && columnCount > 0 && layout.maxScroll(viewportPrimary) > 0) {
         if (atStripStartEdge(primaryWorld, primaryOrigin)) {
           return {.column = 0, .row = -1};
         }
@@ -232,7 +236,11 @@ namespace umbriel {
       for (int columnIndex = 0; columnIndex < columnCount; ++columnIndex) {
         const int columnPrimary = layout.columnX(columnIndex, viewportPrimary);
         const int columnExtent = layout.columnWidth(columnIndex, viewportPrimary);
-        if (layoutPrimary < columnPrimary + columnExtent * 0.2 || layoutPrimary > columnPrimary + columnExtent * 0.8) {
+        const double leadingFraction = options.endpointGapsOutsideColumns && columnIndex == 0 ? 0.0 : 0.2;
+        const double trailingFraction =
+            options.endpointGapsOutsideColumns && columnIndex == columnCount - 1 ? 1.0 : 0.8;
+        if (layoutPrimary < columnPrimary + columnExtent * leadingFraction
+            || layoutPrimary > columnPrimary + columnExtent * trailingFraction) {
           continue;
         }
         const Column& column = layout.columns()[static_cast<size_t>(columnIndex)];
@@ -286,7 +294,9 @@ namespace umbriel {
     };
   }
 
-  DropTarget computeDropTarget(Workspace& workspace, double worldX, double worldY, const View* excludedView) {
+  DropTarget computeDropTarget(
+      Workspace& workspace, double worldX, double worldY, const View* excludedView, const DropTargetOptions& options
+  ) {
     DropTarget result{.workspace = &workspace};
     if (workspace.group() == nullptr || workspace.group()->output() == nullptr) {
       return result;
@@ -309,7 +319,7 @@ namespace umbriel {
     } else if (const ScrollingLayout* scrolling = workspace.scrollingLayout()) {
       const ScrollingLayout& layout = *scrolling;
       const double scroll = layout.scroll();
-      const ScrollingTarget target = computeScrollingTarget(workspace, layout, usable, scroll, worldX, worldY);
+      const ScrollingTarget target = computeScrollingTarget(workspace, layout, usable, scroll, worldX, worldY, options);
       result.column = target.column;
       result.row = target.row;
       if (target.row >= 0) {
@@ -320,7 +330,10 @@ namespace umbriel {
         const int primaryOrigin = v ? usable.y : usable.x;
         const int primaryExtent = v ? usable.height : usable.width;
         const int edgePad = workspace.layoutConfig().edgePad;
-        if (target.column == 0 && !layout.columns().empty() && atStripStartEdge(primaryWorld, primaryOrigin)) {
+        if (options.reserveScrollingViewportEdges
+            && target.column == 0
+            && !layout.columns().empty()
+            && atStripStartEdge(primaryWorld, primaryOrigin)) {
           result.hintBox = v
               ? wlr_box{
                     .x = usable.x + edgePad,
@@ -335,7 +348,8 @@ namespace umbriel {
                     .height = std::max(1, usable.height - 2 * edgePad),
                 };
         } else if (
-            target.column == static_cast<int>(layout.columns().size())
+            options.reserveScrollingViewportEdges
+            && target.column == static_cast<int>(layout.columns().size())
             && atStripEndEdge(primaryWorld, primaryOrigin, primaryExtent)
         ) {
           result.hintBox = v
@@ -359,7 +373,9 @@ namespace umbriel {
       result.column = static_cast<int>(workspace.layout().columns().size());
     }
 
-    result.hintBox = clampHintBox(result.hintBox, usable);
+    if (options.clipHintToUsable) {
+      result.hintBox = clampHintBox(result.hintBox, usable);
+    }
     return result;
   }
 
@@ -382,7 +398,7 @@ namespace umbriel {
       if (view.workspace() != &target) {
         // Auto-attach would split the focused leaf and send a stale configure
         // before the explicit placement below.
-        view.setWorkspace(&target, /*attachToLayout=*/false);
+        view.moveToWorkspace(&target, /*attachToLayout=*/false);
       } else {
         dwindle->removeView(&view);
       }
@@ -398,7 +414,7 @@ namespace umbriel {
     }
 
     if (view.workspace() != &target) {
-      view.setWorkspace(&target, /*attachToLayout=*/false);
+      view.moveToWorkspace(&target, /*attachToLayout=*/false);
     }
     if (drop.row >= 0) {
       target.layout().insertViewIntoColumn(&view, std::max(0, drop.column), drop.row);

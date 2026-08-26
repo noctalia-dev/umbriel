@@ -70,6 +70,7 @@ namespace umbriel {
 
     void onViewMapped(View* view);
     void onViewUnmapped(View* view);
+    void onViewWorkspaceChanged(View* view);
     void onWorkspaceActivated(WorkspaceGroup* group);
     void onWorkspaceArranged(Workspace* workspace);
     void onWorkspaceInventoryChanged(WorkspaceGroup* group);
@@ -185,7 +186,7 @@ namespace umbriel {
     void scheduleFrames() const;
 
     [[nodiscard]] Card* cardAt(double lx, double ly);
-    [[nodiscard]] Workspace* rowAt(double lx, double ly, OutputState** outState, size_t* outRow);
+    [[nodiscard]] Workspace* rowAt(double lx, double ly, OutputState** outState, size_t* outRow, bool extendHorizontal);
     [[nodiscard]] WorkspaceGroup*
     workspaceGapAt(double lx, double ly, OutputState** outState, size_t* outIndex, wlr_box* outHintBox);
     [[nodiscard]] Workspace* preferredWorkspace() const;

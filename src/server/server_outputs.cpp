@@ -10,6 +10,65 @@
 
 namespace umbriel {
 
+  namespace {
+    // Headless outputs are created at the size the backend gives the ones from WLR_HEADLESS_OUTPUTS.
+    constexpr unsigned int kHeadlessWidth = 1280;
+    constexpr unsigned int kHeadlessHeight = 720;
+
+    wlr_backend* headlessBackend(wlr_backend* backend) {
+      if (backend == nullptr || wlr_backend_is_headless(backend)) {
+        return backend;
+      }
+      if (!wlr_backend_is_multi(backend)) {
+        return nullptr;
+      }
+      wlr_backend* headless = nullptr;
+      wlr_multi_for_each_backend(
+          backend,
+          [](wlr_backend* candidate, void* data) {
+            if (wlr_backend_is_headless(candidate)) {
+              *static_cast<wlr_backend**>(data) = candidate;
+            }
+          },
+          &headless
+      );
+      return headless;
+    }
+  } // namespace
+
+  std::string Server::createHeadlessOutput(const std::string& name, std::string* error) {
+    wlr_backend* headless = headlessBackend(m_backend);
+    if (headless == nullptr) {
+      *error = "no headless backend in this session";
+      return {};
+    }
+    for (const auto& output : m_outputs) {
+      if (output->wlr()->name != nullptr && name == output->wlr()->name) {
+        *error = "output already exists: " + name;
+        return {};
+      }
+    }
+    m_pendingOutputName = name;
+    wlr_output* output = wlr_headless_add_output(headless, kHeadlessWidth, kHeadlessHeight);
+    m_pendingOutputName.clear();
+    if (output == nullptr) {
+      *error = "failed to create a headless output";
+      return {};
+    }
+    return output->name != nullptr ? output->name : "";
+  }
+
+  bool Server::destroyOutput(const std::string& name, std::string* error) {
+    for (const auto& output : m_outputs) {
+      if (output->wlr()->name != nullptr && name == output->wlr()->name) {
+        wlr_output_destroy(output->wlr());
+        return true;
+      }
+    }
+    *error = "unknown output: " + name;
+    return false;
+  }
+
   void Server::arrangeLayers(wlr_output* output) {
     if (Output* out = outputFromWlr(output)) {
       out->markDirty(Dirty::LayerArrange);

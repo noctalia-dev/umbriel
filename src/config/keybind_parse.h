@@ -29,13 +29,25 @@ namespace umbriel {
     SessionQuit,
     WindowFocusLeft,
     WindowFocusRight,
+    WindowFocusOrOutputLeft,
+    WindowFocusOrOutputRight,
     WindowFocusUp,
     WindowFocusDown,
+    WindowFocusOrWorkspaceUp,
+    WindowFocusOrWorkspaceDown,
     WindowFocusSwitchFloating,
+    WindowFocusOrOutputUp,
+    WindowFocusOrOutputDown,
     ColumnMoveLeft,
     ColumnMoveRight,
+    WindowMoveOrOutputLeft,
+    WindowMoveOrOutputRight,
     WindowMoveUp,
     WindowMoveDown,
+    WindowMoveOrWorkspaceUp,
+    WindowMoveOrWorkspaceDown,
+    WindowMoveOrOutputUp,
+    WindowMoveOrOutputDown,
     WindowConsumeLeft,
     WindowExpelRight,
     WindowCycleWidth,
@@ -66,9 +78,11 @@ namespace umbriel {
     WindowMoveToScratchpad,
     ScratchpadToggle,
     WindowRestoreFromScratchpad,
+    WindowToggleScratchpad,
     ScratchpadFocusNext,
     Submap,
     WindowFocusId,
+    WindowFocusWarpId,
     WorkspaceNext,
     WorkspacePrevious,
     OutputFocusLeft,
@@ -94,6 +108,11 @@ namespace umbriel {
     DpmsOn,
     WorkspaceMoveDown,
     WorkspaceMoveUp,
+    ColumnCenter,
+    ColumnFocusFirst,
+    ColumnFocusLast,
+    ColumnMoveToFirst,
+    ColumnMoveToLast,
     Count,
   };
 
@@ -147,6 +166,7 @@ namespace umbriel {
     WheelDirection wheel = WheelDirection::None;
     uint32_t mouseButton = 0; // evdev BTN_* code, 0 = not a mouse bind
     bool repeat = true;
+    bool allowWhenLocked = false;
 
     // What it does.
     KeybindAction action = KeybindAction::None;

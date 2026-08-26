@@ -32,6 +32,9 @@ Output state and workspace inventory are independent effects.
   reconciling the inventory or reapplying output state.
 - Changing total border width refreshes window decoration and workspace layout
   because borders contribute to resolved tile spacing.
+- Changing an output or window-rule tearing policy re-evaluates eligibility,
+  clears async recovery state, and schedules a frame. It does not reapply
+  output state or invalidate the overview.
 - `general.autostart` commands run only during startup, never during reload.
 - `general.xwayland` changes require a compositor restart.
 

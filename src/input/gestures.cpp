@@ -20,7 +20,6 @@ namespace umbriel {
   namespace {
     // Tuning constants: file-local, no config keys.
     constexpr double kAxisLockPx = 16.0;
-    constexpr double kScrollFactor = 3.0;
     constexpr double kSwitchDistancePx = 300.0;
     constexpr double kCommitProgress = 0.35;
     constexpr double kCommitVelocityPxMs = 0.9;
@@ -32,6 +31,8 @@ namespace umbriel {
     // kCommitProgress of a full slide, so that same travel is what the hand already reads as "one workspace"; there is
     // no slide to be a fraction of in here, so it becomes the step itself.
     constexpr double kOverviewStepPx = kSwitchDistancePx * kCommitProgress;
+    // Finger travel that scrolls the strip by one viewport width.
+    constexpr double kViewGestureMovementPx = 1200.0;
   } // namespace
 
   // trampolines (same pattern as Cursor)
@@ -125,7 +126,7 @@ namespace umbriel {
   void Gestures::cancelActive() {
     switch (m_state) {
     case State::Scroll:
-      finishScroll(true);
+      finishScroll(true, 0);
       break;
     case State::Switch:
       finishSwitch(true);
@@ -151,7 +152,7 @@ namespace umbriel {
   void Gestures::silentCancel() {
     switch (m_state) {
     case State::Scroll:
-      finishScroll(true);
+      finishScroll(true, 0);
       break;
     case State::Switch:
       finishSwitch(true);
@@ -266,6 +267,8 @@ namespace umbriel {
         m_scrollWorkspace = ws;
         m_viewportPrimary = ws->scrollViewportExtent();
         m_scrollStart = scrolling->scroll();
+        m_scrollTracker.reset();
+        m_scrollStartCentered = scrolling->centeredRest();
         ws->markArrange(false);
         m_state = State::Scroll;
       } else {
@@ -295,21 +298,15 @@ namespace umbriel {
         m_scrollWorkspace = nullptr;
         return;
       }
-      m_accumX += event->dx;
-      // Natural: fingers left → content moves left → scroll increases.
-      double target = m_scrollStart - m_accumX * kScrollFactor;
       ScrollingLayout* scrolling = m_scrollWorkspace->scrollingLayout();
       if (scrolling == nullptr) {
         m_state = State::Idle;
         return;
       }
-      const auto maxScroll = static_cast<double>(scrolling->maxScroll(m_viewportPrimary));
-      if (target < 0) {
-        target = std::max(target * kOverscrollCompress, -0.1 * m_viewportPrimary);
-      }
-      if (target > maxScroll) {
-        target = std::min(maxScroll + (target - maxScroll) * kOverscrollCompress, maxScroll + 0.1 * m_viewportPrimary);
-      }
+      // Natural: fingers left → content moves left → scroll increases. The strip follows the
+      // fingers unclamped, past the strip edges included; the release resolves the overscroll.
+      m_scrollTracker.push(event->dx, event->time_msec);
+      const double target = m_scrollStart - m_scrollTracker.pos() * scrollNormFactor();
       scrolling->setScroll(target);
       m_scrollWorkspace->markArrange(false);
       return;
@@ -410,7 +407,7 @@ namespace umbriel {
       return;
 
     case State::Scroll:
-      finishScroll(event->cancelled);
+      finishScroll(event->cancelled, event->time_msec);
       return;
 
     case State::Switch:
@@ -449,9 +446,11 @@ namespace umbriel {
 
   // ===== Scroll finish (Step 5) =====
 
-  void Gestures::finishScroll(bool cancelled) {
+  double Gestures::scrollNormFactor() const { return static_cast<double>(m_viewportPrimary) / kViewGestureMovementPx; }
+
+  void Gestures::finishScroll(bool cancelled, uint32_t timeMsec) {
+    m_state = State::Idle;
     if (m_scrollWorkspace == nullptr) {
-      m_state = State::Idle;
       return;
     }
     ScrollingLayout* scrolling = m_scrollWorkspace->scrollingLayout();
@@ -461,59 +460,95 @@ namespace umbriel {
       return;
     }
     if (cancelled) {
-      scrolling->setScroll(m_scrollStart);
+      scrolling->setScroll(m_scrollStart, m_scrollStartCentered);
       m_scrollWorkspace->markArrange(true);
-    } else {
-      // Snap to the column nearest the viewport center.
-      const ScrollingLayout& layout = *scrolling;
-      const auto maxScroll = static_cast<double>(layout.maxScroll(m_viewportPrimary));
-      const double rawScroll = layout.scroll();
-      const double currentScroll = std::clamp(rawScroll, 0.0, maxScroll);
-      int best = -1;
+      m_scrollWorkspace = nullptr;
+      return;
+    }
 
-      // The viewport-center heuristic has no snap point at either strip edge. With mixed column widths, the second
-      // column can remain closer to the viewport center even at scroll 0, making the first column unreachable. Preserve
-      // the gesture direction at an overscrolled edge by explicitly selecting that endpoint.
-      if (m_accumX > 0.0 && rawScroll <= 0.0) {
-        best = 0;
-      } else if (m_accumX < 0.0 && rawScroll >= maxScroll) {
-        best = static_cast<int>(layout.columns().size()) - 1;
-      } else {
-        const double center = currentScroll + m_viewportPrimary / 2.0;
-        double bestDist = 1e18;
-        for (int i = 0; i < static_cast<int>(layout.columns().size()); ++i) {
-          const double colCenter = static_cast<double>(layout.columnX(i, m_viewportPrimary))
-              + layout.columnWidth(i, m_viewportPrimary) / 2.0;
-          const double dist = std::abs(colCenter - center);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = i;
-          }
+    // Idle time between the last motion event and the release still bleeds speed, so feed a zero-delta sample before
+    // reading the tracker.
+    m_scrollTracker.push(0.0, timeMsec);
+
+    const double factor = scrollNormFactor();
+    const double currentScroll = scrolling->scroll();
+    // Where the swipe would coast to a stop under deceleration.
+    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * factor;
+
+    const auto maxScroll = static_cast<double>(scrolling->maxScroll(m_viewportPrimary));
+    const auto columnCount = static_cast<int>(scrolling->columns().size());
+
+    // Snapping points are the scroll offsets aligning each column flush with either viewport edge,
+    // folded into the strip range. Release settles on the point closest to the projected position,
+    // so a flick commits whatever column it would decelerate past, not merely the one under the
+    // fingers.
+    int best = -1;
+    double bestDist = 1e18;
+    double bestSnap = currentScroll;
+    for (int i = 0; i < columnCount; ++i) {
+      const auto x = static_cast<double>(scrolling->columnX(i, m_viewportPrimary));
+      const auto w = static_cast<double>(scrolling->columnWidth(i, m_viewportPrimary));
+      const double snaps[2] = {
+          std::clamp(x, 0.0, maxScroll),
+          std::clamp(x + w - static_cast<double>(m_viewportPrimary), 0.0, maxScroll),
+      };
+      for (const double snap : snaps) {
+        const double dist = std::abs(snap - projected);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestSnap = snap;
+          best = i;
         }
-      }
-      if (best >= 0) {
-        View* focused = m_scrollWorkspace->focusedView();
-        if (focused != nullptr && layout.columnOf(focused) == best) {
-          // Snap back / cancel: nearest column is already focused.
-          m_scrollWorkspace->ensureFocusedVisible();
-          m_scrollWorkspace->markArrange(true);
-        } else if (
-            best < static_cast<int>(layout.columns().size())
-            && !layout.columns()[static_cast<size_t>(best)].views.empty()
-        ) {
-          View* target = layout.columns()[static_cast<size_t>(best)].views.front();
-          m_server->focusView(target, FocusReason::Directional);
-        } else {
-          m_scrollWorkspace->ensureFocusedVisible();
-          m_scrollWorkspace->markArrange(true);
-        }
-      } else {
-        m_scrollWorkspace->ensureFocusedVisible();
-        m_scrollWorkspace->markArrange(true);
       }
     }
+
+    // Focus the outermost column fully visible at the snap in the travel direction: wide viewports
+    // show several columns, and the hand expects the farthest one it swiped toward.
+    const bool forward = projected >= currentScroll;
+    if (forward) {
+      for (int i = best + 1; i < columnCount; ++i) {
+        const auto x = static_cast<double>(scrolling->columnX(i, m_viewportPrimary));
+        const auto w = static_cast<double>(scrolling->columnWidth(i, m_viewportPrimary));
+        if (x < bestSnap || x + w > bestSnap + static_cast<double>(m_viewportPrimary)) {
+          break;
+        }
+        best = i;
+      }
+    } else {
+      for (int i = best - 1; i >= 0; --i) {
+        const auto x = static_cast<double>(scrolling->columnX(i, m_viewportPrimary));
+        const auto w = static_cast<double>(scrolling->columnWidth(i, m_viewportPrimary));
+        if (x < bestSnap || x + w > bestSnap + static_cast<double>(m_viewportPrimary)) {
+          break;
+        }
+        best = i;
+      }
+    }
+
+    if (best < 0) {
+      m_scrollWorkspace->ensureFocusedVisible();
+      m_scrollWorkspace->markArrange(true);
+      m_scrollWorkspace = nullptr;
+      return;
+    }
+
+    // Park the strip exactly on the chosen snap first, so the reveal below keeps it there instead of
+    // re-deriving an anchor from the overscrolled position.
+    scrolling->setScroll(bestSnap);
+
+    View* focused = m_scrollWorkspace->focusedView();
+    if (focused != nullptr && scrolling->columnOf(focused) == best) {
+      // Snap back / settle: target column already focused.
+      m_scrollWorkspace->ensureFocusedVisible();
+      m_scrollWorkspace->markArrange(true);
+    } else if (!scrolling->columns()[static_cast<size_t>(best)].views.empty()) {
+      View* target = scrolling->columns()[static_cast<size_t>(best)].views.front();
+      m_server->focusView(target, FocusReason::Directional);
+    } else {
+      m_scrollWorkspace->ensureFocusedVisible();
+      m_scrollWorkspace->markArrange(true);
+    }
     m_scrollWorkspace = nullptr;
-    m_state = State::Idle;
   }
 
   // ===== Switch finish (Step 6) =====

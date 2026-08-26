@@ -72,7 +72,7 @@ package intentionally owns the SceneFX installation too.
 
 - wlroots 0.20
 - Wayland server and client libraries
-- wayland-protocols 1.32 or newer
+- wayland-protocols 1.47 or newer
 - xkbcommon
 - libinput 1.23 or newer
 - pixman

@@ -346,6 +346,15 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
 
   CHECK(parseAction("window-toggle-maximize-to-edges", bind));
   CHECK(bind.action == KeybindAction::ToggleMaximizeToEdges);
+  CHECK(parseAction("column-focus-first", bind));
+  CHECK(bind.action == KeybindAction::ColumnFocusFirst);
+  CHECK(parseAction("column-focus-last", bind));
+  CHECK(bind.action == KeybindAction::ColumnFocusLast);
+
+  CHECK(parseAction("column-move-to-first", bind));
+  CHECK(bind.action == KeybindAction::ColumnMoveToFirst);
+  CHECK(parseAction("column-move-to-last", bind));
+  CHECK(bind.action == KeybindAction::ColumnMoveToLast);
 
   // Argument-free actions reject arguments.
   CHECK(!parseAction("workspace-next:1", bind));
@@ -408,6 +417,8 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   CHECK(bind.action == KeybindAction::WindowMoveToScratchpad);
   CHECK(parseAction("window-restore-from-scratchpad:eDP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
+  CHECK(parseAction("window-toggle-scratchpad", bind));
+  CHECK(bind.action == KeybindAction::WindowToggleScratchpad);
   CHECK(parseAction("scratchpad-focus-next", bind));
 
   CHECK(parseAction("dpms-off", bind));
@@ -430,6 +441,9 @@ UMBRIEL_TEST(parsesWindowIdActions) {
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
   CHECK(parseAction("window-focus:abc123", bind));
   CHECK(bind.action == KeybindAction::WindowFocusId);
+  CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
+  CHECK(parseAction("window-focus-warp:abc123", bind));
+  CHECK(bind.action == KeybindAction::WindowFocusWarpId);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
 }
 

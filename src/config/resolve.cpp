@@ -164,6 +164,9 @@ namespace umbriel {
       if (rule.vrr) {
         resolved.vrr = rule.vrr;
       }
+      if (rule.allowTearing) {
+        resolved.allowTearing = rule.allowTearing;
+      }
       if (rule.hdr) {
         resolved.hdr = rule.hdr;
       }

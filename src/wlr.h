@@ -6,7 +6,9 @@ extern "C" {
 #include <scenefx/render/fx_renderer/fx_renderer.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/backend.h>
+#include <wlr/backend/headless.h>
 #include <wlr/backend/libinput.h>
+#include <wlr/backend/multi.h>
 #include <wlr/backend/session.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/interfaces/wlr_keyboard.h>
@@ -52,6 +54,7 @@ extern "C" {
 #include <wlr/types/wlr_tablet_pad.h>
 #include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_tablet_v2.h>
+#include <wlr/types/wlr_tearing_control_v1.h>
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_viewporter.h>

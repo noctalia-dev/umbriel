@@ -243,10 +243,9 @@ autostart = []
 EOF
 }
 
-# Output count is a backend property, fixed when the compositor starts, so a
-# check that needs a second monitor declares it in its header and the harness
-# boots that instance accordingly. Everything else gets one output, which is
-# what most geometry assertions are written against.
+# A check that needs a second monitor declares it in its header and the harness boots that instance accordingly.
+# Everything else gets one output, which is what most geometry assertions are written against. A check that needs
+# monitors to come and go uses `umbriel output-create` and `umbriel output-destroy` on top of what it declares here.
 check_outputs() {
   local declared
   declared=$(sed -n '2,12p' "$HARNESS_DIR/checks/$1.sh" |

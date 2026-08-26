@@ -62,3 +62,17 @@ reference-white-relative blend space. The output transform subsequently maps
 the normalized reference white to the configured output `sdr_white` level.
 Buffers using this multiplier cannot use direct scanout because scanout would
 bypass the conversion.
+
+## Overview color mirrors
+
+Overview cards use raw scene buffers that mirror each committed surface. A
+normal scene surface is reset to wlroots' protocol-owned color state on every
+commit. Umbriel repairs Wine compatibility descriptions at the render
+boundary, but a raw overview mirror is not a scene surface and is not included
+in that repair pass.
+
+After copying ordinary scene-buffer properties, the overview must therefore
+apply the compatibility manager's authoritative committed transfer function,
+primaries, and luminance multiplier directly to its mirror. Otherwise a game
+commit while overview is open reinterprets Windows scRGB as SDR and loses PQ
+BT.2020 metadata.

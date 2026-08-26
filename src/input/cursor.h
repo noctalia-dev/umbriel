@@ -108,12 +108,14 @@ namespace umbriel {
     void applyConfig();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY);
     void setXcursor(const char* name);
-    void beginMove(View* view);
+    void beginMove(View* view, uint32_t button = 0);
     void beginResize(View* view, uint32_t edges);
     void resetMode();
     // Warp the cursor to a layout position and run the motion pipeline (pointer focus, xcursor, pointer-output
     // tracking, idle). Output actions use it so focus follows the cursor onto the target monitor.
     void warpTo(double lx, double ly);
+    // Run the same motion pipeline without letting pointer crossing replace an explicit keyboard-focus choice.
+    void warpToPreservingFocus(double lx, double ly);
     // A layout-mode reload can replace the layout that owns a tiled resize.
     void cancelStaleTiledResize();
     void handleNewConstraint(wlr_pointer_constraint_v1* constraint);
@@ -162,9 +164,10 @@ namespace umbriel {
     void handleTabletToolTip(void* data);
     void handleTabletToolButton(void* data);
 
-    void processMotion(uint32_t timeMsec, double oldX, double oldY);
+    void warpTo(double lx, double ly, bool allowFocusChange);
+    void processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange = true);
     void processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
-    void updatePointerOutput();
+    void updatePointerOutput(bool allowFocusChange = true);
     View* hoverFocus(
         View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
     );
@@ -207,10 +210,13 @@ namespace umbriel {
     wlr_pointer_constraint_v1* m_activeConstraint = nullptr;
 
     GrabState m_grab;
+    // Physical button that owns the current interactive move.
+    uint32_t m_moveButton = 0;
     // Last layout output under the pointer; crossing heads updates seat focus like workspace switch.
     wlr_output* m_pointerOutput = nullptr;
     double m_wheelAccum[2]{};
-    // Presses consumed by config mouse binds; their release is swallowed too.
+    // Presses consumed by config binds or ignored during an interactive move;
+    // their release is swallowed too, even if the grab ended first.
     std::vector<uint32_t> m_swallowedButtons;
     std::vector<std::unique_ptr<TabletToolState>> m_tools;
     bool m_compositorOwnsCursor = false;

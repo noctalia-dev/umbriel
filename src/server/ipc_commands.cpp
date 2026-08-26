@@ -58,6 +58,8 @@ namespace umbriel {
       }
     }
 
+    void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
+
     std::string fourccName(uint32_t format) {
       if (format == DRM_FORMAT_INVALID) {
         return "invalid";
@@ -253,6 +255,38 @@ namespace umbriel {
       }
     }
 
+    void printTearing(const nlohmann::json& ok) {
+      std::println("tearing control: {}", ok.value("protocol", false) ? "yes" : "no");
+      for (const auto& output : ok.at("outputs")) {
+        const auto& presentationVsync = output.at("last_presentation_vsync");
+        const auto& presentationPresented = output.at("last_presentation_presented");
+        const std::string presentation = presentationPresented.is_boolean() && !presentationPresented.get<bool>()
+            ? "not presented"
+            : presentationVsync.is_boolean() ? (presentationVsync.get<bool>() ? "vsync" : "async")
+                                             : "unknown";
+        std::println(
+            "output {}: allowed {}, requested {}, last commit {}, last presentation {}", output.value("name", ""),
+            output.value("allowed", false) ? "yes" : "no", output.value("requested", false) ? "yes" : "no",
+            output.value("last_commit_tearing", false) ? "async" : "regular", presentation
+        );
+        if (const std::string fallback = output.value("fallback_reason", ""); !fallback.empty()) {
+          std::println("  fallback: {}", fallback);
+        }
+      }
+      for (const auto& surface : ok.at("surfaces")) {
+        std::string rule = "inherit";
+        if (surface.at("rule_override").is_boolean()) {
+          rule = surface.at("rule_override").get<bool>() ? "force" : "deny";
+        }
+        std::println(
+            "surface {}: {} ({}) output {}, hint {}, rule {}, fullscreen {}, eligible {}", surface.value("id", ""),
+            surface.value("title", ""), surface.value("app_id", ""), surface.value("output", ""),
+            surface.value("hint", "vsync"), rule, surface.value("fullscreen", false) ? "yes" : "no",
+            surface.value("eligible", false) ? "yes" : "no"
+        );
+      }
+    }
+
   } // namespace
 
   nlohmann::json IpcCommands::windows(Server& server, std::string_view /*arg*/) {
@@ -331,7 +365,10 @@ namespace umbriel {
         continue;
       }
       wlr_surface* surface = view->toplevel()->base->surface;
-      const wlr_image_description_v1_data* description = server.surfaceImageDescription(surface);
+      const wlr_image_description_v1_data* description = server.surfaceTreeHdrDescription(surface);
+      if (description == nullptr) {
+        description = server.surfaceImageDescription(surface);
+      }
       nlohmann::json entry = {
           {"id", view->extForeignIdentifier() != nullptr ? view->extForeignIdentifier() : ""},
           {"app_id", view->toplevel()->app_id != nullptr ? view->toplevel()->app_id : ""},
@@ -377,6 +414,69 @@ namespace umbriel {
     };
   }
 
+  nlohmann::json IpcCommands::tearing(Server& server, std::string_view /*arg*/) {
+    nlohmann::json outputs = nlohmann::json::array();
+    for (const auto& output : server.outputs()) {
+      const bool requested = output->tearingRequested();
+      nlohmann::json entry = {
+          {"name", output->wlr()->name},
+          {"allowed", output->configuredTearingAllowed()},
+          {"requested", requested},
+          {"last_commit_tearing", output->lastCommitTearing()},
+          {"fallback_reason", requested ? output->tearingFallbackReason() : ""},
+      };
+      entry["last_presentation_flags"] = nullptr;
+      entry["last_presentation_presented"] = nullptr;
+      entry["last_presentation_vsync"] = nullptr;
+      if (output->lastPresentationPresented()) {
+        entry["last_presentation_presented"] = *output->lastPresentationPresented();
+      }
+      if (output->lastPresentationFlags()) {
+        entry["last_presentation_flags"] = *output->lastPresentationFlags();
+      }
+      if (const std::optional<bool> vsync = output->lastPresentationVsync()) {
+        entry["last_presentation_vsync"] = *vsync;
+      }
+      outputs.push_back(std::move(entry));
+    }
+
+    nlohmann::json surfaces = nlohmann::json::array();
+    for (const auto& view : server.views()) {
+      if (!view->mapped()) {
+        continue;
+      }
+      Output* output = view->currentOutput();
+      const bool asyncHint = output != nullptr
+          ? output->clientTearingHintAsync(view.get())
+          : wlr_tearing_control_manager_v1_surface_hint_from_surface(
+                server.tearingControlManager(), view->toplevel()->base->surface
+            ) == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+      nlohmann::json entry = {
+          {"id", view->extForeignIdentifier() != nullptr ? view->extForeignIdentifier() : ""},
+          {"app_id", view->toplevel()->app_id != nullptr ? view->toplevel()->app_id : ""},
+          {"title", view->toplevel()->title != nullptr ? view->toplevel()->title : ""},
+          {"output", output != nullptr ? output->wlr()->name : ""},
+          {"hint", asyncHint ? "async" : "vsync"},
+          {"fullscreen", view->toplevel()->current.fullscreen},
+          {"eligible", output != nullptr && output->tearingEligible(view.get())},
+      };
+      entry["rule_override"] = nullptr;
+      if (const std::optional<bool> rule = view->tearingRuleOverride()) {
+        entry["rule_override"] = *rule;
+      }
+      surfaces.push_back(std::move(entry));
+    }
+
+    return nlohmann::json{
+        {"ok",
+         {
+             {"protocol", server.tearingControlManager() != nullptr},
+             {"outputs", std::move(outputs)},
+             {"surfaces", std::move(surfaces)},
+         }},
+    };
+  }
+
   nlohmann::json IpcCommands::keyboardLayouts(Server& server, std::string_view /*arg*/) {
     const auto state = server.keyboardLayoutState();
     if (!state.has_value()) {
@@ -398,12 +498,34 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::outputCreate(Server& server, std::string_view arg) {
+    std::string error;
+    const std::string name = server.createHeadlessOutput(std::string(arg), &error);
+    if (!error.empty()) {
+      return nlohmann::json{{"err", error}};
+    }
+    return nlohmann::json{{"ok", name}};
+  }
+
+  nlohmann::json IpcCommands::outputDestroy(Server& server, std::string_view arg) {
+    std::string error;
+    if (!server.destroyOutput(std::string(arg), &error)) {
+      return nlohmann::json{{"err", error}};
+    }
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"msg", "<action> [args...]", "send an action to the compositor", true, &IpcCommands::msg, nullptr},
       {"windows", "", "list windows (app id and title)", false, &IpcCommands::windows, &printWindows},
       {"layers", "", "list layer-shell surfaces", false, &IpcCommands::layers, &printLayers},
       {"color", "", "show color-management state", false, &IpcCommands::color, &printColor},
+      {"tearing", "", "show tearing-control state", false, &IpcCommands::tearing, &printTearing},
       {"keyboard-layouts", "", "list keyboard layouts", false, &IpcCommands::keyboardLayouts, nullptr},
+      {"output-create", "<name>", "create a headless output (headless sessions only)", true, &IpcCommands::outputCreate,
+       &printOutputName},
+      {"output-destroy", "<name>", "destroy an output (headless sessions only)", true, &IpcCommands::outputDestroy,
+       nullptr},
   };
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }

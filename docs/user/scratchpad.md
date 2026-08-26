@@ -122,7 +122,7 @@ scratchpad_border_focused = "#E5C07BFF"
 scratchpad_border_unfocused = "#5C4A2AFF"
 ```
 
-See [Configuration](configuration.md#appearance) for the complete appearance
+See [Appearance](appearance.md) for the complete appearance
 reference.
 
 Scratchpad show and hide transitions, backdrop dimming and blur, and optional

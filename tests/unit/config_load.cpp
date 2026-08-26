@@ -229,6 +229,30 @@ UMBRIEL_TEST(modKeyIsUserConfigurable) {
   CHECK(containsDiagnostic(store, "unknown general.mod_key"));
 }
 
+UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[keybinds]\n"
+      "\"XF86AudioRaiseVolume\" = { action = \"spawn:volume-up\", allow_when_locked = true }\n"
+      "\"XF86AudioLowerVolume\" = \"spawn:volume-down\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{2});
+
+  bool allowedWhenLocked = false;
+  bool defaultsToBlocked = false;
+  for (const auto& bind : store.config().keybinds) {
+    allowedWhenLocked = allowedWhenLocked || bind.allowWhenLocked;
+    defaultsToBlocked = defaultsToBlocked || !bind.allowWhenLocked;
+  }
+  CHECK(allowedWhenLocked);
+  CHECK(defaultsToBlocked);
+  CHECK(!containsDiagnostic(store, "allow_when_locked"));
+}
+
 UMBRIEL_TEST(hotCornersLoadActionsAndValidate) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -336,6 +360,30 @@ UMBRIEL_TEST(outputVrrPolicyLoadsAndDefaultsDisabled) {
   CHECK(store.config().outputs[0].vrr == VrrMode::Disabled);
 }
 
+UMBRIEL_TEST(outputTearingPermissionLoadsAndDefaultsDisabled) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\ntearing = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].allowTearing);
+
+  file.write("[output.DP-1]\ntearing = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].allowTearing);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].allowTearing);
+
+  file.write("[output.DP-1]\ntearing = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].allowTearing);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.tearing (expected boolean)"));
+}
+
 UMBRIEL_TEST(outputHdrPolicyAndSdrWhiteLoad) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -394,6 +442,30 @@ UMBRIEL_TEST(windowOutputPoliciesLoadAndRejectInvalidValues) {
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
   CHECK(!store.config().windowRules[0].hdr);
   CHECK(containsDiagnostic(store, "ignoring window_rule.hdr"));
+}
+
+UMBRIEL_TEST(windowTearingOverrideLoadsAsAnOptionalBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[[window_rule]]\nmatch.app_id = \"^game$\"\ntearing = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].allowTearing && *store.config().windowRules[0].allowTearing);
+
+  file.write("[[window_rule]]\ntearing = false\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].allowTearing && !*store.config().windowRules[0].allowTearing);
+
+  file.write("[[window_rule]]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].allowTearing);
+
+  file.write("[[window_rule]]\ntearing = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].allowTearing);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.tearing (expected boolean)"));
 }
 
 UMBRIEL_TEST(outputEnabledFlagParsesAndDefaultsTrue) {

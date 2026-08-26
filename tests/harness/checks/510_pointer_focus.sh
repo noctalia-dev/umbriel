@@ -79,4 +79,16 @@ wait_for_focus_at 646
 pointer move "$LEFT_X" "$MID_Y" click "$BTN_LEFT"
 wait_for_focus_at 10
 
-echo "click focuses the window under the cursor; hover alone does not"
+# A switcher-style focus moves the cursor with the selected window. Ordinary
+# focus remains focus-only, so this sequence leaves keyboard focus on the left
+# while the cursor stays over the right. The click must return focus to right.
+right_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.x == 646) | .id')
+left_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.x == 10) | .id')
+"$UMBRIEL" msg "window-focus-warp:$right_id" > /dev/null
+wait_for_focus_at 646
+"$UMBRIEL" msg "window-focus:$left_id" > /dev/null
+wait_for_focus_at 10
+pointer click "$BTN_LEFT"
+wait_for_focus_at 646
+
+echo "click focus, hover behavior, and switcher cursor warp are correct"

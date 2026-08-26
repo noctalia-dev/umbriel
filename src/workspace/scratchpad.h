@@ -41,12 +41,15 @@ namespace umbriel {
     void moveOutput(Output* from, Output* to);
     void releaseOutput(Output* output);
     void applyConfig();
+    // Return entries to the output they were parked on. Entries whose output is still gone park on `fallback`.
+    size_t restoreDisplaced(Output* fallback);
 
   private:
     struct Entry {
       View* view = nullptr;
       Output* output = nullptr;
       std::string returnOutput;
+      std::string displacedOutput;
       std::string returnWorkspace;
       bool returnTiled = false;
       bool lastFocused = false;

@@ -82,6 +82,10 @@ namespace umbriel {
     m_server.registry().promote(view);
     view->setUrgent(false);
 
+    if (reason == FocusReason::XdgActivation || reason == FocusReason::ForeignActivation) {
+      view->applyDeferredUnfullscreen();
+    }
+
     // Keep workspace focus while exclusive layer-shell holds the seat; refocus applies it later. Still clear activation
     // chrome so the previous window does not stay visually focused. Overview owns the seat the same way, but keeps the
     // chrome so card borders track the focused window; the keyboard enter replays when it closes.

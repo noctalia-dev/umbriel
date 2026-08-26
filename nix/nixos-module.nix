@@ -1,7 +1,9 @@
+{ xdg-desktop-portal-umbriel }:
 {
   config,
   pkgs,
   lib,
+  modulesPath,
   ...
 }:
 let
@@ -22,7 +24,8 @@ in
 
     portalPackage = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
-      default = null;
+      default = xdg-desktop-portal-umbriel.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      defaultText = lib.literalExpression "the xdg-desktop-portal-umbriel flake's package";
       description = ''
         The xdg-desktop-portal-umbriel package to install.
       '';
@@ -52,14 +55,29 @@ in
         # Required for greetd / noctalia-greeter to discover the session (Name=Umbriel).
         # Plain systemPackages .desktop files are not enough; NixOS aggregates via this.
         services.displayManager.sessionPackages = [ cfg.package ];
+
+        systemd.packages = [ cfg.package ];
+        systemd.user.services.umbriel = {
+          restartIfChanged = false;
+          enableDefaultPath = false;
+        };
       })
 
       (lib.mkIf (cfg.portalPackage != null) {
         xdg.portal = {
           enable = lib.mkDefault true;
           extraPortals = [ cfg.portalPackage ];
-          configPackages = [ cfg.portalPackage ];
+          config.umbriel.default = lib.mkDefault [
+            "umbriel"
+            "gtk"
+          ];
         };
+      })
+
+      (import "${modulesPath}/programs/wayland/wayland-session.nix" {
+        inherit lib pkgs;
+        enableXWayland = false;
+        enableWlrPortal = false;
       })
     ]
   );

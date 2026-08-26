@@ -3,6 +3,7 @@
 #include "core/animation.h"
 #include "scene/node.h"
 #include "view/decoration.h"
+#include "view/deferred_unfullscreen.h"
 #include "view/floating.h"
 #include "view/presentation.h"
 
@@ -50,6 +51,11 @@ namespace umbriel {
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
     [[nodiscard]] Workspace* workspace() const { return m_workspace; }
+    // The output currently presenting this view. Unassigned views follow the
+    // preferred output until they are attached to a workspace.
+    [[nodiscard]] Output* currentOutput() const;
+    // Effective optional window-rule override used by tearing diagnostics.
+    [[nodiscard]] std::optional<bool> tearingRuleOverride();
     [[nodiscard]] bool onActiveWorkspace() const { return m_onActiveWorkspace; }
     [[nodiscard]] bool tiled() const { return m_tiled; }
     [[nodiscard]] bool floating() const { return !m_tiled; }
@@ -91,7 +97,19 @@ namespace umbriel {
     // activation chrome the focus manager drives from outside.
     void setBorderFocused(bool focused);
     void setWorkspace(Workspace* workspace, bool attachToLayout = true);
+    // A move the user asked for: the view belongs where it lands, and any displaced home is dropped.
+    void moveToWorkspace(Workspace* workspace, bool attachToLayout = true);
     void detachWorkspace();
+
+    // The output and workspace the view sat on when its output went away; restoreDisplacedViews puts it back there.
+    struct DisplacedHome {
+      std::string outputName;
+      std::string workspaceName;
+    };
+    [[nodiscard]] const std::optional<DisplacedHome>& displacedHome() const { return m_displacedHome; }
+    void markDisplaced(DisplacedHome home) { m_displacedHome = std::move(home); }
+    void clearDisplaced() { m_displacedHome.reset(); }
+
     void setOnActiveWorkspace(bool active);
     void setScratchpadBorder(bool scratchpad);
     void animateTo(int x, int y);
@@ -109,8 +127,9 @@ namespace umbriel {
     // Record the floating position as a fraction of the current usable area,
     // so a cross-output move can land the window proportionally. No-op when tiled.
     void rememberFloatingPosition();
-    // Re-anchor into the (new) workspace output's usable area. No-op when tiled.
-    void restoreFloatingPosition();
+    // Re-anchor into the (new) workspace output's usable area. Temporary fallback placement can preserve the saved
+    // fraction so a displaced view still remembers its real home geometry. No-op when tiled.
+    void restoreFloatingPosition(bool rememberRestored = true);
     // Center the floating window on its output's usable area. False when not floating.
     bool centerFloating();
     // Animate the presented size toward a layout-assigned size. Called by Workspace::arrange when it configures the
@@ -133,6 +152,7 @@ namespace umbriel {
     void applyFullscreenLayout(bool animate = false);
     // Compositor-driven fullscreen toggle (keybind); client requests use handleRequestFullscreen.
     void toggleFullscreen();
+    void applyDeferredUnfullscreen();
     void setMaximizedToEdges(bool maximized);
     void toggleMaximizedToEdges();
     // Detach from the scrolling layout (float) or re-insert as a tiled column.
@@ -268,9 +288,6 @@ namespace umbriel {
     // Apply subsurface clip to the toplevel surface only, not xdg popup children.
     void setSurfaceTreeClip(const wlr_box* clip);
     void unconstrainPopup(wlr_xdg_popup* popup);
-    // The output this view is presented on: its workspace group's output, or
-    // the server's preferred output while unassigned (scratchpad, pre-map).
-    [[nodiscard]] Output* currentOutput() const;
     // Push the current output's scale to every surface of this toplevel (fractional-scale + preferred buffer scale,
     // popups included). Clients like xwayland-satellite size and map pointer coordinates by this, so it must follow the
     // view across outputs and track scale changes.
@@ -325,6 +342,7 @@ namespace umbriel {
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
     Workspace* m_workspace = nullptr;
+    std::optional<DisplacedHome> m_displacedHome;
     bool m_mapped = false;
     // Saved client state commonly requests maximization while the surface is
     // opening. Layout policy owns that transition; later requests are valid.
@@ -352,6 +370,9 @@ namespace umbriel {
     // 0 until the first frame tick after arming; the grace deadline counts
     // from there so a stalled frame clock cannot expire it instantly.
     uint64_t m_unfullscreenGraceStartMsec = 0;
+    // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
+    // compositor-driven fullscreen change clears the parked request.
+    DeferredUnfullscreen m_deferredUnfullscreen;
     // Geometry at unfullscreen time; a commit with a different geometry means
     // the client accepted windowed mode and the grace can end early.
     wlr_box m_unfullscreenGeometry{};

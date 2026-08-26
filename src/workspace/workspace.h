@@ -90,13 +90,18 @@ namespace umbriel {
     void syncViewPresentation(View* view);
     [[nodiscard]] View* focusAdjacent(int direction) const;
     [[nodiscard]] View* focusVertical(int direction) const;
+    [[nodiscard]] View* focusFirstColumn() const;
+    [[nodiscard]] View* focusLastColumn() const;
     [[nodiscard]] View* focusReplacementForRemoval(const View* view) const;
     bool moveFocusedColumn(int direction);
+    bool moveFocusedColumnFirst();
+    bool moveFocusedColumnLast();
     bool consumeFocusedLeft();
     bool expelFocusedRight();
     bool moveFocusedVertical(int direction);
     bool cycleFocusedWidth(int direction);
     bool setFocusedWidth(double fraction);
+    bool centerFocusedColumn();
     // Incremental width change: apply `delta` to the focused column's current
     // width fraction, clamped to [0.1, 1.0].
     bool modifyFocusedWidth(double delta);
@@ -105,6 +110,7 @@ namespace umbriel {
     bool toggleFocusedFullscreen();
     bool toggleFocusedFloating();
     void ensureFocusedVisible();
+    void snapVisible(const View* view);
     [[nodiscard]] double scrollFractionToReveal(const View* view) const;
     void applyVisibility();
     void beginSwitchTransition();

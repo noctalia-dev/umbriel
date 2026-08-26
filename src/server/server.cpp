@@ -160,6 +160,10 @@ namespace umbriel {
     wlr_viewporter_create(m_display);
     wlr_fractional_scale_manager_v1_create(m_display, 1);
     wlr_presentation_create(m_display, m_backend, 2);
+    m_tearingControlManager = wlr_tearing_control_manager_v1_create(m_display, 1);
+    if (m_tearingControlManager == nullptr) {
+      throw std::runtime_error("failed to create tearing-control manager");
+    }
     wlr_ext_data_control_manager_v1_create(m_display, 1);
 
     m_outputLayout = wlr_output_layout_create(m_display);
@@ -347,6 +351,7 @@ namespace umbriel {
   }
 
   Server::~Server() {
+    m_stopping = true;
     wl_list_remove(&m_newOutput.link);
     wl_list_remove(&m_newInput.link);
     wl_list_remove(&m_newXdgToplevel.link);
@@ -427,6 +432,35 @@ namespace umbriel {
       }
     }
     return nullptr;
+  }
+
+  const wlr_image_description_v1_data* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
+    struct Context {
+      const Server* server;
+      const wlr_image_description_v1_data* description = nullptr;
+    } context{.server = this};
+
+    wlr_surface_for_each_surface(
+        surface,
+        [](wlr_surface* candidate, int, int, void* data) {
+          auto* context = static_cast<Context*>(data);
+          if (context->description != nullptr) {
+            return;
+          }
+          const wlr_image_description_v1_data* description = context->server->surfaceImageDescription(candidate);
+          if (description == nullptr) {
+            return;
+          }
+          const bool pqBt2020 = description->tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
+              && description->primaries_named == WP_COLOR_MANAGER_V1_PRIMARIES_BT2020;
+          const WineColorManager* wine = context->server->wineColorManager();
+          if (pqBt2020 || (wine != nullptr && wine->surfaceRequiresHdrOutput(candidate))) {
+            context->description = description;
+          }
+        },
+        &context
+    );
+    return context.description;
   }
 
   void Server::updateColorPreferences() {
@@ -613,7 +647,7 @@ namespace umbriel {
 
   void Server::hideInsertHint() {
     if (m_insertHint != nullptr) {
-      m_insertHint->hide();
+      m_insertHint->hideImmediate();
     }
   }
 

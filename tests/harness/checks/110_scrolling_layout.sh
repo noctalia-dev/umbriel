@@ -22,6 +22,7 @@ wait_for_windows() {
 # Output is 1280x720 (WLR_HEADLESS_OUTPUTS default mode). With the shipped defaults (gap 8, border 2, no outer border) the derived layout metrics are: totalBorderWidth = 2, edgePad = gap + border = 10, totalGap = gap + 2*border = 12 viewport = 1280 - 2*edgePad = 1260, height = 720 - 2*edgePad = 700 A 0.5 fraction column is then: round(0.5 * (viewport + totalGap)) - totalGap = round(636) - 12 = 624
 readonly EXPECT_W=624
 readonly EXPECT_H=700
+readonly EXPECT_CENTER_X=$(( (1280 - EXPECT_W) / 2 ))
 
 printf '\n[layout.scrolling]\ndefault_width_fraction = 0.5\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -64,6 +65,33 @@ if ! jq -e '[.[].x] | unique | length == 2' <<< "$windows" > /dev/null; then
   exit 1
 fi
 
+# The focused last column can rest beyond max scroll so its content is centered.
+"$UMBRIEL" msg column-center > /dev/null
+center_x=0
+for _ in $(seq 40); do
+  center_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "harness-b") | .x')
+  [[ $center_x -eq $EXPECT_CENTER_X ]] && break
+  sleep 0.1
+done
+if [[ $center_x -ne $EXPECT_CENTER_X ]]; then
+  echo "expected last column centered at x=$EXPECT_CENTER_X, got x=$center_x"
+  exit 1
+fi
+
+# The first column uses the corresponding negative resting offset.
+"$UMBRIEL" msg window-focus-left > /dev/null
+"$UMBRIEL" msg column-center > /dev/null
+center_x=0
+for _ in $(seq 40); do
+  center_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "harness-a") | .x')
+  [[ $center_x -eq $EXPECT_CENTER_X ]] && break
+  sleep 0.1
+done
+if [[ $center_x -ne $EXPECT_CENTER_X ]]; then
+  echo "expected first column centered at x=$EXPECT_CENTER_X, got x=$center_x"
+  exit 1
+fi
+
 # Floating toggle round trip: the focused window flips and comes back.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 for _ in $(seq 20); do
@@ -85,4 +113,4 @@ if [[ $("$UMBRIEL" windows --json | jq '[.[] | select(.floating)] | length') -ne
   exit 1
 fi
 
-echo "2 clients tiled at ${EXPECT_W}x${EXPECT_H}, float round trip ok"
+echo "2 clients tiled at ${EXPECT_W}x${EXPECT_H}, edge columns center, float round trip ok"

@@ -71,4 +71,6 @@ if ! wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="; then
   exit 1
 fi
 
-echo "output disabled and re-enabled through live reload"
+wait_for_workspace 'HEADLESS-2:1'
+
+echo "output disabled and re-enabled through live reload, and its window came back"

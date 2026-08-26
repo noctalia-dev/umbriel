@@ -5,9 +5,10 @@ connector names such as `DP-1` or `HDMI-A-1`. Nested outputs use `WL-1`;
 headless outputs use `HEADLESS-1`.
 
 When an output is disconnected or disabled through configuration, Umbriel moves
-its windows to the active workspace on another enabled output. Scratchpad
-windows move with that output assignment. If no enabled output remains, windows
-stay without a workspace until one becomes available.
+its windows to the active workspace on another enabled output, and moves them
+back to the workspace they came from when it returns. Scratchpad windows move
+with that output assignment and return with it too. If no enabled output
+remains, windows stay without a workspace until one becomes available.
 
 Run `umbriel outputs` inside a session to list connector names and modes.
 
@@ -17,6 +18,7 @@ mode = "3840x2160@165"
 position = [0, 0]
 scale = 1.25
 vrr = "fullscreen"
+tearing = true
 workspaces = 5
 ```
 
@@ -29,6 +31,7 @@ workspaces = 5
 | `position` | `[x, y]` | (auto) | Layout coordinates. |
 | `scale` | float | (auto) | Output scale (0.25-4.0). |
 | `vrr` | string | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`. |
+| `tearing` | bool | `false` | Permit asynchronous page flips for eligible fullscreen windows on this output. |
 | `hdr` | string | `"off"` | HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. |
 | `sdr_white` | float | `203` | SDR reference white in cd/m2 while the output is in HDR mode (80-1000). |
 | `workspaces` | int, string array, or `"dynamic"` | `"dynamic"` | Dynamic numbered workspaces, a static count from 1 to 64, or a static ordered list of 1 to 64 names. |
@@ -65,6 +68,38 @@ Umbriel logs a warning and keeps VRR disabled if the output does not support
 adaptive sync or rejects the request. Nested Wayland outputs normally depend on
 the parent compositor and may not expose adaptive sync support.
 
+### Tearing
+
+Tearing is disabled by default and must be enabled per output:
+
+```toml
+[output.DP-1]
+tearing = true
+```
+
+This setting is a safety gate, not an instruction to tear every frame. Umbriel
+requests an asynchronous page flip only when the active workspace contains a
+mapped fullscreen window and either the client requests asynchronous
+presentation through the tearing-control protocol or a matching window rule
+sets `tearing = true`. A window rule with `tearing = false` vetoes the client
+hint. No window rule can bypass the output gate.
+
+Umbriel temporarily uses regular page flips while the session is locked, an
+overview or compositor confirmation overlay is visible, an output animation is
+active, or the output is being captured. HDR, VRR, composition, and direct
+scanout are not unconditional blockers. Umbriel tests the complete output state
+with the backend and falls back to a regular page flip if the asynchronous
+state is rejected or fails.
+
+Backend support is required. Nested and headless outputs can exercise the
+policy and protocol without proving that physical tearing occurs. Run `umbriel
+tearing` to inspect the client hint, resolved rule, eligibility, last submitted
+page-flip mode, presentation result, and any fallback reason. Use `umbriel
+tearing --json` for machine-readable diagnostics.
+
+See [window rules](rules.md#settings-updated-while-a-window-is-open) for per-window
+overrides.
+
 ### HDR
 
 HDR accepts these policies:
@@ -73,7 +108,7 @@ HDR accepts these policies:
 |-------|----------|
 | `"off"` | Keep the output in its normal SDR mode. This is the default. |
 | `"on"` | Keep the output in PQ and BT.2020 continuously. SDR surfaces are mapped to `sdr_white`. |
-| `"auto"` | Enable PQ and BT.2020 while a fullscreen surface declaring PQ and BT.2020 is visible on the active workspace. |
+| `"auto"` | Enable PQ and BT.2020 while a fullscreen surface with supported HDR metadata is visible on the active workspace. This includes PQ with BT.2020 and Wine's Windows scRGB or BT.2100 descriptions. |
 | `"fullscreen"` | Enable PQ and BT.2020 while any fullscreen surface is visible on the active workspace. |
 
 Automatic HDR tracks the fullscreen surface that triggered the transition.
@@ -82,11 +117,23 @@ not keep HDR enabled. Leaving fullscreen, changing workspace, moving the
 surface to another output, unmapping it, or closing it returns the output to
 SDR.
 
-Automatic HDR cannot infer a color space from pixel values. Direct XWayland
-games and other clients that do not attach color-management metadata remain
-undetectable. Use a native Wayland HDR path or `hdr = "on"` for those clients.
-Automatic activation also requires fullscreen content on the active workspace;
-windowed HDR content does not activate the output.
+Automatic HDR follows metadata committed by the client, including metadata on
+mapped subsurfaces used by native Wayland Wine. It cannot infer a color space
+from pixel values. Direct XWayland games and other clients that do not attach
+color-management metadata remain undetectable. Use a native Wayland HDR path or
+`hdr = "on"` for those clients. Automatic activation also requires fullscreen
+content on the active workspace; windowed HDR content does not activate the
+output.
+
+When built with wayland-protocols 1.49 or newer, Umbriel exposes the predefined
+Windows BT.2100 description to native Wayland Wine clients. Wine may instead
+choose Windows scRGB for an HDR game. Both descriptions qualify for automatic
+HDR.
+
+Some native Wayland Wine builds require a runtime-specific launch option before
+they publish HDR metadata. With Proton-CachyOS, use `DXVK_HDR=1` instead of
+`PROTON_ENABLE_HDR=1`. Other Proton variants may behave differently; follow the
+documentation for the selected compatibility tool.
 
 The `"fullscreen"` policy activates HDR before a client supplies color
 metadata. This can break the discovery loop for native Wayland games that only
@@ -171,7 +218,7 @@ monitor in that direction. `window-move-to-output-*` and
 the adjacent monitor's active workspace. `workspace-move-to-output-*` instead
 creates a new workspace on the adjacent monitor and moves every window of the
 active workspace into it, preserving column order and widths. See
-[keybinds](keybinds.md) for the full list and their exact semantics.
+[Actions](actions.md) for the full list and their exact semantics.
 
 Direction is determined from output centers in logical layout coordinates.
 Small overlaps caused by fractional scaling and coordinate rounding therefore
@@ -219,109 +266,4 @@ files = [
   "src/keybinds.toml",
   "machines/monolith.toml",   # output config for this machine
 ]
-```
-
-## Choose a workspace model
-
-Each output can use dynamic or static workspaces.
-
-### Dynamic workspaces
-
-Omit `workspaces` or set it to `"dynamic"`. The output starts with one empty
-workspace named `"1"`. When the last workspace gains a window, Umbriel adds
-another empty workspace.
-
-After you leave an empty workspace, Umbriel removes it unless it is still
-active. The remaining workspaces are renumbered. If you switch to a workspace
-number beyond the current count, Umbriel uses the last workspace.
-
-### Static workspaces
-
-Set `workspaces` to a number or an ordered list of names. Umbriel creates
-exactly those workspaces and keeps them when they are empty.
-
-Numeric workspace actions select positions on the focused output, so
-`workspace-switch:2` selects the second entry even when that workspace has a
-custom name.
-
-```toml
-[output.DP-1]
-workspaces = 5
-
-[output.DP-2]
-workspaces = ["WEB", "CHAT", "VIDEO"]
-```
-
-### Change workspaces on reload
-
-Workspace changes apply when you save a valid configuration. For static
-workspaces, Umbriel first matches existing workspaces by name and then by
-position. Windows from a removed workspace move to the nearest remaining one.
-
-Switching to dynamic workspaces keeps populated and active workspaces,
-renumbers them, and adds an empty workspace at the end.
-
-Other output and layout settings are refreshed during a reload as well.
-
-## Workspace rules
-
-`[[workspace]]` entries customize static workspaces or numbered positions on a
-dynamic output. They change layout settings but do not create workspaces.
-
-Each rule selects a workspace by exactly one of `name` (string) or `index`
-(1-based integer from 1 to 64). An optional `output` restricts the rule to that
-output.
-
-### How settings are combined
-
-Workspace layout settings are applied in this order:
-
-1. The base `[layout]` settings.
-2. A matching `[[workspace]]` rule without an `output`.
-3. A matching `[[workspace]]` rule for the selected output.
-
-Later steps take precedence. On dynamic outputs, rules match workspace names
-and numbered positions as those workspaces are created or removed.
-
-### Available fields
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `name` | string | Select by workspace name (mutually exclusive with `index`). |
-| `index` | int | Select by 1-based position from 1 to 64 (mutually exclusive with `name`). |
-| `output` | string | Restrict to this output. |
-| `layout.mode` | string | `"scrolling"` or `"dwindle"`. |
-| `layout.gap` | int | Gap in pixels (0-500). |
-| `layout.width_presets` | float array | Widths used by the width-cycle action in both layouts. |
-| `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). When omitted globally and for the workspace, the client chooses its initial logical extent. |
-| `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
-| `layout.scrolling.direction` | string | `"horizontal"` or `"vertical"` scroll axis. |
-
-### Examples
-
-```toml
-# Dwindle layout for the VIDEO workspace on DP-2
-[[workspace]]
-output = "DP-2"
-name = "VIDEO"
-layout.mode = "dwindle"
-
-# Scrolling for CHAT, dwindle for STATS, both on HDMI-A-1
-[[workspace]]
-output = "HDMI-A-1"
-name = "CHAT"
-layout.mode = "scrolling"
-layout.scrolling.direction = "vertical"
-
-[[workspace]]
-output = "HDMI-A-1"
-name = "STATS"
-layout.mode = "dwindle"
-
-# Customize workspace position 4 on DP-1
-[[workspace]]
-index = 4
-output = "DP-1"
-layout.gap = 0
-layout.scrolling.default_width_fraction = 0.667
 ```

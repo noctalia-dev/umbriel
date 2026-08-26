@@ -20,6 +20,7 @@ namespace umbriel {
 
     void show(const std::vector<ConfigDiagnostic>& diagnostics);
     void hide();
+    [[nodiscard]] bool visible() const { return m_sceneBuffer != nullptr; }
     void relayout();
 
   private:

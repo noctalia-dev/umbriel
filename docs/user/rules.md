@@ -103,6 +103,7 @@ offset would otherwise place it completely off-screen.
 | `blur_optimized` | bool | Override `appearance.blur.optimized` for this window. |
 | `focus_on_activate` | bool | Override `general.focus_on_activate` for activation requests targeting this window. `false` marks it urgent without focusing or switching workspaces. |
 | `vrr` | string | Override the focused window's output VRR policy: `"disabled"`, `"always"`, or `"fullscreen"`. Without this key, the output's configured `vrr` policy applies. |
+| `tearing` | bool | Override the client's tearing hint. Omit it to follow the hint, set `true` to request asynchronous presentation, or set `false` to veto it. The output must still opt in with `tearing = true`, and the window must be fullscreen. |
 | `hdr` | string | Override the focused window's output HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. Without this key, the output's configured `hdr` policy applies. This does not assign HDR metadata to the surface. |
 
 ### Examples
@@ -132,6 +133,12 @@ vrr = "always"
 [[window_rule]]
 match.app_id = "^steam_app_[0-9]+$"
 hdr = "fullscreen"
+
+# Request tearing for matching fullscreen games, even without a client hint
+# The output must also have tearing = true.
+[[window_rule]]
+match.app_id = "^(steam_app_[0-9]+|gamescope)$"
+tearing = true
 
 # Slight transparency for editors and file managers
 [[window_rule]]

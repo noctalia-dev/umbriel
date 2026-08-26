@@ -183,7 +183,8 @@ center_underfull_strip = true  # center the strip whenever it is narrower than t
 # position = [0, 0]
 # scale = 1.25
 # vrr = "fullscreen"            # "disabled" (default), "always", or "fullscreen"
-# hdr = "auto"                  # "off", "on", metadata-aware "auto", or any fullscreen surface with "fullscreen"
+# tearing = true                 # allow eligible fullscreen clients to request tearing
+# hdr = "auto"                  # "off", "on", metadata-driven "auto", or any-app "fullscreen"
 # sdr_white = 203                # SDR reference white in cd/m2 while HDR is active
 # enabled = true                # false powers the monitor off and removes it from the desktop
 # Dynamic workspaces are the default; use a count or name list for static workspaces.
@@ -241,7 +242,7 @@ enabled = true                 # false disables the tablet and its pads
 theme = ""
 size = 24                      # 1-512
 hardware_cursor = true         # false forces software cursor composition
-hide_when_typing = false       # hide after a non-modifier key press
+hide_when_typing = false       # hide after typing unless a pointer button is held
 hide_timeout_ms = 0            # 0-3600000, 0 disables hiding
 
 [input.focus]
@@ -253,6 +254,8 @@ follows_mouse = false
 # Keybinds (see docs/user/keybinds.md) --------------------------------------
 
 [keybinds]
+# Runtime switchers can use `window-focus-warp:<id>` to move both focus and the
+# cursor. Window ids come from `umbriel windows`, so they are not static binds.
 "Mod+Return" = "spawn:kitty"
 "Mod+T" = "window-toggle-floating"
 "Mod+Shift+T" = "window-focus-switch-floating"
@@ -274,6 +277,10 @@ follows_mouse = false
 # "Mod+Shift+K" = "keyboard-layout-next"
 
 # Output, workspace, and window movement actions.
+# "Mod+Home" = "column-focus-first"
+# "Mod+End" = "column-focus-last"
+# "Mod+Shift+Home" = "column-move-to-first"
+# "Mod+Shift+End" = "column-move-to-last"
 # "Mod+Comma" = "workspace-previous"
 # "Mod+Period" = "workspace-next"
 # "Mod+Shift+Comma" = "window-move-to-workspace-previous"
@@ -284,7 +291,8 @@ follows_mouse = false
 # "Mod+Shift+O" = "dpms-off"        # input activity powers displays back on
 # "Mod+Ctrl+O" = "dpms-off:DP-1"   # target one connector
 # "Mod+Minus" = "window-modify-width:-0.1"
-# "Mod+C" = "window-center"
+# "Mod+C" = "column-center"
+# "Mod+Shift+C" = "window-center"
 # "Mod+Shift+T" = "workspace-set-layout:toggle"
 
 # Media and volume (see docs/user/keybinds.md#example-media-and-brightness-keys)
@@ -294,6 +302,8 @@ follows_mouse = false
 # "XF86AudioPlay"       = "spawn:playerctl play-pause"
 # "XF86AudioNext"       = "spawn:playerctl next"
 # "XF86AudioPrev"       = "spawn:playerctl prev"
+# Controls intended to remain usable while the session is locked use the table form.
+# "XF86MonBrightnessDown" = { action = "spawn:noctalia msg brightness-down 10", allow_when_locked = true }
 
 # Window and layer rules (see docs/user/rules.md) ---------------------------
 
@@ -324,6 +334,7 @@ default_size = [800, 600]
 # default_focused = false
 # focus_on_activate = true
 # vrr = "always"                # override the output VRR policy while focused
+# tearing = true                 # force a tearing request; false vetoes the client hint
 # hdr = "fullscreen"            # override the output HDR policy while focused
 
 # [[window_rule]]

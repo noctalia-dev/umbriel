@@ -244,6 +244,7 @@ UMBRIEL_TEST(identicalConfigsProduceNoRuntimeEffects) {
 UMBRIEL_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   const ConfigEffects effects = ConfigEffects::everything();
   CHECK(effects.outputState);
+  CHECK(effects.tearingPolicy);
   CHECK(effects.workspaceInventory);
   CHECK(effects.workspaceLayout);
   CHECK(effects.sceneBlur);
@@ -344,6 +345,52 @@ UMBRIEL_TEST(outputStateAndWorkspaceInventoryAreIndependent) {
   const ConfigEffects reenableEffects = ConfigEffects::between(disabled, before);
   CHECK(reenableEffects.outputState);
   CHECK(!reenableEffects.workspaceInventory);
+}
+
+UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
+  Config before;
+  OutputRule output;
+  output.name = "HEADLESS-1";
+  before.outputs.push_back(output);
+
+  Config allowed = before;
+  allowed.outputs[0].allowTearing = true;
+  const ConfigEffects outputEffects = ConfigEffects::between(before, allowed);
+  CHECK(outputEffects.tearingPolicy);
+  CHECK(!outputEffects.outputState);
+  CHECK(!outputEffects.workspaceInventory);
+  CHECK(!outputEffects.workspaceLayout);
+  CHECK(!outputEffects.invalidatesOverview());
+  CHECK_EQ(outputEffects.summary(), std::string("tearing policy"));
+
+  Config forcedByRule = before;
+  WindowRule game;
+  game.appIdPattern = "^game$";
+  game.allowTearing = true;
+  forcedByRule.windowRules.push_back(game);
+  const ConfigEffects ruleEffects = ConfigEffects::between(before, forcedByRule);
+  CHECK(ruleEffects.tearingPolicy);
+  CHECK(ruleEffects.viewChrome);
+  CHECK(!ruleEffects.outputState);
+  CHECK_EQ(ruleEffects.summary(), std::string("tearing policy, view chrome"));
+
+  Config vetoedByRule = before;
+  game.allowTearing = false;
+  vetoedByRule.windowRules.push_back(game);
+  CHECK(ConfigEffects::between(before, vetoedByRule).tearingPolicy);
+
+  Config changedMatcher = forcedByRule;
+  changedMatcher.windowRules[0].appIdPattern = "^other-game$";
+  CHECK(ConfigEffects::between(forcedByRule, changedMatcher).tearingPolicy);
+
+  Config unrelatedRule = before;
+  WindowRule translucent;
+  translucent.appIdPattern = "^terminal$";
+  translucent.opacity = 0.9;
+  unrelatedRule.windowRules.push_back(translucent);
+  const ConfigEffects unrelatedEffects = ConfigEffects::between(before, unrelatedRule);
+  CHECK(!unrelatedEffects.tearingPolicy);
+  CHECK(unrelatedEffects.viewChrome);
 }
 
 UMBRIEL_TEST(vrrPolicyTracksFullscreenOnlyWhenRequested) {

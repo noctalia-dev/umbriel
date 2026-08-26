@@ -148,6 +148,11 @@ int main(int argc, char** argv) {
       // Help only when -h/--help is the immediate argument (not buried in spawn args).
       if (argc == 3 && isHelpFlag(argv[2])) {
         std::println("Usage: umbriel {} {}", spec->name, spec->argSpec);
+        if (spec->name != "msg") {
+          std::println("");
+          std::println("{}", spec->description);
+          return EXIT_SUCCESS;
+        }
         std::println("");
         std::println("Send an action to the running compositor.");
         std::println("Use `msg spawn <cmd...>` as shorthand for `msg spawn:<cmd...>`.");

@@ -344,7 +344,7 @@ namespace umbriel {
     if (!self->m_repeatArmed) {
       return 0;
     }
-    if (self->m_server->sessionLocked()) {
+    if (self->m_server->sessionLocked() && !self->m_repeatBind.allowWhenLocked) {
       self->cancelRepeat();
       return 0;
     }

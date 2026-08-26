@@ -1056,7 +1056,7 @@ namespace umbriel {
         }
         OutputRule rule;
         rule.name = name;
-        keys.boolean("enabled", rule.enabled);
+        keys.boolean("enabled", rule.enabled).boolean("tearing", rule.allowTearing);
         if (const toml::node* workspacesNode = keys.take("workspaces")) {
           if (const auto count = workspacesNode->value<std::int64_t>()) {
             if (*count < 1 || *count > static_cast<std::int64_t>(kMaxWorkspaces)) {
@@ -1213,12 +1213,14 @@ namespace umbriel {
         const std::string chord(key.str());
         std::string actionStr;
         bool repeatBind = true;
+        bool allowWhenLocked = false;
 
         if (const auto* tbl = entry.as_table()) {
           Section bind(*tbl, "keybinds." + chord, configStore().mutableDiagnostics());
           // Read `repeat` before validating the action: an entry rejected for a
           // bad action must not also be told its `repeat` key is unknown.
           bind.boolean("repeat", repeatBind);
+          bind.boolean("allow_when_locked", allowWhenLocked);
           const toml::node* actionNode = bind.take("action");
           if (actionNode == nullptr) {
             warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
@@ -1249,6 +1251,7 @@ namespace umbriel {
           continue;
         }
         binding.repeat = binding.modifierOnly ? false : repeatBind;
+        binding.allowWhenLocked = allowWhenLocked;
         if (!parseAction(actionStr, binding)) {
           warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, actionStr);
           continue;
@@ -1333,6 +1336,7 @@ namespace umbriel {
             .boolean("default_focused", rule.defaultFocused)
             .boolean("default_pinned", rule.defaultPinned)
             .boolean("focus_on_activate", rule.focusOnActivate)
+            .boolean("tearing", rule.allowTearing)
             .boolean("blur", rule.blur)
             .boolean("blur_popups", rule.blurPopups)
             .boolean("blur_optimized", rule.blurOptimized)

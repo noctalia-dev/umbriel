@@ -40,6 +40,40 @@ namespace umbriel {
           && lhs.sdrWhite == rhs.sdrWhite;
     }
 
+    bool sameOutputTearingPolicy(const OutputRule* before, const OutputRule* after) {
+      static const OutputRule defaults;
+      const OutputRule& lhs = before != nullptr ? *before : defaults;
+      const OutputRule& rhs = after != nullptr ? *after : defaults;
+      return lhs.allowTearing == rhs.allowTearing;
+    }
+
+    bool sameWindowTearingPolicy(const Config& before, const Config& after) {
+      size_t beforeIndex = 0;
+      size_t afterIndex = 0;
+      while (true) {
+        while (beforeIndex < before.windowRules.size() && !before.windowRules[beforeIndex].allowTearing.has_value()) {
+          ++beforeIndex;
+        }
+        while (afterIndex < after.windowRules.size() && !after.windowRules[afterIndex].allowTearing.has_value()) {
+          ++afterIndex;
+        }
+        const bool beforeEnd = beforeIndex == before.windowRules.size();
+        const bool afterEnd = afterIndex == after.windowRules.size();
+        if (beforeEnd || afterEnd) {
+          return beforeEnd && afterEnd;
+        }
+
+        const WindowRule& lhs = before.windowRules[beforeIndex++];
+        const WindowRule& rhs = after.windowRules[afterIndex++];
+        if (lhs.appIdPattern != rhs.appIdPattern
+            || lhs.titlePattern != rhs.titlePattern
+            || lhs.matchFocused != rhs.matchFocused
+            || lhs.allowTearing != rhs.allowTearing) {
+          return false;
+        }
+      }
+    }
+
     bool sameWorkspaceInventory(const OutputRule* before, const OutputRule* after) {
       static const OutputRule defaults;
       const OutputRule& lhs = before != nullptr ? *before : defaults;
@@ -51,12 +85,15 @@ namespace umbriel {
 
   ConfigEffects ConfigEffects::between(const Config& before, const Config& after) {
     const bool outputState = outputProjectionChanged(before, after, sameOutputState);
+    const bool tearingPolicy =
+        outputProjectionChanged(before, after, sameOutputTearingPolicy) || !sameWindowTearingPolicy(before, after);
     const bool workspaceInventory = outputProjectionChanged(before, after, sameWorkspaceInventory);
     const bool sceneBlur = before.appearance.blur != after.appearance.blur;
     const bool focusDim = before.animation.enabled != after.animation.enabled
         || before.animation.dimUnfocused != after.animation.dimUnfocused;
     return {
         .outputState = outputState,
+        .tearingPolicy = tearingPolicy,
         .workspaceInventory = workspaceInventory,
         .workspaceLayout = workspaceInventory
             || before.layout != after.layout
@@ -75,6 +112,7 @@ namespace umbriel {
   ConfigEffects ConfigEffects::everything() {
     return {
         .outputState = true,
+        .tearingPolicy = true,
         .workspaceInventory = true,
         .workspaceLayout = true,
         .sceneBlur = true,
@@ -168,6 +206,7 @@ namespace umbriel {
       out += name;
     };
     add(outputState, "output state");
+    add(tearingPolicy, "tearing policy");
     add(workspaceInventory, "workspace inventory");
     add(workspaceLayout, "workspace layout");
     add(sceneBlur, "scene blur");

@@ -131,6 +131,10 @@ namespace umbriel {
   ) {
     return windowMode ? vrrEnabled(*windowMode, windowFullscreen) : vrrEnabled(outputMode, outputFullscreen);
   }
+  [[nodiscard]] constexpr bool
+  tearingEnabled(bool outputAllowed, std::optional<bool> windowOverride, bool clientHintAsync) {
+    return outputAllowed && windowOverride.value_or(clientHintAsync);
+  }
   struct OutputRule {
     std::string name;
     // False powers the monitor off, removes it from the layout, and hides its
@@ -141,6 +145,9 @@ namespace umbriel {
     std::optional<double> scale;
     std::optional<int> transform;
     VrrMode vrr = VrrMode::Disabled;
+    // Global safety gate. Even a client async hint or a window-rule override
+    // cannot request tearing unless the owning output enables it.
+    bool allowTearing = false;
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     // Explicit workspace inventory. Omitted means dynamic workspaces.
@@ -186,6 +193,9 @@ namespace umbriel {
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
     std::optional<VrrMode> vrr;
+    // Overrides the client's tearing-control hint. Omitted follows the hint,
+    // true forces async preference, and false vetoes it.
+    std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
     std::optional<double> opacity; // 0.0-1.0
     std::optional<bool> blur;
@@ -212,6 +222,7 @@ namespace umbriel {
           && defaultPinned == other.defaultPinned
           && focusOnActivate == other.focusOnActivate
           && vrr == other.vrr
+          && allowTearing == other.allowTearing
           && hdr == other.hdr
           && opacity == other.opacity
           && blur == other.blur
@@ -236,6 +247,7 @@ namespace umbriel {
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
     std::optional<VrrMode> vrr;
+    std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
     std::optional<double> opacity;
     std::optional<bool> blur;

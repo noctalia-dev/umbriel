@@ -91,7 +91,7 @@ namespace umbriel {
 
   void
   Server::armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers) {
-    if (m_modifierTap.cancelForKeyPress() || m_sessionLocked) {
+    if (m_modifierTap.cancelForKeyPress()) {
       return;
     }
 
@@ -108,6 +108,9 @@ namespace umbriel {
       if (!bind.modifierOnly) {
         continue;
       }
+      if (m_sessionLocked && !bind.allowWhenLocked) {
+        continue;
+      }
       if (bind.submap != currentSubmap) {
         if (m_activeSubmaps.empty() || !bind.submap.empty() || !isSubmapResetBind(bind)) {
           continue;
@@ -122,18 +125,14 @@ namespace umbriel {
   }
 
   std::optional<Keybind> Server::releaseModifierTap(const void* source, uint32_t keycode) {
-    if (m_sessionLocked) {
-      m_modifierTap.cancel();
+    std::optional<Keybind> bind = m_modifierTap.release(source, keycode);
+    if (bind && m_sessionLocked && !bind->allowWhenLocked) {
       return std::nullopt;
     }
-    return m_modifierTap.release(source, keycode);
+    return bind;
   }
 
   const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const {
-    if (m_sessionLocked) {
-      return nullptr;
-    }
-
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const uint32_t lowered = xkb_keysym_to_lower(keysym);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
@@ -147,6 +146,9 @@ namespace umbriel {
         } else {
           continue;
         }
+      }
+      if (m_sessionLocked && !bind.allowWhenLocked) {
+        continue;
       }
       if (bind.modifierOnly) {
         continue;
@@ -183,15 +185,14 @@ namespace umbriel {
   }
 
   bool Server::handleWheelBind(WheelDirection direction, uint32_t modifiers) {
-    if (m_sessionLocked) {
-      return false;
-    }
-
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
     for (const Keybind& bind : config().keybinds) {
       if (bind.submap != currentSubmap) {
+        continue;
+      }
+      if (m_sessionLocked && !bind.allowWhenLocked) {
         continue;
       }
       if (bind.wheel != direction) {
@@ -208,15 +209,14 @@ namespace umbriel {
   }
 
   const Keybind* Server::handleMouseBind(uint32_t button, uint32_t modifiers) {
-    if (m_sessionLocked) {
-      return nullptr;
-    }
-
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
     for (const Keybind& bind : config().keybinds) {
       if (bind.submap != currentSubmap) {
+        continue;
+      }
+      if (m_sessionLocked && !bind.allowWhenLocked) {
         continue;
       }
       // Non-mouse binds carry 0 here, which never equals a BTN_* code.

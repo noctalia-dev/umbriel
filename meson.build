@@ -34,7 +34,7 @@ add_project_arguments(
 
 wayland_server_dep = dependency('wayland-server', version: '>=1.23')
 wayland_client_dep = dependency('wayland-client')
-wayland_protocols_dep = dependency('wayland-protocols', version: '>=1.32')
+wayland_protocols_dep = dependency('wayland-protocols', version: '>=1.47')
 wlroots_dep = dependency('wlroots-0.20')
 # Prefer an installed SceneFX only when it provides Umbriel's patched API.
 # Otherwise, build the patched git submodule.
@@ -180,6 +180,19 @@ color_management_client_c = custom_target(
   'color-management-v1-client-protocol.c',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/color-management/color-management-v1.xml',
   output: 'color-management-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+tearing_control_client_h = custom_target(
+  'tearing-control-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/tearing-control/tearing-control-v1.xml',
+  output: 'tearing-control-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+tearing_control_client_c = custom_target(
+  'tearing-control-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/tearing-control/tearing-control-v1.xml',
+  output: 'tearing-control-v1-client-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
@@ -342,6 +355,7 @@ core_sources = files(
   'src/input/text_input.cpp',
   'src/input/cursor.cpp',
   'src/input/gestures.cpp',
+  'src/input/swipe_tracker.cpp',
   'src/input/cursor_constraint.cpp',
   'src/view/view.cpp',
   'src/view/decoration.cpp',
@@ -430,6 +444,7 @@ unit_tests = [
   ['keybind-parse', ['tests/unit/keybind_parse.cpp'], []],
   ['modifier-tap', ['tests/unit/modifier_tap.cpp'], []],
   ['output-direction', ['tests/unit/output_direction.cpp'], []],
+  ['output-frame-schedule', ['tests/unit/output_frame_schedule.cpp'], []],
   ['hdr-format', ['tests/unit/hdr_format.cpp'], []],
   ['scrolling-layout', ['tests/unit/scrolling_layout.cpp'], []],
   ['dwindle-layout', ['tests/unit/dwindle_layout.cpp'], []],
@@ -437,6 +452,7 @@ unit_tests = [
   ['border-ring', ['tests/unit/border_ring.cpp'], []],
   ['floating', ['tests/unit/floating.cpp'], []],
   ['maximize', ['tests/unit/maximize.cpp'], []],
+  ['deferred-unfullscreen', ['tests/unit/deferred_unfullscreen.cpp'], []],
   ['config-section', ['tests/unit/config_section.cpp'], []],
   ['config-change', ['tests/unit/config_change.cpp'], []],
   ['config-load', ['tests/unit/config_load.cpp'], [umbriel_core_dep]],
@@ -503,6 +519,8 @@ unmap_client = executable(
     xdg_shell_client_c,
     color_management_client_h,
     color_management_client_c,
+    tearing_control_client_h,
+    tearing_control_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

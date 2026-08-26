@@ -55,6 +55,9 @@ namespace umbriel {
   // not source sections: one source change can invalidate several consumers.
   struct ConfigEffects {
     bool outputState = false;
+    // Per-frame async presentation policy. This is separate from outputState
+    // so a policy reload does not reapply modes, HDR, VRR, focus, or scale.
+    bool tearingPolicy = false;
     bool workspaceInventory = false;
     bool workspaceLayout = false;
     bool sceneBlur = false;
@@ -67,6 +70,7 @@ namespace umbriel {
 
     [[nodiscard]] bool any() const {
       return outputState
+          || tearingPolicy
           || workspaceInventory
           || workspaceLayout
           || sceneBlur

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The renderer's input color transform support enables the version 2 color-management global.
+# The renderer's input color transform support enables the standard version 2 color-management global and the Wine
+# compatibility global. Builds with wayland-protocols 1.49 expose version 3 to Wine clients for Windows BT.2100.
 set -euo pipefail
 
 readonly GLOBAL_CLIENT="${UMBRIEL_GLOBAL_CLIENT:-./build-debug/global-client}"
@@ -12,9 +13,17 @@ if [[ ! -x $GLOBAL_CLIENT || ! -x $POINTER_CLIENT ]]; then
   exit 1
 fi
 
-"$GLOBAL_CLIENT" wp_color_manager_v1 present 2
+COLOR_MANAGER_VERSION=$("$UNMAP_CLIENT" --color-manager-version)
+if [[ $COLOR_MANAGER_VERSION != 2 && $COLOR_MANAGER_VERSION != 3 ]]; then
+  echo "unexpected compiled color-management version: $COLOR_MANAGER_VERSION"
+  exit 1
+fi
 
-echo "wp_color_manager_v1 version 2 advertised"
+"$GLOBAL_CLIENT" wp_color_manager_v1 present 2
+bash -c 'exec -a wine "$@"' _ \
+  "$GLOBAL_CLIENT" wp_color_manager_v1 present "$COLOR_MANAGER_VERSION"
+
+echo "wp_color_manager_v1 version 2 advertised normally; Wine compatibility version $COLOR_MANAGER_VERSION advertised"
 
 # TOML cannot redefine [output.HEADLESS-1], so each phase below replaces the
 # whole config rather than appending to the previous one. Holding the pristine
@@ -80,7 +89,7 @@ wait "$CLIENT_PID" 2>/dev/null || true
 CLIENT_PID=
 
 CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/wine-scrgb-client.log"
-env COLOR_WINDOWS_SCRGB=1 APP_ID=wine-scrgb \
+env COLOR_WINDOWS_SCRGB=1 REDRAW_ON_CLOSE=once APP_ID=wine-scrgb \
   bash -c 'exec -a wine "$@"' _ \
   "$UNMAP_CLIENT" wine-scrgb > "$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
@@ -112,6 +121,53 @@ if ! jq -e '
   exit 1
 fi
 
+# The overview mirrors client buffers into raw scene buffers. Their color must match the normal scene surface even
+# after Wine's compatibility metadata is repaired at the render boundary.
+normal_shot="$UMBRIEL_RUNTIME_DIR/wine-scrgb-normal.png"
+overview_shot="$UMBRIEL_RUNTIME_DIR/wine-scrgb-overview.png"
+window_json=$("$UMBRIEL" windows --json | jq '.[] | select(.title == "wine-scrgb")')
+window_x=$(jq -r '.x' <<< "$window_json")
+window_y=$(jq -r '.y' <<< "$window_json")
+window_w=$(jq -r '.w' <<< "$window_json")
+window_h=$(jq -r '.h' <<< "$window_json")
+normal_x=$((window_x + window_w / 2))
+normal_y=$((window_y + window_h / 2))
+overview_x=$((320 + normal_x / 2))
+overview_y=$((180 + normal_y / 2))
+
+sample_rgb() {
+  magick "$1" -alpha off -crop "20x20+$(($2 - 10))+$(($3 - 10))" +repage -colorspace RGB \
+    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:
+}
+
+grim "$normal_shot"
+"$UMBRIEL" msg overview-open > /dev/null
+sleep 0.4
+wine_scrgb_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "wine-scrgb") | .id')
+"$UMBRIEL" msg "window-close:$wine_scrgb_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^redrawn$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+if ! grep -q '^redrawn$' "$CLIENT_LOG"; then
+  echo "Wine scRGB client did not redraw inside overview: $(cat "$CLIENT_LOG")"
+  exit 1
+fi
+grim "$overview_shot"
+read -r normal_r normal_g normal_b < <(sample_rgb "$normal_shot" "$normal_x" "$normal_y")
+read -r overview_r overview_g overview_b < <(sample_rgb "$overview_shot" "$overview_x" "$overview_y")
+for channel in r g b; do
+  normal_var="normal_$channel"
+  overview_var="overview_$channel"
+  difference=$(( ${!normal_var} - ${!overview_var} ))
+  (( difference < 0 )) && difference=$((-difference))
+  if (( difference > 3 )); then
+    echo "Wine scRGB overview color changed: normal=$normal_r,$normal_g,$normal_b overview=$overview_r,$overview_g,$overview_b"
+    exit 1
+  fi
+done
+"$UMBRIEL" msg overview-close > /dev/null
+
 wine_scrgb_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "wine-scrgb") | .id')
 "$UMBRIEL" msg "window-close:$wine_scrgb_id" > /dev/null
 for _ in $(seq 40); do
@@ -140,6 +196,188 @@ if ! jq -e '
 ' <<< "$color" > /dev/null; then
   echo "automatic HDR did not remain idle without HDR content: $color"
   exit 1
+fi
+
+CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/wine-scrgb-auto-child-client.log"
+env REQUEST_FULLSCREEN=1 COLOR_WINDOWS_SCRGB=1 COLOR_ON_SUBSURFACE=1 COLOR_CHILD_LIFECYCLE=1 \
+  APP_ID=wine-scrgb-auto-child \
+  bash -c 'exec -a wine "$@"' _ \
+  "$UNMAP_CLIENT" wine-scrgb-auto-child > "$CLIENT_LOG" 2>&1 &
+CLIENT_PID=$!
+for _ in $(seq 60); do
+  grep -q '^mapped$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+if ! grep -q '^mapped$' "$CLIENT_LOG"; then
+  echo "Wine scRGB child-surface client never mapped: $(cat "$CLIENT_LOG")"
+  exit 1
+fi
+
+color=$("$UMBRIEL" color --json)
+if ! jq -e '
+  .outputs[0].hdr_mode == "auto"
+  and .outputs[0].hdr_requested == false
+  and .outputs[0].hdr_active == false
+  and .outputs[0].fallback_reason == ""
+' <<< "$color" > /dev/null; then
+  echo "unmapped Wine color child unexpectedly requested automatic HDR: $color"
+  exit 1
+fi
+
+wine_scrgb_auto_child_id=$("$UMBRIEL" windows --json \
+  | jq -r '.[] | select(.title == "wine-scrgb-auto-child") | .id')
+"$UMBRIEL" msg "window-close:$wine_scrgb_auto_child_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^color-child-mapped$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+color=$("$UMBRIEL" color --json)
+if ! grep -q '^color-child-mapped$' "$CLIENT_LOG" \
+    || ! jq -e '
+      .outputs[0].hdr_requested == false
+      and .outputs[0].fallback_reason == ""
+    ' <<< "$color" > /dev/null; then
+  echo "Wine child without HDR metadata unexpectedly requested automatic HDR: $color"
+  exit 1
+fi
+
+"$UMBRIEL" msg "window-close:$wine_scrgb_auto_child_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^color-child-hdr$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+for _ in $(seq 40); do
+  color=$("$UMBRIEL" color --json)
+  jq -e '
+    .outputs[0].hdr_mode == "auto"
+    and .outputs[0].hdr_requested == true
+    and .outputs[0].hdr_active == false
+    and .outputs[0].fallback_reason == "display does not advertise PQ"
+    and (.surfaces[] | select(.title == "wine-scrgb-auto-child")
+      | .app_id == "wine-scrgb-auto-child"
+        and .transfer_function == "extended linear"
+        and .primaries == "sRGB")
+  ' <<< "$color" > /dev/null && break
+  sleep 0.1
+done
+if ! jq -e '
+  .outputs[0].hdr_requested == true
+  and .outputs[0].fallback_reason == "display does not advertise PQ"
+  and (.surfaces[] | select(.title == "wine-scrgb-auto-child")
+    | .app_id == "wine-scrgb-auto-child"
+      and .transfer_function == "extended linear"
+      and .primaries == "sRGB")
+' <<< "$color" > /dev/null; then
+  echo "fullscreen Wine scRGB child metadata did not request automatic HDR: $color"
+  exit 1
+fi
+
+"$UMBRIEL" msg "window-close:$wine_scrgb_auto_child_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^color-child-unmapped$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+for _ in $(seq 40); do
+  color=$("$UMBRIEL" color --json)
+  jq -e '
+    .outputs[0].hdr_mode == "auto"
+    and .outputs[0].hdr_requested == false
+    and .outputs[0].hdr_active == false
+    and .outputs[0].fallback_reason == ""
+  ' <<< "$color" > /dev/null && break
+  sleep 0.1
+done
+if ! grep -q '^color-child-unmapped$' "$CLIENT_LOG" \
+    || ! jq -e '
+      .outputs[0].hdr_mode == "auto"
+      and .outputs[0].hdr_requested == false
+      and .outputs[0].hdr_active == false
+      and .outputs[0].fallback_reason == ""
+    ' <<< "$color" > /dev/null; then
+  echo "automatic HDR did not release after the Wine scRGB child surface unmapped: $color"
+  exit 1
+fi
+
+"$UMBRIEL" msg "window-close:$wine_scrgb_auto_child_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^unmapped$' "$CLIENT_LOG" && break
+  sleep 0.1
+done
+if ! grep -q '^unmapped$' "$CLIENT_LOG"; then
+  echo "Wine scRGB child-surface client did not unmap"
+  exit 1
+fi
+
+kill -TERM "$CLIENT_PID"
+wait "$CLIENT_PID" 2>/dev/null || true
+CLIENT_PID=
+
+if ((COLOR_MANAGER_VERSION >= 3)); then
+  CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/wine-bt2100-client.log"
+  env REQUEST_FULLSCREEN=1 COLOR_WINDOWS_BT2100=1 APP_ID=wine-bt2100 \
+    bash -c 'exec -a wine "$@"' _ \
+    "$UNMAP_CLIENT" wine-bt2100 > "$CLIENT_LOG" 2>&1 &
+  CLIENT_PID=$!
+  for _ in $(seq 60); do
+    grep -q '^mapped$' "$CLIENT_LOG" && break
+    sleep 0.1
+  done
+  if ! grep -q '^mapped$' "$CLIENT_LOG"; then
+    echo "Wine BT.2100 client never mapped: $(cat "$CLIENT_LOG")"
+    exit 1
+  fi
+
+  for _ in $(seq 40); do
+    color=$("$UMBRIEL" color --json)
+    jq -e '
+      .outputs[0].hdr_mode == "auto"
+      and .outputs[0].hdr_requested == true
+      and .outputs[0].hdr_active == false
+      and .outputs[0].fallback_reason == "display does not advertise PQ"
+      and (.surfaces[] | select(.title == "wine-bt2100")
+        | .app_id == "wine-bt2100"
+          and .transfer_function == "PQ"
+          and .primaries == "BT.2020"
+          and .mastering_display_primaries == null
+          and .mastering_luminance == null)
+    ' <<< "$color" > /dev/null && break
+    sleep 0.1
+  done
+  if ! jq -e '
+    .outputs[0].hdr_requested == true
+    and .outputs[0].fallback_reason == "display does not advertise PQ"
+    and (.surfaces[] | select(.title == "wine-bt2100")
+      | .app_id == "wine-bt2100"
+        and .transfer_function == "PQ"
+        and .primaries == "BT.2020"
+        and .mastering_display_primaries == null
+        and .mastering_luminance == null)
+  ' <<< "$color" > /dev/null; then
+    echo "Wine BT.2100 metadata did not request automatic HDR: $color"
+    exit 1
+  fi
+
+  wine_bt2100_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "wine-bt2100") | .id')
+  "$UMBRIEL" msg "window-close:$wine_bt2100_id" > /dev/null
+  for _ in $(seq 40); do
+    grep -q '^unmapped$' "$CLIENT_LOG" && break
+    sleep 0.1
+  done
+  color=$("$UMBRIEL" color --json)
+  if ! grep -q '^unmapped$' "$CLIENT_LOG" \
+      || ! jq -e '
+        .outputs[0].hdr_mode == "auto"
+        and .outputs[0].hdr_requested == false
+        and .outputs[0].hdr_active == false
+        and .outputs[0].fallback_reason == ""
+      ' <<< "$color" > /dev/null; then
+    echo "automatic HDR did not release after Wine BT.2100 content unmapped: $color"
+    exit 1
+  fi
+
+  kill -TERM "$CLIENT_PID"
+  wait "$CLIENT_PID" 2>/dev/null || true
+  CLIENT_PID=
 fi
 
 CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/auto-hdr-client.log"
