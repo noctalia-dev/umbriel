@@ -35,8 +35,8 @@ active_title() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 
 [input.focus]
 follows_mouse = true
@@ -57,7 +57,7 @@ sleep 0.1
 
 # Slow only the transition under test. The setup switches stay fast so this check does not spend twenty seconds waiting
 # for animations that are unrelated to the assertion.
-sed -i 's/animation_ms = 1/animation_ms = 10000/' "$UMBRIEL_CONFIG"
+sed -i 's/duration_ms = 1/duration_ms = 10000/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 windows=$("$UMBRIEL" windows --json)

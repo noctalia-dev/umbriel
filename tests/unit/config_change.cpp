@@ -24,6 +24,7 @@ UMBRIEL_TEST(aFirstLoadReportsEverything) {
   const ConfigChange change = ConfigChange::everything();
   CHECK(change.any());
   CHECK(change.appearance);
+  CHECK(change.animation);
   CHECK(change.colors);
   CHECK(change.input);
   CHECK(change.outputs);
@@ -112,6 +113,24 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.workspaces);
     CHECK(!change.workspaceRules);
+  }
+  {
+    Config after;
+    after.animation.windowsMove.durationMs += 1;
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.animation);
+    CHECK(!change.appearance);
+    CHECK_EQ(change.summary(), std::string("animation"));
+    const ConfigEffects effects = ConfigEffects::between(before, after);
+    CHECK(effects.animation);
+    CHECK(!effects.viewChrome);
+  }
+  {
+    Config after;
+    after.animation.dimUnfocused.dim = 0.25;
+    const ConfigEffects effects = ConfigEffects::between(before, after);
+    CHECK(effects.animation);
+    CHECK(effects.viewChrome);
   }
 }
 
@@ -230,6 +249,7 @@ UMBRIEL_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   CHECK(effects.sceneBlur);
   CHECK(effects.viewChrome);
   CHECK(effects.layerEffects);
+  CHECK(effects.animation);
   CHECK(effects.input);
   CHECK(effects.overviewPresentation);
   CHECK(effects.internalUi);

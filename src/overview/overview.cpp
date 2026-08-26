@@ -866,8 +866,18 @@ namespace umbriel {
     m_closing = closing;
     m_targetProgress = target;
     m_progressFrom = m_progress;
+    const auto& animation = config().animation;
+    if (!animation.enabled) {
+      m_anim.snap(1.0);
+      m_progress = target;
+      for (const auto& state : m_outputs) {
+        state->rowScroll = state->rowTo;
+      }
+      finishAnimation();
+      return;
+    }
     m_anim.snap(0.0);
-    m_anim.retarget(1.0, std::max(1, config().appearance.animationMs), config().appearance.animationCurve);
+    m_anim.retarget(1.0, animation.durationMs, animation.curve);
     // Animations only tick from an output frame; kick one so the zoom starts on
     // an idle desktop (the value itself clocks from its first tick).
     scheduleFrames();

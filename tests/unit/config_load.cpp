@@ -811,4 +811,86 @@ UMBRIEL_TEST(tabletConfigDefaults) {
   CHECK(!tablet.calibrationMatrix.has_value());
 }
 
+UMBRIEL_TEST(animationUsesCanonicalTopLevelNamespace) {
+  const TempConfig file;
+  file.write(R"(
+[animation]
+enabled = false
+duration_ms = 320
+curve = "linear"
+
+[animation.beziers]
+custom = [0.1, 0.2, 0.3, 1.0]
+
+[animation.springs]
+bouncy = { damping = 0.5, stiffness = 200 }
+
+[animation.windows_in]
+enabled = false
+duration_ms = 450
+curve = "custom"
+style = "zoom"
+scale = 0.7
+
+[animation.windows_out]
+curve = "bouncy"
+style = "slide"
+
+[animation.scratchpad]
+dim = 0.4
+blur = true
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+  const auto& animation = store.config().animation;
+
+  CHECK(result.success);
+  CHECK(!animation.enabled);
+  CHECK_EQ(animation.durationMs, 320);
+  CHECK(animation.curve.easing == umbriel::Easing::Linear);
+  CHECK(!animation.windowsIn.enabled);
+  CHECK_EQ(animation.windowsIn.durationMs, 450);
+  CHECK(animation.windowsIn.curve.easing == umbriel::Easing::CustomBezier);
+  CHECK_EQ(animation.windowsIn.style, std::string{"zoom"});
+  CHECK_EQ(animation.windowsIn.scale, 0.7);
+  CHECK(animation.windowsOut.curve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(animation.windowsOut.style, std::string{"slide"});
+  CHECK_EQ(animation.windowsMove.durationMs, 320);
+  CHECK_EQ(animation.scratchpad.dim, 0.4);
+  CHECK(animation.scratchpad.blur);
+
+  file.write(R"(
+[appearance.animations]
+enabled = false
+
+[animations]
+enabled = false
+)");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.enabled);
+  CHECK(containsDiagnostic(store, "unknown key appearance.animations"));
+  CHECK(containsDiagnostic(store, "unknown key animations"));
+}
+
+UMBRIEL_TEST(packagedAnimationDefaultsMatchCompiledDefaults) {
+  std::filesystem::path root = std::filesystem::current_path();
+  while (!std::filesystem::exists(root / "examples/config.toml")) {
+    const std::filesystem::path parent = root.parent_path();
+    if (parent == root) {
+      CHECK(false);
+      return;
+    }
+    root = parent;
+  }
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(root / "examples/config.toml", true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(store.config().animation == umbriel::Config{}.animation);
+}
+
 int main() { return RUN_TESTS(); }

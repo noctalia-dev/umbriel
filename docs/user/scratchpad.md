@@ -73,9 +73,9 @@ Use `umbriel outputs` inside a session to find output names such as `DP-1` or
 
 ## Visibility and focus
 
-Moving a window preserves the target scratchpad's current visibility. A window
-moved into a hidden scratchpad is hidden immediately. A window moved into a
-visible scratchpad remains visible.
+Moving a window preserves the target scratchpad's current visibility. By
+default, a window moved into a hidden scratchpad fades out and is then removed
+from the scene. A window moved into a visible scratchpad remains visible.
 
 Showing a scratchpad focuses the window that was most recently focused there.
 If no window has been focused yet, Umbriel focuses the first stored window.
@@ -94,8 +94,10 @@ If the original output no longer exists, Umbriel restores the window on the
 output targeted by the action. If the original workspace no longer exists, it
 uses that output's active workspace.
 
-Fullscreen is exited when a window enters the scratchpad and is not restored
-automatically.
+Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters
+the scratchpad and are not restored automatically. The optional
+`animation.scratchpad.fullscreen` or `animation.scratchpad.maximize` setting can
+apply a new state on entry.
 
 ## Moving scratchpad windows
 
@@ -103,9 +105,9 @@ Scratchpad windows always float. Dragging one does not restore it or tile it on
 the workspace beneath it.
 
 Dragging a scratchpad window to another output assigns it to that output's
-scratchpad and makes the destination scratchpad visible. Moving a workspace
-window directly to another output's scratchpad adjusts its size and position to
-fit the destination output.
+scratchpad and makes the destination scratchpad visible. The window keeps its
+size. Umbriel only repositions it when its center would otherwise be outside the
+destination output's usable area.
 
 When an output disconnects or is disabled, its scratchpad windows move to
 another enabled output. A visible scratchpad remains visible after that move.
@@ -122,6 +124,9 @@ scratchpad_border_unfocused = "#5C4A2AFF"
 
 See [Configuration](configuration.md#appearance) for the complete appearance
 reference.
+
+Scratchpad show and hide transitions, backdrop dimming and blur, and optional
+entry sizing are configured under [`animation.scratchpad`](configuration.md#animation).
 
 While a scratchpad window has focus, `window-toggle-floating`,
 `window-toggle-pinned`, and `window-center` are inactive. Restore the window

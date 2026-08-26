@@ -27,8 +27,10 @@ sample_blue() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[animation]
+duration_ms = 1000
+
 [appearance]
-animation_ms = 1000
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
@@ -77,7 +79,7 @@ fi
 
 "$UMBRIEL" msg overview-close > /dev/null
 sleep 1.1
-sed -i 's/animation_ms = 1000/animation_ms = 10000/' "$UMBRIEL_CONFIG"
+sed -i 's/duration_ms = 1000/duration_ms = 10000/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
 sleep 1

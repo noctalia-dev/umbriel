@@ -85,7 +85,7 @@ teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces.
   and `WAYLAND_DISPLAY`, so a missing prefix used to query the developer's live session instead of the instance.
 - Never retain `$!` from a backgrounded shell *function*. Bash forks a subshell, so the captured pid is the wrapper and
   a signal to it leaves the client running. Background the client binary directly when a pid must be kept.
-- Never size a wait to an animation. `appearance.animation_ms` defaults to 200ms, so a multi-second `sleep` ahead of a
+- Never size a wait to an animation. `animation.duration_ms` defaults to 200ms, so a multi-second `sleep` ahead of a
   screenshot is dead time on every run, and it still races a slower machine. Grab until two consecutive frames match
   and keep the fixed wait down to a primer that only covers dispatch, as `650_two_output_containment` does. Its settle
   loop is the barrier; the primers around it are 0.3s.

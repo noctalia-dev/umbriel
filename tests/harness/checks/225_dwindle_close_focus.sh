@@ -46,8 +46,8 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [layout]
 mode = "dwindle"
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 
 [input.focus]
 follows_mouse = true

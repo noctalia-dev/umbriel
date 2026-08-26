@@ -53,6 +53,8 @@ namespace umbriel {
     const bool outputState = outputProjectionChanged(before, after, sameOutputState);
     const bool workspaceInventory = outputProjectionChanged(before, after, sameWorkspaceInventory);
     const bool sceneBlur = before.appearance.blur != after.appearance.blur;
+    const bool focusDim = before.animation.enabled != after.animation.enabled
+        || before.animation.dimUnfocused != after.animation.dimUnfocused;
     return {
         .outputState = outputState,
         .workspaceInventory = workspaceInventory,
@@ -61,8 +63,9 @@ namespace umbriel {
             || before.workspaceRules != after.workspaceRules
             || before.appearance.totalBorderWidth() != after.appearance.totalBorderWidth(),
         .sceneBlur = sceneBlur,
-        .viewChrome = before.appearance != after.appearance || before.windowRules != after.windowRules,
+        .viewChrome = before.appearance != after.appearance || before.windowRules != after.windowRules || focusDim,
         .layerEffects = sceneBlur || before.layerRules != after.layerRules,
+        .animation = before.animation != after.animation,
         .input = before.input != after.input || before.hotCorners != after.hotCorners,
         .overviewPresentation = before.overview != after.overview,
         .internalUi = before.colors != after.colors || before.general.modKey != after.general.modKey,
@@ -77,6 +80,7 @@ namespace umbriel {
         .sceneBlur = true,
         .viewChrome = true,
         .layerEffects = true,
+        .animation = true,
         .input = true,
         .overviewPresentation = true,
         .internalUi = true,
@@ -87,6 +91,7 @@ namespace umbriel {
     return {
         .colors = true,
         .appearance = true,
+        .animation = true,
         .overview = true,
         .hotCorners = true,
         .layout = true,
@@ -106,6 +111,7 @@ namespace umbriel {
     return {
         .colors = before.colors != after.colors,
         .appearance = before.appearance != after.appearance,
+        .animation = before.animation != after.animation,
         .overview = before.overview != after.overview,
         .hotCorners = before.hotCorners != after.hotCorners,
         .layout = before.layout != after.layout,
@@ -134,6 +140,7 @@ namespace umbriel {
     };
     add(colors, "colors");
     add(appearance, "appearance");
+    add(animation, "animation");
     add(overview, "overview");
     add(hotCorners, "hot corners");
     add(layout, "layout");
@@ -166,6 +173,7 @@ namespace umbriel {
     add(sceneBlur, "scene blur");
     add(viewChrome, "view chrome");
     add(internalUi, "internal UI");
+    add(animation, "animation state");
     add(layerEffects, "layer effects");
     add(input, "input");
     add(overviewPresentation, "overview presentation");

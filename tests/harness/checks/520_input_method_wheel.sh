@@ -33,8 +33,8 @@ active_title() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 
 [keybinds]
 "Mod+WheelDown" = "workspace-next"

@@ -29,20 +29,16 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::tickAnimations(uint64_t nowMsec) {
-    const bool movedFade = m_fadeAnim.tick(nowMsec);
-    if (movedFade) {
-      for (Output* output : m_visibleOutputs) {
+    bool movedBackdrop = false;
+    for (auto& [output, fade] : m_backdropFades) {
+      if (fade.tick(nowMsec)) {
         updateDimAndBlur(output);
-      }
-      for (auto& [output, rect] : m_dimRects) {
-        if (std::ranges::find(m_visibleOutputs, output) == m_visibleOutputs.end()) {
-          updateDimAndBlur(output);
-        }
+        movedBackdrop = true;
       }
     }
 
     if (m_hidingViews.empty()) {
-      return movedFade;
+      return movedBackdrop;
     }
     std::erase_if(m_hidingViews, [](View* view) {
       if (view->presentedOpacity() > 0.002F) {
@@ -51,11 +47,18 @@ namespace umbriel {
       view->setNodeEnabled(false);
       return true;
     });
-    return movedFade || !m_hidingViews.empty();
+    return movedBackdrop || !m_hidingViews.empty();
+  }
+
+  bool ScratchpadManager::hasActiveAnimations() const {
+    return !m_hidingViews.empty()
+        || std::ranges::any_of(m_backdropFades, [](const auto& entry) { return entry.second.animating(); });
   }
 
   bool ScratchpadManager::animatesOn(const Output* output) const {
-    if (m_fadeAnim.animating()) {
+    const auto fade =
+        std::ranges::find_if(m_backdropFades, [output](const auto& entry) { return entry.first == output; });
+    if (fade != m_backdropFades.end() && fade->second.animating()) {
       return true;
     }
     return std::ranges::any_of(m_hidingViews, [this, output](const View* view) {
@@ -108,7 +111,7 @@ namespace umbriel {
     if (targetArea.width <= 0 || targetArea.height <= 0) {
       wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &targetArea);
     }
-    const auto& spCfg = config().appearance.animations.scratchpad;
+    const auto& spCfg = config().animation.scratchpad;
     if (spCfg.fullscreen) {
       if (!view->toplevel()->scheduled.fullscreen && !view->toplevel()->current.fullscreen) {
         view->toggleFullscreen();
@@ -154,11 +157,15 @@ namespace umbriel {
     if (targetArea.width <= 0 || targetArea.height <= 0) {
       wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &targetArea);
     }
-    const auto& scAnim = config().appearance.animations.scratchpad;
-    if (scAnim.enabled && scAnim.durationMs > 0) {
-      m_fadeAnim.retarget(visible ? 1.0 : 0.0, scAnim.durationMs, scAnim.curve);
+    const auto& animation = config().animation;
+    const auto& scratchpad = animation.scratchpad;
+    auto fadeIt = m_backdropFades.try_emplace(output, 0.0).first;
+    AnimatedValue& backdropFade = fadeIt->second;
+    const double fadeTarget = visible ? 1.0 : 0.0;
+    if (animation.enabled && scratchpad.enabled && (backdropFade.animating() || backdropFade.current() != fadeTarget)) {
+      backdropFade.retarget(fadeTarget, scratchpad.durationMs, scratchpad.curve);
     } else {
-      m_fadeAnim.snap(visible ? 1.0 : 0.0);
+      backdropFade.snap(fadeTarget);
     }
 
     for (const Entry& entry : m_entries) {
@@ -166,8 +173,8 @@ namespace umbriel {
         continue;
       }
       View* view = entry.view;
-      view->setOnActiveWorkspace(visible);
       if (visible) {
+        view->setOnActiveWorkspace(true);
         std::erase(m_hidingViews, view);
         view->cancelPositionAnimation();
         view->setNodeEnabled(true);
@@ -187,15 +194,18 @@ namespace umbriel {
             view->snapPosition(newX, newY);
           }
         }
-        if (scAnim.enabled && scAnim.durationMs > 0) {
-          view->setFadeAlpha(0.0F);
-          view->animateFadeTo(1.0F, scAnim.durationMs, scAnim.curve);
+        if (animation.enabled && scratchpad.enabled) {
+          view->animateFadeTo(1.0F, scratchpad.durationMs, scratchpad.curve);
         } else {
           view->setFadeAlpha(1.0F);
         }
       } else {
-        if (scAnim.enabled && scAnim.durationMs > 0) {
-          view->animateFadeTo(0.0F, scAnim.durationMs, scAnim.curve);
+        view->setOnActiveWorkspace(false);
+        if (animation.enabled && scratchpad.enabled) {
+          // Keep the render tree alive until tickAnimations observes the completed fade. The inactive-workspace flag
+          // already removes this view from focus and action selection while it is still visible.
+          view->setNodeEnabled(true);
+          view->animateFadeTo(0.0F, scratchpad.durationMs, scratchpad.curve);
           if (std::ranges::find(m_hidingViews, view) == m_hidingViews.end()) {
             m_hidingViews.push_back(view);
           }
@@ -238,9 +248,10 @@ namespace umbriel {
       return;
     }
     const bool visible = std::ranges::find(m_visibleOutputs, output) != m_visibleOutputs.end();
-    const double dim = config().appearance.animations.scratchpad.dim;
-    const bool blurEnabled = config().appearance.animations.scratchpad.blur && config().appearance.blur.enabled;
-    const float curAlpha = static_cast<float>(m_fadeAnim.current());
+    const double dim = config().animation.scratchpad.dim;
+    const bool blurEnabled = config().animation.scratchpad.blur && config().appearance.blur.enabled;
+    const auto fade = m_backdropFades.find(output);
+    const float curAlpha = fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F;
 
     wlr_box box{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
@@ -272,6 +283,7 @@ namespace umbriel {
 
   void ScratchpadManager::releaseOutput(Output* output) {
     std::erase(m_visibleOutputs, output);
+    m_backdropFades.erase(output);
     if (const auto it = m_dimRects.find(output); it != m_dimRects.end()) {
       wlr_scene_node_destroy(&it->second->node);
       m_dimRects.erase(it);
@@ -279,6 +291,32 @@ namespace umbriel {
     if (const auto it = m_blurNodes.find(output); it != m_blurNodes.end()) {
       wlr_scene_node_destroy(&it->second->node);
       m_blurNodes.erase(it);
+    }
+  }
+
+  void ScratchpadManager::applyConfig() {
+    const auto& animation = config().animation;
+    const bool animate = animation.enabled && animation.scratchpad.enabled;
+    if (!animate) {
+      for (auto& [output, fade] : m_backdropFades) {
+        const bool visible = std::ranges::find(m_visibleOutputs, output) != m_visibleOutputs.end();
+        fade.snap(visible ? 1.0 : 0.0);
+        updateDimAndBlur(output);
+      }
+      for (const Entry& entry : m_entries) {
+        if (entry.view == nullptr) {
+          continue;
+        }
+        const bool visible = std::ranges::find(m_visibleOutputs, entry.output) != m_visibleOutputs.end();
+        entry.view->cancelFadeAnimation();
+        entry.view->setFadeAlpha(visible ? 1.0F : 0.0F);
+        entry.view->setNodeEnabled(visible);
+      }
+      m_hidingViews.clear();
+      return;
+    }
+    for (const auto& entry : m_backdropFades) {
+      updateDimAndBlur(entry.first);
     }
   }
 

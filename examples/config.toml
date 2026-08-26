@@ -37,6 +37,62 @@ back_and_forth = false
 # warning = "#F5C96BFF"
 # error = "#FF6B6BFF"
 
+# Animation ------------------------------------------------------------------
+
+[animation]
+enabled = true
+duration_ms = 200              # 1-10000
+curve = "snappy"
+
+[animation.windows_in]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+style = "popin"                # popin, zoom, slide, fade, none
+scale = 0.85                   # 0.1-1.0, used by popin
+
+[animation.windows_out]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+style = "fade"                 # fade, slide
+
+[animation.windows_move]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
+[animation.workspaces]
+enabled = true
+duration_ms = 250
+curve = "snappy"
+
+[animation.scratchpad]
+enabled = true
+duration_ms = 250
+curve = "snappy"
+dim = 0.2                      # 0.0-1.0
+blur = false
+scale = 0.0                    # 0 preserves the window geometry
+maximize = false
+fullscreen = false
+
+[animation.border]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
+[animation.dim_unfocused]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+dim = 0.0                      # 0.0-1.0
+
+[animation.fade]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
 # Appearance -----------------------------------------------------------------
 
 [appearance]
@@ -44,7 +100,6 @@ prefer_no_csd = true
 border_width = 2               # 0-100
 outer_border_width = 0         # 0-100
 corner_radius = 10             # 0-100
-animation_ms = 250             # 1-10000
 drag_opacity = 0.75
 # border_focused = "#7AA3FFFF"
 # border_unfocused = "#292933FF"

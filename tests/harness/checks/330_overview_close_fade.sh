@@ -16,8 +16,10 @@ sample_blue() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[animation]
+duration_ms = 1000
+
 [appearance]
-animation_ms = 1000
 border_width = 0
 outer_border_width = 0
 corner_radius = 0

@@ -34,8 +34,8 @@ active_title() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

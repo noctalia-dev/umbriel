@@ -30,8 +30,8 @@ wait_for_focus() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 
 [layout]
 mode = "scrolling"

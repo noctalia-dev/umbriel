@@ -424,6 +424,7 @@ unit_tests = [
   ['scene-node', ['tests/unit/scene_node.cpp'], []],
   ['scene-clip', ['tests/unit/scene_clip.cpp'], [wayland_server_dep]],
   ['presentation', ['tests/unit/presentation.cpp'], [umbriel_core_dep]],
+  ['animation', ['tests/unit/animation.cpp'], [umbriel_core_dep]],
   ['window-opacity-blur', ['tests/unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
   ['value-parse', ['tests/unit/value_parse.cpp'], []],
   ['keybind-parse', ['tests/unit/keybind_parse.cpp'], []],

@@ -70,81 +70,67 @@ namespace umbriel {
       }
 
       [[nodiscard]] std::optional<AnimationCurve> parse(std::string_view str) const {
-        std::string s(str);
-        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
-          s.erase(s.begin());
+        std::string value(str);
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
+          value.erase(value.begin());
         }
-        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
-          s.pop_back();
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
+          value.pop_back();
         }
-        if (s.empty()) {
+        if (value.empty()) {
           return std::nullopt;
         }
-
-        // 1. Direct registry lookup
-        if (auto curve = lookup(s)) {
+        if (auto curve = lookup(value)) {
           return curve;
         }
 
-        std::string norm = normalizeName(s);
-        if (auto curve = lookup(norm)) {
-          return curve;
+        const auto fullyConsumed = [](const std::string& input, int consumed) {
+          return consumed > 0
+              && std::ranges::all_of(std::string_view(input).substr(static_cast<size_t>(consumed)), [](char ch) {
+                   return std::isspace(static_cast<unsigned char>(ch));
+                 });
+        };
+
+        double x1 = 0.0;
+        double y1 = 0.0;
+        double x2 = 0.0;
+        double y2 = 0.0;
+        int consumed = 0;
+        if (std::sscanf(value.c_str(), " %lf , %lf , %lf , %lf %n", &x1, &y1, &x2, &y2, &consumed) == 4
+            && fullyConsumed(value, consumed)
+            && std::isfinite(x1)
+            && std::isfinite(y1)
+            && std::isfinite(x2)
+            && std::isfinite(y2)
+            && x1 >= 0.0
+            && x1 <= 1.0
+            && x2 >= 0.0
+            && x2 <= 1.0) {
+          return AnimationCurve{.easing = Easing::CustomBezier, .bezier = {x1, y1, x2, y2}};
         }
 
-        // 2. Bezier syntax: "bezier: x1, y1, x2, y2", "cubic-bezier(x1, y1, x2, y2)", or "x1, y1, x2, y2"
-        if (s.starts_with("bezier:")
-            || s.starts_with("cubic-bezier:")
-            || s.starts_with("cubic_bezier:")
-            || s.starts_with("bezier,")
-            || s.starts_with("cubic-bezier(")
-            || s.starts_with("bezier(")) {
-          auto pos = s.find_first_of(":(,");
-          std::string params = (pos != std::string::npos) ? s.substr(pos + 1) : s;
-          if (!params.empty() && params.back() == ')') {
-            params.pop_back();
-          }
-          double x1 = 0.05, y1 = 0.9, x2 = 0.1, y2 = 1.05;
-          if (std::sscanf(params.c_str(), "%lf,%lf,%lf,%lf", &x1, &y1, &x2, &y2) == 4
-              || std::sscanf(params.c_str(), "%lf %lf %lf %lf", &x1, &y1, &x2, &y2) == 4) {
-            AnimationCurve c;
-            c.easing = Easing::CustomBezier;
-            c.bezier = {x1, y1, x2, y2};
-            return c;
-          }
+        constexpr std::string_view kSpringPrefix = "spring:";
+        if (!value.starts_with(kSpringPrefix)) {
+          return std::nullopt;
         }
-
-        // 3. Raw 4-coordinate bezier syntax "x1, y1, x2, y2"
-        double x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
-        if (std::sscanf(s.c_str(), "%lf,%lf,%lf,%lf", &x1, &y1, &x2, &y2) == 4
-            || std::sscanf(s.c_str(), "%lf %lf %lf %lf", &x1, &y1, &x2, &y2) == 4) {
-          AnimationCurve c;
-          c.easing = Easing::CustomBezier;
-          c.bezier = {x1, y1, x2, y2};
-          return c;
+        const std::string parameters = value.substr(kSpringPrefix.size());
+        double damping = 0.0;
+        double stiffness = 0.0;
+        consumed = 0;
+        if (std::sscanf(parameters.c_str(), " %lf , %lf %n", &damping, &stiffness, &consumed) != 2
+            || !fullyConsumed(parameters, consumed)
+            || !std::isfinite(damping)
+            || !std::isfinite(stiffness)
+            || damping < 0.01
+            || damping > 5.0
+            || stiffness < 1.0
+            || stiffness > 1000.0) {
+          return std::nullopt;
         }
-
-        // 4. Spring syntax: "spring: damping, stiffness", "spring(damping, stiffness)", "spring, damping, stiffness"
-        if (s.starts_with("spring:") || s.starts_with("spring(") || s.starts_with("spring,") || s == "spring") {
-          double damping = 0.75;
-          double stiffness = 100.0;
-          double mass = 1.0;
-          auto pos = s.find_first_of(":(,");
-          if (pos != std::string::npos) {
-            std::string params = s.substr(pos + 1);
-            if (!params.empty() && params.back() == ')') {
-              params.pop_back();
-            }
-            if (std::sscanf(params.c_str(), "%lf,%lf,%lf", &damping, &stiffness, &mass) < 2) {
-              std::sscanf(params.c_str(), "%lf %lf %lf", &damping, &stiffness, &mass);
-            }
-          }
-          AnimationCurve c;
-          c.easing = Easing::Spring;
-          c.spring = {damping, stiffness, mass, 0.0};
-          return c;
-        }
-
-        return std::nullopt;
+        return AnimationCurve{
+            .easing = Easing::Spring,
+            .spring = {.damping = damping, .stiffness = stiffness, .mass = 1.0, .initialVelocity = 0.0}
+        };
       }
 
     private:

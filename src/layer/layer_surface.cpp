@@ -108,8 +108,9 @@ namespace umbriel {
 
   void LayerSurface::beginCloseAnimation() {
     Output* out = output();
-    const auto& fadeCfg = config().appearance.animations.fade;
-    if (out == nullptr || m_scene == nullptr || !fadeCfg.enabled || fadeCfg.durationMs <= 0) {
+    const auto& animation = config().animation;
+    const auto& fadeCfg = animation.fade;
+    if (out == nullptr || m_scene == nullptr || !animation.enabled || !fadeCfg.enabled) {
       return;
     }
 
@@ -333,8 +334,9 @@ namespace umbriel {
     }
     updateBlur();
 
-    const auto& fadeCfg = config().appearance.animations.fade;
-    if (fadeCfg.enabled && fadeCfg.durationMs > 0) {
+    const auto& animation = config().animation;
+    const auto& fadeCfg = animation.fade;
+    if (animation.enabled && fadeCfg.enabled) {
       m_fade.snap(0.0);
       applyFadeAlpha();
       m_fade.retarget(1.0, fadeCfg.durationMs, fadeCfg.curve);

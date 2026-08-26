@@ -273,14 +273,11 @@ namespace umbriel {
       return nullptr;
     }
     auto* view = static_cast<View*>(sceneNode);
-    // Workspace slides keep the outgoing scene enabled until the animation finishes. It is a visual snapshot, not an
-    // interactive workspace: accepting a click here would make focusView reactivate the workspace that the user just
-    // left, which is especially easy to trigger when switching with the wheel under a large window or text field.
-    if (!view->pinned()) {
-      if (Workspace* workspace = view->workspace(); workspace != nullptr && !workspace->active()) {
-        *surface = nullptr;
-        return nullptr;
-      }
+    // Workspace transitions and scratchpad fade-outs keep an inactive view's scene enabled until the animation
+    // finishes. They are visual snapshots, not interactive windows.
+    if (!view->pinned() && !view->onActiveWorkspace()) {
+      *surface = nullptr;
+      return nullptr;
     }
     return view;
   }

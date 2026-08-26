@@ -11,6 +11,7 @@ namespace umbriel {
   struct ConfigChange {
     bool colors = false;
     bool appearance = false;
+    bool animation = false;
     bool overview = false;
     bool hotCorners = false;
     bool layout = false;
@@ -27,6 +28,7 @@ namespace umbriel {
     [[nodiscard]] bool any() const {
       return colors
           || appearance
+          || animation
           || overview
           || hotCorners
           || layout
@@ -58,6 +60,7 @@ namespace umbriel {
     bool sceneBlur = false;
     bool viewChrome = false;
     bool layerEffects = false;
+    bool animation = false;
     bool input = false;
     bool overviewPresentation = false;
     bool internalUi = false;
@@ -69,6 +72,7 @@ namespace umbriel {
           || sceneBlur
           || viewChrome
           || layerEffects
+          || animation
           || input
           || overviewPresentation
           || internalUi;

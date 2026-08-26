@@ -294,19 +294,7 @@ namespace umbriel {
       std::array<float, 4> outerBorderColor{0.10F, 0.10F, 0.12F, 1.0F};
       std::array<float, 4> insertHintColor{0.50F, 0.78F, 1.0F, 0.50F};
       std::array<float, 4> backdropColor{0.0F, 0.0F, 0.0F, 1.0F};
-      int animationMs = 200;
       double dragOpacity = 0.75;
-      AnimationCurve animationCurve{.easing = Easing::Snappy};
-      enum class OpenAnimationStyle {
-        Fade,
-        Popin,
-        Zoom,
-        Slide,
-        None,
-      } openAnimation = OpenAnimationStyle::Popin;
-      double openScale = 0.85;
-      int openAnimationMs = 220;
-      double dimUnfocused = 0.0;
       struct Blur {
         bool enabled = true;
         bool optimized = true;
@@ -328,83 +316,84 @@ namespace umbriel {
       } shadow;
       bool preferNoCsd = true;
 
-      struct Animations {
-        bool enabled = true;
-        std::map<std::string, BezierCurve> beziers;
-        std::map<std::string, SpringConfig> springs;
-
-        struct WindowIn {
-          bool enabled = true;
-          int durationMs = 220;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          std::string style = "popin";
-          bool operator==(const WindowIn&) const = default;
-        } windowsIn;
-
-        struct WindowOut {
-          bool enabled = true;
-          int durationMs = 200;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          std::string style = "popin";
-          bool operator==(const WindowOut&) const = default;
-        } windowsOut;
-
-        struct WindowMove {
-          bool enabled = true;
-          int durationMs = 200;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          std::string style = "slide";
-          bool operator==(const WindowMove&) const = default;
-        } windowsMove;
-
-        struct Workspaces {
-          bool enabled = true;
-          int durationMs = 250;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          std::string style = "slide";
-          bool operator==(const Workspaces&) const = default;
-        } workspaces;
-
-        struct Scratchpad {
-          bool enabled = true;
-          int durationMs = 250;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          double dim = 0.2;        // dims the rest of the output while shown
-          bool blur = false;       // blurs the rest of the output while shown; off by default
-          double scale = 0.0;      // 0 preserves existing geometry; >0 auto-sizes and centers
-          bool maximize = false;   // automatically maximize scratchpad window to edges
-          bool fullscreen = false; // automatically fullscreen scratchpad window
-          bool operator==(const Scratchpad&) const = default;
-        } scratchpad;
-
-        struct Border {
-          bool enabled = true;
-          int durationMs = 200;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          bool operator==(const Border&) const = default;
-        } border;
-
-        struct DimUnfocused {
-          bool enabled = true;
-          int durationMs = 200;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          double dim = 0.0;
-          bool operator==(const DimUnfocused&) const = default;
-        } dimUnfocused;
-
-        struct Fade {
-          bool enabled = true;
-          int durationMs = 200;
-          AnimationCurve curve{.easing = Easing::Snappy};
-          bool operator==(const Fade&) const = default;
-        } fade;
-
-        bool operator==(const Animations&) const = default;
-      } animations;
-
       [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
       bool operator==(const Appearance&) const = default;
     } appearance;
+
+    struct Animation {
+      bool enabled = true;
+      int durationMs = 200;
+      AnimationCurve curve{.easing = Easing::Snappy};
+      std::map<std::string, BezierCurve> beziers;
+      std::map<std::string, SpringConfig> springs;
+
+      struct WindowsIn {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        std::string style = "popin";
+        double scale = 0.85;
+        bool operator==(const WindowsIn&) const = default;
+      } windowsIn;
+
+      struct WindowsOut {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        std::string style = "fade";
+        bool operator==(const WindowsOut&) const = default;
+      } windowsOut;
+
+      struct WindowsMove {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        bool operator==(const WindowsMove&) const = default;
+      } windowsMove;
+
+      struct Workspaces {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        bool operator==(const Workspaces&) const = default;
+      } workspaces;
+
+      struct Scratchpad {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        double dim = 0.2;
+        bool blur = false;
+        double scale = 0.0;
+        bool maximize = false;
+        bool fullscreen = false;
+        bool operator==(const Scratchpad&) const = default;
+      } scratchpad;
+
+      struct Border {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        bool operator==(const Border&) const = default;
+      } border;
+
+      struct DimUnfocused {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        double dim = 0.0;
+        bool operator==(const DimUnfocused&) const = default;
+      } dimUnfocused;
+
+      struct Fade {
+        bool enabled = true;
+        int durationMs = 200;
+        AnimationCurve curve{.easing = Easing::Snappy};
+        bool operator==(const Fade&) const = default;
+      } fade;
+
+      bool operator==(const Animation&) const = default;
+    } animation;
 
     struct Overview {
       // Workspace scale when fully zoomed out.
@@ -558,9 +547,6 @@ namespace umbriel {
       [[nodiscard]] const Device* findDevice(std::string_view name) const;
       bool operator==(const Input&) const = default;
     } input;
-
-    using Animations = Appearance::Animations;
-    Animations animations;
 
     std::vector<Keybind> keybinds;
     std::vector<OutputRule> outputs;

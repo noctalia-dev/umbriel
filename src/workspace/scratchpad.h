@@ -23,7 +23,7 @@ namespace umbriel {
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(uint64_t nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override { return !m_hidingViews.empty() || m_fadeAnim.animating(); }
+    [[nodiscard]] bool hasActiveAnimations() const override;
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
     [[nodiscard]] bool contains(const View* view) const;
@@ -40,6 +40,7 @@ namespace umbriel {
     void remove(View* view);
     void moveOutput(Output* from, Output* to);
     void releaseOutput(Output* output);
+    void applyConfig();
 
   private:
     struct Entry {
@@ -65,7 +66,7 @@ namespace umbriel {
     std::vector<View*> m_hidingViews;
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
     std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
-    AnimatedValue m_fadeAnim{0.0};
+    std::unordered_map<Output*, AnimatedValue> m_backdropFades;
     View* m_focusedView = nullptr;
   };
 

@@ -158,7 +158,6 @@ scratchpad_border_unfocused = "#5C4A2AFF"
 outer_border_color = "#1A1A1FFF"
 insert_hint_color = "#7FC8FF80"
 backdrop_color = "#000000FF"
-animation_ms = 200             # 1-10000
 drag_opacity = 0.75
 ```
 
@@ -175,7 +174,6 @@ drag_opacity = 0.75
 | `outer_border_color`          | color | `#1A1A1FFF` | Outer border color (no focus variant).                                                                                                            |
 | `insert_hint_color`           | color | `#7FC8FF80` | Drop-target preview during drag.                                                                                                                  |
 | `backdrop_color`              | color | `#000000FF` | Background for fullscreen gaps and lock screen.                                                                                                   |
-| `animation_ms`                | int   | `200`       | Animation duration in milliseconds (1-10000).                                                                                                     |
 | `drag_opacity`                | float | `0.75`      | Opacity of the window while dragging.                                                                                                             |
 
 Colors are `#RRGGBB` or `#RRGGBBAA`.
@@ -236,93 +234,106 @@ Drop shadow behind windows (tiled and floating). Hidden while fullscreen.
 | `offset_y` | int   | `2`         | Vertical shadow offset (-200 to 200).                                  |
 | `color`    | color | `#0000007F` | Shadow color.                                                          |
 
-### Animations
+## Animation
 
-Per-event duration, curve, and (where applicable) style, on top of the
-top-level `animation_ms` fallback. Values below are the built-in defaults.
+Animation settings live in the top-level `animation` section. `duration_ms` and
+`curve` set defaults for every event when present; a nested event can override
+either value. The master switch makes every transition instant. Each event also
+has its own switch.
 
 ```toml
-[appearance.animations]
-enabled = true
-
-[appearance.animations.windows_in]
-enabled = true
-duration_ms = 220
-curve = "snappy"
-style = "popin"       # "popin", "zoom", "slide", "fade", "none"
-
-[appearance.animations.windows_out]
-enabled = true
-duration_ms = 200
-curve = "snappy"
-style = "popin"       # "popout", "zoom", "slide", or falls through to a plain fade
-
-[appearance.animations.windows_move]
+[animation]
 enabled = true
 duration_ms = 200
 curve = "snappy"
 
-[appearance.animations.workspaces]
+[animation.windows_in]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+style = "popin"       # "popin", "zoom", "slide", "fade", or "none"
+scale = 0.85          # 0.1-1.0, used by "popin"
+
+[animation.windows_out]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+style = "fade"        # "fade" or "slide"
+
+[animation.windows_move]
+enabled = true
+duration_ms = 200
+curve = "snappy"
+
+[animation.workspaces]
 enabled = true
 duration_ms = 250
 curve = "snappy"
-style = "slide"        # "slide" or "fade"
 
-[appearance.animations.scratchpad]
+[animation.scratchpad]
 enabled = true
 duration_ms = 250
 curve = "snappy"
-dim = 0.2               # 0.0-1.0: dims the rest of the output while a scratchpad window is shown
-blur = false             # blurs the rest of the output while shown (needs appearance.blur.enabled too)
-scale = 0.0              # 0 preserves the window's existing geometry; >0-1.0 auto-sizes and centers it
-maximize = false         # maximize the scratchpad window to edges when shown
-fullscreen = false       # fullscreen the scratchpad window when shown
+dim = 0.2             # 0.0-1.0
+blur = false          # requires appearance.blur.enabled
+scale = 0.0           # 0 preserves geometry; 0.1-1.0 sizes and centers on entry
+maximize = false      # maximize to edges on entry
+fullscreen = false    # fullscreen on entry
 
-[appearance.animations.border]
+[animation.border]
 enabled = true
 duration_ms = 200
 curve = "snappy"
 
-[appearance.animations.dim_unfocused]
+[animation.dim_unfocused]
 enabled = true
 duration_ms = 200
 curve = "snappy"
-dim = 0.0               # 0.0-1.0
+dim = 0.0             # 0.0-1.0
 
-[appearance.animations.fade]
+[animation.fade]
 enabled = true
 duration_ms = 200
 curve = "snappy"
 ```
 
-| Key                            | Type   | Default   | Description                                                                    |
-| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------- |
-| `enabled`                       | bool   | `true`    | Master switch for the per-event overrides below. When off, everything falls back to `appearance.animation_ms`/`animation_curve`. |
-| `windows_in.*`                  |        |           | Window open.                                                                    |
-| `windows_out.*`                 |        |           | Window close (plays on a scene-tree snapshot of the closing window).            |
-| `windows_move.*`                |        |           | Move/resize animation, including maximize/tile transitions.                     |
-| `workspaces.*`                  |        |           | Workspace switch (`style = "slide"` or `"fade"`). |
-| `scratchpad.*`                  |        |           | Scratchpad show/hide. Configurable with `dim` (backdrop dimming), `blur` (backdrop blur), `scale` (centered scale factor), `maximize`, and `fullscreen`. |
-| `border.*`                      |        |           | Focus-ring color transition (interpolated in OkLab color space).                |
-| `dim_unfocused.*`                | | | Opacity dim applied to unfocused windows; `dim` is the dim amount (0 = off). |
-| `fade.*`                        |        |           | Generic fade used where no more specific category applies (e.g. layer-shell surfaces). |
+| Key               | Type   | Default  | Description                                                                 |
+| ----------------- | ------ | -------- | --------------------------------------------------------------------------- |
+| `enabled`         | bool   | `true`   | Master switch. When false, every animation transition is instant.           |
+| `duration_ms`     | int    | `200`    | Default duration for all events when explicitly set (1-10000 milliseconds). |
+| `curve`           | string | `snappy` | Default curve for all events when explicitly set.                           |
+| `windows_in.*`    | table  |          | Window open transition.                                                     |
+| `windows_out.*`   | table  |          | Window close transition using a scene snapshot.                             |
+| `windows_move.*`  | table  |          | Window move and resize transitions.                                         |
+| `workspaces.*`    | table  |          | Workspace switch transition.                                                |
+| `scratchpad.*`    | table  |          | Scratchpad show/hide transition and backdrop.                               |
+| `border.*`        | table  |          | Focus-ring color transition in OkLab color space.                           |
+| `dim_unfocused.*` | table  |          | Unfocused-window opacity transition; `dim = 0` disables dimming.             |
+| `fade.*`          | table  |          | Generic fade used by layer-shell surfaces.                                  |
 
-Each `*.curve` accepts a named preset (`linear`, `ease`, `easeout`, `snappy`,
-`bounce`, `elastic`, ... — see below), a raw bezier as `"x1,y1,x2,y2"`, or a
-spring as `"spring: damping,stiffness"`.
+An event's `enabled = false` makes only that transition instant. Scratchpad
+`dim` and `blur` remain active, without a fade, when animation is disabled.
+Scratchpad `scale`, `maximize`, and `fullscreen` apply when a window enters the
+scratchpad.
+
+Each curve accepts a built-in name such as `linear`, `ease`, `easeout`,
+`snappy`, `bounce`, or `elastic`; a cubic bezier string
+`"x1,y1,x2,y2"`; or a spring string `"spring: damping,stiffness"`. Bezier x
+coordinates must be between 0 and 1. Spring damping must be between 0.01 and 5,
+and stiffness between 1 and 1000.
 
 Custom named curves can be registered once and reused by name:
 
 ```toml
-[appearance.animations.beziers]
+[animation.beziers]
 myBezier = [0.05, 0.9, 0.1, 1.05]
 
-[appearance.animations.springs]
+[animation.springs]
 myBounce = { damping = 0.5, stiffness = 200 }
 ```
 
-Then reference them as `curve = "myBezier"` or `curve = "myBounce"` in any of
-the sections above.
+Then reference them as `curve = "myBezier"` or `curve = "myBounce"` in any
+event section.
 
 ## Overview
 

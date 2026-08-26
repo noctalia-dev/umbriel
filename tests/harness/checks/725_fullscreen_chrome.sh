@@ -15,8 +15,10 @@ fi
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[animation]
+duration_ms = 1
+
 [appearance]
-animation_ms = 1
 border_width = 12
 outer_border_width = 0
 corner_radius = 64

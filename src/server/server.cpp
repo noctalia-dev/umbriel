@@ -666,9 +666,9 @@ namespace umbriel {
   Server::CloseSnapshot::CloseSnapshot(
       Server& server, Output* output, wlr_scene_tree* tree,
       std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects, int durationMs, const AnimationCurve& curve,
-      std::string style, double closeScale
+      std::string_view style
   )
-      : m_server(&server), m_tree(tree), m_output(output), m_style(std::move(style)), m_rects(std::move(rects)) {
+      : m_server(&server), m_tree(tree), m_output(output), m_rects(std::move(rects)) {
     if (m_tree != nullptr) {
       m_origX = m_tree->node.x;
       m_origY = m_tree->node.y;
@@ -684,11 +684,7 @@ namespace umbriel {
     m_alpha.snap(1.0);
     m_alpha.retarget(0.0, durationMs, curve);
 
-    if (m_style == "popout" || m_style == "zoom" || m_style == "scale") {
-      const double targetScale = (m_style == "zoom") ? 0.5 : std::clamp(closeScale, 0.1, 1.0);
-      m_scale.snap(1.0);
-      m_scale.retarget(targetScale, durationMs, curve);
-    } else if (m_style == "slide" || m_style == "slide_down") {
+    if (style == "slide") {
       m_posY.snap(m_origY);
       m_posY.retarget(m_origY + 80, durationMs, curve);
     }
@@ -705,10 +701,9 @@ namespace umbriel {
 
   bool Server::CloseSnapshot::tickAnimations(uint64_t nowMsec) {
     const bool movedAlpha = m_alpha.tick(nowMsec);
-    const bool movedScale = m_scale.tick(nowMsec);
     const bool movedY = m_posY.tick(nowMsec);
 
-    if (!movedAlpha && !movedScale && !movedY) {
+    if (!movedAlpha && !movedY) {
       return false;
     }
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
@@ -722,10 +717,10 @@ namespace umbriel {
       wlr_scene_rect_set_color(rect, color);
     }
 
-    if (m_tree != nullptr && m_posY.animating()) {
+    if (m_tree != nullptr && movedY) {
       wlr_scene_node_set_position(&m_tree->node, m_origX, static_cast<int>(std::lround(m_posY.current())));
     }
-    return m_alpha.animating() || m_scale.animating() || m_posY.animating();
+    return m_alpha.animating() || m_posY.animating();
   }
 
   void Server::registerAnimatable(Animatable* animatable) {
@@ -794,23 +789,30 @@ namespace umbriel {
       Output* output, wlr_scene_tree* tree, std::vector<std::pair<wlr_scene_rect*, std::array<float, 4>>> rects,
       std::optional<CloseSnapshotOverrides> overrides
   ) {
-    int dur = 0;
-    AnimationCurve curve{.easing = Easing::EaseOutCubic};
-    std::string style;
-    if (overrides.has_value()) {
-      dur = overrides->durationMs;
+    int durationMs = 0;
+    AnimationCurve curve{.easing = Easing::Snappy};
+    std::string style = "fade";
+    if (overrides) {
+      durationMs = overrides->durationMs;
       curve = overrides->curve;
       style = overrides->style;
     } else {
-      const auto& winOut = config().appearance.animations.windowsOut;
-      dur = winOut.enabled ? winOut.durationMs : std::max(1, config().appearance.animationMs / 2);
-      curve = winOut.enabled ? winOut.curve : config().appearance.animationCurve;
-      style = winOut.enabled ? winOut.style : "popout";
+      const auto& animation = config().animation;
+      const auto& close = animation.windowsOut;
+      if (!animation.enabled || !close.enabled) {
+        wlr_scene_node_destroy(&tree->node);
+        return;
+      }
+      durationMs = close.durationMs;
+      curve = close.curve;
+      style = close.style;
+    }
+    if (durationMs <= 0) {
+      wlr_scene_node_destroy(&tree->node);
+      return;
     }
 
-    auto snapshot = std::make_unique<CloseSnapshot>(
-        *this, output, tree, std::move(rects), dur, curve, style, config().appearance.openScale
-    );
+    auto snapshot = std::make_unique<CloseSnapshot>(*this, output, tree, std::move(rects), durationMs, curve, style);
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
   }

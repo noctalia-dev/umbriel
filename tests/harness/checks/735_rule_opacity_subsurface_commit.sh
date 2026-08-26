@@ -15,8 +15,10 @@ fi
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[animation]
+duration_ms = 1
+
 [appearance]
-animation_ms = 1
 border_width = 0
 corner_radius = 0
 backdrop_color = "#00FF00FF"

@@ -1325,11 +1325,17 @@ namespace umbriel {
       }
     }
     kLog.debug("slide workspace {} → {} on {}", m_slide.base->name(), target->name(), m_output->wlr()->name);
-    const auto& wsAnim = config().appearance.animations.workspaces;
-    const int dur = wsAnim.enabled ? wsAnim.durationMs : config().appearance.animationMs;
-    const auto& curve = wsAnim.enabled ? wsAnim.curve : config().appearance.animationCurve;
+    const auto& animation = config().animation;
+    const auto& workspaces = animation.workspaces;
+    if (!animation.enabled || !workspaces.enabled) {
+      m_slideAnim.snap(delta);
+      slideApply(delta);
+      slideFinish();
+      reconcileDynamic();
+      return;
+    }
     m_slideAnim.snap(m_slide.progress);
-    m_slideAnim.retarget(static_cast<double>(delta), dur, curve);
+    m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
     wlr_output_schedule_frame(m_output->wlr());
   }
 
@@ -1358,7 +1364,12 @@ namespace umbriel {
     const bool overviewActive = overview != nullptr && overview->active();
     // The real trees are hidden while overview runs: the filmstrip scroll is
     // the transition, so never start a slide underneath it.
-    const bool doAnimate = animate && m_active != nullptr && !m_server->sessionLocked() && !overviewActive;
+    const bool doAnimate = animate
+        && config().animation.enabled
+        && config().animation.workspaces.enabled
+        && m_active != nullptr
+        && !m_server->sessionLocked()
+        && !overviewActive;
     if (!doAnimate) {
       if (m_active != nullptr) {
         m_previous = m_active;
