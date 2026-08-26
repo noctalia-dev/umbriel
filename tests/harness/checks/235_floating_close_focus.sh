@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Closing a focused floating overlay must restore focus to the most recently focused window, not to whichever tiled
-# view precedes the overlay in insertion order. The overlay is asked to close and the client only unmaps without
-# destroying its surface, so no destroy-time cleanup can mask a missing unmap-time focus reassignment: the workspace
-# must be refocused while the overlay's View still exists as registered-but-unmapped.
+# Floating overlay close should refocus the last focused window, not the neighbor.
+# Overlay only unmaps (View stays alive) so we can catch missing unmap-time refocus.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/unmap-client}"
@@ -57,9 +55,7 @@ if [[ $(jq -r --arg id "$anchor_id" '.[] | select(.id == $id) | .floating' <<< "
   exit 1
 fi
 
-# Make the most recently focused view differ from the overlay's insertion-order predecessor: refocusing the anchor
-# here means most-recently-focused order says anchor, while the reverse-insertion scan this check guards against
-# would hand back the neighbor.
+# Focus anchor so MRU is anchor — correct restore is anchor, not neighbor.
 "$UMBRIEL" msg "window-focus:$anchor_id" > /dev/null
 wait_for_focus "$anchor_id"
 
@@ -67,10 +63,26 @@ APP_ID=float-close-overlay "$CLIENT" "float-close-overlay" > "$UMBRIEL_RUNTIME_D
 overlay_pid=$!
 wait_for_window_count 3
 
-windows=$("$UMBRIEL" windows --json)
-overlay_id=$(jq -r '.[] | select(.title == "float-close-overlay") | .id' <<< "$windows")
-if [[ $(jq -r --arg id "$overlay_id" '.[] | select(.id == $id) | .floating' <<< "$windows") != true ]]; then
-  echo "overlay did not map floating: $windows"
+# Window count 3 can race — wait until overlay is actually floating.
+overlay_id=""
+overlay_floating=""
+for _ in $(seq 60); do
+  windows=$("$UMBRIEL" windows --json)
+  overlay_id=$(jq -r '.[] | select(.title == "float-close-overlay") | .id // empty' <<< "$windows")
+  if [[ -n $overlay_id ]]; then
+    overlay_floating=$(jq -r --arg id "$overlay_id" '.[] | select(.id == $id) | .floating // empty' <<< "$windows")
+    if [[ $overlay_floating == true ]]; then
+      break
+    fi
+  fi
+  sleep 0.1
+done
+if [[ -z $overlay_id ]]; then
+  echo "overlay never appeared: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if [[ $overlay_floating != true ]]; then
+  echo "overlay did not map floating: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 wait_for_focus "$overlay_id"
@@ -84,14 +96,21 @@ if ! grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/overlay.log"; then
   echo "overlay never unmapped in response to the close request: $(cat "$UMBRIEL_RUNTIME_DIR/overlay.log")"
   exit 1
 fi
-# The unmapped overlay drops out of `windows` while its process is still alive, so reaching a count of two proves the
-# reassignment happened at unmap time with the View still registered. The overlay process must stay alive until after
-# every assertion below: killing it destroys the View and Server::removeView's destroy-time refocus would mask a
-# missing unmap-time reassignment. The very first observation must already show the anchor focused.
+# Must refocus at unmap — keep overlay alive so destroy fallback can't hide it.
 wait_for_window_count 2
+if ! kill -0 "$overlay_pid" 2>/dev/null; then
+  echo "overlay client exited instead of keeping the surface alive"
+  exit 1
+fi
+wait_for_focus "$anchor_id"
+sleep 0.1
 windows=$("$UMBRIEL" windows --json)
 if [[ $(jq -r --arg id "$anchor_id" '.[] | select(.id == $id) | .focused' <<< "$windows") != true ]]; then
   echo "focus was not restored to the previously focused window at unmap time: $windows"
+  exit 1
+fi
+if [[ $(jq -r --arg id "$neighbor_id" '.[] | select(.id == $id) | .focused' <<< "$windows") != false ]]; then
+  echo "neighbor view received focus after the overlay closed: $windows"
   exit 1
 fi
 
