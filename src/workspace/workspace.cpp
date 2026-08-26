@@ -9,6 +9,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "server/server.h"
+#include "view/registry.h"
 #include "view/view.h"
 #include "view/xdg_size.h"
 // clang-format off
@@ -580,9 +581,14 @@ namespace umbriel {
       }
     }
 
-    // Floating views sit outside the layout columns, so no layout successor exists here. nullptr makes closing one
-    // restore focus to the previously focused window.
+    // Floating views have no layout successor: hand focus back to the most recently focused mapped view on this
+    // workspace, since nothing else refocuses until a destroy-time fallback that unmap-only clients never reach.
     if (columnIndex < 0 || columnIndex >= static_cast<int>(columns.size())) {
+      for (const auto& entry : m_group->server()->registry().all()) {
+        if (entry.get() != view && entry->mapped() && entry->workspace() == this) {
+          return entry.get();
+        }
+      }
       return nullptr;
     }
 
