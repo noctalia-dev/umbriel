@@ -3,6 +3,7 @@
   config,
   pkgs,
   lib,
+  modulesPath,
   ...
 }:
 let
@@ -71,6 +72,12 @@ in
             "gtk"
           ];
         };
+      })
+
+      (import "${modulesPath}/programs/wayland/wayland-session.nix" {
+        inherit lib pkgs;
+        enableXWayland = false;
+        enableWlrPortal = false;
       })
     ]
   );
