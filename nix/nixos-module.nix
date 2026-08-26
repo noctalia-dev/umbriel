@@ -58,7 +58,10 @@ in
         xdg.portal = {
           enable = lib.mkDefault true;
           extraPortals = [ cfg.portalPackage ];
-          configPackages = [ cfg.portalPackage ];
+          config.umbriel.default = lib.mkDefault [
+            "umbriel"
+            "gtk"
+          ];
         };
       })
     ]
