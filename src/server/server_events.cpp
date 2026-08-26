@@ -168,9 +168,6 @@ namespace umbriel {
         const std::optional<AccelProfile>& configuredProfile, const std::optional<double>& configuredSensitivity,
         std::string_view accelSetting, std::string_view sensitivitySetting
     ) {
-      if (!configuredProfile && !configuredSensitivity) {
-        return;
-      }
       if (libinput_device_config_accel_is_available(libinputDevice) == 0) {
         return;
       }
@@ -227,10 +224,14 @@ namespace umbriel {
         }
       }
 
-      if (configuredSensitivity
-          && libinput_device_config_accel_set_speed(libinputDevice, *configuredSensitivity)
-              != LIBINPUT_CONFIG_STATUS_SUCCESS) {
-        kLog.warn("input: failed to apply {} to '{}'", sensitivitySetting, deviceName(device));
+      const double sensitivity =
+          configuredSensitivity.value_or(libinput_device_config_accel_get_default_speed(libinputDevice));
+      if (libinput_device_config_accel_set_speed(libinputDevice, sensitivity) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if (configuredSensitivity) {
+          kLog.warn("input: failed to apply {} to '{}'", sensitivitySetting, deviceName(device));
+        } else {
+          kLog.warn("input: failed to restore the default acceleration speed for '{}'", deviceName(device));
+        }
       }
     }
 

@@ -158,9 +158,9 @@ sensitivity = 0.0              # pointer speed, -1.0 to 1.0
 scroll_wheel_step = 60         # 1-1000
 # Override only the listed settings for an exact, case-sensitive device name.
 # Applies per device kind: layout, variant, options, repeat_rate, and
-# repeat_delay to keyboards: tap, acceleration, and sensitivity to touchpads.
-# natural_scroll to touchpads and mice, acceleration settings to mice. Find
-# names with `libinput list-devices`.
+# repeat_delay to keyboards; tap to touchpads; natural_scroll, accel_profile,
+# and sensitivity to touchpads and mice. Find names with
+# `libinput list-devices`.
 # [[input.device]]
 # name = "Acme Precision Touchpad"
 # tap = true

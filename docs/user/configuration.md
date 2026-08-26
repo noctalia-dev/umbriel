@@ -448,10 +448,10 @@ which preserves each device's libinput setting. Options are applied only when
 supported by the device.
 
 `accel_profile` and `sensitivity` work like their `[input.mouse]` counterparts,
-including custom curves. Both remain unset by default, which leaves libinput's
-own acceleration behavior for touchpads untouched; setting either one takes
-control from the device defaults. `sensitivity` alone adjusts pointer speed
-under the device's current profile.
+including custom curves. Both remain unset by default, which uses each
+touchpad's libinput default profile and speed. Removing either setting on reload
+restores the corresponding default. `sensitivity` alone adjusts pointer speed
+under the device's default profile.
 
 ### Mouse
 
