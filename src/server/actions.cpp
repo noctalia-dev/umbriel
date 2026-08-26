@@ -447,6 +447,17 @@ namespace umbriel {
       return actionOutputFocus<WlrDir>(server, bind, error);
     }
 
+    template <int Direction, wlr_direction WlrDir>
+    bool actionFocusVerticalOrOutput(Server& server, const Keybind& bind, std::string* error) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        if (View* target = workspace->focusVertical(Direction)) {
+          server.focusView(target, FocusReason::Directional);
+          return true;
+        }
+      }
+      return actionOutputFocus<WlrDir>(server, bind, error);
+    }
+
     template <int Direction> bool actionFocusVertical(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = activeWorkspace(server)) {
         if (View* target = workspace->focusVertical(Direction)) {
@@ -492,6 +503,16 @@ namespace umbriel {
     bool actionMoveHorizontalOrOutput(Server& server, const Keybind& bind, std::string* error) {
       if (Workspace* workspace = activeWorkspace(server)) {
         if (workspace->moveFocusedColumn(Direction)) {
+          return true;
+        }
+      }
+      return actionColumnMoveToOutput<WlrDir>(server, bind, error);
+    }
+
+    template <int Direction, wlr_direction WlrDir>
+    bool actionMoveVerticalOrOutput(Server& server, const Keybind& bind, std::string* error) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        if (workspace->moveFocusedVertical(Direction)) {
           return true;
         }
       }
@@ -1036,6 +1057,8 @@ namespace umbriel {
         &actionFocusVerticalOrWorkspace<-1>,
         &actionFocusVerticalOrWorkspace<1>,
         &actionFocusSwitchFloating,
+        &actionFocusVerticalOrOutput<-1, WLR_DIRECTION_UP>,
+        &actionFocusVerticalOrOutput<1, WLR_DIRECTION_DOWN>,
         &actionMoveColumn<-1>,
         &actionMoveColumn<1>,
         &actionMoveHorizontalOrOutput<-1, WLR_DIRECTION_LEFT>,
@@ -1044,6 +1067,8 @@ namespace umbriel {
         &actionMoveVertical<1>,
         &actionMoveVerticalOrWorkspace<-1>,
         &actionMoveVerticalOrWorkspace<1>,
+        &actionMoveVerticalOrOutput<-1, WLR_DIRECTION_UP>,
+        &actionMoveVerticalOrOutput<1, WLR_DIRECTION_DOWN>,
         &actionConsumeLeft,
         &actionExpelRight,
         &actionCycleWidth<1>,

@@ -274,6 +274,8 @@ namespace {
     case A::WindowFocusDown:
     case A::WindowFocusOrWorkspaceUp:
     case A::WindowFocusOrWorkspaceDown:
+    case A::WindowFocusOrOutputUp:
+    case A::WindowFocusOrOutputDown:
     case A::WindowFocusNext:
     case A::WindowFocusId:
     case A::WindowFocusSwitchFloating:
@@ -286,6 +288,8 @@ namespace {
     case A::WindowMoveDown:
     case A::WindowMoveOrWorkspaceUp:
     case A::WindowMoveOrWorkspaceDown:
+    case A::WindowMoveOrOutputUp:
+    case A::WindowMoveOrOutputDown:
     case A::WindowConsumeLeft:
     case A::WindowExpelRight:
     case A::WindowCycleWidth:

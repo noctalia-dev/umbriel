@@ -187,25 +187,19 @@ namespace umbriel {
         {"window-focus-down", "", KeybindAction::WindowFocusDown},
         {"window-focus-left", "", KeybindAction::WindowFocusLeft},
         {"window-focus-next", "", KeybindAction::WindowFocusNext},
-<<<<<<< HEAD
         {"window-focus-or-workspace-down", "", KeybindAction::WindowFocusOrWorkspaceDown},
         {"window-focus-or-workspace-up", "", KeybindAction::WindowFocusOrWorkspaceUp},
-=======
         {"window-focus-or-output-left", "", KeybindAction::WindowFocusOrOutputLeft},
         {"window-focus-or-output-right", "", KeybindAction::WindowFocusOrOutputRight},
->>>>>>> 3b0a8e3 (feat(keybinds): add window-focus/move-or-output actions)
         {"window-focus-right", "", KeybindAction::WindowFocusRight},
         {"window-focus-switch-floating", "", KeybindAction::WindowFocusSwitchFloating},
         {"window-focus-up", "", KeybindAction::WindowFocusUp},
         {"window-modify-width", "<delta>", KeybindAction::WindowModifyWidth, ActionArgKind::WidthDelta},
         {"window-move-down", "", KeybindAction::WindowMoveDown},
-<<<<<<< HEAD
         {"window-move-or-workspace-down", "", KeybindAction::WindowMoveOrWorkspaceDown},
         {"window-move-or-workspace-up", "", KeybindAction::WindowMoveOrWorkspaceUp},
-=======
         {"window-move-or-output-left", "", KeybindAction::WindowMoveOrOutputLeft},
         {"window-move-or-output-right", "", KeybindAction::WindowMoveOrOutputRight},
->>>>>>> 3b0a8e3 (feat(keybinds): add window-focus/move-or-output actions)
         {"window-move-to-output-down", "", KeybindAction::WindowMoveToOutputDown},
         {"window-move-to-output-left", "", KeybindAction::WindowMoveToOutputLeft},
         {"window-move-to-output-right", "", KeybindAction::WindowMoveToOutputRight},
