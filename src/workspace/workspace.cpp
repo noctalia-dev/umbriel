@@ -580,30 +580,34 @@ namespace umbriel {
       }
     }
 
-    if (columnIndex >= 0 && columnIndex < static_cast<int>(columns.size())) {
-      const auto& column = columns[static_cast<size_t>(columnIndex)].views;
-      for (int row = rowIndex - 1; row >= 0; --row) {
-        if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+    // Floating views sit outside the layout columns, so no layout successor exists here. nullptr makes closing one
+    // restore focus to the previously focused window.
+    if (columnIndex < 0 || columnIndex >= static_cast<int>(columns.size())) {
+      return nullptr;
+    }
+
+    const auto& column = columns[static_cast<size_t>(columnIndex)].views;
+    for (int row = rowIndex - 1; row >= 0; --row) {
+      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+        return candidate;
+      }
+    }
+    for (int row = rowIndex + 1; row < static_cast<int>(column.size()); ++row) {
+      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+        return candidate;
+      }
+    }
+    for (int targetColumn = columnIndex - 1; targetColumn >= 0; --targetColumn) {
+      for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
+        if (mappedCandidate(candidate)) {
           return candidate;
         }
       }
-      for (int row = rowIndex + 1; row < static_cast<int>(column.size()); ++row) {
-        if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+    }
+    for (int targetColumn = columnIndex + 1; targetColumn < static_cast<int>(columns.size()); ++targetColumn) {
+      for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
+        if (mappedCandidate(candidate)) {
           return candidate;
-        }
-      }
-      for (int targetColumn = columnIndex - 1; targetColumn >= 0; --targetColumn) {
-        for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
-          if (mappedCandidate(candidate)) {
-            return candidate;
-          }
-        }
-      }
-      for (int targetColumn = columnIndex + 1; targetColumn < static_cast<int>(columns.size()); ++targetColumn) {
-        for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
-          if (mappedCandidate(candidate)) {
-            return candidate;
-          }
         }
       }
     }
