@@ -273,6 +273,10 @@ enabled = true
 duration_ms = 250
 curve = "snappy"
 dim = 0.2               # 0.0-1.0: dims the rest of the output while a scratchpad window is shown
+blur = false             # blurs the rest of the output while shown (needs appearance.blur.enabled too)
+scale = 0.0              # 0 preserves the window's existing geometry; >0-1.0 auto-sizes and centers it
+maximize = false         # maximize the scratchpad window to edges when shown
+fullscreen = false       # fullscreen the scratchpad window when shown
 
 [appearance.animations.border]
 enabled = true

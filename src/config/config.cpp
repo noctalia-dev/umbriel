@@ -497,7 +497,13 @@ namespace umbriel {
           const auto y1 = (*arr)[1].value<double>();
           const auto x2 = (*arr)[2].value<double>();
           const auto y2 = (*arr)[3].value<double>();
-          if (x1 && y1 && x2 && y2 && std::isfinite(*x1) && std::isfinite(*y1) && std::isfinite(*x2)
+          if (x1
+              && y1
+              && x2
+              && y2
+              && std::isfinite(*x1)
+              && std::isfinite(*y1)
+              && std::isfinite(*x2)
               && std::isfinite(*y2)) {
             return BezierCurve{.x1 = *x1, .y1 = *y1, .x2 = *x2, .y2 = *y2};
           }
@@ -552,8 +558,7 @@ namespace umbriel {
     }
 
     std::optional<AnimationCurve> parseAnimationCurve(
-        std::string_view str,
-        const std::map<std::string, BezierCurve>& beziers = {},
+        std::string_view str, const std::map<std::string, BezierCurve>& beziers = {},
         const std::map<std::string, SpringConfig>& springs = {}
     ) {
       std::string s = lowercase(str);
@@ -573,9 +578,7 @@ namespace umbriel {
     }
 
     std::optional<AnimationCurve> readCurveNode(
-        const toml::node* node,
-        std::string_view context,
-        const std::map<std::string, BezierCurve>& beziers = {},
+        const toml::node* node, std::string_view context, const std::map<std::string, BezierCurve>& beziers = {},
         const std::map<std::string, SpringConfig>& springs = {}
     ) {
       if (node == nullptr) {
