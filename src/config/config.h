@@ -49,6 +49,7 @@ namespace umbriel {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> centerUnderfullStrip;
       std::optional<ScrollingDirection> direction;
+      std::optional<bool> expandSingleColumn;
       bool operator==(const Scrolling&) const = default;
     } scrolling;
     struct Master {
@@ -79,6 +80,7 @@ namespace umbriel {
       bool centerUnderfullStrip = true;
       // Axis-agnostic layout state is preserved when config reload changes direction.
       ScrollingDirection direction = ScrollingDirection::Horizontal;
+      bool expandSingleColumn = false;
       bool operator==(const Scrolling&) const = default;
     } scrolling;
     struct Master {
@@ -459,6 +461,7 @@ namespace umbriel {
         std::optional<double> defaultWidthFraction;
         bool centerUnderfullStrip = true;
         ScrollingDirection direction = ScrollingDirection::Horizontal;
+        bool expandSingleColumn = false;
         bool operator==(const Scrolling&) const = default;
       } scrolling;
       struct Master {

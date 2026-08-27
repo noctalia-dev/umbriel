@@ -25,7 +25,9 @@ namespace {
   // one. These are addresses, never dereferenced.
   View* stub(int id) { return reinterpret_cast<View*>(static_cast<uintptr_t>(0x1000 + (id * 0x10))); }
 
-  // Mirrors the shipped defaults: gap 8, border 2, no outer border.
+  // Mirrors the shipped defaults except expandSingleColumn: geometry tests pin
+  // false so they exercise the resting-width math, and the expand_single_column
+  // behavior is covered by its own tests that flip the value back to true.
   //   totalGap = gap + 2 * border = 12,  edgePad = gap + border = 10
   ResolvedLayoutConfig defaultConfig() {
     ResolvedLayoutConfig config;
@@ -34,6 +36,7 @@ namespace {
     config.edgePad = 10;
     config.scrolling.defaultWidthFraction = 0.5;
     config.scrolling.centerUnderfullStrip = true;
+    config.scrolling.expandSingleColumn = false;
     config.widthPresets = {1.0 / 3, 0.5, 2.0 / 3};
     return config;
   }
@@ -159,6 +162,37 @@ UMBRIEL_TEST(halfWidthColumnMatchesTheGapAwareFormula) {
   fixture.addColumns(1);
   // round(0.5 * (1260 + 12)) - 12 = 636 - 12 = 624
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 624);
+}
+
+// expand_single_column
+UMBRIEL_TEST(expandSingleColumnFalseKeepsTheConfiguredWidth) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 624);
+}
+
+UMBRIEL_TEST(expandSingleColumnTrueFillsALoneColumn) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  fixture.addColumns(1);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+}
+
+UMBRIEL_TEST(expandSingleColumnTrueSizesTheFirstConfigureFull) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt);
+  CHECK_EQ(initial.width, 1260);
+  CHECK_EQ(initial.height, 700);
+}
+
+UMBRIEL_TEST(expandSingleColumnTrueReexpandsTheLastSurvivor) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  fixture.addColumns(2);
+  fixture.layout.removeView(stub(1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
 }
 
 UMBRIEL_TEST(twoHalfColumnsTileExactlyAcrossTheViewport) {

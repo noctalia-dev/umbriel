@@ -107,6 +107,10 @@ namespace umbriel {
 
   bool ScrollingLayout::vertical() const { return m_config->scrolling.direction == ScrollingDirection::Vertical; }
 
+  bool ScrollingLayout::expandSingleColumn() const {
+    return m_config != nullptr && m_config->scrolling.expandSingleColumn;
+  }
+
   void ScrollingLayout::syncHeightWeights(Column& column) { ensureWeightCount(column); }
 
   int ScrollingLayout::columnOf(const View* view) const {
@@ -282,6 +286,10 @@ namespace umbriel {
     if (columnFillsViewport(column, *this)) {
       const int edgePad = m_config->edgePad;
       return std::max(1, viewportPrimary + 2 * edgePad);
+    }
+    // A lone tiled column fills the viewport per expand_single_column, without touching its stored fraction.
+    if (m_columns.size() == 1 && expandSingleColumn()) {
+      return std::max(1, viewportPrimary);
     }
     // Gap-aware: reserve one inter-lane gap per lane so fractions summing to 1
     // tile exactly across the viewport primary extent.
@@ -652,6 +660,10 @@ namespace umbriel {
   Layout::InitialSize
   ScrollingLayout::initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction) const {
     const wlr_box content = contentArea(usable);
+    // The first window of a lone-column workspace opens full so its first buffer matches what arrange() will assign.
+    if (m_columns.empty() && expandSingleColumn()) {
+      return {.width = content.width, .height = content.height};
+    }
     const std::optional<double> fraction =
         ruleWidthFraction ? ruleWidthFraction : m_config->scrolling.defaultWidthFraction;
     if (!fraction) {

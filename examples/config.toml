@@ -179,6 +179,7 @@ width_presets = [0.333, 0.5, 0.667] # shared by scrolling, dwindle, and master
 # direction = "horizontal"
 default_width_fraction = 0.5  # remove to let clients choose their initial width
 center_underfull_strip = true  # center the strip whenever it is narrower than the viewport
+expand_single_column = true # fill lone column to viewport width
 
 [layout.master]
 position = "left"              # "left" or "right"

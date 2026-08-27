@@ -14,6 +14,7 @@ width_presets = [0.333, 0.5, 0.667]
 direction = "horizontal"             # "horizontal" or "vertical"
 default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
+expand_single_column = true           # fill lone column to viewport width
 
 [layout.master]
 position = "left"                   # "left" or "right"
@@ -35,6 +36,7 @@ Scrolling layout options:
 | `direction`              | string | `"horizontal"` | Scroll axis: `"horizontal"` stacks columns left to right; `"vertical"` stacks lanes top to bottom.                                |
 | `default_width_fraction` | float  | unset          | Initial scroll-axis extent assigned to new scrolling lanes (0.1-1.0). The packaged config sets `0.5`; when omitted, the client chooses its initial extent. |
 | `center_underfull_strip` | bool   | `true`         | Center the complete strip whenever it is shorter than the viewport. Disable to align it at the start edge.                        |
+| `expand_single_column`    | bool   | `false`        | Fill the viewport width for a workspace's lone tiled column. Disable to keep the configured/default width. |
 
 Master layout options:
 
@@ -55,6 +57,12 @@ start at half the viewport. When the option is removed, Umbriel leaves the
 scroll-axis dimension unconstrained in the initial configure and retains the
 logical size chosen by the client. A numeric window-rule `default_width` still
 takes precedence for matching applications.
+
+`expand_single_column` only changes the display of a column while it is the only
+tiled column. It never rewrites the column's stored fraction, so each window's
+`default_width` (or the global `default_width_fraction`) still applies the moment
+a second column appears. Explicit `default_maximize` and
+`default_maximize_to_edges` window rules are unaffected and win.
 
 Directional focus and movement follow the screen: left and right operate within
 a vertical lane, while up and down walk or reorder lanes along the strip.

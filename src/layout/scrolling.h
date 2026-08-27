@@ -96,6 +96,7 @@ namespace umbriel {
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
     [[nodiscard]] double targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool force = false) const;
     [[nodiscard]] bool vertical() const;
+    [[nodiscard]] bool expandSingleColumn() const;
     void syncHeightWeights(Column& column);
 
     std::vector<Column> m_columns;

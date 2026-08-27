@@ -370,6 +370,7 @@ namespace umbriel {
               if (const auto direction = readScrollingDirection(sc, layoutContext + ".scrolling")) {
                 overrides.scrolling.direction = direction;
               }
+              sc.boolean("expand_single_column", overrides.scrolling.expandSingleColumn);
               sc.real("default_width_fraction", 0.1, 1.0, overrides.scrolling.defaultWidthFraction)
                   .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
             });
@@ -848,6 +849,7 @@ namespace umbriel {
           if (const auto direction = readScrollingDirection(sc, "layout.scrolling")) {
             loaded.layout.scrolling.direction = *direction;
           }
+          sc.boolean("expand_single_column", loaded.layout.scrolling.expandSingleColumn);
           sc.real("default_width_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultWidthFraction)
               .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
         });
