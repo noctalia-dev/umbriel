@@ -254,6 +254,8 @@ UMBRIEL_TEST(expandSingleColumnParsesAndDefaultsToFalse) {
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
+  file.write("");
+
   CHECK(store.reload().success);
   CHECK(!store.config().layout.scrolling.expandSingleColumn);
 
