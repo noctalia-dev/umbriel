@@ -94,10 +94,10 @@ If the original output no longer exists, Umbriel restores the window on the
 output targeted by the action. If the original workspace no longer exists, it
 uses that output's active workspace.
 
-Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters
-the scratchpad and are not restored automatically. The optional
-`animation.scratchpad.fullscreen` or `animation.scratchpad.maximize` setting can
-apply a new state on entry.
+Fullscreen, pinned, maximized, and maximize-to-edges state are cleared when a
+window enters the scratchpad and are not restored automatically. The optional
+`animation.scratchpad.fullscreen`, `animation.scratchpad.maximize_to_edges`, or
+`animation.scratchpad.maximize` setting can apply a new state on entry.
 
 ## Moving scratchpad windows
 

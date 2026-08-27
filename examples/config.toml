@@ -79,7 +79,8 @@ curve = "easeout"
 dim = 0.5                      # 0.0-1.0
 blur = false
 scale = 0.0                    # 0 preserves the window geometry
-maximize = false
+maximize = false               # maximize to usable area on entry
+maximize_to_edges = false      # maximize to edges on entry
 fullscreen = false
 
 [animation.border]

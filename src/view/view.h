@@ -153,6 +153,7 @@ namespace umbriel {
     // Compositor-driven fullscreen toggle (keybind); client requests use handleRequestFullscreen.
     void toggleFullscreen();
     void applyDeferredUnfullscreen();
+    void setMaximized(bool maximized);
     void setMaximizedToEdges(bool maximized);
     void toggleMaximizedToEdges();
     // Detach from the scrolling layout (float) or re-insert as a tiled column.
@@ -179,6 +180,7 @@ namespace umbriel {
     friend class Server;
     friend class Popup;
     friend class Overview;
+    friend class ScratchpadManager;
 
     struct OpacitySurfaceWatch {
       View* view = nullptr;
@@ -215,7 +217,6 @@ namespace umbriel {
     void handleRequestMove();
     void handleRequestResize(void* data);
     void handleRequestMaximize();
-    void setMaximized(bool maximized);
     void handleRequestFullscreen();
     void setFullscreen(bool fullscreen);
     void handleSetTitle();

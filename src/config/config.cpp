@@ -729,6 +729,7 @@ namespace umbriel {
             .boolean("blur", animation.scratchpad.blur)
             .real("scale", 0.0, 1.0, animation.scratchpad.scale)
             .boolean("maximize", animation.scratchpad.maximize)
+            .boolean("maximize_to_edges", animation.scratchpad.maximizeToEdges)
             .boolean("fullscreen", animation.scratchpad.fullscreen);
         readCurve(section, "animation.scratchpad", animation.scratchpad.curve);
       });

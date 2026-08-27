@@ -394,6 +394,7 @@ namespace umbriel {
         bool blur = false;
         double scale = 0.0;
         bool maximize = false;
+        bool maximizeToEdges = false;
         bool fullscreen = false;
         bool operator==(const Scratchpad&) const = default;
       } scratchpad;

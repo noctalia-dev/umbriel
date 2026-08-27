@@ -105,6 +105,9 @@ namespace umbriel {
     if (view->maximizedToEdges()) {
       view->setMaximizedToEdges(false);
     }
+    if (view->toplevel()->scheduled.maximized || view->toplevel()->current.maximized) {
+      view->setMaximized(false);
+    }
     view->setFloating(true);
     view->cancelPositionAnimation();
 
@@ -117,8 +120,19 @@ namespace umbriel {
       if (!view->toplevel()->scheduled.fullscreen && !view->toplevel()->current.fullscreen) {
         view->toggleFullscreen();
       }
+    } else if (spCfg.maximizeToEdges) {
+      view->setMaximizedToEdges(true);
     } else if (spCfg.maximize) {
-      view->toggleMaximizedToEdges();
+      // Size to usable area minus one layout gap per side. No Wayland maximize state:
+      // some clients strip their own chrome in response and that looks wrong here.
+      const int gap = config().layoutGap();
+      if (gap >= 0 && targetArea.width > 2 * gap && targetArea.height > 2 * gap) {
+        view->requestFloatingSize(targetArea.width - 2 * gap, targetArea.height - 2 * gap);
+        view->setPosition(targetArea.x + gap, targetArea.y + gap);
+      } else {
+        view->requestFloatingSize(targetArea.width, targetArea.height);
+        view->setPosition(targetArea.x, targetArea.y);
+      }
     } else if (spCfg.scale > 0.0 && spCfg.scale <= 1.0 && targetArea.width > 0 && targetArea.height > 0) {
       const int targetW = std::max(100, static_cast<int>(std::lround(targetArea.width * spCfg.scale)));
       const int targetH = std::max(100, static_cast<int>(std::lround(targetArea.height * spCfg.scale)));

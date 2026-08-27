@@ -954,6 +954,8 @@ curve = "custom"
 [animation.scratchpad]
 dim = 0.4
 blur = true
+maximize = true
+maximize_to_edges = true
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -978,6 +980,8 @@ blur = true
   CHECK_EQ(animation.windowsMove.durationMs, 320);
   CHECK_EQ(animation.scratchpad.dim, 0.4);
   CHECK(animation.scratchpad.blur);
+  CHECK(animation.scratchpad.maximize);
+  CHECK(animation.scratchpad.maximizeToEdges);
 
   file.write(R"(
 [appearance.animations]
