@@ -981,7 +981,8 @@ namespace umbriel {
             .integer("repeat_delay", 0, 10000, device.repeatDelay)
             .boolean("tap", device.tap)
             .boolean("natural_scroll", device.naturalScroll)
-            .real("sensitivity", -1.0, 1.0, device.sensitivity);
+            .real("sensitivity", -1.0, 1.0, device.sensitivity)
+            .boolean("disable_while_typing", device.disableWhileTyping);
         device.accelProfile = readAccelProfile(keys, "accel_profile", "input.device");
 
         if (!validName) {
@@ -1036,7 +1037,8 @@ namespace umbriel {
         s.sub("touchpad", [&](Section& t) {
           t.boolean("tap", in.touchpad.tap)
               .boolean("natural_scroll", in.touchpad.naturalScroll)
-              .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity);
+              .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
+              .boolean("disable_while_typing", in.touchpad.disableWhileTyping);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
         });
         s.sub("mouse", [&](Section& m) {

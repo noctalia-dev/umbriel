@@ -275,6 +275,33 @@ namespace umbriel {
               override != nullptr && override->tap ? "input.device.tap" : "input.touchpad.tap", deviceName(device)
           );
         }
+
+        const std::optional<bool> dwt = override != nullptr && override->disableWhileTyping
+            ? override->disableWhileTyping
+            : input.touchpad.disableWhileTyping;
+        if (dwt) {
+          if (libinput_device_config_dwt_is_available(libinputDevice)) {
+            const auto dwtState =
+                dwt.value_or(libinput_device_config_dwt_get_default_enabled(libinputDevice) == LIBINPUT_CONFIG_DWT_ENABLED)
+                ? LIBINPUT_CONFIG_DWT_ENABLED
+                : LIBINPUT_CONFIG_DWT_DISABLED;
+            if (libinput_device_config_dwt_set_enabled(libinputDevice, dwtState) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+              kLog.warn(
+                  "input: failed to apply {} to '{}'",
+                  override != nullptr && override->disableWhileTyping ? "input.device.disable_while_typing"
+                                                                       : "input.touchpad.disable_while_typing",
+                  deviceName(device)
+              );
+            }
+          } else {
+            kLog.warn(
+                "input: could not apply {} to '{}': device does not support disable-when-typing",
+                override != nullptr && override->disableWhileTyping ? "input.device.disable_while_typing"
+                                                                     : "input.touchpad.disable_while_typing",
+                deviceName(device)
+            );
+          }
+        }
       }
 
       const std::optional<bool>& naturalScroll = override != nullptr && override->naturalScroll
