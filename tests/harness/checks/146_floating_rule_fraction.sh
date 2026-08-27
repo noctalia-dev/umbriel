@@ -66,6 +66,11 @@ default_floating = true
 default_size = [600, 400]
 default_width = 0.9
 default_height = 0.9
+
+[[window_rule]]
+match.app_id = "^float-half$"
+default_floating = true
+default_width = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -90,8 +95,16 @@ APP_ID=float-pixel "$CLIENT" "float-pixel" > "$UMBRIEL_RUNTIME_DIR/pixel.log" 2>
 poll_geometry "float-pixel" "600x400"
 expect_floating "float-pixel"
 
+# A single width fraction must size that axis and leave the other to the client:
+# subsurface-client keeps its default 480 height when a configure sends 0.
+readonly HALF_SIZE="$(round_scaled "$full_w" 0.5)x480"
+APP_ID=float-half "$CLIENT" "float-half" > "$UMBRIEL_RUNTIME_DIR/half.log" 2>&1 &
+poll_geometry "float-half" "$HALF_SIZE"
+expect_floating "float-half"
+
 # Opening later windows must not disturb either rule's outcome.
 poll_geometry "float-full" "$FULL_SIZE"
 poll_geometry "float-fraction" "$FRACTION_SIZE"
+poll_geometry "float-half" "$HALF_SIZE"
 
-echo "fractions sized from a ${FULL_SIZE} usable area -> $FRACTION_SIZE; pixels kept 600x400"
+echo "fractions sized from a ${FULL_SIZE} usable area -> $FRACTION_SIZE; pixels kept 600x400; unset axis left to client -> $HALF_SIZE"

@@ -1870,7 +1870,11 @@ namespace umbriel {
         if (rule.defaultSize || rule.defaultWidth || rule.defaultHeight) {
           const FloatingInitialSize initial =
               floatingInitialSize(rule.defaultSize, rule.defaultWidth, rule.defaultHeight, usable);
-          requestFloatingSize(clampXdgWidth(initial.width, hints), clampXdgHeight(initial.height, hints));
+          // A 0 axis from floatingInitialSize means "leave it to the client"; only decided sizes are clamped.
+          requestFloatingSize(
+              initial.width > 0 ? clampXdgWidth(initial.width, hints) : 0,
+              initial.height > 0 ? clampXdgHeight(initial.height, hints) : 0
+          );
         } else {
           requestFloatingSize(0, 0);
         }
@@ -2560,7 +2564,11 @@ namespace umbriel {
       const XdgSizeHints hints = xdgSizeHints(m_toplevel);
       const FloatingInitialSize initial =
           floatingInitialSize(rule.defaultSize, rule.defaultWidth, rule.defaultHeight, floatingUsableArea());
-      requestFloatingSize(clampXdgWidth(initial.width, hints), clampXdgHeight(initial.height, hints));
+      // A 0 axis from floatingInitialSize means "leave it to the client"; only decided sizes are clamped.
+      requestFloatingSize(
+          initial.width > 0 ? clampXdgWidth(initial.width, hints) : 0,
+          initial.height > 0 ? clampXdgHeight(initial.height, hints) : 0
+      );
       placeInUsableArea();
     }
 
