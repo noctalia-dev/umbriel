@@ -1,4 +1,5 @@
 #include "check.h"
+#include "config/resolve.h"
 #include "config/store.h"
 
 #include <cstdlib>
@@ -1014,6 +1015,48 @@ UMBRIEL_TEST(packagedAnimationDefaultsMatchCompiledDefaults) {
 
   CHECK(result.success);
   CHECK(store.config().animation == umbriel::Config{}.animation);
+}
+
+UMBRIEL_TEST(windowRulesParseFractionalSizesClampAndOverride) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.app_id = "^util$"
+default_floating = true
+default_width = 0.5
+default_height = 0.6
+
+[[window_rule]]
+default_height = 3.5
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{2});
+  const umbriel::WindowRule& sized = store.config().windowRules[0];
+  CHECK(sized.defaultFloating.value_or(false));
+  CHECK(sized.defaultWidth.has_value());
+  CHECK_EQ(*sized.defaultWidth, 0.5);
+  CHECK(sized.defaultHeight.has_value());
+  CHECK_EQ(*sized.defaultHeight, 0.6);
+  const umbriel::WindowRule& overRange = store.config().windowRules[1];
+  CHECK(!overRange.defaultWidth.has_value());
+  CHECK(overRange.defaultHeight.has_value());
+  CHECK_EQ(*overRange.defaultHeight, 1.0);
+  CHECK(containsDiagnostic(store, "window_rule.default_height = 3.5 out of range, clamped to 1"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.default_height"));
+
+  // The second rule has no matchers, so it matches everything and must override default_height while leaving the
+  // fields it never set untouched.
+  const umbriel::ResolvedWindowRule resolved = umbriel::resolveWindowRules(store.config(), "util", "", false);
+  CHECK(resolved.defaultFloating.value_or(false));
+  CHECK(resolved.defaultWidth.has_value());
+  CHECK_EQ(*resolved.defaultWidth, 0.5);
+  CHECK(resolved.defaultHeight.has_value());
+  CHECK_EQ(*resolved.defaultHeight, 1.0);
 }
 
 int main() { return RUN_TESTS(); }

@@ -43,7 +43,8 @@ opening settings do not overwrite user changes made in the meantime.
 | `default_floating` | bool | Force floating (`true`) or force tiling (`false`). |
 | `default_size` | `[w, h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes; tiled windows ignore height. |
 | `default_position` | table | Initial position for floating windows: `{ x = int, y = int, anchor = string }`. Ignored for tiled windows. |
-| `default_width` | float | Scrolling only. Lane scroll-axis extent fraction (0.1-1.0), which is height on a vertical workspace. Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the lane within or between scrolling workspaces retains its current fraction. Ignored in dwindle and master. |
+| `default_width` | float | Two meanings. Tiled:- lane scroll-axis extent fraction (0.1-1.0) for the scrolling layout, which is height on a vertical workspace, gap-aware; overrides `layout.scrolling.default_width_fraction`, dragging the lane within or between scrolling workspaces retains its current fraction; ignored in dwindle and master. Floating:- initial width as a fraction of the usable area. |
+| `default_height` | float | Initial height for floating windows as a fraction of the usable area (0.1-1.0). Ignored for tiled windows. |
 | `default_workspace` | int | Place on workspace N from 1 to 64. On dynamic outputs, values beyond the current count clamp to the last workspace. |
 | `default_fullscreen` | bool | Open in fullscreen. |
 | `default_maximize_to_edges` | bool | Explicitly open maximized to edges, expanding the window to the usable area's edges without gaps or borders. Layer-shell exclusive zones stay visible. Takes precedence over `default_maximize`; when combined with `default_fullscreen` the window opens fullscreen and returns to maximized to edges once fullscreen is cleared. |
@@ -54,6 +55,10 @@ opening settings do not overwrite user changes made in the meantime.
 If neither `default_width` nor a matching
 `layout.scrolling.default_width_fraction` is set, a scrolling window chooses
 its initial logical extent.
+
+For floating windows, when both `default_size` and the fractions are set, the
+pixel pair wins entirely, otherwise each axis falls back independently — its
+fraction if present, else the client's own choice.
 
 Without `default_output`, a numbered workspace owned by exactly one fixed output
 inventory also selects that output. For example, if only `DP-1` has a fourth

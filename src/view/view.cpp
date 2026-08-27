@@ -1826,6 +1826,17 @@ namespace umbriel {
           m_toplevel, wantTiled ? WLR_EDGE_TOP | WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT : 0
       );
 
+      // Usable area is resolved once and shared by the tiled and floating branches below.
+      wlr_box usable = targetOutput != nullptr
+          ? targetOutput->usableArea()
+          : m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
+      if (targetOutput != nullptr && (usable.width <= 0 || usable.height <= 0)) {
+        wlr_output_layout_get_box(m_server->outputLayout(), targetOutput->wlr(), &usable);
+      }
+      if (usable.width <= 0 || usable.height <= 0) {
+        usable = m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
+      }
+
       if (m_toplevel->requested.fullscreen) {
         // xwayland-satellite can request fullscreen while creating the xdg role, before the initial surface commit.
         // The request event is too early to configure, but wlroots preserves it in requested state for us to honor now.
@@ -1839,15 +1850,6 @@ namespace umbriel {
           wlr_xdg_toplevel_set_size(m_toplevel, fullArea.width, fullArea.height);
         }
       } else if (wantTiled) {
-        wlr_box usable = targetOutput != nullptr
-            ? targetOutput->usableArea()
-            : m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
-        if (targetOutput != nullptr && (usable.width <= 0 || usable.height <= 0)) {
-          wlr_output_layout_get_box(m_server->outputLayout(), targetOutput->wlr(), &usable);
-        }
-        if (usable.width <= 0 || usable.height <= 0) {
-          usable = m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
-        }
 
         // No workspace yet (no output, or none active): fall back to a throwaway layout built from the global config,
         // so the sizing rule stays the layout's either way.
@@ -1865,10 +1867,10 @@ namespace umbriel {
         wlr_xdg_toplevel_set_size(m_toplevel, width, initial.height);
       } else {
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
-        if (rule.defaultSize) {
-          requestFloatingSize(
-              clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
-          );
+        if (rule.defaultSize || rule.defaultWidth || rule.defaultHeight) {
+          const FloatingInitialSize initial =
+              floatingInitialSize(rule.defaultSize, rule.defaultWidth, rule.defaultHeight, usable);
+          requestFloatingSize(clampXdgWidth(initial.width, hints), clampXdgHeight(initial.height, hints));
         } else {
           requestFloatingSize(0, 0);
         }
@@ -2551,9 +2553,14 @@ namespace umbriel {
       }
     }
 
-    if (changedInitialRule(rule.defaultSize, initiallyApplied.defaultSize) && !m_tiled) {
+    const bool floatSizingChanged = changedInitialRule(rule.defaultSize, initiallyApplied.defaultSize)
+        || changedInitialRule(rule.defaultWidth, initiallyApplied.defaultWidth)
+        || changedInitialRule(rule.defaultHeight, initiallyApplied.defaultHeight);
+    if (floatSizingChanged && !m_tiled) {
       const XdgSizeHints hints = xdgSizeHints(m_toplevel);
-      requestFloatingSize(clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints));
+      const FloatingInitialSize initial =
+          floatingInitialSize(rule.defaultSize, rule.defaultWidth, rule.defaultHeight, floatingUsableArea());
+      requestFloatingSize(clampXdgWidth(initial.width, hints), clampXdgHeight(initial.height, hints));
       placeInUsableArea();
     }
 

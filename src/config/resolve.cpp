@@ -146,6 +146,9 @@ namespace umbriel {
       if (rule.defaultWidth) {
         resolved.defaultWidth = rule.defaultWidth;
       }
+      if (rule.defaultHeight) {
+        resolved.defaultHeight = rule.defaultHeight;
+      }
       if (rule.defaultWorkspace) {
         resolved.defaultWorkspace = rule.defaultWorkspace;
       }

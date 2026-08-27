@@ -1485,18 +1485,22 @@ namespace umbriel {
           }
         }
 
-        if (const toml::node* n = keys.take("default_width")) {
-          const auto value = n->value<double>();
-          if (!value || std::isnan(*value)) {
-            warnAt(n->source(), "ignoring window_rule.default_width (expected number 0.1-1.0)");
-          } else {
-            const double used = std::clamp(*value, 0.1, 1.0);
-            if (used != *value) {
-              warnAt(n->source(), "window_rule.default_width = {} out of range, clamped to {}", *value, used);
+        const auto readRuleFraction = [&](const std::string_view key, std::optional<double>& target) {
+          if (const toml::node* n = keys.take(key)) {
+            const auto value = n->value<double>();
+            if (!value || std::isnan(*value)) {
+              warnAt(n->source(), "ignoring window_rule.{} (expected number 0.1-1.0)", key);
+            } else {
+              const double used = std::clamp(*value, 0.1, 1.0);
+              if (used != *value) {
+                warnAt(n->source(), "window_rule.{} = {} out of range, clamped to {}", key, *value, used);
+              }
+              target = used;
             }
-            rule.defaultWidth = used;
           }
-        }
+        };
+        readRuleFraction("default_width", rule.defaultWidth);
+        readRuleFraction("default_height", rule.defaultHeight);
 
         if (const toml::node* n = keys.take("default_workspace")) {
           const auto value = n->value<std::int64_t>();

@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 
@@ -68,6 +69,25 @@ namespace umbriel {
     return {
         .x = usable.x + (usable.width - width) / 2,
         .y = usable.y + (usable.height - height) / 2,
+    };
+  }
+
+  struct FloatingInitialSize {
+    int width;
+    int height;
+  };
+
+  // Fractions arrive pre-clamped to [0.1, 1.0] by the rule parser.
+  [[nodiscard]] inline FloatingInitialSize floatingInitialSize(
+      const std::optional<std::array<int, 2>>& sizePx, std::optional<double> widthFraction,
+      std::optional<double> heightFraction, const wlr_box& usable
+  ) {
+    const auto extent = [](const std::optional<double>& fraction, int available) {
+      return fraction && available > 0 ? static_cast<int>(std::lround(*fraction * static_cast<double>(available))) : 0;
+    };
+    return {
+        .width = sizePx ? (*sizePx)[0] : extent(widthFraction, usable.width),
+        .height = sizePx ? (*sizePx)[1] : extent(heightFraction, usable.height),
     };
   }
 

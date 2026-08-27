@@ -6,6 +6,8 @@ using umbriel::anchoredContentOrigin;
 using umbriel::centeredOrigin;
 using umbriel::clampFloatingOrigin;
 using umbriel::FloatingGeometry;
+using umbriel::floatingInitialSize;
+using umbriel::FloatingInitialSize;
 using umbriel::floatingKeepVisible;
 using umbriel::FloatingPoint;
 using umbriel::serialSettled;
@@ -249,6 +251,49 @@ UMBRIEL_TEST(centeringHonoursAnOffsetUsableArea) {
   const FloatingPoint origin = centeredOrigin(usable, 800, 600);
   CHECK_EQ(origin.x, 1920 + 560);
   CHECK_EQ(origin.y, 40 + 220);
+}
+
+// Rule-driven initial sizing
+UMBRIEL_TEST(fractionsTurnIntoPixelsOfTheUsableArea) {
+  const FloatingInitialSize sized = floatingInitialSize(std::nullopt, 0.5, 0.6, kUsable);
+  CHECK_EQ(sized.width, 960);
+  CHECK_EQ(sized.height, 648);
+}
+
+UMBRIEL_TEST(fractionsRoundHalfAwayFromZero) {
+  const wlr_box portrait{0, 0, 1000, 1081};
+  const FloatingInitialSize sized = floatingInitialSize(std::nullopt, 1.0 / 3, 0.333, portrait);
+  CHECK_EQ(sized.width, 333);  // 333.333 stays
+  CHECK_EQ(sized.height, 360); // 359.973 rounds up
+}
+
+UMBRIEL_TEST(pixelDefaultsBeatFractions) {
+  const auto sized = floatingInitialSize(std::array<int, 2>{800, 600}, 0.9, 0.9, kUsable);
+  CHECK_EQ(sized.width, 800);
+  CHECK_EQ(sized.height, 600);
+}
+
+UMBRIEL_TEST(anUnsetAxisIsLeftToTheClient) {
+  const auto halfWidth = floatingInitialSize(std::nullopt, 0.5, std::nullopt, kUsable);
+  CHECK_EQ(halfWidth.width, 960);
+  CHECK_EQ(halfWidth.height, 0);
+
+  const auto untouched = floatingInitialSize(std::nullopt, std::nullopt, std::nullopt, kUsable);
+  CHECK_EQ(untouched.width, 0);
+  CHECK_EQ(untouched.height, 0);
+}
+
+UMBRIEL_TEST(aDegenerateAxisLeavesOnlyThatAxisToTheClient) {
+  // Width has no extent to scale against, but the height fraction still applies to its own valid extent.
+  const FloatingInitialSize sized = floatingInitialSize(std::nullopt, 0.5, 0.6, {10, 10, 0, 480});
+  CHECK_EQ(sized.width, 0);
+  CHECK_EQ(sized.height, 288);
+}
+
+UMBRIEL_TEST(anEmptyUsableAreaLeavesEveryAxisToTheClient) {
+  const FloatingInitialSize sized = floatingInitialSize(std::nullopt, 0.5, 0.6, wlr_box{});
+  CHECK_EQ(sized.width, 0);
+  CHECK_EQ(sized.height, 0);
 }
 
 int main() { return RUN_TESTS(); }
