@@ -120,7 +120,7 @@ namespace umbriel {
     void applyLayoutConfig(ResolvedLayoutConfig layoutConfig);
     void rename(std::string name, size_t index);
 
-    [[nodiscard]] std::vector<View*> allViews() const { return m_views; }
+    [[nodiscard]] const std::vector<View*>& allViews() const noexcept { return m_views; }
     [[nodiscard]] bool hasViews() const { return !m_views.empty(); }
 
   private:

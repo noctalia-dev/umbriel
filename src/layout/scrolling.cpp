@@ -826,6 +826,9 @@ namespace umbriel {
 
       void applyDelta(double dx, double dy, const wlr_box& usable) override {
         ScrollingLayout& layout = *m_layout;
+        if (m_column < 0 || m_column >= static_cast<int>(layout.columns().size())) {
+          return;
+        }
         const double dPrimary = m_vertical ? dy : dx;
         const double dCross = m_vertical ? dx : dy;
         const uint32_t primaryStartEdge = m_vertical ? WLR_EDGE_TOP : WLR_EDGE_LEFT;

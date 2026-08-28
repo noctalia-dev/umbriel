@@ -27,6 +27,8 @@ namespace umbriel {
     wl_signal_add(&m_lockSurface->events.destroy, &m_destroy);
     m_outputCommit.notify = onOutputCommit;
     wl_signal_add(&m_lockSurface->output->events.commit, &m_outputCommit);
+    m_outputDestroy.notify = onOutputDestroy;
+    wl_signal_add(&m_lockSurface->output->events.destroy, &m_outputDestroy);
 
     configure();
   }
@@ -36,6 +38,7 @@ namespace umbriel {
       wl_list_remove(&m_map.link);
       wl_list_remove(&m_destroy.link);
       wl_list_remove(&m_outputCommit.link);
+      wl_list_remove(&m_outputDestroy.link);
     }
     if (m_lockSurface != nullptr && m_lockSurface->data == this) {
       m_lockSurface->data = nullptr;
@@ -105,6 +108,12 @@ namespace umbriel {
     self->handleOutputCommit();
   }
 
+  void LockSurface::onOutputDestroy(wl_listener* listener, void* /*data*/) {
+    LockSurface* self;
+    self = wl_container_of(listener, self, m_outputDestroy);
+    self->handleOutputDestroy();
+  }
+
   void LockSurface::handleMap() {
     focus();
     m_server->updateIdleInhibit();
@@ -114,9 +123,11 @@ namespace umbriel {
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_destroy.link);
     wl_list_remove(&m_outputCommit.link);
+    wl_list_remove(&m_outputDestroy.link);
     m_map.link.next = nullptr;
     m_destroy.link.next = nullptr;
     m_outputCommit.link.next = nullptr;
+    m_outputDestroy.link.next = nullptr;
     if (m_lockSurface != nullptr && m_lockSurface->data == this) {
       m_lockSurface->data = nullptr;
     }
@@ -129,6 +140,8 @@ namespace umbriel {
   }
 
   void LockSurface::handleOutputCommit() { configure(); }
+
+  void LockSurface::handleOutputDestroy() { handleDestroy(); }
 
   SessionLock::SessionLock(Server& server, wlr_session_lock_v1* lock) : m_server(&server), m_lock(lock) {
     m_lock->data = this;

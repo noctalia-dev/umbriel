@@ -61,6 +61,8 @@ namespace umbriel {
     if (Workspace* workspace = view->workspace()) {
       if (!view->pinned() && !workspace->active()) {
         const char* appId = view->toplevel()->app_id != nullptr ? view->toplevel()->app_id : "";
+        if (!workspace->group() || !workspace->group()->output() || !workspace->group()->output()->wlr())
+          return;
         const char* outputName = workspace->group()->output()->wlr()->name;
         const std::string_view current = workspace->group()->active() != nullptr
             ? std::string_view(workspace->group()->active()->name())

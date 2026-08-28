@@ -511,6 +511,8 @@ namespace umbriel {
 
     if (view.workspace() != &target) {
       view.moveToWorkspace(&target, /*attachToLayout=*/false);
+    } else {
+      target.layout().removeView(&view);
     }
     if (drop.row >= 0) {
       target.layout().insertViewIntoColumn(&view, std::max(0, drop.column), drop.row);

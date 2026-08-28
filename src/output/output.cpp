@@ -155,7 +155,7 @@ namespace umbriel {
     if (View* focused = workspace->focusedView(); eligible(focused)) {
       return focused;
     }
-    const std::vector<View*> views = workspace->allViews();
+    const auto& views = workspace->allViews();
     const auto candidate = std::ranges::find_if(views, eligible);
     return candidate != views.end() ? *candidate : nullptr;
   }

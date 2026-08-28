@@ -84,6 +84,15 @@ namespace umbriel {
       double tiltY = 0;
       wl_listener destroy{};
       wl_listener setCursor{};
+
+      ~TabletToolState() {
+        if (destroy.link.next != nullptr) {
+          wl_list_remove(&destroy.link);
+        }
+        if (setCursor.link.next != nullptr) {
+          wl_list_remove(&setCursor.link);
+        }
+      }
     };
 
   public:

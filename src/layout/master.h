@@ -49,12 +49,13 @@ namespace umbriel {
     [[nodiscard]] uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
     std::unique_ptr<ResizeGrab> beginResize(View* view, uint32_t edges, const wlr_box& usable) override;
 
-  private:
+  public:
     struct Area {
       std::vector<View*> views;
       std::vector<double> weights;
     };
 
+  private:
     [[nodiscard]] double masterFrac() const;
     [[nodiscard]] bool masterIsLeft() const;
     [[nodiscard]] Area* areaOf(const View* view);

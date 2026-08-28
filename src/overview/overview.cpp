@@ -227,7 +227,7 @@ namespace umbriel {
     }
 
     if (card.badge != nullptr) {
-      const float badgeAlpha = static_cast<float>(m_progress);
+      const auto badgeAlpha = static_cast<float>(m_progress);
       const bool matched = card.shortcutMatched != SIZE_MAX;
       const bool fits = contentW >= card.badgeWidth + 12 && contentH >= card.badgeHeight + 12;
       const bool badgeOn =
@@ -840,7 +840,7 @@ namespace umbriel {
           rows.push_back(row);
         }
       }
-      std::stable_sort(rows.begin(), rows.end(), [state](size_t left, size_t right) {
+      std::ranges::stable_sort(rows, [state](size_t left, size_t right) {
         const double leftDistance = std::abs(static_cast<double>(left) - state->rowTo);
         const double rightDistance = std::abs(static_cast<double>(right) - state->rowTo);
         return leftDistance == rightDistance ? left < right : leftDistance < rightDistance;
@@ -863,7 +863,7 @@ namespace umbriel {
           const int y = top + static_cast<int>(std::lround((card->view->layoutTargetY() - metrics.outputBox.y) * z));
           rowCards.push_back({.card = card.get(), .x = x, .y = y});
         }
-        std::stable_sort(rowCards.begin(), rowCards.end(), [](const PositionedCard& left, const PositionedCard& right) {
+        std::ranges::stable_sort(rowCards, [](const PositionedCard& left, const PositionedCard& right) {
           return left.x == right.x ? left.y < right.y : left.x < right.x;
         });
         for (const PositionedCard& positioned : rowCards) {

@@ -396,6 +396,8 @@ namespace umbriel {
     nlohmann::json layers = nlohmann::json::array();
     for (const auto& l : server.layerSurfaces()) {
       auto* s = l->layerSurface();
+      if (s == nullptr)
+        continue;
       nlohmann::json entry;
       entry["layer"] = layerName(s->current.layer);
       entry["namespace"] = s->namespace_ != nullptr ? s->namespace_ : "";

@@ -421,6 +421,12 @@ namespace umbriel {
     m_destroy.link.next = nullptr;
     m_newPopup.link.next = nullptr;
 
+    if (m_scene && m_scene->tree) {
+      m_scene->tree->node.data = nullptr;
+    }
+    if (m_layerSurface) {
+      m_layerSurface->data = nullptr;
+    }
     // removeLayerSurface deletes this. Arrange after erase, never via this->m_server.
     server->removeLayerSurface(this, wlrOutput);
   }

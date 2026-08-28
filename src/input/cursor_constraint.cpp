@@ -5,6 +5,8 @@
 #include "view/view.h"
 #include "wlr.h"
 
+#include <algorithm>
+
 namespace umbriel {
 
   void Cursor::handleNewConstraint(wlr_pointer_constraint_v1* constraint) {
@@ -133,9 +135,28 @@ namespace umbriel {
 
     pixman_region32_t* region = &m_activeConstraint->region;
     pixman_box32_t* extents = pixman_region32_extents(region);
+
+    // Fast path 1: Empty constraint region means the whole surface rectangle.
+    if (extents->x2 - extents->x1 == 0 || extents->y2 - extents->y1 == 0) {
+      wlr_surface* surface = m_activeConstraint->surface;
+      if (surface->current.width > 0 && surface->current.height > 0) {
+        const double targetX = std::clamp(sx + *dx, 0.0, static_cast<double>(surface->current.width));
+        const double targetY = std::clamp(sy + *dy, 0.0, static_cast<double>(surface->current.height));
+        *dx = targetX - sx;
+        *dy = targetY - sy;
+        return true;
+      }
+    } else if (pixman_region32_n_rects(region) == 1) {
+      // Fast path 2: Single rectangular constraint region.
+      const double targetX = std::clamp(sx + *dx, static_cast<double>(extents->x1), static_cast<double>(extents->x2));
+      const double targetY = std::clamp(sy + *dy, static_cast<double>(extents->y1), static_cast<double>(extents->y2));
+      *dx = targetX - sx;
+      *dy = targetY - sy;
+      return true;
+    }
+
     pixman_region32_t fullSurface{};
     if (extents->x2 - extents->x1 == 0 || extents->y2 - extents->y1 == 0) {
-      // Empty region means the whole surface.
       wlr_surface* surface = m_activeConstraint->surface;
       pixman_region32_init_rect(&fullSurface, 0, 0, surface->current.width, surface->current.height);
       region = &fullSurface;

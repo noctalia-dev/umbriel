@@ -89,6 +89,7 @@ namespace umbriel {
       wlr_xdg_toplevel_decoration_v1_mode pendingMode = WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
       wl_listener requestMode{};
       wl_listener surfaceCommit{};
+      wl_listener surfaceDestroy{};
       wl_listener destroy{};
     };
 
@@ -98,6 +99,14 @@ namespace umbriel {
       }
       wl_list_remove(&watch->surfaceCommit.link);
       watch->surfaceCommit.notify = nullptr;
+      wl_list_remove(&watch->surfaceDestroy.link);
+      watch->surfaceDestroy.notify = nullptr;
+    }
+
+    void onDecorationSurfaceDestroy(wl_listener* listener, void* /*data*/) {
+      XdgDecorationWatch* watch;
+      watch = wl_container_of(listener, watch, surfaceDestroy);
+      clearDecorationCommit(watch);
     }
 
     void onDecorationSurfaceCommit(wl_listener* listener, void* /*data*/) {
@@ -132,6 +141,8 @@ namespace umbriel {
       }
       watch->surfaceCommit.notify = onDecorationSurfaceCommit;
       wl_signal_add(&surface->surface->events.commit, &watch->surfaceCommit);
+      watch->surfaceDestroy.notify = onDecorationSurfaceDestroy;
+      wl_signal_add(&surface->surface->events.destroy, &watch->surfaceDestroy);
     }
 
     void applyKdeDecorationDefault(wlr_server_decoration_manager* manager) {
@@ -1431,6 +1442,8 @@ namespace umbriel {
         wlr_layer_surface_v1_destroy(ls);
       }
     }
+    // Note: LockSurface::onOutputDestroy is already wired to output->events.destroy in the
+    // LockSurface constructor, so lock surfaces self-clean when their output is destroyed.
 
     Output* fallback = nullptr;
     for (const auto& entry : m_outputs) {

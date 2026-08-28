@@ -218,6 +218,8 @@ namespace umbriel {
         auto* surface = surfaces.begin()->second;
         wl_resource_set_user_data(surface->resource, nullptr);
         wl_list_remove(&surface->commit.link);
+        wl_list_remove(&surface->map.link);
+        wl_list_remove(&surface->unmap.link);
         wl_list_remove(&surface->destroy.link);
         surfaces.erase(surfaces.begin());
         delete surface;
@@ -1138,20 +1140,29 @@ namespace umbriel {
       return false;
     }
 
+    static std::unordered_map<pid_t, bool> cache;
+    if (auto it = cache.find(pid); it != cache.end()) {
+      return it->second;
+    }
+
     const std::string maps = readProcessFile(pid, "maps");
     if (maps.contains("winewayland.so")) {
+      cache[pid] = true;
       return true;
     }
 
     const std::string executable = lowercase(basename(processExecutable(pid)));
     if (executable.starts_with("wine")) {
+      cache[pid] = true;
       return true;
     }
 
     const std::string commandLine = readProcessFile(pid, "cmdline", true);
     const size_t firstArgumentEnd = commandLine.find('\0');
     const std::string argv0 = lowercase(basename(commandLine.substr(0, firstArgumentEnd)));
-    return argv0.starts_with("wine");
+    bool isWine = argv0.starts_with("wine");
+    cache[pid] = isWine;
+    return isWine;
   }
 
 } // namespace umbriel

@@ -40,7 +40,7 @@ namespace umbriel {
     for (size_t step = 1; step <= count; ++step) {
       const size_t index = step % count;
       if (accept(*m_views[index])) {
-        std::rotate(m_views.begin(), m_views.begin() + static_cast<std::ptrdiff_t>(index), m_views.end());
+        std::ranges::rotate(m_views, m_views.begin() + static_cast<std::ptrdiff_t>(index));
         return m_views.front().get();
       }
     }
