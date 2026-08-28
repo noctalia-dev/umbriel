@@ -245,6 +245,32 @@ color_management_server_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+viewporter_client_h = custom_target(
+  'viewporter-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'stable/viewporter/viewporter.xml',
+  output: 'viewporter-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+viewporter_client_c = custom_target(
+  'viewporter-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'stable/viewporter/viewporter.xml',
+  output: 'viewporter-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+fractional_scale_client_h = custom_target(
+  'fractional-scale-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/fractional-scale/fractional-scale-v1.xml',
+  output: 'fractional-scale-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+fractional_scale_client_c = custom_target(
+  'fractional-scale-v1-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/fractional-scale/fractional-scale-v1.xml',
+  output: 'fractional-scale-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 idle_inhibit_client_h = custom_target(
   'idle-inhibit-unstable-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable/idle-inhibit/idle-inhibit-unstable-v1.xml',
@@ -599,6 +625,23 @@ subsurface_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that renders one buffer at the preferred fractional scale and
+# publishes its logical size through wp_viewporter, the way a fractional-scale
+# aware toolkit does.
+fractional_client = executable(
+  'fractional-client',
+  [
+    'tests/harness/clients/fractional_client.cpp',
+    xdg_shell_client_h,
+    xdg_shell_client_c,
+    viewporter_client_h,
+    viewporter_client_c,
+    fractional_scale_client_h,
+    fractional_scale_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 # Harness helper that keeps an idle inhibitor attached to a mapped toplevel and
 # reports when the compositor starts honoring its idle notification.
 idle_inhibit_client = executable(
@@ -627,6 +670,7 @@ alias_target(
   unmap_client,
   popup_client,
   subsurface_client,
+  fractional_client,
   idle_inhibit_client,
 )
 

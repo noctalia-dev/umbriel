@@ -122,6 +122,7 @@ and numbered positions as those workspaces are created or removed.
 | `layout.scrolling.expand_single_column` | bool | Fill the viewport width for a workspace's lone tiled column. Disable to keep the configured/default width. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"` or `"right"`. |
 | `layout.master.default_width_fraction` | float | Master area fraction when both areas exist (0.1-0.9). |
+| `layout.dwindle.preserve_split` | bool | Keep each Dwindle split direction fixed after it is created when true. |
 
 ### Examples
 

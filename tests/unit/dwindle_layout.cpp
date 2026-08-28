@@ -321,25 +321,106 @@ UMBRIEL_TEST(splitsFollowTheLongerEdgeOnAPortraitArea) {
   CHECK_EQ(second.y, third.y);
 }
 
-UMBRIEL_TEST(aResolvedSplitKeepsItsAxisWhenTheAreaChangesShape) {
-  // The axis is chosen once, on the first arrange after the split. Re-deriving
-  // it on every arrange would let a resize rotate a subtree the user never
-  // touched.
+UMBRIEL_TEST(unlockedSplitsReorientWhenAreaChangesShape) {
   Fixture fixture;
   fixture.addLeaves(3);
   fixture.layout.arrange(kUsable);
   CHECK_EQ(fixture.layout.targetBox(stub(1)).x, fixture.layout.targetBox(stub(2)).x);
 
-  // Squeeze leaf 0 so the subtree holding leaves 1 and 2 becomes wider than
-  // tall: 1128x700 instead of 624x700.
   CHECK(fixture.layout.setResizeBoundary(stub(0), WLR_EDGE_RIGHT, 0.1));
   fixture.layout.arrange(kUsable);
 
   const wlr_box second = fixture.layout.targetBox(stub(1));
   const wlr_box third = fixture.layout.targetBox(stub(2));
-  CHECK(second.width > second.height);
+  CHECK(second.x != third.x);
+  CHECK_EQ(second.y, third.y);
+}
+
+UMBRIEL_TEST(preserveSplitKeepsResolvedAxisWhenAreaChangesShape) {
+  Fixture fixture;
+  fixture.config.dwindle.preserveSplit = true;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).x, fixture.layout.targetBox(stub(2)).x);
+
+  CHECK(fixture.layout.setResizeBoundary(stub(0), WLR_EDGE_RIGHT, 0.1));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box second = fixture.layout.targetBox(stub(1));
+  const wlr_box third = fixture.layout.targetBox(stub(2));
   CHECK_EQ(second.x, third.x);
   CHECK(second.y != third.y);
+}
+
+UMBRIEL_TEST(removingFullHeightLeafReorientsSurvivingPair) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  fixture.layout.removeView(stub(0));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box first = fixture.layout.targetBox(stub(1));
+  const wlr_box second = fixture.layout.targetBox(stub(2));
+  CHECK(first.x != second.x);
+  CHECK_EQ(first.y, second.y);
+}
+
+UMBRIEL_TEST(preserveSplitKeepsSurvivingPairStackedAfterRemoval) {
+  Fixture fixture;
+  fixture.config.dwindle.preserveSplit = true;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  fixture.layout.removeView(stub(0));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box first = fixture.layout.targetBox(stub(1));
+  const wlr_box second = fixture.layout.targetBox(stub(2));
+  CHECK_EQ(first.x, second.x);
+  CHECK(first.y != second.y);
+}
+
+UMBRIEL_TEST(directionalDropKeepsItsAxisWhenPreserveSplitIsOff) {
+  Fixture fixture;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.arrange(kPortraitUsable);
+  fixture.layout.insertViewSplitOnView(stub(1), stub(0), WLR_EDGE_RIGHT);
+  fixture.layout.arrange(kPortraitUsable);
+  const wlr_box first = fixture.layout.targetBox(stub(0));
+  const wlr_box second = fixture.layout.targetBox(stub(1));
+  CHECK(first.x != second.x);
+  CHECK_EQ(first.y, second.y);
+
+  fixture.layout.arrange(kPortraitUsable);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).y, fixture.layout.targetBox(stub(1)).y);
+  CHECK(fixture.layout.targetBox(stub(0)).x != fixture.layout.targetBox(stub(1)).x);
+}
+
+UMBRIEL_TEST(insertAtAGapSplitsThePrecedingLeaf) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  const wlr_box preceding = fixture.layout.targetBox(stub(0));
+
+  fixture.layout.insertView(stub(3), 1);
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(3)), 1);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 2);
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 3);
+
+  fixture.layout.arrange(kUsable);
+  const wlr_box inserted = fixture.layout.targetBox(stub(3));
+  CHECK(inserted.x >= preceding.x);
+  CHECK(inserted.y >= preceding.y);
+  CHECK(inserted.x + inserted.width <= preceding.x + preceding.width);
+  CHECK(inserted.y + inserted.height <= preceding.y + preceding.height);
+}
+
+UMBRIEL_TEST(insertAtGapZeroPlacesViewAtTheFront) {
+  Fixture fixture;
+  fixture.addLeaves(2);
+  fixture.layout.insertView(stub(2), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 1);
 }
 
 UMBRIEL_TEST(gapsSeparateSiblings) {
@@ -370,7 +451,7 @@ UMBRIEL_TEST(arrangeOnAnEmptyTreeIsHarmless) {
 // initial sizing
 UMBRIEL_TEST(initialSizeFillsTheAreaForTheFirstLeaf) {
   Fixture fixture;
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
 
   fixture.addLeaves(1);
   fixture.layout.arrange(kUsable);
@@ -384,9 +465,9 @@ UMBRIEL_TEST(initialSizeFillsTheAreaForTheFirstLeaf) {
 
 UMBRIEL_TEST(initialSizeShrinksOnceTheTreeIsPopulated) {
   Fixture fixture;
-  const Layout::InitialSize empty = fixture.layout.initialSize(kUsable, std::nullopt);
+  const Layout::InitialSize empty = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
   fixture.addLeaves(1);
-  const Layout::InitialSize populated = fixture.layout.initialSize(kUsable, std::nullopt);
+  const Layout::InitialSize populated = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
   CHECK(populated.width < empty.width);
 }
 
@@ -397,7 +478,7 @@ UMBRIEL_TEST(initialSizeMatchesTheSplitArrangeWillMake) {
   Fixture fixture;
   fixture.addLeaves(1);
   fixture.layout.arrange(kUsable);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
 
   fixture.layout.insertView(stub(1), 1);
   fixture.layout.arrange(kUsable);
@@ -412,7 +493,7 @@ UMBRIEL_TEST(initialSizeSplitsTheHeightOnAPortraitArea) {
   Fixture fixture;
   fixture.addLeaves(1);
   fixture.layout.arrange(kPortraitUsable);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kPortraitUsable, std::nullopt);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kPortraitUsable, std::nullopt, nullptr);
 
   fixture.layout.insertView(stub(1), 1);
   fixture.layout.arrange(kPortraitUsable);
@@ -427,7 +508,23 @@ UMBRIEL_TEST(initialSizeIgnoresARuleWidthFraction) {
   // layout; it must not change the answer.
   Fixture fixture;
   fixture.addLeaves(1);
-  CHECK_EQ(fixture.layout.initialSize(kUsable, 1.0 / 3).width, fixture.layout.initialSize(kUsable, std::nullopt).width);
+  CHECK_EQ(
+      fixture.layout.initialSize(kUsable, 1.0 / 3, nullptr).width,
+      fixture.layout.initialSize(kUsable, std::nullopt, nullptr).width
+  );
+}
+UMBRIEL_TEST(initialSizeMatchesTheFocusedSplitAnchor) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, stub(0));
+
+  const int anchorColumn = fixture.layout.columnOf(stub(0));
+  fixture.layout.insertView(stub(3), anchorColumn + 1);
+  fixture.layout.arrange(kUsable);
+  const wlr_box arranged = fixture.layout.targetBox(stub(3));
+  CHECK_EQ(initial.width, arranged.width);
+  CHECK_EQ(initial.height, arranged.height);
 }
 
 // hit testing

@@ -23,6 +23,7 @@ namespace umbriel {
         std::unique_ptr<SavedNode> left;
         std::unique_ptr<SavedNode> right;
         double ratio = 0.5;
+        bool locked = false;
         LayoutMemberId member = 0;
       };
 
@@ -224,10 +225,9 @@ namespace umbriel {
       return;
     }
 
-    if (node->type == Node::AutoSplit) {
-      // Split the longer edge, so a portrait output stacks first instead of tiling side by side. Resolved on the first
-      // arrange after the split and then frozen: an interactive resize elsewhere in the tree must never rotate a split
-      // the user is not touching.
+    if (node->type == Node::AutoSplit || (!node->locked && !m_config->dwindle.preserveSplit)) {
+      // AutoSplit and unlocked splits follow the longer edge. With preserve_split enabled, the first arrange resolves
+      // AutoSplit and then freezes it, while explicit directional drops remain fixed.
       node->type = area.width >= area.height ? Node::HSplit : Node::VSplit;
     }
 
@@ -342,6 +342,7 @@ namespace umbriel {
       auto saved = std::make_unique<DwindleSnapshot::SavedNode>();
       saved->type = node->type;
       saved->ratio = node->ratio;
+      saved->locked = node->locked;
       if (node->type == Node::Leaf) {
         const auto id = static_cast<LayoutMemberId>(capture.members.size());
         capture.members.push_back({.id = id, .view = node->view});
@@ -388,6 +389,7 @@ namespace umbriel {
       node->type = saved->type;
       node->parent = parent;
       node->ratio = saved->ratio;
+      node->locked = saved->locked;
       node->left = self(self, saved->left.get(), node.get());
       node->right = self(self, saved->right.get(), node.get());
       if (node->left == nullptr) {
@@ -422,26 +424,33 @@ namespace umbriel {
       return;
     }
     const int count = static_cast<int>(m_flatColumns.size());
-    const int targetIndex = std::clamp(columnIndex, 0, count);
-    Node* target = nullptr;
-    if (targetIndex >= count) {
-      target = nodeAtFlatIndex(count - 1);
+    const int gap = std::clamp(columnIndex, 0, count);
+    if (gap == 0) {
+      splitLeaf(nodeAtFlatIndex(0), view, Node::AutoSplit, /*newFirst=*/true);
     } else {
-      target = nodeAtFlatIndex(targetIndex);
-    }
-    if (target != nullptr && target->type == Node::Leaf) {
-      splitLeaf(target, view, Node::AutoSplit, /*newFirst=*/false);
-    } else if (targetIndex < count) {
-      target = nodeAtFlatIndex(targetIndex);
-      if (target != nullptr && target->type == Node::Leaf) {
-        splitLeaf(target, view, Node::AutoSplit, /*newFirst=*/false);
-      }
+      splitLeaf(nodeAtFlatIndex(gap - 1), view, Node::AutoSplit, /*newFirst=*/false);
     }
     rebuildFlatColumns();
   }
 
   void DwindleLayout::insertViewIntoColumn(View* view, int columnIndex, int /*rowIndex*/) {
-    insertView(view, columnIndex);
+    if (view == nullptr || findNode(view) != nullptr) {
+      return;
+    }
+    if (m_root == nullptr) {
+      auto node = std::make_unique<Node>();
+      node->type = Node::Leaf;
+      node->view = view;
+      m_root = std::move(node);
+      rebuildFlatColumns();
+      return;
+    }
+    const int count = static_cast<int>(m_flatColumns.size());
+    Node* target = nodeAtFlatIndex(std::clamp(columnIndex, 0, count - 1));
+    if (target != nullptr && target->type == Node::Leaf) {
+      splitLeaf(target, view, Node::AutoSplit, /*newFirst=*/false);
+    }
+    rebuildFlatColumns();
   }
 
   bool DwindleLayout::consumeLeft(View* view) {
@@ -513,19 +522,20 @@ namespace umbriel {
     rebuildFlatColumns();
   }
 
-  Layout::InitialSize
-  DwindleLayout::initialSize(const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/) const {
+  Layout::InitialSize DwindleLayout::initialSize(
+      const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/, const View* splitAnchor
+  ) const {
     const wlr_box content = contentArea(usable);
     // A window rule's default_width is a viewport fraction, which a splitting layout has no use for. The first leaf
     // owns the whole area.
     if (m_flatColumns.empty()) {
       return {.width = content.width, .height = content.height};
     }
-    // Any later view splits an existing leaf along that leaf's longer edge, so the answer has to follow the same rule
-    // arrange() will apply, or a portrait output configures every new window at half width and full height and the
-    // client visibly resizes on its first paint. The append target is the best available guess: which leaf an insert
-    // lands on depends on the caller's focused column, which the layout cannot see.
-    const Node* target = nodeAtFlatIndex(static_cast<int>(m_flatColumns.size()) - 1);
+    // A focused insert splits the anchor leaf. Without a tiled anchor, the caller appends and splits the last leaf.
+    const Node* target = findNode(splitAnchor);
+    if (target == nullptr || target->type != Node::Leaf) {
+      target = nodeAtFlatIndex(static_cast<int>(m_flatColumns.size()) - 1);
+    }
     const int width = target != nullptr && target->areaW > 0 ? target->areaW : content.width;
     const int height = target != nullptr && target->areaH > 0 ? target->areaH : content.height;
     const auto half = [gap = m_config->totalGap](int span) {
@@ -664,6 +674,7 @@ namespace umbriel {
     const bool horizontal = (edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0;
     const bool newFirst = (edge & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
     splitLeaf(target, newView, horizontal ? Node::HSplit : Node::VSplit, newFirst);
+    target->locked = true;
     rebuildFlatColumns();
   }
 

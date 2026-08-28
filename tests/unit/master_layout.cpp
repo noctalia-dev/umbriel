@@ -263,7 +263,7 @@ UMBRIEL_TEST(directionalFocusCrossesTheMasterStackBoundary) {
 UMBRIEL_TEST(initialSizeMatchesTheArrangeThatFollows) {
   Fixture fixture;
   for (int id = 0; id < 3; ++id) {
-    const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, 0.25);
+    const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, 0.25, nullptr);
     fixture.layout.insertView(stub(id), id);
     fixture.layout.arrange(kUsable);
     const wlr_box arranged = fixture.layout.targetBox(stub(id));

@@ -1860,7 +1860,8 @@ namespace umbriel {
         }
         const Layout& layout = target != nullptr ? target->layout() : *fallbackLayout;
 
-        const Layout::InitialSize initial = layout.initialSize(usable, rule.defaultWidth);
+        const Layout::InitialSize initial =
+            layout.initialSize(usable, rule.defaultWidth, target != nullptr ? target->focusedView() : nullptr);
         const int width = rule.defaultSize ? (*rule.defaultSize)[0] : initial.width;
         wlr_xdg_toplevel_set_size(m_toplevel, width, initial.height);
       } else {

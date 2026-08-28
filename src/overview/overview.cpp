@@ -1711,6 +1711,9 @@ namespace umbriel {
           m_dragSourceWorkspace->layout().toggleFullWidth(column);
         }
         wlr_xdg_toplevel_set_maximized(view->toplevel(), m_dragSourceWidth->fullWidth);
+      } else if (m_dragSourceWorkspace->dwindleLayout() != nullptr) {
+        // Gap-index insert restores the exact flat position the drag removed.
+        m_dragSourceWorkspace->layout().insertView(view, m_dragSourceColumn);
       } else if (m_dragSourceRow >= 0) {
         m_dragSourceWorkspace->layout().insertViewIntoColumn(view, m_dragSourceColumn, m_dragSourceRow);
       } else {

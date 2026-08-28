@@ -657,8 +657,9 @@ namespace umbriel {
     }
   }
 
-  Layout::InitialSize
-  ScrollingLayout::initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction) const {
+  Layout::InitialSize ScrollingLayout::initialSize(
+      const wlr_box& usable, std::optional<double> ruleWidthFraction, const View* /*splitAnchor*/
+  ) const {
     const wlr_box content = contentArea(usable);
     // The first window of a lone-column workspace opens full so its first buffer matches what arrange() will assign.
     if (m_columns.empty() && expandSingleColumn()) {

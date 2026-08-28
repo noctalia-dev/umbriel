@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
-# Sync docs/user/*.md into ../noctalia-docs/src/content/docs/umbriel/ as .mdx. docs/design/ holds maintainer notes and is never synced. Existing .mdx files keep their hand-written frontmatter (title, description); only the body is refreshed from the source .md. New files get a title derived from their first H1. A leading H1 matching the frontmatter title is dropped from the body, mirroring the convention in the docs site. index.mdx is hand-authored in the docs site (it imports Astro components), so a future docs/user/index.md is ignored rather than synced over it. Source docs use relative .md links so they render correctly on GitHub. The docs site serves pages at /umbriel/<route>/, so links are rewritten here: sibling docs become site URLs. A small explicit map handles source filenames whose established site route differs. Design notes (docs/design) are maintainer-only and are never synced, so links to them must not appear in user docs. Any .md link that survives the rewrite is reported, since it would 404 on the site. After syncing, rebuild the site (npm run build) before previewing: astro preview serves the prebuilt dist/ and does not pick up new .mdx. Usage: tools/sync-docs.sh [docs-site-root]
+# Sync docs/user/*.md into ../noctalia-docs/src/content/docs/umbriel/ as .mdx.
+# docs/design/ holds maintainer notes and is never synced. Existing .mdx files
+# keep their hand-written frontmatter (title, description); only the body is
+# refreshed from the source .md. New files get a title derived from their first
+# H1. A leading H1 matching the frontmatter title is dropped from the body,
+# mirroring the convention in the docs site. index.mdx is hand-authored in the
+# docs site (it imports Astro components), so a future docs/user/index.md is
+# ignored rather than synced over it. Source docs use relative .md links so
+# they render correctly on GitHub. The docs site serves pages at
+# /umbriel/<route>/, so links are rewritten here: sibling docs become site
+# URLs, and the packaged config example is copied as a static asset. A small
+# explicit map handles source filenames whose established site route differs.
+# Design notes (docs/design) are maintainer-only and are never synced, so links
+# to them must not appear in user docs. Any .md link that survives the rewrite
+# is reported, since it would 404 on the site. After syncing, rebuild the site
+# (npm run build) before previewing: astro preview serves the prebuilt dist/
+# and does not pick up new .mdx. Usage: tools/sync-docs.sh [docs-site-root]
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 site_root="${1:-"$repo_root/../noctalia-docs"}"
 dest_dir="$site_root/src/content/docs/umbriel"
+asset_dir="$site_root/public/umbriel"
 
 mkdir -p "$dest_dir"
+mkdir -p "$asset_dir"
 
 site_route() {
     case "$1" in
@@ -26,6 +44,9 @@ for md in "$repo_root"/docs/user/*.md; do
     link_exprs+=(-e "s|]($base.md)|](/umbriel/$route/)|g")
     link_exprs+=(-e "s|]($base.md#|](/umbriel/$route/#|g")
 done
+
+cp "$repo_root/examples/config.toml" "$asset_dir/config.toml"
+link_exprs+=(-e 's|](../../examples/config.toml)|](/umbriel/config.toml)|g')
 
 for md in "$repo_root"/docs/*.md; do
     [[ -e "$md" ]] || continue

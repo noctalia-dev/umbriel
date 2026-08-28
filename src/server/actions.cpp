@@ -202,9 +202,8 @@ namespace umbriel {
       }
 
       const int focusedTargetColumn = target.layout().columnOf(target.focusedView());
-      const int targetIndex = focusedTargetColumn >= 0
-          ? focusedTargetColumn + (target.layoutMode() == LayoutMode::Dwindle ? 0 : 1)
-          : static_cast<int>(target.layout().columns().size());
+      const int targetIndex =
+          focusedTargetColumn >= 0 ? focusedTargetColumn + 1 : static_cast<int>(target.layout().columns().size());
       View* first = column.views.front();
       first->moveToWorkspace(&target, /*attachToLayout=*/false);
       target.layout().insertView(first, targetIndex);

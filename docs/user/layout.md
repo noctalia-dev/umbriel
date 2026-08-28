@@ -16,6 +16,9 @@ default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
 expand_single_column = true           # fill lone column to viewport width
 
+[layout.dwindle]
+preserve_split = false              # keep each split direction fixed after it is created
+
 [layout.master]
 position = "left"                   # "left" or "right"
 default_width_fraction = 0.55       # 0.1-0.9
@@ -37,6 +40,12 @@ Scrolling layout options:
 | `default_width_fraction` | float  | unset          | Initial scroll-axis extent assigned to new scrolling lanes (0.1-1.0). The packaged config sets `0.5`; when omitted, the client chooses its initial extent. |
 | `center_underfull_strip` | bool   | `true`         | Center the complete strip whenever it is shorter than the viewport. Disable to align it at the start edge.                        |
 | `expand_single_column`    | bool   | `false`        | Fill the viewport width for a workspace's lone tiled column. Disable to keep the configured/default width. |
+
+Dwindle layout options:
+
+| Key             | Type   | Default | Description |
+| --------------- | ------ | ------- | ----------- |
+| `preserve_split` | bool  | `false` | Keep each split direction fixed after it is created. |
 
 Master layout options:
 
@@ -101,11 +110,12 @@ Dropping a window into empty space above or below a vertically resized stack
 consumes that space. Existing windows retain their pixel heights, and the
 dropped window fills the remainder apart from the configured inter-window gap.
 
-In the dwindle layout, a new window splits an existing one along that window's
-longer edge, so a landscape monitor starts side by side and a portrait monitor
-starts stacked. The direction is fixed when the split is created: resizing one
-boundary never reorients another split. Dropping a window on a specific edge
-picks that direction explicitly instead.
+In the dwindle layout, a new window splits the focused window along its
+tile's longer edge and becomes the right or bottom half. With
+`preserve_split = false`, split directions follow each tile's shape as
+geometry changes, so closing a window can reflow the surviving splits. A
+drop on a specific edge keeps that direction. Set `preserve_split = true` to
+fix every split direction when it is created.
 
 ## Master layout behavior
 

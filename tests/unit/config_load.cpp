@@ -150,6 +150,8 @@ width_presets = [0.05, 0.5, 2.0]
 [layout.scrolling]
 center_underfull_strip = false
 always_center_single_column = true
+[layout.dwindle]
+preserve_split = true
 
 [output.DP-1]
 workspaces = ["dev"]
@@ -164,6 +166,8 @@ width_presets = [0.25, 0.75]
 
 [workspace.layout.scrolling]
 center_underfull_strip = true
+[workspace.layout.dwindle]
+preserve_split = false
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -177,6 +181,7 @@ center_underfull_strip = true
   CHECK_EQ(store.config().layout.widthPresets[1], 0.5);
   CHECK_EQ(store.config().layout.widthPresets[2], 1.0);
   CHECK(!store.config().layout.scrolling.centerUnderfullStrip);
+  CHECK(store.config().layout.dwindle.preserveSplit);
   CHECK(store.config().appearance.preferNoCsd);
   CHECK_EQ(store.config().outputs.size(), size_t{1});
   CHECK(store.config().outputs[0].scale.has_value());
@@ -186,10 +191,20 @@ center_underfull_strip = true
   CHECK(store.config().workspaceRules[0].layout.widthPresets.has_value());
   CHECK_EQ(store.config().workspaceRules[0].layout.widthPresets->size(), size_t{2});
   CHECK(store.config().workspaceRules[0].layout.scrolling.centerUnderfullStrip == true);
+  CHECK(store.config().workspaceRules[0].layout.dwindle.preserveSplit == false);
   CHECK(containsDiagnostic(store, "unknown key unknown_root_key"));
   CHECK(containsDiagnostic(store, "output.DP-1.scale = 9"));
   CHECK(containsDiagnostic(store, "unknown key layout.scrolling.always_center_single_column"));
   CHECK(containsDiagnostic(store, "unknown key general.prefer_no_csd"));
+}
+
+UMBRIEL_TEST(dwindlePreserveSplitDefaultsToFalse) {
+  const TempConfig file;
+  file.write("[layout]\n");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.config().layout.dwindle.preserveSplit);
 }
 
 UMBRIEL_TEST(masterLayoutReadersLoadGlobalAndWorkspaceSettings) {

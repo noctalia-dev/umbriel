@@ -428,8 +428,9 @@ namespace umbriel {
     return {.x = it->x, .y = it->y, .width = it->width, .height = it->height};
   }
 
-  Layout::InitialSize
-  MasterStackLayout::initialSize(const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/) const {
+  Layout::InitialSize MasterStackLayout::initialSize(
+      const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/, const View* /*splitAnchor*/
+  ) const {
     const wlr_box content = contentArea(usable);
     if (m_master.views.empty() && m_stack.views.empty()) {
       return {.width = content.width, .height = content.height};

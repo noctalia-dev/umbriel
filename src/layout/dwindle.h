@@ -15,10 +15,9 @@ namespace umbriel {
   class DwindleLayout : public Layout {
   public:
     struct Node {
-      // AutoSplit is a split whose axis has not been chosen yet: arrange() resolves it to HSplit or VSplit from the
-      // node's real area, then leaves it alone. The tree is built before any arrange (Workspace::applyConfig
-      // batch-inserts on a fresh layout), so the axis cannot be decided at insertion time without guessing the
-      // output's orientation.
+      // AutoSplit is a split whose axis follows its area on arrange unless preserve_split or an explicit directional
+      // drop locks it. The tree is built before any arrange (Workspace::applyConfig batch-inserts on a fresh layout),
+      // so the axis cannot be decided at insertion time without guessing the output's orientation.
       enum Type : uint8_t { Leaf, AutoSplit, HSplit, VSplit };
       Type type = Leaf;
       std::unique_ptr<Node> left;
@@ -26,6 +25,7 @@ namespace umbriel {
       Node* parent = nullptr;
       double ratio = 0.5;
       View* view = nullptr;
+      bool locked = false;
       int areaX = 0;
       int areaY = 0;
       int areaW = 0;
@@ -40,6 +40,8 @@ namespace umbriel {
     [[nodiscard]] LayoutCapture captureState() const override;
     bool restoreState(const LayoutSnapshot& snapshot, std::span<const LayoutMember> members) override;
 
+    // Inserts at a gap index: the preceding leaf is split, except gap 0 which splits the first leaf with the new view
+    // first.
     void insertView(View* view, int columnIndex) override;
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
     bool consumeLeft(View* view) override;
@@ -48,10 +50,10 @@ namespace umbriel {
     void removeView(View* view) override;
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;
-
     [[nodiscard]] wlr_box targetBox(const View* view) const override;
+
     [[nodiscard]] InitialSize
-    initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction) const override;
+    initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction, const View* splitAnchor) const override;
 
     [[nodiscard]] int leafIndexAt(double cx, double cy) const;
     [[nodiscard]] wlr_box targetBoxByIndex(int index) const;
