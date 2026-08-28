@@ -59,12 +59,16 @@ tap = true
 natural_scroll = true
 # accel_profile = "adaptive"  # "flat", "adaptive", or a custom curve
 # sensitivity = 0.5           # -1.0 to 1.0
+# disable_while_typing = true
 ```
 
 Tap-to-click is enabled by default. Set `tap = false` to disable it globally,
-or use a per-device override below. `natural_scroll` remains unset by default,
-which preserves each device's libinput setting. Options are applied only when
-supported by the device.
+or use a per-device override below. `natural_scroll` and
+`disable_while_typing` remain unset by default, which preserves each device's
+corresponding libinput default. Set `disable_while_typing = false` to keep the
+touchpad active while typing. Removing either optional setting on reload
+restores the device default. Options are applied only when supported by the
+device; an explicitly configured unsupported option is reported in the log.
 
 `accel_profile` and `sensitivity` work like their `[input.mouse]` counterparts,
 including custom curves. Both remain unset by default, which uses each
@@ -121,6 +125,7 @@ tap = true
 natural_scroll = false
 accel_profile = "flat"
 sensitivity = 0.0
+disable_while_typing = false
 
 [[input.device]]
 name = "Acme Gaming Mouse"
@@ -130,10 +135,11 @@ sensitivity = 0.0
 
 Each rule inherits the matching class settings and overrides only the keys it
 contains. `layout`, `variant`, `options`, `repeat_rate`, and `repeat_delay`
-apply to keyboards. `tap` applies to touchpads. `natural_scroll` applies to
-touchpads and mice. `accel_profile` and `sensitivity` apply to mice and
-touchpads; for a touchpad the rule overrides `[input.touchpad]` rather than
-`[input.mouse]`. Unsupported libinput settings are reported in the log.
+apply to keyboards. `tap` and `disable_while_typing` apply to touchpads.
+`natural_scroll` applies to touchpads and mice. `accel_profile` and
+`sensitivity` apply to mice and touchpads; for a touchpad the rule overrides
+`[input.touchpad]` rather than `[input.mouse]`. Unsupported libinput settings
+are reported in the log.
 
 Rules match every attached device with the exact name. Device overrides also
 apply when a device is connected after startup and when the configuration is

@@ -276,31 +276,30 @@ namespace umbriel {
           );
         }
 
-        const std::optional<bool> dwt = override != nullptr && override->disableWhileTyping
-            ? override->disableWhileTyping
-            : input.touchpad.disableWhileTyping;
-        if (dwt) {
-          if (libinput_device_config_dwt_is_available(libinputDevice)) {
-            const auto dwtState =
-                dwt.value_or(libinput_device_config_dwt_get_default_enabled(libinputDevice) == LIBINPUT_CONFIG_DWT_ENABLED)
-                ? LIBINPUT_CONFIG_DWT_ENABLED
-                : LIBINPUT_CONFIG_DWT_DISABLED;
-            if (libinput_device_config_dwt_set_enabled(libinputDevice, dwtState) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
-              kLog.warn(
-                  "input: failed to apply {} to '{}'",
-                  override != nullptr && override->disableWhileTyping ? "input.device.disable_while_typing"
-                                                                       : "input.touchpad.disable_while_typing",
-                  deviceName(device)
-              );
+        const bool hasDwtOverride = override != nullptr && override->disableWhileTyping.has_value();
+        const std::optional<bool>& dwt =
+            hasDwtOverride ? override->disableWhileTyping : input.touchpad.disableWhileTyping;
+        const std::string_view dwtSetting =
+            hasDwtOverride ? "input.device.disable_while_typing" : "input.touchpad.disable_while_typing";
+        if (libinput_device_config_dwt_is_available(libinputDevice)) {
+          const auto dwtState =
+              dwt.value_or(
+                  libinput_device_config_dwt_get_default_enabled(libinputDevice) == LIBINPUT_CONFIG_DWT_ENABLED
+              )
+              ? LIBINPUT_CONFIG_DWT_ENABLED
+              : LIBINPUT_CONFIG_DWT_DISABLED;
+          if (libinput_device_config_dwt_set_enabled(libinputDevice, dwtState) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+            if (dwt) {
+              kLog.warn("input: failed to apply {} to '{}'", dwtSetting, deviceName(device));
+            } else {
+              kLog.warn("input: failed to restore default disable-while-typing for '{}'", deviceName(device));
             }
-          } else {
-            kLog.warn(
-                "input: could not apply {} to '{}': device does not support disable-when-typing",
-                override != nullptr && override->disableWhileTyping ? "input.device.disable_while_typing"
-                                                                     : "input.touchpad.disable_while_typing",
-                deviceName(device)
-            );
           }
+        } else if (dwt) {
+          kLog.warn(
+              "input: could not apply {} to '{}': device does not support disable-while-typing", dwtSetting,
+              deviceName(device)
+          );
         }
       }
 

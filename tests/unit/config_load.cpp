@@ -695,6 +695,7 @@ tap = true
 natural_scroll = true
 accel_profile = "adaptive"
 sensitivity = 0.1
+disable_while_typing = true
 
 [input.mouse]
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
@@ -713,6 +714,7 @@ tap = false
 natural_scroll = false
 accel_profile = "flat"
 sensitivity = -0.5
+disable_while_typing = false
 
 [[input.device]]
 name = "Acme Gaming Mouse"
@@ -736,6 +738,7 @@ sensitivity = -0.5
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
   }
   CHECK(input.touchpad.sensitivity == std::optional<double>(0.1));
+  CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK_EQ(input.devices.size(), size_t{3});
 
   const auto* keyboard = input.findDevice("Acme Split Keyboard");
@@ -757,6 +760,7 @@ sensitivity = -0.5
       CHECK(touchpad->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
     }
     CHECK(touchpad->sensitivity == std::optional<double>(-0.5));
+    CHECK(touchpad->disableWhileTyping == std::optional<bool>(false));
   }
 
   const auto* mouse = input.findDevice("Acme Gaming Mouse");
@@ -781,6 +785,11 @@ UMBRIEL_TEST(touchpadAccelerationDefaultsToUnset) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.touchpad.accelProfile.has_value());
   CHECK(!defaults.input.touchpad.sensitivity.has_value());
+}
+
+UMBRIEL_TEST(touchpadDisableWhileTypingDefaultsToUnset) {
+  const umbriel::Config defaults;
+  CHECK(!defaults.input.touchpad.disableWhileTyping.has_value());
 }
 
 UMBRIEL_TEST(touchpadTapDefaultsToEnabled) {
