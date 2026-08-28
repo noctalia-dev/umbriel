@@ -80,6 +80,12 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
   {
     Config after;
+    after.input.touchpad.scrollFactor = 1.5;
+    CHECK(ConfigChange::between(before, after).input);
+    CHECK(ConfigEffects::between(before, after).input);
+  }
+  {
+    Config after;
     after.input.touchpad.disableWhileTyping = false;
     CHECK(ConfigChange::between(before, after).input);
     CHECK(ConfigEffects::between(before, after).input);

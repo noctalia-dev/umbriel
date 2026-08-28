@@ -59,6 +59,7 @@ tap = true
 natural_scroll = true
 # accel_profile = "adaptive"  # "flat", "adaptive", or a custom curve
 # sensitivity = 0.5           # -1.0 to 1.0
+# scroll_factor = 1.5         # touchpad scroll speed, 0.1 to 10.0
 # disable_while_typing = true
 ```
 
@@ -75,6 +76,13 @@ including custom curves. Both remain unset by default, which uses each
 touchpad's libinput default profile and speed. Removing either setting on reload
 restores the corresponding default. `sensitivity` alone adjusts pointer speed
 under the device's default profile.
+
+`scroll_factor` multiplies the smooth two-finger scroll a touchpad sends to the
+focused window, so `2.0` scrolls twice as fast and `0.5` half as fast. It
+remains unset by default (identity, `1.0`) and takes the next scroll event on
+reload. It applies only to the continuous scroll delta: discrete notches,
+overview wheel stepping, and three-finger-swipe strip travel keep their own
+counting semantics.
 
 ### Mouse
 

@@ -1121,6 +1121,7 @@ namespace umbriel {
           t.boolean("tap", in.touchpad.tap)
               .boolean("natural_scroll", in.touchpad.naturalScroll)
               .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
+              .real("scroll_factor", 0.1, 10.0, in.touchpad.scrollFactor)
               .boolean("disable_while_typing", in.touchpad.disableWhileTyping);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
         });
