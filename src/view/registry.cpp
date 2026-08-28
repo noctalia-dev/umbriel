@@ -32,14 +32,15 @@ namespace umbriel {
   }
 
   View* ViewRegistry::rotateToNext(const std::function<bool(const View&)>& accept) {
-    if (m_views.size() < 2) {
+    const size_t count = m_views.size();
+    if (count < 2) {
       return nullptr;
     }
-    for (size_t n = 0; n < m_views.size(); ++n) {
-      auto current = std::move(m_views.front());
-      m_views.erase(m_views.begin());
-      m_views.push_back(std::move(current));
-      if (accept(*m_views.front())) {
+    // Same result as rotating one element at a time and checking each new front, minus the O(n^2) erase(begin()).
+    for (size_t step = 1; step <= count; ++step) {
+      const size_t index = step % count;
+      if (accept(*m_views[index])) {
+        std::rotate(m_views.begin(), m_views.begin() + static_cast<std::ptrdiff_t>(index), m_views.end());
         return m_views.front().get();
       }
     }

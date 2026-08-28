@@ -600,19 +600,21 @@ namespace umbriel {
     const auto viewport = static_cast<double>(viewportPrimary);
     m_scroll = std::clamp(m_scroll, -viewport, maxScroll + viewport);
 
+    const int gap = m_config->totalGap;
+    // columnX() re-sums every prior column each call; keep a running x instead of calling it per column.
+    int runningColumnX = centeringOffset(viewportPrimary);
     for (size_t columnIndex = 0; columnIndex < m_columns.size(); ++columnIndex) {
       Column& column = m_columns[columnIndex];
+      const int primarySize = columnWidth(static_cast<int>(columnIndex), viewportPrimary);
       if (column.views.empty()) {
+        runningColumnX += primarySize + gap;
         continue;
       }
       ensureWeightCount(column);
-      const int primarySize = columnWidth(static_cast<int>(columnIndex), viewportPrimary);
-      const int primary = (v ? usable.y : usable.x)
-          + edgePad
-          + columnX(static_cast<int>(columnIndex), viewportPrimary)
-          - static_cast<int>(std::lround(m_scroll));
+      const int primary =
+          (v ? usable.y : usable.x) + edgePad + runningColumnX - static_cast<int>(std::lround(m_scroll));
+      runningColumnX += primarySize + gap;
       const int rowCount = static_cast<int>(column.views.size());
-      const int gap = m_config->totalGap;
       const int gapsTotal = std::max(0, rowCount - 1) * gap;
       const int stackCross = std::max(rowCount, availableCross - gapsTotal);
       const double totalWeight = columnTotalWeight(column);
