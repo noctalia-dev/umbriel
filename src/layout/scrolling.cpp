@@ -287,14 +287,16 @@ namespace umbriel {
       const int edgePad = m_config->edgePad;
       return std::max(1, viewportPrimary + 2 * edgePad);
     }
-    // A lone tiled column fills the viewport per expand_single_column, without touching its stored fraction.
+    int width = 0;
     if (m_columns.size() == 1 && expandSingleColumn()) {
-      return std::max(1, viewportPrimary);
+      // Fill the viewport without touching the stored fraction. Client size hints still apply to tiled columns.
+      width = viewportPrimary;
+    } else {
+      // Gap-aware: reserve one inter-lane gap per lane so fractions summing to 1
+      // tile exactly across the viewport primary extent.
+      const int gap = m_config->totalGap;
+      width = static_cast<int>(std::lround(column.widthFrac * (viewportPrimary + gap) - gap));
     }
-    // Gap-aware: reserve one inter-lane gap per lane so fractions summing to 1
-    // tile exactly across the viewport primary extent.
-    const int gap = m_config->totalGap;
-    int width = static_cast<int>(std::lround(column.widthFrac * (viewportPrimary + gap) - gap));
     width = std::max(width, columnMinPrimaryPx(column, *this));
     const int maxWidth = columnMaxPrimaryPx(column, *this);
     if (maxWidth > 0) {

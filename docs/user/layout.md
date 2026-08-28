@@ -68,10 +68,12 @@ logical size chosen by the client. A numeric window-rule `default_width` still
 takes precedence for matching applications.
 
 `expand_single_column` only changes the display of a column while it is the only
-tiled column. It never rewrites the column's stored fraction, so each window's
-`default_width` (or the global `default_width_fraction`) still applies the moment
-a second column appears. Explicit `default_maximize` and
-`default_maximize_to_edges` window rules are unaffected and win.
+tiled column. Client size hints still constrain the expanded size, and the
+viewport bounds take precedence over a larger minimum. The option never rewrites
+the column's stored fraction, so each window's `default_width` (or the global
+`default_width_fraction`) still applies the moment a second column appears.
+Explicit `default_maximize` and `default_maximize_to_edges` window rules are
+unaffected and win.
 
 Directional focus and movement follow the screen: left and right operate within
 a vertical lane, while up and down walk or reorder lanes along the strip.

@@ -119,7 +119,7 @@ and numbered positions as those workspaces are created or removed.
 | `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). When omitted globally and for the workspace, the client chooses its initial logical extent. |
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
 | `layout.scrolling.direction` | string | `"horizontal"` or `"vertical"` scroll axis. |
-| `layout.scrolling.expand_single_column` | bool | Fill the viewport width for a workspace's lone tiled column. Disable to keep the configured/default width. |
+| `layout.scrolling.expand_single_column` | bool | Fill the viewport for a workspace's lone tiled column, subject to client size hints and viewport bounds. Disable to keep the configured/default width. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"` or `"right"`. |
 | `layout.master.default_width_fraction` | float | Master area fraction when both areas exist (0.1-0.9). |
 | `layout.dwindle.preserve_split` | bool | Keep each Dwindle split direction fixed after it is created when true. |

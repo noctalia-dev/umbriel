@@ -178,10 +178,18 @@ UMBRIEL_TEST(expandSingleColumnTrueFillsALoneColumn) {
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
 }
 
+UMBRIEL_TEST(expandSingleColumnTrueHonorsClientMaxWidth) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.maxWidth = 300}; });
+  fixture.addColumns(1);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 300);
+}
+
 UMBRIEL_TEST(expandSingleColumnTrueSizesTheFirstConfigureFull) {
   Fixture fixture;
   fixture.config.scrolling.expandSingleColumn = true;
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
   CHECK_EQ(initial.width, 1260);
   CHECK_EQ(initial.height, 700);
 }
