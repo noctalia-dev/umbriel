@@ -128,4 +128,16 @@ wait_for_query \
   'all(.[] | select(.title == "harness-master-a" or .title == "harness-master-c"); .w == 624) and any(.[]; .title == "harness-master-b" and .w == 624)' \
   "window-cycle-width-back did not return the master area to one half"
 
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[layout.master]
+new_on_top = false
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+spawn_client d
+wait_for_windows 4
+wait_for_query \
+  'any(.[]; .title == "harness-master-b" and .x == 646 and .y == 10 and .w == 624 and .h == 344) and any(.[]; .title == "harness-master-d" and .x == 646 and .y == 366 and .w == 624 and .h == 344)' \
+  "new_on_top false did not place the newest window at the bottom of the stack"
+
 echo "master count, focus, swap, and width controls work in layout order"

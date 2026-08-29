@@ -183,6 +183,7 @@ width_presets = [0.333, 0.5, 0.667] # shared by scrolling, dwindle, and master
 # direction = "horizontal"
 default_width_fraction = 0.5  # remove to let clients choose their initial width
 center_underfull_strip = true  # center the strip whenever it is narrower than the viewport
+center_focused = false # always center the focused column
 expand_single_column = true # fill lone column to viewport width
 
 
@@ -192,6 +193,7 @@ expand_single_column = true # fill lone column to viewport width
 [layout.master]
 position = "left"              # "left" or "right"
 default_width_fraction = 0.55  # 0.1-0.9
+new_on_top = true             # place new windows at the top of the stack
 
 # Workspace layout overrides (see docs/user/workspaces.md#workspace-rules)
 # [[workspace]]
@@ -344,7 +346,7 @@ follows_mouse = false
 # "Mod+Alt+R" = "window-cycle-height"
 # "Mod+Alt+Shift+R" = "window-cycle-height-back"
 # "Mod+Grave" = "window-focus-last"
-# "Mod+BackSpace" = "window-consume-or-expel"
+# "Mod+BackSpace" = "window-consume-or-expel-left"
 # "Mod+C" = "column-center"
 # "Mod+Shift+C" = "window-center"
 # "Mod+Shift+T" = "workspace-set-layout:toggle"
@@ -365,6 +367,11 @@ follows_mouse = false
 [[window_rule]]
 blur = true
 blur_optimized = true
+
+# Open an app maximized while keeping its parented dialogs at their natural size
+# [[window_rule]]
+# match.app_id = "^example-app$"
+# default_maximize = true
 
 # Open a specific app maximized to the usable-area edges (no gaps or borders)
 # [[window_rule]]

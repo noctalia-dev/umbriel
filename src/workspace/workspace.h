@@ -102,8 +102,8 @@ namespace umbriel {
     bool moveFocusedColumn(int direction);
     bool moveFocusedColumnFirst();
     bool moveFocusedColumnLast();
-    bool consumeFocusedLeft();
-    bool expelFocusedRight();
+    bool consumeFocused(int direction);
+    bool expelFocused(int direction);
     bool moveFocusedVertical(int direction);
     bool swapFocusedInCycle(int direction);
     bool increaseMasterCount();

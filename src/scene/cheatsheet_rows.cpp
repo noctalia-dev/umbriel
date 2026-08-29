@@ -310,7 +310,9 @@ namespace {
     case A::WindowMoveOrOutputUp:
     case A::WindowMoveOrOutputDown:
     case A::WindowConsumeLeft:
-    case A::WindowExpelRight:
+    case A::WindowConsumeOrExpelLeft:
+    case A::WindowConsumeRight:
+    case A::WindowConsumeOrExpelRight:
     case A::WindowCycleWidth:
     case A::WindowCycleWidthBack:
     case A::WindowSetWidth:
@@ -319,7 +321,6 @@ namespace {
     case A::WindowModifyHeight:
     case A::WindowCycleHeight:
     case A::WindowCycleHeightBack:
-    case A::WindowConsumeOrExpel:
     case A::WindowCenter:
     case A::LayoutScrollLeft:
     case A::LayoutScrollRight:

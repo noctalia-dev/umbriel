@@ -48,6 +48,7 @@ namespace umbriel {
     struct Scrolling {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> centerUnderfullStrip;
+      std::optional<bool> centerFocused;
       std::optional<ScrollingDirection> direction;
       std::optional<bool> expandSingleColumn;
       bool operator==(const Scrolling&) const = default;
@@ -58,6 +59,7 @@ namespace umbriel {
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
+      std::optional<bool> newOnTop;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -82,6 +84,7 @@ namespace umbriel {
     struct Scrolling {
       std::optional<double> defaultWidthFraction;
       bool centerUnderfullStrip = true;
+      bool centerFocused = false;
       // Axis-agnostic layout state is preserved when config reload changes direction.
       ScrollingDirection direction = ScrollingDirection::Horizontal;
       bool expandSingleColumn = false;
@@ -93,6 +96,7 @@ namespace umbriel {
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
+      bool newOnTop = true;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -504,6 +508,7 @@ namespace umbriel {
       struct Scrolling {
         std::optional<double> defaultWidthFraction;
         bool centerUnderfullStrip = true;
+        bool centerFocused = false;
         ScrollingDirection direction = ScrollingDirection::Horizontal;
         bool expandSingleColumn = false;
         bool operator==(const Scrolling&) const = default;
@@ -514,6 +519,7 @@ namespace umbriel {
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
+        bool newOnTop = true;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;

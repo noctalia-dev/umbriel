@@ -14,6 +14,7 @@ width_presets = [0.333, 0.5, 0.667]
 direction = "horizontal"             # "horizontal" or "vertical"
 default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
+center_focused = false
 expand_single_column = true           # fill lone column to viewport width
 
 [layout.dwindle]
@@ -22,6 +23,7 @@ preserve_split = false              # keep each split direction fixed after it i
 [layout.master]
 position = "left"                   # "left" or "right"
 default_width_fraction = 0.55       # 0.1-0.9
+new_on_top = true                 # place new windows at the top of the stack
 ```
 
 Shared layout options:
@@ -39,6 +41,7 @@ Scrolling layout options:
 | `direction`              | string | `"horizontal"` | Scroll axis: `"horizontal"` stacks columns left to right; `"vertical"` stacks lanes top to bottom.                                |
 | `default_width_fraction` | float  | unset          | Initial scroll-axis extent assigned to new scrolling lanes (0.1-1.0). The packaged config sets `0.5`; when omitted, the client chooses its initial extent. |
 | `center_underfull_strip` | bool   | `true`         | Center the complete strip whenever it is shorter than the viewport. Disable to align it at the start edge.                        |
+| `center_focused`  | bool   | `false`        | Always center the focused column.                                                                                                 |
 | `expand_single_column`    | bool   | `false`        | Fill the viewport width for a workspace's lone tiled column. Disable to keep the configured/default width. |
 
 Dwindle layout options:
@@ -53,6 +56,7 @@ Master layout options:
 | ------------------------ | ------ | -------- | --------------------------------------------------------------------------- |
 | `position`               | string | `"left"` | Side occupied by the master area: `"left"` or `"right"`.                    |
 | `default_width_fraction` | float  | `0.55`   | Initial fraction assigned to the master area when both areas exist (0.1-0.9). |
+| `new_on_top`             | bool   | `true`   | Place newly opened windows at the top of the stack. Disable to place them at the bottom. |
 
 On a vertical scrolling workspace, each column becomes a horizontal lane. Lanes
 stack from top to bottom, and windows within a lane sit side by side. Existing
@@ -79,10 +83,10 @@ unaffected and win.
 
 Directional focus and movement follow the screen: left and right operate within
 a vertical lane, while up and down walk or reorder lanes along the strip.
-`window-consume-left` still merges into the previous lane, which is visually
-above, and `window-expel-right` creates the next lane, which is visually below.
-`window-consume-or-expel` selects between those two operations from the focused
-window's current lane membership.
+`window-consume-left` and `window-consume-right` merge into the previous or next
+lane, which is visually above or below. Their `window-consume-or-expel-left` and
+`window-consume-or-expel-right` counterparts create a lane in the requested
+direction when the focused window already shares one.
 The three-finger vertical swipe continues to switch workspaces. The
 three-finger horizontal strip gesture is inert on vertical workspaces, so use
 keyboard or wheel bindings to scroll the strip.
@@ -131,17 +135,18 @@ from top to bottom. When only one area has windows, that area fills the complete
 content box.
 
 The first window becomes master. A new window also becomes master whenever the
-master area is empty. Otherwise, new windows join the top of the stack. Removing
-the final master window promotes the top stack window. Explicitly moving every
+master area is empty. Otherwise, new windows join the top of the stack when
+`new_on_top = true`, or the bottom when it is false. Removing the final master
+window promotes the top stack window. Explicitly moving every
 window out of master does not promote one, so the remaining stack stays
 full-width until another window opens or is moved into master.
 
-`window-consume-left` and `window-expel-right` preserve their visual meanings.
-With `position = "left"`, consume moves a stack window into master and expel
-moves a master window into the stack. With `position = "right"`, those area
-roles reverse because master is visually right.
-`window-consume-or-expel` provides the corresponding one-action toggle between
-the master and stack areas.
+The directional consume actions preserve their visual meanings. With
+`position = "left"`, left moves a stack window into master and right moves a
+master window into the stack. With `position = "right"`, those area roles
+reverse because master is visually right. The `window-consume-or-expel-left`
+and `window-consume-or-expel-right` variants make the same directional move in
+master layout.
 
 Master workflows use a deterministic layout-order ring: master windows from top
 to bottom, then stack windows from top to bottom. `window-focus-next` and

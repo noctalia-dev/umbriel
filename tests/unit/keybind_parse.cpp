@@ -404,8 +404,16 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
 
   CHECK(parseAction("window-focus-last", bind));
   CHECK(bind.action == KeybindAction::WindowFocusLast);
-  CHECK(parseAction("window-consume-or-expel", bind));
-  CHECK(bind.action == KeybindAction::WindowConsumeOrExpel);
+  CHECK(parseAction("window-consume-left", bind));
+  CHECK(bind.action == KeybindAction::WindowConsumeLeft);
+  CHECK(parseAction("window-consume-or-expel-left", bind));
+  CHECK(bind.action == KeybindAction::WindowConsumeOrExpelLeft);
+  CHECK(parseAction("window-consume-right", bind));
+  CHECK(bind.action == KeybindAction::WindowConsumeRight);
+  CHECK(parseAction("window-consume-or-expel-right", bind));
+  CHECK(bind.action == KeybindAction::WindowConsumeOrExpelRight);
+  CHECK(!parseAction("window-consume-or-expel", bind));
+  CHECK(!parseAction("window-expel-right", bind));
 
   // Argument-free actions reject arguments.
   CHECK(!parseAction("workspace-next:1", bind));
@@ -417,7 +425,10 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(!parseAction("window-center:x", bind));
   CHECK(!parseAction("window-toggle-maximize-to-edges:x", bind));
   CHECK(!parseAction("window-focus-last:x", bind));
-  CHECK(!parseAction("window-consume-or-expel:x", bind));
+  CHECK(!parseAction("window-consume-left:x", bind));
+  CHECK(!parseAction("window-consume-or-expel-left:x", bind));
+  CHECK(!parseAction("window-consume-right:x", bind));
+  CHECK(!parseAction("window-consume-or-expel-right:x", bind));
 }
 
 UMBRIEL_TEST(parsesWorkspaceSelectors) {

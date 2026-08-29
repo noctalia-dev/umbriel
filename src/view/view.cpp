@@ -1098,9 +1098,7 @@ namespace umbriel {
       origin = clampFloatingOrigin(origin, {.x = 0, .y = 0, .width = width, .height = height}, usable);
       m_floating.rememberPositionFraction(origin, usable);
     }
-    m_positioned = true;
-    wlr_scene_node_set_position(&m_sceneTree->node, origin.x, origin.y);
-    m_decoration.setShadowPosition(origin.x, origin.y);
+    setPosition(origin.x, origin.y);
   }
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }
@@ -1717,7 +1715,7 @@ namespace umbriel {
     // Opening state is compositor-owned. Clients may restore a saved maximized
     // flag during this transition; only an explicit window rule overrides the
     // layout's initial size.
-    const bool ruleMaximized = rule.defaultMaximize && *rule.defaultMaximize;
+    const bool ruleMaximized = m_toplevel->parent == nullptr && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = config().general.honorRestoredMaximize && m_toplevel->requested.maximized;
     if (ruleMaximized || restoredMaximized) {
       setMaximized(true);
@@ -1938,7 +1936,7 @@ namespace umbriel {
       const bool wantFullscreen =
           m_toplevel->requested.fullscreen || (rule.defaultFullscreen && *rule.defaultFullscreen);
       const bool wantMaximizeToEdges = rule.defaultMaximizeToEdges && *rule.defaultMaximizeToEdges;
-      const bool wantMaximized = (rule.defaultMaximize && *rule.defaultMaximize)
+      const bool wantMaximized = (m_toplevel->parent == nullptr && rule.defaultMaximize && *rule.defaultMaximize)
           || wantMaximizeToEdges
           || (config().general.honorRestoredMaximize && m_toplevel->requested.maximized);
 
@@ -2786,7 +2784,8 @@ namespace umbriel {
       setMaximizedToEdges(true);
     }
 
-    if (changedInitialRule(rule.defaultMaximize, initiallyApplied.defaultMaximize)
+    if (m_toplevel->parent == nullptr
+        && changedInitialRule(rule.defaultMaximize, initiallyApplied.defaultMaximize)
         && *rule.defaultMaximize
         && !m_toplevel->scheduled.maximized) {
       setMaximized(true);

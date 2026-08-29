@@ -247,8 +247,9 @@ namespace umbriel {
       m_master.views.push_back(view);
       m_master.weights.push_back(1.0);
     } else {
-      m_stack.views.insert(m_stack.views.begin(), view);
-      m_stack.weights.insert(m_stack.weights.begin(), 1.0);
+      const bool newOnTop = m_config == nullptr || m_config->master.newOnTop;
+      m_stack.views.insert(newOnTop ? m_stack.views.begin() : m_stack.views.end(), view);
+      m_stack.weights.insert(newOnTop ? m_stack.weights.begin() : m_stack.weights.end(), 1.0);
     }
     rebuildColumns();
   }
@@ -276,9 +277,14 @@ namespace umbriel {
     rebuildColumns();
   }
 
-  bool MasterStackLayout::consumeLeft(View* view) {
-    Area* source = masterIsLeft() ? &m_stack : &m_master;
-    Area* destination = masterIsLeft() ? &m_master : &m_stack;
+  bool MasterStackLayout::consume(View* view, int direction) {
+    if (direction != -1 && direction != 1) {
+      return false;
+    }
+    Area* left = masterIsLeft() ? &m_master : &m_stack;
+    Area* right = masterIsLeft() ? &m_stack : &m_master;
+    Area* source = direction < 0 ? right : left;
+    Area* destination = direction < 0 ? left : right;
     const int row = rowInArea(*source, view);
     if (row < 0) {
       return false;
@@ -292,21 +298,7 @@ namespace umbriel {
     return true;
   }
 
-  bool MasterStackLayout::expelRight(View* view) {
-    Area* source = masterIsLeft() ? &m_master : &m_stack;
-    Area* destination = masterIsLeft() ? &m_stack : &m_master;
-    const int row = rowInArea(*source, view);
-    if (row < 0) {
-      return false;
-    }
-    const double weight = source->weights[static_cast<size_t>(row)];
-    source->views.erase(source->views.begin() + row);
-    source->weights.erase(source->weights.begin() + row);
-    destination->views.push_back(view);
-    destination->weights.push_back(weight);
-    rebuildColumns();
-    return true;
-  }
+  bool MasterStackLayout::expel(View* view, int direction) { return consume(view, direction); }
 
   bool MasterStackLayout::moveViewVertical(View* view, int direction) {
     View* neighbor = directionalNeighbor(m_targets, view, false, direction);

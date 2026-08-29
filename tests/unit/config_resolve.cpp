@@ -46,6 +46,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   config.appearance.borderWidth = 2;
   config.layout.master.position = umbriel::MasterPosition::Right;
   config.layout.master.defaultWidthFraction = 0.58;
+  config.layout.master.newOnTop = false;
   config.layout.dwindle.preserveSplit = true;
 
   WorkspaceConfig global;
@@ -53,6 +54,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   global.layout.gap = 12;
   global.layout.scrolling.defaultWidthFraction = 0.6;
   global.layout.master.defaultWidthFraction = 0.6;
+  global.layout.master.newOnTop = true;
   global.layout.dwindle.preserveSplit = false;
   config.workspaceRules.push_back(std::move(global));
 
@@ -63,6 +65,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   dpOne.layout.mode = LayoutMode::Dwindle;
   dpOne.layout.master.position = umbriel::MasterPosition::Left;
   dpOne.layout.master.defaultWidthFraction = 0.7;
+  dpOne.layout.master.newOnTop = false;
   dpOne.layout.dwindle.preserveSplit = true;
   config.workspaceRules.push_back(std::move(dpOne));
 
@@ -81,6 +84,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   CHECK_EQ(*onDpOne.scrolling.defaultWidthFraction, 0.6);
   CHECK(onDpOne.master.position == umbriel::MasterPosition::Left);
   CHECK_EQ(onDpOne.master.defaultWidthFraction, 0.7);
+  CHECK(!onDpOne.master.newOnTop);
   CHECK(onDpOne.dwindle.preserveSplit);
 
   const auto onDpTwo = umbriel::resolveWorkspaceLayout(config, "DP-2", "dev", 0);
@@ -90,6 +94,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   CHECK_EQ(*onDpTwo.scrolling.defaultWidthFraction, 0.6);
   CHECK(onDpTwo.master.position == umbriel::MasterPosition::Right);
   CHECK_EQ(onDpTwo.master.defaultWidthFraction, 0.6);
+  CHECK(onDpTwo.master.newOnTop);
   CHECK(!onDpTwo.dwindle.preserveSplit);
 
   const auto elsewhere = umbriel::resolveWorkspaceLayout(config, "HDMI-A-1", "dev", 0);
@@ -98,6 +103,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   CHECK_EQ(*elsewhere.scrolling.defaultWidthFraction, 0.6);
   CHECK(elsewhere.master.position == umbriel::MasterPosition::Right);
   CHECK_EQ(elsewhere.master.defaultWidthFraction, 0.6);
+  CHECK(elsewhere.master.newOnTop);
   CHECK(!elsewhere.dwindle.preserveSplit);
 }
 

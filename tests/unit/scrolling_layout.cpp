@@ -108,7 +108,7 @@ UMBRIEL_TEST(consumeLeftStacksIntoThePreviousColumn) {
   Fixture fixture;
   fixture.addColumns(2);
 
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   CHECK_EQ(fixture.layout.columns().size(), size_t{1});
   CHECK_EQ(fixture.layout.columnOf(stub(1)), 0);
   CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
@@ -120,15 +120,36 @@ UMBRIEL_TEST(consumeLeftStacksIntoThePreviousColumn) {
 UMBRIEL_TEST(consumeLeftFailsOnTheFirstColumn) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(!fixture.layout.consumeLeft(stub(0)));
+  CHECK(!fixture.layout.consume(stub(0), -1));
   CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+}
+
+UMBRIEL_TEST(consumeRightStacksIntoTheNextColumn) {
+  Fixture fixture;
+  fixture.addColumns(2);
+
+  CHECK(fixture.layout.consume(stub(0), 1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(0)), 1);
 }
 
 UMBRIEL_TEST(expelRightUndoesConsumeLeft) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
-  CHECK(fixture.layout.expelRight(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
+  CHECK(fixture.layout.expel(stub(1), 1));
+
+  CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 1);
+}
+
+UMBRIEL_TEST(expelLeftUndoesConsumeRight) {
+  Fixture fixture;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.consume(stub(0), 1));
+  CHECK(fixture.layout.expel(stub(0), -1));
 
   CHECK_EQ(fixture.layout.columns().size(), size_t{2});
   CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
@@ -138,7 +159,7 @@ UMBRIEL_TEST(expelRightUndoesConsumeLeft) {
 UMBRIEL_TEST(expelRightFailsOnASingleViewColumn) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(!fixture.layout.expelRight(stub(0)));
+  CHECK(!fixture.layout.expel(stub(0), 1));
   CHECK_EQ(fixture.layout.columns().size(), size_t{2});
 }
 
@@ -146,7 +167,7 @@ UMBRIEL_TEST(expelRightFailsOnASingleViewColumn) {
 UMBRIEL_TEST(setHeightFractionResizesAStackedRow) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
 
   CHECK(fixture.layout.setHeightFraction(stub(1), 0.7));
   CHECK(std::fabs(fixture.layout.heightFraction(stub(1)) - 0.7) < 1e-9);
@@ -166,7 +187,7 @@ UMBRIEL_TEST(setHeightFractionRejectsASoloRow) {
 UMBRIEL_TEST(moveViewVerticalReordersWithinAColumn) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
 
   CHECK(fixture.layout.moveViewVertical(stub(1), -1));
@@ -647,7 +668,7 @@ UMBRIEL_TEST(losingOneRowOfAStackShiftsNothing) {
   Fixture fixture;
   fixture.addColumns(3);
   // Stack view 1 onto column 0, so removing it leaves the column standing.
-  fixture.layout.consumeLeft(stub(1));
+  fixture.layout.consume(stub(1), -1);
   fixture.layout.setScroll(636);
   CHECK_EQ(fixture.layout.scrollShiftForColumnRemoval(0, kViewport), 0.0);
 }
@@ -724,6 +745,46 @@ UMBRIEL_TEST(snapVisibleCentersFullWidthColumn) {
   fixture.layout.snapVisible(column, kViewport);
 
   CHECK_EQ(fixture.layout.scroll(), expected);
+}
+
+UMBRIEL_TEST(centerFocusedCentersAnInteriorColumn) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  fixture.config.scrolling.centerFocused = true;
+
+  fixture.layout.ensureVisible(1, kViewport);
+
+  const int centeredX = fixture.layout.columnX(1, kViewport)
+      + fixture.layout.columnWidth(1, kViewport) / 2
+      - static_cast<int>(std::lround(fixture.layout.scroll()));
+  CHECK_EQ(centeredX, kViewport / 2);
+  CHECK(fixture.layout.centeredRest());
+}
+
+UMBRIEL_TEST(centerFocusedAllowsEdgeColumnsToOverscroll) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  fixture.config.scrolling.centerFocused = true;
+
+  fixture.layout.ensureVisible(0, kViewport);
+  CHECK(fixture.layout.scroll() < 0.0);
+
+  fixture.layout.ensureVisible(2, kViewport);
+  CHECK(fixture.layout.scroll() > static_cast<double>(fixture.layout.maxScroll(kViewport)));
+}
+
+UMBRIEL_TEST(disablingCenterFocusedReturnsTheFocusedColumnToTheScrollRange) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  fixture.config.scrolling.centerFocused = true;
+  fixture.layout.reconcileFocusedColumn(2, kViewport);
+  CHECK(fixture.layout.scroll() > static_cast<double>(fixture.layout.maxScroll(kViewport)));
+
+  fixture.config.scrolling.centerFocused = false;
+  fixture.layout.reconcileFocusedColumn(2, kViewport);
+
+  CHECK_EQ(fixture.layout.scroll(), static_cast<double>(fixture.layout.maxScroll(kViewport)));
+  CHECK(!fixture.layout.centeredRest());
 }
 
 UMBRIEL_TEST(ensureVisibleIsANoOpForAnAlreadyVisibleColumn) {
@@ -897,7 +958,7 @@ UMBRIEL_TEST(arrangePlacesColumnsSideBySide) {
 UMBRIEL_TEST(arrangeStacksRowsWithinAColumn) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   fixture.layout.arrange(kUsable);
 
   const wlr_box upper = fixture.layout.targetBox(stub(0));
@@ -913,7 +974,7 @@ UMBRIEL_TEST(arrangeStacksRowsWithinAColumn) {
 UMBRIEL_TEST(arrangeHonorsClientMinHeight) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minHeight = 600}; });
   fixture.layout.arrange(kUsable);
 
@@ -952,7 +1013,7 @@ UMBRIEL_TEST(arrangeOnAnEmptyLayoutIsHarmless) {
 UMBRIEL_TEST(heightWeightsDefaultToOneAndTrackViews) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   CHECK(std::fabs(fixture.layout.heightWeight(0, 0) - 1.0) < 1e-9);
   CHECK(std::fabs(fixture.layout.heightWeight(0, 1) - 1.0) < 1e-9);
   CHECK_EQ(fixture.layout.columns()[0].heightWeights.size(), size_t{2});
@@ -961,7 +1022,7 @@ UMBRIEL_TEST(heightWeightsDefaultToOneAndTrackViews) {
 UMBRIEL_TEST(setHeightWeightChangesTheStackSplit) {
   Fixture fixture;
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   CHECK(fixture.layout.setHeightWeight(0, 0, 3.0));
   fixture.layout.arrange(kUsable);
 
@@ -1043,7 +1104,7 @@ UMBRIEL_TEST(verticalArrangePlacesLanesTopToBottom) {
 UMBRIEL_TEST(verticalArrangeStacksViewsSideBySideWithinALane) {
   Fixture fixture(ScrollingDirection::Vertical);
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   fixture.layout.arrange(kUsable);
 
   const wlr_box left = fixture.layout.targetBox(stub(0));
@@ -1093,7 +1154,7 @@ UMBRIEL_TEST(clientMaxHeightNarrowsAVerticalLane) {
 UMBRIEL_TEST(clientMinWidthClampsWithinAVerticalLane) {
   Fixture fixture(ScrollingDirection::Vertical);
   fixture.addColumns(2);
-  CHECK(fixture.layout.consumeLeft(stub(1)));
+  CHECK(fixture.layout.consume(stub(1), -1));
   fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minWidth = 900}; });
   fixture.layout.arrange(kUsable);
   CHECK(fixture.layout.targetBox(stub(0)).width >= 900);
@@ -1159,7 +1220,7 @@ UMBRIEL_TEST(directionFlipKeepsFractionsAndRearranges) {
 UMBRIEL_TEST(snapshotRestoresColumnsStacksWidthsAndViewport) {
   Fixture source;
   source.addColumns(4);
-  CHECK(source.layout.consumeLeft(stub(2)));
+  CHECK(source.layout.consume(stub(2), -1));
   CHECK(source.layout.moveViewVertical(stub(2), -1));
   source.layout.moveColumn(2, 0);
 
@@ -1209,7 +1270,7 @@ UMBRIEL_TEST(snapshotRestoresColumnsStacksWidthsAndViewport) {
 UMBRIEL_TEST(snapshotPrunesMissingRowsAndColumns) {
   Fixture source;
   source.addColumns(3);
-  CHECK(source.layout.consumeLeft(stub(1)));
+  CHECK(source.layout.consume(stub(1), -1));
   source.layout.arrange(kUsable);
   source.layout.setScroll(636.0);
   const auto capture = source.layout.captureState();
@@ -1315,7 +1376,7 @@ UMBRIEL_TEST(snapshotRejectsRawScrollWhenLaneGeometryChanged) {
 UMBRIEL_TEST(snapshotUsesMemberIdsInsteadOfCapturedViewPointers) {
   Fixture source;
   source.addColumns(3);
-  CHECK(source.layout.consumeLeft(stub(2)));
+  CHECK(source.layout.consume(stub(2), -1));
   const auto capture = source.layout.captureState();
   auto remapped = capture.members;
   for (auto& member : remapped) {

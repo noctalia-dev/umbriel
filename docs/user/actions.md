@@ -104,12 +104,14 @@ focus-only, while `window-focus-warp:<id>` always moves it.
 - **Across an output edge:** `window-move-or-output-up`,
   `window-move-or-output-down`. Move within the column, or move the column to
   the output in that direction when already at the edge.
-- **Merge or split columns:** `window-consume-left` pulls the focused window
-  into the column to its left. `window-expel-right` places it in a new column to
-  the right. `window-consume-or-expel` expels right when the focused window
-  shares its column, otherwise it consumes left. In master layout the combined
-  action toggles between master and stack. In dwindle layout it swaps with the
-  right neighbor when one exists, otherwise with the left neighbor.
+- **Merge or split columns:** `window-consume-left` and
+  `window-consume-right` pull the focused window into the adjacent column in
+  that direction. `window-consume-or-expel-left` and
+  `window-consume-or-expel-right` split a window that shares its column into a
+  new column in the requested direction, or consume a window that is alone.
+  In master layout these actions move between the master and stack areas in
+  the requested direction. In dwindle layout they swap with the adjacent
+  neighbor in that direction.
 
 ### Size, state, and viewport
 

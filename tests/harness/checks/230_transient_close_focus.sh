@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Closing a focused transient toplevel must restore focus to its parent. The unrelated tiled view maps between the
-# parent and child, so insertion-order fallback picks the wrong view unless parentage wins.
+# A maximize rule selected after map must leave a parented transient at its natural size. Closing the focused child must
+# then restore focus to its parent, not the unrelated tile.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/unmap-client}"
 readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/transient-client.log"
+readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/transient-control"
 
 wait_for_window_count() {
   local want=$1
@@ -38,10 +39,17 @@ mode = "scrolling"
 
 [layout.scrolling]
 default_width_fraction = 0.75
+
+[[window_rule]]
+match.title = "^transient-child-ready$"
+default_maximize = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-TRANSIENT_SUITE=1 "$CLIENT" "transient-child" 600 500 > "$CLIENT_LOG" 2>&1 &
+mkfifo "$CONTROL_FIFO"
+exec {control_fd}<>"$CONTROL_FIFO"
+LOG_CONFIGURES=1 TITLE_AFTER_MAP=transient-child-ready TRANSIENT_SUITE=1 \
+  "$CLIENT" "transient-child" 600 500 <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 client_pid=$!
 
 for _ in $(seq 60); do
@@ -72,6 +80,33 @@ if [[ $(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .focused' <<< "$w
   echo "transient child is not focused before close: $windows"
   exit 1
 fi
+
+printf 'u' >&"$control_fd"
+for _ in $(seq 40); do
+  windows=$("$UMBRIEL" windows --json)
+  [[ $(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .title' <<< "$windows") == transient-child-ready ]] \
+    && break
+  sleep 0.05
+done
+if [[ $(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .title' <<< "$windows") != transient-child-ready ]]; then
+  echo "transient title did not settle after map: $windows"
+  exit 1
+fi
+sleep 0.2
+if grep -q '^configured-maximized$' "$CLIENT_LOG"; then
+  echo "late default_maximize reached a parented transient: $(< "$CLIENT_LOG")"
+  exit 1
+fi
+
+child_x=$(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .x' <<< "$windows")
+child_y=$(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .y' <<< "$windows")
+child_w=$(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .w' <<< "$windows")
+child_h=$(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .h' <<< "$windows")
+if ((child_x != 340 || child_y != 110 || child_w != 600 || child_h != 500)); then
+  echo "transient is ${child_w}x${child_h} at ${child_x},${child_y}, expected 600x500 centered at 340,110: $windows"
+  exit 1
+fi
+
 "$UMBRIEL" msg "window-close:$child_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$CLIENT_LOG" && break
@@ -94,4 +129,4 @@ if [[ $(jq -r --arg id "$unrelated_id" '.[] | select(.id == $id) | .focused' <<<
   exit 1
 fi
 
-echo "closing a transient toplevel restores its parent instead of an unrelated view"
+echo "late default maximize leaves transients natural-sized and closing one restores parent focus"

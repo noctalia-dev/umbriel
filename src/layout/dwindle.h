@@ -44,8 +44,8 @@ namespace umbriel {
     // first.
     void insertView(View* view, int columnIndex) override;
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
-    bool consumeLeft(View* view) override;
-    bool expelRight(View* view) override;
+    bool consume(View* view, int direction) override;
+    bool expel(View* view, int direction) override;
     bool moveViewVertical(View* view, int direction) override;
     bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;

@@ -423,32 +423,36 @@ namespace umbriel {
     column.heightWeights.insert(column.heightWeights.begin() + row, insertedWeight);
   }
 
-  bool ScrollingLayout::consumeLeft(View* view) {
+  bool ScrollingLayout::consume(View* view, int direction) {
     const int sourceColumn = columnOf(view);
-    if (sourceColumn <= 0) {
+    const int destinationColumn = sourceColumn + direction;
+    if ((direction != -1 && direction != 1)
+        || sourceColumn < 0
+        || destinationColumn < 0
+        || destinationColumn >= static_cast<int>(m_columns.size())) {
       return false;
     }
     Column& source = m_columns[static_cast<size_t>(sourceColumn)];
-    Column& dest = m_columns[static_cast<size_t>(sourceColumn - 1)];
+    Column& destination = m_columns[static_cast<size_t>(destinationColumn)];
     ensureWeightCount(source);
-    ensureWeightCount(dest);
+    ensureWeightCount(destination);
     const int row = rowOf(view);
     const double weight = row >= 0 ? source.heightWeights[static_cast<size_t>(row)] : 1.0;
     std::erase(source.views, view);
     if (row >= 0 && row < static_cast<int>(source.heightWeights.size())) {
       source.heightWeights.erase(source.heightWeights.begin() + row);
     }
-    dest.views.push_back(view);
-    dest.heightWeights.push_back(weight);
+    destination.views.push_back(view);
+    destination.heightWeights.push_back(weight);
     if (source.views.empty()) {
       m_columns.erase(m_columns.begin() + sourceColumn);
     }
     return true;
   }
 
-  bool ScrollingLayout::expelRight(View* view) {
+  bool ScrollingLayout::expel(View* view, int direction) {
     const int sourceColumn = columnOf(view);
-    if (sourceColumn < 0) {
+    if ((direction != -1 && direction != 1) || sourceColumn < 0) {
       return false;
     }
     Column& source = m_columns[static_cast<size_t>(sourceColumn)];
@@ -466,7 +470,8 @@ namespace umbriel {
     column.widthFrac = m_config->scrolling.defaultWidthFraction.value_or(0.5);
     column.views.push_back(view);
     column.heightWeights.push_back(weight);
-    m_columns.insert(m_columns.begin() + sourceColumn + 1, std::move(column));
+    const int destinationColumn = sourceColumn + (direction > 0 ? 1 : 0);
+    m_columns.insert(m_columns.begin() + destinationColumn, std::move(column));
     return true;
   }
 
@@ -558,6 +563,15 @@ namespace umbriel {
     return true;
   }
 
+  void ScrollingLayout::reconcileFocusedColumn(int columnIndex, int viewportPrimary) {
+    if (m_config->scrolling.centerFocused) {
+      centerColumn(columnIndex, viewportPrimary);
+      return;
+    }
+    m_centeredRest = false;
+    ensureVisible(columnIndex, viewportPrimary);
+  }
+
   double ScrollingLayout::targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool force) const {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size()) || viewportPrimary <= 0) {
       return m_scroll;
@@ -569,6 +583,9 @@ namespace umbriel {
     if (width >= viewportPrimary) {
       const double cover = static_cast<double>(x) + static_cast<double>(width - viewportPrimary) / 2.0;
       return std::clamp(cover, 0.0, max);
+    }
+    if (m_config->scrolling.centerFocused) {
+      return static_cast<double>(x) - (viewportPrimary - width) / 2.0;
     }
     if (force) {
       return std::clamp(static_cast<double>(x), 0.0, max);
@@ -612,12 +629,12 @@ namespace umbriel {
 
   void ScrollingLayout::ensureVisible(int columnIndex, int viewportPrimary) {
     const double target = targetScrollForEnsureVisible(columnIndex, viewportPrimary, false);
-    m_centeredRest = m_centeredRest && target == m_scroll;
+    m_centeredRest = m_config->scrolling.centerFocused || (m_centeredRest && target == m_scroll);
     m_scroll = target;
   }
 
   void ScrollingLayout::snapVisible(int columnIndex, int viewportPrimary) {
-    m_centeredRest = false;
+    m_centeredRest = m_config->scrolling.centerFocused;
     m_scroll = targetScrollForEnsureVisible(columnIndex, viewportPrimary, true);
   }
 

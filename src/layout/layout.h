@@ -150,8 +150,8 @@ namespace umbriel {
 
     virtual void insertView(View* view, int columnIndex) = 0;
     virtual void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) = 0;
-    virtual bool consumeLeft(View* view) = 0;
-    virtual bool expelRight(View* view) = 0;
+    virtual bool consume(View* view, int direction) = 0;
+    virtual bool expel(View* view, int direction) = 0;
     virtual bool moveViewVertical(View* view, int direction) = 0;
     virtual bool swapViews(View* a, View* b) = 0;
     virtual void removeView(View* view) = 0;

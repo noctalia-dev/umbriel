@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Height actions resize stacked windows, consume-or-expel toggles column
-# membership, and focus-last follows global MRU order across workspaces.
+# Directional consume actions change column membership, height actions resize
+# stacked windows, and focus-last follows global MRU order across workspaces.
 set -euo pipefail
 
 accepts() {
@@ -105,7 +105,7 @@ wait_for_windows 1
 spawn_client harness-b
 wait_for_windows 2
 
-accepts window-consume-or-expel
+accepts window-consume-or-expel-left
 wait_for_stacked
 
 accepts window-set-height:0.7
@@ -114,7 +114,13 @@ wait_for_b_height_percent 66 74
 accepts window-modify-height:-0.2
 wait_for_b_height_percent 46 54
 
-accepts window-consume-or-expel
+accepts window-consume-or-expel-left
+wait_for_separate_columns
+
+accepts window-consume-right
+wait_for_stacked
+
+accepts window-consume-or-expel-right
 wait_for_separate_columns
 b_workspace=$(field_of harness-b workspace)
 
@@ -141,4 +147,4 @@ if [[ $(field_of harness-c workspace) != "$c_workspace" ]]; then
   exit 1
 fi
 
-echo "height, consume-or-expel, and global focus-last actions behaved end to end"
+echo "height, directional consume, and global focus-last actions behaved end to end"

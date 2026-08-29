@@ -163,7 +163,7 @@ Inside the session:
 | mod+F1 | Cycle window focus |
 | mod+H/J/K/L or arrows | Focus adjacent window |
 | mod+Shift+H/J/K/L or arrows | Move focused window |
-| mod+comma / mod+period | Consume left / expel right |
+| mod+comma / mod+period | Consume left / consume right |
 | mod+R / mod+F | Cycle width / toggle fullscreen |
 | mod+T | Toggle floating for the focused window |
 | mod+P | Toggle pin for the focused window |
