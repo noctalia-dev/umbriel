@@ -10,6 +10,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "server/server.h"
+#include "view/floating.h"
 #include "view/registry.h"
 #include "view/view.h"
 #include "view/xdg_size.h"
@@ -840,7 +841,54 @@ namespace umbriel {
     return true;
   }
 
+  std::optional<double> Workspace::focusedFloatingFraction(bool width) const {
+    View* view = m_focusedView;
+    if (view == nullptr || !view->mapped() || !view->floating()) {
+      return std::nullopt;
+    }
+    const wlr_box usable = view->floatingUsableArea();
+    const auto [basisWidth, basisHeight] = view->floatingSize();
+    const int basis = width ? basisWidth : basisHeight;
+    const int extent = width ? usable.width : usable.height;
+    if (extent <= 0 || basis <= 0) {
+      return std::nullopt;
+    }
+    return floatingSizeFraction(basis, extent);
+  }
+
+  bool
+  Workspace::resizeFocusedFloating(const std::optional<double>& widthFrac, const std::optional<double>& heightFrac) {
+    View* view = m_focusedView;
+    if (view == nullptr || !view->mapped() || !view->floating()) {
+      return false;
+    }
+    const wlr_box usable = view->floatingUsableArea();
+    if (usable.width <= 0 || usable.height <= 0) {
+      return false;
+    }
+    const XdgSizeHints hints = xdgSizeHints(view->toplevel());
+    const auto [basisWidth, basisHeight] = view->floatingSize();
+    const int width = widthFrac ? clampXdgWidth(floatingFractionSize(*widthFrac, usable.width), hints) : basisWidth;
+    const int height =
+        heightFrac ? clampXdgHeight(floatingFractionSize(*heightFrac, usable.height), hints) : basisHeight;
+    if (width <= 0 || height <= 0) {
+      return false;
+    }
+    view->requestFloatingSize(width, height);
+    // Resize in place: the keep-visible clamp runs at commit, once the
+    // geometry is no longer stale (adoptFloatingClientSize).
+    return true;
+  }
+
   bool Workspace::cycleFocusedWidth(int direction) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      if (const auto current = focusedFloatingFraction(true)) {
+        return resizeFocusedFloating(
+            nextFractionPreset(m_layoutConfig.widthPresets, *current, direction), std::nullopt
+        );
+      }
+      return false;
+    }
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }
@@ -854,7 +902,34 @@ namespace umbriel {
     return true;
   }
 
+  bool Workspace::cycleFocusedHeight(int direction) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      if (const auto current = focusedFloatingFraction(false)) {
+        return resizeFocusedFloating(
+            std::nullopt, nextFractionPreset(m_layoutConfig.widthPresets, *current, direction)
+        );
+      }
+      return false;
+    }
+    if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
+      m_focusedView->setMaximizedToEdges(false);
+    }
+    const double current = m_layout->heightFraction(m_focusedView);
+    if (!m_layout->setHeightFraction(
+            m_focusedView, nextFractionPreset(m_layoutConfig.widthPresets, current, direction)
+        )) {
+      return false;
+    }
+    wlr_xdg_toplevel_set_maximized(m_focusedView->toplevel(), false);
+    ensureFocusedVisible();
+    markArrange();
+    return true;
+  }
+
   bool Workspace::setFocusedWidth(double fraction) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      return resizeFocusedFloating(std::clamp(fraction, 0.1, 1.0), std::nullopt);
+    }
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }
@@ -869,6 +944,9 @@ namespace umbriel {
   }
 
   bool Workspace::setFocusedHeight(double fraction) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      return resizeFocusedFloating(std::nullopt, std::clamp(fraction, 0.1, 1.0));
+    }
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }
@@ -895,6 +973,12 @@ namespace umbriel {
   }
 
   bool Workspace::modifyFocusedWidth(double delta) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      if (const auto current = focusedFloatingFraction(true)) {
+        return resizeFocusedFloating(std::clamp(*current + delta, 0.1, 1.0), std::nullopt);
+      }
+      return false;
+    }
     const int column = m_layout->columnOf(m_focusedView);
     if (column < 0) {
       return false;
@@ -905,6 +989,12 @@ namespace umbriel {
   }
 
   bool Workspace::modifyFocusedHeight(double delta) {
+    if (m_focusedView != nullptr && m_focusedView->floating()) {
+      if (const auto current = focusedFloatingFraction(false)) {
+        return resizeFocusedFloating(std::nullopt, std::clamp(*current + delta, 0.1, 1.0));
+      }
+      return false;
+    }
     // Clamp here, not in the layouts: DwindleLayout does not clamp the overall
     // fraction, and every layout must land in [0.1, 1.0].
     return setFocusedHeight(std::clamp(m_layout->heightFraction(m_focusedView) + delta, 0.1, 1.0));

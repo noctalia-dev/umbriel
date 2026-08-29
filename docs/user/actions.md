@@ -12,10 +12,10 @@ through `umbriel msg`. See [Keybinds](keybinds.md) for binding syntax.
 | `workspace-switch:<ws>` | Workspace name, optionally `/<output>` | `"workspace-switch:3"`, `"workspace-switch:CHAT/HDMI-A-1"` |
 | `window-move-to-workspace:<ws>` | Same as above | `"window-move-to-workspace:2"` |
 | `column-move-to-workspace:<ws>` | Same as above; moves the focused window's whole column, except in master layout where it moves only the focused window | `"column-move-to-workspace:CHAT/HDMI-A-1"` |
-| `window-set-width:<frac>` | Fraction 0.1-1.0 | `"window-set-width:0.667"` |
-| `window-modify-width:<delta>` | Signed fraction -0.9..0.9; the resulting width clamps to 0.1..1.0 | `"window-modify-width:-0.2"` |
-| `window-set-height:<frac>` | Fraction 0.1-1.0 | `"window-set-height:0.7"` |
-| `window-modify-height:<delta>` | Signed fraction -0.9..0.9; the resulting height clamps to 0.1..1.0 | `"window-modify-height:-0.2"` |
+| `window-set-width:<frac>` | Fraction 0.1-1.0; on a floating window, a fraction of the usable area | `"window-set-width:0.667"` |
+| `window-modify-width:<delta>` | Signed fraction -0.9..0.9; the resulting width clamps to 0.1..1.0. On a floating window, the delta applies to its current usable-area fraction | `"window-modify-width:-0.2"` |
+| `window-set-height:<frac>` | Fraction 0.1-1.0; on a floating window, a fraction of the usable area | `"window-set-height:0.7"` |
+| `window-modify-height:<delta>` | Signed fraction -0.9..0.9; the resulting height clamps to 0.1..1.0. On a floating window, the delta applies to its current usable-area fraction | `"window-modify-height:-0.2"` |
 | `workspace-set-layout:<scrolling\|dwindle\|master\|toggle>` | Switch the active workspace's layout at runtime; `toggle` cycles scrolling to dwindle to master to scrolling. The override remains until a config reload reasserts the configured mode. | `"workspace-set-layout:toggle"` |
 | `window-focus:<window-id>` | Window id from `umbriel windows` | `"window-focus:0123abcd"` |
 | `window-focus-warp:<window-id>` | Focus the window and warp the cursor to its visible center | `"window-focus-warp:0123abcd"` |
@@ -116,13 +116,18 @@ focus-only, while `window-focus-warp:<id>` always moves it.
 - **Column width:** `window-modify-width:<delta>` changes the focused area's
   width by a signed fraction. `window-cycle-width` and
   `window-cycle-width-back` cycle through preset widths in either direction.
-- **Height within a column:** `window-set-height:<frac>` sets the focused
-  window's fraction of its column's stacking extent.
-  `window-modify-height:<delta>` changes that fraction by a signed amount. In
-  scrolling and master layouts this sizes a row within its column or area. In
-  dwindle it adjusts the vertical splits containing the window. On a vertical
-  scrolling workspace the stacking axis is horizontal, so these actions change
-  a window's width within its lane.
+- **Height:** `window-set-height:<frac>` sets the focused window's fraction of
+  its column's stacking extent, `window-modify-height:<delta>` changes that
+  fraction by a signed amount, and `window-cycle-height` /
+  `window-cycle-height-back` cycle it through the same presets in either
+  direction. In scrolling and master layouts this sizes a row within its
+  column or area. In dwindle it adjusts the vertical splits containing the
+  window. On a vertical scrolling workspace the stacking axis is horizontal,
+  so these actions change a window's width within its lane.
+- **Floating windows:** all of the width and height actions above resize a
+  focused floating window directly, as fractions of the output's usable area
+  clamped to the client's min/max size hints. Cycling walks
+  `layout.width_presets` on either axis.
 - **Fullscreen:** `window-toggle-fullscreen`. Toggle fullscreen for the focused
   window.
 - **Column width state:** `window-toggle-maximize`. Toggle the focused column's
@@ -160,7 +165,9 @@ Vertical-heavy configurations should bind wheel chords to
 
 `window-toggle-floating` remembers the window's floating size and position.
 The first time a window floats, Umbriel places it slightly below and to the
-right of its tiled position while keeping it on-screen.
+right of its tiled position while keeping it on-screen. Floating windows can
+also be resized from the keyboard with the width and height actions under
+**Size, state, and viewport** above.
 
 `window-focus-switch-floating` switches focus to the most recently focused
 window with the opposite floating state.

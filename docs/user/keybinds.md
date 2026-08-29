@@ -188,6 +188,18 @@ and widgets via `noctalia msg`. Typical bindings:
 "Mod+F" = "window-set-width:1.0"
 ```
 
+These resize focused floating windows too, as fractions of the usable area.
+`window-cycle-width`, `window-cycle-width-back`, `window-cycle-height`, and
+`window-cycle-height-back` step through the layout width presets on either
+axis, tiling and floating alike:
+
+```toml
+"Mod+R" = "window-cycle-width"
+"Mod+Shift+R" = "window-cycle-width-back"
+"Mod+Alt+R" = "window-cycle-height"
+"Mod+Alt+Shift+R" = "window-cycle-height-back"
+```
+
 ## Example: scroll-wheel navigation
 
 ```toml

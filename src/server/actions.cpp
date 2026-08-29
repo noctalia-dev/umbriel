@@ -727,6 +727,13 @@ namespace umbriel {
       return true;
     }
 
+    template <int Direction> bool actionCycleHeight(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->cycleFocusedHeight(Direction);
+      }
+      return true;
+    }
+
     bool actionSetWidth(Server& server, const Keybind& bind, std::string* /*error*/) {
       if (Workspace* workspace = activeWorkspace(server)) {
         if (const auto* arg = payloadIf<WidthArg>(bind)) {
@@ -1381,6 +1388,8 @@ namespace umbriel {
         &actionMasterCountDecrease,
         &actionSetHeight,
         &actionModifyHeight,
+        &actionCycleHeight<1>,
+        &actionCycleHeight<-1>,
         &actionWindowFocusLast,
         &actionConsumeOrExpel,
     };

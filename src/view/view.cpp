@@ -1436,7 +1436,15 @@ namespace umbriel {
   }
 
   void View::requestFloatingSize(int width, int height) {
-    m_floating.recordSizeRequest(wlr_xdg_toplevel_set_size(m_toplevel, width, height));
+    m_floating.recordSizeRequest(width, height, wlr_xdg_toplevel_set_size(m_toplevel, width, height));
+  }
+
+  std::array<int, 2> View::floatingSize() const {
+    if (const auto& pending = m_floating.pendingSize()) {
+      return *pending;
+    }
+    const wlr_box& geo = m_toplevel->base->geometry;
+    return {geo.width, geo.height};
   }
   void View::beginFloatingResize(uint32_t edges) {
     const wlr_box& geo = m_toplevel->base->geometry;
@@ -1904,9 +1912,8 @@ namespace umbriel {
               clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
           );
         } else if (rule.defaultWidth || rule.defaultHeight) {
-          // Fractions of usable area per axis; default_size (pixels) outranks
-          // them. An axis without a fraction stays 0 so the client keeps its own
-          // preference there.
+          // Fractions of the usable area per axis; default_size outranks them.
+          // An unset axis stays 0 so the client keeps its own preference.
           wlr_box usable = targetOutput != nullptr
               ? targetOutput->usableArea()
               : m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
@@ -2628,8 +2635,8 @@ namespace umbriel {
             clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
         );
       } else if (rule.defaultWidth || rule.defaultHeight) {
-        // Pixel rules outrank fractions, an axis without either keeps the last
-        // acked (then scheduled) size instead of reverting to client preference.
+        // Pixel rules outrank fractions; an axis without either keeps the
+        // last acked (then scheduled) size.
         const wlr_box usable = floatingUsableArea();
         int width =
             rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : m_toplevel->current.width;

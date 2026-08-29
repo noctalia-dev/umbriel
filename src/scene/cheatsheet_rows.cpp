@@ -317,6 +317,8 @@ namespace {
     case A::WindowModifyWidth:
     case A::WindowSetHeight:
     case A::WindowModifyHeight:
+    case A::WindowCycleHeight:
+    case A::WindowCycleHeightBack:
     case A::WindowConsumeOrExpel:
     case A::WindowCenter:
     case A::LayoutScrollLeft:

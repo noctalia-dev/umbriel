@@ -32,6 +32,7 @@ namespace umbriel {
       return false;
     }
     m_sizeRequestSerial.reset();
+    m_pendingSize.reset();
     // A resize still under the pointer keeps its anchor: more configures are coming.
     if (!m_resizeActive) {
       clearAnchor();

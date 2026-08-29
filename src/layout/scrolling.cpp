@@ -1,6 +1,7 @@
 #include "layout/scrolling.h"
 
 #include "config/config.h"
+#include "view/floating.h"
 
 #include <algorithm>
 #include <cmath>
@@ -719,17 +720,7 @@ namespace umbriel {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
-    const auto& presets = m_config->widthPresets;
-    const double current = column.widthFrac;
-    if (direction < 0) {
-      const auto it = std::ranges::find_if(presets | std::views::reverse, [current](double preset) {
-        return preset < current - 0.0001;
-      });
-      column.widthFrac = it == presets.rend() ? presets.back() : *it;
-    } else {
-      const auto it = std::ranges::find_if(presets, [current](double preset) { return preset > current + 0.0001; });
-      column.widthFrac = it == presets.end() ? presets[0] : *it;
-    }
+    column.widthFrac = nextFractionPreset(m_config->widthPresets, column.widthFrac, direction);
     column.savedWidthFrac = 0.0;
     return true;
   }
