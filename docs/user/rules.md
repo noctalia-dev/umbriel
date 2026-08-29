@@ -41,9 +41,10 @@ opening settings do not overwrite user changes made in the meantime.
 |-----|------|-------------|
 | `default_output` | string | Open on a specific output (e.g. `"DP-1"`). |
 | `default_floating` | bool | Force floating (`true`) or force tiling (`false`). |
-| `default_size` | `[w, h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes; tiled windows ignore height. |
+| `default_size` | `[w, h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes; tiled windows ignore height. Takes precedence over `default_width`/`default_height` when set. |
 | `default_position` | table | Initial position for floating windows: `{ x = int, y = int, anchor = string }`. Ignored for tiled windows. |
-| `default_width` | float | Scrolling only. Lane scroll-axis extent fraction (0.1-1.0), which is height on a vertical workspace. Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the lane within or between scrolling workspaces retains its current fraction. Ignored in dwindle and master. |
+| `default_width` | float | For floating windows, the initial width as a fraction (0.1-1.0) of the usable area. For tiled windows, scrolling only: lane scroll-axis extent fraction (0.1-1.0), which is height on a vertical workspace. Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the lane within or between scrolling workspaces retains its current fraction. Ignored in dwindle and master. |
+| `default_height` | float | Floating windows only. Initial height as a fraction (0.1-1.0) of the usable area. Ignored for tiled windows. |
 | `default_workspace` | int | Place on workspace N from 1 to 64. On dynamic outputs, values beyond the current count clamp to the last workspace. |
 | `default_fullscreen` | bool | Open in fullscreen. |
 | `default_maximize_to_edges` | bool | Explicitly open maximized to edges. The initial configure fills the usable area without gaps or borders, so the window does not open at its normal size first. Layer-shell exclusive zones stay visible. Takes precedence over `default_maximize`; when combined with `default_fullscreen` the window opens fullscreen and returns to maximized to edges once fullscreen is cleared. |
@@ -77,6 +78,17 @@ match.app_id = "^org[.]example[.]Utility$"
 default_floating = true
 default_size = [800, 600]
 default_position = { x = 32, y = 24, anchor = "bottom_left" }
+```
+
+Floating windows can instead be sized as fractions of the usable area, per
+axis. `default_size` (pixels) wins when both are set:
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]example[.]Utility$"
+default_floating = true
+default_width = 0.5
+default_height = 0.6
 ```
 
 `anchor` defaults to `"center"`, so this centers a floating window exactly:

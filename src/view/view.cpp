@@ -1903,6 +1903,25 @@ namespace umbriel {
           requestFloatingSize(
               clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
           );
+        } else if (rule.defaultWidth || rule.defaultHeight) {
+          // Fractions of usable area per axis; default_size (pixels) outranks
+          // them. An axis without a fraction stays 0 so the client keeps its own
+          // preference there.
+          wlr_box usable = targetOutput != nullptr
+              ? targetOutput->usableArea()
+              : m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
+          if (targetOutput != nullptr && (usable.width <= 0 || usable.height <= 0)) {
+            wlr_output_layout_get_box(m_server->outputLayout(), targetOutput->wlr(), &usable);
+          }
+          if (usable.width <= 0 || usable.height <= 0) {
+            usable = m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
+          }
+          const int requestedWidth = rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : 0;
+          const int requestedHeight = rule.defaultHeight ? floatingFractionSize(*rule.defaultHeight, usable.height) : 0;
+          requestFloatingSize(
+              requestedWidth > 0 ? clampXdgWidth(requestedWidth, hints) : 0,
+              requestedHeight > 0 ? clampXdgHeight(requestedHeight, hints) : 0
+          );
         } else {
           requestFloatingSize(0, 0);
         }
@@ -2599,9 +2618,33 @@ namespace umbriel {
       }
     }
 
-    if (changedInitialRule(rule.defaultSize, initiallyApplied.defaultSize) && !m_tiled) {
+    if (!m_tiled
+        && (changedInitialRule(rule.defaultSize, initiallyApplied.defaultSize)
+            || changedInitialRule(rule.defaultWidth, initiallyApplied.defaultWidth)
+            || changedInitialRule(rule.defaultHeight, initiallyApplied.defaultHeight))) {
       const XdgSizeHints hints = xdgSizeHints(m_toplevel);
-      requestFloatingSize(clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints));
+      if (rule.defaultSize) {
+        requestFloatingSize(
+            clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
+        );
+      } else if (rule.defaultWidth || rule.defaultHeight) {
+        // Pixel rules outrank fractions, an axis without either keeps the last
+        // acked (then scheduled) size instead of reverting to client preference.
+        const wlr_box usable = floatingUsableArea();
+        int width =
+            rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : m_toplevel->current.width;
+        int height =
+            rule.defaultHeight ? floatingFractionSize(*rule.defaultHeight, usable.height) : m_toplevel->current.height;
+        if (width <= 0) {
+          width = m_toplevel->scheduled.width;
+        }
+        if (height <= 0) {
+          height = m_toplevel->scheduled.height;
+        }
+        requestFloatingSize(
+            width > 0 ? clampXdgWidth(width, hints) : 0, height > 0 ? clampXdgHeight(height, hints) : 0
+        );
+      }
       placeInUsableArea();
     }
 

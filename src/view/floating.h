@@ -8,6 +8,7 @@ extern "C" {
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 namespace umbriel {
 
@@ -69,6 +70,45 @@ namespace umbriel {
         .x = usable.x + (usable.width - width) / 2,
         .y = usable.y + (usable.height - height) / 2,
     };
+  }
+
+  // Pixel length of `fraction` of the usable area on one axis. A degenerate axis
+  // yields 0, which callers pass through unclamped so xdg-shell keeps the client's
+  // own preference for that axis.
+  [[nodiscard]] constexpr int floatingFractionSize(double fraction, int usable) {
+    if (usable <= 0) {
+      return 0;
+    }
+    const int pixels = static_cast<int>(fraction * static_cast<double>(usable));
+    return pixels < 1 ? 1 : (pixels > usable ? usable : pixels);
+  }
+
+  // `size` as a fraction of a usable-axis length. The caller guarantees usable > 0.
+  [[nodiscard]] constexpr double floatingSizeFraction(int size, int usable) {
+    return static_cast<double>(size) / static_cast<double>(usable);
+  }
+
+  // The next preset fraction from `current` in `direction` (negative shrinks),
+  // wrapping to the opposite end. Mirrors ScrollingLayout::cycleWidth's walk over
+  // layout.width_presets, shared by tiling and floating window cycling.
+  [[nodiscard]] inline double nextFractionPreset(const std::vector<double>& presets, double current, int direction) {
+    if (presets.empty()) {
+      return current;
+    }
+    if (direction < 0) {
+      for (auto it = presets.rbegin(); it != presets.rend(); ++it) {
+        if (*it < current - 0.0001) {
+          return *it;
+        }
+      }
+      return presets.back();
+    }
+    for (const double preset : presets) {
+      if (preset > current + 0.0001) {
+        return preset;
+      }
+    }
+    return presets.front();
   }
 
   // The remembered state of a window's floating identity, kept across tiled round trips so that floating a window twice

@@ -378,6 +378,12 @@ default_floating = true
 default_size = [800, 600]
 
 # [[window_rule]]
+# match.app_id = "^org[.]example[.]Utility$"
+# default_floating = true
+# default_width = 0.5             # initial width as a fraction of the usable area
+# default_height = 0.6            # initial height as a fraction of the usable area
+
+# [[window_rule]]
 # match.app_id = "firefox"
 # match.title = "^Library$"
 # default_floating = true

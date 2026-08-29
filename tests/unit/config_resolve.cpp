@@ -231,6 +231,30 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(umbriel::anyWindowRuleHasTitlePattern(config));
 }
 
+UMBRIEL_TEST(windowRulesMergeFractionSizingLastWriterWins) {
+  Config config;
+
+  WindowRule first;
+  first.appIdPattern = "^utility$";
+  first.appIdRegex = std::regex(first.appIdPattern);
+  first.defaultFloating = true;
+  first.defaultWidth = 0.5;
+  first.defaultHeight = 0.6;
+  config.windowRules.push_back(std::move(first));
+
+  WindowRule second;
+  second.appIdPattern = "^utility$";
+  second.appIdRegex = std::regex(second.appIdPattern);
+  second.defaultWidth = 0.75;
+  config.windowRules.push_back(std::move(second));
+
+  const auto resolved = umbriel::resolveWindowRules(config, "utility", "", false);
+  CHECK(resolved.defaultFloating && *resolved.defaultFloating);
+  // Later rules overwrite only the fields they set.
+  CHECK(resolved.defaultWidth && *resolved.defaultWidth == 0.75);
+  CHECK(resolved.defaultHeight && *resolved.defaultHeight == 0.6);
+}
+
 UMBRIEL_TEST(windowVrrRuleOverridesTheOutputPolicy) {
   CHECK(umbriel::effectiveVrrEnabled(VrrMode::Disabled, false, VrrMode::Always, false));
   CHECK(!umbriel::effectiveVrrEnabled(VrrMode::Always, false, VrrMode::Disabled, false));

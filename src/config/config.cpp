@@ -1608,6 +1608,19 @@ namespace umbriel {
           }
         }
 
+        if (const toml::node* n = keys.take("default_height")) {
+          const auto value = n->value<double>();
+          if (!value || std::isnan(*value)) {
+            warnAt(n->source(), "ignoring window_rule.default_height (expected number 0.1-1.0)");
+          } else {
+            const double used = std::clamp(*value, 0.1, 1.0);
+            if (used != *value) {
+              warnAt(n->source(), "window_rule.default_height = {} out of range, clamped to {}", *value, used);
+            }
+            rule.defaultHeight = used;
+          }
+        }
+
         if (const toml::node* n = keys.take("default_workspace")) {
           const auto value = n->value<std::int64_t>();
           if (!value || *value < 1 || *value > static_cast<std::int64_t>(kMaxWorkspaces)) {

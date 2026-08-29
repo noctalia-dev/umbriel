@@ -5,9 +5,12 @@
 using umbriel::anchoredContentOrigin;
 using umbriel::centeredOrigin;
 using umbriel::clampFloatingOrigin;
+using umbriel::floatingFractionSize;
 using umbriel::FloatingGeometry;
 using umbriel::floatingKeepVisible;
 using umbriel::FloatingPoint;
+using umbriel::floatingSizeFraction;
+using umbriel::nextFractionPreset;
 using umbriel::serialSettled;
 
 namespace {
@@ -249,6 +252,67 @@ UMBRIEL_TEST(centeringHonoursAnOffsetUsableArea) {
   const FloatingPoint origin = centeredOrigin(usable, 800, 600);
   CHECK_EQ(origin.x, 1920 + 560);
   CHECK_EQ(origin.y, 40 + 220);
+}
+
+// Fraction sizing (window_rule.default_width / default_height on floats)
+UMBRIEL_TEST(aFractionOfTheUsableAxisBecomesPixels) {
+  CHECK_EQ(floatingFractionSize(0.5, 1920), 960);
+  CHECK_EQ(floatingFractionSize(0.5, 1080), 540);
+  CHECK_EQ(floatingFractionSize(0.1, 1920), 192);
+  CHECK_EQ(floatingFractionSize(1.0, 1920), 1920);
+}
+
+UMBRIEL_TEST(aDegenerateUsableAxisLeavesTheChoiceToTheClient) {
+  CHECK_EQ(floatingFractionSize(0.5, 0), 0);
+  CHECK_EQ(floatingFractionSize(0.5, -1), 0);
+}
+
+UMBRIEL_TEST(fractionPixelsStayWithinTheAxis) {
+  // Defensive: parse clamps fractions to [0.1, 1.0], but the arithmetic result
+  // never leaves the usable axis and never collapses to 0.
+  CHECK_EQ(floatingFractionSize(0.0001, 100), 1);
+  CHECK_EQ(floatingFractionSize(1.5, 800), 800);
+}
+
+UMBRIEL_TEST(aSizeReadsBackAsTheFractionItCameFrom) {
+  CHECK(floatingSizeFraction(960, 1920) == 0.5);
+  CHECK(floatingSizeFraction(192, 1920) == 0.1);
+}
+
+// Preset cycling (window-cycle-width/-height on floats)
+UMBRIEL_TEST(cyclingForwardPicksTheNextLargerPreset) {
+  const std::vector<double> presets{1.0 / 3, 0.5, 2.0 / 3};
+  CHECK(nextFractionPreset(presets, 0.4, 1) == 0.5);
+  CHECK(nextFractionPreset(presets, 0.5, 1) == 2.0 / 3);
+}
+
+UMBRIEL_TEST(cyclingForwardWrapsToTheSmallestPreset) {
+  const std::vector<double> presets{1.0 / 3, 0.5, 2.0 / 3};
+  CHECK(nextFractionPreset(presets, 0.9, 1) == 1.0 / 3);
+}
+
+UMBRIEL_TEST(cyclingBackwardPicksTheNextSmallerPreset) {
+  const std::vector<double> presets{1.0 / 3, 0.5, 2.0 / 3};
+  CHECK(nextFractionPreset(presets, 0.6, -1) == 0.5);
+  CHECK(nextFractionPreset(presets, 0.4, -1) == 1.0 / 3);
+}
+
+UMBRIEL_TEST(cyclingBackwardWrapsToTheLargestPreset) {
+  const std::vector<double> presets{1.0 / 3, 0.5, 2.0 / 3};
+  CHECK(nextFractionPreset(presets, 0.2, -1) == 2.0 / 3);
+}
+
+UMBRIEL_TEST(anExactPresetCyclesPastItself) {
+  // The epsilon guard: a window sitting exactly on a preset moves to the next
+  // one instead of re-selecting its own size.
+  const std::vector<double> presets{1.0 / 3, 0.5, 2.0 / 3};
+  CHECK(nextFractionPreset(presets, 0.5, -1) == 1.0 / 3);
+  CHECK(nextFractionPreset(presets, 0.5, 1) == 2.0 / 3);
+}
+
+UMBRIEL_TEST(cyclingWithoutPresetsKeepsTheCurrentFraction) {
+  CHECK(nextFractionPreset({}, 0.42, 1) == 0.42);
+  CHECK(nextFractionPreset({}, 0.42, -1) == 0.42);
 }
 
 int main() { return RUN_TESTS(); }
