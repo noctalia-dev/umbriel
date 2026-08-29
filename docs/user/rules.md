@@ -2,9 +2,11 @@
 
 ## Window Rules
 
-Window rules match `app_id`, title, or focus state using ECMAScript regular
-expressions. Every matching rule contributes its settings. If two rules set
-the same field, the rule that appears later in the file takes precedence.
+Window rules can match `app_id`, title, and a client-defined XDG toplevel tag
+using ECMAScript regular expressions. They can also match a standardized
+content type or focus state. Every matching rule contributes its settings. If
+two rules set the same field, the rule that appears later in the file takes
+precedence.
 
 ```toml
 [[window_rule]]
@@ -19,16 +21,32 @@ default_floating = true
 |----------|------|-------------|
 | `match.app_id` | regex | Match the window's app ID. |
 | `match.title` | regex | Match the window's title. |
+| `match.xdg_tag` | regex | Match the client-defined XDG toplevel tag. |
+| `match.content_type` | string | Match `"none"`, `"photo"`, `"video"`, or `"game"`. |
 | `match.is_focused` | bool | Match the window's focused state dynamically. |
 
 Every selector is optional. A rule without selectors matches every window.
 Regular expressions match any part of a value by default. Use `^` and `$` when
 you need to match the entire value.
 
-Run `umbriel windows` to list the app IDs of open windows. Windows translated
-through Umbriel's managed `xwayland-satellite` are prefixed with `[Xwayland]`.
-The JSON form, `umbriel windows --json`, reports the same distinction through
-the boolean `xwayland` field.
+Run `umbriel windows` to inspect open windows. Its human-readable output adds
+suffixes such as `[xdg_tag=proton-game]` and `[content_type=game]` when those
+values are present. The JSON form, `umbriel windows --json`, always reports
+`xdg_tag` and `content_type`, and also includes the `xwayland` boolean.
+
+An XDG toplevel tag is one client-defined string, not a fixed vocabulary. A
+client can set it before the window opens and replace it later if the window's
+purpose changes. The initial tag participates in opening settings. Later
+replacements refresh settings from the dynamic table below, but never replay
+opening settings. Windows with no tag, or an empty tag, do not match an
+`xdg_tag` selector.
+
+Umbriel derives a window's content type from standardized Wayland hints on its
+XDG root surface and visible subsurfaces. When those hints differ, it uses the
+priority `game`, `video`, `photo`, then `none`. This also covers Proton and Wine
+games that publish the hint on a child surface. `none` includes windows that do
+not publish a content hint. Client changes refresh settings from the dynamic
+table below, but never replay the opening settings.
 
 ### Settings applied when a window opens
 
@@ -136,10 +154,15 @@ default_width = 0.33
 match.app_id = "^(helium|chromium)$"
 default_width = 0.75
 
-# Always use VRR while a game is focused, even when the output policy disables it
+# Always use VRR for game content, even when the output policy disables it
 [[window_rule]]
-match.app_id = "^(steam_app_[0-9]+|gamescope)$"
+match.content_type = "game"
 vrr = "always"
+
+# Match a client-defined tag. Proton-EM uses proton-game for game windows.
+[[window_rule]]
+match.xdg_tag = "^proton-game$"
+default_fullscreen = true
 
 # Activate the HDR output while a matching fullscreen game is focused
 [[window_rule]]

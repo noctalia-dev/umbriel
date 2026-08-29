@@ -53,6 +53,20 @@ namespace umbriel {
       return current.has_value() && current != initiallyApplied;
     }
 
+    constexpr int contentTypePriority(ContentType type) {
+      switch (type) {
+      case ContentType::Game:
+        return 3;
+      case ContentType::Video:
+        return 2;
+      case ContentType::Photo:
+        return 1;
+      case ContentType::None:
+        return 0;
+      }
+      return 0;
+    }
+
     bool sceneNodeShowsSurface(wlr_scene_node* node, wlr_surface* surface) {
       switch (node->type) {
       case WLR_SCENE_NODE_BUFFER: {
@@ -141,9 +155,11 @@ namespace umbriel {
     }
     notifyOutputScale();
 
+    // The surface watcher must run before the general commit handler so a
+    // newly committed content type participates in initial window rules.
+    watchViewSurfaceTree(m_toplevel->base->surface);
     m_commit.notify = onCommit;
     wl_signal_add(&m_toplevel->base->surface->events.commit, &m_commit);
-    watchOpacitySurfaceTree(m_toplevel->base->surface);
     m_destroy.notify = onDestroy;
     wl_signal_add(&m_toplevel->events.destroy, &m_destroy);
 
@@ -195,7 +211,7 @@ namespace umbriel {
       m_acceptClientMaximizeIdle = nullptr;
     }
     m_server->unregisterAnimatable(this);
-    clearOpacitySurfaceWatches();
+    clearViewSurfaceWatches();
     setWorkspace(nullptr);
     if (m_map.link.next != nullptr) {
       wl_list_remove(&m_map.link);
@@ -471,44 +487,66 @@ namespace umbriel {
     m_effectiveOpacityCommitPending = false;
   }
 
-  void View::watchOpacitySurfaceTree(wlr_surface* root) {
+  void View::watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment) {
     if (root == nullptr) {
       return;
     }
-    wlr_surface_for_each_surface(
-        root,
-        [](wlr_surface* surface, int /*sx*/, int /*sy*/, void* data) {
-          static_cast<View*>(data)->watchOpacitySurface(surface);
-        },
-        this
-    );
+    watchViewSurface(root, attachment);
+
+    wlr_subsurface* child;
+    wl_list_for_each(child, &root->current.subsurfaces_below, current.link) {
+      watchViewSurfaceTree(child->surface, child);
+    }
+    wl_list_for_each(child, &root->current.subsurfaces_above, current.link) {
+      watchViewSurfaceTree(child->surface, child);
+    }
   }
 
-  void View::watchOpacitySurface(wlr_surface* surface) {
-    if (surface == nullptr || std::ranges::any_of(m_opacitySurfaceWatches, [surface](const auto& watch) {
-          return watch->surface == surface;
-        })) {
+  void View::watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment) {
+    if (surface == nullptr) {
       return;
     }
-    auto watch = std::make_unique<OpacitySurfaceWatch>();
+
+    const auto existing =
+        std::ranges::find_if(m_viewSurfaceWatches, [surface](const auto& watch) { return watch->surface == surface; });
+    if (existing != m_viewSurfaceWatches.end()) {
+      ViewSurfaceWatch& watch = **existing;
+      if (watch.subsurface == nullptr && attachment != nullptr) {
+        watch.subsurface = attachment;
+        watch.subsurfaceDestroy.notify = onViewSubsurfaceDestroy;
+        wl_signal_add(&attachment->events.destroy, &watch.subsurfaceDestroy);
+      }
+      return;
+    }
+
+    auto watch = std::make_unique<ViewSurfaceWatch>();
     watch->view = this;
     watch->surface = surface;
-    watch->commit.notify = onOpacitySurfaceCommit;
+    watch->subsurface = attachment;
+    watch->contentType = m_server->surfaceContentType(surface);
+    watch->commit.notify = onViewSurfaceCommit;
     wl_signal_add(&surface->events.commit, &watch->commit);
-    watch->newSubsurface.notify = onOpacitySurfaceNewSubsurface;
+    watch->newSubsurface.notify = onViewSurfaceNewSubsurface;
     wl_signal_add(&surface->events.new_subsurface, &watch->newSubsurface);
-    watch->destroy.notify = onOpacitySurfaceDestroy;
+    if (watch->subsurface != nullptr) {
+      watch->subsurfaceDestroy.notify = onViewSubsurfaceDestroy;
+      wl_signal_add(&watch->subsurface->events.destroy, &watch->subsurfaceDestroy);
+    }
+    watch->destroy.notify = onViewSurfaceDestroy;
     wl_signal_add(&surface->events.destroy, &watch->destroy);
-    m_opacitySurfaceWatches.push_back(std::move(watch));
+    m_viewSurfaceWatches.push_back(std::move(watch));
   }
 
-  void View::clearOpacitySurfaceWatches() {
-    for (const auto& watch : m_opacitySurfaceWatches) {
+  void View::clearViewSurfaceWatches() {
+    for (const auto& watch : m_viewSurfaceWatches) {
       wl_list_remove(&watch->commit.link);
       wl_list_remove(&watch->newSubsurface.link);
+      if (watch->subsurface != nullptr) {
+        wl_list_remove(&watch->subsurfaceDestroy.link);
+      }
       wl_list_remove(&watch->destroy.link);
     }
-    m_opacitySurfaceWatches.clear();
+    m_viewSurfaceWatches.clear();
   }
 
   void View::cancelFadeAnimation() {
@@ -860,30 +898,43 @@ namespace umbriel {
     self->handleCommit();
   }
 
-  void View::onOpacitySurfaceCommit(wl_listener* listener, void* /*data*/) {
-    OpacitySurfaceWatch* watch;
+  void View::onViewSurfaceCommit(wl_listener* listener, void* /*data*/) {
+    ViewSurfaceWatch* watch;
     watch = wl_container_of(listener, watch, commit);
+    watch->view->syncContentType(watch->surface);
     if (watch->view->effectiveOpacity() < 1.0F) {
       watch->view->m_effectiveOpacityCommitPending = true;
       watch->view->scheduleFrame();
     }
   }
 
-  void View::onOpacitySurfaceNewSubsurface(wl_listener* listener, void* data) {
-    OpacitySurfaceWatch* watch;
+  void View::onViewSurfaceNewSubsurface(wl_listener* listener, void* data) {
+    ViewSurfaceWatch* watch;
     watch = wl_container_of(listener, watch, newSubsurface);
     auto* subsurface = static_cast<wlr_subsurface*>(data);
-    watch->view->watchOpacitySurfaceTree(subsurface->surface);
+    watch->view->watchViewSurfaceTree(subsurface->surface, subsurface);
+    watch->view->syncContentType();
   }
 
-  void View::onOpacitySurfaceDestroy(wl_listener* listener, void* /*data*/) {
-    OpacitySurfaceWatch* watch;
+  void View::onViewSubsurfaceDestroy(wl_listener* listener, void* /*data*/) {
+    ViewSurfaceWatch* watch;
+    watch = wl_container_of(listener, watch, subsurfaceDestroy);
+    watch->subsurface = nullptr;
+    wl_list_remove(&watch->subsurfaceDestroy.link);
+    watch->view->syncContentType();
+  }
+
+  void View::onViewSurfaceDestroy(wl_listener* listener, void* /*data*/) {
+    ViewSurfaceWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
     View* view = watch->view;
     wl_list_remove(&watch->commit.link);
     wl_list_remove(&watch->newSubsurface.link);
+    if (watch->subsurface != nullptr) {
+      wl_list_remove(&watch->subsurfaceDestroy.link);
+    }
     wl_list_remove(&watch->destroy.link);
-    std::erase_if(view->m_opacitySurfaceWatches, [watch](const auto& candidate) { return candidate.get() == watch; });
+    std::erase_if(view->m_viewSurfaceWatches, [watch](const auto& candidate) { return candidate.get() == watch; });
   }
 
   void View::onDestroy(wl_listener* listener, void* /*data*/) {
@@ -1589,6 +1640,10 @@ namespace umbriel {
   }
 
   void View::handleMap() {
+    // The XDG map signal is emitted before the root surface commit signal.
+    // Refresh only the root cache here, then let each descendant's own commit
+    // keep its cached double-buffered state authoritative.
+    syncContentType(m_toplevel->base->surface);
     m_mapped = true;
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     m_acceptClientMaximizeIdle =
@@ -1608,6 +1663,8 @@ namespace umbriel {
     // using it.
     const ResolvedWindowRule rule = resolvedRules();
     m_initialRules = rule;
+    m_initialRulesXdgTag = m_xdgTag;
+    m_initialRulesContentType = m_contentType;
     if (rule.defaultFloating) {
       m_tiled = !*rule.defaultFloating;
     }
@@ -1795,11 +1852,66 @@ namespace umbriel {
     }
     m_initialRulesSettled = false;
     m_initialRules = {};
+    m_initialRulesXdgTag.clear();
+    m_initialRulesContentType = ContentType::None;
     m_ruleOpacity = 1.0F;
     m_hasMaximizeRestoreBox = false;
     m_floating.clearSizeRequest();
     if (m_displacedHome) {
       m_server->scheduleDisplacedViewRestore();
+    }
+  }
+
+  void View::setXdgTag(std::string_view tag) {
+    if (m_xdgTag == tag) {
+      return;
+    }
+    m_xdgTag = tag;
+    m_server->scheduleIpcWindowsEvent();
+    if (m_mapped) {
+      applyDynamicRules();
+    }
+  }
+
+  void View::syncContentType(wlr_surface* committedSurface) {
+    if (committedSurface != nullptr) {
+      const auto committed = std::ranges::find_if(m_viewSurfaceWatches, [committedSurface](const auto& watch) {
+        return watch->surface == committedSurface;
+      });
+      if (committed != m_viewSurfaceWatches.end()) {
+        (*committed)->contentType = m_server->surfaceContentType(committedSurface);
+      }
+    }
+
+    struct Context {
+      const View* view;
+      ContentType effective = ContentType::None;
+    } context{this};
+    wlr_surface_for_each_surface(
+        m_toplevel->base->surface,
+        [](wlr_surface* surface, int /*sx*/, int /*sy*/, void* data) {
+          auto& context = *static_cast<Context*>(data);
+          const auto watch = std::ranges::find_if(context.view->m_viewSurfaceWatches, [surface](const auto& candidate) {
+            return candidate->surface == surface;
+          });
+          if (watch == context.view->m_viewSurfaceWatches.end()) {
+            return;
+          }
+
+          if (contentTypePriority((*watch)->contentType) > contentTypePriority(context.effective)) {
+            context.effective = (*watch)->contentType;
+          }
+        },
+        &context
+    );
+    const ContentType next = context.effective;
+    if (next == m_contentType) {
+      return;
+    }
+    m_contentType = next;
+    m_server->scheduleIpcWindowsEvent();
+    if (m_mapped) {
+      applyDynamicRules();
     }
   }
 
@@ -2018,7 +2130,7 @@ namespace umbriel {
       m_captureSource = nullptr;
     }
 
-    clearOpacitySurfaceWatches();
+    clearViewSurfaceWatches();
 
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);
@@ -2581,9 +2693,12 @@ namespace umbriel {
     if (!m_mapped) {
       return;
     }
-    // Copied, not referenced: the calls below can reach setBorderFocused and re-resolve into the same cache slot, which
-    // would change this value underneath the code still using it.
-    const ResolvedWindowRule rule = resolvedRules();
+    // Late app ID or title settlement may select opening rules, but identity
+    // hints changed after map must not select new one-shot behavior.
+    const ResolvedWindowRule rule = resolveWindowRules(
+        config(), m_toplevel->app_id, m_toplevel->title, m_initialRulesXdgTag, m_initialRulesContentType,
+        m_borderFocusedState
+    );
 
     // Identity can arrive after map. Apply a newly selected one-shot value, but
     // never replay a value already applied at map over the user's later state.
@@ -2670,9 +2785,8 @@ namespace umbriel {
       setMaximized(true);
     }
 
-    // Dynamic effects are always safe to update. Reuse the resolution above
-    // rather than running every rule regex a second time.
-    applyDynamicRules(&rule);
+    // Dynamic effects use the current identity hints, including ones changed after map.
+    applyDynamicRules();
   }
 
   const ResolvedWindowRule& View::resolvedRules() {
@@ -2685,15 +2799,19 @@ namespace umbriel {
     if (m_rulesGeneration == generation
         && m_rulesFocused == m_borderFocusedState
         && m_rulesAppId == appIdView
-        && m_rulesTitle == titleView) {
+        && m_rulesTitle == titleView
+        && m_rulesXdgTag == m_xdgTag
+        && m_rulesContentType == m_contentType) {
       return m_rules;
     }
 
-    m_rules = resolveWindowRules(config(), appId, title, m_borderFocusedState);
+    m_rules = resolveWindowRules(config(), appId, title, m_xdgTag, m_contentType, m_borderFocusedState);
     m_rulesGeneration = generation;
     m_rulesFocused = m_borderFocusedState;
     m_rulesAppId = appIdView;
     m_rulesTitle = titleView;
+    m_rulesXdgTag = m_xdgTag;
+    m_rulesContentType = m_contentType;
     return m_rules;
   }
 

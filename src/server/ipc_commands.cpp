@@ -48,12 +48,16 @@ namespace umbriel {
       for (const auto& entry : ok) {
         const std::string appId = entry.value("app_id", "");
         const std::string title = entry.value("title", "");
+        const std::string xdgTag = entry.value("xdg_tag", "");
+        const std::string xdgTagSuffix = xdgTag.empty() ? "" : " [xdg_tag=" + xdgTag + "]";
+        const std::string contentType = entry.value("content_type", "none");
+        const std::string contentTypeSuffix = contentType == "none" ? "" : " [content_type=" + contentType + "]";
         std::println(
-            "{}{}{}\t{}\t[{} {}x{}{:+}{:+}]",
+            "{}{}{}\t{}\t[{} {}x{}{:+}{:+}]{}{}",
             entry.value("focused", false) ? "*" : (entry.value("urgent", false) ? "!" : " "),
             entry.value("xwayland", false) ? "[Xwayland] " : "", appId.empty() ? "-" : appId,
             title.empty() ? "-" : title, entry.value("floating", false) ? "float" : "tile", entry.value("w", 0),
-            entry.value("h", 0), entry.value("x", 0), entry.value("y", 0)
+            entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix, contentTypeSuffix
         );
       }
     }
@@ -333,6 +337,8 @@ namespace umbriel {
       entry["active"] = v->activated();
       entry["app_id"] = v->toplevel()->app_id != nullptr ? v->toplevel()->app_id : "";
       entry["title"] = v->toplevel()->title != nullptr ? v->toplevel()->title : "";
+      entry["xdg_tag"] = v->xdgTag();
+      entry["content_type"] = contentTypeName(v->contentType());
       entry["floating"] = v->floating();
       // The compositor's own notion of focus, which is what every action acts
       // on. Lets a caller (and the harness) see where focus went.

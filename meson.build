@@ -206,6 +206,32 @@ xdg_shell_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+xdg_toplevel_tag_client_h = custom_target(
+  'xdg-toplevel-tag-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml',
+  output: 'xdg-toplevel-tag-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+xdg_toplevel_tag_client_c = custom_target(
+  'xdg-toplevel-tag-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml',
+  output: 'xdg-toplevel-tag-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+content_type_client_h = custom_target(
+  'content-type-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/content-type/content-type-v1.xml',
+  output: 'content-type-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+content_type_client_c = custom_target(
+  'content-type-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/content-type/content-type-v1.xml',
+  output: 'content-type-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 color_management_client_h = custom_target(
   'color-management-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/color-management/color-management-v1.xml',
@@ -605,6 +631,10 @@ unmap_client = executable(
     'tests/harness/clients/unmap_client.cpp',
     xdg_shell_client_h,
     xdg_shell_client_c,
+    xdg_toplevel_tag_client_h,
+    xdg_toplevel_tag_client_c,
+    content_type_client_h,
+    content_type_client_c,
     color_management_client_h,
     color_management_client_c,
     tearing_control_client_h,

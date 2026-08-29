@@ -12,6 +12,7 @@
 
 using umbriel::ConfigDiagnostic;
 using umbriel::ConfigStore;
+using umbriel::ContentType;
 using umbriel::HdrMode;
 using umbriel::LayoutMode;
 using umbriel::ModifierKey;
@@ -635,6 +636,80 @@ UMBRIEL_TEST(windowOutputPoliciesLoadAndRejectInvalidValues) {
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
   CHECK(!store.config().windowRules[0].hdr);
   CHECK(containsDiagnostic(store, "ignoring window_rule.hdr"));
+}
+
+UMBRIEL_TEST(windowContentTypeMatcherLoadsFixedVocabulary) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  const auto checkValue = [&](const std::string& value, ContentType expected) {
+    file.write("[[window_rule]]\nmatch.content_type = \"" + value + "\"\nopacity = 0.9\n");
+    CHECK(store.reload().success);
+    CHECK_EQ(store.config().windowRules.size(), size_t{1});
+    CHECK(store.config().windowRules[0].matchContentType == expected);
+    CHECK(!containsDiagnostic(store, "unknown key window_rule.match.content_type"));
+  };
+  checkValue("none", ContentType::None);
+  checkValue("photo", ContentType::Photo);
+  checkValue("video", ContentType::Video);
+  checkValue("game", ContentType::Game);
+
+  file.write("[[window_rule]]\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(!store.config().windowRules[0].matchContentType);
+
+  file.write("[[window_rule]]\nmatch.content_type = 42\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.content_type (expected none|photo|video|game)"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+
+  file.write("[[window_rule]]\nmatch.content_type = \"stream\"\nmatch.is_focused = true\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.content_type (expected none|photo|video|game)"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_focused"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+
+  file.write("[[window_rule]]\nmatch.content_type = \"Game\"\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.content_type (expected none|photo|video|game)"));
+}
+
+UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[[window_rule]]\nmatch.xdg_tag = \"^(game-launcher|game-running)$\"\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK_EQ(store.config().windowRules[0].xdgTagPattern, std::string("^(game-launcher|game-running)$"));
+  CHECK(std::regex_search("game-launcher", store.config().windowRules[0].xdgTagRegex));
+  CHECK(std::regex_search("game-running", store.config().windowRules[0].xdgTagRegex));
+  CHECK(!std::regex_search("game-settings", store.config().windowRules[0].xdgTagRegex));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.xdg_tag"));
+
+  file.write("[[window_rule]]\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].xdgTagPattern.empty());
+
+  file.write("[[window_rule]]\nmatch.xdg_tag = 42\nmatch.is_focused = true\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.xdg_tag (expected string)"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_focused"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+
+  file.write("[[window_rule]]\nmatch.xdg_tag = \"[\"\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "invalid regex in window_rule.match.xdg_tag"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
 }
 
 UMBRIEL_TEST(windowTearingOverrideLoadsAsAnOptionalBoolean) {
