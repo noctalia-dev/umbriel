@@ -42,12 +42,7 @@ namespace umbriel {
       return error == std::errc{} && end == name.data() + name.size() ? index : std::numeric_limits<size_t>::max();
     }
 
-    View* viewForSurface(Server& server, wlr_surface* surface) {
-      if (surface == nullptr) {
-        return nullptr;
-      }
-      wlr_surface* root = wlr_surface_get_root_surface(surface);
-      wlr_xdg_toplevel* toplevel = wlr_xdg_toplevel_try_from_wlr_surface(root);
+    View* viewForToplevel(Server& server, wlr_xdg_toplevel* toplevel) {
       if (toplevel == nullptr) {
         return nullptr;
       }
@@ -57,6 +52,14 @@ namespace umbriel {
         }
       }
       return nullptr;
+    }
+
+    View* viewForSurface(Server& server, wlr_surface* surface) {
+      if (surface == nullptr) {
+        return nullptr;
+      }
+      wlr_surface* root = wlr_surface_get_root_surface(surface);
+      return viewForToplevel(server, wlr_xdg_toplevel_try_from_wlr_surface(root));
     }
 
     pid_t surfaceClientPid(wlr_surface* surface) {
@@ -598,6 +601,15 @@ namespace umbriel {
     Server* self;
     self = wl_container_of(listener, self, m_newXdgToplevel);
     self->m_registry.add(std::make_unique<View>(*self, static_cast<wlr_xdg_toplevel*>(data)));
+  }
+
+  void Server::onSetXdgToplevelTag(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_setXdgToplevelTag);
+    const auto* event = static_cast<wlr_xdg_toplevel_tag_manager_v1_set_tag_event*>(data);
+    if (View* view = viewForToplevel(*self, event->toplevel)) {
+      view->setXdgTag(event->tag != nullptr ? event->tag : "");
+    }
   }
 
   void Server::onNewXdgPopup(wl_listener* /*listener*/, void* data) {

@@ -371,6 +371,16 @@ blur_optimized = true
 # match.app_id = "^discord$"
 # default_maximize_to_edges = true
 
+# Match a standardized surface content hint
+# [[window_rule]]
+# match.content_type = "game"
+# vrr = "always"
+
+# Match a client-defined XDG toplevel tag, such as Proton-EM's game tag
+# [[window_rule]]
+# match.xdg_tag = "^proton-game$"
+# default_fullscreen = true
+
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true

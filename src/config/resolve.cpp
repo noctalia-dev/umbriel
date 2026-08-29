@@ -117,7 +117,10 @@ namespace umbriel {
     return false;
   }
 
-  ResolvedWindowRule resolveWindowRules(const Config& config, const char* appId, const char* title, bool focused) {
+  ResolvedWindowRule resolveWindowRules(
+      const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
+      bool focused
+  ) {
     ResolvedWindowRule resolved;
     const std::string_view appIdView = appId != nullptr ? appId : "";
     const std::string_view titleView = title != nullptr ? title : "";
@@ -132,6 +135,14 @@ namespace umbriel {
         if (titleView.empty() || !std::regex_search(titleView.begin(), titleView.end(), rule.titleRegex)) {
           continue;
         }
+      }
+      if (!rule.xdgTagPattern.empty()) {
+        if (xdgTag.empty() || !std::regex_search(xdgTag.begin(), xdgTag.end(), rule.xdgTagRegex)) {
+          continue;
+        }
+      }
+      if (rule.matchContentType && *rule.matchContentType != contentType) {
+        continue;
       }
       if (rule.matchFocused && *rule.matchFocused != focused) {
         continue;

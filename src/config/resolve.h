@@ -10,8 +10,10 @@ namespace umbriel {
   // Validation uses the same inventory rules as runtime resolution.
   [[nodiscard]] bool workspaceRuleTargetExists(const Config& config, const WorkspaceConfig& rule);
 
-  [[nodiscard]] ResolvedWindowRule
-  resolveWindowRules(const Config& config, const char* appId, const char* title, bool focused);
+  [[nodiscard]] ResolvedWindowRule resolveWindowRules(
+      const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
+      bool focused
+  );
   [[nodiscard]] ResolvedLayerRule resolveLayerRules(const Config& config, const char* layerNamespace);
   [[nodiscard]] bool anyWindowRuleHasTitlePattern(const Config& config);
   // Return the sole fixed-output inventory containing this zero-based workspace

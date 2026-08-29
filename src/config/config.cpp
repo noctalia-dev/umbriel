@@ -82,6 +82,23 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    std::optional<ContentType> readContentType(const toml::node& node) {
+      const auto value = node.value<std::string>();
+      if (value == "none") {
+        return ContentType::None;
+      }
+      if (value == "photo") {
+        return ContentType::Photo;
+      }
+      if (value == "video") {
+        return ContentType::Video;
+      }
+      if (value == "game") {
+        return ContentType::Game;
+      }
+      return std::nullopt;
+    }
+
     void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg) {
       ConfigDiagnostic diag;
       diag.severity = severity;
@@ -1441,6 +1458,7 @@ namespace umbriel {
         Section keys(*section, "window_rule", configStore().mutableDiagnostics());
 
         WindowRule rule;
+        bool valid = true;
 
         if (const toml::node* matchNode = keys.take("match")) {
           if (const auto* match = matchNode->as_table()) {
@@ -1452,10 +1470,11 @@ namespace umbriel {
                   rule.appIdRegex = std::regex(rule.appIdPattern);
                 } catch (const std::regex_error& error) {
                   warnAt(appIdNode->source(), "invalid regex in window_rule.match.app_id: {}", error.what());
-                  continue;
+                  valid = false;
                 }
               } else {
                 warnAt(appIdNode->source(), "ignoring window_rule.match.app_id (expected string)");
+                valid = false;
               }
             }
             if (const toml::node* titleNode = matchKeys.take("title")) {
@@ -1465,10 +1484,36 @@ namespace umbriel {
                   rule.titleRegex = std::regex(rule.titlePattern);
                 } catch (const std::regex_error& error) {
                   warnAt(titleNode->source(), "invalid regex in window_rule.match.title: {}", error.what());
-                  continue;
+                  valid = false;
                 }
               } else {
                 warnAt(titleNode->source(), "ignoring window_rule.match.title (expected string)");
+                valid = false;
+              }
+            }
+            if (const toml::node* xdgTagNode = matchKeys.take("xdg_tag")) {
+              if (const auto value = xdgTagNode->value<std::string>()) {
+                rule.xdgTagPattern = *value;
+                try {
+                  rule.xdgTagRegex = std::regex(rule.xdgTagPattern);
+                } catch (const std::regex_error& error) {
+                  warnAt(xdgTagNode->source(), "invalid regex in window_rule.match.xdg_tag: {}", error.what());
+                  valid = false;
+                }
+              } else {
+                warnAt(xdgTagNode->source(), "ignoring window_rule.match.xdg_tag (expected string)");
+                valid = false;
+              }
+            }
+            if (const toml::node* contentTypeNode = matchKeys.take("content_type")) {
+              if (const auto value = readContentType(*contentTypeNode)) {
+                rule.matchContentType = *value;
+              } else {
+                warnAt(
+                    contentTypeNode->source(),
+                    "ignoring window_rule.match.content_type (expected none|photo|video|game)"
+                );
+                valid = false;
               }
             }
             if (const toml::node* focusedNode = matchKeys.take("is_focused")) {
@@ -1476,10 +1521,12 @@ namespace umbriel {
                 rule.matchFocused = focusedNode->value<bool>();
               } else {
                 warnAt(focusedNode->source(), "ignoring window_rule.match.is_focused (expected boolean)");
+                valid = false;
               }
             }
           } else {
             warnAt(matchNode->source(), "ignoring window_rule.match (expected table)");
+            valid = false;
           }
         }
 
@@ -1630,7 +1677,9 @@ namespace umbriel {
           }
         }
 
-        loaded.windowRules.push_back(std::move(rule));
+        if (valid) {
+          loaded.windowRules.push_back(std::move(rule));
+        }
       }
     }
 
