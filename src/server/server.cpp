@@ -29,6 +29,7 @@
 #include "xwayland/supervisor.h"
 
 #include <algorithm>
+#include <array>
 #include <csignal>
 #include <cstdlib>
 #include <ranges>
@@ -43,14 +44,57 @@ namespace umbriel {
 
     constexpr Logger kLog("server");
     constexpr size_t kWaylandClientBufferSize = 1024 * 1024;
+    // Security-context clients only receive reviewed, ordinary application
+    // protocols. New globals stay unavailable until they are classified here.
+    constexpr std::array<std::string_view, 28> kAllowedSecurityContextGlobals{
+        "wl_shm",
+        "wl_drm",
+        "zwp_linux_dmabuf_v1",
+        "wp_linux_drm_syncobj_manager_v1",
+        "wl_compositor",
+        "wl_subcompositor",
+        "wl_data_device_manager",
+        "zwp_primary_selection_device_manager_v1",
+        "wp_viewporter",
+        "wp_fractional_scale_manager_v1",
+        "wp_presentation",
+        "wp_tearing_control_manager_v1",
+        "wp_content_type_manager_v1",
+        "wl_output",
+        "wp_color_manager_v1",
+        "xdg_wm_base",
+        "xdg_toplevel_tag_manager_v1",
+        "zxdg_decoration_manager_v1",
+        "org_kde_kwin_server_decoration_manager",
+        "zwp_relative_pointer_manager_v1",
+        "zwp_pointer_constraints_v1",
+        "zwp_pointer_gestures_v1",
+        "zwp_tablet_manager_v2",
+        "zwp_idle_inhibit_manager_v1",
+        "xdg_activation_v1",
+        "wl_seat",
+        "wp_cursor_shape_manager_v1",
+        "zwp_text_input_manager_v3",
+    };
+
+    bool isAllowedSecurityContextGlobal(std::string_view interface) {
+      return std::ranges::find(kAllowedSecurityContextGlobals, interface) != kAllowedSecurityContextGlobals.end();
+    }
 
     bool filterGlobal(const wl_client* client, const wl_global* global, void* data) {
       auto* server = static_cast<Server*>(data);
       const wl_interface* interface = wl_global_get_interface(global);
-      if (interface != nullptr && std::string_view(interface->name) == "zwp_primary_selection_device_manager_v1") {
+      if (interface == nullptr) {
+        return true;
+      }
+      const std::string_view interfaceName(interface->name);
+      if (server->clientHasSecurityContext(client) && !isAllowedSecurityContextGlobal(interfaceName)) {
+        return false;
+      }
+      if (interfaceName == "zwp_primary_selection_device_manager_v1") {
         return config().input.middleClickPaste;
       }
-      if (interface != nullptr && std::string_view(interface->name) == "wp_color_manager_v1") {
+      if (interfaceName == "wp_color_manager_v1") {
         const bool wine = WineColorManager::clientNeedsCompatibility(client);
         if (server->wineColorManager() != nullptr && global == server->wineColorManager()->global()) {
           return wine;
@@ -107,6 +151,11 @@ namespace umbriel {
     }
 
   } // namespace
+
+  bool Server::clientHasSecurityContext(const wl_client* client) const {
+    return m_securityContextManager != nullptr
+        && wlr_security_context_manager_v1_lookup_client(m_securityContextManager, client) != nullptr;
+  }
 
   ContentType Server::surfaceContentType(wlr_surface* surface) const {
     if (m_contentTypeManager == nullptr || surface == nullptr) {
@@ -193,6 +242,10 @@ namespace umbriel {
     wlr_data_device_manager_create(m_display);
     if (wlr_primary_selection_v1_device_manager_create(m_display) == nullptr) {
       throw std::runtime_error("failed to create primary-selection manager");
+    }
+    m_securityContextManager = wlr_security_context_manager_v1_create(m_display);
+    if (m_securityContextManager == nullptr) {
+      throw std::runtime_error("failed to create security-context manager");
     }
     wl_display_set_global_filter(m_display, filterGlobal, this);
     wlr_viewporter_create(m_display);

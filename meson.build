@@ -335,6 +335,18 @@ ext_idle_notify_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+security_context_client_h = custom_target(
+  'security-context-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/security-context/security-context-v1.xml',
+  output: 'security-context-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+security_context_client_c = custom_target(
+  'security-context-v1-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/security-context/security-context-v1.xml',
+  output: 'security-context-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
 
 output_mgmt_client_h = custom_target(
   'wlr-output-management-unstable-v1-client-protocol.h',
@@ -707,6 +719,18 @@ idle_inhibit_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness wrapper that runs another Wayland client through a committed
+# security-context listener.
+security_context_client = executable(
+  'security-context-client',
+  [
+    'tests/harness/clients/security_context_client.cpp',
+    security_context_client_h,
+    security_context_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 alias_target(
   'harness-clients',
   pointer_client,
@@ -721,6 +745,7 @@ alias_target(
   subsurface_client,
   fractional_client,
   idle_inhibit_client,
+  security_context_client,
 )
 
 unit_test_targets = []

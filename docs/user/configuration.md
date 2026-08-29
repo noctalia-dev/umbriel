@@ -126,6 +126,7 @@ Use these pages for detailed topic references:
 - [Input](input.md): keyboard, pointer, tablet, cursor, and focus settings.
 - [Keybinds](keybinds.md): binding syntax, submaps, and binding behavior.
 - [Actions](actions.md): the complete action reference.
+- [Sandboxed Clients](security.md): security-context filtering and its boundary.
 - [Outputs](outputs.md): monitor configuration and output movement.
 - [Workspaces](workspaces.md): workspace models and workspace rules.
 - [Rules](rules.md): window and layer matching.

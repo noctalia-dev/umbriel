@@ -113,6 +113,7 @@ export UMBRIEL_POPUP_CLIENT="$BINARY_DIR/popup-client"
 export UMBRIEL_IDLE_INHIBIT_CLIENT="$BINARY_DIR/idle-inhibit-client"
 export UMBRIEL_SUBSURFACE_CLIENT="$BINARY_DIR/subsurface-client"
 export UMBRIEL_FRACTIONAL_CLIENT="$BINARY_DIR/fractional-client"
+export UMBRIEL_SECURITY_CONTEXT_CLIENT="$BINARY_DIR/security-context-client"
 export UMBRIEL=$BINARY
 
 # Live instance state. The EXIT trap reaches for these, so they stay declared
