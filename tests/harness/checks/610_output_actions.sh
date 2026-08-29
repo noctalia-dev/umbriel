@@ -369,10 +369,10 @@ if [[ $min_h -ge 600 ]]; then
   exit 1
 fi
 
-# column-center is a deliberate no-op outside the scrolling layout.
+# column-center rejects over IPC outside scrolling without changing geometry.
 sleep 0.5
 dwindle_geometry=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
-accepts "column-center"
+rejects_with "column-center" "requires the scrolling layout"
 sleep 0.2
 after_center=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
 if [[ $after_center != "$dwindle_geometry" ]]; then

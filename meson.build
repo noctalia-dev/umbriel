@@ -206,6 +206,19 @@ xdg_shell_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+xdg_activation_client_h = custom_target(
+  'xdg-activation-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/xdg-activation/xdg-activation-v1.xml',
+  output: 'xdg-activation-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+xdg_activation_client_c = custom_target(
+  'xdg-activation-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/xdg-activation/xdg-activation-v1.xml',
+  output: 'xdg-activation-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 xdg_toplevel_tag_client_h = custom_target(
   'xdg-toplevel-tag-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml',
@@ -631,6 +644,8 @@ unmap_client = executable(
     'tests/harness/clients/unmap_client.cpp',
     xdg_shell_client_h,
     xdg_shell_client_c,
+    xdg_activation_client_h,
+    xdg_activation_client_c,
     xdg_toplevel_tag_client_h,
     xdg_toplevel_tag_client_c,
     content_type_client_h,

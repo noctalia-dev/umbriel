@@ -1511,7 +1511,7 @@ namespace umbriel {
             }
             if (const toml::node* contentTypeNode = matchKeys.take("content_type")) {
               if (const auto value = readContentType(*contentTypeNode)) {
-                rule.matchContentType = *value;
+                rule.matchContentType = value;
               } else {
                 warnAt(
                     contentTypeNode->source(),

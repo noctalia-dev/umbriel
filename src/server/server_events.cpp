@@ -736,6 +736,7 @@ namespace umbriel {
     wlr_xdg_activation_token_v1* token = event->token;
     const char* tokenName = token != nullptr ? wlr_xdg_activation_token_v1_get_name(token) : nullptr;
     const auto* watch = token != nullptr ? static_cast<ActivationTokenWatch*>(token->data) : nullptr;
+    const bool trusted = watch != nullptr && watch->compositorIssued;
     const auto age = watch != nullptr
         ? std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - watch->createdAt)
               .count()
@@ -780,18 +781,21 @@ namespace umbriel {
     }
 
     for (const auto& entry : self->m_registry.all()) {
-      if (entry->toplevel() == toplevel && entry->mapped()) {
-        const bool focusOnActivate = entry->resolvedRules().focusOnActivate.value_or(config().general.focusOnActivate);
-        const bool alreadyFocused = entry->workspace() != nullptr
-            && entry->workspace()->active()
-            && entry->workspace()->focusedView() == entry.get();
+      if (entry->toplevel() == toplevel) {
+        const std::optional<bool> rulePolicy = entry->resolvedRules().focusOnActivate;
+        const bool focusOnActivate = rulePolicy.value_or(trusted || config().general.focusOnActivate);
+        const bool alreadyFocused = entry->activated();
         kLog.debug(
-            "xdg-activation policy target_app_id='{}' focus_on_activate={} already_focused={} action={}",
-            entry->toplevel()->app_id != nullptr ? entry->toplevel()->app_id : "", focusOnActivate, alreadyFocused,
-            alreadyFocused ? "none" : (focusOnActivate ? "focus" : "urgent")
+            "xdg-activation policy target_app_id='{}' trusted={} mapped={} focus_on_activate={} "
+            "already_focused={} action={}",
+            entry->toplevel()->app_id != nullptr ? entry->toplevel()->app_id : "", trusted, entry->mapped(),
+            focusOnActivate, alreadyFocused,
+            alreadyFocused ? "none" : (entry->mapped() ? (focusOnActivate ? "focus" : "urgent") : "defer")
         );
         if (alreadyFocused) {
           entry->setUrgent(false);
+        } else if (!entry->mapped()) {
+          entry->deferActivation(trusted);
         } else if (focusOnActivate) {
           self->focusView(entry.get(), FocusReason::XdgActivation);
         } else {
@@ -806,12 +810,7 @@ namespace umbriel {
     Server* self;
     self = wl_container_of(listener, self, m_newActivationToken);
     auto* token = static_cast<wlr_xdg_activation_token_v1*>(data);
-    auto* watch = new ActivationTokenWatch{
-        .createdAt = std::chrono::steady_clock::now(),
-    };
-    watch->destroy.notify = onActivationTokenDestroy;
-    wl_signal_add(&token->events.destroy, &watch->destroy);
-    token->data = watch;
+    self->trackActivationToken(token, false);
 
     View* source = viewForSurface(*self, token->surface);
     const char* tokenName = wlr_xdg_activation_token_v1_get_name(token);
@@ -834,6 +833,16 @@ namespace umbriel {
             && wlr_surface_get_root_surface(self->m_seat->wlr()->pointer_state.focused_surface)
                 == wlr_surface_get_root_surface(token->surface)
     );
+  }
+
+  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued) {
+    auto* watch = new ActivationTokenWatch{
+        .createdAt = std::chrono::steady_clock::now(),
+        .compositorIssued = compositorIssued,
+    };
+    watch->destroy.notify = onActivationTokenDestroy;
+    wl_signal_add(&token->events.destroy, &watch->destroy);
+    token->data = watch;
   }
 
   void Server::onActivationTokenDestroy(wl_listener* listener, void* /*data*/) {

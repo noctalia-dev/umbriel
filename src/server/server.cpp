@@ -703,14 +703,30 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description) {
+  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
     if (m_socketName.empty()) {
       wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
       return;
     }
 
+    wlr_xdg_activation_token_v1* launchToken = nullptr;
+    std::string launchTokenName;
+    if (withActivationToken && m_xdgActivation != nullptr) {
+      launchToken = wlr_xdg_activation_token_v1_create(m_xdgActivation);
+      if (launchToken != nullptr) {
+        trackActivationToken(launchToken, true);
+        const char* name = wlr_xdg_activation_token_v1_get_name(launchToken);
+        if (name != nullptr) {
+          launchTokenName = name;
+        }
+      }
+    }
+
     pid_t pid = fork();
     if (pid < 0) {
+      if (launchToken != nullptr) {
+        wlr_xdg_activation_token_v1_destroy(launchToken);
+      }
       wlr_log(WLR_ERROR, "fork failed");
       return;
     }
@@ -724,6 +740,13 @@ namespace umbriel {
       } else {
         // Avoid X11/XWayland fallback into the parent session.
         unsetenv("DISPLAY");
+      }
+      if (!launchTokenName.empty()) {
+        setenv("XDG_ACTIVATION_TOKEN", launchTokenName.c_str(), 1);
+        setenv("DESKTOP_STARTUP_ID", launchTokenName.c_str(), 1);
+      } else {
+        unsetenv("XDG_ACTIVATION_TOKEN");
+        unsetenv("DESKTOP_STARTUP_ID");
       }
       execl("/bin/sh", "/bin/sh", "-c", command, nullptr);
       _exit(1);

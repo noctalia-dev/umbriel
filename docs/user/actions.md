@@ -11,7 +11,7 @@ through `umbriel msg`. See [Keybinds](keybinds.md) for binding syntax.
 | `submap:<name>` | Enter a named submap; `submap:reset` exits one level | `"submap:resize"` |
 | `workspace-switch:<ws>` | Workspace name, optionally `/<output>` | `"workspace-switch:3"`, `"workspace-switch:CHAT/HDMI-A-1"` |
 | `window-move-to-workspace:<ws>` | Same as above | `"window-move-to-workspace:2"` |
-| `column-move-to-workspace:<ws>` | Same as above; moves the focused window's whole column, except in master layout where it moves only the focused window | `"column-move-to-workspace:CHAT/HDMI-A-1"` |
+| `column-move-to-workspace:<ws>` | Same as above; moves the focused window's whole column | `"column-move-to-workspace:CHAT/HDMI-A-1"` |
 | `window-set-width:<frac>` | Fraction 0.1-1.0; on a floating window, a fraction of the usable area | `"window-set-width:0.667"` |
 | `window-modify-width:<delta>` | Signed fraction -0.9..0.9; the resulting width clamps to 0.1..1.0. On a floating window, the delta applies to its current usable-area fraction | `"window-modify-width:-0.2"` |
 | `window-set-height:<frac>` | Fraction 0.1-1.0; on a floating window, a fraction of the usable area | `"window-set-height:0.7"` |
@@ -22,6 +22,12 @@ through `umbriel msg`. See [Keybinds](keybinds.md) for binding syntax.
 | `window-close[:<window-id>]` | Optional window id; bare form closes the focused window | `"window-close"` |
 | `dpms-off[:<output>]` / `dpms-on[:<output>]` | Optional connector name; bare form targets every configured output | `"dpms-off:DP-1"`, `"dpms-on"` |
 | `session-quit[:skip-confirmation]` | Bare form opens an on-screen confirmation (Enter or the quit bind confirms; any other key or click cancels); `skip-confirmation` quits immediately | `"session-quit:skip-confirmation"` |
+
+`spawn:` exports a one-shot `XDG_ACTIVATION_TOKEN` and matching
+`DESKTOP_STARTUP_ID` to the command. Single-instance applications can pass
+that token to their existing window so Umbriel reveals it, including when the
+window remaps after hiding in a tray. Startup commands from `general.autostart`
+do not receive a launch token.
 
 A second `session-quit` while the confirmation is open also quits. While the
 session is locked, `session-quit` quits without the dialog.
@@ -40,6 +46,14 @@ monitor's center so subsequent actions continue there.
 ## Window and layout actions
 
 Unless shown with a `:<parameter>` suffix below, these take no argument.
+
+Column-scoped actions operate on the active layout's column projection.
+Scrolling owns real multi-window columns. In dwindle, every tiled leaf is a
+single-window column, so column actions act on that window. In master, the
+master and stack areas are the two columns. When an action has no meaning in
+the active layout, its keybind does nothing and the IPC `msg` command returns
+an error naming the required layout. Currently, only `column-center` has this
+restriction.
 
 ### Focus
 
@@ -80,15 +94,18 @@ focus-only, while `window-focus-warp:<id>` always moves it.
   `window-move-to-workspace-previous` move the focused window.
   `column-move-to-workspace-next` and `column-move-to-workspace-previous` move
   its whole column. All four follow the moved focus and do not wrap around.
-  In master layout, the column-scoped forms move only the focused window.
 - **A column within a row:** `column-move-left`, `column-move-right`. Move the
-  focused window's column left or right.
+  focused window's column left or right. In dwindle, they swap the focused
+  window with the neighboring tile in that direction. In master, they exchange
+  the master and stack contents and do nothing while either area is empty.
 - **A column across an output edge:** `window-move-or-output-left`,
   `window-move-or-output-right`. Move the focused column left or right, or to
   the output in that direction when already at the edge.
 - **First or last column position:** `column-move-to-first`,
   `column-move-to-last`. Move the focused window's column to the first or last
-  position in the workspace.
+  position in the workspace. In dwindle, they swap the focused window with the
+  first or last tile. In master, they perform the same master/stack exchange
+  when the focused area is not already first or last.
 - **Next or previous layout position:** `window-swap-next`,
   `window-swap-previous`. Exchange the focused tiled window with its next or
   previous layout-order neighbor, wrapping at both ends. Focus stays on the
@@ -142,7 +159,8 @@ focus-only, while `window-focus-warp:<id>` always moves it.
   visible. A column's full-width restore state is preserved when this is toggled
   or when fullscreen is entered and left.
 - **Center a column:** `column-center`. Center the focused column in the
-  scrolling viewport. It is a no-op on non-scrolling workspaces.
+  scrolling viewport. It requires the scrolling layout; elsewhere its keybind
+  does nothing and the IPC `msg` command reports an error.
 - **Scroll the viewport:** `layout-scroll-left`, `layout-scroll-right`. Scroll
   the active workspace's scrolling-layout viewport. `layout-scroll-up` and
   `layout-scroll-down` are first-class synonyms for left and right.
@@ -207,8 +225,8 @@ scrolling-layout state, including the column width, its full-width restore
 value, and stacked row proportions. Destination-moving column actions act like
 their matching window action when a floating window is focused because it has
 no tiled column.
-In master layout, column-scoped workspace moves transfer only the focused
-window because the master and stack areas are not movable columns.
+In master layout, column-scoped workspace moves transfer every member of the
+focused master or stack area.
 
 `window-center` centers the focused floating window on its output's usable
 area. It is a no-op while a tiled window is focused.
@@ -219,7 +237,7 @@ The directional output actions target the adjacent monitor:
 |--------|--------------|
 | `output-focus-left` / `output-focus-right` / `output-focus-up` / `output-focus-down` | Move focus to the adjacent monitor in that direction. |
 | `window-move-to-output-left` / `window-move-to-output-right` / `window-move-to-output-up` / `window-move-to-output-down` | Move the focused window to the adjacent monitor's active workspace. |
-| `column-move-to-output-left` / `column-move-to-output-right` / `column-move-to-output-up` / `column-move-to-output-down` | Move the focused window's whole column to the adjacent monitor's active workspace. In master layout, move only the focused window. |
+| `column-move-to-output-left` / `column-move-to-output-right` / `column-move-to-output-up` / `column-move-to-output-down` | Move the focused window's whole column to the adjacent monitor's active workspace. |
 | `workspace-move-to-output-left` / `workspace-move-to-output-right` / `workspace-move-to-output-up` / `workspace-move-to-output-down` | Move every window of the active workspace to the adjacent monitor, preserving column order and widths. |
 
 Directions do not wrap around: with no monitor in that direction the action

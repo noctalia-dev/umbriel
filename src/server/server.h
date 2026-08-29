@@ -228,7 +228,7 @@ namespace umbriel {
     void relayoutBanner();
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
-    void spawn(const char* command, const char* description = nullptr);
+    void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
     void handleConfigReload();
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.
@@ -368,6 +368,8 @@ namespace umbriel {
     static void onIpcWindowsIdle(void* data);
     static void onDisplacedRestoreIdle(void* data);
 
+    void trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued);
+
     void addOutput(wlr_output* output);
     void addKeyboard(wlr_input_device* device);
     void addPointer(wlr_input_device* device);
@@ -433,6 +435,7 @@ namespace umbriel {
     };
     struct ActivationTokenWatch {
       std::chrono::steady_clock::time_point createdAt;
+      bool compositorIssued = false;
       wl_listener destroy{};
     };
 

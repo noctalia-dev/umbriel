@@ -189,10 +189,6 @@ namespace umbriel {
       if (focused == nullptr) {
         return false;
       }
-      if (source.layout().mode() == LayoutMode::Master) {
-        moveViewToWorkspace(server, *focused, target);
-        return true;
-      }
       const int columnIndex = source.layout().columnOf(focused);
       const auto& sourceColumns = source.layout().columns();
       if (columnIndex < 0 || columnIndex >= static_cast<int>(sourceColumns.size())) {
@@ -335,7 +331,7 @@ namespace umbriel {
     // Session
     bool actionSpawn(Server& server, const Keybind& bind, std::string* /*error*/) {
       const auto* arg = payloadIf<SpawnArg>(bind);
-      server.spawn(arg != nullptr ? arg->command.c_str() : "");
+      server.spawn(arg != nullptr ? arg->command.c_str() : "", nullptr, true);
       return true;
     }
 
@@ -817,11 +813,14 @@ namespace umbriel {
       return true;
     }
 
-    bool actionColumnCenter(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+    bool actionColumnCenter(Server& server, const Keybind& /*bind*/, std::string* error) {
       if (scratchpadHoldsFocus(server)) {
         return true;
       }
       if (Workspace* workspace = activeWorkspace(server)) {
+        if (workspace->layoutMode() != LayoutMode::Scrolling) {
+          return reject(error, "column-center requires the scrolling layout");
+        }
         workspace->centerFocusedColumn();
       }
       return true;

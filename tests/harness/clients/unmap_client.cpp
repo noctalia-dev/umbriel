@@ -5,6 +5,8 @@
 // request lands, then keeps the connection alive until the harness kills it. Usage: unmap-client [title [width
 // height]]. The optional dimensions let pointer checks expose a surface that fills its assigned tile. With
 // REMAP_ON_STDIN set, reading any byte performs a fresh initial commit and maps the same toplevel again.
+// With ACTIVATION_TOKEN_FILE set, an `a` command reads and uses that token. A `c` command requests an ordinary client
+// token instead. When the surface is hidden, either command queues activation before the remap commit.
 // CONTENT_TYPE sets a surface hint before its initial commit. CONTENT_TYPE_ON_SUBSURFACE places it on a rendering
 // child, matching current Proton behavior. XDG_TAG sets a toplevel tag before the initial commit.
 // CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin.
@@ -12,12 +14,14 @@
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
 #include "tearing-control-v1-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include "xdg-toplevel-tag-v1-client-protocol.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <poll.h>
@@ -62,6 +66,7 @@ namespace {
     wl_subcompositor* subcompositor = nullptr;
     wl_shm* shm = nullptr;
     xdg_wm_base* wmBase = nullptr;
+    xdg_activation_v1* activation = nullptr;
     xdg_toplevel_tag_manager_v1* xdgTagManager = nullptr;
     wp_content_type_manager_v1* contentTypeManager = nullptr;
     wp_content_type_v1* contentType = nullptr;
@@ -110,6 +115,9 @@ namespace {
     bool imageDescriptionFailed = false;
     bool metadataUpdated = false;
     int tearingHint = -1;
+    const char* title = "unmap-client";
+    const char* appId = nullptr;
+    const char* remapAppId = nullptr;
   };
 
   struct AuxiliaryToplevel {
@@ -437,6 +445,10 @@ namespace {
       state.wmBase =
           static_cast<xdg_wm_base*>(wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, 1U)));
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
+    } else if (std::strcmp(interface, xdg_activation_v1_interface.name) == 0) {
+      state.activation = static_cast<xdg_activation_v1*>(
+          wl_registry_bind(registry, name, &xdg_activation_v1_interface, std::min(version, 1U))
+      );
     } else if (std::strcmp(interface, xdg_toplevel_tag_manager_v1_interface.name) == 0) {
       state.xdgTagManager = static_cast<xdg_toplevel_tag_manager_v1*>(
           wl_registry_bind(registry, name, &xdg_toplevel_tag_manager_v1_interface, std::min(version, 1U))
@@ -476,6 +488,75 @@ namespace {
     }
   }
 
+  bool activateFromFile(State& state, const char* path) {
+    if (path == nullptr) {
+      std::println(stderr, "unmap-client: activation command needs ACTIVATION_TOKEN_FILE");
+      return false;
+    }
+    FILE* file = std::fopen(path, "r");
+    if (file == nullptr) {
+      std::println(stderr, "unmap-client: cannot open activation token file");
+      return false;
+    }
+    char token[256]{};
+    const bool readToken = std::fgets(token, sizeof(token), file) != nullptr;
+    std::fclose(file);
+    token[std::strcspn(token, "\r\n")] = '\0';
+    if (!readToken || token[0] == '\0') {
+      std::println(stderr, "unmap-client: activation token file is empty");
+      return false;
+    }
+    xdg_activation_v1_activate(state.activation, token, state.surface);
+    std::println("activation-sent");
+    std::fflush(stdout);
+    return true;
+  }
+
+  void queueRemap(State& state) {
+    state.closed = false;
+    xdg_toplevel_set_title(state.toplevel, state.title);
+    if (state.remapAppId != nullptr) {
+      xdg_toplevel_set_app_id(state.toplevel, state.remapAppId);
+    }
+    wl_surface_attach(state.surface, nullptr, 0, 0);
+    wl_surface_commit(state.surface);
+    std::println("remap-requested");
+    std::fflush(stdout);
+  }
+
+  void clientActivationTokenDone(void* data, xdg_activation_token_v1* activationToken, const char* token) {
+    auto& state = *static_cast<State*>(data);
+    xdg_activation_v1_activate(state.activation, token, state.surface);
+    xdg_activation_token_v1_destroy(activationToken);
+    std::println("activation-sent");
+    std::fflush(stdout);
+    if (!state.mapped) {
+      queueRemap(state);
+    }
+  }
+
+  constexpr xdg_activation_token_v1_listener kActivationTokenListener = {
+      .done = clientActivationTokenDone,
+  };
+
+  bool activateWithClientToken(State& state) {
+    if (state.activation == nullptr) {
+      std::println(stderr, "unmap-client: compositor is missing xdg_activation_v1");
+      return false;
+    }
+    xdg_activation_token_v1* token = xdg_activation_v1_get_activation_token(state.activation);
+    if (token == nullptr) {
+      std::println(stderr, "unmap-client: failed to create activation token");
+      return false;
+    }
+    xdg_activation_token_v1_add_listener(token, &kActivationTokenListener, &state);
+    xdg_activation_token_v1_set_surface(token, state.surface);
+    xdg_activation_token_v1_commit(token);
+    std::println("activation-requested");
+    std::fflush(stdout);
+    return true;
+  }
+
   void destroyAuxiliaryToplevel(AuxiliaryToplevel& window) {
     if (window.toplevel != nullptr) {
       xdg_toplevel_destroy(window.toplevel);
@@ -498,7 +579,14 @@ int main(int argc, char** argv) {
   }
 
   State state;
+  state.title = argc > 1 ? argv[1] : "unmap-client";
+  state.appId = std::getenv("APP_ID");
+  state.remapAppId = std::getenv("APP_ID_AFTER_ACTIVATION");
+  if (state.remapAppId == nullptr) {
+    state.remapAppId = state.appId;
+  }
   const bool remapOnStdin = std::getenv("REMAP_ON_STDIN") != nullptr;
+  const char* activationTokenFile = std::getenv("ACTIVATION_TOKEN_FILE");
   const char* initialContentType = std::getenv("CONTENT_TYPE");
   const char* updatedContentType = std::getenv("CONTENT_TYPE_AFTER_MAP");
   const char* initialXdgTag = std::getenv("XDG_TAG");
@@ -552,6 +640,10 @@ int main(int argc, char** argv) {
 
   if (state.compositor == nullptr || state.shm == nullptr || state.wmBase == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing a required Wayland global");
+    return EXIT_FAILURE;
+  }
+  if (activationTokenFile != nullptr && state.activation == nullptr) {
+    std::println(stderr, "unmap-client: compositor is missing xdg_activation_v1");
     return EXIT_FAILURE;
   }
   if ((initialContentType != nullptr || updatedContentType != nullptr) && state.contentTypeManager == nullptr) {
@@ -673,9 +765,9 @@ int main(int argc, char** argv) {
   xdg_surface_add_listener(state.xdgSurface, &kXdgSurfaceListener, &state);
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
   xdg_toplevel_add_listener(state.toplevel, &kToplevelListener, &state);
-  xdg_toplevel_set_title(state.toplevel, argc > 1 ? argv[1] : "unmap-client");
-  if (const char* appId = std::getenv("APP_ID")) {
-    xdg_toplevel_set_app_id(state.toplevel, appId);
+  xdg_toplevel_set_title(state.toplevel, state.title);
+  if (state.appId != nullptr) {
+    xdg_toplevel_set_app_id(state.toplevel, state.appId);
   }
   if (initialXdgTag != nullptr) {
     xdg_toplevel_tag_manager_v1_set_toplevel_tag(state.xdgTagManager, state.toplevel, initialXdgTag);
@@ -711,7 +803,18 @@ int main(int argc, char** argv) {
       if ((sources[1].revents & POLLIN) != 0) {
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
-          if (state.mapped && updateOnStdin && !state.metadataUpdated) {
+          if (command == 'a') {
+            if (!activateFromFile(state, activationTokenFile)) {
+              return EXIT_FAILURE;
+            }
+            if (!state.mapped && remapOnStdin) {
+              queueRemap(state);
+            }
+          } else if (command == 'c') {
+            if (!activateWithClientToken(state)) {
+              return EXIT_FAILURE;
+            }
+          } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {
               wp_content_type_v1_set_content_type(
                   state.contentType, static_cast<uint32_t>(parseContentType(updatedContentType))
@@ -729,12 +832,7 @@ int main(int argc, char** argv) {
             std::println("{}", updatedXdgTag != nullptr ? "xdg-tag-updated" : "content-type-updated");
             std::fflush(stdout);
           } else if (!state.mapped && remapOnStdin) {
-            state.closed = false;
-            xdg_toplevel_set_title(state.toplevel, argc > 1 ? argv[1] : "unmap-client");
-            wl_surface_attach(state.surface, nullptr, 0, 0);
-            wl_surface_commit(state.surface);
-            std::println("remap-requested");
-            std::fflush(stdout);
+            queueRemap(state);
           }
         }
       }
@@ -784,6 +882,9 @@ int main(int argc, char** argv) {
   }
   if (state.xdgTagManager != nullptr) {
     xdg_toplevel_tag_manager_v1_destroy(state.xdgTagManager);
+  }
+  if (state.activation != nullptr) {
+    xdg_activation_v1_destroy(state.activation);
   }
   if (state.keyboard != nullptr) {
     wl_keyboard_destroy(state.keyboard);

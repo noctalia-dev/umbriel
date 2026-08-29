@@ -15,6 +15,7 @@
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include "wlr.h"
 // clang-format on
 #include "workspace/scratchpad.h"
@@ -1708,8 +1709,14 @@ namespace umbriel {
 
     updateForeignIdentity();
     updateForeignState();
-    if (!m_server->sessionLocked() && rule.defaultFocused.value_or(true)) {
-      m_server->focusView(this);
+    const std::optional<bool> deferredActivation = std::exchange(m_deferredActivationCompositorIssued, std::nullopt);
+    const bool activateOnMap = deferredActivation.has_value()
+        && rule.focusOnActivate.value_or(*deferredActivation || config().general.focusOnActivate);
+    const bool focusOnMap = deferredActivation.has_value() ? activateOnMap : rule.defaultFocused.value_or(true);
+    if (!m_server->sessionLocked() && focusOnMap) {
+      m_server->focusView(this, activateOnMap ? FocusReason::XdgActivation : FocusReason::Startup);
+    } else if (deferredActivation.has_value()) {
+      setUrgent(true);
     }
 
     // Opening state is compositor-owned. Clients may restore a saved maximized
@@ -1868,6 +1875,14 @@ namespace umbriel {
     }
   }
 
+  void View::deferActivation(bool compositorIssued) {
+    // A compositor-issued launch request wins if clients race multiple tokens during role creation. An ordinary
+    // client request must not downgrade it before the first buffer arrives.
+    if (compositorIssued || !m_deferredActivationCompositorIssued.has_value()) {
+      m_deferredActivationCompositorIssued = compositorIssued;
+    }
+  }
+
   void View::setXdgTag(std::string_view tag) {
     if (m_xdgTag == tag) {
       return;
@@ -2022,8 +2037,9 @@ namespace umbriel {
               clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
           );
         } else if (rule.defaultWidth || rule.defaultHeight) {
-          // Fractions of the usable area per axis; default_size outranks them.
-          // An unset axis stays 0 so the client keeps its own preference.
+          // Fractions of usable area per axis; default_size (pixels) outranks
+          // them. An axis without a fraction stays 0 so the client keeps its own
+          // preference there.
           wlr_box usable = targetOutput != nullptr
               ? targetOutput->usableArea()
               : m_server->usableAreaAt(m_server->cursor()->wlr()->x, m_server->cursor()->wlr()->y);
@@ -2770,8 +2786,8 @@ namespace umbriel {
             clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
         );
       } else if (rule.defaultWidth || rule.defaultHeight) {
-        // Pixel rules outrank fractions; an axis without either keeps the
-        // last acked (then scheduled) size.
+        // Pixel rules outrank fractions, an axis without either keeps the last
+        // acked (then scheduled) size instead of reverting to client preference.
         const wlr_box usable = floatingUsableArea();
         int width =
             rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : m_toplevel->current.width;

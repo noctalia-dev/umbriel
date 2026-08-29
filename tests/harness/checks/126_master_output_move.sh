@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # harness: outputs=2
-# Master output moves transfer only the focused window, even for column-scoped actions.
+# Master output moves transfer the focused master or stack area as one column.
 set -euo pipefail
 
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/workspace-client}"
@@ -82,7 +82,7 @@ stack_c_id=$(field_of stack-c id)
 
 accepts column-move-to-output-right
 wait_for_workspace master-a "$one_id"
-wait_for_workspace stack-b "$one_id"
+wait_for_workspace stack-b "$right_one_id"
 wait_for_workspace stack-c "$right_one_id"
 
 accepts column-move-to-output-left
@@ -93,7 +93,7 @@ wait_for_workspace stack-c "$one_id"
 accepts "window-focus:$stack_c_id"
 accepts window-move-or-output-right
 wait_for_workspace master-a "$one_id"
-wait_for_workspace stack-b "$one_id"
+wait_for_workspace stack-b "$right_one_id"
 wait_for_workspace stack-c "$right_one_id"
 
-echo "master column and edge output moves transferred only the focused window"
+echo "master column and edge output moves transferred the full focused area"

@@ -16,7 +16,7 @@ autostart = []
 # mod_key = "Super"            # Mod in keybinds; defaults to Super (Alt when nested)
 xwayland = true                # requires restart to change
 show_cheatsheet = true         # show keybinds overlay on startup
-focus_on_activate = false      # activation requests mark urgent without stealing focus
+focus_on_activate = false      # unsolicited activation marks urgent; spawn launches may still focus
 honor_restored_maximize = false # let apps restore their saved maximized state
 
 # Applied only at session startup. Native sessions also publish these values to
@@ -398,6 +398,8 @@ match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
 default_size = [800, 600]
 
+# Size a float as fractions of the usable area instead of pixels, so the rule
+# suits any monitor. default_size wins on both axes when it is also set.
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Utility$"
 # default_floating = true
