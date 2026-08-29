@@ -8,6 +8,7 @@ extern "C" {
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <vector>
 
 namespace umbriel {
@@ -96,9 +97,9 @@ namespace umbriel {
       return current;
     }
     if (direction < 0) {
-      for (auto it = presets.rbegin(); it != presets.rend(); ++it) {
-        if (*it < current - 0.0001) {
-          return *it;
+      for (const double preset : std::views::reverse(presets)) {
+        if (preset < current - 0.0001) {
+          return preset;
         }
       }
       return presets.back();
