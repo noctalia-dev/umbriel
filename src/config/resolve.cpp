@@ -66,6 +66,9 @@ namespace umbriel {
       if (overrides.scrolling.direction) {
         resolved.scrolling.direction = *overrides.scrolling.direction;
       }
+      if (overrides.scrolling.expandSingleColumn) {
+        resolved.scrolling.expandSingleColumn = *overrides.scrolling.expandSingleColumn;
+      }
       if (overrides.master.defaultWidthFraction) {
         resolved.master.defaultWidthFraction = *overrides.master.defaultWidthFraction;
       }
@@ -236,6 +239,7 @@ namespace umbriel {
     resolved.scrolling.defaultWidthFraction = config.layout.scrolling.defaultWidthFraction;
     resolved.scrolling.centerUnderfullStrip = config.layout.scrolling.centerUnderfullStrip;
     resolved.scrolling.direction = config.layout.scrolling.direction;
+    resolved.scrolling.expandSingleColumn = config.layout.scrolling.expandSingleColumn;
     resolved.dwindle.preserveSplit = config.layout.dwindle.preserveSplit;
     resolved.master.defaultWidthFraction = config.layout.master.defaultWidthFraction;
     resolved.master.position = config.layout.master.position;
@@ -271,7 +275,12 @@ namespace umbriel {
     ResolvedWorkspaceSet result;
     if (!names) {
       result.dynamic = true;
-      result.workspaces.push_back({"1", resolveWorkspaceLayout(config, outputName, "1", 0)});
+      const size_t count = config.workspaces.emptyAbove ? 2 : 1;
+      result.workspaces.reserve(count);
+      for (size_t index = 0; index < count; ++index) {
+        const std::string name = std::to_string(index + 1);
+        result.workspaces.push_back({name, resolveWorkspaceLayout(config, outputName, name, index)});
+      }
       return result;
     }
 

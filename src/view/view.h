@@ -226,7 +226,7 @@ namespace umbriel {
     static void onCaptureSourceDestroy(wl_listener* listener, void* data);
     void handleMap();
     void handleUnmap();
-    void handleCommit();
+    void handleCommit(bool reconfigureOpeningState = false);
     void handleDestroy();
     void handleRequestMove();
     void handleRequestResize(void* data);
@@ -356,6 +356,7 @@ namespace umbriel {
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
     Workspace* m_workspace = nullptr;
     std::optional<DisplacedHome> m_displacedHome;
+
     bool m_mapped = false;
     // Saved client state commonly requests maximization while the surface is
     // opening. Layout policy owns that transition; later requests are valid.

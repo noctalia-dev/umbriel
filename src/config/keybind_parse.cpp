@@ -174,6 +174,8 @@ namespace umbriel {
         {"layout-scroll-left", "", KeybindAction::LayoutScrollLeft},
         {"layout-scroll-right", "", KeybindAction::LayoutScrollRight},
         {"layout-scroll-up", "", KeybindAction::LayoutScrollUp},
+        {"master-count-decrease", "", KeybindAction::MasterCountDecrease},
+        {"master-count-increase", "", KeybindAction::MasterCountIncrease},
         {"output-focus-down", "", KeybindAction::OutputFocusDown},
         {"output-focus-left", "", KeybindAction::OutputFocusLeft},
         {"output-focus-right", "", KeybindAction::OutputFocusRight},
@@ -202,6 +204,7 @@ namespace umbriel {
         {"window-focus-or-output-up", "", KeybindAction::WindowFocusOrOutputUp},
         {"window-focus-or-workspace-down", "", KeybindAction::WindowFocusOrWorkspaceDown},
         {"window-focus-or-workspace-up", "", KeybindAction::WindowFocusOrWorkspaceUp},
+        {"window-focus-previous", "", KeybindAction::WindowFocusPrevious},
         {"window-focus-right", "", KeybindAction::WindowFocusRight},
         {"window-focus-switch-floating", "", KeybindAction::WindowFocusSwitchFloating},
         {"window-focus-up", "", KeybindAction::WindowFocusUp},
@@ -228,6 +231,8 @@ namespace umbriel {
         {"window-restore-from-scratchpad", "[<output>]", KeybindAction::WindowRestoreFromScratchpad,
          ActionArgKind::OptionalOutput},
         {"window-set-width", "<fraction>", KeybindAction::WindowSetWidth, ActionArgKind::WidthFraction},
+        {"window-swap-next", "", KeybindAction::WindowSwapNext},
+        {"window-swap-previous", "", KeybindAction::WindowSwapPrevious},
         {"window-toggle-floating", "", KeybindAction::ToggleFloating},
         {"window-toggle-fullscreen", "", KeybindAction::ToggleFullscreen},
         {"window-toggle-maximize", "", KeybindAction::ToggleMaximize},
@@ -317,7 +322,7 @@ namespace umbriel {
           // "submap" shares the name:<text> syntax with "spawn", but its
           // argument is a submap name rather than a shell command.
           if (spec.action == KeybindAction::Submap) {
-            if (arg == "disable") {
+            if (!validSubmapName(arg)) {
               return false;
             }
             output.payload = SubmapArg{.name = std::string(arg)};

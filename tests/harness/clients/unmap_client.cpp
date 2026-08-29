@@ -63,7 +63,9 @@ namespace {
     bool redrawOnceOnClose = false;
     bool keyboardFocused = false;
     bool requestMaximized = false;
+    bool requestMaximizedAfterConfigure = false;
     bool maximizeRequested = false;
+    bool logConfigures = false;
     bool requestFullscreen = false;
     bool fullscreenRequested = false;
     bool requestHdr = false;
@@ -289,15 +291,16 @@ namespace {
     if (state.closed) {
       return;
     }
+    if (state.requestMaximizedAfterConfigure && !state.maximizeRequested) {
+      xdg_toplevel_set_maximized(state.toplevel);
+      wl_surface_commit(state.surface);
+      state.maximizeRequested = true;
+      return;
+    }
     state.mapped = true;
     wl_surface_attach(state.surface, state.buffer.resource, 0, 0);
     wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
     wl_surface_commit(state.surface);
-    if (state.requestMaximized && !state.maximizeRequested) {
-      xdg_toplevel_set_maximized(state.toplevel);
-      wl_surface_commit(state.surface);
-      state.maximizeRequested = true;
-    }
     if (state.requestFullscreen && !state.fullscreenRequested) {
       xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
       wl_surface_commit(state.surface);
@@ -311,7 +314,12 @@ namespace {
       .configure = xdgSurfaceConfigure,
   };
 
-  void toplevelConfigure(void*, xdg_toplevel*, int32_t, int32_t, wl_array* states) {
+  void toplevelConfigure(void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
+    auto& state = *static_cast<State*>(data);
+    if (state.logConfigures) {
+      std::println("configured-size={}x{}", width, height);
+      std::fflush(stdout);
+    }
     const auto* configured = static_cast<const uint32_t*>(states->data);
     const size_t count = states->size / sizeof(uint32_t);
     for (size_t index = 0; index < count; ++index) {
@@ -461,6 +469,8 @@ int main(int argc, char** argv) {
     state.redrawOnceOnClose = std::string_view(redraw) == "once";
   }
   state.requestMaximized = std::getenv("REQUEST_MAXIMIZED") != nullptr;
+  state.requestMaximizedAfterConfigure = std::getenv("REQUEST_MAXIMIZED_AFTER_CONFIGURE") != nullptr;
+  state.logConfigures = std::getenv("LOG_CONFIGURES") != nullptr;
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
   state.requestHdr = std::getenv("COLOR_HDR") != nullptr;
   state.requestWindowsScrgb = std::getenv("COLOR_WINDOWS_SCRGB") != nullptr;
@@ -600,6 +610,12 @@ int main(int argc, char** argv) {
   xdg_toplevel_set_title(state.toplevel, argc > 1 ? argv[1] : "unmap-client");
   if (const char* appId = std::getenv("APP_ID")) {
     xdg_toplevel_set_app_id(state.toplevel, appId);
+  }
+  if (state.requestMaximized) {
+    // A restored client state is requested before the initial commit. This lets
+    // the compositor include it in the first configure instead of treating it
+    // as a post-map maximize request.
+    xdg_toplevel_set_maximized(state.toplevel);
   }
   if (transientSuite) {
     xdg_toplevel_set_parent(state.toplevel, transientParent.toplevel);

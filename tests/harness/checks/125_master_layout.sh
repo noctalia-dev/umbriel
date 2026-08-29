@@ -77,4 +77,55 @@ wait_for_query \
   'any(.[]; .title == "harness-master-a" and .focused == true)' \
   "focus-left did not cross from stack to master"
 
-echo "master geometry, top insertion, consume, and boundary focus transitions ok"
+"$UMBRIEL" msg master-count-decrease > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-a" and .x == 10 and .y == 10 and .w == 686 and .h == 700) and any(.[]; .title == "harness-master-c" and .x == 708 and .y == 10 and .w == 562 and .h == 344) and any(.[]; .title == "harness-master-b" and .x == 708 and .y == 366 and .w == 562 and .h == 344)' \
+  "master-count-decrease did not demote the last master window to the stack top"
+
+"$UMBRIEL" msg master-count-increase > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-a" and .x == 10 and .y == 10 and .w == 686 and .h == 344) and any(.[]; .title == "harness-master-c" and .x == 10 and .y == 366 and .w == 686 and .h == 344) and any(.[]; .title == "harness-master-b" and .x == 708 and .y == 10 and .w == 562 and .h == 700)' \
+  "master-count-increase did not promote the stack top to the master bottom"
+
+"$UMBRIEL" msg window-focus-next > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-c" and .focused == true)' \
+  "window-focus-next did not focus c after a"
+"$UMBRIEL" msg window-focus-next > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-b" and .focused == true)' \
+  "window-focus-next did not focus b after c"
+"$UMBRIEL" msg window-focus-next > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-a" and .focused == true)' \
+  "window-focus-next did not wrap from b to a"
+"$UMBRIEL" msg window-focus-previous > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-b" and .focused == true)' \
+  "window-focus-previous did not wrap from a to b"
+"$UMBRIEL" msg window-focus-next > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-a" and .focused == true)' \
+  "window-focus-next did not return focus from b to a"
+
+"$UMBRIEL" msg window-swap-next > /dev/null
+wait_for_query \
+  'any(.[]; .title == "harness-master-c" and .x == 10 and .y == 10 and .w == 686 and .h == 344) and any(.[]; .title == "harness-master-a" and .x == 10 and .y == 366 and .w == 686 and .h == 344 and .focused == true) and any(.[]; .title == "harness-master-b" and .x == 708 and .y == 10 and .w == 562 and .h == 700)' \
+  "window-swap-next did not exchange master rows while retaining focus"
+
+"$UMBRIEL" msg window-modify-width:0.05 > /dev/null
+wait_for_query \
+  'all(.[] | select(.title == "harness-master-a" or .title == "harness-master-c"); .w == 749) and any(.[]; .title == "harness-master-b" and .w == 499)' \
+  "window-modify-width did not widen the focused master area by five percent"
+
+"$UMBRIEL" msg window-cycle-width > /dev/null
+wait_for_query \
+  'all(.[] | select(.title == "harness-master-a" or .title == "harness-master-c"); .w == 832) and any(.[]; .title == "harness-master-b" and .w == 416)' \
+  "window-cycle-width did not advance the master area to two thirds"
+
+"$UMBRIEL" msg window-cycle-width-back > /dev/null
+wait_for_query \
+  'all(.[] | select(.title == "harness-master-a" or .title == "harness-master-c"); .w == 624) and any(.[]; .title == "harness-master-b" and .w == 624)' \
+  "window-cycle-width-back did not return the master area to one half"
+
+echo "master count, focus, swap, and width controls work in layout order"

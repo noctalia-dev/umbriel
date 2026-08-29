@@ -14,6 +14,7 @@
 #include "workspace/workspace.h"
 
 #include <string_view>
+#include <utility>
 
 namespace umbriel {
   namespace {
@@ -77,15 +78,20 @@ namespace umbriel {
       }
       return false;
     }
-    return handler(*this, bind, error);
-  }
-
-  bool Server::focusNextWindow() {
-    View* next = m_registry.rotateToNext([](const View& view) { return view.mapped() && view.onActiveWorkspace(); });
-    if (next == nullptr) {
-      return false;
+    // Config reload may replace the keybind storage while its action runs, so
+    // retain the transition before dispatching the primary action.
+    const std::optional<SubmapArg> submapAfter = bind.submapAfter;
+    const bool handled = handler(*this, bind, error);
+    if (!submapAfter.has_value()) {
+      return handled;
     }
-    focusView(next, FocusReason::Directional);
+    if (isSubmapReset(*submapAfter)) {
+      if (inSubmap()) {
+        popSubmap();
+      }
+    } else {
+      pushSubmap(submapAfter->name);
+    }
     return true;
   }
 
@@ -176,12 +182,13 @@ namespace umbriel {
     return modifiers;
   }
 
-  const Keybind* Server::handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) {
+  std::optional<Keybind> Server::handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) {
     const Keybind* bind = matchKeybind(keysym, rawKeysym, modifiers);
     if (bind == nullptr) {
-      return nullptr;
+      return std::nullopt;
     }
-    return executeKeybindAction(*bind) ? bind : nullptr;
+    const Keybind matched = *bind;
+    return executeKeybindAction(matched) ? std::optional<Keybind>{matched} : std::nullopt;
   }
 
   bool Server::handleWheelBind(WheelDirection direction, uint32_t modifiers) {
@@ -208,7 +215,7 @@ namespace umbriel {
     return false;
   }
 
-  const Keybind* Server::handleMouseBind(uint32_t button, uint32_t modifiers) {
+  std::optional<Keybind> Server::handleMouseBind(uint32_t button, uint32_t modifiers) {
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
@@ -227,10 +234,12 @@ namespace umbriel {
       if (effective != expected) {
         continue;
       }
-      return executeKeybindAction(bind) ? &bind : nullptr;
+      std::optional<Keybind> matched{bind};
+      const bool handled = executeKeybindAction(*matched);
+      return handled ? std::move(matched) : std::nullopt;
     }
 
-    return nullptr;
+    return std::nullopt;
   }
 
   void Server::pushSubmap(const std::string& name) {

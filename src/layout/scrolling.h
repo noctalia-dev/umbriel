@@ -44,6 +44,7 @@ namespace umbriel {
     bool consumeLeft(View* view) override;
     bool expelRight(View* view) override;
     bool moveViewVertical(View* view, int direction) override;
+    bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;
     void moveColumn(int from, int to) override;
     // Raw scroll mutation. `centeredRest` is true only when restoring a saved column-center resting position.
@@ -97,6 +98,7 @@ namespace umbriel {
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
     [[nodiscard]] double targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool force = false) const;
     [[nodiscard]] bool vertical() const;
+    [[nodiscard]] bool expandSingleColumn() const;
     void syncHeightWeights(Column& column);
 
     std::vector<Column> m_columns;

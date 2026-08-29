@@ -226,6 +226,7 @@ UMBRIEL_TEST(submapNoLongerSharesStorageWithSpawn) {
 
   CHECK(!parseAction("submap", bind));
   CHECK(!parseAction("submap:", bind));
+  CHECK(!parseAction("submap:invalid]name", bind));
 
   CHECK(parseAction("spawn:resize", bind));
   CHECK(umbriel::payloadIf<umbriel::SubmapArg>(bind) == nullptr);
@@ -368,6 +369,17 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(bind.action == KeybindAction::ColumnMoveToFirst);
   CHECK(parseAction("column-move-to-last", bind));
   CHECK(bind.action == KeybindAction::ColumnMoveToLast);
+
+  CHECK(parseAction("window-focus-previous", bind));
+  CHECK(bind.action == KeybindAction::WindowFocusPrevious);
+  CHECK(parseAction("window-swap-next", bind));
+  CHECK(bind.action == KeybindAction::WindowSwapNext);
+  CHECK(parseAction("window-swap-previous", bind));
+  CHECK(bind.action == KeybindAction::WindowSwapPrevious);
+  CHECK(parseAction("master-count-increase", bind));
+  CHECK(bind.action == KeybindAction::MasterCountIncrease);
+  CHECK(parseAction("master-count-decrease", bind));
+  CHECK(bind.action == KeybindAction::MasterCountDecrease);
 
   // Argument-free actions reject arguments.
   CHECK(!parseAction("workspace-next:1", bind));

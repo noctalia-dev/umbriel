@@ -265,6 +265,25 @@ UMBRIEL_TEST(scrollingDefaultWidthIsOptional) {
   CHECK(!store.config().layout.scrolling.defaultWidthFraction.has_value());
 }
 
+UMBRIEL_TEST(expandSingleColumnParsesAndDefaultsToFalse) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("");
+
+  CHECK(store.reload().success);
+  CHECK(!store.config().layout.scrolling.expandSingleColumn);
+
+  file.write("[layout.scrolling]\nexpand_single_column = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().layout.scrolling.expandSingleColumn);
+
+  file.write("[layout.scrolling]\nexpand_single_column = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().layout.scrolling.expandSingleColumn);
+}
+
 UMBRIEL_TEST(modKeyIsUserConfigurable) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -306,6 +325,47 @@ UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
   CHECK(allowedWhenLocked);
   CHECK(defaultsToBlocked);
   CHECK(!containsDiagnostic(store, "allow_when_locked"));
+}
+
+UMBRIEL_TEST(keybindTableLoadsPostActionSubmaps) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[keybinds]\n"
+      "\"submap[outer],1\" = { action = \"workspace-switch:2\", submap = \"reset\" }\n"
+      "\"submap[outer],2\" = { action = \"workspace-switch:3\", submap = \"inner\", repeat = true }\n"
+      "\"submap[outer],3\" = { action = \"workspace-switch:4\", repeat = true }\n"
+  );
+  CHECK(store.reload().success);
+
+  bool resets = false;
+  bool entersInner = false;
+  bool remainsPersistent = false;
+  for (const auto& bind : store.config().keybinds) {
+    if (!bind.submapAfter.has_value()) {
+      remainsPersistent = remainsPersistent || (bind.submap == "outer" && bind.repeat);
+      continue;
+    }
+    CHECK(!bind.repeat);
+    resets = resets || umbriel::isSubmapReset(*bind.submapAfter);
+    entersInner = entersInner || bind.submapAfter->name == "inner";
+  }
+  CHECK(resets);
+  CHECK(entersInner);
+  CHECK(remainsPersistent);
+  CHECK(!containsDiagnostic(store, "submap"));
+
+  file.write(
+      "[keybinds]\n"
+      "\"submap[outer],1\" = { action = \"workspace-switch:2\", submap = \"\" }\n"
+      "\"submap[outer],2\" = { action = \"workspace-switch:3\", submap = \"disable\" }\n"
+      "\"submap[outer],3\" = { action = \"workspace-switch:4\", submap = \"invalid]name\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "submap must be a non-empty name"));
+  CHECK(std::ranges::none_of(store.config().keybinds, [](const auto& bind) { return bind.submap == "outer"; }));
 }
 
 UMBRIEL_TEST(hotCornersLoadActionsAndValidate) {
@@ -766,6 +826,7 @@ tap = true
 natural_scroll = true
 accel_profile = "adaptive"
 sensitivity = 0.1
+scroll_factor = 1.5
 disable_while_typing = true
 
 [input.mouse]
@@ -809,6 +870,7 @@ sensitivity = -0.5
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
   }
   CHECK(input.touchpad.sensitivity == std::optional<double>(0.1));
+  CHECK(input.touchpad.scrollFactor == std::optional<double>(1.5));
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK_EQ(input.devices.size(), size_t{3});
 
@@ -856,6 +918,11 @@ UMBRIEL_TEST(touchpadAccelerationDefaultsToUnset) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.touchpad.accelProfile.has_value());
   CHECK(!defaults.input.touchpad.sensitivity.has_value());
+}
+
+UMBRIEL_TEST(touchpadScrollFactorDefaultsToUnset) {
+  const umbriel::Config defaults;
+  CHECK(!defaults.input.touchpad.scrollFactor.has_value());
 }
 
 UMBRIEL_TEST(touchpadDisableWhileTypingDefaultsToUnset) {

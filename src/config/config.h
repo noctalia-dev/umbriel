@@ -49,6 +49,7 @@ namespace umbriel {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> centerUnderfullStrip;
       std::optional<ScrollingDirection> direction;
+      std::optional<bool> expandSingleColumn;
       bool operator==(const Scrolling&) const = default;
     } scrolling;
     struct Dwindle {
@@ -83,6 +84,7 @@ namespace umbriel {
       bool centerUnderfullStrip = true;
       // Axis-agnostic layout state is preserved when config reload changes direction.
       ScrollingDirection direction = ScrollingDirection::Horizontal;
+      bool expandSingleColumn = false;
       bool operator==(const Scrolling&) const = default;
     } scrolling;
     struct Dwindle {
@@ -474,6 +476,7 @@ namespace umbriel {
         std::optional<double> defaultWidthFraction;
         bool centerUnderfullStrip = true;
         ScrollingDirection direction = ScrollingDirection::Horizontal;
+        bool expandSingleColumn = false;
         bool operator==(const Scrolling&) const = default;
       } scrolling;
       struct Dwindle {
@@ -496,6 +499,7 @@ namespace umbriel {
     struct Workspaces {
       // Re-selecting the active workspace jumps back to the previous one.
       bool backAndForth = false;
+      bool emptyAbove = false;
       bool operator==(const Workspaces&) const = default;
     } workspaces;
 
@@ -544,6 +548,7 @@ namespace umbriel {
         std::optional<bool> naturalScroll;
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
+        std::optional<double> scrollFactor;
         std::optional<bool> disableWhileTyping;
         bool operator==(const Touchpad&) const = default;
       } touchpad;

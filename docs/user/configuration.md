@@ -73,7 +73,7 @@ honor_restored_maximize = false
 | `xwayland`                | bool         | `true`                  | Spawn `xwayland-satellite` for X11 app support. The binary must be installed. Changing this requires a restart.                                                                                                                         |
 | `show_cheatsheet`         | bool         | `true`                  | Show the keybinds cheatsheet overlay on startup. If an included file is still missing, Umbriel waits for it to load before showing the overlay. Press any key or mouse button to dismiss, or toggle at runtime via `cheatsheet-toggle`. |
 | `focus_on_activate`       | bool         | `false`                 | Focus and reveal windows that request activation. When false, activation marks the window and its workspace urgent without changing workspaces. Window rules can override this per application.                                         |
-| `honor_restored_maximize` | bool         | `false`                 | Honor maximized state restored by applications while their windows open. Later maximize requests are always honored. Applies to newly opened windows.                                                                                   |
+| `honor_restored_maximize` | bool         | `false`                 | Honor maximized state requested by applications before their first buffer maps. The first visible configure then uses the final maximized layout target. A request sent after mapping is a normal runtime maximize request and can resize an already visible window. Later maximize requests are always honored. Applies to newly opened windows. |
 
 ## Environment
 

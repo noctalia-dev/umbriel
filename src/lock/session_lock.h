@@ -32,12 +32,10 @@ namespace umbriel {
     static void onMap(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
     static void onOutputCommit(wl_listener* listener, void* data);
-    static void onOutputDestroy(wl_listener* listener, void* data);
 
     void handleMap();
     void handleDestroy();
     void handleOutputCommit();
-    void handleOutputDestroy();
 
     Server* m_server = nullptr;
     wlr_session_lock_surface_v1* m_lockSurface = nullptr;
@@ -46,7 +44,6 @@ namespace umbriel {
     wl_listener m_map{};
     wl_listener m_destroy{};
     wl_listener m_outputCommit{};
-    wl_listener m_outputDestroy{};
   };
 
   class SessionLock {
@@ -59,7 +56,6 @@ namespace umbriel {
 
     [[nodiscard]] wlr_session_lock_v1* lock() const { return m_lock; }
     [[nodiscard]] bool unlocked() const { return m_unlocked; }
-    [[nodiscard]] const std::vector<std::unique_ptr<LockSurface>>& surfaces() const { return m_surfaces; }
 
     void removeSurface(LockSurface* surface);
 

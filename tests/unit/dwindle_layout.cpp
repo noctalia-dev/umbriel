@@ -119,6 +119,26 @@ UMBRIEL_TEST(swapOperationsRefreshTheColumnMapping) {
   CHECK_EQ(fixture.layout.columnOf(stub(1)), first);
 }
 
+UMBRIEL_TEST(swapViewsAcrossLeavesKeepsGeometryWithTheSlots) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  const wlr_box firstSlot = fixture.layout.targetBox(stub(0));
+  const wlr_box secondSlot = fixture.layout.targetBox(stub(2));
+
+  CHECK(fixture.layout.swapViews(stub(0), stub(2)));
+  fixture.layout.arrange(kUsable);
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).x, firstSlot.x);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).y, firstSlot.y);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).width, firstSlot.width);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).height, firstSlot.height);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).x, secondSlot.x);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).y, secondSlot.y);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).width, secondSlot.width);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).height, secondSlot.height);
+}
+
 UMBRIEL_TEST(unknownViewHasNoColumn) {
   Fixture fixture;
   fixture.addLeaves(2);

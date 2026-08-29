@@ -85,6 +85,10 @@ namespace umbriel {
       wl_listener destroy{};
       wl_listener setCursor{};
 
+      TabletToolState() = default;
+      TabletToolState(const TabletToolState&) = delete;
+      TabletToolState& operator=(const TabletToolState&) = delete;
+
       ~TabletToolState() {
         if (destroy.link.next != nullptr) {
           wl_list_remove(&destroy.link);

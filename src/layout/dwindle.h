@@ -47,6 +47,7 @@ namespace umbriel {
     bool consumeLeft(View* view) override;
     bool expelRight(View* view) override;
     bool moveViewVertical(View* view, int direction) override;
+    bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;

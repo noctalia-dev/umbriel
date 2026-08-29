@@ -97,10 +97,10 @@ the surface's owning output when a window overflows into a neighbouring output.
 Disabling the master switch also releases SceneFX's per-output blur render
 targets.
 
-| Key          | Type  | Default | Description                                                              |
-| ------------ | ----- | ------- | ------------------------------------------------------------------------ |
-| `enabled`    | bool  | `true`  | Master blur switch.                                                      |
-| `optimized`  | bool  | `true`  | Cache one background blur per output instead of recomputing per surface. |
+| Key          | Type  | Default | Description                                                                                                                       |
+| ------------ | ----- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`    | bool  | `true`  | Master blur switch.                                                                                                              |
+| `optimized`  | bool  | `true`  | Use one cached background blur per output for all surfaces. This is the X-ray mode: translucent surfaces blur the background beneath the window stack instead of the surfaces behind them. |
 | `passes`     | int   | `3`     | Blur passes (0-8). 0 disables.                                           |
 | `radius`     | int   | `5`     | Blur radius (0-100). 0 disables.                                         |
 | `noise`      | float | `0.02`  | Noise overlay (0.0-1.0).                                                 |

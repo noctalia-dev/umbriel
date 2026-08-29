@@ -33,6 +33,7 @@ namespace umbriel {
     std::string action; // display action (full label for non-spawn, args-only for spawn)
     KeybindAction actionType = KeybindAction::None;
     std::string submap;      // source submap (empty = top-level)
+    std::string submapAfter; // optional transition after the action
     std::string spawnBinary; // basename of spawn command (empty for non-spawn)
     std::string spawnArgs;   // args portion of spawn command
     // For workspace collapse detection.

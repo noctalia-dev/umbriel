@@ -134,6 +134,15 @@ UMBRIEL_TEST(workspaceInventoryResolvesStaticAndDynamicOutputs) {
   CHECK(dynamicSet.dynamic);
   CHECK_EQ(dynamicSet.workspaces.size(), size_t{1});
   CHECK_EQ(dynamicSet.workspaces[0].name, std::string{"1"});
+
+  config.workspaces.emptyAbove = true;
+  const auto dynamicSetWithEmptyAbove = umbriel::resolveWorkspacesForOutput(config, "DP-2");
+  CHECK(dynamicSetWithEmptyAbove.dynamic);
+  CHECK_EQ(dynamicSetWithEmptyAbove.workspaces.size(), size_t{2});
+  if (dynamicSetWithEmptyAbove.workspaces.size() == 2) {
+    CHECK_EQ(dynamicSetWithEmptyAbove.workspaces[0].name, std::string{"1"});
+    CHECK_EQ(dynamicSetWithEmptyAbove.workspaces[1].name, std::string{"2"});
+  }
 }
 
 UMBRIEL_TEST(fixedWorkspacePositionSelectsItsUniqueOutput) {

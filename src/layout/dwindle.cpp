@@ -483,6 +483,8 @@ namespace umbriel {
     return swapLeafViews(findNode(view), findNode(umbriel::directionalNeighbor(m_targets, view, false, direction)));
   }
 
+  bool DwindleLayout::swapViews(View* a, View* b) { return swapLeafViews(findNode(a), findNode(b)); }
+
   void DwindleLayout::removeView(View* view) {
     Node* node = findNode(view);
     if (node == nullptr) {

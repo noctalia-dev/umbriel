@@ -7,6 +7,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 struct wlr_input_device;
+struct wlr_input_method_keyboard_grab_v2;
 struct wlr_keyboard;
 
 namespace umbriel {
@@ -41,6 +42,9 @@ namespace umbriel {
     // Fire the IPC keyboard-layout event when the effective group changed since the last notification. A single
     // keyboard drives the event stream, so the tracked index is per-keyboard and the first notification always fires.
     void notifyLayoutIfChanged();
+    // The input-method grab for this keyboard, or null when none applies. Always null while locked, so an IME cannot
+    // keylog the lock screen.
+    [[nodiscard]] wlr_input_method_keyboard_grab_v2* activeInputMethodGrab() const;
     void armRepeat(const Keybind& bind, uint32_t keycode);
     void cancelRepeat();
     static int onRepeatTimer(void* data);

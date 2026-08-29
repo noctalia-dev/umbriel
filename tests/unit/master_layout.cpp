@@ -388,4 +388,79 @@ UMBRIEL_TEST(snapshotUsesMemberIdsInsteadOfCapturedViewPointers) {
   CHECK_EQ(restored.layout.columns()[1].views[0], stub(12));
 }
 
+UMBRIEL_TEST(promoteFromStackMovesTheTopViewAndItsWeight) {
+  Fixture fixture;
+  fixture.addViews(3);
+  fixture.layout.arrange(kUsable);
+  auto resize = fixture.layout.beginResize(stub(2), WLR_EDGE_BOTTOM, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(0.0, 60.0, kUsable);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.targetBox(stub(2)).height > fixture.layout.targetBox(stub(1)).height);
+
+  CHECK(fixture.layout.promoteFromStack());
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 1);
+  CHECK(fixture.layout.columns()[0].heightWeights[1] > fixture.layout.columns()[0].heightWeights[0]);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 1);
+  CHECK(fixture.layout.promoteFromStack());
+  CHECK(!fixture.layout.promoteFromStack());
+}
+
+UMBRIEL_TEST(promotingTheLastStackViewMakesOneFullWidthMasterArea) {
+  Fixture fixture;
+  fixture.addViews(2);
+  CHECK(fixture.layout.promoteFromStack());
+  fixture.layout.arrange(kUsable);
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).width, 1260);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).width, 1260);
+}
+
+UMBRIEL_TEST(demoteToStackMovesTheLastMasterToTheStackTop) {
+  Fixture fixture;
+  fixture.addViews(3);
+  CHECK(fixture.layout.promoteFromStack());
+  CHECK(fixture.layout.demoteToStack());
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
+  CHECK(!fixture.layout.demoteToStack());
+}
+
+UMBRIEL_TEST(swapViewsWithinAnAreaKeepsGeometryWithTheSlots) {
+  Fixture fixture;
+  fixture.addViews(3);
+  fixture.layout.arrange(kUsable);
+  auto resize = fixture.layout.beginResize(stub(2), WLR_EDGE_BOTTOM, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(0.0, 60.0, kUsable);
+  fixture.layout.arrange(kUsable);
+  const wlr_box firstSlot = fixture.layout.targetBox(stub(2));
+  const wlr_box secondSlot = fixture.layout.targetBox(stub(1));
+
+  CHECK(fixture.layout.swapViews(stub(2), stub(1)));
+  fixture.layout.arrange(kUsable);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 0);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).y, firstSlot.y);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).height, firstSlot.height);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).y, secondSlot.y);
+  CHECK_EQ(fixture.layout.targetBox(stub(2)).height, secondSlot.height);
+}
+
+UMBRIEL_TEST(swapViewsAcrossAreasExchangesMembership) {
+  Fixture fixture;
+  fixture.addViews(3);
+  CHECK(fixture.layout.swapViews(stub(0), stub(2)));
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(0)), 0);
+  CHECK(!fixture.layout.swapViews(stub(0), stub(99)));
+  CHECK(!fixture.layout.swapViews(stub(0), stub(0)));
+}
+
 int main() { return RUN_TESTS(); }

@@ -157,9 +157,12 @@ namespace {
         for (const auto* row : binRows) {
           std::string label = row->action;
           if (label != "\xe2\x80\xb3") {
-            label = row->spawnArgs.empty() ? row->spawnBinary : row->spawnBinary + " " + row->action;
+            label = row->spawnArgs.empty() ? row->spawnBinary : row->spawnBinary + " " + row->spawnArgs;
             if (label.size() > 32) {
               label = label.substr(0, 32) + "\xe2\x80\xa6";
+            }
+            if (!row->submapAfter.empty()) {
+              label += " \xe2\x86\x92 " + row->submapAfter;
             }
           }
           lines.push_back(bindLine(row->chord, label, groupId, maxChordLen, palette));

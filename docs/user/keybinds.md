@@ -104,14 +104,20 @@ Submaps are temporary keybind layers that can be nested. Enter a named layer
 with `submap:<name>` and exit one level with `submap:reset`. Set entry binds to
 `repeat = false` so holding the key cannot push the same layer more than once.
 
+A table-form bind can optionally set `submap = "reset"` to exit one level after
+its action, or `submap = "<name>"` to enter a nested layer. The action runs
+before the transition. Omitting `submap` adds no post-action transition, so the
+action alone determines the resulting layer. Binds with a post-action
+transition never repeat.
+
 Binds inside a submap prefix the chord with `submap[name],`:
 
 ```toml
 "Mod+S" = { action = "submap:screencapture", repeat = false }
-"submap[screencapture],1" = "spawn:grim screenshot.png"
+"submap[screencapture],1" = { action = "spawn:grim screenshot.png", submap = "reset" }
 "submap[screencapture],2" = { action = "submap:region", repeat = false }
 "submap[screencapture],Escape" = "submap:reset"
-"submap[region],R" = "spawn:grim -g 'slurp -p' screenshot.png"
+"submap[region],R" = { action = "spawn:grim -g \"$(slurp)\" screenshot.png", submap = "reset" }
 "submap[region],Escape" = "submap:reset"
 ```
 

@@ -334,6 +334,56 @@ namespace umbriel {
     return true;
   }
 
+  bool MasterStackLayout::swapViews(View* a, View* b) {
+    if (a == b) {
+      return false;
+    }
+    Area* firstArea = areaOf(a);
+    Area* secondArea = areaOf(b);
+    if (firstArea == nullptr || secondArea == nullptr) {
+      return false;
+    }
+    const int first = rowInArea(*firstArea, a);
+    const int second = rowInArea(*secondArea, b);
+    if (first < 0 || second < 0) {
+      return false;
+    }
+    std::swap(firstArea->views[static_cast<size_t>(first)], secondArea->views[static_cast<size_t>(second)]);
+    for (LayoutTarget& target : m_targets) {
+      if (target.view == a) {
+        target.view = b;
+      } else if (target.view == b) {
+        target.view = a;
+      }
+    }
+    rebuildColumns();
+    return true;
+  }
+
+  bool MasterStackLayout::promoteFromStack() {
+    if (m_stack.views.empty()) {
+      return false;
+    }
+    m_master.views.push_back(m_stack.views.front());
+    m_master.weights.push_back(m_stack.weights.front());
+    m_stack.views.erase(m_stack.views.begin());
+    m_stack.weights.erase(m_stack.weights.begin());
+    rebuildColumns();
+    return true;
+  }
+
+  bool MasterStackLayout::demoteToStack() {
+    if (m_master.views.size() < 2) {
+      return false;
+    }
+    m_stack.views.insert(m_stack.views.begin(), m_master.views.back());
+    m_stack.weights.insert(m_stack.weights.begin(), m_master.weights.back());
+    m_master.views.pop_back();
+    m_master.weights.pop_back();
+    rebuildColumns();
+    return true;
+  }
+
   void MasterStackLayout::removeView(View* view) {
     const bool wasMaster = rowInArea(m_master, view) >= 0;
     if (!wasMaster && rowInArea(m_stack, view) < 0) {

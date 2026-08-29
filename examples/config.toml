@@ -30,6 +30,7 @@ honor_restored_maximize = false # let apps restore their saved maximized state
 
 [workspaces]
 back_and_forth = false
+empty_above = false
 
 # Colors ---------------------------------------------------------------------
 
@@ -182,6 +183,7 @@ width_presets = [0.333, 0.5, 0.667] # shared by scrolling, dwindle, and master
 # direction = "horizontal"
 default_width_fraction = 0.5  # remove to let clients choose their initial width
 center_underfull_strip = true  # center the strip whenever it is narrower than the viewport
+expand_single_column = true # fill lone column to viewport width
 
 
 [layout.dwindle]
@@ -234,6 +236,7 @@ tap = true                      # enabled by default; false disables tap-to-clic
 # natural_scroll = true
 # accel_profile = "adaptive"    # "flat", "adaptive", or "custom <step> <points...>"
 # sensitivity = 0.5             # pointer speed, -1.0 to 1.0
+# scroll_factor = 1.5           # touchpad scroll speed, 0.1 to 10.0
 # disable_while_typing = true   # omitted preserves the device's libinput default
 
 [input.mouse]
@@ -307,6 +310,8 @@ follows_mouse = false
 # "Mod+Shift+K" = "keyboard-layout-next"
 # Submaps can nest; entry binds should not repeat. Inspect the active layer with `umbriel submap`.
 # "Mod+R" = { action = "submap:resize", repeat = false }
+# Omit `submap` to add no post-action transition, or set it to "reset" to exit after the action.
+# "submap[resize],1" = { action = "window-set-width:0.5", submap = "reset" }
 # "submap[resize],Escape" = "submap:reset"
 
 # Output, workspace, and window movement actions.
@@ -320,6 +325,12 @@ follows_mouse = false
 # "Mod+Shift+Period" = "window-move-to-workspace-next"
 # "Mod+Ctrl+Page_Up" = "column-move-to-workspace-previous"
 # "Mod+Ctrl+Page_Down" = "column-move-to-workspace-next"
+# "Mod+Bracketright" = "window-focus-next"
+# "Mod+Bracketleft" = "window-focus-previous"
+# "Mod+Shift+Bracketright" = "window-swap-next"
+# "Mod+Shift+Bracketleft" = "window-swap-previous"
+# "Mod+Shift+Equal" = "master-count-increase"
+# "Mod+Shift+Minus" = "master-count-decrease"
 # "Mod+Ctrl+1" = "column-move-to-workspace:1"
 # "Mod+Ctrl+Comma" = "workspace-move-up"
 # "Mod+Ctrl+Period" = "workspace-move-down"

@@ -7,10 +7,12 @@ in [`outputs.md`](../../user/outputs.md).
 
 A dynamic output maintains numbered workspaces with these invariants:
 
-- It always has at least one workspace.
-- Outside a workspace slide or overview session, an occupied last workspace
-  causes Umbriel to append a new empty workspace.
-- Empty inactive workspaces are removed.
+- It always has a trailing empty workspace.
+- With `workspaces.empty_above` enabled, it also has a distinct leading empty
+  workspace, including before the first view maps.
+- Outside a workspace slide or overview session, an occupied sentinel causes
+  Umbriel to add a new empty workspace at that edge.
+- Other empty inactive workspaces are removed.
 - Remaining workspaces are renamed and reindexed from `1` in their current
   order.
 - Workspace layout rules are resolved again after renumbering.
@@ -59,8 +61,8 @@ Empty static workspaces remain in the inventory.
 
 Switching from a static inventory to dynamic workspaces keeps every populated
 workspace and the active workspace. Other empty workspaces are removed. The
-survivors are renumbered, and Umbriel appends an empty workspace when needed.
-
+survivors are renumbered, and Umbriel restores the trailing empty workspace plus
+the optional leading empty workspace.
 Switching to a static inventory follows the normal name-first, position-second
 matching process.
 
@@ -79,9 +81,12 @@ inventory change.
 
 Configuration resolution and change classification are covered by
 [`tests/unit/config_resolve.cpp`](../../tests/unit/config_resolve.cpp) and
-[`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp). Live workspace
-selection is exercised by
+[`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp). Live
+workspace selection is exercised by
 [`tests/harness/checks/210_workspace_selectors.sh`](../../tests/harness/checks/210_workspace_selectors.sh).
+Leading and trailing dynamic sentinels, including renumbering after workspace
+movement, are covered by
+[`tests/harness/checks/215_empty_above.sh`](../../tests/harness/checks/215_empty_above.sh).
 Pointer isolation during a wheel-triggered workspace transition is covered by
 [`tests/harness/checks/220_workspace_transition_focus.sh`](../../tests/harness/checks/220_workspace_transition_focus.sh).
 Modifier-wheel switching and the resulting keyboard-focus handoff through an

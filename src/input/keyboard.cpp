@@ -126,6 +126,13 @@ namespace umbriel {
     m_server->notifyKeyboardLayoutIpc();
   }
 
+  wlr_input_method_keyboard_grab_v2* Keyboard::activeInputMethodGrab() const {
+    if (m_server->sessionLocked()) {
+      return nullptr;
+    }
+    return m_server->inputMethodRelay()->grabForKeyboard(m_keyboard);
+  }
+
   Keyboard::~Keyboard() {
     if (m_repeatTimer != nullptr) {
       wl_event_source_remove(m_repeatTimer);
@@ -160,7 +167,7 @@ namespace umbriel {
     cancelRepeat();
     m_server->notifyIdleActivity();
     wlr_seat* seat = m_server->seat()->wlr();
-    wlr_input_method_keyboard_grab_v2* grab = m_server->inputMethodRelay()->grabForKeyboard(m_keyboard);
+    wlr_input_method_keyboard_grab_v2* grab = activeInputMethodGrab();
     if (grab != nullptr) {
       wlr_input_method_keyboard_grab_v2_set_keyboard(grab, m_keyboard);
       wlr_input_method_keyboard_grab_v2_send_modifiers(grab, &m_keyboard->modifiers);
@@ -232,18 +239,18 @@ namespace umbriel {
           quitConfirmConsumed = true;
         }
       }
-      const Keybind* matched = nullptr;
+      std::optional<Keybind> matched;
       if (!quitConfirmConsumed) {
         for (int i = 0; i < nsyms; ++i) {
-          const Keybind* result = m_server->handleKeybind(syms[i], rawSym, modifiers);
-          if (result != nullptr) {
-            matched = result;
+          std::optional<Keybind> result = m_server->handleKeybind(syms[i], rawSym, modifiers);
+          if (result.has_value()) {
+            matched = std::move(result);
             handled = true;
             break;
           }
         }
       }
-      if (matched != nullptr) {
+      if (matched.has_value()) {
         armRepeat(*matched, event->keycode);
       }
       // Unbound plain keys drive overview navigation instead of reaching clients, unless a layer surface (launcher,
@@ -260,7 +267,7 @@ namespace umbriel {
       // Any non-modifier key press dismisses the cheatsheet, except the key
       // that just toggled it.
       if (Cheatsheet* sheet = m_server->cheatsheet(); sheet != nullptr && sheet->visible()) {
-        const bool cheatsheetBind = matched != nullptr && isCheatsheetAction(matched->action);
+        const bool cheatsheetBind = matched.has_value() && isCheatsheetAction(matched->action);
         if (!cheatsheetBind && !modifierOnly) {
           sheet->hide();
         }
@@ -273,7 +280,7 @@ namespace umbriel {
     }
 
     if (!handled) {
-      wlr_input_method_keyboard_grab_v2* grab = m_server->inputMethodRelay()->grabForKeyboard(m_keyboard);
+      wlr_input_method_keyboard_grab_v2* grab = activeInputMethodGrab();
       if (grab != nullptr) {
         wlr_input_method_keyboard_grab_v2_set_keyboard(grab, m_keyboard);
         wlr_input_method_keyboard_grab_v2_send_key(grab, event->time_msec, event->keycode, event->state);

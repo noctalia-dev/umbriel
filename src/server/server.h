@@ -229,9 +229,6 @@ namespace umbriel {
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.
     void updateIdleInhibit();
-    // Rotate the view registry until the front is a mapped view on the active
-    // workspace, and focus it. Repeated calls walk the list.
-    bool focusNextWindow();
     // Lock the next XKB group on every physical keyboard. False when no keyboard
     // has a second layout to switch to.
     bool cycleKeyboardLayout();
@@ -258,7 +255,7 @@ namespace umbriel {
     View* viewAt(double lx, double ly, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer = nullptr) {
       return m_focus.viewAt(lx, ly, surface, sx, sy, layer);
     }
-    const Keybind* handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers);
+    std::optional<Keybind> handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers);
     // The bind this press would fire, without running it. Null when nothing
     // matches (locked sessions match nothing, matching handleKeybind).
     [[nodiscard]] const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const;
@@ -268,7 +265,7 @@ namespace umbriel {
     bool handleWheelBind(WheelDirection direction, uint32_t modifiers);
     // Null when no bind matched or its action declined; otherwise the bind that
     // ran, so the caller can tell which action consumed the press.
-    const Keybind* handleMouseBind(uint32_t button, uint32_t modifiers);
+    std::optional<Keybind> handleMouseBind(uint32_t button, uint32_t modifiers);
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
     [[nodiscard]] std::optional<Keybind> releaseModifierTap(const void* source, uint32_t keycode);

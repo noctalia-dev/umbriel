@@ -189,6 +189,10 @@ namespace umbriel {
       if (focused == nullptr) {
         return false;
       }
+      if (source.layout().mode() == LayoutMode::Master) {
+        moveViewToWorkspace(server, *focused, target);
+        return true;
+      }
       const int columnIndex = source.layout().columnOf(focused);
       const auto& sourceColumns = source.layout().columns();
       if (columnIndex < 0 || columnIndex >= static_cast<int>(sourceColumns.size())) {
@@ -795,9 +799,32 @@ namespace umbriel {
       return true;
     }
 
-    bool actionFocusNext(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      if (server.focusNextWindow()) {
-        maybeWarpCursorToWindow(server, focusedWindow(server));
+    template <int Direction> bool actionFocusCycle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        if (View* target = workspace->cycleFocusTarget(Direction)) {
+          focusWindowFromNavigation(server, target);
+        }
+      }
+      return true;
+    }
+
+    template <int Direction> bool actionSwapCycle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->swapFocusedInCycle(Direction);
+      }
+      return true;
+    }
+
+    bool actionMasterCountIncrease(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->increaseMasterCount();
+      }
+      return true;
+    }
+
+    bool actionMasterCountDecrease(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->decreaseMasterCount();
       }
       return true;
     }
@@ -1251,7 +1278,7 @@ namespace umbriel {
         &actionToggleFullscreen,
         &actionToggleFloating,
         &actionTogglePinned,
-        &actionFocusNext,
+        &actionFocusCycle<1>,
         &actionWorkspace,
         &actionWorkspace,
         &actionWindowMoveToWorkspaceAdjacent<1>,
@@ -1306,6 +1333,11 @@ namespace umbriel {
         &actionFocusLastColumn,
         &actionMoveColumnFirst,
         &actionMoveColumnLast,
+        &actionFocusCycle<-1>,
+        &actionSwapCycle<1>,
+        &actionSwapCycle<-1>,
+        &actionMasterCountIncrease,
+        &actionMasterCountDecrease,
     };
 
     consteval bool everyActionHasHandler() {

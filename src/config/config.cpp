@@ -370,6 +370,7 @@ namespace umbriel {
               if (const auto direction = readScrollingDirection(sc, layoutContext + ".scrolling")) {
                 overrides.scrolling.direction = direction;
               }
+              sc.boolean("expand_single_column", overrides.scrolling.expandSingleColumn);
               sc.real("default_width_fraction", 0.1, 1.0, overrides.scrolling.defaultWidthFraction)
                   .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
             });
@@ -899,6 +900,7 @@ namespace umbriel {
           if (const auto direction = readScrollingDirection(sc, "layout.scrolling")) {
             loaded.layout.scrolling.direction = *direction;
           }
+          sc.boolean("expand_single_column", loaded.layout.scrolling.expandSingleColumn);
           sc.real("default_width_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultWidthFraction)
               .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
         });
@@ -913,7 +915,10 @@ namespace umbriel {
     }
 
     void readWorkspaceSettings(Section& root, Config& loaded) {
-      root.sub("workspaces", [&](Section& s) { s.boolean("back_and_forth", loaded.workspaces.backAndForth); });
+      root.sub("workspaces", [&](Section& s) {
+        s.boolean("back_and_forth", loaded.workspaces.backAndForth)
+            .boolean("empty_above", loaded.workspaces.emptyAbove);
+      });
     }
 
     void readGeneral(Section& root, Config& loaded) {
@@ -1121,6 +1126,7 @@ namespace umbriel {
           t.boolean("tap", in.touchpad.tap)
               .boolean("natural_scroll", in.touchpad.naturalScroll)
               .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
+              .real("scroll_factor", 0.1, 10.0, in.touchpad.scrollFactor)
               .boolean("disable_while_typing", in.touchpad.disableWhileTyping);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
         });
@@ -1344,6 +1350,8 @@ namespace umbriel {
       for (const auto& [key, entry] : *section) {
         const std::string chord(key.str());
         std::string actionStr;
+        std::string submapAfter;
+        bool hasSubmapAfter = false;
         bool repeatBind = true;
         bool allowWhenLocked = false;
 
@@ -1353,6 +1361,9 @@ namespace umbriel {
           // bad action must not also be told its `repeat` key is unknown.
           bind.boolean("repeat", repeatBind);
           bind.boolean("allow_when_locked", allowWhenLocked);
+          const toml::node* submapNode = bind.node("submap");
+          hasSubmapAfter = submapNode != nullptr && submapNode->is_string();
+          bind.text("submap", submapAfter);
           const toml::node* actionNode = bind.take("action");
           if (actionNode == nullptr) {
             warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
@@ -1373,6 +1384,14 @@ namespace umbriel {
           actionStr = *value;
         }
 
+        if (hasSubmapAfter && !validSubmapName(submapAfter)) {
+          warnAt(
+              entry.source(),
+              "ignoring keybind '{}' (submap must be a non-empty name without ']' and may not be 'disable')", chord
+          );
+          continue;
+        }
+
         Keybind binding;
         if (!parseChord(chord, binding)) {
           if (binding.keysym != XKB_KEY_NoSymbol && binding.modifiers == 0 && !binding.useMod) {
@@ -1382,7 +1401,10 @@ namespace umbriel {
           }
           continue;
         }
-        binding.repeat = binding.modifierOnly ? false : repeatBind;
+        if (hasSubmapAfter) {
+          binding.submapAfter = SubmapArg{.name = std::move(submapAfter)};
+        }
+        binding.repeat = repeatBind && !binding.modifierOnly && !binding.submapAfter.has_value();
         binding.allowWhenLocked = allowWhenLocked;
         if (!parseAction(actionStr, binding)) {
           warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, actionStr);

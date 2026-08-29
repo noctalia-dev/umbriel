@@ -72,6 +72,33 @@ namespace umbriel {
       return value;
     }
 
+    bool probeWineProcess(pid_t pid) {
+      if (readProcessFile(pid, "maps").contains("winewayland.so")) {
+        return true;
+      }
+      if (lowercase(basename(processExecutable(pid))).starts_with("wine")) {
+        return true;
+      }
+      const std::string commandLine = readProcessFile(pid, "cmdline", true);
+      return lowercase(basename(commandLine.substr(0, commandLine.find('\0')))).starts_with("wine");
+    }
+
+    // The probe reads /proc/<pid>/maps, which is expensive for a large address space, and the global filter runs it
+    // once per color-management global per registry enumeration. Memoize it for exactly the client's lifetime by
+    // hanging the answer off a destroy listener: a pid-keyed table would grow without bound and would hand a recycled
+    // pid the previous process's answer.
+    struct WineClientProbe {
+      wl_listener destroy{};
+      bool needsCompatibility = false;
+    };
+
+    void onWineClientDestroy(wl_listener* listener, void* /*data*/) {
+      WineClientProbe* probe;
+      probe = wl_container_of(listener, probe, destroy);
+      wl_list_remove(&probe->destroy.link);
+      delete probe;
+    }
+
     float decodeCoordinate(int32_t value) { return static_cast<float>(value) / 1'000'000.0F; }
     int32_t encodeCoordinate(float value) { return static_cast<int32_t>(std::lround(value * 1'000'000.0F)); }
 
@@ -1132,37 +1159,26 @@ namespace umbriel {
   void WineColorManager::updatePreferredDescriptions() { m_impl->updatePreferredDescriptions(); }
 
   bool WineColorManager::clientNeedsCompatibility(const wl_client* client) {
+    auto* target = const_cast<wl_client*>(client);
+    if (wl_listener* memo = wl_client_get_destroy_listener(target, onWineClientDestroy); memo != nullptr) {
+      WineClientProbe* probe;
+      probe = wl_container_of(memo, probe, destroy);
+      return probe->needsCompatibility;
+    }
+
     pid_t pid = -1;
     uid_t uid = 0;
     gid_t gid = 0;
-    wl_client_get_credentials(const_cast<wl_client*>(client), &pid, &uid, &gid);
+    wl_client_get_credentials(target, &pid, &uid, &gid);
     if (pid <= 0) {
       return false;
     }
 
-    static std::unordered_map<pid_t, bool> cache;
-    if (auto it = cache.find(pid); it != cache.end()) {
-      return it->second;
-    }
-
-    const std::string maps = readProcessFile(pid, "maps");
-    if (maps.contains("winewayland.so")) {
-      cache[pid] = true;
-      return true;
-    }
-
-    const std::string executable = lowercase(basename(processExecutable(pid)));
-    if (executable.starts_with("wine")) {
-      cache[pid] = true;
-      return true;
-    }
-
-    const std::string commandLine = readProcessFile(pid, "cmdline", true);
-    const size_t firstArgumentEnd = commandLine.find('\0');
-    const std::string argv0 = lowercase(basename(commandLine.substr(0, firstArgumentEnd)));
-    bool isWine = argv0.starts_with("wine");
-    cache[pid] = isWine;
-    return isWine;
+    auto* probe = new WineClientProbe{};
+    probe->needsCompatibility = probeWineProcess(pid);
+    probe->destroy.notify = onWineClientDestroy;
+    wl_client_add_destroy_listener(target, &probe->destroy);
+    return probe->needsCompatibility;
   }
 
 } // namespace umbriel

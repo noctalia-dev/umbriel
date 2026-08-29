@@ -421,10 +421,10 @@ namespace umbriel {
     m_destroy.link.next = nullptr;
     m_newPopup.link.next = nullptr;
 
-    if (m_scene && m_scene->tree) {
-      m_scene->tree->node.data = nullptr;
-    }
-    if (m_layerSurface) {
+    // m_scene is already freed: wlr_scene_layer_surface_v1_create registers its own destroy listener on
+    // m_layerSurface->events.destroy before ours, and that handler destroys the tree and frees the helper.
+    m_scene = nullptr;
+    if (m_layerSurface != nullptr) {
       m_layerSurface->data = nullptr;
     }
     // removeLayerSurface deletes this. Arrange after erase, never via this->m_server.

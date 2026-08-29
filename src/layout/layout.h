@@ -153,6 +153,7 @@ namespace umbriel {
     virtual bool consumeLeft(View* view) = 0;
     virtual bool expelRight(View* view) = 0;
     virtual bool moveViewVertical(View* view, int direction) = 0;
+    virtual bool swapViews(View* a, View* b) = 0;
     virtual void removeView(View* view) = 0;
     virtual void moveColumn(int from, int to) = 0;
     virtual void arrange(const wlr_box& usable) = 0;
