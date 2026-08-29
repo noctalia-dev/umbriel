@@ -129,7 +129,10 @@ focus-only, while `window-focus-warp:<id>` always moves it.
 - **Floating windows:** all of the width and height actions above resize a
   focused floating window directly, as fractions of the output's usable area
   clamped to the client's min/max size hints. Cycling walks
-  `layout.width_presets` on either axis.
+  `layout.width_presets` on either axis. Resizing a maximized float leaves
+  maximization behind and keeps the new size, so a later toggle maximizes
+  rather than reverting to the pre-maximize box. Fullscreen owns the size
+  outright, so the actions do nothing while a float is fullscreen.
 - **Fullscreen:** `window-toggle-fullscreen`. Toggle fullscreen for the focused
   window.
 - **Column width state:** `window-toggle-maximize`. Toggle the focused column's

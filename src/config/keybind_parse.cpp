@@ -194,6 +194,8 @@ namespace umbriel {
         {"window-consume-or-expel-left", "", KeybindAction::WindowConsumeOrExpelLeft},
         {"window-consume-or-expel-right", "", KeybindAction::WindowConsumeOrExpelRight},
         {"window-consume-right", "", KeybindAction::WindowConsumeRight},
+        {"window-cycle-height", "", KeybindAction::WindowCycleHeight},
+        {"window-cycle-height-back", "", KeybindAction::WindowCycleHeightBack},
         {"window-cycle-width", "", KeybindAction::WindowCycleWidth},
         {"window-cycle-width-back", "", KeybindAction::WindowCycleWidthBack},
         {"window-focus", "<window-id>", KeybindAction::WindowFocusId, ActionArgKind::WindowId},

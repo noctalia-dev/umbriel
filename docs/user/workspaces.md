@@ -121,7 +121,7 @@ and numbered positions as those workspaces are created or removed.
 | `output` | string | Restrict to this output. |
 | `layout.mode` | string | `"scrolling"`, `"dwindle"`, or `"master"`. |
 | `layout.gap` | int | Gap in pixels (0-500). |
-| `layout.width_presets` | float array | Widths used by the width-cycle action in every layout. |
+| `layout.width_presets` | float array | Fractions used by the width-cycle and height-cycle actions in every layout. |
 | `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). When omitted globally and for the workspace, the client chooses its initial logical extent. |
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
 | `layout.scrolling.center_focused` | bool | Always center the focused column, including when the setting changes on config reload. |

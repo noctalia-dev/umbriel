@@ -649,6 +649,26 @@ UMBRIEL_TEST(actionSpecNamesAreUniqueAndSorted) {
   }
 }
 
+UMBRIEL_TEST(everyActionHasASpec) {
+  // actions.cpp guards the handler table with a consteval everyActionHasHandler.
+  // Nothing guarded the name table, so an action could ship with a handler, a
+  // cheatsheet row, and docs while staying unbindable and unreachable over IPC.
+  std::array<bool, static_cast<size_t>(KeybindAction::Count)> named{};
+  for (const auto& spec : umbriel::actionSpecs()) {
+    named[static_cast<size_t>(spec.action)] = true;
+  }
+  // Enumerator 0 is None, which is never bindable. On failure the reported
+  // "got" value is the index of the first action that has no name.
+  size_t firstUnnamed = named.size();
+  for (size_t action = 1; action < named.size(); ++action) {
+    if (!named[action]) {
+      firstUnnamed = action;
+      break;
+    }
+  }
+  CHECK_EQ(firstUnnamed, named.size());
+}
+
 UMBRIEL_TEST(parameterizedSpecsDeclareAParam) {
   for (const auto& spec : umbriel::actionSpecs()) {
     if (spec.argKind == ActionArgKind::None) {

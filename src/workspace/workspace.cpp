@@ -862,11 +862,17 @@ namespace umbriel {
     if (view == nullptr || !view->mapped() || !view->floating()) {
       return false;
     }
+    const wlr_xdg_toplevel* toplevel = view->toplevel();
+    if (toplevel->current.fullscreen || toplevel->scheduled.fullscreen) {
+      // A fullscreen configure outranks the request, and adoptFloatingClientSize
+      // refuses to retire it, so the resize would only strand a pending serial.
+      return false;
+    }
     const wlr_box usable = view->floatingUsableArea();
     if (usable.width <= 0 || usable.height <= 0) {
       return false;
     }
-    const XdgSizeHints hints = xdgSizeHints(view->toplevel());
+    const XdgSizeHints hints = xdgSizeHints(toplevel);
     const auto [basisWidth, basisHeight] = view->floatingSize();
     const int width = widthFrac ? clampXdgWidth(floatingFractionSize(*widthFrac, usable.width), hints) : basisWidth;
     const int height =
@@ -874,6 +880,9 @@ namespace umbriel {
     if (width <= 0 || height <= 0) {
       return false;
     }
+    // A maximized float that keeps its state would snap back to the pre-maximize
+    // box on the next toggle, discarding this size.
+    view->dropMaximizedForResize();
     view->requestFloatingSize(width, height);
     // Resize in place: the keep-visible clamp runs at commit, once the
     // geometry is no longer stale (adoptFloatingClientSize).

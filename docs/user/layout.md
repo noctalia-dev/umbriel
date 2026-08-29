@@ -32,7 +32,7 @@ Shared layout options:
 | --------------- | ----------- | --------------------- | ------------------------------------------------------------------ |
 | `mode`          | string      | `"scrolling"`         | Layout algorithm: `"scrolling"`, `"dwindle"`, or `"master"`.       |
 | `gap`           | int         | `8`                   | Gap between windows in pixels (0-500).                             |
-| `width_presets` | float array | `[0.333, 0.5, 0.667]` | Widths visited by `window-cycle-width` in every layout.            |
+| `width_presets` | float array | `[0.333, 0.5, 0.667]` | Fractions visited by `window-cycle-width` in every layout. `window-cycle-height` walks the same list on the other axis: there is no separate height list. |
 
 Scrolling layout options:
 
@@ -162,7 +162,8 @@ by the requested increment. `window-cycle-width` and
 `window-cycle-width-back` walk the configured `width_presets`. Width actions
 are inert while either area is empty because the single occupied area already
 fills the viewport. Height actions adjust a window's row fraction within its
-current area and are inert when that window is the area's only row. Tiled
+current area and are inert when that window is the area's only row;
+`window-cycle-height` walks the same `width_presets` list. Tiled
 resizing is available on the boundary between master and stack and on
 boundaries between rows in either area.
 

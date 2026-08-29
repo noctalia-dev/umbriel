@@ -176,7 +176,7 @@ action = "spawn:notify-send 'Bottom right'"
 mode = "scrolling"             # "scrolling", "dwindle", or "master"
 # Inspect every workspace's effective mode with `umbriel workspaces --json`.
 gap = 8                        # 0-500
-width_presets = [0.333, 0.5, 0.667] # shared by scrolling, dwindle, and master
+width_presets = [0.333, 0.5, 0.667] # width and height cycling, tiled and floating alike
 
 [layout.scrolling]
 # Vertical workspaces stack horizontal lanes from top to bottom.

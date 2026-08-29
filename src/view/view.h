@@ -180,6 +180,10 @@ namespace umbriel {
     void applyDeferredUnfullscreen();
     void setMaximizedToEdges(bool maximized);
     void toggleMaximizedToEdges();
+    // Leave maximized or edges-maximized state without restoring the pre-maximize
+    // box: the caller assigns its own size next. Floating windows only; tiled
+    // windows clear their full-width state through the layout.
+    void dropMaximizedForResize();
     // Detach from the scrolling layout (float) or re-insert as a tiled column.
     void setFloating(bool floating, bool focus = true);
     void toggleFloating();
