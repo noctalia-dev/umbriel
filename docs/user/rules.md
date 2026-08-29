@@ -61,8 +61,8 @@ opening settings do not overwrite user changes made in the meantime.
 | `default_floating` | bool | Force floating (`true`) or force tiling (`false`). |
 | `default_size` | `[w, h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes; tiled windows ignore height. Takes precedence over `default_width`/`default_height` when set. |
 | `default_position` | table | Initial position for floating windows: `{ x = int, y = int, anchor = string }`. Ignored for tiled windows. |
-| `default_width` | float | For floating windows, the initial width as a fraction (0.1-1.0) of the usable area. For tiled windows, scrolling only: lane scroll-axis extent fraction (0.1-1.0), which is height on a vertical workspace. Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the lane within or between scrolling workspaces retains its current fraction. Ignored in dwindle and master. |
-| `default_height` | float | Floating windows only. Initial height as a fraction (0.1-1.0) of the usable area. Ignored for tiled windows. |
+| `default_width` | float | For floating windows, the initial width as a fraction (0.1-1.0) of the usable area. This includes windows that float without `default_floating`, such as dialogs that declare a parent. For tiled windows, scrolling only: lane scroll-axis extent fraction (0.1-1.0), which is height on a vertical workspace. Gap-aware: fractions that sum to 1 tile exactly. Overrides `layout.scrolling.default_width_fraction`. Dragging the lane within or between scrolling workspaces retains its current fraction. Ignored in dwindle and master. |
+| `default_height` | float | Floating windows only, on the same terms as `default_width`. Initial height as a fraction (0.1-1.0) of the usable area. Ignored for tiled windows. |
 | `default_workspace` | int | Place on workspace N from 1 to 64. On dynamic outputs, values beyond the current count clamp to the last workspace. |
 | `default_fullscreen` | bool | Open in fullscreen. |
 | `default_maximize_to_edges` | bool | Explicitly open maximized to edges. The initial configure fills the usable area without gaps or borders, so the window does not open at its normal size first. Layer-shell exclusive zones stay visible. Takes precedence over `default_maximize`; when combined with `default_fullscreen` the window opens fullscreen and returns to maximized to edges once fullscreen is cleared. |
@@ -98,17 +98,6 @@ default_size = [800, 600]
 default_position = { x = 32, y = 24, anchor = "bottom_left" }
 ```
 
-Floating windows can instead be sized as fractions of the usable area, per
-axis. `default_size` (pixels) wins when both are set:
-
-```toml
-[[window_rule]]
-match.app_id = "^org[.]example[.]Utility$"
-default_floating = true
-default_width = 0.5
-default_height = 0.6
-```
-
 `anchor` defaults to `"center"`, so this centers a floating window exactly:
 
 ```toml
@@ -121,6 +110,30 @@ Available anchors are `"center"`, `"top_left"`, `"top_right"`,
 anchors measure `y` upward from the bottom edge. The single-edge anchors center
 the window on the other axis. Umbriel keeps part of the window visible if an
 offset would otherwise place it completely off-screen.
+
+#### Floating size
+
+`default_size` sizes a float in pixels. `default_width` and `default_height`
+size it as fractions of the output's usable area instead, so one rule suits any
+monitor. The axes are independent: an axis without a fraction keeps the size the
+client asked for. Both are clamped to the client's min/max hints.
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]example[.]Utility$"
+default_floating = true
+default_width = 0.5
+default_height = 0.6
+```
+
+`default_size` wins on both axes when it is set as well.
+
+Fractions reach every floating window the rule matches, not only windows the
+rule floats with `default_floating`. A window that floats because it declares a
+parent, such as a dialog, or because it fixes its size through min/max hints,
+takes the fraction too. Dialogs usually share their application's `app_id`, so a
+`default_width` written for scrolling lane widths also sizes that application's
+dialogs. Match on `title` or `xdg_tag` to keep a rule off them.
 
 ### Settings updated while a window is open
 
@@ -144,7 +157,8 @@ offset would otherwise place it completely off-screen.
 blur = true
 blur_optimized = true
 
-# Narrow columns for terminals and file managers
+# Narrow columns for terminals and file managers. These fractions also size any
+# floating window these applications open, including their dialogs.
 [[window_rule]]
 match.app_id = "^(Alacritty|kitty|org\\.gnome\\.Nautilus)$"
 default_width = 0.33

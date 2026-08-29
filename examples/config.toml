@@ -387,6 +387,8 @@ match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
 default_size = [800, 600]
 
+# Size a float as fractions of the usable area instead of pixels, so the rule
+# suits any monitor. default_size wins on both axes when it is also set.
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Utility$"
 # default_floating = true

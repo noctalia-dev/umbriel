@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <ranges>
@@ -73,14 +74,16 @@ namespace umbriel {
     };
   }
 
-  // Pixel length of `fraction` of the usable area on one axis. A degenerate axis
-  // yields 0, which callers pass through unclamped so xdg-shell keeps the client's
-  // own preference for that axis.
+  // Pixel length of `fraction` of the usable area on one axis. Rounds like
+  // Layout::fractionalWidth so a float and a tiled lane at the same fraction do
+  // not disagree by a pixel on an odd axis. A degenerate axis yields 0, which
+  // callers pass through unclamped so xdg-shell keeps the client's own
+  // preference for that axis.
   [[nodiscard]] constexpr int floatingFractionSize(double fraction, int usable) {
     if (usable <= 0) {
       return 0;
     }
-    const int pixels = static_cast<int>(fraction * static_cast<double>(usable));
+    const int pixels = static_cast<int>(std::lround(fraction * static_cast<double>(usable)));
     return pixels < 1 ? 1 : (pixels > usable ? usable : pixels);
   }
 

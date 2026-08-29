@@ -267,6 +267,15 @@ UMBRIEL_TEST(aDegenerateUsableAxisLeavesTheChoiceToTheClient) {
   CHECK_EQ(floatingFractionSize(0.5, -1), 0);
 }
 
+UMBRIEL_TEST(aFractionRoundsRatherThanTruncates) {
+  // Layout::fractionalWidth rounds, so a float and a tiled lane at the same
+  // fraction must not disagree by a pixel when the usable axis is odd, which a
+  // layer-shell exclusive zone readily produces.
+  CHECK_EQ(floatingFractionSize(0.5, 1281), 641);
+  CHECK_EQ(floatingFractionSize(0.5, 719), 360);
+  CHECK_EQ(floatingFractionSize(0.75, 1366), 1025);
+}
+
 UMBRIEL_TEST(fractionPixelsStayWithinTheAxis) {
   // Defensive: parse clamps fractions to [0.1, 1.0], but the arithmetic result
   // never leaves the usable axis and never collapses to 0.
