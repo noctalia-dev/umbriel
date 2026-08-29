@@ -306,7 +306,8 @@ namespace umbriel {
       // Natural: fingers left → content moves left → scroll increases. The strip follows the
       // fingers unclamped, past the strip edges included; the release resolves the overscroll.
       m_scrollTracker.push(event->dx, event->time_msec);
-      const double target = m_scrollStart - m_scrollTracker.pos() * scrollNormFactor();
+      const double target = m_scrollStart - m_scrollTracker.pos() * scrollNormFactor()
+        * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
       scrolling->setScroll(target);
       m_scrollWorkspace->markArrange(false);
       return;
@@ -323,7 +324,8 @@ namespace umbriel {
       }
       m_accumY += event->dy;
       // Natural: swipe up (negative dy) → next workspace (positive progress).
-      double p = -m_accumY / kSwitchDistancePx;
+      double p = -m_accumY / kSwitchDistancePx
+        * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
       const double lo = m_hasPrev ? -1.0 : 0.0;
       const double hi = m_hasNext ? 1.0 : 0.0;
       if (p < lo) {
@@ -351,11 +353,11 @@ namespace umbriel {
       // workspace. The leftover travel stays in m_accumY so one long swipe crosses several rows.
       while (m_accumY <= -kOverviewStepPx) {
         m_accumY += kOverviewStepPx;
-        overview->selectRelativeWorkspace(1, m_output);
+        overview->selectRelativeWorkspace(1 * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0), m_output);
       }
       while (m_accumY >= kOverviewStepPx) {
         m_accumY -= kOverviewStepPx;
-        overview->selectRelativeWorkspace(-1, m_output);
+        overview->selectRelativeWorkspace(-1 * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0), m_output);
       }
       return;
     }
@@ -473,7 +475,8 @@ namespace umbriel {
     const double factor = scrollNormFactor();
     const double currentScroll = scrolling->scroll();
     // Where the swipe would coast to a stop under deceleration.
-    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * factor;
+    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * factor
+       * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
 
     const auto maxScroll = static_cast<double>(scrolling->maxScroll(m_viewportPrimary));
     const auto columnCount = static_cast<int>(scrolling->columns().size());
