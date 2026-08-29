@@ -79,6 +79,12 @@ touchpad active while typing. Removing either optional setting on reload
 restores the device default. Options are applied only when supported by the
 device; an explicitly configured unsupported option is reported in the log.
 
+The effective `natural_scroll` value also controls Umbriel's three-finger
+gestures: horizontal strip scrolling, vertical workspace switching, and
+workspace selection while the overview is open. A per-device override or
+preserved libinput default applies to gestures from that device. The
+four-finger overview open and close gesture keeps its fixed direction.
+
 `accel_profile` and `sensitivity` work like their `[input.mouse]` counterparts,
 including custom curves. Both remain unset by default, which uses each
 touchpad's libinput default profile and speed. Removing either setting on reload

@@ -57,6 +57,7 @@ namespace umbriel {
     double m_accumX = 0;
     double m_accumY = 0;
     Output* m_output = nullptr;
+    int m_naturalScrollDirection = 1;
 
     // Scroll state (horizontal 3-finger).
     Workspace* m_scrollWorkspace = nullptr;

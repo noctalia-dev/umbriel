@@ -1,6 +1,5 @@
 #include "input/gestures.h"
 
-#include "config/config.h"
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "layout/scrolling.h"
@@ -33,6 +32,17 @@ namespace umbriel {
     constexpr double kOverviewStepPx = kSwitchDistancePx * kCommitProgress;
     // Finger travel that scrolls the strip by one viewport width.
     constexpr double kViewGestureMovementPx = 1200.0;
+
+    int touchpadGestureDirection(wlr_pointer* pointer) {
+      if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
+        return 1;
+      }
+      libinput_device* device = wlr_libinput_get_device_handle(&pointer->base);
+      if (device == nullptr || libinput_device_config_scroll_has_natural_scroll(device) == 0) {
+        return 1;
+      }
+      return libinput_device_config_scroll_get_natural_scroll_enabled(device) != 0 ? 1 : -1;
+    }
   } // namespace
 
   // trampolines (same pattern as Cursor)
@@ -194,6 +204,7 @@ namespace umbriel {
       return;
     }
     if (event->fingers == 3) {
+      m_naturalScrollDirection = touchpadGestureDirection(event->pointer);
       // Which of the three-finger gestures this is (scroll, switch, or an
       // overview row step) is decided once the axis locks, not here.
       m_state = State::Pending;
@@ -306,10 +317,7 @@ namespace umbriel {
       // Natural: fingers left → content moves left → scroll increases. The strip follows the
       // fingers unclamped, past the strip edges included; the release resolves the overscroll.
       m_scrollTracker.push(event->dx, event->time_msec);
-      const double target = m_scrollStart
-          - m_scrollTracker.pos()
-              * scrollNormFactor()
-              * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
+      const double target = m_scrollStart - m_scrollTracker.pos() * scrollNormFactor() * m_naturalScrollDirection;
       scrolling->setScroll(target);
       m_scrollWorkspace->markArrange(false);
       return;
@@ -326,7 +334,7 @@ namespace umbriel {
       }
       m_accumY += event->dy;
       // Natural: swipe up (negative dy) → next workspace (positive progress).
-      double p = -m_accumY / kSwitchDistancePx * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
+      double p = -m_accumY / kSwitchDistancePx * m_naturalScrollDirection;
       const double lo = m_hasPrev ? -1.0 : 0.0;
       const double hi = m_hasNext ? 1.0 : 0.0;
       if (p < lo) {
@@ -336,7 +344,7 @@ namespace umbriel {
         p = std::min(hi + (p - hi) * kOverscrollCompress, hi + kOverscrollMaxWs);
       }
       const uint32_t dt = std::max(1U, event->time_msec - m_lastTimeMsec);
-      m_velocity = 0.75 * m_velocity + 0.25 * (-event->dy / static_cast<double>(dt));
+      m_velocity = 0.75 * m_velocity + 0.25 * (-event->dy / static_cast<double>(dt) * m_naturalScrollDirection);
       m_lastTimeMsec = event->time_msec;
       m_progress = p;
       m_switchGroup->slideApply(p);
@@ -354,15 +362,11 @@ namespace umbriel {
       // workspace. The leftover travel stays in m_accumY so one long swipe crosses several rows.
       while (m_accumY <= -kOverviewStepPx) {
         m_accumY += kOverviewStepPx;
-        overview->selectRelativeWorkspace(
-            1 * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0), m_output
-        );
+        overview->selectRelativeWorkspace(m_naturalScrollDirection, m_output);
       }
       while (m_accumY >= kOverviewStepPx) {
         m_accumY -= kOverviewStepPx;
-        overview->selectRelativeWorkspace(
-            -1 * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0), m_output
-        );
+        overview->selectRelativeWorkspace(-m_naturalScrollDirection, m_output);
       }
       return;
     }
@@ -480,10 +484,7 @@ namespace umbriel {
     const double factor = scrollNormFactor();
     const double currentScroll = scrolling->scroll();
     // Where the swipe would coast to a stop under deceleration.
-    const double projected = m_scrollStart
-        - m_scrollTracker.projectedEndPos()
-            * factor
-            * (config().input.touchpad.naturalScroll.value_or(true) ? 1.0 : -1.0);
+    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * factor * m_naturalScrollDirection;
 
     const auto maxScroll = static_cast<double>(scrolling->maxScroll(m_viewportPrimary));
     const auto columnCount = static_cast<int>(scrolling->columns().size());
