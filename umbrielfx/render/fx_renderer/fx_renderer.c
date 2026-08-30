@@ -338,14 +338,20 @@ static void fx_log(GLenum src, GLenum type, GLuint id, GLenum severity,
 	_wlr_log(fx_log_importance_to_wlr(type), "[GLES2] %s", msg);
 }
 
-static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int drm_fd) {
+static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend,
+		int drm_fd, bool gbm_only) {
 	bool own_drm_fd = false;
 	if (!open_preferred_drm_fd(backend, &drm_fd, &own_drm_fd)) {
 		wlr_log(WLR_ERROR, "Cannot create GLES2 renderer: no DRM FD available");
 		return NULL;
 	}
 
-	struct wlr_egl *egl = wlr_egl_create_with_drm_fd(drm_fd);
+	struct wlr_egl *egl = gbm_only
+		? wlr_egl_create_with_drm_fd_gbm(drm_fd)
+		: wlr_egl_create_with_drm_fd(drm_fd);
+	if (own_drm_fd && drm_fd >= 0) {
+		close(drm_fd);
+	}
 	if (egl == NULL) {
 		wlr_log(WLR_ERROR, "Could not initialize EGL");
 		return NULL;
@@ -358,21 +364,23 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 		return NULL;
 	}
 
-	if (own_drm_fd && drm_fd >= 0) {
-		close(drm_fd);
-	}
-
 	return renderer;
 }
 
 struct wlr_renderer *fx_renderer_create_with_drm_fd(int drm_fd) {
 	assert(drm_fd >= 0);
 
-	return renderer_autocreate(NULL, drm_fd);
+	return renderer_autocreate(NULL, drm_fd, false);
+}
+
+struct wlr_renderer *fx_renderer_create_with_drm_fd_gbm(int drm_fd) {
+	assert(drm_fd >= 0);
+
+	return renderer_autocreate(NULL, drm_fd, true);
 }
 
 struct wlr_renderer *fx_renderer_create(struct wlr_backend *backend) {
-	return renderer_autocreate(backend, -1);
+	return renderer_autocreate(backend, -1, false);
 }
 
 static bool link_shaders(struct fx_renderer *renderer) {

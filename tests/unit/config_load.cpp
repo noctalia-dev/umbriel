@@ -121,14 +121,14 @@ UMBRIEL_TEST(defaultConfigLookupPrefersUserThenSystem) {
   const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", systemDir.string());
 
   ConfigStore& store = umbriel::configStore();
-  store.load(nullptr);
+  CHECK(store.load(nullptr));
 
   CHECK_EQ(store.rootPath(), systemConfig);
   CHECK_EQ(store.config().layout.gap, 17);
   CHECK(!store.fileMissing());
 
   tree.write("user/umbriel/config.toml", "[layout]\ngap = 19\n");
-  store.load(nullptr);
+  CHECK(store.load(nullptr));
 
   CHECK_EQ(store.rootPath(), userConfig);
   CHECK_EQ(store.config().layout.gap, 19);
@@ -1497,6 +1497,8 @@ _PRIVATE = "kept"
 "HAS-HYPHEN" = "ignored"
 NOT_A_STRING = 1
 WAYLAND_DISPLAY = "wrong"
+WLR_DRM_DEVICES = "/dev/dri/card0"
+WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -1504,7 +1506,7 @@ WAYLAND_DISPLAY = "wrong"
   const umbriel::ConfigReloadResult result = store.reload();
 
   CHECK(result.success);
-  CHECK_EQ(store.config().environment.variables.size(), size_t{2});
+  CHECK_EQ(store.config().environment.variables.size(), size_t{4});
   CHECK(
       std::ranges::find(store.config().environment.variables, std::pair{std::string{"DXVK_HDR"}, std::string{"1"}})
       != store.config().environment.variables.end()
@@ -1513,12 +1515,241 @@ WAYLAND_DISPLAY = "wrong"
       std::ranges::find(store.config().environment.variables, std::pair{std::string{"_PRIVATE"}, std::string{"kept"}})
       != store.config().environment.variables.end()
   );
+  CHECK(
+      std::ranges::find(
+          store.config().environment.variables, std::pair{std::string{"WLR_DRM_DEVICES"}, std::string{"/dev/dri/card0"}}
+      )
+      != store.config().environment.variables.end()
+  );
+  CHECK(
+      std::ranges::find(
+          store.config().environment.variables,
+          std::pair{std::string{"WLR_RENDER_DRM_DEVICE"}, std::string{"/dev/dri/renderD128"}}
+      )
+      != store.config().environment.variables.end()
+  );
   CHECK(containsDiagnostic(store, R"(ignoring environment key "9INVALID" (expected [A-Za-z_][A-Za-z0-9_]*))"));
   CHECK(containsDiagnostic(store, R"(ignoring environment key "HAS-HYPHEN" (expected [A-Za-z_][A-Za-z0-9_]*))"));
   CHECK(containsDiagnostic(store, "ignoring environment.NOT_A_STRING (expected string)"));
   CHECK(containsDiagnostic(store, "ignoring environment.WAYLAND_DISPLAY (reserved by Umbriel)"));
   CHECK(!containsDiagnostic(store, "unknown key environment.DXVK_HDR"));
   CHECK(!containsDiagnostic(store, "unknown key environment._PRIVATE"));
+}
+
+UMBRIEL_TEST(drmConfigurationLoadsAndNormalizesSelectors) {
+  const TempConfig file;
+  file.write(R"(
+[drm]
+render_device = "/dev/dri/by-path/pci-0000:05:00.0-render"
+ignored_devices = [
+  "/dev/dri/by-path/pci-0000:01:00.0-card",
+  "/dev/dri/by-path/pci-0000:01:00.0-card",
+]
+ignored_pci_addresses = ["0000:01:00.0", "0000:01:00.0"]
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(store.config().drm.configured());
+  CHECK(store.config().drm.hasExclusions());
+  CHECK_EQ(store.config().drm.renderDevice, std::optional<std::string>{"/dev/dri/by-path/pci-0000:05:00.0-render"});
+  CHECK_EQ(store.config().drm.ignoredDevices.size(), size_t{1});
+  CHECK_EQ(store.config().drm.ignoredPciAddresses, std::vector<std::string>{"0000:01:00.0"});
+  CHECK(containsDiagnostic(store, "ignoring duplicate drm.ignored_devices"));
+  CHECK(containsDiagnostic(store, "ignoring duplicate drm.ignored_pci_addresses"));
+
+  file.write(R"(
+[drm]
+ignored_pci_addresses = ["0000:AB:0C.7"]
+)");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().drm.ignoredPciAddresses, std::vector<std::string>{"0000:ab:0c.7"});
+}
+
+UMBRIEL_TEST(emptyDrmTableKeepsTheCompatibilityPath) {
+  const TempConfig file;
+  file.write("[drm]\n");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  CHECK(store.reload().success);
+  CHECK(!store.config().drm.configured());
+  CHECK(!store.config().drm.hasExclusions());
+}
+
+UMBRIEL_TEST(drmPathsPreserveSymlinkSensitiveComponents) {
+  const TempConfig file;
+  file.write(R"(
+[drm]
+render_device = "/dev/dri/selected/../renderD128"
+ignored_devices = ["/dev/dri/excluded/../card0"]
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().drm.renderDevice, std::optional<std::string>{"/dev/dri/selected/../renderD128"});
+  CHECK_EQ(store.config().drm.ignoredDevices, std::vector<std::string>{"/dev/dri/excluded/../card0"});
+}
+
+UMBRIEL_TEST(drmConfigurationRejectsUnsafeSelectors) {
+  const TempConfig file;
+  file.write(R"(
+[drm]
+render_device = "/dev/dri/renderD128"
+ignored_pci_addresses = ["0000:01:00.0"]
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const umbriel::Config previous = store.config();
+
+  file.write(R"(
+[drm]
+render_device = "renderD128"
+ignored_devices = [1, "relative-card"]
+ignored_pci_addresses = ["01:00.0", "0000:01:00.8", "0000:01:20.0"]
+surprise = true
+)");
+
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(!result.success);
+  CHECK(store.config() == previous);
+  CHECK(containsDiagnostic(store, "drm.render_device must be an absolute path"));
+  CHECK(containsDiagnostic(store, "drm.ignored_devices must be a string"));
+  CHECK(containsDiagnostic(store, "drm.ignored_devices must be an absolute path"));
+  CHECK(containsDiagnostic(store, "invalid drm.ignored_pci_addresses entry"));
+  CHECK(containsDiagnostic(store, "unknown key drm.surprise"));
+}
+
+UMBRIEL_TEST(initialConfigErrorsDoNotCommitDefaults) {
+  const TempConfig file;
+  file.write("[drm]\nignored_pci_addresses = [\"invalid\"]\n");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+  const umbriel::Config previous = store.config();
+
+  CHECK(!store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation);
+  CHECK(store.config() == previous);
+  CHECK(containsDiagnostic(store, "invalid drm.ignored_pci_addresses entry"));
+}
+
+UMBRIEL_TEST(initialNonDrmErrorsKeepCompatibilityDefaults) {
+  const TempConfig file;
+  file.write("workspace = \"invalid\"\n");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation + 1);
+  CHECK(!store.config().drm.configured());
+  CHECK(containsDiagnostic(store, "workspace must be a [[workspace]] array of tables"));
+}
+
+UMBRIEL_TEST(initialErrorsCannotDiscardRequestedDrmPolicy) {
+  const TempConfig file;
+  file.write(R"(
+workspace = "invalid"
+
+[drm]
+ignored_pci_addresses = ["0000:01:00.0"]
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(!store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation);
+  CHECK(containsDiagnostic(store, "workspace must be a [[workspace]] array of tables"));
+}
+
+UMBRIEL_TEST(initialSyntaxErrorsCannotDiscardRequestedDrmPolicy) {
+  const TempConfig file;
+  file.write(R"(
+[drm]
+ignored_devices = ["/dev/dri/card0"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(!store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation);
+  CHECK(containsDiagnostic(store, "Error while parsing array"));
+}
+
+UMBRIEL_TEST(initialIncludedSyntaxErrorsCannotDiscardRequestedDrmPolicy) {
+  const TempConfig file;
+  file.write("[include]\nfiles = [\"" + file.includeName() + "\"]\n");
+  file.writeInclude(R"(
+[drm]
+ignored_pci_addresses = ["0000:01:00.0"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(!store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation);
+  CHECK(containsDiagnostic(store, "Error while parsing array"));
+}
+
+UMBRIEL_TEST(drmTextInMultilineStringKeepsSyntaxErrorCompatibilityFallback) {
+  const TempConfig file;
+  file.write(R"(
+note = """
+[drm]
+ignored_devices = ["/dev/dri/card0"]
+"""
+workspace =
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation + 1);
+  CHECK(!store.config().drm.configured());
+}
+
+UMBRIEL_TEST(emptyDrmTableKeepsSyntaxErrorCompatibilityFallback) {
+  const TempConfig file;
+  file.write(R"(
+[drm]
+
+[layout]
+gap =
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation + 1);
+  CHECK(!store.config().drm.configured());
+}
+
+UMBRIEL_TEST(initialMissingExplicitConfigKeepsCompatibilityDefaults) {
+  const TempConfig file;
+  std::filesystem::remove(file.path());
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(store.load(file.path().c_str()));
+  CHECK_EQ(store.generation(), generation + 1);
+  CHECK(store.fileMissing());
+  CHECK(containsDiagnostic(store, "config file not found"));
 }
 
 UMBRIEL_TEST(eventsLoadCanonicalLidCommands) {

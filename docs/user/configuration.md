@@ -6,6 +6,10 @@ Umbriel checks `$XDG_CONFIG_HOME/umbriel/config.toml` first, followed by each
 The packaged file is [`examples/config.toml`](../../examples/config.toml) and
 can be copied into your user config directory as a starting point. Umbriel
 does not create or modify a user config automatically.
+Initial configuration errors retain the compatibility fallback to built-in
+defaults. When a nonempty `[drm]` policy is present, initial errors are fatal
+because falling back would silently allow GPUs that the policy meant to exclude.
+Warnings do not prevent the session from starting.
 
 ## Starting configuration
 
@@ -77,6 +81,68 @@ honor_restored_maximize = false
 | `show_cheatsheet`         | bool         | `true`                  | Show the keybinds cheatsheet overlay on startup. If an included file is still missing, Umbriel waits for it to load before showing the overlay. Press any key or mouse button to dismiss, or toggle at runtime via `cheatsheet-toggle`. |
 | `focus_on_activate`       | bool         | `false`                 | Let unsolicited activation requests add focus and reveal their target. When false, a mapped target is only marked urgent, while an unmapped target still follows its normal `default_focused` map policy. Tokens issued by `spawn:` and client tokens validated from focused input represent user launch intent and may focus the target. Window rules override this per application. |
 | `honor_restored_maximize` | bool         | `false`                 | Honor maximized state requested by applications before their first buffer maps. The first visible configure then uses the final maximized layout target. A request sent after mapping is a normal runtime maximize request and can resize an already visible window. Later maximize requests are always honored. Applies to newly opened windows. |
+
+## DRM devices
+
+The optional `[drm]` section selects the renderer GPU and excludes GPUs from a
+native session. It is inactive for nested Wayland, X11, and headless backends.
+All keys are optional and require a restart.
+
+```toml
+[drm]
+render_device = "/dev/dri/by-path/pci-0000:05:00.0-render"
+ignored_devices = ["/dev/dri/by-path/pci-0000:01:00.0-card"]
+# Add the PCI address when the GPU may have no DRM node, such as with VFIO.
+ignored_pci_addresses = ["0000:01:00.0"]
+```
+
+An incorrect exclusion can prevent startup. Losing the primary GPU ends the
+session. Keep another TTY or session available while testing changes.
+
+| Key                     | Type         | Default | Description |
+| ----------------------- | ------------ | ------- | ----------- |
+| `render_device`         | string       | unset   | Absolute render-node path for the renderer. If Umbriel cannot use it, Umbriel warns and falls back to the primary allowed GPU. |
+| `ignored_devices`       | string array | `[]`    | Absolute DRM card or render-node paths. Either node excludes the whole physical GPU. A missing path remains active and resolves again on GPU add or session resume. |
+| `ignored_pci_addresses` | string array | `[]`    | PCI addresses in full `domain:bus:slot.function` form. This option can identify a GPU without a DRM node. Umbriel stores addresses in lowercase. |
+
+`umbriel validate` checks path and PCI syntax but does not inspect hardware.
+Device type, permissions, seat membership, and KMS support are checked when a
+native session starts. An existing path that is not a DRM node is a startup
+error.
+
+Prefer stable `/dev/dri/by-path` links over numbered `cardN` and `renderDN`
+paths because numbered paths can change across boots. Use a PCI address if the
+GPU may start unbound or attached to VFIO. A path alone cannot identify a GPU
+if the path has never existed and udev does not advertise it.
+
+Umbriel excludes GPUs before opening their KMS nodes and prefers the allowed
+boot-display GPU as primary. Startup fails if no allowed GPU initializes or if
+a graphics driver opens an excluded GPU.
+
+### Limits
+
+The DRM policy has these limits:
+
+- A renderer GPU that differs from the primary GPU requires compatible DMA-BUF
+  formats and modifiers. It can also increase copying and memory bandwidth.
+- Secondary GPUs import DMA-BUFs directly. An incompatible GPU cannot drive an
+  output.
+- Losing the primary GPU ends the session. Umbriel does not change the primary
+  while allocators and outputs use it.
+- `WLR_RENDERER_FORCE_SOFTWARE=1` is incompatible with exclusions.
+
+### Environment compatibility
+
+`render_device` overrides `WLR_RENDER_DRM_DEVICE`. Exclusions override
+`WLR_DRM_DEVICES`, but a configuration with only `render_device` preserves
+`WLR_DRM_DEVICES`.
+
+With exclusions, `WLR_BACKENDS` may contain one `drm` entry and one optional
+`libinput` entry. Other combinations that include `drm`, such as
+`drm,headless`, fail at startup.
+
+See [DRM device policy](../design/drm-device-policy.md) for the backend and
+renderer design.
 
 ## Environment
 

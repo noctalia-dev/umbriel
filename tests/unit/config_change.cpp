@@ -28,6 +28,7 @@ UMBRIEL_TEST(aFirstLoadReportsEverything) {
   CHECK(change.appearance);
   CHECK(change.animation);
   CHECK(change.colors);
+  CHECK(change.drm);
   CHECK(change.events);
   CHECK(change.input);
   CHECK(change.outputs);
@@ -35,6 +36,15 @@ UMBRIEL_TEST(aFirstLoadReportsEverything) {
 
 UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   const Config before;
+
+  {
+    Config after;
+    after.drm.renderDevice = "/dev/dri/renderD128";
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.drm);
+    CHECK(!ConfigEffects::between(before, after).any());
+    CHECK_EQ(change.summary(), std::string("drm"));
+  }
 
   {
     Config after;

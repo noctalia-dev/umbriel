@@ -116,6 +116,107 @@ namespace umbriel::configmerge {
       return message.substr(0, recordedKey + 1) + "'" + key + "'";
     }
 
+    enum class MultilineString {
+      None,
+      Basic,
+      Literal,
+    };
+
+    std::string structuralTomlLine(std::string_view line, MultilineString& multiline) {
+      std::string code;
+      for (size_t index = 0; index < line.size();) {
+        if (multiline == MultilineString::Basic) {
+          if (line.substr(index).starts_with(R"(""")")) {
+            multiline = MultilineString::None;
+            index += 3;
+          } else if (line[index] == '\\' && index + 1 < line.size()) {
+            index += 2;
+          } else {
+            ++index;
+          }
+          continue;
+        }
+        if (multiline == MultilineString::Literal) {
+          if (line.substr(index).starts_with("'''")) {
+            multiline = MultilineString::None;
+            index += 3;
+          } else {
+            ++index;
+          }
+          continue;
+        }
+
+        if (line[index] == '#') {
+          break;
+        }
+        if (line.substr(index).starts_with(R"(""")")) {
+          multiline = MultilineString::Basic;
+          index += 3;
+          continue;
+        }
+        if (line.substr(index).starts_with("'''")) {
+          multiline = MultilineString::Literal;
+          index += 3;
+          continue;
+        }
+        if (line[index] == '"' || line[index] == '\'') {
+          const char quote = line[index];
+          code.push_back(line[index++]);
+          bool escaped = false;
+          while (index < line.size()) {
+            const char character = line[index++];
+            code.push_back(character);
+            if (quote == '"' && character == '\\' && !escaped) {
+              escaped = true;
+              continue;
+            }
+            if (character == quote && !escaped) {
+              break;
+            }
+            escaped = false;
+          }
+          continue;
+        }
+        code.push_back(line[index++]);
+      }
+      return code;
+    }
+
+    // toml++ does not return a partial table on syntax errors. Inspect only
+    // structural source tokens so a malformed policy still fails closed, while
+    // comments and multiline string contents cannot look like a real [drm]
+    // section.
+    bool parseErrorMayDiscardDrmPolicy(const std::filesystem::path& path) {
+      std::ifstream input(path);
+      std::string line;
+      MultilineString multiline = MultilineString::None;
+      bool inDrmTable = false;
+      while (std::getline(input, line)) {
+        std::string code = structuralTomlLine(line, multiline);
+        std::erase_if(code, [](unsigned char character) { return std::isspace(character) != 0; });
+        if (code == "[drm]") {
+          inDrmTable = true;
+          continue;
+        }
+        const bool drmTable = code.starts_with("[drm") && (code.size() == 4 || code[4] == '.' || code[4] == ']');
+        const bool drmArray = code.starts_with("[[drm") && (code.size() == 5 || code[5] == '.' || code[5] == ']');
+        if (drmTable || drmArray) {
+          return true;
+        }
+        if (code.starts_with('[')) {
+          inDrmTable = false;
+          continue;
+        }
+        if (code.empty()) {
+          continue;
+        }
+        if (inDrmTable || code.starts_with("drm.") || (code.starts_with("drm=") && code != "drm={}")) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     std::string expandEnvironment(std::string_view input) {
       std::string result;
       result.reserve(input.size());
@@ -288,6 +389,8 @@ namespace umbriel::configmerge {
         parsed = toml::parse_file(path.string());
       } catch (const toml::parse_error& error) {
         result.hadParseError = true;
+        result.parseErrorMayDiscardDrmPolicy =
+            result.parseErrorMayDiscardDrmPolicy || parseErrorMayDiscardDrmPolicy(path);
         const auto key = canonicalKey(path);
         if (std::ranges::find(result.loadedFiles, key) == result.loadedFiles.end()) {
           result.loadedFiles.push_back(key);

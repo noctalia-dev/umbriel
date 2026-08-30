@@ -43,6 +43,9 @@ Output state and workspace inventory are independent effects.
   the overview.
 - `general.autostart` commands run only during startup, never during reload.
 - `general.xwayland` changes require a compositor restart.
+- `[drm]` is captured before backend creation. A reload records the new values
+  and reports that a restart is required, but never changes live devices or the
+  renderer.
 - `[environment]` values are applied and synchronized to the systemd user
   manager only during startup. A reload does not mutate the compositor, user
   manager, or existing process environments. Traditional D-Bus activation sees

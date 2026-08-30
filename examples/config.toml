@@ -19,6 +19,14 @@ show_cheatsheet = true         # show keybinds overlay on startup
 focus_on_activate = false      # unsolicited requests cannot add focus; trusted launches may still focus
 honor_restored_maximize = false # let apps restore their saved maximized state
 
+# Native sessions only. All values are optional and require a restart. An
+# unavailable render device falls back to the primary allowed GPU. Prefer
+# by-path links, and add the PCI address if the GPU may have no DRM node.
+# [drm]
+# render_device = "/dev/dri/by-path/pci-0000:05:00.0-render"
+# ignored_devices = ["/dev/dri/by-path/pci-0000:01:00.0-card"]
+# ignored_pci_addresses = ["0000:01:00.0"]
+
 # Applied only at session startup. Native sessions also publish these values to
 # newly started systemd session services and applications they launch. D-Bus
 # receives only graphical connection variables. Nested sessions do not modify the

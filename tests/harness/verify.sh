@@ -278,7 +278,11 @@ start_instance() {
   # teardown instead of joining the harness's own group where it cannot be
   # signalled. The backgrounded child is not a group leader, so setsid execs in
   # place and SERVER_PID stays the compositor and its group id.
+  # Keep an inherited renderer selector paired with the caller's GLVND vendor
+  # settings. Removing only the selector can make a mixed-vendor host choose a
+  # render node that the forced EGL vendor cannot initialize.
   setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+    -u WLR_DRM_DEVICES \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WLR_BACKENDS=headless \
     WLR_LIBINPUT_NO_DEVICES=1 \

@@ -595,6 +595,20 @@ namespace umbriel {
       bool operator==(const General&) const = default;
     } general;
 
+    struct Drm {
+      // Native-session renderer override. Runtime failures fall back to the
+      // first allowed DRM backend rather than invalidating the config file.
+      std::optional<std::string> renderDevice;
+      // Absolute card or render-node paths. Either node excludes the whole GPU.
+      std::vector<std::string> ignoredDevices;
+      // Canonical PCI domain:bus:slot.function addresses.
+      std::vector<std::string> ignoredPciAddresses;
+
+      [[nodiscard]] bool hasExclusions() const { return !ignoredDevices.empty() || !ignoredPciAddresses.empty(); }
+      [[nodiscard]] bool configured() const { return renderDevice.has_value() || hasExclusions(); }
+      bool operator==(const Drm&) const = default;
+    } drm;
+
     struct Environment {
       // Ordered NAME=value pairs exported to the compositor and the native session's systemd user manager.
       std::vector<std::pair<std::string, std::string>> variables;
@@ -708,7 +722,7 @@ namespace umbriel {
   };
 
   [[nodiscard]] const Config& config();
-  void loadConfig(const char* explicitPath);
+  [[nodiscard]] bool loadConfig(const char* explicitPath);
   [[nodiscard]] ConfigReloadResult reloadConfig();
   [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();
   [[nodiscard]] const std::vector<ConfigDiagnostic>& configDiagnostics();

@@ -63,7 +63,7 @@ UMBRIEL_TEST(anIncludedFileReloadsThroughASymlinkedConfigDirectory) {
   const SymlinkedConfigTree tree;
   const std::string root = tree.root().string();
   ConfigStore& store = umbriel::configStore();
-  store.load(root.c_str());
+  CHECK(store.load(root.c_str()));
 
   CHECK_EQ(store.config().layout.gap, 5);
   CHECK_EQ(store.config().appearance.borderWidth, 2);

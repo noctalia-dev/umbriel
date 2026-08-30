@@ -31,6 +31,7 @@ unit_tests = [
   ['config-section', ['unit/config_section.cpp'], []],
   ['config-change', ['unit/config_change.cpp'], []],
   ['config-load', ['unit/config_load.cpp'], [umbriel_core_dep]],
+  ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [umbriel_core_dep]],
   ['ipc-commands', ['unit/ipc_commands.cpp'], [umbriel_core_dep]],

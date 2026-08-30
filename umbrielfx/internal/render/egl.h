@@ -3,11 +3,17 @@
 
 #include <wlr/render/egl.h>
 
+enum wlr_egl_drm_fd_strategy {
+	WLR_EGL_DRM_FD_EGL_DEVICE_FIRST,
+	WLR_EGL_DRM_FD_GBM_EXACT,
+};
+
 struct wlr_egl {
 	EGLDisplay display;
 	EGLContext context;
 	EGLDeviceEXT device; // may be EGL_NO_DEVICE_EXT
 	struct gbm_device *gbm_device;
+	enum wlr_egl_drm_fd_strategy drm_fd_strategy;
 
 	struct {
 		// Display extensions
@@ -62,6 +68,12 @@ struct wlr_egl_context {
  * Will attempt to load all possibly required API functions.
  */
 struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd);
+
+/**
+ * Initializes an EGL context for the given DRM FD through GBM without
+ * enumerating EGL devices.
+ */
+struct wlr_egl *wlr_egl_create_with_drm_fd_gbm(int drm_fd);
 
 /**
  * Frees all related EGL resources, makes the context not-current and

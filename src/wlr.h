@@ -6,6 +6,7 @@ extern "C" {
 #include <umbrielfx/render/fx_renderer/fx_renderer.h>
 #include <umbrielfx/types/wlr_scene.h>
 #include <wlr/backend.h>
+#include <wlr/backend/drm.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/libinput.h>
 #include <wlr/backend/multi.h>

@@ -11,6 +11,8 @@ struct fx_renderer;
 struct wlr_output;
 
 struct wlr_renderer *fx_renderer_create_with_drm_fd(int drm_fd);
+/* Creates through GBM without enumerating EGL devices. */
+struct wlr_renderer *fx_renderer_create_with_drm_fd_gbm(int drm_fd);
 struct wlr_renderer *fx_renderer_create(struct wlr_backend *backend);
 
 struct fx_renderer *fx_get_renderer(struct wlr_renderer *wlr_renderer);

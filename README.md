@@ -66,8 +66,8 @@ The scene graph and renderer live in [`umbrielfx/`](umbrielfx/) and build as par
 ### System build
 
 Install a C++23 compiler, Meson, Ninja, pkg-config, wayland-scanner, and development packages for wlroots 0.20,
-Wayland, xkbcommon, libinput, pixman, libdrm, EGL, GLES2, GBM, lcms2, Cairo, Pango, tomlplusplus, and
-nlohmann-json. Then build Umbriel:
+Wayland, xkbcommon, libinput, libudev, pixman, libdrm, EGL, GLES2, GBM, lcms2, Cairo, Pango, tomlplusplus,
+and nlohmann-json. Then build Umbriel:
 
 ```sh
 just release

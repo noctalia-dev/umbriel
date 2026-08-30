@@ -10,6 +10,7 @@
   wlroots_0_20,
   libxkbcommon,
   libinput,
+  systemd,
   pixman,
   cairo,
   pango,
@@ -53,6 +54,7 @@ stdenv.mkDerivation {
     wlroots_0_20
     libxkbcommon
     libinput
+    systemd
     pixman
     tomlplusplus
     libGL
