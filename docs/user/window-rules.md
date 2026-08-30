@@ -56,7 +56,7 @@ opening settings do not overwrite user changes made in the meantime.
 | Key | Type | Description |
 |-----|------|-------------|
 | `default_output` | string | Open on a specific output (e.g. `"DP-1"`). |
-| `default_workspace` | int | Place on workspace N from 1 to 64. On dynamic outputs, values beyond the current count clamp to the last workspace. |
+| `default_scratchpad` | string | Route directly into the named scratchpad slot without showing it (`scratchpad` is also accepted). |
 | `default_fullscreen` | bool | Open fullscreen across the entire output, ignoring layout struts and layer-shell exclusive zones. |
 | `default_floating` | bool | Force floating (`true`) or force tiling (`false`). |
 | `default_maximize` | bool | Open maximized. A tiled column still respects layout struts and gaps. Parented transient dialogs keep their natural size. |

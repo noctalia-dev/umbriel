@@ -87,11 +87,15 @@ curve = "easeout"
 enabled = false
 duration_ms = 250
 curve = "easeout"
+direction = "top"              # "top", "bottom", "left", "right"
+style = "slide"                # "slide", "slidefade", "popin", "fade"
 dim = 0.5                      # 0.0-1.0
 blur = false
 scale = 0.0                    # 0 preserves the window geometry
 maximize = false
+maximize_to_edges = false      # fill screen edge-to-edge without gaps or borders
 fullscreen = false
+suspend_hidden = true          # suspend frame scheduling while closed
 
 [animation.border]
 enabled = false
@@ -459,6 +463,11 @@ default_position = { x = 20, y = 20, anchor = "bottom_right" }
 # default_focused = false
 # default_pinned = true
 
+# Route specific applications directly into scratchpad slots without showing them
+# [[window_rule]]
+# match.app_id = "spotify"
+# scratchpad = "music"
+
 # Layer rules (see docs/user/layer-rules.md) ---------------------------
 
 [[layer_rule]]
@@ -466,3 +475,27 @@ match.namespace="^noctalia-(bar-[^\"]+|notification|dock|panel|attached-panel|os
 blur = true
 blur_ignore_alpha = 0.5
 blur_optimized = false
+
+# Scratchpad slot rules (see docs/user/scratchpad.md) ------------------------
+
+# Dedicated music player drawer sliding in from the right with blur
+# [[scratchpad]]
+# name = "music"
+# scale = 0.65
+# direction = "right"
+# duration_ms = 350
+# curve = "easeout"
+# dim = 0.50
+# blur = true
+# on_empty = "spotify"
+
+# Dropdown terminal sliding in from top with snappy easing
+# [[scratchpad]]
+# name = "terminal"
+# scale = 0.85
+# direction = "top"
+# duration_ms = 220
+# curve = "snappy"
+# on_empty = "kitty"
+# layout = "master"          # per-slot layout; defaults to layout.mode
+# gap = 12                   # per-slot gap; defaults to layout.gap

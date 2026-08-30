@@ -43,11 +43,15 @@ curve = "easeout"
 enabled = false
 duration_ms = 250
 curve = "easeout"
-dim = 0.5             # 0.0-1.0
-blur = false          # requires appearance.blur.enabled
-scale = 0.0           # 0 preserves geometry; 0.1-1.0 sizes and centers on entry
-maximize = false      # maximize to edges on entry
-fullscreen = false    # fullscreen on entry
+direction = "top"         # "top", "bottom", "left", "right"
+style = "slide"           # "slide", "slidefade", "popin", "fade"
+dim = 0.5                 # 0.0-1.0
+blur = false              # requires appearance.blur.enabled
+scale = 0.0               # 0 preserves geometry; 0.1-1.0 sizes and centers on entry
+maximize = false          # maximize to edges on entry
+maximize_to_edges = false # fill usable area edge-to-edge
+fullscreen = false        # fullscreen on entry
+suspend_hidden = true     # suspend client frame scheduling while closed
 
 [animation.border]
 enabled = false
@@ -86,14 +90,14 @@ fields are specific to individual event tables:
 | `[animation.windows_move]` | None                                                                                                               | Window move and resize.                             |
 | `[animation.workspaces]`   | None                                                                                                               | Workspace switch.                                   |
 | `[animation.overview]`     | None                                                                                                               | Overview open, close, and row settling.             |
-| `[animation.scratchpad]`   | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                                             | Scratchpad show, hide, and backdrop.                |
+| `[animation.scratchpad]`   | `direction` (`top`, `bottom`, `left`, `right`); `style` (`slide`, `slidefade`, `popin`, `fade`); `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `maximize_to_edges`; `fullscreen`; `suspend_hidden` | Scratchpad show, hide, and backdrop. |
 | `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space.   |
 | `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                                                 | Unfocused-window opacity. `dim = 0` disables it.    |
 | `[animation.layers]`       | None                                                                                                               | Layer-shell surface map and unmap fades.            |
 
 An event's `enabled = false` makes only that transition instant. Scratchpad
 `dim` and `blur` remain active, without a fade, when animation is disabled.
-Scratchpad `scale`, `maximize`, and `fullscreen` apply when a window enters the
+Scratchpad `scale`, `maximize`, `maximize_to_edges`, and `fullscreen` apply when a window enters the
 scratchpad.
 
 ## Curves

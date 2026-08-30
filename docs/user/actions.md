@@ -337,22 +337,26 @@ layout = "us,de"
 toggle such as `options = "grp:alt_shift_toggle"` is an alternative that lives
 in the keymap itself; the two can coexist.
 
-## Scratchpad actions
+## Scratchpad and drawer actions
 
-Each output has a holding area for windows that should stay nearby without
-remaining on a workspace.
+Each output supports multiple dedicated named scratchpad slots (or a default slot).
 
-| Action | What it does |
-|--------|--------------|
-| `window-move-to-scratchpad` | Move the focused window from its workspace into the scratchpad. |
-| `scratchpad-toggle` | Show or hide the output's scratchpad windows. |
-| `window-restore-from-scratchpad` | Return the focused scratchpad window to its saved workspace. |
-| `window-toggle-scratchpad` | Move the focused window into the scratchpad, or restore it if it's already the scratchpad's focused window. |
-| `scratchpad-focus-next` | Focus the next visible scratchpad window. |
+| Action | Parameter | What it does |
+|--------|-----------|--------------|
+| `scratchpad-toggle[:<name>[/<output>]]` | Optional slot name and output | Show or hide the named scratchpad slot. Toggling a new slot auto-closes other active slots on that output. |
+| `window-move-to-scratchpad[:<name>[/<output>]]` | Optional slot name and output | Move the focused window from its workspace into the target scratchpad slot. |
+| `window-move-to-scratchpad-silent[:<name>[/<output>]]` | Optional slot name and output | Move the focused window into the scratchpad slot without switching focus (silent move). |
+| `window-restore-from-scratchpad[:<name>[/<output>]]` | Optional slot name and output | Return the focused scratchpad window to its saved workspace, preserving layout mode. |
+| `window-toggle-scratchpad[:<name>[/<output>]]` | Optional slot name and output | Move the focused window into the scratchpad, or restore it if it's already the scratchpad's focused window. |
+| `scratchpad-focus-next[:<name>[/<output>]]` | Optional slot name and output | Focus the next visible window in the active scratchpad slot (cycling split-tiled columns). |
 
-Add `:<output>` to any action to target a specific output, for example
-`scratchpad-toggle:DP-1`. Without a suffix, the action targets the output under
-the pointer.
+Parameters support `<name>`, `<output>`, or `<name>/<output>`:
+- `"scratchpad-toggle:music"` targets the `music` drawer on the output under the pointer.
+- `"scratchpad-toggle:DP-1"` targets the default drawer on connector `DP-1`.
+- `"scratchpad-toggle:terminal/DP-1"` targets the `terminal` drawer on connector `DP-1`.
 
-See [Scratchpads](scratchpad.md) for setup examples, the full workflow,
-multi-output behavior, restoration rules, and troubleshooting.
+A bare argument that matches a connected output name is read as an output, so
+older output-only bindings keep working.
+
+See [Scratchpads](scratchpad.md) for setup examples, per-slot rules, restoration
+rules, multi-output behavior, and troubleshooting.
