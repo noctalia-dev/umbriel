@@ -482,24 +482,6 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   };
 
   Keybind bind;
-  CHECK(parseAction("scratchpad-toggle", bind));
-  CHECK(bind.action == KeybindAction::ScratchpadToggle);
-  // The alternative is present even with no output, so the payload still says
-  // which action shape it belongs to.
-  CHECK(umbriel::payloadIf<umbriel::OutputArg>(bind) != nullptr);
-  CHECK(outputOf(bind).empty());
-
-  CHECK(parseAction("scratchpad-toggle:DP-2", bind));
-  CHECK_EQ(outputOf(bind), std::string{"DP-2"});
-
-  CHECK(parseAction("window-move-to-scratchpad", bind));
-  CHECK(bind.action == KeybindAction::WindowMoveToScratchpad);
-  CHECK(parseAction("window-restore-from-scratchpad:eDP-1", bind));
-  CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
-  CHECK(parseAction("window-toggle-scratchpad", bind));
-  CHECK(bind.action == KeybindAction::WindowToggleScratchpad);
-  CHECK(parseAction("scratchpad-focus-next", bind));
-
   CHECK(parseAction("dpms-off", bind));
   CHECK(bind.action == KeybindAction::DpmsOff);
   CHECK(outputOf(bind).empty());
@@ -509,6 +491,40 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   CHECK(bind.action == KeybindAction::DpmsOn);
   CHECK(parseAction("dpms-on:eDP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
+}
+
+UMBRIEL_TEST(parsesOptionalScratchpadActions) {
+  const auto scratchpadOf = [](const Keybind& bind) {
+    const auto* arg = umbriel::payloadIf<umbriel::ScratchpadArg>(bind);
+    return arg != nullptr ? *arg : umbriel::ScratchpadArg{};
+  };
+
+  Keybind bind;
+  CHECK(parseAction("scratchpad-toggle", bind));
+  CHECK(bind.action == KeybindAction::ScratchpadToggle);
+  CHECK(umbriel::payloadIf<umbriel::ScratchpadArg>(bind) != nullptr);
+  CHECK(scratchpadOf(bind).name.empty());
+  CHECK(scratchpadOf(bind).output.empty());
+
+  CHECK(parseAction("scratchpad-toggle:music", bind));
+  CHECK_EQ(scratchpadOf(bind).name, std::string{"music"});
+
+  CHECK(parseAction("scratchpad-toggle:DP-2", bind));
+  CHECK_EQ(scratchpadOf(bind).name, std::string{"DP-2"});
+
+  CHECK(parseAction("scratchpad-toggle:term/DP-2", bind));
+  CHECK_EQ(scratchpadOf(bind).name, std::string{"term"});
+  CHECK_EQ(scratchpadOf(bind).output, std::string{"DP-2"});
+
+  CHECK(parseAction("window-move-to-scratchpad", bind));
+  CHECK(bind.action == KeybindAction::WindowMoveToScratchpad);
+  CHECK(parseAction("window-move-to-scratchpad-silent:music", bind));
+  CHECK(bind.action == KeybindAction::WindowMoveToScratchpadSilent);
+  CHECK_EQ(scratchpadOf(bind).name, std::string{"music"});
+  CHECK(parseAction("window-restore-from-scratchpad:eDP-1", bind));
+  CHECK(parseAction("window-toggle-scratchpad", bind));
+  CHECK(bind.action == KeybindAction::WindowToggleScratchpad);
+  CHECK(parseAction("scratchpad-focus-next", bind));
 }
 
 UMBRIEL_TEST(parsesWindowIdActions) {
@@ -535,6 +551,7 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     switch (spec.argKind) {
     case ActionArgKind::None:
     case ActionArgKind::OptionalOutput:
+    case ActionArgKind::OptionalScratchpad:
     case ActionArgKind::OptionalWindowId:
     case ActionArgKind::SkipConfirmation:
       break;
@@ -582,6 +599,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::OptionalOutput:
       CHECK(umbriel::payloadIf<umbriel::OutputArg>(bind) != nullptr);
       break;
+    case ActionArgKind::OptionalScratchpad:
+      CHECK(umbriel::payloadIf<umbriel::ScratchpadArg>(bind) != nullptr);
+      break;
     case ActionArgKind::WindowId:
     case ActionArgKind::OptionalWindowId:
       CHECK(umbriel::payloadIf<umbriel::WindowIdArg>(bind) != nullptr);
@@ -616,6 +636,7 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
     switch (spec.argKind) {
     case ActionArgKind::None:
     case ActionArgKind::OptionalOutput:
+    case ActionArgKind::OptionalScratchpad:
     case ActionArgKind::OptionalWindowId:
     case ActionArgKind::SkipConfirmation:
       break;

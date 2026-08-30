@@ -184,8 +184,10 @@ namespace umbriel {
         {"overview-close", "", KeybindAction::OverviewClose},
         {"overview-open", "", KeybindAction::OverviewOpen},
         {"overview-toggle", "", KeybindAction::OverviewToggle},
-        {"scratchpad-focus-next", "[<output>]", KeybindAction::ScratchpadFocusNext, ActionArgKind::OptionalOutput},
-        {"scratchpad-toggle", "[<output>]", KeybindAction::ScratchpadToggle, ActionArgKind::OptionalOutput},
+        {"scratchpad-focus-next", "[<name>[/<output>]]", KeybindAction::ScratchpadFocusNext,
+         ActionArgKind::OptionalScratchpad},
+        {"scratchpad-toggle", "[<name>[/<output>]]", KeybindAction::ScratchpadToggle,
+         ActionArgKind::OptionalScratchpad},
         {"session-quit", "[skip-confirmation]", KeybindAction::SessionQuit, ActionArgKind::SkipConfirmation},
         {"spawn", "<cmd>", KeybindAction::Spawn, ActionArgKind::Command},
         {"submap", "<name>", KeybindAction::Submap, ActionArgKind::Command},
@@ -228,15 +230,17 @@ namespace umbriel {
         {"window-move-to-output-left", "", KeybindAction::WindowMoveToOutputLeft},
         {"window-move-to-output-right", "", KeybindAction::WindowMoveToOutputRight},
         {"window-move-to-output-up", "", KeybindAction::WindowMoveToOutputUp},
-        {"window-move-to-scratchpad", "[<output>]", KeybindAction::WindowMoveToScratchpad,
-         ActionArgKind::OptionalOutput},
+        {"window-move-to-scratchpad", "[<name>[/<output>]]", KeybindAction::WindowMoveToScratchpad,
+         ActionArgKind::OptionalScratchpad},
+        {"window-move-to-scratchpad-silent", "[<name>[/<output>]]", KeybindAction::WindowMoveToScratchpadSilent,
+         ActionArgKind::OptionalScratchpad},
         {"window-move-to-workspace", "<workspace>[/<output>]", KeybindAction::WindowMoveToWorkspace,
          ActionArgKind::Workspace},
         {"window-move-to-workspace-next", "", KeybindAction::WindowMoveToWorkspaceNext},
         {"window-move-to-workspace-previous", "", KeybindAction::WindowMoveToWorkspacePrevious},
         {"window-move-up", "", KeybindAction::WindowMoveUp},
-        {"window-restore-from-scratchpad", "[<output>]", KeybindAction::WindowRestoreFromScratchpad,
-         ActionArgKind::OptionalOutput},
+        {"window-restore-from-scratchpad", "[<name>[/<output>]]", KeybindAction::WindowRestoreFromScratchpad,
+         ActionArgKind::OptionalScratchpad},
         {"window-set-height", "<fraction>", KeybindAction::WindowSetHeight, ActionArgKind::WidthFraction},
         {"window-set-width", "<fraction>", KeybindAction::WindowSetWidth, ActionArgKind::WidthFraction},
         {"window-swap-next", "", KeybindAction::WindowSwapNext},
@@ -246,8 +250,8 @@ namespace umbriel {
         {"window-toggle-maximize", "", KeybindAction::ToggleMaximize},
         {"window-toggle-maximize-to-edges", "", KeybindAction::ToggleMaximizeToEdges},
         {"window-toggle-pinned", "", KeybindAction::TogglePinned},
-        {"window-toggle-scratchpad", "[<output>]", KeybindAction::WindowToggleScratchpad,
-         ActionArgKind::OptionalOutput},
+        {"window-toggle-scratchpad", "[<name>[/<output>]]", KeybindAction::WindowToggleScratchpad,
+         ActionArgKind::OptionalScratchpad},
         {"workspace-focus-last", "", KeybindAction::WorkspaceFocusLast},
         {"workspace-move-down", "", KeybindAction::WorkspaceMoveDown},
         {"workspace-move-to-output-down", "", KeybindAction::WorkspaceMoveToOutputDown},
@@ -412,6 +416,31 @@ namespace umbriel {
           return true;
         }
         break;
+      case ActionArgKind::OptionalScratchpad: {
+        if (value == spec.name) {
+          output.action = spec.action;
+          output.payload = ScratchpadArg{};
+          return true;
+        }
+        if (takeActionArg(value, spec, arg)) {
+          ScratchpadArg scratchpad;
+          std::string_view target = arg;
+          if (target.starts_with("special:")) {
+            target.remove_prefix(8);
+          }
+          const size_t separator = target.find('/');
+          if (separator != std::string_view::npos) {
+            scratchpad.name = std::string(target.substr(0, separator));
+            scratchpad.output = std::string(target.substr(separator + 1));
+          } else {
+            scratchpad.name = std::string(target);
+          }
+          output.action = spec.action;
+          output.payload = std::move(scratchpad);
+          return true;
+        }
+        break;
+      }
       case ActionArgKind::WindowId:
         if (takeActionArg(value, spec, arg)) {
           output.action = spec.action;

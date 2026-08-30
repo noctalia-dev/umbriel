@@ -83,6 +83,7 @@ namespace umbriel {
     CheatsheetOpen,
     CheatsheetClose,
     WindowMoveToScratchpad,
+    WindowMoveToScratchpadSilent,
     ScratchpadToggle,
     WindowRestoreFromScratchpad,
     WindowToggleScratchpad,
@@ -175,9 +176,15 @@ namespace umbriel {
     bool skipConfirmation = false;
     bool operator==(const QuitArg&) const = default;
   };
+  struct ScratchpadArg {
+    std::string name;
+    std::string output; // empty = resolve against the focused output
+    bool operator==(const ScratchpadArg&) const = default;
+  };
 
   using KeybindPayload = std::variant<
-      std::monostate, SpawnArg, SubmapArg, WidthArg, WorkspaceArg, OutputArg, WindowIdArg, LayoutModeArg, QuitArg>;
+      std::monostate, SpawnArg, SubmapArg, WidthArg, WorkspaceArg, OutputArg, WindowIdArg, LayoutModeArg, QuitArg,
+      ScratchpadArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -228,6 +235,7 @@ namespace umbriel {
     WidthFraction,
     Workspace,
     OptionalOutput,
+    OptionalScratchpad,
     WindowId,
     OptionalWindowId,
     WidthDelta,

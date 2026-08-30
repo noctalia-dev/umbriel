@@ -77,6 +77,28 @@ namespace umbriel {
     bool operator==(const WorkspaceConfig&) const = default;
   };
 
+  // Custom configuration override parsed from a [[scratchpad]] entry.
+  struct ScratchpadSlotConfig {
+    std::string name;
+    std::optional<double> scale;
+    std::optional<std::string> direction;
+    // "slide", "fade", "popin", or "slidefade". Ignored when scale <= 0 (that always fades in place).
+    // Defaults to "slide" otherwise.
+    std::optional<std::string> style;
+    std::optional<int> durationMs;
+    std::optional<AnimationCurve> curve;
+    std::optional<double> dim;
+    std::optional<bool> blur;
+    std::optional<bool> maximize;
+    std::optional<bool> maximizeToEdges;
+    std::optional<bool> fullscreen;
+    std::optional<bool> suspendHidden;
+    std::optional<std::string> onEmpty;
+    std::optional<LayoutMode> layout;
+    std::optional<int> gap;
+    bool operator==(const ScratchpadSlotConfig&) const = default;
+  };
+
   // Fully resolved layout config. Owned by each Workspace.
   struct ResolvedLayoutConfig {
     LayoutMode mode = LayoutMode::Scrolling;
@@ -247,6 +269,7 @@ namespace umbriel {
     std::optional<int> defaultWorkspace; // 1-64
     std::optional<std::string> defaultScrollingColumn;
     std::optional<int> defaultScrollingColumnOrder;
+    std::optional<std::string> defaultScratchpad;
     std::optional<bool> defaultFullscreen;
     std::optional<bool> defaultMaximizeToEdges;
     std::optional<bool> defaultMaximize;
@@ -281,6 +304,7 @@ namespace umbriel {
           && defaultWorkspace == other.defaultWorkspace
           && defaultScrollingColumn == other.defaultScrollingColumn
           && defaultScrollingColumnOrder == other.defaultScrollingColumnOrder
+          && defaultScratchpad == other.defaultScratchpad
           && defaultFullscreen == other.defaultFullscreen
           && defaultMaximizeToEdges == other.defaultMaximizeToEdges
           && defaultMaximize == other.defaultMaximize
@@ -309,6 +333,7 @@ namespace umbriel {
     std::optional<int> defaultWorkspace;
     std::optional<std::string> defaultScrollingColumn;
     std::optional<int> defaultScrollingColumnOrder;
+    std::optional<std::string> defaultScratchpad;
     std::optional<bool> defaultFullscreen;
     std::optional<bool> defaultMaximizeToEdges;
     std::optional<bool> defaultMaximize;
@@ -454,7 +479,12 @@ namespace umbriel {
         bool blur = false;
         double scale = 0.0;
         bool maximize = false;
+        bool maximizeToEdges = false;
         bool fullscreen = false;
+        std::string direction = "top";
+        // Same as ScratchpadSlotConfig::style; empty defaults to "slide".
+        std::string style = "slide";
+        bool suspendHidden = true;
         bool operator==(const Scratchpad&) const = default;
       } scratchpad;
 
@@ -676,7 +706,8 @@ namespace umbriel {
     std::vector<OutputRule> outputs;
     std::vector<WindowRule> windowRules;
     std::vector<LayerRule> layerRules;
-    std::vector<WorkspaceConfig> workspaceRules; // [[workspace]] layout rules
+    std::vector<WorkspaceConfig> workspaceRules;       // [[workspace]] layout rules
+    std::vector<ScratchpadSlotConfig> scratchpadRules; // [[scratchpad]] custom slot rules
 
     bool operator==(const Config&) const = default;
   };

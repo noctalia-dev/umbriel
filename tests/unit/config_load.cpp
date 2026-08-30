@@ -1427,6 +1427,113 @@ lid_open = "notify-send awake"
   CHECK(store.diagnostics().empty());
 }
 
+UMBRIEL_TEST(parsesScratchpadSlotRules) {
+  TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "special:music"
+scale = 0.65
+direction = "right"
+duration_ms = 350
+dim = 0.5
+blur = true
+layout = "master"
+gap = 16
+on_empty = "spotify"
+
+[[scratchpad]]
+name = "notes"
+on_created_empty = "notes-app"
+suspend_hidden = false
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+  const auto& slots = store.config().scratchpadRules;
+
+  CHECK(result.success);
+  CHECK_EQ(slots.size(), size_t{2});
+  // "special:" is stripped so special-workspace-style names address the same slot.
+  CHECK_EQ(slots[0].name, std::string{"music"});
+  CHECK_EQ(slots[0].scale.value_or(0.0), 0.65);
+  CHECK_EQ(slots[0].direction.value_or(""), std::string{"right"});
+  CHECK_EQ(slots[0].durationMs.value_or(0), 350);
+  CHECK_EQ(slots[0].dim.value_or(0.0), 0.5);
+  CHECK(slots[0].blur.value_or(false));
+  CHECK(slots[0].layout.has_value() && *slots[0].layout == umbriel::LayoutMode::Master);
+  CHECK_EQ(slots[0].gap.value_or(0), 16);
+  CHECK_EQ(slots[0].onEmpty.value_or(""), std::string{"spotify"});
+
+  CHECK_EQ(slots[1].name, std::string{"notes"});
+  CHECK_EQ(slots[1].onEmpty.value_or(""), std::string{"notes-app"});
+  CHECK(!slots[1].suspendHidden.value_or(true));
+  CHECK(!slots[1].layout.has_value());
+}
+
+UMBRIEL_TEST(parsesScratchpadWindowRules) {
+  TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.app_id = "spotify"
+default_scratchpad = "music"
+
+[[window_rule]]
+match.title = ".*term.*"
+scratchpad = "special:terminal"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+  const auto& rules = store.config().windowRules;
+
+  CHECK(result.success);
+  CHECK_EQ(rules.size(), size_t{2});
+  CHECK(rules[0].defaultScratchpad.has_value());
+  CHECK_EQ(*rules[0].defaultScratchpad, std::string{"music"});
+  CHECK(rules[1].defaultScratchpad.has_value());
+  CHECK_EQ(*rules[1].defaultScratchpad, std::string{"terminal"});
+}
+
+UMBRIEL_TEST(rejectsBadScratchpadSlotValues) {
+  TempConfig file;
+  file.write(R"(
+[animation.scratchpad]
+direction = "sideways"
+
+[[scratchpad]]
+name = "ok"
+direction = "diagonal"
+scale = 4.0
+duration_ms = 99999
+gap = "wide"
+layout = "tiling"
+
+[[scratchpad]]
+scale = 0.5
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(containsDiagnostic(store, "unknown animation.scratchpad.direction"));
+  CHECK(containsDiagnostic(store, "unknown scratchpad.direction"));
+  CHECK(containsDiagnostic(store, "scratchpad.scale = 4"));
+  CHECK(containsDiagnostic(store, "scratchpad.duration_ms = 99999"));
+  CHECK(containsDiagnostic(store, "ignoring scratchpad.gap"));
+  CHECK(containsDiagnostic(store, "unknown scratchpad.layout"));
+  // The entry without a name is dropped, so only the named one survives.
+  CHECK(containsDiagnostic(store, "missing 'name' string"));
+  CHECK_EQ(store.config().scratchpadRules.size(), size_t{1});
+  // Rejected values leave the slot on the global default.
+  CHECK(!store.config().scratchpadRules[0].direction.has_value());
+  CHECK(!store.config().scratchpadRules[0].scale.has_value());
+  CHECK_EQ(store.config().animation.scratchpad.direction, std::string{"top"});
+}
+
 UMBRIEL_TEST(packagedAnimationDefaultsMatchCompiledDefaults) {
   std::filesystem::path root = std::filesystem::current_path();
   while (!std::filesystem::exists(root / "examples/config.toml")) {

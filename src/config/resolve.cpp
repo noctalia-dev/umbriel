@@ -218,6 +218,9 @@ namespace umbriel {
       if (rule.defaultScrollingColumnOrder) {
         resolved.defaultScrollingColumnOrder = rule.defaultScrollingColumnOrder;
       }
+      if (rule.defaultScratchpad) {
+        resolved.defaultScratchpad = rule.defaultScratchpad;
+      }
       if (rule.defaultFullscreen) {
         resolved.defaultFullscreen = rule.defaultFullscreen;
       }
