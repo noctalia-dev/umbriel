@@ -93,6 +93,12 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
   {
     Config after;
+    after.input.touchpad.disableOnExternalMouse = true;
+    CHECK(ConfigChange::between(before, after).input);
+    CHECK(ConfigEffects::between(before, after).input);
+  }
+  {
+    Config after;
     after.input.middleClickPaste = !after.input.middleClickPaste;
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.input);

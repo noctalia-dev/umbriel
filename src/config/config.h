@@ -601,6 +601,7 @@ namespace umbriel {
         std::optional<double> sensitivity;
         std::optional<double> scrollFactor;
         std::optional<bool> disableWhileTyping;
+        std::optional<bool> disableOnExternalMouse;
         bool operator==(const Touchpad&) const = default;
       } touchpad;
 

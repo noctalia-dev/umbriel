@@ -241,6 +241,7 @@ tap = true                      # enabled by default; false disables tap-to-clic
 # sensitivity = 0.5             # pointer speed, -1.0 to 1.0
 # scroll_factor = 1.5           # touchpad scroll speed, 0.1 to 10.0
 # disable_while_typing = true   # omitted preserves the device's libinput default
+# disable_on_external_mouse = true  # disable the touchpad while an external mouse is connected
 
 [input.mouse]
 # natural_scroll = false

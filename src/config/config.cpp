@@ -1167,7 +1167,8 @@ namespace umbriel {
               .boolean("natural_scroll", in.touchpad.naturalScroll)
               .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
               .real("scroll_factor", 0.1, 10.0, in.touchpad.scrollFactor)
-              .boolean("disable_while_typing", in.touchpad.disableWhileTyping);
+              .boolean("disable_while_typing", in.touchpad.disableWhileTyping)
+              .boolean("disable_on_external_mouse", in.touchpad.disableOnExternalMouse);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
         });
         s.sub("mouse", [&](Section& m) {

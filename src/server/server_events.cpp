@@ -278,7 +278,26 @@ namespace umbriel {
               override != nullptr && override->tap ? "input.device.tap" : "input.touchpad.tap", deviceName(device)
           );
         }
-
+        if ((libinput_device_config_send_events_get_modes(libinputDevice)
+             & LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE)
+            != 0) {
+          const auto sendEventsMode = input.touchpad.disableOnExternalMouse.value_or(
+                                          libinput_device_config_send_events_get_default_mode(libinputDevice)
+                                          == LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE
+                                      )
+              ? LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE
+              : LIBINPUT_CONFIG_SEND_EVENTS_ENABLED;
+          if (libinput_device_config_send_events_set_mode(libinputDevice, sendEventsMode)
+              != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+            kLog.warn("input: failed to apply input.touchpad.disable_on_external_mouse to '{}'", deviceName(device));
+          }
+        } else if (input.touchpad.disableOnExternalMouse) {
+          kLog.warn(
+              "input: could not apply input.touchpad.disable_on_external_mouse to '{}': device does not support "
+              "disabling on external mouse",
+              deviceName(device)
+          );
+        }
         const bool hasDwtOverride = override != nullptr && override->disableWhileTyping.has_value();
         const std::optional<bool>& dwt =
             hasDwtOverride ? override->disableWhileTyping : input.touchpad.disableWhileTyping;
