@@ -133,9 +133,9 @@ overview wheel stepping, and three-finger-swipe strip travel keep their own
 counting semantics.
 
 Set `disable_on_external_mouse = true` to disable the touchpad while an
-external mouse is connected, libinput re-enables it automatically once the
+external mouse is connected. Libinput re-enables it automatically once the
 mouse is unplugged. Detection is handled by libinput itself, so this only
-works in a native session — a nested session has no libinput devices to
+works in a native session because a nested session has no libinput devices to
 configure. Unlike `tap` and `disable_while_typing`, this option has no
 `[[input.device]]` per-device override. If a device doesn't support the mode,
 an explicitly configured value is ignored and a warning is logged; removing
