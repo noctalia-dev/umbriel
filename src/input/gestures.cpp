@@ -12,6 +12,7 @@
 #include <cmath>
 #include "wlr.h"
 // clang-format on
+#include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
 namespace umbriel {
@@ -124,6 +125,8 @@ namespace umbriel {
         && (m_state == State::Pending
             || m_state == State::Scroll
             || m_state == State::Switch
+            || m_state == State::Overview
+            || m_state == State::Scratchpad
             || m_state == State::OverviewSelect)) {
       // Hard reset: do NOT call into workspace/group objects (they may be mid-destruction).
       m_output = nullptr;
@@ -144,6 +147,9 @@ namespace umbriel {
       break;
     case State::Overview:
       finishOverview(true);
+      break;
+    case State::Scratchpad:
+      finishScratchpad(true);
       break;
     case State::Forward:
       // Forward a cancel end so clients see the end.
@@ -241,6 +247,9 @@ namespace umbriel {
     case State::Overview:
       finishOverview(true);
       break;
+    case State::Scratchpad:
+      finishScratchpad(true);
+      break;
     case State::Forward:
     case State::OverviewSelect:
     case State::Pending:
@@ -267,14 +276,37 @@ namespace umbriel {
       cancelActive();
     }
     Overview* overview = m_server->overview();
-    if (event->fingers == 4 && overview != nullptr) {
-      m_state = State::Overview;
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    wlr_output* wlrOut = m_server->preferredOutput();
+    Output* out = m_server->outputFromWlr(wlrOut);
+    if (out == nullptr && !m_server->outputs().empty()) {
+      out = m_server->outputs().front().get();
+    }
+    if (event->fingers == 4) {
+      m_naturalScrollDirection = touchpadGestureDirection(event->pointer);
       m_accumX = 0;
       m_accumY = 0;
-      m_overviewWasOpen = overview->active();
-      m_progress = m_overviewWasOpen ? 1.0 : 0.0;
-      m_velocity = 0;
+      m_output = out;
       m_lastTimeMsec = event->time_msec;
+      m_velocity = 0;
+      if (overview != nullptr && overview->active()) {
+        m_state = State::Overview;
+        m_overviewWasOpen = true;
+        m_scratchpadWasOpen = false;
+        m_progress = 1.0;
+        return;
+      }
+      if (scratchpad != nullptr && out != nullptr && scratchpad->isOutputVisible(out)) {
+        m_state = State::Scratchpad;
+        m_scratchpadWasOpen = true;
+        m_overviewWasOpen = false;
+        m_progress = 1.0;
+        return;
+      }
+      m_overviewWasOpen = false;
+      m_scratchpadWasOpen = false;
+      m_progress = 0.0;
+      m_state = State::Pending;
       return;
     }
     if (event->fingers == 3) {
@@ -326,6 +358,23 @@ namespace umbriel {
         return;
       }
       m_output = out;
+
+      if (m_output != nullptr && !m_overviewWasOpen && !m_scratchpadWasOpen) {
+        if (-m_accumY * m_naturalScrollDirection > 0) {
+          // 4-finger swipe up -> Overview
+          m_state = State::Overview;
+          m_overviewWasOpen = false;
+          m_scratchpadWasOpen = false;
+          m_progress = 0.0;
+        } else {
+          // 4-finger swipe down -> Scratchpad
+          m_state = State::Scratchpad;
+          m_scratchpadWasOpen = false;
+          m_overviewWasOpen = false;
+          m_progress = 0.0;
+        }
+        return;
+      }
 
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->interactive()) {
         // Horizontal has no meaning over the filmstrip, and letting it through
@@ -449,6 +498,23 @@ namespace umbriel {
       return;
     }
 
+    case State::Scratchpad: {
+      ScratchpadManager* scratchpad = m_server->scratchpadManager();
+      if (scratchpad == nullptr) {
+        m_state = State::Idle;
+        return;
+      }
+      m_accumY += event->dy;
+      // Swipe down opens (positive dy), swipe up closes; base is where the gesture started.
+      const double base = m_scratchpadWasOpen ? 1.0 : 0.0;
+      const double p = std::clamp(base + (m_accumY * m_naturalScrollDirection) / kOverviewDistancePx, 0.0, 1.0);
+      const uint32_t dt = std::max(1U, event->time_msec - m_lastTimeMsec);
+      m_velocity = 0.75 * m_velocity + 0.25 * ((event->dy * m_naturalScrollDirection) / static_cast<double>(dt));
+      m_lastTimeMsec = event->time_msec;
+      m_progress = p;
+      return;
+    }
+
     case State::Idle:
       return;
     }
@@ -492,6 +558,10 @@ namespace umbriel {
       finishOverview(event->cancelled);
       return;
 
+    case State::Scratchpad:
+      finishScratchpad(event->cancelled);
+      return;
+
     case State::Idle:
       return;
     }
@@ -516,6 +586,41 @@ namespace umbriel {
       }
     }
     overview->gestureEnd(commitOpen);
+  }
+
+  // ===== Scratchpad finish (4-finger) =====
+
+  void Gestures::finishScratchpad(bool cancelled) {
+    m_state = State::Idle;
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    Output* output = m_output != nullptr ? m_output : m_server->outputFromWlr(m_server->preferredOutput());
+    if (output == nullptr && !m_server->outputs().empty()) {
+      output = m_server->outputs().front().get();
+    }
+    if (scratchpad == nullptr || output == nullptr) {
+      return;
+    }
+    bool commitToggle = false;
+    if (!cancelled) {
+      const double base = m_scratchpadWasOpen ? 1.0 : 0.0;
+      const bool farEnough = std::abs(m_progress - base) > kCommitProgress;
+      const bool fastEnough = std::abs(m_velocity) > kCommitVelocityPxMs && (m_velocity > 0) == !m_scratchpadWasOpen;
+      if (farEnough || fastEnough) {
+        commitToggle = true;
+      }
+    }
+    if (!commitToggle) {
+      return;
+    }
+    // Closing targets whatever slot is on screen; the default slot is only the
+    // open-on-empty target.
+    std::string slotName;
+    if (m_scratchpadWasOpen) {
+      if (auto open = scratchpad->visibleSlotName(output)) {
+        slotName = *open;
+      }
+    }
+    scratchpad->toggle(output, slotName);
   }
 
   // ===== Scroll finish (Step 5) =====

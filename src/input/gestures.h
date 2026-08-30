@@ -29,7 +29,7 @@ namespace umbriel {
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
 
   private:
-    enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect };
+    enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect, Scratchpad };
     enum class ScrollSource { None, Swipe, Pointer };
 
     static void onSwipeBegin(wl_listener* listener, void* data);
@@ -54,6 +54,7 @@ namespace umbriel {
     void finishScroll(bool cancelled, uint32_t timeMsec);
     void finishSwitch(bool cancelled);
     void finishOverview(bool cancelled);
+    void finishScratchpad(bool cancelled);
     void silentCancel();
     [[nodiscard]] bool beginScroll(Workspace* workspace, double scale, ScrollSource source);
     void updateScroll(double delta, uint32_t timeMsec);
@@ -85,6 +86,9 @@ namespace umbriel {
 
     // Overview state (vertical 4-finger): swipe up opens, swipe down closes.
     bool m_overviewWasOpen = false;
+
+    // Scratchpad state (vertical 4-finger): swipe down reveals, swipe up dismisses.
+    bool m_scratchpadWasOpen = false;
 
     // OverviewSelect state (vertical 3-finger, overview up) reuses m_accumY as
     // the travel left over since the last row step.
