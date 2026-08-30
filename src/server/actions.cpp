@@ -40,14 +40,33 @@ namespace umbriel {
       return output->workspaceGroup()->active();
     }
 
-    Output* scratchpadOutput(Server& server, const Keybind& bind, std::string* error) {
-      const auto* arg = payloadIf<OutputArg>(bind);
-      if (arg == nullptr || arg->output.empty()) {
-        return server.outputFromWlr(server.preferredOutput());
+    Output* scratchpadTarget(Server& server, const Keybind& bind, std::string& name, std::string* error) {
+      name.clear();
+      std::string outputName;
+      if (const auto* arg = payloadIf<ScratchpadArg>(bind)) {
+        name = arg->name;
+        outputName = arg->output;
+      } else if (const auto* arg = payloadIf<OutputArg>(bind)) {
+        outputName = arg->output;
       }
-      Output* output = server.outputFromName(arg->output);
+
+      if (outputName.empty() && !name.empty()) {
+        if (server.outputFromName(name) != nullptr) {
+          outputName = name;
+          name.clear();
+        }
+      }
+
+      if (outputName.empty()) {
+        Output* pref = server.outputFromWlr(server.preferredOutput());
+        if (pref == nullptr && !server.outputs().empty()) {
+          pref = server.outputs().front().get();
+        }
+        return pref;
+      }
+      Output* output = server.outputFromName(outputName);
       if (output == nullptr && error != nullptr) {
-        *error = "unknown output: " + arg->output;
+        *error = "unknown output: " + outputName;
       }
       return output;
     }
@@ -950,6 +969,26 @@ namespace umbriel {
 
     // Workspaces
     bool actionWorkspace(Server& server, const Keybind& bind, std::string* error) {
+      if (const auto* selector = payloadIf<WorkspaceArg>(bind)) {
+        if (selector->name.starts_with("special:") || selector->name == "special") {
+          std::string slotName = selector->name == "special" ? "" : selector->name.substr(8);
+          Output* output = selector->output.empty() ? server.outputFromWlr(server.preferredOutput())
+                                                    : server.outputFromName(selector->output);
+          if (output == nullptr) {
+            output = server.outputFromWlr(server.preferredOutput());
+          }
+          ScratchpadManager* scratchpad = server.scratchpadManager();
+          if (scratchpad == nullptr || output == nullptr) {
+            return reject(error, "no output available for " + selector->name);
+          }
+          if (bind.action == KeybindAction::WindowMoveToWorkspace) {
+            View* view = focusedWindow(server);
+            return view != nullptr && scratchpad->moveToScratchpad(view, output, slotName);
+          }
+          return scratchpad->toggle(output, slotName);
+        }
+      }
+
       const std::expected<Workspace*, std::string> target = resolveWorkspaceSelector(server, bind);
       if (!target.has_value()) {
         return reject(error, target.error());
@@ -1253,33 +1292,54 @@ namespace umbriel {
 
     // Scratchpad
     bool actionMoveToScratchpad(Server& server, const Keybind& bind, std::string* error) {
-      Output* output = scratchpadOutput(server, bind, error);
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
       if (output == nullptr) {
         return false;
       }
-      Workspace* workspace = activeWorkspace(server);
+      View* view = focusedWindow(server);
       ScratchpadManager* scratchpad = server.scratchpadManager();
-      return scratchpad != nullptr
-          && workspace != nullptr
-          && scratchpad->moveToScratchpad(workspace->focusedView(), output);
+      return scratchpad != nullptr && view != nullptr && scratchpad->moveToScratchpad(view, output, name);
+    }
+
+    bool actionMoveToScratchpadSilent(Server& server, const Keybind& bind, std::string* error) {
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
+      if (output == nullptr) {
+        return false;
+      }
+      View* view = focusedWindow(server);
+      ScratchpadManager* scratchpad = server.scratchpadManager();
+      if (scratchpad == nullptr || view == nullptr || !scratchpad->moveToScratchpad(view, output, name)) {
+        return false;
+      }
+      // Silent: focus stays on the workspace the window left, not the drawer.
+      if (Workspace* ws = activeWorkspace(server)) {
+        if (View* next = ws->focusedView()) {
+          server.focusView(next);
+        }
+      }
+      return true;
     }
 
     bool actionScratchpadToggle(Server& server, const Keybind& bind, std::string* error) {
-      Output* output = scratchpadOutput(server, bind, error);
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
       if (output == nullptr) {
         return false;
       }
       ScratchpadManager* scratchpad = server.scratchpadManager();
-      return scratchpad != nullptr && scratchpad->toggle(output);
+      return scratchpad != nullptr && scratchpad->toggle(output, name);
     }
 
     bool actionRestoreFromScratchpad(Server& server, const Keybind& bind, std::string* error) {
-      Output* output = scratchpadOutput(server, bind, error);
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
       if (output == nullptr) {
         return false;
       }
       ScratchpadManager* scratchpad = server.scratchpadManager();
-      return scratchpad != nullptr && scratchpad->restoreFocused(output);
+      return scratchpad != nullptr && scratchpad->restoreFocused(output, name);
     }
 
     // Toggles the focused window's scratchpad membership: if the focused
@@ -1287,7 +1347,8 @@ namespace umbriel {
     // actionRestoreFromScratchpad); otherwise move it into the scratchpad
     // (same as actionMoveToScratchpad).
     bool actionToggleScratchpad(Server& server, const Keybind& bind, std::string* error) {
-      Output* output = scratchpadOutput(server, bind, error);
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
       if (output == nullptr) {
         return false;
       }
@@ -1296,19 +1357,20 @@ namespace umbriel {
         return false;
       }
       if (scratchpad->hasFocus(output)) {
-        return scratchpad->restoreFocused(output);
+        return scratchpad->restoreFocused(output, name);
       }
       Workspace* workspace = activeWorkspace(server);
-      return workspace != nullptr && scratchpad->moveToScratchpad(workspace->focusedView(), output);
+      return workspace != nullptr && scratchpad->moveToScratchpad(workspace->focusedView(), output, name);
     }
 
     bool actionScratchpadFocusNext(Server& server, const Keybind& bind, std::string* error) {
-      Output* output = scratchpadOutput(server, bind, error);
+      std::string name;
+      Output* output = scratchpadTarget(server, bind, name, error);
       if (output == nullptr) {
         return false;
       }
       ScratchpadManager* scratchpad = server.scratchpadManager();
-      return scratchpad != nullptr && scratchpad->focusNext(output);
+      return scratchpad != nullptr && scratchpad->focusNext(output, name);
     }
 
     constexpr std::array<ActionHandlerFn, static_cast<size_t>(KeybindAction::Count)> kActionHandlers = {
@@ -1371,6 +1433,7 @@ namespace umbriel {
         &actionCheatsheetOpen,
         &actionCheatsheetClose,
         &actionMoveToScratchpad,
+        &actionMoveToScratchpadSilent,
         &actionScratchpadToggle,
         &actionRestoreFromScratchpad,
         &actionToggleScratchpad,

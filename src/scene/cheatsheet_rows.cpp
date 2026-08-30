@@ -232,6 +232,19 @@ namespace {
           return name + ": " + output->output;
         }
         return name;
+      case umbriel::ActionArgKind::OptionalScratchpad:
+        if (const auto* scratchpad = umbriel::payloadIf<umbriel::ScratchpadArg>(bind);
+            scratchpad != nullptr && (!scratchpad->name.empty() || !scratchpad->output.empty())) {
+          std::string label = name;
+          if (!scratchpad->name.empty()) {
+            label += ": " + scratchpad->name;
+          }
+          if (!scratchpad->output.empty()) {
+            label += "/" + scratchpad->output;
+          }
+          return label;
+        }
+        return name;
       case umbriel::ActionArgKind::WindowId:
       case umbriel::ActionArgKind::OptionalWindowId:
         if (const auto* window = umbriel::payloadIf<umbriel::WindowIdArg>(bind);
@@ -343,6 +356,12 @@ namespace {
     case A::ToggleMaximize:
     case A::ToggleMaximizeToEdges:
     case A::ToggleFullscreen:
+    case A::TogglePinned:
+    case A::ScratchpadToggle:
+    case A::WindowMoveToScratchpad:
+    case A::WindowMoveToScratchpadSilent:
+    case A::WindowRestoreFromScratchpad:
+    case A::WindowToggleScratchpad:
       return Group::Windows;
     case A::WorkspaceSwitch:
     case A::ColumnMoveToWorkspace:
@@ -365,6 +384,7 @@ namespace {
     case A::OutputFocusRight:
     case A::OutputFocusUp:
     case A::OutputFocusDown:
+    case A::ScratchpadFocusNext:
       return Group::Focus;
     case A::OverviewToggle:
     case A::OverviewOpen:
