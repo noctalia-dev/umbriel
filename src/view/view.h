@@ -142,8 +142,9 @@ namespace umbriel {
 
     void setOnActiveWorkspace(bool active);
     void setScratchpadBorder(bool scratchpad);
-    void animateTo(int x, int y);
     void setPosition(int x, int y);
+    void animateTo(int x, int y);
+    void animateTo(int x, int y, int durationMs, const AnimationCurve& curve);
     // The authoritative layout position: where the window's slot is, not where its scene node happens to be
     // mid-animation. Workspace slides and arrange reflows move nodes without touching the animation targets, so window
     // listings that order by position must read these instead.
@@ -175,6 +176,8 @@ namespace umbriel {
     // Animate the presented size toward a layout-assigned size. Called by Workspace::arrange when it configures the
     // client, so the animation owns the presented size before the clip can report the final size.
     void beginResizeAnimation(int width, int height, bool allowFullscreen = false);
+    // Popin zoom: animate presented size and position from `from` to `to`.
+    void beginZoomAnimation(const wlr_box& from, const wlr_box& to, int durationMs, const AnimationCurve& curve);
     // Apply the presentation state derived from the view's layout box `target`: fullscreen backdrop, presented size and
     // surface crop, borders, shadow and blur. Containment on the view's own output is the job of the output's clipped
     // scene roots, so nothing here depends on where the output edges are.
@@ -188,11 +191,13 @@ namespace umbriel {
     void snapPosition(int x, int y);
     void animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve);
     [[nodiscard]] const ViewPresentation& presentation() const { return m_presentation; }
+    [[nodiscard]] bool sizeAnimating() const { return m_presentation.animating(); }
     // Size/position to the full output and drop tile clips (exclusive zones do not apply).
     void applyFullscreenLayout(bool animate = false);
     // Compositor-driven fullscreen toggle (keybind); client requests use handleRequestFullscreen.
     void toggleFullscreen();
     void applyDeferredUnfullscreen();
+    void setMaximized(bool maximized);
     void setMaximizedToEdges(bool maximized);
     void toggleMaximizedToEdges();
     // Compositor-driven maximize toggle (keybind). A floating window fills its
@@ -204,7 +209,7 @@ namespace umbriel {
     // windows clear their full-width state through the layout.
     void dropMaximizedForResize();
     // Detach from the scrolling layout (float) or re-insert as a tiled column.
-    void setFloating(bool floating, bool focus = true);
+    void setFloating(bool floating, bool focus = true, bool preserveSize = false);
     void toggleFloating();
     void togglePinned();
     // Restore the global pinned scene layer after temporary drag reparenting.
@@ -271,7 +276,6 @@ namespace umbriel {
     void handleRequestMove();
     void handleRequestResize(void* data);
     void handleRequestMaximize();
-    void setMaximized(bool maximized);
     void handleRequestFullscreen();
     void setFullscreen(bool fullscreen);
     void handleSetTitle();
@@ -316,7 +320,6 @@ namespace umbriel {
     // Shared tail of a finished/cancelled size animation: settle the presented
     // size on the committed geometry and refresh the derived chrome.
     void finishSizeAnimation();
-    [[nodiscard]] bool sizeAnimating() const { return m_presentation.animating(); }
     // True while the border ring exists and is showing. Fullscreen keeps the
     // tree but disables it, so the pointer alone does not answer this.
     [[nodiscard]] bool decorated() const;

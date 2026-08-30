@@ -288,7 +288,7 @@ namespace umbriel {
     return focusedColumn >= 0 ? focusedColumn + 1 : static_cast<int>(m_layout->columns().size());
   }
 
-  void Workspace::layoutAttach(View* view, std::optional<double> initialWidth) {
+  void Workspace::layoutAttach(View* view, std::optional<double> initialWidth, bool preserveSize) {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;
     }
@@ -307,7 +307,7 @@ namespace umbriel {
     if (scrolling != nullptr && !placement) {
       const int column = scrolling->columnOf(view);
       const std::optional<double> configuredWidth =
-          initialWidth ? initialWidth : m_layoutConfig.scrolling.defaultWidthFraction;
+          preserveSize ? std::nullopt : (initialWidth ? initialWidth : m_layoutConfig.scrolling.defaultWidthFraction);
       if (configuredWidth) {
         // default_width is a viewport fraction: scrolling only. Dwindle ignores it.
         scrolling->setWidthFraction(column, *configuredWidth);

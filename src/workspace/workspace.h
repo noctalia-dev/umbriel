@@ -92,7 +92,7 @@ namespace umbriel {
     void restackFloatingViews();
     void addView(View* view, bool attachToLayout = true);
     View* removeView(View* view, bool reconcile = true);
-    void layoutAttach(View* view, std::optional<double> initialWidth = std::nullopt);
+    void layoutAttach(View* view, std::optional<double> initialWidth = std::nullopt, bool preserveSize = false);
     // Predict the first configure by applying the same insertion and full-width
     // transition that the mapped path will use on the authoritative layout.
     [[nodiscard]] Layout::InitialSize initialMaximizedSize(View* view, const wlr_box& usable) const;

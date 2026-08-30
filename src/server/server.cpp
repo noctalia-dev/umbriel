@@ -756,10 +756,10 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  pid_t Server::spawn(const char* command, const char* description, bool withActivationToken) {
     if (m_socketName.empty()) {
       wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
-      return;
+      return -1;
     }
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
@@ -781,7 +781,7 @@ namespace umbriel {
         wlr_xdg_activation_token_v1_destroy(launchToken);
       }
       wlr_log(WLR_ERROR, "fork failed");
-      return;
+      return -1;
     }
     if (pid == 0) {
       resetChildSignalState();
@@ -806,9 +806,10 @@ namespace umbriel {
     }
 
     wlr_log(
-        WLR_INFO, "spawned '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-        m_socketName.c_str()
+        WLR_INFO, "spawned '%s' on WAYLAND_DISPLAY=%s (pid=%d)", description == nullptr ? command : description,
+        m_socketName.c_str(), pid
     );
+    return pid;
   }
 
   void Server::updateSeatCapabilities() { m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty()); }

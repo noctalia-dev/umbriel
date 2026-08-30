@@ -777,6 +777,27 @@ namespace umbriel {
     scheduleFrame();
   }
 
+  void View::animateTo(int x, int y, int durationMs, const AnimationCurve& curve) {
+    if (!config().animation.enabled || durationMs <= 0) {
+      setPosition(x, y);
+      return;
+    }
+    m_posX.retarget(x, durationMs, curve);
+    m_posY.retarget(y, durationMs, curve);
+    scheduleFrame();
+  }
+
+  void View::beginZoomAnimation(const wlr_box& from, const wlr_box& to, int durationMs, const AnimationCurve& curve) {
+    m_presentation.setSize(from.width, from.height);
+    m_presentation.animateTo(to.width, to.height, durationMs, curve);
+    wlr_scene_node_set_position(&m_sceneTree->node, from.x, from.y);
+    m_posX.snap(from.x);
+    m_posY.snap(from.y);
+    m_posX.retarget(to.x, durationMs, curve);
+    m_posY.retarget(to.y, durationMs, curve);
+    scheduleFrame();
+  }
+
   bool View::tickAnimations(uint64_t nowMsec) {
     bool active = false;
 
@@ -1694,6 +1715,40 @@ namespace umbriel {
 
     showDecorations(!m_toplevel->scheduled.fullscreen);
 
+    if (m_server->scratchpadManager() != nullptr) {
+      if (auto pending = m_server->scratchpadManager()->consumePendingCapture(this)) {
+        if (!m_tiled) {
+          placeInUsableArea(rule.defaultPosition);
+        }
+        if (m_server->scratchpadManager()->moveToScratchpad(this, pending->output, pending->slotName)) {
+          updateForeignIdentity();
+          updateForeignState();
+          if (!m_server->sessionLocked() && rule.defaultFocused.value_or(true)) {
+            m_server->focusView(this);
+          }
+          return;
+        }
+      } else if (rule.defaultScratchpad.has_value() && !rule.defaultScratchpad->empty()) {
+        Output* targetOutput = m_server->outputFromWlr(m_server->preferredOutput());
+        if (targetOutput == nullptr && !m_server->outputs().empty()) {
+          targetOutput = m_server->outputs().front().get();
+        }
+        if (targetOutput != nullptr) {
+          if (!m_tiled) {
+            placeInUsableArea(rule.defaultPosition);
+          }
+          if (m_server->scratchpadManager()->moveToScratchpad(this, targetOutput, *rule.defaultScratchpad)) {
+            updateForeignIdentity();
+            updateForeignState();
+            if (!m_server->sessionLocked() && rule.defaultFocused.value_or(true)) {
+              m_server->focusView(this);
+            }
+            return;
+          }
+        }
+      }
+    }
+
     if (m_workspace != nullptr) {
       m_workspace->layoutAttach(this, rule.defaultWidth);
     } else if (!attachToAvailableWorkspace(rule)) {
@@ -1964,6 +2019,54 @@ namespace umbriel {
     if (m_toplevel->base->initial_commit || reconfigureOpeningState) {
       // Resolve window rules early to influence initial tiled/float decision and size.
       const ResolvedWindowRule rule = resolvedRules();
+
+      if (m_server->scratchpadManager() != nullptr) {
+        std::optional<std::string> targetSlot;
+        Output* targetOutput = nullptr;
+        if (auto pending = m_server->scratchpadManager()->peekPendingCapture(this)) {
+          targetSlot = pending->slotName;
+          targetOutput = pending->output;
+        } else if (rule.defaultScratchpad.has_value() && !rule.defaultScratchpad->empty()) {
+          targetSlot = *rule.defaultScratchpad;
+        }
+        if (targetSlot) {
+          if (targetOutput == nullptr) {
+            targetOutput = m_server->outputFromWlr(m_server->preferredOutput());
+            if (targetOutput == nullptr && !m_server->outputs().empty()) {
+              targetOutput = m_server->outputs().front().get();
+            }
+          }
+          if (targetOutput != nullptr) {
+            wlr_box targetArea = targetOutput->usableArea();
+            if (targetArea.width <= 0 || targetArea.height <= 0) {
+              wlr_output_layout_get_box(m_server->outputLayout(), targetOutput->wlr(), &targetArea);
+            }
+            const auto slotCfg = m_server->scratchpadManager()->effectiveConfig(*targetSlot);
+            const bool isScaled = slotCfg.scale.has_value() ? (*slotCfg.scale > 0.0 && *slotCfg.scale <= 1.0)
+                                                            : (config().animation.scratchpad.scale > 0.0);
+            wlr_xdg_toplevel_set_tiled(m_toplevel, 0);
+            if (slotCfg.fullscreen.value_or(false) || slotCfg.maximizeToEdges.value_or(false)) {
+              if (slotCfg.fullscreen.value_or(false)) {
+                wlr_xdg_toplevel_set_fullscreen(m_toplevel, true);
+              }
+              wlr_box fullBox{};
+              wlr_output_layout_get_box(m_server->outputLayout(), targetOutput->wlr(), &fullBox);
+              wlr_xdg_toplevel_set_size(m_toplevel, fullBox.width, fullBox.height);
+            } else if (slotCfg.maximize.value_or(false)) {
+              wlr_xdg_toplevel_set_size(m_toplevel, targetArea.width, targetArea.height);
+            } else if (isScaled && targetArea.width > 0 && targetArea.height > 0) {
+              const double scale = slotCfg.scale.has_value() ? *slotCfg.scale : config().animation.scratchpad.scale;
+              const int targetW = std::max(100, static_cast<int>(std::lround(targetArea.width * scale)));
+              const int targetH = std::max(100, static_cast<int>(std::lround(targetArea.height * scale)));
+              wlr_xdg_toplevel_set_size(m_toplevel, targetW, targetH);
+            } else {
+              requestFloatingSize(0, 0);
+            }
+            return;
+          }
+        }
+      }
+
       const bool wantTiled = rule.defaultFloating ? !*rule.defaultFloating : looksTiled(m_toplevel);
       const bool wantFullscreen =
           m_toplevel->requested.fullscreen || (rule.defaultFullscreen && *rule.defaultFullscreen);
@@ -2115,7 +2218,15 @@ namespace umbriel {
     if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
       m_workspace->syncViewPresentation(this);
     } else if (m_mapped && !m_tiled) {
-      if (m_toplevel->scheduled.fullscreen && m_onActiveWorkspace) {
+      if (m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this)) {
+        if (!hasActiveAnimations()) {
+          if (Output* out = currentOutput()) {
+            if (auto slotName = m_server->scratchpadManager()->slotForView(this)) {
+              m_server->scratchpadManager()->arrangeSlot(out, *slotName, false);
+            }
+          }
+        }
+      } else if (m_toplevel->scheduled.fullscreen && m_onActiveWorkspace) {
         // Keep fullscreen placement authoritative; the xdg scene helper just
         // reset the surface offset for this commit.
         applyFullscreenLayout();
@@ -2470,7 +2581,7 @@ namespace umbriel {
     }
   }
 
-  void View::setFloating(bool floating, bool focus) {
+  void View::setFloating(bool floating, bool focus, bool preserveSize) {
     if (!m_mapped || !m_toplevel->base->initialized) {
       return;
     }
@@ -2631,7 +2742,7 @@ namespace umbriel {
     m_decoration.setBordersEnabled(!wantFullscreen);
     updateBorderGeometry();
     if (m_workspace != nullptr) {
-      m_workspace->layoutAttach(this);
+      m_workspace->layoutAttach(this, std::nullopt, preserveSize);
     }
     applyCornerRadius();
     updateShadow();
