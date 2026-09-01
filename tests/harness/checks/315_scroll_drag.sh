@@ -123,10 +123,40 @@ fi
 "$UMBRIEL" msg column-focus-first > /dev/null
 wait_for_a_visible x > /dev/null
 
-# The same physical button needs no modifier in overview. The first motion crosses the drag threshold; the second
-# crosses one row step. Releasing after motion must not close the card under the original press.
+# The configured modified drag pans the scrolling row under the pointer in the overview too. Overview cards are scaled,
+# so the gesture maps pointer travel back through that scale before updating the workspace viewport.
 pointer move 560 360
 "$UMBRIEL" msg overview-open > /dev/null
+overview_before_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+pointer mod logo press "$BTN_MIDDLE" move 510 360 move 310 360 release "$BTN_MIDDLE" mod none
+overview_after_x=$overview_before_x
+for _ in $(seq 20); do
+  overview_after_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+  ((overview_after_x < overview_before_x)) && break
+  sleep 0.1
+done
+if ((overview_after_x >= overview_before_x)); then
+  echo "layout-scroll-drag did not pan the overview row: A x $overview_before_x -> $overview_after_x"
+  exit 1
+fi
+
+# Bare horizontal middle drag pans the same row without requiring the configured modifier.
+bare_before_x=$overview_after_x
+pointer press "$BTN_MIDDLE" move 360 360 move 560 360 release "$BTN_MIDDLE"
+bare_after_x=$bare_before_x
+for _ in $(seq 20); do
+  bare_after_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+  ((bare_after_x > bare_before_x)) && break
+  sleep 0.1
+done
+if ((bare_after_x <= bare_before_x)); then
+  echo "bare middle drag did not pan the overview row: A x $bare_before_x -> $bare_after_x"
+  exit 1
+fi
+
+# Bare vertical middle drag retains the overview's row navigation. The first motion crosses the drag threshold; the
+# second crosses one row step. Releasing after motion must not close the card under the original press.
+pointer move 560 360
 pointer press "$BTN_MIDDLE" move 560 330 move 560 150 release "$BTN_MIDDLE"
 
 for _ in $(seq 20); do
@@ -168,4 +198,4 @@ fi
 wait "$middle_click_pid"
 wait_for_count 3
 
-echo "mouse drag pans both layout axes, navigates overview rows, and preserves release-only middle-click close"
+echo "bound and bare mouse drags pan overview strips, navigate rows, and preserve release-only middle-click close"

@@ -65,9 +65,11 @@ characters. Letter uniqueness ignores case, while badges preserve the case
 written in the configuration.
 
 Middle-click still closes a window card, but the close is sent on button
-release. Drag the middle button vertically instead to step through workspace
-rows without using the keyboard; moving beyond the drag threshold suppresses
-the close.
+release. Drag the middle button horizontally to pan the scrolling workspace row
+under the pointer, or vertically to step through workspace rows without using
+the keyboard. Moving beyond the drag threshold locks to the dominant axis and
+suppresses the close. A configured `layout-scroll-drag` mouse bind takes
+precedence and pans the row along its configured axis.
 
 An active client drag takes precedence. Umbriel ignores requests to open the
 overview until the pointer button that initiated the drag is released.

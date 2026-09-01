@@ -181,7 +181,8 @@ namespace umbriel {
       return;
     }
     WorkspaceGroup* group = m_output != nullptr ? m_output->workspaceGroup() : nullptr;
-    if (group == nullptr || group->active() != m_scrollWorkspace) {
+    const bool overviewPointer = m_scrollSource == ScrollSource::OverviewPointer;
+    if (group == nullptr || (!overviewPointer && group->active() != m_scrollWorkspace)) {
       finishScroll(true, timeMsec);
       return;
     }
@@ -195,7 +196,7 @@ namespace umbriel {
     m_scrollWorkspace->markArrange(false);
   }
 
-  bool Gestures::beginPointerScroll() {
+  bool Gestures::beginPointerScroll(double lx, double ly) {
     if (m_server->sessionLocked()) {
       return false;
     }
@@ -203,7 +204,14 @@ namespace umbriel {
       cancelActive();
     }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
-      return false;
+      Workspace* workspace = overview->pointerScrollWorkspace(lx, ly);
+      Output* output = workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : nullptr;
+      m_output = output;
+      if (output == nullptr || !beginScroll(workspace, 1.0 / overview->contentScale(), ScrollSource::OverviewPointer)) {
+        m_output = nullptr;
+        return false;
+      }
+      return true;
     }
     Output* output = m_server->outputFromWlr(m_server->preferredOutput());
     Workspace* workspace =
@@ -217,13 +225,15 @@ namespace umbriel {
   }
 
   void Gestures::updatePointerScroll(double dx, double dy, uint32_t timeMsec) {
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (m_state == State::Scroll
+        && (m_scrollSource == ScrollSource::Pointer || m_scrollSource == ScrollSource::OverviewPointer)) {
       updateScroll(m_scrollVertical ? dy : dx, timeMsec);
     }
   }
 
   void Gestures::endPointerScroll(bool cancelled, uint32_t timeMsec) {
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (m_state == State::Scroll
+        && (m_scrollSource == ScrollSource::Pointer || m_scrollSource == ScrollSource::OverviewPointer)) {
       finishScroll(cancelled, timeMsec);
     }
   }

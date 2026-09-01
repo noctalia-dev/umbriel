@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/gestures.h"
 #include "input/seat.h"
 #include "layout/drop_target.h"
 #include "layout/layout.h"
@@ -1756,6 +1757,9 @@ namespace umbriel {
   }
 
   void Overview::clearMiddlePress() {
+    if (m_middleScrolling) {
+      m_server->gestures()->endPointerScroll(true, 0);
+    }
     if (m_middleDragging) {
       m_server->cursor()->overrideCursor(nullptr);
     }
@@ -1763,12 +1767,14 @@ namespace umbriel {
     m_middleOutput = nullptr;
     m_middlePressed = false;
     m_middleDragging = false;
+    m_middleHorizontal = false;
+    m_middleScrolling = false;
     m_middleAccumY = 0;
   }
 
   // -: input
 
-  bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly) {
+  bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec) {
     if (!interactive()) {
       return true; // Swallow everything while zooming back in.
     }
@@ -1777,6 +1783,10 @@ namespace umbriel {
       if (button == BTN_MIDDLE) {
         Card* card = m_middlePressCard;
         const bool closeCard = m_middlePressed && !m_middleDragging;
+        if (m_middleScrolling) {
+          m_server->gestures()->endPointerScroll(false, timeMsec);
+          m_middleScrolling = false;
+        }
         clearMiddlePress();
         if (closeCard && card != nullptr && card->view != nullptr && card->view->mapped()) {
           wlr_xdg_toplevel_send_close(card->view->toplevel());
@@ -1813,6 +1823,8 @@ namespace umbriel {
       m_middleAccumY = 0;
       m_middlePressed = true;
       m_middleDragging = false;
+      m_middleHorizontal = false;
+      m_middleScrolling = false;
       return true;
     }
     if (button != BTN_LEFT) {
@@ -1829,7 +1841,7 @@ namespace umbriel {
     return true;
   }
 
-  void Overview::handleMotion(double lx, double ly) {
+  void Overview::handleMotion(double lx, double ly, uint32_t timeMsec) {
     if (!interactive()) {
       return;
     }
@@ -1841,9 +1853,25 @@ namespace umbriel {
           return;
         }
         m_middleDragging = true;
+        m_middleHorizontal = std::abs(dx) > std::abs(dy);
+        if (m_middleHorizontal) {
+          m_middleScrolling = m_server->gestures()->beginPointerScroll(m_middlePressX, m_middlePressY);
+          if (m_middleScrolling) {
+            m_server->gestures()->updatePointerScroll(dx, dy, timeMsec);
+          }
+        }
         m_middleAccumY = 0;
+        m_middlePressX = lx;
         m_middlePressY = ly;
         m_server->cursor()->overrideCursor("grabbing");
+      }
+      if (m_middleHorizontal) {
+        if (m_middleScrolling) {
+          m_server->gestures()->updatePointerScroll(lx - m_middlePressX, ly - m_middlePressY, timeMsec);
+        }
+        m_middlePressX = lx;
+        m_middlePressY = ly;
+        return;
       }
       m_middleAccumY += ly - m_middlePressY;
       m_middlePressY = ly;
@@ -1904,6 +1932,13 @@ namespace umbriel {
     wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly);
     selectRelativeWorkspace(direction < 0 ? -1 : 1, m_server->outputFromWlr(wlrOutput));
     return true;
+  }
+
+  Workspace* Overview::pointerScrollWorkspace(double lx, double ly) {
+    if (!interactive()) {
+      return nullptr;
+    }
+    return rowAt(lx, ly, nullptr, nullptr, true);
   }
 
   bool Overview::focusAdjacent(int direction) {

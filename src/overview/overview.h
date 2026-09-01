@@ -86,8 +86,8 @@ namespace umbriel {
     void onOutputRemoved(Output* output);
 
     // Input entry points; called from Cursor/Keyboard while active.
-    bool handleButton(uint32_t button, bool pressed, double lx, double ly);
-    void handleMotion(double lx, double ly);
+    bool handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec);
+    void handleMotion(double lx, double ly, uint32_t timeMsec);
     bool handleAxisNotch(bool vertical, double direction, double lx, double ly);
     bool handleFallbackKey(uint32_t keysym);
     // Focus a neighboring column while keeping the overview card strip in
@@ -98,6 +98,11 @@ namespace umbriel {
     // up the real trees are hidden, so there is nothing to slide and switching is a discrete step rather than the
     // animated transition it is outside.
     bool selectRelativeWorkspace(int delta, Output* output);
+    // Resolve the visible workspace row under a pointer drag. Horizontal
+    // scrolling rows extend across the output because their cards may overhang
+    // the centered workspace preview.
+    [[nodiscard]] Workspace* pointerScrollWorkspace(double lx, double ly);
+    [[nodiscard]] double contentScale() const { return zoom(); }
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
 
   private:
@@ -251,6 +256,8 @@ namespace umbriel {
     double m_middleAccumY = 0;
     bool m_middlePressed = false;
     bool m_middleDragging = false;
+    bool m_middleHorizontal = false;
+    bool m_middleScrolling = false;
 
     Card* m_dragCard = nullptr;
     double m_dragOffsetX = 0;
