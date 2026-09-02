@@ -1173,10 +1173,9 @@ namespace umbriel {
   void View::applyCornerRadius() {
     // Apps that draw through subsurfaces (Firefox renders all of its chrome and web content into one desynchronized
     // MozContainer subsurface) leave their content square unless those buffers round too. Every buffer under the
-    // toplevel's surface tree is visited: the main surface rounds unconditionally (its quad is the content box in every
-    // clipped and animated state), a subsurface rounds only the corners where its quad, already cropped to the content
-    // box by setSurfaceTreeClip, actually reaches a content-box corner, so an interior subsurface (embedded video)
-    // stays square. Popups are excluded: their surface is its own root.
+    // toplevel's surface tree is visited: surfaces rounds only the corners where its quad, already cropped to
+    // the content box by setSurfaceTreeClip, actually reaches a content-box corner, so an interior subsurface (embedded
+    // video) stays square. Popups are excluded: their surface is its own root.
     const int radius = surfaceRadius();
     // A tiled target and an active resize animation can both lead committed
     // geometry, so use the presented size for corner membership in either case.
@@ -1207,10 +1206,7 @@ namespace umbriel {
               || wlr_surface_get_root_surface(sceneSurface->surface) != ctx->view->m_toplevel->base->surface) {
             return;
           }
-          if (sceneSurface->surface == ctx->view->m_toplevel->base->surface) {
-            wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
-            return;
-          }
+
           // The iterator accumulates positions from the node it was handed, so subtracting the tree's own position
           // yields tree-local coordinates. The xdg scene helper places the surface tree at (-geometry.x, -geometry.y),
           // which puts the content box at the tree origin.
