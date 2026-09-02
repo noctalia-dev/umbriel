@@ -153,7 +153,7 @@ Strut edges are resolved independently. A rule that sets only
 | `layout.width_presets` | float array | Fractions used by the width-cycle and height-cycle actions in every layout. |
 | `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). It overrides the global and matching output values. When omitted at every level, the client chooses its initial logical extent. Reloading a default does not resize existing columns. |
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
-| `layout.scrolling.center_focused` | bool | Always center the focused column, including when the setting changes on config reload. |
+| `layout.scrolling.center_focused` | string | When to center a column when changing focus. `"always"` will always center the focused column. `"on_overflow"` will center if it doesn't fit on screen together with the previously focused column. |
 | `layout.scrolling.direction` | string | `"horizontal"` or `"vertical"` scroll axis. |
 | `layout.scrolling.expand_single_column` | bool | Fill the viewport for a workspace's lone tiled column, subject to client size hints and viewport bounds. Disable to keep the configured/default width. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"` or `"right"`. |

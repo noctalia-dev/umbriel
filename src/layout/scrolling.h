@@ -59,6 +59,7 @@ namespace umbriel {
     // while the lane still exists.
     [[nodiscard]] double scrollShiftForColumnRemoval(int columnIndex, int viewportPrimary) const;
     void ensureVisible(int columnIndex, int viewportPrimary);
+    void activateColumn(int columnIndex, int viewportPrimary);
     void snapVisible(int columnIndex, int viewportPrimary);
     [[nodiscard]] double scrollAmountToEnsureVisible(int columnIndex, int viewportPrimary) const;
     void arrange(const wlr_box& usable) override;
@@ -99,7 +100,10 @@ namespace umbriel {
     [[nodiscard]] int totalWidth(int viewportPrimary) const;
     [[nodiscard]] int rawTotalWidth(int viewportPrimary) const;
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
-    [[nodiscard]] double targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool force = false) const;
+    [[nodiscard]] double
+    targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool center, bool force = false) const;
+    [[nodiscard]] bool shouldCenterFocusedColumn(int columnIndex, int viewportPrimary) const;
+    [[nodiscard]] bool shouldCenterOnOverflow(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] bool vertical() const;
     [[nodiscard]] bool expandSingleColumn() const;
     void syncHeightWeights(Column& column);
@@ -111,6 +115,8 @@ namespace umbriel {
     std::vector<Target> m_targets;
     double m_scroll = 0;
     bool m_centeredRest = false;
+    // Most recently activated column, updated by activateColumn, used for the OnOverflow.
+    int m_lastFocusedColumn = -1;
     int m_lastViewportPrimary = 0;
     const LayoutSnapshot* m_pendingViewportSnapshot = nullptr;
     View* m_pendingViewportAnchor = nullptr;

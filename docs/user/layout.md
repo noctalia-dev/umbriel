@@ -84,7 +84,7 @@ which screen axis is the strip axis.
 direction = "horizontal"             # "horizontal" or "vertical"
 default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
-center_focused = false
+center_focused = "never"             # "never", "always", or "on_overflow"
 expand_single_column = true
 ```
 
@@ -93,7 +93,7 @@ expand_single_column = true
 | `direction` | string | `"horizontal"` | Strip axis: `"horizontal"` places columns left to right, while `"vertical"` places lanes top to bottom. |
 | `default_width_fraction` | float | unset | Initial strip-axis extent for new columns (0.1-1.0). The packaged config sets `0.5`; a matching output or workspace rule can override it. When it is unset at every level, the client chooses its initial extent. |
 | `center_underfull_strip` | bool | `true` | Center the complete strip when it is shorter than the viewport. Disable to align it at the start edge. |
-| `center_focused` | bool | `false` | Always center the focused column. |
+| `center_focused` | string | `"never"` | When to center a column when changing focus. `"always"` will always center the focused column. `"on_overflow"` will center if it doesn't fit on screen together with the previously focused column. |
 | `expand_single_column` | bool | `false` | Fill the viewport for a workspace's lone tiled column. Client size hints and viewport bounds still apply. The packaged config enables this. |
 
 ### Horizontal and vertical scrolling

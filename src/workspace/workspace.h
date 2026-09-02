@@ -146,6 +146,7 @@ namespace umbriel {
     bool toggleFocusedFullscreen();
     bool toggleFocusedFloating();
     void ensureFocusedVisible();
+    void activateFocusedColumn();
     void snapVisible(const View* view);
     [[nodiscard]] double scrollFractionToReveal(const View* view) const;
     void applyVisibility();

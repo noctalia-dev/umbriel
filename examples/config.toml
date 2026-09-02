@@ -198,7 +198,7 @@ bottom = 0
 default_width_fraction = 0.5  # remove to let clients choose their initial width
 # A matching output may override this initial-only value for all its workspaces.
 center_underfull_strip = true  # center the strip whenever it is narrower than the viewport
-center_focused = false # always center the focused column
+center_focused = "never" # options are "never", "always", "on_overflow"
 expand_single_column = true # fill lone column to viewport width
 
 
