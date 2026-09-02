@@ -1572,6 +1572,14 @@ namespace umbriel {
                 valid = false;
               }
             }
+            if (const toml::node* atStartupNode = matchKeys.take("at_startup")) {
+              if (atStartupNode->is_boolean()) {
+                rule.matchAtStartup = atStartupNode->value<bool>();
+              } else {
+                warnAt(atStartupNode->source(), "ignoring window_rule.match.at_startup (expected boolean)");
+                valid = false;
+              }
+            }
           } else {
             warnAt(matchNode->source(), "ignoring window_rule.match (expected table)");
             valid = false;

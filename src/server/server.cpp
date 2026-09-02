@@ -711,6 +711,9 @@ namespace umbriel {
       spawn(command.c_str(), "session environment synchronization");
     }
     applyConfiguredEnvironment();
+
+    m_startTime = std::chrono::steady_clock::now();
+
     if (startupCmd != nullptr) {
       spawn(startupCmd);
     }
@@ -1058,4 +1061,8 @@ namespace umbriel {
     m_closeSnapshots.push_back(std::move(snapshot));
   }
 
+  uint64_t Server::uptimeMs() const {
+    const auto diff = std::chrono::steady_clock::now() - m_startTime;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
+  }
 } // namespace umbriel

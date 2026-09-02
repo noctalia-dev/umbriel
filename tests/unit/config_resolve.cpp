@@ -351,7 +351,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   unfocused.defaultFloating = true;
   config.windowRules.push_back(std::move(unfocused));
 
-  const auto resolved = umbriel::resolveWindowRules(config, "foot", "project shell", "", ContentType::None, false);
+  const auto resolved = umbriel::resolveWindowRules(config, "foot", "project shell", "", ContentType::None, false, 0);
   CHECK(resolved.opacity && *resolved.opacity == 0.8);
   CHECK(resolved.blur && *resolved.blur);
   CHECK(resolved.defaultFloating && *resolved.defaultFloating);
@@ -368,7 +368,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(resolved.allowTearing && *resolved.allowTearing);
   CHECK(resolved.hdr == umbriel::HdrMode::On);
 
-  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "editor", "", ContentType::None, false);
+  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "editor", "", ContentType::None, false, 0);
   CHECK(appOnly.defaultPinned && *appOnly.defaultPinned);
   CHECK(appOnly.defaultScrollingColumn && *appOnly.defaultScrollingColumn == "browser-stack");
   CHECK(appOnly.defaultScrollingColumnOrder && *appOnly.defaultScrollingColumnOrder == 20);
@@ -376,7 +376,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(appOnly.allowTearing && !*appOnly.allowTearing);
   CHECK(appOnly.hdr == umbriel::HdrMode::Off);
 
-  const auto focused = umbriel::resolveWindowRules(config, "foot", "project shell", "", ContentType::None, true);
+  const auto focused = umbriel::resolveWindowRules(config, "foot", "project shell", "", ContentType::None, true, 0);
   CHECK(focused.opacity && *focused.opacity == 0.8);
   CHECK(!focused.defaultFloating);
   CHECK(umbriel::anyWindowRuleHasTitlePattern(config));
@@ -399,7 +399,7 @@ UMBRIEL_TEST(windowRulesMergeFractionSizingLastWriterWins) {
   second.defaultWidth = 0.75;
   config.windowRules.push_back(std::move(second));
 
-  const auto resolved = umbriel::resolveWindowRules(config, "utility", "", "", ContentType::None, false);
+  const auto resolved = umbriel::resolveWindowRules(config, "utility", "", "", ContentType::None, false, 0);
   CHECK(resolved.defaultFloating && *resolved.defaultFloating);
   // Later rules overwrite only the fields they set.
   CHECK(resolved.defaultWidth && *resolved.defaultWidth == 0.75);
@@ -421,6 +421,7 @@ UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   game.titleRegex = std::regex(game.titlePattern);
   game.matchContentType = ContentType::Game;
   game.matchFocused = false;
+  game.matchAtStartup = true;
   game.opacity = 0.75;
   config.windowRules.push_back(std::move(game));
 
@@ -429,23 +430,27 @@ UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   none.defaultFloating = true;
   config.windowRules.push_back(std::move(none));
 
-  const auto matchingGame = umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, false);
+  const auto matchingGame =
+      umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, false, 0);
   CHECK(matchingGame.opacity && *matchingGame.opacity == 0.75);
 
-  const auto wrongApp = umbriel::resolveWindowRules(config, "launcher", "now playing", "", ContentType::Game, false);
+  const auto wrongApp = umbriel::resolveWindowRules(config, "launcher", "now playing", "", ContentType::Game, false, 0);
   CHECK(!wrongApp.opacity);
-  const auto wrongTitle = umbriel::resolveWindowRules(config, "runner", "paused", "", ContentType::Game, false);
+  const auto wrongTitle = umbriel::resolveWindowRules(config, "runner", "paused", "", ContentType::Game, false, 0);
   CHECK(!wrongTitle.opacity);
-  const auto wrongFocus = umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, true);
+  const auto wrongFocus = umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, true, 0);
   CHECK(!wrongFocus.opacity);
+  const auto wrongAtStartup =
+      umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, false, 60 * 1000 + 1);
+  CHECK(!wrongAtStartup.opacity);
 
-  const auto matchingPhoto = umbriel::resolveWindowRules(config, "viewer", "photo", "", ContentType::Photo, false);
+  const auto matchingPhoto = umbriel::resolveWindowRules(config, "viewer", "photo", "", ContentType::Photo, false, 0);
   CHECK(matchingPhoto.opacity && *matchingPhoto.opacity == 0.25);
 
-  const auto matchingNone = umbriel::resolveWindowRules(config, "terminal", "shell", "", ContentType::None, false);
+  const auto matchingNone = umbriel::resolveWindowRules(config, "terminal", "shell", "", ContentType::None, false, 0);
   CHECK(matchingNone.defaultFloating && *matchingNone.defaultFloating);
 
-  const auto video = umbriel::resolveWindowRules(config, "viewer", "video", "", ContentType::Video, false);
+  const auto video = umbriel::resolveWindowRules(config, "viewer", "video", "", ContentType::Video, false, 0);
   CHECK(!video.opacity);
   CHECK(!video.defaultFloating);
 }
@@ -479,36 +484,36 @@ UMBRIEL_TEST(windowRulesMatchXdgTagsAndComposeSelectors) {
   config.windowRules.push_back(std::move(running));
 
   const auto matchingLauncher =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "game-launcher", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "game-launcher", ContentType::Game, false, 0);
   CHECK(matchingLauncher.opacity && *matchingLauncher.opacity == 0.9);
   CHECK(matchingLauncher.defaultFloating && *matchingLauncher.defaultFloating);
 
   const auto matchingRunning =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Game, false, 0);
   CHECK(matchingRunning.opacity && *matchingRunning.opacity == 0.5);
 
   const auto matchingSecondTag =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "game-settings", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "game-settings", ContentType::Game, false, 0);
   CHECK(matchingSecondTag.opacity && *matchingSecondTag.opacity == 0.5);
 
   const auto wrongApp =
-      umbriel::resolveWindowRules(config, "launcher", "now playing", "game-running", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "launcher", "now playing", "game-running", ContentType::Game, false, 0);
   CHECK(wrongApp.opacity && *wrongApp.opacity == 0.25);
   const auto wrongTitle =
-      umbriel::resolveWindowRules(config, "runner", "paused", "game-running", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "runner", "paused", "game-running", ContentType::Game, false, 0);
   CHECK(wrongTitle.opacity && *wrongTitle.opacity == 0.25);
   const auto wrongContent =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Video, false);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Video, false, 0);
   CHECK(wrongContent.opacity && *wrongContent.opacity == 0.25);
   const auto wrongFocus =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Game, true);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "game-running", ContentType::Game, true, 0);
   CHECK(wrongFocus.opacity && *wrongFocus.opacity == 0.25);
 
-  const auto missingTag = umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, false);
+  const auto missingTag = umbriel::resolveWindowRules(config, "runner", "now playing", "", ContentType::Game, false, 0);
   CHECK(!missingTag.opacity);
   CHECK(!missingTag.defaultFloating);
   const auto unknownTag =
-      umbriel::resolveWindowRules(config, "runner", "now playing", "browser", ContentType::Game, false);
+      umbriel::resolveWindowRules(config, "runner", "now playing", "browser", ContentType::Game, false, 0);
   CHECK(!unknownTag.opacity);
   CHECK(!unknownTag.defaultFloating);
 }

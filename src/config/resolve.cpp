@@ -162,7 +162,7 @@ namespace umbriel {
 
   ResolvedWindowRule resolveWindowRules(
       const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
-      bool focused
+      bool focused, uint64_t uptimeMs
   ) {
     ResolvedWindowRule resolved;
     const std::string_view appIdView = appId != nullptr ? appId : "";
@@ -188,6 +188,9 @@ namespace umbriel {
         continue;
       }
       if (rule.matchFocused && *rule.matchFocused != focused) {
+        continue;
+      }
+      if (rule.matchAtStartup && uptimeMs > 60 * 1000) {
         continue;
       }
       // Last writer wins: overwrite each field the rule sets.

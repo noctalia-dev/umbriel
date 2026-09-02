@@ -13,7 +13,7 @@ namespace umbriel {
 
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(
       const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
-      bool focused
+      bool focused, uint64_t elapsedMs
   );
   [[nodiscard]] ResolvedLayerRule resolveLayerRules(const Config& config, const char* layerNamespace);
   // The globals every [[security_context_rule]] matching the client's metadata

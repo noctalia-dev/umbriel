@@ -188,6 +188,7 @@ namespace umbriel {
     void unregisterAnimatable(Animatable* animatable);
     [[nodiscard]] HintRect& insertHint();
     void hideInsertHint();
+    [[nodiscard]] uint64_t uptimeMs() const;
     [[nodiscard]] SessionLock* sessionLock() const { return m_sessionLock.get(); }
     [[nodiscard]] bool sessionLocked() const { return m_sessionLocked; }
     [[nodiscard]] const std::string& activeSubmap() const {
@@ -528,6 +529,7 @@ namespace umbriel {
     std::vector<std::string> m_activeSubmaps;
     // Same-msec dedupe: several outputs can call tickAnimations per vblank.
     uint64_t m_lastAnimTickMsec = 0;
+    std::chrono::steady_clock::time_point m_startTime;
 
     // A fading copy of a closed window's scene tree. Owns that tree and destroys
     // it once the fade completes.

@@ -96,6 +96,7 @@ namespace umbriel {
             || lhs.xdgTagPattern != rhs.xdgTagPattern
             || lhs.matchContentType != rhs.matchContentType
             || lhs.matchFocused != rhs.matchFocused
+            || lhs.matchAtStartup != rhs.matchAtStartup
             || lhs.allowTearing != rhs.allowTearing) {
           return false;
         }

@@ -22,6 +22,7 @@ default_floating = true
 | `match.xdg_tag` | regex | Match the client-defined XDG toplevel tag. |
 | `match.content_type` | string | Match `"none"`, `"photo"`, `"video"`, or `"game"`. |
 | `match.is_focused` | bool | Match the window's focused state dynamically. |
+| `match.at_startup` | bool | Matches during the first 60 seconds after starting umbriel. |
 
 Every selector is optional. A rule without selectors matches every window.
 Regular expressions match any part of a value by default. Use `^` and `$` when
