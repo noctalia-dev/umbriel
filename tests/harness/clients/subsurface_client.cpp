@@ -4,7 +4,10 @@
 // which surface a pixel came from and whether the compositor rounded the subsurface to the window corner radius. Prints
 // "mapped" once both surfaces are up, then keeps the connection alive until the harness kills it. The optional
 // "animate" mode continually damages only the child, matching Firefox's independent MozContainer commits. Setting
-// TRANSLUCENT_CONTENT gives the child premultiplied half-alpha magenta content over a transparent parent.
+// TRANSLUCENT_CONTENT gives the child premultiplied half-alpha magenta content over a transparent parent. Setting
+// OFFSET_GEOMETRY to a pixel margin places the child above and left of the parent and puts the window geometry origin
+// there, so the main surface is inset inside the window content box and its own corners are interior to the window;
+// the child then sits below the parent so both are visible.
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"
@@ -44,6 +47,8 @@ namespace {
     int height = 480;
     int presentedWidth = 0;
     int presentedHeight = 0;
+    // Logical margin by which the child, and with it the window geometry origin, sits above and left of the parent.
+    int offset = 0;
     bool mapped = false;
     bool animateChild = false;
     bool initialFullscreen = false;
@@ -91,10 +96,10 @@ namespace {
     buffer.size = 0;
   }
 
-  Buffer createBuffer(State& state, uint32_t color) {
+  Buffer createBuffer(State& state, int width, int height, uint32_t color) {
     Buffer buffer;
-    const int stride = state.width * 4;
-    buffer.size = static_cast<size_t>(stride) * static_cast<size_t>(state.height);
+    const int stride = width * 4;
+    buffer.size = static_cast<size_t>(stride) * static_cast<size_t>(height);
     const int fd = memfd_create("umbriel-subsurface-client", MFD_CLOEXEC);
     if (fd < 0 || ftruncate(fd, static_cast<off_t>(buffer.size)) < 0) {
       if (fd >= 0) {
@@ -111,15 +116,15 @@ namespace {
     std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), color);
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
-    buffer.resource = wl_shm_pool_create_buffer(pool, 0, state.width, state.height, stride, WL_SHM_FORMAT_ARGB8888);
+    buffer.resource = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
     return buffer;
   }
 
-  // Both surfaces always carry a buffer of the current window size: the compositor's rounding is measured against the
-  // window box, so a stale child size would move the corner the check samples. Re-attach only on an actual size change;
-  // the previous buffers are released after the commit that replaces them.
+  // The child always carries a buffer of the current window size: the compositor's rounding is measured against the
+  // window box, so a stale child size would move the corner the check samples. Re-attach only on an actual size
+  // change; the previous buffers are released after the commit that replaces them.
   bool presentSize(State& state) {
     if (state.width == state.presentedWidth && state.height == state.presentedHeight) {
       // Nothing to redraw, but the acked configure still needs a commit to be applied.
@@ -131,8 +136,12 @@ namespace {
     const uint32_t childColor = state.transparentContent ? 0x00000000
         : state.translucentContent                       ? 0x80800080
                                                          : 0xFF0000FF;
-    Buffer parent = createBuffer(state, parentColor);
-    Buffer child = createBuffer(state, childColor);
+    // The child always covers the whole window box. In offset mode the parent gives up the margin the child occupies
+    // above and left of it, so the two together still cover the box exactly once.
+    const int parentWidth = std::max(1, state.width - state.offset);
+    const int parentHeight = std::max(1, state.height - state.offset);
+    Buffer parent = createBuffer(state, parentWidth, parentHeight, parentColor);
+    Buffer child = createBuffer(state, state.width, state.height, childColor);
     if (parent.resource == nullptr || child.resource == nullptr) {
       destroyBuffer(parent);
       destroyBuffer(child);
@@ -146,8 +155,12 @@ namespace {
     }
     wl_surface_commit(state.child);
 
+    if (state.offset > 0) {
+      // The window box starts at the child's top-left, which is outside the parent surface.
+      xdg_surface_set_window_geometry(state.xdgSurface, -state.offset, -state.offset, state.width, state.height);
+    }
     wl_surface_attach(state.surface, parent.resource, 0, 0);
-    wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    wl_surface_damage_buffer(state.surface, 0, 0, parentWidth, parentHeight);
     wl_surface_commit(state.surface);
 
     destroyBuffer(state.parentBuffer);
@@ -253,6 +266,9 @@ int main(int argc, char** argv) {
   state.fullscreenBeforeMap = std::getenv("FULLSCREEN_BEFORE_MAP") != nullptr;
   state.transparentContent = std::getenv("TRANSPARENT_CONTENT") != nullptr;
   state.translucentContent = std::getenv("TRANSLUCENT_CONTENT") != nullptr;
+  if (const char* offset = std::getenv("OFFSET_GEOMETRY")) {
+    state.offset = std::max(0, std::atoi(offset));
+  }
   if (argc > 2) {
     state.width = std::max(1, std::atoi(argv[2]));
   }
@@ -291,7 +307,11 @@ int main(int argc, char** argv) {
   // Desynchronized, like Firefox: the child commits its own content without waiting for a parent commit.
   state.child = wl_compositor_create_surface(state.compositor);
   state.subsurface = wl_subcompositor_get_subsurface(state.subcompositor, state.child, state.surface);
-  wl_subsurface_set_position(state.subsurface, 0, 0);
+  wl_subsurface_set_position(state.subsurface, -state.offset, -state.offset);
+  if (state.offset > 0) {
+    // The parent has to stay visible: it is the surface whose own corners must not round in offset mode.
+    wl_subsurface_place_below(state.subsurface, state.surface);
+  }
   wl_subsurface_set_desync(state.subsurface);
 
   if (state.initialFullscreen) {

@@ -1173,12 +1173,13 @@ namespace umbriel {
   void View::applyCornerRadius() {
     // Apps that draw through subsurfaces (Firefox renders all of its chrome and web content into one desynchronized
     // MozContainer subsurface) leave their content square unless those buffers round too. Every buffer under the
-    // toplevel's surface tree is visited: surfaces rounds only the corners where its quad, already cropped to
-    // the content box by setSurfaceTreeClip, actually reaches a content-box corner, so an interior subsurface (embedded
-    // video) stays square. Popups are excluded: their surface is its own root.
+    // toplevel's surface tree is rounded against one box, the window's content box, so the arc always lands on the
+    // window's corners whichever surface draws them: an inset main surface, a full-window subsurface and an interior
+    // subsurface (embedded video) all follow from that box without knowing anything about each other. Popups are
+    // excluded: their surface is its own root.
     const int radius = surfaceRadius();
-    // A tiled target and an active resize animation can both lead committed
-    // geometry, so use the presented size for corner membership in either case.
+    // A tiled target and an active resize animation can both lead committed geometry, so the box follows the presented
+    // size in either case.
     const wlr_box& geometry = m_toplevel->base->geometry;
     const bool usePresentedSize =
         (m_tiled || sizeAnimating()) && m_presentation.width() > 0 && m_presentation.height() > 0;
@@ -1209,23 +1210,16 @@ namespace umbriel {
 
           // The iterator accumulates positions from the node it was handed, so subtracting the tree's own position
           // yields tree-local coordinates. The xdg scene helper places the surface tree at (-geometry.x, -geometry.y),
-          // which puts the content box at the tree origin.
-          const int x = sx - ctx->treeX;
-          const int y = sy - ctx->treeY;
-          const int w = buffer->dst_width > 0 ? buffer->dst_width : sceneSurface->surface->current.width;
-          const int h = buffer->dst_height > 0 ? buffer->dst_height : sceneSurface->surface->current.height;
-          const bool left = x == 0;
-          const bool top = y == 0;
-          const bool right = x + w == ctx->contentWidth;
-          const bool bottom = y + h == ctx->contentHeight;
-          const int r = ctx->radius;
-          // Always set, zeros included: a subsurface that moved or resized off a corner must lose its stale radius.
-          wlr_scene_buffer_set_corner_radii(
-              buffer,
-              corner_radii_new(
-                  top && left ? r : 0, top && right ? r : 0, bottom && right ? r : 0, bottom && left ? r : 0
-              )
-          );
+          // which puts the content box at the tree origin, and the corner box is node-relative.
+          const wlr_box cornerBox{
+              ctx->treeX - sx,
+              ctx->treeY - sy,
+              ctx->contentWidth,
+              ctx->contentHeight,
+          };
+          // Always set, zeros included: a window that lost its radius must lose the box with it.
+          wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
+          wlr_scene_buffer_set_corner_box(buffer, ctx->radius > 0 ? &cornerBox : nullptr);
         },
         &ctx
     );
@@ -1351,6 +1345,7 @@ namespace umbriel {
           }
           wlr_scene_buffer_set_transform(copy, src->transform);
           wlr_scene_buffer_set_corner_radii(copy, src->corners);
+          wlr_scene_buffer_set_corner_box(copy, &src->corner_box);
           wlr_scene_buffer_set_opacity(copy, src->opacity);
           wlr_scene_buffer_set_transfer_function(copy, src->transfer_function);
           wlr_scene_buffer_set_primaries(copy, src->primaries);

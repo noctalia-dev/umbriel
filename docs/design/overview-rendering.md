@@ -43,7 +43,9 @@ only the projection into card coordinates, not a separate close timeline.
 ## Decoration and clipping
 
 Cards carry the same inner border, outer border, and corner radius as their
-windows. These values scale with the card.
+windows. These values scale with the card. Every surface of a card rounds
+against the card's content box, the rule live windows use, so a client that
+draws its corners from a subsurface keeps them rounded in the thumbnail.
 
 Each output's overview tree carries a `wlr_scene_tree_set_clip` of that
 output's logical bounds, the same primitive windows use. A workspace row that

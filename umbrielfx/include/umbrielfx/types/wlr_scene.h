@@ -295,6 +295,13 @@ struct wlr_scene_buffer {
 	} WLR_PRIVATE;
 
 	struct fx_corner_radii corners;
+	/**
+	 * Rounded rectangle `corners` describes, in node-relative coordinates. An
+	 * empty box rounds the buffer's own destination box. While `corners` has a
+	 * radius the draw is also confined to the box, so a buffer that does not
+	 * reach a box corner keeps that corner square.
+	 */
+	struct wlr_box corner_box;
 	struct linked_node blur;
 
 	/**
@@ -915,6 +922,13 @@ void wlr_scene_buffer_set_corner_radius(struct wlr_scene_buffer *scene_buffer,
 */
 void wlr_scene_buffer_set_corner_radii(struct wlr_scene_buffer *scene_buffer,
 	struct fx_corner_radii corner_radii);
+
+/**
+* Sets the box the corner radii of this buffer describe, in node-relative
+* coordinates. NULL or an empty box rounds the buffer's own destination box.
+*/
+void wlr_scene_buffer_set_corner_box(struct wlr_scene_buffer *scene_buffer,
+	const struct wlr_box *box);
 
 void wlr_scene_buffer_set_transfer_function(struct wlr_scene_buffer *scene_buffer,
 	enum wlr_color_transfer_function transfer_function);

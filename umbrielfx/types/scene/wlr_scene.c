@@ -471,9 +471,20 @@ static void scene_node_opaque_region(struct wlr_scene_node *node, int x, int y,
 			pixman_region32_init_rect(opaque, x, y, width, height);
 		}
 
-		// subtract the corners from the opaque region
+		// The draw is confined to the corner box and rounded at its corners, so
+		// neither the part outside it nor the area under an arc is opaque.
+		struct wlr_box arc_box = { x, y, width, height };
+		if (!wlr_box_empty(&scene_buffer->corner_box)) {
+			arc_box = scene_buffer->corner_box;
+			arc_box.x += x;
+			arc_box.y += y;
+			pixman_region32_intersect_rect(opaque, opaque, arc_box.x, arc_box.y,
+				arc_box.width, arc_box.height);
+		}
+
 		if (!fx_corner_radii_is_empty(&scene_buffer->corners)) {
-			pixman_region32_t corners = create_corner_location_region(scene_buffer->corners, x, y, width, height);
+			pixman_region32_t corners = create_corner_location_region(scene_buffer->corners,
+				arc_box.x, arc_box.y, arc_box.width, arc_box.height);
 			pixman_region32_subtract(opaque, opaque, &corners);
 			pixman_region32_fini(&corners);
 		}
@@ -1891,6 +1902,17 @@ void wlr_scene_buffer_set_corner_radii(struct wlr_scene_buffer *scene_buffer,
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_corner_box(struct wlr_scene_buffer *scene_buffer,
+		const struct wlr_box *box) {
+	const struct wlr_box next = box != NULL ? *box : (struct wlr_box){0};
+	if (wlr_box_equal(&scene_buffer->corner_box, &next)) {
+		return;
+	}
+
+	scene_buffer->corner_box = next;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
 static struct wlr_texture *scene_buffer_get_texture(
 		struct wlr_scene_buffer *scene_buffer, struct wlr_renderer *renderer) {
 	if (scene_buffer->buffer == NULL || scene_buffer->texture != NULL) {
@@ -2360,7 +2382,21 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		enum wl_output_transform transform =
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
-		fx_corner_radii_transform(transform, &buffer_corners);
+
+		// A corner box lives in scene coordinates, so its radii follow the
+		// output transform alone. Radii on the buffer's own quad follow the
+		// buffer transform too.
+		struct wlr_box corner_box = scene_buffer->corner_box;
+		const bool has_corner_box = !wlr_box_empty(&corner_box);
+		if (has_corner_box) {
+			// Node relative -> Root relative
+			corner_box.x += x;
+			corner_box.y += y;
+			transform_output_box(&corner_box, data);
+			fx_corner_radii_transform(node_transform, &buffer_corners);
+		} else {
+			fx_corner_radii_transform(transform, &buffer_corners);
+		}
 
 		struct wlr_color_primaries primaries = {0};
 		if (scene_buffer->primaries != 0) {
@@ -2481,7 +2517,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.wait_timeline = scene_buffer->wait_timeline,
 				.wait_point = scene_buffer->wait_point,
 			},
-			.clip_box = &dst_box,
+			.clip_box = has_corner_box ? &corner_box : &dst_box,
 			.corners = fx_corner_radii_scale(buffer_corners, data->scale),
 			.clipped_region = {0},
 			.sample_box = sample_box,
