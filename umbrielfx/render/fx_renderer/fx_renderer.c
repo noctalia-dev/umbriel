@@ -418,7 +418,7 @@ struct wlr_renderer *fx_renderer_create(struct wlr_backend *backend) {
 	return renderer_autocreate(backend, -1);
 }
 
-static bool link_shaders(struct fx_renderer *renderer) {
+static bool link_shaders(struct fx_renderer *renderer, bool force_high_precision) {
 	// quad fragment shader
 	if (!link_quad_program(&renderer->shaders.quad, false)) {
 		wlr_log(WLR_ERROR, "Could not link quad shader");
@@ -454,66 +454,66 @@ static bool link_shaders(struct fx_renderer *renderer) {
 
 	// Basic fragment shaders
 	if (!link_tex_program(&renderer->shaders.tex_rgba,
-				SHADER_SOURCE_TEXTURE_RGBA, false, false)) {
+				SHADER_SOURCE_TEXTURE_RGBA, false, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_RGBA shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_rgbx,
-				SHADER_SOURCE_TEXTURE_RGBX, false, false)) {
+				SHADER_SOURCE_TEXTURE_RGBX, false, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_RGBX shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_ext,
-				SHADER_SOURCE_TEXTURE_EXTERNAL, false, false)) {
+				SHADER_SOURCE_TEXTURE_EXTERNAL, false, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_EXTERNAL shader");
 		goto error;
 	}
 
 	// Effects fragment shaders
 	if (!link_tex_program(&renderer->shaders.tex_effects_rgba,
-				SHADER_SOURCE_TEXTURE_RGBA, true, false)) {
+				SHADER_SOURCE_TEXTURE_RGBA, true, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_effects_RGBA shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_effects_rgbx,
-				SHADER_SOURCE_TEXTURE_RGBX, true, false)) {
+				SHADER_SOURCE_TEXTURE_RGBX, true, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_effects_RGBX shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_effects_ext,
-				SHADER_SOURCE_TEXTURE_EXTERNAL, true, false)) {
+				SHADER_SOURCE_TEXTURE_EXTERNAL, true, false, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_effects_EXTERNAL shader");
 		goto error;
 	}
 
 	// Sample-clamp fragment shaders for fractionally cropped surfaces
 	if (!link_tex_program(&renderer->shaders.tex_clamp_rgba,
-				SHADER_SOURCE_TEXTURE_RGBA, false, true)) {
+				SHADER_SOURCE_TEXTURE_RGBA, false, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_RGBA shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_clamp_rgbx,
-				SHADER_SOURCE_TEXTURE_RGBX, false, true)) {
+				SHADER_SOURCE_TEXTURE_RGBX, false, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_RGBX shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_clamp_ext,
-				SHADER_SOURCE_TEXTURE_EXTERNAL, false, true)) {
+				SHADER_SOURCE_TEXTURE_EXTERNAL, false, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_EXTERNAL shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgba,
-				SHADER_SOURCE_TEXTURE_RGBA, true, true)) {
+				SHADER_SOURCE_TEXTURE_RGBA, true, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_RGBA shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgbx,
-				SHADER_SOURCE_TEXTURE_RGBX, true, true)) {
+				SHADER_SOURCE_TEXTURE_RGBX, true, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_RGBX shader");
 		goto error;
 	}
 	if (!link_tex_program(&renderer->shaders.tex_clamp_effects_ext,
-				SHADER_SOURCE_TEXTURE_EXTERNAL, true, true)) {
+				SHADER_SOURCE_TEXTURE_EXTERNAL, true, true, force_high_precision)) {
 		wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_EXTERNAL shader");
 		goto error;
 	}
@@ -579,7 +579,12 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	renderer->drm_fd = -1;
 
 	wlr_log(WLR_INFO, "Creating umbrielfx renderer");
-	wlr_log(WLR_INFO, "Using %s", glGetString(GL_VERSION));
+	const char *gl_version = (const char *)glGetString(GL_VERSION);
+	wlr_log(WLR_INFO, "Using %s", gl_version);
+	int gles_major = 0;
+	const bool is_gles3 = gl_version != NULL &&
+		sscanf(gl_version, "OpenGL ES %d", &gles_major) == 1 &&
+		gles_major >= 3;
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
 	wlr_log(WLR_INFO, "Supported FX extensions: %s", exts_str);
@@ -604,6 +609,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 		check_gl_ext(exts_str, "GL_EXT_read_format_bgra");
 
 	renderer->exts.EXT_texture_type_2_10_10_10_REV =
+		is_gles3 ||
 		check_gl_ext(exts_str, "GL_EXT_texture_type_2_10_10_10_REV");
 
 	renderer->exts.OES_texture_half_float_linear =
@@ -684,7 +690,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	)
 
 	// Link all shaders
-	if (!link_shaders(renderer)) {
+	if (!link_shaders(renderer, is_gles3)) {
 		goto error;
 	}
 

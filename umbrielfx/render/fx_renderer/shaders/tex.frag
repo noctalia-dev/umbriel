@@ -1,12 +1,13 @@
 #define SOURCE %d
 #define EFFECTS %d
 #define SAMPLE_CLAMP %d
+#define FORCE_HIGH_PRECISION %d
 
 #define SOURCE_TEXTURE_RGBA 1
 #define SOURCE_TEXTURE_RGBX 2
 #define SOURCE_TEXTURE_EXTERNAL 3
 
-#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP)
+#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP) || !defined(FORCE_HIGH_PRECISION)
 #error "Missing shader preamble"
 #endif
 
@@ -14,7 +15,7 @@
 #extension GL_OES_EGL_image_external : require
 #endif
 
-#ifdef GL_FRAGMENT_PRECISION_HIGH
+#if FORCE_HIGH_PRECISION || defined(GL_FRAGMENT_PRECISION_HIGH)
 precision highp float;
 #else
 precision mediump float;

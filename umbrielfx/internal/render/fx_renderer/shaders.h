@@ -156,7 +156,7 @@ struct tex_shader {
 };
 
 bool link_tex_program(struct tex_shader *shader, enum fx_tex_shader_source source,
-		bool effects, bool sample_clamp);
+		bool effects, bool sample_clamp, bool force_high_precision);
 
 struct output_shader {
 	GLuint program;
