@@ -353,6 +353,8 @@ follows_mouse = false                           # Focus the pointer target after
 # "Mod+Ctrl+T" = "workspace-set-layout:toggle"
 # "Mod+MouseMiddle" = "layout-scroll-drag"
 # "Mod+Alt+K" = "keyboard-layout-next"
+# "Mod+WheelUp" = { action = "workspace-previous", cooldown_ms = 150 }
+# "Mod+WheelDown" = { action = "workspace-next", cooldown_ms = 150 }
 
 # Submaps temporarily replace the active keybind layer and can nest. Entry
 # binds must not repeat. A table-form bind can run an action and then reset one

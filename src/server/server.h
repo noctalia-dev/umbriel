@@ -224,6 +224,7 @@ namespace umbriel {
 
     // Runs a parsed action. Shared by the keybind path and the IPC `msg` command.
     bool executeKeybindAction(const Keybind& bind, std::string* error = nullptr);
+    bool cooldownAllows(const Keybind& bind);
     // Record that something server-wide became stale. The work happens once, in a fixed order, at the top of the next
     // frame (see Output::flushDirty). Schedules a frame on every output, so recording is always enough.
     void markDirty(Dirty what);
@@ -535,6 +536,7 @@ namespace umbriel {
     wlr_scene_rect* m_lockBlank = nullptr;
     wlr_scene_rect* m_backdrop = nullptr;
     bool m_sessionLocked = false;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_bindCooldowns;
     std::vector<std::string> m_activeSubmaps;
     // Same-msec dedupe: several outputs can call tickAnimations per vblank.
     uint64_t m_lastAnimTickMsec = 0;

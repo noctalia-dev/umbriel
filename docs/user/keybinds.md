@@ -91,6 +91,15 @@ with the table form:
 "XF86MonBrightnessDown" = { action = "spawn:noctalia msg brightness-down 10", allow_when_locked = true }
 ```
 
+## Cooldown ms
+
+Add a cooldown to the binds, in milliseconds.
+
+```toml
+"Mod+WheelUp" = { action = "workspace-previous", cooldown_ms = 150 }
+"Mod+WheelDown" = { action = "workspace-next", cooldown_ms = 150 }
+```
+
 ## Submaps
 
 Submaps are temporary keybind layers that can be nested. Enter a named layer

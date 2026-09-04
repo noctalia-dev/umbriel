@@ -13,11 +13,31 @@
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
+#include <string>
 #include <string_view>
 #include <utility>
 
 namespace umbriel {
   namespace {
+    std::string cooldownKeyFor(const Keybind& bind) {
+      std::string key;
+      key.reserve(64);
+      key += "[";
+      key += bind.submap;
+      key += "]";
+      key += std::to_string(bind.modifiers);
+      key += ",";
+      key += bind.useMod ? "1" : "0";
+      key += ",";
+      key += bind.modifierOnly ? "1" : "0";
+      key += ",";
+      key += std::to_string(bind.keysym);
+      key += ",";
+      key += std::to_string(static_cast<int>(bind.wheel));
+      key += ",";
+      key += std::to_string(bind.mouseButton);
+      return key;
+    }
     uint32_t modifierMaskForKeysym(uint32_t keysym) {
       switch (keysym) {
       case XKB_KEY_Shift_L:
@@ -64,11 +84,32 @@ namespace umbriel {
     return true;
   }
 
+  bool Server::cooldownAllows(const Keybind& bind) {
+    if (bind.cooldownMs <= 0) {
+      return true;
+    }
+    using Clock = std::chrono::steady_clock;
+    const std::string key = cooldownKeyFor(bind);
+    const Clock::time_point now = Clock::now();
+    const auto it = m_bindCooldowns.find(key);
+    if (it != m_bindCooldowns.end()) {
+      const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second).count();
+      if (elapsed < bind.cooldownMs) {
+        return false;
+      }
+    }
+    m_bindCooldowns[key] = now;
+    return true;
+  }
+
   bool Server::executeKeybindAction(const Keybind& bind, std::string* error) {
     if (error != nullptr) {
       error->clear();
     }
     if (bind.action == KeybindAction::None) {
+      return false;
+    }
+    if (bind.cooldownMs > 0 && !cooldownAllows(bind)) {
       return false;
     }
     const ActionHandlerFn handler = actionHandlerFor(bind.action);

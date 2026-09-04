@@ -1432,6 +1432,7 @@ namespace umbriel {
         bool hasSubmapAfter = false;
         bool repeatBind = true;
         bool allowWhenLocked = false;
+        int cooldownMs = 0;
 
         if (const auto* tbl = entry.as_table()) {
           Section bind(*tbl, "keybinds." + chord, configStore().mutableDiagnostics());
@@ -1439,6 +1440,7 @@ namespace umbriel {
           // bad action must not also be told its `repeat` key is unknown.
           bind.boolean("repeat", repeatBind);
           bind.boolean("allow_when_locked", allowWhenLocked);
+          bind.integer("cooldown_ms", 0, 3600000, cooldownMs);
           const toml::node* submapNode = bind.node("submap");
           hasSubmapAfter = submapNode != nullptr && submapNode->is_string();
           bind.text("submap", submapAfter);
@@ -1484,6 +1486,7 @@ namespace umbriel {
         }
         binding.repeat = repeatBind && !binding.modifierOnly && !binding.submapAfter.has_value();
         binding.allowWhenLocked = allowWhenLocked;
+        binding.cooldownMs = cooldownMs;
         if (!parseAction(actionStr, binding)) {
           warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, actionStr);
           continue;
