@@ -97,6 +97,30 @@ clamping inside every texture fetch caused constant full-session flicker and
 tearing on NVIDIA (595.71.05, open modules), so an empty `sample_box` must keep
 the fetch byte-identical to a build without the clamp.
 
+## Surface rounding
+
+The content edge is a shader contour, so the client surfaces inside the hole
+have to follow the same arc or their square corners cover it. Each scene buffer
+carries `corner_box`, the rounded rectangle its radii describe, in node-relative
+coordinates. Umbriel gives every buffer under a toplevel's surface tree the same
+box, the window's content box, and the fragment shader clips to it and rounds
+its corners.
+
+Nothing in that rule inspects a buffer's own destination quad, which is what
+makes it hold in every state a window reaches:
+
+- a main surface inset inside the content box, because the window geometry
+  origin lies at a subsurface above or left of it, keeps its own corners square;
+- a full-window subsurface rounds the window's corners;
+- an interior subsurface, such as an embedded video, never touches the arc;
+- an animated or interactively resized presented size rounds where the window is
+  drawn now, including while the client's committed buffer still lags it.
+
+An empty `corner_box` falls back to rounding the buffer's own quad, which is
+what the overview badge and other standalone buffers use. Overview cards apply
+the window rule against the card's content box, so a thumbnail rounds wherever
+the live window does.
+
 ## Scene lifecycle
 
 View decorations, overview cards, and their close-animation snapshots all copy
@@ -116,6 +140,11 @@ a second scene node or draw order.
   carries a transparent one-logical-pixel margin around its declared window, so
   the crop lands a quarter texel off the grid on every side. All four edge lines
   inside the content box must be window content.
+- `720_subsurface_corner_radius.sh` checks that content drawn through a
+  full-window subsurface follows the window radius.
+- `721_offset_main_surface_radius.sh` puts the window geometry origin at a
+  subsurface above and left of the main surface. The inset main surface must
+  keep its interior corners square while both window corners still round.
 - `722_subsurface_border_corner.sh` checks the outer arc, smooth two-color seam,
   positive content radius, and straight-to-curve tangency against a full-window
   subsurface.

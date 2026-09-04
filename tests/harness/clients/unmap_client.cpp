@@ -10,7 +10,8 @@
 // surface is hidden, `a` or `c` queues activation before the remap commit.
 // CONTENT_TYPE sets a surface hint before its initial commit. CONTENT_TYPE_ON_SUBSURFACE places it on a rendering
 // child, matching current Proton behavior. XDG_TAG sets a toplevel tag before the initial commit.
-// CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin.
+// CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin. NO_TITLE never sets a
+// title at all.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
@@ -268,6 +269,7 @@ namespace {
     auto& window = *static_cast<AuxiliaryToplevel*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
     if (window.mapped) {
+      wl_surface_commit(window.surface);
       return;
     }
     window.mapped = true;
@@ -642,6 +644,8 @@ int main(int argc, char** argv) {
   const char* initialXdgTag = std::getenv("XDG_TAG");
   const char* updatedXdgTag = std::getenv("XDG_TAG_AFTER_MAP");
   const char* updatedTitle = std::getenv("TITLE_AFTER_MAP");
+  // A toplevel that never sets a title, which is distinct from one that sets an empty title.
+  const bool skipTitle = std::getenv("NO_TITLE") != nullptr;
   const bool updateOnStdin = updatedContentType != nullptr || updatedXdgTag != nullptr || updatedTitle != nullptr;
   if (parseContentType(initialContentType) < 0 || parseContentType(updatedContentType) < 0) {
     std::println(stderr, "unmap-client: CONTENT_TYPE values must be none, photo, video, or game");
@@ -815,7 +819,9 @@ int main(int argc, char** argv) {
   xdg_surface_add_listener(state.xdgSurface, &kXdgSurfaceListener, &state);
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
   xdg_toplevel_add_listener(state.toplevel, &kToplevelListener, &state);
-  xdg_toplevel_set_title(state.toplevel, state.title);
+  if (!skipTitle) {
+    xdg_toplevel_set_title(state.toplevel, state.title);
+  }
   if (state.appId != nullptr) {
     xdg_toplevel_set_app_id(state.toplevel, state.appId);
   }

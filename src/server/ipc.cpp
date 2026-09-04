@@ -43,6 +43,23 @@ namespace umbriel {
                {"accent_secondary", rgbaHex(colors.accentSecondary)},
                {"warning", rgbaHex(colors.warning)},
                {"error", rgbaHex(colors.error)},
+               {"insert_hint", rgbaHex(colors.insertHint)},
+               {"backdrop", rgbaHex(colors.backdrop)},
+               {"shadow", rgbaHex(colors.shadow)},
+               {"border",
+                {
+                    {"focused", rgbaHex(colors.border.focused)},
+                    {"unfocused", rgbaHex(colors.border.unfocused)},
+                    {"scratchpad_focused", rgbaHex(colors.border.scratchpadFocused)},
+                    {"scratchpad_unfocused", rgbaHex(colors.border.scratchpadUnfocused)},
+                    {"outer", rgbaHex(colors.border.outer)},
+                }},
+               {"overview",
+                {
+                    {"background_tint", rgbaHex(colors.overview.backgroundTint)},
+                    {"workspace_background", rgbaHex(colors.overview.workspaceBackground)},
+                    {"badge", rgbaHex(colors.overview.badge)},
+                }},
                {"corner_radius", current.appearance.cornerRadius},
            }},
       };

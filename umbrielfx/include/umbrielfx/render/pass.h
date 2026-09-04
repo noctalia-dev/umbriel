@@ -21,11 +21,15 @@ struct fx_gles_render_pass {
 	struct wlr_drm_syncobj_timeline *signal_timeline;
 	uint64_t signal_point;
 	bool has_color_transform;
+	struct wlr_color_transform *color_transform;
+	struct fx_offscreen_buffers *output_buffers;
 	float output_matrix[9];
 	enum wlr_color_transfer_function output_tf;
 	GLuint output_lut;
 	float output_lut_dim;
 	pixman_region32_t updated_region;
+	// A new or resized shared blend buffer needs every output pixel initialized.
+	bool needs_full_damage;
 	// Set while an add_* call renders into an offscreen buffer instead of the
 	// pass target, so it must not extend updated_region.
 	bool suppress_updated;

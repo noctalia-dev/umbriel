@@ -1,30 +1,39 @@
 # Configuration
 
-Umbriel checks `$XDG_CONFIG_HOME/umbriel/config.toml` first, followed by each
-`$XDG_CONFIG_DIRS/umbriel/config.toml`, then the packaged
-`share/umbriel/config.toml`. Pass `umbriel -c <path>` to use a different file.
-The packaged file is [`examples/config.toml`](../../examples/config.toml) and
-can be copied into your user config directory as a starting point. Umbriel
-does not create or modify a user config automatically.
+Without `-c`, Umbriel checks `$XDG_CONFIG_HOME/umbriel/config.toml` first,
+followed by each `$XDG_CONFIG_DIRS/umbriel/config.toml`, then the packaged
+`share/umbriel/config.toml`. The candidate paths come from the startup
+environment and remain watched for the session. Creating a higher-priority
+file or removing the current file re-evaluates the lookup without a restart.
+Removal selects the next existing file, or built-in defaults when none remain.
+
+An invalid higher-priority file does not fall through to a lower-priority one.
+Umbriel keeps the last working configuration until the file is corrected or
+removed. Pass `umbriel -c <path>` to pin one exact path instead of using the
+lookup chain. A missing or invalid pinned path never falls back to an implicit
+candidate. Umbriel does not create or modify a user config automatically.
 
 ## Starting configuration
 
-Distribution packages normally install the starting configuration under
-`/usr/share/umbriel/config.toml`. Copy it before making local changes:
+The packaged starting configuration is
+[`examples/config.toml`](../../examples/config.toml). Distribution packages
+normally install it under `/usr/share/umbriel/config.toml`. Copy it before
+making local changes:
 
 ```sh
 mkdir -p ~/.config/umbriel
 cp /usr/share/umbriel/config.toml ~/.config/umbriel/config.toml
 ```
 
-For an installation using another prefix, replace `/usr/share` with that
-installation's data directory, commonly `/usr/local/share`. Nix users should
-prefer `programs.umbriel.settings` in Home Manager or hjem.
+With a manual installation using the `/usr/local` prefix, the default example
+configuration is available at `/usr/local/share/umbriel/config.toml`. Nix users
+should prefer `programs.umbriel.settings` in Home Manager or hjem.
 
-Changes normally apply as soon as you save. If a reload fails, Umbriel keeps
-your last working configuration and continues watching included files. Save a
-corrected file to try the reload again. Options that require a restart are
-marked in their reference tables.
+Creating the user file while Umbriel is running applies it automatically, as
+do later saves. No logout or restart is needed. If a reload fails, Umbriel
+keeps your last working configuration and continues watching the failed
+candidate and its included files. Save a corrected file to try the reload
+again. Options that require a restart are marked in their reference tables.
 
 ## Diagnostics
 
@@ -36,7 +45,7 @@ configuration from applying. Each entry names its file, line, and column.
 A panel that reports only warnings hides itself after ten seconds; one that
 reports an error stays until the next successful reload. At most six entries are
 listed, and the footer counts the rest. `umbriel validate` prints the full list
-without a running compositor.
+without a running compositor and exits nonzero when it reports a diagnostic.
 
 ## Include
 

@@ -40,11 +40,33 @@ the output buffer's DRM format while storing Gamma 2.2 SDR values. For an XR30
 HDR output, replacing that sidecar with XR24 after negotiation makes the client
 request packed 10-bit readback from an 8-bit framebuffer.
 
-`umbrielfx` creates the sidecar lazily from its pre-output-transform linear
-blend buffer. This can happen during texture import, outside the normal
-`umbrielfx` render pass, so its EGL context must be current while the framebuffer
-is allocated. Export-DMA-BUF frames bypass the SDR sidecar and retain the
-output's native representation.
+Each output owns one shared FP16 blend buffer and one shared SDR capture
+sidecar. Their lifetime is tied to that output, rather than to its swapchain
+buffers, so changing swapchain depth does not duplicate either allocation. The
+blend buffer always represents the latest complete composed frame. Incremental
+rendering updates the region drawn for the current frame while preserving the
+previous frame everywhere else.
+
+Creating or resizing the shared blend buffer requires whole-output damage for
+that frame. A new buffer is cleared and has no valid pixels outside partial
+damage, including pixels that blur may sample. The full redraw establishes the
+complete-frame invariant before incremental damage resumes. An untransformed
+composition or direct scanout bypasses the shared target and invalidates it, so
+the next transformed composition also performs a full redraw.
+
+`umbrielfx` creates the capture sidecar lazily from the pre-output-transform
+linear blend buffer. The sidecar is generation-matched to that blend buffer:
+capture can reuse it only when the requested output buffer has the same blend
+generation, dimensions, and DRM format. A conversion for a newer generation
+does not overwrite the sidecar while a capture texture still holds it. This
+conversion can happen during texture import, outside the normal `umbrielfx`
+render pass, so its EGL context must be current while the framebuffer is
+allocated. Export-DMA-BUF frames bypass the SDR sidecar and retain the output's
+native representation.
+
+Output color LUTs are cached as renderer-local textures keyed by the immutable
+LUT transform. Reusing an output transform therefore reuses its uploaded
+texture, while transform and renderer destruction both release the cache entry.
 
 ## Windows-scRGB luminance
 

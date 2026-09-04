@@ -123,6 +123,16 @@ namespace umbriel {
       resolved.edgePad = resolved.gap + borderWidth;
     }
 
+    // A rule without a pattern places no constraint. With one, the value must be present: a client that never set an
+    // identity string matches nothing, while one that set it to empty matches a pattern accepting the empty string.
+    bool
+    patternMatches(const std::string& pattern, const std::regex& regex, const std::optional<std::string_view>& value) {
+      if (pattern.empty()) {
+        return true;
+      }
+      return value.has_value() && std::regex_search(value->begin(), value->end(), regex);
+    }
+
   } // namespace
 
   const OutputRule* uniqueFixedWorkspaceOwner(const Config& config, size_t index) {
@@ -161,28 +171,16 @@ namespace umbriel {
   }
 
   ResolvedWindowRule resolveWindowRules(
-      const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
-      bool focused, uint64_t uptimeMs
+      const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
+      std::optional<std::string_view> xdgTag, ContentType contentType, bool focused, uint64_t uptimeMs
   ) {
     ResolvedWindowRule resolved;
-    const std::string_view appIdView = appId != nullptr ? appId : "";
-    const std::string_view titleView = title != nullptr ? title : "";
 
     for (const auto& rule : config.windowRules) {
-      if (!rule.appIdPattern.empty()) {
-        if (appIdView.empty() || !std::regex_search(appIdView.begin(), appIdView.end(), rule.appIdRegex)) {
-          continue;
-        }
-      }
-      if (!rule.titlePattern.empty()) {
-        if (titleView.empty() || !std::regex_search(titleView.begin(), titleView.end(), rule.titleRegex)) {
-          continue;
-        }
-      }
-      if (!rule.xdgTagPattern.empty()) {
-        if (xdgTag.empty() || !std::regex_search(xdgTag.begin(), xdgTag.end(), rule.xdgTagRegex)) {
-          continue;
-        }
+      if (!patternMatches(rule.appIdPattern, rule.appIdRegex, appId)
+          || !patternMatches(rule.titlePattern, rule.titleRegex, title)
+          || !patternMatches(rule.xdgTagPattern, rule.xdgTagRegex, xdgTag)) {
+        continue;
       }
       if (rule.matchContentType && *rule.matchContentType != contentType) {
         continue;
@@ -190,7 +188,7 @@ namespace umbriel {
       if (rule.matchFocused && *rule.matchFocused != focused) {
         continue;
       }
-      if (rule.matchAtStartup && uptimeMs > 60 * 1000) {
+      if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < 60'000)) {
         continue;
       }
       // Last writer wins: overwrite each field the rule sets.
@@ -267,15 +265,11 @@ namespace umbriel {
     return resolved;
   }
 
-  ResolvedLayerRule resolveLayerRules(const Config& config, const char* layerNamespace) {
+  ResolvedLayerRule resolveLayerRules(const Config& config, std::optional<std::string_view> layerNamespace) {
     ResolvedLayerRule resolved;
-    const std::string_view namespaceView = layerNamespace != nullptr ? layerNamespace : "";
     for (const auto& rule : config.layerRules) {
-      if (!rule.namespacePattern.empty()) {
-        if (namespaceView.empty()
-            || !std::regex_search(namespaceView.begin(), namespaceView.end(), rule.namespaceRegex)) {
-          continue;
-        }
+      if (!patternMatches(rule.namespacePattern, rule.namespaceRegex, layerNamespace)) {
+        continue;
       }
       if (rule.blur) {
         resolved.blur = rule.blur;
@@ -368,12 +362,20 @@ namespace umbriel {
     return resolved;
   }
 
+  size_t resolveDynamicWorkspaceMinimum(const Config& config, const OutputIdentity& identity) {
+    const OutputRule* rule = matchingOutputRule(config, identity);
+    return rule != nullptr ? static_cast<size_t>(std::max(1, rule->minWorkspaces)) : 1;
+  }
+
   ResolvedWorkspaceSet resolveWorkspacesForOutput(const Config& config, const OutputIdentity& identity) {
     const auto names = workspaceNamesForIdentity(config, identity);
     ResolvedWorkspaceSet result;
     if (!names) {
       result.dynamic = true;
-      const size_t count = config.workspaces.emptyAbove ? 2 : 1;
+      // The optional leading empty is an extra entry only while it exceeds the
+      // configured minimum.
+      const size_t sentinels = config.workspaces.emptyAbove ? 2 : 1;
+      const size_t count = std::max(resolveDynamicWorkspaceMinimum(config, identity), sentinels);
       result.workspaces.reserve(count);
       for (size_t index = 0; index < count; ++index) {
         const std::string name = std::to_string(index + 1);

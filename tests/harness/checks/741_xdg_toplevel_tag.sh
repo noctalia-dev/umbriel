@@ -21,10 +21,12 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 enabled = false
 
+[colors]
+backdrop = "#00FF00FF"
+
 [appearance]
 border_width = 0
 corner_radius = 0
-backdrop_color = "#00FF00FF"
 
 [appearance.shadow]
 enabled = false

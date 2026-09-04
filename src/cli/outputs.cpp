@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <nlohmann/json.hpp>
 #include <print>
 #include <string>
 #include <wayland-client.h>
@@ -302,9 +303,69 @@ namespace umbriel {
       }
     }
 
+    nlohmann::json jsonHead(const HeadInfo& head) {
+      nlohmann::json modes = nlohmann::json::array();
+      for (const auto& mode : head.modes) {
+        modes.push_back({
+            {"width", mode.width},
+            {"height", mode.height},
+            {"refresh_mhz", mode.refreshMHz},
+            {"preferred", mode.preferred},
+            {"current", mode.proxy == head.currentMode},
+        });
+      }
+
+      nlohmann::json adaptiveSync = nullptr;
+      if (head.adaptiveSync == 0) {
+        adaptiveSync = false;
+      } else if (head.adaptiveSync == 1) {
+        adaptiveSync = true;
+      }
+
+      const bool hasIdentity = !head.make.empty() || !head.model.empty() || !head.serial.empty();
+      const OutputIdentity identity{
+          .connector = head.name,
+          .make = head.make,
+          .model = head.model,
+          .serial = head.serial,
+      };
+      return {
+          {"name", head.name},
+          {"description", head.description},
+          {"make", head.make},
+          {"model", head.model},
+          {"serial", head.serial},
+          {"config_name", hasIdentity ? nlohmann::json(outputDescriptor(identity)) : nlohmann::json(nullptr)},
+          {"physical_size", {{"width_mm", head.physWidthMm}, {"height_mm", head.physHeightMm}}},
+          {"enabled", head.enabled},
+          {"position", {{"x", head.x}, {"y", head.y}}},
+          {"transform", transformName(head.transform)},
+          {"scale", head.scale},
+          {"adaptive_sync", std::move(adaptiveSync)},
+          {"modes", std::move(modes)},
+      };
+    }
+
+    void printHeadsJson(const std::deque<HeadInfo>& heads) {
+      nlohmann::json output = nlohmann::json::array();
+      for (const auto& head : heads) {
+        output.push_back(jsonHead(head));
+      }
+      std::println("{}", output.dump());
+    }
+
+    void printHeadsHuman(const std::deque<HeadInfo>& heads) {
+      for (size_t i = 0; i < heads.size(); ++i) {
+        if (i > 0) {
+          std::println("");
+        }
+        printHead(heads[i]);
+      }
+    }
+
   } // namespace
 
-  int runOutputsCommand() {
+  int runOutputsCommand(bool json) {
     wl_display* display = wl_display_connect(nullptr);
     if (display == nullptr) {
       std::println(stderr, "error: cannot connect to Wayland display (is the compositor running?)");
@@ -326,11 +387,10 @@ namespace umbriel {
     // Second roundtrip delivers head/mode events, terminated by manager.done.
     wl_display_roundtrip(display);
 
-    for (size_t i = 0; i < state.heads.size(); ++i) {
-      if (i > 0) {
-        std::println("");
-      }
-      printHead(state.heads[i]);
+    if (json) {
+      printHeadsJson(state.heads);
+    } else {
+      printHeadsHuman(state.heads);
     }
 
     // Cleanup.

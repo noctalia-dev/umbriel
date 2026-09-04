@@ -18,8 +18,8 @@ namespace umbriel {
     m_borderTree = wlr_scene_tree_create(parent);
     float innerColor[4];
     float outerColor[4];
-    premultiplied(innerColor, config().appearance.borderUnfocused, 1.0F);
-    premultiplied(outerColor, config().appearance.outerBorderColor, 1.0F);
+    premultiplied(innerColor, config().colors.border.unfocused, 1.0F);
+    premultiplied(outerColor, config().colors.border.outer, 1.0F);
     m_border = wlr_scene_border_create(m_borderTree, innerColor, outerColor);
     // The punched hole protects client content, so keep the border above the
     // toplevel surface that would otherwise cover its outermost pixels.
@@ -54,8 +54,8 @@ namespace umbriel {
       return;
     }
     const auto& baseColor = scratchpad
-        ? (focused ? config().appearance.scratchpadBorderFocused : config().appearance.scratchpadBorderUnfocused)
-        : (focused ? config().appearance.borderFocused : config().appearance.borderUnfocused);
+        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
+        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
     setBorderRawColor(baseColor, alpha);
   }
 
@@ -66,7 +66,7 @@ namespace umbriel {
     float innerColor[4];
     float outerColor[4];
     premultiplied(innerColor, baseColor, alpha);
-    premultiplied(outerColor, config().appearance.outerBorderColor, alpha);
+    premultiplied(outerColor, config().colors.border.outer, alpha);
     wlr_scene_border_set_colors(m_border, innerColor, outerColor);
   }
 
@@ -100,8 +100,8 @@ namespace umbriel {
     out.push_back(
         BorderSnapshot{
             .node = copy,
-            .innerColor = focused ? config().appearance.borderFocused : config().appearance.borderUnfocused,
-            .outerColor = config().appearance.outerBorderColor,
+            .innerColor = focused ? config().colors.border.focused : config().colors.border.unfocused,
+            .outerColor = config().colors.border.outer,
         }
     );
   }

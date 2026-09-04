@@ -31,16 +31,18 @@ wait_for_count() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-insert_hint_color = "#FF0000FF"
+[colors]
+insert_hint = "#FF0000FF"
+
+[colors.overview]
+background_tint = "#000000FF"
+workspace_background = "#000000FF"
 
 [layout.scrolling]
 default_width_fraction = 0.5
 
 [overview]
 zoom = 0.5
-background_tint = "#000000FF"
-workspace_background = "#000000FF"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

@@ -20,6 +20,19 @@ After you leave any other empty workspace, Umbriel removes it unless it is still
 active. The remaining workspaces are renumbered. If you switch to a workspace
 number beyond the current count, Umbriel uses the last workspace.
 
+`min_workspaces` sets a floor on the count for one output, so a bar or overview
+can always show that many entries:
+
+```toml
+[output.DP-1]
+min_workspaces = 3
+```
+
+The floor is per output and is not a ceiling. DP-1 keeps three workspaces while
+all of them are empty, and a window on the third still adds a fourth. Pruning
+stops once three remain. The key belongs to a dynamic output: setting it
+alongside a static `workspaces` inventory is a configuration error.
+
 ### Static workspaces
 
 Set `workspaces` to a number or an ordered list of names. Umbriel creates
@@ -66,9 +79,10 @@ For example, `workspace-switch:3` selects a workspace named `3` when one
 exists and otherwise the third workspace on the preferred output, while
 `workspace-switch:CHAT/HDMI-A-1` selects `CHAT` on `HDMI-A-1`.
 
-When `workspace-switch`, `window-move-to-workspace`, or
-`column-move-to-workspace` targets another monitor, the cursor warps to that
-monitor's center so subsequent actions continue there.
+When `workspace-switch` targets another monitor, the cursor warps to that
+monitor's center so subsequent actions continue there. Window and column moves
+do the same by default. With `input.cursor.follows_focus` enabled, they warp to
+the moved focused window's visible center instead.
 
 ## Inspect workspace state
 
@@ -109,8 +123,9 @@ empty_above = false
 | `back_and_forth` | bool | `false` | Re-selecting the active workspace jumps back to the previously active workspace on that output. |
 | `empty_above`    | bool | `false` | Add an empty workspace at the start, in addition to the workspace at the end.                    |
 
-Output workspaces are dynamic by default. The workspace models and rules are
-documented below.
+Output workspaces are dynamic by default. `workspaces` and `min_workspaces` are
+per-output keys documented in [Outputs](outputs.md#settings). The workspace
+models and rules are documented below.
 
 
 ## Workspace rules

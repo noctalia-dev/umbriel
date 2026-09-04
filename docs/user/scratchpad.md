@@ -122,9 +122,9 @@ output-relative positions intact.
 Scratchpad windows use dedicated focused and unfocused border colors:
 
 ```toml
-[appearance]
-scratchpad_border_focused = "#E5C07BFF"
-scratchpad_border_unfocused = "#5C4A2AFF"
+[colors.border]
+scratchpad_focused = "#E5C07BFF"
+scratchpad_unfocused = "#5C4A2AFF"
 ```
 
 See [Appearance](appearance.md) for the complete appearance

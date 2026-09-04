@@ -69,6 +69,8 @@ stdenv.mkDerivation {
 
   mesonBuildType = "release";
 
+  mesonFlags = [ (lib.mesonEnable "tests" false) ];
+
   postInstall = ''
     if [ -f "$out/share/wayland-sessions/umbriel.desktop" ]; then
       substituteInPlace "$out/share/wayland-sessions/umbriel.desktop" \

@@ -1,17 +1,22 @@
 #!/bin/sh
 
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] &&
+   command -v dbus-run-session >/dev/null 2>&1; then
+    drs=dbus-run-session
+fi
+
 if [ -n "${MANAGERPID:-}" ] && [ "${SYSTEMD_EXEC_PID:-}" = "$$" ]; then
-  exec @UMBRIEL_EXECUTABLE@ "$@"
+  exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
 fi
 
 if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${WAYLAND_SOCKET:-}" ] ||
   [ -n "${DISPLAY:-}" ]; then
-  exec @UMBRIEL_EXECUTABLE@ "$@"
+  exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
 fi
 
 if ! command -v systemctl >/dev/null 2>&1 ||
   ! systemctl --user show-environment >/dev/null 2>&1; then
-  exec @UMBRIEL_EXECUTABLE@ "$@"
+  exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
 fi
 
 if systemctl --user --quiet is-active umbriel.service; then

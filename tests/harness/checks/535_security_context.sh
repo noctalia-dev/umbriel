@@ -44,6 +44,7 @@ readonly -a RESTRICTED_GLOBALS=(
   zxdg_output_manager_v1
   ext_idle_notifier_v1
   ext_data_control_manager_v1
+  zwlr_data_control_manager_v1
   zwlr_layer_shell_v1
   ext_session_lock_manager_v1
   zwp_input_method_manager_v2

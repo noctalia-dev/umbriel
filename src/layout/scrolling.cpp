@@ -103,6 +103,27 @@ namespace umbriel {
       return false;
     }
 
+    // Fullscreen and maximize-to-edges views are presented against the wider
+    // usable area, so they bleed one strut past each end of the strut-inset
+    // strip. The strip reserves that overhang, otherwise the neighboring column
+    // lands underneath the window. Fullscreen is presented against the whole
+    // output, so only its strut share is reserved and it still bleeds over a
+    // layer-shell exclusive zone.
+    struct ColumnBleed {
+      int before = 0;
+      int after = 0;
+    };
+
+    ColumnBleed columnBleed(const Column& column, const Layout& layout) {
+      if (!columnFillsViewport(column, layout)) {
+        return {};
+      }
+      const LayoutStruts& struts = layout.layoutConfig()->struts;
+      const bool vertical = layout.layoutConfig()->scrolling.direction == ScrollingDirection::Vertical;
+      return vertical ? ColumnBleed{.before = struts.top, .after = struts.bottom}
+                      : ColumnBleed{.before = struts.left, .after = struts.right};
+    }
+
   } // namespace
 
   bool ScrollingLayout::vertical() const { return m_config->scrolling.direction == ScrollingDirection::Vertical; }
@@ -335,7 +356,13 @@ namespace umbriel {
     const int gap = m_config->totalGap;
     int x = centeringOffset(viewportPrimary);
     for (int i = 0; i < end; ++i) {
-      x += columnWidth(i, viewportPrimary) + gap;
+      const ColumnBleed bleed = columnBleed(m_columns[static_cast<size_t>(i)], *this);
+      x += bleed.before + columnWidth(i, viewportPrimary) + gap + bleed.after;
+    }
+    if (columnIndex >= 0 && end < static_cast<int>(m_columns.size())) {
+      // The column's own leading bleed. Presentation subtracts the same strut,
+      // so the window's leading edge lands where the strip band starts.
+      x += columnBleed(m_columns[static_cast<size_t>(end)], *this).before;
     }
     return x;
   }
@@ -347,7 +374,8 @@ namespace umbriel {
     const int gap = m_config->totalGap;
     int total = -gap;
     for (size_t i = 0; i < m_columns.size(); ++i) {
-      total += columnWidth(static_cast<int>(i), viewportPrimary) + gap;
+      const ColumnBleed bleed = columnBleed(m_columns[i], *this);
+      total += bleed.before + columnWidth(static_cast<int>(i), viewportPrimary) + gap + bleed.after;
     }
     return std::max(0, total);
   }
@@ -628,11 +656,17 @@ namespace umbriel {
     }
     // A stack losing one row leaves the horizontal geometry alone; only the
     // last view out takes the column, and the space, with it.
-    if (m_columns[static_cast<size_t>(columnIndex)].views.size() != 1) {
+    const Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    if (column.views.size() != 1) {
       return 0.0;
     }
-    const double span = static_cast<double>(columnWidth(columnIndex, viewportPrimary)) + m_config->totalGap;
-    const double hidden = m_scroll - static_cast<double>(columnX(columnIndex, viewportPrimary));
+    // The lane frees its bleed on both sides too. columnX() already includes the
+    // leading one, so measure the hidden extent from where that bleed starts.
+    const ColumnBleed bleed = columnBleed(column, *this);
+    const auto span = static_cast<double>(
+        bleed.before + columnWidth(columnIndex, viewportPrimary) + m_config->totalGap + bleed.after
+    );
+    const double hidden = m_scroll - static_cast<double>(columnX(columnIndex, viewportPrimary) - bleed.before);
     return std::clamp(hidden, 0.0, span);
   }
 
@@ -667,15 +701,17 @@ namespace umbriel {
     int runningColumnX = centeringOffset(viewportPrimary);
     for (size_t columnIndex = 0; columnIndex < m_columns.size(); ++columnIndex) {
       Column& column = m_columns[columnIndex];
+      const ColumnBleed bleed = columnBleed(column, *this);
+      runningColumnX += bleed.before;
       const int primarySize = columnWidth(static_cast<int>(columnIndex), viewportPrimary);
       if (column.views.empty()) {
-        runningColumnX += primarySize + gap;
+        runningColumnX += primarySize + gap + bleed.after;
         continue;
       }
       ensureWeightCount(column);
       const int primary =
           (v ? usable.y : usable.x) + edgePad + runningColumnX - static_cast<int>(std::lround(m_scroll));
-      runningColumnX += primarySize + gap;
+      runningColumnX += primarySize + gap + bleed.after;
       const int rowCount = static_cast<int>(column.views.size());
       const int gapsTotal = std::max(0, rowCount - 1) * gap;
       const int stackCross = std::max(rowCount, availableCross - gapsTotal);
@@ -1012,13 +1048,25 @@ namespace umbriel {
             const int minCur = columnMinPrimary(m_column);
             const int maxPrev = columnMaxPrimary(m_column - 1);
             const int maxCur = columnMaxPrimary(m_column);
-            const int newPrev = std::clamp(
-                m_startPrevPrimaryPx + static_cast<int>(std::lround(dPrimary)), std::max(minPrev, pair - gap - maxCur),
-                std::min(maxPrev, pair - gap - minCur)
-            );
-            const int newCur = pair - gap - newPrev;
+            const int requestedPrev = m_startPrevPrimaryPx + static_cast<int>(std::lround(dPrimary));
+            const int minimumPrev = std::max(minPrev, pair - gap - maxCur);
+            const int maximumPrev = std::min(maxPrev, pair - gap - minCur);
+            const int newPrev = std::clamp(requestedPrev, minimumPrev, maximumPrev);
+            int newCur = pair - gap - newPrev;
+            const bool growsPastPreviousMinimum = requestedPrev < minimumPrev && minimumPrev == minPrev;
+            if (growsPastPreviousMinimum) {
+              newCur = std::min(m_startPrimaryPx - static_cast<int>(std::lround(dPrimary)), maxCur);
+            }
             setColumnPrimaryPx(m_column - 1, newPrev);
             setColumnPrimaryPx(m_column, newCur);
+            if (growsPastPreviousMinimum) {
+              layout.setScroll(
+                  m_startScroll
+                      + static_cast<double>(layout.columnX(m_column, viewportPrimary) - m_startColumnX)
+                      + static_cast<double>(newCur - m_startPrimaryPx),
+                  true
+              );
+            }
           } else {
             const double extentDelta = centerUnderfullStrip ? centeredPrimaryDelta(-dPrimary) : -dPrimary;
             const int newExtent = std::clamp(

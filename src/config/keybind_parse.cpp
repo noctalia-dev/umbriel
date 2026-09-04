@@ -290,7 +290,8 @@ namespace umbriel {
         {"window-swap-previous", "", "Swap with the previous window in layout order",
          KeybindAction::WindowSwapPrevious},
         {"window-toggle-floating", "", "Float or tile the focused window", KeybindAction::ToggleFloating},
-        {"window-toggle-fullscreen", "", "Toggle fullscreen for the focused window", KeybindAction::ToggleFullscreen},
+        {"window-toggle-fullscreen", "", "Toggle fullscreen or exit a window covering the focus",
+         KeybindAction::ToggleFullscreen},
         {"window-toggle-maximize", "", "Toggle full width for the focused column", KeybindAction::ToggleMaximize},
         {"window-toggle-maximize-to-edges", "", "Toggle maximize without gaps, struts, or borders",
          KeybindAction::ToggleMaximizeToEdges},
@@ -541,6 +542,7 @@ namespace umbriel {
     };
 
     add(KeybindAction::SessionQuit, XKB_KEY_Escape);
+    add(KeybindAction::WindowClose, XKB_KEY_q);
     add(KeybindAction::WindowFocusNext, XKB_KEY_F1);
 
     add(KeybindAction::WindowFocusLeft, XKB_KEY_Left);

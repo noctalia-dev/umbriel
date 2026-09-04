@@ -4,7 +4,14 @@
 # focused member, and retains scrolling geometry across direct and adjacent moves.
 set -euo pipefail
 
+readonly BTN_LEFT=272
+readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
+
+if [[ ! -x $POINTER ]]; then
+  echo "pointer client not built at $POINTER"
+  exit 1
+fi
 
 accepts() {
   if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
@@ -70,7 +77,7 @@ wait_for_column_geometry() {
   return 1
 }
 
-printf '\n[output.HEADLESS-1]\nposition = [0, 0]\nworkspaces = ["ONE", "TWO", "THREE"]\n\n[output.HEADLESS-2]\nposition = [1280, 0]\nworkspaces = ["RIGHT_ONE", "RIGHT_TWO"]\n' \
+printf '\n[output.HEADLESS-1]\nposition = [0, 0]\nworkspaces = ["ONE", "TWO", "THREE"]\n\n[output.HEADLESS-2]\nposition = [1280, 0]\nworkspaces = ["RIGHT_ONE", "RIGHT_TWO"]\n\n[input.cursor]\nfollows_focus = true\n' \
   >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 one_id=$(workspace_id_named ONE)
@@ -162,6 +169,22 @@ wait_for_workspace column-top "$right_two_id"
 wait_for_workspace column-bottom "$right_two_id"
 wait_for_workspace source-anchor "$one_id"
 wait_for_column_geometry "$normal_width"
+sleep 1
+
+# The focused bottom member is not under the target output's center. A
+# focus-only detour to the top member followed by an unmoved click therefore
+# proves the cross-output transfer warped to the moved focused window.
+top_id=$(field_of column-top id)
+accepts "window-focus:$top_id"
+"$POINTER" 2560 720 click "$BTN_LEFT"
+for _ in $(seq 40); do
+  [[ $(field_of column-bottom focused) == true ]] && break
+  sleep 0.1
+done
+if [[ $(field_of column-bottom focused) != true ]]; then
+  echo "expected the cursor to follow the focused column member across outputs"
+  exit 1
+fi
 
 accepts column-move-to-workspace-previous
 wait_for_workspace column-top "$right_one_id"

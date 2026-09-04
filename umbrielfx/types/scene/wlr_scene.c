@@ -22,6 +22,7 @@
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/tracy.h"
 #include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
+#include "umbrielfx/render/fx_renderer/fx_renderer.h"
 #include "umbrielfx/render/pass.h"
 #include "umbrielfx/types/fx/blur_data.h"
 #include "umbrielfx/types/fx/clipped_region.h"
@@ -471,9 +472,20 @@ static void scene_node_opaque_region(struct wlr_scene_node *node, int x, int y,
 			pixman_region32_init_rect(opaque, x, y, width, height);
 		}
 
-		// subtract the corners from the opaque region
+		// The draw is confined to the corner box and rounded at its corners, so
+		// neither the part outside it nor the area under an arc is opaque.
+		struct wlr_box arc_box = { x, y, width, height };
+		if (!wlr_box_empty(&scene_buffer->corner_box)) {
+			arc_box = scene_buffer->corner_box;
+			arc_box.x += x;
+			arc_box.y += y;
+			pixman_region32_intersect_rect(opaque, opaque, arc_box.x, arc_box.y,
+				arc_box.width, arc_box.height);
+		}
+
 		if (!fx_corner_radii_is_empty(&scene_buffer->corners)) {
-			pixman_region32_t corners = create_corner_location_region(scene_buffer->corners, x, y, width, height);
+			pixman_region32_t corners = create_corner_location_region(scene_buffer->corners,
+				arc_box.x, arc_box.y, arc_box.width, arc_box.height);
 			pixman_region32_subtract(opaque, opaque, &corners);
 			pixman_region32_fini(&corners);
 		}
@@ -1891,6 +1903,17 @@ void wlr_scene_buffer_set_corner_radii(struct wlr_scene_buffer *scene_buffer,
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_corner_box(struct wlr_scene_buffer *scene_buffer,
+		const struct wlr_box *box) {
+	const struct wlr_box next = box != NULL ? *box : (struct wlr_box){0};
+	if (wlr_box_equal(&scene_buffer->corner_box, &next)) {
+		return;
+	}
+
+	scene_buffer->corner_box = next;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
 static struct wlr_texture *scene_buffer_get_texture(
 		struct wlr_scene_buffer *scene_buffer, struct wlr_renderer *renderer) {
 	if (scene_buffer->buffer == NULL || scene_buffer->texture != NULL) {
@@ -2360,7 +2383,21 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		enum wl_output_transform transform =
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
-		fx_corner_radii_transform(transform, &buffer_corners);
+
+		// A corner box lives in scene coordinates, so its radii follow the
+		// output transform alone. Radii on the buffer's own quad follow the
+		// buffer transform too.
+		struct wlr_box corner_box = scene_buffer->corner_box;
+		const bool has_corner_box = !wlr_box_empty(&corner_box);
+		if (has_corner_box) {
+			// Node relative -> Root relative
+			corner_box.x += x;
+			corner_box.y += y;
+			transform_output_box(&corner_box, data);
+			fx_corner_radii_transform(node_transform, &buffer_corners);
+		} else {
+			fx_corner_radii_transform(transform, &buffer_corners);
+		}
 
 		struct wlr_color_primaries primaries = {0};
 		if (scene_buffer->primaries != 0) {
@@ -2481,7 +2518,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.wait_timeline = scene_buffer->wait_timeline,
 				.wait_point = scene_buffer->wait_point,
 			},
-			.clip_box = &dst_box,
+			.clip_box = has_corner_box ? &corner_box : &dst_box,
 			.corners = fx_corner_radii_scale(buffer_corners, data->scale),
 			.clipped_region = {0},
 			.sample_box = sample_box,
@@ -3654,6 +3691,10 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	}
 
 	if (scanout) {
+		if (wlr_renderer_is_fx(output->renderer)) {
+			// The shared blend target did not receive the scanned-out frame.
+			fx_offscreen_buffers_invalidate_blend(output);
+		}
 		scene_output_state_attempt_gamma(scene_output, state);
 
 		if (timer) {
@@ -3712,13 +3753,15 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	}
 
 	scene_output->in_point++;
-	struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(output->renderer, buffer,
-			&(struct wlr_buffer_pass_options){
+	const struct wlr_buffer_pass_options pass_options = {
 		.timer = timer ? timer->render_timer : NULL,
 		.color_transform = scene_output->combined_color_transform,
 		.signal_timeline = scene_output->in_timeline,
 		.signal_point = scene_output->in_point,
-	});
+	};
+	struct wlr_render_pass *render_pass = wlr_renderer_is_fx(output->renderer)
+		? fx_renderer_begin_output_buffer_pass(output, buffer, &pass_options)
+		: wlr_renderer_begin_buffer_pass(output->renderer, buffer, &pass_options);
 	if (render_pass == NULL) {
 		wlr_buffer_unlock(buffer);
 
@@ -3733,6 +3776,15 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		&render_data.damage);
 
 	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(render_pass);
+	if (fx_pass->needs_full_damage) {
+		pixman_region32_t full_damage;
+		pixman_region32_init_rect(&full_damage, 0, 0,
+			buffer->width, buffer->height);
+		pixman_region32_union(&render_data.damage, &render_data.damage,
+			&full_damage);
+		wlr_output_state_set_damage(state, &full_damage);
+		pixman_region32_fini(&full_damage);
+	}
 	fx_pass->output_buffer->capture_sdr =
 		options->capture_sdr && fx_pass->has_color_transform;
 	bool should_compensate_blur = false;

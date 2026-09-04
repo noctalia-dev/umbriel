@@ -6,11 +6,13 @@
 
 namespace umbriel {
 
-  void ConfigStore::beginLoad() {
+  void ConfigStore::beginLoad(const std::vector<std::filesystem::path>& watchPaths) {
     m_diagnostics.clear();
     m_missingIncludes = false;
     m_watchPaths.clear();
-    m_watchPaths.push_back(m_rootPath);
+    for (const std::filesystem::path& path : watchPaths) {
+      addWatchPath(path);
+    }
   }
 
   void ConfigStore::addDiagnostic(ConfigDiagnostic diagnostic) { m_diagnostics.push_back(std::move(diagnostic)); }
@@ -29,7 +31,7 @@ namespace umbriel {
     });
   }
 
-  ConfigReloadResult ConfigStore::commit(Config&& config, bool fileMissing) {
+  ConfigReloadResult ConfigStore::commit(Config&& config, std::filesystem::path rootPath, bool fileMissing) {
     // Computed before the move, and only after the first load: everything is new
     // the first time through.
     ConfigReloadResult result{
@@ -38,6 +40,7 @@ namespace umbriel {
         .effects = m_generation == 0 ? ConfigEffects::everything() : ConfigEffects::between(m_config, config),
     };
     m_config = std::move(config);
+    m_rootPath = std::move(rootPath);
     m_fileMissing = fileMissing;
     ++m_generation;
     return result;

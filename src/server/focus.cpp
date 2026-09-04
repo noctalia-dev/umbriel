@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "core/log.h"
+#include "input/cursor.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
@@ -105,6 +106,14 @@ namespace umbriel {
     if (overviewActive) {
       m_server.overview()->onFocusChanged();
     }
+    // Pointer presses and compositor grabs already align focus with their target. Keyboard and activation-driven focus
+    // can instead replace the scene beneath a stationary pointer, so let the next eligible hover refresh it once.
+    if (reason != FocusReason::PointerHover
+        && reason != FocusReason::PointerPress
+        && reason != FocusReason::Grab
+        && reason != FocusReason::DragDrop) {
+      m_server.cursor()->invalidateHoverFocus();
+    }
 
     // Derive reveal policy from the focus reason.
     if (workspace == nullptr || !view->tiled()) {
@@ -132,6 +141,9 @@ namespace umbriel {
     if (m_server.sessionLocked() || exclusiveKeyboardLayer() != nullptr) {
       return;
     }
+    // A pointer drag clears normal pointer focus even when keyboard focus returns to the same activated view. The
+    // synthetic motion after release must still get one chance to select the drop target under the cursor.
+    m_server.cursor()->invalidateHoverFocus();
     View* seatFocused = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
     for (const auto& entry : m_server.registry().all()) {
       if (entry->mapped() && entry->activated() && (entry->onActiveWorkspace() || entry->pinned())) {

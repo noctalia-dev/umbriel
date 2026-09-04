@@ -11,9 +11,12 @@
 // clang-format on
 
 #include <algorithm>
+#include <cstddef>
+#include <string>
 #include <variant>
 
 using umbriel::ActionArgKind;
+using umbriel::ActionSpec;
 using umbriel::Keybind;
 using umbriel::KeybindAction;
 using umbriel::parseAction;
@@ -693,8 +696,8 @@ UMBRIEL_TEST(everySpecHasAOneLineSummary) {
     CHECK(!spec.summary.empty());
     CHECK(spec.summary.size() <= 60);
     CHECK(!spec.summary.ends_with('.'));
-    CHECK(spec.summary.find('\n') == std::string_view::npos);
-    CHECK(spec.summary.find('|') == std::string_view::npos); // would break the markdown table cell
+    CHECK(!spec.summary.contains('\n'));
+    CHECK(!spec.summary.contains('|')); // would break the markdown table cell
     CHECK(!spec.summary.empty() && std::isupper(static_cast<unsigned char>(spec.summary.front())) != 0);
   }
 }
@@ -709,6 +712,12 @@ UMBRIEL_TEST(defaultKeybindsAreUsable) {
 
   // No default may carry an unset action.
   CHECK(std::ranges::none_of(binds, [](const Keybind& bind) { return bind.action == KeybindAction::None; }));
+  const auto close =
+      std::ranges::find_if(binds, [](const Keybind& bind) { return bind.action == KeybindAction::WindowClose; });
+  CHECK(close != binds.end());
+  CHECK(close->useMod);
+  CHECK_EQ(close->modifiers, uint32_t{0});
+  CHECK_EQ(close->keysym, xkb_keysym_to_lower(XKB_KEY_q));
 
   // Overview toggle must not key-repeat: holding it would thrash open/close.
   const auto overview =
@@ -720,6 +729,87 @@ UMBRIEL_TEST(defaultKeybindsAreUsable) {
   const auto switches =
       std::ranges::count_if(binds, [](const Keybind& bind) { return bind.action == KeybindAction::WorkspaceSwitch; });
   CHECK_EQ(switches, 18);
+}
+
+// Every name `umbriel msg --help` and the keybind reader advertise must round-trip through parseAction with an
+// argument of the kind its spec declares, and the help text beside it must describe that same argument. The action
+// list is spread across the KeybindAction enum, the kActionSpecs table, and parseAction's switch, so a spec whose
+// name, argument kind, or advertised parameter stops agreeing with the others is otherwise only discovered by a user
+// typing it.
+UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
+  const auto sampleFor = [](ActionArgKind kind) -> std::string {
+    switch (kind) {
+    case ActionArgKind::None:
+      return {};
+    case ActionArgKind::Command:
+      return ":true";
+    case ActionArgKind::WidthFraction:
+      return ":0.5";
+    case ActionArgKind::Workspace:
+      return ":1";
+    case ActionArgKind::OptionalOutput:
+      return ":DP-1";
+    case ActionArgKind::WindowId:
+    case ActionArgKind::OptionalWindowId:
+      return ":window-1";
+    case ActionArgKind::WidthDelta:
+      return ":0.1";
+    case ActionArgKind::LayoutMode:
+      return ":scrolling";
+    case ActionArgKind::SkipConfirmation:
+      return ":skip-confirmation";
+    }
+    return {};
+  };
+
+  const auto paramFor = [](ActionArgKind kind) -> std::string_view {
+    switch (kind) {
+    case ActionArgKind::None:
+      return "";
+    case ActionArgKind::Command:
+      return "<cmd>";
+    case ActionArgKind::WidthFraction:
+      return "<fraction>";
+    case ActionArgKind::Workspace:
+      return "<workspace>[/<output>]";
+    case ActionArgKind::OptionalOutput:
+      return "[<output>]";
+    case ActionArgKind::WindowId:
+      return "<window-id>";
+    case ActionArgKind::OptionalWindowId:
+      return "[<window-id>]";
+    case ActionArgKind::WidthDelta:
+      return "<delta>";
+    case ActionArgKind::LayoutMode:
+      return "<scrolling|dwindle|master|toggle>";
+    case ActionArgKind::SkipConfirmation:
+      return "[skip-confirmation]";
+    }
+    return "";
+  };
+
+  size_t swept = 0;
+  for (const ActionSpec& spec : umbriel::actionSpecs()) {
+    Keybind bind;
+    const std::string text = std::string(spec.name) + sampleFor(spec.argKind);
+    CHECK(parseAction(text, bind));
+    CHECK(bind.action == spec.action);
+    // An optional argument must also parse without one.
+    if (spec.argKind == ActionArgKind::OptionalOutput
+        || spec.argKind == ActionArgKind::OptionalWindowId
+        || spec.argKind == ActionArgKind::SkipConfirmation) {
+      Keybind bare;
+      CHECK(parseAction(spec.name, bare));
+      CHECK(bare.action == spec.action);
+    }
+    // `msg --help` and docs/user/actions.md render `param` verbatim, so it is what the user types against. "submap"
+    // shares the name:<text> syntax with "spawn" while naming a submap rather than a shell command.
+    const std::string_view expectedParam =
+        spec.action == KeybindAction::Submap ? std::string_view{"<name>"} : paramFor(spec.argKind);
+    CHECK_EQ(std::string(spec.param), std::string(expectedParam));
+    ++swept;
+  }
+  CHECK(swept > 100);
 }
 
 int main() { return RUN_TESTS(); }

@@ -23,4 +23,9 @@ seat grab. When the initiating button release ends that grab,
 `Cursor::processButton` reruns pointer motion at the unchanged layout position.
 This is required even when the pointer did not move: clients use the fresh
 surface-local input to recalculate hover state and restore their cursor image.
-The short-drag case is covered by `460_external_drag.sh`.
+When `follows_mouse` is enabled, the same refresh selects a different window
+under the pointer and restores keyboard focus there after the drag grab ends.
+The short-drag cursor refresh is covered by
+[`460_external_drag.sh`](../../tests/harness/checks/460_external_drag.sh), and
+cross-window focus is covered by
+[`471_data_drag_hover_focus.sh`](../../tests/harness/checks/471_data_drag_hover_focus.sh).

@@ -30,6 +30,7 @@
 #include <limits>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace umbriel {
 
@@ -155,17 +156,13 @@ namespace umbriel {
       return std::filesystem::path(".config/umbriel/config.toml");
     }
 
-    bool configPathExists(const std::filesystem::path& path) {
+    bool configPathIsRegular(const std::filesystem::path& path) {
       std::error_code error;
-      return std::filesystem::exists(path, error) && !error;
+      return std::filesystem::is_regular_file(path, error) && !error;
     }
 
-    std::filesystem::path defaultConfigPath() {
-      const std::filesystem::path userPath = userConfigPath();
-      if (configPathExists(userPath)) {
-        return userPath;
-      }
-
+    std::vector<std::filesystem::path> defaultConfigCandidates() {
+      std::vector<std::filesystem::path> candidates{userConfigPath()};
       const char* configuredDirs = std::getenv("XDG_CONFIG_DIRS");
       const std::string_view configDirs = configuredDirs != nullptr && configuredDirs[0] != '\0'
           ? std::string_view(configuredDirs)
@@ -175,10 +172,7 @@ namespace umbriel {
         const size_t separator = configDirs.find(':', offset);
         const std::string_view directory = configDirs.substr(offset, separator - offset);
         if (!directory.empty()) {
-          const std::filesystem::path candidate = std::filesystem::path(directory) / "umbriel/config.toml";
-          if (configPathExists(candidate)) {
-            return candidate;
-          }
+          candidates.push_back(std::filesystem::path(directory) / "umbriel/config.toml");
         }
         if (separator == std::string_view::npos) {
           break;
@@ -186,8 +180,31 @@ namespace umbriel {
         offset = separator + 1;
       }
 
-      const std::filesystem::path packaged = std::filesystem::path(kDataDir) / "umbriel/config.toml";
-      return configPathExists(packaged) ? packaged : userPath;
+      candidates.push_back(std::filesystem::path(kDataDir) / "umbriel/config.toml");
+      return candidates;
+    }
+
+    struct ConfigSelection {
+      std::filesystem::path root;
+      std::vector<std::filesystem::path> watchPaths;
+      bool found = false;
+    };
+
+    ConfigSelection selectDefaultConfig(const std::vector<std::filesystem::path>& candidates) {
+      ConfigSelection selection{};
+      selection.watchPaths = candidates;
+      for (const std::filesystem::path& candidate : candidates) {
+        if (configPathIsRegular(candidate)) {
+          selection.root = candidate;
+          selection.found = true;
+          return selection;
+        }
+      }
+      selection.root = candidates.empty() ? userConfigPath() : candidates.front();
+      if (selection.watchPaths.empty()) {
+        selection.watchPaths.push_back(selection.root);
+      }
+      return selection;
     }
 
     std::optional<LayoutMode> readLayoutMode(Section& section, std::string_view context) {
@@ -566,7 +583,24 @@ namespace umbriel {
             .color("accent_primary", colors.accentPrimary)
             .color("accent_secondary", colors.accentSecondary)
             .color("warning", colors.warning)
-            .color("error", colors.error);
+            .color("error", colors.error)
+            .color("insert_hint", colors.insertHint)
+            .color("backdrop", colors.backdrop)
+            .color("shadow", colors.shadow);
+
+        s.sub("border", [&](Section& border) {
+          border.color("focused", colors.border.focused)
+              .color("unfocused", colors.border.unfocused)
+              .color("scratchpad_focused", colors.border.scratchpadFocused)
+              .color("scratchpad_unfocused", colors.border.scratchpadUnfocused)
+              .color("outer", colors.border.outer);
+        });
+
+        s.sub("overview", [&](Section& overview) {
+          overview.color("background_tint", colors.overview.backgroundTint)
+              .color("workspace_background", colors.overview.workspaceBackground)
+              .color("badge", colors.overview.badge);
+        });
       });
     }
 
@@ -809,13 +843,6 @@ namespace umbriel {
         s.integer("border_width", 0, 100, appearance.borderWidth)
             .integer("outer_border_width", 0, 100, appearance.outerBorderWidth)
             .integer("corner_radius", 0, 100, appearance.cornerRadius)
-            .color("border_focused", appearance.borderFocused)
-            .color("border_unfocused", appearance.borderUnfocused)
-            .color("scratchpad_border_focused", appearance.scratchpadBorderFocused)
-            .color("scratchpad_border_unfocused", appearance.scratchpadBorderUnfocused)
-            .color("outer_border_color", appearance.outerBorderColor)
-            .color("insert_hint_color", appearance.insertHintColor)
-            .color("backdrop_color", appearance.backdropColor)
             .real("drag_opacity", 0.0, 1.0, appearance.dragOpacity)
             .boolean("prefer_no_csd", appearance.preferNoCsd);
 
@@ -833,8 +860,7 @@ namespace umbriel {
           shadow.boolean("enabled", appearance.shadow.enabled)
               .integer("softness", 0, 200, appearance.shadow.softness)
               .integer("offset_x", -200, 200, appearance.shadow.offsetX)
-              .integer("offset_y", -200, 200, appearance.shadow.offsetY)
-              .color("color", appearance.shadow.color);
+              .integer("offset_y", -200, 200, appearance.shadow.offsetY);
         });
       });
     }
@@ -843,21 +869,8 @@ namespace umbriel {
       root.sub("overview", [&](Section& s) {
         s.real("zoom", 0.1, 0.75, loaded.overview.zoom)
             .boolean("background_blur", loaded.overview.backgroundBlur)
-            .color("background_tint", loaded.overview.backgroundTint)
-            .color("workspace_background", loaded.overview.workspaceBackground)
+            .boolean("workspace_wallpaper", loaded.overview.workspaceWallpaper)
             .boolean("shortcuts", loaded.overview.shortcuts);
-
-        if (const toml::node* badgeNode = s.take("badge_color")) {
-          const auto value = badgeNode->value<std::string>();
-          std::array<float, 4> parsed{};
-          if (!value) {
-            warnAt(badgeNode->source(), "ignoring overview.badge_color (expected color string)");
-          } else if (!parseColor(*value, parsed)) {
-            warnAt(badgeNode->source(), "ignoring overview.badge_color (invalid color '{}')", *value);
-          } else {
-            loaded.overview.badgeColor = parsed;
-          }
-        }
 
         const toml::node* node = s.take("shortcut_keys");
         if (node == nullptr) {
@@ -1260,6 +1273,7 @@ namespace umbriel {
             scrolling.real("default_width_fraction", 0.1, 1.0, rule.layout.scrolling.defaultWidthFraction);
           });
         });
+        keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces);
         if (const toml::node* workspacesNode = keys.take("workspaces")) {
           if (const auto count = workspacesNode->value<std::int64_t>()) {
             if (*count < 1 || *count > static_cast<std::int64_t>(kMaxWorkspaces)) {
@@ -1308,6 +1322,9 @@ namespace umbriel {
                 workspacesNode->source(), R"(output.{}.workspaces must be a count, a name array, or "dynamic")", name
             );
           }
+        }
+        if (const toml::node* minNode = keys.node("min_workspaces"); minNode != nullptr && rule.workspaces) {
+          errorAt(minNode->source(), "output.{}.min_workspaces requires dynamic workspaces", name);
         }
 
         if (const toml::node* modeNode = keys.take("mode")) {
@@ -1887,17 +1904,19 @@ namespace umbriel {
       }
     }
 
-    bool parseInto(Config& out) {
+    bool parseInto(
+        Config& out, const std::filesystem::path& rootPath, const std::vector<std::filesystem::path>& watchPaths
+    ) {
       ConfigStore& store = configStore();
-      store.beginLoad();
+      store.beginLoad(watchPaths);
 
       std::error_code error;
-      if (!std::filesystem::is_regular_file(store.rootPath(), error) || error) {
+      if (!std::filesystem::is_regular_file(rootPath, error) || error) {
         return false;
       }
 
       try {
-        auto result = configmerge::mergeWithIncludes(store.rootPath());
+        auto result = configmerge::mergeWithIncludes(rootPath);
         store.setMissingIncludes(result.missingIncludes);
         for (auto& diagnostic : result.diagnostics) {
           store.addDiagnostic(std::move(diagnostic));
@@ -1980,34 +1999,63 @@ namespace umbriel {
   } // namespace
 
   void ConfigStore::load(const char* explicitPath) {
-    setRootPath(
-        explicitPath == nullptr ? defaultConfigPath() : std::filesystem::path(explicitPath), explicitPath != nullptr
-    );
+    ConfigSelection selection;
+    if (explicitPath != nullptr) {
+      m_implicitCandidates.clear();
+      selection.root = std::filesystem::path(explicitPath);
+      selection.watchPaths.push_back(selection.root);
+      selection.found = configPathIsRegular(selection.root);
+    } else {
+      m_implicitCandidates = defaultConfigCandidates();
+      selection = selectDefaultConfig(m_implicitCandidates);
+    }
+    setRootPath(selection.root, explicitPath != nullptr);
 
     Config loaded;
     loaded.keybinds = defaultKeybinds();
-    if (!parseInto(loaded) && rootFileMissing(m_rootPath)) {
+    if (!parseInto(loaded, selection.root, selection.watchPaths) && rootFileMissing(selection.root)) {
       if (m_explicitPath) {
         emitDiag(
-            ConfigDiagnostic::Severity::Error, nullptr, std::format("config file not found: {}", m_rootPath.string())
+            ConfigDiagnostic::Severity::Error, nullptr,
+            std::format("config file not found: {}", selection.root.string())
         );
       } else {
-        kLog.info("no config file found: {}, using defaults", m_rootPath.string());
+        kLog.info("no config file found: {}, using defaults", selection.root.string());
       }
     }
     sortDiagnostics();
-    (void)commit(std::move(loaded), rootFileMissing(m_rootPath));
+    (void)commit(std::move(loaded), selection.root, rootFileMissing(selection.root));
   }
 
   ConfigReloadResult ConfigStore::reload() {
+    ConfigSelection selection;
+    if (m_explicitPath) {
+      selection.root = m_rootPath;
+      selection.watchPaths.push_back(selection.root);
+      selection.found = configPathIsRegular(selection.root);
+    } else {
+      selection = selectDefaultConfig(m_implicitCandidates);
+    }
+
     Config loaded;
-    const bool ok = parseInto(loaded);
+    loaded.keybinds = defaultKeybinds();
+    const bool ok = parseInto(loaded, selection.root, selection.watchPaths);
+    const bool fileMissing = rootFileMissing(selection.root);
+    if (!ok && m_explicitPath && fileMissing) {
+      emitDiag(
+          ConfigDiagnostic::Severity::Error, nullptr, std::format("config file not found: {}", selection.root.string())
+      );
+    }
     sortDiagnostics();
     if (!ok) {
+      if (!m_explicitPath && !selection.found && fileMissing) {
+        kLog.info("no config file found: {}, using defaults", selection.root.string());
+        return commit(std::move(loaded), selection.root, true);
+      }
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
-    return commit(std::move(loaded), rootFileMissing(m_rootPath));
+    return commit(std::move(loaded), selection.root, fileMissing);
   }
 
   void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }

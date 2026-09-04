@@ -31,8 +31,9 @@ xdg-desktop-portal backend for Umbriel.
 
 ## Configuration
 
-Umbriel loads `~/.config/umbriel/config.toml` at startup. Config files can include other TOML files, and later files
-override earlier ones. See [Configuration](configuration.md).
+Umbriel searches the user, XDG system, and packaged config paths in priority order and keeps that lookup live. Creating
+a higher-priority config applies it without a session restart. Config files can include other TOML files, and later
+files override earlier ones. See [Configuration](configuration.md).
 
 ## Starting Umbriel
 
@@ -49,6 +50,18 @@ From a TTY, start a normal installed session with:
 ```sh
 start-umbriel
 ```
+
+## Logs
+
+Umbriel writes its main log to
+`$XDG_CACHE_HOME/umbriel/umbriel.log`. If `XDG_CACHE_HOME` is unset, the
+fallback path is `~/.cache/umbriel/umbriel.log`. The previous file is retained
+as `umbriel.log.1` when the current log reaches 1 MiB.
+
+When standard output or standard error is connected to a TTY, raw writes from
+Umbriel and its child processes are redirected to
+`$XDG_CACHE_HOME/umbriel/umbriel-stderr.log`, or
+`~/.cache/umbriel/umbriel-stderr.log` when `XDG_CACHE_HOME` is unset.
 
 ## Contributing
 

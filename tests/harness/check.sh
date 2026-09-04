@@ -5,37 +5,62 @@
 # for whatever runs next. Boot plus teardown measures about 80ms, under 4% of the suite, and it buys back the
 # config-restore reloads and window-drain loops that shared-instance checks had to carry.
 # Containment matters. A stock Umbriel start runs its built-in autostarts, and `dbus-update-activation-environment --systemd` would repoint the *caller's* session-wide WAYLAND_DISPLAY and UMBRIEL_SOCKET at this throwaway instance. Unsetting DBUS_SESSION_BUS_ADDRESS makes both autostarts fail harmlessly.
-# Usage: verify.sh <path-to-umbriel-binary> [name-fragment ...] [-v|--verbose] [-l|--list]
+# Usage: check.sh <path-to-umbriel-binary> [name-fragment ...] [-j N|--jobs N] [-v|--verbose] [-l|--list]
 # Each name fragment selects every check whose name contains it, so several fragments run several checks. Without a
 # fragment the whole suite runs. A failing check keeps its runtime directory (compositor and client logs) and prints it.
+# Checks are independent instances, so they run several at a time. `-j` or CHECK_JOBS sets how many; the default stays
+# well under the core count because a check that asserts animation timing is the first thing an overloaded box breaks.
+# Reporting order stays the declaration order regardless of which check finishes first.
 
 set -euo pipefail
 
-BINARY=${1:?usage: verify.sh <umbriel-binary> [name-fragment ...] [-v] [-l]}
+BINARY=${1:?usage: check.sh <umbriel-binary> [name-fragment ...] [-v] [-l]}
 shift
 
 FILTERS=()
-VERBOSE=${VERIFY_VERBOSE:-0}
+VERBOSE=${CHECK_VERBOSE:-0}
 LIST_ONLY=0
+JOBS=${CHECK_JOBS:-0}
+expect_jobs=0
 for arg in "$@"; do
+  if ((expect_jobs)); then
+    JOBS=$arg
+    expect_jobs=0
+    continue
+  fi
   case $arg in
     -v | --verbose) VERBOSE=1 ;;
     -l | --list) LIST_ONLY=1 ;;
-    # `just verify debug` forwards an empty filter; treat it as "no filter".
+    -j | --jobs) expect_jobs=1 ;;
+    -j*) JOBS=${arg#-j} ;;
+    --jobs=*) JOBS=${arg#--jobs=} ;;
+    # An empty argument is no fragment at all, not a fragment that matches everything.
     '') ;;
     -*)
-      echo "verify: unknown option '$arg'" >&2
+      echo "check: unknown option '$arg'" >&2
       exit 2
       ;;
     *) FILTERS+=("$arg") ;;
   esac
 done
+if ((expect_jobs)); then
+  echo "check: -j needs a worker count" >&2
+  exit 2
+fi
+if [[ ! $JOBS =~ ^[0-9]+$ ]]; then
+  echo "check: worker count must be a non-negative integer, got '$JOBS'" >&2
+  exit 2
+fi
+if ((JOBS == 0)); then
+  cores=$(nproc 2>/dev/null || echo 1)
+  JOBS=$((cores < 8 ? cores : 8))
+fi
 
 HARNESS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # A check that never returns would otherwise hang the suite with no output. The
 # cap is per check and generous: the slowest checks drive two-second animations.
-CHECK_TIMEOUT=${VERIFY_TIMEOUT:-120}
+CHECK_TIMEOUT=${CHECK_TIMEOUT:-120}
 
 # Colour only for a terminal, so piped output and CI logs stay plain text.
 if [[ -t 1 && -z ${NO_COLOR:-} && ${TERM:-dumb} != dumb ]]; then
@@ -85,14 +110,14 @@ while read -r name; do
 done <<< "$(all_checks)"
 TOTAL=$(all_checks | wc -l)
 if ((${#SELECTED[@]} == 0)); then
-  echo "verify: no checks matched ${FILTERS[*]}" >&2
-  echo "verify: available checks:" >&2
+  echo "check: no checks matched ${FILTERS[*]}" >&2
+  echo "check: available checks:" >&2
   all_checks | sed 's/^/  /' >&2
   exit 1
 fi
 
 if [[ ! -x $BINARY ]]; then
-  echo "verify: '$BINARY' is not executable" >&2
+  echo "check: '$BINARY' is not executable" >&2
   exit 1
 fi
 BINARY=$(realpath "$BINARY")
@@ -104,15 +129,18 @@ BINARY_DIR=$(dirname "$BINARY")
 # recipe having to export a matching set of paths.
 CLIENT_DIR=$BINARY_DIR/tests
 export UMBRIEL_POINTER_CLIENT="$CLIENT_DIR/pointer-client"
+export UMBRIEL_KEYBOARD_KEYMAP_CLIENT="$CLIENT_DIR/keyboard-keymap-client"
 export UMBRIEL_INPUT_METHOD_CLIENT="$CLIENT_DIR/input-method-client"
 export UMBRIEL_DRAG_CLIENT="$CLIENT_DIR/drag-client"
 export UMBRIEL_LAYER_CLIENT="$CLIENT_DIR/layer-client"
 export UMBRIEL_GLOBAL_CLIENT="$CLIENT_DIR/global-client"
+export UMBRIEL_DATA_CONTROL_CLIENT="$CLIENT_DIR/data-control-client"
 export UMBRIEL_WORKSPACE_CLIENT="$CLIENT_DIR/workspace-client"
 export UMBRIEL_FOREIGN_TOPLEVEL_CLIENT="$CLIENT_DIR/foreign-toplevel-client"
 export UMBRIEL_UNMAP_CLIENT="$CLIENT_DIR/unmap-client"
 export UMBRIEL_POPUP_CLIENT="$CLIENT_DIR/popup-client"
 export UMBRIEL_IDLE_INHIBIT_CLIENT="$CLIENT_DIR/idle-inhibit-client"
+export UMBRIEL_LOCK_CLIENT="$CLIENT_DIR/lock-client"
 export UMBRIEL_SUBSURFACE_CLIENT="$CLIENT_DIR/subsurface-client"
 export UMBRIEL_FRACTIONAL_CLIENT="$CLIENT_DIR/fractional-client"
 export UMBRIEL_SECURITY_CONTEXT_CLIENT="$CLIENT_DIR/security-context-client"
@@ -143,6 +171,32 @@ elapsed() {
   printf '%d.%02ds' "$((us / 1000000))" "$((us % 1000000 / 10000))"
 }
 
+# The harness's own process group. Signalling it would take the suite down, and
+# with several workers in flight it would take their instances with it, so it is
+# the one group id that is never a valid answer below.
+OWN_PGID=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)
+
+# The group id a setsid'd child reports for itself, or empty when it never got
+# far enough to have one. Asking `ps` for the child's group instead loses a race
+# it cannot win: until setsid() takes effect the child is still in the harness's
+# group, and a kill aimed at that answer is a suicide.
+child_pgid() {
+  local file=$1 pid=$2 waited=0 value=
+  while ((waited < 500)); do
+    if [[ -s $file ]]; then
+      value=$(< "$file")
+      break
+    fi
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.002
+    waited=$((waited + 1))
+  done
+  if [[ -z $value || $value == "$OWN_PGID" ]] || ((value <= 1)); then
+    return 0
+  fi
+  printf '%s\n' "$value"
+}
+
 # Everything a check spawns lives in the check's own process group, so one
 # signal reaches clients the check lost track of. Killing by group is what lets
 # checks stop bookkeeping pids: capturing `$!` from a shell function yields the
@@ -150,8 +204,7 @@ elapsed() {
 # into every later check.
 kill_check_group() {
   [[ -z $CHECK_PGID ]] && return 0
-  # Never signal our own group: that would take the harness down with it.
-  if [[ $CHECK_PGID != "$$" && $CHECK_PGID -gt 1 ]]; then
+  if [[ $CHECK_PGID != "$OWN_PGID" ]] && ((CHECK_PGID > 1)); then
     kill -TERM -- "-$CHECK_PGID" 2>/dev/null || true
     kill -KILL -- "-$CHECK_PGID" 2>/dev/null || true
   fi
@@ -178,7 +231,7 @@ kill_instance() {
 
 reap_instance_group() {
   [[ -z $INSTANCE_PGID ]] && return 0
-  if [[ $INSTANCE_PGID != "$$" && $INSTANCE_PGID -gt 1 ]]; then
+  if [[ $INSTANCE_PGID != "$OWN_PGID" ]] && ((INSTANCE_PGID > 1)); then
     kill -KILL -- "-$INSTANCE_PGID" 2>/dev/null || true
   fi
   INSTANCE_PGID=
@@ -193,13 +246,14 @@ cleanup() {
   [[ -n $RUNTIME_DIR && -d $RUNTIME_DIR ]] && rm -rf "$RUNTIME_DIR"
   RUNTIME_DIR=
 }
-trap cleanup EXIT
 
 header() {
-  printf '%s\n' "${C_BOLD}verify${C_OFF} ${C_DIM}·${C_OFF} $BINARY"
+  printf '%s\n' "${C_BOLD}check${C_OFF} ${C_DIM}·${C_OFF} $BINARY"
   local scope="${#SELECTED[@]} of $TOTAL checks"
   ((${#FILTERS[@]} > 0)) && scope+=" (filter: ${FILTERS[*]})"
-  printf '%s\n' "       ${C_DIM}·${C_OFF} $scope, one compositor instance each"
+  local pool="one compositor instance each"
+  ((JOBS > 1)) && pool+=", $JOBS at a time"
+  printf '%s\n' "       ${C_DIM}·${C_OFF} $scope, $pool"
   printf '\n'
 }
 
@@ -276,17 +330,18 @@ start_instance() {
   # setsid puts the compositor in a session of its own, so anything it forks
   # (an autostart, a keybind `spawn:`) is reachable as one process group at
   # teardown instead of joining the harness's own group where it cannot be
-  # signalled. The backgrounded child is not a group leader, so setsid execs in
-  # place and SERVER_PID stays the compositor and its group id.
+  # signalled. The wrapper reports the group id it leads and then execs the
+  # compositor in place, so SERVER_PID stays the compositor.
+  local pgid_file=$RUNTIME_DIR/instance.pgid
   setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WLR_BACKENDS=headless \
     WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_HEADLESS_OUTPUTS="$outputs" \
+    bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
     "$BINARY" -c "$config" > "$log" 2>&1 &
   SERVER_PID=$!
-  INSTANCE_PGID=$(ps -o pgid= -p "$SERVER_PID" 2>/dev/null | tr -d ' ' || true)
-  [[ -z $INSTANCE_PGID ]] && INSTANCE_PGID=$SERVER_PID
+  INSTANCE_PGID=$(child_pgid "$pgid_file" "$SERVER_PID")
 
   # Boot lands in tens of milliseconds, and this runs once per check, so poll
   # tightly rather than in quarter-second steps.
@@ -387,7 +442,7 @@ stop_instance() {
 
 # Runs the check body in its own process group so the harness can reap whatever
 # it spawned. Output goes to a file because a command substitution cannot own a
-# background job, and the group leader's pgid has to be read before the wait.
+# background job.
 # The body runs pointed at its own instance, not at the session that started the
 # suite. This is not a convenience: only IPC subcommands honour UMBRIEL_SOCKET,
 # while `umbriel outputs` and every helper client are Wayland clients that
@@ -395,64 +450,176 @@ stop_instance() {
 # environment silently points them at the developer's live compositor.
 run_check_body() {
   local name=$1 output_file=$2
+  local pgid_file=$RUNTIME_DIR/check.pgid
   setsid env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WAYLAND_DISPLAY=wayland-0 \
+    bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
     timeout -k 5 "$CHECK_TIMEOUT" bash "$HARNESS_DIR/checks/$name.sh" > "$output_file" 2>&1 &
   local body_pid=$!
-  CHECK_PGID=$(ps -o pgid= -p "$body_pid" 2>/dev/null | tr -d ' ' || true)
-  [[ -z $CHECK_PGID ]] && CHECK_PGID=$body_pid
+  CHECK_PGID=$(child_pgid "$pgid_file" "$body_pid")
   local status=0
-  wait "$body_pid" || status=$?
+  # An interrupted suite kills the body group, and bash would announce that
+  # killed job on its own stderr in the middle of the report.
+  { wait "$body_pid" || status=$?; } 2>/dev/null
   kill_check_group
   return "$status"
 }
 
-header
-suite_start=$(now_us)
-passed=0
-FAILED_NAMES=()
+# One check, start to verdict: its own instance, its own process groups, its own
+# runtime directory. This runs in a background subshell, so the instance state
+# above is private to it and its own EXIT trap reaps the instance even when the
+# pool kills the worker. The verdict travels back through files because a
+# subshell cannot assign to its parent.
+run_one() {
+  local name=$1 prefix=$2
+  trap 'cleanup; exit 143' TERM INT
+  trap cleanup EXIT
 
-for name in "${SELECTED[@]}"; do
-  start_row "$name"
+  local check_start
   check_start=$(now_us)
-  output_file=$(mktemp /tmp/umv-out.XXXXXXXX)
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")"; then
-    row FAIL "$name" "$(elapsed "$check_start")" "$BOOT_ERROR"
-    FAILED_NAMES+=("$name")
-    KEPT_DIRS+=("$RUNTIME_DIR")
-    RUNTIME_DIR=
-    rm -f "$output_file"
-    continue
+    publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
+    return 0
   fi
 
-  body_status=0
-  run_check_body "$name" "$output_file" || body_status=$?
-  output=$(< "$output_file")
-  rm -f "$output_file"
+  local body_status=0 output=
+  run_check_body "$name" "$prefix.body" || body_status=$?
+  output=$(< "$prefix.body")
+  rm -f "$prefix.body"
   if ((body_status == 124 || body_status == 137)); then
     output="check exceeded ${CHECK_TIMEOUT}s and was killed"$'\n'"$output"
   fi
 
-  stop_status=0
+  local stop_status=0
   stop_instance || stop_status=$?
   if ((body_status == 0 && stop_status != 0)); then
     body_status=$stop_status
     output=${output:+$output$'\n'}$STOP_ERROR
   fi
 
-  if ((body_status == 0)); then
-    row PASS "$name" "$(elapsed "$check_start")" "$output"
-    passed=$((passed + 1))
-    rm -rf "$RUNTIME_DIR"
-  else
-    row FAIL "$name" "$(elapsed "$check_start")" "$output"
-    FAILED_NAMES+=("$name")
-    KEPT_DIRS+=("$RUNTIME_DIR")
+  publish "$prefix" "$body_status" "$check_start" "$output"
+  return 0
+}
+
+# Records a worker's verdict. The status file is written last: the pool treats
+# its existence as the completion signal, so it must not appear before the
+# detail and duration it describes. A failing check keeps its runtime directory
+# as evidence, which means clearing RUNTIME_DIR so the EXIT trap spares it.
+publish() {
+  local prefix=$1 status=$2 start=$3 text=$4
+  printf '%s' "$text" > "$prefix.out"
+  elapsed "$start" > "$prefix.time"
+  if [[ -n $RUNTIME_DIR ]]; then
+    if ((status == 0)); then
+      rm -rf "$RUNTIME_DIR"
+    else
+      printf '%s\n' "$RUNTIME_DIR" > "$prefix.dir"
+    fi
+    RUNTIME_DIR=
   fi
-  RUNTIME_DIR=
+  printf '%s\n' "$status" > "$prefix.status"
+}
+
+report_one() {
+  local name=$1 prefix=$RESULT_DIR/$name
+  local status=1 text= duration=0.00s dir=
+  [[ -f $prefix.status ]] && status=$(< "$prefix.status")
+  [[ -f $prefix.out ]] && text=$(< "$prefix.out")
+  [[ -f $prefix.time ]] && duration=$(< "$prefix.time")
+  if ((status == 0)); then
+    row PASS "$name" "$duration" "$text"
+    passed=$((passed + 1))
+  else
+    row FAIL "$name" "$duration" "$text"
+    FAILED_NAMES+=("$name")
+    [[ -f $prefix.dir ]] && dir=$(< "$prefix.dir")
+    KEPT_DIRS+=("$dir")
+  fi
+  rm -f "$prefix.status" "$prefix.out" "$prefix.time" "$prefix.dir"
+}
+
+# Dispatched but without a verdict yet. This is what the pool bounds, and it
+# counts finished-not-yet-reported workers as free: reporting is ordered by
+# declaration so the output is stable, while execution is not.
+running_count() {
+  local index count=0
+  for ((index = REPORTED; index < DISPATCHED; index++)); do
+    [[ -f $RESULT_DIR/${SELECTED[index]}.status ]] || count=$((count + 1))
+  done
+  echo "$count"
+}
+
+# A worker that died without publishing (SIGKILL, or a bash failure inside
+# run_one) would otherwise leave the pool waiting on a child that no longer
+# exists, so give it a verdict of its own.
+fail_unpublished() {
+  local index name
+  for ((index = REPORTED; index < DISPATCHED; index++)); do
+    name=${SELECTED[index]}
+    [[ -f $RESULT_DIR/$name.status ]] && continue
+    printf '%s' "worker exited without a verdict" > "$RESULT_DIR/$name.out"
+    printf '0.00s' > "$RESULT_DIR/$name.time"
+    printf '1\n' > "$RESULT_DIR/$name.status"
+  done
+}
+
+terminate_workers() {
+  local name
+  for name in "${!WORKER_PID[@]}"; do
+    kill -TERM "${WORKER_PID[$name]}" 2>/dev/null || true
+  done
+  for name in "${!WORKER_PID[@]}"; do
+    wait "${WORKER_PID[$name]}" 2>/dev/null || true
+  done
+  WORKER_PID=()
+}
+
+suite_cleanup() {
+  terminate_workers
+  cleanup
+  [[ -n $RESULT_DIR && -d $RESULT_DIR ]] && rm -rf "$RESULT_DIR"
+  RESULT_DIR=
+}
+trap suite_cleanup EXIT
+
+RESULT_DIR=$(mktemp -d /tmp/umv-results.XXXXXXXX)
+declare -A WORKER_PID=()
+DISPATCHED=0
+REPORTED=0
+
+header
+suite_start=$(now_us)
+passed=0
+FAILED_NAMES=()
+
+while ((REPORTED < ${#SELECTED[@]})); do
+  while ((DISPATCHED < ${#SELECTED[@]} && $(running_count) < JOBS)); do
+    name=${SELECTED[DISPATCHED]}
+    # With one worker the live row is the progress indicator. With more it would
+    # be a lie, because several checks are in flight at once.
+    ((JOBS == 1)) && start_row "$name"
+    run_one "$name" "$RESULT_DIR/$name" &
+    WORKER_PID[$name]=$!
+    DISPATCHED=$((DISPATCHED + 1))
+  done
+
+  while ((REPORTED < DISPATCHED)) && [[ -f $RESULT_DIR/${SELECTED[REPORTED]}.status ]]; do
+    name=${SELECTED[REPORTED]}
+    wait "${WORKER_PID[$name]}" 2>/dev/null || true
+    unset "WORKER_PID[$name]"
+    report_one "$name"
+    REPORTED=$((REPORTED + 1))
+  done
+  ((REPORTED >= ${#SELECTED[@]})) && break
+
+  # Nothing new to report: block until some worker exits rather than polling.
+  # Each call reaps at most one child, so this always makes progress.
+  wait_status=0
+  wait -n 2>/dev/null || wait_status=$?
+  ((wait_status == 127)) && fail_unpublished
 done
 
 failed=${#FAILED_NAMES[@]}

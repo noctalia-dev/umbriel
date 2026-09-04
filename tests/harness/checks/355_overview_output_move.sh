@@ -29,20 +29,24 @@ assert_blue_card() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[colors]
+backdrop = "#000000FF"
+
+[colors.overview]
+background_tint = "#000000FF"
+workspace_background = "#000000FF"
+
 [appearance]
 animation_ms = 100
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
-backdrop_color = "#000000FF"
 
 [appearance.blur]
 enabled = false
 
 [overview]
 zoom = 0.5
-background_tint = "#000000FF"
-workspace_background = "#000000FF"
 
 [[window_rule]]
 match.app_id = "^overview-output-move$"

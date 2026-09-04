@@ -17,10 +17,12 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 duration_ms = 1
 
+[colors]
+backdrop = "#00FF00FF"
+
 [appearance]
 border_width = 0
 corner_radius = 0
-backdrop_color = "#00FF00FF"
 
 [[window_rule]]
 match.app_id = "^fullscreen-rule-opacity$"

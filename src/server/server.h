@@ -35,6 +35,7 @@ struct wlr_foreign_toplevel_manager_v1;
 struct wlr_idle_inhibit_manager_v1;
 struct wlr_idle_notifier_v1;
 struct wlr_input_device;
+struct wlr_keyboard;
 struct wlr_layer_shell_v1;
 struct wlr_output;
 struct wlr_output_layout;
@@ -150,7 +151,7 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* scratchpadShadowTree() const { return m_scratchpadShadowTree; }
     [[nodiscard]] ScratchpadManager* scratchpadManager() const { return m_scratchpadManager.get(); }
     // Between layer-shell background and bottom: overview wallpaper blur renders
-    // before bottom-layer widgets so they remain sharp.
+    // before bottom-layer surfaces so they remain sharp.
     [[nodiscard]] wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
     // Between windows and the drag/insert-hint tree: overview cards render here
     // while the real window trees are disabled.
@@ -360,6 +361,8 @@ namespace umbriel {
     static void onNewSessionLock(wl_listener* listener, void* data);
     static void onNewPointerConstraint(wl_listener* listener, void* data);
     static void onNewVirtualKeyboard(wl_listener* listener, void* data);
+    static void onPendingVirtualKeyboardKeymap(wl_listener* listener, void* data);
+    static void onPendingVirtualKeyboardDestroy(wl_listener* listener, void* data);
     static void onNewVirtualPointer(wl_listener* listener, void* data);
     static void onVirtualPointerDestroy(wl_listener* listener, void* data);
     static void onNewIdleInhibitor(wl_listener* listener, void* data);
@@ -394,6 +397,13 @@ namespace umbriel {
 
     void addOutput(wlr_output* output);
     void addKeyboard(wlr_input_device* device);
+    struct PendingVirtualKeyboard {
+      Server* server = nullptr;
+      wlr_keyboard* keyboard = nullptr;
+      wl_listener keymap{};
+      wl_listener destroy{};
+    };
+    static void destroyPendingVirtualKeyboard(PendingVirtualKeyboard* pending);
     void syncKeyboardLayout(Keyboard* source);
     // Restore a remembered named layout through a compatible physical keyboard.
     bool setKeyboardLayout(std::string_view layout);
@@ -526,6 +536,10 @@ namespace umbriel {
     wlr_scene_rect* m_lockBlank = nullptr;
     wlr_scene_rect* m_backdrop = nullptr;
     bool m_sessionLocked = false;
+    // Name of the output that held keyboard focus when the session locked, so
+    // unlocking restores focus there instead of wherever the cursor rests.
+    // Empty when no window was focused or that output is gone.
+    std::string m_lockFocusOutput;
     std::vector<std::string> m_activeSubmaps;
     // Same-msec dedupe: several outputs can call tickAnimations per vblank.
     uint64_t m_lastAnimTickMsec = 0;

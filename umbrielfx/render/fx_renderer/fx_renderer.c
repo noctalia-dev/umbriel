@@ -13,6 +13,7 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/interface.h>
+#include <wlr/types/wlr_output.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
@@ -127,6 +128,11 @@ static void fx_renderer_destroy(struct wlr_renderer *wlr_renderer) {
 		fx_texture_destroy(tex);
 	}
 
+	struct fx_output_lut *lut, *lut_tmp;
+	wl_list_for_each_safe(lut, lut_tmp, &renderer->output_luts, link) {
+		fx_output_lut_destroy(lut);
+	}
+
 	struct fx_offscreen_buffers *fbos, *fbos_tmp;
 	wl_list_for_each_safe(fbos, fbos_tmp, &renderer->offscreen_buffers, link) {
 		fx_offscreen_buffers_destroy(fbos);
@@ -161,8 +167,10 @@ static void fx_renderer_destroy(struct wlr_renderer *wlr_renderer) {
 	free(renderer);
 }
 
-static struct wlr_render_pass *begin_buffer_pass(struct wlr_renderer *wlr_renderer,
-		struct wlr_buffer *wlr_buffer, const struct wlr_buffer_pass_options *options) {
+static struct wlr_render_pass *begin_buffer_pass_with_output(
+		struct wlr_renderer *wlr_renderer, struct wlr_buffer *wlr_buffer,
+		const struct wlr_buffer_pass_options *options,
+		struct fx_offscreen_buffers *output_buffers) {
 	struct fx_renderer *renderer = fx_get_renderer(wlr_renderer);
 
 	struct wlr_egl_context prev_ctx = {0};
@@ -180,13 +188,14 @@ static struct wlr_render_pass *begin_buffer_pass(struct wlr_renderer *wlr_render
 
 	struct fx_framebuffer *buffer = fx_framebuffer_get_or_create(renderer, wlr_buffer);
 	if (!buffer) {
+		wlr_egl_restore_context(&prev_ctx);
 		TRACY_BOTH_ZONES_END_FAIL;
 		return NULL;
 	}
 
 	struct fx_gles_render_pass *pass = fx_begin_buffer_pass(buffer,
 			&prev_ctx, timer, options->signal_timeline, options->signal_point,
-			options->color_transform);
+			options->color_transform, output_buffers);
 	if (!pass) {
 		wlr_egl_restore_context(&prev_ctx);
 		TRACY_BOTH_ZONES_END_FAIL;
@@ -196,6 +205,40 @@ static struct wlr_render_pass *begin_buffer_pass(struct wlr_renderer *wlr_render
 	TRACY_BOTH_ZONES_END;
 
 	return &pass->base;
+}
+
+static struct wlr_render_pass *begin_buffer_pass(struct wlr_renderer *wlr_renderer,
+		struct wlr_buffer *wlr_buffer, const struct wlr_buffer_pass_options *options) {
+	return begin_buffer_pass_with_output(wlr_renderer, wlr_buffer, options, NULL);
+}
+
+struct wlr_render_pass *fx_renderer_begin_output_buffer_pass(
+		struct wlr_output *output, struct wlr_buffer *buffer,
+		const struct wlr_buffer_pass_options *options) {
+	if (output == NULL || buffer == NULL || output->renderer == NULL ||
+			!wlr_renderer_is_fx(output->renderer)) {
+		return NULL;
+	}
+
+	const struct wlr_buffer_pass_options default_options = {0};
+	if (options == NULL) {
+		options = &default_options;
+	}
+
+	struct fx_offscreen_buffers *output_buffers = NULL;
+	if (options->color_transform != NULL) {
+		output_buffers = fx_offscreen_buffers_try_get(output);
+		if (output_buffers != NULL) {
+			output_buffers->allocator = output->allocator;
+		}
+	} else {
+		// Direct rendering bypasses the linear blend target. Its previous
+		// contents cannot seed a later incremental transformed pass.
+		fx_offscreen_buffers_invalidate_blend(output);
+	}
+
+	return begin_buffer_pass_with_output(output->renderer, buffer, options,
+		output_buffers);
 }
 
 GLuint fx_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
@@ -529,6 +572,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	wl_list_init(&renderer->buffers);
 	wl_list_init(&renderer->textures);
 	wl_list_init(&renderer->offscreen_buffers);
+	wl_list_init(&renderer->output_luts);
 
 	renderer->egl = egl;
 	renderer->exts_str = exts_str;

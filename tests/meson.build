@@ -60,6 +60,12 @@ foreach unit_test : unit_tests
   test(unit_test[0], test_exe)
 endforeach
 
+test(
+  'validate-config',
+  find_program('validate_config.sh'),
+  args: [umbriel],
+)
+
 # Harness helper, not a unit test: drives virtual pointer and modifier input against a running compositor. The headless backend has no input devices, so protocol
 # input is the only way to exercise pointer hit-testing and grabs.
 pointer_client = executable(
@@ -68,6 +74,17 @@ pointer_client = executable(
     'harness/clients/pointer_client.cpp',
     virtual_pointer_client_h,
     virtual_pointer_client_c,
+    virtual_keyboard_client_h,
+    virtual_keyboard_client_c,
+  ],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
+)
+
+# Harness helper that checks deferred virtual-keyboard keymaps as seen by regular wl_keyboard clients.
+keyboard_keymap_client = executable(
+  'keyboard-keymap-client',
+  [
+    'harness/clients/keyboard_keymap_client.cpp',
     virtual_keyboard_client_h,
     virtual_keyboard_client_c,
   ],
@@ -112,6 +129,20 @@ global_client = executable(
     xdg_shell_client_c,
     xdg_decoration_client_h,
     xdg_decoration_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
+# Harness helper that sets the regular clipboard through the legacy data-control
+# protocol and receives it through the standardized replacement.
+data_control_client = executable(
+  'data-control-client',
+  [
+    'harness/clients/data_control_client.cpp',
+    wlr_data_control_client_h,
+    wlr_data_control_client_c,
+    ext_data_control_client_h,
+    ext_data_control_client_c,
   ],
   dependencies: [wayland_client_dep],
 )
@@ -206,6 +237,18 @@ idle_inhibit_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that locks the session through ext-session-lock and unlocks it
+# on demand, so checks can compare compositor state across a real lock cycle.
+lock_client = executable(
+  'lock-client',
+  [
+    'harness/clients/lock_client.cpp',
+    ext_session_lock_client_h,
+    ext_session_lock_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 # Harness wrapper that runs another Wayland client through a committed
 # security-context listener.
 security_context_client = executable(
@@ -220,10 +263,12 @@ security_context_client = executable(
 
 harness_client_targets = [
   pointer_client,
+  keyboard_keymap_client,
   input_method_client,
   drag_client,
   layer_client,
   global_client,
+  data_control_client,
   workspace_client,
   foreign_toplevel_client,
   unmap_client,
@@ -231,5 +276,6 @@ harness_client_targets = [
   subsurface_client,
   fractional_client,
   idle_inhibit_client,
+  lock_client,
   security_context_client,
 ]

@@ -1,5 +1,5 @@
 #pragma once
 
 namespace umbriel {
-  int runOutputsCommand();
+  int runOutputsCommand(bool json = false);
 } // namespace umbriel

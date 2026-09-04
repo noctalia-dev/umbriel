@@ -289,7 +289,7 @@ namespace umbriel {
     return focusedColumn >= 0 ? focusedColumn + 1 : static_cast<int>(m_layout->columns().size());
   }
 
-  void Workspace::layoutAttach(View* view, std::optional<double> initialWidth) {
+  void Workspace::layoutAttach(View* view, std::optional<double> initialWidth, std::optional<int> initialPixelWidth) {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;
     }
@@ -307,11 +307,15 @@ namespace umbriel {
 
     if (scrolling != nullptr && !placement) {
       const int column = scrolling->columnOf(view);
-      const std::optional<double> configuredWidth =
-          initialWidth ? initialWidth : m_layoutConfig.scrolling.defaultWidthFraction;
-      if (configuredWidth) {
+      if (initialPixelWidth && !scrollingVertical()) {
+        // default_size is expressed in physical axes, so its width only seeds
+        // the primary extent of a horizontal scrolling column.
+        scrolling->setWidthFromPixels(column, scrollViewportExtent(), *initialPixelWidth);
+      } else if (initialWidth) {
         // default_width is a viewport fraction: scrolling only. Dwindle ignores it.
-        scrolling->setWidthFraction(column, *configuredWidth);
+        scrolling->setWidthFraction(column, *initialWidth);
+      } else if (m_layoutConfig.scrolling.defaultWidthFraction) {
+        scrolling->setWidthFraction(column, *m_layoutConfig.scrolling.defaultWidthFraction);
       } else {
         const wlr_box& geometry = view->toplevel()->base->geometry;
         const int primary = scrollingVertical() ? geometry.height : geometry.width;
@@ -1067,8 +1071,10 @@ namespace umbriel {
     // box on the next toggle, discarding this size.
     view->dropMaximizedForResize();
     view->requestFloatingSize(width, height);
-    // Resize in place: the keep-visible clamp runs at commit, once the
-    // geometry is no longer stale (adoptFloatingClientSize).
+    view->beginResizeAnimation(width, height);
+    // Resize in place. The clamp runs on the requested size: the origin has to travel with the presented size, and a
+    // client that commits exactly what was requested never re-enters the clamp at commit.
+    view->clampFloatingPositionForSize(width, height);
     return true;
   }
 
@@ -1231,7 +1237,54 @@ namespace umbriel {
     if (m_focusedView == nullptr || !m_focusedView->mapped()) {
       return false;
     }
-    m_focusedView->toggleFullscreen();
+
+    View* target = m_focusedView;
+    if (!target->pinned()
+        && !target->toplevel()->scheduled.fullscreen
+        && m_group != nullptr
+        && m_group->output() != nullptr) {
+      const wlr_box outputBox = m_group->output()->layoutBox();
+      const wlr_box focusedBox = target->presentedBox();
+      wlr_box focusedVisible{};
+      if (wlr_box_intersection(&focusedVisible, &focusedBox, &outputBox)) {
+        // A newly mapped window can own focus while an older fullscreen window
+        // still covers it from the higher fullscreen scene layer. In that
+        // state the action follows what the user can see: leave the obscuring
+        // fullscreen instead of fullscreening the hidden focused window.
+        wlr_scene_node* fullscreenNode = nullptr;
+        wl_list_for_each_reverse(fullscreenNode, &m_fullscreenTree->children, link) {
+          SceneNode* sceneNode = sceneNodeFrom(fullscreenNode->data);
+          if (sceneNode == nullptr || sceneNode->kind != SceneNodeKind::View) {
+            continue;
+          }
+          auto* candidate = static_cast<View*>(sceneNode);
+          if (candidate == target
+              || !candidate->mapped()
+              || !candidate->onActiveWorkspace()
+              || !candidate->toplevel()->scheduled.fullscreen) {
+            continue;
+          }
+          const wlr_scene_node& node = candidate->sceneTree()->node;
+          const wlr_box fullscreenBox{
+              .x = node.x,
+              .y = node.y + m_slideOffsetY,
+              .width = outputBox.width,
+              .height = outputBox.height,
+          };
+          wlr_box obscured{};
+          if (wlr_box_intersection(&obscured, &fullscreenBox, &focusedVisible)
+              && obscured.x == focusedVisible.x
+              && obscured.y == focusedVisible.y
+              && obscured.width == focusedVisible.width
+              && obscured.height == focusedVisible.height) {
+            target = candidate;
+            break;
+          }
+        }
+      }
+    }
+
+    target->toggleFullscreen();
     return true;
   }
 
@@ -1697,6 +1750,7 @@ namespace umbriel {
     // does not destroy the workspace the user is currently viewing; otherwise retain the existing trailing empty to
     // avoid replacing its protocol identity on every reconciliation.
     const bool emptyAbove = config().workspaces.emptyAbove;
+    const size_t minimum = resolveDynamicWorkspaceMinimum(config(), m_output->identity());
     Workspace* frontKeeper = nullptr;
     if (emptyAbove && !m_workspaces.empty() && !m_workspaces.front()->hasViews()) {
       frontKeeper = m_workspaces.front().get();
@@ -1716,6 +1770,11 @@ namespace umbriel {
     }
 
     for (size_t index = m_workspaces.size(); index-- > 0;) {
+      // min_workspaces is a floor on the count, not on a position. Pruning runs from the end, so it stops as soon as
+      // the group would shrink past the floor and the surviving empties are the lowest-numbered ones.
+      if (m_workspaces.size() <= minimum) {
+        break;
+      }
       Workspace* workspace = m_workspaces[index].get();
       if (!workspace->hasViews() && workspace != backKeeper && workspace != frontKeeper) {
         if (m_previous == workspace) {
@@ -1724,6 +1783,10 @@ namespace umbriel {
         m_workspaces.erase(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index));
         m_server->scheduleIpcWorkspacesEvent();
       }
+    }
+    // Filling the floor appends empty workspaces, so the last of them is the trailing empty this group needs.
+    while (m_workspaces.size() < minimum) {
+      backKeeper = appendDynamicWorkspace();
     }
     if (backKeeper == nullptr) {
       appendDynamicWorkspace();

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # session-quit asks for confirmation; session-quit:skip-confirmation does not. The confirmation path runs against the
-# instance the harness booted for this check, which it is free to terminate: verify.sh notices an already-exited
+# instance the harness booted for this check, which it is free to terminate: check.sh notices an already-exited
 # compositor and judges it by its exit status. So the first session-quit must open the dialog and leave the instance
 # answering IPC, and the second must take it down cleanly. Proving the bypass form then needs a live compositor again,
-# so this check boots exactly one private instance for it, with the same containment as verify.sh.
+# so this check boots exactly one private instance for it, with the same containment as check.sh.
 set -euo pipefail
 
 # The harness instance is not this check's child, so there is no pid to signal

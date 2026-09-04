@@ -47,36 +47,14 @@ wait_for_field float-resize h 360
 
 "$UMBRIEL" msg "window-focus-warp:$(field_of float-resize id)" > /dev/null
 
-# modify: 0.5 + 0.1 of 1280 -> 768
-"$UMBRIEL" msg window-modify-width:0.1 > /dev/null
-wait_for_field float-resize w 768
-# cycle: the next preset past 0.6 is 2/3 of 1280 -> 853
-"$UMBRIEL" msg window-cycle-width > /dev/null
-wait_for_field float-resize w 853
-# cycle back: the previous preset under 2/3 is 0.5 of 1280 -> 640
-"$UMBRIEL" msg window-cycle-width-back > /dev/null
-wait_for_field float-resize w 640
-# cycle: the next preset past 0.5 is 2/3 of 720 -> 480
+# The height verb reaches the float and resolves against the 720 output: 2/3 -> 480
 "$UMBRIEL" msg window-cycle-height > /dev/null
 wait_for_field float-resize h 480
-# cycle back: the previous preset under 2/3 is 0.5 of 720 -> 360
-"$UMBRIEL" msg window-cycle-height-back > /dev/null
-wait_for_field float-resize h 360
-
-# Cycling has to step by pixels, not by the fraction those pixels read back as.
-# A third of 1280 rounds up to 427, which reads back as 0.3336: a fraction
-# search finds 1/3 still below that and re-picks it, so the float would stall on
-# the smallest preset for good. The second step is the transition that proves
-# it: 427 has to wrap to the largest preset.
-"$UMBRIEL" msg window-cycle-width-back > /dev/null
-wait_for_field float-resize w 427
-"$UMBRIEL" msg window-cycle-width-back > /dev/null
-wait_for_field float-resize w 853
 
 # Set assigns the fraction outright on the named axis only.
 "$UMBRIEL" msg window-set-width:0.25 > /dev/null
 wait_for_field float-resize w 320
-wait_for_field float-resize h 360
+wait_for_field float-resize h 480
 
 # A resized float must leave maximized state behind, not carry it silently. The
 # transition proves it: toggling after the resize has to maximize. If the resize

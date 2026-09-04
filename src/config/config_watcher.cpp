@@ -58,13 +58,7 @@ namespace umbriel {
       return;
     }
 
-    for (const auto& [descriptor, directories] : m_dirWatches) {
-      (void)directories;
-      inotify_rm_watch(m_fd, descriptor);
-    }
-    m_dirWatches.clear();
-    m_files.clear();
-
+    std::set<std::filesystem::path> nextFiles;
     for (const std::filesystem::path& file : files) {
       std::error_code error;
       std::filesystem::path fullPath = std::filesystem::absolute(file, error);
@@ -72,25 +66,85 @@ namespace umbriel {
         fullPath = file;
       }
       fullPath = fullPath.lexically_normal();
-      m_files.insert(fullPath);
+      nextFiles.insert(fullPath);
 
+      // Keep every lexical symlink component observable. Watching only the
+      // resolved directory misses an atomic replacement of a symlinked config
+      // directory, because that event belongs to the symlink's parent.
+      for (std::filesystem::path component = fullPath; !component.empty();) {
+        error.clear();
+        if (std::filesystem::is_symlink(component, error) && !error) {
+          nextFiles.insert(component);
+        }
+        const std::filesystem::path parent = component.parent_path();
+        if (parent == component) {
+          break;
+        }
+        component = parent;
+      }
+
+      error.clear();
+      std::filesystem::path resolved = std::filesystem::weakly_canonical(fullPath, error);
+      if (!error) {
+        nextFiles.insert(std::move(resolved));
+      }
+
+      // weakly_canonical cannot follow a dangling final symlink. Resolve that
+      // entry directly so recreating its target can recover automatically.
       error.clear();
       if (std::filesystem::is_symlink(fullPath, error) && !error) {
         error.clear();
-        std::filesystem::path resolved = std::filesystem::weakly_canonical(fullPath, error);
+        std::filesystem::path target = std::filesystem::read_symlink(fullPath, error);
         if (!error) {
-          m_files.insert(std::move(resolved));
+          if (target.is_relative()) {
+            target = fullPath.parent_path() / target;
+          }
+          error.clear();
+          std::filesystem::path targetPath = std::filesystem::absolute(target, error);
+          if (error) {
+            targetPath = target;
+          }
+          nextFiles.insert(targetPath.lexically_normal());
         }
       }
     }
 
     std::set<std::filesystem::path> directories;
-    for (const std::filesystem::path& file : m_files) {
-      directories.insert(file.parent_path());
+    const std::set<std::filesystem::path> requestedFiles = nextFiles;
+    for (const std::filesystem::path& file : requestedFiles) {
+      std::filesystem::path directory = file.parent_path();
+      while (!directory.empty()) {
+        std::error_code error;
+        if (std::filesystem::is_directory(directory, error) && !error) {
+          directories.insert(directory);
+          break;
+        }
+        // If a parent component does not exist yet, watch its nearest existing
+        // ancestor for the component's creation. The reload callback rearms
+        // watches one level deeper until the requested file can be observed.
+        nextFiles.insert(directory.lexically_normal());
+        const std::filesystem::path parent = directory.parent_path();
+        if (parent == directory) {
+          break;
+        }
+        directory = parent;
+      }
     }
+
+    std::unordered_map<int, std::set<std::filesystem::path>> nextDirectoryWatches;
     for (const std::filesystem::path& directory : directories) {
-      const int descriptor =
-          inotify_add_watch(m_fd, directory.c_str(), IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_MODIFY);
+      const int descriptor = inotify_add_watch(
+          m_fd, directory.c_str(),
+          IN_CREATE
+              | IN_CLOSE_WRITE
+              | IN_ATTRIB
+              | IN_MOVED_FROM
+              | IN_MOVED_TO
+              | IN_DELETE
+              | IN_MODIFY
+              | IN_DELETE_SELF
+              | IN_MOVE_SELF
+      );
       if (descriptor < 0) {
         kLog.debug("config: unable to watch directory {}", directory.string());
         continue;
@@ -98,8 +152,20 @@ namespace umbriel {
       // inotify identifies the watched inode, not the pathname. A symlinked
       // directory and its canonical target therefore share one descriptor,
       // while config paths can legitimately use either spelling.
-      m_dirWatches[descriptor].insert(directory);
+      nextDirectoryWatches[descriptor].insert(directory);
     }
+
+    // Add or refresh desired watches before removing obsolete ones. Events
+    // queued for a directory that remains relevant therefore keep a valid
+    // descriptor mapping across reloads.
+    for (const auto& [descriptor, watchedDirectories] : m_dirWatches) {
+      (void)watchedDirectories;
+      if (!nextDirectoryWatches.contains(descriptor)) {
+        inotify_rm_watch(m_fd, descriptor);
+      }
+    }
+    m_files = std::move(nextFiles);
+    m_dirWatches = std::move(nextDirectoryWatches);
   }
 
   int ConfigWatcher::onInotify(int fd, uint32_t /*mask*/, void* data) {
@@ -113,7 +179,10 @@ namespace umbriel {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           break;
         }
-        return 0;
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
       }
       if (size == 0) {
         break;
@@ -122,7 +191,11 @@ namespace umbriel {
       size_t offset = 0;
       while (offset < static_cast<size_t>(size)) {
         const auto* event = reinterpret_cast<const inotify_event*>(buffer + offset);
-        if (event->len > 0) {
+        if ((event->mask & IN_Q_OVERFLOW) != 0) {
+          changed = true;
+        } else if (event->len == 0 && (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0) {
+          changed = true;
+        } else if (event->len > 0) {
           const auto directories = self->m_dirWatches.find(event->wd);
           if (directories != self->m_dirWatches.end()) {
             for (const std::filesystem::path& directory : directories->second) {

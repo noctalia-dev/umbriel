@@ -55,7 +55,7 @@ namespace umbriel {
 
   // Fullscreen
   void ViewPresentation::createBackdrop(wlr_scene_tree* parent) {
-    m_backdrop = wlr_scene_rect_create(parent, 0, 0, config().appearance.backdropColor.data());
+    m_backdrop = wlr_scene_rect_create(parent, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);
     wlr_scene_node_lower_to_bottom(&m_backdrop->node);
     wlr_scene_node_set_enabled(&m_backdrop->node, false);
@@ -76,7 +76,7 @@ namespace umbriel {
 
   void ViewPresentation::reloadBackdropColor() {
     if (m_backdrop != nullptr) {
-      wlr_scene_rect_set_color(m_backdrop, config().appearance.backdropColor.data());
+      wlr_scene_rect_set_color(m_backdrop, config().colors.backdrop.data());
     }
   }
 

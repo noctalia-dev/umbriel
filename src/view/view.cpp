@@ -54,6 +54,10 @@ namespace umbriel {
       return current.has_value() && current != initiallyApplied;
     }
 
+    std::optional<int> defaultSizeWidth(const ResolvedWindowRule& rule) {
+      return rule.defaultSize ? std::optional<int>((*rule.defaultSize)[0]) : std::nullopt;
+    }
+
     constexpr int contentTypePriority(ContentType type) {
       switch (type) {
       case ContentType::Game:
@@ -172,6 +176,8 @@ namespace umbriel {
     wl_signal_add(&m_toplevel->events.request_maximize, &m_requestMaximize);
     m_requestFullscreen.notify = onRequestFullscreen;
     wl_signal_add(&m_toplevel->events.request_fullscreen, &m_requestFullscreen);
+    m_setParent.notify = onSetParent;
+    wl_signal_add(&m_toplevel->events.set_parent, &m_setParent);
     m_setTitle.notify = onSetTitle;
     wl_signal_add(&m_toplevel->events.set_title, &m_setTitle);
     m_setAppId.notify = onSetAppId;
@@ -223,6 +229,7 @@ namespace umbriel {
       wl_list_remove(&m_requestResize.link);
       wl_list_remove(&m_requestMaximize.link);
       wl_list_remove(&m_requestFullscreen.link);
+      wl_list_remove(&m_setParent.link);
       wl_list_remove(&m_setTitle.link);
       wl_list_remove(&m_setAppId.link);
     }
@@ -329,7 +336,7 @@ namespace umbriel {
     if (m_workspace != target) {
       return false;
     }
-    target->layoutAttach(this, rule.defaultWidth);
+    target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
     return true;
   }
 
@@ -378,8 +385,64 @@ namespace umbriel {
   }
 
   void View::raiseToTop() {
-    wlr_scene_node_raise_to_top(&m_sceneTree->node);
+    View* root = this;
+    while (View* parent = root->transientParent()) {
+      root = parent;
+    }
+    root->raiseTransientTree();
+  }
+
+  View* View::transientParent() const {
+    if (!m_mapped || m_workspace == nullptr || m_toplevel->parent == nullptr) {
+      return nullptr;
+    }
+    View* parent = fromSurface(m_toplevel->parent->base->surface);
+    if (parent == this || parent == nullptr || !parent->m_mapped || parent->m_workspace != m_workspace) {
+      return nullptr;
+    }
+    return parent;
+  }
+
+  void View::syncTransientSceneParent() {
+    if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
+      return;
+    }
+
+    wlr_scene_tree* target = homeTree();
+    if (View* parent = transientParent()) {
+      wlr_scene_tree* parentTree = parent->m_sceneTree->node.parent;
+      Output* output = currentOutput();
+      const bool parentElevated = parentTree == m_server->dragTree()
+          || parentTree == m_workspace->fullscreenTree()
+          || (output != nullptr && parentTree == output->pinnedRoot());
+      if (parentElevated) {
+        target = parentTree;
+      }
+    }
+
+    if (m_sceneTree->node.parent == target) {
+      return;
+    }
+    wlr_scene_node_reparent(&m_sceneTree->node, target);
+    if (target != homeTree()) {
+      reparentShadow(target);
+    } else {
+      reparentShadow(m_workspace->shadowLayer());
+    }
+  }
+
+  void View::raiseTransientTree() {
+    syncTransientSceneParent();
     m_decoration.raiseShadowToTop();
+    wlr_scene_node_raise_to_top(&m_sceneTree->node);
+
+    const auto views = m_server->registry().all();
+    for (auto it = views.rbegin(); it != views.rend(); ++it) {
+      View* child = it->get();
+      if (child != this && child->transientParent() == this) {
+        child->raiseTransientTree();
+      }
+    }
   }
 
   void View::setScratchpadBorder(bool scratchpad) {
@@ -965,6 +1028,11 @@ namespace umbriel {
     self->handleRequestFullscreen();
   }
 
+  void View::onSetParent(wl_listener* listener, void* /*data*/) {
+    View* self = wl_container_of(listener, self, m_setParent);
+    self->handleSetParent();
+  }
+
   void View::onSetTitle(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_setTitle);
     self->handleSetTitle();
@@ -997,30 +1065,45 @@ namespace umbriel {
     return usable;
   }
 
-  void View::clampFloatingPosition() {
+  std::optional<FloatingPoint> View::floatingClampTarget(FloatingPoint origin, int width, int height) {
     if (m_tiled
         || !m_mapped
         || m_toplevel->scheduled.fullscreen
         || m_toplevel->scheduled.maximized
-        || sizeGrabActive()
-        || m_posX.animating()
-        || m_posY.animating()) {
-      return;
+        || sizeGrabActive()) {
+      return std::nullopt;
     }
     if (Cursor* cursor = m_server->cursor(); cursor != nullptr && cursor->isDraggingView(this)) {
-      return;
+      return std::nullopt;
     }
-
     const wlr_box usable = floatingUsableArea();
+    if (usable.width <= 0 || usable.height <= 0 || width <= 0 || height <= 0) {
+      return std::nullopt;
+    }
     const wlr_box& geo = m_toplevel->base->geometry;
-    if (usable.width <= 0 || usable.height <= 0 || geo.width <= 0 || geo.height <= 0) {
+    const wlr_box box{.x = geo.x, .y = geo.y, .width = width, .height = height};
+    const FloatingPoint clamped = clampFloatingOrigin(origin, box, usable);
+    if (clamped.x == origin.x && clamped.y == origin.y) {
+      return std::nullopt;
+    }
+    return clamped;
+  }
+
+  void View::clampFloatingPosition() {
+    if (m_posX.animating() || m_posY.animating()) {
       return;
     }
+    const wlr_box& geo = m_toplevel->base->geometry;
+    const FloatingPoint origin{.x = m_sceneTree->node.x, .y = m_sceneTree->node.y};
+    if (const auto clamped = floatingClampTarget(origin, geo.width, geo.height)) {
+      setPosition(clamped->x, clamped->y);
+    }
+  }
 
-    const FloatingPoint clamped =
-        clampFloatingOrigin({.x = m_sceneTree->node.x, .y = m_sceneTree->node.y}, geo, usable);
-    if (clamped.x != m_sceneTree->node.x || clamped.y != m_sceneTree->node.y) {
-      setPosition(clamped.x, clamped.y);
+  void View::clampFloatingPositionForSize(int width, int height) {
+    const FloatingPoint origin{.x = layoutTargetX(), .y = layoutTargetY()};
+    if (const auto clamped = floatingClampTarget(origin, width, height)) {
+      animateTo(clamped->x, clamped->y);
     }
   }
 
@@ -1142,8 +1225,8 @@ namespace umbriel {
     }
 
     const auto& targetBase = m_scratchpadBorder
-        ? (focused ? config().appearance.scratchpadBorderFocused : config().appearance.scratchpadBorderUnfocused)
-        : (focused ? config().appearance.borderFocused : config().appearance.borderUnfocused);
+        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
+        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
 
     const auto& border = animation.border;
     if (m_mapped && focusChanged && animation.enabled && border.enabled) {
@@ -1173,13 +1256,13 @@ namespace umbriel {
   void View::applyCornerRadius() {
     // Apps that draw through subsurfaces (Firefox renders all of its chrome and web content into one desynchronized
     // MozContainer subsurface) leave their content square unless those buffers round too. Every buffer under the
-    // toplevel's surface tree is visited: the main surface rounds unconditionally (its quad is the content box in every
-    // clipped and animated state), a subsurface rounds only the corners where its quad, already cropped to the content
-    // box by setSurfaceTreeClip, actually reaches a content-box corner, so an interior subsurface (embedded video)
-    // stays square. Popups are excluded: their surface is its own root.
+    // toplevel's surface tree is rounded against one box, the window's content box, so the arc always lands on the
+    // window's corners whichever surface draws them: an inset main surface, a full-window subsurface and an interior
+    // subsurface (embedded video) all follow from that box without knowing anything about each other. Popups are
+    // excluded: their surface is its own root.
     const int radius = surfaceRadius();
-    // A tiled target and an active resize animation can both lead committed
-    // geometry, so use the presented size for corner membership in either case.
+    // A tiled target and an active resize animation can both lead committed geometry, so the box follows the presented
+    // size in either case.
     const wlr_box& geometry = m_toplevel->base->geometry;
     const bool usePresentedSize =
         (m_tiled || sizeAnimating()) && m_presentation.width() > 0 && m_presentation.height() > 0;
@@ -1207,29 +1290,19 @@ namespace umbriel {
               || wlr_surface_get_root_surface(sceneSurface->surface) != ctx->view->m_toplevel->base->surface) {
             return;
           }
-          if (sceneSurface->surface == ctx->view->m_toplevel->base->surface) {
-            wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
-            return;
-          }
+
           // The iterator accumulates positions from the node it was handed, so subtracting the tree's own position
           // yields tree-local coordinates. The xdg scene helper places the surface tree at (-geometry.x, -geometry.y),
-          // which puts the content box at the tree origin.
-          const int x = sx - ctx->treeX;
-          const int y = sy - ctx->treeY;
-          const int w = buffer->dst_width > 0 ? buffer->dst_width : sceneSurface->surface->current.width;
-          const int h = buffer->dst_height > 0 ? buffer->dst_height : sceneSurface->surface->current.height;
-          const bool left = x == 0;
-          const bool top = y == 0;
-          const bool right = x + w == ctx->contentWidth;
-          const bool bottom = y + h == ctx->contentHeight;
-          const int r = ctx->radius;
-          // Always set, zeros included: a subsurface that moved or resized off a corner must lose its stale radius.
-          wlr_scene_buffer_set_corner_radii(
-              buffer,
-              corner_radii_new(
-                  top && left ? r : 0, top && right ? r : 0, bottom && right ? r : 0, bottom && left ? r : 0
-              )
-          );
+          // which puts the content box at the tree origin, and the corner box is node-relative.
+          const wlr_box cornerBox{
+              ctx->treeX - sx,
+              ctx->treeY - sy,
+              ctx->contentWidth,
+              ctx->contentHeight,
+          };
+          // Always set, zeros included: a window that lost its radius must lose the box with it.
+          wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
+          wlr_scene_buffer_set_corner_box(buffer, ctx->radius > 0 ? &cornerBox : nullptr);
         },
         &ctx
     );
@@ -1355,6 +1428,7 @@ namespace umbriel {
           }
           wlr_scene_buffer_set_transform(copy, src->transform);
           wlr_scene_buffer_set_corner_radii(copy, src->corners);
+          wlr_scene_buffer_set_corner_box(copy, &src->corner_box);
           wlr_scene_buffer_set_opacity(copy, src->opacity);
           wlr_scene_buffer_set_transfer_function(copy, src->transfer_function);
           wlr_scene_buffer_set_primaries(copy, src->primaries);
@@ -1699,7 +1773,7 @@ namespace umbriel {
     showDecorations(!m_toplevel->scheduled.fullscreen);
 
     if (m_workspace != nullptr) {
-      m_workspace->layoutAttach(this, rule.defaultWidth);
+      m_workspace->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
     } else if (!attachToAvailableWorkspace(rule)) {
       setOnActiveWorkspace(true);
     }
@@ -1755,6 +1829,10 @@ namespace umbriel {
     // Fullscreen after workspace + focus so the view lands in the right place.
     if (rule.defaultFullscreen && *rule.defaultFullscreen) {
       setFullscreen(true);
+    }
+
+    if (transientParent() != nullptr) {
+      raiseToTop();
     }
 
     if (m_onActiveWorkspace) {
@@ -1883,7 +1961,7 @@ namespace umbriel {
     }
     m_initialRulesSettled = false;
     m_initialRules = {};
-    m_initialRulesXdgTag.clear();
+    m_initialRulesXdgTag.reset();
     m_initialRulesContentType = ContentType::None;
     m_namedScrollingColumnName.reset();
     m_namedScrollingColumnOrder.reset();
@@ -1908,7 +1986,7 @@ namespace umbriel {
     if (m_xdgTag == tag) {
       return;
     }
-    m_xdgTag = tag;
+    m_xdgTag = std::string(tag);
     m_server->scheduleIpcWindowsEvent();
     if (m_mapped) {
       applyDynamicRules();
@@ -2176,6 +2254,7 @@ namespace umbriel {
     wl_list_remove(&m_requestResize.link);
     wl_list_remove(&m_requestMaximize.link);
     wl_list_remove(&m_requestFullscreen.link);
+    wl_list_remove(&m_setParent.link);
     wl_list_remove(&m_setTitle.link);
     wl_list_remove(&m_setAppId.link);
     m_map.link.next = nullptr;
@@ -2186,6 +2265,7 @@ namespace umbriel {
     m_requestResize.link.next = nullptr;
     m_requestMaximize.link.next = nullptr;
     m_requestFullscreen.link.next = nullptr;
+    m_setParent.link.next = nullptr;
     m_setTitle.link.next = nullptr;
     m_setAppId.link.next = nullptr;
     m_sceneTree->node.data = nullptr;
@@ -2399,6 +2479,12 @@ namespace umbriel {
         m_workspace->snapVisible(this);
         m_workspace->markArrange(true);
       }
+    }
+  }
+
+  void View::handleSetParent() {
+    if (m_mapped) {
+      raiseToTop();
     }
   }
 
@@ -2721,7 +2807,7 @@ namespace umbriel {
     if (fullscreen) {
       // scheduled.fullscreen is set; reparent to fullscreen layer.
       wlr_scene_node_reparent(&m_sceneTree->node, homeTree());
-      wlr_scene_node_raise_to_top(&m_sceneTree->node);
+      raiseToTop();
       // Snap scroll to the now viewport-wide column and reflow neighbors.
       if (m_workspace != nullptr) {
         m_workspace->snapVisible(this);
@@ -2736,6 +2822,8 @@ namespace umbriel {
       wlr_scene_node_reparent(&m_sceneTree->node, homeTree());
       if (!m_tiled && m_workspace != nullptr) {
         m_workspace->restackFloatingViews();
+      } else {
+        raiseToTop();
       }
       if (restoreFloating) {
         requestFloatingSize(m_fullscreenRestoreBox.width, m_fullscreenRestoreBox.height);
@@ -2800,8 +2888,8 @@ namespace umbriel {
     // Late app ID or title settlement may select opening rules, but identity
     // hints changed after map must not select new one-shot behavior.
     const ResolvedWindowRule rule = resolveWindowRules(
-        config(), m_toplevel->app_id, m_toplevel->title, m_initialRulesXdgTag, m_initialRulesContentType,
-        m_borderFocusedState, m_server->uptimeMs()
+        config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_initialRulesXdgTag,
+        m_initialRulesContentType, m_borderFocusedState, m_server->uptimeMs()
     );
 
     const bool namedScrollingColumnNameChanged = rule.defaultScrollingColumn.has_value()
@@ -2838,7 +2926,7 @@ namespace umbriel {
       if (target != nullptr && target != m_workspace) {
         setWorkspace(target, false);
         if (m_workspace == target) {
-          target->layoutAttach(this, rule.defaultWidth);
+          target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
           if (m_tiled && m_toplevel->scheduled.maximized && !m_maximizedToEdges) {
             setMaximized(true);
           }
@@ -2932,16 +3020,16 @@ namespace umbriel {
   }
 
   const ResolvedWindowRule& View::resolvedRules() {
-    const char* appId = m_toplevel->app_id;
-    const char* title = m_toplevel->title;
-    const std::string_view appIdView = appId != nullptr ? appId : "";
-    const std::string_view titleView = title != nullptr ? title : "";
+    const std::optional<std::string_view> appId = ruleText(m_toplevel->app_id);
+    const std::optional<std::string_view> title = ruleText(m_toplevel->title);
     const uint64_t generation = configStore().generation();
 
+    // An unset identity string is a distinct key from an empty one: only the latter matches a pattern accepting the
+    // empty string, so a client that replaces a missing title with an empty one must re-resolve.
     if (m_rulesGeneration == generation
         && m_rulesFocused == m_borderFocusedState
-        && m_rulesAppId == appIdView
-        && m_rulesTitle == titleView
+        && m_rulesAppId == appId
+        && m_rulesTitle == title
         && m_rulesXdgTag == m_xdgTag
         && m_rulesContentType == m_contentType) {
       return m_rules;
@@ -2951,8 +3039,8 @@ namespace umbriel {
         resolveWindowRules(config(), appId, title, m_xdgTag, m_contentType, m_borderFocusedState, m_server->uptimeMs());
     m_rulesGeneration = generation;
     m_rulesFocused = m_borderFocusedState;
-    m_rulesAppId = appIdView;
-    m_rulesTitle = titleView;
+    m_rulesAppId = appId;
+    m_rulesTitle = title;
     m_rulesXdgTag = m_xdgTag;
     m_rulesContentType = m_contentType;
     return m_rules;

@@ -39,7 +39,7 @@ line is `{"event":"<family>","data":…}`.
 
 | Family | Fires on |
 | ------ | -------- |
-| `theme` | color or corner-radius changes from a config reload |
+| `theme` | color or corner-radius changes from a config reload; see [payload](#theme-payload) |
 | `overview` | the overview opening or closing |
 | `keyboard_layout` | layout switches; skipped in the initial state when no keyboard exists |
 | `windows` | window open, close, focus, title, app id, geometry, workspace, floating state |
@@ -61,6 +61,45 @@ Events are the only way to follow a workspace's **layout mode**: the
 `ext-workspace-v1` protocol publishes workspace lists, names, and activation to
 any Wayland client, but it has no concept of a layout, and Umbriel selects
 scrolling, dwindle, or master per workspace.
+
+### Theme payload
+
+The `theme` payload mirrors the color configuration. Every color is an
+`#RRGGBBAA` string, and `corner_radius` is an integer count of logical pixels.
+The example is wrapped for readability; the stream writes it as one line.
+
+```json
+{"event":"theme","data":{
+  "background":"#141419FF",
+  "text_primary":"#E8E8EAFF",
+  "text_muted":"#8A8A92FF",
+  "accent_primary":"#7AA3FFFF",
+  "accent_secondary":"#F5C96BFF",
+  "warning":"#F5C96BFF",
+  "error":"#FF6B6BFF",
+  "insert_hint":"#7FC8FF80",
+  "backdrop":"#000000FF",
+  "shadow":"#0000007F",
+  "border":{
+    "focused":"#7AA3FFFF",
+    "unfocused":"#292933FF",
+    "scratchpad_focused":"#E5C07BFF",
+    "scratchpad_unfocused":"#5C4A2AFF",
+    "outer":"#1A1A1FFF"
+  },
+  "overview":{
+    "background_tint":"#10101430",
+    "workspace_background":"#00000044",
+    "badge":"#7AA3FFFF"
+  },
+  "corner_radius":10
+}}
+```
+
+The flat keys, the `border` object, and the `overview` object carry `[colors]`,
+`[colors.border]`, and `[colors.overview]` as written in the configuration, and
+`corner_radius` carries `appearance.corner_radius`. See
+[Appearance](appearance.md#colors) for what each color paints.
 
 ### From the command line
 

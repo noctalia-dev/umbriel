@@ -142,9 +142,14 @@ Without `-c`, Umbriel selects the first existing configuration in this order:
 3. `<datadir>/umbriel/config.toml`, compiled from the Meson installation paths
 4. Internal defaults when none of those files exist
 
-Umbriel never writes a user configuration automatically. A selected file with
-syntax or validation errors does not fall through to the next candidate.
-Explicit `-c` paths never use the fallback chain.
+Umbriel captures these candidate paths at startup and watches them for the
+session. Creating a higher-priority file or removing the current file
+re-evaluates the lookup without a restart. A selected file with syntax or
+validation errors does not fall through to the next candidate; the last valid
+configuration remains active until the file is corrected or removed.
+
+Umbriel never writes a user configuration automatically. An explicit `-c` path
+stays fixed and never uses the fallback chain.
 
 Users can copy the packaged starting point with:
 

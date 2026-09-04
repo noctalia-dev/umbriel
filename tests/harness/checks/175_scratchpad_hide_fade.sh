@@ -32,11 +32,13 @@ curve = "linear"
 dim = 0.0
 blur = false
 
+[colors]
+backdrop = "#000000FF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
-backdrop_color = "#000000FF"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

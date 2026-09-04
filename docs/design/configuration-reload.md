@@ -21,6 +21,29 @@ A successful reload applies only the runtime effects caused by changed
 sections. Saving identical content is inert: it must not reset output state,
 move focus, close overlays, or otherwise disturb the session.
 
+## Implicit source discovery
+
+Without `-c`, Umbriel captures the lookup candidates from its startup
+environment before applying configured environment variables. The order is the
+user path, every `$XDG_CONFIG_DIRS` path in order, then the packaged path. Each
+automatic or manual reload selects the first regular file from that fixed list.
+
+All candidates remain watched, including paths whose parent directories do not
+exist yet. The watcher follows the nearest existing ancestor and rearms as path
+components appear. Creating a higher-priority file can therefore promote it
+without a restart. Removing the current file selects the next existing
+candidate. When no candidate exists, built-in defaults, including the built-in
+keybinds, are a successful implicit selection.
+
+Selection is not a parse fallback. If the first existing candidate fails to
+parse or validate, the last committed root and configuration remain active;
+lower-priority candidates are not loaded. Watches still cover every lookup
+candidate and the attempted include graph, so correcting or removing the file
+can recover automatically.
+
+An explicit `-c` path stays fixed. A missing or invalid explicit file keeps the
+last valid configuration and never enters the implicit lookup chain.
+
 ## Selective runtime effects
 
 Output state and workspace inventory are independent effects.
@@ -57,6 +80,12 @@ session refresh.
 
 The relevant regression coverage is in:
 
+- [`tests/unit/config_load.cpp`](../../tests/unit/config_load.cpp), which checks
+  implicit promotion and fallback, failed-candidate recovery, launch-time path
+  capture, and explicit-path pinning.
+- [`tests/unit/config_watcher.cpp`](../../tests/unit/config_watcher.cpp), which
+  checks automatic promotion when the user config directory does not exist at
+  startup.
 - [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks
   change classification and runtime effects.
 - [`tests/harness/checks/050_config_reload.sh`](../../tests/harness/checks/050_config_reload.sh),

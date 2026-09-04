@@ -143,6 +143,16 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.workspaces);
     CHECK(!change.workspaceRules);
+    CHECK(!ConfigEffects::between(before, after).workspaceInventory);
+  }
+  {
+    Config after;
+    after.workspaces.emptyAbove = !after.workspaces.emptyAbove;
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.workspaces);
+    const ConfigEffects effects = ConfigEffects::between(before, after);
+    CHECK(effects.workspaceInventory);
+    CHECK(effects.workspaceLayout);
   }
   {
     Config after;
@@ -185,13 +195,20 @@ UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   CHECK(ConfigChange::between(before, focused).input);
 }
 
-UMBRIEL_TEST(featureSpecificColorChangesRemainAppearanceChanges) {
+UMBRIEL_TEST(borderColorChangesAreColorChangesThatRefreshChrome) {
   const Config before;
   Config after;
-  after.appearance.borderFocused[0] += 0.1F;
+  after.colors.border.focused[0] += 0.1F;
   const ConfigChange change = ConfigChange::between(before, after);
-  CHECK(change.appearance);
-  CHECK(!change.colors);
+  CHECK(change.colors);
+  CHECK(!change.appearance);
+
+  const ConfigEffects effects = ConfigEffects::between(before, after);
+  CHECK(effects.viewChrome);
+  CHECK(effects.internalUi);
+  CHECK(effects.overviewPresentation);
+  CHECK(!effects.workspaceLayout);
+  CHECK(!effects.sceneBlur);
 }
 
 UMBRIEL_TEST(listSectionsAreCompared) {
@@ -313,18 +330,17 @@ UMBRIEL_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   CHECK(effects.internalUi);
 }
 
-UMBRIEL_TEST(semanticColorsRefreshOnlyInternalUi) {
+UMBRIEL_TEST(anyColorChangeRefreshesEveryColorConsumer) {
   const Config before;
   Config after;
   after.colors.textPrimary[0] -= 0.1F;
 
   const ConfigEffects effects = ConfigEffects::between(before, after);
-  CHECK(effects.internalUi);
-  CHECK_EQ(effects.summary(), std::string("internal UI"));
+  CHECK_EQ(effects.summary(), std::string("view chrome, internal UI, overview presentation"));
   CHECK(!effects.outputState);
   CHECK(!effects.workspaceLayout);
-  CHECK(!effects.viewChrome);
-  CHECK(!effects.overviewPresentation);
+  CHECK(!effects.sceneBlur);
+  CHECK(!effects.input);
 }
 
 UMBRIEL_TEST(borderWidthRefreshesChromeAndWorkspaceLayout) {
@@ -421,6 +437,13 @@ UMBRIEL_TEST(outputStateAndWorkspaceInventoryAreIndependent) {
   CHECK(!inventoryEffects.outputState);
   CHECK(inventoryEffects.workspaceInventory);
   CHECK(inventoryEffects.workspaceLayout);
+
+  Config minimumChanged = before;
+  minimumChanged.outputs[0].minWorkspaces = 3;
+  const ConfigEffects minimumEffects = ConfigEffects::between(before, minimumChanged);
+  CHECK(!minimumEffects.outputState);
+  CHECK(minimumEffects.workspaceInventory);
+  CHECK(minimumEffects.workspaceLayout);
 
   Config disabled = before;
   disabled.outputs[0].enabled = false;

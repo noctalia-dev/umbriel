@@ -34,8 +34,8 @@ namespace umbriel {
     constexpr Logger kLog("cursor");
     constexpr double kHotCornerExtent = 8.0;
 
-    // Panels (top/overlay) keep working inside the overview. Wallpaper and bottom-layer widgets are part of the inert
-    // desktop behind the filmstrip, so their clicks belong to the overview instead.
+    // Panels (top/overlay) keep working inside the overview. Background- and bottom-layer surfaces are part of the
+    // inert backdrop behind the filmstrip, so their clicks belong to the overview instead.
     bool overviewPassthroughLayer(const LayerSurface* layer) {
       if (layer == nullptr) {
         return false;
@@ -1324,8 +1324,6 @@ namespace umbriel {
   View* Cursor::hoverFocus(
       View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
   ) {
-    // Only activate when the pointer enters a different window (under old pos != under new pos). Do not warp the
-    // pointer with scroll: that re-arms enters during a swipe and cascades across columns.
     if (m_server->seat()->wlr()->drag != nullptr
         || m_server->sessionLocked()
         || *layer != nullptr
@@ -1333,11 +1331,15 @@ namespace umbriel {
         || !view->mapped()) {
       return view;
     }
+    // Consume the invalidation only after every hover-focus eligibility gate. PointerHover never arms it, so layout
+    // motion caused by this focus cannot turn into another focus on the next input event.
+    const bool refocus = m_hoverFocusInvalidated;
+    m_hoverFocusInvalidated = false;
     wlr_surface* oldSurface = nullptr;
     double oldSx = 0;
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
-    const bool entered = view != oldView;
+    const bool entered = refocus || view != oldView;
     const bool alreadyFocused = view->workspace() != nullptr && view->workspace()->focusedView() == view;
     if (entered && !alreadyFocused) {
       m_server->focusView(view, FocusReason::PointerHover);

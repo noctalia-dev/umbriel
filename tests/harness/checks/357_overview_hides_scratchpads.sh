@@ -129,19 +129,23 @@ dim = 0.0
 blur = false
 scale = 0.0
 
+[colors]
+backdrop = "#000000FF"
+
+[colors.overview]
+background_tint = "#00000000"
+workspace_background = "#00000000"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
-backdrop_color = "#000000FF"
 
 [appearance.blur]
 enabled = false
 
 [overview]
 background_blur = false
-background_tint = "#00000000"
-workspace_background = "#00000000"
 shortcuts = false
 
 [[window_rule]]

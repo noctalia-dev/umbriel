@@ -21,7 +21,9 @@ blur_popups = true
 | `match.namespace` | regex | Match the layer surface namespace. |
 
 Regular expressions match any part of a namespace. Use `^` and `$` to match
-the entire namespace.
+the entire namespace. A layer surface names itself when it is created, so
+`match.namespace = "^$"` selects the surfaces that named themselves with an
+empty string.
 
 ## Effects
 

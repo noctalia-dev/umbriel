@@ -1,5 +1,5 @@
-// Maps either a top exclusive zone or, when the height is zero, a full-output
-// background layer. It stays mapped until that output closes the layer surface.
+// Maps a top exclusive zone, a full-output background layer when the height is zero, or a 200x200 bottom-layer
+// square. It stays mapped until that output closes the layer surface.
 
 #include <wayland-client.h>
 
@@ -176,8 +176,8 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::println(stderr, "usage: layer-client <output> <exclusive-height-or-zero-background>");
+  if (argc < 3 || argc > 4) {
+    std::println(stderr, "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer]");
     return EXIT_FAILURE;
   }
   const std::string outputName = argv[1];
@@ -186,11 +186,15 @@ int main(int argc, char** argv) {
     std::println(stderr, "layer-client: exclusive height must not be negative");
     return EXIT_FAILURE;
   }
+  // A 200x200 bottom-layer square in the top-left corner, which the overview mirrors into every workspace preview.
+  const bool bottom = argc == 4 && std::string(argv[3]) == "bottom-layer";
 
   State state;
-  const bool background = exclusiveHeight == 0;
+  const bool background = !bottom && exclusiveHeight == 0;
   if (background) {
     state.fillColor = 0xFF5577AA;
+  } else if (bottom) {
+    state.fillColor = 0xFF00FF00;
   }
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
@@ -212,20 +216,28 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
+  uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+  if (background) {
+    layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+  } else if (bottom) {
+    layer = ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM;
+  }
   state.surface = wl_compositor_create_surface(state.compositor);
   state.layerSurface = zwlr_layer_shell_v1_get_layer_surface(
-      state.layerShell, state.surface, (*selected)->resource,
-      background ? ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
-      "umbriel-output-restore-regression"
+      state.layerShell, state.surface, (*selected)->resource, layer, "umbriel-output-restore-regression"
   );
   zwlr_layer_surface_v1_add_listener(state.layerSurface, &kLayerSurfaceListener, &state);
-  zwlr_layer_surface_v1_set_size(state.layerSurface, 0, background ? 0U : static_cast<uint32_t>(exclusiveHeight));
-  uint32_t anchors =
-      ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-  if (background) {
-    anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+  uint32_t anchors = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+  if (bottom) {
+    zwlr_layer_surface_v1_set_size(state.layerSurface, 200, 200);
   } else {
-    zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, exclusiveHeight);
+    zwlr_layer_surface_v1_set_size(state.layerSurface, 0, background ? 0U : static_cast<uint32_t>(exclusiveHeight));
+    anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+    if (background) {
+      anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+    } else {
+      zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, exclusiveHeight);
+    }
   }
   zwlr_layer_surface_v1_set_anchor(state.layerSurface, anchors);
   wl_surface_commit(state.surface);

@@ -107,7 +107,7 @@ namespace umbriel {
       static const OutputRule defaults;
       const OutputRule& lhs = before != nullptr ? *before : defaults;
       const OutputRule& rhs = after != nullptr ? *after : defaults;
-      return lhs.workspaces == rhs.workspaces;
+      return lhs.workspaces == rhs.workspaces && lhs.minWorkspaces == rhs.minWorkspaces;
     }
 
   } // namespace
@@ -123,8 +123,9 @@ namespace umbriel {
         || !sameWindowTearingPolicy(before, after);
     const bool directScanoutPolicy =
         outputNamesChanged || outputProjectionChanged(before, after, sameOutputDirectScanoutPolicy);
-    const bool workspaceInventory =
-        outputNamesChanged || outputProjectionChanged(before, after, sameWorkspaceInventory);
+    const bool workspaceInventory = outputNamesChanged
+        || outputProjectionChanged(before, after, sameWorkspaceInventory)
+        || before.workspaces.emptyAbove != after.workspaces.emptyAbove;
     const bool outputLayout = outputNamesChanged || outputProjectionChanged(before, after, sameOutputLayout);
     const bool sceneBlur =
         before.appearance.blur != after.appearance.blur || before.optimizedBlurNeeded() != after.optimizedBlurNeeded();
@@ -141,11 +142,16 @@ namespace umbriel {
             || before.workspaceRules != after.workspaceRules
             || before.appearance.totalBorderWidth() != after.appearance.totalBorderWidth(),
         .sceneBlur = sceneBlur,
-        .viewChrome = before.appearance != after.appearance || before.windowRules != after.windowRules || focusDim,
+        // [colors] owns the border, backdrop, insert-hint, and shadow colors, so
+        // any color edit refreshes window chrome.
+        .viewChrome = before.appearance != after.appearance
+            || before.colors != after.colors
+            || before.windowRules != after.windowRules
+            || focusDim,
         .layerEffects = sceneBlur || before.layerRules != after.layerRules,
         .animation = before.animation != after.animation,
         .input = before.input != after.input || before.hotCorners != after.hotCorners,
-        .overviewPresentation = before.overview != after.overview,
+        .overviewPresentation = before.overview != after.overview || before.colors != after.colors,
         .internalUi = before.colors != after.colors || before.general.modKey != after.general.modKey,
     };
   }

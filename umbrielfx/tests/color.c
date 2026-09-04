@@ -172,6 +172,25 @@ static bool read_buffer(struct fixture *fixture, struct wlr_buffer *buffer,
 	return ok;
 }
 
+static bool submit_solid_frame(struct wlr_render_pass *pass,
+		int width, int height, float red) {
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+		.box = { .width = width, .height = height },
+		.color = { .r = red, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+	return wlr_render_pass_submit(pass);
+}
+
+static size_t output_lut_count(struct fixture *fixture) {
+	size_t count = 0;
+	struct fx_output_lut *lut;
+	wl_list_for_each(lut, &fx_get_renderer(fixture->renderer)->output_luts, link) {
+		count++;
+	}
+	return count;
+}
+
 static bool render_texture(struct fixture *fixture, int width, int height,
 		uint32_t output_format, uint32_t input_format, uint32_t input_stride,
 		const void *input_data, enum wlr_color_transfer_function input_tf,
@@ -604,6 +623,598 @@ static bool test_fp16_save_restore(struct fixture *fixture) {
 		"FP16 save/restore round trip preserves luminance");
 }
 
+static bool test_shared_output_buffers(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_buffer *target_a = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_b = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	if (!check(target_a != NULL && target_b != NULL,
+			"allocate shared-output targets") ||
+			!check(transform != NULL, "create shared-output transform")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options options = {
+		.color_transform = transform,
+	};
+	struct wlr_render_pass *pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &options);
+	if (!check(pass != NULL, "begin first shared-output pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct fx_offscreen_buffers *output_buffers = fx_pass->output_buffers;
+	struct fx_framebuffer *shared_blend = fx_pass->buffer;
+	ok = check(output_buffers != NULL,
+		"first output pass has output-local buffers") && ok;
+	ok = check(fx_pass->needs_full_damage,
+		"first shared blend pass requests full damage") && ok;
+	if (output_buffers != NULL) {
+		ok = check(output_buffers->blend_buffer == shared_blend,
+			"first output pass targets the shared blend buffer") && ok;
+	}
+	bool submitted = submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f);
+	ok = check(submitted, "submit first shared-output pass") && ok;
+	if (!submitted) {
+		goto out;
+	}
+	if (output_buffers != NULL) {
+		ok = check(output_buffers->blend_valid,
+			"first full frame validates the shared blend buffer") && ok;
+	}
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_b, &options);
+	if (!check(pass != NULL, "begin second shared-output pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	ok = check(fx_pass->output_buffers == output_buffers,
+		"second target reuses the output-local buffer set") && ok;
+	ok = check(fx_pass->buffer == shared_blend,
+		"second target reuses the shared FP16 blend buffer") && ok;
+	ok = check(!fx_pass->needs_full_damage,
+		"valid shared blend skips repeated full damage") && ok;
+	submitted = submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.4f);
+	ok = check(submitted, "submit second shared-output pass") && ok;
+	if (!submitted) {
+		goto out;
+	}
+
+	pass = wlr_renderer_begin_buffer_pass(fixture->renderer, target_a, &options);
+	if (!check(pass != NULL, "begin generic transformed pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	ok = check(fx_pass->output_buffers == NULL,
+		"generic pass has no output-local buffers") && ok;
+	ok = check(!fx_pass->needs_full_damage,
+		"generic pass does not request output damage") && ok;
+	ok = check(fx_pass->buffer != shared_blend,
+		"generic pass does not borrow the output blend buffer") && ok;
+	ok = check(fx_pass->output_buffer->blend_buffer == fx_pass->buffer,
+		"generic pass keeps its blend buffer on the target") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.6f),
+		"submit generic transformed pass") && ok;
+
+out:
+	wlr_color_transform_unref(transform);
+	if (target_a != NULL) {
+		wlr_buffer_drop(target_a);
+	}
+	if (target_b != NULL) {
+		wlr_buffer_drop(target_b);
+	}
+	return ok;
+}
+
+static bool test_output_lut_cache(struct fixture *fixture) {
+	bool ok = true;
+	const uint16_t ramp_a[2] = { 0, UINT16_MAX };
+	const uint16_t ramp_b[2] = { UINT16_MAX / 4, UINT16_MAX * 3 / 4 };
+	struct wlr_color_transform *transform_a =
+		wlr_color_transform_init_lut_3x1d(2, ramp_a, ramp_a, ramp_a);
+	struct wlr_color_transform *transform_b =
+		wlr_color_transform_init_lut_3x1d(2, ramp_b, ramp_b, ramp_b);
+	struct wlr_buffer *target = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(transform_a != NULL && transform_b != NULL,
+			"create cached LUT transforms") ||
+			!check(target != NULL, "allocate LUT target")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options options_a = {
+		.color_transform = transform_a,
+	};
+	const struct wlr_buffer_pass_options options_b = {
+		.color_transform = transform_b,
+	};
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &options_a);
+	if (!check(pass != NULL, "begin LUT A pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	GLuint texture_a = fx_pass->output_lut;
+	ok = check(texture_a != 0, "LUT A uploads a texture") && ok;
+	ok = check(fx_pass->color_transform == transform_a,
+		"LUT A pass retains its transform") && ok;
+	ok = check(transform_a->ref_count == 2,
+		"LUT A transform is referenced for the pass lifetime") && ok;
+	ok = check(output_lut_count(fixture) == 1,
+		"renderer caches one LUT after LUT A begin") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f),
+		"submit LUT A pass") && ok;
+	ok = check(transform_a->ref_count == 1,
+		"LUT A pass releases its transform reference") && ok;
+
+	pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &options_b);
+	if (!check(pass != NULL, "begin LUT B pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	GLuint texture_b = fx_pass->output_lut;
+	ok = check(texture_b != 0, "LUT B uploads a texture") && ok;
+	ok = check(texture_b != texture_a,
+		"LUT A and LUT B keep distinct live texture names") && ok;
+	ok = check(fx_pass->color_transform == transform_b,
+		"LUT B pass retains its transform") && ok;
+	ok = check(transform_b->ref_count == 2,
+		"LUT B transform is referenced for the pass lifetime") && ok;
+	ok = check(output_lut_count(fixture) == 2,
+		"renderer caches both LUT textures") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.4f),
+		"submit LUT B pass") && ok;
+	ok = check(transform_b->ref_count == 1,
+		"LUT B pass releases its transform reference") && ok;
+
+	pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &options_a);
+	if (!check(pass != NULL, "begin second LUT A pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	ok = check(fx_pass->output_lut == texture_a,
+		"A/B/A returns to the original LUT A texture") && ok;
+	ok = check(fx_pass->output_lut != texture_b,
+		"A/B/A does not reuse LUT B for LUT A") && ok;
+	ok = check(output_lut_count(fixture) == 2,
+		"LUT A reuse does not allocate another cache entry") && ok;
+	ok = check(transform_a->ref_count == 2,
+		"reused LUT A transform is referenced for the pass lifetime") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.6f),
+		"submit reused LUT A pass") && ok;
+	ok = check(transform_a->ref_count == 1,
+		"reused LUT A pass releases its transform reference") && ok;
+
+	wlr_color_transform_unref(transform_a);
+	transform_a = NULL;
+	ok = check(output_lut_count(fixture) == 1,
+		"destroying LUT A removes only its cache entry") && ok;
+	wlr_color_transform_unref(transform_b);
+	transform_b = NULL;
+	ok = check(output_lut_count(fixture) == 0,
+		"destroying LUT B empties the renderer LUT cache") && ok;
+
+out:
+	wlr_color_transform_unref(transform_a);
+	wlr_color_transform_unref(transform_b);
+	if (target != NULL) {
+		wlr_buffer_drop(target);
+	}
+	return ok;
+}
+
+static bool test_shared_sdr_capture(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_buffer *target_a = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_b = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	if (!check(target_a != NULL && target_b != NULL,
+			"allocate SDR capture targets") ||
+			!check(transform != NULL, "create SDR capture transform")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options options = {
+		.color_transform = transform,
+	};
+	struct wlr_render_pass *pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &options);
+	if (!check(pass != NULL, "begin first SDR capture pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct fx_offscreen_buffers *output_buffers = fx_pass->output_buffers;
+	struct fx_framebuffer *target_a_fb = fx_pass->output_buffer;
+	ok = check(output_buffers != NULL,
+		"first capture pass has output-local buffers") && ok;
+	fx_pass->output_buffer->capture_sdr = true;
+	bool submitted = submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f);
+	ok = check(submitted, "submit first SDR capture pass") && ok;
+	if (!submitted || output_buffers == NULL) {
+		goto out;
+	}
+
+	struct wlr_texture *capture_texture =
+		wlr_texture_from_buffer(fixture->renderer, target_a);
+	ok = check(capture_texture != NULL,
+		"first target exposes an SDR capture texture") && ok;
+	if (capture_texture != NULL) {
+		wlr_texture_destroy(capture_texture);
+	}
+	struct fx_framebuffer *shared_capture = output_buffers->sdr_capture_buffer;
+	uint64_t first_generation = output_buffers->sdr_capture_generation;
+	ok = check(shared_capture != NULL,
+		"first capture allocates the output SDR sidecar") && ok;
+	ok = check(first_generation != 0 &&
+			first_generation == output_buffers->blend_generation,
+		"first capture records the current blend generation") && ok;
+	ok = check(target_a_fb->sdr_capture_buffer == NULL,
+		"first target does not own a private capture sidecar") && ok;
+	if (shared_capture != NULL) {
+		ok = check(shared_capture->drm_format == target_a_fb->drm_format,
+			"shared capture sidecar preserves the output format") && ok;
+	}
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_b, &options);
+	if (!check(pass != NULL, "begin second SDR capture pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	struct fx_framebuffer *target_b_fb = fx_pass->output_buffer;
+	ok = check(fx_pass->output_buffers == output_buffers,
+		"second capture target reuses the output buffer set") && ok;
+	fx_pass->output_buffer->capture_sdr = true;
+	submitted = submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.6f);
+	ok = check(submitted, "submit second SDR capture pass") && ok;
+	if (!submitted) {
+		goto out;
+	}
+	ok = check(output_buffers->blend_generation != first_generation,
+		"second rendered target advances the blend generation") && ok;
+	ok = check(output_buffers->sdr_capture_generation == first_generation,
+		"old SDR sidecar remains tagged with its previous generation") && ok;
+
+	capture_texture = wlr_texture_from_buffer(fixture->renderer, target_b);
+	ok = check(capture_texture != NULL,
+		"second target refreshes the SDR capture texture") && ok;
+	if (capture_texture != NULL) {
+		wlr_texture_destroy(capture_texture);
+	}
+	ok = check(output_buffers->sdr_capture_buffer == shared_capture,
+		"second target reuses the shared SDR capture sidecar") && ok;
+	ok = check(output_buffers->sdr_capture_generation ==
+			output_buffers->blend_generation,
+		"refreshed sidecar records the new blend generation") && ok;
+	ok = check(target_b_fb->sdr_capture_buffer == NULL,
+		"second target does not own a private capture sidecar") && ok;
+
+out:
+	wlr_color_transform_unref(transform);
+	if (target_a != NULL) {
+		wlr_buffer_drop(target_a);
+	}
+	if (target_b != NULL) {
+		wlr_buffer_drop(target_b);
+	}
+	return ok;
+}
+
+static bool test_shared_output_transform_transition(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_buffer *target_a = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_b = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	if (!check(target_a != NULL && target_b != NULL,
+			"allocate transform-transition targets") ||
+			!check(transform != NULL, "create transform-transition output transform")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options transformed_options = {
+		.color_transform = transform,
+	};
+	struct wlr_render_pass *pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &transformed_options);
+	if (!check(pass != NULL, "begin initial transformed output pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct fx_offscreen_buffers *output_buffers = fx_pass->output_buffers;
+	ok = check(output_buffers != NULL,
+		"initial transformed pass has output-local buffers") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f),
+		"submit initial transformed output pass") && ok;
+	if (output_buffers == NULL) {
+		goto out;
+	}
+	ok = check(output_buffers->blend_valid,
+		"initial transformed pass validates the shared blend") && ok;
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_b, NULL);
+	if (!check(pass != NULL, "begin intervening untransformed output pass")) {
+		ok = false;
+		goto out;
+	}
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.6f),
+		"submit intervening untransformed output pass") && ok;
+	ok = check(!output_buffers->blend_valid,
+		"untransformed output pass invalidates the shared blend") && ok;
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &transformed_options);
+	if (!check(pass != NULL, "begin transformed output pass after SDR")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	ok = check(fx_pass->output_buffers == output_buffers,
+		"transformed output pass returns to the same output buffers") && ok;
+	ok = check(fx_pass->needs_full_damage,
+		"first transformed pass after SDR requests full damage") && ok;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.4f),
+		"submit transformed output pass after SDR") && ok;
+
+out:
+	wlr_color_transform_unref(transform);
+	if (target_a != NULL) {
+		wlr_buffer_drop(target_a);
+	}
+	if (target_b != NULL) {
+		wlr_buffer_drop(target_b);
+	}
+	return ok;
+}
+
+static bool test_shared_sdr_capture_lock(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_buffer *target_a = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_b = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	struct wlr_texture *held_capture = NULL;
+	struct wlr_texture *blocked_capture = NULL;
+	struct wlr_texture *refreshed_capture = NULL;
+	if (!check(target_a != NULL && target_b != NULL,
+			"allocate capture-lock targets") ||
+			!check(transform != NULL, "create capture-lock output transform")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options options = {
+		.color_transform = transform,
+	};
+	struct wlr_render_pass *pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &options);
+	if (!check(pass != NULL, "begin first capture-lock pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct fx_offscreen_buffers *output_buffers = fx_pass->output_buffers;
+	fx_pass->output_buffer->capture_sdr = true;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f),
+		"submit first capture-lock pass") && ok;
+	if (output_buffers == NULL) {
+		ok = check(false, "capture-lock pass has output-local buffers") && ok;
+		goto out;
+	}
+
+	held_capture = wlr_texture_from_buffer(fixture->renderer, target_a);
+	ok = check(held_capture != NULL,
+		"create held SDR capture texture") && ok;
+	struct fx_framebuffer *shared_capture = output_buffers->sdr_capture_buffer;
+	if (held_capture == NULL || shared_capture == NULL) {
+		ok = check(false, "held texture has a shared capture sidecar") && ok;
+		goto out;
+	}
+	ok = check(shared_capture->buffer->n_locks > 0,
+		"held capture texture locks the shared sidecar") && ok;
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_b, &options);
+	if (!check(pass != NULL, "begin second capture-lock pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	fx_pass->output_buffer->capture_sdr = true;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.6f),
+		"submit second capture-lock pass") && ok;
+
+	blocked_capture = wlr_texture_from_buffer(fixture->renderer, target_b);
+	ok = check(blocked_capture == NULL,
+		"locked SDR sidecar is not overwritten for a newer generation") && ok;
+	if (blocked_capture != NULL) {
+		wlr_texture_destroy(blocked_capture);
+		blocked_capture = NULL;
+	}
+	wlr_texture_destroy(held_capture);
+	held_capture = NULL;
+
+	refreshed_capture = wlr_texture_from_buffer(fixture->renderer, target_b);
+	ok = check(refreshed_capture != NULL,
+		"SDR capture refreshes after the prior consumer unlocks") && ok;
+	ok = check(output_buffers->sdr_capture_buffer == shared_capture,
+		"capture refresh reuses the unlocked shared sidecar") && ok;
+
+out:
+	if (refreshed_capture != NULL) {
+		wlr_texture_destroy(refreshed_capture);
+	}
+	if (blocked_capture != NULL) {
+		wlr_texture_destroy(blocked_capture);
+	}
+	if (held_capture != NULL) {
+		wlr_texture_destroy(held_capture);
+	}
+	wlr_color_transform_unref(transform);
+	if (target_a != NULL) {
+		wlr_buffer_drop(target_a);
+	}
+	if (target_b != NULL) {
+		wlr_buffer_drop(target_b);
+	}
+	return ok;
+}
+
+static bool test_shared_sdr_capture_storage_change(struct fixture *fixture) {
+	bool ok = true;
+	uint32_t alternate_format = select_10bit_format(fixture);
+	struct wlr_buffer *target_a = create_output_buffer(fixture,
+		DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_b = alternate_format == DRM_FORMAT_INVALID ? NULL :
+		create_output_buffer(fixture, alternate_format, TEST_WIDTH, TEST_HEIGHT);
+	struct wlr_buffer *target_resized = alternate_format == DRM_FORMAT_INVALID ? NULL :
+		create_output_buffer(fixture, alternate_format,
+			TEST_WIDTH + 1, TEST_HEIGHT + 1);
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	struct wlr_texture *capture_texture = NULL;
+	if (!check(alternate_format != DRM_FORMAT_INVALID,
+			"find alternate capture format") ||
+			!check(target_a != NULL && target_b != NULL && target_resized != NULL,
+				"allocate capture-storage targets") ||
+			!check(transform != NULL, "create capture-storage output transform")) {
+		ok = false;
+		goto out;
+	}
+
+	const struct wlr_buffer_pass_options options = {
+		.color_transform = transform,
+	};
+	struct wlr_render_pass *pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_a, &options);
+	if (!check(pass != NULL, "begin initial capture-storage pass")) {
+		ok = false;
+		goto out;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct fx_offscreen_buffers *output_buffers = fx_pass->output_buffers;
+	fx_pass->output_buffer->capture_sdr = true;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.2f),
+		"submit initial capture-storage pass") && ok;
+	if (output_buffers == NULL) {
+		ok = check(false, "capture-storage pass has output-local buffers") && ok;
+		goto out;
+	}
+	capture_texture = wlr_texture_from_buffer(fixture->renderer, target_a);
+	ok = check(capture_texture != NULL,
+		"create initial capture-storage texture") && ok;
+	if (capture_texture == NULL) {
+		goto out;
+	}
+	wlr_texture_destroy(capture_texture);
+	capture_texture = NULL;
+	uint64_t unchanged_generation = output_buffers->blend_generation;
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_b, &options);
+	if (!check(pass != NULL, "begin alternate-format output pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	fx_pass->output_buffer->capture_sdr = true;
+	ok = check(wlr_render_pass_submit(pass),
+		"submit unchanged alternate-format output pass") && ok;
+	ok = check(output_buffers->blend_generation == unchanged_generation,
+		"unchanged frame preserves the blend generation") && ok;
+
+	capture_texture = wlr_texture_from_buffer(fixture->renderer, target_b);
+	ok = check(capture_texture != NULL,
+		"create alternate-format capture texture") && ok;
+	if (capture_texture != NULL) {
+		struct fx_framebuffer *capture_buffer =
+			output_buffers->sdr_capture_buffer;
+		ok = check(capture_buffer != NULL &&
+				capture_buffer->drm_format == alternate_format,
+			"generation fast path validates the capture format") && ok;
+		ok = check(capture_buffer != NULL &&
+				capture_buffer->buffer->width == TEST_WIDTH &&
+				capture_buffer->buffer->height == TEST_HEIGHT,
+			"generation fast path validates the capture dimensions") && ok;
+		wlr_texture_destroy(capture_texture);
+		capture_texture = NULL;
+	}
+
+	pass = fx_renderer_begin_output_buffer_pass(
+		fixture->output, target_resized, &options);
+	if (!check(pass != NULL, "begin resized capture-storage pass")) {
+		ok = false;
+		goto out;
+	}
+	fx_pass = fx_get_render_pass(pass);
+	ok = check(fx_pass->needs_full_damage,
+		"resizing shared blend requests full damage") && ok;
+	fx_pass->output_buffer->capture_sdr = true;
+	ok = check(submit_solid_frame(pass, TEST_WIDTH + 1, TEST_HEIGHT + 1, 0.4f),
+		"submit resized capture-storage pass") && ok;
+	capture_texture = wlr_texture_from_buffer(fixture->renderer, target_resized);
+	ok = check(capture_texture != NULL,
+		"create resized capture texture") && ok;
+	if (capture_texture != NULL) {
+		struct fx_framebuffer *capture_buffer =
+			output_buffers->sdr_capture_buffer;
+		ok = check(capture_buffer != NULL &&
+				capture_buffer->drm_format == alternate_format &&
+				capture_buffer->buffer->width == TEST_WIDTH + 1 &&
+				capture_buffer->buffer->height == TEST_HEIGHT + 1,
+			"resized capture sidecar matches target storage") && ok;
+	}
+
+out:
+	if (capture_texture != NULL) {
+		wlr_texture_destroy(capture_texture);
+	}
+	wlr_color_transform_unref(transform);
+	if (target_a != NULL) {
+		wlr_buffer_drop(target_a);
+	}
+	if (target_b != NULL) {
+		wlr_buffer_drop(target_b);
+	}
+	if (target_resized != NULL) {
+		wlr_buffer_drop(target_resized);
+	}
+	return ok;
+}
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -634,6 +1245,18 @@ int main(int argc, char *argv[]) {
 		ok = test_fp16_blur_effects(&fixture);
 	} else if (strcmp(argv[1], "fp16-save-restore") == 0) {
 		ok = test_fp16_save_restore(&fixture);
+	} else if (strcmp(argv[1], "shared-output-buffers") == 0) {
+		ok = test_shared_output_buffers(&fixture);
+	} else if (strcmp(argv[1], "output-lut-cache") == 0) {
+		ok = test_output_lut_cache(&fixture);
+	} else if (strcmp(argv[1], "shared-sdr-capture") == 0) {
+		ok = test_shared_sdr_capture(&fixture);
+	} else if (strcmp(argv[1], "shared-output-transform-transition") == 0) {
+		ok = test_shared_output_transform_transition(&fixture);
+	} else if (strcmp(argv[1], "shared-sdr-capture-lock") == 0) {
+		ok = test_shared_sdr_capture_lock(&fixture);
+	} else if (strcmp(argv[1], "shared-sdr-capture-storage-change") == 0) {
+		ok = test_shared_sdr_capture_storage_change(&fixture);
 	} else {
 		fprintf(stderr, "unknown case: %s\n", argv[1]);
 		ok = false;

@@ -7,7 +7,11 @@ reference.
 ```toml
 [keybinds]
 "Mod+T" = "spawn:kitty"
-"Mod+Shift+Q" = "window-close"
+"Mod+Q" = "window-close"
+"Mod+Left" = "window-focus-left"
+"Mod+Right" = "window-focus-right"
+"Mod+Up" = "window-focus-up"
+"Mod+Down" = "window-focus-down"
 "Mod+I" = "overview-toggle"
 ```
 

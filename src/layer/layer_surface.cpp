@@ -5,6 +5,7 @@
 #include "core/log.h"
 #include "input/seat.h"
 #include "output/output.h"
+#include "overview/overview.h"
 #include "server/server.h"
 #include "view/popup.h"
 #include "wlr.h"
@@ -51,7 +52,7 @@ namespace umbriel {
       m_layerSurface = nullptr;
       return;
     }
-    m_rule = resolveLayerRules(config(), m_layerSurface->namespace_);
+    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_));
     m_scene->tree->node.data = sceneNodeData(this);
     m_layerSurface->data = this;
 
@@ -147,6 +148,7 @@ namespace umbriel {
           }
           wlr_scene_buffer_set_transform(copy, src->transform);
           wlr_scene_buffer_set_corner_radii(copy, src->corners);
+          wlr_scene_buffer_set_corner_box(copy, &src->corner_box);
           wlr_scene_buffer_set_opacity(copy, src->opacity);
           wlr_scene_buffer_set_transfer_function(copy, src->transfer_function);
           wlr_scene_buffer_set_primaries(copy, src->primaries);
@@ -281,7 +283,7 @@ namespace umbriel {
   }
 
   void LayerSurface::applyConfig() {
-    m_rule = resolveLayerRules(config(), m_layerSurface->namespace_);
+    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_));
     updateBlur();
   }
 
@@ -329,6 +331,7 @@ namespace umbriel {
       focus();
     }
     updateBlur();
+    notifyDesktopStack();
 
     const auto& animation = config().animation;
     const auto& layers = animation.layers;
@@ -362,8 +365,19 @@ namespace umbriel {
       }
     }
     m_arrangingOut = false;
+    notifyDesktopStack();
     if (hadFocus) {
       m_server->refocus();
+    }
+  }
+
+  void LayerSurface::notifyDesktopStack() {
+    const uint32_t layer = m_layerSurface->current.layer;
+    if (layer != ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND && layer != ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM) {
+      return;
+    }
+    if (Overview* overview = m_server->overview()) {
+      overview->onDesktopLayerChanged(output());
     }
   }
 
@@ -384,6 +398,7 @@ namespace umbriel {
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
       reparentToLayer(m_layerSurface->current.layer);
+      notifyDesktopStack();
     }
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY) != 0) {

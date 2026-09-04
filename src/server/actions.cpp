@@ -31,6 +31,7 @@ namespace umbriel {
     // through to.
     template <wlr_direction D> bool actionOutputFocus(Server& server, const Keybind& bind, std::string* error);
     template <wlr_direction D> bool actionColumnMoveToOutput(Server& server, const Keybind& bind, std::string* error);
+    void finishWorkspaceTransfer(Server& server, View& focused);
 
     Workspace* activeWorkspace(Server& server) {
       Output* output = server.outputFromWlr(server.preferredOutput());
@@ -140,11 +141,12 @@ namespace umbriel {
     // Move `view` to `target` (possibly on another output), activate the target workspace, and focus the view. Floats
     // land proportionally via their remembered usable-area fraction.
     void moveViewToWorkspace(Server& server, View& view, Workspace& target) {
+      Workspace* source = view.workspace();
+      const bool workspaceChanged = source != &target;
       const bool floating = view.floating();
       std::optional<double> widthFrac;
       bool fullWidth = false;
       if (!floating && target.scrollingLayout() != nullptr) {
-        const Workspace* source = view.workspace();
         const ScrollingLayout* sourceLayout = source != nullptr ? source->scrollingLayout() : nullptr;
         if (sourceLayout != nullptr) {
           const int column = sourceLayout->columnOf(&view);
@@ -176,6 +178,9 @@ namespace umbriel {
         view.restoreFloatingPosition();
       }
       server.focusView(&view, FocusReason::Directional);
+      if (workspaceChanged) {
+        finishWorkspaceTransfer(server, view);
+      }
     }
 
     // Move the focused tiled column as one structural unit. Rebuild it only
@@ -237,6 +242,7 @@ namespace umbriel {
       target.markArrange();
       target.group()->activate(&target);
       server.focusView(focused, FocusReason::Directional);
+      finishWorkspaceTransfer(server, *focused);
       return true;
     }
 
@@ -456,17 +462,30 @@ namespace umbriel {
       return wlr_box_intersection(&visible, &target, &outputBox) ? visible : outputBox;
     }
 
-    void warpCursorToWindow(Server& server, View& view) {
+    bool warpCursorToWindow(Server& server, View& view) {
       const wlr_box target = windowWarpBox(server, view);
       if (target.width > 0 && target.height > 0) {
         server.cursor()->warpToPreservingFocus(target.x + target.width / 2.0, target.y + target.height / 2.0);
+        return true;
       }
+      return false;
     }
 
-    void maybeWarpCursorToWindow(Server& server, View* view) {
+    bool maybeWarpCursorToWindow(Server& server, View* view) {
       Overview* overview = server.overview();
       if (config().input.cursor.followsFocus && view != nullptr && (overview == nullptr || !overview->active())) {
-        warpCursorToWindow(server, *view);
+        return warpCursorToWindow(server, *view);
+      }
+      return false;
+    }
+
+    void finishWorkspaceTransfer(Server& server, View& focused) {
+      if (maybeWarpCursorToWindow(server, &focused)) {
+        return;
+      }
+      Output* destination = focused.currentOutput();
+      if (destination != nullptr && destination != server.outputFromWlr(server.preferredOutput())) {
+        warpToOutputCenter(server, *destination);
       }
     }
 
@@ -959,16 +978,13 @@ namespace umbriel {
         for (const auto& entry : server.views()) {
           if (entry->mapped() && entry->onActiveWorkspace()) {
             moveViewToWorkspace(server, *entry, **target);
-            warpToTargetOutput();
             return true;
           }
         }
       }
       if (bind.action == KeybindAction::ColumnMoveToWorkspace) {
         if (Workspace* source = activeWorkspace(server)) {
-          if (moveFocusedColumnToWorkspace(server, *source, **target)) {
-            warpToTargetOutput();
-          }
+          moveFocusedColumnToWorkspace(server, *source, **target);
         }
         return true;
       }
@@ -1115,7 +1131,6 @@ namespace umbriel {
         return true; // nothing focused: silent no-op
       }
       moveViewToWorkspace(server, *view, *destination);
-      warpToOutputCenter(server, *target);
       return true;
     }
 
@@ -1135,7 +1150,6 @@ namespace umbriel {
       if (source == nullptr || !moveFocusedColumnToWorkspace(server, *source, *destination)) {
         return true; // nothing focused: silent no-op
       }
-      warpToOutputCenter(server, *target);
       return true;
     }
 

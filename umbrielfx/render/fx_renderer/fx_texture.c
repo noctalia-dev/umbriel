@@ -6,6 +6,7 @@
 #include <wlr/util/log.h>
 #include <drm_fourcc.h>
 
+#include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "umbrielfx/render/fx_renderer/fx_renderer.h"
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/pixel_format.h"
@@ -408,38 +409,74 @@ static struct wlr_texture *fx_texture_from_framebuffer(
 }
 
 static bool update_sdr_capture_buffer(struct fx_framebuffer *output_buffer) {
-	if (output_buffer->sdr_capture_valid) {
+	struct fx_offscreen_buffers *output_buffers = output_buffer->output_buffers;
+	struct fx_framebuffer *blend_buffer = output_buffer->blend_buffer;
+	struct fx_framebuffer **capture_buffer = &output_buffer->sdr_capture_buffer;
+	if (output_buffers != NULL) {
+		if (output_buffer->output_generation != 0 &&
+				output_buffers->sdr_capture_generation ==
+				output_buffer->output_generation &&
+				output_buffers->sdr_capture_buffer != NULL &&
+				output_buffers->sdr_capture_buffer->buffer->width ==
+					output_buffer->buffer->width &&
+				output_buffers->sdr_capture_buffer->buffer->height ==
+					output_buffer->buffer->height &&
+				output_buffers->sdr_capture_buffer->drm_format ==
+					output_buffer->drm_format) {
+			return true;
+		}
+		if (!output_buffers->blend_valid ||
+				output_buffer->output_generation !=
+				output_buffers->blend_generation) {
+			return false;
+		}
+		blend_buffer = output_buffers->blend_buffer;
+		capture_buffer = &output_buffers->sdr_capture_buffer;
+	} else if (output_buffer->sdr_capture_valid) {
 		return true;
 	}
-	if (output_buffer->blend_buffer == NULL) {
+	if (blend_buffer == NULL) {
+		return false;
+	}
+	if (*capture_buffer != NULL && (*capture_buffer)->buffer->n_locks > 0) {
+		wlr_log(WLR_DEBUG, "SDR capture buffer is still in use");
 		return false;
 	}
 
 	struct fx_renderer *renderer = output_buffer->renderer;
 	uint32_t format = output_buffer->drm_format;
+	struct wlr_allocator *allocator = output_buffers != NULL
+		? output_buffers->allocator : renderer->allocator;
+	if (allocator == NULL) {
+		return false;
+	}
 
 	bool failed = false;
 	struct wlr_egl_context prev_ctx;
 	if (!wlr_egl_make_current(renderer->egl, &prev_ctx)) {
 		return false;
 	}
-	fx_framebuffer_get_or_create_custom(renderer, renderer->allocator,
+	fx_framebuffer_get_or_create_custom(renderer, allocator,
 		output_buffer->buffer->width, output_buffer->buffer->height, format,
-		&output_buffer->sdr_capture_buffer, &failed);
+		capture_buffer, &failed);
 	wlr_egl_restore_context(&prev_ctx);
-	if (failed || output_buffer->sdr_capture_buffer == NULL) {
+	if (failed || *capture_buffer == NULL) {
 		return false;
 	}
-	output_buffer->sdr_capture_buffer->sdr_capture_parent = output_buffer;
+	if (output_buffers != NULL) {
+		output_buffers->sdr_capture_generation = 0;
+	} else {
+		(*capture_buffer)->sdr_capture_parent = output_buffer;
+	}
 
 	struct wlr_texture *texture = fx_texture_from_framebuffer(renderer,
-		output_buffer->blend_buffer, output_buffer->blend_buffer->buffer);
+		blend_buffer, blend_buffer->buffer);
 	if (texture == NULL) {
 		return false;
 	}
 
 	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
-		&renderer->wlr_renderer, output_buffer->sdr_capture_buffer->buffer, NULL);
+		&renderer->wlr_renderer, (*capture_buffer)->buffer, NULL);
 	if (pass == NULL) {
 		wlr_texture_destroy(texture);
 		return false;
@@ -456,9 +493,15 @@ static bool update_sdr_capture_buffer(struct fx_framebuffer *output_buffer) {
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
 		.transfer_function = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR,
 	});
-	output_buffer->sdr_capture_valid = wlr_render_pass_submit(pass);
+	bool valid = wlr_render_pass_submit(pass);
 	wlr_texture_destroy(texture);
-	return output_buffer->sdr_capture_valid;
+	if (output_buffers != NULL) {
+		output_buffers->sdr_capture_generation = valid
+			? output_buffer->output_generation : 0;
+	} else {
+		output_buffer->sdr_capture_valid = valid;
+	}
+	return valid;
 }
 
 static struct wlr_texture *fx_texture_from_dmabuf(
@@ -475,9 +518,12 @@ static struct wlr_texture *fx_texture_from_dmabuf(
 		if (!update_sdr_capture_buffer(buffer)) {
 			return NULL;
 		}
-		texture_buffer = buffer->sdr_capture_buffer;
+		texture_buffer = buffer->output_buffers != NULL
+			? buffer->output_buffers->sdr_capture_buffer
+			: buffer->sdr_capture_buffer;
 	}
-	return fx_texture_from_framebuffer(renderer, texture_buffer, wlr_buffer);
+	return fx_texture_from_framebuffer(renderer, texture_buffer,
+		texture_buffer->buffer);
 }
 
 struct wlr_texture *fx_texture_from_buffer(struct wlr_renderer *wlr_renderer,

@@ -22,11 +22,17 @@ default_floating = true
 | `match.xdg_tag` | regex | Match the client-defined XDG toplevel tag. |
 | `match.content_type` | string | Match `"none"`, `"photo"`, `"video"`, or `"game"`. |
 | `match.is_focused` | bool | Match the window's focused state dynamically. |
-| `match.at_startup` | bool | Matches during the first 60 seconds after starting umbriel. |
+| `match.at_startup` | bool | Match `true` during the first 60 seconds after starting umbriel and `false` afterward. |
 
 Every selector is optional. A rule without selectors matches every window.
 Regular expressions match any part of a value by default. Use `^` and `$` when
 you need to match the entire value.
+
+A selector only matches a value the client actually set. A client that never set
+an app ID, a title, or a tag matches no pattern for it, while one that set an
+empty string matches a pattern that accepts the empty string. `match.title =
+"^$"` therefore selects windows whose title is empty, such as Firefox's browser
+toolbox, and never selects windows that are simply waiting to be titled.
 
 Run `umbriel windows` to inspect open windows. Its human-readable output adds
 suffixes such as `[xdg_tag=proton-game]` and `[content_type=game]` when those
@@ -37,8 +43,8 @@ An XDG toplevel tag is one client-defined string, not a fixed vocabulary. A
 client can set it before the window opens and replace it later if the window's
 purpose changes. The initial tag participates in opening settings. Later
 replacements refresh settings from the dynamic table below, but never replay
-opening settings. Windows with no tag, or an empty tag, do not match an
-`xdg_tag` selector.
+opening settings. Windows with no tag do not match an `xdg_tag` selector; a
+client that tagged itself with an empty string matches `"^$"`.
 
 Umbriel derives a window's content type from standardized Wayland hints on its
 XDG root surface and visible subsurfaces. When those hints differ, it uses the
@@ -64,7 +70,7 @@ opening settings do not overwrite user changes made in the meantime.
 | `default_maximize_to_edges` | bool | Explicitly open maximized to edges. The initial configure fills the usable area without layout struts, gaps, or borders, so the window does not open at its normal size first. Layer-shell exclusive zones stay visible. Takes precedence over `default_maximize`; when combined with `default_fullscreen` the window opens fullscreen and returns to maximized to edges once fullscreen is cleared. |
 | `default_focused` | bool | Take focus when opening, switching to the window's workspace when needed. Defaults to `true`; set to `false` to preserve the existing focus and workspace. |
 | `default_pinned` | bool | Open pinned above regular windows and keep the window visible across workspace changes. Pinning makes a tiled window floating. |
-| `default_size` | `[w,h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes; tiled windows ignore height. Takes precedence over `default_width`/`default_height` when set. |
+| `default_size` | `[w,h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes. A new tiled column in a horizontal scrolling layout uses the width and ignores the height; vertical scrolling, dwindle, and master use their layout geometry. Takes precedence over `default_width`/`default_height` when set. |
 | `default_width` | float | Initial extent as a fraction (0.1-1.0): usable-area width for floating windows, or scrolling-axis extent for tiled windows in the scrolling layout. Overrides `layout.scrolling.default_width_fraction`; ignored by tiled windows in dwindle and master. |
 | `default_height` | float | Floating windows only, on the same terms as `default_width`. Initial height as a fraction (0.1-1.0) of the usable area. Ignored for tiled windows. |
 | `default_position` | table | Floating windows only, initial position: `{ x = int, y = int, anchor = string }`. Ignored for tiled windows. |
@@ -79,8 +85,11 @@ honored.
 
 Scrolling extents are gap-aware, so lanes whose fractions sum to `1` exactly
 fill the viewport. A vertical scrolling workspace applies the fraction to lane
-height. Moving the lane within or between scrolling workspaces retains its
-current fraction.
+height. For a new horizontal column, a matching `default_size` width takes
+precedence over `default_width` and the configured scrolling default. Existing
+named columns keep their established width. The pixel width seeds a fraction of
+the opening viewport, and moving the lane within or between scrolling
+workspaces retains its current fraction.
 
 If neither `default_width` nor a matching
 `layout.scrolling.default_width_fraction` is set, a scrolling window chooses

@@ -27,7 +27,8 @@ namespace umbriel {
 
     [[nodiscard]] const Config& config() const { return m_config; }
     [[nodiscard]] const std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
-    // Every file that feeds this config, root plus includes.
+    // Every path whose change can affect the next reload: implicit lookup
+    // candidates, the attempted root, and its includes.
     [[nodiscard]] const std::vector<std::filesystem::path>& watchPaths() const { return m_watchPaths; }
     [[nodiscard]] const std::filesystem::path& rootPath() const { return m_rootPath; }
     // True when the session is running on built-in defaults because no file was
@@ -38,7 +39,7 @@ namespace umbriel {
 
     // Loader-only writers follow. The read-only API remains above.
     // Keep the active config when a reload fails.
-    void beginLoad();
+    void beginLoad(const std::vector<std::filesystem::path>& watchPaths);
     void addDiagnostic(ConfigDiagnostic diagnostic);
     // The sink the section readers append to directly.
     [[nodiscard]] std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }
@@ -48,7 +49,7 @@ namespace umbriel {
     // last (after a section has finished), so without this the list jumps around the file.
     void sortDiagnostics();
     // Adopt a successfully parsed config and bump the generation.
-    [[nodiscard]] ConfigReloadResult commit(Config&& config, bool fileMissing);
+    [[nodiscard]] ConfigReloadResult commit(Config&& config, std::filesystem::path rootPath, bool fileMissing);
     void setMissingIncludes(bool missing) { m_missingIncludes = missing; }
     void setRootPath(std::filesystem::path path, bool explicitPath);
 
@@ -56,6 +57,10 @@ namespace umbriel {
     Config m_config;
     std::vector<ConfigDiagnostic> m_diagnostics;
     std::vector<std::filesystem::path> m_watchPaths;
+    // Captured before configured environment variables are applied. Reloads
+    // recheck this fixed search order instead of letting the config redirect
+    // its own source through HOME or the XDG variables.
+    std::vector<std::filesystem::path> m_implicitCandidates;
     std::filesystem::path m_rootPath;
     bool m_explicitPath = false;
     bool m_fileMissing = false;

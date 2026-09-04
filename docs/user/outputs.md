@@ -50,7 +50,13 @@ without requiring each workspace to be visited. If no enabled output remains,
 windows stay without a workspace until one becomes available.
 
 Run `umbriel outputs` inside a session to list connector names, copyable monitor
-configuration names, and modes.
+configuration names, and modes. `umbriel outputs --json` prints the same
+information as an array. Each entry has the reported `name`, `description`,
+`make`, `model`, `serial`, `enabled`, `transform`, and `scale`; logical
+`position`; physical `physical_size` in millimetres; nullable `adaptive_sync`;
+and `modes`. Every mode has `width`, `height`, `refresh_mhz`, `preferred`, and
+`current`. `config_name` is the copyable monitor name or `null` when the display
+does not report make, model, or serial.
 
 ```toml
 [output.DP-1]
@@ -77,8 +83,27 @@ workspaces = 5
 | `hdr`                                        | string                            | `"off"`     | HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`.                                                                                           |
 | `sdr_white`                                  | float                             | `203`       | SDR reference white in cd/m2 while the output is in HDR mode (80-1000).                                                                             |
 | `workspaces`                                 | int, string array, or `"dynamic"` | `"dynamic"` | Dynamic numbered workspaces, a static count from 1 to 64, or a static ordered list of 1 to 64 names.                                                |
+| `min_workspaces`                             | int                               | `1`         | Workspace count a dynamic output never shrinks below (1-64). Rejected together with a static `workspaces` inventory.                                |
 | `transform`                                  | string                            | `"normal"`  | Output rotation/flip.                                                                                                                               |
 | `layout.scrolling.default_width_fraction`    | float                             | inherited   | Initial scrolling strip-axis extent for new columns on this output (0.1-1.0). Inherits the global value when omitted.                               |
+
+### Workspace count
+
+`workspaces` chooses the model: omitted or `"dynamic"` for dynamic numbered
+workspaces, a count or ordered name list for a static inventory.
+
+On a dynamic output, `min_workspaces` is a floor on the count. The output keeps
+that many workspaces while they are empty, still adds a trailing empty one above
+the floor, and prunes back down to it:
+
+```toml
+[output.DP-1]
+min_workspaces = 3
+```
+
+The floor is per output. Setting it alongside a static `workspaces` inventory is
+a configuration error, since that inventory already states an exact count. See
+[Workspaces](workspaces.md#choose-a-workspace-model).
 
 ### Initial scrolling width
 

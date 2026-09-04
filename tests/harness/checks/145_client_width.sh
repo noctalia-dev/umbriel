@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # harness: outputs=2
 # Omitting the scrolling default leaves the first width unconstrained, then
-# keeps the logical width chosen by the mapped client. A numeric window rule
-# remains authoritative. Initial sizing follows the output selected by rules.
+# keeps the logical width chosen by the mapped client. Fractional and pixel
+# window rules remain authoritative. Initial sizing follows the output selected
+# by rules, and default_size outranks both fractional sources.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
@@ -46,6 +47,12 @@ default_output = "HEADLESS-2"
 match.app_id = "^fixed-width$"
 default_output = "HEADLESS-2"
 default_width = 0.75
+
+[[window_rule]]
+match.app_id = "^pixel-width$"
+default_output = "HEADLESS-1"
+default_size = [1000, 600]
+default_width = 0.25
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -68,9 +75,24 @@ fi
 "$CLIENT" fixed-width 300 400 > "$UMBRIEL_RUNTIME_DIR/fixed-width.log" 2>&1 &
 wait_for_width fixed-width 942
 
+# The pixel rule lands on an output whose workspace default is 0.5, and also
+# carries a lower-priority 0.25 rule. Neither fraction may replace 1000 pixels.
+"$CLIENT" pixel-width 300 400 > "$UMBRIEL_RUNTIME_DIR/pixel-width.log" 2>&1 &
+wait_for_width pixel-width 1000
+first_configure_width=$(awk '/^first-configure / { print $2; exit }' "$UMBRIEL_RUNTIME_DIR/pixel-width.log")
+if [[ $first_configure_width != 1000 ]]; then
+  echo "default_size did not set the first configure width: $(<"$UMBRIEL_RUNTIME_DIR/pixel-width.log")"
+  exit 1
+fi
+sleep 0.3
+if [[ $(window_width pixel-width) != 1000 ]]; then
+  echo "default_size width changed after first arrange: $($UMBRIEL windows --json)"
+  exit 1
+fi
+
 if [[ $(window_width target-client-width) != 800 ]]; then
   echo "opening the fixed-width client changed the existing client width: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 
-echo "target output retained client width 800; numeric rule width 942"
+echo "client width 800, fractional rule width 942, and pixel rule width 1000 were retained"

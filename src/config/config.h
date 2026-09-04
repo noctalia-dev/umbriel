@@ -186,6 +186,9 @@ namespace umbriel {
     float sdrWhite = 203.0F;
     // Explicit workspace inventory. Omitted means dynamic workspaces.
     std::optional<std::vector<std::string>> workspaces;
+    // Smallest workspace count a dynamic output keeps. Rejected alongside an
+    // explicit inventory, which already states an exact count.
+    int minWorkspaces = 1;
     struct Layout {
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
@@ -380,6 +383,10 @@ namespace umbriel {
   };
 
   struct Config {
+    // Every color Umbriel draws, each an independent literal. `background`
+    // through `error` are the palette Umbriel's own panels paint with: the
+    // cheatsheet, the diagnostics banner, the quit confirmation, and overview
+    // badge text.
     struct Colors {
       std::array<float, 4> background{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
       std::array<float, 4> textPrimary{0.9098039F, 0.9098039F, 0.9176471F, 1.0F};
@@ -388,6 +395,31 @@ namespace umbriel {
       std::array<float, 4> accentSecondary{0.9607843F, 0.7882353F, 0.4196078F, 1.0F};
       std::array<float, 4> warning{0.9607843F, 0.7882353F, 0.4196078F, 1.0F};
       std::array<float, 4> error{1.0F, 0.4196078F, 0.4196078F, 1.0F};
+      // Drop-target preview during a drag.
+      std::array<float, 4> insertHint{0.4980392F, 0.7843137F, 1.0F, 0.5019608F};
+      // Fullscreen gaps and the lock screen.
+      std::array<float, 4> backdrop{0.0F, 0.0F, 0.0F, 1.0F};
+      std::array<float, 4> shadow{0.0F, 0.0F, 0.0F, 0.4980392F};
+
+      struct Border {
+        std::array<float, 4> focused{0.4784314F, 0.6392157F, 1.0F, 1.0F};
+        std::array<float, 4> unfocused{0.1607843F, 0.1607843F, 0.2F, 1.0F};
+        std::array<float, 4> scratchpadFocused{0.8980392F, 0.7529412F, 0.4823529F, 1.0F};
+        std::array<float, 4> scratchpadUnfocused{0.3607843F, 0.2901961F, 0.1647059F, 1.0F};
+        // No focus variant.
+        std::array<float, 4> outer{0.1019608F, 0.1019608F, 0.1215686F, 1.0F};
+        bool operator==(const Border&) const = default;
+      } border;
+
+      struct Overview {
+        // Composited over the desktop background while the overview is visible.
+        std::array<float, 4> backgroundTint{0.0627451F, 0.0627451F, 0.0784314F, 0.1882353F};
+        // Rounded background behind each workspace; alpha controls opacity.
+        std::array<float, 4> workspaceBackground{0.0F, 0.0F, 0.0F, 0.2666667F};
+        std::array<float, 4> badge{0.4784314F, 0.6392157F, 1.0F, 1.0F};
+        bool operator==(const Overview&) const = default;
+      } overview;
+
       bool operator==(const Colors&) const = default;
     } colors;
 
@@ -395,13 +427,6 @@ namespace umbriel {
       int borderWidth = 2;
       int outerBorderWidth = 0;
       int cornerRadius = 10;
-      std::array<float, 4> borderFocused{0.48F, 0.64F, 1.0F, 1.0F};
-      std::array<float, 4> borderUnfocused{0.16F, 0.16F, 0.20F, 1.0F};
-      std::array<float, 4> scratchpadBorderFocused{0.90F, 0.75F, 0.48F, 1.0F};
-      std::array<float, 4> scratchpadBorderUnfocused{0.36F, 0.29F, 0.16F, 1.0F};
-      std::array<float, 4> outerBorderColor{0.10F, 0.10F, 0.12F, 1.0F};
-      std::array<float, 4> insertHintColor{0.50F, 0.78F, 1.0F, 0.50F};
-      std::array<float, 4> backdropColor{0.0F, 0.0F, 0.0F, 1.0F};
       double dragOpacity = 0.75;
       struct Blur {
         bool enabled = true;
@@ -419,7 +444,6 @@ namespace umbriel {
         int softness = 10;
         int offsetX = 2;
         int offsetY = 2;
-        std::array<float, 4> color{0.0F, 0.0F, 0.0F, 0.50F};
         bool operator==(const Shadow&) const = default;
       } shadow;
       bool preferNoCsd = true;
@@ -516,17 +540,15 @@ namespace umbriel {
       // Blur the wallpaper behind the filmstrip while the overview is visible. Uses [appearance.blur] parameters;
       // inert when appearance blur is disabled.
       bool backgroundBlur = true;
-      // Tint composited over the desktop background while overview is visible.
-      std::array<float, 4> backgroundTint{0.0627451F, 0.0627451F, 0.0784314F, 0.1882353F};
-      // Rounded background behind each workspace; alpha controls opacity.
-      std::array<float, 4> workspaceBackground{0.0F, 0.0F, 0.0F, 0.2666667F};
+      // Mirror the output's background- and bottom-layer surfaces inside every workspace preview instead of the flat
+      // colors.overview.workspace_background fill. The real bottom layer is hidden while the overview is open, so a
+      // surface there appears once per workspace rather than twice at two scales.
+      bool workspaceWallpaper = true;
       // Keyboard shortcut badges on overview cards. Pressing a badge key focuses
       // that window and closes the overview.
       bool shortcuts = true;
       // Favorite badge keys in preference order, one ASCII character each.
       std::string shortcutKeys = "1234567890";
-      // Badge accent override. Unset follows colors.accent_primary.
-      std::optional<std::array<float, 4>> badgeColor;
       bool operator==(const Overview&) const = default;
     } overview;
 

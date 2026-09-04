@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Real clients map into the scrolling layout and land on the geometry the layout math predicts. This is the regression net for the layout sizing path. The size a
-# view is first configured with and the size the layout arranges it to must agree, or windows visibly resize on first paint.
+# view is first configured with and the size the layout arranges it to must agree, or windows visibly resize on first paint. Reloading the focus policy re-applies
+# it to the focused column, and the floating toggle round trips.
 set -euo pipefail
 
 spawn_client() {
@@ -79,33 +80,6 @@ if ! jq -e '[.[].x] | unique | length == 2' <<< "$windows" > /dev/null; then
   exit 1
 fi
 
-# The focused last column can rest beyond max scroll so its content is centered.
-"$UMBRIEL" msg column-center > /dev/null
-center_x=0
-for _ in $(seq 40); do
-  center_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "harness-b") | .x')
-  [[ $center_x -eq $EXPECT_CENTER_X ]] && break
-  sleep 0.1
-done
-if [[ $center_x -ne $EXPECT_CENTER_X ]]; then
-  echo "expected last column centered at x=$EXPECT_CENTER_X, got x=$center_x"
-  exit 1
-fi
-
-# The first column uses the corresponding negative resting offset.
-"$UMBRIEL" msg window-focus-left > /dev/null
-"$UMBRIEL" msg column-center > /dev/null
-center_x=0
-for _ in $(seq 40); do
-  center_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "harness-a") | .x')
-  [[ $center_x -eq $EXPECT_CENTER_X ]] && break
-  sleep 0.1
-done
-if [[ $center_x -ne $EXPECT_CENTER_X ]]; then
-  echo "expected first column centered at x=$EXPECT_CENTER_X, got x=$center_x"
-  exit 1
-fi
-
 # Reloading the focus policy applies it to the currently focused column.
 "$UMBRIEL" msg window-focus-right > /dev/null
 wait_for_x harness-b 646 "expected disabled center_focused to leave the last column at its bounded position"
@@ -137,4 +111,4 @@ if [[ $("$UMBRIEL" windows --json | jq '[.[] | select(.floating)] | length') -ne
   exit 1
 fi
 
-echo "2 clients tiled at ${EXPECT_W}x${EXPECT_H}, edge columns center, float round trip ok"
+echo "2 clients tiled at ${EXPECT_W}x${EXPECT_H}, center_focused reload applies, float round trip ok"

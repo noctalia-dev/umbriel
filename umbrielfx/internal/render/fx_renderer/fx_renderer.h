@@ -52,6 +52,9 @@ struct fx_framebuffer {
 	bool external_only;
 	bool owned;
 	uint32_t drm_format;
+	// Non-NULL when this is a swapchain target using output-local scratch buffers
+	struct fx_offscreen_buffers *output_buffers;
+	uint64_t output_generation;
 	struct fx_framebuffer *blend_buffer;
 	struct fx_framebuffer *blend_parent;
 	struct fx_framebuffer *sdr_capture_buffer;
@@ -236,10 +239,21 @@ struct fx_renderer {
 	struct wl_list buffers; // fx_framebuffer.link
 	struct wl_list textures; // fx_texture.link
 	struct wl_list offscreen_buffers; // fx_offscreen_buffers.link
+	struct wl_list output_luts; // fx_output_lut.link
 
 	TRACY_FN(
 		struct tracy_data *tracy_data;
 	)
 };
+
+struct fx_output_lut {
+	struct wlr_addon addon;
+	struct wl_list link; // fx_renderer.output_luts
+	struct fx_renderer *renderer;
+	GLuint texture;
+	float dim;
+};
+
+void fx_output_lut_destroy(struct fx_output_lut *lut);
 
 #endif

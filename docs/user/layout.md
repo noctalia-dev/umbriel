@@ -119,6 +119,8 @@ The packaged config sets `default_width_fraction = 0.5`, so new columns start at
 half the viewport. If the option is omitted, Umbriel leaves the strip-axis
 extent unconstrained during the initial configure and retains the logical size
 chosen by the client. A numeric `default_width` window rule takes precedence.
+For a new horizontal column, the pixel width from a matching `default_size`
+window rule takes precedence over both fractional settings.
 
 Set a different initial width for every scrolling workspace on one output under
 that output's section:
@@ -300,17 +302,29 @@ that changes the window's pixel size on that axis: a float's size is pixels, so
 a preset that rounds to the size the window already has is skipped rather than
 applied as a step that does nothing. Resizing a maximized float leaves
 maximization behind and keeps the new size, so a later toggle maximizes rather
-than reverting to the pre-maximize box. Fullscreen owns the size outright, so
-the actions do nothing while a float is fullscreen.
+than reverting to the pre-maximize box. Both axes use the
+`animation.windows_move` transition, and a float that hangs off an edge travels
+with the resize so the same part of it stays on screen at the new size.
+Fullscreen owns the size outright, so the actions do nothing while a float is
+fullscreen.
+
+Parented XDG dialogs are stacked with their ancestor chain. Raising any member
+raises the family while keeping each dialog above its parent, including when an
+ancestor is floating, pinned, or fullscreen.
 
 ### Maximize and fullscreen
 
 `window-toggle-fullscreen` ignores layout struts and layer-shell exclusive zones
-and fills the entire output. `window-toggle-maximize` toggles the focused
-column's full-width state, and a tiled column stays inside configured struts and
-gaps. A floating window has no column, so it fills the output's usable area and
-restores its exact previous box, including its last dropped position. Both
-directions use the `animation.windows_move` transition.
+and fills the entire output. It normally targets the focused window. If another
+fullscreen window completely covers that focus on the active output, the action
+exits the covering fullscreen window first and leaves focus in place.
+`window-toggle-maximize` toggles the focused column's full-width state, and a
+tiled column stays inside configured struts and gaps. A floating window has no
+column, so it fills the output's usable area and restores its exact previous
+box, including its last dropped position. Both directions use the
+`animation.windows_move` transition.
 `window-toggle-maximize-to-edges` drops layout struts, gaps, and borders, while
 layer-shell exclusive zones remain visible. A column's full-width restore state
-survives that toggle and a fullscreen round trip.
+survives that toggle and a fullscreen round trip. In the scrolling layout the
+strip reserves the strut band such a column reaches past, so neighboring
+columns keep their gap instead of sitting underneath the window.

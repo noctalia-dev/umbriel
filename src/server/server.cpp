@@ -326,7 +326,12 @@ namespace umbriel {
     if (m_contentTypeManager == nullptr) {
       throw std::runtime_error("failed to create content-type manager");
     }
-    wlr_ext_data_control_manager_v1_create(m_display, 1);
+    if (wlr_ext_data_control_manager_v1_create(m_display, 1) == nullptr) {
+      throw std::runtime_error("failed to create ext-data-control manager");
+    }
+    if (wlr_data_control_manager_v1_create(m_display) == nullptr) {
+      throw std::runtime_error("failed to create legacy data-control manager");
+    }
 
     m_outputLayout = wlr_output_layout_create(m_display);
     wlr_xdg_output_manager_v1_create(m_display, m_outputLayout);
@@ -390,7 +395,7 @@ namespace umbriel {
 
     // Global stacking keeps scratchpads above normal windows and below drag, panels, fullscreen, overlays, and lock.
     // Per-output layer trees keep normal windows below panels.
-    m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().appearance.backdropColor.data());
+    m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);
     m_shellLayerTrees[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND] = wlr_scene_tree_create(&m_scene->tree);
     m_overviewBlurTree = wlr_scene_tree_create(&m_scene->tree);
@@ -416,7 +421,7 @@ namespace umbriel {
     m_bannerTree = wlr_scene_tree_create(&m_scene->tree);
     m_quitConfirmTree = wlr_scene_tree_create(&m_scene->tree);
     m_lockTree = wlr_scene_tree_create(&m_scene->tree);
-    m_lockBlank = wlr_scene_rect_create(m_lockTree, 0, 0, config().appearance.backdropColor.data());
+    m_lockBlank = wlr_scene_rect_create(m_lockTree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_lockBlank, 0);
     wlr_scene_node_set_enabled(&m_lockBlank->node, false);
     wlr_scene_node_set_enabled(&m_lockTree->node, false);

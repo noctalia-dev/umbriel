@@ -201,9 +201,15 @@ if build_tests
     'fp16-blur',
     'fp16-blur-effects',
     'fp16-save-restore',
+    'shared-output-buffers',
+    'output-lut-cache',
+    'shared-sdr-capture',
+    'shared-output-transform-transition',
+    'shared-sdr-capture-lock',
+    'shared-sdr-capture-storage-change',
   ]
     test(
-      'umbrielfx-color-' + case_name,
+      'color-' + case_name,
       umbrielfx_color_test,
       args: case_name,
       suite: 'umbrielfx',
@@ -228,7 +234,7 @@ if build_tests
   endforeach
 
   test(
-    'umbrielfx-scene-abi',
+    'scene-abi',
     find_program('tests/abi_compare.sh', native: true),
     args: umbrielfx_abi_probes,
     suite: 'umbrielfx',

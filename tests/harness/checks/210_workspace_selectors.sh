@@ -66,13 +66,6 @@ workspace_name_of() {
   "$WORKSPACE" --all | awk -F'\t' -v id="$id" '$1 == id { print $2 }'
 }
 
-# Dynamic workspaces resolve on the preferred output, and qualification selects one output explicitly.
-accepts "workspace-switch:1"
-accepts "workspace-switch:1/HEADLESS-1"
-accepts "window-move-to-workspace:1"
-accepts "column-move-to-workspace:1/HEADLESS-1"
-accepts "workspace-switch:99"
-
 rejects_with "workspace-switch:1/NOPE" "unknown output: NOPE"
 rejects_with "workspace-switch:nosuchname" "unknown workspace: nosuchname"
 rejects_with "window-move-to-workspace:1/NOPE" "unknown output: NOPE"

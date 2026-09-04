@@ -4,6 +4,7 @@
 #include "output/identity.h"
 
 #include <cstddef>
+#include <optional>
 #include <string_view>
 
 namespace umbriel {
@@ -11,11 +12,18 @@ namespace umbriel {
   // Validation uses the same inventory rules as runtime resolution.
   [[nodiscard]] bool workspaceRuleTargetExists(const Config& config, const WorkspaceConfig& rule);
 
+  // Client identity a compositor may never have received. An unset value matches no pattern; a set but empty one
+  // matches a pattern that accepts the empty string, such as `^$`.
+  [[nodiscard]] inline std::optional<std::string_view> ruleText(const char* value) {
+    return value != nullptr ? std::optional<std::string_view>(value) : std::nullopt;
+  }
+
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(
-      const Config& config, const char* appId, const char* title, std::string_view xdgTag, ContentType contentType,
-      bool focused, uint64_t elapsedMs
+      const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
+      std::optional<std::string_view> xdgTag, ContentType contentType, bool focused, uint64_t uptimeMs
   );
-  [[nodiscard]] ResolvedLayerRule resolveLayerRules(const Config& config, const char* layerNamespace);
+  [[nodiscard]] ResolvedLayerRule
+  resolveLayerRules(const Config& config, std::optional<std::string_view> layerNamespace);
   // The globals every [[security_context_rule]] matching the client's metadata
   // grants on top of the base allowed set.
   [[nodiscard]] std::vector<std::string>
@@ -30,5 +38,7 @@ namespace umbriel {
   [[nodiscard]] ResolvedLayoutConfig
   resolveWorkspaceLayout(const Config& config, const OutputIdentity& identity, std::string_view name, size_t index);
   [[nodiscard]] ResolvedWorkspaceSet resolveWorkspacesForOutput(const Config& config, const OutputIdentity& identity);
+  // Workspace count a dynamic output never shrinks below.
+  [[nodiscard]] size_t resolveDynamicWorkspaceMinimum(const Config& config, const OutputIdentity& identity);
 
 } // namespace umbriel

@@ -115,7 +115,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 |--------|--------|
 | `window-close:[<window-id>]` | Close the focused window, or the given window |
 | `window-toggle-floating` | Float or tile the focused window |
-| `window-toggle-fullscreen` | Toggle fullscreen for the focused window |
+| `window-toggle-fullscreen` | Toggle fullscreen or exit a window covering the focus |
 | `window-toggle-maximize` | Toggle full width for the focused column |
 | `window-toggle-maximize-to-edges` | Toggle maximize without gaps, struts, or borders |
 | `window-toggle-pinned` | Pin the focused window above other windows |
@@ -215,16 +215,19 @@ workspaces](layout.md#vertical-workspaces).
   the quit bind confirms, any other key or a click cancels, and a second
   `session-quit` also quits. While the session is locked it quits without the
   dialog.
-- **Cursor.** With `input.cursor.follows_focus` enabled, the focus actions warp
-  the cursor to the visible center of the selected window, including `window-
-  focus-switch-floating` and `window-focus-last`. Pointer-driven and automatic
-  focus changes never move the cursor. `window-focus:<window-id>` stays focus-
-  only, while `window-focus-warp:<window-id>` always moves it.
+- **Cursor.** With `input.cursor.follows_focus` enabled, focus navigation and
+  window or column transfers between workspaces warp the cursor to the visible
+  center of the focused window. This includes transfers to another output.
+  Pointer-driven and automatic focus changes never move the cursor. `window-
+  focus:<window-id>` stays focus-only, while `window-focus-warp:<window-id>`
+  always moves it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction
   the action fails with an IPC error naming it ("no output to the left" and
-  friends). Otherwise the cursor warps to the center of the target monitor, so
-  focus follows the action. Output direction comes from output centers in
-  logical coordinates, so fractional-scale rounding does not hide a neighbor.
+  friends). Otherwise the cursor warps to the center of the target monitor so
+  focus follows the action. With `input.cursor.follows_focus` enabled, a moved
+  window or column uses its focused window's visible center instead. Output
+  direction comes from output centers in logical coordinates, so fractional-
+  scale rounding does not hide a neighbor.
 - **Cycling.** `window-focus-next` and `window-focus-previous` walk the tiled
   windows in layout order, then the floating ones, wrapping in both directions.
   `window-swap-next` and `window-swap-previous` exchange the focused tiled

@@ -358,6 +358,45 @@ if ! jq -e 'type == "array"' <<< "$layers" > /dev/null; then
   exit 1
 fi
 
+# Output management is a Wayland-client query rather than IPC, but it follows
+# the same JSON flag convention as the inspection commands.
+outputs=$("$UMBRIEL" outputs --json)
+if ! jq -e '
+  type == "array" and length == 1
+  and all(.[];
+    (has("name") and (.name | type == "string"))
+    and (has("description") and (.description | type == "string"))
+    and (has("make") and (.make | type == "string"))
+    and (has("model") and (.model | type == "string"))
+    and (has("serial") and (.serial | type == "string"))
+    and (has("config_name") and (.config_name == null or (.config_name | type == "string")))
+    and (has("physical_size") and (.physical_size | type == "object")
+      and (.physical_size.width_mm | type == "number")
+      and (.physical_size.height_mm | type == "number"))
+    and (has("enabled") and (.enabled | type == "boolean"))
+    and (has("position") and (.position | type == "object")
+      and (.position.x | type == "number")
+      and (.position.y | type == "number"))
+    and (has("transform") and (.transform | type == "string"))
+    and (has("scale") and (.scale | type == "number"))
+    and (has("adaptive_sync") and (.adaptive_sync == null or (.adaptive_sync | type == "boolean")))
+    and (has("modes") and (.modes | type == "array")
+      and all(.modes[];
+        (.width | type == "number")
+        and (.height | type == "number")
+        and (.refresh_mhz | type == "number")
+        and (.preferred | type == "boolean")
+        and (.current | type == "boolean")))
+  )
+' <<< "$outputs" > /dev/null; then
+  echo "outputs --json has an unexpected shape: $outputs"
+  exit 1
+fi
+if [[ $("$UMBRIEL" outputs -j) != "$outputs" ]]; then
+  echo "outputs -j differs from outputs --json"
+  exit 1
+fi
+
 # The headless harness may have no physical keyboard, in which case the command
 # errors with "no keyboard". Exactly one of the two shapes must appear.
 if layouts=$("$UMBRIEL" keyboard-layouts --json 2>/dev/null); then

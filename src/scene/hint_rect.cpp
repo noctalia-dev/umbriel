@@ -42,7 +42,7 @@ namespace umbriel {
     }
     m_tree = wlr_scene_tree_create(m_parent);
     float color[4]{};
-    premultiplied(color, config().appearance.insertHintColor, 0.0F);
+    premultiplied(color, config().colors.insertHint, 0.0F);
     m_rect = wlr_scene_rect_create(m_tree, 1, 1, color);
     wlr_scene_node_set_enabled(&m_tree->node, false);
   }
@@ -142,7 +142,7 @@ namespace umbriel {
     wlr_scene_node_set_position(&m_tree->node, std::lround(m_x.current()), std::lround(m_y.current()));
     wlr_scene_rect_set_size(m_rect, std::max(1L, std::lround(m_w.current())), std::max(1L, std::lround(m_h.current())));
     float color[4]{};
-    premultiplied(color, config().appearance.insertHintColor, static_cast<float>(m_alpha.current()));
+    premultiplied(color, config().colors.insertHint, static_cast<float>(m_alpha.current()));
     wlr_scene_rect_set_color(m_rect, color);
   }
 

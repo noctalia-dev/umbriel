@@ -40,11 +40,17 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 enabled = false
 
+[colors]
+backdrop = "#000000FF"
+
+[colors.overview]
+background_tint = "#000000FF"
+workspace_background = "#000000FF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
-backdrop_color = "#000000FF"
 
 [appearance.blur]
 enabled = false
@@ -52,8 +58,6 @@ enabled = false
 [overview]
 zoom = 0.5
 background_blur = false
-background_tint = "#000000FF"
-workspace_background = "#000000FF"
 shortcuts = false
 
 [output.HEADLESS-1]

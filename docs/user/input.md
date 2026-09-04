@@ -36,6 +36,11 @@ numlock_toggle = true # true enables NumLock when a keyboard connects; false lea
 track_layout = "global" # "global", or "window" to track the layout per surface
 ```
 
+These settings apply to physical keyboards. Virtual keyboard clients provide
+their own XKB keymaps, and Umbriel attaches each device to the seat only after
+its first usable keymap is ready. Applications therefore never receive the
+temporary empty keymap from a virtual keyboard that is still initializing.
+
 `layout` takes a comma-separated list to load several layouts at once
 (`layout = "us,de"`, optionally with a matching `variant = ",nodeadkeys"`). The
 first entry is active at startup. Switch between them with the
@@ -297,11 +302,13 @@ options can be enabled together.
 
 Set `follows_focus = true` to warp the cursor to the visible center of a window
 selected by directional window focus, next-window focus, floating-state focus,
-or first/last-column focus navigation. This applies whether the action comes
-from a keybind, wheel bind, or IPC. Pointer-driven focus, automatic focus after
-a window closes, gestures, and overview selection do not warp the cursor.
-`window-focus:<id>` remains focus-only; use `window-focus-warp:<id>` when an
-individual id-based request must always move the cursor.
+or first/last-column focus navigation. It also follows the focused window when
+a window or column moves to another workspace or output. This applies whether
+the action comes from a keybind, wheel bind, or IPC. Pointer-driven focus,
+automatic focus after a window closes, gestures, and overview selection do not
+warp the cursor. `window-focus:<id>` remains focus-only; use
+`window-focus-warp:<id>` when an individual id-based request must always move
+the cursor.
 
 ### Focus
 
@@ -313,8 +320,14 @@ follows_mouse_max_scroll = 0.5  # optional, measured in viewport widths
 
 | Key                        | Type  | Default    | Description                                                                                                                                                                     |
 | -------------------------- | ----- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `follows_mouse`            | bool  | `false`    | Focus a window when the pointer enters it, then scroll it into view.                                                                                                            |
+| `follows_mouse`            | bool  | `false`    | Focus the pointer target on enter, after compositor focus changes reveal another target, and after client drag completion.                                                      |
 | `follows_mouse_max_scroll` | float | (no limit) | Do not change focus when revealing the window would scroll farther than this many viewport widths. `0.0` allows only windows that are already fully visible. Omit for no limit. |
+
+Mapping windows and switching workspaces can change which window is under a
+stationary pointer. The existing focus remains until the next pointer motion,
+which selects the window under the pointer without requiring a border crossing.
+Finishing a client data drag performs the same refresh at the unchanged cursor
+position, so dropping over another window selects it immediately.
 
 For example, a window three screens away requires a limit of at least `3.0`.
 Values outside `0.0` to `100.0` are clamped and reported.

@@ -17,13 +17,17 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 duration_ms = 1
 
+[colors]
+backdrop = "#FF0000FF"
+
+[colors.border]
+focused = "#00FF00FF"
+unfocused = "#00FF00FF"
+
 [appearance]
 border_width = 12
 outer_border_width = 0
 corner_radius = 64
-border_focused = "#00FF00FF"
-border_unfocused = "#00FF00FF"
-backdrop_color = "#FF0000FF"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

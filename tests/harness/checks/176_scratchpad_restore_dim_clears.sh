@@ -17,11 +17,13 @@ sample_corner() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
+[colors]
+backdrop = "#FFFFFFFF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
-backdrop_color = "#FFFFFFFF"
 
 [animation.scratchpad]
 dim = 0.6

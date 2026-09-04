@@ -346,7 +346,7 @@ namespace umbriel {
       entry["active"] = v->activated();
       entry["app_id"] = v->toplevel()->app_id != nullptr ? v->toplevel()->app_id : "";
       entry["title"] = v->toplevel()->title != nullptr ? v->toplevel()->title : "";
-      entry["xdg_tag"] = v->xdgTag();
+      entry["xdg_tag"] = v->xdgTag().value_or("");
       entry["content_type"] = contentTypeName(v->contentType());
       entry["floating"] = v->floating();
       // The compositor's own notion of focus, which is what every action acts

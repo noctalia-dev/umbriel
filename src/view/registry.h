@@ -8,9 +8,8 @@ namespace umbriel {
 
   class View;
 
-  // Owns every View, ordered most-recently-focused first. The front entry is
-  // the window focused last, which provides focus fallback when the current
-  // window closes, when a session unlocks, or when a workspace empties.
+  // Owns every View, ordered most-recently-focused first. Scans in this order
+  // pick focus fallbacks: the most recently focused candidate comes first.
   class ViewRegistry {
   public:
     ViewRegistry();
@@ -27,7 +26,6 @@ namespace umbriel {
 
     [[nodiscard]] std::span<const std::unique_ptr<View>> all() const { return m_views; }
     [[nodiscard]] bool empty() const { return m_views.empty(); }
-    [[nodiscard]] View* mostRecent() const { return m_views.empty() ? nullptr : m_views.front().get(); }
 
     // Move `view` to the front. No-op when it is absent or already there.
     void promote(View* view);

@@ -56,13 +56,15 @@ measure_drag_green() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-insert_hint_color = "#FF0000FF"
-drag_opacity = 0.5
+[colors]
+insert_hint = "#FF0000FF"
 
-[overview]
+[colors.overview]
 background_tint = "#000000FF"
 workspace_background = "#00FF00FF"
+
+[appearance]
+drag_opacity = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

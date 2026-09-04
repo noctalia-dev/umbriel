@@ -1,19 +1,30 @@
 #ifndef _FX_OFFSCREEN_BUFFERS_H
 #define _FX_OFFSCREEN_BUFFERS_H
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/addon.h>
 
 /**
- * Per-output effect framebuffers. Each buffer is allocated the first time an
- * effect needs it and kept, sized to the output, until the output goes away
- * or `fx_renderer_clear_output_effect_buffers` is called.
+ * Per-output renderer framebuffers. Each buffer is allocated on first use and
+ * kept, sized to the output, until it is no longer needed or the output goes
+ * away.
  */
 struct fx_offscreen_buffers {
 	struct wl_list link; // fx_renderer.offscreen_buffers
 	struct wlr_addon addon;
+	struct fx_renderer *renderer;
 	// Allocator of the output the buffers belong to
 	struct wlr_allocator *allocator;
+
+	// Linear-light composition target shared by the output swapchain
+	struct fx_framebuffer *blend_buffer;
+	bool blend_valid;
+	uint64_t blend_generation;
+	// Gamma 2.2 view shared by SDR capture of an HDR output
+	struct fx_framebuffer *sdr_capture_buffer;
+	uint64_t sdr_capture_generation;
 
 	// Contains the blurred background for tiled windows
 	struct fx_framebuffer *optimized_blur_buffer;
@@ -31,5 +42,6 @@ struct fx_offscreen_buffers {
 
 void fx_offscreen_buffers_destroy(struct fx_offscreen_buffers *fbos);
 struct fx_offscreen_buffers *fx_offscreen_buffers_try_get(struct wlr_output *output);
+void fx_offscreen_buffers_invalidate_blend(struct wlr_output *output);
 
 #endif

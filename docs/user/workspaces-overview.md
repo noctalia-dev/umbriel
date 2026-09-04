@@ -9,16 +9,24 @@ appearance.
 [overview]
 zoom = 0.5                     # 0.1-0.75
 background_blur = true
-background_tint = "#10101430"
-workspace_background = "#00000044"
+workspace_wallpaper = true
 shortcuts = true
 shortcut_keys = "1234567890"
-# badge_color = "#7AA3FFFF"
 ```
 
 The wallpaper is blurred while the overview is open using the `[appearance.blur]`
 parameters. Set `background_blur = false`, or disable appearance blur, to turn it
 off.
+
+Each workspace preview shows the output's background: its wallpaper and
+anything else below the windows, mirrored from the background- and bottom-layer
+surfaces and scaled into the preview. The real bottom layer steps aside while
+the overview is open, the same way windows do behind their cards, so a surface
+there appears once per workspace instead of twice at two scales. Set
+`workspace_wallpaper = false` to leave the bottom layer in place and show only
+the flat `colors.overview.workspace_background` fill in each preview. An output
+whose clients map no background- or bottom-layer surface shows that fill either
+way.
 
 ### Open and navigate
 
@@ -32,10 +40,19 @@ closes.
 
 Click a window to focus it, middle-click to close it, or drag it to another
 workspace. When a click selects a window in another scrolling column, the
-column reveal runs together with the closing zoom. Use the wheel, arrow keys,
-or a 3-finger swipe to move through the workspace list. While the overview is
-open, each gesture moves one workspace at a time. A 4-finger swipe opens or
-closes the overview.
+column reveal runs together with the closing zoom. Use the wheel or a 3-finger
+swipe to move through the workspace list. Each wheel notch or swipe step moves
+one workspace at a time. A 4-finger swipe opens or closes the overview.
+
+#### Which window actions act on
+
+No window holds the keyboard while the overview is open, so one card at a time
+carries the full `colors.border.focused` color: the window a focus or close
+action would act on. It sits on the current output, which is the output holding
+the cursor and the one every output-changing keybind warps the cursor to. Each
+other workspace row marks its own window with a fainter border, showing where
+that row would land when you zoom into it. When the current workspace is empty,
+no card is marked, and those actions have nothing to act on.
 
 #### Keyboard shortcuts
 
@@ -43,9 +60,14 @@ Configured `[keybinds]` continue through the normal action dispatcher while the
 overview is interactive, so custom Vim-style bindings and non-navigation
 actions operate on the selected workspace and card without a separate overview
 mapping. Direct `window-focus-left` and `window-focus-right` actions select
-neighboring cards. Direct `window-focus-up` and `window-focus-down` actions
-select the previous and next workspace rows. Unbound arrow keys invoke those
-same four actions as a fallback.
+neighboring cards. Direct `window-focus-up` and `window-focus-down` retain their
+normal layout-specific behavior. With the default horizontal strip direction,
+they traverse stacked cards in the current column. Plain `Left`/`Right` keys
+that reach the overview fallback invoke the horizontal focus actions, while
+fallback `Up`/`Down` keys invoke `window-focus-or-workspace-up` and
+`window-focus-or-workspace-down`: they select a card above or below in the
+current workspace and step to the previous or next workspace row only when the
+layout has no card in that direction.
 
 Composite focus actions keep their normal local-first behavior. For example,
 `window-focus-or-workspace-down` first tries a window below and then selects the
@@ -53,6 +75,11 @@ next workspace, while `window-focus-or-output-right` falls through to the
 output on the right at the card edge. Overview selection never applies the
 implicit cursor warp from `input.cursor.follows_focus`; an explicit
 `window-focus-warp:<id>` or an output-changing action keeps its documented warp.
+
+Configured keybinds remain active while the closing zoom runs. A focus,
+workspace, or output selection made during that interval becomes the final
+landing target. Repeated workspace navigation moves the filmstrip without
+extending the closing zoom.
 
 Window cards show shortcut badges while the overview is open. Press a badge
 label without modifiers to focus that window and close the overview. Every card
@@ -105,22 +132,27 @@ lists only accept drops onto existing previews.
 ### Appearance
 
 Overview cards use the same borders, corner radius, transparency, and blur as
-their windows. They also retain each surface's color description, so HDR and
+their windows. The live target uses `colors.border.focused` unchanged, and the
+other rows' markers mix that color into `colors.border.unfocused`.
+Cards also retain each surface's color description, so HDR and
 extended-linear content keeps the same appearance while the overview is open.
-`workspace_background` adds a rounded background behind each workspace. Its
-alpha can produce anything from a light tint to an opaque fill.
-Shortcut badges use `colors.accent_primary` for their label and derive a subtle
-keycap background from that accent, matching the cheatsheet key combinations.
-Set `badge_color` to replace the badge accent and derive the background from the
-replacement. Badge corners follow `appearance.corner_radius`, capped at one
-quarter of the badge height so the shape remains a rounded rectangle.
+`colors.overview.workspace_background` adds a rounded background behind each
+workspace. Its alpha can produce anything from a light tint to an opaque fill,
+and the mirrored background covers it when `workspace_wallpaper` is on.
+Shortcut badges use `colors.overview.badge` for their label and render a subtle
+keycap background from it, matching the cheatsheet key combinations. A badge is
+as tall as its label's line box and never narrower than it is tall, so a
+single-character label reads as a square keycap. Badge corners use
+`appearance.corner_radius` scaled by `zoom`, the radius the cards around them
+draw with, capped at half the badge's shorter side.
 
 | Key                    | Type  | Default     | Description                                                                                    |
 | ---------------------- | ----- | ----------- | ---------------------------------------------------------------------------------------------- |
 | `zoom`                 | float | `0.5`       | Workspace scale when fully zoomed out (0.1-0.75).                                              |
 | `background_blur`      | bool  | `true`      | Blur the wallpaper behind the filmstrip. Uses the `[appearance.blur]` parameters.             |
-| `background_tint`      | color | `#10101430` | Tint composited over the desktop background. Alpha `00` leaves it untouched; `FF` hides it.    |
-| `workspace_background` | color | `#00000044` | Rounded background behind each workspace. Alpha `00` makes it invisible; `FF` makes it opaque. |
+| `workspace_wallpaper`  | bool  | `true`      | Mirror the output's background- and bottom-layer surfaces inside each workspace preview.        |
 | `shortcuts`             | bool   | `true`      | Show shortcut badges and accept their plain key sequences.                                      |
 | `shortcut_keys`         | string | `"1234567890"` | Favorite badge keys in preference order.                                                     |
-| `badge_color`          | color  | `colors.accent_primary` | Badge label accent. The keycap background is derived from this color.                                  |
+
+The overview's colors are configured in
+[`[colors.overview]`](appearance.md#overview-colors).

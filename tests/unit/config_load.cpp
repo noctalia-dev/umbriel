@@ -135,6 +135,121 @@ UMBRIEL_TEST(defaultConfigLookupPrefersUserThenSystem) {
   CHECK(!store.fileMissing());
 }
 
+UMBRIEL_TEST(implicitConfigReloadAdoptsAndReleasesHigherPriorityUserPath) {
+  const TempConfigTree tree;
+  const std::filesystem::path userHome = tree.path("user");
+  const std::filesystem::path systemDir = tree.path("system");
+  const std::filesystem::path systemConfig = systemDir / "umbriel/config.toml";
+  const std::filesystem::path userConfig = userHome / "umbriel/config.toml";
+  tree.write("system/umbriel/config.toml", "[layout]\ngap = 17\n");
+  const ScopedEnvironment configHome("XDG_CONFIG_HOME", userHome.string());
+  const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", systemDir.string());
+
+  ConfigStore& store = umbriel::configStore();
+  store.load(nullptr);
+
+  CHECK_EQ(store.rootPath(), systemConfig);
+  CHECK_EQ(store.config().layout.gap, 17);
+
+  tree.write("user/umbriel/config.toml", "[layout]\ngap = 19\n");
+  const umbriel::ConfigReloadResult adopted = store.reload();
+
+  CHECK(adopted.success);
+  CHECK_EQ(store.rootPath(), userConfig);
+  CHECK_EQ(store.config().layout.gap, 19);
+
+  std::filesystem::remove(userConfig);
+  const umbriel::ConfigReloadResult released = store.reload();
+
+  CHECK(released.success);
+  CHECK_EQ(store.rootPath(), systemConfig);
+  CHECK_EQ(store.config().layout.gap, 17);
+}
+
+UMBRIEL_TEST(malformedNewUserConfigKeepsActiveSystemConfigAndRetriesAfterCorrection) {
+  const TempConfigTree tree;
+  const std::filesystem::path userHome = tree.path("user");
+  const std::filesystem::path systemDir = tree.path("system");
+  const std::filesystem::path systemConfig = systemDir / "umbriel/config.toml";
+  const std::filesystem::path userConfig = userHome / "umbriel/config.toml";
+  tree.write("system/umbriel/config.toml", "[layout]\ngap = 17\n");
+  const ScopedEnvironment configHome("XDG_CONFIG_HOME", userHome.string());
+  const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", systemDir.string());
+
+  ConfigStore& store = umbriel::configStore();
+  store.load(nullptr);
+  const uint64_t generation = store.generation();
+
+  tree.write("user/umbriel/config.toml", "[layout\n");
+  const umbriel::ConfigReloadResult malformed = store.reload();
+
+  CHECK(!malformed.success);
+  CHECK_EQ(store.rootPath(), systemConfig);
+  CHECK_EQ(store.config().layout.gap, 17);
+  CHECK_EQ(store.generation(), generation);
+  CHECK(std::ranges::find(store.watchPaths(), userConfig) != store.watchPaths().end());
+  CHECK(std::ranges::find(store.watchPaths(), systemConfig) != store.watchPaths().end());
+
+  tree.write("user/umbriel/config.toml", "[layout]\ngap = 19\n");
+  const umbriel::ConfigReloadResult corrected = store.reload();
+
+  CHECK(corrected.success);
+  CHECK_EQ(store.rootPath(), userConfig);
+  CHECK_EQ(store.config().layout.gap, 19);
+  CHECK_EQ(store.generation(), generation + 1);
+}
+
+UMBRIEL_TEST(implicitConfigReloadKeepsCandidatesCapturedAtInitialLoad) {
+  const TempConfigTree tree;
+  const std::filesystem::path initialUserHome = tree.path("initial-user");
+  const std::filesystem::path changedUserHome = tree.path("changed-user");
+  const std::filesystem::path systemDir = tree.path("system");
+  const std::filesystem::path systemConfig = systemDir / "umbriel/config.toml";
+  const std::filesystem::path changedUserConfig = changedUserHome / "umbriel/config.toml";
+  tree.write("system/umbriel/config.toml", "[layout]\ngap = 17\n");
+  const ScopedEnvironment configHome("XDG_CONFIG_HOME", initialUserHome.string());
+  const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", systemDir.string());
+
+  ConfigStore& store = umbriel::configStore();
+  store.load(nullptr);
+  const std::vector<std::filesystem::path> initialWatchPaths = store.watchPaths();
+
+  tree.write("changed-user/umbriel/config.toml", "[layout]\ngap = 29\n");
+  const ScopedEnvironment changedConfigHome("XDG_CONFIG_HOME", changedUserHome.string());
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK_EQ(store.rootPath(), systemConfig);
+  CHECK_EQ(store.config().layout.gap, 17);
+  CHECK_EQ(store.watchPaths(), initialWatchPaths);
+  CHECK(std::ranges::find(store.watchPaths(), changedUserConfig) == store.watchPaths().end());
+}
+
+UMBRIEL_TEST(explicitConfigReloadStaysPinnedWhenUserConfigAppears) {
+  const TempConfigTree tree;
+  const std::filesystem::path userHome = tree.path("user");
+  const std::filesystem::path systemDir = tree.path("system");
+  const std::filesystem::path explicitConfig = tree.path("chosen.toml");
+  tree.write("chosen.toml", "[layout]\ngap = 23\n");
+  tree.write("system/umbriel/config.toml", "[layout]\ngap = 17\n");
+  const ScopedEnvironment configHome("XDG_CONFIG_HOME", userHome.string());
+  const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", systemDir.string());
+
+  ConfigStore& store = umbriel::configStore();
+  const std::string explicitPath = explicitConfig.string();
+  store.load(explicitPath.c_str());
+
+  CHECK_EQ(store.rootPath(), explicitConfig);
+  CHECK_EQ(store.config().layout.gap, 23);
+
+  tree.write("user/umbriel/config.toml", "[layout]\ngap = 29\n");
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK_EQ(store.rootPath(), explicitConfig);
+  CHECK_EQ(store.config().layout.gap, 23);
+}
+
 UMBRIEL_TEST(sharedLayoutAndNumberReadersPreserveConfigBehavior) {
   const TempConfig file;
   file.write(R"(
@@ -495,21 +610,29 @@ UMBRIEL_TEST(overviewBackgroundBlurLoads) {
   CHECK(!store.config().overview.backgroundBlur);
 }
 
+UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[overview]\nzoom = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().overview.workspaceWallpaper);
+
+  file.write("[overview]\nworkspace_wallpaper = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().overview.workspaceWallpaper);
+}
+
 UMBRIEL_TEST(overviewShortcutConfigurationLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
-  file.write("[overview]\nshortcuts = false\nshortcut_keys = \"asdf\"\nbadge_color = \"#12345678\"\n");
+  file.write("[overview]\nshortcuts = false\nshortcut_keys = \"asdf\"\n");
   CHECK(store.reload().success);
   CHECK(!store.config().overview.shortcuts);
   CHECK_EQ(store.config().overview.shortcutKeys, std::string{"asdf"});
-  CHECK(store.config().overview.badgeColor.has_value());
-  const std::array<float, 4> badgeColor = store.config().overview.badgeColor.value_or(std::array<float, 4>{});
-  CHECK_EQ(badgeColor[0], 18.0F / 255.0F);
-  CHECK_EQ(badgeColor[1], 52.0F / 255.0F);
-  CHECK_EQ(badgeColor[2], 86.0F / 255.0F);
-  CHECK_EQ(badgeColor[3], 120.0F / 255.0F);
 }
 
 UMBRIEL_TEST(overviewShortcutKeysRejectInvalidValues) {
@@ -538,15 +661,65 @@ UMBRIEL_TEST(overviewShortcutKeysRejectInvalidValues) {
   CHECK(containsDiagnostic(store, "expected string"));
 }
 
-UMBRIEL_TEST(overviewBadgeColorRejectsInvalidValues) {
+UMBRIEL_TEST(colorsSectionOwnsEveryColor) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
-  file.write("[overview]\nbadge_color = \"not-a-color\"\n");
+  file.write(
+      "[colors]\ninsert_hint = \"#11223344\"\nbackdrop = \"#55667788\"\nshadow = \"#99AABBCC\"\n"
+      "[colors.border]\nfocused = \"#01020304\"\nunfocused = \"#05060708\"\n"
+      "scratchpad_focused = \"#090A0B0C\"\nscratchpad_unfocused = \"#0D0E0F10\"\nouter = \"#11121314\"\n"
+      "[colors.overview]\nbackground_tint = \"#15161718\"\nworkspace_background = \"#191A1B1C\"\n"
+      "badge = \"#12345678\"\n"
+  );
   CHECK(store.reload().success);
-  CHECK(!store.config().overview.badgeColor.has_value());
-  CHECK(containsDiagnostic(store, "overview.badge_color (invalid color"));
+  const auto& colors = store.config().colors;
+  CHECK_EQ(colors.insertHint[0], 17.0F / 255.0F);
+  CHECK_EQ(colors.backdrop[1], 102.0F / 255.0F);
+  CHECK_EQ(colors.shadow[3], 204.0F / 255.0F);
+  CHECK_EQ(colors.border.focused[3], 4.0F / 255.0F);
+  CHECK_EQ(colors.border.unfocused[0], 5.0F / 255.0F);
+  CHECK_EQ(colors.border.scratchpadFocused[1], 10.0F / 255.0F);
+  CHECK_EQ(colors.border.scratchpadUnfocused[2], 15.0F / 255.0F);
+  CHECK_EQ(colors.border.outer[0], 17.0F / 255.0F);
+  CHECK_EQ(colors.overview.backgroundTint[1], 22.0F / 255.0F);
+  CHECK_EQ(colors.overview.workspaceBackground[2], 27.0F / 255.0F);
+  CHECK_EQ(colors.overview.badge[0], 18.0F / 255.0F);
+  CHECK_EQ(colors.overview.badge[3], 120.0F / 255.0F);
+}
+
+// Colors are recognized only inside [colors]; anywhere else they are ordinary
+// unknown keys.
+UMBRIEL_TEST(colorKeysOutsideTheColorsSectionAreUnknown) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  const umbriel::Config defaults;
+  file.write("[appearance]\nborder_focused = \"#FFFFFFFF\"\nbackdrop_color = \"#000000FF\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().colors.border.focused[0], defaults.colors.border.focused[0]);
+  CHECK(containsDiagnostic(store, "appearance.border_focused"));
+  CHECK(containsDiagnostic(store, "appearance.backdrop_color"));
+
+  file.write("[overview]\nbadge_color = \"#FFFFFFFF\"\nworkspace_background = \"#FFFFFFFF\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().colors.overview.badge[0], defaults.colors.overview.badge[0]);
+  CHECK(containsDiagnostic(store, "overview.badge_color"));
+  CHECK(containsDiagnostic(store, "overview.workspace_background"));
+}
+
+UMBRIEL_TEST(colorsRejectInvalidValues) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::Config defaults;
+
+  file.write("[colors.overview]\nbadge = \"not-a-color\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().colors.overview.badge[0], defaults.colors.overview.badge[0]);
+  CHECK(containsDiagnostic(store, "colors.overview.badge (invalid color"));
 }
 
 UMBRIEL_TEST(cornerRadiusClampsToItsRange) {
@@ -950,6 +1123,35 @@ UMBRIEL_TEST(outputEnabledFlagParsesAndDefaultsTrue) {
   CHECK(store.reload().success);
   CHECK(store.config().outputs[0].enabled);
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.enabled"));
+}
+
+UMBRIEL_TEST(outputMinWorkspacesLoadsAndRequiresDynamicWorkspaces) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\nmin_workspaces = 4\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK_EQ(store.config().outputs[0].minWorkspaces, 4);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].minWorkspaces, 1);
+
+  file.write("[output.DP-1]\nworkspaces = \"dynamic\"\nmin_workspaces = 3\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].minWorkspaces, 3);
+
+  file.write("[output.DP-1]\nmin_workspaces = 99\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].minWorkspaces, 64);
+  CHECK(containsDiagnostic(store, "output.DP-1.min_workspaces = 99 out of range, clamped to 64"));
+
+  file.write("[output.DP-1]\nworkspaces = [\"dev\", \"web\"]\nmin_workspaces = 3\n");
+  CHECK(!store.reload().success);
+  CHECK(containsDiagnostic(store, "output.DP-1.min_workspaces requires dynamic workspaces"));
+  CHECK(!containsDiagnostic(store, "unknown key output.DP-1.min_workspaces"));
 }
 
 UMBRIEL_TEST(semanticColorsLoadFromTheirOwnSection) {

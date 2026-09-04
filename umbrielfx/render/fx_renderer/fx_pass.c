@@ -193,6 +193,19 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 	TRACY_BOTH_ZONES_START(pass->buffer->renderer);
 	push_fx_debug(renderer);
+	if (pass->output_buffers != NULL && pass->needs_full_damage) {
+		const pixman_box32_t output_box = {
+			.x1 = 0,
+			.y1 = 0,
+			.x2 = pass->output_buffer->buffer->width,
+			.y2 = pass->output_buffer->buffer->height,
+		};
+		if (pixman_region32_contains_rectangle(&pass->updated_region,
+				&output_box) != PIXMAN_REGION_IN) {
+			wlr_log(WLR_ERROR, "Shared HDR blend buffer was not fully initialized");
+			goto out;
+		}
+	}
 	if (!render_pass_apply_output_transform(pass)) {
 		goto out;
 	}
@@ -233,8 +246,21 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 	ok = true;
 
 out:
-	if (pass->output_lut != 0) {
-		glDeleteTextures(1, &pass->output_lut);
+	if (pass->output_buffers != NULL) {
+		if (ok) {
+			pass->output_buffers->blend_valid = true;
+			if (pixman_region32_not_empty(&pass->updated_region)) {
+				pass->output_buffers->blend_generation++;
+				if (pass->output_buffers->blend_generation == 0) {
+					pass->output_buffers->blend_generation++;
+				}
+			}
+			pass->output_buffer->output_generation =
+				pass->output_buffers->blend_generation;
+		} else {
+			pass->output_buffers->blend_valid = false;
+			pass->output_buffer->output_generation = 0;
+		}
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -246,6 +272,7 @@ out:
 
 	wlr_drm_syncobj_timeline_unref(pass->signal_timeline);
 	wlr_buffer_unlock(pass->output_buffer->buffer);
+	wlr_color_transform_unref(pass->color_transform);
 
 	pass->fx_offscreen_buffers = NULL;
 	pixman_region32_fini(&pass->blur_padding_region);
@@ -525,7 +552,7 @@ static void transpose_color_matrix(float out[static 9], const float matrix[stati
 struct output_transform_state {
 	float matrix[9];
 	enum wlr_color_transfer_function tf;
-	const struct wlr_color_transform_lut_3x1d *lut;
+	struct wlr_color_transform_lut_3x1d *lut;
 	bool has_matrix;
 	bool has_eotf;
 };
@@ -586,12 +613,8 @@ static void log_unsupported_output_transform(void) {
 	wlr_log(WLR_ERROR, "Unsupported output color transform");
 }
 
-static bool upload_output_lut(struct fx_gles_render_pass *pass,
-		const struct wlr_color_transform_lut_3x1d *lut) {
-	if (lut == NULL) {
-		return true;
-	}
-
+static bool upload_output_lut_texture(
+		const struct wlr_color_transform_lut_3x1d *lut, GLuint *texture) {
 	GLint max_size;
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_size);
 	if (lut->dim > (size_t)max_size || lut->dim > INT32_MAX / 6) {
@@ -609,8 +632,8 @@ static bool upload_output_lut(struct fx_gles_render_pass *pass,
 
 	while (glGetError() != GL_NO_ERROR) {
 	}
-	glGenTextures(1, &pass->output_lut);
-	glBindTexture(GL_TEXTURE_2D, pass->output_lut);
+	glGenTextures(1, texture);
+	glBindTexture(GL_TEXTURE_2D, *texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -619,8 +642,71 @@ static bool upload_output_lut(struct fx_gles_render_pass *pass,
 		GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	free(data);
-	pass->output_lut_dim = lut->dim;
-	return glGetError() == GL_NO_ERROR;
+	bool upload_failed = false;
+	while (glGetError() != GL_NO_ERROR) {
+		upload_failed = true;
+	}
+	if (upload_failed || *texture == 0) {
+		glDeleteTextures(1, texture);
+		*texture = 0;
+		while (glGetError() != GL_NO_ERROR) {
+		}
+		return false;
+	}
+	return true;
+}
+
+void fx_output_lut_destroy(struct fx_output_lut *lut) {
+	wl_list_remove(&lut->link);
+	wlr_addon_finish(&lut->addon);
+
+	struct wlr_egl_context prev_ctx;
+	if (wlr_egl_make_current(lut->renderer->egl, &prev_ctx)) {
+		push_fx_debug(lut->renderer);
+		glDeleteTextures(1, &lut->texture);
+		pop_fx_debug(lut->renderer);
+		wlr_egl_restore_context(&prev_ctx);
+	} else {
+		wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying output LUT");
+	}
+	free(lut);
+}
+
+static void output_lut_handle_destroy(struct wlr_addon *addon) {
+	struct fx_output_lut *lut = wl_container_of(addon, lut, addon);
+	fx_output_lut_destroy(lut);
+}
+
+static const struct wlr_addon_interface output_lut_addon_impl = {
+	.name = "fx_output_lut",
+	.destroy = output_lut_handle_destroy,
+};
+
+static struct fx_output_lut *get_or_create_output_lut(
+		struct fx_renderer *renderer,
+		struct wlr_color_transform_lut_3x1d *transform) {
+	struct wlr_addon *addon = wlr_addon_find(&transform->base.addons, renderer,
+		&output_lut_addon_impl);
+	if (addon != NULL) {
+		struct fx_output_lut *lut = NULL;
+		return wl_container_of(addon, lut, addon);
+	}
+
+	struct fx_output_lut *lut = calloc(1, sizeof(*lut));
+	if (lut == NULL) {
+		return NULL;
+	}
+	lut->renderer = renderer;
+	lut->dim = transform->dim;
+	if (!upload_output_lut_texture(transform, &lut->texture)) {
+		free(lut);
+		return NULL;
+	}
+
+	wlr_addon_init(&lut->addon, &transform->base.addons, renderer,
+		&output_lut_addon_impl);
+	wl_list_insert(&renderer->output_luts, &lut->link);
+	return lut;
 }
 
 void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
@@ -1407,6 +1493,9 @@ static struct fx_framebuffer *get_main_buffer_blur(struct fx_gles_render_pass *p
 		return NULL;
 	}
 
+	struct fx_render_blur_pass_options local_options = *fx_options;
+	fx_options = &local_options;
+
 	struct fx_renderer *renderer = pass->buffer->renderer;
 	struct wlr_box buffer_bounds = {
 		0, 0,
@@ -1781,12 +1870,15 @@ static const char *reset_status_str(GLenum status) {
 struct fx_gles_render_pass *fx_begin_buffer_pass(struct fx_framebuffer *buffer,
 		struct wlr_egl_context *prev_ctx, struct fx_render_timer *timer,
 		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point,
-		struct wlr_color_transform *color_transform) {
+		struct wlr_color_transform *color_transform,
+		struct fx_offscreen_buffers *output_buffers) {
 	struct fx_renderer *renderer = buffer->renderer;
 	struct wlr_buffer *wlr_buffer = buffer->buffer;
 	const bool has_color_transform = color_transform != NULL;
 	buffer->capture_sdr = false;
 	buffer->sdr_capture_valid = false;
+	buffer->output_buffers = output_buffers;
+	buffer->output_generation = 0;
 
 	if (renderer->procs.glGetGraphicsResetStatusKHR) {
 		GLenum status = renderer->procs.glGetGraphicsResetStatusKHR();
@@ -1813,38 +1905,59 @@ struct fx_gles_render_pass *fx_begin_buffer_pass(struct fx_framebuffer *buffer,
 			free(pass);
 			return NULL;
 		}
-		if (renderer->allocator == NULL) {
+		struct wlr_allocator *allocator = output_buffers != NULL
+			? output_buffers->allocator : renderer->allocator;
+		if (allocator == NULL) {
 			wlr_log(WLR_ERROR, "No allocator available for FP16 blend buffer");
 			free(pass);
 			return NULL;
 		}
 
+		struct fx_framebuffer **blend_buffer = output_buffers != NULL
+			? &output_buffers->blend_buffer : &buffer->blend_buffer;
+		const bool needs_full_damage = output_buffers != NULL &&
+			(*blend_buffer == NULL || (*blend_buffer)->buffer == NULL ||
+			(*blend_buffer)->buffer->width != wlr_buffer->width ||
+			(*blend_buffer)->buffer->height != wlr_buffer->height ||
+			(*blend_buffer)->drm_format != DRM_FORMAT_ABGR16161616F ||
+			!output_buffers->blend_valid);
 		bool failed = false;
-		fx_framebuffer_get_or_create_custom(renderer, renderer->allocator,
+		fx_framebuffer_get_or_create_custom(renderer, allocator,
 			wlr_buffer->width, wlr_buffer->height,
-			DRM_FORMAT_ABGR16161616F, &buffer->blend_buffer, &failed);
-		if (failed || buffer->blend_buffer == NULL) {
-			free(pass);
-			return NULL;
-		}
-		buffer->blend_buffer->blend_parent = buffer;
-		target = buffer->blend_buffer;
-		memcpy(pass->output_matrix, state.matrix, sizeof(pass->output_matrix));
-		pass->output_tf = state.tf;
-		if (!upload_output_lut(pass, state.lut)) {
-			if (pass->output_lut != 0) {
-				glDeleteTextures(1, &pass->output_lut);
+			DRM_FORMAT_ABGR16161616F, blend_buffer, &failed);
+		if (failed || *blend_buffer == NULL) {
+			if (output_buffers != NULL) {
+				output_buffers->blend_valid = false;
 			}
 			free(pass);
 			return NULL;
+		}
+		if (output_buffers != NULL) {
+			if (needs_full_damage) {
+				output_buffers->blend_valid = false;
+				output_buffers->sdr_capture_generation = 0;
+			}
+			pass->needs_full_damage = needs_full_damage;
+		} else {
+			(*blend_buffer)->blend_parent = buffer;
+		}
+		target = *blend_buffer;
+		memcpy(pass->output_matrix, state.matrix, sizeof(pass->output_matrix));
+		pass->output_tf = state.tf;
+		if (state.lut != NULL) {
+			struct fx_output_lut *lut =
+				get_or_create_output_lut(renderer, state.lut);
+			if (lut == NULL) {
+				free(pass);
+				return NULL;
+			}
+			pass->output_lut = lut->texture;
+			pass->output_lut_dim = lut->dim;
 		}
 	}
 
 	GLint fbo = fx_framebuffer_get_fbo(target);
 	if (!fbo) {
-		if (pass->output_lut != 0) {
-			glDeleteTextures(1, &pass->output_lut);
-		}
 		free(pass);
 		return NULL;
 	}
@@ -1856,6 +1969,9 @@ struct fx_gles_render_pass *fx_begin_buffer_pass(struct fx_framebuffer *buffer,
 	pass->timer = timer;
 	pass->prev_ctx = *prev_ctx;
 	pass->has_color_transform = has_color_transform;
+	pass->color_transform = has_color_transform
+		? wlr_color_transform_ref(color_transform) : NULL;
+	pass->output_buffers = output_buffers;
 	if (signal_timeline != NULL) {
 		pass->signal_timeline = wlr_drm_syncobj_timeline_ref(signal_timeline);
 		pass->signal_point = signal_point;

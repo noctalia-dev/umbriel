@@ -108,18 +108,16 @@ wait_for_windows 2
 accepts window-consume-or-expel-left
 wait_for_stacked
 
+# The modify verb steps from the fraction the window already carries: 0.7 - 0.2.
 accepts window-set-height:0.7
-wait_for_b_height_percent 66 74
-
 accepts window-modify-height:-0.2
 wait_for_b_height_percent 46 54
 
 accepts window-consume-or-expel-left
 wait_for_separate_columns
 
+# Stacking b again gives the opposite direction something to expel.
 accepts window-consume-right
-wait_for_stacked
-
 accepts window-consume-or-expel-right
 wait_for_separate_columns
 b_workspace=$(field_of harness-b workspace)

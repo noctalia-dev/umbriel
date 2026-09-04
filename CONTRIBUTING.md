@@ -45,10 +45,11 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 | Command | Purpose |
 |---------|---------|
 | `just configure <mode> [prefix]` | Create or reconfigure a build directory and symlink `compile_commands.json` to it |
-| `just asan` | Build with AddressSanitizer |
+| `just asan` | Build with AddressSanitizer (see [AddressSanitizer](#addresssanitizer)) |
 | `just run <mode> [startup]` | Build and run a nested session, optionally spawning a command |
-| `just test` | Run the Meson test suite |
-| `just verify <mode> [filter]` | Run the interactive/visual regression harness (`tests/harness/verify.sh`) against a headless build |
+| `just test` | Run the Meson test suite: unit tests plus the umbrielfx suites |
+| `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check 721`, `just check drag`, `just check 721 -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 721` |
+| `just check-names` | List every harness check name. Builds nothing |
 | `just lint` | Rebuild without compiler warnings and run clang-tidy |
 | `just format` | Format source and test files |
 | `just install` | Build a release binary and install it with `meson install` |
@@ -58,9 +59,9 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 Tests live in three places, and which one a change belongs in follows from what it can observe:
 
 ```
-tests/unit/            C++ unit tests, one binary per test, run by `just test`
-tests/meson.build      the unit test table and the harness client targets
-tests/harness/verify.sh the headless compositor harness, run by `just verify`
+tests/unit/             C++ unit tests, one binary per test, run by `just test`
+tests/meson.build       the unit test table and the harness client targets
+tests/harness/check.sh  the headless compositor harness, run by `just check`
 tests/harness/checks/   one script per behaviour it asserts
 tests/harness/clients/  Wayland helper clients the checks drive
 ```
@@ -72,16 +73,18 @@ seat grabs, live reloads. Every unit test gets `umbriel_pure_dep`, and one that 
 table is not built and will rot unnoticed.
 
 Test targets exist only where the `tests` feature option resolves to enabled. `just configure` passes
-`-Dtests=enabled` for every mode, so `just test` and `just verify` work in debug, asan, and release build directories.
+`-Dtests=enabled` for every mode, so `just test` and `just check` work in debug, asan, and release build directories.
 A build directory configured by hand without that option follows `auto`: unsanitized debug builds get the targets, a
 release build gets none. Test binaries land in the build directory's `tests` subdir.
 
-`verify.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless
+`check.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless
 instance is booted per check, the check runs in its own process group with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`
 already pointing at that instance, and the harness kills the group and asserts the instance exited cleanly. Boot plus
-teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. Five rules follow:
+teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. That isolation is also what lets the
+harness run several checks at once, bounded by `-j` (default: the core count, capped at eight). Reports stay in
+declaration order whatever order the checks finish in. Six rules follow:
 
-- A check must pass in a plain `just verify` run, with no environment overrides.
+- A check must pass in a plain `just check` run, with no environment overrides.
 - A check starts from a pristine instance (no windows, overview closed, workspace 1 focused, `$UMBRIEL_CONFIG` holding
   the harness default) and owes nothing to whatever runs next. It appends the config it needs, spawns what it needs,
   and asserts. It must not restore config, close the overview, return to workspace 1, or reap its clients at exit: the
@@ -97,10 +100,23 @@ teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces.
   screenshot is dead time on every run, and it still races a slower machine. Grab until two consecutive frames match
   and keep the fixed wait down to a primer that only covers dispatch, as `650_two_output_containment` does. Its settle
   loop is the barrier; the primers around it are 0.3s.
+- Never depend on a machine-wide resource a sibling check could be using at the same time: a fixed port, a shared
+  path outside `$UMBRIEL_RUNTIME_DIR`, a named process matched with `pkill`, or the wall-clock cost of a neighbour.
+  Everything a check needs lives in its own instance and its own runtime directory.
 
 Check names group by topic, and the leading number is the group: `0xx` session, IPC, and config reload, `1xx` layout,
 `2xx` workspaces, `3xx` overview, `4xx` drag, `5xx` input and seat, `6xx` output and display, `7xx` rendering. Numbers
 step by ten inside a group so a new check lands next to its relatives.
+
+A boot costs about 80ms and the pool runs checks side by side, so the suite's wall time is set by its longest check,
+not by their sum: three six-second siblings finish in six seconds, and folding them into one check makes the whole
+suite wait thirteen. Split a check that grows past a few seconds instead of merging relatives to save a boot.
+
+A harness check that asserts a value a unit test computes is coverage in the wrong tier: it costs a compositor to
+re-derive what `tests/unit` already pins, and it fails a second time for the same bug. Assert layout arithmetic,
+config resolution, and parse results in `tests/unit`, and keep the check for what only the live compositor shows:
+that a real client's first configure agrees with the arrangement, that a reload reaches a mapped workspace, that the
+pixels land where the geometry said.
 
 An instance has one output unless the check asks for more with a `# harness: outputs=N` directive in its header, which
 `620_output_disable`, `630_dpms`, and `650_two_output_containment` use. Output count is fixed when the compositor
@@ -108,7 +124,7 @@ starts, so it cannot be a runtime config change. Single-output instances are wha
 assert that directional output actions are rejected when there is nowhere to move.
 
 A check that stops making progress is killed after 120 seconds, so the suite reports instead of hanging. Set
-`VERIFY_TIMEOUT` to change the cap, and `VERIFY_VERBOSE=1` (or `-v`) to keep the full output of passing checks.
+`CHECK_TIMEOUT` to change the cap, and `CHECK_VERBOSE=1` (or `-v`) to keep the full output of passing checks.
 
 ## Code Style
 
@@ -153,6 +169,18 @@ Getters are the noun, without a `get` prefix, and `[[nodiscard]]`: `toplevel()`,
   recovers `this` via `wl_container_of` and forwards to a `void handleEvent()` member. Store the `wl_listener` as an
   `m_event{}` member.
 - Include ordering follows clang-format regrouping: project `"..."` headers first, then system `<...>` headers.
+
+## Pull Request Template
+
+Pull request descriptions are checked automatically when they are opened, edited, reopened, or marked ready for
+review. Keep the `## Summary`, `## Motivation`, `## Type of Change`, `## Testing`, and `## Checklist` headings and the
+Checklist wording from [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). The remaining sections
+are context only: fill them in, leave them empty, or delete them. In Type of Change, keep only the lines that apply.
+
+Draft pull requests may leave checkboxes incomplete. Before marking a pull request ready for review, select at least one
+change type and check every item in the Checklist section. A pull request that is missing required template structure
+is commented on and converted back to a draft; add the missing content and mark it ready for review to run the check
+again. The check never closes a pull request.
 
 ## Project Layout
 
@@ -219,7 +247,39 @@ meson test -C build-release --suite umbrielfx
   release version and commit revision, which helps identify the exact binary
   behind a report.
 
-Run under AddressSanitizer with `just run asan`.
+### AddressSanitizer
+
+`just configure asan` creates `build-asan` as a debug build with `-Db_sanitize=address` and `-Dtests=enabled`, so
+every workflow runs there:
+
+```sh
+just asan                     # build the instrumented binary
+just run asan [startup]       # nested session under ASan
+just test asan                # unit tests plus the umbrielfx suites
+just mode=asan check [filter] # harness checks, one instrumented compositor per check
+```
+
+`b_sanitize` is a global Meson option, so umbrielfx's C sources are instrumented alongside the compositor and a report
+points into them with file and line. `just configure` also repoints the `compile_commands.json` symlink, so returning
+to unsanitized work needs `just configure debug`.
+
+In asan mode those recipes prepend `abort_on_error=1:detect_leaks=0:halt_on_error=1` to `ASAN_OPTIONS`. A later key
+wins, so `ASAN_OPTIONS=detect_leaks=1 just mode=asan check 310` overrides one default and keeps the others.
+
+Leak detection is off because Mesa leaks its EGL display setup on every renderer teardown, under `dri2_initialize`
+below `wlr_egl_create_with_drm_fd`: about 400 KB in 7900 allocations when the compositor exits, and 115 KB in the
+umbrielfx color tests. Left on, every harness check fails at teardown with `compositor exited with status 1` and the
+14 color tests abort. Enable it for the one scope you are chasing a leak in, and read past the `libEGL_mesa` frames.
+
+Reports go to stderr, which for `just run asan` is the parent terminal. Where stderr is not readable, as in a session
+started by a display manager, redirect them: `ASAN_OPTIONS=log_path=/var/tmp/umbriel-asan just run asan` writes
+`/var/tmp/umbriel-asan.<pid>` instead.
+
+An ASan build still links `jemalloc` when it is installed, since `-Djemalloc` is independent of `b_sanitize`, but
+`libasan` precedes it in the link order and services every allocation. The `jemalloc: narenas=...` startup record in
+an ASan build therefore describes an allocator nothing uses; configure with `-Djemalloc=disabled` to drop it.
+
+### Runtime inspection
 
 The CLI doubles as a runtime inspection and IPC surface against a running compositor:
 

@@ -12,6 +12,7 @@ namespace umbriel {
       wlr_scene_tree* parent, int contentWidth, int contentHeight, int borderTotal, int cornerRadius
   ) {
     const auto& cfg = config().appearance.shadow;
+    const auto& shadow = config().colors.shadow;
     const int sigma = cfg.softness;
 
     // Decorated box origin (in parent coords): (-borderTotal, -borderTotal)
@@ -19,7 +20,7 @@ namespace umbriel {
     const int decWidth = contentWidth + 2 * borderTotal;
     const int decHeight = contentHeight + 2 * borderTotal;
 
-    const bool want = cfg.enabled && cfg.color[3] > 0.0F && contentWidth > 0 && contentHeight > 0;
+    const bool want = cfg.enabled && shadow[3] > 0.0F && contentWidth > 0 && contentHeight > 0;
     if (!want) {
       if (m_node != nullptr) {
         wlr_scene_node_set_enabled(&m_node->node, false);
@@ -29,7 +30,7 @@ namespace umbriel {
 
     // Lazy create: first time only.
     if (m_node == nullptr) {
-      const float initColor[4] = {cfg.color[0], cfg.color[1], cfg.color[2], cfg.color[3] * m_alpha};
+      const float initColor[4] = {shadow[0], shadow[1], shadow[2], shadow[3] * m_alpha};
       m_node = wlr_scene_shadow_create(parent, 0, 0, 0, static_cast<float>(sigma), initColor);
       if (m_node == nullptr) {
         return;
@@ -61,7 +62,7 @@ namespace umbriel {
     if (m_node->blur_sigma != static_cast<float>(sigma)) {
       wlr_scene_shadow_set_blur_sigma(m_node, static_cast<float>(sigma));
     }
-    const float color[4] = {cfg.color[0], cfg.color[1], cfg.color[2], cfg.color[3] * m_alpha};
+    const float color[4] = {shadow[0], shadow[1], shadow[2], shadow[3] * m_alpha};
     if (std::memcmp(m_node->color, color, sizeof(m_node->color)) != 0) {
       wlr_scene_shadow_set_color(m_node, color);
     }
@@ -84,8 +85,8 @@ namespace umbriel {
   void SurfaceShadow::setAlpha(float alpha) {
     m_alpha = alpha;
     if (m_node != nullptr) {
-      const auto& cfg = config().appearance.shadow;
-      const float color[4] = {cfg.color[0], cfg.color[1], cfg.color[2], cfg.color[3] * m_alpha};
+      const auto& shadow = config().colors.shadow;
+      const float color[4] = {shadow[0], shadow[1], shadow[2], shadow[3] * m_alpha};
       wlr_scene_shadow_set_color(m_node, color);
     }
   }

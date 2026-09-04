@@ -142,6 +142,9 @@ namespace umbriel {
     void refreshInteractiveCursor();
     // Hide immediately after a non-modifier key press when configured.
     void noteTyping();
+    // A logical focus change can leave the pointer over a different window without crossing a scene boundary. Let the
+    // next eligible pointer or tablet hover re-evaluate focus once.
+    void invalidateHoverFocus() { m_hoverFocusInvalidated = true; }
     // Compositor-owned cursor override for grabs the Cursor does not track
     // (overview drag). nullptr restores the client cursor.
     void overrideCursor(const char* name) { setCompositorCursor(name); }
@@ -237,6 +240,7 @@ namespace umbriel {
     // their release is swallowed too, even if the grab ended first.
     std::vector<uint32_t> m_swallowedButtons;
     std::vector<std::unique_ptr<TabletToolState>> m_tools;
+    bool m_hoverFocusInvalidated = false;
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
     std::string m_compositorCursorName;

@@ -139,6 +139,32 @@ layer_shell_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+wlr_data_control_client_h = custom_target(
+  'wlr-data-control-unstable-v1-client-protocol.h',
+  input: 'protocols/wlr-data-control-unstable-v1.xml',
+  output: 'wlr-data-control-unstable-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+wlr_data_control_client_c = custom_target(
+  'wlr-data-control-unstable-v1-client-protocol.c',
+  input: 'protocols/wlr-data-control-unstable-v1.xml',
+  output: 'wlr-data-control-unstable-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+ext_data_control_client_h = custom_target(
+  'ext-data-control-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-data-control/ext-data-control-v1.xml',
+  output: 'ext-data-control-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+ext_data_control_client_c = custom_target(
+  'ext-data-control-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-data-control/ext-data-control-v1.xml',
+  output: 'ext-data-control-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 foreign_toplevel_client_h = custom_target(
   'wlr-foreign-toplevel-management-unstable-v1-client-protocol.h',
   input: 'protocols/wlr-foreign-toplevel-management-unstable-v1.xml',
@@ -304,6 +330,19 @@ ext_idle_notify_client_c = custom_target(
   'ext-idle-notify-v1-protocol.c',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-idle-notify/ext-idle-notify-v1.xml',
   output: 'ext-idle-notify-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+ext_session_lock_client_h = custom_target(
+  'ext-session-lock-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-session-lock/ext-session-lock-v1.xml',
+  output: 'ext-session-lock-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+ext_session_lock_client_c = custom_target(
+  'ext-session-lock-v1-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-session-lock/ext-session-lock-v1.xml',
+  output: 'ext-session-lock-v1-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
@@ -534,7 +573,7 @@ umbriel = executable(
   install: true,
 )
 
-# Unit tests and the harness clients the verify script drives.
+# Unit tests and the harness clients check.sh drives.
 if build_tests
   subdir('tests')
   alias_target('unit-tests', unit_test_targets)
