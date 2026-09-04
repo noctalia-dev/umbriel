@@ -188,7 +188,7 @@ namespace umbriel {
       if (rule.matchFocused && *rule.matchFocused != focused) {
         continue;
       }
-      if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < 60'000)) {
+      if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < kStartupWindowRuleDurationMs)) {
         continue;
       }
       // Last writer wins: overwrite each field the rule sets.

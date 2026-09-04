@@ -515,6 +515,14 @@ namespace umbriel {
     return 0;
   }
 
+  int Server::onStartupRulesTimer(void* data) {
+    auto* self = static_cast<Server*>(data);
+    for (const auto& view : self->m_registry.all()) {
+      view->refreshStartupRuleEffects();
+    }
+    return 0;
+  }
+
   // Fires when the underlying GL context is invalidated (GPU reset, VRAM lost after suspend, driver-detected hang).
   // Without this, the renderer keeps issuing GL calls into a dead context: Mesa's context_lost_nop_handler no-ops each
   // one and spams "[GLES2] GL_CONTEXT_LOST in context lost" ~40k lines/sec, and the desktop never comes back. Rebuild

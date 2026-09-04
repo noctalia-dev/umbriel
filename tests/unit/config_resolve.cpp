@@ -482,8 +482,9 @@ UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   const auto wrongFocus =
       umbriel::resolveWindowRules(config, "runner", "now playing", std::nullopt, ContentType::Game, true, 0);
   CHECK(!wrongFocus.opacity);
-  const auto afterStartupRule =
-      umbriel::resolveWindowRules(config, "runner", "now playing", std::nullopt, ContentType::Game, false, 60'000);
+  const auto afterStartupRule = umbriel::resolveWindowRules(
+      config, "runner", "now playing", std::nullopt, ContentType::Game, false, umbriel::kStartupWindowRuleDurationMs
+  );
   CHECK(!afterStartupRule.opacity);
   CHECK(afterStartupRule.defaultFloating && *afterStartupRule.defaultFloating);
 

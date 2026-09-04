@@ -1015,6 +1015,30 @@ UMBRIEL_TEST(windowContentTypeMatcherLoadsFixedVocabulary) {
   CHECK(containsDiagnostic(store, "ignoring window_rule.match.content_type (expected none|photo|video|game)"));
 }
 
+UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[[window_rule]]\nmatch.at_startup = true\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchAtStartup == true);
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.at_startup"));
+
+  file.write("[[window_rule]]\nmatch.at_startup = false\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchAtStartup == false);
+
+  file.write("[[window_rule]]\nmatch.at_startup = \"yes\"\nmatch.is_focused = true\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.at_startup (expected boolean)"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_focused"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+}
+
 UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

@@ -3,7 +3,7 @@
 #include "config/config.h"
 #include "output/identity.h"
 
-#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
@@ -17,6 +17,8 @@ namespace umbriel {
   [[nodiscard]] inline std::optional<std::string_view> ruleText(const char* value) {
     return value != nullptr ? std::optional<std::string_view>(value) : std::nullopt;
   }
+
+  inline constexpr uint64_t kStartupWindowRuleDurationMs = 60'000;
 
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,

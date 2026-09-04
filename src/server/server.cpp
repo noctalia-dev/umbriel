@@ -581,6 +581,10 @@ namespace umbriel {
       wl_event_source_remove(m_backgroundFrameTimer);
       m_backgroundFrameTimer = nullptr;
     }
+    if (m_startupRulesTimer != nullptr) {
+      wl_event_source_remove(m_startupRulesTimer);
+      m_startupRulesTimer = nullptr;
+    }
     for (wl_event_source*& source : m_signalSources) {
       if (source != nullptr) {
         wl_event_source_remove(source);
@@ -718,6 +722,10 @@ namespace umbriel {
     applyConfiguredEnvironment();
 
     m_startTime = std::chrono::steady_clock::now();
+    m_startupRulesTimer = wl_event_loop_add_timer(loop, onStartupRulesTimer, this);
+    if (m_startupRulesTimer != nullptr) {
+      wl_event_source_timer_update(m_startupRulesTimer, kStartupWindowRuleDurationMs);
+    }
 
     if (startupCmd != nullptr) {
       spawn(startupCmd);

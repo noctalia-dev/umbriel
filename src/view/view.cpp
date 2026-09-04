@@ -3019,6 +3019,13 @@ namespace umbriel {
     applyDynamicRules();
   }
 
+  void View::refreshStartupRuleEffects() {
+    m_rulesGeneration = 0;
+    if (m_mapped) {
+      applyDynamicRules();
+    }
+  }
+
   const ResolvedWindowRule& View::resolvedRules() {
     const std::optional<std::string_view> appId = ruleText(m_toplevel->app_id);
     const std::optional<std::string_view> title = ruleText(m_toplevel->title);

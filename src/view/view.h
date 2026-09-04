@@ -374,6 +374,7 @@ namespace umbriel {
     // config, and applyDynamicRules is reached on focus changes and on every title change, so resolving twice per pass
     // is work a terminal that retitles per command pays repeatedly.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
+    void refreshStartupRuleEffects();
     // Window rules, resolved at most once per (config, app-id, title, XDG tag, content type, focus). Resolution runs
     // every rule's regexes, and it is reached on focus changes and on every identity change; a terminal that retitles
     // per command would otherwise pay the whole rule set on each one. Every input is part of the key:
