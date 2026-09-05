@@ -579,7 +579,12 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	renderer->drm_fd = -1;
 
 	wlr_log(WLR_INFO, "Creating umbrielfx renderer");
-	wlr_log(WLR_INFO, "Using %s", glGetString(GL_VERSION));
+	const char *gl_version = (const char *)glGetString(GL_VERSION);
+	wlr_log(WLR_INFO, "Using %s", gl_version);
+	int gles_major = 0;
+	const bool is_gles3 = gl_version != NULL &&
+		sscanf(gl_version, "OpenGL ES %d", &gles_major) == 1 &&
+		gles_major >= 3;
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
 	wlr_log(WLR_INFO, "Supported FX extensions: %s", exts_str);
@@ -604,6 +609,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 		check_gl_ext(exts_str, "GL_EXT_read_format_bgra");
 
 	renderer->exts.EXT_texture_type_2_10_10_10_REV =
+		is_gles3 ||
 		check_gl_ext(exts_str, "GL_EXT_texture_type_2_10_10_10_REV");
 
 	renderer->exts.OES_texture_half_float_linear =
