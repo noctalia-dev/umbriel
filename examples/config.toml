@@ -36,6 +36,14 @@ show_cheatsheet = true                          # Show the keybind overlay on st
 focus_on_activate = false                       # Do not let unsolicited requests steal focus
 honor_restored_maximize = false                 # Honor restored maximized state
 
+# Native GPU exclusions
+# Changes require a restart. Use a PCI address if the GPU may start bound to vfio-pci.
+# Device paths must resolve at startup or Umbriel refuses to start.
+# Documentation: https://docs.noctalia.dev/umbriel/configuration/#drm-devices
+# [drm]
+# ignored_devices = ["/dev/dri/by-path/pci-0000:01:00.0-card"]
+# ignored_pci_addresses = ["0000:01:00.0"]
+
 # Session environment
 # Values apply only at session startup. Native sessions also publish them to
 # newly started systemd user services. Add or uncomment values as needed.

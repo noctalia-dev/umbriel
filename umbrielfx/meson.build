@@ -216,6 +216,35 @@ if build_tests
     )
   endforeach
 
+  umbrielfx_renderer_test = executable(
+    'umbrielfx-renderer-test',
+    'tests/renderer.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+
+  test(
+    'umbrielfx-renderer-gbm-device',
+    umbrielfx_renderer_test,
+    suite: 'umbrielfx',
+  )
+
+  if cc.get_define('WLR_HAS_GLES2_RENDERER', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) == '1'
+    umbrielfx_egl_abi_test = executable(
+      'umbrielfx-egl-abi-test',
+      'tests/egl_abi.c',
+      c_args: umbrielfx_c_args,
+      dependencies: umbrielfx_deps,
+      include_directories: umbrielfx_internal_inc,
+      export_dynamic: true,
+      build_by_default: false,
+    )
+    test('umbrielfx-egl-abi', umbrielfx_egl_abi_test, suite: 'umbrielfx')
+  endif
+
   # The compositor calls scene helpers umbrielfx does not reimplement, so they
   # resolve to libwlroots and read umbrielfx's structs at wlroots' field offsets.
   # One source, built against each header, proves the offsets still agree.

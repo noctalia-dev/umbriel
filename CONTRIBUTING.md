@@ -240,6 +240,18 @@ Its regressions run in their own suite:
 meson test -C build-release --suite umbrielfx
 ```
 
+On a dedicated test machine, pass the render nodes to the renderer ownership
+check. Without arguments, it reports a skip:
+
+```sh
+build-release/umbrielfx/umbrielfx-renderer-test /dev/dri/renderD128 /dev/dri/renderD129
+```
+
+Every selected node must open and initialize or the test fails. The EGL and
+scene ABI checks need no GPU access. The compositor's `backend-manager` test
+checks native startup and hotplug filtering with simulated device I/O, without
+taking control of a seat.
+
 ## Debugging
 
 - Debug and ASan builds log at debug level to stderr and to `$XDG_CACHE_HOME/umbriel/umbriel.log`

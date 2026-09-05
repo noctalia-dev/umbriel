@@ -1,7 +1,6 @@
 #include "config/config_merge.h"
 
 #include "config/config_diag.h"
-#include "config/section.h"
 #include "core/log.h"
 
 #include <algorithm>
@@ -35,6 +34,7 @@ namespace umbriel::configmerge {
       }
       const std::string loc = diag.location();
       if (severity == ConfigDiagnostic::Severity::Error) {
+        result.hadError = true;
         kLog.error("{}{}", loc.empty() ? "" : loc + ": ", msg);
       } else {
         kLog.warn("{}{}", loc.empty() ? "" : loc + ": ", msg);
@@ -200,35 +200,42 @@ namespace umbriel::configmerge {
       }
       const auto* include = node->as_table();
       if (include == nullptr) {
-        emit(result, ConfigDiagnostic::Severity::Warning, &node->source(), "ignoring include (expected table)");
+        emit(result, ConfigDiagnostic::Severity::Error, &node->source(), "include must be a table");
         return directive;
       }
-      // `include` is erased from the table before the config readers run, so the root section never sees it and never
-      // reports its unknown keys. This reader owns that report for the section's fixed vocabulary.
-      Section keys(*include, "include", result.diagnostics);
-      const toml::node* filesNode = keys.take("files");
+      // A malformed directive can hide the only file containing DRM exclusions.
+      // Reject it even when the successfully loaded files have no [drm] section.
+      for (const auto& [key, value] : *include) {
+        if (key.str() != "files") {
+          emit(
+              result, ConfigDiagnostic::Severity::Error, &value.source(),
+              std::format("unknown key include.{}", key.str())
+          );
+        }
+      }
+      const toml::node* filesNode = include->get("files");
       if (filesNode == nullptr) {
         return directive;
       }
       const auto* files = filesNode->as_array();
       if (files == nullptr) {
         emit(
-            result, ConfigDiagnostic::Severity::Warning, &filesNode->source(),
-            "ignoring include.files (expected array of strings)"
+            result, ConfigDiagnostic::Severity::Error, &filesNode->source(), "include.files must be an array of strings"
         );
         return directive;
       }
       for (const auto& entry : *files) {
-        if (!entry.is_string()) {
-          emit(
-              result, ConfigDiagnostic::Severity::Warning, &entry.source(),
-              "ignoring include.files (expected array of strings)"
-          );
-          directive.entries.clear();
-          return directive;
+        const auto path = entry.value<std::string>();
+        if (!path) {
+          emit(result, ConfigDiagnostic::Severity::Error, &entry.source(), "include.files entries must be strings");
+          continue;
+        }
+        if (path->contains('\0')) {
+          emit(result, ConfigDiagnostic::Severity::Error, &entry.source(), "include.files entries cannot contain NUL");
+          continue;
         }
         directive.entries.push_back({
-            .path = *entry.value<std::string>(),
+            .path = *path,
             .source = entry.source(),
         });
       }
@@ -266,16 +273,29 @@ namespace umbriel::configmerge {
       for (const auto& entry : directive.entries) {
         const auto target = expandPath(entry.path, path.parent_path());
         std::error_code error;
-        if (std::filesystem::is_regular_file(target, error) && !error) {
+        const std::filesystem::file_status status = std::filesystem::status(target, error);
+        if (!error && std::filesystem::is_regular_file(status)) {
           deepMerge(base, loadAndExpand(target, visited, result));
           continue;
         }
-        result.missingIncludes = true;
-        emit(
-            result, ConfigDiagnostic::Severity::Warning, &entry.source,
-            std::format("include not found: {} (from {})", target.string(), path.string())
-        );
         result.loadedFiles.push_back(canonicalKey(target));
+        const bool missing = error == std::errc::no_such_file_or_directory
+            || error == std::errc::not_a_directory
+            || (!error && status.type() == std::filesystem::file_type::not_found);
+        if (missing) {
+          result.missingIncludes = true;
+          emit(
+              result, ConfigDiagnostic::Severity::Warning, &entry.source,
+              std::format("include not found: {} (from {})", target.string(), path.string())
+          );
+          continue;
+        }
+
+        const std::string reason = error ? error.message() : "not a regular file";
+        emit(
+            result, ConfigDiagnostic::Severity::Error, &entry.source,
+            std::format("cannot inspect included config file {}: {}", target.string(), reason)
+        );
       }
       deepMerge(base, std::move(parsed));
       return base;
@@ -287,7 +307,6 @@ namespace umbriel::configmerge {
       try {
         parsed = toml::parse_file(path.string());
       } catch (const toml::parse_error& error) {
-        result.hadParseError = true;
         const auto key = canonicalKey(path);
         if (std::ranges::find(result.loadedFiles, key) == result.loadedFiles.end()) {
           result.loadedFiles.push_back(key);

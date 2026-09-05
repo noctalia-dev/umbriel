@@ -44,7 +44,7 @@ namespace {
       }
     }
 
-    umbriel::loadConfig(configPath);
+    (void)umbriel::loadConfig(configPath);
     const auto& diags = umbriel::configDiagnostics();
     if (diags.empty()) {
       std::println("config: ok ({})", umbriel::configRootPath().string());
@@ -323,7 +323,10 @@ int main(int argc, char** argv) {
 
   try {
     kLog.info("starting umbriel version={} commit={}", umbriel::build_info::version(), umbriel::build_info::revision());
-    umbriel::loadConfig(configPath);
+    if (!umbriel::loadConfig(configPath)) {
+      kLog.error("initial configuration is invalid; refusing to start");
+      return EXIT_FAILURE;
+    }
     umbriel::Server server;
 
     // SIGINT and SIGTERM are handled on the event loop by the server itself. SIG_IGN for SIGCHLD reaps spawned children

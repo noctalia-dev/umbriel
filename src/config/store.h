@@ -18,9 +18,10 @@ namespace umbriel {
   // which is cheaper and less error-prone than every consumer being individually re-notified from Server::applyConfig.
   class ConfigStore {
   public:
-    // Resolve the user, system, or packaged config and load it. Falls back to
-    // built-in defaults when no file exists.
-    void load(const char* explicitPath);
+    // Resolve the user, system, or packaged config and load it. Missing explicit
+    // paths, invalid includes, syntax errors, and DRM policy errors fail closed;
+    // other parsed errors retain the compatibility fallback to defaults.
+    [[nodiscard]] bool load(const char* explicitPath);
     // Re-parse. On failure the previous configuration is kept and the generation
     // does not move: a config with a syntax error must not take the session down.
     [[nodiscard]] ConfigReloadResult reload();

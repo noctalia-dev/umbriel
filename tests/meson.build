@@ -30,7 +30,13 @@ unit_tests = [
   ['deferred-unfullscreen', ['unit/deferred_unfullscreen.cpp'], []],
   ['config-section', ['unit/config_section.cpp'], []],
   ['config-change', ['unit/config_change.cpp'], []],
-  ['config-load', ['unit/config_load.cpp'], [umbriel_core_dep]],
+  [
+    'config-load',
+    ['unit/config_load.cpp'],
+    [umbriel_core_dep],
+    ['-DUMBRIEL_EXAMPLE_CONFIG="' + meson.project_source_root() / 'examples/config.toml' + '"'],
+  ],
+  ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [umbriel_core_dep]],
   ['ipc-commands', ['unit/ipc_commands.cpp'], [umbriel_core_dep]],
@@ -45,16 +51,26 @@ unit_tests = [
   ],
 ]
 
+if native_drm_policy_supported
+  # Meson enables 64-bit file offsets; glibc redirects stat to stat64.
+  stat_symbol = is_glibc ? 'stat64' : 'stat'
+  unit_tests += [
+    ['backend-manager', ['unit/backend_manager.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=' + stat_symbol]],
+  ]
+endif
+
 unit_test_targets = []
 foreach unit_test : unit_tests
-  # Optional fourth element: compile args for tests that need a path or flag baked in.
+  # Optional compile and link args for tests needing paths, flags, or device I/O wrappers.
   unit_test_args = unit_test.length() > 3 ? unit_test[3] : []
+  unit_test_link_args = unit_test.length() > 4 ? unit_test[4] : []
   test_exe = executable(
     unit_test[0] + '-test',
     unit_test[1],
     include_directories: include_directories('unit'),
     dependencies: [umbriel_pure_dep] + unit_test[2],
     cpp_args: unit_test_args,
+    link_args: unit_test_link_args,
   )
   unit_test_targets += test_exe
   test(unit_test[0], test_exe)

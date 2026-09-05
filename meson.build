@@ -67,6 +67,18 @@ build_tests = tests_opt.enabled() or (
   and get_option('b_sanitize') == 'none'
 )
 
+if cpp.get_define('WLR_HAS_SESSION', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
+  error('Umbriel requires wlroots built with session support')
+endif
+wlr_has_drm_backend = cpp.get_define(
+  'WLR_HAS_DRM_BACKEND',
+  prefix: '#include <wlr/config.h>',
+  dependencies: wlroots_dep,
+) == '1'
+if cpp.get_define('WLR_HAS_LIBINPUT_BACKEND', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
+  error('Umbriel requires wlroots built with the libinput backend')
+endif
+
 # jemalloc keeps a long-running compositor's heap compact: fewer arenas and fast page decay bound RSS. It interposes malloc only on glibc, so other libc builds
 # skip it (auto) or fail (enabled).
 jemalloc_option = get_option('jemalloc')
@@ -94,6 +106,16 @@ nlohmann_json_dep = dependency('nlohmann_json')
 cairo_dep = dependency('cairo')
 pangocairo_dep = dependency('pangocairo')
 libdrm_dep = dependency('libdrm', version: '>=2.4.129')
+libudev_dep = dependency('libudev', required: false)
+native_drm_policy_supported = wlr_has_drm_backend and libudev_dep.found()
+native_drm_policy_deps = []
+if native_drm_policy_supported
+  native_drm_policy_deps += libudev_dep
+endif
+add_project_arguments(
+  '-DUMBRIEL_HAS_NATIVE_DRM_POLICY=' + native_drm_policy_supported.to_int().to_string(),
+  language: 'cpp',
+)
 
 wayland_scanner = find_program('wayland-scanner')
 
@@ -441,6 +463,7 @@ pure_sources = files(
   'src/layout/master.cpp',
   'src/output/direction.cpp',
   'src/output/identity.cpp',
+  'src/server/drm_policy.cpp',
   'src/scene/cheatsheet_rows.cpp',
   'src/overview/shortcut_labels.cpp',
   'src/view/border_ring.cpp',
@@ -482,6 +505,7 @@ core_sources = files(
   'src/config/config_watcher.cpp',
   'src/layout/drop_target.cpp',
   'src/server/wine_color_manager.cpp',
+  'src/server/backend_manager.cpp',
   'src/server/server.cpp',
   'src/server/server_events.cpp',
   'src/server/server_keybinds.cpp',
@@ -536,6 +560,7 @@ umbriel_core_deps = [
   cairo_dep,
   pangocairo_dep,
   libdrm_dep,
+  native_drm_policy_deps,
   nlohmann_json_dep,
   layer_shell_protocol_dep,
 ]

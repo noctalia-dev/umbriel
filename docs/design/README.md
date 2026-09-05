@@ -15,6 +15,7 @@ boundaries, or regression-sensitive behavior.
 - [Xwayland input stability](xwayland-input-stability.md)
 - [Client buffer constraints](client-buffer-constraints.md)
 - [Scene helper ownership](scene-helper-ownership.md)
+- [DRM GPU exclusion](drm-device-policy.md)
 
 ## Pointer drag completion
 

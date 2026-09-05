@@ -159,6 +159,90 @@ namespace umbriel {
       emitDiag(ConfigDiagnostic::Severity::Error, &src, std::format(fmt, std::forward<A>(args)...));
     }
 
+    std::optional<std::string> normalizePciAddress(std::string_view value) {
+      constexpr std::array<size_t, 3> separators{4, 7, 10};
+      if (value.size() != 12
+          || value[separators[0]] != ':'
+          || value[separators[1]] != ':'
+          || value[separators[2]] != '.'
+          || (value[8] != '0' && value[8] != '1')
+          || value.back() < '0'
+          || value.back() > '7') {
+        return std::nullopt;
+      }
+      for (size_t index = 0; index < value.size(); ++index) {
+        if (std::ranges::find(separators, index) != separators.end()) {
+          continue;
+        }
+        if (std::isxdigit(static_cast<unsigned char>(value[index])) == 0) {
+          return std::nullopt;
+        }
+      }
+      return lowercase(value);
+    }
+
+    std::optional<std::string> readDrmPath(const toml::node& node, std::string_view context) {
+      const auto value = node.value<std::string>();
+      if (!value) {
+        errorAt(node.source(), "{} must be a string", context);
+        return std::nullopt;
+      }
+      if (value->empty()) {
+        errorAt(node.source(), "{} cannot be empty", context);
+        return std::nullopt;
+      }
+      if (value->contains('\0')) {
+        errorAt(node.source(), "{} cannot contain NUL", context);
+        return std::nullopt;
+      }
+      const std::filesystem::path path(*value);
+      if (!path.is_absolute()) {
+        errorAt(node.source(), R"({} must be an absolute path (got "{}"))", context, *value);
+        return std::nullopt;
+      }
+      // Keep the exact spelling: lexical normalization changes the meaning of
+      // `..` when an earlier path component is a symlink.
+      return value;
+    }
+
+    std::optional<std::string> readDrmPciAddress(const toml::node& node, std::string_view context) {
+      const auto value = node.value<std::string>();
+      if (!value) {
+        errorAt(node.source(), "{} entries must be strings", context);
+        return std::nullopt;
+      }
+      const auto address = normalizePciAddress(*value);
+      if (!address) {
+        errorAt(
+            node.source(), R"(invalid {} entry "{}" (expected domain:bus:slot.function, for example 0000:01:00.0))",
+            context, *value
+        );
+      }
+      return address;
+    }
+
+    template <typename Parse>
+    void readDrmSelectorList(
+        const toml::node& node, std::string_view context, std::vector<std::string>& target, Parse parse
+    ) {
+      const toml::array* values = node.as_array();
+      if (values == nullptr) {
+        errorAt(node.source(), "{} must be an array of strings", context);
+        return;
+      }
+      for (const toml::node& entry : *values) {
+        auto value = parse(entry, context);
+        if (!value) {
+          continue;
+        }
+        if (std::ranges::find(target, *value) != target.end()) {
+          warnAt(entry.source(), R"(ignoring duplicate {} entry "{}")", context, *value);
+          continue;
+        }
+        target.push_back(std::move(*value));
+      }
+    }
+
     std::filesystem::path userConfigPath() {
       if (const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
           xdgConfigHome != nullptr && xdgConfigHome[0] != '\0') {
@@ -170,9 +254,33 @@ namespace umbriel {
       return std::filesystem::path(".config/umbriel/config.toml");
     }
 
-    bool configPathIsRegular(const std::filesystem::path& path) {
+    enum class ConfigPathKind {
+      Missing,
+      RegularFile,
+      Unavailable,
+    };
+
+    struct ConfigPathProbe {
+      ConfigPathKind kind = ConfigPathKind::Missing;
       std::error_code error;
-      return std::filesystem::is_regular_file(path, error) && !error;
+    };
+
+    ConfigPathProbe probeConfigPath(const std::filesystem::path& path) {
+      std::error_code error;
+      const std::filesystem::file_status status = std::filesystem::status(path, error);
+      if (error) {
+        if (error == std::errc::no_such_file_or_directory || error == std::errc::not_a_directory) {
+          return {};
+        }
+        return {.kind = ConfigPathKind::Unavailable, .error = error};
+      }
+      if (status.type() == std::filesystem::file_type::not_found) {
+        return {};
+      }
+      return {
+          .kind = std::filesystem::is_regular_file(status) ? ConfigPathKind::RegularFile : ConfigPathKind::Unavailable,
+          .error = {},
+      };
     }
 
     std::vector<std::filesystem::path> defaultConfigCandidates() {
@@ -208,7 +316,7 @@ namespace umbriel {
       ConfigSelection selection{};
       selection.watchPaths = candidates;
       for (const std::filesystem::path& candidate : candidates) {
-        if (configPathIsRegular(candidate)) {
+        if (probeConfigPath(candidate).kind != ConfigPathKind::Missing) {
           selection.root = candidate;
           selection.found = true;
           return selection;
@@ -1022,6 +1130,28 @@ namespace umbriel {
             .boolean("honor_restored_maximize", loaded.general.honorRestoredMaximize)
             .strings("autostart", loaded.general.autostart);
       });
+    }
+
+    void readDrm(Section& root, Config& loaded) {
+      const toml::node* node = root.take("drm");
+      if (node == nullptr) {
+        return;
+      }
+      const toml::table* table = node->as_table();
+      if (table == nullptr) {
+        errorAt(node->source(), "drm must be a table");
+        return;
+      }
+
+      for (const auto& [key, value] : *table) {
+        if (key == "ignored_devices") {
+          readDrmSelectorList(value, "drm.ignored_devices", loaded.drm.ignoredDevices, readDrmPath);
+        } else if (key == "ignored_pci_addresses") {
+          readDrmSelectorList(value, "drm.ignored_pci_addresses", loaded.drm.ignoredPciAddresses, readDrmPciAddress);
+        } else {
+          errorAt(value.source(), "unknown key drm.{}", key.str());
+        }
+      }
     }
 
     void readEnvironment(Section& root, Config& loaded) {
@@ -1925,19 +2055,45 @@ namespace umbriel {
       }
     }
 
-    bool parseInto(
+    enum class ConfigParseOutcome : uint8_t {
+      Loaded,
+      Missing,
+      DefaultsAllowed,
+      Fatal,
+    };
+
+    bool hasRequestedDrmPolicy(const toml::table& root) {
+      const toml::node* node = root.get("drm");
+      if (node == nullptr) {
+        return false;
+      }
+      const toml::table* table = node->as_table();
+      return table == nullptr || !table->empty();
+    }
+
+    ConfigParseOutcome parseInto(
         Config& out, const std::filesystem::path& rootPath, const std::vector<std::filesystem::path>& watchPaths
     ) {
       ConfigStore& store = configStore();
       store.beginLoad(watchPaths);
 
-      std::error_code error;
-      if (!std::filesystem::is_regular_file(rootPath, error) || error) {
-        return false;
+      const ConfigPathProbe root = probeConfigPath(rootPath);
+      if (root.kind == ConfigPathKind::Missing) {
+        return ConfigParseOutcome::Missing;
+      }
+      if (root.kind == ConfigPathKind::Unavailable) {
+        const std::string reason = root.error ? root.error.message() : "not a regular file";
+        emitDiag(
+            ConfigDiagnostic::Severity::Error, nullptr,
+            std::format("cannot inspect config file {}: {}", rootPath.string(), reason)
+        );
+        return ConfigParseOutcome::Fatal;
       }
 
+      bool drmPolicyRequested = false;
       try {
         auto result = configmerge::mergeWithIncludes(rootPath);
+        drmPolicyRequested = hasRequestedDrmPolicy(result.merged);
         store.setMissingIncludes(result.missingIncludes);
         for (auto& diagnostic : result.diagnostics) {
           store.addDiagnostic(std::move(diagnostic));
@@ -1945,8 +2101,16 @@ namespace umbriel {
         for (const auto& path : result.loadedFiles) {
           store.addWatchPath(path);
         }
-        if (result.hadParseError) {
-          return false;
+        if (result.missingIncludes && result.merged.contains("drm")) {
+          emitDiag(
+              ConfigDiagnostic::Severity::Error, nullptr, "cannot safely load DRM policy while an include is missing"
+          );
+          return ConfigParseOutcome::Fatal;
+        }
+        if (result.hadError) {
+          // Invalid syntax or include directives can hide DRM policy intent.
+          // Do not silently start with defaults or a partial exclusion list.
+          return ConfigParseOutcome::Fatal;
         }
 
         Config loaded;
@@ -1959,6 +2123,7 @@ namespace umbriel {
           readHotCorners(root, loaded);
           readLayout(root, loaded);
           readGeneral(root, loaded);
+          readDrm(root, loaded);
           readEnvironment(root, loaded);
           readEvents(root, loaded);
           readWorkspaceSettings(root, loaded);
@@ -1976,17 +2141,17 @@ namespace umbriel {
           return d.severity == ConfigDiagnostic::Severity::Error;
         });
         if (hasErrors) {
-          return false;
+          return drmPolicyRequested ? ConfigParseOutcome::Fatal : ConfigParseOutcome::DefaultsAllowed;
         }
 
         out = std::move(loaded);
-        return true;
+        return ConfigParseOutcome::Loaded;
       } catch (const std::exception& exception) {
         emitDiag(ConfigDiagnostic::Severity::Error, nullptr, std::format("config load error: {}", exception.what()));
       } catch (...) {
         emitDiag(ConfigDiagnostic::Severity::Error, nullptr, "config load error: unknown error");
       }
-      return false;
+      return drmPolicyRequested ? ConfigParseOutcome::Fatal : ConfigParseOutcome::DefaultsAllowed;
     }
 
   } // namespace
@@ -2010,22 +2175,12 @@ namespace umbriel {
 
   bool configHasMissingIncludes() { return configStore().missingIncludes(); }
 
-  namespace {
-    // Whether the root config actually exists on disk right now, which is not the
-    // same as whether parsing succeeded: defaults are a valid way to run.
-    bool rootFileMissing(const std::filesystem::path& root) {
-      std::error_code ec;
-      return !std::filesystem::is_regular_file(root, ec) || static_cast<bool>(ec);
-    }
-  } // namespace
-
-  void ConfigStore::load(const char* explicitPath) {
+  bool ConfigStore::load(const char* explicitPath) {
     ConfigSelection selection;
     if (explicitPath != nullptr) {
       m_implicitCandidates.clear();
       selection.root = std::filesystem::path(explicitPath);
       selection.watchPaths.push_back(selection.root);
-      selection.found = configPathIsRegular(selection.root);
     } else {
       m_implicitCandidates = defaultConfigCandidates();
       selection = selectDefaultConfig(m_implicitCandidates);
@@ -2034,7 +2189,9 @@ namespace umbriel {
 
     Config loaded;
     loaded.keybinds = defaultKeybinds();
-    if (!parseInto(loaded, selection.root, selection.watchPaths) && rootFileMissing(selection.root)) {
+    const ConfigParseOutcome outcome = parseInto(loaded, selection.root, selection.watchPaths);
+    const bool missing = outcome == ConfigParseOutcome::Missing;
+    if (missing) {
       if (m_explicitPath) {
         emitDiag(
             ConfigDiagnostic::Severity::Error, nullptr,
@@ -2045,7 +2202,11 @@ namespace umbriel {
       }
     }
     sortDiagnostics();
-    (void)commit(std::move(loaded), selection.root, rootFileMissing(selection.root));
+    if (outcome == ConfigParseOutcome::Fatal || (missing && m_explicitPath)) {
+      return false;
+    }
+    (void)commit(std::move(loaded), selection.root, missing);
+    return true;
   }
 
   ConfigReloadResult ConfigStore::reload() {
@@ -2053,33 +2214,32 @@ namespace umbriel {
     if (m_explicitPath) {
       selection.root = m_rootPath;
       selection.watchPaths.push_back(selection.root);
-      selection.found = configPathIsRegular(selection.root);
     } else {
       selection = selectDefaultConfig(m_implicitCandidates);
     }
 
     Config loaded;
     loaded.keybinds = defaultKeybinds();
-    const bool ok = parseInto(loaded, selection.root, selection.watchPaths);
-    const bool fileMissing = rootFileMissing(selection.root);
-    if (!ok && m_explicitPath && fileMissing) {
+    const ConfigParseOutcome outcome = parseInto(loaded, selection.root, selection.watchPaths);
+    const bool missing = outcome == ConfigParseOutcome::Missing;
+    if (m_explicitPath && missing) {
       emitDiag(
           ConfigDiagnostic::Severity::Error, nullptr, std::format("config file not found: {}", selection.root.string())
       );
     }
     sortDiagnostics();
-    if (!ok) {
-      if (!m_explicitPath && !selection.found && fileMissing) {
+    if (outcome != ConfigParseOutcome::Loaded) {
+      if (!m_explicitPath && !selection.found && missing) {
         kLog.info("no config file found: {}, using defaults", selection.root.string());
         return commit(std::move(loaded), selection.root, true);
       }
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
-    return commit(std::move(loaded), selection.root, fileMissing);
+    return commit(std::move(loaded), selection.root, false);
   }
 
-  void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }
+  bool loadConfig(const char* explicitPath) { return configStore().load(explicitPath); }
 
   ConfigReloadResult reloadConfig() { return configStore().reload(); }
 

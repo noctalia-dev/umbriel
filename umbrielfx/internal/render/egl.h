@@ -3,6 +3,11 @@
 
 #include <wlr/render/egl.h>
 
+enum wlr_egl_drm_fd_strategy {
+	WLR_EGL_DRM_FD_EGL_DEVICE_FIRST,
+	WLR_EGL_DRM_FD_GBM_EXACT,
+};
+
 struct wlr_egl {
 	EGLDisplay display;
 	EGLContext context;
@@ -47,6 +52,9 @@ struct wlr_egl {
 	bool has_modifiers;
 	struct wlr_drm_format_set dmabuf_texture_formats;
 	struct wlr_drm_format_set dmabuf_render_formats;
+
+	// Keep additions after the fields read by wlroots' GLES2 renderer.
+	enum wlr_egl_drm_fd_strategy drm_fd_strategy;
 };
 
 struct wlr_egl_context {
@@ -62,6 +70,12 @@ struct wlr_egl_context {
  * Will attempt to load all possibly required API functions.
  */
 struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd);
+
+/**
+ * Initializes an EGL context for the given DRM FD through GBM without
+ * enumerating EGL devices.
+ */
+struct wlr_egl *wlr_egl_create_with_drm_fd_gbm(int drm_fd);
 
 /**
  * Frees all related EGL resources, makes the context not-current and

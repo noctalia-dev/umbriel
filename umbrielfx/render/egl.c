@@ -214,6 +214,7 @@ static struct wlr_egl *egl_create(void) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
 		return NULL;
 	}
+	egl->drm_fd_strategy = WLR_EGL_DRM_FD_EGL_DEVICE_FIRST;
 
 	load_egl_proc(&egl->procs.eglGetPlatformDisplayEXT,
 		"eglGetPlatformDisplayEXT");
@@ -383,6 +384,9 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
 
 static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 		void *remote_display, bool allow_software) {
+	// A GBM display is private to this wlr_egl because umbrielfx created the GBM
+	// device. It can always be terminated, even without reference tracking.
+	bool owns_display = platform == EGL_PLATFORM_GBM_KHR;
 	EGLint display_attribs[3] = {0};
 	size_t display_attribs_len = 0;
 
@@ -402,7 +406,7 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 	}
 
 	if (!egl_init_display(egl, display, allow_software)) {
-		if (egl->exts.KHR_display_reference) {
+		if (owns_display || egl->exts.KHR_display_reference) {
 			eglTerminate(display);
 		}
 		return false;
@@ -439,6 +443,11 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 		wlr_log(WLR_DEBUG, "Created EGL context using OpenGL ES 2.0");
 	} else {
 		wlr_log(WLR_ERROR, "Failed to create EGL context using OpenGL ES 2.0");
+		wlr_drm_format_set_finish(&egl->dmabuf_render_formats);
+		wlr_drm_format_set_finish(&egl->dmabuf_texture_formats);
+		if (owns_display || egl->exts.KHR_display_reference) {
+			eglTerminate(display);
+		}
 		return false;
 	}
 
@@ -558,6 +567,38 @@ static int open_render_node(int drm_fd) {
 	return render_fd;
 }
 
+static bool egl_init_with_gbm(struct wlr_egl *egl, int drm_fd,
+		bool allow_software) {
+	if (!egl->exts.KHR_platform_gbm) {
+		wlr_log(WLR_DEBUG, "KHR_platform_gbm not supported");
+		return false;
+	}
+
+	int gbm_fd = open_render_node(drm_fd);
+	if (gbm_fd < 0) {
+		wlr_log(WLR_ERROR, "Failed to open DRM render node");
+		return false;
+	}
+
+	egl->gbm_device = gbm_create_device(gbm_fd);
+	if (!egl->gbm_device) {
+		close(gbm_fd);
+		wlr_log(WLR_ERROR, "Failed to create GBM device");
+		return false;
+	}
+
+	if (egl_init(egl, EGL_PLATFORM_GBM_KHR, egl->gbm_device,
+			allow_software)) {
+		wlr_log(WLR_DEBUG, "Using EGL_PLATFORM_GBM_KHR");
+		return true;
+	}
+
+	gbm_device_destroy(egl->gbm_device);
+	egl->gbm_device = NULL;
+	close(gbm_fd);
+	return false;
+}
+
 struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
 	bool allow_software = drm_fd < 0;
 
@@ -585,33 +626,32 @@ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
 		wlr_log(WLR_DEBUG, "EXT_platform_device not supported");
 	}
 
-	if (egl->exts.KHR_platform_gbm && drm_fd >= 0) {
-		int gbm_fd = open_render_node(drm_fd);
-		if (gbm_fd < 0) {
-			wlr_log(WLR_ERROR, "Failed to open DRM render node");
-			goto error;
-		}
-
-		egl->gbm_device = gbm_create_device(gbm_fd);
-		if (!egl->gbm_device) {
-			close(gbm_fd);
-			wlr_log(WLR_ERROR, "Failed to create GBM device");
-			goto error;
-		}
-
-		if (egl_init(egl, EGL_PLATFORM_GBM_KHR, egl->gbm_device, allow_software)) {
-			wlr_log(WLR_DEBUG, "Using EGL_PLATFORM_GBM_KHR");
-			return egl;
-		}
-
-		gbm_device_destroy(egl->gbm_device);
-		close(gbm_fd);
-	} else {
-		wlr_log(WLR_DEBUG, "KHR_platform_gbm not supported");
+	if (drm_fd >= 0 && egl_init_with_gbm(egl, drm_fd, allow_software)) {
+		return egl;
 	}
 
 error:
 	wlr_log(WLR_ERROR, "Failed to initialize EGL context");
+	free(egl);
+	eglReleaseThread();
+	return NULL;
+}
+
+struct wlr_egl *wlr_egl_create_with_drm_fd_gbm(int drm_fd) {
+	assert(drm_fd >= 0);
+
+	struct wlr_egl *egl = egl_create();
+	if (egl == NULL) {
+		wlr_log(WLR_ERROR, "Failed to create EGL context");
+		return NULL;
+	}
+	egl->drm_fd_strategy = WLR_EGL_DRM_FD_GBM_EXACT;
+
+	if (egl_init_with_gbm(egl, drm_fd, false)) {
+		return egl;
+	}
+
+	wlr_log(WLR_ERROR, "Failed to initialize EGL context through GBM");
 	free(egl);
 	eglReleaseThread();
 	return NULL;
@@ -659,7 +699,7 @@ void wlr_egl_destroy(struct wlr_egl *egl) {
 	eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	eglDestroyContext(egl->display, egl->context);
 
-	if (egl->exts.KHR_display_reference) {
+	if (egl->gbm_device != NULL || egl->exts.KHR_display_reference) {
 		eglTerminate(egl->display);
 	}
 
@@ -1040,22 +1080,27 @@ static int dup_egl_device_drm_fd(struct wlr_egl *egl) {
 	return render_fd;
 }
 
-int wlr_egl_dup_drm_fd(struct wlr_egl *egl) {
-	int fd = dup_egl_device_drm_fd(egl);
-	if (fd >= 0) {
-		return fd;
-	}
-
-	// Fallback to GBM's FD if we can't use EGLDevice
+static int dup_gbm_drm_fd(struct wlr_egl *egl) {
 	if (egl->gbm_device == NULL) {
 		return -1;
 	}
 
-	fd = fcntl(gbm_device_get_fd(egl->gbm_device), F_DUPFD_CLOEXEC, 0);
+	int fd = fcntl(gbm_device_get_fd(egl->gbm_device), F_DUPFD_CLOEXEC, 0);
 	if (fd < 0) {
 		wlr_log_errno(WLR_ERROR, "Failed to dup GBM FD");
 	}
 	return fd;
+}
+
+int wlr_egl_dup_drm_fd(struct wlr_egl *egl) {
+	// GBM-exact renderers must keep the exact device they initialized.
+	// All other renderers retain wlroots' EGL-device-first compatibility path.
+	if (egl->drm_fd_strategy == WLR_EGL_DRM_FD_GBM_EXACT) {
+		return dup_gbm_drm_fd(egl);
+	}
+
+	int fd = dup_egl_device_drm_fd(egl);
+	return fd >= 0 ? fd : dup_gbm_drm_fd(egl);
 }
 
 EGLSyncKHR wlr_egl_create_sync(struct wlr_egl *egl, int fence_fd) {

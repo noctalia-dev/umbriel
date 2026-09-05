@@ -183,6 +183,7 @@ namespace umbriel {
         .layout = true,
         .workspaces = true,
         .general = true,
+        .drm = true,
         .environment = true,
         .events = true,
         .input = true,
@@ -205,6 +206,7 @@ namespace umbriel {
         .layout = before.layout != after.layout,
         .workspaces = before.workspaces != after.workspaces,
         .general = before.general != after.general,
+        .drm = before.drm != after.drm,
         .environment = before.environment != after.environment,
         .events = before.events != after.events,
         .input = before.input != after.input,
@@ -236,6 +238,7 @@ namespace umbriel {
     add(layout, "layout");
     add(workspaces, "workspaces");
     add(general, "general");
+    add(drm, "drm");
     add(environment, "environment");
     add(events, "events");
     add(input, "input");

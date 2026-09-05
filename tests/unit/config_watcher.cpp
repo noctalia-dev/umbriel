@@ -143,7 +143,7 @@ UMBRIEL_TEST(anIncludedFileReloadsThroughASymlinkedConfigDirectory) {
   const SymlinkedConfigTree tree;
   const std::string root = tree.root().string();
   ConfigStore& store = umbriel::configStore();
-  store.load(root.c_str());
+  CHECK(store.load(root.c_str()));
 
   CHECK_EQ(store.config().layout.gap, 5);
   CHECK_EQ(store.config().appearance.borderWidth, 2);
@@ -181,7 +181,7 @@ UMBRIEL_TEST(aRetargetedSymlinkedConfigDirectoryReloadsFromTheNewTarget) {
   const SymlinkedConfigTree tree;
   const std::string root = tree.root().string();
   ConfigStore& store = umbriel::configStore();
-  store.load(root.c_str());
+  CHECK(store.load(root.c_str()));
 
   CHECK_EQ(store.config().layout.gap, 5);
 
@@ -219,7 +219,7 @@ UMBRIEL_TEST(aNewHigherPriorityUserConfigIsAdoptedWithoutRestart) {
   const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", tree.systemDir().string());
 
   ConfigStore& store = umbriel::configStore();
-  store.load(nullptr);
+  CHECK(store.load(nullptr));
 
   CHECK_EQ(store.rootPath(), tree.systemConfig());
   CHECK_EQ(store.config().layout.gap, 17);
@@ -255,7 +255,7 @@ UMBRIEL_TEST(aDeletedSymlinkTargetIsRewatchedWhenItReappears) {
   const ScopedEnvironment configDirs("XDG_CONFIG_DIRS", tree.systemDir().string());
 
   ConfigStore& store = umbriel::configStore();
-  store.load(nullptr);
+  CHECK(store.load(nullptr));
 
   CHECK_EQ(store.rootPath(), tree.userConfig());
   CHECK_EQ(store.config().layout.gap, 19);
