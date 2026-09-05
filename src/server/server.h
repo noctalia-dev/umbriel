@@ -3,6 +3,7 @@
 #include "core/dirty.h"
 #include "input/modifier_tap.h"
 #include "input/surface_layouts.h"
+#include "scene/animation_shader.h"
 #include "scene/border_rect.h"
 #include "server/focus.h"
 #include "view/registry.h"
@@ -344,6 +345,7 @@ namespace umbriel {
       int durationMs = 0;
       AnimationCurve curve{.easing = Easing::EaseOutCubic};
       std::string style = "fade";
+      AnimationEvent event = AnimationEvent::WindowsOut;
     };
     void animateCloseSnapshot(
         Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders,
@@ -552,7 +554,7 @@ namespace umbriel {
     public:
       CloseSnapshot(
           Server& server, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders, int durationMs,
-          const AnimationCurve& curve, std::string_view style
+          const AnimationCurve& curve, std::string_view style, AnimationEvent event
       );
       ~CloseSnapshot() override;
 
@@ -566,6 +568,7 @@ namespace umbriel {
       wlr_scene_tree* m_tree = nullptr;
       Output* m_output = nullptr;
       AnimatedValue m_alpha;
+      AnimationEvent m_event = AnimationEvent::WindowsOut;
       AnimatedValue m_posY;
       int m_origX = 0;
       int m_origY = 0;

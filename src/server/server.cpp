@@ -304,6 +304,7 @@ namespace umbriel {
       throw std::runtime_error("failed to create wlr_allocator");
     }
 
+    prepareAnimationShaders(m_renderer);
     m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
     wlr_subcompositor_create(m_display);
     wlr_data_device_manager_create(m_display);
@@ -601,6 +602,7 @@ namespace umbriel {
     m_scratchpadManager.reset();
     wlr_scene_node_destroy(&m_scene->tree.node);
     wlr_allocator_destroy(m_allocator);
+    clearAnimationShaderCache();
     wlr_renderer_destroy(m_renderer);
     wlr_backend_destroy(m_backend);
     wl_display_destroy(m_display);
@@ -921,9 +923,10 @@ namespace umbriel {
 
   Server::CloseSnapshot::CloseSnapshot(
       Server& server, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders, int durationMs,
-      const AnimationCurve& curve, std::string_view style
+      const AnimationCurve& curve, std::string_view style, AnimationEvent event
   )
       : m_server(&server), m_tree(tree), m_output(output), m_borders(std::move(borders)) {
+    m_event = event;
     if (m_tree != nullptr) {
       m_origX = m_tree->node.x;
       m_origY = m_tree->node.y;
@@ -939,7 +942,7 @@ namespace umbriel {
     m_alpha.snap(1.0);
     m_alpha.retarget(0.0, durationMs, curve);
 
-    if (style == "slide") {
+    if (style == "slide" && animationShader(server.renderer(), event) == nullptr) {
       m_posY.snap(m_origY);
       m_posY.retarget(m_origY + 80, durationMs, curve);
     }
@@ -957,12 +960,15 @@ namespace umbriel {
   bool Server::CloseSnapshot::tickAnimations(uint64_t nowMsec) {
     const bool movedAlpha = m_alpha.tick(nowMsec);
     const bool movedY = m_posY.tick(nowMsec);
+    updateAnimationShader(&m_tree->node, m_server->renderer(), m_event, m_alpha, -1.0F);
 
     if (!movedAlpha && !movedY) {
       return false;
     }
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
-    const auto alpha = std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
+    const auto alpha = animationShader(m_server->renderer(), m_event) != nullptr
+        ? 1.0F
+        : std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
     for (auto& [buffer, baseOpacity] : m_buffers) {
       wlr_scene_buffer_set_opacity(buffer, std::clamp(baseOpacity * alpha, 0.0F, 1.0F));
     }
@@ -1069,7 +1075,10 @@ namespace umbriel {
       return;
     }
 
-    auto snapshot = std::make_unique<CloseSnapshot>(*this, output, tree, std::move(borders), durationMs, curve, style);
+    auto snapshot = std::make_unique<CloseSnapshot>(
+        *this, output, tree, std::move(borders), durationMs, curve, style,
+        overrides ? overrides->event : AnimationEvent::WindowsOut
+    );
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
   }

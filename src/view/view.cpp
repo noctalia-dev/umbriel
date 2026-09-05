@@ -9,7 +9,11 @@
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/animation_shader.h"
 #include "server/server.h"
+extern "C" {
+#include <umbrielfx/render/animation.h>
+}
 #include "view/maximize.h"
 #include "view/xdg_size.h"
 // clang-format off
@@ -516,7 +520,8 @@ namespace umbriel {
   float View::effectiveOpacity() const {
     // Overshooting curves can push this past [0, 1]; wlr_scene_buffer_set_opacity asserts.
     const float ruleOpacity = m_toplevel->scheduled.fullscreen ? 1.0F : m_ruleOpacity;
-    return std::clamp(m_fadeAlpha * ruleOpacity * m_dragOpacity * static_cast<float>(m_focusDim.current()), 0.0F, 1.0F);
+    const float fade = m_customFade && m_fade.animating() ? 1.0F : m_fadeAlpha;
+    return std::clamp(fade * ruleOpacity * m_dragOpacity * static_cast<float>(m_focusDim.current()), 0.0F, 1.0F);
   }
 
   void View::setFadeAlpha(float alpha) {
@@ -823,6 +828,7 @@ namespace umbriel {
   void View::snapPosition(int x, int y) { setPosition(x, y); }
 
   void View::animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve) {
+    m_customFade = m_scratchpadBorder && animationShader(m_server->renderer(), AnimationEvent::Scratchpad) != nullptr;
     m_fade.snap(m_fadeAlpha);
     m_fade.retarget(toAlpha, durationMs, curve);
     scheduleFrame();
@@ -861,6 +867,40 @@ namespace umbriel {
     m_posY.snap(fromY);
     m_posY.retarget(y, move.durationMs, move.curve);
     scheduleFrame();
+  }
+
+  void View::syncAnimationShaders(wlr_scene_tree* target, wlr_scene_node* border) {
+    if (target == nullptr) {
+      target = m_sceneTree;
+      if (m_decoration.borderTree() != nullptr) {
+        border = &m_decoration.borderTree()->node;
+      }
+    }
+    if (target == nullptr) {
+      return;
+    }
+    if (!m_mapped) {
+      wlr_scene_node_clear_animations(&target->node);
+      if (border != nullptr) {
+        wlr_scene_node_clear_animations(border);
+      }
+      return;
+    }
+    auto* renderer = m_server->renderer();
+    const auto& movement = m_posX.animating() ? m_posX : (m_posY.animating() ? m_posY : m_presentation.animation());
+    updateAnimationShader(&target->node, renderer, AnimationEvent::WindowsMove, movement);
+    updateAnimationShader(&target->node, renderer, AnimationEvent::DimUnfocused, m_focusDim);
+    updateAnimationShader(
+        &target->node, renderer, m_scratchpadBorder ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn, m_fade
+    );
+    wlr_scene_node_set_animation(
+        &target->node,
+        static_cast<unsigned>(m_scratchpadBorder ? AnimationEvent::WindowsIn : AnimationEvent::Scratchpad), nullptr,
+        nullptr
+    );
+    updateAnimationShader(
+        border, renderer, AnimationEvent::Border, m_borderColorAnim, m_borderFocusedState ? 1.0F : -1.0F
+    );
   }
 
   bool View::tickAnimations(uint64_t nowMsec) {
@@ -906,6 +946,11 @@ namespace umbriel {
     }
 
     if (m_fade.tick(nowMsec)) {
+      m_customFade = m_customFade
+          && m_fade.animating()
+          && animationShader(
+                 m_server->renderer(), m_scratchpadBorder ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn
+             ) != nullptr;
       setFadeAlpha(static_cast<float>(m_fade.current()));
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPresentationChanged(this);
@@ -944,6 +989,7 @@ namespace umbriel {
         active = true;
       }
     }
+    syncAnimationShaders();
     return active;
   }
 
@@ -1470,6 +1516,7 @@ namespace umbriel {
       return;
     }
 
+    wlr_scene_node_copy_animations(&snap->node, &m_sceneTree->node);
     m_server->animateCloseSnapshot(output, snap, std::move(snapBorders));
     wlr_output_schedule_frame(output->wlr());
   }
@@ -1892,7 +1939,12 @@ namespace umbriel {
     if (m_onActiveWorkspace) {
       const auto& animation = config().animation;
       const auto& open = animation.windowsIn;
-      if (!animation.enabled || !open.enabled || open.style == "none") {
+      m_customFade = animation.enabled
+          && open.enabled
+          && animationShader(m_server->renderer(), AnimationEvent::WindowsIn) != nullptr;
+      if (!animation.enabled
+          || !open.enabled
+          || (open.style == "none" && animationShader(m_server->renderer(), AnimationEvent::WindowsIn) == nullptr)) {
         setFadeAlpha(1.0F);
         m_fade.snap(1.0);
       } else {
@@ -1900,7 +1952,7 @@ namespace umbriel {
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
 
-        if (open.style == "popin" || open.style == "zoom") {
+        if (!m_customFade && (open.style == "popin" || open.style == "zoom")) {
           const int targetW = m_presentation.width();
           const int targetH = m_presentation.height();
           if (targetW > 0 && targetH > 0) {
@@ -1920,7 +1972,7 @@ namespace umbriel {
             m_posX.retarget(targetX, open.durationMs, open.curve);
             m_posY.retarget(targetY, open.durationMs, open.curve);
           }
-        } else if (open.style == "slide") {
+        } else if (!m_customFade && open.style == "slide") {
           const int targetX = m_sceneTree->node.x;
           const int targetY = m_sceneTree->node.y;
           const int startY = targetY + 60;
@@ -1981,6 +2033,8 @@ namespace umbriel {
       }
     }
     beginCloseAnimation();
+    // The closing snapshot must retain any in-flight opening shader first.
+    wlr_scene_node_clear_animations(&m_sceneTree->node);
     cancelFadeAnimation();
     cancelSizeAnimation();
     cancelPositionAnimation();

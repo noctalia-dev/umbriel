@@ -554,6 +554,10 @@ blur_optimized = false
 # Parent values provide defaults for every event table. Nested values override
 # only that event. Disable one event to make just that transition instant.
 # Documentation: https://docs.noctalia.dev/umbriel/animation/
+# Every event accepts shader = "path/to/effect.glsl". Inline GLSL is not supported.
+# File paths are relative to this config, including configs loaded via include.
+# Bundled reveal.glsl and squash.glsl can be referenced by their installed absolute paths.
+# Copy examples/shaders beside your config only if you want editable local versions.
 # ────────────────────────────────────────────────────────────────────────────
 
 [animation]
@@ -568,6 +572,7 @@ duration_ms = 150
 curve = "easeout"
 style = "popin"                                 # popin, zoom, slide, fade, or none
 scale = 0.85                                    # Popin start scale, 0.1-1.0
+# shader = "shaders/reveal.glsl"      # Replaces the built-in opening style
 
 # Window closing
 [animation.windows_out]
@@ -575,12 +580,14 @@ enabled = true
 duration_ms = 150
 curve = "easeout"
 style = "fade"                                  # fade or slide
+# shader = "shaders/reveal.glsl"
 
 # Window movement, resizing, and floating maximize
 [animation.windows_move]
 enabled = true
 duration_ms = 250
 curve = "snappy"
+# shader = "shaders/squash.glsl"      # Subtle compression and settle during move/resize
 
 # Workspace switching
 [animation.workspaces]

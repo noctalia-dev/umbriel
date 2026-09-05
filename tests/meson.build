@@ -6,6 +6,7 @@ unit_tests = [
   ['scene-clip', ['unit/scene_clip.cpp'], [wayland_server_dep]],
   ['presentation', ['unit/presentation.cpp'], [umbriel_core_dep]],
   ['animation', ['unit/animation.cpp'], [umbriel_core_dep]],
+  ['animation-shader', ['unit/animation_shader.cpp'], []],
   ['window-opacity-blur', ['unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
   ['value-parse', ['unit/value_parse.cpp'], []],
   ['keybind-parse', ['unit/keybind_parse.cpp'], []],
@@ -57,7 +58,8 @@ foreach unit_test : unit_tests
     cpp_args: unit_test_args,
   )
   unit_test_targets += test_exe
-  test(unit_test[0], test_exe)
+  # Config-load also validates the packaged example, including out-of-tree builds.
+  test(unit_test[0], test_exe, workdir: meson.project_source_root())
 endforeach
 
 test(

@@ -769,6 +769,13 @@ namespace umbriel {
         }
       }
 
+      const auto readShader = [&](Section& section, auto& event) {
+        auto result = readAnimationShader(section, configStore().mutableDiagnostics());
+        event.shader = std::move(result.source);
+        for (auto& path : result.watchPaths) {
+          configStore().addWatchPath(std::move(path));
+        }
+      };
       const auto readCurve = [&](Section& section, std::string_view context, AnimationCurve& target) {
         if (const toml::node* node = section.take("curve")) {
           if (auto curve = readCurveNode(node, context, animation.beziers, animation.springs)) {
@@ -792,6 +799,7 @@ namespace umbriel {
       };
 
       s.sub("windows_in", [&](Section& section) {
+        readShader(section, animation.windowsIn);
         section.boolean("enabled", animation.windowsIn.enabled)
             .integer("duration_ms", 1, 10000, animation.windowsIn.durationMs)
             .real("scale", 0.1, 1.0, animation.windowsIn.scale);
@@ -799,27 +807,32 @@ namespace umbriel {
         readCurve(section, "animation.windows_in", animation.windowsIn.curve);
       });
       s.sub("windows_out", [&](Section& section) {
+        readShader(section, animation.windowsOut);
         section.boolean("enabled", animation.windowsOut.enabled)
             .integer("duration_ms", 1, 10000, animation.windowsOut.durationMs);
         readStyle(section, animation.windowsOut.style, {"fade", "slide"});
         readCurve(section, "animation.windows_out", animation.windowsOut.curve);
       });
       s.sub("windows_move", [&](Section& section) {
+        readShader(section, animation.windowsMove);
         section.boolean("enabled", animation.windowsMove.enabled)
             .integer("duration_ms", 1, 10000, animation.windowsMove.durationMs);
         readCurve(section, "animation.windows_move", animation.windowsMove.curve);
       });
       s.sub("workspaces", [&](Section& section) {
+        readShader(section, animation.workspaces);
         section.boolean("enabled", animation.workspaces.enabled)
             .integer("duration_ms", 1, 10000, animation.workspaces.durationMs);
         readCurve(section, "animation.workspaces", animation.workspaces.curve);
       });
       s.sub("overview", [&](Section& section) {
+        readShader(section, animation.overview);
         section.boolean("enabled", animation.overview.enabled)
             .integer("duration_ms", 1, 10000, animation.overview.durationMs);
         readCurve(section, "animation.overview", animation.overview.curve);
       });
       s.sub("scratchpad", [&](Section& section) {
+        readShader(section, animation.scratchpad);
         section.boolean("enabled", animation.scratchpad.enabled)
             .integer("duration_ms", 1, 10000, animation.scratchpad.durationMs)
             .real("dim", 0.0, 1.0, animation.scratchpad.dim)
@@ -830,17 +843,20 @@ namespace umbriel {
         readCurve(section, "animation.scratchpad", animation.scratchpad.curve);
       });
       s.sub("border", [&](Section& section) {
+        readShader(section, animation.border);
         section.boolean("enabled", animation.border.enabled)
             .integer("duration_ms", 1, 10000, animation.border.durationMs);
         readCurve(section, "animation.border", animation.border.curve);
       });
       s.sub("dim_unfocused", [&](Section& section) {
+        readShader(section, animation.dimUnfocused);
         section.boolean("enabled", animation.dimUnfocused.enabled)
             .integer("duration_ms", 1, 10000, animation.dimUnfocused.durationMs)
             .real("dim", 0.0, 1.0, animation.dimUnfocused.dim);
         readCurve(section, "animation.dim_unfocused", animation.dimUnfocused.curve);
       });
       s.sub("layers", [&](Section& section) {
+        readShader(section, animation.layers);
         section.boolean("enabled", animation.layers.enabled)
             .integer("duration_ms", 1, 10000, animation.layers.durationMs);
         readCurve(section, "animation.layers", animation.layers.curve);

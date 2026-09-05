@@ -1,5 +1,10 @@
 #include "overview/overview.h"
 
+#include "scene/animation_shader.h"
+extern "C" {
+#include <umbrielfx/render/animation.h>
+}
+
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
@@ -166,6 +171,7 @@ namespace umbriel {
 
   void Overview::layoutCard(Card& card, const RowMetrics& metrics, double rowScroll, const View* liveTarget) {
     View* view = card.view;
+    view->syncAnimationShaders(card.tree, card.border != nullptr ? &card.border->node : nullptr);
     const wlr_box& geometry = view->toplevel()->base->geometry;
     if (geometry.width <= 0 || geometry.height <= 0) {
       card.blur.hide();
@@ -953,6 +959,7 @@ namespace umbriel {
       wlr_scene_node_destroy(&snapshot->node);
       return;
     }
+    wlr_scene_node_copy_animations(&snapshot->node, &card.tree->node);
     m_server->animateCloseSnapshot(card.owner->output, snapshot, std::move(borders));
     wlr_output_schedule_frame(card.owner->output->wlr());
   }
@@ -1532,6 +1539,12 @@ namespace umbriel {
       applyProgress();
     }
     m_cardPresentationDirty = false;
+    for (const auto& state : m_outputs) {
+      updateAnimationShader(
+          &state->tree->node, m_server->renderer(), AnimationEvent::Overview,
+          m_zoomAnim.animating() ? m_zoomAnim : m_rowAnim, m_closing ? -1.0F : 1.0F
+      );
+    }
     if (zoomTicked && !m_zoomAnim.animating()) {
       finishAnimation();
     }

@@ -10,6 +10,7 @@
 
 #include "render/egl.h"
 #include "types/fx/clipped_region.h"
+#include <umbrielfx/render/animation.h>
 
 struct fx_gles_render_pass {
 	struct wlr_render_pass base;
@@ -41,7 +42,17 @@ struct fx_gles_render_pass {
 	// NULL when no advanced effects like blur is being used in the current pass.
 	// Call `fx_render_pass_init_offscreen_buffers` to use advanced effects.
 	struct fx_offscreen_buffers *fx_offscreen_buffers;
+	unsigned animation_depth;
+	struct fx_framebuffer *animation_parents[FX_ANIMATION_DEPTH];
+	struct wlr_texture *animation_textures[FX_ANIMATION_DEPTH];
+	bool animation_suppress[FX_ANIMATION_DEPTH];
 };
+
+bool fx_render_pass_begin_animation(struct fx_gles_render_pass *pass);
+void fx_render_pass_end_animation(struct fx_gles_render_pass *pass,
+	struct fx_animation_shader *shader, const struct fx_animation_parameters *parameters,
+	const struct wlr_box *box, const struct wlr_box *logical_box,
+	enum wl_output_transform transform, const pixman_region32_t *clip);
 
 struct fx_gradient {
 	float degree;

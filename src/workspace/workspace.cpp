@@ -9,6 +9,7 @@
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/animation_shader.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/registry.h"
@@ -1953,7 +1954,9 @@ namespace umbriel {
   }
 
   bool WorkspaceGroup::tickAnimations(uint64_t nowMsec) {
-    if (!m_slideAnim.tick(nowMsec)) {
+    const bool ticked = m_slideAnim.tick(nowMsec);
+    updateAnimationShader(&m_output->viewRoot()->node, m_server->renderer(), AnimationEvent::Workspaces, m_slideAnim);
+    if (!ticked) {
       return false;
     }
     slideApply(m_slideAnim.current());

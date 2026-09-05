@@ -431,6 +431,7 @@ pure_sources = files(
   'src/config/keybind_parse.cpp',
   'src/config/value_parse.cpp',
   'src/config/section.cpp',
+  'src/config/animation_shader.cpp',
   'src/input/modifier_tap.cpp',
   'src/input/keyboard_layout.cpp',
   'src/input/surface_layouts.cpp',
@@ -474,6 +475,7 @@ umbriel_pure_dep = declare_dependency(
 # and the executable is just an entry point.
 core_sources = files(
   'src/core/animation.cpp',
+  'src/scene/animation_shader.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',
   'src/config/config.cpp',
@@ -614,4 +616,9 @@ install_data(
 install_data(
   'examples/config.toml',
   install_dir: get_option('datadir') / 'umbriel',
+)
+install_data(
+  'examples/shaders/reveal.glsl',
+  'examples/shaders/squash.glsl',
+  install_dir: get_option('datadir') / 'umbriel' / 'shaders',
 )

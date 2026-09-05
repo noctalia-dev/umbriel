@@ -31,6 +31,7 @@ namespace umbriel {
     // True while the ring exists and is showing. Fullscreen disables the tree
     // rather than destroying it, so existence alone does not answer this.
     [[nodiscard]] bool bordersVisible() const;
+    [[nodiscard]] wlr_scene_tree* borderTree() const { return m_borderTree; }
     void setBordersEnabled(bool enabled);
     void updateBorderGeometry(int contentWidth, int contentHeight);
     // `alpha` premultiplies the border color so a fading view's ring fades with it.

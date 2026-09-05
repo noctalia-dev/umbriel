@@ -1,5 +1,5 @@
 #pragma once
-
+#include "config/animation_shader.h"
 #include "config/config_diag.h"
 #include "config/keybind_parse.h"
 #include "config/value_parse.h"
@@ -467,6 +467,7 @@ namespace umbriel {
       std::map<std::string, SpringConfig> springs;
 
       struct WindowsIn {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = true;
         int durationMs = 150;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -476,6 +477,7 @@ namespace umbriel {
       } windowsIn;
 
       struct WindowsOut {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = true;
         int durationMs = 150;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -484,6 +486,7 @@ namespace umbriel {
       } windowsOut;
 
       struct WindowsMove {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Snappy};
@@ -491,6 +494,7 @@ namespace umbriel {
       } windowsMove;
 
       struct Workspaces {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -498,6 +502,7 @@ namespace umbriel {
       } workspaces;
 
       struct Overview {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -505,6 +510,7 @@ namespace umbriel {
       } overview;
 
       struct Scratchpad {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -517,6 +523,7 @@ namespace umbriel {
       } scratchpad;
 
       struct Border {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -524,6 +531,7 @@ namespace umbriel {
       } border;
 
       struct DimUnfocused {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -532,6 +540,7 @@ namespace umbriel {
       } dimUnfocused;
 
       struct Layers {
+        std::optional<AnimationShaderSource> shader;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};

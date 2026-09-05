@@ -1666,6 +1666,55 @@ UMBRIEL_TEST(tabletConfigDefaults) {
   CHECK(!tablet.calibrationMatrix.has_value());
 }
 
+UMBRIEL_TEST(animationShadersResolveIncludedFilesAcrossAllEventsAndTrackContentChanges) {
+  const TempConfigTree tree;
+  const std::array sections{"windows_in", "windows_out", "windows_move",  "workspaces", "overview",
+                            "scratchpad", "border",      "dim_unfocused", "layers"};
+  std::string theme;
+  for (const char* section : sections) {
+    theme += std::format("[animation.{}]\nshader = 'effect.glsl'\n", section);
+  }
+  tree.write("config.toml", "[include]\nfiles = ['theme/animation.toml']\n");
+  tree.write("theme/animation.toml", theme);
+  tree.write("theme/effect.glsl", "first shader");
+  tree.write("effect.glsl", "wrong source directory");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& animation = store.config().animation;
+  const std::array sources{&animation.windowsIn.shader,  &animation.windowsOut.shader,   &animation.windowsMove.shader,
+                           &animation.workspaces.shader, &animation.overview.shader,     &animation.scratchpad.shader,
+                           &animation.border.shader,     &animation.dimUnfocused.shader, &animation.layers.shader};
+  for (const auto* source : sources) {
+    CHECK(source->has_value());
+    if (*source) {
+      CHECK_EQ((*source)->code, std::string("first shader"));
+      CHECK((*source)->file == tree.path("theme/effect.glsl"));
+    }
+  }
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  CHECK_EQ(std::ranges::count(store.watchPaths(), tree.path("theme/effect.glsl")), 1);
+
+  tree.write("theme/effect.glsl", "edited shader");
+  const auto edited = store.reload();
+  CHECK(edited.success);
+  CHECK(edited.effects.animation);
+  CHECK(store.config().animation.windowsIn.shader.has_value());
+  if (store.config().animation.windowsIn.shader) {
+    CHECK_EQ(store.config().animation.windowsIn.shader->code, std::string("edited shader"));
+  }
+
+  tree.write("theme/replacement.glsl", "replacement shader");
+  tree.write("theme/animation.toml", "[animation.windows_in]\nshader = 'replacement.glsl'\n");
+  CHECK(store.reload().success);
+  CHECK(std::ranges::find(store.watchPaths(), tree.path("theme/effect.glsl")) == store.watchPaths().end());
+  CHECK(store.config().animation.windowsIn.shader.has_value());
+  if (store.config().animation.windowsIn.shader) {
+    CHECK_EQ(store.config().animation.windowsIn.shader->code, std::string("replacement shader"));
+  }
+  CHECK(!store.config().animation.layers.shader.has_value());
+}
+
 UMBRIEL_TEST(animationUsesCanonicalTopLevelNamespace) {
   const TempConfig file;
   file.write(R"(

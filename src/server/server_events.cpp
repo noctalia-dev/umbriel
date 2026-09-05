@@ -349,6 +349,9 @@ namespace umbriel {
     if (!effects.any()) {
       return;
     }
+    if (effects.animation) {
+      prepareAnimationShaders(m_renderer);
+    }
 
     if (effects.sceneBlur) {
       const Config::Appearance::Blur& blur = config().appearance.blur;
@@ -560,6 +563,7 @@ namespace umbriel {
 
     m_renderer = newRenderer;
     m_allocator = newAllocator;
+    prepareAnimationShaders(m_renderer);
 
     // Point the compositor at the new renderer so clients' shm/dma-buf textures get
     // re-imported on next attach.

@@ -9,6 +9,7 @@ Use a design note when the detail explains state transitions, subsystem
 boundaries, or regression-sensitive behavior.
 
 - [Configuration reload](configuration-reload.md)
+- [Custom animation shaders](animation-shaders.md)
 - [Workspace lifecycle](workspace-lifecycle.md)
 - [Overview rendering](overview-rendering.md)
 - [Border rendering](border-rendering.md)

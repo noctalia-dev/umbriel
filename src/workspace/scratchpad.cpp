@@ -1,6 +1,7 @@
 #include "workspace/scratchpad.h"
 
 #include "output/output.h"
+#include "scene/animation_shader.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -33,6 +34,12 @@ namespace umbriel {
     for (auto& [output, fade] : m_backdropFades) {
       if (fade.tick(nowMsec)) {
         updateDimAndBlur(output);
+        if (const auto rect = m_dimRects.find(output); rect != m_dimRects.end()) {
+          updateAnimationShader(&rect->second->node, m_server->renderer(), AnimationEvent::Scratchpad, fade);
+        }
+        if (const auto blur = m_blurNodes.find(output); blur != m_blurNodes.end()) {
+          updateAnimationShader(&blur->second->node, m_server->renderer(), AnimationEvent::Scratchpad, fade);
+        }
         movedBackdrop = true;
       }
     }

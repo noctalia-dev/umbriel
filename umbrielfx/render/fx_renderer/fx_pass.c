@@ -117,6 +117,8 @@ static const struct wlr_render_pass_impl render_pass_impl;
 
 static void render(const struct wlr_box *box, const pixman_region32_t *clip,
 	GLint attrib);
+static void render_pass_mark_updated(struct fx_gles_render_pass *pass,
+	const struct wlr_box *box, const pixman_region32_t *clip);
 static void set_proj_matrix(GLint loc, float proj[9],
 	const struct wlr_box *box);
 static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
@@ -409,9 +411,8 @@ static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box)
 	glUniformMatrix3fv(loc, 1, GL_FALSE, gl_matrix);
 }
 
-static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
+static void make_tex_matrix(float tex_matrix[9], enum wl_output_transform trans,
 		const struct wlr_fbox *box) {
-	float tex_matrix[9];
 	wlr_matrix_identity(tex_matrix);
 	wlr_matrix_translate(tex_matrix, box->x, box->y);
 	wlr_matrix_scale(tex_matrix, box->width, box->height);
@@ -425,8 +426,90 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 		wlr_matrix_transform(tex_matrix, trans);
 	}
 	wlr_matrix_translate(tex_matrix, -.5, -.5);
+}
 
+static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
+		const struct wlr_fbox *box) {
+	float tex_matrix[9];
+	make_tex_matrix(tex_matrix, trans, box);
 	glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
+}
+
+bool fx_render_pass_begin_animation(struct fx_gles_render_pass *pass) {
+	if (pass->fx_offscreen_buffers == NULL || pass->animation_depth == FX_ANIMATION_DEPTH) {
+		return false;
+	}
+	struct fx_framebuffer *target = ensure_offscreen_buffer(pass,
+		&pass->fx_offscreen_buffers->animation_buffers[pass->animation_depth], true);
+	if (target == NULL) {
+		return false;
+	}
+	struct wlr_texture *texture = fx_texture_from_buffer(&target->renderer->wlr_renderer, target->buffer);
+	if (texture == NULL || fx_get_texture(texture)->target != GL_TEXTURE_2D) {
+		if (texture != NULL) {
+			wlr_texture_destroy(texture);
+		}
+		fx_framebuffer_bind(pass->buffer);
+		wlr_log(WLR_ERROR, "Cannot sample animation target; using normal presentation");
+		return false;
+	}
+	pass->animation_textures[pass->animation_depth] = texture;
+	pass->animation_parents[pass->animation_depth] = pass->buffer;
+	pass->animation_suppress[pass->animation_depth] = pass->suppress_updated;
+	pass->animation_depth++;
+	pass->buffer = target;
+	pass->suppress_updated = true;
+	fx_framebuffer_bind(target);
+	glDisable(GL_SCISSOR_TEST);
+	glClearColor(0, 0, 0, 0);
+	glClear(GL_COLOR_BUFFER_BIT);
+	return true;
+}
+
+void fx_render_pass_end_animation(struct fx_gles_render_pass *pass,
+		struct fx_animation_shader *shader, const struct fx_animation_parameters *parameters,
+		const struct wlr_box *box, const struct wlr_box *logical_box,
+		enum wl_output_transform transform, const pixman_region32_t *clip) {
+	assert(pass->animation_depth > 0);
+	struct fx_framebuffer *captured = pass->buffer;
+	pass->animation_depth--;
+	pass->buffer = pass->animation_parents[pass->animation_depth];
+	pass->suppress_updated = pass->animation_suppress[pass->animation_depth];
+	struct wlr_texture *wlr_texture = pass->animation_textures[pass->animation_depth];
+	fx_framebuffer_bind(pass->buffer);
+	struct fx_texture *texture = fx_get_texture(wlr_texture);
+	glUseProgram(shader->program);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture->tex);
+	const GLint filter = pass->has_color_transform && !pass->buffer->renderer->exts.OES_texture_half_float_linear
+		? GL_NEAREST : GL_LINEAR;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+	glUniform1i(shader->tex, 0);
+	glUniform1f(shader->progress, parameters->progress);
+	glUniform1f(shader->linear_progress, parameters->linear_progress);
+	glUniform1f(shader->direction, parameters->direction);
+	glUniform2f(shader->size, logical_box->width, logical_box->height);
+	const struct wlr_fbox unit = { .width = 1, .height = 1 };
+	float uv_matrix[9], inverse[9], sample_matrix[9];
+	make_tex_matrix(uv_matrix, transform, &unit);
+	matrix_invert(inverse, uv_matrix);
+	wlr_matrix_identity(sample_matrix);
+	wlr_matrix_translate(sample_matrix, (float)box->x / captured->buffer->width,
+		(float)box->y / captured->buffer->height);
+	wlr_matrix_scale(sample_matrix, (float)box->width / captured->buffer->width,
+		(float)box->height / captured->buffer->height);
+	wlr_matrix_multiply(sample_matrix, sample_matrix, inverse);
+	glUniformMatrix3fv(shader->tex_proj, 1, GL_FALSE, uv_matrix);
+	glUniformMatrix3fv(shader->sample_matrix, 1, GL_FALSE, sample_matrix);
+	set_proj_matrix(shader->proj, pass->projection_matrix, box);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_STENCIL_TEST);
+	render_pass_mark_updated(pass, box, clip);
+	render(box, clip, shader->position);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	wlr_texture_destroy(wlr_texture);
 }
 
 static void setup_blending(enum wlr_render_blend_mode mode) {
@@ -921,6 +1004,47 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass *pass,
 
 	pop_fx_debug(renderer);
 	TRACY_BOTH_ZONES_END;
+}
+
+// Backdrop blur inside a captured group must see the scene beneath the group,
+// plus already rendered siblings in every enclosing capture, not transparent
+// scratch storage. Build that view without applying the pending parent effects.
+static struct fx_framebuffer *animation_backdrop(struct fx_gles_render_pass *pass) {
+	if (pass->animation_depth == 0) {
+		return pass->buffer;
+	}
+	struct fx_framebuffer *saved = pass->buffer;
+	struct fx_framebuffer *target = ensure_offscreen_buffer(pass,
+		&pass->fx_offscreen_buffers->animation_backdrop, true);
+	if (target == NULL) {
+		return saved;
+	}
+	pass->buffer = target;
+	fx_framebuffer_bind(target);
+	glDisable(GL_SCISSOR_TEST);
+	glClearColor(0, 0, 0, 0);
+	glClear(GL_COLOR_BUFFER_BIT);
+	for (unsigned i = 0; i <= pass->animation_depth; i++) {
+		struct fx_framebuffer *layer = i == pass->animation_depth ? saved : pass->animation_parents[i];
+		struct wlr_texture *texture = fx_texture_from_buffer(&target->renderer->wlr_renderer, layer->buffer);
+		if (texture == NULL) {
+			continue;
+		}
+		fx_framebuffer_bind(target);
+		struct wlr_render_texture_options options = {
+			.texture = texture,
+			.dst_box = { .width = target->buffer->width, .height = target->buffer->height },
+			.transfer_function = pass->has_color_transform ? WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR
+				: WLR_COLOR_TRANSFER_FUNCTION_GAMMA22,
+			.blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+		};
+		struct fx_render_texture_options fx_options = fx_render_texture_options_default(&options);
+		fx_render_pass_add_texture(pass, &fx_options);
+		wlr_texture_destroy(texture);
+	}
+	pass->buffer = saved;
+	fx_framebuffer_bind(saved);
+	return target;
 }
 
 void fx_render_pass_add_rect(struct fx_gles_render_pass *pass,
@@ -1659,7 +1783,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass *pass,
 			// Isn't as efficient as just using the optimized blur buffer
 			blur_options.current_buffer = fbos->optimized_no_blur_buffer;
 		} else {
-			blur_options.current_buffer = pass->buffer;
+			blur_options.current_buffer = animation_backdrop(pass);
 		}
 		buffer = get_main_buffer_blur(pass, &blur_options);
 	} else {
@@ -1770,9 +1894,10 @@ bool fx_render_pass_add_optimized_blur(struct fx_gles_render_pass *pass,
 	struct fx_framebuffer *no_blur_buffer =
 		ensure_offscreen_buffer(pass, &fbos->optimized_no_blur_buffer, false);
 	struct fx_framebuffer *fx_buffer = NULL;
+	struct fx_framebuffer *backdrop = animation_backdrop(pass);
 	if (blur_buffer != NULL && no_blur_buffer != NULL) {
 		struct fx_render_blur_pass_options blur_options = *fx_options;
-		blur_options.current_buffer = pass->buffer;
+		blur_options.current_buffer = backdrop;
 		blur_options.tex_options.base.clip = &clip;
 		fx_buffer = get_main_buffer_blur(pass, &blur_options);
 	}
@@ -1781,7 +1906,7 @@ bool fx_render_pass_add_optimized_blur(struct fx_gles_render_pass *pass,
 		fx_render_pass_read_to_buffer(pass, &clip, blur_buffer, fx_buffer);
 
 		// Save the current scene pass state
-		fx_render_pass_read_to_buffer(pass, &clip, no_blur_buffer, pass->buffer);
+		fx_render_pass_read_to_buffer(pass, &clip, no_blur_buffer, backdrop);
 	}
 
 	pixman_region32_fini(&clip);

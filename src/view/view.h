@@ -52,6 +52,7 @@ namespace umbriel {
     [[nodiscard]] const std::optional<std::string>& xdgTag() const { return m_xdgTag; }
     [[nodiscard]] ContentType contentType() const { return m_contentType; }
     [[nodiscard]] wlr_scene_tree* sceneTree() const { return m_sceneTree; }
+    void syncAnimationShaders(wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr);
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
@@ -476,6 +477,7 @@ namespace umbriel {
     AnimatedValue m_posX;
     AnimatedValue m_posY;
     AnimatedValue m_fade;
+    bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;

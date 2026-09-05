@@ -1,5 +1,10 @@
 #include "layer/layer_surface.h"
 
+#include "scene/animation_shader.h"
+extern "C" {
+#include <umbrielfx/render/animation.h>
+}
+
 #include "config/resolve.h"
 #include "core/dirty.h"
 #include "core/log.h"
@@ -59,7 +64,9 @@ namespace umbriel {
     m_map.notify = onMap;
     wl_signal_add(&m_layerSurface->surface->events.map, &m_map);
     m_unmap.notify = onUnmap;
-    wl_signal_add(&m_layerSurface->surface->events.unmap, &m_unmap);
+    // Snapshot before the scene helper disables its subsurface tree. The normal
+    // buffer iterator intentionally skips disabled trees.
+    wl_list_insert(&m_layerSurface->surface->events.unmap.listener_list, &m_unmap.link);
     m_commit.notify = onCommit;
     wl_signal_add(&m_layerSurface->surface->events.commit, &m_commit);
     m_destroy.notify = onDestroy;
@@ -83,7 +90,11 @@ namespace umbriel {
   }
 
   bool LayerSurface::tickAnimations(uint64_t nowMsec) {
-    if (!m_fade.tick(nowMsec)) {
+    const bool ticked = m_fade.tick(nowMsec);
+    if (m_scene != nullptr) {
+      updateAnimationShader(&m_scene->tree->node, m_server->renderer(), AnimationEvent::Layers, m_fade);
+    }
+    if (!ticked) {
       return false;
     }
     applyFadeAlpha();
@@ -97,7 +108,9 @@ namespace umbriel {
       return;
     }
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
-    float alpha = std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
+    float alpha = m_fade.animating() && animationShader(m_server->renderer(), AnimationEvent::Layers) != nullptr
+        ? 1.0F
+        : std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
     wlr_scene_node_for_each_buffer(
         &m_scene->tree->node,
         [](wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {
@@ -165,9 +178,12 @@ namespace umbriel {
       return;
     }
 
+    wlr_scene_node_copy_animations(&snap->node, &m_scene->tree->node);
     m_server->animateCloseSnapshot(
         out, snap, {},
-        Server::CloseSnapshotOverrides{.durationMs = layers.durationMs, .curve = layers.curve, .style = "fade"}
+        Server::CloseSnapshotOverrides{
+            .durationMs = layers.durationMs, .curve = layers.curve, .style = "fade", .event = AnimationEvent::Layers
+        }
     );
     wlr_output_schedule_frame(out->wlr());
   }
@@ -351,6 +367,7 @@ namespace umbriel {
   void LayerSurface::handleUnmap() {
     // Snapshot before any other unmap bookkeeping runs: the live buffer is still valid here.
     beginCloseAnimation();
+    wlr_scene_node_clear_animations(&m_scene->tree->node);
     const bool hadFocus = hasKeyboardFocus();
     m_mapped = false;
     m_server->updateIdleInhibit();

@@ -3,10 +3,20 @@
 
 #include <GLES2/gl2.h>
 #include <stdbool.h>
+#include <wayland-server-core.h>
 #include <umbrielfx/types/fx/clipped_region.h>
 #include "types/fx/clipped_region.h"
 
 struct fx_renderer;
+
+struct fx_animation_shader {
+	struct fx_renderer *renderer;
+	unsigned references;
+	struct wl_listener destroy;
+	GLuint program;
+	GLint proj, tex_proj, position, tex, sample_matrix;
+	GLint progress, linear_progress, direction, size;
+};
 
 GLuint compile_shader(GLuint type, const GLchar *src);
 
