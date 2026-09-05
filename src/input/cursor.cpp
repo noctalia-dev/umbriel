@@ -995,25 +995,45 @@ namespace umbriel {
 
     // Unmodified scrolling drives the overview filmstrip instead of the inert desktop under the cursor. Panels
     // (top/overlay) keep their own scrolling, and modifier chords still fall through to the wheel binds below.
-    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active() && effective == 0) {
-      double sx = 0;
-      double sy = 0;
-      wlr_surface* surface = nullptr;
-      LayerSurface* layer = nullptr;
-      m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
-      if (!overviewPassthroughLayer(layer)) {
-        if (!overview->interactive()) {
+    const bool isFingerScroll =
+        event->source == WL_POINTER_AXIS_SOURCE_FINGER || event->source == WL_POINTER_AXIS_SOURCE_CONTINUOUS;
+    if (isFingerScroll) {
+      Overview* overview = m_server->overview();
+      if (overview != nullptr && overview->active() && effective == 0) {
+        double sx = 0;
+        double sy = 0;
+        wlr_surface* surface = nullptr;
+        LayerSurface* layer = nullptr;
+        m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+        if (!overviewPassthroughLayer(layer)) {
+          if (!overview->interactive()) {
+            return;
+          }
+          if (isVertical) {
+            // Vertical 2-finger drives the filmstrip between workspaces.
+            m_wheelAccum[0] +=
+                event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0;
+            double& accumulated = m_wheelAccum[0];
+            while (std::abs(accumulated) >= 1.0) {
+              overview->handleAxisNotch(accumulated, m_cursor->x, m_cursor->y);
+              accumulated -= std::copysign(1.0, accumulated);
+            }
+          } else {
+            // Horizontal 2-finger scroll moves the strip like a 3-fingers swipe
+            Workspace* ws = overview->workspaceAt(m_cursor->x, m_cursor->y);
+            if (ws != nullptr && ws->scrollingLayout() != nullptr && !ws->scrollingVertical()) {
+              if (event->delta == 0 && event->delta_discrete == 0) {
+                m_server->gestures()->overviewWheelEnd(event->time_msec);
+              } else {
+                const double delta =
+                    event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) * 120.0 : event->delta;
+                m_server->gestures()->overviewWheel(ws, delta, event->time_msec);
+              }
+            }
+            m_wheelAccum[1] = 0;
+          }
           return;
         }
-        const int axis = isVertical ? 0 : 1;
-        m_wheelAccum[axis] +=
-            event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0;
-        double& accumulated = m_wheelAccum[axis];
-        while (std::abs(accumulated) >= 1.0) {
-          overview->handleAxisNotch(isVertical, accumulated, m_cursor->x, m_cursor->y);
-          accumulated -= std::copysign(1.0, accumulated);
-        }
-        return;
       }
     }
 

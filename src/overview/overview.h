@@ -93,7 +93,7 @@ namespace umbriel {
     // Input entry points; called from Cursor/Keyboard while active.
     bool handleButton(uint32_t button, bool pressed, double lx, double ly);
     void handleMotion(double lx, double ly);
-    bool handleAxisNotch(bool vertical, double direction, double lx, double ly);
+    bool handleAxisNotch(double direction, double lx, double ly);
     bool handleFallbackKey(uint32_t keysym);
     // Clear pending badge input for directional focus while interactive. Configured
     // actions retain their regular handlers throughout the closing animation.
@@ -103,6 +103,9 @@ namespace umbriel {
     // overview is up the real trees are hidden, so there is nothing to slide and switching is a discrete step rather
     // than the animated transition it is outside.
     bool selectRelativeWorkspace(int delta, Output* output);
+    // The workspace under the pointer, for horizontal scroll/drag over the filmstrip.
+    [[nodiscard]] Workspace* workspaceAt(double lx, double ly);
+    void refreshWorkspace(Workspace* workspace);
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
 
   private:

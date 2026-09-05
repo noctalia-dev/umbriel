@@ -27,6 +27,8 @@ namespace umbriel {
     [[nodiscard]] bool beginPointerScroll();
     void updatePointerScroll(double dx, double dy, uint32_t timeMsec);
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
+    void overviewWheel(Workspace* workspace, double delta, uint32_t timeMsec);
+    void overviewWheelEnd(uint32_t timeMsec);
 
   private:
     enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect };
@@ -74,6 +76,7 @@ namespace umbriel {
     bool m_scrollVertical = false;
     ScrollSource m_scrollSource = ScrollSource::None;
     SwipeTracker m_scrollTracker;
+    bool m_scrollOverview = false;
 
     // Switch state (vertical 3-finger).
     WorkspaceGroup* m_switchGroup = nullptr;

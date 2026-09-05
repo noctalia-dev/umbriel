@@ -2268,13 +2268,22 @@ namespace umbriel {
     return true;
   }
 
-  bool Overview::handleAxisNotch(bool vertical, double direction, double lx, double ly) {
-    if (!interactive() || !vertical) {
+  bool Overview::handleAxisNotch(double direction, double lx, double ly) {
+    if (!interactive()) {
       return true;
     }
     wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly);
     selectRelativeWorkspace(direction < 0 ? -1 : 1, m_server->outputFromWlr(wlrOutput));
     return true;
+  }
+
+  Workspace* Overview::workspaceAt(double lx, double ly) { return rowAt(lx, ly, nullptr, nullptr, false); }
+
+  void Overview::refreshWorkspace(Workspace* workspace) {
+    if (OutputState* state = stateForWorkspace(workspace)) {
+      layoutOutput(*state);
+      wlr_output_schedule_frame(state->output->wlr());
+    }
   }
 
   void Overview::refreshShortcutMatches() {
