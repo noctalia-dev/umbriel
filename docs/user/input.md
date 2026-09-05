@@ -143,6 +143,7 @@ natural_scroll = true
 # scroll_factor = 1.5         # touchpad scroll speed, 0.1 to 10.0
 # disable_while_typing = true
 # disable_on_external_mouse = true
+# click_method = "clickfinger"  # "button-areas", or "clickfinger"
 ```
 
 Tap-to-click is enabled by default. Set `tap = false` to disable it globally,
@@ -152,6 +153,15 @@ corresponding libinput default. Set `disable_while_typing = false` to keep the
 touchpad active while typing. Removing either optional setting on reload
 restores the device default. Options are applied only when supported by the
 device; an explicitly configured unsupported option is reported in the log.
+
+`click_method` selects how a physical press is interpreted as a button click.
+`button-areas` uses the lower area of the pad as soft buttons, while `clickfinger`
+selects the button from the number of fingers: two fingers produce a right click 
+and three fingers produce a middle click. The setting is unset by default, 
+preserving each device's libinput default click method, and removing it on reload 
+restores that default. Most touchpads support both `button-areas` and `clickfinger`,
+while buttonpad-style devices, where the pad itself acts as the buttons 
+(such as some trackpoint keyboards), support only `button-areas`. 
 
 The effective `natural_scroll` value also controls Umbriel's three-finger
 gestures: horizontal strip scrolling, vertical workspace switching, and

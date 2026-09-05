@@ -1372,6 +1372,7 @@ sensitivity = 0.1
 scroll_factor = 1.5
 disable_while_typing = true
 disable_on_external_mouse = true
+click_method = "clickfinger"
 
 [input.mouse]
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
@@ -1413,6 +1414,7 @@ sensitivity = -0.5
   if (input.touchpad.accelProfile.has_value()) {
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
   }
+  CHECK(input.touchpad.clickMethod == std::optional<umbriel::ClickMethod>(umbriel::ClickMethod::ClickFinger));
   CHECK(input.touchpad.sensitivity == std::optional<double>(0.1));
   CHECK(input.touchpad.scrollFactor == std::optional<double>(1.5));
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
@@ -1478,6 +1480,11 @@ UMBRIEL_TEST(touchpadDisableWhileTypingDefaultsToUnset) {
 UMBRIEL_TEST(touchpadDisableOnExternalMouseDefaultsToUnset) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.touchpad.disableOnExternalMouse.has_value());
+}
+
+UMBRIEL_TEST(touchpadClickMethodDefaultsToUnset) {
+  const umbriel::Config defaults;
+  CHECK(!defaults.input.touchpad.clickMethod.has_value());
 }
 
 UMBRIEL_TEST(touchpadTapDefaultsToEnabled) {

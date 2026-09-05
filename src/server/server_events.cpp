@@ -28,6 +28,7 @@
 #include <charconv>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace umbriel {
@@ -173,6 +174,40 @@ namespace umbriel {
       }
     }
 
+    void applyClickMethod(
+        libinput_device* libinputDevice, const wlr_input_device* device, const std::optional<ClickMethod>& configured,
+        std::string_view setting
+    ) {
+      const uint32_t methods = libinput_device_config_click_get_methods(libinputDevice);
+      if (methods == 0) {
+        if (configured) {
+          kLog.warn("input: '{}' does not support {}", deviceName(device), setting);
+        }
+        return;
+      }
+      enum libinput_config_click_method method = libinput_device_config_click_get_default_method(libinputDevice);
+      if (configured) {
+        enum libinput_config_click_method requested = LIBINPUT_CONFIG_CLICK_METHOD_BUTTON_AREAS;
+        const char* requestedName = "button-areas";
+        switch (*configured) {
+        case ClickMethod::ButtonAreas:
+          break;
+        case ClickMethod::ClickFinger:
+          requested = LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER;
+          requestedName = "clickfinger";
+          break;
+        }
+        if ((methods & requested) == 0) {
+          kLog.warn("input: '{}' does not support the {} click method", deviceName(device), requestedName);
+          return;
+        }
+        method = requested;
+      }
+      if (libinput_device_config_click_set_method(libinputDevice, method) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        kLog.warn("input: failed to apply {} to '{}'", setting, deviceName(device));
+      }
+    }
+
     void applyMouseAcceleration(
         libinput_device* libinputDevice, const wlr_input_device* device,
         const std::optional<AccelProfile>& configuredProfile, const std::optional<double>& configuredSensitivity,
@@ -314,6 +349,7 @@ namespace umbriel {
               deviceName(device)
           );
         }
+        applyClickMethod(libinputDevice, device, input.touchpad.clickMethod, "input.touchpad.click_method");
       }
 
       const std::optional<bool>& naturalScroll = override != nullptr && override->naturalScroll

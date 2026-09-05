@@ -2,6 +2,7 @@
 #include "config/change.h"
 
 using umbriel::AccelProfile;
+using umbriel::ClickMethod;
 using umbriel::Config;
 using umbriel::ConfigChange;
 using umbriel::ConfigEffects;
@@ -96,6 +97,12 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   {
     Config after;
     after.input.touchpad.disableOnExternalMouse = true;
+    CHECK(ConfigChange::between(before, after).input);
+    CHECK(ConfigEffects::between(before, after).input);
+  }
+  {
+    Config after;
+    after.input.touchpad.clickMethod = ClickMethod::ClickFinger;
     CHECK(ConfigChange::between(before, after).input);
     CHECK(ConfigEffects::between(before, after).input);
   }

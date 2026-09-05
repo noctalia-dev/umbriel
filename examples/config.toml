@@ -212,6 +212,7 @@ tap = true                                      # Tap-to-click
 # scroll_factor = 1.5                           # Two-finger scroll multiplier, 0.1-10.0
 # disable_while_typing = true                   # Omit to preserve the libinput default
 # disable_on_external_mouse = true              # Native sessions only
+# click_method = "clickfinger"                  # button-areas or clickfinger, omit for the device default
 
 [input.mouse]
 # natural_scroll = false                        # Omit to preserve the libinput default
