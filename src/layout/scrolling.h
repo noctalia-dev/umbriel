@@ -34,6 +34,7 @@ namespace umbriel {
     [[nodiscard]] int columnX(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] int columnWidth(int columnIndex, int viewportPrimary) const;
     bool setWidthFromPixels(int columnIndex, int viewportPrimary, int width);
+    bool setUserWidthFraction(int columnIndex, double fraction);
     [[nodiscard]] bool isFullWidth(int columnIndex) const override;
     [[nodiscard]] int maxScroll(int viewportPrimary) const {
       return std::max(0, totalWidth(viewportPrimary) - viewportPrimary);

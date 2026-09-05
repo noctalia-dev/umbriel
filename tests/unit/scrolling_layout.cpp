@@ -314,6 +314,14 @@ UMBRIEL_TEST(expandSingleColumnTrueFillsALoneColumn) {
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
 }
 
+UMBRIEL_TEST(expandSingleColumnSurvivesInitialWidthSeeding) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 0.5));
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+}
+
 UMBRIEL_TEST(expandSingleColumnTrueHonorsClientMaxWidth) {
   Fixture fixture;
   fixture.config.scrolling.expandSingleColumn = true;
@@ -337,6 +345,20 @@ UMBRIEL_TEST(expandSingleColumnTrueReexpandsTheLastSurvivor) {
   fixture.layout.removeView(stub(1));
   CHECK_EQ(fixture.layout.columns().size(), size_t{1});
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+}
+
+UMBRIEL_TEST(pointerResizeOverridesSingleColumnExpansion) {
+  Fixture fixture;
+  fixture.config.scrolling.expandSingleColumn = true;
+  fixture.addColumns(1);
+  fixture.layout.arrange(kUsable);
+
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(-100.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport - 100);
 }
 
 UMBRIEL_TEST(twoHalfColumnsTileExactlyAcrossTheViewport) {

@@ -31,6 +31,7 @@ namespace umbriel {
         double bottomGapWeight = 0.0;
         double widthFraction = 0.5;
         double savedWidthFraction = 0.0;
+        bool autoExpand = true;
         double viewportCenterFraction = 0.5;
       };
 
@@ -167,6 +168,7 @@ namespace umbriel {
           .bottomGapWeight = column.bottomGapWeight,
           .widthFraction = column.widthFrac,
           .savedWidthFraction = column.savedWidthFrac,
+          .autoExpand = column.autoExpand,
           .viewportCenterFraction = 0.5,
       };
       if (viewportPrimary > 0) {
@@ -222,6 +224,7 @@ namespace umbriel {
           .bottomGapWeight = saved.bottomGapWeight,
           .widthFrac = saved.widthFraction,
           .savedWidthFrac = saved.savedWidthFraction,
+          .autoExpand = saved.autoExpand,
       };
       for (const ScrollingSnapshot::Row& row : saved.rows) {
         View* view = (*resolved)[static_cast<size_t>(row.member)];
@@ -309,7 +312,7 @@ namespace umbriel {
       return std::max(1, viewportPrimary + 2 * edgePad);
     }
     int width = 0;
-    if (m_columns.size() == 1 && expandSingleColumn()) {
+    if (m_columns.size() == 1 && expandSingleColumn() && column.autoExpand) {
       // Fill the viewport without touching the stored fraction. Client size hints still apply to tiled columns.
       width = viewportPrimary;
     } else {
@@ -343,6 +346,14 @@ namespace umbriel {
     column.widthFrac =
         static_cast<double>(std::max(1, width) + gap) / static_cast<double>(std::max(1, viewportPrimary) + gap);
     column.savedWidthFrac = 0.0;
+    return true;
+  }
+
+  bool ScrollingLayout::setUserWidthFraction(int columnIndex, double fraction) {
+    if (!setWidthFraction(columnIndex, fraction)) {
+      return false;
+    }
+    m_columns[static_cast<size_t>(columnIndex)].autoExpand = false;
     return true;
   }
 
@@ -792,6 +803,7 @@ namespace umbriel {
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
     column.widthFrac = nextFractionPreset(m_config->widthPresets, column.widthFrac, direction);
     column.savedWidthFrac = 0.0;
+    column.autoExpand = false;
     return true;
   }
 
@@ -800,6 +812,7 @@ namespace umbriel {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    column.autoExpand = false;
     if (column.savedWidthFrac > 0.0) {
       column.widthFrac = column.savedWidthFrac;
       column.savedWidthFrac = 0.0;
@@ -1022,7 +1035,7 @@ namespace umbriel {
         const int gap = layout.layoutConfig()->totalGap;
         auto setColumnPrimaryPx = [&](int columnIndex, int extent) {
           const double fraction = static_cast<double>(extent + gap) / static_cast<double>(viewportPrimary + gap);
-          layout.setWidthFraction(columnIndex, fraction);
+          layout.setUserWidthFraction(columnIndex, fraction);
         };
         const bool centerUnderfullStrip =
             m_startStripPrimaryPx < viewportPrimary && layout.layoutConfig()->scrolling.centerUnderfullStrip;

@@ -120,6 +120,7 @@ namespace umbriel {
     double bottomGapWeight = 0.0;
     double widthFrac = 0.5;
     double savedWidthFrac = 0.0;
+    bool autoExpand = true;
   };
 
   struct LayoutTarget {

@@ -1133,7 +1133,9 @@ namespace umbriel {
       m_focusedView->setMaximizedToEdges(false);
     }
     const int column = m_layout->columnOf(m_focusedView);
-    if (!m_layout->setWidthFraction(column, fraction)) {
+    const bool changed = scrollingLayout() != nullptr ? scrollingLayout()->setUserWidthFraction(column, fraction)
+                                                      : m_layout->setWidthFraction(column, fraction);
+    if (!changed) {
       return false;
     }
     wlr_xdg_toplevel_set_maximized(m_focusedView->toplevel(), false);
