@@ -284,19 +284,30 @@ namespace umbriel::configmerge {
     toml::table
     loadAndExpand(const std::filesystem::path& path, std::set<std::filesystem::path>& visited, MergeResult& result) {
       toml::table parsed;
+      auto pathStr = path.string();
+      const bool optional = pathStr.starts_with("?");
+      if (optional) {
+        pathStr = pathStr.erase(0, 1);
+      }
+
       try {
-        parsed = toml::parse_file(path.string());
+        parsed = toml::parse_file(pathStr);
       } catch (const toml::parse_error& error) {
         result.hadParseError = true;
-        const auto key = canonicalKey(path);
+        const auto key = canonicalKey(pathStr);
         if (std::ranges::find(result.loadedFiles, key) == result.loadedFiles.end()) {
           result.loadedFiles.push_back(key);
         }
+
+        if (optional && !std::filesystem::exists(pathStr)) {
+          return {};
+        }
+
         auto source = error.source();
         if (source.path == nullptr) {
-          source.path = std::make_shared<const std::string>(path.string());
+          source.path = std::make_shared<const std::string>(pathStr);
         }
-        emit(result, ConfigDiagnostic::Severity::Error, &source, parseErrorMessage(error, path));
+        emit(result, ConfigDiagnostic::Severity::Error, &source, parseErrorMessage(error, pathStr));
         return {};
       }
       return expandFile(path, std::move(parsed), visited, result);

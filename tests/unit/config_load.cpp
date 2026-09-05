@@ -1262,7 +1262,7 @@ UMBRIEL_TEST(unknownIncludeKeysAreReported) {
   // The merge erases `include` before the config readers run, so the merge is the only place that can report a typo in
   // this section. Every file's own `include` table is checked, not just the root's.
   const TempConfig file;
-  file.write("[include]\nfiles = [\"" + file.includeName() + "\"]\ndirs = [\"themes\"]\n");
+  file.write("[include]\nfiles = [\"" + file.includeName() + ", \"missing_file\"\"]\ndirs = [\"themes\"]\n");
   file.writeInclude("[include]\npaths = []\n");
 
   ConfigStore& store = umbriel::configStore();
