@@ -69,6 +69,9 @@ namespace umbriel {
     }
     [[nodiscard]] std::optional<int> namedScrollingColumnOrder() const { return m_namedScrollingColumnOrder; }
     [[nodiscard]] bool pinned() const { return m_pinned; }
+    // True when unpinning puts the window back in the tiled layout, because
+    // that is where it was pinned from.
+    [[nodiscard]] bool restoresTiledOnUnpin() const { return m_restoreTiledAfterUnpin; }
     // True while an unfullscreen configure with size 0x0 is unacknowledged;
     // Workspace::arrange must not impose the column size yet.
     [[nodiscard]] bool awaitingUnfullscreenSize() const { return m_pendingUnfullscreenSize; }

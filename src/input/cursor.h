@@ -41,9 +41,10 @@ namespace umbriel {
       double offsetX = 0;
       double offsetY = 0;
       DragTarget target = DragTarget::Tiled;
-      // The window's state when the drag started, so a retarget knows what
-      // "unpinned" means for it.
-      DragTarget origin = DragTarget::Tiled;
+      // Where a pin toggle sends the window when it turns pinning off: back to
+      // the layout when that is where the window was pinned from, otherwise
+      // floating.
+      DragTarget unpinned = DragTarget::Tiled;
       // Layout bookkeeping for a drop back into the strip. It survives a
       // retarget, so toggling out and back restores the source column width.
       Workspace* sourceWorkspace = nullptr;

@@ -120,11 +120,24 @@ if [[ $w != "$tiled_w" || $h != "$tiled_h" ]]; then
   exit 1
 fi
 
-# A fullscreen window refuses to be pinned, so the drop has to fall back to the
-# layout instead of leaving it detached.
+# Pinned mode: one press pins the tiled window, and dragging the pinned window
+# with one press puts it back where it was pinned from.
 sed -i 's/window_drag_toggle = "floating"/window_drag_toggle = "pinned"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 sleep 0.3
+drag_toggling toggle-wide 700 400 1
+if [[ $(window toggle-wide .floating) != true ]]; then
+  echo "pinned mode did not take the window out of the layout: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+drag_toggling toggle-wide 400 300 1
+if [[ $(window toggle-wide .floating) != false ]]; then
+  echo "unpinning during a drag did not re-tile the window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+# A fullscreen window refuses to be pinned, so the drop has to fall back to the
+# layout instead of leaving it detached.
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 sleep 0.8
 fullscreen_title=$("$UMBRIEL" windows --json | jq -r '.[] | select(.focused) | .title')

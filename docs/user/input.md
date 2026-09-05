@@ -27,8 +27,9 @@ restarted after re-enabling it.
 `window_drag_toggle` retargets a window drag in progress: while a window is held
 with one mouse button, a press of the other main button changes where the drag
 will put it. It defaults to `none`, which leaves the drag alone. `floating`
-switches between the tiled layout and floating; `pinned` switches between pinned
-and the state the window had when the drag started.
+switches between the tiled layout and floating. `pinned` switches pinning on and
+off; turning it off puts the window back in the tiled layout when that is where
+it was pinned from, and leaves it floating otherwise.
 
 The window's state changes when the drag drops, not when the button is pressed,
 so a drag can be retargeted as often as needed and toggling back and forth
