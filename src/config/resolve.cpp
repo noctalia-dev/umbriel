@@ -53,7 +53,7 @@ namespace umbriel {
 
     bool dynamicRuleMatches(const WorkspaceConfig& rule) {
       if (rule.index) {
-        return *rule.index >= 1 && static_cast<size_t>(*rule.index) <= kMaxWorkspaces;
+        return *rule.index >= 1;
       }
       if (rule.name.empty()
           || !std::ranges::all_of(rule.name, [](char value) { return value >= '0' && value <= '9'; })) {
@@ -61,10 +61,7 @@ namespace umbriel {
       }
       size_t index = 0;
       const auto [end, error] = std::from_chars(rule.name.data(), rule.name.data() + rule.name.size(), index);
-      return error == std::errc{}
-      && end == rule.name.data() + rule.name.size()
-          && index >= 1
-          && index <= kMaxWorkspaces;
+      return error == std::errc{} && end == rule.name.data() + rule.name.size() && index >= 1;
     }
 
     void applyWorkspaceLayoutOverrides(

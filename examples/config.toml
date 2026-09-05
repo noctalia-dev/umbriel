@@ -108,7 +108,7 @@ empty_above = false                             # Keep one empty workspace above
 # Documentation: https://docs.noctalia.dev/umbriel/workspaces/#workspace-rules
 
 # [[workspace]]
-# index = 2
+# index = 2                                    # 1..2147483647; static inventories remain limited to 64
 # output = "DP-1"
 # layout.mode = "dwindle"
 # layout.gap = 4
@@ -461,7 +461,7 @@ default_pinned = true
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Chat$"
 # default_output = "DP-1"
-# default_workspace = 2
+# default_workspace = 2                        # 1..2147483647; dynamic outputs clamp to the last workspace
 # default_focused = false
 
 # Open an application maximized while keeping its parented dialogs natural-sized.
