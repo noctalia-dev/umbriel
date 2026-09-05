@@ -1452,7 +1452,8 @@ namespace umbriel {
       };
       for (const auto& [key, entry] : *section) {
         const std::string chord(key.str());
-        std::string actionStr;
+        std::optional<std::string> actionStr;
+        std::vector<std::string> actionQueue{};
         std::string submapAfter;
         bool hasSubmapAfter = false;
         bool repeatBind = true;
@@ -1472,19 +1473,35 @@ namespace umbriel {
             warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
             continue;
           }
-          const auto actionVal = actionNode->value<std::string>();
-          if (!actionVal) {
-            warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
-            continue;
+          // Try to get actionNode as an array; else fall back to reading as string
+          if (const auto& actionVec = actionNode->as_array()) {
+            bool hadParseError = false;
+            for (auto& action : *actionVec) {
+              const auto actionVal = action.value<std::string>();
+              if (!actionVal) {
+                warnAt(entry.source(), "ignoring keybind '{}' ('action' table is malformed)", chord);
+                hadParseError = true;
+                break;
+              }
+              actionQueue.push_back(*actionVal);
+            }
+            if (hadParseError)
+              continue;
+          } else {
+            const auto actionVal = actionNode->value<std::string>();
+            if (!actionVal) {
+              warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
+              continue;
+            }
+            actionStr = std::optional<std::string>{actionVal};
           }
-          actionStr = *actionVal;
         } else {
           const auto value = entry.value<std::string>();
           if (!value) {
             warnAt(entry.source(), "ignoring keybind '{}' (expected string or table)", chord);
             continue;
           }
-          actionStr = *value;
+          actionStr = std::optional<std::string>{value};
         }
 
         if (hasSubmapAfter && !validSubmapName(submapAfter)) {
@@ -1509,9 +1526,29 @@ namespace umbriel {
         }
         binding.repeat = repeatBind && !binding.modifierOnly && !binding.submapAfter.has_value();
         binding.allowWhenLocked = allowWhenLocked;
-        if (!parseAction(actionStr, binding)) {
-          warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, actionStr);
-          continue;
+        if (actionStr) {
+          if (!parseAction(*actionStr, binding)) {
+            warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, *actionStr);
+            continue;
+          }
+        } else {
+          bool hadParseError = false;
+          std::vector<Keybind> actions{};
+          // For each action in the queue, create a dummy keybind, parse it, and add it to the queue
+          for (std::string_view action : actionQueue) {
+            Keybind bind{};
+            if (!parseAction(action, bind)) {
+              warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}' in table)", chord, action);
+              hadParseError = true;
+              break;
+            }
+            actions.push_back(bind);
+          }
+          if (hadParseError) {
+            continue;
+          }
+          binding.action = KeybindAction::Queue;
+          binding.payload = ArrayArg{.actionQueue = actions};
         }
 
         if (std::ranges::any_of(configured, [&](const Keybind& existing) { return sameChord(existing, binding); })) {

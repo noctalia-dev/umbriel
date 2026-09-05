@@ -25,6 +25,7 @@ namespace umbriel {
 
   enum class KeybindAction {
     None,
+    Queue,
     Spawn,
     WindowClose,
     SessionQuit,
@@ -175,9 +176,17 @@ namespace umbriel {
     bool skipConfirmation = false;
     bool operator==(const QuitArg&) const = default;
   };
+  struct ArrayArg;
 
   using KeybindPayload = std::variant<
-      std::monostate, SpawnArg, SubmapArg, WidthArg, WorkspaceArg, OutputArg, WindowIdArg, LayoutModeArg, QuitArg>;
+      std::monostate, SpawnArg, SubmapArg, WidthArg, WorkspaceArg, OutputArg, WindowIdArg, LayoutModeArg, QuitArg,
+      ArrayArg>;
+
+  struct Keybind;
+  struct ArrayArg {
+    std::vector<Keybind> actionQueue;
+    bool operator==(const ArrayArg&) const = default;
+  };
 
   struct Keybind {
     // What triggers the bind.
