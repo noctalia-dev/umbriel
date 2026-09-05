@@ -80,7 +80,7 @@ in
             rawConfig = generateToml "umbriel-config.toml" cfg.settings;
           in
           if cfg.validateConfig && cfg.package != null then
-            pkgs.runCommand "noctalia-config" { } ''
+            pkgs.runCommand "umbriel-config" { } ''
               ${lib.getExe cfg.package} validate -c ${rawConfig}
               cp ${rawConfig} $out
             ''
