@@ -1,6 +1,7 @@
 #ifndef UMBRIELFX_TYPES_FX_CLIPPED_REGION_H
 #define UMBRIELFX_TYPES_FX_CLIPPED_REGION_H
 
+#include <linux/stddef.h>
 #include <wlr/util/box.h>
 
 // uint16_t is a reasonable enough range for corner radius
