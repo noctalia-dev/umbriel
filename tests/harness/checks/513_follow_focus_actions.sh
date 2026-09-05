@@ -57,8 +57,8 @@ output_x() {
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 0
+[animation]
+enabled = false
 
 [layout.scrolling]
 default_width_fraction = 0.5

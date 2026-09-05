@@ -51,8 +51,10 @@ unfocused = "#000000FF"
 background_tint = "#000000FF"
 workspace_background = "#000000FF"
 
+[animation]
+duration_ms = 100
+
 [appearance]
-animation_ms = 100
 border_width = 100
 outer_border_width = 0
 corner_radius = 0

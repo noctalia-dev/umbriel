@@ -19,8 +19,8 @@ fi
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
-[appearance]
-animation_ms = 1
+[animation]
+duration_ms = 1
 
 [input.cursor]
 hide_when_typing = true
