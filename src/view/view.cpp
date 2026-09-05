@@ -2277,9 +2277,11 @@ namespace umbriel {
         && m_workspace != nullptr
         && !m_toplevel->scheduled.fullscreen
         && !m_toplevel->current.fullscreen
-        && sizeGrabActive()) {
+        && sizeGrabTracksPointer()) {
       // During interactive resize, track geometry so no spurious animation
-      // replays the drag when the grab ends and mode returns to Passthrough.
+      // replays the drag when the grab ends and mode returns to Passthrough. A
+      // move grab is not that: it retargets the size once and animates there,
+      // and the client's ack must not cut that animation short.
       const wlr_box& geometry = m_toplevel->base->geometry;
       if (geometry.width > 0 && geometry.height > 0) {
         if (sizeAnimating()) {

@@ -441,13 +441,16 @@ namespace umbriel {
     }
 
     setActiveConstraint(nullptr);
-    const DragTarget origin = tiled ? DragTarget::Tiled : (view->pinned() ? DragTarget::Pinned : DragTarget::Floating);
+    const bool pinned = !tiled && view->pinned();
+    // A pinned window is floating, but it remembers whether it was tiled when
+    // it got pinned, and that is where unpinning it puts it back.
+    const bool tiledUnderneath = tiled || (pinned && view->restoresTiledOnUnpin());
     MoveGrab grab{
         .view = view,
         .offsetX = m_cursor->x - view->sceneTree()->node.x,
         .offsetY = m_cursor->y - view->sceneTree()->node.y,
-        .target = origin,
-        .origin = origin,
+        .target = tiled ? DragTarget::Tiled : (pinned ? DragTarget::Pinned : DragTarget::Floating),
+        .unpinned = tiledUnderneath ? DragTarget::Tiled : DragTarget::Floating,
         .sourceWorkspace = tiled ? view->workspace() : nullptr,
         .sourceColumn = -1,
         .sourceWidth = std::nullopt,
@@ -1856,9 +1859,8 @@ namespace umbriel {
       beginDrag(*grab);
     }
 
-    const DragTarget unpinned = grab->origin == DragTarget::Tiled ? DragTarget::Tiled : DragTarget::Floating;
     if (toggle == WindowDragToggle::Pinned) {
-      grab->target = grab->target == DragTarget::Pinned ? unpinned : DragTarget::Pinned;
+      grab->target = grab->target == DragTarget::Pinned ? grab->unpinned : DragTarget::Pinned;
     } else {
       grab->target = grab->target == DragTarget::Tiled ? DragTarget::Floating : DragTarget::Tiled;
     }
