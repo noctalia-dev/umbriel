@@ -122,6 +122,12 @@ chosen by the client. A numeric `default_width` window rule takes precedence.
 For a new horizontal column, the pixel width from a matching `default_size`
 window rule takes precedence over both fractional settings.
 
+Fractional widths round cumulative column boundaries to logical pixels. When a
+viewport and its gaps cannot divide evenly, the remaining pixel is assigned to
+one column so the complete span still fits exactly. This applies equally to odd
+and even `gap` values and keeps focus changes from shifting an otherwise fully
+visible strip.
+
 Set a different initial width for every scrolling workspace on one output under
 that output's section:
 

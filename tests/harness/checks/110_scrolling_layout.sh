@@ -111,4 +111,33 @@ if [[ $("$UMBRIEL" windows --json | jq '[.[] | select(.floating)] | length') -ne
   exit 1
 fi
 
-echo "2 clients tiled at ${EXPECT_W}x${EXPECT_H}, center_focused reload applies, float round trip ok"
+# An odd effective gap leaves one indivisible pixel between two half-width columns. The layout assigns that pixel to
+# one column, so their combined span still fits exactly and changing focus cannot nudge the strip by one pixel.
+printf '\n[layout]\ngap = 5\n' >> "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+odd_ready=false
+for _ in $(seq 40); do
+  windows=$("$UMBRIEL" windows --json)
+  if jq -e '([.[].w] | add) + 9 == 1266' <<< "$windows" > /dev/null; then
+    odd_ready=true
+    break
+  fi
+  sleep 0.1
+done
+if [[ $odd_ready != true ]]; then
+  echo "odd-gap columns did not fill the viewport exactly: $windows"
+  exit 1
+fi
+odd_geometry=$(jq -c 'sort_by(.title) | map({title, x, w})' <<< "$windows")
+"$UMBRIEL" msg window-focus-left > /dev/null
+sleep 0.1
+left_geometry=$("$UMBRIEL" windows --json | jq -c 'sort_by(.title) | map({title, x, w})')
+"$UMBRIEL" msg window-focus-right > /dev/null
+sleep 0.1
+right_geometry=$("$UMBRIEL" windows --json | jq -c 'sort_by(.title) | map({title, x, w})')
+if [[ $left_geometry != "$odd_geometry" || $right_geometry != "$odd_geometry" ]]; then
+  echo "odd-gap focus shifted window geometry: initial=$odd_geometry left=$left_geometry right=$right_geometry"
+  exit 1
+fi
+
+echo "2 clients tiled, center_focused reload applies, float round trip and odd-gap focus geometry are stable"

@@ -348,6 +348,25 @@ UMBRIEL_TEST(twoHalfColumnsTileExactlyAcrossTheViewport) {
   CHECK_EQ(a + b + fixture.config.totalGap, kViewport);
 }
 
+UMBRIEL_TEST(oddGapHalfColumnsTileExactlyWithoutFocusScroll) {
+  Fixture fixture;
+  fixture.config.gap = 5;
+  fixture.config.totalGap = 9;
+  fixture.config.edgePad = 7;
+  constexpr int viewport = 1280 - 2 * 7;
+  fixture.addColumns(2);
+
+  const int first = fixture.layout.columnWidth(0, viewport);
+  const int second = fixture.layout.columnWidth(1, viewport);
+  CHECK_EQ(first + fixture.config.totalGap + second, viewport);
+
+  fixture.layout.setScroll(0.0);
+  fixture.layout.ensureVisible(1, viewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+  fixture.layout.ensureVisible(0, viewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+}
+
 UMBRIEL_TEST(threeThirdColumnsTileExactlyAcrossTheViewport) {
   Fixture fixture;
   fixture.addColumns(3);

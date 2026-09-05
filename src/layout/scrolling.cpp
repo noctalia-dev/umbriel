@@ -313,10 +313,18 @@ namespace umbriel {
       // Fill the viewport without touching the stored fraction. Client size hints still apply to tiled columns.
       width = viewportPrimary;
     } else {
-      // Gap-aware: reserve one inter-lane gap per lane so fractions summing to 1
-      // tile exactly across the viewport primary extent.
+      // Gap-aware: reserve one inter-lane gap per lane so fractions summing to 1 tile exactly across the viewport
+      // primary extent. Round cumulative slot boundaries instead of every width independently. This distributes an
+      // indivisible pixel between columns, rather than letting equal half-width columns overflow by one pixel when the
+      // effective gap is odd.
       const int gap = m_config->totalGap;
-      width = static_cast<int>(std::lround(column.widthFrac * (viewportPrimary + gap) - gap));
+      const double slotExtent = static_cast<double>(viewportPrimary + gap);
+      double slotStart = 0.0;
+      for (int i = 0; i < columnIndex; ++i) {
+        slotStart += m_columns[static_cast<size_t>(i)].widthFrac * slotExtent;
+      }
+      const double slotEnd = slotStart + column.widthFrac * slotExtent;
+      width = static_cast<int>(std::lround(slotEnd) - std::lround(slotStart)) - gap;
     }
     width = std::max(width, columnMinPrimaryPx(column, *this));
     const int maxWidth = columnMaxPrimaryPx(column, *this);
