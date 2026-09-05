@@ -172,7 +172,7 @@ Strut edges are resolved independently. A rule that sets only
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
 | `layout.scrolling.center_focused` | bool | Always center the focused column, including when the setting changes on config reload. |
 | `layout.scrolling.direction` | string | `"horizontal"` or `"vertical"` scroll axis. |
-| `layout.scrolling.expand_single_column` | bool | Fill the viewport for a workspace's lone tiled column, subject to client size hints and viewport bounds. Disable to keep the configured/default width. |
+| `layout.scrolling.expand_single_column` | bool | Fill the viewport for a workspace's lone tiled column until its width is explicitly changed. Client size hints and viewport bounds still apply. Disable to always keep the configured/default width. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"` or `"right"`. |
 | `layout.master.default_width_fraction` | float | Master area fraction when both areas exist (0.1-0.9). |
 | `layout.master.new_on_top` | bool | Place newly opened windows at the top of the stack. Disable to place them at the bottom. |

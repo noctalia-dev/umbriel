@@ -412,7 +412,7 @@ bottom = 0
 default_width_fraction = 0.5                    # Initial width for new columns, 0.1-1.0
 center_underfull_strip = true                   # Center a strip narrower than the viewport
 center_focused = false                          # Always center the focused column
-expand_single_column = true                     # Let a lone column fill the viewport
+expand_single_column = true                     # Fill a lone column until its width is explicitly changed
 
 [layout.dwindle]
 # preserve_split = false                        # Keep every split direction fixed after creation
