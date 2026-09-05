@@ -1,7 +1,9 @@
 #include "config/config.h"
 #include "config/resolve.h"
 #include "core/log.h"
+#include "input/cursor.h"
 #include "output/output.h"
+#include "overview/overview.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -137,6 +139,10 @@ namespace umbriel {
         workspace != nullptr ? workspace->name() : "", workspace != nullptr && !workspace->active()
     );
     m_server->focusView(this, FocusReason::ForeignActivation);
+    Overview* overview = m_server->overview();
+    if (config().input.cursor.followsFocus && (overview == nullptr || !overview->active())) {
+      m_server->cursor()->warpToView(*this);
+    }
   }
 
   void View::handleForeignClose() { wlr_xdg_toplevel_send_close(m_toplevel); }

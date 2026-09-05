@@ -145,6 +145,9 @@ namespace umbriel {
     void warpTo(double lx, double ly);
     // Run the same motion pipeline without letting pointer crossing replace an explicit keyboard-focus choice.
     void warpToPreservingFocus(double lx, double ly);
+    // Warp to the visible logical center of a view after flushing any pending tiled arrangement. The explicit focus
+    // choice is preserved while the cursor crosses other surfaces on its way there.
+    bool warpToView(View& view);
     // A layout-mode reload can replace the layout that owns a tiled resize.
     void cancelStaleTiledResize();
     void handleNewConstraint(wlr_pointer_constraint_v1* constraint);

@@ -231,7 +231,7 @@ enabled = true                                  # False disables tablet tools an
 theme = ""                                      # Empty uses environment or default Xcursor theme
 size = 24                                       # Logical size, 1-512
 hardware_cursor = true                          # False forces cursor composition
-follows_focus = false                           # Warp to targets selected by focus navigation
+follows_focus = false                           # Warp to windows selected by focus, output, move, or other activations
 hide_when_typing = false                        # Keep visible while typing
 hide_timeout_ms = 0                             # Idle hide timeout, 0 disables; maximum is 3600000
 

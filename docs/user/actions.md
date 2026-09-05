@@ -217,17 +217,19 @@ workspaces](layout.md#vertical-workspaces).
   dialog.
 - **Cursor.** With `input.cursor.follows_focus` enabled, focus navigation and
   window or column transfers between workspaces warp the cursor to the visible
-  center of the focused window. This includes transfers to another output.
-  Pointer-driven and automatic focus changes never move the cursor. `window-
-  focus:<window-id>` stays focus-only, while `window-focus-warp:<window-id>`
-  always moves it.
+  center of the focused window. This includes local `window-move-or-output-*`
+  moves, transfers to another output, output focus actions, and foreign-
+  toplevel activation requests from docks and taskbars. Pointer-driven and
+  automatic focus changes never move the cursor. `window-focus:<window-id>`
+  stays focus-only, while `window-focus-warp:<window-id>` always moves it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction
   the action fails with an IPC error naming it ("no output to the left" and
   friends). Otherwise the cursor warps to the center of the target monitor so
-  focus follows the action. With `input.cursor.follows_focus` enabled, a moved
-  window or column uses its focused window's visible center instead. Output
-  direction comes from output centers in logical coordinates, so fractional-
-  scale rounding does not hide a neighbor.
+  focus follows the action. With `input.cursor.follows_focus` enabled, it then
+  settles on the focused window's visible center when the target workspace has
+  one. A moved window or column uses that same target. Output direction comes
+  from output centers in logical coordinates, so fractional-scale rounding does
+  not hide a neighbor.
 - **Cycling.** `window-focus-next` and `window-focus-previous` walk the tiled
   windows in layout order, then the floating ones, wrapping in both directions.
   `window-swap-next` and `window-swap-previous` exchange the focused tiled

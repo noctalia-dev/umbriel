@@ -568,6 +568,45 @@ namespace umbriel {
 
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
+  bool Cursor::warpToView(View& view) {
+    Output* output = view.currentOutput();
+    if (output == nullptr) {
+      return false;
+    }
+
+    wlr_box outputBox{};
+    wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
+    if (outputBox.width <= 0 || outputBox.height <= 0) {
+      return false;
+    }
+
+    wlr_box target = view.presentedBox();
+    Workspace* workspace = view.workspace();
+    if (view.layoutFullscreen()) {
+      target = outputBox;
+    } else if (view.maximizedToEdges()) {
+      target = output->usableArea();
+    } else if (view.tiled() && workspace != nullptr) {
+      // A focus or move may have updated the scrolling offset and marked the layout stale. Flush it before reading the
+      // final logical target, while leaving its visual transition animated.
+      workspace->flushArrange();
+      target = workspace->layout().targetBox(&view);
+    } else {
+      target.x = view.layoutTargetX();
+      target.y = view.layoutTargetY();
+    }
+
+    if (target.width <= 0 || target.height <= 0) {
+      target = outputBox;
+    }
+    wlr_box visible{};
+    if (!wlr_box_intersection(&visible, &target, &outputBox)) {
+      visible = outputBox;
+    }
+    warpToPreservingFocus(visible.x + visible.width / 2.0, visible.y + visible.height / 2.0);
+    return true;
+  }
+
   void Cursor::warpTo(double lx, double ly, bool allowFocusChange) {
     noteActivity();
     const double oldX = m_cursor->x;

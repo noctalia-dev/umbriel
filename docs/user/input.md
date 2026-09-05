@@ -316,11 +316,13 @@ options can be enabled together.
 
 Set `follows_focus = true` to warp the cursor to the visible center of a window
 selected by directional window focus, next-window focus, floating-state focus,
-or first/last-column focus navigation. It also follows the focused window when
-a window or column moves to another workspace or output. This applies whether
-the action comes from a keybind, wheel bind, or IPC. Pointer-driven focus,
-automatic focus after a window closes, gestures, and overview selection do not
-warp the cursor. `window-focus:<id>` remains focus-only; use
+or first/last-column focus navigation. It also follows the focused window after
+an in-workspace `window-move-or-output-*` move, an output focus action, a window
+or column move to another workspace or output, and a foreign-toplevel
+activation request from a dock or taskbar. This applies whether the matching
+action comes from a keybind, wheel bind, or IPC. Pointer-driven focus, automatic
+focus after a window closes, gestures, and overview selection do not warp the
+cursor. `window-focus:<id>` remains focus-only; use
 `window-focus-warp:<id>` when an individual id-based request must always move
 the cursor.
 

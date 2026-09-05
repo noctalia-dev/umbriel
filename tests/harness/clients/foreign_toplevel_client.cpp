@@ -28,6 +28,8 @@ namespace {
     uint32_t managerName = 0;
     uint32_t managerVersion = 0;
     zwlr_foreign_toplevel_manager_v1* manager = nullptr;
+    wl_seat* seat = nullptr;
+    uint32_t seatVersion = 0;
     std::vector<std::unique_ptr<Output>> outputs;
     std::vector<std::unique_ptr<Toplevel>> toplevels;
     bool finished = false;
@@ -102,6 +104,9 @@ namespace {
     if (std::string_view(interface) == zwlr_foreign_toplevel_manager_v1_interface.name) {
       state.managerName = name;
       state.managerVersion = version;
+    } else if (std::string_view(interface) == wl_seat_interface.name) {
+      state.seatVersion = std::min(version, 9U);
+      state.seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, state.seatVersion));
     } else if (std::string_view(interface) == wl_output_interface.name) {
       auto output = std::make_unique<Output>();
       output->version = std::min(version, 4U);
@@ -121,12 +126,13 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::println(stderr, "usage: foreign-toplevel-client TITLE OUTPUT");
+  if (argc < 3 || argc > 4 || (argc == 4 && std::string_view(argv[3]) != "activate")) {
+    std::println(stderr, "usage: foreign-toplevel-client TITLE OUTPUT [activate]");
     return 2;
   }
   const std::string_view wantedTitle = argv[1];
   const std::string_view wantedOutput = argv[2];
+  const bool activate = argc == 4;
 
   wl_display* display = wl_display_connect(nullptr);
   if (display == nullptr) {
@@ -162,6 +168,16 @@ int main(int argc, char** argv) {
             && std::ranges::find(toplevel->outputs, (*output)->resource) != toplevel->outputs.end();
       });
 
+  if (activate && state.seat != nullptr) {
+    const auto target = std::ranges::find_if(state.toplevels, [wantedTitle](const auto& toplevel) {
+      return !toplevel->closed && toplevel->title == wantedTitle;
+    });
+    if (target != state.toplevels.end()) {
+      zwlr_foreign_toplevel_handle_v1_activate((*target)->handle, state.seat);
+      roundtripOk = roundtripOk && wl_display_roundtrip(display) >= 0;
+    }
+  }
+
   for (const auto& toplevel : state.toplevels) {
     zwlr_foreign_toplevel_handle_v1_destroy(toplevel->handle);
   }
@@ -175,10 +191,21 @@ int main(int argc, char** argv) {
       wl_output_destroy(knownOutput->resource);
     }
   }
+  if (state.seat != nullptr) {
+    if (state.seatVersion >= WL_SEAT_RELEASE_SINCE_VERSION) {
+      wl_seat_release(state.seat);
+    } else {
+      wl_seat_destroy(state.seat);
+    }
+  }
   wl_registry_destroy(state.registry);
   wl_display_disconnect(display);
 
-  if (!roundtripOk || state.manager == nullptr || state.finished || output == state.outputs.end()) {
+  if (!roundtripOk
+      || state.manager == nullptr
+      || state.finished
+      || output == state.outputs.end()
+      || (activate && state.seat == nullptr)) {
     std::println(stderr, "foreign-toplevel-client: required protocol state was unavailable");
     return 2;
   }

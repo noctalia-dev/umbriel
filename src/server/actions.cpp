@@ -427,49 +427,7 @@ namespace umbriel {
       return nullptr;
     }
 
-    wlr_box windowWarpBox(Server& server, View& view) {
-      Output* output = view.currentOutput();
-      if (output == nullptr) {
-        return {};
-      }
-
-      wlr_box outputBox{};
-      wlr_output_layout_get_box(server.outputLayout(), output->wlr(), &outputBox);
-      if (outputBox.width <= 0 || outputBox.height <= 0) {
-        return {};
-      }
-
-      wlr_box target = view.presentedBox();
-      Workspace* workspace = view.workspace();
-      if (view.layoutFullscreen()) {
-        target = outputBox;
-      } else if (view.maximizedToEdges()) {
-        target = output->usableArea();
-      } else if (view.tiled() && workspace != nullptr) {
-        // focusView updated the scrolling offset and marked the layout stale. Flush it before reading the final logical
-        // target, while leaving its visual transition animated.
-        workspace->flushArrange();
-        target = workspace->layout().targetBox(&view);
-      } else {
-        target.x = view.layoutTargetX();
-        target.y = view.layoutTargetY();
-      }
-
-      if (target.width <= 0 || target.height <= 0) {
-        target = outputBox;
-      }
-      wlr_box visible{};
-      return wlr_box_intersection(&visible, &target, &outputBox) ? visible : outputBox;
-    }
-
-    bool warpCursorToWindow(Server& server, View& view) {
-      const wlr_box target = windowWarpBox(server, view);
-      if (target.width > 0 && target.height > 0) {
-        server.cursor()->warpToPreservingFocus(target.x + target.width / 2.0, target.y + target.height / 2.0);
-        return true;
-      }
-      return false;
-    }
+    bool warpCursorToWindow(Server& server, View& view) { return server.cursor()->warpToView(view); }
 
     bool maybeWarpCursorToWindow(Server& server, View* view) {
       Overview* overview = server.overview();
@@ -668,6 +626,7 @@ namespace umbriel {
     bool actionMoveHorizontalOrOutput(Server& server, const Keybind& bind, std::string* error) {
       if (Workspace* workspace = activeWorkspace(server)) {
         if (workspace->moveFocusedColumn(Direction)) {
+          maybeWarpCursorToWindow(server, workspace->focusedView());
           return true;
         }
       }
@@ -678,6 +637,7 @@ namespace umbriel {
     bool actionMoveVerticalOrOutput(Server& server, const Keybind& bind, std::string* error) {
       if (Workspace* workspace = activeWorkspace(server)) {
         if (workspace->moveFocusedVertical(Direction)) {
+          maybeWarpCursorToWindow(server, workspace->focusedView());
           return true;
         }
       }
@@ -1109,6 +1069,9 @@ namespace umbriel {
       }
       warpToOutputCenter(server, *target);
       server.refocus(target);
+      WorkspaceGroup* group = target->workspaceGroup();
+      Workspace* workspace = group != nullptr ? group->active() : nullptr;
+      maybeWarpCursorToWindow(server, workspace != nullptr ? workspace->focusedView() : nullptr);
       return true;
     }
 
