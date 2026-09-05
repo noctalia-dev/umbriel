@@ -497,11 +497,13 @@ namespace umbriel {
         }
       }
       if (const toml::node* indexNode = keys.take("index")) {
-        const auto value = indexNode->value<std::int64_t>();
-        if (!value || *value < 1 || *value > static_cast<std::int64_t>(kMaxWorkspaces)) {
-          errorAt(indexNode->source(), "{}.index must be an integer from 1 to {}", context, kMaxWorkspaces);
+        const auto value = indexNode->value<int>();
+        if (!value || *value < 1) {
+          errorAt(
+              indexNode->source(), "{}.index must be an integer from 1 to {}", context, std::numeric_limits<int>::max()
+          );
         } else {
-          ws.index = static_cast<int>(*value);
+          ws.index = *value;
         }
       }
 
@@ -1763,11 +1765,14 @@ namespace umbriel {
         }
 
         if (const toml::node* n = keys.take("default_workspace")) {
-          const auto value = n->value<std::int64_t>();
-          if (!value || *value < 1 || *value > static_cast<std::int64_t>(kMaxWorkspaces)) {
-            warnAt(n->source(), "ignoring window_rule.default_workspace (expected integer 1-{})", kMaxWorkspaces);
+          const auto value = n->value<int>();
+          if (!value || *value < 1) {
+            warnAt(
+                n->source(), "ignoring window_rule.default_workspace (expected integer 1-{})",
+                std::numeric_limits<int>::max()
+            );
           } else {
-            rule.defaultWorkspace = static_cast<int>(*value);
+            rule.defaultWorkspace = *value;
           }
         }
 

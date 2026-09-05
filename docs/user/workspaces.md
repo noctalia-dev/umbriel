@@ -134,7 +134,7 @@ models and rules are documented below.
 dynamic output. They change layout settings but do not create workspaces.
 
 Each rule selects a workspace by exactly one of `name` (string) or `index`
-(1-based integer from 1 to 64). An optional `output` restricts the rule to a
+(positive 32-bit integer). An optional `output` restricts the rule to a
 case-insensitive connector or monitor name from `umbriel outputs`.
 
 ### How settings are combined
@@ -160,7 +160,7 @@ Strut edges are resolved independently. A rule that sets only
 | Key | Type | Description |
 |-----|------|-------------|
 | `name` | string | Select by workspace name (mutually exclusive with `index`). |
-| `index` | int | Select by 1-based position from 1 to 64 (mutually exclusive with `name`). |
+| `index` | int | Select by 1-based position, up to 2147483647 (mutually exclusive with `name`). |
 | `output` | string | Restrict to a connector or monitor name. |
 | `layout.mode` | string | `"scrolling"`, `"dwindle"`, or `"master"`. |
 | `layout.gap` | int | Gap in pixels (0-500). |

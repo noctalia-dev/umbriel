@@ -1,4 +1,5 @@
 #include "check.h"
+#include "config/resolve.h"
 #include "config/store.h"
 
 #include <algorithm>
@@ -783,6 +784,58 @@ UMBRIEL_TEST(windowDragToggleReadsItsVocabularyAndDefaultsOff) {
   CHECK(store.reload().success);
   CHECK(store.config().input.windowDragToggle == WindowDragToggle::None);
   CHECK(containsDiagnostic(store, "ignoring input.window_drag_toggle"));
+}
+
+UMBRIEL_TEST(dynamicWorkspaceRulesCanAddressPositionsBeyondStaticInventoryLimit) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  for (const int index : {65, 2147483647}) {
+    const std::string position = std::to_string(index);
+    file.write(
+        "[output.DP-1]\nworkspaces = \"dynamic\"\n"
+        "[[workspace]]\noutput = \"DP-1\"\nname = \""
+        + position
+        + "\"\nlayout.gap = 17\n"
+          "[[workspace]]\noutput = \"DP-1\"\nindex = "
+        + position
+        + "\nlayout.gap = 19\n"
+          "[[window_rule]]\nmatch.app_id = \"foot\"\ndefault_workspace = "
+        + position
+        + "\n"
+    );
+    CHECK(store.reload().success);
+    CHECK(store.diagnostics().empty());
+    CHECK_EQ(store.config().workspaceRules.size(), size_t{2});
+    const auto layout = umbriel::resolveWorkspaceLayout(
+        store.config(), {.connector = "DP-1", .make = {}, .model = {}, .serial = {}}, position,
+        static_cast<size_t>(index - 1)
+    );
+    CHECK_EQ(layout.gap, 19);
+    const auto window = umbriel::resolveWindowRules(store.config(), "foot", "", "", ContentType::None, false, 0);
+    CHECK(window.defaultWorkspace == index);
+  }
+}
+
+UMBRIEL_TEST(workspacePositionsRejectNonPositiveAndOverflowingIntegers) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  for (const std::string position : {"0", "-1", "2147483648"}) {
+    file.write("[[workspace]]\nindex = " + position + "\n");
+    CHECK(!store.reload().success);
+    CHECK(containsDiagnostic(store, "index must be an integer from 1 to"));
+
+    file.write("[[window_rule]]\nmatch.app_id = \"foot\"\ndefault_workspace = " + position + "\n");
+    CHECK(store.reload().success);
+    CHECK(containsDiagnostic(store, "ignoring window_rule.default_workspace"));
+    const auto window = umbriel::resolveWindowRules(store.config(), "foot", "", "", ContentType::None, false, 0);
+    CHECK(!window.defaultWorkspace);
+  }
+  file.write("[output.DP-1]\nworkspaces = 65\n");
+  CHECK(!store.reload().success);
 }
 
 UMBRIEL_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {
