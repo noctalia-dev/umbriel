@@ -28,9 +28,31 @@ Do not fix this by dropping `DRM_FORMAT_BGR888` from `umbrielfx`'s pixel format
 table: the table also drives `wl_shm` advertisement and texture upload, and it
 is identical to wlroots' gles2 table.
 
+Readback support must also accept the bound framebuffer's
+`GL_IMPLEMENTATION_COLOR_READ_FORMAT` / `GL_IMPLEMENTATION_COLOR_READ_TYPE`
+pair. NVIDIA supports AB30 readback without advertising its texture-upload
+extension. Applying only the upload capability check rejects valid 10-bit
+readback and prevents the FP16 renderer tests from checking their pixels.
+
 To reproduce without NVIDIA, hardcode `gl_format = GL_RGB`,
 `gl_type = GL_UNSIGNED_BYTE`, `alpha_size = 0` after the `glGetIntegerv` calls
 and capture with `grim`.
+
+## HDR shader precision
+
+Client texture conversion and the output transform both require unconditional
+`highp float`. This preserves the output shader as the renderer-wide precision
+gate: implementations without fragment highp cannot initialize the renderer,
+and HDR is never exposed with arithmetic known to be insufficient.
+
+On NVIDIA 610.57.04, relying only on the shader macro selected mediump and
+corrupted PQ decoding: `color-pq-roundtrip` returned red 90 instead of 96.
+Forcing highp fixed the test, while explicit highp samplers alone did not.
+
+GLES3 detection remains limited to the packed 2_10_10_10 texture type, which
+is core functionality in GLES3. The capability is enabled by either the
+context version or the extension string. Framebuffer readback retains its
+separate implementation-format check.
 
 ## HDR capture view
 

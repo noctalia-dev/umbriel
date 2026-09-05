@@ -4,6 +4,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <wayland-server-core.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -73,6 +74,10 @@ namespace umbriel {
     uint32_t m_repeatKeycode = 0;
     int m_repeatIntervalMs = 0;
     bool m_repeatArmed = false;
+    // A keybind consumes both halves of its key event. Without remembering the
+    // press, the release reaches the focused client as a release-only key and
+    // applications may still act on it (for example, Space toggling playback).
+    std::unordered_set<uint32_t> m_consumedKeycodes;
   };
 
 } // namespace umbriel

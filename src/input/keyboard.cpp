@@ -328,11 +328,15 @@ namespace umbriel {
           sheet->hide();
         }
       }
+      if (handled) {
+        m_consumedKeycodes.insert(event->keycode);
+      }
     } else if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       if (m_repeatArmed && event->keycode == m_repeatKeycode) {
         cancelRepeat();
       }
       modifierTap = m_server->releaseModifierTap(this, event->keycode);
+      handled = m_consumedKeycodes.erase(event->keycode) > 0;
     }
 
     if (!handled) {

@@ -165,7 +165,7 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 
 	const struct fx_pixel_format *fmt =
 		get_fx_format_from_drm(options->format);
-	if (fmt == NULL || !is_fx_pixel_format_supported(texture->fx_renderer, fmt)) {
+	if (fmt == NULL) {
 		wlr_log(WLR_ERROR, "Cannot read pixels: unsupported pixel format 0x%"PRIX32, options->format);
 		return false;
 	}
@@ -184,14 +184,27 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 		return false;
 	}
 
-	push_fx_debug(texture->fx_renderer);
 	struct wlr_egl_context prev_ctx;
 	if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
 		return false;
 	}
+	push_fx_debug(texture->fx_renderer);
 
+	bool ok = false;
 	if (!fx_texture_bind(texture)) {
-		return false;
+		goto out;
+	}
+
+	if (!is_fx_pixel_format_supported(texture->fx_renderer, fmt)) {
+		GLint read_format = 0, read_type = 0;
+		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &read_format);
+		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &read_type);
+		// Readback can support a format without its texture-upload extension.
+		if (read_format != fmt->gl_format || read_type != fmt->gl_type) {
+			wlr_log(WLR_ERROR, "Cannot read pixels: unsupported pixel format 0x%"PRIX32,
+				options->format);
+			goto out;
+		}
 	}
 
 	// Make sure any pending drawing is finished before we try to read it
@@ -218,10 +231,11 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 		}
 	}
 
-	wlr_egl_restore_context(&prev_ctx);
+	ok = glGetError() == GL_NO_ERROR;
+out:
 	pop_fx_debug(texture->fx_renderer);
-
-	return glGetError() == GL_NO_ERROR;
+	wlr_egl_restore_context(&prev_ctx);
+	return ok;
 }
 
 // Packed 24-bit RGB has a 3-byte pixel, so its rows are not 4-byte aligned.
