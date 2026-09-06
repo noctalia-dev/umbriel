@@ -183,6 +183,15 @@ umbrielfx_dep = declare_dependency(
 )
 
 if build_tests
+  capture_pacing_test = executable(
+    'umbrielfx-capture-pacing-test', 'tests/capture_pacing.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  test('capture-pacing', capture_pacing_test, suite: 'umbrielfx')
   umbrielfx_color_test = executable(
     'umbrielfx-color-test',
     'tests/color.c',

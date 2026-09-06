@@ -42,6 +42,14 @@ meson test -C build --suite umbrielfx
   Both rules exist for the same reason, and the reason is not obvious. See
   [scene helper ownership](../docs/design/scene-helper-ownership.md).
 
+- A window's desktop and capture scenes share its `wlr_surface`. Each scene
+  must update only its own output memberships, and frame pacing must ignore
+  suspended outputs. Keep this logic aligned with
+  [wlroots 0.20.2 surface.c](https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/0.20.2/types/scene/surface.c).
+  Otherwise capture can replace the desktop output in `current_outputs` and
+  leave the application waiting for frame callbacks after capture stops.
+  `tests/capture_pacing.c` covers capture start/stop and hidden-window pacing.
+
 ## License
 
 MIT, see `LICENSE`. Copyright is held by the SceneFX and wlroots contributors
