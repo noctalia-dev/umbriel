@@ -1,7 +1,6 @@
 // Exercise the real scene-surface listeners with two scenes sharing a surface.
 // No renderer or running desktop is required.
 #undef NDEBUG
-#include "umbrielfx/types/wlr_scene.h"
 #include <assert.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -10,6 +9,8 @@
 #include <wlr/backend/headless.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output.h>
+
+#include "umbrielfx/types/wlr_scene.h"
 
 static int failures;
 #define CHECK(condition)                                                                           \
@@ -73,6 +74,8 @@ int main(void) {
 	struct wlr_scene_output *desktop_output = wlr_scene_output_create(desktop, monitor);
 	struct wlr_scene_output *capture_output = wlr_scene_output_create(mirror, capture);
 	assert(desktop_output && capture_output);
+	// Hand-built surface: only the fields the scene-surface listeners and
+	// wlr_surface_send_enter/leave touch. A wlroots bump can add more.
 	struct wlr_surface surface = {0};
 	surface.resource = wl_resource_create(client, &wl_surface_interface, 1, 0);
 	assert(surface.resource);

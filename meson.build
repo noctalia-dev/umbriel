@@ -51,8 +51,9 @@ wayland_server_dep = dependency('wayland-server', version: '>=1.24')
 wayland_client_dep = dependency('wayland-client')
 wayland_protocols_dep = dependency('wayland-protocols', version: '>=1.47')
 # umbrielfx compiles against wlroots' private struct layouts, so it is pinned to
-# one minor series rather than tracking whatever is installed.
-wlroots_dep = dependency('wlroots-0.20', version: ['>=0.20.0', '<0.21.0'])
+# one minor series rather than tracking whatever is installed. The floor is
+# 0.20.1: its scene surface code reads `wlr_surface_output.suspended`.
+wlroots_dep = dependency('wlroots-0.20', version: ['>=0.20.1', '<0.21.0'])
 cpp = meson.get_compiler('cpp')
 fs = import('fs')
 

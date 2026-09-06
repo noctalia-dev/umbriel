@@ -13,7 +13,7 @@ Umbriel's scene graph and GLES2 renderer, a hard fork of
 | `render/fx_renderer/`   | GLES2 renderer, render passes, shaders            |
 | `types/`                | Scene graph, output helpers, blur and clip state   |
 | `util/`                 | Helpers shared inside the library                  |
-| `tests/`                | Color transform and scene ABI regressions          |
+| `tests/`                | Color transform, scene ABI, and frame pacing regressions |
 
 ## Building
 
@@ -42,13 +42,13 @@ meson test -C build --suite umbrielfx
   Both rules exist for the same reason, and the reason is not obvious. See
   [scene helper ownership](../docs/design/scene-helper-ownership.md).
 
-- A window's desktop and capture scenes share its `wlr_surface`. Each scene
-  must update only its own output memberships, and frame pacing must ignore
-  suspended outputs. Keep this logic aligned with
-  [wlroots 0.20.2 surface.c](https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/0.20.2/types/scene/surface.c).
-  Otherwise capture can replace the desktop output in `current_outputs` and
-  leave the application waiting for frame callbacks after capture stops.
-  `tests/capture_pacing.c` covers capture start/stop and hidden-window pacing.
+- A window's desktop and capture scenes share its `wlr_surface`, so
+  `types/scene/surface.c` updates only its own scene's output memberships and
+  skips suspended outputs when picking the frame-pacing output. Otherwise
+  capture replaces the desktop output in `current_outputs` and the client waits
+  for frame callbacks that never arrive. Keep it aligned with
+  [wlroots 0.20.2 surface.c](https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/0.20.2/types/scene/surface.c);
+  `tests/capture_pacing.c` covers it.
 
 ## License
 
