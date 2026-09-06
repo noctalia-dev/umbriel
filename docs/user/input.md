@@ -190,6 +190,9 @@ natural_scroll = false
 # accel_profile = "flat"  # "flat", "adaptive", or a custom curve
 sensitivity = 0.0        # -1.0 to 1.0
 scroll_wheel_step = 60  # 1-1000, pixels per step for layout-scroll-left/right
+# scroll_method = "on_button_down"
+# scroll_button = 276
+# scroll_button_lock = true
 ```
 
 Omitting `accel_profile` preserves each device's libinput default, which is
@@ -210,6 +213,22 @@ libinput default. `layout-scroll-left` and `layout-scroll-right` clamp to the
 strip bounds, so the columns never park
 past either edge. Wheel-triggered scrolling uses twice `scroll_wheel_step`
 during an active tiled window drag.
+
+`scroll_method` picks the gesture that makes a device scroll: `no_scroll`
+mutes touch scrolling, `two_finger` and `edge` are touchpad gestures, and
+`on_button_down` scrolls while the scroll button is down. A mouse's wheel
+ignores the method entirely and keeps scrolling under every value. Omitted,
+each device keeps its libinput default.
+
+`scroll_button` takes an evdev button code (find it with `libinput
+debug-events`; 275 is `BTN_SIDE`, 276 is `BTN_EXTRA`) and repurposes it: the
+button never clicks, motion while it is down scrolls the surface under the
+cursor like wheel input, and it implies `scroll_method = "on_button_down"`.
+`scroll_button_lock = true` toggles scrolling per press instead of requiring a
+hold; if your side button clicks instead of holding, use it. Scrolling applies
+to non-touchpad pointers, a touchpad only through an `[[input.device]]` rule;
+removing the keys restores the device default, and an unsupported value is
+ignored with a warning.
 
 ### Per-device overrides
 
@@ -237,6 +256,9 @@ disable_while_typing = false
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = 0.0
+scroll_method = "on_button_down"
+scroll_button = 275
+scroll_button_lock = false
 ```
 
 Each rule inherits the matching class settings and overrides only the keys it

@@ -1459,6 +1459,9 @@ disable_on_external_mouse = true
 [input.mouse]
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
 sensitivity = 0.25
+scroll_method = "on_button_down"
+scroll_button = 276
+scroll_button_lock = true
 
 [[input.device]]
 name = "Acme Split Keyboard"
@@ -1479,6 +1482,9 @@ disable_while_typing = false
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = -0.5
+scroll_method = "on_button_down"
+scroll_button = 275
+scroll_button_lock = false
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -1492,6 +1498,10 @@ sensitivity = -0.5
   CHECK_EQ(input.mouse.accelProfile->step, 0.2);
   CHECK_EQ(input.mouse.accelProfile->points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
   CHECK_EQ(input.mouse.sensitivity, 0.25);
+  CHECK(input.mouse.scrollMethod.has_value());
+  CHECK(input.mouse.scrollMethod == std::optional(umbriel::ScrollMethod::OnButtonDown));
+  CHECK(input.mouse.scrollButton == std::optional<int>(276));
+  CHECK(input.mouse.scrollButtonLock == std::optional<bool>(true));
   CHECK(input.touchpad.accelProfile.has_value());
   if (input.touchpad.accelProfile.has_value()) {
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
@@ -1530,6 +1540,10 @@ sensitivity = -0.5
     CHECK(mouse->accelProfile.has_value());
     CHECK(mouse->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
     CHECK(mouse->sensitivity == std::optional<double>(-0.5));
+    CHECK(mouse->scrollMethod.has_value());
+    CHECK(mouse->scrollMethod == std::optional(umbriel::ScrollMethod::OnButtonDown));
+    CHECK(mouse->scrollButton == std::optional<int>(275));
+    CHECK(mouse->scrollButtonLock == std::optional<bool>(false));
   }
 
   CHECK(input.findDevice("acme split keyboard") == nullptr);
@@ -1540,6 +1554,13 @@ UMBRIEL_TEST(mouseAccelerationPreservesDeviceProfileByDefault) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.mouse.accelProfile.has_value());
   CHECK_EQ(defaults.input.mouse.sensitivity, 0.0);
+}
+
+UMBRIEL_TEST(mouseScrollButtonDefaultsToUnset) {
+  const umbriel::Config defaults;
+  CHECK(!defaults.input.mouse.scrollMethod.has_value());
+  CHECK(!defaults.input.mouse.scrollButton.has_value());
+  CHECK(!defaults.input.mouse.scrollButtonLock.has_value());
 }
 
 UMBRIEL_TEST(touchpadAccelerationDefaultsToUnset) {

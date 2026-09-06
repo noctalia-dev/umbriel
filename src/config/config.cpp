@@ -363,6 +363,36 @@ namespace umbriel {
       };
     }
 
+    std::optional<ScrollMethod> readScrollMethod(Section& section, std::string_view key, std::string_view context) {
+      const toml::node* node = section.take(key);
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      const auto* value = node->as_string();
+      if (value == nullptr) {
+        warnAt(node->source(), "{}.{} must be a string", context, key);
+        return std::nullopt;
+      }
+      const std::string method = lowercase(value->get());
+      if (method == "no_scroll") {
+        return ScrollMethod::NoScroll;
+      }
+      if (method == "two_finger") {
+        return ScrollMethod::TwoFinger;
+      }
+      if (method == "edge") {
+        return ScrollMethod::Edge;
+      }
+      if (method == "on_button_down") {
+        return ScrollMethod::OnButtonDown;
+      }
+      warnAt(
+          node->source(), R"(invalid {}.{} "{}" (expected "no_scroll", "two_finger", "edge", or "on_button_down"))",
+          context, key, value->get()
+      );
+      return std::nullopt;
+    }
+
     std::optional<std::array<float, 6>> readCalibrationMatrix(Section& section, std::string_view context) {
       const toml::node* node = section.take("calibration_matrix");
       if (node == nullptr) {
@@ -1163,8 +1193,11 @@ namespace umbriel {
             .boolean("tap", device.tap)
             .boolean("natural_scroll", device.naturalScroll)
             .real("sensitivity", -1.0, 1.0, device.sensitivity)
-            .boolean("disable_while_typing", device.disableWhileTyping);
+            .boolean("disable_while_typing", device.disableWhileTyping)
+            .integer("scroll_button", 0, 767, device.scrollButton)
+            .boolean("scroll_button_lock", device.scrollButtonLock);
         device.accelProfile = readAccelProfile(keys, "accel_profile", "input.device");
+        device.scrollMethod = readScrollMethod(keys, "scroll_method", "input.device");
 
         if (!validName) {
           continue;
@@ -1241,9 +1274,14 @@ namespace umbriel {
         s.sub("mouse", [&](Section& m) {
           m.boolean("natural_scroll", in.mouse.naturalScroll)
               .real("sensitivity", -1.0, 1.0, in.mouse.sensitivity)
-              .integer("scroll_wheel_step", 1, 1000, in.mouse.scrollWheelStep);
+              .integer("scroll_wheel_step", 1, 1000, in.mouse.scrollWheelStep)
+              .integer("scroll_button", 0, 767, in.mouse.scrollButton)
+              .boolean("scroll_button_lock", in.mouse.scrollButtonLock);
           if (const auto profile = readAccelProfile(m, "accel_profile", "input.mouse")) {
             in.mouse.accelProfile = *profile;
+          }
+          if (const auto method = readScrollMethod(m, "scroll_method", "input.mouse")) {
+            in.mouse.scrollMethod = method;
           }
         });
         s.sub("tablet", [&](Section& t) {
