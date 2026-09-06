@@ -156,9 +156,9 @@ restores the device default. Options are applied only when supported by the
 device; an explicitly configured unsupported option is reported in the log.
 
 The effective `natural_scroll` value also controls Umbriel's three-finger
-gestures: workspace switching along the output's workspace axis, strip scrolling
-across it, and workspace selection while the overview is open. A per-device
-override or preserved libinput default applies to gestures from that device. The
+gestures: workspace switching along the output's workspace axis and strip
+scrolling across it, both inside and outside overview. A per-device override or
+preserved libinput default applies to gestures from that device. The
 four-finger overview open and close gesture keeps its fixed direction.
 
 `accel_profile` and `sensitivity` work like their `[input.mouse]` counterparts,
@@ -177,7 +177,7 @@ that default. Clickpads that only expose software buttons support just
 the device alone.
 
 `scroll_factor` multiplies the smooth two-finger scroll a touchpad sends to the
-focused window, so `2.0` scrolls twice as fast and `0.5` half as fast. It
+focused window or overview, so `2.0` scrolls twice as fast and `0.5` half as fast. It
 remains unset by default (identity, `1.0`) and takes the next scroll event on
 reload. It applies only to the continuous scroll delta: discrete notches,
 overview wheel stepping, and three-finger-swipe strip travel keep their own

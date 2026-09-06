@@ -12,6 +12,7 @@ extern "C" {
 #include "layer/layer_surface.h"
 #include "layout/drop_target.h"
 #include "layout/layout.h"
+#include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/shortcut_labels.h"
 #include "scene/border_rect.h"
@@ -24,6 +25,7 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <linux/input-event-codes.h>
 #include <format>
 #include <ranges>
@@ -1458,6 +1460,7 @@ namespace umbriel {
     if (!m_active || m_closing) {
       return;
     }
+    cancelNavigation();
     if (m_dragCard != nullptr) {
       endDrag(false);
     }
@@ -1591,6 +1594,7 @@ namespace umbriel {
   }
 
   void Overview::teardown() {
+    cancelNavigation();
     m_rowAnim.snap(0.0);
     clearMiddlePress();
     if (m_dropHint != nullptr) {
@@ -1871,6 +1875,9 @@ namespace umbriel {
     if (!m_active || group == nullptr || group->active() == nullptr) {
       return;
     }
+    if (m_navigationOutput == group->output()) {
+      cancelNavigation();
+    }
     OutputState* target = stateFor(group->output());
     if (target == nullptr) {
       return;
@@ -1905,6 +1912,9 @@ namespace umbriel {
     if (!m_active || group == nullptr) {
       return;
     }
+    if (m_navigationOutput == group->output()) {
+      cancelNavigation();
+    }
     OutputState* state = stateFor(group->output());
     if (state == nullptr) {
       return;
@@ -1927,6 +1937,7 @@ namespace umbriel {
     if (!m_active) {
       return;
     }
+    cancelNavigation();
     if (m_closing) {
       m_pendingFocus = nullptr;
     }
@@ -1952,6 +1963,11 @@ namespace umbriel {
   }
 
   void Overview::onOutputRemoved(Output* output) {
+    if (m_navigationOutput == output) {
+      // The output may already be tearing down its workspace group.
+      m_navigationOutput = nullptr;
+      cancelNavigation();
+    }
     if (!m_active) {
       return;
     }
@@ -2166,6 +2182,9 @@ namespace umbriel {
   // -: input
 
   bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly) {
+    if (pressed) {
+      cancelNavigation();
+    }
     if (!interactive()) {
       return true; // Swallow everything while zooming back in.
     }
@@ -2307,6 +2326,7 @@ namespace umbriel {
   }
 
   bool Overview::handleAxisNotch(bool vertical, double direction, double lx, double ly) {
+    cancelNavigation();
     if (!interactive()) {
       return true;
     }
@@ -2320,6 +2340,243 @@ namespace umbriel {
     }
     selectRelativeWorkspace(direction < 0 ? -1 : 1, output);
     return true;
+  }
+
+  Workspace* Overview::navigationWorkspace() const {
+    const WorkspaceGroup* group = m_navigationOutput != nullptr ? m_navigationOutput->workspaceGroup() : nullptr;
+    if (group != nullptr) {
+      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+        if (group->workspaceAt(index) == m_navigationWorkspace) {
+          return m_navigationWorkspace;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  void Overview::onNavigationDeviceDestroyed(wl_listener* listener, void* /*data*/) {
+    Overview* self;
+    self = wl_container_of(listener, self, m_navigationDeviceDestroy);
+    self->cancelNavigation();
+  }
+
+  void Overview::cancelNavigation() { endNavigation(true, 0, m_navigationAxisInput); }
+
+  void Overview::beginNavigation(wlr_pointer* pointer, bool axisInput, double lx, double ly) {
+    cancelNavigation();
+    if (!interactive() || dragging() || pointer == nullptr) {
+      return;
+    }
+    Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
+    if (output == nullptr || output->workspaceGroup() == nullptr) {
+      return;
+    }
+    m_navigationOutput = output;
+    m_navigationHorizontalWorkspaces = output->workspaceGroup()->workspaceAxis() == WorkspaceAxis::Horizontal;
+    m_navigationWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, true);
+    if (m_navigationWorkspace == nullptr || m_navigationWorkspace->group() != output->workspaceGroup()) {
+      m_navigationWorkspace = output->workspaceGroup()->active();
+    }
+    m_navigationPointer = pointer;
+    m_navigationDeviceDestroy.notify = onNavigationDeviceDestroyed;
+    wl_signal_add(&pointer->base.events.destroy, &m_navigationDeviceDestroy);
+    m_navigationAxisInput = axisInput;
+    m_navigation.reset();
+    m_navigationStarted = false;
+  }
+
+  void Overview::updateNavigation(double dx, double dy, uint32_t timeMsec) {
+    if (m_navigationOutput == nullptr || !interactive()) {
+      return;
+    }
+    m_navigation.update(dx, dy, timeMsec);
+    const auto axis = m_navigation.axis();
+    if (axis == OverviewNavigation::Axis::Pending) {
+      return;
+    }
+    OutputState* state = stateFor(m_navigationOutput);
+    WorkspaceGroup* group = m_navigationOutput->workspaceGroup();
+    if (state == nullptr || group == nullptr || group->active() == nullptr) {
+      cancelNavigation();
+      return;
+    }
+    if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
+      if (!m_navigationStarted) {
+        m_navigationStart = state->workspaceScroll;
+        m_navigationScale = OverviewNavigation::zoomScale(zoom()) / 300.0;
+        m_navigationStarted = true;
+      }
+      const auto last = static_cast<double>(group->workspaceCount() - 1);
+      state->workspaceScroll =
+          OverviewNavigation::rubberBand(m_navigationStart + m_navigation.position() * m_navigationScale, last, 0.15);
+      // Pin just this output; row animations on other outputs and zoom continue.
+      state->workspaceFrom = state->workspaceScroll;
+      state->workspaceTo = state->workspaceScroll;
+      applyProgress();
+      return;
+    }
+    Workspace* workspace = navigationWorkspace();
+    ScrollingLayout* scrolling = workspace != nullptr ? workspace->scrollingLayout() : nullptr;
+    if (scrolling == nullptr) {
+      return;
+    }
+    const auto viewport = static_cast<double>(workspace->scrollViewportExtent());
+    if (!m_navigationStarted) {
+      m_navigationStart = scrolling->scroll();
+      m_navigationCentered = scrolling->centeredRest();
+      m_navigationScale = viewport / 1200.0 * OverviewNavigation::zoomScale(zoom());
+      m_navigationStarted = true;
+    }
+    scrolling->setScroll(
+        OverviewNavigation::rubberBand(
+            m_navigationStart + m_navigation.position() * m_navigationScale,
+            static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent())), viewport * 0.15
+        )
+    );
+    workspace->markArrange(false);
+  }
+
+  void Overview::endNavigation(bool cancelled, uint32_t timeMsec, bool axisInput) {
+    if (axisInput != m_navigationAxisInput) {
+      return;
+    }
+    Workspace* workspace = navigationWorkspace();
+    Output* output = m_navigationOutput;
+    m_navigationOutput = nullptr;
+    m_navigationWorkspace = nullptr;
+    if (m_navigationPointer != nullptr) {
+      wl_list_remove(&m_navigationDeviceDestroy.link);
+      m_navigationPointer = nullptr;
+    }
+    m_axisDx = m_axisDy = 0;
+    m_axisStopX = m_axisStopY = false;
+    const bool started = m_navigationStarted;
+    m_navigationStarted = false;
+    if (!started || output == nullptr || !interactive()) {
+      return;
+    }
+    if (!cancelled) {
+      m_navigation.update(0, 0, timeMsec);
+    }
+    const double projected = m_navigationStart + m_navigation.projectedPosition() * m_navigationScale;
+    if ((m_navigation.axis() == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
+      OutputState* state = stateFor(output);
+      WorkspaceGroup* group = output->workspaceGroup();
+      if (state == nullptr || group == nullptr || group->active() == nullptr) {
+        return;
+      }
+      const int index = cancelled
+          ? static_cast<int>(group->active()->index())
+          : OverviewNavigation::workspaceTarget(projected, static_cast<int>(group->workspaceCount()) - 1);
+      if (index != static_cast<int>(group->active()->index())) {
+        group->select(group->workspaceAt(static_cast<size_t>(index)));
+      } else {
+        state->workspaceFrom = state->workspaceScroll;
+        state->workspaceTo = static_cast<double>(index);
+        startRowAnimation();
+      }
+      return;
+    }
+    ScrollingLayout* scrolling = workspace != nullptr ? workspace->scrollingLayout() : nullptr;
+    if (scrolling == nullptr) {
+      return;
+    }
+    const int viewport = workspace->scrollViewportExtent();
+    const auto maximum = static_cast<double>(scrolling->maxScroll(viewport));
+    if (cancelled) {
+      scrolling->setScroll(
+          m_navigationCentered ? m_navigationStart : std::clamp(m_navigationStart, 0.0, maximum), m_navigationCentered
+      );
+      workspace->markArrange(true);
+      return;
+    }
+    double bestDistance = std::numeric_limits<double>::max();
+    double bestPosition = std::clamp(projected, 0.0, maximum);
+    int bestColumn = -1;
+    for (size_t index = 0; index < scrolling->columns().size(); ++index) {
+      const auto column = static_cast<int>(index);
+      const auto x = static_cast<double>(scrolling->columnX(column, viewport));
+      const auto width = static_cast<double>(scrolling->columnWidth(column, viewport));
+      for (const double position : {std::clamp(x, 0.0, maximum), std::clamp(x + width - viewport, 0.0, maximum)}) {
+        const double distance = std::abs(position - projected);
+        if (distance < bestDistance && !scrolling->columns()[index].views.empty()) {
+          bestDistance = distance;
+          bestPosition = position;
+          bestColumn = column;
+        }
+      }
+    }
+    // Match normal strip navigation: focus the outermost fully visible column
+    // in the travel direction, retaining the selected card within that column.
+    const int direction = projected >= scrolling->scroll() ? 1 : -1;
+    const auto count = static_cast<int>(scrolling->columns().size());
+    for (int index = bestColumn + direction; bestColumn >= 0 && index >= 0 && index < count; index += direction) {
+      const double x = scrolling->columnX(index, viewport);
+      const double width = scrolling->columnWidth(index, viewport);
+      if (x < bestPosition || x + width > bestPosition + viewport) {
+        break;
+      }
+      bestColumn = index;
+    }
+    View* target = workspace->focusedView();
+    if (bestColumn >= 0 && (target == nullptr || scrolling->columnOf(target) != bestColumn)) {
+      const auto& views = scrolling->columns()[static_cast<size_t>(bestColumn)].views;
+      target = views.empty() ? nullptr : views.front();
+    }
+    scrolling->setScroll(bestPosition);
+    // Do not activate a different workspace merely because its preview was
+    // panned. Its selected card will receive focus if the user enters that row.
+    if (target != nullptr) {
+      if (workspace->active()) {
+        m_server->focusView(target, FocusReason::Directional);
+      } else {
+        workspace->setFocusedView(target);
+      }
+    }
+    workspace->markArrange(true);
+  }
+
+  void Overview::handleTouchpadAxis(
+      wlr_pointer* pointer, bool vertical, double delta, uint32_t timeMsec, double lx, double ly
+  ) {
+    if (m_navigationPointer != nullptr && !m_navigationAxisInput) {
+      return;
+    }
+    if (pointer != m_navigationPointer) {
+      if (delta == 0) {
+        return;
+      }
+      beginNavigation(pointer, true, lx, ly);
+    }
+    if (m_navigationPointer == nullptr) {
+      return;
+    }
+    if (vertical) {
+      m_axisDy += delta;
+      m_axisStopY = delta == 0;
+    } else {
+      m_axisDx += delta;
+      m_axisStopX = delta == 0;
+    }
+    m_axisTime = timeMsec;
+  }
+
+  void Overview::handleTouchpadFrame() {
+    if (m_navigationPointer == nullptr || !m_navigationAxisInput) {
+      return;
+    }
+    if (m_axisDx != 0 || m_axisDy != 0) {
+      updateNavigation(m_axisDx, m_axisDy, m_axisTime);
+    }
+    const auto axis = m_navigation.axis();
+    const bool stop = axis == OverviewNavigation::Axis::Horizontal ? m_axisStopX
+        : axis == OverviewNavigation::Axis::Vertical               ? m_axisStopY
+                                                                   : m_axisStopX || m_axisStopY;
+    m_axisDx = m_axisDy = 0;
+    m_axisStopX = m_axisStopY = false;
+    if (stop) {
+      endNavigation(false, m_axisTime, true);
+    }
   }
 
   void Overview::refreshShortcutMatches() {

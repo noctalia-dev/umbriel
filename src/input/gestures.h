@@ -93,9 +93,6 @@ namespace umbriel {
     // Overview state (vertical 4-finger): swipe up opens, swipe down closes.
     bool m_overviewWasOpen = false;
 
-    // OverviewSelect state (three-finger along the workspace axis, overview up)
-    // reuses the axis accumulator as the travel left over since the last step.
-
     wl_listener m_swipeBegin{};
     wl_listener m_swipeUpdate{};
     wl_listener m_swipeEnd{};
