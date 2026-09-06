@@ -354,6 +354,16 @@ namespace umbriel {
       entry["focused"] = v->workspace() != nullptr && v->workspace()->focusedView() == v.get();
       entry["urgent"] = v->urgent();
       entry["xwayland"] = v->xwayland();
+      // Native clients report their pid (used e.g. to resolve a focused
+      // terminal's cwd via /proc). XWayland views would resolve to the
+      // XWayland server process, so report nothing for them.
+      pid_t pid = -1;
+      if (!v->xwayland()) {
+        if (wlr_surface* surface = v->toplevel()->base->surface; surface != nullptr && surface->resource != nullptr) {
+          wl_client_get_credentials(wl_resource_get_client(surface->resource), &pid, nullptr, nullptr);
+        }
+      }
+      entry["pid"] = pid;
       // Tiled windows report their layout slot, which the layout computes even for hidden workspaces; floats report
       // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
       // (dwindle) regardless of visibility or in-flight animations.
