@@ -5,36 +5,37 @@
   ...
 }:
 let
-  inherit (lib.modules) mkIf;
+  inherit (lib.modules) mkIf mkRemovedOptionModule;
   inherit (lib.options) mkEnableOption mkOption;
   inherit (lib.lists) optional;
 
   cfg = config.programs.umbriel;
   tomlFormat = pkgs.formats.toml { };
-  generateConfig =
-    format: name: value:
+  generateToml =
+    name: value:
     if lib.isString value then
       pkgs.writeText name value
     else if builtins.isPath value || lib.isStorePath value then
       value
     else
-      format.generate name value;
-
-  generateToml = generateConfig tomlFormat;
+      tomlFormat.generate name value;
 in
 {
+  imports = [
+    (mkRemovedOptionModule [
+      "programs"
+      "umbriel"
+      "validateConfig"
+    ] "Build-time validation was removed. Umbriel reports configuration errors at runtime.")
+  ];
+
   options.programs.umbriel = {
-    enable = mkEnableOption "Umbriel, a Wayland compositor built on wlroots.";
+    enable = mkEnableOption "Umbriel, a Wayland compositor built on wlroots";
 
     package = mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
       description = "The umbriel package to install.";
-    };
-    validateConfig = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Validate the configuration file at build time.";
     };
     settings = mkOption {
       type =
@@ -58,17 +59,16 @@ in
         See {file}`examples/config.toml` in the Umbriel repository for every available option.
       '';
       example = lib.literalExpression ''
-        general.autostart = [ "noctalia" ];
-
-        layout.gap = 5;
-
-        input.keyboard.layout = "de";
-
-        keybinds = {
-          "Mod+Return" = "spawn:kitty";
-          "Mod+Q" = "window-close";
-          "Mod+R" = "spawn:noctalia msg panel-toggle launcher";
-        };
+        {
+          general.autostart = [ "noctalia" ];
+          layout.gap = 5;
+          input.keyboard.layout = "de";
+          keybinds = {
+            "Mod+Return" = "spawn:kitty";
+            "Mod+Q" = "window-close";
+            "Mod+R" = "spawn:noctalia msg panel-toggle launcher";
+          };
+        }
       '';
     };
   };
@@ -77,17 +77,7 @@ in
     packages = optional (cfg.package != null) cfg.package;
 
     xdg.config.files = mkIf (cfg.settings != null) {
-      "umbriel/config.toml".source =
-        let
-          rawConfig = generateToml "umbriel-config.toml" cfg.settings;
-        in
-        if cfg.validateConfig && cfg.package != null then
-          pkgs.runCommand "umbriel-config" { } ''
-            ${lib.getExe cfg.package} validate -c ${rawConfig}
-            cp ${rawConfig} $out
-          ''
-        else
-          rawConfig;
+      "umbriel/config.toml".source = generateToml "umbriel-config.toml" cfg.settings;
     };
   };
 
