@@ -190,9 +190,9 @@ natural_scroll = false
 # accel_profile = "flat"  # "flat", "adaptive", or a custom curve
 sensitivity = 0.0        # -1.0 to 1.0
 scroll_wheel_step = 60  # 1-1000, pixels per step for layout-scroll-left/right
-# scroll_method = "on_button_down"
-# scroll_button = 276
-# scroll_button_lock = true
+# scroll_method = "on_button_down"  # no_scroll, two_finger, edge, or on_button_down
+# scroll_button = 276               # evdev button code held to scroll with pointer motion
+# scroll_button_lock = false        # click toggles scrolling instead of holding
 ```
 
 Omitting `accel_profile` preserves each device's libinput default, which is

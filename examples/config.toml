@@ -225,7 +225,7 @@ tap = true                                      # Tap-to-click
 # accel_profile = "flat"                        # Omit to preserve the libinput default
 sensitivity = 0.0                               # Pointer speed, -1.0 to 1.0
 scroll_wheel_step = 60                          # Logical pixels per layout-scroll action, 1-1000
-# scroll_method = "on_button_down"
+# scroll_method = "on_button_down"              # no_scroll, two_finger, edge, or on_button_down
 # scroll_button = 276                           # Evdev button code held to scroll with pointer motion
 # scroll_button_lock = false                    # Click toggles the scroll button instead of holding
 
