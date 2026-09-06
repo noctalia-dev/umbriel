@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "core/animation.h"
 #include "layout/drop_target.h"
+#include "overview/navigation.h"
 #include "scene/hint_rect.h"
 #include "scene/surface_blur.h"
 
@@ -24,6 +25,7 @@ struct wlr_scene_blur;
 struct wlr_scene_rect;
 struct wlr_scene_tree;
 struct wlr_surface;
+struct wlr_pointer;
 
 namespace umbriel {
 
@@ -95,18 +97,43 @@ namespace umbriel {
     bool handleButton(uint32_t button, bool pressed, double lx, double ly);
     void handleMotion(double lx, double ly);
     bool handleAxisNotch(bool vertical, double direction, double lx, double ly);
+    // Both swipe and axis input use content-direction deltas and the same
+    // navigation lifetime. Axis samples are combined at the pointer frame.
+    void beginNavigation(wlr_pointer* pointer, bool axisInput, double lx, double ly);
+    void updateNavigation(double dx, double dy, uint32_t timeMsec);
+    void endNavigation(bool cancelled, uint32_t timeMsec, bool axisInput);
+    void handleTouchpadAxis(wlr_pointer* pointer, bool vertical, double delta, uint32_t timeMsec, double lx, double ly);
+    void handleTouchpadFrame();
     bool handleFallbackKey(uint32_t keysym);
     // Clear pending badge input for directional focus while interactive. Configured
     // actions retain their regular handlers throughout the closing animation.
     bool handleKeybindAction(KeybindAction action);
     // Step the active workspace `delta` rows down the filmstrip on `output` (null: wherever the pointer is). Returns
-    // false at either end. The wheel, the middle-button drag and the three-finger swipe arrive here: while the
-    // overview is up the real trees are hidden, so there is nothing to slide and switching is a discrete step rather
-    // than the animated transition it is outside.
+    // false at either end. The wheel and middle-button drag use discrete steps;
+    // touchpad navigation moves the rows continuously and selects on release.
     bool selectRelativeWorkspace(int delta, Output* output);
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
 
   private:
+    static void onNavigationDeviceDestroyed(wl_listener* listener, void* data);
+    [[nodiscard]] Workspace* navigationWorkspace() const;
+    void cancelNavigation();
+    OverviewNavigation m_navigation;
+    Output* m_navigationOutput = nullptr;
+    Workspace* m_navigationWorkspace = nullptr;
+    wlr_pointer* m_navigationPointer = nullptr;
+    wl_listener m_navigationDeviceDestroy{};
+    bool m_navigationAxisInput = false;
+    bool m_navigationHorizontalWorkspaces = false;
+    bool m_navigationStarted = false;
+    double m_navigationStart = 0;
+    double m_navigationScale = 1;
+    bool m_navigationCentered = false;
+    double m_axisDx = 0;
+    double m_axisDy = 0;
+    bool m_axisStopX = false;
+    bool m_axisStopY = false;
+    uint32_t m_axisTime = 0;
     struct Card;
     struct OutputState;
 

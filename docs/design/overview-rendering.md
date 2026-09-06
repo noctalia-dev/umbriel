@@ -6,11 +6,11 @@ the main configuration guide but remain part of Umbriel's observable behavior.
 ## Live content
 
 Overview cards display live window content. The real workspace windows are
-hidden while the overview is open, so wheel steps, fallback arrow keys along the
-workspace axis, and 3-finger swipes move one workspace at a time instead of
-sliding the live workspace. Configured vertical focus actions retain their
-layout-specific behavior, including stacked-card traversal on outputs whose
-strip is horizontal.
+hidden while the overview is open. Wheel steps move one workspace at a time.
+Two-finger axes and three-finger swipes share continuous, axis-locked navigation:
+travel along the output's workspace axis moves previews until release selects a
+workspace; perpendicular travel pans the scrolling layout captured at gesture
+start. Configured focus actions retain their layout-specific behavior.
 
 Transparent windows keep their window-rule blur throughout the zoom
 transition.

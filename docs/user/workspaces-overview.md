@@ -40,13 +40,24 @@ closes.
 
 Click a window to focus it, middle-click to close it, or drag it to another
 workspace. When a click selects a window in another scrolling column, the
-column reveal runs together with the closing zoom. Use the wheel or a 3-finger
-swipe to move through the workspace list. Each wheel notch or swipe step moves
-one workspace at a time. The filmstrip runs along each output's
-[workspace axis](workspaces.md#workspace-axis), so a 3-finger swipe selects
-workspaces along that axis, while the ordinary vertical wheel works on either
-arrangement and a horizontal wheel navigates only horizontal workspaces. A
-4-finger swipe opens or closes the overview.
+column reveal runs together with the closing zoom. Each wheel notch moves one
+workspace at a time. The vertical wheel works on either arrangement; a horizontal
+wheel navigates only horizontal workspaces. A 4-finger swipe opens or closes the
+overview.
+
+Use two-finger scrolling or a three-finger swipe to navigate continuously:
+
+- Movement along the output's [workspace axis](workspaces.md#workspace-axis)
+  drags the workspace previews and selects a workspace on release.
+- Perpendicular movement pans the scrolling layout in the preview under the
+  pointer when the gesture starts, without activating another workspace.
+
+Both gestures lock to the first dominant axis, resist movement past the ends,
+and settle using release velocity. Holding still before releasing removes the
+flick momentum. The gesture keeps its original output and row even if the
+pointer moves. Strip panning does not apply to dwindle or master layouts. Mouse-wheel and keyboard navigation retain their existing
+behavior. Touchpad `natural_scroll` applies to both gesture types;
+`scroll_factor` also scales two-finger movement, but not three-finger swipes.
 
 #### Which window actions act on
 
