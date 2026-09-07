@@ -1,0 +1,32 @@
+name: Auto Release
+
+on:
+  push:
+    paths:
+      - VERSION
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_ENV
+
+      - name: Create Tag
+        run: |
+          git tag v${VERSION}
+          git push origin v${VERSION}
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v${VERSION} \
+            --generate-notes
