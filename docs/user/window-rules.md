@@ -37,7 +37,8 @@ toolbox, and never selects windows that are simply waiting to be titled.
 Run `umbriel windows` to inspect open windows. Its human-readable output adds
 suffixes such as `[xdg_tag=proton-game]` and `[content_type=game]` when those
 values are present. The JSON form, `umbriel windows --json`, always reports
-`xdg_tag` and `content_type`, and also includes the `xwayland` boolean.
+`xdg_tag` and `content_type`, and also includes the `xwayland` boolean and the
+client `pid` described in [IPC](ipc.md#queries).
 
 An XDG toplevel tag is one client-defined string, not a fixed vocabulary. A
 client can set it before the window opens and replace it later if the window's

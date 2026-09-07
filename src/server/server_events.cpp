@@ -61,17 +61,6 @@ namespace umbriel {
       return viewForToplevel(server, wlr_xdg_toplevel_try_from_wlr_surface(root));
     }
 
-    pid_t surfaceClientPid(wlr_surface* surface) {
-      if (surface == nullptr || surface->resource == nullptr) {
-        return -1;
-      }
-      pid_t pid = -1;
-      uid_t uid = 0;
-      gid_t gid = 0;
-      wl_client_get_credentials(wl_resource_get_client(surface->resource), &pid, &uid, &gid);
-      return pid;
-    }
-
     const char* deviceName(const wlr_input_device* device) {
       return device->name != nullptr ? device->name : "unknown";
     }

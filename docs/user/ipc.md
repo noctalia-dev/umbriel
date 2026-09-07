@@ -18,7 +18,7 @@ printf '{"cmd":"workspaces"}\n' | socat -t 5 STDIO "$UMBRIEL_SOCKET"
 
 | Request | CLI | Reply |
 | ------- | --- | ----- |
-| `{"cmd":"windows"}` | `umbriel windows --json` | window list with ids, app ids, titles, geometry, workspace ids |
+| `{"cmd":"windows"}` | `umbriel windows --json` | window list with ids, app ids, titles, client pids, geometry, workspace ids |
 | `{"cmd":"workspaces"}` | `umbriel workspaces --json` | workspace list with names, indices, outputs, active/focused flags, layout modes |
 | `{"cmd":"submap"}` | `umbriel submap --json` | active keybind submap, or `null` |
 | `{"cmd":"layers"}` | `umbriel layers --json` | layer-shell surfaces |
@@ -26,6 +26,13 @@ printf '{"cmd":"workspaces"}\n' | socat -t 5 STDIO "$UMBRIEL_SOCKET"
 
 A connection with no subscription closes once its replies are written, and a
 connection that sends nothing is dropped after a second.
+
+Each window entry carries `pid`, the process that owns the window's Wayland
+connection. It is `-1` when that process is unknown, which covers every
+XWayland window, since all of them belong to the single xwayland-satellite
+connection. The pid is only meaningful in the compositor's own namespaces: for
+a sandboxed client it names the process the sandbox engine connected, and paths
+under `/proc/<pid>` resolve in that sandbox's mount namespace.
 
 ## Event stream
 

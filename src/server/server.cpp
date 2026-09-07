@@ -239,15 +239,20 @@ namespace umbriel {
     }
   }
 
+  pid_t surfaceClientPid(const wlr_surface* surface) {
+    if (surface == nullptr || surface->resource == nullptr) {
+      return -1;
+    }
+    pid_t pid = -1;
+    wl_client_get_credentials(wl_resource_get_client(surface->resource), &pid, nullptr, nullptr);
+    return pid > 0 ? pid : -1;
+  }
+
   bool Server::isXwaylandSurface(const wlr_surface* surface) const {
-    if (m_xwayland == nullptr || surface == nullptr || surface->resource == nullptr) {
+    if (m_xwayland == nullptr) {
       return false;
     }
-
-    pid_t pid = -1;
-    uid_t uid = 0;
-    gid_t gid = 0;
-    wl_client_get_credentials(wl_resource_get_client(surface->resource), &pid, &uid, &gid);
+    const pid_t pid = surfaceClientPid(surface);
     return pid > 0 && pid == m_xwayland->pid();
   }
 

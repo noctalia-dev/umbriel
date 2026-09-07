@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <vector>
 #include <wayland-server-core.h>
 
@@ -56,6 +57,9 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
+    // The pid of the application process, or -1 when it is unknown. XWayland views all share the xwayland-satellite
+    // connection, so their client pid identifies the satellite rather than the application and is never reported.
+    [[nodiscard]] pid_t pid() const;
     [[nodiscard]] Workspace* workspace() const { return m_workspace; }
     // The output currently presenting this view. Unassigned views follow the
     // preferred output until they are attached to a workspace.

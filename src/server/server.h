@@ -90,6 +90,10 @@ namespace umbriel {
   // networking alive at negligible cost.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
 
+  // The pid of the process owning a surface's Wayland connection, or -1 when the surface has no client or the kernel
+  // cannot represent that pid in the compositor's pid namespace.
+  [[nodiscard]] pid_t surfaceClientPid(const wlr_surface* surface);
+
   enum class WheelDirection;
   struct Keybind;
 

@@ -4,6 +4,7 @@ set -euo pipefail
 
 spawn_client() {
   foot --title="ipc-client" sh -c 'sleep 120' > /dev/null 2>&1 &
+  CLIENT_PID=$!
 }
 
 wait_for_windows() {
@@ -117,6 +118,11 @@ if ! jq -e '.[0].id != "" and (.[0].workspace | test("^HEADLESS-1:[0-9]+$"))' <<
 fi
 if [[ $(jq -r '.[0].active' <<< "$windows") != $(jq -r '.[0].focused' <<< "$windows") ]]; then
   echo "active flag does not match the focused state of the only window: $windows"
+  exit 1
+fi
+# The reported pid is the client's own process, not the compositor's or the CLI's.
+if [[ $(jq -r '.[0].pid' <<< "$windows") != "$CLIENT_PID" ]]; then
+  echo "expected pid $CLIENT_PID for the only window: $windows"
   exit 1
 fi
 
