@@ -1,7 +1,7 @@
 project(
   'umbriel',
   ['c', 'cpp'],
-  version: '0.1.0',
+  version: files('VERSION'),
   meson_version: '>=1.3',
   default_options: [
     'cpp_std=c++23',
