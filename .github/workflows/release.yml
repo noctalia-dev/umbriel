@@ -2,46 +2,47 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Check out release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Read version
-        id: version
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
-
-      - name: Check tag exists
-        id: tag
-        run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          version=$(<VERSION)
+          if [[ -z "$version" || "$version" == *$'\n'* ]]; then
+            printf 'VERSION must contain one non-empty line.\n' >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            printf 'Tag %q does not match VERSION %q.\n' "$RELEASE_TAG" "$version" >&2
+            exit 1
           fi
 
-      - name: Create tag
-        if: steps.tag.outputs.exists == 'false'
-        run: |
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
-
-      - name: Create release
-        if: steps.tag.outputs.exists == 'false'
+      - name: Create GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create \
-            "v${{ steps.version.outputs.version }}" \
-            --generate-notes
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            printf 'GitHub release %s already exists.\n' "$RELEASE_TAG"
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" --verify-tag --generate-notes
