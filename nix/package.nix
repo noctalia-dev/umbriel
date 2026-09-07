@@ -27,12 +27,7 @@
   makeBinaryWrapper,
 }:
 let
-  inherit (builtins)
-    head
-    match
-    readFile
-    ;
-  version = head (match ".*\n  version: '([0-9][^']+)'.*" (readFile ../meson.build));
+  version = lib.trim (builtins.readFile ../VERSION);
 in
 stdenv.mkDerivation {
   pname = "umbriel";
