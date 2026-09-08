@@ -71,6 +71,9 @@ direct_scanout = false
 workspaces = 5
 ```
 
+If a configured resolution is temporarily absent from the modes reported by the display, Umbriel uses the preferred
+advertised mode until the configured resolution becomes available again.
+
 ## Settings
 
 | Key                                          | Type                              | Default     | Description                                                                                                                                         |

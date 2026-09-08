@@ -8,6 +8,7 @@
 #include "output/frame_schedule.h"
 #include "output/hdr_format.h"
 #include "output/identity.h"
+#include "output/mode_selection.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
 #include "scene/config_banner.h"
@@ -21,7 +22,6 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <drm_fourcc.h>
@@ -255,28 +255,24 @@ namespace umbriel {
           kLog.info("output '{}': mode is ignored in nested sessions", m_output->name);
         } else {
           const OutputMode& configured = *rule->mode;
-          wlr_output_mode* selected = nullptr;
-          wlr_output_mode* mode = nullptr;
-          wl_list_for_each(mode, &m_output->modes, link) {
-            if (mode->width != configured.width || mode->height != configured.height) {
-              continue;
-            }
-            if (configured.refreshMHz != 0) {
-              if (selected == nullptr
-                  || std::abs(mode->refresh - configured.refreshMHz)
-                      < std::abs(selected->refresh - configured.refreshMHz)) {
-                selected = mode;
+          const OutputModeSelection selection = selectOutputMode(m_output, configured);
+          if (selection.mode != nullptr) {
+            if (selection.choice == OutputModeChoice::PreferredFallback) {
+              if (configured.refreshMHz != 0) {
+                kLog.warn(
+                    "output '{}': configured mode {}x{}@{}mHz is unavailable, using preferred mode {}x{}@{}mHz",
+                    m_output->name, configured.width, configured.height, configured.refreshMHz, selection.mode->width,
+                    selection.mode->height, selection.mode->refresh
+                );
+              } else {
+                kLog.warn(
+                    "output '{}': configured mode {}x{} is unavailable, using preferred mode {}x{}@{}mHz",
+                    m_output->name, configured.width, configured.height, selection.mode->width, selection.mode->height,
+                    selection.mode->refresh
+                );
               }
-            } else if (
-                selected == nullptr
-                || (mode->preferred && !selected->preferred)
-                || (mode->preferred == selected->preferred && mode->refresh > selected->refresh)
-            ) {
-              selected = mode;
             }
-          }
-          if (selected != nullptr) {
-            wlr_output_state_set_mode(&state, selected);
+            wlr_output_state_set_mode(&state, selection.mode);
           } else {
             wlr_output_state_set_custom_mode(&state, configured.width, configured.height, configured.refreshMHz);
           }

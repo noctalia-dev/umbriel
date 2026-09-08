@@ -16,6 +16,7 @@ unit_tests = [
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],
+  ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],
