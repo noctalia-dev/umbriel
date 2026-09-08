@@ -2,9 +2,10 @@
 
 Window rules can match `app_id`, title, and a client-defined XDG toplevel tag
 using ECMAScript regular expressions. They can also match a standardized
-content type or focus state. Every matching rule contributes its settings. If
-two rules set the same field, the rule that appears later takes precedence.
-Rules from included files come before the rules in the file that includes them.
+content type or the window's current state. Every matching rule contributes its
+settings. If two rules set the same field, the rule that appears later takes
+precedence. Rules from included files come before the rules in the file that
+includes them.
 
 ```toml
 [[window_rule]]
@@ -56,6 +57,14 @@ priority `game`, `video`, `photo`, then `none`. This also covers Proton and Wine
 games that publish the hint on a child surface. `none` includes windows that do
 not publish a content hint. Client changes refresh settings from the dynamic
 table below, but never replay the opening settings.
+
+`is_focused`, `is_floating`, `is_pinned`, and `is_scratchpad` match the window's
+current state, and every one of those transitions refreshes the settings from
+the dynamic table below. Pinned and scratchpad windows are floating, so
+`is_floating = true` also matches them. Opening settings resolve against the
+state the window opens with, before `default_floating` and `default_pinned`
+apply, so a rule that sets one of those cannot also select on the state it
+produces.
 
 ## Settings applied when a window opens
 

@@ -611,7 +611,8 @@ default_pinned = true
 # default_scrolling_column = "browsers"
 # default_scrolling_column_order = 10
 
-# Focus-aware rules update as focus changes.
+# State-aware rules update as focus, floating, pinned, and scratchpad state
+# change. Pinned and scratchpad windows are floating too.
 
 # [[window_rule]]
 # match.is_focused = false
@@ -620,6 +621,11 @@ default_pinned = true
 # [[window_rule]]
 # match.is_focused = true
 # opacity = 1.0
+
+# [[window_rule]]
+# match.is_floating = true
+# match.is_scratchpad = false
+# blur = false
 
 # ────────────────────────────── Layer Rules ─────────────────────────────────
 # Match layer-shell surfaces such as panels, launchers, notifications, and

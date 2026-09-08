@@ -275,6 +275,17 @@ namespace umbriel {
     return "none";
   }
 
+  // Window state the `match.is_*` selectors test. Every field is a live
+  // property, so a change to any of them re-selects a window's rules.
+  struct WindowRuleState {
+    bool focused = false;
+    bool floating = false;
+    bool pinned = false;
+    bool scratchpad = false;
+
+    [[nodiscard]] bool operator==(const WindowRuleState& other) const = default;
+  };
+
   struct WindowRule {
     std::string appIdPattern;
     std::string titlePattern;

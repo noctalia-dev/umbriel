@@ -189,8 +189,7 @@ namespace umbriel {
 
   ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
-      std::optional<std::string_view> xdgTag, ContentType contentType, bool focused, bool floating, bool pinned,
-      bool scratchpad, uint64_t uptimeMs
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
   ) {
     ResolvedWindowRule resolved;
 
@@ -203,16 +202,16 @@ namespace umbriel {
       if (rule.matchContentType && *rule.matchContentType != contentType) {
         continue;
       }
-      if (rule.matchFocused && *rule.matchFocused != focused) {
+      if (rule.matchFocused && *rule.matchFocused != state.focused) {
         continue;
       }
-      if (rule.matchFloating && *rule.matchFloating != floating) {
+      if (rule.matchFloating && *rule.matchFloating != state.floating) {
         continue;
       }
-      if (rule.matchPinned && *rule.matchPinned != pinned) {
+      if (rule.matchPinned && *rule.matchPinned != state.pinned) {
         continue;
       }
-      if (rule.matchScratchpad && *rule.matchScratchpad != scratchpad) {
+      if (rule.matchScratchpad && *rule.matchScratchpad != state.scratchpad) {
         continue;
       }
       if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < kStartupWindowRuleDurationMs)) {

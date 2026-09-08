@@ -415,10 +415,16 @@ namespace umbriel {
     // is work a terminal that retitles per command pays repeatedly.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void refreshStartupRuleEffects();
-    // Window rules, resolved at most once per (config, app-id, title, XDG tag, content type, focus). Resolution runs
-    // every rule's regexes, and it is reached on focus changes and on every identity change; a terminal that retitles
-    // per command would otherwise pay the whole rule set on each one. Every input is part of the key:
-    // `match.is_focused` makes focus a matching criterion, not just a consumer of the result.
+    // Re-applies dynamic effects after a float, pin, or scratchpad transition, because those states select rules.
+    // A transition that also moved focus has already refreshed them, so this is a no-op there.
+    void refreshStateRuleEffects();
+    // The live window state the `match.is_*` selectors test.
+    [[nodiscard]] WindowRuleState ruleState() const;
+    // Window rules, resolved at most once per (config, app-id, title, XDG tag, content type, window state).
+    // Resolution runs every rule's regexes, and it is reached on focus changes and on every identity change; a
+    // terminal that retitles per command would otherwise pay the whole rule set on each one. Window state is part of
+    // the key because `match.is_focused` and its siblings make it a matching criterion, not just a consumer of the
+    // result.
     [[nodiscard]] const ResolvedWindowRule& resolvedRules();
 
     // Cache for resolvedRules(); m_rulesGeneration 0 means never resolved.
@@ -428,10 +434,10 @@ namespace umbriel {
     std::optional<std::string> m_rulesTitle;
     std::optional<std::string> m_rulesXdgTag;
     ContentType m_rulesContentType = ContentType::None;
-    bool m_rulesFocused = false;
-    bool m_rulesFloating = false;
-    bool m_rulesPinned = false;
-    bool m_rulesScratchpad = false;
+    WindowRuleState m_rulesState;
+    // The state applyDynamicRules last applied effects for. Any resolvedRules() caller refreshes the cache above, so
+    // only this tells a transition whether the effects on screen still match the window's state.
+    WindowRuleState m_appliedRuleState;
     // One-shot effects already applied at map. Late identity resolution only
     // reapplies a field when its resolved value changes.
     ResolvedWindowRule m_initialRules;
