@@ -22,6 +22,9 @@ default_floating = true
 | `match.xdg_tag` | regex | Match the client-defined XDG toplevel tag. |
 | `match.content_type` | string | Match `"none"`, `"photo"`, `"video"`, or `"game"`. |
 | `match.is_focused` | bool | Match the window's focused state dynamically. |
+| `match.is_floating` | bool | Match the window's floating state dynamically. |
+| `match.is_pinned` | bool | Match the window's pinned state dynamically. |
+| `match.is_scratchpad` | bool | Match the window's scratchpad state dynamically. |
 | `match.at_startup` | bool | Match `true` during the first 60 seconds after starting umbriel and `false` afterward. |
 
 Every selector is optional. A rule without selectors matches every window.
@@ -331,4 +334,17 @@ opacity = 0.85
 [[window_rule]]
 match.is_focused = true
 opacity = 1.0
+
+# Disable blur for floating windows, but not scratchpad windows
+[[window_rule]]
+match.is_floating = true
+match.is_scratchpad = false
+blur = false
+
+# Dim them even further
+[[window_rule]]
+match.is_focused = false
+match.is_floating = true
+match.is_scratchpad = false
+opacity = 0.4
 ```

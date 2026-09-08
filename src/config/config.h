@@ -284,6 +284,9 @@ namespace umbriel {
     std::regex xdgTagRegex;
     std::optional<ContentType> matchContentType;
     std::optional<bool> matchFocused;
+    std::optional<bool> matchFloating;
+    std::optional<bool> matchPinned;
+    std::optional<bool> matchScratchpad;
     std::optional<bool> matchAtStartup;
     std::optional<std::string> defaultOutput;
     std::optional<bool> defaultFloating;
@@ -319,6 +322,9 @@ namespace umbriel {
           && xdgTagPattern == other.xdgTagPattern
           && matchContentType == other.matchContentType
           && matchFocused == other.matchFocused
+          && matchFloating == other.matchFloating
+          && matchPinned == other.matchPinned
+          && matchScratchpad == other.matchScratchpad
           && matchAtStartup == other.matchAtStartup
           && defaultOutput == other.defaultOutput
           && defaultFloating == other.defaultFloating

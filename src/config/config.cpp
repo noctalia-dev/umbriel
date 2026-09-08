@@ -1906,6 +1906,30 @@ namespace umbriel {
                 valid = false;
               }
             }
+            if (const toml::node* floatingNode = matchKeys.take("is_floating")) {
+              if (floatingNode->is_boolean()) {
+                rule.matchFloating = floatingNode->value<bool>();
+              } else {
+                warnAt(floatingNode->source(), "ignoring window_rule.match.is_floating (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* pinnedNode = matchKeys.take("is_pinned")) {
+              if (pinnedNode->is_boolean()) {
+                rule.matchPinned = pinnedNode->value<bool>();
+              } else {
+                warnAt(pinnedNode->source(), "ignoring window_rule.match.is_pinned (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* scratchpadNode = matchKeys.take("is_scratchpad")) {
+              if (scratchpadNode->is_boolean()) {
+                rule.matchScratchpad = scratchpadNode->value<bool>();
+              } else {
+                warnAt(scratchpadNode->source(), "ignoring window_rule.match.is_scratchpad (expected boolean)");
+                valid = false;
+              }
+            }
             if (const toml::node* atStartupNode = matchKeys.take("at_startup")) {
               if (atStartupNode->is_boolean()) {
                 rule.matchAtStartup = atStartupNode->value<bool>();

@@ -3028,7 +3028,7 @@ namespace umbriel {
     // hints changed after map must not select new one-shot behavior.
     const ResolvedWindowRule rule = resolveWindowRules(
         config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_initialRulesXdgTag,
-        m_initialRulesContentType, m_borderFocusedState, m_server->uptimeMs()
+        m_initialRulesContentType, m_borderFocusedState, !m_tiled, m_pinned, m_scratchpadBorder, m_server->uptimeMs()
     );
 
     const bool namedScrollingColumnNameChanged = rule.defaultScrollingColumn.has_value()
@@ -3174,6 +3174,9 @@ namespace umbriel {
     // empty string, so a client that replaces a missing title with an empty one must re-resolve.
     if (m_rulesGeneration == generation
         && m_rulesFocused == m_borderFocusedState
+        && m_rulesFloating == !m_tiled
+        && m_rulesPinned == m_pinned
+        && m_rulesScratchpad == m_scratchpadBorder
         && m_rulesAppId == appId
         && m_rulesTitle == title
         && m_rulesXdgTag == m_xdgTag
@@ -3181,10 +3184,15 @@ namespace umbriel {
       return m_rules;
     }
 
-    m_rules =
-        resolveWindowRules(config(), appId, title, m_xdgTag, m_contentType, m_borderFocusedState, m_server->uptimeMs());
+    m_rules = resolveWindowRules(
+        config(), appId, title, m_xdgTag, m_contentType, m_borderFocusedState, !m_tiled, m_pinned, m_scratchpadBorder,
+        m_server->uptimeMs()
+    );
     m_rulesGeneration = generation;
     m_rulesFocused = m_borderFocusedState;
+    m_rulesFloating = !m_tiled;
+    m_rulesPinned = m_pinned;
+    m_rulesScratchpad = m_scratchpadBorder;
     m_rulesAppId = appId;
     m_rulesTitle = title;
     m_rulesXdgTag = m_xdgTag;
