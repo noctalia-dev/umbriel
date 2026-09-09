@@ -455,6 +455,8 @@ namespace umbriel {
       const wlr_output_image_description* description = wlrOutput->image_description;
       outputs.push_back({
           {"name", wlrOutput->name},
+          {"enabled", output->configuredEnabled()},
+          {"dpms_off", output->dpmsOff()},
           {"hdr_mode", hdrModeName(output->hdrMode())},
           {"hdr_requested", output->hdrRequested()},
           {"hdr_active", output->hdrActive()},

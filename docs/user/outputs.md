@@ -335,7 +335,7 @@ in the output's native format.
 
 ### Bit depth
 
-Set `bit_depth = 10` to request a 10-bit SDR output format:
+Set `bit_depth = 10` to request a 10-bit SDR compositor render format:
 
 ```toml
 [output.DP-1]
@@ -346,8 +346,32 @@ This selects XR30 (`DRM_FORMAT_XRGB2101010`) or XB30 (`DRM_FORMAT_XBGR2101010`)
 as the render format. Blur and effects intermediate buffers are upgraded to FP16
 precision for reduced banding in gradients.
 
+`bit_depth = 10` controls the compositor render format only. It does not
+guarantee that the physical display link runs at 10 bits per channel. The
+number of bits delivered to the panel depends on the display's EDID, cable,
+and driver. Run `umbriel color` to confirm the active render format that the
+compositor committed.
+
+**VRR fallback.** When VRR is also requested, the format sequence first
+attempts the 10-bit format with VRR enabled. If the backend rejects that
+combination, it retries the same 10-bit format with VRR disabled. VRR is
+silently dropped rather than falling back to 8-bit. Only when both 10-bit
+passes fail does Umbriel log a warning and fall back to 8-bit.
+
+**Direct scanout.** Direct scanout remains enabled by the `direct_scanout`
+setting, but it is less likely to engage while 10-bit rendering is active.
+Direct scanout requires the client buffer format to exactly match what KMS
+accepts for the plane. Most clients render 8-bit buffers, which do not satisfy
+that requirement on a 10-bit output. Set `direct_scanout = false` explicitly if
+you want to suppress the condition check entirely.
+
+**Screencopy and capture.** Screencopy clients such as `grim` and Noctalia
+receive raw XR30 buffers when 10-bit SDR is active. Tools that do not handle
+10-bit formats may produce undesired output. Use a bit depth of 8 if you
+encounter issues.
+
 If the backend rejects both 10-bit formats, Umbriel logs a warning and falls
-back to 8-bit. Run `umbriel color` to confirm the active render format.
+back to 8-bit.
 
 HDR always uses 10-bit independently of this setting.
 

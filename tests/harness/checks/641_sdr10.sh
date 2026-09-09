@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # 10-bit SDR format selection.
 #   0. umbrielfx rendering phase: corner_radius + optimized blur active when the
-#      bit-depth switches. Exercises fx_pass.c and the FP16 offscreen buffer path.
+#      bit-depth switches in both directions. Exercises fx_pass.c, the FP16
+#      offscreen buffer path, and confirms the blur cache survives the full
+#      SDR8 -> SDR10 -> SDR8 round-trip.
 #   1. SDR8 -> SDR10: Probe succeeds, output commits to XR30 or XB30, no fallback reason.
 #   2. HDR (unavailable) -> SDR10: HDR reason clears when HDR is no longer
 #      requested; SDR10 independently selects XR30 or XB30.
@@ -102,6 +104,41 @@ if (( luma_sdr10 == 0 )); then
   exit 1
 fi
 echo "phase0: SDR10 frame rendered correctly after format switch (luma=${luma_sdr10})"
+
+# Switch back to SDR8 while FX effects remain live: the blur cache and
+# corner-radius geometry must survive the SDR10 -> SDR8 transition too.
+printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[colors]
+backdrop = "#1e1e2eff"
+
+[appearance]
+corner_radius = 32
+
+[appearance.blur]
+enabled = true
+optimized = true
+passes = 2
+radius = 8
+noise = 0.0
+brightness = 1.0
+contrast = 1.0
+saturation = 1.0
+
+[[window_rule]]
+blur = true
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+sleep 0.3
+readonly SCREENSHOT_SDR8_RETURN="$UMBRIEL_RUNTIME_DIR/sdr10-luma-sdr8-return.png"
+grim "$SCREENSHOT_SDR8_RETURN"
+luma_sdr8_return=$(magick "$SCREENSHOT_SDR8_RETURN" -alpha off -colorspace gray -format '%[fx:round(255*mean)]' info:)
+if (( luma_sdr8_return == 0 )); then
+  echo "phase0: SDR8 screenshot after SDR10->SDR8 transition is all-black (mean luma=${luma_sdr8_return})"
+  exit 1
+fi
+echo "phase0: SDR8 frame rendered correctly after SDR10->SDR8 back-transition (luma=${luma_sdr8_return})"
 
 
 # Headless accepts XR30 or XB30 via wlr_output_test_state (XR30 is tried first),

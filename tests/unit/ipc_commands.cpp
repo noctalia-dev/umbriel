@@ -42,6 +42,8 @@ namespace {
   nlohmann::json colorPayload(nlohmann::json outputOverrides) {
     nlohmann::json output = {
         {"name", "HEADLESS-1"},
+        {"enabled", true},
+        {"dpms_off", false},
         {"hdr_mode", "off"},
         {"hdr_requested", false},
         {"hdr_active", false},
@@ -201,6 +203,71 @@ UMBRIEL_TEST(colorHumanHdrFallbackWithSdr10Active) {
   );
   CHECK(out.contains("fallback: display does not advertise PQ"));
   CHECK(out.contains("10-bit SDR: active"));
+}
+
+UMBRIEL_TEST(colorJsonEnabledFieldPresent) {
+  const nlohmann::json payload = colorPayload(nlohmann::json::object());
+  CHECK(payload["outputs"][0].contains("enabled"));
+  CHECK(payload["outputs"][0]["enabled"] == true);
+}
+
+UMBRIEL_TEST(colorJsonDisabledOutput) {
+  const nlohmann::json payload = colorPayload({{"enabled", false}});
+  CHECK(payload["outputs"][0]["enabled"] == false);
+}
+
+UMBRIEL_TEST(colorJsonDpmsOffFieldPresent) {
+  const nlohmann::json payload = colorPayload({{"dpms_off", true}});
+  CHECK(payload["outputs"][0].contains("dpms_off"));
+  CHECK(payload["outputs"][0]["dpms_off"] == true);
+}
+
+UMBRIEL_TEST(colorJsonSdr10XR30Fields) {
+  const nlohmann::json payload = colorPayload({
+      {"bit_depth", 10},
+      {"sdr10_active", true},
+      {"render_format", "XR30"},
+      {"bit_depth_fallback_reason", ""},
+  });
+  CHECK(payload["outputs"][0]["sdr10_active"] == true);
+  CHECK(payload["outputs"][0]["render_format"] == "XR30");
+  CHECK(payload["outputs"][0]["bit_depth_fallback_reason"] == "");
+}
+
+UMBRIEL_TEST(colorJsonSdr10XB30Fields) {
+  const nlohmann::json payload = colorPayload({
+      {"bit_depth", 10},
+      {"sdr10_active", true},
+      {"render_format", "XB30"},
+      {"bit_depth_fallback_reason", ""},
+  });
+  CHECK(payload["outputs"][0]["sdr10_active"] == true);
+  CHECK(payload["outputs"][0]["render_format"] == "XB30");
+}
+
+UMBRIEL_TEST(colorJsonXr24FallbackFields) {
+  const nlohmann::json payload = colorPayload({
+      {"bit_depth", 10},
+      {"sdr10_active", false},
+      {"render_format", "XR24"},
+      {"bit_depth_fallback_reason", "backend rejected all 10-bit SDR render formats"},
+  });
+  CHECK(payload["outputs"][0]["sdr10_active"] == false);
+  CHECK(payload["outputs"][0]["render_format"] == "XR24");
+  CHECK(payload["outputs"][0]["bit_depth_fallback_reason"] == "backend rejected all 10-bit SDR render formats");
+}
+
+UMBRIEL_TEST(colorJsonHdrActiveFields) {
+  const nlohmann::json payload = colorPayload({
+      {"hdr_active", true},
+      {"hdr_requested", true},
+      {"render_format", "XR30"},
+      {"transfer_function", "st2084_pq"},
+      {"primaries", "bt2020"},
+  });
+  CHECK(payload["outputs"][0]["hdr_active"] == true);
+  CHECK(payload["outputs"][0]["transfer_function"] == "st2084_pq");
+  CHECK(payload["outputs"][0]["primaries"] == "bt2020");
 }
 
 int main() { return RUN_TESTS(); }

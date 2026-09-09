@@ -19,6 +19,7 @@ unit_tests = [
   ['output-identity', ['unit/output_identity.cpp'], []],
   ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
+  ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],
   ['lifecycle-motion', ['unit/lifecycle_motion.cpp'], []],
