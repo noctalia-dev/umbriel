@@ -66,7 +66,8 @@ namespace umbriel {
     // over-bright wash (scene/color.h).
     std::array<float, 4> tint(const std::array<float, 4>& base, double opacity) {
       std::array<float, 4> out{};
-      premultiplied(out.data(), base, static_cast<float>(opacity));
+      // Overshooting curves push the overview progress past [0, 1].
+      premultiplied(out.data(), base, static_cast<float>(std::clamp(opacity, 0.0, 1.0)));
       return out;
     }
     void layoutWorkspaceBackground(
@@ -250,7 +251,8 @@ namespace umbriel {
     }
 
     if (card.badge != nullptr) {
-      const auto badgeAlpha = static_cast<float>(m_progress);
+      // Overshooting curves can push m_progress past [0, 1] and wlr_scene_buffer_set_opacity asserts.
+      const auto badgeAlpha = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
       const bool matched = card.shortcutMatched != SIZE_MAX;
       const bool fits =
           contentW >= card.badgeWidth + 2 * kBadgeMargin && contentH >= card.badgeHeight + 2 * kBadgeMargin;
@@ -373,7 +375,8 @@ namespace umbriel {
       if (blur->width != metrics.outputBox.width || blur->height != metrics.outputBox.height) {
         wlr_scene_blur_set_size(blur, metrics.outputBox.width, metrics.outputBox.height);
       }
-      const auto level = static_cast<float>(m_progress);
+      // Blur alpha and strength are normalized to [0, 1]; clamp an overshooting progress.
+      const auto level = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
       if (blur->alpha != level) {
         wlr_scene_blur_set_alpha(blur, level);
       }
