@@ -84,11 +84,12 @@ output is reconfigured, so reconnecting the display or reloading the configurati
 | `mode`                                       | string                            | (native)    | Resolution and refresh rate: `"WIDTHxHEIGHT"` or `"WIDTHxHEIGHT@HZ"`. Fractional Hz allowed. Falls back to the preferred advertised mode when it cannot be applied. Ignored in nested sessions (the parent controls size). |
 | `position`                                   | `[x, y]`                          | (auto)      | Top-left corner in logical layout coordinates. Omit for automatic placement.                                                                        |
 | `scale`                                      | float                             | `1.0`       | Output scale (0.25-4.0).                                                                                                                            |
-| `vrr`                                        | string                            | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`.                                                                          |
+| `vrr`                                        | string                            | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`.                                                                         |
 | `tearing`                                    | bool                              | `false`     | Permit asynchronous page flips for eligible fullscreen windows on this output.                                                                      |
 | `direct_scanout`                             | bool                              | `true`      | Permit eligible client buffers to bypass composition on this output. Set to `false` to always composite.                                            |
 | `hdr`                                        | string                            | `"off"`     | HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`.                                                                                           |
 | `sdr_white`                                  | float                             | `203`       | SDR reference white in cd/m2 while the output is in HDR mode (80-1000).                                                                             |
+| `bit_depth`                                  | int                               | `8`         | Render bit depth for SDR output: `8` or `10`.                                                                                                       |
 | `workspaces`                                 | int, string array, or `"dynamic"` | `"dynamic"` | A dynamic inventory, which may include names declared by `[[workspace]]`, 1 to 64 anonymous fixed positions, or a static ordered list of 1 to 64 names. |
 | `min_workspaces`                             | int                               | `1`         | Workspace count a dynamic output never shrinks below (1-64). Rejected together with a static `workspaces` inventory.                                |
 | `workspace_axis`                             | string                            | `"vertical"` | Axis the output's workspaces are arranged along: `"vertical"` or `"horizontal"`. The scrolling strip runs perpendicular to it. See [Workspace axis](workspaces.md#workspace-axis). |
@@ -331,6 +332,24 @@ receive an SDR Gamma 2.2 view instead of PQ-encoded output pixels. This keeps
 screenshots readable in ordinary SDR viewers. Values outside the SDR capture
 range are clipped rather than tone-mapped. Raw export-DMA-BUF capture remains
 in the output's native format.
+
+### Bit depth
+
+Set `bit_depth = 10` to request a 10-bit SDR output format:
+
+```toml
+[output.DP-1]
+bit_depth = 10
+```
+
+This selects XR30 (`DRM_FORMAT_XRGB2101010`) or XB30 (`DRM_FORMAT_XBGR2101010`)
+as the render format. Blur and effects intermediate buffers are upgraded to FP16
+precision for reduced banding in gradients.
+
+If the backend rejects both 10-bit formats, Umbriel logs a warning and falls
+back to 8-bit. Run `umbriel color` to confirm the active render format.
+
+HDR always uses 10-bit independently of this setting.
 
 ## Disabling an output
 

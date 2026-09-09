@@ -120,7 +120,7 @@ bool is_fx_pixel_format_supported(const struct fx_renderer *renderer,
 		return false;
 	}
 	if (format->gl_type == GL_HALF_FLOAT_OES
-			&& !renderer->exts.OES_texture_half_float_linear) {
+			&& !renderer->exts.fp16_linear_filter) {
 		return false;
 	}
 	if (format->gl_type == GL_UNSIGNED_SHORT

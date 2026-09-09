@@ -625,6 +625,8 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 
 	renderer->exts.OES_texture_half_float_linear =
 		check_gl_ext(exts_str, "GL_OES_texture_half_float_linear");
+	renderer->exts.fp16_linear_filter =
+		is_gles3 || renderer->exts.OES_texture_half_float_linear;
 
 	renderer->exts.EXT_texture_norm16 =
 		check_gl_ext(exts_str, "GL_EXT_texture_norm16");

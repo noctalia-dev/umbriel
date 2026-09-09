@@ -27,12 +27,19 @@
 #include <ctime>
 #include <drm_fourcc.h>
 #include <format>
+#include <span>
 
 namespace umbriel {
 
   namespace {
     constexpr Logger kLog("output");
     constexpr int kFrameRetryDelayMs = 16;
+
+    std::span<const bool> vrrPasses(bool tryVrrOn) {
+      static constexpr bool kBothPasses[] = {true, false};
+      static constexpr bool kNoVrrPass[] = {false};
+      return tryVrrOn ? std::span<const bool>(kBothPasses) : std::span<const bool>(kNoVrrPass);
+    }
 
   } // namespace
 
@@ -133,9 +140,20 @@ namespace umbriel {
 
   bool Output::hdrActive() const { return m_output->image_description != nullptr; }
 
+  bool Output::tenBitSdrActive() const {
+    return m_output->enabled
+        && !hdrActive()
+        && (m_output->render_format == DRM_FORMAT_XRGB2101010 || m_output->render_format == DRM_FORMAT_XBGR2101010);
+  }
+
   float Output::configuredSdrWhite() const {
     const OutputRule* rule = findOutputRule(config(), identity());
     return rule != nullptr ? rule->sdrWhite : 203.0F;
+  }
+
+  int Output::configuredBitDepth() const {
+    const OutputRule* rule = findOutputRule(config(), identity());
+    return rule != nullptr ? rule->bitDepth : 8;
   }
 
   bool Output::configuredDirectScanoutEnabled() const {
@@ -215,6 +233,16 @@ namespace umbriel {
     }
   }
 
+  void Output::setTenBitFallbackReason(std::string_view reason) {
+    if (m_tenBitFallbackReason == reason) {
+      return;
+    }
+    m_tenBitFallbackReason = reason;
+    if (!reason.empty()) {
+      kLog.warn("output '{}': 10-bit SDR unavailable: {}", m_output->name, reason);
+    }
+  }
+
   void Output::updateSceneSdrWhite() {
     if (m_sceneOutput == nullptr) {
       return;
@@ -246,25 +274,22 @@ namespace umbriel {
     const bool hdrWasActive = hdrActive();
     const bool hdrRequested = this->hdrRequested();
     m_lastHdrRequested = hdrRequested;
-    bool hdrAttempted = false;
 
-    bool vrrRequested = false;
-    bool vrrStaged = false;
+    // Stage geometry.
     bool scaleStaged = false;
-    const OutputMode* configuredMode = nullptr;
+    const OutputMode* configuredModeSpec = nullptr;
     wlr_output_mode* stagedMode = nullptr;
     if (enabled) {
       if (rule != nullptr && rule->mode) {
         if (wlr_output_is_wl(m_output)) {
           kLog.info("output '{}': mode is ignored in nested sessions", m_output->name);
         } else {
-          const OutputMode& configured = *rule->mode;
-          configuredMode = &configured;
-          stagedMode = selectOutputMode(m_output, configured);
+          configuredModeSpec = &*rule->mode;
+          stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
             wlr_output_state_set_mode(&state, stagedMode);
           } else {
-            wlr_output_state_set_custom_mode(&state, configured.width, configured.height, configured.refreshMHz);
+            wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }
       } else if (!wlr_output_is_wl(m_output)) {
@@ -283,122 +308,196 @@ namespace umbriel {
       if (rule != nullptr && rule->transform) {
         wlr_output_state_set_transform(&state, static_cast<wl_output_transform>(*rule->transform));
       }
-      vrrRequested = configuredVrrEnabled();
-      if (m_output->adaptive_sync_supported) {
-        wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
-        vrrStaged = vrrRequested;
-      } else if (vrrRequested) {
-        kLog.warn("output '{}': VRR requested but adaptive sync is not supported", m_output->name);
-      }
+    }
 
-      std::string_view hdrFallback;
-      if (hdrRequested) {
-        if ((m_output->supported_transfer_functions & WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ) == 0) {
-          hdrFallback = "display does not advertise PQ";
-        } else if ((m_output->supported_primaries & WLR_COLOR_NAMED_PRIMARIES_BT2020) == 0) {
-          hdrFallback = "display does not advertise BT.2020 primaries";
-        } else if (!m_server->renderer()->features.output_color_transform) {
-          hdrFallback = "renderer lacks FP16 output transform";
+    // VRR variants. Try with VRR first (if requested and supported), then without.
+    const bool vrrRequested = enabled && configuredVrrEnabled();
+    const bool vrrSupported = m_output->adaptive_sync_supported;
+    if (vrrRequested && !vrrSupported) {
+      kLog.warn("output '{}': VRR requested but adaptive sync is not supported", m_output->name);
+    }
+
+    const bool tryVrrOn = vrrRequested && vrrSupported;
+
+    // HDR pre-flight.
+    std::string_view earlyHdrFail;
+    bool imageDescAvailable = false;
+    wlr_output_image_description hdrDescription{};
+    if (enabled && hdrRequested) {
+      if ((m_output->supported_transfer_functions & WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ) == 0) {
+        earlyHdrFail = "display does not advertise PQ";
+      } else if ((m_output->supported_primaries & WLR_COLOR_NAMED_PRIMARIES_BT2020) == 0) {
+        earlyHdrFail = "display does not advertise BT.2020 primaries";
+      } else if (!m_server->renderer()->features.output_color_transform) {
+        earlyHdrFail = "renderer lacks FP16 output transform";
+      } else {
+        hdrDescription = {
+            .primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020,
+            .transfer_function = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ,
+            .mastering_display_primaries = {},
+            .mastering_luminance = {},
+            .max_cll = 0,
+            .max_fall = 0,
+        };
+
+        if (!wlr_output_state_set_image_description(&state, &hdrDescription)) {
+          earlyHdrFail = "failed to stage HDR image description";
         } else {
-          const wlr_output_image_description description = {
-              .primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020,
-              .transfer_function = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ,
-              .mastering_display_primaries = {},
-              .mastering_luminance = {},
-              .max_cll = 0,
-              .max_fall = 0,
-          };
-          if (!wlr_output_state_set_image_description(&state, &description)) {
-            hdrFallback = "failed to stage HDR image description";
-          } else {
-            const wlr_drm_format_set* primaryFormats =
-                wlr_output_get_primary_formats(m_output, m_server->allocator()->buffer_caps);
-            const auto selectFormat = [&]() {
-              return selectHdrRenderFormat(m_output->render_format, [&](uint32_t format) {
-                if (primaryFormats != nullptr && wlr_drm_format_set_get(primaryFormats, format) == nullptr) {
-                  return false;
-                }
-                wlr_output_state_set_render_format(&state, format);
-                return wlr_output_test_state(m_output, &state);
-              });
-            };
-
-            std::optional<uint32_t> renderFormat = selectFormat();
-            if (!renderFormat && vrrStaged) {
-              wlr_output_state_set_adaptive_sync_enabled(&state, false);
-              vrrStaged = false;
-              renderFormat = selectFormat();
-              if (renderFormat) {
-                kLog.warn("output '{}': HDR is incompatible with VRR, keeping VRR disabled", m_output->name);
-              } else {
-                wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
-                vrrStaged = vrrRequested;
-              }
-            }
-            if (renderFormat) {
-              hdrAttempted = true;
-              kLog.info(
-                  "output '{}': selected HDR render format {}", m_output->name,
-                  *renderFormat == DRM_FORMAT_XRGB2101010 ? "XR30" : "XB30"
-              );
-            } else {
-              hdrFallback = "backend rejected all 10-bit HDR render formats";
-            }
-          }
+          imageDescAvailable = true;
         }
       }
-      if (!hdrFallback.empty()) {
-        setHdrFallbackReason(hdrFallback);
-      }
     }
 
-    if ((!hdrRequested && hdrWasActive) || (enabled && hdrRequested && !hdrAttempted)) {
+    const wlr_drm_format_set* primaryFormats =
+        enabled ? wlr_output_get_primary_formats(m_output, m_server->allocator()->buffer_caps) : nullptr;
+    const int bitDepth = configuredBitDepth();
+
+    std::string_view pendingHdrFail = earlyHdrFail;
+    std::string_view pendingSdr10Fail;
+    // HDR.
+    const auto tryHdrFormats = [&]() -> bool {
+      if (!(hdrRequested && imageDescAvailable)) {
+        if (imageDescAvailable || hdrWasActive) {
+          wlr_output_state_set_image_description(&state, nullptr);
+        }
+        return false;
+      }
+
+      const auto hdrFormats = hdrRenderFormatCandidates(m_output->render_format);
+      bool anyTestPassed = false;
+      bool anyCommitFailed = false;
+      for (const bool vrr : vrrPasses(tryVrrOn)) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, vrr);
+        wlr_output_state_set_image_description(&state, &hdrDescription);
+        for (const uint32_t fmt : hdrFormats) {
+          if (primaryFormats != nullptr && wlr_drm_format_set_get(primaryFormats, fmt) == nullptr) {
+            continue;
+          }
+          wlr_output_state_set_render_format(&state, fmt);
+          if (!wlr_output_test_state(m_output, &state)) {
+            continue;
+          }
+          anyTestPassed = true;
+          kLog.info(
+              "output '{}': selected HDR render format {}", m_output->name,
+              fmt == DRM_FORMAT_XRGB2101010 ? "XR30" : "XB30"
+          );
+          if (wlr_output_commit_state(m_output, &state)) {
+            if (tryVrrOn && !vrr) {
+              kLog.warn("output '{}': HDR is incompatible with VRR, keeping VRR disabled", m_output->name);
+            }
+            return true;
+          }
+          anyCommitFailed = true;
+        }
+      }
+
+      if (!anyTestPassed) {
+        pendingHdrFail = "backend rejected all 10-bit HDR render formats";
+      } else if (anyCommitFailed) {
+        pendingHdrFail = "HDR commit rejected by backend";
+      }
+
       wlr_output_state_set_image_description(&state, nullptr);
-      wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
-    }
-
-    const auto commitConfiguredState = [&]() {
-      bool success = wlr_output_commit_state(m_output, &state);
-      if (!success && vrrStaged) {
-        kLog.warn("output '{}': configured state commit failed, retrying with VRR disabled", m_output->name);
-        wlr_output_state_set_adaptive_sync_enabled(&state, false);
-        vrrStaged = false;
-        success = wlr_output_commit_state(m_output, &state);
-      }
-      return success;
+      return false;
     };
 
-    bool committed = commitConfiguredState();
-    if (!committed && hdrAttempted) {
-      setHdrFallbackReason("HDR commit rejected by backend");
-      wlr_output_state_set_image_description(&state, nullptr);
-      wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
-      if (m_output->adaptive_sync_supported) {
-        wlr_output_state_set_adaptive_sync_enabled(&state, vrrRequested);
-        vrrStaged = vrrRequested;
+    // SDR10.
+    const auto trySdr10Formats = [&]() -> bool {
+      if (bitDepth != 10) {
+        return false;
       }
-      committed = commitConfiguredState();
-    }
-    bool usedModeFallback = false;
-    if (!committed && configuredMode != nullptr) {
-      if (wlr_output_mode* fallback = preferredFallbackMode(m_output, stagedMode)) {
-        usedModeFallback = true;
-        if (!m_modeFallbackWarned) {
-          m_modeFallbackWarned = true;
-          const std::string requested = configuredMode->refreshMHz != 0
-              ? std::format("{}x{}@{}mHz", configuredMode->width, configuredMode->height, configuredMode->refreshMHz)
-              : std::format("{}x{}", configuredMode->width, configuredMode->height);
-          kLog.warn(
-              "output '{}': configured mode {} could not be applied, using preferred mode {}x{}@{}mHz", m_output->name,
-              requested, fallback->width, fallback->height, fallback->refresh
+
+      bool anyTestPassed = false;
+      bool anyCommitFailed = false;
+      for (const bool vrr : vrrPasses(tryVrrOn)) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, vrr);
+        const auto accepted = selectSdr10RenderFormat([&](uint32_t fmt) {
+          if (primaryFormats != nullptr && wlr_drm_format_set_get(primaryFormats, fmt) == nullptr) {
+            return false;
+          }
+          wlr_output_state_set_render_format(&state, fmt);
+          if (!wlr_output_test_state(m_output, &state)) {
+            return false;
+          }
+          anyTestPassed = true;
+          kLog.info(
+              "output '{}': selected 10-bit SDR render format {}", m_output->name,
+              fmt == DRM_FORMAT_XRGB2101010 ? "XR30" : "XB30"
           );
+          if (wlr_output_commit_state(m_output, &state)) {
+            return true;
+          }
+          anyCommitFailed = true;
+          return false;
+        });
+        if (accepted) {
+          return true;
         }
-        wlr_output_state_set_mode(&state, fallback);
-        committed = commitConfiguredState();
       }
+      if (!anyTestPassed) {
+        pendingSdr10Fail = "backend rejected all 10-bit SDR render formats";
+      } else if (anyCommitFailed) {
+        pendingSdr10Fail = "10-bit SDR commit rejected by backend";
+      }
+      return false;
+    };
+
+    // SDR8.
+    const auto trySdr8Formats = [&]() -> bool {
+      wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
+      for (const bool vrr : vrrPasses(tryVrrOn)) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, vrr);
+        if (wlr_output_test_state(m_output, &state) && wlr_output_commit_state(m_output, &state)) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    // Runs the (HDR -> SDR10 -> SDR8) x VRR probe + commit sequence for whatever
+    // mode is currently staged in state. Returns true if any commit succeeded.
+    const auto runFormatSequence = [&]() -> bool { return tryHdrFormats() || trySdr10Formats() || trySdr8Formats(); };
+
+    // Execute: run the format sequence, retrying with the preferred mode on failure.
+    bool anyCommitted = false;
+    bool usedModeFallback = false;
+    if (enabled) {
+      anyCommitted = runFormatSequence();
+
+      if (!anyCommitted && configuredModeSpec != nullptr) {
+        if (wlr_output_mode* fallback = preferredFallbackMode(m_output, stagedMode)) {
+          usedModeFallback = true;
+          if (!m_modeFallbackWarned) {
+            m_modeFallbackWarned = true;
+            const std::string requested = configuredModeSpec->refreshMHz != 0
+                ? std::format(
+                      "{}x{}@{}mHz", configuredModeSpec->width, configuredModeSpec->height,
+                      configuredModeSpec->refreshMHz
+                  )
+                : std::format("{}x{}", configuredModeSpec->width, configuredModeSpec->height);
+            kLog.warn(
+                "output '{}': configured mode {} could not be applied, using preferred mode {}x{}@{}mHz",
+                m_output->name, requested, fallback->width, fallback->height, fallback->refresh
+            );
+          }
+
+          wlr_output_state_set_mode(&state, fallback);
+          pendingHdrFail = earlyHdrFail;
+          pendingSdr10Fail = {};
+          anyCommitted = runFormatSequence();
+        }
+      }
+    } else {
+      if (!hdrRequested && hdrWasActive) {
+        wlr_output_state_set_image_description(&state, nullptr);
+      }
+      anyCommitted = wlr_output_commit_state(m_output, &state);
     }
+
     wlr_output_state_finish(&state);
-    if (!committed) {
+    if (!anyCommitted) {
       kLog.error("output '{}': failed to commit configured state", m_output->name);
       return false;
     }
@@ -415,11 +514,19 @@ namespace umbriel {
     } else {
       if (!hdrRequested) {
         setHdrFallbackReason({});
+      } else if (enabled) {
+        setHdrFallbackReason(pendingHdrFail);
       }
       if (hdrWasActive) {
         m_gammaDirty = true;
       }
       m_hdrGammaWarningLogged = false;
+    }
+    const bool tenBitSdrIsActive = tenBitSdrActive();
+    if (tenBitSdrIsActive || hdrIsActive || bitDepth != 10) {
+      setTenBitFallbackReason({});
+    } else if (enabled) {
+      setTenBitFallbackReason(pendingSdr10Fail);
     }
     updateSceneSdrWhite();
     m_server->updateIdleInhibit();

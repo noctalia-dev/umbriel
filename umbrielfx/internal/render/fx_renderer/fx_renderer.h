@@ -185,6 +185,7 @@ struct fx_renderer {
 		bool OES_egl_image;
 		bool EXT_texture_type_2_10_10_10_REV;
 		bool OES_texture_half_float_linear;
+		bool fp16_linear_filter;
 		bool EXT_texture_norm16;
 		bool EXT_disjoint_timer_query;
 	} exts;
