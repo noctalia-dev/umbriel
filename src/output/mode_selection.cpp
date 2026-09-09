@@ -11,7 +11,7 @@ extern "C" {
 
 namespace umbriel {
 
-  OutputModeSelection selectOutputMode(wlr_output* output, const OutputMode& configured) {
+  wlr_output_mode* selectOutputMode(wlr_output* output, const OutputMode& configured) {
     wlr_output_mode* selected = nullptr;
     wlr_output_mode* mode = nullptr;
     wl_list_for_each(mode, &output->modes, link) {
@@ -31,14 +31,12 @@ namespace umbriel {
         selected = mode;
       }
     }
+    return selected;
+  }
 
-    if (selected != nullptr) {
-      return {.mode = selected, .choice = OutputModeChoice::Configured};
-    }
-    if (wlr_output_mode* preferred = wlr_output_preferred_mode(output)) {
-      return {.mode = preferred, .choice = OutputModeChoice::PreferredFallback};
-    }
-    return {.mode = nullptr, .choice = OutputModeChoice::Custom};
+  wlr_output_mode* preferredFallbackMode(wlr_output* output, const wlr_output_mode* staged) {
+    wlr_output_mode* preferred = wlr_output_preferred_mode(output);
+    return preferred == staged ? nullptr : preferred;
   }
 
 } // namespace umbriel

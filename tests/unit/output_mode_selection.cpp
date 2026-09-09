@@ -1,7 +1,8 @@
 #include "check.h"
 #include "output/mode_selection.h"
 
-#include <cmath>
+// Pulls the C++ math headers in before `static` is defined away below.
+#include <cmath> // IWYU pragma: keep
 
 extern "C" {
 // wlroots uses C99 array parameter syntax in headers included by wlr_output.h.
@@ -11,8 +12,7 @@ extern "C" {
 }
 
 using umbriel::OutputMode;
-using umbriel::OutputModeChoice;
-using umbriel::OutputModeSelection;
+using umbriel::preferredFallbackMode;
 using umbriel::selectOutputMode;
 
 namespace {
@@ -30,18 +30,6 @@ namespace {
   void addMode(wlr_output& output, wlr_output_mode& mode) { wl_list_insert(output.modes.prev, &mode.link); }
 } // namespace
 
-UMBRIEL_TEST(unavailableConfiguredResolutionFallsBackToPreferredMode) {
-  wlr_output output{};
-  wl_list_init(&output.modes);
-  wlr_output_mode preferred = outputMode(2560, 1440, 119998, true);
-  addMode(output, preferred);
-
-  const OutputModeSelection selection = selectOutputMode(&output, OutputMode{5120, 1440, 143987});
-
-  CHECK_EQ(selection.mode, &preferred);
-  CHECK(selection.choice == OutputModeChoice::PreferredFallback);
-}
-
 UMBRIEL_TEST(configuredResolutionSelectsClosestRefresh) {
   wlr_output output{};
   wl_list_init(&output.modes);
@@ -50,10 +38,10 @@ UMBRIEL_TEST(configuredResolutionSelectsClosestRefresh) {
   addMode(output, lower);
   addMode(output, closest);
 
-  const OutputModeSelection selection = selectOutputMode(&output, OutputMode{5120, 1440, 144000});
+  const wlr_output_mode* selected = selectOutputMode(&output, OutputMode{5120, 1440, 144000});
 
-  CHECK_EQ(selection.mode, &closest);
-  CHECK(selection.choice == OutputModeChoice::Configured);
+  CHECK(selected == &closest);
+  CHECK_EQ(selected->refresh, 143987);
 }
 
 UMBRIEL_TEST(configuredResolutionWithoutRefreshPrefersMarkedMode) {
@@ -64,10 +52,10 @@ UMBRIEL_TEST(configuredResolutionWithoutRefreshPrefersMarkedMode) {
   addMode(output, fastest);
   addMode(output, preferred);
 
-  const OutputModeSelection selection = selectOutputMode(&output, OutputMode{2560, 1440, 0});
+  const wlr_output_mode* selected = selectOutputMode(&output, OutputMode{2560, 1440, 0});
 
-  CHECK_EQ(selection.mode, &preferred);
-  CHECK(selection.choice == OutputModeChoice::Configured);
+  CHECK(selected == &preferred);
+  CHECK_EQ(selected->refresh, 59951);
 }
 
 UMBRIEL_TEST(configuredResolutionWithoutRefreshUsesHighestUnmarkedMode) {
@@ -78,20 +66,72 @@ UMBRIEL_TEST(configuredResolutionWithoutRefreshUsesHighestUnmarkedMode) {
   addMode(output, lower);
   addMode(output, highest);
 
-  const OutputModeSelection selection = selectOutputMode(&output, OutputMode{2560, 1440, 0});
+  const wlr_output_mode* selected = selectOutputMode(&output, OutputMode{2560, 1440, 0});
 
-  CHECK_EQ(selection.mode, &highest);
-  CHECK(selection.choice == OutputModeChoice::Configured);
+  CHECK(selected == &highest);
+  CHECK_EQ(selected->refresh, 119998);
 }
 
-UMBRIEL_TEST(outputWithoutAdvertisedModesUsesCustomMode) {
+// An unadvertised resolution stays a custom mode: the caller only leaves it behind once the commit fails.
+UMBRIEL_TEST(unadvertisedResolutionSelectsNoAdvertisedMode) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(2560, 1440, 119998, true);
+  addMode(output, preferred);
+
+  CHECK(selectOutputMode(&output, OutputMode{5120, 1440, 143987}) == nullptr);
+}
+
+UMBRIEL_TEST(outputWithoutAdvertisedModesSelectsNoAdvertisedMode) {
   wlr_output output{};
   wl_list_init(&output.modes);
 
-  const OutputModeSelection selection = selectOutputMode(&output, OutputMode{1280, 720, 0});
+  CHECK(selectOutputMode(&output, OutputMode{1280, 720, 0}) == nullptr);
+}
 
-  CHECK_EQ(selection.mode, nullptr);
-  CHECK(selection.choice == OutputModeChoice::Custom);
+UMBRIEL_TEST(failedCustomModeFallsBackToPreferredMode) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(2560, 1440, 119998, true);
+  wlr_output_mode slower = outputMode(2560, 1440, 59951);
+  addMode(output, preferred);
+  addMode(output, slower);
+
+  const wlr_output_mode* fallback = preferredFallbackMode(&output, nullptr);
+
+  CHECK(fallback == &preferred);
+  CHECK_EQ(fallback->refresh, 119998);
+}
+
+UMBRIEL_TEST(failedAdvertisedModeFallsBackToPreferredMode) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(2560, 1440, 119998, true);
+  wlr_output_mode slower = outputMode(2560, 1440, 59951);
+  addMode(output, preferred);
+  addMode(output, slower);
+
+  const wlr_output_mode* fallback = preferredFallbackMode(&output, &slower);
+
+  CHECK(fallback == &preferred);
+  CHECK_EQ(fallback->refresh, 119998);
+}
+
+// Retrying the mode that just failed would only fail again.
+UMBRIEL_TEST(failedPreferredModeHasNoFallback) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(2560, 1440, 119998, true);
+  addMode(output, preferred);
+
+  CHECK(preferredFallbackMode(&output, &preferred) == nullptr);
+}
+
+UMBRIEL_TEST(outputWithoutAdvertisedModesHasNoFallback) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+
+  CHECK(preferredFallbackMode(&output, nullptr) == nullptr);
 }
 
 int main() { return RUN_TESTS(); }
