@@ -193,6 +193,12 @@ GTK_THEME = "Adwaita:dark"
 QT_QPA_PLATFORMTHEME = "qt5ct"
 ```
 
+> **Note:** `GTK_THEME` above is only an example value. GTK4 and libadwaita
+> applications do not support this variable and may render with a broken or
+> inconsistent appearance when it is set; it is only meaningful to GTK3 and
+> older applications. Theme GTK4/libadwaita applications with CSS instead, and
+> set the color-scheme preference through `dconf`
+
 Umbriel exports these variables to itself and commands it starts. They override
 values inherited from the login profile loaded by `start-umbriel`. In a native
 session, Umbriel also publishes them to the systemd user manager before
