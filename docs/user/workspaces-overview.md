@@ -8,9 +8,8 @@ appearance.
 ```toml
 [overview]
 zoom = 0.5                     # 0.1-0.75
-scroll_factor = 1.0            # fallback for either axis, 0.1-10.0
-scroll_factor_horizontal = 1.0 # optional override, 0.1-10.0
-scroll_factor_vertical = 1.0   # optional override, 0.1-10.0
+scroll_factor_horizontal = 1.0 # 0.1-10.0
+scroll_factor_vertical = 1.0   # 0.1-10.0
 background_blur = true
 workspace_wallpaper = true
 shortcuts = true
@@ -60,10 +59,10 @@ and settle using release velocity. Holding still before releasing removes the
 flick momentum. The gesture keeps its original output and row even if the
 pointer moves. Strip panning does not apply to dwindle or master layouts. Mouse-wheel and keyboard navigation retain their existing
 behavior. Touchpad `natural_scroll` applies to both gesture types;
-`overview.scroll_factor` scales both gesture types independently of the input
-device's `scroll_factor`, which continues to control application scrolling.
-`scroll_factor_horizontal` and `scroll_factor_vertical` override that fallback
-for the physical swipe direction, regardless of the output's workspace axis.
+`overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical` each
+default to 1.0 and control the physical swipe direction, regardless of the
+output's workspace axis. They are independent of the input device's
+`scroll_factor`, which continues to control application scrolling.
 Both two- and three-finger gestures use these settings. A factor of 0.8 reduces
 travel by 20%; a factor of 1.2 increases it by 20%.
 
@@ -71,8 +70,8 @@ Workspace and strip navigation use the same normalized travel: 500 input units
 per workspace or viewport at zoom 1, with the same zoom adjustment on both axes.
 Changing the screen dimensions does not change the fraction traversed. Release
 projection uses 120 ms of recent velocity, reducing unintended extra workspace
-switches without limiting a gesture to one workspace. These are trial defaults,
-not a claim that different touchpads report identical physical travel.
+switches without limiting a gesture to one workspace. Different touchpads may
+report different input distances for the same physical travel.
 Workspace gestures settle with a critically damped spring that preserves release
 velocity, including when returning to the current workspace. Animation disabling
 still applies; gesture settlement does not use the configured overview easing or duration.

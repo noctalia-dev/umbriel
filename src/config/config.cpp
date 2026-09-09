@@ -1109,7 +1109,6 @@ namespace umbriel {
     void readOverview(Section& root, Config& loaded) {
       root.sub("overview", [&](Section& s) {
         s.real("zoom", 0.1, 0.75, loaded.overview.zoom)
-            .real("scroll_factor", 0.1, 10.0, loaded.overview.scrollFactor)
             .real("scroll_factor_horizontal", 0.1, 10.0, loaded.overview.scrollFactorHorizontal)
             .real("scroll_factor_vertical", 0.1, 10.0, loaded.overview.scrollFactorVertical)
             .boolean("background_blur", loaded.overview.backgroundBlur)

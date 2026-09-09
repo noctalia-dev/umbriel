@@ -889,21 +889,18 @@ UMBRIEL_TEST(overviewScrollFactorLoadsIndependently) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
-  file.write("[overview]\nscroll_factor = 0.7\n");
+  file.write("[overview]\nscroll_factor_horizontal = 0.7\n");
   CHECK(store.reload().success);
-  CHECK_EQ(store.config().overview.scrollFactor, 0.7);
-  CHECK(!store.config().overview.scrollFactorHorizontal.has_value());
-  CHECK(!store.config().overview.scrollFactorVertical.has_value());
-  file.write("[overview]\nscroll_factor = 0.7\nscroll_factor_horizontal = 1.2\nscroll_factor_vertical = 0.8\n");
+  CHECK_EQ(store.config().overview.scrollFactorHorizontal, 0.7);
+  CHECK_EQ(store.config().overview.scrollFactorVertical, 1.0);
+  file.write("[overview]\nscroll_factor_horizontal = 1.2\nscroll_factor_vertical = 0.8\n");
   CHECK(store.reload().success);
-  CHECK_EQ(store.config().overview.scrollFactor, 0.7);
-  CHECK_EQ(store.config().overview.scrollFactorHorizontal.value(), 1.2);
-  CHECK_EQ(store.config().overview.scrollFactorVertical.value(), 0.8);
+  CHECK_EQ(store.config().overview.scrollFactorHorizontal, 1.2);
+  CHECK_EQ(store.config().overview.scrollFactorVertical, 0.8);
   file.write("[overview]\nzoom = 0.5\n");
   CHECK(store.reload().success);
-  CHECK_EQ(store.config().overview.scrollFactor, 1.0);
-  CHECK(!store.config().overview.scrollFactorHorizontal.has_value());
-  CHECK(!store.config().overview.scrollFactorVertical.has_value());
+  CHECK_EQ(store.config().overview.scrollFactorHorizontal, 1.0);
+  CHECK_EQ(store.config().overview.scrollFactorVertical, 1.0);
 }
 
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {

@@ -581,9 +581,8 @@ namespace umbriel {
     struct Overview {
       // Workspace scale when fully zoomed out.
       double zoom = 0.5;
-      double scrollFactor = 1.0;
-      std::optional<double> scrollFactorHorizontal;
-      std::optional<double> scrollFactorVertical;
+      double scrollFactorHorizontal = 1.0;
+      double scrollFactorVertical = 1.0;
       // Blur the wallpaper behind the filmstrip while the overview is visible. Uses [appearance.blur] parameters;
       // inert when appearance blur is disabled.
       bool backgroundBlur = true;

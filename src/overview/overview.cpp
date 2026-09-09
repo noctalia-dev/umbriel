@@ -2455,8 +2455,7 @@ namespace umbriel {
     }
     const auto& overview = config().overview;
     const double factor =
-        (axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical)
-            .value_or(overview.scrollFactor);
+        axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical;
     if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
       if (!m_navigationStarted) {
         m_navigationStart = state->workspaceScroll;
