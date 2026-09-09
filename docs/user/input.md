@@ -177,11 +177,13 @@ that default. Clickpads that only expose software buttons support just
 the device alone.
 
 `scroll_factor` multiplies the smooth two-finger scroll a touchpad sends to the
-focused window or overview, so `2.0` scrolls twice as fast and `0.5` half as fast. It
+focused window, so `2.0` scrolls twice as fast and `0.5` half as fast. It
 remains unset by default (identity, `1.0`) and takes the next scroll event on
 reload. It applies only to the continuous scroll delta: discrete notches,
 overview wheel stepping, and three-finger-swipe strip travel keep their own
-counting semantics.
+counting semantics. Inside overview, both two- and three-finger navigation use
+[`overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical`](workspaces-overview.md)
+instead.
 
 Set `disable_on_external_mouse = true` to disable the touchpad while an
 external mouse is connected. Libinput re-enables it automatically once the
