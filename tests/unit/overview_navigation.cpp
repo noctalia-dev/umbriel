@@ -36,6 +36,25 @@ UMBRIEL_TEST(workspaceSettlementIsBoundedAndAllowsMultipleRows) {
   CHECK_EQ(OverviewNavigation::workspaceTarget(10, 0), 0);
 }
 
+UMBRIEL_TEST(travelIsNormalizedAcrossScreenDimensionsAndAxes) {
+  const double workspace = OverviewNavigation::travelScale(1.0, 0.5, 1.0);
+  for (const double extent : {720.0, 1280.0, 2160.0, 3840.0}) {
+    const double strip = OverviewNavigation::travelScale(extent, 0.5, 1.0);
+    CHECK(std::abs(strip / extent - workspace) < 0.000001);
+    CHECK(std::abs(OverviewNavigation::travelScale(extent, 0.5, 0.8) - strip * 0.8) < 0.000001);
+  }
+  CHECK_EQ(OverviewNavigation::travelScale(1.0, 1.0, 1.0) * 500.0, 1.0);
+}
+
+UMBRIEL_TEST(releaseProjectionAvoidsExtraWorkspaceWithoutLimitingLongSwipes) {
+  const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0);
+  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 1000) * scale, 5), 1);
+  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 3500) * scale, 5), 2);
+  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(1000, 0) * scale, 5), 3);
+  CHECK_EQ(OverviewNavigation::projectRelease(250, -1000), 130.0);
+  CHECK_EQ(OverviewNavigation::projectRelease(250, 0), 250.0);
+}
+
 UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
   CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, 0.15), 1.0);
   CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, 0.15) < 0.02);

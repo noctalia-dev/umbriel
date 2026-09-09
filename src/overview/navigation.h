@@ -31,8 +31,14 @@ namespace umbriel {
 
     [[nodiscard]] Axis axis() const { return m_axis; }
     [[nodiscard]] double position() const { return tracker().pos(); }
-    [[nodiscard]] double projectedPosition() const { return tracker().projectedEndPos(); }
+    [[nodiscard]] double projectedPosition() const { return projectRelease(position(), velocity()); }
     [[nodiscard]] double velocity() const { return tracker().velocity(); }
+
+    [[nodiscard]] static double projectRelease(double position, double velocity) { return position + velocity * 0.12; }
+
+    [[nodiscard]] static double travelScale(double extent, double zoom, double factor) {
+      return extent * zoomScale(zoom) * factor / 500.0;
+    }
 
     [[nodiscard]] static double rubberBandDerivative(double position, double maximum, double limit) {
       const double excess = position - std::clamp(position, 0.0, maximum);

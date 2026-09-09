@@ -892,9 +892,18 @@ UMBRIEL_TEST(overviewScrollFactorLoadsIndependently) {
   file.write("[overview]\nscroll_factor = 0.7\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().overview.scrollFactor, 0.7);
+  CHECK(!store.config().overview.scrollFactorHorizontal.has_value());
+  CHECK(!store.config().overview.scrollFactorVertical.has_value());
+  file.write("[overview]\nscroll_factor = 0.7\nscroll_factor_horizontal = 1.2\nscroll_factor_vertical = 0.8\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().overview.scrollFactor, 0.7);
+  CHECK_EQ(store.config().overview.scrollFactorHorizontal.value(), 1.2);
+  CHECK_EQ(store.config().overview.scrollFactorVertical.value(), 0.8);
   file.write("[overview]\nzoom = 0.5\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().overview.scrollFactor, 1.0);
+  CHECK(!store.config().overview.scrollFactorHorizontal.has_value());
+  CHECK(!store.config().overview.scrollFactorVertical.has_value());
 }
 
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {

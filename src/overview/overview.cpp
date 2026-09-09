@@ -2453,10 +2453,14 @@ namespace umbriel {
       cancelNavigation();
       return;
     }
+    const auto& overview = config().overview;
+    const double factor =
+        (axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical)
+            .value_or(overview.scrollFactor);
     if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
       if (!m_navigationStarted) {
         m_navigationStart = state->workspaceScroll;
-        m_navigationScale = OverviewNavigation::zoomScale(zoom()) * config().overview.scrollFactor / 300.0;
+        m_navigationScale = OverviewNavigation::travelScale(1.0, zoom(), factor);
         state->workspaceSettling = false;
         m_navigationStarted = true;
       }
@@ -2478,7 +2482,7 @@ namespace umbriel {
     if (!m_navigationStarted) {
       m_navigationStart = scrolling->scroll();
       m_navigationCentered = scrolling->centeredRest();
-      m_navigationScale = viewport / 1200.0 * OverviewNavigation::zoomScale(zoom()) * config().overview.scrollFactor;
+      m_navigationScale = OverviewNavigation::travelScale(viewport, zoom(), factor);
       m_navigationStarted = true;
     }
     scrolling->setScroll(
