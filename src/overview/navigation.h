@@ -32,6 +32,13 @@ namespace umbriel {
     [[nodiscard]] Axis axis() const { return m_axis; }
     [[nodiscard]] double position() const { return tracker().pos(); }
     [[nodiscard]] double projectedPosition() const { return tracker().projectedEndPos(); }
+    [[nodiscard]] double velocity() const { return tracker().velocity(); }
+
+    [[nodiscard]] static double rubberBandDerivative(double position, double maximum, double limit) {
+      const double excess = position - std::clamp(position, 0.0, maximum);
+      const double denominator = 1.0 + std::abs(excess) / limit;
+      return 1.0 / (denominator * denominator);
+    }
 
     // Reduce the effect of overview zoom on touchpad travel, rather than
     // multiplying sensitivity by the full inverse zoom.

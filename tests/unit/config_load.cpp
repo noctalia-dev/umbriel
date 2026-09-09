@@ -885,6 +885,18 @@ UMBRIEL_TEST(overviewBackgroundBlurLoads) {
   CHECK(!store.config().overview.backgroundBlur);
 }
 
+UMBRIEL_TEST(overviewScrollFactorLoadsIndependently) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[overview]\nscroll_factor = 0.7\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().overview.scrollFactor, 0.7);
+  file.write("[overview]\nzoom = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().overview.scrollFactor, 1.0);
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

@@ -222,6 +222,10 @@ namespace umbriel {
       double workspaceScroll = 0;
       double workspaceFrom = 0;
       double workspaceTo = 0;
+      size_t activeWorkspaceIndex = 0;
+      bool workspaceSettling = false;
+      uint64_t workspaceSettleStart = 0;
+      double workspaceReleaseVelocity = 0;
     };
 
     // Workspace preview placement for one output at the current progress. Previews

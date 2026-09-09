@@ -37,6 +37,9 @@ UMBRIEL_TEST(workspaceSettlementIsBoundedAndAllowsMultipleRows) {
 }
 
 UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
+  CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, 0.15), 1.0);
+  CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, 0.15) < 0.02);
+  CHECK_EQ(OverviewNavigation::rubberBandDerivative(-1, 3, 0.15), OverviewNavigation::rubberBandDerivative(4, 3, 0.15));
   CHECK_EQ(OverviewNavigation::rubberBand(1.5, 3, 0.15), 1.5);
   CHECK(OverviewNavigation::rubberBand(-1, 3, 0.15) > -0.15);
   CHECK(OverviewNavigation::rubberBand(-1, 3, 0.15) < 0);

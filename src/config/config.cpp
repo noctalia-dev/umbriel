@@ -1109,6 +1109,7 @@ namespace umbriel {
     void readOverview(Section& root, Config& loaded) {
       root.sub("overview", [&](Section& s) {
         s.real("zoom", 0.1, 0.75, loaded.overview.zoom)
+            .real("scroll_factor", 0.1, 10.0, loaded.overview.scrollFactor)
             .boolean("background_blur", loaded.overview.backgroundBlur)
             .boolean("workspace_wallpaper", loaded.overview.workspaceWallpaper)
             .boolean("shortcuts", loaded.overview.shortcuts);

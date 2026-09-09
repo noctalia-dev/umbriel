@@ -63,6 +63,20 @@ UMBRIEL_TEST(okLabConversionRoundTripsSrgbColor) {
   checkColorNear(roundTrip, source);
 }
 
+UMBRIEL_TEST(overviewReleaseSpringPreservesPositionAndVelocity) {
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
+  for (const double target : {0.0, 1.0}) {
+    double velocity = 0;
+    CHECK_EQ(umbriel::solveSpringPhysics(0.3, target, 0.5, 0.0, spring, &velocity), 0.3);
+    CHECK_EQ(velocity, 0.5);
+    const double early = umbriel::solveSpringPhysics(0.3, target, 0.5, 0.016, spring, &velocity);
+    CHECK(std::abs(early - 0.3) < 0.1);
+    CHECK(std::abs(early - target) > 0.1);
+    CHECK_EQ(umbriel::solveSpringPhysics(0.3, target, 0.5, 1.0, spring, &velocity), target);
+    CHECK_EQ(velocity, 0.0);
+  }
+}
+
 UMBRIEL_TEST(animatedColorRefreshesCachedEndpointsWhenRetargeted) {
   const std::array<float, 4> red{1.0F, 0.0F, 0.0F, 0.2F};
   const std::array<float, 4> green{0.0F, 1.0F, 0.0F, 0.6F};

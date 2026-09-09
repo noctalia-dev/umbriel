@@ -8,6 +8,7 @@ appearance.
 ```toml
 [overview]
 zoom = 0.5                     # 0.1-0.75
+scroll_factor = 1.0            # 0.1-10.0, two- and three-finger navigation
 background_blur = true
 workspace_wallpaper = true
 shortcuts = true
@@ -57,7 +58,11 @@ and settle using release velocity. Holding still before releasing removes the
 flick momentum. The gesture keeps its original output and row even if the
 pointer moves. Strip panning does not apply to dwindle or master layouts. Mouse-wheel and keyboard navigation retain their existing
 behavior. Touchpad `natural_scroll` applies to both gesture types;
-`scroll_factor` also scales two-finger movement, but not three-finger swipes.
+`overview.scroll_factor` scales both gesture types independently of the input
+device's `scroll_factor`, which continues to control application scrolling.
+Workspace gestures settle with a critically damped spring that preserves release
+velocity, including when returning to the current workspace. Animation disabling
+still applies; gesture settlement does not use the configured overview easing or duration.
 
 #### Which window actions act on
 

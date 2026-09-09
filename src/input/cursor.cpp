@@ -1025,8 +1025,7 @@ namespace umbriel {
           m_wheelAccum[0] = m_wheelAccum[1] = 0;
           // libinput already applies natural scrolling to axis events.
           overview->handleTouchpadAxis(
-              event->pointer, isVertical, event->delta * touchpadScrollFactor(event->pointer), event->time_msec,
-              m_cursor->x, m_cursor->y
+              event->pointer, isVertical, event->delta, event->time_msec, m_cursor->x, m_cursor->y
           );
           return;
         }
