@@ -169,6 +169,24 @@ namespace umbriel {
     void overrideCursor(const char* name) { setCompositorCursor(name); }
     [[nodiscard]] bool compositorOwnsCursor() const { return m_compositorOwnsCursor; }
 
+    // The only ways compositor code may change pointer focus. While a client
+    // holds an implicit grab (any button down, no client drag) focus stays on
+    // the surface that received the press: wlroots drops its pressed-button
+    // bookkeeping on every focus change, and the matching release would then
+    // have nowhere to go, leaving the client with a button held forever.
+    void setPointerFocus(wlr_surface* surface, double sx, double sy);
+    void clearPointerFocus();
+    // Clear pointer focus even while a client holds a button: a session lock
+    // takes the seat away entirely, and a tablet handing a stroke back to
+    // tablet-v2 must not leave the surface receiving doubled input.
+    void clearPointerFocusOverridingGrab();
+    // Record the cursor shape the focused client asked for, so a compositor
+    // override can hand it back without making the client resend it.
+    void setCursorShape(const char* name);
+    // Pointer focus moved: the recorded client cursor belonged to the old
+    // focus, and an empty focus falls back to the default cursor.
+    void notePointerFocusChange(wlr_surface* newSurface);
+
   private:
     static void onMotion(wl_listener* listener, void* data);
     static void onMotionAbsolute(wl_listener* listener, void* data);
@@ -236,6 +254,13 @@ namespace umbriel {
     void updateInteractiveCursor(View* under);
     void setCompositorCursor(const char* name);
     void restoreClientCursor();
+    // True while a client owns an implicit pointer grab, which pins focus.
+    [[nodiscard]] bool pointerFocusPinned() const;
+    // Re-resolve pointer focus against the surface under the cursor.
+    void refreshPointerFocus();
+    void applyClientCursor();
+    void forgetClientCursor();
+    static void onClientCursorDestroy(wl_listener* listener, void* data);
     void noteActivity();
     void updateHideTimer();
     void hideCursor();
@@ -276,6 +301,16 @@ namespace umbriel {
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
     std::string m_compositorCursorName;
+    // What the focused client last asked the cursor to be, replayed when a
+    // compositor override ends. Wayland scopes a cursor to the pointer focus,
+    // so this is forgotten when focus moves.
+    bool m_clientCursorKnown = false;
+    // Set for a client cursor surface, empty for a cursor-shape name. A known
+    // client cursor with neither is the client hiding the cursor.
+    wlr_surface* m_clientCursorSurface = nullptr;
+    int32_t m_clientCursorHotspotX = 0;
+    int32_t m_clientCursorHotspotY = 0;
+    std::string m_clientCursorShape;
     wl_event_source* m_hideTimer = nullptr;
     wl_event_source* m_hotCornerTimer = nullptr;
     bool m_hotCornerPending = false;
@@ -297,6 +332,7 @@ namespace umbriel {
     wl_listener m_tabletToolProximity{};
     wl_listener m_tabletToolTip{};
     wl_listener m_tabletToolButton{};
+    wl_listener m_clientCursorDestroy{};
   };
 
 } // namespace umbriel

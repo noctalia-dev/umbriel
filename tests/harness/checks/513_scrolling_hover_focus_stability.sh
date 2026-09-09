@@ -43,7 +43,7 @@ mode = "scrolling"
 
 [layout.scrolling]
 default_width_fraction = 0.6
-center_focused = true
+center_focused = "always"
 
 [animation]
 duration_ms = 1200

@@ -86,16 +86,14 @@ horizontally scrolls vertically.
 [layout.scrolling]
 default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
-center_focused = false
-expand_single_column = true
+center_focused = "never"             # "never", "always", or "on_overflow"
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `default_width_fraction` | float | unset | Initial strip-axis extent for new columns (0.1-1.0). The packaged config sets `0.5`; a matching output or workspace rule can override it. When it is unset at every level, the client chooses its initial extent. |
 | `center_underfull_strip` | bool | `true` | Center the complete strip when it is shorter than the viewport. Disable to align it at the start edge. |
-| `center_focused` | bool | `false` | Always center the focused column. |
-| `expand_single_column` | bool | `false` | Fill the viewport for a workspace's lone tiled column. Client size hints and viewport bounds still apply. The packaged config enables this. |
+| `center_focused` | string | `"never"` | When a focus change centers the newly focused column. `"never"` only scrolls far enough to reveal it, `"always"` centers it, and `"on_overflow"` centers it when it cannot share the viewport with the neighboring column on the side focus came from. |
 
 ### Horizontal and vertical scrolling
 
@@ -154,11 +152,6 @@ Changing any of these defaults on reload affects columns created afterward. It
 does not resize existing columns, and a column moved to another output retains
 its stored fraction. Re-tiling a floating window or expelling a window into a
 new column creates a column using the current default.
-
-`expand_single_column` affects only how a lone tiled column is displayed. It
-does not rewrite the stored fraction, so the configured or client-selected
-width applies again when a second column appears. Explicit
-`default_maximize` and `default_maximize_to_edges` window rules take precedence.
 
 When focus moves to a hidden or partially hidden column, Umbriel reveals it by
 the shortest distance needed to show it completely. A column entering from the

@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "config/resolve.h"
+#include "config/store.h"
 #include "core/log.h"
 #include "input/cursor.h"
 #include "layout/dwindle.h"
@@ -256,6 +257,11 @@ namespace umbriel {
     View* replacement = m_focusedView == view ? focusReplacementForRemoval(view) : nullptr;
     detachFromLayout(view);
     std::erase(m_views, view);
+    if (view == m_lastAloneSoleView) {
+      // The window we remembered as the only one is gone: forget it, so another window that replaces it is still
+      // noticed as new.
+      m_lastAloneSoleView = nullptr;
+    }
     updateUrgent();
     std::erase(m_floatingStack, view);
     std::erase(m_switchViews, view);
@@ -524,6 +530,44 @@ namespace umbriel {
     }
   }
 
+  // Tells every window whether it is alone, but only when something actually changed. It compares the number of
+  // tiled windows, which window is the only one, and the config version, so every change is noticed (even one
+  // window replaced by another at the same time). The guard stops the window handlers from triggering another pass.
+  void Workspace::refreshAloneRuleStates() {
+    if (m_refreshingAloneRules) {
+      return;
+    }
+    View* soleTiled = nullptr;
+    size_t tiledViewCount = 0;
+    for (const Column& column : m_layout->columns()) {
+      for (View* view : column.views) {
+        ++tiledViewCount;
+        if (tiledViewCount == 1) {
+          soleTiled = view;
+        }
+      }
+    }
+    if (tiledViewCount != 1) {
+      soleTiled = nullptr;
+    }
+    const uint64_t generation = configStore().generation();
+    if (tiledViewCount == m_lastAloneViewCount
+        && soleTiled == m_lastAloneSoleView
+        && generation == m_lastAloneGeneration) {
+      return;
+    }
+    m_lastAloneViewCount = tiledViewCount;
+    m_lastAloneSoleView = soleTiled;
+    m_lastAloneGeneration = generation;
+    m_refreshingAloneRules = true;
+    for (View* view : m_views) {
+      if (view != nullptr && view->mapped()) {
+        view->notifyAloneStateChanged();
+      }
+    }
+    m_refreshingAloneRules = false;
+  }
+
   void Workspace::flushArrange() {
     if (m_arrangePending) {
       arrange(m_arrangeAnimate);
@@ -534,6 +578,7 @@ namespace umbriel {
     // Clearing here, rather than only in flushArrange, is what makes mixing the two safe: a direct arrange() satisfies
     // whatever was marked earlier in the frame, so the flush does not repeat it.
     m_arrangePending = false;
+    refreshAloneRuleStates();
     // Layout math and client configures must run even for hidden workspaces: clients (games especially) change
     // fullscreen state while another workspace is active, and skipping the configure here leaves them with a stale size
     // (fullscreen at tile size, windowed at output size, ...).
@@ -1255,6 +1300,14 @@ namespace umbriel {
       return;
     }
     scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+  }
+
+  void Workspace::activateFocusedColumn() {
+    ScrollingLayout* scrolling = scrollingLayout();
+    if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
+      return;
+    }
+    scrolling->activateColumn(scrolling->columnOf(m_focusedView), scrollViewportExtent());
   }
 
   void Workspace::snapVisible(const View* view) {

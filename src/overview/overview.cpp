@@ -1423,7 +1423,7 @@ namespace umbriel {
     }
 
     m_server->clearKeyboardFocus();
-    wlr_seat_pointer_clear_focus(m_server->seat()->wlr());
+    m_server->cursor()->clearPointerFocus();
     m_server->cursor()->clearConstraint();
 
     applyProgress();

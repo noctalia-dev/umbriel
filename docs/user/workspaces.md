@@ -198,8 +198,7 @@ Strut edges are resolved independently. A rule that sets only
 | `layout.width_presets` | float array | Fractions used by the width-cycle and height-cycle actions in every layout. |
 | `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). It overrides the global and matching output values. When omitted at every level, the client chooses its initial logical extent. Reloading a default does not resize existing columns. |
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
-| `layout.scrolling.center_focused` | bool | Always center the focused column, including when the setting changes on config reload. |
-| `layout.scrolling.expand_single_column` | bool | Fill the viewport for a workspace's lone tiled column, subject to client size hints and viewport bounds. Disable to keep the configured/default width. |
+| `layout.scrolling.center_focused` | string | When a focus change centers the newly focused column. `"never"` only scrolls far enough to reveal it, `"always"` centers it, and `"on_overflow"` centers it when it cannot share the viewport with the neighboring column on the side focus came from. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"` or `"right"`. |
 | `layout.master.default_width_fraction` | float | Master area fraction when both areas exist (0.1-0.9). |
 | `layout.master.new_on_top` | bool | Place newly opened windows at the top of the stack. Disable to place them at the bottom. |
@@ -219,7 +218,7 @@ layout.mode = "dwindle"
 output = "HDMI-A-1"
 name = "CHAT"
 layout.mode = "scrolling"
-layout.scrolling.center_focused = true
+layout.scrolling.center_focused = "always"
 
 [[workspace]]
 output = "HDMI-A-1"

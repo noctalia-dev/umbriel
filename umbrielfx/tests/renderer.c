@@ -193,11 +193,11 @@ static bool test_device(const char *path) {
 }
 
 int main(int argc, char **argv) {
-	// GPU access is opt-in. Pass every render node to check as a separate
-	// argument; a selected node that cannot initialize is a failure, not a skip.
+	// GPU access is explicit: pass every render node to check as a separate
+	// argument. A selected node that cannot initialize is a failure.
 	if (argc == 1) {
-		fprintf(stderr, "SKIP: pass DRM render-node paths as arguments\n");
-		return 77;
+		fprintf(stderr, "usage: %s <drm-render-node>...\n", argv[0]);
+		return EXIT_FAILURE;
 	}
 
 	bool passed = true;

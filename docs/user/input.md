@@ -350,6 +350,12 @@ that many milliseconds without pointer activity. Motion, clicks, scrolling,
 and tablet input reveal the cursor and restart the timeout. The two hiding
 options can be enabled together.
 
+While any pointer button is held, pointer focus stays with the window that
+received the press, and the compositor's own cursor changes, such as the
+`Mod`-held move and resize affordance, do not move it. That keeps clicks,
+drags, and held game actions intact: the window always receives the matching
+release.
+
 Set `follows_focus = true` to warp the cursor to the visible center of a window
 selected by directional window focus, next-window focus, floating-state focus,
 or first/last-column focus navigation. It also follows the focused window after

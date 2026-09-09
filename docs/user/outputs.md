@@ -71,12 +71,17 @@ direct_scanout = false
 workspaces = 5
 ```
 
+A resolution the display does not advertise is tried as a custom mode. If the configured mode cannot be applied at
+all, which happens when a display reconnects advertising a different set of modes, Umbriel commits the preferred
+advertised mode and logs a warning instead of leaving the output dark. The configured mode is tried again whenever the
+output is reconfigured, so reconnecting the display or reloading the configuration restores it.
+
 ## Settings
 
 | Key                                          | Type                              | Default     | Description                                                                                                                                         |
 | -------------------------------------------- | --------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`                                    | bool                              | `true`      | Set to `false` to turn the monitor off and remove it from the desktop.                                                                              |
-| `mode`                                       | string                            | (native)    | Resolution and refresh rate: `"WIDTHxHEIGHT"` or `"WIDTHxHEIGHT@HZ"`. Fractional Hz allowed. Ignored in nested sessions (the parent controls size). |
+| `mode`                                       | string                            | (native)    | Resolution and refresh rate: `"WIDTHxHEIGHT"` or `"WIDTHxHEIGHT@HZ"`. Fractional Hz allowed. Falls back to the preferred advertised mode when it cannot be applied. Ignored in nested sessions (the parent controls size). |
 | `position`                                   | `[x, y]`                          | (auto)      | Top-left corner in logical layout coordinates. Omit for automatic placement.                                                                        |
 | `scale`                                      | float                             | `1.0`       | Output scale (0.25-4.0).                                                                                                                            |
 | `vrr`                                        | string                            | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`.                                                                          |

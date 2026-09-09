@@ -50,7 +50,6 @@ gap = 0
 [layout.scrolling]
 default_width_fraction = 0.5
 center_underfull_strip = false
-expand_single_column = false
 
 [output.HEADLESS-1]
 position = [0, 0]

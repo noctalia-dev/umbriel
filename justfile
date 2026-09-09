@@ -90,6 +90,21 @@ test m=mode: (configure m)
     meson compile -C build-{{m}} unit-tests
     meson test -C build-{{m}} --print-errorlogs
 
+# The umbrielfx renderer ownership check needs a real DRM render node, which a
+# container or a headless runner does not have, so it is a tool rather than a
+# suite entry. This runs it against every render node this machine exposes.
+[no-exit-message]
+gpu-test m=mode: (_ensure-configured m)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nodes=(/dev/dri/renderD*)
+    if [[ ! -e ${nodes[0]} ]]; then
+        echo "no DRM render node under /dev/dri: nothing to check" >&2
+        exit 1
+    fi
+    ninja -C build-{{m}} umbrielfx/umbrielfx-renderer-test
+    ./build-{{m}}/umbrielfx/umbrielfx-renderer-test "${nodes[@]}"
+
 # Regressions for the GitHub workflow scripts. Pure Python, builds nothing.
 test-workflows:
     python3 -m unittest discover -s .github/workflows/scripts -p 'test_*.py'

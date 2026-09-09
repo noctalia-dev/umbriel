@@ -157,6 +157,7 @@ namespace umbriel {
     bool m_animationRenderLocked = false;
     bool m_dpmsOff = false;
     bool m_hdrGammaWarningLogged = false;
+    bool m_modeFallbackWarned = false;
     bool m_fullscreenHdrRequested = false;
     bool m_lastHdrRequested = false;
     bool m_lastCommitTearing = false;

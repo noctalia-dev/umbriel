@@ -262,6 +262,9 @@ namespace umbriel {
     // input.keyboard.track_layout sees every focus change.
     void notifyKeyboardEnter(wlr_surface* surface);
     void notifyKeyboardClearFocus();
+    // Drop every keyboard's consumed-press bookkeeping, for transitions that
+    // eat the matching releases.
+    void forgetConsumedKeycodes();
 
     struct KeyboardLayoutState {
       std::vector<std::string> names;

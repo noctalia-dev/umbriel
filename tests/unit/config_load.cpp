@@ -653,23 +653,34 @@ layout.scrolling.direction = "vertical"
   CHECK(containsDiagnostic(store, "unknown key workspace[0].layout.scrolling.direction"));
 }
 
-UMBRIEL_TEST(expandSingleColumnParsesAndDefaultsToFalse) {
+UMBRIEL_TEST(centerFocusedReadsItsModeVocabulary) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
-  file.write("");
+  file.write(R"(
+[layout.scrolling]
+center_focused = "on_overflow"
 
+[[workspace]]
+index = 1
+layout.scrolling.center_focused = "always"
+)");
   CHECK(store.reload().success);
-  CHECK(!store.config().layout.scrolling.expandSingleColumn);
+  CHECK(store.config().layout.scrolling.centerFocused == umbriel::CenterFocusedColumn::OnOverflow);
+  CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
+  CHECK(store.config().workspaceRules[0].layout.scrolling.centerFocused == umbriel::CenterFocusedColumn::Always);
 
-  file.write("[layout.scrolling]\nexpand_single_column = true\n");
+  file.write("[layout.scrolling]\ncenter_focused = \"sometimes\"\n");
   CHECK(store.reload().success);
-  CHECK(store.config().layout.scrolling.expandSingleColumn);
+  CHECK(store.config().layout.scrolling.centerFocused == umbriel::CenterFocusedColumn::Never);
+  CHECK(containsDiagnostic(store, R"(unknown layout.scrolling.center_focused "sometimes")"));
+  CHECK(!containsDiagnostic(store, "unknown key layout.scrolling.center_focused"));
 
-  file.write("[layout.scrolling]\nexpand_single_column = false\n");
+  // The old boolean form is a hard error, not a silent fallback.
+  file.write("[layout.scrolling]\ncenter_focused = false\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().layout.scrolling.expandSingleColumn);
+  CHECK(containsDiagnostic(store, "layout.scrolling.center_focused must be a string"));
 }
 
 UMBRIEL_TEST(modKeyIsUserConfigurable) {
@@ -1424,6 +1435,32 @@ UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
   CHECK(containsDiagnostic(store, "ignoring window_rule.match.at_startup (expected boolean)"));
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_focused"));
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+}
+
+UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[[window_rule]]\nmatch.is_floating = true\nmatch.is_pinned = false\nmatch.is_scratchpad = true\nopacity = "
+      "0.9\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFloating == true);
+  CHECK(store.config().windowRules[0].matchPinned == false);
+  CHECK(store.config().windowRules[0].matchScratchpad == true);
+
+  file.write("[[window_rule]]\nmatch.is_floating = \"yes\"\nmatch.is_pinned = 1\nmatch.is_scratchpad = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.is_floating (expected boolean)"));
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.is_pinned (expected boolean)"));
+  CHECK(containsDiagnostic(store, "ignoring window_rule.match.is_scratchpad (expected boolean)"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_floating"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_pinned"));
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_scratchpad"));
 }
 
 UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {

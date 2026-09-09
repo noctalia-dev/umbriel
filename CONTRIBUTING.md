@@ -48,6 +48,7 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 | `just asan` | Build with AddressSanitizer (see [AddressSanitizer](#addresssanitizer)) |
 | `just run <mode> [startup]` | Build and run a nested session, optionally spawning a command |
 | `just test` | Run the Meson test suite: unit tests plus the umbrielfx suites |
+| `just gpu-test` | Run the umbrielfx renderer ownership check against this machine's DRM render nodes; it needs a GPU, so `just test` does not cover it |
 | `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check 721`, `just check drag`, `just check 721 -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 721` |
 | `just check-names` | List every harness check name. Builds nothing |
 | `just lint` | Rebuild without compiler warnings and run clang-tidy |
@@ -268,14 +269,17 @@ Its regressions run in their own suite:
 meson test -C build-release --suite umbrielfx
 ```
 
-On a dedicated test machine, pass the render nodes to the renderer ownership
-check. Without arguments, it reports a skip:
+Renderer ownership and descriptor stability need a real GPU, so that check is a
+tool rather than a suite entry: `umbrielfx-renderer-test` takes DRM render
+nodes as arguments, and `just gpu-test` passes every node the machine has.
 
 ```sh
+just gpu-test                 # every /dev/dri/renderD*
+just mode=release gpu-test    # from another build directory
 build-release/umbrielfx/umbrielfx-renderer-test /dev/dri/renderD128 /dev/dri/renderD129
 ```
 
-Every selected node must open and initialize or the test fails. The EGL and
+Every selected node must open and initialize or the run fails. The EGL and
 scene ABI checks need no GPU access. The compositor's `backend-manager` test
 checks native startup and hotplug filtering with simulated device I/O, without
 taking control of a seat.

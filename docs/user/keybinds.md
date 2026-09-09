@@ -70,6 +70,16 @@ gesture:
 ```toml
 "Mod+MouseMiddle" = "layout-scroll-drag"
 ```
+
+## Consumed input
+
+A matched bind consumes both halves of its input: neither the press nor the
+release reaches a window. A bind that changes focus also does not hand its key
+to the newly focused window as held, so a chord like `Mod+D` never leaves `D`
+stuck down in a game or an XWayland client. Unbound keys and chords that match
+nothing are delivered normally. Switching VT drops that bookkeeping, because
+the releases land on the other VT.
+
 ## Repeat
 
 Binds repeat while held, using `input.keyboard.repeat_rate` and

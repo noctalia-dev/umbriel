@@ -265,8 +265,12 @@ namespace umbriel {
           this, event->keycode, std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), modifiers
       );
       cancelRepeat();
+      bool vtSwitched = false;
       for (int i = 0; i < nsyms; ++i) {
-        handled = m_server->handleVtSwitch(syms[i], modifiers) || handled;
+        if (m_server->handleVtSwitch(syms[i], modifiers)) {
+          vtSwitched = true;
+          handled = true;
+        }
       }
       // Modal quit confirmation: Enter or the session-quit bind confirms, any other non-modifier key cancels. The press
       // is consumed either way, reaching neither binds nor clients. Modifier-only presses pass through so held chords
@@ -298,12 +302,17 @@ namespace umbriel {
       std::optional<Keybind> matched;
       if (!quitConfirmConsumed) {
         for (int i = 0; i < nsyms; ++i) {
+          // The action can move focus, and the enter it sends must already know
+          // this press is consumed, or the incoming surface is handed a held key
+          // whose release never comes.
+          m_consumedKeycodes.insert(event->keycode);
           std::optional<Keybind> result = m_server->handleKeybind(syms[i], rawSym, modifiers);
           if (result.has_value()) {
             matched = std::move(result);
             handled = true;
             break;
           }
+          m_consumedKeycodes.erase(event->keycode);
         }
       }
       if (matched.has_value()) {
@@ -330,6 +339,11 @@ namespace umbriel {
       }
       if (handled) {
         m_consumedKeycodes.insert(event->keycode);
+      }
+      if (vtSwitched) {
+        // Every release lands on the other VT, so keeping the pressed-key
+        // bookkeeping would swallow a later, unrelated release on this one.
+        m_server->forgetConsumedKeycodes();
       }
     } else if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       if (m_repeatArmed && event->keycode == m_repeatKeycode) {

@@ -142,6 +142,8 @@ namespace umbriel {
     wl_signal_add(&m_cursor->events.tablet_tool_button, &m_tabletToolButton);
 
     m_constraintDestroy.link.next = nullptr;
+    m_clientCursorDestroy.notify = onClientCursorDestroy;
+    m_clientCursorDestroy.link.next = nullptr;
     updateHideTimer();
   }
 
@@ -154,6 +156,9 @@ namespace umbriel {
     }
     if (m_constraintDestroy.link.next != nullptr) {
       wl_list_remove(&m_constraintDestroy.link);
+    }
+    if (m_clientCursorDestroy.link.next != nullptr) {
+      wl_list_remove(&m_clientCursorDestroy.link);
     }
     wl_list_remove(&m_motion.link);
     wl_list_remove(&m_motionAbsolute.link);
@@ -374,11 +379,74 @@ namespace umbriel {
   }
 
   void Cursor::setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY) {
+    forgetClientCursor();
+    m_clientCursorKnown = true;
+    m_clientCursorSurface = surface;
+    m_clientCursorHotspotX = hotspotX;
+    m_clientCursorHotspotY = hotspotY;
+    if (surface != nullptr) {
+      wl_signal_add(&surface->events.destroy, &m_clientCursorDestroy);
+    }
+    if (m_compositorOwnsCursor) {
+      // Replayed when the override ends.
+      return;
+    }
     if (!m_cursorHidden) {
       wlr_cursor_set_surface(m_cursor, surface, hotspotX, hotspotY);
     }
     m_activeXcursorManager = nullptr;
     m_activeXcursorName.clear();
+  }
+
+  void Cursor::setCursorShape(const char* name) {
+    forgetClientCursor();
+    m_clientCursorKnown = true;
+    m_clientCursorShape = name;
+    if (m_compositorOwnsCursor) {
+      return;
+    }
+    setXcursor(name);
+  }
+
+  void Cursor::applyClientCursor() {
+    if (!m_clientCursorKnown) {
+      setXcursor("default");
+      return;
+    }
+    if (!m_clientCursorShape.empty()) {
+      setXcursor(m_clientCursorShape.c_str());
+      return;
+    }
+    if (!m_cursorHidden) {
+      wlr_cursor_set_surface(m_cursor, m_clientCursorSurface, m_clientCursorHotspotX, m_clientCursorHotspotY);
+    }
+    m_activeXcursorManager = nullptr;
+    m_activeXcursorName.clear();
+  }
+
+  void Cursor::forgetClientCursor() {
+    if (m_clientCursorDestroy.link.next != nullptr) {
+      wl_list_remove(&m_clientCursorDestroy.link);
+      m_clientCursorDestroy.link.next = nullptr;
+    }
+    m_clientCursorKnown = false;
+    m_clientCursorSurface = nullptr;
+    m_clientCursorHotspotX = 0;
+    m_clientCursorHotspotY = 0;
+    m_clientCursorShape.clear();
+  }
+
+  void Cursor::onClientCursorDestroy(wl_listener* listener, void* /*data*/) {
+    Cursor* self;
+    self = wl_container_of(listener, self, m_clientCursorDestroy);
+    self->forgetClientCursor();
+  }
+
+  void Cursor::notePointerFocusChange(wlr_surface* newSurface) {
+    forgetClientCursor();
+    if (newSurface == nullptr && !m_compositorOwnsCursor) {
+      setXcursor("default");
+    }
   }
 
   void Cursor::setXcursor(const char* name) {
@@ -807,7 +875,7 @@ namespace umbriel {
           };
           m_moveButton = button;
           setCompositorCursor("grabbing");
-          wlr_seat_pointer_clear_focus(m_server->seat()->wlr());
+          clearPointerFocus();
           return;
         }
         m_swallowedButtons.push_back(button);
@@ -853,10 +921,15 @@ namespace umbriel {
       }
     }
 
+    // A client that received the press owns the implicit grab, so its release
+    // reaches it even though the overview now owns the pointer. Otherwise the
+    // button stays down in that client for good.
+    const bool releasesClientGrab = state == WL_POINTER_BUTTON_STATE_RELEASED && pointerFocusPinned();
+
     // Overview owns the pointer while it is up: cards are its own hit-test surface and the desktop underneath is inert.
     // Top/overlay layer surfaces (panels) stay fully interactive.
     if (Overview* overview = m_server->overview();
-        overview != nullptr && overview->active() && !m_server->sessionLocked()) {
+        overview != nullptr && overview->active() && !m_server->sessionLocked() && !releasesClientGrab) {
       const bool pressed = state == WL_POINTER_BUTTON_STATE_PRESSED;
       double sx = 0;
       double sy = 0;
@@ -866,7 +939,7 @@ namespace umbriel {
       wlr_seat* seat = m_server->seat()->wlr();
       if (overviewPassthroughLayer(layer) && !overview->dragging()) {
         if (surface != nullptr) {
-          wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+          setPointerFocus(surface, sx, sy);
         }
         wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
         // The popup's xdg-shell grab already owns focus. Refocusing its parent layer would end the keyboard grab, whose
@@ -902,17 +975,15 @@ namespace umbriel {
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
 
       // After the final release, refresh pointer focus so it matches the surface actually under the cursor. The
-      // implicit-grab guard in processMotion kept focus pinned while buttons were held; realign now so a subsequent
-      // press without intervening motion targets the correct surface.
+      // implicit-grab guard kept focus pinned while buttons were held; realign now so a subsequent press without
+      // intervening motion targets the correct surface. The overview keeps the desktop inert, so there focus goes
+      // nowhere instead.
       if (m_server->seat()->wlr()->pointer_state.button_count == 0) {
-        double sx2 = 0;
-        double sy2 = 0;
-        wlr_surface* surf = nullptr;
-        m_server->viewAt(m_cursor->x, m_cursor->y, &surf, &sx2, &sy2);
-        if (surf != nullptr) {
-          wlr_seat_pointer_notify_enter(m_server->seat()->wlr(), surf, sx2, sy2);
+        const Overview* overview = m_server->overview();
+        if (overview != nullptr && overview->active() && !m_server->sessionLocked()) {
+          clearPointerFocus();
         } else {
-          wlr_seat_pointer_clear_focus(m_server->seat()->wlr());
+          refreshPointerFocus();
         }
       }
 
@@ -963,9 +1034,9 @@ namespace umbriel {
     // event so wl_data_device drag serial validation succeeds.
     wlr_seat* seat = m_server->seat()->wlr();
     if (surface != nullptr) {
-      wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+      setPointerFocus(surface, sx, sy);
     } else {
-      wlr_seat_pointer_clear_focus(seat);
+      clearPointerFocus();
     }
 
     wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
@@ -1247,9 +1318,8 @@ namespace umbriel {
         && !m_server->sessionLocked()
         && m_server->seat()->wlr()->drag == nullptr) {
       overview->handleMotion(m_cursor->x, m_cursor->y);
-      wlr_seat* seat = m_server->seat()->wlr();
       if (overview->dragging()) {
-        wlr_seat_pointer_clear_focus(seat);
+        clearPointerFocus();
         return;
       }
       double sx = 0;
@@ -1258,11 +1328,11 @@ namespace umbriel {
       LayerSurface* layer = nullptr;
       m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
       if (overviewPassthroughLayer(layer) && surface != nullptr) {
-        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-        wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+        setPointerFocus(surface, sx, sy);
+        wlr_seat_pointer_notify_motion(m_server->seat()->wlr(), timeMsec, sx, sy);
         return;
       }
-      wlr_seat_pointer_clear_focus(seat);
+      clearPointerFocus();
       if (!m_compositorOwnsCursor) {
         setXcursor("default");
       }
@@ -1334,13 +1404,13 @@ namespace umbriel {
     }
 
     if (surface != nullptr) {
-      wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+      setPointerFocus(surface, sx, sy);
       wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
-    } else if (!m_compositorOwnsCursor) {
-      setXcursor("default");
-      wlr_seat_pointer_clear_focus(seat);
     } else {
-      wlr_seat_pointer_clear_focus(seat);
+      if (!m_compositorOwnsCursor) {
+        setXcursor("default");
+      }
+      clearPointerFocus();
     }
 
     // Update the drag icon after seat motion so drop targets are recognized.
@@ -1478,7 +1548,7 @@ namespace umbriel {
     } else {
       // Emulating → native: the surface must never receive doubled pointer and
       // tablet input for the same stroke.
-      wlr_seat_pointer_clear_focus(m_server->seat()->wlr());
+      clearPointerFocusOverridingGrab();
     }
     state->emulating = emulating;
   }
@@ -2071,20 +2141,46 @@ namespace umbriel {
   void Cursor::restoreClientCursor() {
     m_compositorOwnsCursor = false;
     m_compositorCursorName.clear();
+    applyClientCursor();
+    refreshPointerFocus();
+  }
 
+  bool Cursor::pointerFocusPinned() const {
+    const wlr_seat* seat = m_server->seat()->wlr();
+    // A client drag owns the seat grab and moves its own focus, so it is not an
+    // implicit grab.
+    return seat->drag == nullptr
+        && seat->pointer_state.button_count > 0
+        && seat->pointer_state.focused_surface != nullptr;
+  }
+
+  void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy) {
+    if (surface == nullptr) {
+      clearPointerFocus();
+      return;
+    }
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (pointerFocusPinned() && surface != seat->pointer_state.focused_surface) {
+      return;
+    }
+    wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+  }
+
+  void Cursor::clearPointerFocus() {
+    if (pointerFocusPinned()) {
+      return;
+    }
+    wlr_seat_pointer_clear_focus(m_server->seat()->wlr());
+  }
+
+  void Cursor::clearPointerFocusOverridingGrab() { wlr_seat_pointer_clear_focus(m_server->seat()->wlr()); }
+
+  void Cursor::refreshPointerFocus() {
     double sx = 0;
     double sy = 0;
     wlr_surface* surface = nullptr;
     m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy);
-    wlr_seat* seat = m_server->seat()->wlr();
-    if (surface != nullptr) {
-      // Re-enter so the client can restore its pointer shape.
-      wlr_seat_pointer_clear_focus(seat);
-      wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-    } else {
-      setXcursor("default");
-      wlr_seat_pointer_clear_focus(seat);
-    }
+    setPointerFocus(surface, sx, sy);
   }
 
   void Cursor::updateInteractiveCursor(View* under) {

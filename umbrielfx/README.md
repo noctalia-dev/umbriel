@@ -25,6 +25,14 @@ links the resulting archive into the compositor. Its tests run in the
 meson test -C build --suite umbrielfx
 ```
 
+Renderer creation owns a DRM file descriptor, which no suite test can check
+without a GPU. `tests/renderer.c` builds as the `umbrielfx-renderer-test` tool
+for that, run by `just gpu-test`. Run it after a wlroots bump and after any
+change to `render/egl.c` or the `fx_renderer_create_*` entry points: it is the
+only check that catches a renderer that leaks the descriptor, adopts a
+descriptor it should have duplicated, or stops working once a sibling renderer
+is destroyed.
+
 ## Constraints
 
 - Compiled against wlroots' private struct layouts (`-DWLR_PRIVATE=`), so it is

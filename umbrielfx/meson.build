@@ -232,20 +232,17 @@ if build_tests
     suite: 'umbrielfx',
   )
 
-  umbrielfx_renderer_test = executable(
+  # Renderer ownership and descriptor stability against a real GPU. It takes
+  # DRM render nodes as arguments, so it is a tool run by `just gpu-test`
+  # rather than a suite entry. Built by default so the warning gate compiles
+  # it.
+  executable(
     'umbrielfx-renderer-test',
     'tests/renderer.c',
     c_args: umbrielfx_c_args,
     dependencies: umbrielfx_deps,
     include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
     link_with: umbrielfx_lib,
-    build_by_default: false,
-  )
-
-  test(
-    'umbrielfx-renderer-gbm-device',
-    umbrielfx_renderer_test,
-    suite: 'umbrielfx',
   )
 
   if cc.get_define('WLR_HAS_GLES2_RENDERER', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) == '1'

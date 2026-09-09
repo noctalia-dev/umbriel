@@ -144,6 +144,7 @@ export UMBRIEL_LOCK_CLIENT="$CLIENT_DIR/lock-client"
 export UMBRIEL_SUBSURFACE_CLIENT="$CLIENT_DIR/subsurface-client"
 export UMBRIEL_FRACTIONAL_CLIENT="$CLIENT_DIR/fractional-client"
 export UMBRIEL_SECURITY_CONTEXT_CLIENT="$CLIENT_DIR/security-context-client"
+export UMBRIEL_SEAT_LOG_CLIENT="$CLIENT_DIR/seat-log-client"
 export UMBRIEL=$BINARY
 
 # Live instance state. The EXIT trap reaches for these, so they stay declared

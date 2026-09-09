@@ -32,6 +32,12 @@ namespace umbriel {
     Right,
   };
 
+  enum class CenterFocusedColumn {
+    Never,
+    Always,
+    OnOverflow,
+  };
+
   struct LayoutStruts {
     int left = 0;
     int right = 0;

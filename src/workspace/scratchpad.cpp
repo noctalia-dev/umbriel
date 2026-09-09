@@ -222,7 +222,7 @@ namespace umbriel {
     view->moveToWorkspace(nullptr);
     wlr_scene_node_reparent(&view->sceneTree()->node, m_root);
     view->reparentShadow(m_shadowRoot);
-    view->setScratchpadBorder(true);
+    view->setInScratchpad(true);
     const bool visible = scratchpad->visible;
     m_entries.push_back(std::move(entry));
     setVisible(name, visible);
@@ -847,7 +847,7 @@ namespace umbriel {
     std::erase(m_hidingViews, view);
 
     view->reparentShadow(nullptr);
-    view->setScratchpadBorder(false);
+    view->setInScratchpad(false);
     Output* restoreOutput = m_server->outputFromName(entry.returnOutput);
     if (restoreOutput == nullptr) {
       restoreOutput = scratchpadOutput;
@@ -910,7 +910,7 @@ namespace umbriel {
     const std::string name = iterator->scratchpad;
     Scratchpad* scratchpad = findScratchpad(name);
     view->reparentShadow(nullptr);
-    view->setScratchpadBorder(false);
+    view->setInScratchpad(false);
     if (m_focusedView == view) {
       m_focusedView = nullptr;
     }

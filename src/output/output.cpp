@@ -8,6 +8,7 @@
 #include "output/frame_schedule.h"
 #include "output/hdr_format.h"
 #include "output/identity.h"
+#include "output/mode_selection.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
 #include "scene/config_banner.h"
@@ -21,10 +22,10 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <drm_fourcc.h>
+#include <format>
 
 namespace umbriel {
 
@@ -249,34 +250,18 @@ namespace umbriel {
     bool vrrRequested = false;
     bool vrrStaged = false;
     bool scaleStaged = false;
+    const OutputMode* configuredMode = nullptr;
+    wlr_output_mode* stagedMode = nullptr;
     if (enabled) {
       if (rule != nullptr && rule->mode) {
         if (wlr_output_is_wl(m_output)) {
           kLog.info("output '{}': mode is ignored in nested sessions", m_output->name);
         } else {
           const OutputMode& configured = *rule->mode;
-          wlr_output_mode* selected = nullptr;
-          wlr_output_mode* mode = nullptr;
-          wl_list_for_each(mode, &m_output->modes, link) {
-            if (mode->width != configured.width || mode->height != configured.height) {
-              continue;
-            }
-            if (configured.refreshMHz != 0) {
-              if (selected == nullptr
-                  || std::abs(mode->refresh - configured.refreshMHz)
-                      < std::abs(selected->refresh - configured.refreshMHz)) {
-                selected = mode;
-              }
-            } else if (
-                selected == nullptr
-                || (mode->preferred && !selected->preferred)
-                || (mode->preferred == selected->preferred && mode->refresh > selected->refresh)
-            ) {
-              selected = mode;
-            }
-          }
-          if (selected != nullptr) {
-            wlr_output_state_set_mode(&state, selected);
+          configuredMode = &configured;
+          stagedMode = selectOutputMode(m_output, configured);
+          if (stagedMode != nullptr) {
+            wlr_output_state_set_mode(&state, stagedMode);
           } else {
             wlr_output_state_set_custom_mode(&state, configured.width, configured.height, configured.refreshMHz);
           }
@@ -393,10 +378,31 @@ namespace umbriel {
       }
       committed = commitConfiguredState();
     }
+    bool usedModeFallback = false;
+    if (!committed && configuredMode != nullptr) {
+      if (wlr_output_mode* fallback = preferredFallbackMode(m_output, stagedMode)) {
+        usedModeFallback = true;
+        if (!m_modeFallbackWarned) {
+          m_modeFallbackWarned = true;
+          const std::string requested = configuredMode->refreshMHz != 0
+              ? std::format("{}x{}@{}mHz", configuredMode->width, configuredMode->height, configuredMode->refreshMHz)
+              : std::format("{}x{}", configuredMode->width, configuredMode->height);
+          kLog.warn(
+              "output '{}': configured mode {} could not be applied, using preferred mode {}x{}@{}mHz", m_output->name,
+              requested, fallback->width, fallback->height, fallback->refresh
+          );
+        }
+        wlr_output_state_set_mode(&state, fallback);
+        committed = commitConfiguredState();
+      }
+    }
     wlr_output_state_finish(&state);
     if (!committed) {
       kLog.error("output '{}': failed to commit configured state", m_output->name);
       return false;
+    }
+    if (!usedModeFallback) {
+      m_modeFallbackWarned = false;
     }
     if (enabled && scaleStaged) {
       m_appliedConfiguredScale = configuredScale.has_value();

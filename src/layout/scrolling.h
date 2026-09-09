@@ -59,6 +59,7 @@ namespace umbriel {
     // while the lane still exists.
     [[nodiscard]] double scrollShiftForColumnRemoval(int columnIndex, int viewportPrimary) const;
     void ensureVisible(int columnIndex, int viewportPrimary);
+    void activateColumn(int columnIndex, int viewportPrimary);
     void snapVisible(int columnIndex, int viewportPrimary);
     [[nodiscard]] double scrollAmountToEnsureVisible(int columnIndex, int viewportPrimary) const;
     void arrange(const wlr_box& usable) override;
@@ -99,9 +100,14 @@ namespace umbriel {
     [[nodiscard]] int totalWidth(int viewportPrimary) const;
     [[nodiscard]] int rawTotalWidth(int viewportPrimary) const;
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
-    [[nodiscard]] double targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool force = false) const;
+    [[nodiscard]] double
+    targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool center, bool force = false) const;
+    [[nodiscard]] bool alwaysCentersFocus() const;
+    [[nodiscard]] bool shouldCenterFocusedColumn(int columnIndex, int viewportPrimary) const;
+    [[nodiscard]] bool shouldCenterOnOverflow(int columnIndex, int viewportPrimary) const;
+    // Shared body of ensureVisible and activateColumn: they differ only in which centering policy applies.
+    void revealColumn(int columnIndex, int viewportPrimary, bool center);
     [[nodiscard]] bool vertical() const;
-    [[nodiscard]] bool expandSingleColumn() const;
     void syncHeightWeights(Column& column);
     // Weight for a row being added to `column` at `row`, taking over the column's edge gap when the row lands against
     // one. Shared by fresh inserts and by consume, so free space always becomes the incoming row's extent.
@@ -111,6 +117,8 @@ namespace umbriel {
     std::vector<Target> m_targets;
     double m_scroll = 0;
     bool m_centeredRest = false;
+    // Column the last activation focused, so CenterFocusedColumn::OnOverflow knows which side focus came from.
+    int m_lastFocusedColumn = -1;
     int m_lastViewportPrimary = 0;
     const LayoutSnapshot* m_pendingViewportSnapshot = nullptr;
     View* m_pendingViewportAnchor = nullptr;

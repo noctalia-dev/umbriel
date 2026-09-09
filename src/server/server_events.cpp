@@ -25,10 +25,12 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <limits>
 #include <optional>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace umbriel {
@@ -2383,10 +2385,39 @@ namespace umbriel {
       }
     }
 
-    if (wlr_keyboard* keyboard = wlr_seat_get_keyboard(seat)) {
-      wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-    } else {
+    wlr_keyboard* keyboard = wlr_seat_get_keyboard(seat);
+    if (keyboard == nullptr) {
       wlr_seat_keyboard_notify_enter(seat, surface, nullptr, 0, nullptr);
+      return;
+    }
+
+    // The device's key array is physical state. Keys a bind consumed never
+    // reached a client and their release never will, so handing them over as
+    // held keys strands them: XWayland turns that into an endless key repeat.
+    const std::unordered_set<uint32_t>* consumed = nullptr;
+    for (const std::unique_ptr<Keyboard>& entry : m_keyboards) {
+      if (entry->wlr() == keyboard) {
+        consumed = &entry->consumedKeycodes();
+        break;
+      }
+    }
+    if (consumed == nullptr || consumed->empty()) {
+      wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+      return;
+    }
+    std::array<uint32_t, WLR_KEYBOARD_KEYS_CAP> forwarded{};
+    size_t count = 0;
+    for (size_t i = 0; i < keyboard->num_keycodes; ++i) {
+      if (!consumed->contains(keyboard->keycodes[i])) {
+        forwarded[count++] = keyboard->keycodes[i];
+      }
+    }
+    wlr_seat_keyboard_notify_enter(seat, surface, forwarded.data(), count, &keyboard->modifiers);
+  }
+
+  void Server::forgetConsumedKeycodes() {
+    for (const std::unique_ptr<Keyboard>& entry : m_keyboards) {
+      entry->forgetConsumedKeycodes();
     }
   }
 

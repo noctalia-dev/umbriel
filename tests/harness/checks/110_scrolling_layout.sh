@@ -39,7 +39,7 @@ readonly EXPECT_W=624
 readonly EXPECT_H=700
 readonly EXPECT_CENTER_X=$(( (1280 - EXPECT_W) / 2 ))
 
-printf '\n[layout.scrolling]\ndefault_width_fraction = 0.5\ncenter_focused = false\n' >> "$UMBRIEL_CONFIG"
+printf '\n[layout.scrolling]\ndefault_width_fraction = 0.5\ncenter_focused = "never"\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 spawn_client a
@@ -83,10 +83,10 @@ fi
 # Reloading the focus policy applies it to the currently focused column.
 "$UMBRIEL" msg window-focus-right > /dev/null
 wait_for_x harness-b 646 "expected disabled center_focused to leave the last column at its bounded position"
-sed -i 's/center_focused = false/center_focused = true/' "$UMBRIEL_CONFIG"
+sed -i 's/center_focused = "never"/center_focused = "always"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 wait_for_x harness-b "$EXPECT_CENTER_X" "enabling center_focused did not center the focused column on reload"
-sed -i 's/center_focused = true/center_focused = false/' "$UMBRIEL_CONFIG"
+sed -i 's/center_focused = "always"/center_focused = "never"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 wait_for_x harness-b 646 "disabling center_focused did not restore the bounded focused-column position"
 

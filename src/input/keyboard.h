@@ -38,6 +38,13 @@ namespace umbriel {
     // Select a named layout on this physical keyboard without making it the
     // seat's active input device. False when the keymap lacks that layout.
     bool setLayoutByName(std::string_view name);
+    // Keycodes whose press a compositor bind consumed, so neither half of the
+    // event reaches clients. A focus enter must exclude them: the client never
+    // saw the press and will never see the release.
+    [[nodiscard]] const std::unordered_set<uint32_t>& consumedKeycodes() const { return m_consumedKeycodes; }
+    // Forget consumed keys whose release will never arrive, for example after a
+    // VT switch. Otherwise the stale entry swallows a later, unrelated release.
+    void forgetConsumedKeycodes() { m_consumedKeycodes.clear(); }
 
   private:
     static void onModifiers(wl_listener* listener, void* data);

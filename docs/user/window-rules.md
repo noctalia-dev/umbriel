@@ -2,9 +2,10 @@
 
 Window rules can match `app_id`, title, and a client-defined XDG toplevel tag
 using ECMAScript regular expressions. They can also match a standardized
-content type or focus state. Every matching rule contributes its settings. If
-two rules set the same field, the rule that appears later takes precedence.
-Rules from included files come before the rules in the file that includes them.
+content type or the window's current state. Every matching rule contributes its
+settings. If two rules set the same field, the rule that appears later takes
+precedence. Rules from included files come before the rules in the file that
+includes them.
 
 ```toml
 [[window_rule]]
@@ -22,6 +23,10 @@ default_floating = true
 | `match.xdg_tag` | regex | Match the client-defined XDG toplevel tag. |
 | `match.content_type` | string | Match `"none"`, `"photo"`, `"video"`, or `"game"`. |
 | `match.is_focused` | bool | Match the window's focused state dynamically. |
+| `match.is_floating` | bool | Match the window's floating state dynamically. |
+| `match.is_pinned` | bool | Match the window's pinned state dynamically. |
+| `match.is_scratchpad` | bool | Match the window's scratchpad state dynamically. |
+| `match.is_alone` | bool | Match whether the window is the only tiled one in its workspace. |
 | `match.at_startup` | bool | Match `true` during the first 60 seconds after starting umbriel and `false` afterward. |
 
 Every selector is optional. A rule without selectors matches every window.
@@ -53,6 +58,15 @@ priority `game`, `video`, `photo`, then `none`. This also covers Proton and Wine
 games that publish the hint on a child surface. `none` includes windows that do
 not publish a content hint. Client changes refresh settings from the dynamic
 table below, but never replay the opening settings.
+
+`is_focused`, `is_floating`, `is_pinned`, `is_scratchpad`, and `is_alone` match
+the window's current state, and every one of those transitions refreshes the
+settings from the dynamic table below. Pinned and scratchpad windows are
+floating, so `is_floating = true` also matches them. Opening settings resolve
+against the state the window opens with, before `default_floating` and
+`default_pinned` apply, so a rule that sets one of those cannot also select on
+the state it produces. `is_alone` never selects opening settings; its size
+effects are described in [The only window in the workspace](#the-only-window-in-the-workspace).
 
 ## Settings applied when a window opens
 
@@ -232,6 +246,70 @@ sets the column width. `default_scrolling_column_order` has no effect without
 | `tearing` | bool | Override the client's tearing hint. Omit it to follow the hint, set `true` to request asynchronous presentation, or set `false` to veto it. The output must still opt in with `tearing = true`, and the window must be fullscreen. |
 | `hdr` | string | Override the focused window's output HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. Without this key, the output's configured `hdr` policy applies. This does not assign HDR metadata to the surface. |
 
+## The only window in the workspace
+
+`match.is_alone` matches when the window is the only tiled window on its
+workspace. Floating windows, empty columns, and windows on other workspaces do
+not count. Like focus, alone is evaluated while the window is open: opening one
+more window or closing the companion flips the rules right away.
+
+A lone window that should fill the viewport:
+
+```toml
+[[window_rule]]
+match.is_alone = true
+default_maximize = true
+```
+
+While the window is alone, the size-related settings below are read from the
+alone rules and compared against the same settings from the window's normal
+rules; the difference is applied for as long as the window stays alone. When a
+second window arrives, the difference is lifted and the window returns to what
+its normal rules give it.
+
+| Setting | While alone |
+|---------|-------------|
+| `default_fullscreen` | The window takes the whole output. |
+| `default_maximize_to_edges` | The window fills the usable area. |
+| `default_maximize` | The window is maximized, unless it has a parent. |
+| `default_width` | Applies to the window's scrolling lane; the layout must be scrolling. |
+
+Only one of these is applied at a time, in the same precedence as at map time:
+fullscreen, then maximized to edges, then maximized, then width. If the window
+is already in the target state, the rule does not take over what the user or a
+previous rule already chose.
+
+The rule is compatible with other matches.
+
+```toml
+[[window_rule]]
+match.is_alone = true
+match.app_id = "^firefox$"
+default_fullscreen = true
+```
+
+A `match.is_alone = false` rule matches when the window is *not* alone, which is
+handy for styling the companion windows as well. Pair the two to make a window
+widen on its own and shrink beside a companion:
+
+```toml
+# Wide when alone
+[[window_rule]]
+match.is_alone = true
+match.app_id = "^org\\.gnome\\.Nautilus$"
+default_width = 0.8
+
+# Slim when another window opens next to it
+[[window_rule]]
+match.is_alone = false
+match.app_id = "^org\\.gnome\\.Nautilus$"
+default_width = 0.4
+```
+
+The dynamic settings from the previous section can be combined with
+`match.is_alone` in the same rule: they are re-applied whenever the alone state
+flips, so a lone window can dim or blur itself until a companion arrives.
+
 ## Examples
 
 ```toml
@@ -331,4 +409,17 @@ opacity = 0.85
 [[window_rule]]
 match.is_focused = true
 opacity = 1.0
+
+# Disable blur for floating windows, but not scratchpad windows
+[[window_rule]]
+match.is_floating = true
+match.is_scratchpad = false
+blur = false
+
+# Dim them even further
+[[window_rule]]
+match.is_focused = false
+match.is_floating = true
+match.is_scratchpad = false
+opacity = 0.4
 ```

@@ -118,6 +118,7 @@ namespace umbriel {
     // next frame. targetBox() is the only thing arrange() produces that is not simply applied to the scene.
     void markArrange(bool animate = true);
     void flushArrange();
+    void refreshAloneRuleStates();
     void syncViewPresentation(View* view);
     [[nodiscard]] View* focusAdjacent(int direction) const;
     [[nodiscard]] View* focusVertical(int direction) const;
@@ -148,6 +149,7 @@ namespace umbriel {
     bool toggleFocusedFullscreen();
     bool toggleFocusedFloating();
     void ensureFocusedVisible();
+    void activateFocusedColumn();
     void snapVisible(const View* view);
     [[nodiscard]] double scrollFractionToReveal(const View* view) const;
     void applyVisibility();
@@ -200,6 +202,11 @@ namespace umbriel {
     bool m_inSwitchTransition = false;
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
+    // Remembers the last layout state, so alone-ness is only recomputed when it changed.
+    bool m_refreshingAloneRules = false;
+    size_t m_lastAloneViewCount = 0;
+    View* m_lastAloneSoleView = nullptr;
+    uint64_t m_lastAloneGeneration = 0;
     int m_slideOffsetX = 0;
     int m_slideOffsetY = 0;
     std::vector<View*> m_switchViews;

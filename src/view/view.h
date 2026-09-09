@@ -69,6 +69,7 @@ namespace umbriel {
     [[nodiscard]] bool onActiveWorkspace() const { return m_onActiveWorkspace; }
     [[nodiscard]] bool tiled() const { return m_tiled; }
     [[nodiscard]] bool floating() const { return !m_tiled; }
+    [[nodiscard]] bool isAloneInLayout() const;
     [[nodiscard]] const std::optional<std::string>& namedScrollingColumnName() const {
       return m_namedScrollingColumnName;
     }
@@ -145,7 +146,8 @@ namespace umbriel {
     void clearDisplaced() { m_displacedHome.reset(); }
 
     void setOnActiveWorkspace(bool active);
-    void setScratchpadBorder(bool scratchpad);
+    // Scratchpad membership: selects the scratchpad border palette and animation event, and matches is_scratchpad.
+    void setInScratchpad(bool scratchpad);
     void animateTo(int x, int y);
     void setPosition(int x, int y);
     // The authoritative layout position: where the window's slot is, not where its scene node happens to be
@@ -415,10 +417,23 @@ namespace umbriel {
     // is work a terminal that retitles per command pays repeatedly.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void refreshStartupRuleEffects();
-    // Window rules, resolved at most once per (config, app-id, title, XDG tag, content type, focus). Resolution runs
-    // every rule's regexes, and it is reached on focus changes and on every identity change; a terminal that retitles
-    // per command would otherwise pay the whole rule set on each one. Every input is part of the key:
-    // `match.is_focused` makes focus a matching criterion, not just a consumer of the result.
+    // Applies or undoes the alone size effect after the workspace's tiled set changes.
+    bool notifyAloneStateChanged();
+    [[nodiscard]] ResolvedWindowRule resolveAloneRules() const;
+    [[nodiscard]] ResolvedWindowRule
+    aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
+    bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
+    void revertAloneRuleEffects();
+    // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
+    // rules. A transition that also moved focus has already refreshed them, so this is a no-op there.
+    void refreshStateRuleEffects();
+    // The live window state the `match.is_*` selectors test.
+    [[nodiscard]] WindowRuleState ruleState() const;
+    // Window rules, resolved at most once per (config, app-id, title, XDG tag, content type, window state).
+    // Resolution runs every rule's regexes, and it is reached on focus changes and on every identity change; a
+    // terminal that retitles per command would otherwise pay the whole rule set on each one. Window state is part of
+    // the key because `match.is_focused` and its siblings make it a matching criterion, not just a consumer of the
+    // result.
     [[nodiscard]] const ResolvedWindowRule& resolvedRules();
 
     // Cache for resolvedRules(); m_rulesGeneration 0 means never resolved.
@@ -428,7 +443,23 @@ namespace umbriel {
     std::optional<std::string> m_rulesTitle;
     std::optional<std::string> m_rulesXdgTag;
     ContentType m_rulesContentType = ContentType::None;
-    bool m_rulesFocused = false;
+    WindowRuleState m_rulesState;
+    // The state applyDynamicRules last applied effects for. Any resolvedRules() caller refreshes the cache above, so
+    // only this tells a transition whether the effects on screen still match the window's state.
+    WindowRuleState m_appliedRuleState;
+    // Alone effects: one of the four size effects applies while the window is alone, and the window remembers which
+    // one to undo once it is not alone anymore.
+    bool m_aloneEffectsActive = false;
+    enum class AloneAction {
+      None,
+      Fullscreen,
+      MaximizeToEdges,
+      Maximize,
+      Width,
+    };
+    AloneAction m_aloneAction = AloneAction::None;
+    ResolvedWindowRule m_lastAloneDelta;
+    std::optional<double> m_aloneSavedWidthFrac;
     // One-shot effects already applied at map. Late identity resolution only
     // reapplies a field when its resolved value changes.
     ResolvedWindowRule m_initialRules;
@@ -484,7 +515,7 @@ namespace umbriel {
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;
     bool m_onActiveWorkspace = false;
-    bool m_scratchpadBorder = false;
+    bool m_inScratchpad = false;
     bool m_urgent = false;
     bool m_activated = false;
     // nullopt means no pre-map request, false means untrusted, true means trusted. A trusted request wins if both

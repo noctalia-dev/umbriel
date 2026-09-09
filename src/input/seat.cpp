@@ -112,9 +112,8 @@ namespace umbriel {
 
   void Seat::handleRequestCursor(void* data) {
     auto* event = static_cast<wlr_seat_pointer_request_set_cursor_event*>(data);
-    if (m_server->cursor()->compositorOwnsCursor()) {
-      return;
-    }
+    // Recorded even while the compositor owns the cursor, so ending that
+    // override replays the client's cursor instead of making it resend one.
     if (m_seat->pointer_state.focused_client == event->seat_client) {
       m_server->cursor()->setCursorSurface(event->surface, event->hotspot_x, event->hotspot_y);
     }
@@ -122,13 +121,12 @@ namespace umbriel {
 
   void Seat::handleRequestSetShape(void* data) {
     auto* event = static_cast<wlr_cursor_shape_manager_v1_request_set_shape_event*>(data);
-    if (m_server->cursor()->compositorOwnsCursor()) {
-      return;
-    }
+    bool pointer = false;
     if (event->device_type == WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER) {
       if (m_seat->pointer_state.focused_client != event->seat_client) {
         return;
       }
+      pointer = true;
     } else if (event->device_type == WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_TABLET_TOOL) {
       // The tool's focused surface is the acceptance check; there is no
       // pointer-focus client for a tablet cursor.
@@ -145,14 +143,16 @@ namespace umbriel {
     if (name == nullptr) {
       return;
     }
-    m_server->cursor()->setXcursor(name);
+    if (pointer) {
+      m_server->cursor()->setCursorShape(name);
+    } else if (!m_server->cursor()->compositorOwnsCursor()) {
+      m_server->cursor()->setXcursor(name);
+    }
   }
 
   void Seat::handlePointerFocusChange(void* data) {
     auto* event = static_cast<wlr_seat_pointer_focus_change_event*>(data);
-    if (event->new_surface == nullptr && !m_server->cursor()->compositorOwnsCursor()) {
-      m_server->cursor()->setXcursor("default");
-    }
+    m_server->cursor()->notePointerFocusChange(event->new_surface);
   }
 
   void Seat::handleRequestSetSelection(void* data) {

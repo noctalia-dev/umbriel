@@ -22,7 +22,7 @@ namespace umbriel {
 
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
-      std::optional<std::string_view> xdgTag, ContentType contentType, bool focused, uint64_t uptimeMs
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
   );
   [[nodiscard]] ResolvedLayerRule
   resolveLayerRules(const Config& config, std::optional<std::string_view> layerNamespace);

@@ -374,6 +374,33 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    std::optional<CenterFocusedColumn> readCenterFocused(Section& section, std::string_view context) {
+      const toml::node* node = section.take("center_focused");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      const auto* value = node->as_string();
+      if (value == nullptr) {
+        warnAt(node->source(), R"({}.center_focused must be a string ("never", "always", or "on_overflow"))", context);
+        return std::nullopt;
+      }
+      const std::string_view mode = value->get();
+      if (mode == "never") {
+        return CenterFocusedColumn::Never;
+      }
+      if (mode == "always") {
+        return CenterFocusedColumn::Always;
+      }
+      if (mode == "on_overflow") {
+        return CenterFocusedColumn::OnOverflow;
+      }
+      warnAt(
+          node->source(), R"(unknown {}.center_focused "{}" (expected "never", "always", or "on_overflow"))", context,
+          mode
+      );
+      return std::nullopt;
+    }
+
     std::vector<std::string_view> splitWhitespace(std::string_view text) {
       std::vector<std::string_view> tokens;
       size_t offset = 0;
@@ -569,10 +596,11 @@ namespace umbriel {
               overrides.widthPresets = std::move(*presets);
             }
             s.sub("scrolling", [&](Section& sc) {
-              sc.boolean("expand_single_column", overrides.scrolling.expandSingleColumn);
               sc.real("default_width_fraction", 0.1, 1.0, overrides.scrolling.defaultWidthFraction)
-                  .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip)
-                  .boolean("center_focused", overrides.scrolling.centerFocused);
+                  .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
+              if (const auto centerFocused = readCenterFocused(sc, layoutContext + ".scrolling")) {
+                overrides.scrolling.centerFocused = centerFocused;
+              }
             });
             s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", overrides.dwindle.preserveSplit); });
             s.sub("master", [&](Section& sm) {
@@ -1199,10 +1227,11 @@ namespace umbriel {
           loaded.layout.widthPresets = std::move(*presets);
         }
         s.sub("scrolling", [&](Section& sc) {
-          sc.boolean("expand_single_column", loaded.layout.scrolling.expandSingleColumn);
           sc.real("default_width_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultWidthFraction)
-              .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip)
-              .boolean("center_focused", loaded.layout.scrolling.centerFocused);
+              .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
+          if (const auto centerFocused = readCenterFocused(sc, "layout.scrolling")) {
+            loaded.layout.scrolling.centerFocused = *centerFocused;
+          }
         });
         s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit); });
         s.sub("master", [&](Section& sm) {
@@ -1905,6 +1934,38 @@ namespace umbriel {
                 rule.matchFocused = focusedNode->value<bool>();
               } else {
                 warnAt(focusedNode->source(), "ignoring window_rule.match.is_focused (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* floatingNode = matchKeys.take("is_floating")) {
+              if (floatingNode->is_boolean()) {
+                rule.matchFloating = floatingNode->value<bool>();
+              } else {
+                warnAt(floatingNode->source(), "ignoring window_rule.match.is_floating (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* pinnedNode = matchKeys.take("is_pinned")) {
+              if (pinnedNode->is_boolean()) {
+                rule.matchPinned = pinnedNode->value<bool>();
+              } else {
+                warnAt(pinnedNode->source(), "ignoring window_rule.match.is_pinned (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* scratchpadNode = matchKeys.take("is_scratchpad")) {
+              if (scratchpadNode->is_boolean()) {
+                rule.matchScratchpad = scratchpadNode->value<bool>();
+              } else {
+                warnAt(scratchpadNode->source(), "ignoring window_rule.match.is_scratchpad (expected boolean)");
+                valid = false;
+              }
+            }
+            if (const toml::node* aloneNode = matchKeys.take("is_alone")) {
+              if (aloneNode->is_boolean()) {
+                rule.matchAlone = aloneNode->value<bool>();
+              } else {
+                warnAt(aloneNode->source(), "ignoring window_rule.match.is_alone (expected boolean)");
                 valid = false;
               }
             }
