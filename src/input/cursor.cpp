@@ -495,9 +495,14 @@ namespace umbriel {
     return workspace != nullptr && grab != nullptr && grab->workspace == workspace;
   }
 
-  bool Cursor::beginMove(View* view, uint32_t button) {
+  bool Cursor::beginMove(View* view, uint32_t button, bool deferred) {
     if (view == nullptr || !view->mapped() || button == 0) {
       return false;
+    }
+    // A modal dialog has no place of its own: dragging it drags the window it is attached to, tiled or floating, and
+    // the dialog stays centered on it.
+    while (View* parent = view->attachedParent()) {
+      view = parent;
     }
     if (!isPassthrough()) {
       resetMode();
@@ -525,7 +530,7 @@ namespace umbriel {
         .sourceColumn = -1,
         .sourceWidth = std::nullopt,
         .drop = {},
-        .pending = tiled,
+        .pending = tiled || deferred,
         .startX = m_cursor->x,
         .startY = m_cursor->y,
     };
@@ -1089,6 +1094,13 @@ namespace umbriel {
     if (button == BTN_RIGHT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       beginResize(view, view->tiled() ? 0 : floatResizeEdges(view), button);
+      return;
+    }
+    // A window blocked by a modal dialog cannot use the press, so dragging it moves it the way Mod+drag does. Until the
+    // pointer travels, the press is a plain click that lands the focus on the dialog.
+    if (button == BTN_LEFT && view != nullptr && layer == nullptr && view->blockingDialog() != nullptr) {
+      m_server->focusView(view, FocusReason::Grab);
+      beginMove(view, button, true);
       return;
     }
 

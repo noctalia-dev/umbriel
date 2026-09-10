@@ -198,6 +198,8 @@ unmap_client = executable(
     xdg_activation_client_c,
     xdg_toplevel_tag_client_h,
     xdg_toplevel_tag_client_c,
+    xdg_dialog_client_h,
+    xdg_dialog_client_c,
     xdg_foreign_client_h,
     xdg_foreign_client_c,
     content_type_client_h,

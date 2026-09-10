@@ -30,6 +30,15 @@ extern "C" {
 namespace umbriel {
   namespace {
     constexpr Logger kLog("view");
+    // How dark the shade over the parent of an open modal dialog gets.
+    constexpr double kModalParentDim = 0.3;
+
+    uint64_t nextMapSerial() {
+      static uint64_t serial = 0;
+      return ++serial;
+    }
+
+    wl_client* clientOf(const wlr_xdg_toplevel* toplevel) { return wl_resource_get_client(toplevel->resource); }
 
     void setCompositorOpacity(wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {
       float opacity = *static_cast<float*>(data);
@@ -452,6 +461,63 @@ namespace umbriel {
     }
     return parent;
   }
+
+  bool View::modalDialog() const {
+    if (m_toplevel->parent == nullptr) {
+      return false;
+    }
+    const wlr_xdg_dialog_v1* dialog = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(m_toplevel);
+    if (dialog != nullptr && dialog->modal) {
+      return true;
+    }
+    return clientOf(m_toplevel) != clientOf(m_toplevel->parent);
+  }
+
+  bool View::blockedBy(const View& dialog) const {
+    const View* parent = dialog.attachedParent();
+    if (parent == this) {
+      return true;
+    }
+    if (dialog.m_mapSerial < m_mapSerial) {
+      return false;
+    }
+    // The application's own modal dialog is modal for every window it had open on the workspace, since that is what
+    // its toolkit does. Every X11 window shares the satellite's connection, so the rule cannot tell X11 apps apart.
+    if (clientOf(dialog.m_toplevel) == clientOf(parent->m_toplevel)) {
+      return !m_xwayland
+          && !parent->m_xwayland
+          && parent->m_workspace == m_workspace
+          && clientOf(parent->m_toplevel) == clientOf(m_toplevel);
+    }
+    // A dialog from another process, a portal's chooser, reaches only the parent's own open dialogs: the one it was
+    // opened from, when the application attached it to the main window instead.
+    for (const View* ancestor = transientParent(); ancestor != nullptr; ancestor = ancestor->transientParent()) {
+      if (ancestor == parent) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  View* View::blockingDialog() const {
+    View* newest = nullptr;
+    for (const auto& view : m_server->registry().all()) {
+      View* dialog = view.get();
+      // The surface is already unmapped when a closing dialog hands focus back to its parent.
+      if (dialog == this
+          || dialog->attachedParent() == nullptr
+          || !dialog->m_toplevel->base->surface->mapped
+          || !blockedBy(*dialog)) {
+        continue;
+      }
+      if (newest == nullptr || dialog->m_mapSerial > newest->m_mapSerial) {
+        newest = dialog;
+      }
+    }
+    return newest;
+  }
+
+  View* View::attachedParent() const { return modalDialog() ? transientParent() : nullptr; }
 
   void View::syncTransientSceneParent() {
     if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
@@ -928,6 +994,18 @@ namespace umbriel {
     scheduleFrame();
   }
 
+  void View::centerModalDialogs() {
+    // Overview cards are not places a dialog can sit over; the layout re-centers it when the overview closes.
+    if (const Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      return;
+    }
+    for (const auto& view : m_server->registry().all()) {
+      if (view->attachedParent() == this) {
+        view->syncOwnedPresentation();
+      }
+    }
+  }
+
   void View::syncAnimationShaders(wlr_scene_tree* target, wlr_scene_node* border) {
     if (target == nullptr) {
       target = m_sceneTree;
@@ -1017,6 +1095,10 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
       active = active || m_focusDim.animating();
     }
+    if (m_modalShade.tick(nowMsec)) {
+      syncModalShade();
+      active = active || m_modalShade.animating();
+    }
 
     if (m_borderColorAnim.tick(nowMsec)) {
       m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
@@ -1041,7 +1123,8 @@ namespace umbriel {
         || sizeAnimating()
         || m_fade.animating()
         || m_borderColorAnim.animating()
-        || m_focusDim.animating();
+        || m_focusDim.animating()
+        || m_modalShade.animating();
   }
 
   bool View::layoutFullscreen() const { return m_toplevel->scheduled.fullscreen; }
@@ -1517,6 +1600,50 @@ namespace umbriel {
       origin = centeredOverShown(parent->targetBox(), shownIn, width, height);
     }
     setPosition(origin.x, origin.y);
+  }
+
+  FloatingPoint View::centeredOver(const wlr_box& box, int width, int height) const {
+    return centeredOverShown(box, floatingUsableArea(), width, height);
+  }
+
+  void View::retargetModalShade(bool animate) {
+    const double target = m_mapped && blockingDialog() != nullptr ? kModalParentDim : 0.0;
+    const auto& animation = config().animation;
+    const auto& dim = animation.dimUnfocused;
+    if (animate && animation.enabled && dim.enabled) {
+      m_modalShade.retarget(target, dim.durationMs, dim.curve);
+      scheduleFrame();
+    } else {
+      m_modalShade.snap(target);
+    }
+    syncModalShade();
+  }
+
+  void View::retargetModalShades() {
+    for (const auto& view : m_server->registry().all()) {
+      if (view.get() != this) {
+        view->retargetModalShade(true);
+      }
+    }
+  }
+
+  void View::syncModalShade() {
+    const auto alpha = static_cast<float>(m_modalShade.current());
+    // Premultiplied black at `alpha`, drawn over the content and rounded with it.
+    const std::array<float, 4> color{0.0F, 0.0F, 0.0F, alpha};
+    if (m_modalShadeRect == nullptr) {
+      if (alpha <= 0.0F) {
+        return;
+      }
+      m_modalShadeRect = wlr_scene_rect_create(m_sceneTree, 0, 0, color.data());
+      // Hit-testing has to land on the shaded window, so its dialog gets the click and a drag moves it.
+      m_modalShadeRect->accepts_input = false;
+    }
+    wlr_scene_rect_set_color(m_modalShadeRect, color.data());
+    wlr_scene_rect_set_size(m_modalShadeRect, m_presentedBox.width, m_presentedBox.height);
+    wlr_scene_rect_set_corner_radius(m_modalShadeRect, surfaceRadius());
+    wlr_scene_node_set_enabled(&m_modalShadeRect->node, alpha > 0.0F);
+    wlr_scene_node_raise_to_top(&m_modalShadeRect->node);
   }
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }
@@ -2017,6 +2144,13 @@ namespace umbriel {
       return;
     }
     const wlr_box& geo = m_toplevel->base->geometry;
+    // An attached dialog grows around its center, from the same committed size the presentation centers it with, so
+    // the pointer motion and the client's commits agree on where it sits.
+    if (const View* parent = attachedParent()) {
+      const FloatingPoint origin = centeredOver(parent->m_presentedBox, geo.width, geo.height);
+      setPosition(origin.x, origin.y);
+      return;
+    }
     const FloatingPoint content = anchoredContentOrigin(*m_floating.anchor(), m_floating.edges(), geo);
     setPosition(content.x - geo.x, content.y - geo.y);
   }
@@ -2105,18 +2239,29 @@ namespace umbriel {
   }
 
   void View::applyPresentation(const wlr_box& target) {
-    updateFullscreenPresentation(target.width, target.height);
+    wlr_box box = target;
+    // An attached dialog is presented centered on its parent at whatever size it has, so growing keeps its center.
+    if (const View* parent = !m_tiled && !m_toplevel->current.fullscreen ? attachedParent() : nullptr;
+        parent != nullptr) {
+      const FloatingPoint origin = centeredOver(parent->m_presentedBox, presentedWidth(box), presentedHeight(box));
+      if (origin.x != box.x || origin.y != box.y) {
+        setPosition(origin.x, origin.y);
+        box.x = origin.x;
+        box.y = origin.y;
+      }
+    }
+    updateFullscreenPresentation(box.width, box.height);
     if (m_toplevel->current.fullscreen) {
       // The whole tile: the output's clipped root scissors whatever hangs over the shared edge.
-      m_presentation.setBackdropBox(0, 0, target.width, target.height);
+      m_presentation.setBackdropBox(0, 0, box.width, box.height);
     }
     const wlr_box& geometry = m_toplevel->base->geometry;
     // Stay inside the tile while geometry lags configure (Electron often stays wide).
     const wlr_box content{
-        .x = target.x,
-        .y = target.y,
-        .width = presentedWidth(target),
-        .height = presentedHeight(target),
+        .x = box.x,
+        .y = box.y,
+        .width = presentedWidth(box),
+        .height = presentedHeight(box),
     };
     m_presentedBox = content;
     trackPresentedSize(content.width, content.height);
@@ -2140,6 +2285,8 @@ namespace umbriel {
     updateBorderGeometry(content.width, content.height);
     updateShadow();
     updateBlur(content.width, content.height);
+    syncModalShade();
+    centerModalDialogs();
   }
 
   void View::handleMap() {
@@ -2148,6 +2295,7 @@ namespace umbriel {
     // keep its cached double-buffered state authoritative.
     syncContentType(m_toplevel->base->surface);
     m_mapped = true;
+    m_mapSerial = nextMapSerial();
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     m_acceptClientMaximizeIdle =
         wl_event_loop_add_idle(wl_display_get_event_loop(m_server->display()), onAcceptClientMaximizeRequests, this);
@@ -2340,6 +2488,9 @@ namespace umbriel {
     // Opening rules resolve before default_floating and default_pinned move the window, so the state selectors may
     // pick a different set of dynamic effects than the ones applied above.
     applyDynamicRules();
+    if (attachedParent() != nullptr) {
+      retargetModalShades();
+    }
   }
 
   void View::handleUnmap() {
@@ -2368,6 +2519,9 @@ namespace umbriel {
     const double closePointerY = cursor != nullptr ? cursor->wlr()->y : 0.0;
 
     setUrgent(false);
+    if (attachedParent() != nullptr) {
+      retargetModalShades();
+    }
     m_floatingMaximized = false;
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
@@ -3013,6 +3167,8 @@ namespace umbriel {
   void View::handleSetParent() {
     if (m_mapped) {
       raiseToTop();
+      // A dialog whose parent closed is handed to the grandparent, and what the old parent's dialog blocked is free.
+      retargetModalShades();
     }
   }
 

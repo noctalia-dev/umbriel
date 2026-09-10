@@ -139,7 +139,8 @@ namespace umbriel {
     void applyConfig();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY);
     void setXcursor(const char* name);
-    bool beginMove(View* view, uint32_t button);
+    // A deferred move starts as a click and becomes a drag once the pointer travels, the way a tiled move does.
+    bool beginMove(View* view, uint32_t button, bool deferred = false);
     bool beginResize(View* view, uint32_t edges, uint32_t button);
     void beginClientMove(View* view, wlr_seat_client* seatClient, uint32_t serial);
     void beginClientResize(View* view, wlr_seat_client* seatClient, uint32_t serial, uint32_t edges);

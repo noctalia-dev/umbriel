@@ -56,6 +56,15 @@ namespace umbriel {
     void syncAnimationShaders(wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr);
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
+    [[nodiscard]] View* transientParent() const;
+    // A modal dialog takes its parent's input while it is open: one marked so through xdg-dialog-v1 (GTK 4, Qt 6),
+    // or one parented across processes, which is a portal dialog whose toolkit may predate the protocol.
+    [[nodiscard]] bool modalDialog() const;
+    // The mapped modal dialog that blocks this window, or null: one attached to it, the application's own newer one
+    // attached to another of its windows on the workspace, or a portal's dialog attached to an ancestor of this one.
+    [[nodiscard]] View* blockingDialog() const;
+    // The window this modal dialog is attached to, or null.
+    [[nodiscard]] View* attachedParent() const;
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
     // The pid of the application process, or -1 when it is unknown. XWayland views all share the xwayland-satellite
     // connection, so their client pid identifies the satellite rather than the application and is never reported.
@@ -411,8 +420,19 @@ namespace umbriel {
     void placeInUsableArea(const std::optional<WindowPosition>& position = std::nullopt);
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
+    // Whether `dialog`, an open modal dialog, takes this window's input.
+    [[nodiscard]] bool blockedBy(const View& dialog) const;
+    // Where a dialog of `width` by `height` sits centered on what shows of its parent's `box`, inside the usable area
+    // when it fits.
+    [[nodiscard]] FloatingPoint centeredOver(const wlr_box& box, int width, int height) const;
+    // Modal dialogs stay centered over their parent as it moves and resizes.
+    void centerModalDialogs();
+    // The parent of an open modal dialog is shaded; the shade fades on the dim_unfocused timeline.
+    void retargetModalShade(bool animate);
+    // A modal dialog opening or closing can block or free windows across its application.
+    void retargetModalShades();
+    void syncModalShade();
     void setPinned(bool pinned, bool focus);
-    [[nodiscard]] View* transientParent() const;
     void syncTransientSceneParent();
     void raiseTransientTree();
     void updateForeignIdentity();
@@ -541,6 +561,10 @@ namespace umbriel {
     bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
     AnimatedValue m_focusDim{1.0};
+    AnimatedValue m_modalShade{0.0};
+    wlr_scene_rect* m_modalShadeRect = nullptr;
+    // Map order, so a newer modal dialog blocks the application's older windows and not the other way round.
+    uint64_t m_mapSerial = 0;
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
     bool m_focusDimInitialized = false;
