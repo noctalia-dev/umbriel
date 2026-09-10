@@ -144,6 +144,12 @@ namespace umbriel {
     void retarget(double to, int durationMs, std::string_view curveName);
     void retargetBezier(double to, int durationMs, double x1, double y1, double x2, double y2);
     void retargetSpring(double to, int durationMs, double damping = 0.75, double stiffness = 100.0);
+    // Physics spring: continues from the current value with `initialVelocity` in units per second and settles when the
+    // solver reaches the target, so the configured duration does not apply. Every other entry point is duration-based.
+    void settleSpring(double to, const SpringConfig& spring, double initialVelocity = 0.0);
+    // Shift from, current and target by the same amount, keeping any motion intact. For a coordinate space that is
+    // renumbered under a running animation.
+    void translate(double delta);
 
     // Advances the value. Returns true when the value was animating at entry (i.e. the owner must apply current()). The
     // call that reaches the target returns true and leaves animating() false, so owners detect completion as (tick(now)
@@ -164,11 +170,14 @@ namespace umbriel {
     double m_target = 0.0;
     double m_current = 0.0;
     double m_velocity = 0.0;
+    double m_initialVelocity = 0.0;
     double m_progress = 1.0;  // linear fraction as of the last tick(); 1.0 when never animating
     uint64_t m_startMsec = 0; // 0 = clock starts on the first tick
     uint64_t m_durationMsec = 1;
     AnimationCurve m_curve{.easing = Easing::EaseOutCubic};
     bool m_animating = false;
+    // Set by settleSpring(): tick() runs the physics solver instead of the duration curve.
+    bool m_physics = false;
   };
 
   // Helper class for animating 4-channel float RGBA colors smoothly with arbitrary curves.

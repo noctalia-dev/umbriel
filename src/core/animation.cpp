@@ -628,9 +628,11 @@ namespace umbriel {
     m_target = value;
     m_current = value;
     m_velocity = 0.0;
+    m_initialVelocity = 0.0;
     m_progress = 1.0;
     m_startMsec = 0;
     m_animating = false;
+    m_physics = false;
   }
 
   void AnimatedValue::retarget(double to, int durationMs, Easing easing) {
@@ -645,6 +647,8 @@ namespace umbriel {
     m_startMsec = 0;
     m_progress = 0.0;
     m_animating = true;
+    m_physics = false;
+    m_initialVelocity = 0.0;
   }
 
   void AnimatedValue::retarget(double to, int durationMs, std::string_view curveName) {
@@ -665,6 +669,24 @@ namespace umbriel {
     retarget(to, durationMs, c);
   }
 
+  void AnimatedValue::settleSpring(double to, const SpringConfig& spring, double initialVelocity) {
+    m_from = m_current;
+    m_target = to;
+    m_curve = AnimationCurve{.easing = Easing::Spring, .spring = spring};
+    m_initialVelocity = initialVelocity;
+    m_velocity = initialVelocity;
+    m_startMsec = 0;
+    m_progress = 0.0;
+    m_animating = true;
+    m_physics = true;
+  }
+
+  void AnimatedValue::translate(double delta) {
+    m_from += delta;
+    m_target += delta;
+    m_current += delta;
+  }
+
   double AnimatedValue::progress() const { return m_progress; }
 
   bool AnimatedValue::tick(uint64_t nowMsec) {
@@ -676,6 +698,22 @@ namespace umbriel {
     }
 
     const uint64_t elapsed = nowMsec - std::min(nowMsec, m_startMsec);
+
+    if (m_physics) {
+      double velocity = 0.0;
+      m_current = solveSpringPhysics(
+          m_from, m_target, m_initialVelocity, static_cast<double>(elapsed) / 1000.0, m_curve.spring, &velocity
+      );
+      m_velocity = velocity;
+      const double span = m_target - m_from;
+      m_progress = span != 0.0 ? std::clamp((m_current - m_from) / span, 0.0, 1.0) : 1.0;
+      if (m_current == m_target && velocity == 0.0) {
+        m_progress = 1.0;
+        m_animating = false;
+      }
+      return true;
+    }
+
     const double linear = std::clamp(static_cast<double>(elapsed) / static_cast<double>(m_durationMsec), 0.0, 1.0);
     m_progress = linear;
 

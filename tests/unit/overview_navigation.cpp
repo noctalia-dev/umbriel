@@ -1,6 +1,7 @@
 #include "check.h"
 #include "overview/navigation.h"
 
+using umbriel::NavigationSource;
 using umbriel::OverviewNavigation;
 
 UMBRIEL_TEST(diagonalInputLocksOnceAndRetainsInitialTravel) {
@@ -36,18 +37,28 @@ UMBRIEL_TEST(workspaceSettlementIsBoundedAndAllowsMultipleRows) {
   CHECK_EQ(OverviewNavigation::workspaceTarget(10, 0), 0);
 }
 
-UMBRIEL_TEST(travelIsNormalizedAcrossScreenDimensionsAndAxes) {
-  const double workspace = OverviewNavigation::travelScale(1.0, 0.5, 1.0);
-  for (const double extent : {720.0, 1280.0, 2160.0, 3840.0}) {
-    const double strip = OverviewNavigation::travelScale(extent, 0.5, 1.0);
-    CHECK(std::abs(strip / extent - workspace) < 0.000001);
-    CHECK(std::abs(OverviewNavigation::travelScale(extent, 0.5, 0.8) - strip * 0.8) < 0.000001);
+UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
+  for (const auto source : {NavigationSource::Scroll, NavigationSource::Swipe}) {
+    const auto travel = OverviewNavigation::travelFor(source);
+    // One step of travel is one workspace, and at zoom 1 one viewport of strip on any screen.
+    CHECK_EQ(OverviewNavigation::travelScale(1.0, 1.0, 1.0, travel.workspace) * travel.workspace, 1.0);
+    for (const double extent : {720.0, 1280.0, 2160.0, 3840.0}) {
+      const double scale = OverviewNavigation::travelScale(extent, 1.0, 1.0, travel.viewport);
+      CHECK(std::abs(scale * travel.viewport - extent) < 0.000001);
+      // Half the factor, twice the travel for the same distance.
+      CHECK(std::abs(OverviewNavigation::travelScale(extent, 1.0, 0.5, travel.viewport) * 2.0 - scale) < 0.000001);
+    }
   }
-  CHECK_EQ(OverviewNavigation::travelScale(1.0, 1.0, 1.0) * 500.0, 1.0);
+  // Accelerated swipe deltas and unaccelerated scroll units are not the same distance.
+  CHECK(
+      OverviewNavigation::travelFor(NavigationSource::Swipe).workspace
+      != OverviewNavigation::travelFor(NavigationSource::Scroll).workspace
+  );
 }
 
 UMBRIEL_TEST(releaseProjectionAvoidsExtraWorkspaceWithoutLimitingLongSwipes) {
-  const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0);
+  const double units = OverviewNavigation::kScrollTravel.workspace;
+  const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0, units);
   CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 1000) * scale, 5), 1);
   CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 3500) * scale, 5), 2);
   CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(1000, 0) * scale, 5), 3);
@@ -56,14 +67,17 @@ UMBRIEL_TEST(releaseProjectionAvoidsExtraWorkspaceWithoutLimitingLongSwipes) {
 }
 
 UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
-  CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, 0.15), 1.0);
-  CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, 0.15) < 0.02);
-  CHECK_EQ(OverviewNavigation::rubberBandDerivative(-1, 3, 0.15), OverviewNavigation::rubberBandDerivative(4, 3, 0.15));
-  CHECK_EQ(OverviewNavigation::rubberBand(1.5, 3, 0.15), 1.5);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, 0.15) > -0.15);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, 0.15) < 0);
-  CHECK(OverviewNavigation::rubberBand(4, 3, 0.15) > 3);
-  CHECK(OverviewNavigation::rubberBand(1000, 3, 0.15) < 3.15);
+  const double limit = OverviewNavigation::kOverscroll;
+  CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, limit), 1.0);
+  CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, limit) < 0.02);
+  CHECK_EQ(
+      OverviewNavigation::rubberBandDerivative(-1, 3, limit), OverviewNavigation::rubberBandDerivative(4, 3, limit)
+  );
+  CHECK_EQ(OverviewNavigation::rubberBand(1.5, 3, limit), 1.5);
+  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) > -limit);
+  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) < 0);
+  CHECK(OverviewNavigation::rubberBand(4, 3, limit) > 3);
+  CHECK(OverviewNavigation::rubberBand(1000, 3, limit) < 3 + limit);
   CHECK_EQ(OverviewNavigation::zoomScale(1), 1.0);
   CHECK(OverviewNavigation::zoomScale(0.5) > 1);
   CHECK(OverviewNavigation::zoomScale(0.5) < 2);

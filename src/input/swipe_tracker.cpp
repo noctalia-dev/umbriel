@@ -1,6 +1,7 @@
 #include "input/swipe_tracker.h"
 
 #include <cmath>
+#include <ranges>
 
 namespace umbriel {
 
@@ -35,8 +36,10 @@ namespace umbriel {
       return 0.0;
     }
 
+    // Each delta is the motion since the previous event, so the oldest one happened before the window starts and
+    // would inflate the estimate: over two samples it doubles it.
     double totalDelta = 0.0;
-    for (const Event& event : m_history) {
+    for (const Event& event : m_history | std::views::drop(1)) {
       totalDelta += event.delta;
     }
     // Seconds, matching a px/s velocity.

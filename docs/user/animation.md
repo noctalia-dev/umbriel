@@ -38,6 +38,7 @@ curve = "easeout"
 enabled = true
 duration_ms = 250
 curve = "easeout"
+workspace_curve = "spring:1,1000"
 
 [animation.scratchpad]
 enabled = false
@@ -85,11 +86,18 @@ fields are specific to individual event tables:
 | `[animation.windows_out]`  | `style` (`fade` or `slide`)                                                                                       | Window close, using a scene snapshot.               |
 | `[animation.windows_move]` | None                                                                                                               | Window move, resize, and floating maximize transitions, including visible scratchpad size actions. |
 | `[animation.workspaces]`   | None                                                                                                               | Workspace switch.                                   |
-| `[animation.overview]`     | None                                                                                                               | Overview open, close, and row settling.             |
+| `[animation.overview]`     | `workspace_curve` (default `spring:1,1000`)                                                                        | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews. |
 | `[animation.scratchpad]`   | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                                             | Scratchpad show, hide, and backdrop.                |
 | `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space.   |
 | `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                                                 | Unfocused-window opacity. `dim = 0` disables it.    |
 | `[animation.layers]`       | None                                                                                                               | Layer-shell surface map and unmap fades.            |
+
+`workspace_curve` covers every way the filmstrip moves: a wheel notch, a
+keyboard action, and the release of a touchpad gesture. A spring curve settles
+from wherever the previews currently are and keeps the speed a swipe let go
+with, so `duration_ms` does not apply to it; any other curve runs over
+`duration_ms` and starts from rest. The shared `[animation] curve` does not
+reach it, because dropping the spring would drop the release velocity with it.
 
 An event's `enabled = false` makes only that transition instant. Scratchpad
 `dim` and `blur` remain active, without a fade, when animation is disabled.

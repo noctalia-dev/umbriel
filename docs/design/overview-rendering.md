@@ -6,14 +6,36 @@ the main configuration guide but remain part of Umbriel's observable behavior.
 ## Live content
 
 Overview cards display live window content. The real workspace windows are
-hidden while the overview is open. Wheel steps move one workspace at a time.
-Two-finger axes and three-finger swipes share continuous, axis-locked navigation:
-travel along the output's workspace axis moves previews until release selects a
-workspace; perpendicular travel pans the scrolling layout captured at gesture
-start. Configured focus actions retain their layout-specific behavior.
+hidden while the overview is open. Wheel steps move one workspace at a time,
+while touchpad navigation drags the previews and selects on release.
+Configured focus actions retain their layout-specific behavior.
 
 Transparent windows keep their window-rule blur throughout the zoom
 transition.
+
+## Touchpad navigation
+
+Two-finger scrolling and three-finger swipes reach the same `OverviewNavigation`
+state: deltas in content direction, one locked axis after 16 units of travel,
+rubber-banded 0.15 of a workspace or viewport past either end, and a release
+position projected 120 ms along the recent velocity. Neither stream commits a
+workspace before its release.
+
+The two streams carry different travel distances because libinput reports
+swipes as pointer-accelerated motion and finger scrolling as raw scroll units.
+One workspace is 300 units of swipe, matching the workspace switch outside the
+overview, and 500 units of finger scrolling; one viewport of strip panning is
+1200 and 500 respectively. Distances scale with the settled preview zoom rather
+than the zoom in flight, so a gesture that starts during the opening animation
+travels the same distance as one that starts after it.
+
+The filmstrip is one `AnimatedValue` per output, in workspace rows. Every
+source moves it the same way through `Overview::animateRow`, which uses
+`[animation.overview] workspace_curve`: a spring curve settles from the current
+position through `AnimatedValue::settleSpring`, carrying the release velocity
+scaled by the rubber-band derivative at the release point; any other curve runs
+over `duration_ms` from rest. A gesture in flight snaps the value each frame,
+which also stops a settle still running on that output.
 
 ## Animation ownership
 

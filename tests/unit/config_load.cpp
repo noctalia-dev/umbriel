@@ -914,6 +914,24 @@ UMBRIEL_TEST(overviewScrollFactorLoadsIndependently) {
   CHECK_EQ(store.config().overview.scrollFactorVertical, 1.0);
 }
 
+UMBRIEL_TEST(overviewWorkspaceCurveLoadsAndFallsBackToItsSpring) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[animation.overview]\nworkspace_curve = \"easeout\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.overview.workspaceCurve.easing == umbriel::Easing::EaseOutCubic);
+  file.write("[animation.overview]\nworkspace_curve = \"spring:0.6,120\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.overview.workspaceCurve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(store.config().animation.overview.workspaceCurve.spring.damping, 0.6);
+  CHECK_EQ(store.config().animation.overview.workspaceCurve.spring.stiffness, 120.0);
+  file.write("[animation.overview]\nduration_ms = 300\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.overview.workspaceCurve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(store.config().animation.overview.workspaceCurve.spring.stiffness, 1000.0);
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2416,6 +2434,9 @@ blur = true
   CHECK(!animation.overview.enabled);
   CHECK_EQ(animation.overview.durationMs, 700);
   CHECK(animation.overview.curve.easing == umbriel::Easing::CustomBezier);
+  // The shared curve reaches every duration-based event, but the filmstrip settle keeps its spring until asked.
+  CHECK(animation.overview.workspaceCurve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(animation.overview.workspaceCurve.spring.stiffness, 1000.0);
   CHECK_EQ(animation.windowsMove.durationMs, 320);
   CHECK_EQ(animation.scratchpad.dim, 0.4);
   CHECK(animation.scratchpad.blur);

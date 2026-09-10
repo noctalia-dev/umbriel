@@ -43,38 +43,41 @@ closes.
 Click a window to focus it, middle-click to close it, or drag it to another
 workspace. When a click selects a window in another scrolling column, the
 column reveal runs together with the closing zoom. Each wheel notch moves one
-workspace at a time. The vertical wheel works on either arrangement; a horizontal
-wheel navigates only horizontal workspaces. A 4-finger swipe opens or closes the
-overview.
+workspace at a time. The vertical wheel works on either arrangement; a
+horizontal wheel navigates only horizontal workspaces. A 4-finger swipe opens
+or closes the overview.
 
-Use two-finger scrolling or a three-finger swipe to navigate continuously:
+Two-finger scrolling and three-finger swipes both navigate continuously:
 
 - Movement along the output's [workspace axis](workspaces.md#workspace-axis)
   drags the workspace previews and selects a workspace on release.
-- Perpendicular movement pans the scrolling layout in the preview under the
-  pointer when the gesture starts, without activating another workspace.
+- Movement across it pans the scrolling layout in the preview the pointer was
+  over when the gesture started, without activating another workspace. Dwindle
+  and master workspaces have no strip to pan.
 
-Both gestures lock to the first dominant axis, resist movement past the ends,
-and settle using release velocity. Holding still before releasing removes the
-flick momentum. The gesture keeps its original output and row even if the
-pointer moves. Strip panning does not apply to dwindle or master layouts. Mouse-wheel and keyboard navigation retain their existing
-behavior. Touchpad `natural_scroll` applies to both gesture types;
-`overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical` each
-default to 1.0 and control the physical swipe direction, regardless of the
-output's workspace axis. They are independent of the input device's
-`scroll_factor`, which continues to control application scrolling.
-Both two- and three-finger gestures use these settings. A factor of 0.8 reduces
-travel by 20%; a factor of 1.2 increases it by 20%.
+A gesture locks onto whichever direction it starts in, resists travel past
+either end, and coasts on the speed it was released at, so a flick can cross
+several workspaces. Holding still before letting go drops that momentum.
+The gesture keeps the output and the preview it started on even if the pointer
+moves away. Wheel and keyboard navigation are unchanged.
 
-Workspace and strip navigation use the same normalized travel: 500 input units
-per workspace or viewport at zoom 1, with the same zoom adjustment on both axes.
-Changing the screen dimensions does not change the fraction traversed. Release
-projection uses 120 ms of recent velocity, reducing unintended extra workspace
-switches without limiting a gesture to one workspace. Different touchpads may
-report different input distances for the same physical travel.
-Workspace gestures settle with a critically damped spring that preserves release
-velocity, including when returning to the current workspace. Animation disabling
-still applies; gesture settlement does not use the configured overview easing or duration.
+Touchpad `natural_scroll` sets the direction of both gestures.
+`overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical`
+scale how far a gesture travels; both default to `1.0`, and a factor of `0.8`
+needs 25% more finger movement for the same distance. They apply to the
+physical direction of the movement, not to the output's workspace axis, and
+they are independent of the input device's `scroll_factor`, which still only
+scales application scrolling.
+
+Three-finger swipes cover one workspace in the same travel a swipe outside the
+overview takes to switch workspaces. Two-finger scrolling has its own distance:
+libinput reports swipes as pointer-accelerated motion and finger scrolling as
+raw scroll units, so the same movement of the hand does not produce the same
+numbers. Different touchpads also differ. The two factors are there to correct
+the difference on your hardware.
+
+`[animation.overview] workspace_curve` decides how the previews settle after a
+release. See [animation](animation.md).
 
 #### Which window actions act on
 

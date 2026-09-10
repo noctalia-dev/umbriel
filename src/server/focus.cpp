@@ -31,6 +31,8 @@ namespace umbriel {
         return "grab";
       case FocusReason::DragDrop:
         return "drag-drop";
+      case FocusReason::Gesture:
+        return "gesture";
       case FocusReason::Startup:
         return "startup";
       case FocusReason::XdgActivation:
@@ -133,6 +135,10 @@ namespace umbriel {
     case FocusReason::Grab:
       // No reveal: the grab is about to move/detach the tile; revealing would
       // shift computed grab offsets and cause a visual jump.
+      break;
+    case FocusReason::Gesture:
+      // No reveal: the finger already chose where the strip rests, and a reveal
+      // would drag it somewhere else on release.
       break;
     }
   }

@@ -5,6 +5,12 @@
 
 namespace umbriel {
 
+  // Three-finger travel, in the accelerated motion libinput reports for gestures, for one full step: switching one
+  // workspace, and scrolling the strip by one viewport. The overview reuses both so a swipe covers the same distance
+  // whether the previews are up or not.
+  inline constexpr double kSwipeWorkspacePx = 300.0;
+  inline constexpr double kSwipeViewportPx = 1200.0;
+
   // Sliding-window swipe tracker. Accumulates deltas since the gesture start,
   // estimates velocity over recent history only, and projects where the movement would coast to a
   // stop under touchpad-style exponential deceleration.

@@ -1112,8 +1112,10 @@ namespace umbriel {
       }
     }
 
+    // The axis is not going to the filmstrip: a modifier chord, a panel underneath, or no overview at all. Whatever
+    // gesture was in flight has lost its input stream.
     if (Overview* overview = m_server->overview()) {
-      overview->endNavigation(true, event->time_msec, true);
+      overview->cancelNavigation();
     }
     // Arm only when a bind matches this exact direction and modifier set.
     bool armed = false;

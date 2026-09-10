@@ -63,18 +63,39 @@ UMBRIEL_TEST(okLabConversionRoundTripsSrgbColor) {
   checkColorNear(roundTrip, source);
 }
 
-UMBRIEL_TEST(overviewReleaseSpringPreservesPositionAndVelocity) {
+UMBRIEL_TEST(springSettleStartsFromTheReleaseVelocityAndStops) {
   const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
-  for (const double target : {0.0, 1.0}) {
-    double velocity = 0;
-    CHECK_EQ(umbriel::solveSpringPhysics(0.3, target, 0.5, 0.0, spring, &velocity), 0.3);
-    CHECK_EQ(velocity, 0.5);
-    const double early = umbriel::solveSpringPhysics(0.3, target, 0.5, 0.016, spring, &velocity);
-    CHECK(std::abs(early - 0.3) < 0.1);
-    CHECK(std::abs(early - target) > 0.1);
-    CHECK_EQ(umbriel::solveSpringPhysics(0.3, target, 0.5, 1.0, spring, &velocity), target);
-    CHECK_EQ(velocity, 0.0);
-  }
+  // Settling back onto the row it came from still has to move: the release velocity carries it past the target
+  // before the spring pulls it back.
+  umbriel::AnimatedValue value;
+  value.snap(0.3);
+  value.settleSpring(0.3, spring, 4.0);
+  CHECK(value.tick(1000));
+  CHECK_EQ(value.current(), 0.3);
+  CHECK(value.animating());
+  CHECK(value.tick(1016));
+  CHECK(value.current() > 0.3);
+  CHECK(value.tick(2000));
+  CHECK_EQ(value.current(), 0.3);
+  CHECK(!value.animating());
+
+  // A settle with no velocity left still lands on the new row rather than snapping to it.
+  value.settleSpring(1.0, spring, 0.0);
+  CHECK(value.tick(2000));
+  CHECK_EQ(value.current(), 0.3);
+  CHECK(value.tick(2016));
+  CHECK(value.current() > 0.3);
+  CHECK(value.current() < 1.0);
+  CHECK(value.tick(3000));
+  CHECK_EQ(value.current(), 1.0);
+  CHECK(!value.animating());
+
+  // Renumbering the rows underneath a running settle moves the whole motion, not just the target.
+  value.settleSpring(2.0, spring, 0.0);
+  CHECK(value.tick(3000));
+  value.translate(-1.0);
+  CHECK_EQ(value.target(), 1.0);
+  CHECK_EQ(value.current(), 0.0);
 }
 
 UMBRIEL_TEST(animatedColorRefreshesCachedEndpointsWhenRetargeted) {

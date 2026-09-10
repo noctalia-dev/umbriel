@@ -21,6 +21,7 @@ namespace umbriel {
     PointerHover, // follows_mouse enter
     Grab,         // Mod+drag / Mod+resize start
     DragDrop,     // tile/float drag finished
+    Gesture,      // touchpad pan finished: the gesture already placed the strip
     Startup,      // map, setFloating, refocus fallback
     XdgActivation,
     ForeignActivation,

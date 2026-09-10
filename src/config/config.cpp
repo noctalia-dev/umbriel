@@ -1015,12 +1015,16 @@ namespace umbriel {
           configStore().addWatchPath(std::move(path));
         }
       };
-      const auto readCurve = [&](Section& section, std::string_view context, AnimationCurve& target) {
-        if (const toml::node* node = section.take("curve")) {
+      const auto readCurveKey = [&](Section& section, std::string_view key, std::string_view context,
+                                    AnimationCurve& target) {
+        if (const toml::node* node = section.take(key)) {
           if (auto curve = readCurveNode(node, context, animation.beziers, animation.springs)) {
             target = *curve;
           }
         }
+      };
+      const auto readCurve = [&](Section& section, std::string_view context, AnimationCurve& target) {
+        readCurveKey(section, "curve", context, target);
       };
       const auto readStyle = [](Section& section, std::string& target,
                                 std::initializer_list<std::string_view> allowed) {
@@ -1069,6 +1073,9 @@ namespace umbriel {
         section.boolean("enabled", animation.overview.enabled)
             .integer("duration_ms", 1, 10000, animation.overview.durationMs);
         readCurve(section, "animation.overview", animation.overview.curve);
+        readCurveKey(
+            section, "workspace_curve", "animation.overview.workspace_curve", animation.overview.workspaceCurve
+        );
       });
       s.sub("scratchpad", [&](Section& section) {
         readShader(section, animation.scratchpad);

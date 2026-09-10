@@ -97,11 +97,14 @@ namespace umbriel {
     bool handleButton(uint32_t button, bool pressed, double lx, double ly);
     void handleMotion(double lx, double ly);
     bool handleAxisNotch(bool vertical, double direction, double lx, double ly);
-    // Both swipe and axis input use content-direction deltas and the same
-    // navigation lifetime. Axis samples are combined at the pointer frame.
-    void beginNavigation(wlr_pointer* pointer, bool axisInput, double lx, double ly);
+    // Swipe and finger-scroll input both arrive as content-direction deltas and share one navigation lifetime; the
+    // source only selects the travel distances and decides who may end the gesture. Scroll samples are combined at
+    // the pointer frame.
+    void beginNavigation(wlr_pointer* pointer, NavigationSource source, double lx, double ly);
     void updateNavigation(double dx, double dy, uint32_t timeMsec);
-    void endNavigation(bool cancelled, uint32_t timeMsec, bool axisInput);
+    void endNavigation(bool cancelled, uint32_t timeMsec, NavigationSource source);
+    // Drop an unfinished gesture whatever its source, leaving the filmstrip to settle on the active workspace.
+    void cancelNavigation();
     void handleTouchpadAxis(wlr_pointer* pointer, bool vertical, double delta, uint32_t timeMsec, double lx, double ly);
     void handleTouchpadFrame();
     bool handleFallbackKey(uint32_t keysym);
@@ -117,23 +120,23 @@ namespace umbriel {
   private:
     static void onNavigationDeviceDestroyed(wl_listener* listener, void* data);
     [[nodiscard]] Workspace* navigationWorkspace() const;
-    void cancelNavigation();
     OverviewNavigation m_navigation;
     Output* m_navigationOutput = nullptr;
     Workspace* m_navigationWorkspace = nullptr;
     wlr_pointer* m_navigationPointer = nullptr;
     wl_listener m_navigationDeviceDestroy{};
-    bool m_navigationAxisInput = false;
+    NavigationSource m_navigationSource = NavigationSource::Scroll;
     bool m_navigationHorizontalWorkspaces = false;
     bool m_navigationStarted = false;
     double m_navigationStart = 0;
     double m_navigationScale = 1;
     bool m_navigationCentered = false;
-    double m_axisDx = 0;
-    double m_axisDy = 0;
-    bool m_axisStopX = false;
-    bool m_axisStopY = false;
-    uint32_t m_axisTime = 0;
+    // Finger-scroll deltas accumulated since the last pointer frame, and whether that axis reported a stop.
+    double m_scrollDx = 0;
+    double m_scrollDy = 0;
+    bool m_scrollStopX = false;
+    bool m_scrollStopY = false;
+    uint32_t m_scrollTime = 0;
     struct Card;
     struct OutputState;
 
@@ -219,13 +222,10 @@ namespace umbriel {
       std::vector<WorkspaceBackground> workspaceBackgrounds;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;
-      double workspaceScroll = 0;
-      double workspaceFrom = 0;
-      double workspaceTo = 0;
+      // Filmstrip position in workspace rows: 1.5 sits halfway between rows 1 and 2. Wheel steps, keyboard moves and
+      // touchpad releases all animate this one value; a gesture in flight snaps it to follow the fingers.
+      AnimatedValue rowScroll;
       size_t activeWorkspaceIndex = 0;
-      bool workspaceSettling = false;
-      uint64_t workspaceSettleStart = 0;
-      double workspaceReleaseVelocity = 0;
     };
 
     // Workspace preview placement for one output at the current progress. Previews
@@ -256,7 +256,10 @@ namespace umbriel {
     static void onDesktopMirrorOutputSample(wl_listener* listener, void* data);
     static void onDesktopMirrorFrameDone(wl_listener* listener, void* data);
 
+    // Preview scale for the current open or close progress, and the scale the previews rest at once open. Gesture
+    // travel maps onto the settled layout, so it must not depend on how far the zoom has come.
     [[nodiscard]] double zoom() const;
+    [[nodiscard]] static double settledZoom();
     [[nodiscard]] static bool
     previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
@@ -301,7 +304,9 @@ namespace umbriel {
     void updateShortcutAssignments();
 
     void startAnimation(double target, bool closing);
-    void startRowAnimation();
+    // Move one output's filmstrip onto row `target`. `releaseVelocity` is the speed a touchpad gesture left behind,
+    // in rows per second, and is zero for every other caller.
+    void animateRow(OutputState& state, double target, double releaseVelocity = 0);
     void finishAnimation();
     void beginClose(View* focus);
     void teardown();
@@ -337,7 +342,6 @@ namespace umbriel {
     double m_targetProgress = 0;
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
-    AnimatedValue m_rowAnim;
     View* m_pendingFocus = nullptr;
     bool m_cardPresentationDirty = false;
     bool m_gestureOpenedHere = false;

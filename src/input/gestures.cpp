@@ -19,15 +19,12 @@ namespace umbriel {
   namespace {
     // Tuning constants: file-local, no config keys.
     constexpr double kAxisLockPx = 16.0;
-    constexpr double kSwitchDistancePx = 300.0;
     constexpr double kCommitProgress = 0.35;
     constexpr double kCommitVelocityPxMs = 0.9;
     constexpr double kOverscrollCompress = 0.15;
     constexpr double kOverscrollMaxWs = 0.08;
     // Finger travel for a full overview open or close.
     constexpr double kOverviewDistancePx = 300.0;
-    // Finger travel that scrolls the strip by one viewport width.
-    constexpr double kViewGestureMovementPx = 1200.0;
 
     int touchpadGestureDirection(wlr_pointer* pointer) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
@@ -162,7 +159,7 @@ namespace umbriel {
       break;
     case State::OverviewSelect:
       if (Overview* overview = m_server->overview()) {
-        overview->endNavigation(true, 0, false);
+        overview->endNavigation(true, 0, NavigationSource::Swipe);
       }
       m_state = State::Idle;
       break;
@@ -258,7 +255,7 @@ namespace umbriel {
       break;
     case State::OverviewSelect:
       if (Overview* overview = m_server->overview()) {
-        overview->endNavigation(true, 0, false);
+        overview->endNavigation(true, 0, NavigationSource::Swipe);
       }
       m_state = State::Idle;
       break;
@@ -288,7 +285,7 @@ namespace umbriel {
     }
     Overview* overview = m_server->overview();
     if (event->fingers == 4 && overview != nullptr) {
-      overview->endNavigation(true, event->time_msec, true);
+      overview->cancelNavigation();
       m_state = State::Overview;
       m_accumX = 0;
       m_accumY = 0;
@@ -302,8 +299,11 @@ namespace umbriel {
       m_naturalScrollDirection = touchpadGestureDirection(event->pointer);
       if (overview != nullptr && overview->active()) {
         const wlr_cursor* cursor = m_server->cursor()->wlr();
-        overview->beginNavigation(event->pointer, false, cursor->x, cursor->y);
+        overview->beginNavigation(event->pointer, NavigationSource::Swipe, cursor->x, cursor->y);
         m_state = State::OverviewSelect;
+        m_accumX = 0;
+        m_accumY = 0;
+        m_output = nullptr;
         return;
       }
       // Outside overview, axis lock chooses strip scrolling or workspace switching.
@@ -373,7 +373,7 @@ namespace umbriel {
           return;
         }
         const double scale =
-            static_cast<double>(ws->scrollViewportExtent()) / kViewGestureMovementPx * m_naturalScrollDirection;
+            static_cast<double>(ws->scrollViewportExtent()) / kSwipeViewportPx * m_naturalScrollDirection;
         if (!beginScroll(ws, scale, ScrollSource::Swipe)) {
           m_state = State::Idle;
         }
@@ -417,7 +417,7 @@ namespace umbriel {
       m_accumX += event->dx;
       m_accumY += event->dy;
       // Natural: swiping toward the negative axis direction moves to the next workspace.
-      double p = -(horizontal ? m_accumX : m_accumY) / kSwitchDistancePx * m_naturalScrollDirection;
+      double p = -(horizontal ? m_accumX : m_accumY) / kSwipeWorkspacePx * m_naturalScrollDirection;
       const double lo = m_hasPrev ? -1.0 : 0.0;
       const double hi = m_hasNext ? 1.0 : 0.0;
       if (p < lo) {
@@ -437,6 +437,10 @@ namespace umbriel {
     case State::OverviewSelect: {
       Overview* overview = m_server->overview();
       if (overview == nullptr || !overview->interactive()) {
+        // The overview started closing under the fingers; the rest of this swipe belongs to nothing.
+        if (overview != nullptr) {
+          overview->cancelNavigation();
+        }
         m_state = State::Idle;
         return;
       }
@@ -494,7 +498,7 @@ namespace umbriel {
       return;
     case State::OverviewSelect:
       if (Overview* overview = m_server->overview()) {
-        overview->endNavigation(event->cancelled, event->time_msec, false);
+        overview->endNavigation(event->cancelled, event->time_msec, NavigationSource::Swipe);
       }
       m_state = State::Idle;
       return;

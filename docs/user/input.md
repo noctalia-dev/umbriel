@@ -165,7 +165,9 @@ four-finger overview open and close gesture keeps its fixed direction.
 including custom curves. Both remain unset by default, which uses each
 touchpad's libinput default profile and speed. Removing either setting on reload
 restores the corresponding default. `sensitivity` alone adjusts pointer speed
-under the device's default profile.
+under the device's default profile. Both also change how far three-finger
+gestures travel, because libinput accelerates gesture movement the same way it
+accelerates the pointer. Two-finger scrolling is not accelerated.
 
 `click_method` decides how a physical press becomes a button. `button_areas`
 splits the bottom of the pad into left, middle, and right zones, while
@@ -181,9 +183,9 @@ focused window, so `2.0` scrolls twice as fast and `0.5` half as fast. It
 remains unset by default (identity, `1.0`) and takes the next scroll event on
 reload. It applies only to the continuous scroll delta: discrete notches,
 overview wheel stepping, and three-finger-swipe strip travel keep their own
-counting semantics. Inside overview, both two- and three-finger navigation use
-[`overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical`](workspaces-overview.md)
-instead.
+counting semantics. Inside the overview, both two- and three-finger navigation
+use [`overview.scroll_factor_horizontal` and
+`overview.scroll_factor_vertical`](workspaces-overview.md) instead.
 
 Set `disable_on_external_mouse = true` to disable the touchpad while an
 external mouse is connected. Libinput re-enables it automatically once the
