@@ -122,6 +122,11 @@ focused window only when it belongs to the selected scratchpad. Otherwise its
 move branch takes the invoking output's focused workspace window, even when a
 different scratchpad currently owns keyboard focus.
 
+A window and its dialogs move as one. Moving either of them into a scratchpad
+takes the whole family, restoring brings it back together to where the parent
+came from, and a dialog that opens while its parent sits in a scratchpad joins
+it there.
+
 Toggling a hidden scratchpad shows the whole scratchpad on the invoking output.
 Toggling a scratchpad that is visible on another output summons it to the
 invoking output without hiding it first. Toggling it again on the same output

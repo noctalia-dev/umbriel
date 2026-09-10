@@ -34,6 +34,25 @@ namespace umbriel {
     bool sameBox(const wlr_box& first, const wlr_box& second) {
       return first.x == second.x && first.y == second.y && first.width == second.width && first.height == second.height;
     }
+
+    // The window the toplevel names as its parent, whatever workspace or pad either is on.
+    View* parentOf(const View& view) {
+      const wlr_xdg_toplevel* parent = view.toplevel()->parent;
+      return parent != nullptr ? View::fromSurface(parent->base->surface) : nullptr;
+    }
+
+    // `root` and its mapped dialogs, each parent ahead of its children.
+    std::vector<View*> familyOf(const Server& server, View* root) {
+      std::vector<View*> family{root};
+      for (size_t index = 0; index < family.size(); ++index) {
+        for (const auto& view : server.views()) {
+          if (view->mapped() && view->transientParent() == family[index]) {
+            family.push_back(view.get());
+          }
+        }
+      }
+      return family;
+    }
   } // namespace
 
   ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root, wlr_scene_tree* shadowRoot)
@@ -159,7 +178,16 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::moveToScratchpad(View* view, std::string_view name, Output* invokingOutput) {
-    return admit(view, name, invokingOutput, Admission::Interactive, {});
+    if (view == nullptr) {
+      return false;
+    }
+    // A window and its dialogs move as one, whichever of them the action was aimed at.
+    const std::vector<View*> family = familyOf(*m_server, view->transientRoot());
+    bool admitted = false;
+    for (View* member : family) {
+      admitted = admit(member, name, invokingOutput, Admission::Interactive, {}) || admitted;
+    }
+    return admitted;
   }
 
   bool ScratchpadManager::assignByWindowRule(
@@ -274,7 +302,11 @@ namespace umbriel {
 
     const wlr_box targetArea = usableArea(*m_server, output);
     const auto& scratchpadConfig = config().animation.scratchpad;
-    if (scratchpadConfig.fullscreen) {
+    // A dialog following its parent into the pad keeps its own size and sits over the parent.
+    const View* parent = parentOf(*view);
+    if (parent != nullptr && contains(parent)) {
+      view->setPosition(view->sceneTree()->node.x, view->sceneTree()->node.y);
+    } else if (scratchpadConfig.fullscreen) {
       if (!view->toplevel()->scheduled.fullscreen && !view->toplevel()->current.fullscreen) {
         view->toggleFullscreen();
       }
@@ -911,10 +943,28 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::restoreView(View* view, Output* fallback, bool focus) {
+    if (view == nullptr || !contains(view)) {
+      return false;
+    }
+    // The family leaves together, to where its root goes back.
+    const std::vector<View*> family = familyOf(*m_server, view->transientRoot());
+    Workspace* workspace = nullptr;
+    for (View* member : family) {
+      if (contains(member)) {
+        workspace = restoreEntry(member, fallback, member == family.front() ? nullptr : workspace);
+      }
+    }
+    if (focus) {
+      m_server->focusView(family.front());
+    }
+    return true;
+  }
+
+  Workspace* ScratchpadManager::restoreEntry(View* view, Output* fallback, Workspace* into) {
     const auto iterator =
         std::ranges::find_if(m_entries, [view](const Entry& candidate) { return candidate.view == view; });
     if (iterator == m_entries.end()) {
-      return false;
+      return nullptr;
     }
     Entry entry = std::move(*iterator);
     Scratchpad* scratchpad = findScratchpad(entry.scratchpad);
@@ -934,8 +984,10 @@ namespace umbriel {
     if (restoreOutput == nullptr) {
       restoreOutput = scratchpadOutput;
     }
-    Workspace* workspace = nullptr;
-    if (restoreOutput != nullptr && restoreOutput->workspaceGroup() != nullptr) {
+    Workspace* workspace = into;
+    if (workspace != nullptr && workspace->group() != nullptr && workspace->group()->output() != nullptr) {
+      restoreOutput = workspace->group()->output();
+    } else if (restoreOutput != nullptr && restoreOutput->workspaceGroup() != nullptr) {
       WorkspaceGroup* group = restoreOutput->workspaceGroup();
       if (!entry.returnWorkspace.empty()) {
         workspace = entry.returnWorkspaceNamed ? group->workspaceNamed(entry.returnWorkspace)
@@ -976,10 +1028,7 @@ namespace umbriel {
       scratchpadOutput->updateVrr();
       scratchpadOutput->updateHdr();
     }
-    if (focus) {
-      m_server->focusView(view);
-    }
-    return true;
+    return workspace;
   }
 
   bool ScratchpadManager::restoreFocused(std::string_view name) {

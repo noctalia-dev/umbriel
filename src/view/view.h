@@ -57,6 +57,8 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] View* transientParent() const;
+    // The top of this window's transient chain: itself when it is no dialog.
+    [[nodiscard]] View* transientRoot();
     // A modal dialog takes its parent's input while it is open: one marked so through xdg-dialog-v1 (GTK 4, Qt 6),
     // or one parented across processes, which is a portal dialog whose toolkit may predate the protocol.
     [[nodiscard]] bool modalDialog() const;
@@ -441,6 +443,8 @@ namespace umbriel {
     void enterForeignOutput(Output* output);
     void leaveForeignOutput();
     void applyWindowRules(const ResolvedWindowRule& initiallyApplied);
+    // The scratchpad this window opens in: the rule's, else its parent's when the parent sits in one.
+    [[nodiscard]] std::optional<std::string> openingScratchpad(const ResolvedWindowRule& rule) const;
     // The workspace a dialog opens on: its parent's, unless a rule sends it elsewhere. Null for anything else.
     [[nodiscard]] Workspace* parentWorkspace(const ResolvedWindowRule& rule) const;
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule);

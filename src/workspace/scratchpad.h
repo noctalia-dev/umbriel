@@ -116,7 +116,10 @@ namespace umbriel {
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true
     );
     void remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea);
+    // Restore `view` and the dialogs it has with it.
     bool restoreView(View* view, Output* fallback, bool focus);
+    // Restore one entry to `into`, or to its saved location when that is null. Returns where it went.
+    Workspace* restoreEntry(View* view, Output* fallback, Workspace* into);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
     wlr_scene_rect* dimRectFor(Output* output);

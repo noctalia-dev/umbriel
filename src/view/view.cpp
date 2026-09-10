@@ -382,6 +382,25 @@ namespace umbriel {
     }
   }
 
+  std::optional<std::string> View::openingScratchpad(const ResolvedWindowRule& rule) const {
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    if (scratchpad == nullptr) {
+      return std::nullopt;
+    }
+    if (rule.defaultScratchpad && scratchpad->hasScratchpad(*rule.defaultScratchpad)) {
+      return rule.defaultScratchpad;
+    }
+    // A dialog opens where its parent is, in the parent's scratchpad too.
+    if (m_toplevel->parent != nullptr) {
+      if (const View* parent = fromSurface(m_toplevel->parent->base->surface); parent != nullptr) {
+        if (const std::string_view name = scratchpad->nameFor(parent); !name.empty()) {
+          return std::string(name);
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
   Workspace* View::parentWorkspace(const ResolvedWindowRule& rule) const {
     if (rule.defaultWorkspace || rule.defaultOutput || m_toplevel->parent == nullptr) {
       return nullptr;
@@ -453,20 +472,27 @@ namespace umbriel {
     m_server->updateIdleInhibit();
   }
 
-  void View::raiseToTop() {
+  void View::raiseToTop() { transientRoot()->raiseTransientTree(); }
+
+  View* View::transientRoot() {
     View* root = this;
     while (View* parent = root->transientParent()) {
       root = parent;
     }
-    root->raiseTransientTree();
+    return root;
   }
 
   View* View::transientParent() const {
-    if (!m_mapped || m_workspace == nullptr || m_toplevel->parent == nullptr) {
+    if (!m_mapped || (m_workspace == nullptr && !m_inScratchpad) || m_toplevel->parent == nullptr) {
       return nullptr;
     }
+    // A family moves into and out of a scratchpad together, so two members off any workspace share the same pad.
     View* parent = fromSurface(m_toplevel->parent->base->surface);
-    if (parent == this || parent == nullptr || !parent->m_mapped || parent->m_workspace != m_workspace) {
+    if (parent == this
+        || parent == nullptr
+        || !parent->m_mapped
+        || parent->m_workspace != m_workspace
+        || parent->m_inScratchpad != m_inScratchpad) {
       return nullptr;
     }
     return parent;
@@ -2349,15 +2375,14 @@ namespace umbriel {
       setOnActiveWorkspace(true);
     }
     bool assignedScratchpad = false;
-    if (rule.defaultScratchpad) {
-      if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-          scratchpad != nullptr && scratchpad->hasScratchpad(*rule.defaultScratchpad)) {
+    if (const std::optional<std::string> pad = openingScratchpad(rule)) {
+      if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
         Workspace* restoreWorkspace = m_workspace;
         Output* restoreOutput = restoreWorkspace != nullptr && restoreWorkspace->group() != nullptr
             ? restoreWorkspace->group()->output()
             : currentOutput();
         assignedScratchpad = scratchpad->assignByWindowRule(
-            this, *rule.defaultScratchpad, restoreOutput,
+            this, *pad, restoreOutput,
             ScratchpadManager::WindowRuleAdmission{
                 .restoreOutput = restoreOutput,
                 .restoreWorkspace = restoreWorkspace,
@@ -2711,9 +2736,8 @@ namespace umbriel {
           m_server->uptimeMs()
       );
       ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
-      const bool openingInScratchpad = rule.defaultScratchpad
-          && scratchpadManager != nullptr
-          && scratchpadManager->hasScratchpad(*rule.defaultScratchpad);
+      const std::optional<std::string> pad = openingScratchpad(rule);
+      const bool openingInScratchpad = pad.has_value();
       const auto& scratchpadConfig = config().animation.scratchpad;
       const bool wantTiled = !openingInScratchpad
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled(m_toplevel, openingParented()));
@@ -2741,7 +2765,7 @@ namespace umbriel {
       }
       Output* targetOutput = targetGroup != nullptr ? targetGroup->output() : preferred;
       if (openingInScratchpad) {
-        targetOutput = scratchpadManager->presentationOutput(*rule.defaultScratchpad, targetOutput);
+        targetOutput = scratchpadManager->presentationOutput(*pad, targetOutput);
       }
 
       wlr_xdg_toplevel_set_tiled(
