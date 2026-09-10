@@ -382,11 +382,21 @@ namespace umbriel {
     }
   }
 
+  Workspace* View::parentWorkspace(const ResolvedWindowRule& rule) const {
+    if (rule.defaultWorkspace || rule.defaultOutput || m_toplevel->parent == nullptr) {
+      return nullptr;
+    }
+    const View* parent = fromSurface(m_toplevel->parent->base->surface);
+    return parent != nullptr ? parent->m_workspace : nullptr;
+  }
+
   bool View::attachToAvailableWorkspace(const ResolvedWindowRule& rule) {
-    Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
-    WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
-    WorkspaceGroup* targetGroup = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
-    Workspace* target = windowRuleWorkspace(targetGroup, rule);
+    Workspace* target = parentWorkspace(rule);
+    if (target == nullptr) {
+      Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+      WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
+      target = windowRuleWorkspace(windowRuleWorkspaceGroup(*m_server, rule, preferredGroup), rule);
+    }
     if (target == nullptr) {
       return false;
     }
@@ -2721,7 +2731,7 @@ namespace umbriel {
 
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.
-      Workspace* target = m_workspace;
+      Workspace* target = m_workspace != nullptr ? m_workspace : parentWorkspace(rule);
       Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
       WorkspaceGroup* targetGroup = target != nullptr
           ? target->group()

@@ -52,15 +52,11 @@ enabled = false
 [[window_rule]]
 match.title = "^transient-unrelated$"
 default_workspace = 2
-
-[[window_rule]]
-match.title = "^transient-child$"
-default_workspace = 1
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 # The parent opens on workspace 1 and the application's other window on workspace 2, which becomes active. The dialog
-# maps onto the active workspace, so a rule keeps it with its parent; then start from workspace 1 with it focused.
+# still opens with its parent, not on the active workspace; then start from workspace 1 with it focused.
 TRANSIENT_SUITE=1 TRANSIENT_MODAL=1 "$CLIENT" transient-child 400 300 > "$CLIENT_LOG" 2>&1 &
 wait_for_window_count 3
 wait_for_field transient-unrelated workspace "$(workspace_id 2)"

@@ -344,20 +344,20 @@ fullscreen.
 
 Parented XDG dialogs are stacked with their ancestor chain. Raising any member
 raises the family while keeping each dialog above its parent, including when an
-ancestor is floating, pinned, or fullscreen. A dialog without a
-`default_position` rule opens centered over the visible part of its parent,
-kept inside the usable area: over the output for a fullscreen parent and over
-the usable area for one maximized to edges. A parent scrolled out of view leaves
-it centered on the area. A modal dialog is attached to its parent: it stays
-centered over the parent as either one moves or resizes, dragging it drags the
-parent, and while it is open the parent is shaded and gets neither focus nor
-pointer input, both go to the dialog. A blocked window can still be dragged
-directly, as if with Mod held. A dialog is modal when it says so through
-xdg-dialog-v1, as GTK 4 and Qt 6 do; such a dialog also blocks every other
-window its application had open on the workspace before it, the way the toolkit
-treats it. A dialog another process attached through xdg-foreign, as portals do
-with their file chooser, is modal too, and blocks only its parent and the
-dialogs the parent had open.
+ancestor is floating, pinned, or fullscreen. A dialog opens on its parent's
+workspace unless a rule sends it elsewhere, and without a `default_position`
+rule it opens centered over the visible part of the parent, kept inside the
+usable area: over the output for a fullscreen parent and over the usable area
+for one maximized to edges. A parent scrolled out of view leaves it centered on
+the area. A modal dialog is attached to its parent: it stays centered over the
+parent as either one moves or resizes, dragging it drags the parent, and while
+it is open the parent is shaded and gets neither focus nor pointer input, both
+go to the dialog. A blocked window can still be dragged directly, as if with
+Mod held. A dialog is modal when it says so through xdg-dialog-v1, as GTK 4 and
+Qt 6 do; such a dialog also blocks every other window its application had open
+on the workspace before it, the way the toolkit treats it. A dialog another
+process attached through xdg-foreign, as portals do with their file chooser, is
+modal too, and blocks only its parent and the dialogs the parent had open.
 
 ### Maximize and fullscreen
 

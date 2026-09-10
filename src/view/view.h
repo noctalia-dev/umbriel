@@ -441,6 +441,8 @@ namespace umbriel {
     void enterForeignOutput(Output* output);
     void leaveForeignOutput();
     void applyWindowRules(const ResolvedWindowRule& initiallyApplied);
+    // The workspace a dialog opens on: its parent's, unless a rule sends it elsewhere. Null for anything else.
+    [[nodiscard]] Workspace* parentWorkspace(const ResolvedWindowRule& rule) const;
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule);
     // `resolved` lets a caller that already resolved the rules pass them in. Rule resolution runs every regex in the
     // config, and applyDynamicRules is reached on focus changes and on every title change, so resolving twice per pass
