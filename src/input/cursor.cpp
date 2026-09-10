@@ -501,9 +501,7 @@ namespace umbriel {
     }
     // A modal dialog has no place of its own: dragging it drags the window it is attached to, tiled or floating, and
     // the dialog stays centered on it.
-    while (View* parent = view->attachedParent()) {
-      view = parent;
-    }
+    view = view->attachedRoot();
     if (!isPassthrough()) {
       resetMode();
     }

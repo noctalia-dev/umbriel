@@ -353,7 +353,8 @@ the area. A modal dialog is attached to its parent: it stays centered over the
 parent as either one moves or resizes, dragging it drags the parent, and while
 it is open the parent is shaded and gets neither focus nor pointer input, both
 go to the dialog. A blocked window can still be dragged directly, as if with
-Mod held. A dialog is modal when it says so through xdg-dialog-v1, as GTK 4 and
+Mod held, and `window-toggle-floating` with the dialog focused toggles that
+window. A dialog is modal when it says so through xdg-dialog-v1, as GTK 4 and
 Qt 6 do; such a dialog also blocks every other window its application had open
 on the workspace before it, the way the toolkit treats it. A dialog another
 process attached through xdg-foreign, as portals do with their file chooser, is

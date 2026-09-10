@@ -555,6 +555,14 @@ namespace umbriel {
 
   View* View::attachedParent() const { return modalDialog() ? transientParent() : nullptr; }
 
+  View* View::attachedRoot() {
+    View* root = this;
+    while (View* parent = root->attachedParent()) {
+      root = parent;
+    }
+    return root;
+  }
+
   void View::syncTransientSceneParent() {
     if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
       return;

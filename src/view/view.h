@@ -67,6 +67,9 @@ namespace umbriel {
     [[nodiscard]] View* blockingDialog() const;
     // The window this modal dialog is attached to, or null.
     [[nodiscard]] View* attachedParent() const;
+    // The window at the bottom of this modal dialog's chain, which is where moves and layout changes aimed at the
+    // dialog belong. Itself for anything else.
+    [[nodiscard]] View* attachedRoot();
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
     // The pid of the application process, or -1 when it is unknown. XWayland views all share the xwayland-satellite
     // connection, so their client pid identifies the satellite rather than the application and is never reported.

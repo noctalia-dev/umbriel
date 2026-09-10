@@ -1314,7 +1314,9 @@ namespace umbriel {
     if (m_focusedView == nullptr || !m_focusedView->mapped()) {
       return false;
     }
-    m_focusedView->toggleFloating();
+    // A modal dialog holds the focus while it is open, but it has no place in the layout: the toggle is about the
+    // window it is attached to.
+    m_focusedView->attachedRoot()->toggleFloating();
     return true;
   }
 
