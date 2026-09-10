@@ -25,6 +25,22 @@ yay -S umbriel-git
 sudo dnf install umbriel-nightly
 ```
 
+## openSUSE
+
+[home:neifua:Noctalia](https://build.opensuse.org/project/show/home:neifua:Noctalia) repo provides [umbriel-git](https://build.opensuse.org/package/show/home:neifua:Noctalia/umbriel-git) on OBS.
+
+#### Tumbleweed
+```sh
+sudo zypper addrepo --refresh --name Noctalia https://download.opensuse.org/repositories/home:neifua:Noctalia/openSUSE_Tumbleweed/home:neifua:Noctalia.repo
+sudo zypper refresh && sudo zypper install umbriel-git
+```
+
+#### Slowroll
+```sh
+sudo zypper addrepo --refresh --name Noctalia https://download.opensuse.org/repositories/home:neifua:Noctalia/openSUSE_Slowroll/home:neifua:Noctalia.repo
+sudo zypper refresh && sudo zypper install umbriel-git
+```
+
 ## Debian and Ubuntu
 
 The NickH APT repository provides Umbriel for Debian-based distributions.
