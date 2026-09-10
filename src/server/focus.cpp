@@ -121,8 +121,8 @@ namespace umbriel {
       m_server.cursor()->invalidateHoverFocus();
     }
 
-    // Derive reveal policy from the focus reason.
-    if (workspace == nullptr || !view->tiled()) {
+    // Derive reveal policy from the focus reason. A modal dialog reveals the tile it is attached to.
+    if (workspace == nullptr || !view->attachedRoot()->tiled()) {
       return;
     }
     switch (reason) {

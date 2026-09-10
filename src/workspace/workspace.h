@@ -183,6 +183,8 @@ namespace umbriel {
     // Pull the scroll offset back into [0, maxScroll]. Only for removals: a
     // touchpad swipe overscrolls on purpose.
     void clampScrollToRange();
+    // The focused window's place in the layout: a modal dialog holds the focus for the window it is attached to.
+    [[nodiscard]] View* layoutFocus() const;
     [[nodiscard]] View* focusAlongStrip(int direction) const;
     [[nodiscard]] View* focusWithinLane(int direction) const;
     // Directional focus lands on the most recently focused window of the group

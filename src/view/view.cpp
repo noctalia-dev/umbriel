@@ -1649,10 +1649,6 @@ namespace umbriel {
     setPosition(origin.x, origin.y);
   }
 
-  FloatingPoint View::centeredOver(const wlr_box& box, int width, int height) const {
-    return centeredOverShown(box, floatingUsableArea(), width, height);
-  }
-
   void View::retargetModalShade(bool animate) {
     const double target = m_mapped && blockingDialog() != nullptr ? kModalParentDim : 0.0;
     const auto& animation = config().animation;
@@ -2194,7 +2190,7 @@ namespace umbriel {
     // An attached dialog grows around its center, from the same committed size the presentation centers it with, so
     // the pointer motion and the client's commits agree on where it sits.
     if (const View* parent = attachedParent()) {
-      const FloatingPoint origin = centeredOver(parent->m_presentedBox, geo.width, geo.height);
+      const FloatingPoint origin = centeredOrigin(parent->m_presentedBox, geo.width, geo.height);
       setPosition(origin.x, origin.y);
       return;
     }
@@ -2287,10 +2283,11 @@ namespace umbriel {
 
   void View::applyPresentation(const wlr_box& target) {
     wlr_box box = target;
-    // An attached dialog is presented centered on its parent at whatever size it has, so growing keeps its center.
+    // An attached dialog is presented centered on its parent at whatever size it has, so growing keeps its center. It
+    // is centered on the parent itself, not on what shows of it: a strip scrolling the parent away takes it along.
     if (const View* parent = !m_tiled && !m_toplevel->current.fullscreen ? attachedParent() : nullptr;
         parent != nullptr) {
-      const FloatingPoint origin = centeredOver(parent->m_presentedBox, presentedWidth(box), presentedHeight(box));
+      const FloatingPoint origin = centeredOrigin(parent->m_presentedBox, presentedWidth(box), presentedHeight(box));
       if (origin.x != box.x || origin.y != box.y) {
         setPosition(origin.x, origin.y);
         box.x = origin.x;

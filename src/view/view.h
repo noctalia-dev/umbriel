@@ -427,9 +427,6 @@ namespace umbriel {
     [[nodiscard]] wlr_box fullscreenArea() const;
     // Whether `dialog`, an open modal dialog, takes this window's input.
     [[nodiscard]] bool blockedBy(const View& dialog) const;
-    // Where a dialog of `width` by `height` sits centered on what shows of its parent's `box`, inside the usable area
-    // when it fits.
-    [[nodiscard]] FloatingPoint centeredOver(const wlr_box& box, int width, int height) const;
     // Modal dialogs stay centered over their parent as it moves and resizes.
     void centerModalDialogs();
     // The parent of an open modal dialog is shaded; the shade fades on the dim_unfocused timeline.
