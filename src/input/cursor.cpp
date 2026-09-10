@@ -960,6 +960,10 @@ namespace umbriel {
 
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
       if (auto* grab = std::get_if<MoveGrab>(&m_grab)) {
+        wlr_seat* seat = m_server->seat()->wlr();
+        if (seat->pointer_state.button_count > 0) {
+          wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
+        }
         if (grab->pending) {
           resetMode();
         } else {

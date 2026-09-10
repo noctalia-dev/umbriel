@@ -36,6 +36,7 @@ namespace {
     int height = 480;
     // A configure asked for a size the current buffer does not have.
     bool resizePending = true;
+    bool requestMove = false;
   };
 
   const char* keyStateName(uint32_t value) { return value == WL_KEYBOARD_KEY_STATE_PRESSED ? "pressed" : "released"; }
@@ -84,8 +85,12 @@ namespace {
   // checks parse.
   void pointerMotion(void*, wl_pointer*, uint32_t, wl_fixed_t, wl_fixed_t) {}
 
-  void pointerButton(void*, wl_pointer*, uint32_t, uint32_t, uint32_t button, uint32_t buttonState) {
+  void pointerButton(void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t buttonState) {
+    auto& state = *static_cast<State*>(data);
     std::println("pointer-button code={} state={}", button, buttonStateName(buttonState));
+    if (state.requestMove && button == 272 && buttonState == WL_POINTER_BUTTON_STATE_PRESSED) {
+      xdg_toplevel_move(state.toplevel, state.seat, serial);
+    }
   }
 
   void pointerAxis(void*, wl_pointer*, uint32_t, uint32_t, wl_fixed_t) {}
@@ -244,6 +249,7 @@ int main(int argc, char** argv) {
   const char* title = argc > 1 ? argv[1] : "seat-log-client";
 
   State state;
+  state.requestMove = argc > 2 && std::strcmp(argv[2], "--request-move") == 0;
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
     std::println(stderr, "seat-log-client: cannot connect to a Wayland display");
