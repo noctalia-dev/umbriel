@@ -36,6 +36,9 @@ namespace umbriel {
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
     [[nodiscard]] bool contains(const View* view) const;
+    // The trees scratchpad windows and their shadows live in while they are not out on a drag.
+    [[nodiscard]] wlr_scene_tree* sceneRoot() const { return m_root; }
+    [[nodiscard]] wlr_scene_tree* shadowRoot() const { return m_shadowRoot; }
     [[nodiscard]] Output* outputFor(const View* view) const;
     [[nodiscard]] std::string_view nameFor(const View* view) const;
     [[nodiscard]] bool hasScratchpad(std::string_view name) const;

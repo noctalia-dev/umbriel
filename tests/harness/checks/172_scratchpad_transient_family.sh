@@ -74,25 +74,26 @@ if [[ -z $handle ]]; then
   exit 1
 fi
 
-# The action targets the focused dialog, and takes the parent along; the unrelated tile stays and gets the focus, as
-# after any move into a scratchpad.
+# The action targets the focused dialog, and takes the parent along into the still hidden pad; the unrelated tile
+# stays and gets the focus, as after any move into a scratchpad. Pad windows report seat activation, not the
+# per-workspace focus flag.
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 wait_for_field transient-parent scratchpad default
 wait_for_field transient-child scratchpad default
 wait_for_field transient-unrelated scratchpad ""
-wait_for_field transient-unrelated focused true
+wait_for_field transient-unrelated active true
 wait_for_centered transient-child transient-parent
 
 # Showing the pad focuses its parent, which hands the focus to the dialog over it.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
-"$UMBRIEL" msg scratchpad-toggle > /dev/null
-wait_for_field transient-child focused true
+wait_for_field transient-child active true
+wait_for_field transient-unrelated active false
 
 # A dialog opening under the scratchpad parent joins the pad.
 TRANSIENT_FOREIGN_HANDLE=$handle "$CLIENT" foreign-child 300 200 > "$DIALOG_LOG" 2>&1 &
 wait_for_window_count 4
 wait_for_field foreign-child scratchpad default
-wait_for_field foreign-child focused true
+wait_for_field foreign-child active true
 wait_for_centered foreign-child transient-parent
 
 # Restoring the focused dialog brings the family back: the parent to its tile, the dialogs over it.

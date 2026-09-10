@@ -564,16 +564,23 @@ namespace umbriel {
   }
 
   void View::syncTransientSceneParent() {
-    if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
+    // A scratchpad window's home is the pad's own trees, off any workspace.
+    const ScratchpadManager* scratchpad = m_inScratchpad ? m_server->scratchpadManager() : nullptr;
+    if (!m_mapped
+        || (m_workspace == nullptr && scratchpad == nullptr)
+        || m_pinned
+        || m_server->cursor()->isDraggingView(this)) {
       return;
     }
 
-    wlr_scene_tree* target = homeTree();
+    wlr_scene_tree* home = scratchpad != nullptr ? scratchpad->sceneRoot() : homeTree();
+    wlr_scene_tree* shadowHome = scratchpad != nullptr ? scratchpad->shadowRoot() : m_workspace->shadowLayer();
+    wlr_scene_tree* target = home;
     if (View* parent = transientParent()) {
       wlr_scene_tree* parentTree = parent->m_sceneTree->node.parent;
       Output* output = currentOutput();
       const bool parentElevated = parentTree == m_server->dragTree()
-          || parentTree == m_workspace->fullscreenTree()
+          || (m_workspace != nullptr && parentTree == m_workspace->fullscreenTree())
           || (output != nullptr && parentTree == output->pinnedRoot());
       if (parentElevated) {
         target = parentTree;
@@ -584,11 +591,7 @@ namespace umbriel {
       return;
     }
     wlr_scene_node_reparent(&m_sceneTree->node, target);
-    if (target != homeTree()) {
-      reparentShadow(target);
-    } else {
-      reparentShadow(m_workspace->shadowLayer());
-    }
+    reparentShadow(target != home ? target : shadowHome);
   }
 
   void View::raiseTransientTree() {
