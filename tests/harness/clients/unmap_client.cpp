@@ -14,7 +14,9 @@
 // title at all. With TRANSIENT_SUITE, TRANSIENT_PARENT_SIZE=<width>x<height> gives the parent its own size,
 // TRANSIENT_MODAL makes this toplevel a modal dialog of it, and EXPORT_PARENT exports the parent through xdg-foreign
 // and prints the handle. TRANSIENT_DIALOG_ON_STDIN gives this toplevel an xdg-dialog-v1 object, modal only with
-// TRANSIENT_MODAL, that `m` on stdin makes modal, `n` makes non-modal, and `x` destroys.
+// TRANSIENT_MODAL, that `m` on stdin makes modal, `n` makes non-modal, and `x` destroys. TRANSIENT_NESTED_ON_STDIN
+// maps a modal dialog titled transient-nested before this toplevel, without a parent until `p` on stdin sets this one
+// and prints "nested-parent-set" once the compositor has it.
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
 // so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to another
 // client's exported toplevel, the way a portal dialog is parented.
@@ -793,7 +795,8 @@ int main(int argc, char** argv) {
   const bool parentInitialCommitOnly = unmappedTransientParent || mappedTogether;
   const bool transientModal = std::getenv("TRANSIENT_MODAL") != nullptr;
   const bool dialogOnStdin = transientSuite && std::getenv("TRANSIENT_DIALOG_ON_STDIN") != nullptr;
-  if ((transientModal || dialogOnStdin) && state.dialogManager == nullptr) {
+  const bool nestedOnStdin = transientSuite && std::getenv("TRANSIENT_NESTED_ON_STDIN") != nullptr;
+  if ((transientModal || dialogOnStdin || nestedOnStdin) && state.dialogManager == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing xdg_wm_dialog_v1");
     return EXIT_FAILURE;
   }
@@ -816,6 +819,7 @@ int main(int argc, char** argv) {
   }
   AuxiliaryToplevel transientParent;
   AuxiliaryToplevel transientUnrelated;
+  AuxiliaryToplevel transientNested;
   if (transientSuite) {
     const bool supportReady = parentInitialCommitOnly
         ? createAuxiliaryToplevel(state, transientParent, "transient-parent", parentWidth, parentHeight)
@@ -830,6 +834,17 @@ int main(int argc, char** argv) {
       // while this toplevel is still unmapped, or, mapped together, its configure arrives in the same read as the
       // child's and its map commit goes out in the same flush.
       wl_surface_commit(transientParent.surface);
+    }
+  }
+  if (nestedOnStdin) {
+    if (!createAuxiliaryToplevel(state, transientNested, "transient-nested", state.width, state.height)) {
+      std::println(stderr, "unmap-client: failed to create the nested dialog");
+      return EXIT_FAILURE;
+    }
+    xdg_dialog_v1_set_modal(xdg_wm_dialog_v1_get_xdg_dialog(state.dialogManager, transientNested.toplevel));
+    wl_surface_commit(transientNested.surface);
+    if (!waitForAuxiliaryToplevel(state, transientNested)) {
+      return EXIT_FAILURE;
     }
   }
   if (exportParent) {
@@ -969,7 +984,7 @@ int main(int argc, char** argv) {
   }
   wl_surface_commit(state.surface);
 
-  if (!remapOnStdin && !updateOnStdin && !dialogOnStdin) {
+  if (!remapOnStdin && !updateOnStdin && !dialogOnStdin && !nestedOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }
   } else {
@@ -1013,6 +1028,11 @@ int main(int argc, char** argv) {
               xdg_dialog_v1_destroy(dialog);
               dialog = nullptr;
             }
+          } else if (nestedOnStdin && command == 'p') {
+            xdg_toplevel_set_parent(transientNested.toplevel, state.toplevel);
+            wl_display_roundtrip(state.display);
+            std::println("nested-parent-set");
+            std::fflush(stdout);
           } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {
               wp_content_type_v1_set_content_type(
@@ -1068,6 +1088,7 @@ int main(int argc, char** argv) {
   if (state.surface != nullptr) {
     wl_surface_destroy(state.surface);
   }
+  destroyAuxiliaryToplevel(transientNested);
   destroyAuxiliaryToplevel(transientUnrelated);
   destroyAuxiliaryToplevel(transientParent);
   if (state.colorManager != nullptr) {

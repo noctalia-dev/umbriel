@@ -548,7 +548,9 @@ namespace umbriel {
 
   bool View::blockedBy(const View& dialog) const {
     const View* parent = dialog.attachedParent();
-    if (parent == this) {
+    // A dialog blocks its parent even when it mapped first and took the parent on later, as its toolkit's grab does. A
+    // parent that is itself a dialog is blocked only by a newer one, so the focus walk up the blocking dialogs ends.
+    if (parent == this && (attachedParent() == nullptr || dialog.m_mapSerial > m_mapSerial)) {
       return true;
     }
     if (dialog.m_mapSerial < m_mapSerial) {
