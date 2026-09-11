@@ -486,7 +486,6 @@ namespace umbriel {
     if (!m_mapped || (m_workspace == nullptr && !m_inScratchpad) || m_toplevel->parent == nullptr) {
       return nullptr;
     }
-    // A family moves into and out of a scratchpad together, so two members off any workspace share the same pad.
     View* parent = fromSurface(m_toplevel->parent->base->surface);
     if (parent == this
         || parent == nullptr
@@ -494,6 +493,13 @@ namespace umbriel {
         || parent->m_workspace != m_workspace
         || parent->m_inScratchpad != m_inScratchpad) {
       return nullptr;
+    }
+    // Off any workspace, the two are one family only in the same pad: a rule can open a dialog in a pad of its own.
+    if (m_inScratchpad) {
+      const ScratchpadManager* scratchpad = m_server->scratchpadManager();
+      if (scratchpad == nullptr || scratchpad->nameFor(parent) != scratchpad->nameFor(this)) {
+        return nullptr;
+      }
     }
     return parent;
   }

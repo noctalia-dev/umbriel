@@ -304,7 +304,7 @@ namespace umbriel {
     const auto& scratchpadConfig = config().animation.scratchpad;
     // A dialog following its parent into the pad keeps its own size and sits over the parent.
     const View* parent = parentOf(*view);
-    if (parent != nullptr && contains(parent)) {
+    if (parent != nullptr && nameFor(parent) == name) {
       view->setPosition(view->sceneTree()->node.x, view->sceneTree()->node.y);
     } else if (scratchpadConfig.fullscreen) {
       if (!view->toplevel()->scheduled.fullscreen && !view->toplevel()->current.fullscreen) {
