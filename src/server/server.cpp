@@ -462,7 +462,12 @@ namespace umbriel {
     if (wlr_xdg_foreign_v2_create(m_display, foreignRegistry) == nullptr) {
       throw std::runtime_error("failed to create xdg-foreign global");
     }
-    wlr_xdg_wm_dialog_v1_create(m_display, 1);
+    wlr_xdg_wm_dialog_v1* dialogManager = wlr_xdg_wm_dialog_v1_create(m_display, 1);
+    if (dialogManager == nullptr) {
+      throw std::runtime_error("failed to create xdg-dialog global");
+    }
+    m_newXdgDialog.notify = onNewXdgDialog;
+    wl_signal_add(&dialogManager->events.new_dialog, &m_newXdgDialog);
 
     m_xdgToplevelTagManager = wlr_xdg_toplevel_tag_manager_v1_create(m_display, 1);
     if (m_xdgToplevelTagManager == nullptr) {
@@ -566,6 +571,7 @@ namespace umbriel {
     wl_list_remove(&m_newInput.link);
     wl_list_remove(&m_newXdgToplevel.link);
     wl_list_remove(&m_setXdgToplevelTag.link);
+    wl_list_remove(&m_newXdgDialog.link);
     wl_list_remove(&m_newXdgPopup.link);
     wl_list_remove(&m_newXdgDecoration.link);
     wl_list_remove(&m_newLayerSurface.link);

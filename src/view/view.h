@@ -24,6 +24,7 @@ extern "C" {
 struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_ext_image_capture_source_v1;
 struct wlr_foreign_toplevel_handle_v1;
+struct wlr_xdg_dialog_v1;
 struct wlr_output;
 struct wlr_scene;
 struct wlr_scene_tree;
@@ -62,6 +63,8 @@ namespace umbriel {
     // A modal dialog takes its parent's input while it is open: one marked so through xdg-dialog-v1 (GTK 4, Qt 6),
     // or one parented across processes, which is a portal dialog whose toolkit may predate the protocol.
     [[nodiscard]] bool modalDialog() const;
+    // The toplevel's xdg-dialog-v1 object. Its modality can change or go away while the window is mapped.
+    void setDialog(wlr_xdg_dialog_v1* dialog);
     // The mapped modal dialog that blocks this window, or null: one attached to it, the application's own newer one
     // attached to another of its windows on the workspace, or a portal's dialog attached to an ancestor of this one.
     [[nodiscard]] View* blockingDialog() const;
@@ -315,6 +318,8 @@ namespace umbriel {
     static void onViewSurfaceDestroy(wl_listener* listener, void* data);
 
     static void onCaptureSourceDestroy(wl_listener* listener, void* data);
+    static void onDialogSetModal(wl_listener* listener, void* data);
+    static void onDialogDestroy(wl_listener* listener, void* data);
     void handleMap();
     void handleUnmap();
     void handleCommit(bool reconfigureOpeningState = false);
@@ -434,6 +439,9 @@ namespace umbriel {
     // A modal dialog opening or closing can block or free windows across its application.
     void retargetModalShades();
     void syncModalShade();
+    // A mapped dialog turning modal attaches to its parent and takes its focus; one turning back frees it.
+    void handleDialogModal();
+    void releaseDialog();
     void setPinned(bool pinned, bool focus);
     void syncTransientSceneParent();
     void raiseTransientTree();
@@ -523,6 +531,7 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
+    wlr_xdg_dialog_v1* m_dialog = nullptr;
     Workspace* m_workspace = nullptr;
     std::optional<DisplacedHome> m_displacedHome;
 
@@ -603,6 +612,8 @@ namespace umbriel {
     wl_listener m_foreignDestroy{};
     wl_listener m_extForeignDestroy{};
     wl_listener m_captureSourceDestroy{};
+    wl_listener m_dialogSetModal{};
+    wl_listener m_dialogDestroy{};
   };
 
 } // namespace umbriel

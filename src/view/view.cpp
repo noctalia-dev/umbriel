@@ -277,6 +277,7 @@ namespace umbriel {
     }
     m_server->unregisterAnimatable(this);
     clearViewSurfaceWatches();
+    releaseDialog();
     setWorkspace(nullptr);
     if (m_map.link.next != nullptr) {
       wl_list_remove(&m_map.link);
@@ -508,11 +509,41 @@ namespace umbriel {
     if (m_toplevel->parent == nullptr) {
       return false;
     }
-    const wlr_xdg_dialog_v1* dialog = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(m_toplevel);
-    if (dialog != nullptr && dialog->modal) {
+    if (m_dialog != nullptr && m_dialog->modal) {
       return true;
     }
     return clientOf(m_toplevel) != clientOf(m_toplevel->parent);
+  }
+
+  void View::setDialog(wlr_xdg_dialog_v1* dialog) {
+    releaseDialog();
+    m_dialog = dialog;
+    m_dialogSetModal.notify = onDialogSetModal;
+    wl_signal_add(&dialog->events.set_modal, &m_dialogSetModal);
+    m_dialogDestroy.notify = onDialogDestroy;
+    wl_signal_add(&dialog->events.destroy, &m_dialogDestroy);
+  }
+
+  void View::releaseDialog() {
+    if (m_dialog == nullptr) {
+      return;
+    }
+    wl_list_remove(&m_dialogSetModal.link);
+    wl_list_remove(&m_dialogDestroy.link);
+    m_dialog = nullptr;
+  }
+
+  void View::handleDialogModal() {
+    if (!m_mapped) {
+      return;
+    }
+    syncOwnedPresentation();
+    retargetModalShades();
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (View* focused = fromSurface(seat->keyboard_state.focused_surface);
+        focused != nullptr && focused->blockingDialog() != nullptr) {
+      m_server->focusView(focused);
+    }
   }
 
   bool View::blockedBy(const View& dialog) const {
@@ -1445,6 +1476,18 @@ namespace umbriel {
   void View::onSetParent(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_setParent);
     self->handleSetParent();
+  }
+
+  void View::onDialogSetModal(wl_listener* listener, void* /*data*/) {
+    View* self = wl_container_of(listener, self, m_dialogSetModal);
+    self->handleDialogModal();
+  }
+
+  void View::onDialogDestroy(wl_listener* listener, void* /*data*/) {
+    View* self = wl_container_of(listener, self, m_dialogDestroy);
+    // Destroying the object undoes what it asked for, so the dialog is modal no longer unless it crosses processes.
+    self->releaseDialog();
+    self->handleDialogModal();
   }
 
   void View::onSetTitle(wl_listener* listener, void* /*data*/) {
@@ -2956,6 +2999,7 @@ namespace umbriel {
     }
 
     clearViewSurfaceWatches();
+    releaseDialog();
 
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);

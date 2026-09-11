@@ -13,9 +13,11 @@
 // CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin. NO_TITLE never sets a
 // title at all. With TRANSIENT_SUITE, TRANSIENT_PARENT_SIZE=<width>x<height> gives the parent its own size,
 // TRANSIENT_MODAL makes this toplevel a modal dialog of it, and EXPORT_PARENT exports the parent through xdg-foreign
-// and prints the handle. TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting
-// from the first configure so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle>
-// parents this toplevel to another client's exported toplevel, the way a portal dialog is parented.
+// and prints the handle. TRANSIENT_DIALOG_ON_STDIN gives this toplevel an xdg-dialog-v1 object, modal only with
+// TRANSIENT_MODAL, that `m` on stdin makes modal, `n` makes non-modal, and `x` destroys.
+// TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
+// so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to another
+// client's exported toplevel, the way a portal dialog is parented.
 // FOLLOW_CONFIGURES redraws at whatever size the compositor configures, as a real client would; by default the window
 // keeps its own size.
 
@@ -790,7 +792,8 @@ int main(int argc, char** argv) {
   const bool mappedTogether = transientSuite && std::strcmp(transientSuiteMode, "mapped-together") == 0;
   const bool parentInitialCommitOnly = unmappedTransientParent || mappedTogether;
   const bool transientModal = std::getenv("TRANSIENT_MODAL") != nullptr;
-  if (transientModal && state.dialogManager == nullptr) {
+  const bool dialogOnStdin = transientSuite && std::getenv("TRANSIENT_DIALOG_ON_STDIN") != nullptr;
+  if ((transientModal || dialogOnStdin) && state.dialogManager == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing xdg_wm_dialog_v1");
     return EXIT_FAILURE;
   }
@@ -952,8 +955,12 @@ int main(int argc, char** argv) {
       xdg_toplevel_set_parent(state.toplevel, nullptr);
     }
   }
-  if (transientModal) {
-    xdg_dialog_v1_set_modal(xdg_wm_dialog_v1_get_xdg_dialog(state.dialogManager, state.toplevel));
+  xdg_dialog_v1* dialog = nullptr;
+  if (transientModal || dialogOnStdin) {
+    dialog = xdg_wm_dialog_v1_get_xdg_dialog(state.dialogManager, state.toplevel);
+    if (transientModal) {
+      xdg_dialog_v1_set_modal(dialog);
+    }
   }
   zxdg_imported_v2* imported = nullptr;
   if (foreignHandle != nullptr) {
@@ -962,7 +969,7 @@ int main(int argc, char** argv) {
   }
   wl_surface_commit(state.surface);
 
-  if (!remapOnStdin && !updateOnStdin) {
+  if (!remapOnStdin && !updateOnStdin && !dialogOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }
   } else {
@@ -996,6 +1003,15 @@ int main(int argc, char** argv) {
           } else if (command == 'i') {
             if (!issueInputActivationToken(state)) {
               return EXIT_FAILURE;
+            }
+          } else if (dialogOnStdin && dialog != nullptr && (command == 'm' || command == 'n' || command == 'x')) {
+            if (command == 'm') {
+              xdg_dialog_v1_set_modal(dialog);
+            } else if (command == 'n') {
+              xdg_dialog_v1_unset_modal(dialog);
+            } else {
+              xdg_dialog_v1_destroy(dialog);
+              dialog = nullptr;
             }
           } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {

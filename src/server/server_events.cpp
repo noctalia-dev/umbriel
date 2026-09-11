@@ -796,6 +796,15 @@ namespace umbriel {
     }
   }
 
+  void Server::onNewXdgDialog(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newXdgDialog);
+    auto* dialog = static_cast<wlr_xdg_dialog_v1*>(data);
+    if (View* view = viewForToplevel(*self, dialog->xdg_toplevel)) {
+      view->setDialog(dialog);
+    }
+  }
+
   void Server::onNewXdgPopup(wl_listener* /*listener*/, void* data) {
     auto* popup = static_cast<wlr_xdg_popup*>(data);
     // Layer-shell popups (and any popup without a parent yet) are handled

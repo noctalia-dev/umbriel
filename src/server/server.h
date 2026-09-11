@@ -370,6 +370,7 @@ namespace umbriel {
     static void onNewInput(wl_listener* listener, void* data);
     static void onNewXdgToplevel(wl_listener* listener, void* data);
     static void onSetXdgToplevelTag(wl_listener* listener, void* data);
+    static void onNewXdgDialog(wl_listener* listener, void* data);
     static void onNewXdgPopup(wl_listener* listener, void* data);
     static void onNewXdgDecoration(wl_listener* listener, void* data);
     static void onNewLayerSurface(wl_listener* listener, void* data);
@@ -658,6 +659,7 @@ namespace umbriel {
     wl_listener m_newInput{};
     wl_listener m_newXdgToplevel{};
     wl_listener m_setXdgToplevelTag{};
+    wl_listener m_newXdgDialog{};
     wl_listener m_newXdgPopup{};
     wl_listener m_newXdgDecoration{};
     wl_listener m_newLayerSurface{};
