@@ -8,9 +8,9 @@
 #include "layer/layer_surface.h"
 #include "output/format_sequence.h"
 #include "output/frame_schedule.h"
-#include "output/hdr_format.h"
 #include "output/identity.h"
 #include "output/mode_selection.h"
+#include "output/sdr_format.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
 #include "scene/config_banner.h"
@@ -136,9 +136,7 @@ namespace umbriel {
   bool Output::hdrActive() const { return m_output->image_description != nullptr; }
 
   bool Output::tenBitSdrActive() const {
-    return m_output->enabled
-        && !hdrActive()
-        && (m_output->render_format == DRM_FORMAT_XRGB2101010 || m_output->render_format == DRM_FORMAT_XBGR2101010);
+    return deriveTenBitSdrActive(m_output->enabled, hdrActive(), m_output->render_format);
   }
 
   float Output::configuredSdrWhite() const {
@@ -396,7 +394,6 @@ namespace umbriel {
           .currentRenderFormat = m_output->render_format,
           .bitDepth = bitDepth,
           .tryVrrOn = tryVrrOn,
-          .stagedMode = stagedMode,
           .configuredModeSpec = configuredModeSpec,
           .preferredMode = preferredFallbackMode(m_output, stagedMode),
           .modeFallbackAlreadyWarned = m_modeFallbackWarned,

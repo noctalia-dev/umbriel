@@ -32,7 +32,8 @@ bool is_fx_pixel_format_supported(const struct fx_renderer *renderer, const stru
 const struct fx_pixel_format *get_fx_format_from_drm(uint32_t fmt);
 const struct fx_pixel_format *get_fx_format_from_gl(GLint gl_format, GLint gl_type, bool alpha);
 void get_fx_shm_formats(const struct fx_renderer *renderer, struct wlr_drm_format_set *out);
-
+GLenum fx_resolve_gl_type(const struct fx_renderer *renderer, GLenum gl_type);
+GLint fx_resolve_internal_format(const struct fx_renderer *renderer, const struct fx_pixel_format *fmt);
 GLuint fx_framebuffer_get_fbo(struct fx_framebuffer *buffer);
 
 /**
@@ -177,6 +178,8 @@ struct fx_renderer {
 
 	struct wlr_drm_format_set shm_texture_formats;
 
+	bool is_gles3;
+
 	const char *exts_str;
 	struct {
 		bool EXT_read_format_bgra;
@@ -184,8 +187,10 @@ struct fx_renderer {
 		bool OES_egl_image_external;
 		bool OES_egl_image;
 		bool EXT_texture_type_2_10_10_10_REV;
+		bool OES_texture_half_float;
 		bool OES_texture_half_float_linear;
-		bool fp16_linear_filter;
+		bool half_float_renderable;
+		bool half_float_linear;
 		bool EXT_texture_norm16;
 		bool EXT_disjoint_timer_query;
 	} exts;

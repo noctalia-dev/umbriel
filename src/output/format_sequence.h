@@ -22,7 +22,6 @@ namespace umbriel {
     uint32_t currentRenderFormat;
     int bitDepth;
     bool tryVrrOn;
-    wlr_output_mode* stagedMode;          // nullptr = Custom or no mode staged
     const OutputMode* configuredModeSpec; // nullptr = No mode configured
     wlr_output_mode* preferredMode;       // nullptr = No fallback available
     bool modeFallbackAlreadyWarned;

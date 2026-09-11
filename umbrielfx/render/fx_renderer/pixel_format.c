@@ -5,6 +5,18 @@
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/pixel_format.h"
 
+#ifndef GL_HALF_FLOAT
+#define GL_HALF_FLOAT 0x140B
+#endif
+
+#ifndef GL_RGBA16F
+#define GL_RGBA16F 0x881A
+#endif
+
+#ifndef GL_RGB16F
+#define GL_RGB16F 0x881B
+#endif
+
 /*
  * The DRM formats are little endian while the GL formats are big endian,
  * so DRM_FORMAT_ARGB8888 is actually compatible with GL_BGRA_EXT.
@@ -120,7 +132,7 @@ bool is_fx_pixel_format_supported(const struct fx_renderer *renderer,
 		return false;
 	}
 	if (format->gl_type == GL_HALF_FLOAT_OES
-			&& !renderer->exts.fp16_linear_filter) {
+			&& !renderer->exts.half_float_renderable) {
 		return false;
 	}
 	if (format->gl_type == GL_UNSIGNED_SHORT
@@ -136,6 +148,26 @@ bool is_fx_pixel_format_supported(const struct fx_renderer *renderer,
 	return true;
 }
 
+GLenum fx_resolve_gl_type(const struct fx_renderer *renderer, GLenum gl_type) {
+	if (gl_type == GL_HALF_FLOAT_OES && renderer->is_gles3) {
+		return GL_HALF_FLOAT;
+	}
+	return gl_type;
+}
+
+GLint fx_resolve_internal_format(const struct fx_renderer *renderer,
+		const struct fx_pixel_format *fmt) {
+	// GLES3 core pairs GL_HALF_FLOAT with a sized internal format. The unsized
+	// gl_format fallback below is only legal with GL_HALF_FLOAT_OES on GLES2.
+	if (fmt->gl_type == GL_HALF_FLOAT_OES && renderer->is_gles3) {
+		return fmt->gl_format == GL_RGB ? GL_RGB16F : GL_RGBA16F;
+	}
+	if (fmt->gl_internalformat) {
+		return fmt->gl_internalformat;
+	}
+	return fmt->gl_format;
+}
+
 const struct fx_pixel_format *get_fx_format_from_drm(uint32_t fmt) {
 	for (size_t i = 0; i < sizeof(formats) / sizeof(*formats); ++i) {
 		if (formats[i].drm_format == fmt) {
@@ -147,6 +179,10 @@ const struct fx_pixel_format *get_fx_format_from_drm(uint32_t fmt) {
 
 const struct fx_pixel_format *get_fx_format_from_gl(
 		GLint gl_format, GLint gl_type, bool alpha) {
+	if (gl_type == GL_HALF_FLOAT) {
+		gl_type = GL_HALF_FLOAT_OES;
+	}
+
 	for (size_t i = 0; i < sizeof(formats) / sizeof(*formats); ++i) {
 		if (formats[i].gl_format != gl_format ||
 				formats[i].gl_type != gl_type) {

@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # 10-bit SDR format selection.
-#   0. umbrielfx rendering phase: corner_radius + optimized blur active when the
-#      bit-depth switches in both directions. Exercises fx_pass.c, the FP16
-#      offscreen buffer path, and confirms the blur cache survives the full
-#      SDR8 -> SDR10 -> SDR8 round-trip.
-#   1. SDR8 -> SDR10: Probe succeeds, output commits to XR30 or XB30, no fallback reason.
-#   2. HDR (unavailable) -> SDR10: HDR reason clears when HDR is no longer
+#   1. umbrielfx rendering smoke test: corner_radius + optimized blur active on a
+#      live window while the bit-depth switches in both directions.
+#   2. SDR8 -> SDR10: Probe succeeds, output commits to XR30 or XB30, no fallback reason.
+#   3. HDR (unavailable) -> SDR10: HDR reason clears when HDR is no longer
 #      requested; SDR10 independently selects XR30 or XB30.
-#   3. HDR unavailable + SDR10 configured: The HDR reason stays set while SDR10
+#   4. HDR unavailable + SDR10 configured: The HDR reason stays set while SDR10
 #      commits XR30 or XB30 successfully.
-#   4. SDR10 -> SDR8: No fallback reason, output returns to XR24.
+#   5. SDR10 -> SDR8: No fallback reason, output returns to XR24.
 set -euo pipefail
 
 readonly SCREENSHOT_SDR8="$UMBRIEL_RUNTIME_DIR/sdr10-luma-sdr8.png"
@@ -18,11 +16,12 @@ readonly SCREENSHOT_SDR10="$UMBRIEL_RUNTIME_DIR/sdr10-luma-sdr10.png"
 BASELINE=$(< "$UMBRIEL_CONFIG")
 CLIENT_PID=
 
-# -- Phase 0: umbrielfx rendering ---------------------------------------------
-# Enable corner_radius and optimized blur so that the FX renderer populates the
-# per-output blur cache and the corner-radius clip geometry in SDR8, then switch
-# to bit_depth=10 while the window and effects are live. This exercises the
-# fx_pass.c SDR10 render path and the FP16 offscreen buffer selection.
+# -- Phase 1: umbrielfx rendering ---------------------------------------------
+# Enable corner_radius and optimized blur on a live window, then switch
+# bit_depth in both directions. This is a smoke test that the real FX render
+# pipeline survives a live format transition: each capture only asserts the
+# frame is non-black. Cache-format correctness is verified separately by the
+# umbrielfx unit test `color-optimized-blur-format-cache`.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -54,7 +53,7 @@ for _ in $(seq 60); do
   sleep 0.1
 done
 if [[ $("$UMBRIEL" windows --json | jq 'length') -lt 1 ]]; then
-  echo "phase0: foot window never mapped"
+  echo "phase1: foot window never mapped"
   exit 1
 fi
 
@@ -63,13 +62,13 @@ sleep 0.3
 grim "$SCREENSHOT_SDR8"
 luma_sdr8=$(magick "$SCREENSHOT_SDR8" -alpha off -colorspace gray -format '%[fx:round(255*mean)]' info:)
 if (( luma_sdr8 == 0 )); then
-  echo "phase0: SDR8 screenshot is all-black (mean luma=${luma_sdr8})"
+  echo "phase1: SDR8 screenshot is all-black (mean luma=${luma_sdr8})"
   exit 1
 fi
-echo "phase0: SDR8 frame rendered with blur/corner_radius active (luma=${luma_sdr8})"
+echo "phase1: SDR8 frame rendered with blur/corner_radius active (luma=${luma_sdr8})"
 
-# Switch to SDR10 while the FX-active window is live: the blur cache and
-# corner-radius geometry must survive the format transition.
+# Switch to SDR10 while the FX-active window is live: the render pipeline must
+# produce a non-black frame across the format transition.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -100,13 +99,13 @@ sleep 0.3
 grim "$SCREENSHOT_SDR10"
 luma_sdr10=$(magick "$SCREENSHOT_SDR10" -alpha off -colorspace gray -format '%[fx:round(255*mean)]' info:)
 if (( luma_sdr10 == 0 )); then
-  echo "phase0: SDR10 screenshot is all-black after format switch (mean luma=${luma_sdr10})"
+  echo "phase1: SDR10 screenshot is all-black after format switch (mean luma=${luma_sdr10})"
   exit 1
 fi
-echo "phase0: SDR10 frame rendered correctly after format switch (luma=${luma_sdr10})"
+echo "phase1: SDR10 frame rendered correctly after format switch (luma=${luma_sdr10})"
 
-# Switch back to SDR8 while FX effects remain live: the blur cache and
-# corner-radius geometry must survive the SDR10 -> SDR8 transition too.
+# Switch back to SDR8 while FX effects remain live: the render pipeline must
+# produce a non-black frame across the SDR10 -> SDR8 transition too.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -135,12 +134,13 @@ readonly SCREENSHOT_SDR8_RETURN="$UMBRIEL_RUNTIME_DIR/sdr10-luma-sdr8-return.png
 grim "$SCREENSHOT_SDR8_RETURN"
 luma_sdr8_return=$(magick "$SCREENSHOT_SDR8_RETURN" -alpha off -colorspace gray -format '%[fx:round(255*mean)]' info:)
 if (( luma_sdr8_return == 0 )); then
-  echo "phase0: SDR8 screenshot after SDR10->SDR8 transition is all-black (mean luma=${luma_sdr8_return})"
+  echo "phase1: SDR8 screenshot after SDR10->SDR8 transition is all-black (mean luma=${luma_sdr8_return})"
   exit 1
 fi
-echo "phase0: SDR8 frame rendered correctly after SDR10->SDR8 back-transition (luma=${luma_sdr8_return})"
+echo "phase1: SDR8 frame rendered correctly after SDR10->SDR8 back-transition (luma=${luma_sdr8_return})"
 
 
+# -- Phase 2: SDR8 -> SDR10 ---------------------------------------------------
 # Headless accepts XR30 or XB30 via wlr_output_test_state (XR30 is tried first),
 # so the probe succeeds and the output commits to 10-bit without a fallback reason.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
@@ -166,7 +166,7 @@ fi
 
 echo "sdr8-to-sdr10: probe succeeded, output committed to 10-bit SDR"
 
-# -- Phase 2: HDR (unavailable) -> SDR10 ---------------------------------------
+# -- Phase 3: HDR (unavailable) -> SDR10 ---------------------------------------
 # Configure HDR first (fails on headless). Then switch to bit_depth=10 without
 # HDR. The HDR reason must clear and the output must select XR30 or XB30.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"
@@ -206,7 +206,7 @@ fi
 
 echo "hdr-to-sdr10: HDR reason cleared, SDR10 probe succeeded after transition"
 
-# -- Phase 3: HDR unavailable + SDR10 configured -------------------------------
+# -- Phase 4: HDR unavailable + SDR10 configured -------------------------------
 # When HDR and bit_depth=10 are both configured, the HDR probe fails first
 # (headless does not advertise PQ or BT.2020), then the SDR10 probe runs
 # independently and succeeds. The HDR fallback reason is set, the SDR10 reason is not.
@@ -236,7 +236,7 @@ fi
 
 echo "hdr-unavailable-with-sdr10: HDR reason set, SDR10 probe succeeded independently"
 
-# -- Phase 4: SDR10 -> SDR8 ----------------------------------------------------
+# -- Phase 5: SDR10 -> SDR8 ----------------------------------------------------
 # Reverting to the default config (no bit_depth override) must return the
 # output to XR24 with no bit_depth_fallback_reason.
 printf '%s\n' "$BASELINE" > "$UMBRIEL_CONFIG"

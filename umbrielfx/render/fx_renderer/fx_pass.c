@@ -87,7 +87,7 @@ static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass *pass,
 	const bool use_fp16 = pass->has_color_transform
 		|| (ten_bit_output
 			&& renderer->wlr_renderer.features.output_color_transform
-			&& renderer->exts.fp16_linear_filter);
+			&& renderer->exts.half_float_renderable);
 
 	if (use_fp16) {
 		return DRM_FORMAT_ABGR16161616F;
@@ -684,7 +684,7 @@ static void draw_animation_texture(struct fx_gles_render_pass *pass,
 	glUseProgram(shader->program);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture->tex);
-	const GLint filter = pass->has_color_transform && !pass->buffer->renderer->exts.fp16_linear_filter
+	const GLint filter = pass->has_color_transform && !pass->buffer->renderer->exts.half_float_linear
 		? GL_NEAREST : GL_LINEAR;
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -992,7 +992,7 @@ bool fx_render_pass_end_animation_shadow(struct fx_gles_render_pass *pass,
 	pop_animation_capture(pass);
 	glUseProgram(vertical->program);
 	glUniform1i(glGetUniformLocation(vertical->program, "shadow_nearest"),
-		pass->has_color_transform && !renderer->exts.fp16_linear_filter);
+		pass->has_color_transform && !renderer->exts.half_float_linear);
 	glUniform2f(glGetUniformLocation(vertical->program, "shadow_step"),
 		0, softness / (8.0f * full.height));
 	glUniform2f(glGetUniformLocation(vertical->program, "shadow_offset"),

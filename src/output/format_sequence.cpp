@@ -2,6 +2,7 @@
 
 #include "config/value_parse.h"
 #include "output/hdr_format.h"
+#include "output/sdr_format.h"
 
 #include <drm_fourcc.h>
 #include <format>

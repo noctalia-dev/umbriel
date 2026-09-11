@@ -596,6 +596,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	const bool is_gles3 = gl_version != NULL &&
 		sscanf(gl_version, "OpenGL ES %d", &gles_major) == 1 &&
 		gles_major >= 3;
+	renderer->is_gles3 = is_gles3;
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
 	wlr_log(WLR_INFO, "Supported FX extensions: %s", exts_str);
@@ -623,9 +624,13 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 		is_gles3 ||
 		check_gl_ext(exts_str, "GL_EXT_texture_type_2_10_10_10_REV");
 
+	renderer->exts.OES_texture_half_float =
+		check_gl_ext(exts_str, "GL_OES_texture_half_float");
 	renderer->exts.OES_texture_half_float_linear =
 		check_gl_ext(exts_str, "GL_OES_texture_half_float_linear");
-	renderer->exts.fp16_linear_filter =
+	renderer->exts.half_float_renderable =
+		is_gles3 || renderer->exts.OES_texture_half_float;
+	renderer->exts.half_float_linear =
 		is_gles3 || renderer->exts.OES_texture_half_float_linear;
 
 	renderer->exts.EXT_texture_norm16 =

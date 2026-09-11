@@ -29,7 +29,6 @@ namespace {
         .currentRenderFormat = DRM_FORMAT_XRGB8888,
         .bitDepth = 8,
         .tryVrrOn = false,
-        .stagedMode = nullptr,
         .configuredModeSpec = nullptr,
         .preferredMode = nullptr,
         .modeFallbackAlreadyWarned = false,
@@ -223,6 +222,108 @@ UMBRIEL_TEST(modeFallbackRetriesOnPreferredMode) {
   CHECK(r.modeFallbackWarnedNow);
   CHECK(m.modeFallbackWarned);
   CHECK(m.stagedMode == &preferred);
+}
+
+// Mode fallback reruns the complete HDR -> SDR10 -> SDR8 sequence on the
+// preferred mode, and the reasons produced by the first mode do not leak into
+// the result. First mode: HDR rejected, SDR10 rejected, SDR8 rejected (no
+// commit). Preferred mode: HDR rejected, SDR10 commits (XB30), so the
+// committed result carries a fresh HDR reason and an empty SDR10 reason.
+UMBRIEL_TEST(modeFallbackRerunsFullSequenceAndResetsReasons) {
+  static wlr_output_mode preferred{};
+
+  MockOps m;
+  // 2 HDR probes per mode (XR30, XB30), both modes reject HDR entirely.
+  m.hdrOutcomes = {
+      ProbeOutcome::TestFailed, // Mode 1: HDR XR30
+      ProbeOutcome::TestFailed, // Mode 1: HDR XB30
+      ProbeOutcome::TestFailed, // Mode 2: HDR XR30
+      ProbeOutcome::TestFailed, // Mode 2: HDR XB30
+  };
+  m.sdrOutcomes = {
+      ProbeOutcome::TestFailed, // Mode 1: SDR10 XR30
+      ProbeOutcome::TestFailed, // Mode 1: SDR10 XB30
+      ProbeOutcome::TestFailed, // Mode 1: SDR8 XR24  -> Mode 1 uncommitted
+      ProbeOutcome::TestFailed, // Mode 2: SDR10 XR30
+      ProbeOutcome::Committed,  // Mode 2: SDR10 XB30 -> Commits
+  };
+
+  static const umbriel::OutputMode spec{1280, 720, 60000};
+  FormatSequenceParams p = sdr8Params();
+  p.hdrRequested = true;
+  p.imageDescAvailable = true;
+  p.bitDepth = 10;
+  p.configuredModeSpec = &spec;
+  p.preferredMode = &preferred;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(r.committed);
+  CHECK(r.usedModeFallback);
+  CHECK(r.modeFallbackWarnedNow);
+  CHECK(m.modeFallbackWarned);
+  CHECK(m.stagedMode == &preferred);
+  CHECK(m.imageDescCleared);
+
+  // The committed second mode reruns the whole sequence. HDR still failed, so a
+  // fresh HDR reason survives, while SDR10 succeeded, so its reason is cleared
+  // and does not retain the first mode's "backend rejected all" text.
+  CHECK_EQ(r.hdrFail, std::string_view{"backend rejected all 10-bit HDR render formats"});
+  CHECK(r.sdr10Fail.empty());
+
+  // Both modes ran the full HDR -> SDR10 -> SDR8 sequence. 4 HDR probes total
+  // (2 per mode) and 5 SDR probes (XR30, XB30, XR24 in mode 1; XR30, XB30 in
+  // mode 2).
+  size_t hdrCalls = 0;
+  size_t sdrCalls = 0;
+  for (const auto& c : m.calls) {
+    if (c.hdr) {
+      ++hdrCalls;
+    } else {
+      ++sdrCalls;
+    }
+  }
+  CHECK_EQ(hdrCalls, size_t{4});
+  CHECK_EQ(sdrCalls, size_t{5});
+}
+
+// Mode fallback clears a first-mode SDR10 reason when the preferred mode
+// commits SDR10 without HDR configured. The first mode rejects SDR10 and SDR8.
+// The preferred mode commits SDR10 (XR30) on the first probe, so the result
+// must carry no SDR10 fallback reason at all.
+UMBRIEL_TEST(modeFallbackClearsSdr10ReasonOnPreferredCommit) {
+  static wlr_output_mode preferred{};
+
+  MockOps m;
+  m.sdrOutcomes = {
+      ProbeOutcome::TestFailed, // Mode 1: SDR10 XR30
+      ProbeOutcome::TestFailed, // Mode 1: SDR10 XB30 -> Sets sdr10Fail
+      ProbeOutcome::TestFailed, // Mode 1: SDR8 XR24  -> Mode 1 uncommitted
+      ProbeOutcome::Committed,  // Mode 2: SDR10 XR30 -> Commits immediately
+  };
+
+  static const umbriel::OutputMode spec{1280, 720, 60000};
+  FormatSequenceParams p = sdr8Params();
+  p.bitDepth = 10;
+  p.configuredModeSpec = &spec;
+  p.preferredMode = &preferred;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(r.committed);
+  CHECK(r.usedModeFallback);
+  CHECK(m.stagedMode == &preferred);
+  CHECK(r.hdrFail.empty());
+  CHECK(r.sdr10Fail.empty());
+
+  // Mode 1: XR30, XB30, XR24. Mode 2: XR30 (commits) = 4 SDR probes, no HDR.
+  size_t sdrCalls = 0;
+  for (const auto& c : m.calls) {
+    if (!c.hdr) {
+      ++sdrCalls;
+    }
+  }
+  CHECK_EQ(sdrCalls, size_t{4});
 }
 
 // No preferred mode (headless): All formats fail, no fallback, uncommitted.

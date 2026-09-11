@@ -26,13 +26,4 @@ namespace umbriel {
     return std::nullopt;
   }
 
-  template <typename Probe> [[nodiscard]] std::optional<uint32_t> selectSdr10RenderFormat(Probe&& accepts) {
-    for (const uint32_t candidate : {DRM_FORMAT_XRGB2101010, DRM_FORMAT_XBGR2101010}) {
-      if (accepts(candidate)) {
-        return candidate;
-      }
-    }
-    return std::nullopt;
-  }
-
 } // namespace umbriel
