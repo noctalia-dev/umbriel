@@ -1218,9 +1218,10 @@ namespace umbriel {
   // in the layout. Now that it is, notifyAloneStateChanged hands that state to the alone effect, so leaving alone
   // undoes it again. The seed is single-use: a later pass must not take over a state the user or the client chose.
   void View::settleOpeningAloneState() {
-    const bool clientRequested = m_aloneOpeningSeed == AloneSeed::Fullscreen
-        ? m_toplevel->requested.fullscreen
-        : m_aloneOpeningSeed == AloneSeed::Maximize && m_toplevel->requested.maximized;
+    const bool clientRequested = m_aloneOpeningSeed == AloneSeed::Fullscreen ? m_toplevel->requested.fullscreen
+                                                                             : m_aloneOpeningSeed == AloneSeed::Maximize
+            && config().general.honorRestoredMaximize
+            && m_toplevel->requested.maximized;
     if (clientRequested) {
       // The client has asked for the state itself since the opening configure, so it owns it.
       m_aloneOpeningSeed = AloneSeed::None;
@@ -1314,7 +1315,7 @@ namespace umbriel {
   void View::onAcceptClientMaximizeRequests(void* data) {
     auto* self = static_cast<View*>(data);
     self->m_acceptClientMaximizeIdle = nullptr;
-    self->m_acceptClientMaximizeRequests = self->m_mapped;
+    self->m_acceptClientMaximizeRequests = self->m_mapped && config().general.honorRestoredMaximize;
   }
 
   void View::onRequestFullscreen(wl_listener* listener, void* /*data*/) {
@@ -2595,9 +2596,10 @@ namespace umbriel {
         const bool seedMaximized =
             (alone.defaultMaximize.value_or(false) && !openingParented() && !rule.defaultMaximize.value_or(false))
             || (alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false));
+        const bool clientRestoredMaximized = config().general.honorRestoredMaximize && m_toplevel->requested.maximized;
         if (seedFullscreen && !m_toplevel->requested.fullscreen) {
           m_aloneOpeningSeed = AloneSeed::Fullscreen;
-        } else if (seedMaximized && !m_toplevel->requested.fullscreen && !m_toplevel->requested.maximized) {
+        } else if (seedMaximized && !m_toplevel->requested.fullscreen && !clientRestoredMaximized) {
           m_aloneOpeningSeed = AloneSeed::Maximize;
         }
         rule.defaultFullscreen = alone.defaultFullscreen;
