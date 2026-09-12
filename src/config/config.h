@@ -610,7 +610,7 @@ namespace umbriel {
     struct Overview {
       // Workspace scale when fully zoomed out.
       double zoom = 0.5;
-      // Touchpad travel per workspace or viewport in the overview, by the physical direction of the movement rather
+      // Touchpad travel and wheel accumulation in the overview, by the physical direction of the movement rather
       // than the output's workspace axis. Independent of an input device's own scroll_factor.
       double scrollFactorHorizontal = 1.0;
       double scrollFactorVertical = 1.0;

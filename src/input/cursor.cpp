@@ -1142,9 +1142,15 @@ namespace umbriel {
       eventDir = rawDelta < 0 ? WheelDirection::Left : WheelDirection::Right;
     }
 
-    // Unmodified scrolling drives the overview filmstrip instead of the inert desktop under the cursor. Panels
-    // (top/overlay) keep their own scrolling, and modifier chords still fall through to the wheel binds below.
-    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active() && effective == 0) {
+    const bool shiftWheel = effective == WLR_MODIFIER_SHIFT && event->source != WL_POINTER_AXIS_SOURCE_FINGER;
+    const bool boundShiftWheel = shiftWheel && std::ranges::any_of(config().keybinds, [&](const Keybind& bind) {
+                                   return bind.submap == m_server->activeSubmap()
+                                       && bind.wheel == eventDir
+                                       && effective == (bind.modifiers | (bind.useMod ? m_server->modKey() : 0));
+                                 });
+    // Shift maps vertical wheel travel onto the horizontal axis. Explicit bindings and panels keep their input.
+    if (Overview* overview = m_server->overview();
+        overview != nullptr && overview->active() && (effective == 0 || (shiftWheel && !boundShiftWheel))) {
       double sx = 0;
       double sy = 0;
       wlr_surface* surface = nullptr;
@@ -1162,12 +1168,16 @@ namespace umbriel {
           );
           return;
         }
-        const int axis = isVertical ? 0 : 1;
+        const bool overviewVertical = isVertical && !shiftWheel;
+        const int axis = overviewVertical ? 0 : 1;
+        const double factor =
+            overviewVertical ? config().overview.scrollFactorVertical : config().overview.scrollFactorHorizontal;
         m_wheelAccum[axis] +=
-            event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0;
+            (event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0)
+            * factor;
         double& accumulated = m_wheelAccum[axis];
         while (std::abs(accumulated) >= 1.0) {
-          overview->handleAxisNotch(isVertical, accumulated, m_cursor->x, m_cursor->y);
+          overview->handleAxisNotch(overviewVertical, accumulated, m_cursor->x, m_cursor->y);
           accumulated -= std::copysign(1.0, accumulated);
         }
         return;

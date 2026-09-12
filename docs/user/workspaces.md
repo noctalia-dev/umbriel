@@ -153,8 +153,9 @@ master workspaces follow their output's axis for switching and the overview,
 like every other layout.
 
 A three-finger swipe along the axis switches workspaces, and a swipe across it
-scrolls the strip. In the overview, the ordinary vertical wheel navigates either
-arrangement, while a horizontal wheel navigates only horizontal workspaces.
+scrolls the strip. In the overview, wheel moves vertically and Shift+wheel moves
+horizontally in discrete steps. Along the workspace axis it switches workspaces;
+across that axis it selects and reveals scrolling columns in the hovered preview.
 
 An axis change on reload applies to every workspace on the output. Any live
 swipe, strip drag or tiled resize is settled first, and an open overview closes.

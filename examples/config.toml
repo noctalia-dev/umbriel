@@ -789,8 +789,8 @@ curve = "easeout"
 
 [overview]
 zoom = 0.5                                      # Workspace scale in overview, 0.1-0.75
-scroll_factor_horizontal = 1.0                  # Overview gesture travel, left and right, 0.1-10.0
-scroll_factor_vertical = 1.0                    # Overview gesture travel, up and down, 0.1-10.0
+scroll_factor_horizontal = 1.0                  # Overview gesture/wheel multiplier, left and right, 0.1-10.0
+scroll_factor_vertical = 1.0                    # Overview gesture/wheel multiplier, up and down, 0.1-10.0
 # Pinned windows stay hidden until overview closes; visible scratchpads are dismissed.
 # background_blur = true                        # Blur the wallpaper behind overview rows
 # workspace_wallpaper = true                    # Mirror wallpapers inside workspace previews

@@ -65,7 +65,7 @@ open_overview() {
 }
 
 # One window, so the group holds workspace 1 (occupied) and a dynamic 2.
-foot sh -c 'sleep 120' > /dev/null 2>&1 &
+"$UMBRIEL_UNMAP_CLIENT" overview-wheel 1200 700 > /dev/null 2>&1 &
 for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq 'length') -eq 1 ]] && break
   sleep 0.25
@@ -104,7 +104,7 @@ printf '[layout\n' > "$UMBRIEL_CONFIG"
 expect_notch 1 2
 expect_notch -1 1
 
-# Horizontally arranged workspaces keep the vertical wheel and add the horizontal one. The malformed write above left
+# Horizontally arranged workspaces use the horizontal wheel. The malformed write above left
 # the file unusable, so this phase rewrites it whole; three static workspaces put both ends of the arrangement within
 # reach of a wheel.
 cat > "$UMBRIEL_CONFIG" << 'EOF'
@@ -132,9 +132,9 @@ if [[ $("$WORKSPACE") != 1 ]]; then
 fi
 open_overview
 
-# The vertical wheel navigates either arrangement.
-expect_notch 1 2
-expect_notch -1 1
+# Vertical wheel keeps its physical axis and cannot switch horizontal workspaces.
+expect_inert_notch 1 notch "a vertical notch switched horizontal workspaces"
+expect_inert_notch -1 notch "a vertical notch switched horizontal workspaces"
 
 # The horizontal wheel matches this arrangement, so it steps the filmstrip too.
 expect_notch 1 2 notch-horizontal
