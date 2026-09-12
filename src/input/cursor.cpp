@@ -22,7 +22,6 @@
 #include <chrono>
 #include <cmath>
 #include <linux/input-event-codes.h>
-#include <optional>
 #include "wlr.h"
 // clang-format on
 #include "wlr/util/edges.h"
