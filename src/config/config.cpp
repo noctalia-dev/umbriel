@@ -13,7 +13,6 @@
 
 // clang-format off
 #include <linux/input-event-codes.h>
-#include <optional>
 #include <xkbcommon/xkbcommon.h>
 // clang-format on
 

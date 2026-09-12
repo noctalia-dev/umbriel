@@ -62,11 +62,7 @@ namespace umbriel {
         return 1.0;
       }
       const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
-      if (!factor) {
-        return 1.0;
-      }
-      const std::optional<double>& axisFactor = vertical ? factor->vertical : factor->horizontal;
-      return axisFactor.value_or(1.0);
+      return factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0;
     }
 
     bool surfaceLocalCoordinates(wlr_scene* scene, wlr_surface* target, double lx, double ly, double* sx, double* sy) {
