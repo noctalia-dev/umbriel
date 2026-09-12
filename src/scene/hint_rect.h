@@ -16,8 +16,9 @@ namespace umbriel {
   class Output;
   class Server;
 
-  // Animated drop-target indicator: a rounded rect that fades in on appear, morphs between target boxes, and fades out
-  // on hide. Alpha and geometry are written only from tickAnimations (plus snap points), never ad hoc.
+  // Animated drop-target indicator: a rounded rect that fades in on appear and morphs between target boxes. Hiding is
+  // immediate, so the hint never lingers over the window a released drag settles into. Alpha and geometry are written
+  // only from tickAnimations (plus snap points), never ad hoc.
   class HintRect : public Animatable {
   public:
     HintRect(Server& server, wlr_scene_tree* parent);
@@ -25,9 +26,8 @@ namespace umbriel {
     HintRect(const HintRect&) = delete;
     HintRect& operator=(const HintRect&) = delete;
 
-    // `box` in parent-tree coordinates. A zero-sized box behaves like hide().
+    // `box` in parent-tree coordinates. A zero-sized box hides the hint.
     void show(Output* output, const wlr_box& box, int cornerRadius);
-    void hide();
     void hideImmediate();
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(uint64_t nowMsec) override;

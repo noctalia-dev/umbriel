@@ -27,14 +27,15 @@ namespace umbriel {
     void cancelForLayoutChange();
     // Mouse-button bindings use the same overscroll, velocity projection, and
     // column settling as the three-finger strip gesture, but pointer travel is
-    // mapped one-to-one to content travel.
-    [[nodiscard]] bool beginPointerScroll();
+    // mapped one-to-one to content travel. The point picks the strip: the active
+    // workspace, or the overview row under it while the overview is up.
+    [[nodiscard]] bool beginPointerScroll(double lx, double ly);
     void updatePointerScroll(double dx, double dy, uint32_t timeMsec);
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
 
   private:
     enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect };
-    enum class ScrollSource { None, Swipe, Pointer };
+    enum class ScrollSource { None, Swipe, Pointer, OverviewPointer };
 
     static void onSwipeBegin(wl_listener* listener, void* data);
     static void onSwipeUpdate(wl_listener* listener, void* data);
@@ -61,6 +62,12 @@ namespace umbriel {
     void silentCancel();
     [[nodiscard]] bool beginScroll(Workspace* workspace, double scale, ScrollSource source);
     void updateScroll(double delta, uint32_t timeMsec);
+    // A held mouse button owns the scroll state until it is released, whether it pans the active workspace or an
+    // overview row. Touchpad gestures step aside for it.
+    [[nodiscard]] bool pointerScrollActive() const {
+      return m_state == State::Scroll
+          && (m_scrollSource == ScrollSource::Pointer || m_scrollSource == ScrollSource::OverviewPointer);
+    }
 
     Server* m_server = nullptr;
     State m_state = State::Idle;

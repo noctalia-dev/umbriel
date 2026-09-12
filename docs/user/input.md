@@ -375,7 +375,8 @@ action comes from a keybind, wheel bind, or IPC. Pointer-driven focus, automatic
 focus after a window closes, gestures, and overview selection do not warp the
 cursor. `window-focus:<id>` remains focus-only; use
 `window-focus-warp:<id>` when an individual id-based request must always move
-the cursor.
+the cursor. Either action summons a target that is hidden in a scratchpad to
+the output under the pointer before focusing it.
 
 ### Focus
 

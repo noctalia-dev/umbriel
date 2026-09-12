@@ -615,7 +615,7 @@ void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
  * The color argument must be a premultiplied color value.
  */
 struct wlr_scene_rect *wlr_scene_rect_create(struct wlr_scene_tree *parent,
-		int width, int height, const float color[static 4]);
+		int width, int height, const float color[4]);
 
 /**
  * Change the width and height of an existing rectangle node.
@@ -648,7 +648,7 @@ void wlr_scene_rect_set_clipped_region(struct wlr_scene_rect *rect,
  *
  * The color argument must be a premultiplied color value.
  */
-void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[static 4]);
+void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[4]);
 
 /**
  * Add a node displaying a two-color rounded border.
@@ -657,7 +657,7 @@ void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[sta
  * separately so callers can update every shape field atomically.
  */
 struct wlr_scene_border *wlr_scene_border_create(struct wlr_scene_tree *parent,
-		const float inner_color[static 4], const float outer_color[static 4]);
+		const float inner_color[4], const float outer_color[4]);
 
 /**
  * The clipped region is the transparent content box and its inner corner radii.
@@ -670,14 +670,14 @@ void wlr_scene_border_set_geometry(struct wlr_scene_border *border,
 		struct fx_corner_radii outer_corners);
 
 void wlr_scene_border_set_colors(struct wlr_scene_border *border,
-		const float inner_color[static 4], const float outer_color[static 4]);
+		const float inner_color[4], const float outer_color[4]);
 
 /**
  * Add a node displaying a shadow to the scene-graph.
  */
 struct wlr_scene_shadow *wlr_scene_shadow_create(struct wlr_scene_tree *parent,
 		int width, int height, int corner_radius, float blur_sigma,
-		const float color[static 4]);
+		const float color[4]);
 
 /**
  * Change the width and height of an existing shadow node.
@@ -697,7 +697,7 @@ void wlr_scene_shadow_set_blur_sigma(struct wlr_scene_shadow *shadow, float blur
 /**
  * Change the color of an existing shadow node.
  */
-void wlr_scene_shadow_set_color(struct wlr_scene_shadow *shadow, const float color[static 4]);
+void wlr_scene_shadow_set_color(struct wlr_scene_shadow *shadow, const float color[4]);
 
 /**
  * Sets the region where to clip the shadow.

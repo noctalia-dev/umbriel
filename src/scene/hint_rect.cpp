@@ -49,7 +49,7 @@ namespace umbriel {
 
   void HintRect::show(Output* output, const wlr_box& box, int cornerRadius) {
     if (box.width <= 0 || box.height <= 0) {
-      hide();
+      hideImmediate();
       return;
     }
 
@@ -72,32 +72,15 @@ namespace umbriel {
       m_w.snap(box.width);
       m_h.snap(box.height);
       m_targetBox = box;
-      if (m_alpha.target() < 1.0) {
-        m_alpha.retarget(1.0, kFadeMs, Easing::EaseOutCubic);
-      }
     } else if (!sameBox(box, m_targetBox)) {
       retargetGeometry(box);
       m_targetBox = box;
-    }
-
-    if (m_alpha.target() == 0.0) {
-      m_alpha.retarget(1.0, kFadeMs, Easing::EaseOutCubic);
     }
 
     m_output = output;
     applyState();
     wlr_scene_node_raise_to_top(&m_tree->node);
     wlr_output_schedule_frame(output->wlr());
-  }
-
-  void HintRect::hide() {
-    if (!m_visible || m_alpha.target() == 0.0) {
-      return;
-    }
-    m_alpha.retarget(0.0, kFadeMs, Easing::EaseOutCubic);
-    if (m_output != nullptr) {
-      wlr_output_schedule_frame(m_output->wlr());
-    }
   }
 
   void HintRect::hideImmediate() {
@@ -118,11 +101,6 @@ namespace umbriel {
     const bool geometryTicked = xTicked || yTicked || widthTicked || heightTicked;
     if (alphaTicked || geometryTicked) {
       applyState();
-    }
-    if (alphaTicked && !m_alpha.animating() && m_alpha.current() == 0.0) {
-      wlr_scene_node_set_enabled(&m_tree->node, false);
-      m_output = nullptr;
-      m_visible = false;
     }
     return hasActiveAnimations();
   }

@@ -762,14 +762,12 @@ namespace umbriel {
     }
   }
 
-  bool ScratchpadManager::toggle(std::string_view name, Output* invokingOutput) {
+  bool ScratchpadManager::summon(std::string_view name, Output* invokingOutput) {
     Scratchpad* scratchpad = findScratchpad(name);
     if (scratchpad == nullptr || invokingOutput == nullptr || !hasEntries(name)) {
       return false;
     }
     if (scratchpad->visible && scratchpad->output == invokingOutput) {
-      setVisible(name, false);
-      m_server->refocus(invokingOutput);
       return true;
     }
 
@@ -793,6 +791,23 @@ namespace umbriel {
     }
     if (!scratchpad->visible) {
       setVisible(name, true);
+    }
+    return true;
+  }
+
+  bool ScratchpadManager::toggle(std::string_view name, Output* invokingOutput) {
+    Scratchpad* scratchpad = findScratchpad(name);
+    if (scratchpad == nullptr || invokingOutput == nullptr || !hasEntries(name)) {
+      return false;
+    }
+    if (scratchpad->visible && scratchpad->output == invokingOutput) {
+      setVisible(name, false);
+      m_server->refocus(invokingOutput);
+      return true;
+    }
+
+    if (!summon(name, invokingOutput)) {
+      return false;
     }
     if (View* view = focused(name)) {
       m_server->focusView(view);

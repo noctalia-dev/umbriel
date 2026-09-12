@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace umbriel {
 
@@ -48,6 +49,41 @@ namespace umbriel {
       }
     }
     return nearest;
+  }
+
+  std::optional<size_t> cyclicOutputIndex(std::span<const OutputBox> boxes, size_t reference, int step) {
+    if (reference >= boxes.size() || boxes.size() < 2 || step == 0) {
+      return std::nullopt;
+    }
+
+    // Centers, doubled to stay integral. Equal centers fall back to the input index, so the order is total even for
+    // mirrored outputs.
+    std::vector<size_t> order(boxes.size());
+    for (size_t index = 0; index < order.size(); ++index) {
+      order[index] = index;
+    }
+    std::ranges::sort(order, [boxes](size_t left, size_t right) {
+      const int64_t leftX = static_cast<int64_t>(boxes[left].x) * 2 + boxes[left].width;
+      const int64_t rightX = static_cast<int64_t>(boxes[right].x) * 2 + boxes[right].width;
+      if (leftX != rightX) {
+        return leftX < rightX;
+      }
+      const int64_t leftY = static_cast<int64_t>(boxes[left].y) * 2 + boxes[left].height;
+      const int64_t rightY = static_cast<int64_t>(boxes[right].y) * 2 + boxes[right].height;
+      if (leftY != rightY) {
+        return leftY < rightY;
+      }
+      return left < right;
+    });
+
+    const auto position = std::ranges::find(order, reference);
+    if (position == order.end()) {
+      return std::nullopt;
+    }
+    const auto count = static_cast<int64_t>(order.size());
+    const int64_t from = std::distance(order.begin(), position);
+    const int64_t wrapped = ((from + step) % count + count) % count;
+    return order[static_cast<size_t>(wrapped)];
   }
 
 } // namespace umbriel

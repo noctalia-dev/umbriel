@@ -728,7 +728,7 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     float effective = effectiveOpacity();
     wlr_scene_node_for_each_buffer(&m_sceneTree->node, setCompositorOpacity, &effective);
-    setBorderFocused(m_borderFocusedState);
+    m_decoration.setBorderRawColor(m_borderColorAnim.current(), effective);
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = m_customFade && m_fade.animating() ? effective * m_fadeAlpha : effective;
@@ -1217,29 +1217,21 @@ namespace umbriel {
 
   // True when this is the only tiled window in the workspace.
   bool View::isAloneInLayout() const {
-    if (!m_tiled || m_workspace == nullptr) {
-      return false;
-    }
-    View* sole = nullptr;
-    for (const Column& column : m_workspace->layout().columns()) {
-      for (View* view : column.views) {
-        if (sole != nullptr) {
-          return false;
-        }
-        sole = view;
-      }
-    }
-    return sole == this;
+    return m_tiled
+        && m_workspace != nullptr
+        && m_workspace->layout().columnOf(this) >= 0
+        && m_workspace->isOnlyTiledView(this);
   }
 
   pid_t View::pid() const { return m_xwayland ? -1 : surfaceClientPid(m_toplevel->base->surface); }
 
-  // Reads the rules as if the window were not alone, so the alone effect knows what it should change.
-  ResolvedWindowRule View::resolveAloneRules() const {
-    WindowRuleState notAlone = ruleState();
-    notAlone.alone = false;
+  // Reads the rules with the alone state forced either way, so the alone effect knows what it should change, and so
+  // the opening configure can read the alone rules while the view is not in the layout yet.
+  ResolvedWindowRule View::resolveRulesWithAlone(bool alone) const {
+    WindowRuleState state = ruleState();
+    state.alone = alone;
     return resolveWindowRules(
-        config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_xdgTag, m_contentType, notAlone,
+        config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_xdgTag, m_contentType, state,
         m_server->uptimeMs()
     );
   }
@@ -1265,9 +1257,10 @@ namespace umbriel {
 
   // Applies one effect at a time, in the same order as at map time. Returns whether the effect was applied: if the
   // window is already there, or the layout cannot do it, nothing is claimed and leaving alone will not undo anything.
+  // The exception is a state the opening configure seeded from these same rules, which this pass takes over.
   bool View::applyAloneRuleEffects(const ResolvedWindowRule& delta) {
     if (delta.defaultFullscreen && *delta.defaultFullscreen) {
-      if (m_toplevel->scheduled.fullscreen) {
+      if (m_toplevel->scheduled.fullscreen && m_aloneOpeningSeed != AloneSeed::Fullscreen) {
         return false;
       }
       setFullscreen(true);
@@ -1283,7 +1276,7 @@ namespace umbriel {
       return true;
     }
     if (!openingParented() && delta.defaultMaximize && *delta.defaultMaximize) {
-      if (m_toplevel->scheduled.maximized) {
+      if (m_toplevel->scheduled.maximized && m_aloneOpeningSeed != AloneSeed::Maximize) {
         return false;
       }
       setMaximized(true);
@@ -1342,7 +1335,7 @@ namespace umbriel {
         if (scrolling != nullptr) {
           const int column = scrolling->columnOf(this);
           if (column >= 0) {
-            const std::optional<double> notAloneWidth = resolveAloneRules().defaultWidth;
+            const std::optional<double> notAloneWidth = resolveRulesWithAlone(false).defaultWidth;
             const double restore = notAloneWidth.value_or(m_aloneSavedWidthFrac.value_or(scrolling->widthFraction(-1)));
             scrolling->setWidthFraction(column, restore);
             m_workspace->markArrange();
@@ -1375,7 +1368,7 @@ namespace umbriel {
       m_workspace->ensureFocusedVisible();
       return true;
     }
-    const ResolvedWindowRule delta = aloneRuleDiff(resolvedRules(), resolveAloneRules());
+    const ResolvedWindowRule delta = aloneRuleDiff(resolvedRules(), resolveRulesWithAlone(false));
     if (delta == m_lastAloneDelta) {
       return false;
     }
@@ -1388,6 +1381,29 @@ namespace umbriel {
     m_lastAloneDelta = delta;
     m_aloneEffectsActive = applied;
     return changed || applied;
+  }
+
+  // The opening configure states a window that would be the only tiled one from its alone rules, before the view is
+  // in the layout. Now that it is, notifyAloneStateChanged hands that state to the alone effect, so leaving alone
+  // undoes it again. The seed is single-use: a later pass must not take over a state the user or the client chose.
+  void View::settleOpeningAloneState() {
+    const bool clientRequested = m_aloneOpeningSeed == AloneSeed::Fullscreen
+        ? m_toplevel->requested.fullscreen
+        : m_aloneOpeningSeed == AloneSeed::Maximize && m_toplevel->requested.maximized;
+    if (clientRequested) {
+      // The client has asked for the state itself since the opening configure, so it owns it.
+      m_aloneOpeningSeed = AloneSeed::None;
+    } else if (!isAloneInLayout()) {
+      // Another window reached the workspace first, so nothing owns the seeded state: neither the client nor the
+      // window's not-alone rules. The arrange the attach marked carries the tiled size.
+      if (m_aloneOpeningSeed == AloneSeed::Fullscreen) {
+        setFullscreen(false, FullscreenExitLayout::DeferToCaller);
+      } else if (m_aloneOpeningSeed == AloneSeed::Maximize) {
+        setMaximized(false);
+      }
+    }
+    notifyAloneStateChanged();
+    m_aloneOpeningSeed = AloneSeed::None;
   }
 
   void View::onMap(wl_listener* listener, void* /*data*/) {
@@ -2514,6 +2530,8 @@ namespace umbriel {
       setFullscreen(true);
     }
 
+    settleOpeningAloneState();
+
     if (transientParent() != nullptr) {
       raiseToTop();
     }
@@ -2708,6 +2726,7 @@ namespace umbriel {
     m_aloneAction = AloneAction::None;
     m_lastAloneDelta = {};
     m_aloneSavedWidthFrac.reset();
+    m_aloneOpeningSeed = AloneSeed::None;
     m_hasMaximizeRestoreBox = false;
     m_floating.clearSizeRequest();
     if (m_displacedHome) {
@@ -2790,7 +2809,7 @@ namespace umbriel {
       openingState.focused = false;
       openingState.floating = !looksTiled(m_toplevel, openingParented());
       openingState.alone = false;
-      const ResolvedWindowRule rule = resolveWindowRules(
+      ResolvedWindowRule rule = resolveWindowRules(
           config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_xdgTag, m_contentType, openingState,
           m_server->uptimeMs()
       );
@@ -2800,6 +2819,40 @@ namespace umbriel {
       const auto& scratchpadConfig = config().animation.scratchpad;
       const bool wantTiled = !openingInScratchpad
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled(m_toplevel, openingParented()));
+
+      // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
+      // ones that size the first configure.
+      Workspace* target = m_workspace != nullptr ? m_workspace : parentWorkspace(rule);
+      Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+      WorkspaceGroup* targetGroup = target != nullptr
+          ? target->group()
+          : windowRuleWorkspaceGroup(*m_server, rule, preferred != nullptr ? preferred->workspaceGroup() : nullptr);
+      if (target == nullptr) {
+        target = windowRuleWorkspace(targetGroup, rule);
+      }
+
+      // A window that opens as the only tiled one on its workspace is configured in its `match.is_alone` state right
+      // away, instead of showing one frame at the size its not-alone rules give it. Alone-ness depends on the
+      // workspace those rules select, so this is a second pass, and it overrides only the four settings the alone
+      // effect owns. A state that neither the client nor the not-alone rules asked for is recorded as the alone
+      // rules' own, for map to hand to that effect.
+      if (wantTiled && (target == nullptr || target->isOnlyTiledView(this))) {
+        const ResolvedWindowRule alone = resolveRulesWithAlone(true);
+        const bool seedFullscreen = alone.defaultFullscreen.value_or(false) && !rule.defaultFullscreen.value_or(false);
+        const bool seedMaximized =
+            (alone.defaultMaximize.value_or(false) && !openingParented() && !rule.defaultMaximize.value_or(false))
+            || (alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false));
+        if (seedFullscreen && !m_toplevel->requested.fullscreen) {
+          m_aloneOpeningSeed = AloneSeed::Fullscreen;
+        } else if (seedMaximized && !m_toplevel->requested.fullscreen && !m_toplevel->requested.maximized) {
+          m_aloneOpeningSeed = AloneSeed::Maximize;
+        }
+        rule.defaultFullscreen = alone.defaultFullscreen;
+        rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
+        rule.defaultMaximize = alone.defaultMaximize;
+        rule.defaultWidth = alone.defaultWidth;
+      }
+
       const bool wantFullscreen = openingInScratchpad
           ? scratchpadConfig.fullscreen
           : m_toplevel->requested.fullscreen || (rule.defaultFullscreen && *rule.defaultFullscreen);
@@ -2812,16 +2865,6 @@ namespace umbriel {
               || wantMaximizeToEdges
               || (config().general.honorRestoredMaximize && m_toplevel->requested.maximized);
 
-      // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
-      // ones that size the first configure.
-      Workspace* target = m_workspace != nullptr ? m_workspace : parentWorkspace(rule);
-      Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
-      WorkspaceGroup* targetGroup = target != nullptr
-          ? target->group()
-          : windowRuleWorkspaceGroup(*m_server, rule, preferred != nullptr ? preferred->workspaceGroup() : nullptr);
-      if (target == nullptr) {
-        target = windowRuleWorkspace(targetGroup, rule);
-      }
       Output* targetOutput = targetGroup != nullptr ? targetGroup->output() : preferred;
       if (openingInScratchpad) {
         targetOutput = scratchpadManager->presentationOutput(*pad, targetOutput);

@@ -38,8 +38,8 @@ wait_for_windows() {
   return 1
 }
 
-# Single-output rejection: this check's instance boots exactly one headless output, so every directional output action must fail with a "no output" message. This
-# also proves parse + dispatch reach the handler.
+# Single-output rejection: this check's instance boots exactly one headless output, so every directional output action must fail with a "no output" message, and
+# the cycling ones with "no other output". This also proves parse + dispatch reach the handler.
 for action in \
   output-focus-left output-focus-right output-focus-up output-focus-down \
   window-focus-or-output-left window-focus-or-output-right window-focus-or-output-up window-focus-or-output-down \
@@ -48,6 +48,12 @@ for action in \
   column-move-to-output-left column-move-to-output-right column-move-to-output-up column-move-to-output-down \
   workspace-move-to-output-left workspace-move-to-output-right workspace-move-to-output-up workspace-move-to-output-down; do
   rejects_with "$action" "no output"
+done
+for action in \
+  output-focus-next output-focus-previous \
+  window-move-to-output-next window-move-to-output-previous \
+  workspace-swap-active-output-next workspace-swap-active-output-previous; do
+  rejects_with "$action" "no other output"
 done
 
 # workspace-next / workspace-previous

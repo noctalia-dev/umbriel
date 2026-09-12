@@ -193,7 +193,8 @@ namespace umbriel {
       return;
     }
     WorkspaceGroup* group = m_output != nullptr ? m_output->workspaceGroup() : nullptr;
-    if (group == nullptr || group->active() != m_scrollWorkspace) {
+    const bool overviewPointer = m_scrollSource == ScrollSource::OverviewPointer;
+    if (group == nullptr || (!overviewPointer && group->active() != m_scrollWorkspace)) {
       finishScroll(true, timeMsec);
       return;
     }
@@ -207,7 +208,7 @@ namespace umbriel {
     m_scrollWorkspace->markArrange(false);
   }
 
-  bool Gestures::beginPointerScroll() {
+  bool Gestures::beginPointerScroll(double lx, double ly) {
     if (m_server->sessionLocked()) {
       return false;
     }
@@ -215,7 +216,18 @@ namespace umbriel {
       cancelActive();
     }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
-      return false;
+      // The row under the pointer, not the active one: the overview pans whichever row the drag started over, and the
+      // strip it scrolls always runs across the workspace axis.
+      Workspace* workspace = overview->pointerScrollWorkspace(lx, ly);
+      WorkspaceGroup* group = workspace != nullptr ? workspace->group() : nullptr;
+      m_output = group != nullptr ? group->output() : nullptr;
+      // Previews are drawn at the settled zoom, so travel over one covers that much more of the content below it.
+      if (m_output == nullptr
+          || !beginScroll(workspace, 1.0 / Overview::settledZoom(), ScrollSource::OverviewPointer)) {
+        m_output = nullptr;
+        return false;
+      }
+      return true;
     }
     Output* output = m_server->outputFromWlr(m_server->preferredOutput());
     Workspace* workspace =
@@ -229,13 +241,13 @@ namespace umbriel {
   }
 
   void Gestures::updatePointerScroll(double dx, double dy, uint32_t timeMsec) {
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (pointerScrollActive()) {
       updateScroll(m_scrollVertical ? dy : dx, timeMsec);
     }
   }
 
   void Gestures::endPointerScroll(bool cancelled, uint32_t timeMsec) {
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (pointerScrollActive()) {
       finishScroll(cancelled, timeMsec);
     }
   }
@@ -277,7 +289,7 @@ namespace umbriel {
       silentCancel();
       return;
     }
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (pointerScrollActive()) {
       return;
     }
     if (m_state != State::Idle) {
@@ -326,7 +338,7 @@ namespace umbriel {
       silentCancel();
       return;
     }
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (pointerScrollActive()) {
       return;
     }
 
@@ -481,7 +493,7 @@ namespace umbriel {
       silentCancel();
       return;
     }
-    if (m_state == State::Scroll && m_scrollSource == ScrollSource::Pointer) {
+    if (pointerScrollActive()) {
       return;
     }
 

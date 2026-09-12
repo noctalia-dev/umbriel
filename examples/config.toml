@@ -390,6 +390,9 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # Resize, maximize, fullscreen, and close actions target a scratchpad that owns
 # keyboard focus. Layout-relative window actions leave the workspace behind it
 # unchanged.
+# `window-focus:<window-id>` and `window-focus-warp:<window-id>` also summon a
+# hidden scratchpad target to the output under the pointer. The `-warp` form
+# then moves the cursor to that target.
 # Documentation: https://docs.noctalia.dev/umbriel/scratchpads/
 "Mod+Shift+Space" = "window-move-to-scratchpad"
 "Mod+Space" = "scratchpad-toggle"
@@ -435,6 +438,16 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # "Mod+Alt+K" = "keyboard-layout-next"
 # "Mod+WheelUp" = { action = "workspace-previous", cooldown_ms = 150 }
 # "Mod+WheelDown" = { action = "workspace-next", cooldown_ms = 150 }
+# "Mod+Alt+Left" = "workspace-swap-active-output-left"
+# "Mod+Alt+Right" = "workspace-swap-active-output-right"
+# "Mod+Alt+Up" = "workspace-swap-active-output-up"
+# "Mod+Alt+Down" = "workspace-swap-active-output-down"
+
+# The -next and -previous output actions wrap, so one bind each reaches the
+# other screen of a two-monitor setup.
+# "Mod+Tab" = "output-focus-next"
+# "Mod+Shift+Tab" = "window-move-to-output-next"
+# "Mod+Alt+Tab" = "workspace-swap-active-output-next"
 
 # Submaps temporarily replace the active keybind layer and can nest. Entry
 # binds must not repeat. A table-form bind can run an action and then reset one

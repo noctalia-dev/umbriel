@@ -335,6 +335,8 @@ namespace {
     case A::WindowMoveToOutputRight:
     case A::WindowMoveToOutputUp:
     case A::WindowMoveToOutputDown:
+    case A::WindowMoveToOutputNext:
+    case A::WindowMoveToOutputPrevious:
     case A::ColumnMoveToOutputLeft:
     case A::ColumnMoveToOutputRight:
     case A::ColumnMoveToOutputUp:
@@ -373,11 +375,19 @@ namespace {
     case A::WorkspaceMoveToOutputRight:
     case A::WorkspaceMoveToOutputUp:
     case A::WorkspaceMoveToOutputDown:
+    case A::WorkspaceSwapActiveOutputLeft:
+    case A::WorkspaceSwapActiveOutputRight:
+    case A::WorkspaceSwapActiveOutputUp:
+    case A::WorkspaceSwapActiveOutputDown:
+    case A::WorkspaceSwapActiveOutputNext:
+    case A::WorkspaceSwapActiveOutputPrevious:
       return Group::Workspaces;
     case A::OutputFocusLeft:
     case A::OutputFocusRight:
     case A::OutputFocusUp:
     case A::OutputFocusDown:
+    case A::OutputFocusNext:
+    case A::OutputFocusPrevious:
       return Group::Focus;
     case A::OverviewToggle:
     case A::OverviewOpen:

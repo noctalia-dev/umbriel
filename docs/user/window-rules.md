@@ -65,8 +65,10 @@ settings from the dynamic table below. Pinned and scratchpad windows are
 floating, so `is_floating = true` also matches them. Opening settings resolve
 against the state the window opens with, before `default_floating` and
 `default_pinned` apply, so a rule that sets one of those cannot also select on
-the state it produces. `is_alone` never selects opening settings; its size
-effects are described in [The only window in the workspace](#the-only-window-in-the-workspace).
+the state it produces. `is_alone` selects only the four size settings described
+in [The only window in the workspace](#the-only-window-in-the-workspace), and a
+window that opens as the only tiled one is configured with them from its first
+configure.
 
 ## Settings applied when a window opens
 
@@ -322,6 +324,14 @@ Only one of these is applied at a time, in the same precedence as at map time:
 fullscreen, then maximized to edges, then maximized, then width. If the window
 is already in the target state, the rule does not take over what the user or a
 previous rule already chose.
+
+A window that opens as the only tiled window on its workspace is configured
+with these settings right away, in the same configure that carries its first
+size, so its first frame is already the one the rule asks for. The rule still
+owns that state: the window gives it up when a second window arrives. When the
+window's normal rules set no `default_width`, the width it returns to is
+`layout.scrolling.default_width_fraction`, because the alone width, not the
+client's own preference, sized the window as it opened.
 
 The rule is compatible with other matches.
 

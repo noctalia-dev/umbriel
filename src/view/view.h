@@ -463,11 +463,16 @@ namespace umbriel {
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
-    [[nodiscard]] ResolvedWindowRule resolveAloneRules() const;
+    // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
+    // can read the alone rules before the view is in the layout.
+    [[nodiscard]] ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
     [[nodiscard]] ResolvedWindowRule
     aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
+    // window did not open alone after all.
+    void settleOpeningAloneState();
     // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
     // rules. A transition that also moved focus has already refreshed them, so this is a no-op there.
     void refreshStateRuleEffects();
@@ -504,6 +509,13 @@ namespace umbriel {
     AloneAction m_aloneAction = AloneAction::None;
     ResolvedWindowRule m_lastAloneDelta;
     std::optional<double> m_aloneSavedWidthFrac;
+    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect.
+    enum class AloneSeed : uint8_t {
+      None,
+      Fullscreen,
+      Maximize,
+    };
+    AloneSeed m_aloneOpeningSeed = AloneSeed::None;
     // One-shot effects already applied at map. Late identity resolution only
     // reapplies a field when its resolved value changes.
     ResolvedWindowRule m_initialRules;

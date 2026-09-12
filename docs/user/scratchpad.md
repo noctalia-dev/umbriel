@@ -107,6 +107,10 @@ Toggle, restore, and focus actions do nothing when their required window is not
 available. In particular, restore and focus-next require the selected
 scratchpad to be visible.
 
+`window-focus:<window-id>` and `window-focus-warp:<window-id>` summon a
+matching hidden scratchpad window to the output under the pointer before
+focusing it. The `-warp` form then moves the cursor to that window.
+
 Scratchpad visibility and cycling actions never repeat while their key is held,
 even if the binding does not set `repeat = false`.
 

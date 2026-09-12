@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # A modified middle-button bind pans the scrolling layout continuously and settles it through the same path as a
-# three-finger gesture. In overview, an unmodified middle drag steps workspace rows while a stationary middle click
-# remains the close gesture; delaying close until release lets motion disambiguate the two without swallowing ordinary
-# middle clicks outside the overview.
+# three-finger gesture, on the active workspace or on the overview row under the pointer. In overview, an unmodified
+# middle drag locks to the dominant axis: along the workspace axis it steps rows, across it it pans that row's strip.
+# A stationary middle click remains the close gesture; delaying close until release lets motion disambiguate the two
+# without swallowing ordinary middle clicks outside the overview.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -109,8 +110,23 @@ if ((after_y >= before_y)); then
   exit 1
 fi
 
-# Horizontally arranged workspaces move the overview middle drag onto X.
+# With the workspaces on X, the overview middle drag steps rows on X and pans the strip on Y. Both start from a known
+# press point: the axis is locked from the travel of the first motion.
+pointer move 640 360
 "$UMBRIEL" msg overview-open > /dev/null
+strip_before_y=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .y')
+pointer press "$BTN_MIDDLE" move 640 400 move 640 620 release "$BTN_MIDDLE"
+strip_after_y=$strip_before_y
+for _ in $(seq 20); do
+  strip_after_y=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .y')
+  ((strip_after_y > strip_before_y)) && break
+  sleep 0.1
+done
+if ((strip_after_y <= strip_before_y)); then
+  echo "bare middle drag across the workspace axis did not pan the overview strip: A y $strip_before_y -> $strip_after_y"
+  exit 1
+fi
+pointer move 640 360
 pointer press "$BTN_MIDDLE" move 610 360 move 430 360 release "$BTN_MIDDLE"
 for _ in $(seq 40); do
   [[ $("$WORKSPACE") == 2 ]] && break
@@ -139,10 +155,40 @@ fi
 "$UMBRIEL" msg column-focus-first > /dev/null
 wait_for_a_visible x > /dev/null
 
-# The same physical button needs no modifier in overview. The first motion crosses the drag threshold; the second
-# crosses one row step. Releasing after motion must not close the card under the original press.
+# The configured modified drag pans the scrolling row under the pointer in the overview too. Overview cards are scaled,
+# so the gesture maps pointer travel back through that scale before updating the workspace viewport.
 pointer move 560 360
 "$UMBRIEL" msg overview-open > /dev/null
+overview_before_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+pointer mod logo press "$BTN_MIDDLE" move 510 360 move 310 360 release "$BTN_MIDDLE" mod none
+overview_after_x=$overview_before_x
+for _ in $(seq 20); do
+  overview_after_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+  ((overview_after_x < overview_before_x)) && break
+  sleep 0.1
+done
+if ((overview_after_x >= overview_before_x)); then
+  echo "layout-scroll-drag did not pan the overview row: A x $overview_before_x -> $overview_after_x"
+  exit 1
+fi
+
+# Bare horizontal middle drag pans the same row without requiring the configured modifier.
+bare_before_x=$overview_after_x
+pointer press "$BTN_MIDDLE" move 360 360 move 560 360 release "$BTN_MIDDLE"
+bare_after_x=$bare_before_x
+for _ in $(seq 20); do
+  bare_after_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+  ((bare_after_x > bare_before_x)) && break
+  sleep 0.1
+done
+if ((bare_after_x <= bare_before_x)); then
+  echo "bare middle drag did not pan the overview row: A x $bare_before_x -> $bare_after_x"
+  exit 1
+fi
+
+# Bare vertical middle drag retains the overview's row navigation. The first motion crosses the drag threshold; the
+# second crosses one row step. Releasing after motion must not close the card under the original press.
+pointer move 560 360
 pointer press "$BTN_MIDDLE" move 560 330 move 560 150 release "$BTN_MIDDLE"
 
 for _ in $(seq 40); do
@@ -184,4 +230,4 @@ fi
 wait "$middle_click_pid"
 wait_for_count 3
 
-echo "mouse drag pans both layout axes, navigates overview rows, and preserves release-only middle-click close"
+echo "bound and bare mouse drags pan overview strips, navigate rows, and preserve release-only middle-click close"

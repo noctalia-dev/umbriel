@@ -54,6 +54,8 @@ namespace umbriel {
     [[nodiscard]] bool moveToScratchpad(View* view, std::string_view name, Output* invokingOutput);
     [[nodiscard]] bool
     assignByWindowRule(View* view, std::string_view name, Output* placementOutput, const WindowRuleAdmission& options);
+    // Show a scratchpad on the invoking output without changing keyboard focus.
+    bool summon(std::string_view name, Output* invokingOutput);
     bool toggle(std::string_view name, Output* invokingOutput);
     void hideAll();
     bool restoreFocused(std::string_view name);

@@ -40,6 +40,8 @@ are required, `[bracket]` forms are optional.
 | `column-focus-last` | Focus the last column in the workspace |
 | `output-focus-down` | Focus the output below |
 | `output-focus-left` | Focus the output to the left |
+| `output-focus-next` | Focus the next output, wrapping around |
+| `output-focus-previous` | Focus the previous output, wrapping around |
 | `output-focus-right` | Focus the output to the right |
 | `output-focus-up` | Focus the output above |
 | `window-focus:<window-id>` | Focus the given window |
@@ -102,6 +104,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-move-or-workspace-up` | Move up, or to the previous workspace at the edge |
 | `window-move-to-output-down` | Move the focused window to the output below |
 | `window-move-to-output-left` | Move the focused window to the output left |
+| `window-move-to-output-next` | Move the focused window to the next output |
+| `window-move-to-output-previous` | Move the focused window to the previous output |
 | `window-move-to-output-right` | Move the focused window to the output right |
 | `window-move-to-output-up` | Move the focused window to the output above |
 | `window-move-up` | Move the focused window up in its column |
@@ -157,6 +161,12 @@ described in [Workspace selectors](workspaces.md#workspace-selectors).
 | `workspace-next` | Switch to the next workspace on this output |
 | `workspace-previous` | Switch to the previous workspace on this output |
 | `workspace-set-layout:<scrolling\|dwindle\|master\|toggle>` | Set the active workspace's layout mode |
+| `workspace-swap-active-output-down` | Swap active workspace windows with the output below |
+| `workspace-swap-active-output-left` | Swap active workspace windows with the output left |
+| `workspace-swap-active-output-next` | Swap active workspace windows with the next output |
+| `workspace-swap-active-output-previous` | Swap active workspace windows with the previous output |
+| `workspace-swap-active-output-right` | Swap active workspace windows with the output right |
+| `workspace-swap-active-output-up` | Swap active workspace windows with the output above |
 | `workspace-switch:<workspace>[/<output>]` | Switch to the selected workspace |
 
 ## Overview
@@ -224,6 +234,8 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   toplevel activation requests from docks and taskbars. Pointer-driven and
   automatic focus changes never move the cursor. `window-focus:<window-id>`
   stays focus-only, while `window-focus-warp:<window-id>` always moves it.
+- **Hidden scratchpads.** Either ID-targeted focus action summons a matching
+  hidden scratchpad window to the output under the pointer before focusing it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction
   the action fails with an IPC error naming it ("no output to the left" and
   friends). Otherwise the cursor warps to the center of the target monitor so
@@ -232,6 +244,14 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   one. A moved window or column uses that same target. Output direction comes
   from output centers in logical coordinates, so fractional-scale rounding does
   not hide a neighbor.
+- **Around the outputs.** The `-next` and `-previous` output actions cycle
+  instead of pointing: they step through the monitors in layout order (left to
+  right, then top to bottom, by output center) and wrap at both ends, so a
+  single keybind reaches the other screen of a two-monitor setup in either
+  direction. Their order follows how the monitors are arranged, not the order
+  they were plugged in, and they fail with "no other output" when the session
+  has only one. They otherwise behave exactly like their directional siblings,
+  cursor warp included.
 - **Cycling.** `window-focus-next` and `window-focus-previous` walk the tiled
   windows in layout order, then the floating ones, wrapping in both directions.
   `window-swap-next` and `window-swap-previous` exchange the focused tiled
@@ -256,8 +276,12 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   slightly below and to the right of its tiled position while keeping it on-
   screen. `window-toggle-pinned` floats the window and keeps it above fullscreen
   windows on its output, visible across workspace switches and hidden for as
-  long as the overview is open. A fullscreen window cannot be pinned, and making
-  a pinned window fullscreen drops the pin.
+  long as the overview is open. Unpinning restores the state from before it was
+  pinned: a tiled window returns to its layout, while a floating window remains
+  floating with its saved geometry. Use `window-toggle-floating` to unpin and
+  place a pinned window in the layout regardless of its pre-pin state. A
+  fullscreen window cannot be pinned, and making a pinned window fullscreen
+  drops the pin.
 - **Unavailable actions.** When an action has no meaning in the active layout,
   its keybind does nothing and `umbriel msg` returns an error naming the
   requirement.

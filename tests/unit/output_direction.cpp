@@ -4,6 +4,7 @@
 #include <array>
 
 using umbriel::adjacentOutputIndex;
+using umbriel::cyclicOutputIndex;
 using umbriel::OutputBox;
 using umbriel::OutputDirection;
 
@@ -40,6 +41,49 @@ UMBRIEL_TEST(nearestDirectionalOutputWins) {
   };
 
   CHECK_EQ(adjacentOutputIndex(boxes, 0, OutputDirection::Right, 500, 400), std::optional<size_t>{1});
+}
+
+UMBRIEL_TEST(outputCyclingFollowsLayoutOrderAndWraps) {
+  // Declared out of layout order, so a cycle that followed the input order
+  // would visit the middle monitor first.
+  constexpr std::array boxes{
+      OutputBox{1000, 0, 800, 800},
+      OutputBox{1800, 0, 800, 800},
+      OutputBox{0, 0, 1000, 800},
+  };
+
+  CHECK_EQ(cyclicOutputIndex(boxes, 2, 1), std::optional<size_t>{0});
+  CHECK_EQ(cyclicOutputIndex(boxes, 0, 1), std::optional<size_t>{1});
+  CHECK_EQ(cyclicOutputIndex(boxes, 1, 1), std::optional<size_t>{2});
+  CHECK_EQ(cyclicOutputIndex(boxes, 2, -1), std::optional<size_t>{1});
+  CHECK_EQ(cyclicOutputIndex(boxes, 0, -1), std::optional<size_t>{2});
+}
+
+UMBRIEL_TEST(stackedOutputsCycleTopToBottom) {
+  // Same x: the secondary key orders them, so a vertical stack cycles downwards
+  // and wraps back to the top.
+  constexpr std::array boxes{
+      OutputBox{0, 1080, 1920, 1080},
+      OutputBox{0, 0, 1920, 1080},
+  };
+
+  CHECK_EQ(cyclicOutputIndex(boxes, 1, 1), std::optional<size_t>{0});
+  CHECK_EQ(cyclicOutputIndex(boxes, 0, 1), std::optional<size_t>{1});
+  // Two outputs: either step reaches the other one, so one keybind suffices.
+  CHECK_EQ(cyclicOutputIndex(boxes, 0, -1), std::optional<size_t>{1});
+  CHECK_EQ(cyclicOutputIndex(boxes, 1, -1), std::optional<size_t>{0});
+}
+
+UMBRIEL_TEST(outputCyclingNeedsASecondOutputAndAKnownReference) {
+  constexpr std::array lone{OutputBox{0, 0, 1920, 1080}};
+  CHECK_EQ(cyclicOutputIndex(lone, 0, 1), std::optional<size_t>{});
+
+  constexpr std::array pair{
+      OutputBox{0, 0, 1920, 1080},
+      OutputBox{1920, 0, 1920, 1080},
+  };
+  CHECK_EQ(cyclicOutputIndex(pair, 2, 1), std::optional<size_t>{});
+  CHECK_EQ(cyclicOutputIndex(pair, 0, 0), std::optional<size_t>{});
 }
 
 int main() { return RUN_TESTS(); }

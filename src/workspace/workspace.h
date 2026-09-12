@@ -99,6 +99,9 @@ namespace umbriel {
         View* view, std::optional<double> initialWidth = std::nullopt,
         std::optional<int> initialPixelWidth = std::nullopt
     );
+    // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
+    // only one once it attaches. The opening path needs that second form, before the view is in the layout.
+    [[nodiscard]] bool isOnlyTiledView(const View* view) const;
     // Predict the first configure by applying the same insertion and full-width
     // transition that the mapped path will use on the authoritative layout.
     [[nodiscard]] Layout::InitialSize initialMaximizedSize(View* view, const wlr_box& usable) const;
@@ -165,6 +168,9 @@ namespace umbriel {
 
     [[nodiscard]] const std::vector<View*>& allViews() const noexcept { return m_views; }
     [[nodiscard]] bool hasViews() const { return !m_views.empty(); }
+    // Pull the scroll offset back into [0, maxScroll]. For removals and restored offsets only: a touchpad swipe
+    // overscrolls on purpose.
+    void clampScrollToRange();
 
   private:
     void applyPositions(bool animate);
@@ -180,9 +186,6 @@ namespace umbriel {
     [[nodiscard]] std::optional<std::array<int, 2>> focusedFloatingAxis(bool width) const;
     // The focused floating window's size as a fraction of the usable axis; nullopt when unavailable.
     [[nodiscard]] std::optional<double> focusedFloatingFraction(bool width) const;
-    // Pull the scroll offset back into [0, maxScroll]. Only for removals: a
-    // touchpad swipe overscrolls on purpose.
-    void clampScrollToRange();
     // The focused window's place in the layout: a modal dialog holds the focus for the window it is attached to.
     [[nodiscard]] View* layoutFocus() const;
     [[nodiscard]] View* focusAlongStrip(int direction) const;

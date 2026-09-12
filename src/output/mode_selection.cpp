@@ -1,12 +1,11 @@
 #include "output/mode_selection.h"
 
+#include "wlr_color.h"
+
 #include <cmath>
 
 extern "C" {
-// wlroots uses C99 array parameter syntax in headers included by wlr_output.h.
-#define static
 #include <wlr/types/wlr_output.h>
-#undef static
 }
 
 namespace umbriel {

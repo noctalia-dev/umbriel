@@ -408,6 +408,45 @@ namespace umbriel {
       return outputs[*adjacent];
     }
 
+    // The output `step` places away from the focused (cursor) output in layout order, wrapping at both ends. Null with
+    // a message when this session has only one output.
+    Output* cycledOutput(Server& server, int step, std::string* error) {
+      Output* reference = server.outputFromWlr(server.preferredOutput());
+      if (reference == nullptr) {
+        if (error != nullptr) {
+          *error = "no outputs";
+        }
+        return nullptr;
+      }
+
+      std::vector<Output*> outputs;
+      std::vector<OutputBox> boxes;
+      size_t referenceIndex = 0;
+      bool foundReference = false;
+      for (const auto& output : server.outputs()) {
+        wlr_box box{};
+        wlr_output_layout_get_box(server.outputLayout(), output->wlr(), &box);
+        if (box.width <= 0 || box.height <= 0) {
+          continue;
+        }
+        if (output.get() == reference) {
+          referenceIndex = boxes.size();
+          foundReference = true;
+        }
+        outputs.push_back(output.get());
+        boxes.push_back({box.x, box.y, box.width, box.height});
+      }
+
+      const std::optional<size_t> next = foundReference ? cyclicOutputIndex(boxes, referenceIndex, step) : std::nullopt;
+      if (!next) {
+        if (error != nullptr) {
+          *error = "no other output";
+        }
+        return nullptr;
+      }
+      return outputs[*next];
+    }
+
     // Warp the cursor to the center of `output`'s usable area so subsequent
     // actions resolve against the target monitor (focus is cursor-defined).
     void warpToOutputCenter(Server& server, Output& output) {
@@ -986,6 +1025,16 @@ namespace umbriel {
         }
         return false;
       }
+      if (ScratchpadManager* scratchpad = server.scratchpadManager();
+          scratchpad != nullptr && scratchpad->contains(view) && !view->onActiveWorkspace()) {
+        // Hidden scratchpad entries fail FocusManager's visibility gate. Summon
+        // their pad using the normal pointer-output policy, then select the
+        // exact requested entry below without briefly focusing its remembered
+        // window first.
+        if (Output* output = server.outputFromWlr(server.preferredOutput()); output != nullptr) {
+          scratchpad->summon(scratchpad->nameFor(view), output);
+        }
+      }
       server.focusView(view, FocusReason::ForeignActivation);
       if constexpr (Warp) {
         warpCursorToWindow(server, *view);
@@ -1196,17 +1245,45 @@ namespace umbriel {
     }
 
     // Outputs
+    bool focusOutput(Server& server, Output& target) {
+      warpToOutputCenter(server, target);
+      server.refocus(&target);
+      WorkspaceGroup* group = target.workspaceGroup();
+      Workspace* workspace = group != nullptr ? group->active() : nullptr;
+      maybeWarpCursorToWindow(server, workspace != nullptr ? workspace->focusedView() : nullptr);
+      return true;
+    }
+
     template <wlr_direction D> bool actionOutputFocus(Server& server, const Keybind& /*bind*/, std::string* error) {
       std::string message;
       Output* target = adjacentOutput(server, D, &message);
       if (target == nullptr) {
         return reject(error, std::move(message));
       }
-      warpToOutputCenter(server, *target);
-      server.refocus(target);
-      WorkspaceGroup* group = target->workspaceGroup();
-      Workspace* workspace = group != nullptr ? group->active() : nullptr;
-      maybeWarpCursorToWindow(server, workspace != nullptr ? workspace->focusedView() : nullptr);
+      return focusOutput(server, *target);
+    }
+
+    template <int Step> bool actionOutputFocusCycle(Server& server, const Keybind& /*bind*/, std::string* error) {
+      std::string message;
+      Output* target = cycledOutput(server, Step, &message);
+      if (target == nullptr) {
+        return reject(error, std::move(message));
+      }
+      return focusOutput(server, *target);
+    }
+
+    bool moveFocusedWindowToOutput(Server& server, Output& target, std::string* error) {
+      WorkspaceGroup* targetGroup = target.workspaceGroup();
+      Workspace* destination = targetGroup != nullptr ? targetGroup->active() : nullptr;
+      if (destination == nullptr) {
+        return reject(error, "output has no workspace");
+      }
+      Workspace* source = windowActionWorkspace(server);
+      View* view = source != nullptr ? source->focusedView() : nullptr;
+      if (view == nullptr) {
+        return true; // nothing focused: silent no-op
+      }
+      moveViewToWorkspace(server, *view, *destination);
       return true;
     }
 
@@ -1220,18 +1297,20 @@ namespace umbriel {
       if (target == nullptr) {
         return reject(error, std::move(message));
       }
-      WorkspaceGroup* targetGroup = target->workspaceGroup();
-      Workspace* destination = targetGroup != nullptr ? targetGroup->active() : nullptr;
-      if (destination == nullptr) {
-        return reject(error, "output has no workspace");
+      return moveFocusedWindowToOutput(server, *target, error);
+    }
+
+    template <int Step>
+    bool actionWindowMoveToOutputCycle(Server& server, const Keybind& /*bind*/, std::string* error) {
+      if (scratchpadHoldsFocus(server)) {
+        return true;
       }
-      Workspace* source = windowActionWorkspace(server);
-      View* view = source != nullptr ? source->focusedView() : nullptr;
-      if (view == nullptr) {
-        return true; // nothing focused: silent no-op
+      std::string message;
+      Output* target = cycledOutput(server, Step, &message);
+      if (target == nullptr) {
+        return reject(error, std::move(message));
       }
-      moveViewToWorkspace(server, *view, *destination);
-      return true;
+      return moveFocusedWindowToOutput(server, *target, error);
     }
 
     template <wlr_direction D>
@@ -1327,6 +1406,150 @@ namespace umbriel {
       }
       warpToOutputCenter(server, *target);
       return true;
+    }
+
+    bool swapActiveWorkspaceWindows(Server& server, Output* sourceOutput, Output* targetOutput, std::string* error) {
+      if (sourceOutput == nullptr || targetOutput == nullptr || sourceOutput == targetOutput) {
+        return reject(error, "invalid outputs for swap");
+      }
+      WorkspaceGroup* sourceGroup = sourceOutput->workspaceGroup();
+      WorkspaceGroup* targetGroup = targetOutput->workspaceGroup();
+      if (sourceGroup == nullptr || targetGroup == nullptr) {
+        return reject(error, "output has no workspace group");
+      }
+      Workspace* sourceWs = sourceGroup->active();
+      Workspace* targetWs = targetGroup->active();
+      if (sourceWs == nullptr || targetWs == nullptr) {
+        return reject(error, "output has no active workspace");
+      }
+      if (!sourceWs->hasViews() && !targetWs->hasViews()) {
+        return true;
+      }
+
+      View* sourceFocused = sourceWs->focusedView();
+      View* targetFocused = targetWs->focusedView();
+      View* seatFocus = seatFocusedWindow(server);
+
+      double sourceScroll = 0.0;
+      bool sourceCenteredRest = false;
+      if (const ScrollingLayout* sc = sourceWs->scrollingLayout()) {
+        sourceScroll = sc->scroll();
+        sourceCenteredRest = sc->centeredRest();
+      }
+
+      double targetScroll = 0.0;
+      bool targetCenteredRest = false;
+      if (const ScrollingLayout* sc = targetWs->scrollingLayout()) {
+        targetScroll = sc->scroll();
+        targetCenteredRest = sc->centeredRest();
+      }
+
+      // The layout snapshots itself, so a dwindle split tree and a master area ratio survive the transfer the same
+      // way scrolling's column widths do. restoreState refuses a snapshot from another mode, which is exactly the
+      // case where no structure can be replayed: those windows keep their order and the destination layout shapes
+      // them.
+      const LayoutCapture sourceTiles = sourceWs->layout().captureState();
+      const LayoutCapture targetTiles = targetWs->layout().captureState();
+
+      const auto snapshotFloats = [](Workspace* ws) {
+        std::vector<View*> floats;
+        for (View* view : ws->allViews()) {
+          if (view->floating() && !view->pinned()) {
+            floats.push_back(view);
+          }
+        }
+        return floats;
+      };
+      const std::vector<View*> sourceFloats = snapshotFloats(sourceWs);
+      const std::vector<View*> targetFloats = snapshotFloats(targetWs);
+
+      const auto transfer = [](const LayoutCapture& tiles, const std::vector<View*>& floats, Workspace* dest) {
+        for (const LayoutMember& member : tiles.members) {
+          if (member.view != nullptr) {
+            member.view->moveToWorkspace(dest, /*attachToLayout=*/false);
+          }
+        }
+        for (View* view : floats) {
+          view->rememberFloatingPosition();
+          view->moveToWorkspace(dest, /*attachToLayout=*/false);
+        }
+      };
+      transfer(sourceTiles, sourceFloats, targetWs);
+      transfer(targetTiles, targetFloats, sourceWs);
+
+      const auto rebuild = [](Workspace* dest, const LayoutCapture& tiles, const std::vector<View*>& floats) {
+        if (tiles.snapshot == nullptr || !dest->layout().restoreState(*tiles.snapshot, tiles.members)) {
+          for (const LayoutMember& member : tiles.members) {
+            if (member.view != nullptr) {
+              dest->layout().insertView(member.view, static_cast<int>(dest->layout().columns().size()));
+            }
+          }
+        }
+        for (View* view : floats) {
+          view->restoreFloatingPosition();
+        }
+      };
+      rebuild(targetWs, sourceTiles, sourceFloats);
+      rebuild(sourceWs, targetTiles, targetFloats);
+
+      if (ScrollingLayout* sc = targetWs->scrollingLayout()) {
+        sc->setScroll(sourceScroll, sourceCenteredRest);
+        targetWs->clampScrollToRange();
+      }
+
+      if (ScrollingLayout* sc = sourceWs->scrollingLayout()) {
+        sc->setScroll(targetScroll, targetCenteredRest);
+        sourceWs->clampScrollToRange();
+      }
+
+      // Every transfer already handed each workspace a layout-aware replacement focus, so the remembered view is only
+      // reinstated where it actually landed, and the fallback covers a workspace left with no focus at all.
+      if (sourceFocused != nullptr && sourceFocused->workspace() == targetWs) {
+        targetWs->setFocusedView(sourceFocused);
+      } else if (targetWs->focusedView() == nullptr && targetWs->hasViews()) {
+        targetWs->setFocusedView(targetWs->allViews().front());
+      }
+
+      if (targetFocused != nullptr && targetFocused->workspace() == sourceWs) {
+        sourceWs->setFocusedView(targetFocused);
+      } else if (sourceWs->focusedView() == nullptr && sourceWs->hasViews()) {
+        sourceWs->setFocusedView(sourceWs->allViews().front());
+      }
+
+      // Gesture keeps the seat focus where it is without revealing its column: the restored scroll offset above is
+      // what both strips must settle on.
+      if (seatFocus != nullptr && seatFocus->mapped()) {
+        server.focusView(seatFocus, FocusReason::Gesture);
+        maybeWarpCursorToWindow(server, seatFocus);
+      } else if (sourceWs->focusedView() != nullptr) {
+        server.focusView(sourceWs->focusedView(), FocusReason::Gesture);
+        maybeWarpCursorToWindow(server, sourceWs->focusedView());
+      }
+
+      sourceWs->markArrange(true);
+      targetWs->markArrange(true);
+
+      return true;
+    }
+
+    template <wlr_direction D>
+    bool actionWorkspaceSwapActiveOutput(Server& server, const Keybind& /*bind*/, std::string* error) {
+      std::string message;
+      Output* target = adjacentOutput(server, D, &message);
+      if (target == nullptr) {
+        return reject(error, std::move(message));
+      }
+      return swapActiveWorkspaceWindows(server, server.outputFromWlr(server.preferredOutput()), target, error);
+    }
+
+    template <int Step>
+    bool actionWorkspaceSwapActiveOutputCycle(Server& server, const Keybind& /*bind*/, std::string* error) {
+      std::string message;
+      Output* target = cycledOutput(server, Step, &message);
+      if (target == nullptr) {
+        return reject(error, std::move(message));
+      }
+      return swapActiveWorkspaceWindows(server, server.outputFromWlr(server.preferredOutput()), target, error);
     }
 
     // Overlays
@@ -1502,10 +1725,14 @@ namespace umbriel {
         &actionOutputFocus<WLR_DIRECTION_RIGHT>,
         &actionOutputFocus<WLR_DIRECTION_UP>,
         &actionOutputFocus<WLR_DIRECTION_DOWN>,
+        &actionOutputFocusCycle<1>,
+        &actionOutputFocusCycle<-1>,
         &actionWindowMoveToOutput<WLR_DIRECTION_LEFT>,
         &actionWindowMoveToOutput<WLR_DIRECTION_RIGHT>,
         &actionWindowMoveToOutput<WLR_DIRECTION_UP>,
         &actionWindowMoveToOutput<WLR_DIRECTION_DOWN>,
+        &actionWindowMoveToOutputCycle<1>,
+        &actionWindowMoveToOutputCycle<-1>,
         &actionColumnMoveToOutput<WLR_DIRECTION_LEFT>,
         &actionColumnMoveToOutput<WLR_DIRECTION_RIGHT>,
         &actionColumnMoveToOutput<WLR_DIRECTION_UP>,
@@ -1514,6 +1741,12 @@ namespace umbriel {
         &actionWorkspaceMoveToOutput<WLR_DIRECTION_RIGHT>,
         &actionWorkspaceMoveToOutput<WLR_DIRECTION_UP>,
         &actionWorkspaceMoveToOutput<WLR_DIRECTION_DOWN>,
+        &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_LEFT>,
+        &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_RIGHT>,
+        &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_UP>,
+        &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_DOWN>,
+        &actionWorkspaceSwapActiveOutputCycle<1>,
+        &actionWorkspaceSwapActiveOutputCycle<-1>,
         &actionModifyWidth,
         &actionWindowCenter,
         &actionWorkspaceSetLayout,

@@ -303,6 +303,17 @@ namespace umbriel {
     return focusedColumn >= 0 ? focusedColumn + 1 : static_cast<int>(m_layout->columns().size());
   }
 
+  bool Workspace::isOnlyTiledView(const View* view) const {
+    for (const Column& column : m_layout->columns()) {
+      for (View* member : column.views) {
+        if (member != view) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   void Workspace::layoutAttach(View* view, std::optional<double> initialWidth, std::optional<int> initialPixelWidth) {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;

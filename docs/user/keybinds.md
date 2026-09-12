@@ -68,7 +68,9 @@ the newly exposed columns without requiring additional pointer motion.
 Bind `layout-scroll-drag` to a modified mouse button to pan a scrolling
 workspace directly. The strip follows the pointer along its configured axis,
 including overscroll and the same release settling used by the three-finger
-gesture:
+gesture. In the overview it pans the row under the pointer instead of the
+active one, and a bare middle-button drag across the output's workspace axis
+does the same:
 
 ```toml
 "Mod+MouseMiddle" = "layout-scroll-drag"

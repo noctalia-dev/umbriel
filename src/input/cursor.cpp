@@ -927,7 +927,7 @@ namespace umbriel {
       if (bound.has_value()) {
         if (mouseBindExecuted
             && bound->action == KeybindAction::LayoutScrollDrag
-            && m_server->gestures()->beginPointerScroll()) {
+            && m_server->gestures()->beginPointerScroll(m_cursor->x, m_cursor->y)) {
           setActiveConstraint(nullptr);
           m_grab = ScrollDragGrab{
               .button = button,
@@ -1010,7 +1010,7 @@ namespace umbriel {
         }
         return;
       }
-      overview->handleButton(button, pressed, m_cursor->x, m_cursor->y);
+      overview->handleButton(button, pressed, m_cursor->x, m_cursor->y, timeMsec);
       return;
     }
 
@@ -1291,8 +1291,8 @@ namespace umbriel {
     if (Overview* overview = m_server->overview();
         overview != nullptr && overview->active() && !m_server->sessionLocked() && !overviewPassthroughLayer(layer)) {
       if (overview->interactive()) {
-        overview->handleButton(BTN_LEFT, true, lx, ly);
-        overview->handleButton(BTN_LEFT, false, lx, ly);
+        overview->handleButton(BTN_LEFT, true, lx, ly, event->time_msec);
+        overview->handleButton(BTN_LEFT, false, lx, ly, event->time_msec);
       }
       return;
     }
@@ -1391,7 +1391,7 @@ namespace umbriel {
         && overview->active()
         && !m_server->sessionLocked()
         && m_server->seat()->wlr()->drag == nullptr) {
-      overview->handleMotion(m_cursor->x, m_cursor->y);
+      overview->handleMotion(m_cursor->x, m_cursor->y, timeMsec);
       if (overview->dragging()) {
         clearPointerFocus();
         return;

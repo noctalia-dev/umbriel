@@ -88,7 +88,7 @@ fields are specific to individual event tables:
 | `[animation.workspaces]`   | None                                                                                                               | Workspace switch.                                   |
 | `[animation.overview]`     | `workspace_curve` (default `spring:1,1000`)                                                                        | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews. |
 | `[animation.scratchpad]`   | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                                             | Scratchpad show, hide, and backdrop.                |
-| `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space.   |
+| `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space, beginning from the current border color when focus changes. |
 | `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                                                 | Unfocused-window opacity. `dim = 0` disables it.    |
 | `[animation.layers]`       | None                                                                                                               | Layer-shell surface map and unmap fades.            |
 

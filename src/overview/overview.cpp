@@ -8,6 +8,7 @@ extern "C" {
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/gestures.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
 #include "layout/drop_target.h"
@@ -1617,9 +1618,7 @@ namespace umbriel {
   void Overview::teardown() {
     cancelNavigation();
     clearMiddlePress();
-    if (m_dropHint != nullptr) {
-      m_dropHint->hideImmediate();
-    }
+    hideDropHint();
     for (const auto& state : m_outputs) {
       clearDesktop(*state);
       for (const auto& card : state->cards) {
@@ -2186,6 +2185,9 @@ namespace umbriel {
   }
 
   void Overview::clearMiddlePress() {
+    if (m_middleScrolling) {
+      m_server->gestures()->endPointerScroll(true, 0);
+    }
     if (m_middleDragging) {
       m_server->cursor()->overrideCursor(nullptr);
     }
@@ -2193,12 +2195,14 @@ namespace umbriel {
     m_middleOutput = nullptr;
     m_middlePressed = false;
     m_middleDragging = false;
+    m_middlePanning = false;
+    m_middleScrolling = false;
     m_middleAccum = 0;
   }
 
   // -: input
 
-  bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly) {
+  bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec) {
     if (pressed) {
       cancelNavigation();
     }
@@ -2210,6 +2214,11 @@ namespace umbriel {
       if (button == BTN_MIDDLE) {
         Card* card = m_middlePressCard;
         const bool closeCard = m_middlePressed && !m_middleDragging;
+        if (m_middleScrolling) {
+          // A release settles the strip; clearMiddlePress() cancels whatever is still running.
+          m_server->gestures()->endPointerScroll(false, timeMsec);
+          m_middleScrolling = false;
+        }
         clearMiddlePress();
         if (closeCard && card != nullptr && card->view != nullptr && card->view->mapped()) {
           wlr_xdg_toplevel_send_close(card->view->toplevel());
@@ -2247,6 +2256,8 @@ namespace umbriel {
       m_middleAccum = 0;
       m_middlePressed = true;
       m_middleDragging = false;
+      m_middlePanning = false;
+      m_middleScrolling = false;
       return true;
     }
     if (button != BTN_LEFT) {
@@ -2263,7 +2274,7 @@ namespace umbriel {
     return true;
   }
 
-  void Overview::handleMotion(double lx, double ly) {
+  void Overview::handleMotion(double lx, double ly, uint32_t timeMsec) {
     if (!interactive()) {
       return;
     }
@@ -2284,10 +2295,26 @@ namespace umbriel {
           return;
         }
         m_middleDragging = true;
+        // Travel across the workspace axis pans the strip; travel along it steps rows.
+        m_middlePanning = (std::abs(dx) > std::abs(dy)) != horizontal;
+        if (m_middlePanning) {
+          m_middleScrolling = m_server->gestures()->beginPointerScroll(m_middlePressX, m_middlePressY);
+          if (m_middleScrolling) {
+            m_server->gestures()->updatePointerScroll(dx, dy, timeMsec);
+          }
+        }
         m_middleAccum = 0;
         m_middlePressX = lx;
         m_middlePressY = ly;
         m_server->cursor()->overrideCursor("grabbing");
+      }
+      if (m_middlePanning) {
+        if (m_middleScrolling) {
+          m_server->gestures()->updatePointerScroll(lx - m_middlePressX, ly - m_middlePressY, timeMsec);
+        }
+        m_middlePressX = lx;
+        m_middlePressY = ly;
+        return;
       }
       m_middleAccum += horizontal ? lx - m_middlePressX : ly - m_middlePressY;
       m_middlePressX = lx;
@@ -2357,6 +2384,13 @@ namespace umbriel {
     }
     selectRelativeWorkspace(direction < 0 ? -1 : 1, output);
     return true;
+  }
+
+  Workspace* Overview::pointerScrollWorkspace(double lx, double ly) {
+    if (!interactive()) {
+      return nullptr;
+    }
+    return workspaceAtPoint(lx, ly, nullptr, nullptr, true);
   }
 
   Workspace* Overview::navigationWorkspace() const {
@@ -3040,7 +3074,7 @@ namespace umbriel {
 
   void Overview::hideDropHint() {
     if (m_dropHint != nullptr) {
-      m_dropHint->hide();
+      m_dropHint->hideImmediate();
     }
   }
 

@@ -94,8 +94,8 @@ namespace umbriel {
     void onDesktopLayerChanged(Output* output);
 
     // Input entry points; called from Cursor/Keyboard while active.
-    bool handleButton(uint32_t button, bool pressed, double lx, double ly);
-    void handleMotion(double lx, double ly);
+    bool handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec);
+    void handleMotion(double lx, double ly, uint32_t timeMsec);
     bool handleAxisNotch(bool vertical, double direction, double lx, double ly);
     // Swipe and finger-scroll input both arrive as content-direction deltas and share one navigation lifetime; the
     // source only selects the travel distances and decides who may end the gesture. Scroll samples are combined at
@@ -115,6 +115,12 @@ namespace umbriel {
     // false at either end. The wheel and middle-button drag use discrete steps;
     // touchpad navigation moves the rows continuously and selects on release.
     bool selectRelativeWorkspace(int delta, Output* output);
+    // The workspace row a pointer drag at this point pans. The row extends along its scrolling axis across the
+    // whole output, because its cards may overhang the centered workspace preview.
+    [[nodiscard]] Workspace* pointerScrollWorkspace(double lx, double ly);
+    // The scale previews rest at once open. Gesture travel maps onto the settled layout, so it must not depend on
+    // how far the zoom has come.
+    [[nodiscard]] static double settledZoom();
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
 
   private:
@@ -256,10 +262,8 @@ namespace umbriel {
     static void onDesktopMirrorOutputSample(wl_listener* listener, void* data);
     static void onDesktopMirrorFrameDone(wl_listener* listener, void* data);
 
-    // Preview scale for the current open or close progress, and the scale the previews rest at once open. Gesture
-    // travel maps onto the settled layout, so it must not depend on how far the zoom has come.
+    // Preview scale for the current open or close progress.
     [[nodiscard]] double zoom() const;
-    [[nodiscard]] static double settledZoom();
     [[nodiscard]] static bool
     previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
@@ -364,6 +368,9 @@ namespace umbriel {
     double m_middleAccum = 0;
     bool m_middlePressed = false;
     bool m_middleDragging = false;
+    // Set once a drag locks across the workspace axis, whether or not a strip was there to pan.
+    bool m_middlePanning = false;
+    bool m_middleScrolling = false;
 
     Card* m_dragCard = nullptr;
     double m_dragOffsetX = 0;
