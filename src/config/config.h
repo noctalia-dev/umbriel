@@ -747,6 +747,8 @@ namespace umbriel {
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
         std::optional<double> scrollFactor;
+        std::optional<double> scrollFactorHorizontal;
+        std::optional<double> scrollFactorVertical;
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
         std::optional<ClickMethod> clickMethod;

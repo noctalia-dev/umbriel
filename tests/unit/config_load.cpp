@@ -965,6 +965,26 @@ UMBRIEL_TEST(overviewScrollFactorLoadsIndependently) {
   CHECK_EQ(store.config().overview.scrollFactorVertical, 1.0);
 }
 
+UMBRIEL_TEST(touchpadScrollFactorLoadsIndependently) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[input.touchpad]\nscroll_factor = 1.5\nscroll_factor_horizontal = 0.7\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().input.touchpad.scrollFactor, 1.5);
+  CHECK_EQ(store.config().input.touchpad.scrollFactorHorizontal, 0.7);
+  CHECK(!store.config().input.touchpad.scrollFactorVertical.has_value());
+  file.write("[input.touchpad]\nscroll_factor_horizontal = 1.2\nscroll_factor_vertical = 0.8\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().input.touchpad.scrollFactorHorizontal, 1.2);
+  CHECK_EQ(store.config().input.touchpad.scrollFactorVertical, 0.8);
+  file.write("[input.touchpad]\ntap = true\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().input.touchpad.scrollFactor.has_value());
+  CHECK(!store.config().input.touchpad.scrollFactorHorizontal.has_value());
+  CHECK(!store.config().input.touchpad.scrollFactorVertical.has_value());
+}
+
 UMBRIEL_TEST(overviewWorkspaceCurveLoadsAndFallsBackToItsSpring) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2103,6 +2123,8 @@ natural_scroll = true
 accel_profile = "adaptive"
 sensitivity = 0.1
 scroll_factor = 1.5
+scroll_factor_horizontal = 0.8
+scroll_factor_vertical = 0.6
 disable_while_typing = true
 disable_on_external_mouse = true
 click_method = "button_areas"
@@ -2156,6 +2178,8 @@ scroll_button_lock = false
   }
   CHECK(input.touchpad.sensitivity == std::optional<double>(0.1));
   CHECK(input.touchpad.scrollFactor == std::optional<double>(1.5));
+  CHECK(input.touchpad.scrollFactorHorizontal == std::optional<double>(0.8));
+  CHECK(input.touchpad.scrollFactorVertical == std::optional<double>(0.6));
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK(input.touchpad.disableOnExternalMouse == std::optional<bool>(true));
   CHECK(input.touchpad.clickMethod == std::optional(umbriel::ClickMethod::ButtonAreas));

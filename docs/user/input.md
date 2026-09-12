@@ -147,6 +147,8 @@ natural_scroll = true
 # accel_profile = "adaptive"  # "flat", "adaptive", or a custom curve
 # sensitivity = 0.5           # -1.0 to 1.0
 # scroll_factor = 1.5         # touchpad scroll speed, 0.1 to 10.0
+# scroll_factor_horizontal = 2.0  # override for horizontal scroll, 0.1 to 10.0
+# scroll_factor_vertical = 1.0    # override for vertical scroll, 0.1 to 10.0
 # disable_while_typing = true
 # disable_on_external_mouse = true
 # click_method = "clickfinger"  # "button_areas" or "clickfinger"
@@ -191,6 +193,14 @@ overview wheel stepping, and three-finger-swipe strip travel keep their own
 counting semantics. Inside the overview, both two- and three-finger navigation
 use [`overview.scroll_factor_horizontal` and
 `overview.scroll_factor_vertical`](workspaces-overview.md) instead.
+
+`scroll_factor_horizontal` and `scroll_factor_vertical` split that factor by
+direction: a set key replaces `scroll_factor` for scrolling along its own axis,
+while an unset axis keeps the `scroll_factor` value. They take the same `0.1`
+to `10.0` range, remain unset by default, and follow the same rules: only the
+continuous delta is scaled, and a change takes the next scroll event on reload.
+Every scroll event carries one direction, so diagonal scrolling is scaled per
+direction.
 
 Set `disable_on_external_mouse = true` to disable the touchpad while an
 external mouse is connected. Libinput re-enables it automatically once the
