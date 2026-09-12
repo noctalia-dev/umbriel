@@ -11,15 +11,23 @@
 // CONTENT_TYPE sets a surface hint before its initial commit. CONTENT_TYPE_ON_SUBSURFACE places it on a rendering
 // child, matching current Proton behavior. XDG_TAG sets a toplevel tag before the initial commit.
 // CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin. NO_TITLE never sets a
-// title at all. With TRANSIENT_SUITE, TRANSIENT_PARENT_SIZE=<width>x<height> gives the parent its own size.
+// title at all. With TRANSIENT_SUITE, TRANSIENT_PARENT_SIZE=<width>x<height> gives the parent its own size,
+// TRANSIENT_MODAL makes this toplevel a modal dialog of it, and EXPORT_PARENT exports the parent through xdg-foreign
+// and prints the handle. TRANSIENT_DIALOG_ON_STDIN gives this toplevel an xdg-dialog-v1 object, modal only with
+// TRANSIENT_MODAL, that `m` on stdin makes modal, `n` makes non-modal, and `x` destroys. TRANSIENT_NESTED_ON_STDIN
+// maps a modal dialog titled transient-nested before this toplevel, without a parent until `p` on stdin sets this one
+// and prints "nested-parent-set" once the compositor has it.
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
-// so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to
-// another client's exported toplevel, the way a portal dialog is parented.
+// so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to another
+// client's exported toplevel, the way a portal dialog is parented.
+// FOLLOW_CONFIGURES redraws at whatever size the compositor configures, as a real client would; by default the window
+// keeps its own size.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
 #include "tearing-control-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include "xdg-toplevel-tag-v1-client-protocol.h"
@@ -74,6 +82,8 @@ namespace {
     xdg_wm_base* wmBase = nullptr;
     xdg_activation_v1* activation = nullptr;
     xdg_toplevel_tag_manager_v1* xdgTagManager = nullptr;
+    xdg_wm_dialog_v1* dialogManager = nullptr;
+    zxdg_exporter_v2* exporter = nullptr;
     zxdg_importer_v2* importer = nullptr;
     wp_content_type_manager_v1* contentTypeManager = nullptr;
     wp_content_type_v1* contentType = nullptr;
@@ -105,6 +115,9 @@ namespace {
     bool maximizeRequested = false;
     bool logConfigures = false;
     xdg_toplevel* parentOnFirstConfigure = nullptr;
+    bool followConfigures = false;
+    int configuredWidth = 0;
+    int configuredHeight = 0;
     bool requestFullscreen = false;
     bool fullscreenRequested = false;
     bool requestHdr = false;
@@ -341,10 +354,29 @@ namespace {
     return waitForAuxiliaryToplevel(state, window);
   }
 
+  void destroyBuffer(Buffer& buffer);
+
+  void exportedHandle(void*, zxdg_exported_v2*, const char* handle) { std::println("exported handle={}", handle); }
+  constexpr zxdg_exported_v2_listener kExportedListener = {.handle = exportedHandle};
+
   void xdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
     if (state.mapped) {
+      if (state.followConfigures
+          && state.configuredWidth > 0
+          && state.configuredHeight > 0
+          && (state.configuredWidth != state.width || state.configuredHeight != state.height)) {
+        Buffer resized = createBuffer(state, state.configuredWidth, state.configuredHeight);
+        if (resized.resource != nullptr) {
+          destroyBuffer(state.buffer);
+          state.buffer = resized;
+          state.width = state.configuredWidth;
+          state.height = state.configuredHeight;
+          wl_surface_attach(state.surface, state.buffer.resource, 0, 0);
+          wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+        }
+      }
       // Apply later toplevel state transitions, such as leaving fullscreen. Acknowledging the configure without a
       // surface commit leaves the requested state pending forever.
       wl_surface_commit(state.surface);
@@ -387,6 +419,8 @@ namespace {
     if (state.logConfigures) {
       std::println("configured-size={}x{}", width, height);
     }
+    state.configuredWidth = width;
+    state.configuredHeight = height;
     const auto* configured = static_cast<const uint32_t*>(states->data);
     const size_t count = states->size / sizeof(uint32_t);
     for (size_t index = 0; index < count; ++index) {
@@ -488,6 +522,12 @@ namespace {
       state.xdgTagManager = static_cast<xdg_toplevel_tag_manager_v1*>(
           wl_registry_bind(registry, name, &xdg_toplevel_tag_manager_v1_interface, std::min(version, 1U))
       );
+    } else if (std::strcmp(interface, xdg_wm_dialog_v1_interface.name) == 0) {
+      state.dialogManager = static_cast<xdg_wm_dialog_v1*>(
+          wl_registry_bind(registry, name, &xdg_wm_dialog_v1_interface, std::min(version, 1U))
+      );
+    } else if (std::strcmp(interface, zxdg_exporter_v2_interface.name) == 0) {
+      state.exporter = static_cast<zxdg_exporter_v2*>(wl_registry_bind(registry, name, &zxdg_exporter_v2_interface, 1));
     } else if (std::strcmp(interface, zxdg_importer_v2_interface.name) == 0) {
       state.importer = static_cast<zxdg_importer_v2*>(wl_registry_bind(registry, name, &zxdg_importer_v2_interface, 1));
     } else if (std::strcmp(interface, wp_content_type_manager_v1_interface.name) == 0) {
@@ -687,6 +727,7 @@ int main(int argc, char** argv) {
   state.requestMaximized = std::getenv("REQUEST_MAXIMIZED") != nullptr;
   state.requestMaximizedAfterConfigure = std::getenv("REQUEST_MAXIMIZED_AFTER_CONFIGURE") != nullptr;
   state.logConfigures = std::getenv("LOG_CONFIGURES") != nullptr;
+  state.followConfigures = std::getenv("FOLLOW_CONFIGURES") != nullptr;
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
   state.requestHdr = std::getenv("COLOR_HDR") != nullptr;
   state.requestWindowsScrgb = std::getenv("COLOR_WINDOWS_SCRGB") != nullptr;
@@ -752,6 +793,18 @@ int main(int argc, char** argv) {
       clearUnmappedTransientParent || (transientSuite && std::strcmp(transientSuiteMode, "unmapped-parent") == 0);
   const bool mappedTogether = transientSuite && std::strcmp(transientSuiteMode, "mapped-together") == 0;
   const bool parentInitialCommitOnly = unmappedTransientParent || mappedTogether;
+  const bool transientModal = std::getenv("TRANSIENT_MODAL") != nullptr;
+  const bool dialogOnStdin = transientSuite && std::getenv("TRANSIENT_DIALOG_ON_STDIN") != nullptr;
+  const bool nestedOnStdin = transientSuite && std::getenv("TRANSIENT_NESTED_ON_STDIN") != nullptr;
+  if ((transientModal || dialogOnStdin || nestedOnStdin) && state.dialogManager == nullptr) {
+    std::println(stderr, "unmap-client: compositor is missing xdg_wm_dialog_v1");
+    return EXIT_FAILURE;
+  }
+  const bool exportParent = transientSuite && std::getenv("EXPORT_PARENT") != nullptr;
+  if (exportParent && state.exporter == nullptr) {
+    std::println(stderr, "unmap-client: compositor is missing zxdg_exporter_v2");
+    return EXIT_FAILURE;
+  }
   const char* foreignHandle = std::getenv("TRANSIENT_FOREIGN_HANDLE");
   if (foreignHandle != nullptr && state.importer == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing zxdg_importer_v2");
@@ -766,6 +819,7 @@ int main(int argc, char** argv) {
   }
   AuxiliaryToplevel transientParent;
   AuxiliaryToplevel transientUnrelated;
+  AuxiliaryToplevel transientNested;
   if (transientSuite) {
     const bool supportReady = parentInitialCommitOnly
         ? createAuxiliaryToplevel(state, transientParent, "transient-parent", parentWidth, parentHeight)
@@ -781,6 +835,22 @@ int main(int argc, char** argv) {
       // child's and its map commit goes out in the same flush.
       wl_surface_commit(transientParent.surface);
     }
+  }
+  if (nestedOnStdin) {
+    if (!createAuxiliaryToplevel(state, transientNested, "transient-nested", state.width, state.height)) {
+      std::println(stderr, "unmap-client: failed to create the nested dialog");
+      return EXIT_FAILURE;
+    }
+    xdg_dialog_v1_set_modal(xdg_wm_dialog_v1_get_xdg_dialog(state.dialogManager, transientNested.toplevel));
+    wl_surface_commit(transientNested.surface);
+    if (!waitForAuxiliaryToplevel(state, transientNested)) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (exportParent) {
+    zxdg_exported_v2_add_listener(
+        zxdg_exporter_v2_export_toplevel(state.exporter, transientParent.surface), &kExportedListener, nullptr
+    );
   }
 
   state.surface = wl_compositor_create_surface(state.compositor);
@@ -900,6 +970,13 @@ int main(int argc, char** argv) {
       xdg_toplevel_set_parent(state.toplevel, nullptr);
     }
   }
+  xdg_dialog_v1* dialog = nullptr;
+  if (transientModal || dialogOnStdin) {
+    dialog = xdg_wm_dialog_v1_get_xdg_dialog(state.dialogManager, state.toplevel);
+    if (transientModal) {
+      xdg_dialog_v1_set_modal(dialog);
+    }
+  }
   zxdg_imported_v2* imported = nullptr;
   if (foreignHandle != nullptr) {
     imported = zxdg_importer_v2_import_toplevel(state.importer, foreignHandle);
@@ -907,7 +984,7 @@ int main(int argc, char** argv) {
   }
   wl_surface_commit(state.surface);
 
-  if (!remapOnStdin && !updateOnStdin) {
+  if (!remapOnStdin && !updateOnStdin && !dialogOnStdin && !nestedOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }
   } else {
@@ -942,6 +1019,20 @@ int main(int argc, char** argv) {
             if (!issueInputActivationToken(state)) {
               return EXIT_FAILURE;
             }
+          } else if (dialogOnStdin && dialog != nullptr && (command == 'm' || command == 'n' || command == 'x')) {
+            if (command == 'm') {
+              xdg_dialog_v1_set_modal(dialog);
+            } else if (command == 'n') {
+              xdg_dialog_v1_unset_modal(dialog);
+            } else {
+              xdg_dialog_v1_destroy(dialog);
+              dialog = nullptr;
+            }
+          } else if (nestedOnStdin && command == 'p') {
+            xdg_toplevel_set_parent(transientNested.toplevel, state.toplevel);
+            wl_display_roundtrip(state.display);
+            std::println("nested-parent-set");
+            std::fflush(stdout);
           } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {
               wp_content_type_v1_set_content_type(
@@ -997,6 +1088,7 @@ int main(int argc, char** argv) {
   if (state.surface != nullptr) {
     wl_surface_destroy(state.surface);
   }
+  destroyAuxiliaryToplevel(transientNested);
   destroyAuxiliaryToplevel(transientUnrelated);
   destroyAuxiliaryToplevel(transientParent);
   if (state.colorManager != nullptr) {
@@ -1011,8 +1103,14 @@ int main(int argc, char** argv) {
   if (state.xdgTagManager != nullptr) {
     xdg_toplevel_tag_manager_v1_destroy(state.xdgTagManager);
   }
+  if (state.dialogManager != nullptr) {
+    xdg_wm_dialog_v1_destroy(state.dialogManager);
+  }
   if (imported != nullptr) {
     zxdg_imported_v2_destroy(imported);
+  }
+  if (state.exporter != nullptr) {
+    zxdg_exporter_v2_destroy(state.exporter);
   }
   if (state.importer != nullptr) {
     zxdg_importer_v2_destroy(state.importer);

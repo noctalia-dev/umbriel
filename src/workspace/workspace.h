@@ -186,6 +186,8 @@ namespace umbriel {
     [[nodiscard]] std::optional<std::array<int, 2>> focusedFloatingAxis(bool width) const;
     // The focused floating window's size as a fraction of the usable axis; nullopt when unavailable.
     [[nodiscard]] std::optional<double> focusedFloatingFraction(bool width) const;
+    // The focused window's place in the layout: a modal dialog holds the focus for the window it is attached to.
+    [[nodiscard]] View* layoutFocus() const;
     [[nodiscard]] View* focusAlongStrip(int direction) const;
     [[nodiscard]] View* focusWithinLane(int direction) const;
     // Directional focus lands on the most recently focused window of the group

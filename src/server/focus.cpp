@@ -48,6 +48,10 @@ namespace umbriel {
     if (view == nullptr || m_server.sessionLocked()) {
       return;
     }
+    // Clients ignore input to a window while its modal dialog is open, so the dialog takes the focus instead.
+    while (View* dialog = view->blockingDialog()) {
+      view = dialog;
+    }
 
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
     // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing, preserving the current behavior
@@ -117,8 +121,8 @@ namespace umbriel {
       m_server.cursor()->invalidateHoverFocus();
     }
 
-    // Derive reveal policy from the focus reason.
-    if (workspace == nullptr || !view->tiled()) {
+    // Derive reveal policy from the focus reason. A modal dialog reveals the tile it is attached to.
+    if (workspace == nullptr || !view->attachedRoot()->tiled()) {
       return;
     }
     switch (reason) {
@@ -380,6 +384,11 @@ namespace umbriel {
     if (!view->pinned() && !view->onActiveWorkspace()) {
       *surface = nullptr;
       return nullptr;
+    }
+    // A window with an open modal dialog gets no pointer, the way it gets no keyboard. The view is still reported so a
+    // click on it focuses the dialog.
+    if (view->blockingDialog() != nullptr) {
+      *surface = nullptr;
     }
     return view;
   }
