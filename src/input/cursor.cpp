@@ -49,10 +49,10 @@ namespace umbriel {
       return surface != nullptr && wlr_xdg_popup_try_from_wlr_surface(wlr_surface_get_root_surface(surface)) != nullptr;
     }
 
-    // `[input.touchpad]` scroll factors scale a touchpad's smooth scroll delta before it reaches the focused client:
-    // `scroll_factor_horizontal` and `scroll_factor_vertical` replace `scroll_factor` for their own axis when set.
-    // Reads the live config per event so a successful reload applies on the very next axis; non-touchpads and unset
-    // values stay at identity (1.0). Only the continuous delta is scaled, never the discrete value120 notches.
+    // `[input.touchpad] scroll_factor` scales a touchpad's smooth scroll delta before it reaches the focused client.
+    // The `horizontal`/`vertical` table keys override it per direction. Reads the live config per event so a successful
+    // reload applies on the very next axis; non-touchpads and unset values stay
+    // at identity (1.0). Only the continuous delta is scaled, never the discrete value120 notches.
     double touchpadScrollFactor(wlr_pointer* pointer, bool vertical) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
         return 1.0;
@@ -61,10 +61,12 @@ namespace umbriel {
       if (device == nullptr || libinput_device_config_tap_get_finger_count(device) == 0) {
         return 1.0;
       }
-      const Config::Input::Touchpad& touchpad = config().input.touchpad;
-      const std::optional<double>& axisFactor =
-          vertical ? touchpad.scrollFactorVertical : touchpad.scrollFactorHorizontal;
-      return axisFactor.value_or(touchpad.scrollFactor.value_or(1.0));
+      const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
+      if (!factor) {
+        return 1.0;
+      }
+      const std::optional<double>& axisFactor = vertical ? factor->vertical : factor->horizontal;
+      return axisFactor.value_or(1.0);
     }
 
     bool surfaceLocalCoordinates(wlr_scene* scene, wlr_surface* target, double lx, double ly, double* sx, double* sy) {

@@ -746,9 +746,16 @@ namespace umbriel {
         std::optional<bool> naturalScroll;
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
-        std::optional<double> scrollFactor;
-        std::optional<double> scrollFactorHorizontal;
-        std::optional<double> scrollFactorVertical;
+        // Touchpad scroll speed multiplier. `scroll_factor` is either one number
+        // for both axes or a table with per-axis `horizontal`/`vertical` overrides.
+        // A missing axis, or the whole key absent, stays at identity 1.0. Only the
+        // continuous two-finger delta is scaled, never the discrete notches.
+        struct ScrollFactor {
+          std::optional<double> horizontal = std::nullopt;
+          std::optional<double> vertical = std::nullopt;
+          bool operator==(const ScrollFactor&) const = default;
+        };
+        std::optional<ScrollFactor> scrollFactor;
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
         std::optional<ClickMethod> clickMethod;
