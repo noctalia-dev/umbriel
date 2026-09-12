@@ -5,7 +5,20 @@
 #include <optional>
 #include <vector>
 
+using umbriel::hdrRenderFormatCandidates;
 using umbriel::selectHdrRenderFormat;
+
+UMBRIEL_TEST(candidatesNonXbgrCurrentYieldsXrgbFirst) {
+  const auto candidates = hdrRenderFormatCandidates(DRM_FORMAT_XRGB8888);
+  CHECK_EQ(candidates[0], uint32_t{DRM_FORMAT_XRGB2101010});
+  CHECK_EQ(candidates[1], uint32_t{DRM_FORMAT_XBGR2101010});
+}
+
+UMBRIEL_TEST(candidatesXbgrCurrentYieldsXbgrFirst) {
+  const auto candidates = hdrRenderFormatCandidates(DRM_FORMAT_XBGR2101010);
+  CHECK_EQ(candidates[0], uint32_t{DRM_FORMAT_XBGR2101010});
+  CHECK_EQ(candidates[1], uint32_t{DRM_FORMAT_XRGB2101010});
+}
 
 UMBRIEL_TEST(rejectedXrgbFallsBackToXbgr) {
   std::vector<uint32_t> probed;

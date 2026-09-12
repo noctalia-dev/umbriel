@@ -1768,6 +1768,15 @@ namespace umbriel {
         keys.real("sdr_white", 80.0, 1000.0, sdrWhite);
         rule.sdrWhite = static_cast<float>(sdrWhite);
 
+        if (const toml::node* bitDepthNode = keys.take("bit_depth")) {
+          const auto value = bitDepthNode->value<std::int64_t>();
+          if (value && (*value == 8 || *value == 10)) {
+            rule.bitDepth = static_cast<int>(*value);
+          } else {
+            warnAt(bitDepthNode->source(), "ignoring output.{}.bit_depth (expected 8 or 10)", name);
+          }
+        }
+
         if (const toml::node* transformNode = keys.take("transform")) {
           const auto value = transformNode->value<std::string>();
           static constexpr std::pair<std::string_view, int> transforms[] = {

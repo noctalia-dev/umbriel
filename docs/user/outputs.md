@@ -84,11 +84,12 @@ output is reconfigured, so reconnecting the display or reloading the configurati
 | `mode`                                       | string                            | (native)    | Resolution and refresh rate: `"WIDTHxHEIGHT"` or `"WIDTHxHEIGHT@HZ"`. Fractional Hz allowed. Falls back to the preferred advertised mode when it cannot be applied. Ignored in nested sessions (the parent controls size). |
 | `position`                                   | `[x, y]`                          | (auto)      | Top-left corner in logical layout coordinates. Omit for automatic placement.                                                                        |
 | `scale`                                      | float                             | `1.0`       | Output scale (0.25-4.0).                                                                                                                            |
-| `vrr`                                        | string                            | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`.                                                                          |
+| `vrr`                                        | string                            | `"disabled"` | Variable refresh rate policy: `"disabled"`, `"always"`, or `"fullscreen"`.                                                                         |
 | `tearing`                                    | bool                              | `false`     | Permit asynchronous page flips for eligible fullscreen windows on this output.                                                                      |
 | `direct_scanout`                             | bool                              | `true`      | Permit eligible client buffers to bypass composition on this output. Set to `false` to always composite.                                            |
 | `hdr`                                        | string                            | `"off"`     | HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`.                                                                                           |
 | `sdr_white`                                  | float                             | `203`       | SDR reference white in cd/m2 while the output is in HDR mode (80-1000).                                                                             |
+| `bit_depth`                                  | int                               | `8`         | Render bit depth for SDR output: `8` or `10`.                                                                                                       |
 | `workspaces`                                 | int, string array, or `"dynamic"` | `"dynamic"` | A dynamic inventory, which may include names declared by `[[workspace]]`, 1 to 64 anonymous fixed positions, or a static ordered list of 1 to 64 names. |
 | `min_workspaces`                             | int                               | `1`         | Workspace count a dynamic output never shrinks below (1-64). Rejected together with a static `workspaces` inventory.                                |
 | `workspace_axis`                             | string                            | `"vertical"` | Axis the output's workspaces are arranged along: `"vertical"` or `"horizontal"`. The scrolling strip runs perpendicular to it. See [Workspace axis](workspaces.md#workspace-axis). |
@@ -328,6 +329,45 @@ receive an SDR Gamma 2.2 view instead of PQ-encoded output pixels. This keeps
 screenshots readable in ordinary SDR viewers. Values outside the SDR capture
 range are clipped rather than tone-mapped. Raw export-DMA-BUF capture remains
 in the output's native format.
+
+### Bit depth
+
+Set `bit_depth = 10` to request a 10-bit SDR compositor render format:
+
+```toml
+[output.DP-1]
+bit_depth = 10
+```
+
+Selects a 10-bit format XR30 (`DRM_FORMAT_XRGB2101010`) or
+XB30 (`DRM_FORMAT_XBGR2101010`) as the render format when the backend accepts
+it. If neither is accepted, the output falls back to 8-bit. While a 10-bit
+format is active, blur and effects intermediate buffers are upgraded to FP16
+precision, provided the renderer supports FP16 render targets. Otherwise,
+they remain 8-bit. HDR uses 10-bit independently of this setting.
+
+`bit_depth = 10` controls the compositor render format only. It does not
+guarantee that the physical display link runs at 10 bits per channel. The
+number of bits delivered to the panel depends on the display's EDID, cable,
+and driver. Run `umbriel color` to confirm the active render format that the
+compositor committed.
+
+**VRR fallback.** When VRR is also requested, the format sequence first
+attempts the 10-bit format with VRR enabled. If the backend rejects that
+combination, it retries the same 10-bit format with VRR disabled. Only
+when both fail does Umbriel log a warning and fall back to 8-bit.
+
+**Direct scanout.** Direct scanout remains enabled by the `direct_scanout`
+setting, but it is less likely to engage while 10-bit rendering is active.
+Direct scanout requires the client buffer format to exactly match what KMS
+accepts for the plane. Set `direct_scanout = false` explicitly if you want
+to suppress the condition check.
+
+**Screencopy and capture.** Screencopy clients such as `grim` and Noctalia
+receive raw buffers in the output's active 10-bit render format (XR30 or XB30)
+when 10-bit SDR is active. Unlike HDR capture, the pixels are not converted to
+an 8-bit SDR format first. Tools that do not handle 10-bit formats may produce
+undesired output. Use a bit depth of 8 if you encounter issues.
 
 ## Disabling an output
 

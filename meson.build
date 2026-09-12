@@ -479,6 +479,7 @@ pure_sources = files(
   'src/layout/master.cpp',
   'src/output/direction.cpp',
   'src/output/identity.cpp',
+  'src/output/format_sequence.cpp',
   'src/output/mode_selection.cpp',
   'src/server/drm_policy.cpp',
   'src/scene/cheatsheet_rows.cpp',

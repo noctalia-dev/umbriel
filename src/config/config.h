@@ -216,6 +216,8 @@ namespace umbriel {
     bool directScanout = true;
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
+    // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
+    int bitDepth = 8;
     // Explicit workspace inventory. A count creates anonymous positional
     // members, while a string list creates named members. Omitted is dynamic.
     using WorkspaceInventory = std::variant<size_t, std::vector<std::string>>;

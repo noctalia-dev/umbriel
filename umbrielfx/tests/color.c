@@ -1212,6 +1212,190 @@ out:
 	return ok;
 }
 
+// Populates the output's optimized-blur cache with a solid backdrop by running
+// an optimized-blur pass into an 8-bit SDR target. The cache buffers are
+// output-local, so they survive into a later pass on the same output. Returns
+// the DRM format the cache buffers were allocated with, or DRM_FORMAT_INVALID.
+static uint32_t prime_optimized_blur_cache(struct fixture *fixture,
+		float backdrop_red, struct blur_data *blur_data) {
+	struct wlr_buffer *target = create_output_buffer(fixture,
+		DRM_FORMAT_XBGR8888, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(target != NULL, "allocate SDR8 optimized-blur target")) {
+		return DRM_FORMAT_INVALID;
+	}
+
+	// Create the stale 8-bit format we want cached.
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &(struct wlr_buffer_pass_options) {0});
+	if (!check(pass != NULL, "begin optimized-blur producer pass")) {
+		wlr_buffer_drop(target);
+		return DRM_FORMAT_INVALID;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+
+	struct wlr_box box = { .width = TEST_WIDTH, .height = TEST_HEIGHT };
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+		.box = box,
+		.color = { .r = backdrop_red, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+
+	pixman_region32_t region;
+	pixman_region32_init_rect(&region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+
+	uint32_t cache_format = DRM_FORMAT_INVALID;
+	bool ok = check(fx_render_pass_init_offscreen_buffers(pass, fixture->output),
+		"init producer offscreen buffers");
+	if (ok) {
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = {
+					.dst_box = box,
+					.clip = &region,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+				},
+				.clip_box = &box,
+			},
+			.blur_data = blur_data,
+			.blur_strength = 1.0f,
+		};
+		ok = check(fx_render_pass_add_optimized_blur(fx_pass, &blur_options),
+			"populate optimized-blur cache");
+		if (ok) {
+			struct fx_offscreen_buffers *fbos = fx_pass->fx_offscreen_buffers;
+			ok = check(fbos != NULL && fbos->optimized_blur_buffer != NULL,
+				"optimized-blur cache exists");
+			if (ok) {
+				cache_format = fbos->optimized_blur_buffer->drm_format;
+			}
+		}
+	}
+	pixman_region32_fini(&region);
+	ok = wlr_render_pass_submit(pass) && ok;
+	wlr_buffer_drop(target);
+	return ok ? cache_format : DRM_FORMAT_INVALID;
+}
+
+// A stale-format optimized-blur cache must not be reused after the output's
+// render format changes. The offscreen effect buffers are output-local, so a
+// cache primed while the output was 8-bit SDR can survive into a 10-bit pass 
+// whose effect buffers are FP16.
+static bool test_optimized_blur_format_cache(struct fixture *fixture) {
+	uint32_t format = select_10bit_format(fixture);
+	if (!check(format != DRM_FORMAT_INVALID, "find 10-bit output format")) {
+		return false;
+	}
+
+	struct blur_data blur_data = {
+		.num_passes = 1,
+		.radius = 1.0f,
+		.brightness = 1.0f,
+		.contrast = 1.0f,
+		.saturation = 1.0f,
+	};
+
+	// Prime the cache with a bright-red backdrop while the output is 8-bit.
+	const float stale_red = 0.9f;
+	uint32_t cache_format = prime_optimized_blur_cache(
+		fixture, stale_red, &blur_data);
+	if (!check(cache_format != DRM_FORMAT_INVALID, "prime optimized-blur cache")) {
+		return false;
+	}
+	if (!check(cache_format == DRM_FORMAT_XBGR8888,
+			"cache primed at 8-bit SDR format")) {
+		return false;
+	}
+
+	// Now render a consumer blur pass into a 10-bit target with a color
+	// transform, so its effect buffers want FP16. The live backdrop is a
+	// dark red, different from the cached bright red.
+	const float live_red = 0.1f;
+	struct wlr_buffer *target = create_output_buffer(
+		fixture, format, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(target != NULL, "allocate 10-bit consumer target")) {
+		return false;
+	}
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_SRGB);
+	if (!check(transform != NULL, "create consumer output transform")) {
+		wlr_buffer_drop(target);
+		return false;
+	}
+
+	uint32_t output[TEST_WIDTH * TEST_HEIGHT] = {0};
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &(struct wlr_buffer_pass_options) {
+			.color_transform = transform,
+		});
+	bool ok = check(pass != NULL, "begin consumer blur pass");
+	if (ok) {
+		struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+		struct wlr_box box = { .width = TEST_WIDTH, .height = TEST_HEIGHT };
+		pixman_region32_t region;
+		pixman_region32_init_rect(&region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+
+		wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+			.box = box,
+			.color = { .r = live_red, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+			.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+		});
+
+		ok = check(fx_render_pass_init_offscreen_buffers(pass, fixture->output),
+			"init consumer offscreen buffers") && ok;
+		// The cache from the producer pass should still be present and stale.
+		struct fx_offscreen_buffers *fbos = fx_pass->fx_offscreen_buffers;
+		ok = check(fbos != NULL && fbos->optimized_blur_buffer != NULL &&
+			fbos->optimized_blur_buffer->drm_format == DRM_FORMAT_XBGR8888,
+			"consumer sees the stale 8-bit optimized-blur cache") && ok;
+
+		const float opacity = 1.0f;
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = {
+					.dst_box = box,
+					.clip = &region,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+					.alpha = &opacity,
+				},
+				.clip_box = &box,
+			},
+			// Request the optimized path.
+			.use_optimized_blur = true,
+			.blur_data = &blur_data,
+			.blur_strength = 1.0f,
+		};
+		fx_render_pass_add_blur(fx_pass, &blur_options);
+		pixman_region32_fini(&region);
+
+		ok = check(wlr_render_pass_submit(pass), "submit consumer blur pass") && ok;
+	}
+
+	if (ok) {
+		ok = check(read_buffer(fixture, target, format,
+			TEST_WIDTH * sizeof(uint32_t), output), "read consumer output");
+	}
+
+	wlr_color_transform_unref(transform);
+	wlr_buffer_drop(target);
+	if (!ok) {
+		return false;
+	}
+
+	uint32_t pixel = output[(TEST_HEIGHT / 2) * TEST_WIDTH + TEST_WIDTH / 2];
+	int actual = pixel & 0x3FF;
+	int expected = lroundf(live_red * 1023.0f);
+	int stale = lroundf(stale_red * 1023.0f);
+	fprintf(stderr, "INFO: red actual=%d expected(live)=%d stale(cache)=%d\n",
+		actual, expected, stale);
+	return check(abs(actual - expected) <= 24,
+		"format-mismatched optimized-blur cache is not reused");
+}
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -1242,6 +1426,8 @@ int main(int argc, char *argv[]) {
 		ok = test_fp16_blur_effects(&fixture);
 	} else if (strcmp(argv[1], "fp16-save-restore") == 0) {
 		ok = test_fp16_save_restore(&fixture);
+	} else if (strcmp(argv[1], "optimized-blur-format-cache") == 0) {
+		ok = test_optimized_blur_format_cache(&fixture);
 	} else if (strcmp(argv[1], "shared-output-buffers") == 0) {
 		ok = test_shared_output_buffers(&fixture);
 	} else if (strcmp(argv[1], "output-lut-cache") == 0) {

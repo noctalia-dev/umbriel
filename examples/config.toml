@@ -92,6 +92,7 @@ honor_restored_maximize = false                 # Honor restored maximized state
 # direct_scanout = true                         # False forces composition on this output
 # hdr = "auto"                                  # off, on, auto, or fullscreen
 # sdr_white = 203                               # SDR reference white in cd/m2 during HDR
+# bit_depth = 8                                 # SDR render bit depth: 8 or 10
 # workspaces = 5                                # Anonymous fixed positions; omit for dynamic
 # workspace_axis = "horizontal"                 # vertical or horizontal workspace arrangement
 

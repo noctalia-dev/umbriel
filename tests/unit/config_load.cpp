@@ -1282,6 +1282,35 @@ UMBRIEL_TEST(outputHdrPolicyAndSdrWhiteLoad) {
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.hdr"));
 }
 
+UMBRIEL_TEST(outputBitDepthLoadsAndDefaults8) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+
+  file.write("[output.DP-1]\nbit_depth = 10\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 10);
+
+  file.write("[output.DP-1]\nbit_depth = 8\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+
+  file.write("[output.DP-1]\nbit_depth = 12\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.bit_depth"));
+
+  file.write("[output.DP-1]\nbit_depth = \"ten\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.bit_depth"));
+}
+
 UMBRIEL_TEST(windowOutputPoliciesLoadAndRejectInvalidValues) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
