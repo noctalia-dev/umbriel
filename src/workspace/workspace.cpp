@@ -411,7 +411,8 @@ namespace umbriel {
   }
 
   void Workspace::applyNamedScrollingColumnRule(
-      View* view, std::optional<double> initialWidth, NamedScrollingColumnChange change
+      View* view, std::optional<double> initialWidth, std::optional<int> initialWidthPx,
+      NamedScrollingColumnChange change
   ) {
     ScrollingLayout* scrolling = scrollingLayout();
     if (view == nullptr
@@ -456,7 +457,9 @@ namespace umbriel {
       // a new one. Start that group in its own adjacent column.
       detachFromLayout(view);
       scrolling->insertView(view, previousColumn + 1);
-      if (initialWidth) {
+      if (initialWidthPx) {
+        scrolling->setWidthFromPixels(scrolling->columnOf(view), scrollViewportExtent(), *initialWidthPx);
+      } else if (initialWidth) {
         scrolling->setWidthFraction(scrolling->columnOf(view), *initialWidth);
       }
       restoreMaximizedColumn();

@@ -2085,7 +2085,7 @@ namespace umbriel {
           }
         }
 
-        if (const toml::node* n = keys.take("default_size")) {
+        if (const toml::node* n = keys.take("default_floating_size_px")) {
           const auto* arr = n->as_array();
           bool valid = arr != nullptr && arr->size() == 2;
           std::array<int, 2> parsed{};
@@ -2100,9 +2100,42 @@ namespace umbriel {
             }
           }
           if (!valid) {
-            warnAt(n->source(), "ignoring window_rule.default_size (expected [width, height] positive integers)");
+            warnAt(
+                n->source(),
+                "ignoring window_rule.default_floating_size_px (expected [width, height] positive integers)"
+            );
           } else {
-            rule.defaultSize = parsed;
+            rule.defaultFloatingSizePx = parsed;
+          }
+        }
+
+        if (const toml::node* n = keys.take("default_floating_size")) {
+          const auto* arr = n->as_array();
+          bool valid = arr != nullptr && arr->size() == 2;
+          std::array<double, 2> parsed{};
+          if (valid) {
+            for (size_t index = 0; index < 2; ++index) {
+              const auto value = (*arr)[index].value<double>();
+              if (!value || std::isnan(*value)) {
+                valid = false;
+                break;
+              } else {
+                const double used = std::clamp(*value, 0.1, 1.0);
+                if (used != *value) {
+                  warnAt(
+                      n->source(), "window_rule.default_floating_size = {} out of range, clamped to {}", *value, used
+                  );
+                }
+                parsed[index] = static_cast<double>(used);
+              }
+            }
+          }
+          if (!valid) {
+            warnAt(
+                n->source(), "ignoring window_rule.default_floating_size (expected [width, height] numbers 0.1-1.0)"
+            );
+          } else {
+            rule.defaultFloatingSize = parsed;
           }
         }
 
@@ -2162,7 +2195,16 @@ namespace umbriel {
           }
         }
 
-        if (const toml::node* n = keys.take("default_width")) {
+        if (const toml::node* n = keys.take("default_scrolling_width_px")) {
+          const auto value = n->value<std::int64_t>();
+          if (!value || *value < 1 || *value > 100000) {
+            warnAt(n->source(), "ignoring window_rule.default_width_px (expected positive integer)");
+          } else {
+            rule.defaultScrollingWidthPx = *value;
+          }
+        }
+
+        if (const toml::node* n = keys.take("default_scrolling_width")) {
           const auto value = n->value<double>();
           if (!value || std::isnan(*value)) {
             warnAt(n->source(), "ignoring window_rule.default_width (expected number 0.1-1.0)");
@@ -2171,20 +2213,7 @@ namespace umbriel {
             if (used != *value) {
               warnAt(n->source(), "window_rule.default_width = {} out of range, clamped to {}", *value, used);
             }
-            rule.defaultWidth = used;
-          }
-        }
-
-        if (const toml::node* n = keys.take("default_height")) {
-          const auto value = n->value<double>();
-          if (!value || std::isnan(*value)) {
-            warnAt(n->source(), "ignoring window_rule.default_height (expected number 0.1-1.0)");
-          } else {
-            const double used = std::clamp(*value, 0.1, 1.0);
-            if (used != *value) {
-              warnAt(n->source(), "window_rule.default_height = {} out of range, clamped to {}", *value, used);
-            }
-            rule.defaultHeight = used;
+            rule.defaultScrollingWidth = used;
           }
         }
 
