@@ -42,10 +42,15 @@ closes.
 
 Click a window to focus it, middle-click to close it, or drag it to another
 workspace. When a click selects a window in another scrolling column, the
-column reveal runs together with the closing zoom. Each wheel notch moves one
-workspace at a time. The vertical wheel works on either arrangement; a
-horizontal wheel navigates only horizontal workspaces. A 4-finger swipe opens
-or closes the overview.
+column reveal runs together with the closing zoom. Wheel scrolls vertically;
+Shift+wheel and native horizontal wheel scroll horizontally. Wheel navigation
+commits discrete targets: along the output's workspace axis it switches workspace;
+across that axis it selects and reveals the next scrolling column in the preview
+under the pointer. Configured wheel bindings take precedence over Shift+wheel.
+At factor `1.0`, each notch advances one target; `0.5` needs two notches and `2.0`
+advances two targets. Factors change notch sensitivity, not continuous gesture travel
+for the wheel. Normal transition animations still apply.
+A 4-finger swipe opens or closes the overview.
 
 Two-finger scrolling and three-finger swipes both navigate continuously:
 
@@ -63,11 +68,11 @@ moves away. Wheel and keyboard navigation are unchanged.
 
 Touchpad `natural_scroll` sets the direction of both gestures.
 `overview.scroll_factor_horizontal` and `overview.scroll_factor_vertical`
-scale how far a gesture travels; both default to `1.0`, and a factor of `0.8`
-needs 25% more finger movement for the same distance. They apply to the
-physical direction of the movement, not to the output's workspace axis, and
-they are independent of the input device's `scroll_factor`, which still only
-scales application scrolling.
+scale how far a gesture travels and multiply wheel notch accumulation; both
+default to `1.0`. A factor of `0.8` needs 25% more finger movement for the same
+distance. They apply to the physical direction of the movement (horizontal for
+Shift+wheel), not to the output's workspace axis. They are independent of the
+input device's `scroll_factor`, which still only scales application scrolling.
 
 Three-finger swipes cover one workspace in the same travel a swipe outside the
 overview takes to switch workspaces. Two-finger scrolling has its own distance:
