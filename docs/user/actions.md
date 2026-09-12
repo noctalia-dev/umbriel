@@ -94,7 +94,11 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-cycle-width` | Cycle the focused column through the width presets |
 | `window-cycle-width-back` | Cycle the width presets in reverse |
 | `window-modify-height:<delta>` | Change the focused window's height by a fraction |
+| `window-modify-height-down:<delta>` | Resize the focused window from its bottom edge |
+| `window-modify-height-up:<delta>` | Resize the focused window from its top edge |
 | `window-modify-width:<delta>` | Change the focused column's width by a fraction |
+| `window-modify-width-left:<delta>` | Resize the focused column from its left edge |
+| `window-modify-width-right:<delta>` | Resize the focused column from its right edge |
 | `window-move-down` | Move the focused window down in its column |
 | `window-move-or-output-down` | Move down, or the column to the output below |
 | `window-move-or-output-left` | Move the column left, or to the output left |
@@ -218,6 +222,17 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
 
 ## Notes
 
+- **Edge-anchored resizing.** `window-modify-width-left`/`-right` and
+  `window-modify-height-up`/`-down` move only the named edge and leave the
+  opposite one where it is, so a positive delta grows the window from that edge
+  until the size saturates. They drive the same interactive resize path as a
+  pointer drag, so each layout offers the edges it can resize: an edge the layout
+  cannot resize leaves the window untouched (a screen-facing edge in Dwindle does
+  nothing at all), and a floating window grows from the named edge within its
+  client size hints. While a scrolling strip is narrower than the viewport and
+  `layout.scrolling.center_underfull_strip` is on, the strip resizes around its
+  center instead and both edges move symmetrically; a pointer drag on the same
+  edge behaves the same way.
 - **Launch tokens.** `spawn:` exports a one-shot `XDG_ACTIVATION_TOKEN` and a
   matching `DESKTOP_STARTUP_ID` to the command. A single-instance application
   can pass that token to its existing window so Umbriel reveals it, including
