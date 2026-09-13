@@ -26,7 +26,7 @@ default_floating = true
 | `match.is_floating` | bool | Match the window's floating state dynamically. |
 | `match.is_pinned` | bool | Match the window's pinned state dynamically. |
 | `match.is_scratchpad` | bool | Match the window's scratchpad state dynamically. |
-| `match.is_alone` | bool | Match whether the window is the only tiled one in its workspace. |
+| `match.is_alone` | bool | Match whether the window is the only one tiled in its workspace. |
 | `match.at_startup` | bool | Match `true` during the first 60 seconds after starting umbriel and `false` afterward. |
 
 Every selector is optional. A rule without selectors matches every window.
@@ -67,7 +67,7 @@ against the state the window opens with, before `default_floating` and
 `default_pinned` apply, so a rule that sets one of those cannot also select on
 the state it produces. `is_alone` selects only the four size settings described
 in [The only window in the workspace](#the-only-window-in-the-workspace), and a
-window that opens as the only tiled one is configured with them from its first
+window that opens as the only one tiled is configured with them from its first
 configure.
 
 ## Settings applied when a window opens
@@ -88,10 +88,6 @@ opening settings do not overwrite user changes made in the meantime.
 | `default_maximize_to_edges` | bool | Explicitly open maximized to edges. The initial configure fills the usable area without layout struts, gaps, or borders, so the window does not open at its normal size first. Layer-shell exclusive zones stay visible. Takes precedence over `default_maximize`; when combined with `default_fullscreen` the window opens fullscreen and returns to maximized to edges once fullscreen is cleared. |
 | `default_focused` | bool | Take focus when opening, switching to the window's workspace when needed. Defaults to `true`; set to `false` to preserve the existing focus and workspace. |
 | `default_pinned` | bool | Open pinned above regular windows and keep the window visible across workspace changes. Pinning makes a tiled window floating. |
-| `default_size` | `[w,h]` | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes. A new tiled column in a horizontal scrolling layout uses the width and ignores the height; vertical scrolling, dwindle, and master use their layout geometry. Takes precedence over `default_width`/`default_height` when set. |
-| `default_width` | float | Initial extent as a fraction (0.1-1.0): usable-area width for floating windows, or scrolling-axis extent for tiled windows in the scrolling layout. Overrides `layout.scrolling.default_width_fraction`; ignored by tiled windows in dwindle and master. |
-| `default_height` | float | Floating windows only, on the same terms as `default_width`. Initial height as a fraction (0.1-1.0) of the usable area. Ignored for tiled windows. |
-| `default_position` | table | Floating windows only, initial position: `{ x = int, y = int, anchor = string }`. Ignored for tiled windows. |
 | `default_scrolling_column` | string | Scrolling windows only. Place windows with the same non-empty name in one column. Floating windows and other layout modes ignore it. |
 | `default_scrolling_column_order` | int | Scrolling windows only. Position within `default_scrolling_column`, independent of launch timing. Lower values open higher in horizontal scrolling and farther left in vertical scrolling. Windows without an order follow ordered windows. |
 
@@ -105,19 +101,116 @@ area. Client maximize requests made before the window maps are honored only when
 `general.honor_restored_maximize` is enabled. Requests after mapping are always
 honored.
 
-Scrolling extents are gap-aware, so lanes whose fractions sum to `1` exactly
-fill the viewport. A vertical strip applies the fraction to lane height. For a
-new horizontal column, a matching `default_size` width takes
-precedence over `default_width` and the configured scrolling default. Existing
-named columns keep their established width. The pixel width seeds a fraction of
-the opening viewport, and moving the lane within or between scrolling
-workspaces retains its current fraction.
+## Size and Position Rules
 
-If neither `default_width` nor a matching
+| Key | Type | Layout | Description |
+|-----|------|--------|-------------|
+| `default_floating_size_px` | `[w,h]` | Floating | Initial size in pixels, clamped to the client's min/max hints. Floats use both, then own their size and honor client resizes. Takes precedence over `default_floating_size`. |
+| `default_floating_size` | `[w,h]` | Floating | Initial size as a fraction (0.1-1.0) of usable area. |
+| `default_scrolling_width_px` | int | Scrolling | Initial width in pixels. Overrides `layout.scrolling.default_width_fraction`, and takes precedence over `default_scrolling_width`. 
+| `default_scrolling_width` | float | Scrolling | Initial extent as a fraction (0.1-1.0) of scrolling-axis extent. |
+| `default_position` | table | Floating | Initial position in pixels, from the given anchor point: `{ x = int, y = int, anchor = string }`. |
+
+Window size and position rules apply when the window is opened, like other rules,
+except that a tiled window will save its default floating size and position for
+later. If the window then becomes floating, the rules will take effect. After
+this, it behaves like any other floating window, and will respect resizes as
+expected. A size given in pixels always takes precedence over one given as a
+fraction. In some cases, pixels may be internally converted to fractions for
+better consistency across outputs. 
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]example[.]Utility$"
+default_floating = true
+default_floating_size = [0.5, 0.6]
+```
+
+Floating rules reach every floating window the rule matches, not only windows the
+rule floats with `default_floating`. A window that floats because it declares a
+parent, such as a dialog, or because it fixes its size through min/max hints,
+takes the fraction too. Match on `title` or `xdg_tag` to keep a rule off them.
+
+Scrolling extents are gap-aware, so lanes whose fractions sum to `1` exactly
+fill the viewport. A vertical strip applies the fraction to lane height. Existing
+named columns keep their established width. 
+
+If no default scrolling width rule nor a matching
 `layout.scrolling.default_width_fraction` is set, a scrolling window chooses
 its initial logical extent.
 
-### Workspace placement
+### Floating position
+
+`default_position` only affects floating windows. Coordinates are logical pixels
+within the output's usable area, so panels and other exclusive zones are taken
+into account.
+
+The packaged config floats browser windows titled `Picture-in-Picture` or
+`Picture in picture` and places them 20 logical pixels from the bottom-right
+corner. XDG shell has no semantic PiP role and does not let clients choose a
+global window position, so this behavior is implemented as a title rule.
+
+For example, this opens a window 32 pixels right and 24 pixels up from the
+bottom-left corner:
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]example[.]Utility$"
+default_floating = true
+default_floating_size_px = [800, 600]
+default_position = { x = 32, y = 24, anchor = "bottom_left" }
+```
+
+`anchor` defaults to `"center"`, so this centers a floating window exactly:
+
+```toml
+default_position = { x = 0, y = 0 }
+```
+
+Available anchors are `"center"`, `"top_left"`, `"top_right"`,
+`"bottom_left"`, `"bottom_right"`, `"top"`, `"bottom"`, `"left"`, and
+`"right"`. Right anchors measure `x` leftward from the right edge; bottom
+anchors measure `y` upward from the bottom edge. The single-edge anchors center
+the window on the other axis. Umbriel keeps part of the window visible if an
+offset would otherwise place it completely off-screen.
+
+## Scratchpad placement
+
+`default_scratchpad` stores a matching window directly in a scratchpad when it
+opens:
+
+```toml
+[[scratchpad]]
+name = "terminal"
+
+[[window_rule]]
+match.app_id = "^scratchpad-terminal$"
+default_scratchpad = "terminal"
+default_output = "DP-1"
+default_workspace = 2
+```
+
+With no `[[scratchpad]]` definitions, the only valid target is `"default"`.
+With named definitions, the value must exactly match one of their names.
+Unknown names are ignored and reported in the configuration diagnostics.
+
+A hidden scratchpad remains hidden and the new window does not take focus. If
+the selected scratchpad is already visible, the window joins it where it is
+currently shown. `default_output` and `default_workspace` select the window's
+saved restore destination. `default_floating` selects whether restoring it
+returns it tiled or floating.
+
+Without a scratchpad geometry override, `default_floating_size_px` and
+`default_floating_size` set the window's initial scratchpad
+geometry using the assigned output's usable area.
+
+Scratchpad presentation takes precedence over `default_pinned`,
+`default_fullscreen`, `default_maximize`, and `default_maximize_to_edges`.
+The enabled `animation.scratchpad` fullscreen, maximize, or scale setting also
+takes precedence over opening size and position settings. A matching title
+that arrives just after mapping can still select the scratchpad rule.
+
+## Workspace placement
 
 `default_workspace` selects an existing workspace and never creates one. An
 integer selects a 1-based position, while a string selects an exact,
@@ -148,112 +241,6 @@ name. Integer positions can infer an output only when exactly one static
 inventory owns that position. Otherwise Umbriel keeps the launch output and
 resolves the target there. If it does not exist there, Umbriel keeps the normal
 workspace placement.
-
-## Scratchpad placement
-
-`default_scratchpad` stores a matching window directly in a scratchpad when it
-opens:
-
-```toml
-[[scratchpad]]
-name = "terminal"
-
-[[window_rule]]
-match.app_id = "^scratchpad-terminal$"
-default_scratchpad = "terminal"
-default_output = "DP-1"
-default_workspace = 2
-```
-
-With no `[[scratchpad]]` definitions, the only valid target is `"default"`.
-With named definitions, the value must exactly match one of their names.
-Unknown names are ignored and reported in the configuration diagnostics.
-
-A hidden scratchpad remains hidden and the new window does not take focus. If
-the selected scratchpad is already visible, the window joins it where it is
-currently shown. `default_output` and `default_workspace` select the window's
-saved restore destination. `default_floating` selects whether restoring it
-returns it tiled or floating.
-
-Without a scratchpad geometry override, `default_size`, `default_width`,
-`default_height`, and `default_position` set the window's initial scratchpad
-geometry using the assigned output's usable area.
-
-Scratchpad presentation takes precedence over `default_pinned`,
-`default_fullscreen`, `default_maximize`, and `default_maximize_to_edges`.
-The enabled `animation.scratchpad` fullscreen, maximize, or scale setting also
-takes precedence over opening size and position settings. A matching title
-that arrives just after mapping can still select the scratchpad rule.
-
-## Floating position
-
-`default_position` only affects floating windows. Coordinates are logical pixels
-within the output's usable area, so panels and other exclusive zones are taken
-into account.
-
-The packaged config floats browser windows titled `Picture-in-Picture` or
-`Picture in picture` and places them 20 logical pixels from the bottom-right
-corner. XDG shell has no semantic PiP role and does not let clients choose a
-global window position, so this behavior is implemented as a title rule.
-
-For example, this opens a window 32 pixels right and 24 pixels up from the
-bottom-left corner:
-
-```toml
-[[window_rule]]
-match.app_id = "^org[.]example[.]Utility$"
-default_floating = true
-default_size = [800, 600]
-default_position = { x = 32, y = 24, anchor = "bottom_left" }
-```
-
-Floating windows can instead be sized as fractions of the usable area, per
-axis. `default_size` (pixels) wins when both are set:
-
-```toml
-[[window_rule]]
-match.app_id = "^org[.]example[.]Utility$"
-default_floating = true
-default_width = 0.5
-default_height = 0.6
-```
-
-`anchor` defaults to `"center"`, so this centers a floating window exactly:
-
-```toml
-default_position = { x = 0, y = 0 }
-```
-
-Available anchors are `"center"`, `"top_left"`, `"top_right"`,
-`"bottom_left"`, `"bottom_right"`, `"top"`, `"bottom"`, `"left"`, and
-`"right"`. Right anchors measure `x` leftward from the right edge; bottom
-anchors measure `y` upward from the bottom edge. The single-edge anchors center
-the window on the other axis. Umbriel keeps part of the window visible if an
-offset would otherwise place it completely off-screen.
-
-## Floating size
-
-`default_size` sizes a float in pixels. `default_width` and `default_height`
-size it as fractions of the output's usable area instead, so one rule suits any
-monitor. The axes are independent: an axis without a fraction keeps the size the
-client asked for. Both are clamped to the client's min/max hints.
-
-```toml
-[[window_rule]]
-match.app_id = "^org[.]example[.]Utility$"
-default_floating = true
-default_width = 0.5
-default_height = 0.6
-```
-
-`default_size` wins on both axes when it is set as well.
-
-Fractions reach every floating window the rule matches, not only windows the
-rule floats with `default_floating`. A window that floats because it declares a
-parent, such as a dialog, or because it fixes its size through min/max hints,
-takes the fraction too. Dialogs usually share their application's `app_id`, so a
-`default_width` written for scrolling lane widths also sizes that application's
-dialogs. Match on `title` or `xdg_tag` to keep a rule off them.
 
 ## Named scrolling columns
 
@@ -318,7 +305,8 @@ its normal rules give it.
 | `default_fullscreen` | The window takes the whole output. |
 | `default_maximize_to_edges` | The window fills the usable area. |
 | `default_maximize` | The window is maximized, unless it has a parent. |
-| `default_width` | Applies to the window's scrolling lane; the layout must be scrolling. |
+| `default_scrolling_width_px` | Applies to the window's scrolling lane; the layout must be scrolling. |
+| `default_scrolling_width` | Applies to the window's scrolling lane; the layout must be scrolling. |
 
 Only one of these is applied at a time, in the same precedence as at map time:
 fullscreen, then maximized to edges, then maximized, then width. If the window
@@ -329,7 +317,7 @@ A window that opens as the only tiled window on its workspace is configured
 with these settings right away, in the same configure that carries its first
 size, so its first frame is already the one the rule asks for. The rule still
 owns that state: the window gives it up when a second window arrives. When the
-window's normal rules set no `default_width`, the width it returns to is
+window's normal rules set no default width, the width it returns to is
 `layout.scrolling.default_width_fraction`, because the alone width, not the
 client's own preference, sized the window as it opened.
 
@@ -351,13 +339,13 @@ widen on its own and shrink beside a companion:
 [[window_rule]]
 match.is_alone = true
 match.app_id = "^org\\.gnome\\.Nautilus$"
-default_width = 0.8
+default_scrolling_width = 0.8
 
 # Slim when another window opens next to it
 [[window_rule]]
 match.is_alone = false
 match.app_id = "^org\\.gnome\\.Nautilus$"
-default_width = 0.4
+default_scrolling_width = 0.4
 ```
 
 The dynamic settings from the previous section can be combined with
@@ -376,12 +364,12 @@ blur_optimized = true
 # floating window these applications open, including their dialogs.
 [[window_rule]]
 match.app_id = "^(Alacritty|kitty|org\\.gnome\\.Nautilus)$"
-default_width = 0.33
+default_scrolling_width = 0.33
 
 # Wide columns for browsers
 [[window_rule]]
 match.app_id = "^(helium|chromium)$"
-default_width = 0.75
+default_scrolling_width = 0.75
 
 # Always use VRR for game content, even when the output policy disables it
 [[window_rule]]
@@ -439,21 +427,21 @@ default_pinned = true
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true
-default_size = [1020, 900]
+default_floating_size_px = [1020, 900]
 blur_popups = false
 
 # Noctalia share picker
 [[window_rule]]
 match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
-default_size = [800, 600]
+default_floating_size_px = [800, 600]
 default_position = { x = 32, y = 32, anchor = "bottom_right" }
 
 # Swash
 [[window_rule]]
 match.app_id = "^dev.lemmy.swash$"
 default_floating = true
-default_size = [1000, 900]
+default_floating_size_px = [1000, 900]
 
 # Dim unfocused windows
 [[window_rule]]
