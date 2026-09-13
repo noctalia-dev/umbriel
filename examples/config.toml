@@ -524,13 +524,13 @@ blur_optimized = false
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true
-default_size = [1020, 900]
+default_floating_size_px = [1020, 900]
 
 # Noctalia share picker
 [[window_rule]]
 match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
-default_size = [800, 600]
+default_floating_size_px = [800, 600]
 
 # Browsers expose no semantic PiP role or global position control.
 [[window_rule]]
@@ -579,8 +579,7 @@ default_pinned = true
 # default_output = "DP-1"
 # default_workspace = 2
 # default_floating = true
-# default_width = 0.6
-# default_height = 0.5
+# default_floating_size = [0.6, 0.5]
 # default_position = { x = 0, y = 8, anchor = "top" }
 
 # [[window_rule]]
@@ -610,16 +609,14 @@ default_pinned = true
 
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Wide$"
-# default_size = [1200, 600]
+# default_floating_size_px = [1200, 600]
 
-# Size a floating window as fractions of the usable area. `default_size` wins
-# on both axes if it is also present.
+# Size a floating window as fractions of the usable area. 
 
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Utility$"
 # default_floating = true
-# default_width = 0.5
-# default_height = 0.6
+# default_floating_size = [0.5, 0.6]
 
 # Dynamic effects and output policies can be combined in one matching rule.
 
@@ -668,7 +665,7 @@ default_pinned = true
 # 75% width when the window is alone, the default width when another window opens.
 # [[window_rule]]
 # match.is_alone = true
-# default_width = 0.75
+# default_scolling_width = 0.75
 
 # ────────────────────────────── Layer Rules ─────────────────────────────────
 # Match layer-shell surfaces such as panels, launchers, notifications, and
