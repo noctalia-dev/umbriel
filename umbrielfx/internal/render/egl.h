@@ -21,6 +21,7 @@ struct wlr_egl {
 		bool EXT_image_dma_buf_import_modifiers;
 		bool IMG_context_priority;
 		bool EXT_create_context_robustness;
+		bool KHR_context_flush_control;
 
 		// Device extensions
 		bool EXT_device_drm;

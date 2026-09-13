@@ -367,6 +367,9 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
 	egl->exts.IMG_context_priority =
 		check_egl_ext(display_exts_str, "EGL_IMG_context_priority");
 
+	egl->exts.KHR_context_flush_control =
+		check_egl_ext(display_exts_str, "EGL_KHR_context_flush_control");
+
 	wlr_log(WLR_INFO, "Using EGL %d.%d", (int)major, (int)minor);
 	wlr_log(WLR_INFO, "Supported EGL display extensions: %s", display_exts_str);
 	if (device_exts_str != NULL) {
@@ -413,7 +416,7 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 	}
 
 	size_t atti = 0;
-	EGLint attribs[7];
+	EGLint attribs[9];
 
 	attribs[atti++] = EGL_CONTEXT_CLIENT_VERSION;
 	attribs[atti++] = 2;
@@ -432,6 +435,12 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 	if (egl->exts.EXT_create_context_robustness) {
 		attribs[atti++] = EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT;
 		attribs[atti++] = EGL_LOSE_CONTEXT_ON_RESET_EXT;
+	}
+
+	// Disable implicit flushes when releasing the context to reduce overhead.
+	if (egl->exts.KHR_context_flush_control) {
+		attribs[atti++] = EGL_CONTEXT_RELEASE_BEHAVIOR_KHR;
+		attribs[atti++] = EGL_CONTEXT_RELEASE_BEHAVIOR_NONE_KHR;
 	}
 
 	attribs[atti++] = EGL_NONE;
