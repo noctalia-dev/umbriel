@@ -54,10 +54,6 @@ namespace umbriel {
       return current.has_value() && current != initiallyApplied;
     }
 
-    std::optional<int> defaultSizeWidth(const ResolvedWindowRule& rule) {
-      return rule.defaultSize ? std::optional<int>((*rule.defaultSize)[0]) : std::nullopt;
-    }
-
     bool scratchpadOwnsOpeningGeometry() {
       const auto& scratchpad = config().animation.scratchpad;
       return scratchpad.fullscreen || scratchpad.maximize || (scratchpad.scale > 0.0 && scratchpad.scale <= 1.0);
@@ -385,7 +381,7 @@ namespace umbriel {
     if (m_workspace != target) {
       return false;
     }
-    target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
+    target->layoutAttach(this, rule.defaultScrollingWidth, rule.defaultScrollingWidthPx);
     return true;
   }
 
@@ -1081,7 +1077,7 @@ namespace umbriel {
     );
   }
 
-  // The difference between the alone and not-alone rules. Only the four size-related fields are kept: the others
+  // The difference between the alone and not-alone rules. Only the five size-related fields are kept: the others
   // are handled by the normal dynamic rules.
   ResolvedWindowRule View::aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const {
     ResolvedWindowRule diff;
@@ -1094,8 +1090,11 @@ namespace umbriel {
     if (alone.defaultMaximize != other.defaultMaximize) {
       diff.defaultMaximize = alone.defaultMaximize;
     }
-    if (alone.defaultWidth != other.defaultWidth) {
-      diff.defaultWidth = alone.defaultWidth;
+    if (alone.defaultScrollingWidthPx != other.defaultScrollingWidthPx) {
+      diff.defaultScrollingWidthPx = alone.defaultScrollingWidthPx;
+    }
+    if (alone.defaultScrollingWidth != other.defaultScrollingWidth) {
+      diff.defaultScrollingWidth = alone.defaultScrollingWidth;
     }
     return diff;
   }
@@ -1128,7 +1127,7 @@ namespace umbriel {
       m_aloneAction = AloneAction::Maximize;
       return true;
     }
-    if (delta.defaultWidth
+    if ((delta.defaultScrollingWidthPx || delta.defaultScrollingWidth)
         && m_workspace != nullptr
         && !m_toplevel->scheduled.fullscreen
         && !m_maximizedToEdges
@@ -1137,14 +1136,27 @@ namespace umbriel {
       if (scrolling != nullptr) {
         const int column = scrolling->columnOf(this);
         if (column >= 0) {
-          const double target = *delta.defaultWidth;
-          const double current = scrolling->widthFraction(column);
-          if (target != current) {
-            m_aloneSavedWidthFrac = current;
-            scrolling->setWidthFraction(column, target);
-            m_workspace->markArrange();
-            m_aloneAction = AloneAction::Width;
-            return true;
+          // Pixel rules take precedence over fraction rules
+          if (delta.defaultScrollingWidthPx) {
+            const int target = *delta.defaultScrollingWidthPx;
+            const double current = scrolling->widthFraction(column);
+            if (target != current) {
+              m_aloneSavedWidthFrac = current;
+              scrolling->setWidthFromPixels(column, m_workspace->scrollViewportExtent(), target);
+              m_workspace->markArrange();
+              m_aloneAction = AloneAction::Width;
+              return true;
+            }
+          } else if (delta.defaultScrollingWidth) {
+            const double target = *delta.defaultScrollingWidth;
+            const double current = scrolling->widthFraction(column);
+            if (target != current) {
+              m_aloneSavedWidthFrac = current;
+              scrolling->setWidthFraction(column, target);
+              m_workspace->markArrange();
+              m_aloneAction = AloneAction::Width;
+              return true;
+            }
           }
           m_aloneSavedWidthFrac = scrolling->widthFraction(-1);
           m_aloneAction = AloneAction::Width;
@@ -1180,7 +1192,7 @@ namespace umbriel {
         if (scrolling != nullptr) {
           const int column = scrolling->columnOf(this);
           if (column >= 0) {
-            const std::optional<double> notAloneWidth = resolveRulesWithAlone(false).defaultWidth;
+            const std::optional<double> notAloneWidth = resolveRulesWithAlone(false).defaultScrollingWidth;
             const double restore = notAloneWidth.value_or(m_aloneSavedWidthFrac.value_or(scrolling->widthFraction(-1)));
             scrolling->setWidthFraction(column, restore);
             m_workspace->markArrange();
@@ -1493,16 +1505,27 @@ namespace umbriel {
     return {layoutTargetX(), layoutTargetY(), width, height};
   }
 
-  void View::placeInUsableArea(const std::optional<WindowPosition>& position) {
-    const wlr_box usable = floatingUsableArea();
+  std::optional<FloatingPoint> View::getFloatingPosition(
+      const wlr_box usable, const std::optional<WindowPosition>& position, const std::optional<std::array<int, 2>> size
+  ) {
     if (usable.width <= 0 || usable.height <= 0) {
-      return;
+      return std::nullopt;
     }
 
+    int w;
+    int h;
+    // Use size if provided
+    if (size) {
+      w = (*size)[0];
+      h = (*size)[1];
+    } else {
+      const wlr_box& geo = m_toplevel->base->geometry;
+      w = geo.width > 0 ? geo.width : usable.width;
+      h = geo.height > 0 ? geo.height : usable.height;
+    }
     // Floats keep their own size; only center within the usable area.
-    const wlr_box& geo = m_toplevel->base->geometry;
-    const int width = geo.width > 0 ? geo.width : usable.width;
-    const int height = geo.height > 0 ? geo.height : usable.height;
+    const int width = w;
+    const int height = h;
     FloatingPoint origin = centeredOrigin(usable, width, height);
     if (position) {
       origin = {.x = usable.x + position->x, .y = usable.y + position->y};
@@ -1539,14 +1562,29 @@ namespace umbriel {
         break;
       }
       origin = clampFloatingOrigin(origin, {.x = 0, .y = 0, .width = width, .height = height}, usable);
-      m_floating.rememberPositionFraction(origin, usable);
+    }
+    return origin;
+  }
+
+  void View::placeInUsableArea(const std::optional<WindowPosition>& position) {
+    const wlr_box usable = floatingUsableArea();
+
+    std::optional<FloatingPoint> origin = getFloatingPosition(usable, position);
+    if (!origin) {
+      return;
+    }
+    if (position) {
+      m_floating.rememberPositionFraction(*origin, usable);
     } else if (const View* parent = transientParent()) {
       // Where the parent is headed, not where its node is mid-animation right after it mapped. A fullscreen parent
       // shows over any panel, so the whole output counts as visible for it.
       const wlr_box shownIn = parent->m_toplevel->scheduled.fullscreen ? parent->fullscreenArea() : usable;
+      const wlr_box& geo = m_toplevel->base->geometry;
+      const int width = geo.width > 0 ? geo.width : usable.width;
+      const int height = geo.height > 0 ? geo.height : usable.height;
       origin = centeredOverShown(parent->targetBox(), shownIn, width, height);
     }
-    setPosition(origin.x, origin.y);
+    setPosition(origin->x, origin->y);
   }
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }
@@ -2216,7 +2254,7 @@ namespace umbriel {
     showDecorations(!m_toplevel->scheduled.fullscreen);
 
     if (m_workspace != nullptr) {
-      m_workspace->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
+      m_workspace->layoutAttach(this, rule.defaultScrollingWidth, rule.defaultScrollingWidthPx);
     } else if (!attachToAvailableWorkspace(rule)) {
       setOnActiveWorkspace(true);
     }
@@ -2617,7 +2655,8 @@ namespace umbriel {
         rule.defaultFullscreen = alone.defaultFullscreen;
         rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
         rule.defaultMaximize = alone.defaultMaximize;
-        rule.defaultWidth = alone.defaultWidth;
+        rule.defaultScrollingWidthPx = alone.defaultScrollingWidthPx;
+        rule.defaultScrollingWidth = alone.defaultScrollingWidth;
       }
 
       const bool wantFullscreen = openingInScratchpad
@@ -2683,13 +2722,12 @@ namespace umbriel {
         } else if (wantMaximized && target != nullptr) {
           initial = target->initialMaximizedSize(this, tiledArea);
         } else {
-          const std::optional<double> widthFraction = wantMaximized ? std::optional<double>(1.0) : rule.defaultWidth;
+          const std::optional<double> widthFraction =
+              wantMaximized ? std::optional<double>(1.0) : rule.defaultScrollingWidth;
           initial = layout.initialSize(tiledArea, widthFraction, target != nullptr ? target->focusedView() : nullptr);
         }
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
-        const int requestedWidth = (rule.defaultSize && !wantMaximized && !namedScrollingColumnInitial)
-            ? (*rule.defaultSize)[0]
-            : initial.width;
+        const int requestedWidth = initial.width;
         const int width =
             (requestedWidth > 0 && !wantMaximizeToEdges) ? clampXdgWidth(requestedWidth, hints) : requestedWidth;
         const int height =
@@ -2697,6 +2735,28 @@ namespace umbriel {
         wlr_xdg_toplevel_set_size(m_toplevel, width, height);
         if (wantMaximized) {
           wlr_xdg_toplevel_set_maximized(m_toplevel, true);
+        }
+
+        // Save window rules in case of later floating
+        if (rule.defaultFloatingSizePx) {
+          m_floating.rememberSize(
+              clampXdgWidth((*rule.defaultFloatingSizePx)[0], hints),
+              clampXdgHeight((*rule.defaultFloatingSizePx)[1], hints)
+          );
+        } else if (rule.defaultFloatingSize) {
+          const wlr_box usable = openingUsableArea(targetOutput);
+          const int requestedWidth = floatingFractionSize((*rule.defaultFloatingSize)[0], usable.width);
+          const int requestedHeight = floatingFractionSize((*rule.defaultFloatingSize)[1], usable.height);
+          if (requestedWidth > 0 && requestedHeight > 0) {
+            m_floating.rememberSize(clampXdgWidth(requestedWidth, hints), clampXdgHeight(requestedHeight, hints));
+          }
+        }
+        if (rule.defaultPosition) {
+          const wlr_box usable = openingUsableArea(targetOutput);
+          std::optional<FloatingPoint> origin = getFloatingPosition(usable, rule.defaultPosition, m_floating.size());
+          if (origin) {
+            m_floating.rememberPositionFraction(*origin, usable);
+          }
         }
       } else {
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
@@ -2710,17 +2770,18 @@ namespace umbriel {
               std::max(100, static_cast<int>(std::lround(usable.width * scratchpadConfig.scale))),
               std::max(100, static_cast<int>(std::lround(usable.height * scratchpadConfig.scale)))
           );
-        } else if (rule.defaultSize) {
+        } else if (rule.defaultFloatingSizePx) {
           requestFloatingSize(
-              clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
+              clampXdgWidth((*rule.defaultFloatingSizePx)[0], hints),
+              clampXdgHeight((*rule.defaultFloatingSizePx)[1], hints)
           );
-        } else if (rule.defaultWidth || rule.defaultHeight) {
-          // Fractions of usable area per axis; default_size (pixels) outranks
+        } else if (rule.defaultFloatingSize) {
+          // Fractions of usable area per axis; default_floating_size_px outranks
           // them. An axis without a fraction stays 0 so the client keeps its own
           // preference there.
           const wlr_box usable = openingUsableArea(targetOutput);
-          const int requestedWidth = rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : 0;
-          const int requestedHeight = rule.defaultHeight ? floatingFractionSize(*rule.defaultHeight, usable.height) : 0;
+          const int requestedWidth = floatingFractionSize((*rule.defaultFloatingSize)[0], usable.width);
+          const int requestedHeight = floatingFractionSize((*rule.defaultFloatingSize)[1], usable.height);
           requestFloatingSize(
               requestedWidth > 0 ? clampXdgWidth(requestedWidth, hints) : 0,
               requestedHeight > 0 ? clampXdgHeight(requestedHeight, hints) : 0
@@ -3227,6 +3288,11 @@ namespace umbriel {
       const auto [keepWidth, keepHeight] = floatingRestoreSize();
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
+        // Save scrolling width
+        if (m_workspace->scrollingLayout() != nullptr) {
+          ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          m_savedScrollingWidthFrac = scrolling->widthFraction(column);
+        }
         if (column >= 0 && m_workspace->layout().isFullWidth(column)) {
           m_workspace->layout().clearFullWidthState(column);
           wlr_xdg_toplevel_set_maximized(m_toplevel, false);
@@ -3317,6 +3383,14 @@ namespace umbriel {
     if (wantFullscreen && m_workspace != nullptr && placement == TilePlacement::Layout) {
       m_workspace->snapVisible(this);
       m_workspace->markArrange(false);
+    }
+    // Revert to previous scrolling width
+    if (!wantFullscreen
+        && m_workspace != nullptr
+        && m_workspace->scrollingLayout() != nullptr
+        && m_savedScrollingWidthFrac) {
+      const int column = m_workspace->layout().columnOf(this);
+      m_workspace->scrollingLayout()->setWidthFraction(column, *m_savedScrollingWidthFrac);
     }
     updateForeignState();
     if (unpinning) {
@@ -3493,7 +3567,7 @@ namespace umbriel {
       if (target != nullptr && target != m_workspace) {
         setWorkspace(target, false);
         if (m_workspace == target) {
-          target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
+          target->layoutAttach(this, rule.defaultScrollingWidth, rule.defaultScrollingWidthPx);
           if (m_tiled && m_toplevel->scheduled.maximized && !m_maximizedToEdges) {
             setMaximized(true);
           }
@@ -3505,7 +3579,9 @@ namespace umbriel {
     }
 
     if (namedScrollingColumnChange && m_workspace != nullptr) {
-      m_workspace->applyNamedScrollingColumnRule(this, rule.defaultWidth, *namedScrollingColumnChange);
+      m_workspace->applyNamedScrollingColumnRule(
+          this, rule.defaultScrollingWidth, rule.defaultScrollingWidthPx, *namedScrollingColumnChange
+      );
     }
 
     std::optional<std::string_view> scratchpadTarget;
@@ -3562,7 +3638,9 @@ namespace umbriel {
     }
 
     ScrollingLayout* scrolling = m_workspace != nullptr ? m_workspace->scrollingLayout() : nullptr;
-    const bool defaultWidthChanged = changedInitialRule(rule.defaultWidth, initiallyApplied.defaultWidth);
+    const bool defaultWidthChanged =
+        (changedInitialRule(rule.defaultScrollingWidthPx, initiallyApplied.defaultScrollingWidthPx)
+         || changedInitialRule(rule.defaultScrollingWidth, initiallyApplied.defaultScrollingWidth));
     const bool ownsNamedScrollingColumnWidth =
         m_displacedHome ? m_displacedHome->ownsNamedScrollingColumnWidth : m_ownsNamedScrollingColumnWidth;
     if (defaultWidthChanged
@@ -3570,7 +3648,11 @@ namespace umbriel {
         && m_namedScrollingColumnName
         && m_displacedHome
         && ownsNamedScrollingColumnWidth) {
-      m_displacedHome->pendingNamedScrollingColumnWidth = rule.defaultWidth;
+      if (rule.defaultScrollingWidthPx) {
+        m_displacedHome->pendingNamedScrollingColumnWidthPx = rule.defaultScrollingWidthPx;
+      } else if (rule.defaultScrollingWidth) {
+        m_displacedHome->pendingNamedScrollingColumnWidth = rule.defaultScrollingWidth;
+      }
     }
     const bool canResizeCurrentNamedScrollingColumn =
         ownsNamedScrollingColumnWidth && (!m_displacedHome || m_ownsNamedScrollingColumnWidth);
@@ -3580,37 +3662,77 @@ namespace umbriel {
         && (!m_namedScrollingColumnName || canResizeCurrentNamedScrollingColumn)) {
       const int column = scrolling->columnOf(this);
       if (column >= 0) {
-        scrolling->setWidthFraction(column, *rule.defaultWidth);
+        if (rule.defaultScrollingWidthPx) {
+          scrolling->setWidthFromPixels(column, m_workspace->scrollViewportExtent(), *rule.defaultScrollingWidthPx);
+        } else if (rule.defaultScrollingWidth) {
+          scrolling->setWidthFraction(column, *rule.defaultScrollingWidth);
+        }
         m_workspace->markArrange();
       }
     }
 
     if (!inScratchpad
-        && !m_tiled
-        && (changedInitialRule(rule.defaultSize, initiallyApplied.defaultSize)
-            || changedInitialRule(rule.defaultWidth, initiallyApplied.defaultWidth)
-            || changedInitialRule(rule.defaultHeight, initiallyApplied.defaultHeight))) {
-      const XdgSizeHints hints = xdgSizeHints(m_toplevel);
-      if (rule.defaultSize) {
-        requestFloatingSize(
-            clampXdgWidth((*rule.defaultSize)[0], hints), clampXdgHeight((*rule.defaultSize)[1], hints)
-        );
-      } else if (rule.defaultWidth || rule.defaultHeight) {
-        // Pixel rules outrank fractions; an axis without either keeps the size
-        // the float is heading to instead of reverting to client preference.
-        const wlr_box usable = floatingUsableArea();
-        const auto [keepWidth, keepHeight] = floatingSize();
-        const int width = rule.defaultWidth ? floatingFractionSize(*rule.defaultWidth, usable.width) : keepWidth;
-        const int height = rule.defaultHeight ? floatingFractionSize(*rule.defaultHeight, usable.height) : keepHeight;
-        requestFloatingSize(
-            width > 0 ? clampXdgWidth(width, hints) : 0, height > 0 ? clampXdgHeight(height, hints) : 0
-        );
+        && (changedInitialRule(rule.defaultFloatingSizePx, initiallyApplied.defaultFloatingSizePx)
+            || changedInitialRule(rule.defaultFloatingSize, initiallyApplied.defaultFloatingSize))) {
+      if (!m_tiled) {
+        const XdgSizeHints hints = xdgSizeHints(m_toplevel);
+        if (rule.defaultFloatingSizePx) {
+          requestFloatingSize(
+              clampXdgWidth((*rule.defaultFloatingSizePx)[0], hints),
+              clampXdgHeight((*rule.defaultFloatingSizePx)[1], hints)
+          );
+        } else if (rule.defaultFloatingSize) {
+          // Pixel rules outrank fractions; an axis without either keeps the size
+          // the float is heading to instead of reverting to client preference.
+          const wlr_box usable = floatingUsableArea();
+          const auto [keepWidth, keepHeight] = floatingSize();
+          const int width =
+              rule.defaultFloatingSize ? floatingFractionSize((*rule.defaultFloatingSize)[0], usable.width) : keepWidth;
+          const int height = rule.defaultFloatingSize
+              ? floatingFractionSize((*rule.defaultFloatingSize)[1], usable.height)
+              : keepHeight;
+          requestFloatingSize(
+              width > 0 ? clampXdgWidth(width, hints) : 0, height > 0 ? clampXdgHeight(height, hints) : 0
+          );
+        }
+        placeInUsableArea();
+      } else {
+        // Save window rules in case of later floating
+
+        const XdgSizeHints hints = xdgSizeHints(m_toplevel);
+        if (rule.defaultFloatingSizePx) {
+          m_floating.rememberSize(
+              clampXdgWidth((*rule.defaultFloatingSizePx)[0], hints),
+              clampXdgHeight((*rule.defaultFloatingSizePx)[1], hints)
+          );
+        } else if (rule.defaultFloatingSize) {
+          // Pixel rules outrank fractions; an axis without either keeps the size
+          // the float is heading to instead of reverting to client preference.
+          const wlr_box usable = floatingUsableArea();
+          const auto [keepWidth, keepHeight] = floatingSize();
+          const int width =
+              rule.defaultFloatingSize ? floatingFractionSize((*rule.defaultFloatingSize)[0], usable.width) : keepWidth;
+          const int height = rule.defaultFloatingSize
+              ? floatingFractionSize((*rule.defaultFloatingSize)[1], usable.height)
+              : keepHeight;
+          if (width > 0 && height > 0) {
+            m_floating.rememberSize(clampXdgWidth(width, hints), clampXdgHeight(height, hints));
+          }
+        }
       }
-      placeInUsableArea();
     }
 
-    if (!inScratchpad && changedInitialRule(rule.defaultPosition, initiallyApplied.defaultPosition) && !m_tiled) {
-      placeInUsableArea(rule.defaultPosition);
+    if (!inScratchpad && changedInitialRule(rule.defaultPosition, initiallyApplied.defaultPosition)) {
+      if (!m_tiled) {
+        placeInUsableArea(rule.defaultPosition);
+      } else {
+        // Save position rule for later
+        const wlr_box usable = floatingUsableArea();
+        std::optional<FloatingPoint> origin = getFloatingPosition(usable, rule.defaultPosition);
+        if (origin) {
+          m_floating.rememberPositionFraction(*origin, usable);
+        }
+      }
     }
 
     if (!inScratchpad

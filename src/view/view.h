@@ -136,6 +136,7 @@ namespace umbriel {
       bool ownsNamedScrollingColumnWidth = false;
       // A late owner width can settle while this window is temporarily attached
       // to another output. Replay it after restoring the captured home layout.
+      std::optional<int> pendingNamedScrollingColumnWidthPx;
       std::optional<double> pendingNamedScrollingColumnWidth;
       std::optional<LayoutMode> layoutModeOverride;
       // Position relative to the full logical output. Unlike the ordinary
@@ -412,6 +413,10 @@ namespace umbriel {
     // Where `origin` has to move so a float of `width` by `height` keeps its on-screen margin, or nullopt when the
     // clamp does not apply or the origin already satisfies it.
     [[nodiscard]] std::optional<FloatingPoint> floatingClampTarget(FloatingPoint origin, int width, int height);
+    std::optional<FloatingPoint> getFloatingPosition(
+        const wlr_box usable, const std::optional<WindowPosition>& position = std::nullopt,
+        const std::optional<std::array<int, 2>> size = std::nullopt
+    );
     void placeInUsableArea(const std::optional<WindowPosition>& position = std::nullopt);
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
@@ -572,6 +577,8 @@ namespace umbriel {
     bool m_hasMaximizeRestoreBox = false;
     wlr_box m_maximizeRestoreBox{};
     FloatingGeometry m_floating;
+    // Width to restore when returned to tiled
+    std::optional<double> m_savedScrollingWidthFrac;
 
     wl_listener m_map{};
     wl_listener m_unmap{};

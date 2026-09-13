@@ -112,8 +112,10 @@ namespace umbriel {
     // Reposition a tiled view after a late title selects its named scrolling-column rule.
     // initialWidth seeds a new column when its name has no existing member.
     // A name change permits a split; an order-only change preserves manual placement.
-    void
-    applyNamedScrollingColumnRule(View* view, std::optional<double> initialWidth, NamedScrollingColumnChange change);
+    void applyNamedScrollingColumnRule(
+        View* view, std::optional<double> initialWidth, std::optional<int> initialWidthPx,
+        NamedScrollingColumnChange change
+    );
     void layoutDetach(View* view, bool animate = false);
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
