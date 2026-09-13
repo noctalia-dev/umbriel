@@ -2198,7 +2198,7 @@ namespace umbriel {
         if (const toml::node* n = keys.take("default_scrolling_width_px")) {
           const auto value = n->value<std::int64_t>();
           if (!value || *value < 1 || *value > 100000) {
-            warnAt(n->source(), "ignoring window_rule.default_width_px (expected positive integer)");
+            warnAt(n->source(), "ignoring window_rule.default_scrolling_width_px (expected positive integer)");
           } else {
             rule.defaultScrollingWidthPx = *value;
           }
@@ -2207,11 +2207,11 @@ namespace umbriel {
         if (const toml::node* n = keys.take("default_scrolling_width")) {
           const auto value = n->value<double>();
           if (!value || std::isnan(*value)) {
-            warnAt(n->source(), "ignoring window_rule.default_width (expected number 0.1-1.0)");
+            warnAt(n->source(), "ignoring window_rule.default_scrolling_width (expected number 0.1-1.0)");
           } else {
             const double used = std::clamp(*value, 0.1, 1.0);
             if (used != *value) {
-              warnAt(n->source(), "window_rule.default_width = {} out of range, clamped to {}", *value, used);
+              warnAt(n->source(), "window_rule.default_scrolling_width = {} out of range, clamped to {}", *value, used);
             }
             rule.defaultScrollingWidth = used;
           }

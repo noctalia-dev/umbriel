@@ -3673,7 +3673,7 @@ namespace umbriel {
 
     if (!inScratchpad
         && (changedInitialRule(rule.defaultFloatingSizePx, initiallyApplied.defaultFloatingSizePx)
-        || changedInitialRule(rule.defaultFloatingSize, initiallyApplied.defaultFloatingSize))) {
+            || changedInitialRule(rule.defaultFloatingSize, initiallyApplied.defaultFloatingSize))) {
       if (!m_tiled) {
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
         if (rule.defaultFloatingSizePx) {

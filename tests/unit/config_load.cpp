@@ -1644,27 +1644,32 @@ UMBRIEL_TEST(windowRuleFractionSizingLoadsAndClamps) {
   store.setRootPath(file.path(), true);
 
   file.write(
-      "[[window_rule]]\nmatch.app_id = \"^utility$\"\ndefault_floating = true\ndefault_width = 0.5\ndefault_height = "
-      "0.6\n"
+      "[[window_rule]]\nmatch.app_id = \"^utility$\"\ndefault_floating = true\ndefault_floating_size = [0.5, 0.6]\n"
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
-  CHECK(store.config().windowRules[0].defaultWidth && *store.config().windowRules[0].defaultWidth == 0.5);
-  CHECK(store.config().windowRules[0].defaultHeight && *store.config().windowRules[0].defaultHeight == 0.6);
+  CHECK(
+      store.config().windowRules[0].defaultFloatingSize
+      && (*store.config().windowRules[0].defaultFloatingSize)[0] == 0.5
+      && (*store.config().windowRules[0].defaultFloatingSize)[1] == 0.6
+  );
 
   // Out-of-range fractions clamp into [0.1, 1.0] with a diagnostic, like default_width.
-  file.write("[[window_rule]]\ndefault_width = 3.0\ndefault_height = 0.01\n");
+  file.write("[[window_rule]]\ndefault_floating_size = [3.0, 0.01]\n");
   CHECK(store.reload().success);
-  CHECK(store.config().windowRules[0].defaultWidth && *store.config().windowRules[0].defaultWidth == 1.0);
-  CHECK(store.config().windowRules[0].defaultHeight && *store.config().windowRules[0].defaultHeight == 0.1);
-  CHECK(containsDiagnostic(store, "window_rule.default_width = 3 out of range, clamped to 1"));
-  CHECK(containsDiagnostic(store, "window_rule.default_height = 0.01 out of range, clamped to 0.1"));
+  CHECK(
+      store.config().windowRules[0].defaultFloatingSize
+      && (*store.config().windowRules[0].defaultFloatingSize)[0] == 1.0
+      && (*store.config().windowRules[0].defaultFloatingSize)[1] == 0.1
+  );
+  CHECK(containsDiagnostic(store, "window_rule.default_floating_size = 3 out of range, clamped to 1"));
+  CHECK(containsDiagnostic(store, "window_rule.default_floating_size = 0.01 out of range, clamped to 0.1"));
 
   // Non-numeric values are ignored with a diagnostic.
-  file.write("[[window_rule]]\ndefault_height = \"half\"\n");
+  file.write("[[window_rule]]\ndefault_scrolling_width = \"half\"\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().windowRules[0].defaultHeight);
-  CHECK(containsDiagnostic(store, "ignoring window_rule.default_height (expected number 0.1-1.0)"));
+  CHECK(!store.config().windowRules[0].defaultScrollingWidth);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.default_scrolling_width (expected number 0.1-1.0)"));
 }
 
 UMBRIEL_TEST(outputEnabledFlagParsesAndDefaultsTrue) {
