@@ -240,19 +240,6 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	struct wlr_surface *surface = scene_surface->surface;
 	struct wlr_surface_state *state = &surface->current;
 
-	int width = state->width;
-	int height = state->height;
-
-	if (!wlr_box_empty(&scene_surface->clip)) {
-		width = min(scene_surface->clip.width, width - scene_surface->clip.x);
-		height = min(scene_surface->clip.height, height - scene_surface->clip.y);
-	}
-
-	if (width <= 0 || height <= 0) {
-		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
-		return;
-	}
-
 	struct wlr_fbox src_box;
 	wlr_surface_get_buffer_source_box(surface, &src_box);
 
@@ -260,11 +247,16 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	pixman_region32_init(&opaque);
 	pixman_region32_copy(&opaque, &surface->opaque_region);
 
+	int width = state->width;
+	int height = state->height;
+
 	if (!wlr_box_empty(&scene_surface->clip)) {
 		struct wlr_box *clip = &scene_surface->clip;
 
 		int buffer_width = state->buffer_width;
 		int buffer_height = state->buffer_height;
+		width = min(clip->width, width - clip->x);
+		height = min(clip->height, height - clip->y);
 
 		wlr_fbox_transform(&src_box, &src_box, state->transform,
 			buffer_width, buffer_height);
@@ -279,7 +271,17 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 			buffer_width, buffer_height);
 
 		pixman_region32_translate(&opaque, -clip->x, -clip->y);
-		pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
+		// A shrunk subsurface can push width or height negative; the empty
+		// check below drops the buffer, so keep pixman off the invalid rect.
+		if (width > 0 && height > 0) {
+			pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
+		}
+	}
+
+	if (width <= 0 || height <= 0) {
+		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
+		pixman_region32_fini(&opaque);
+		return;
 	}
 
 	float opacity = 1.0;
