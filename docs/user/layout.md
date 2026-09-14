@@ -194,11 +194,13 @@ Dwindle recursively splits tiles into independently sized regions.
 ```toml
 [layout.dwindle]
 preserve_split = false # keep each split direction fixed after creation
+new_exits_fullscreen = false
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `preserve_split` | bool | `false` | Keep each split direction fixed after it is created. |
+| `new_exits_fullscreen` | bool | `false` | Exits fullscreen when a new window is opened in the workspace. |
 
 ### Behavior
 
@@ -229,6 +231,7 @@ position = "left"                   # "left", "right", or "center"
 default_width_fraction = 0.55       # 0.1-0.9
 new_on_top = true                   # place new windows at the top of the stack
 new_becomes_master = false          # new windows take the master slot
+new_exits_fullscreen = false
 ```
 
 | Key | Type | Default | Description |
@@ -237,6 +240,7 @@ new_becomes_master = false          # new windows take the master slot
 | `default_width_fraction` | float | `0.55` | Initial fraction assigned to the master area when both areas exist (0.1-0.9). |
 | `new_on_top` | bool | `true` | Place new windows at the top of the stack. Disable to place them at the bottom. |
 | `new_becomes_master` | bool | `false` | Give the master slot to each new window and move the last master row to the stack top. |
+| `new_exits_fullscreen` | bool | `false` | Exits fullscreen when a new window is opened in the workspace. |
 
 ### Behavior
 
