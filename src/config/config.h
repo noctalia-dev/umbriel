@@ -61,12 +61,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       std::optional<bool> preserveSplit;
+      std::optional<bool> newExitsFullscreen;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> newOnTop;
       std::optional<bool> newBecomesMaster;
+      std::optional<bool> newExitsFullscreen;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -107,12 +109,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       bool preserveSplit = false;
+      bool newExitsFullscreen = false;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
       bool newOnTop = true;
       bool newBecomesMaster = false;
+      bool newExitsFullscreen = false;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -655,12 +659,14 @@ namespace umbriel {
       } scrolling;
       struct Dwindle {
         bool preserveSplit = false;
+        bool newExitsFullscreen = false;
         bool operator==(const Dwindle&) const = default;
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
         bool newOnTop = true;
         bool newBecomesMaster = false;
+        bool newExitsFullscreen = false;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;

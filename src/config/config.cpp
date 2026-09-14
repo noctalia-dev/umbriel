@@ -605,14 +605,18 @@ namespace umbriel {
                 overrides.scrolling.centerFocused = centerFocused;
               }
             });
-            s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", overrides.dwindle.preserveSplit); });
+            s.sub("dwindle", [&](Section& sd) {
+              sd.boolean("preserve_split", overrides.dwindle.preserveSplit)
+                  .boolean("new_exits_fullscreen", overrides.dwindle.newExitsFullscreen);
+            });
             s.sub("master", [&](Section& sm) {
               if (const auto position = readMasterPosition(sm, layoutContext + ".master")) {
                 overrides.master.position = position;
               }
               sm.real("default_width_fraction", 0.1, 0.9, overrides.master.defaultWidthFraction)
                   .boolean("new_on_top", overrides.master.newOnTop)
-                  .boolean("new_becomes_master", overrides.master.newBecomesMaster);
+                  .boolean("new_becomes_master", overrides.master.newBecomesMaster)
+                  .boolean("new_exits_fullscreen", overrides.master.newExitsFullscreen);
             });
           },
           layoutContext
@@ -1299,14 +1303,18 @@ namespace umbriel {
             loaded.layout.scrolling.centerFocused = *centerFocused;
           }
         });
-        s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit); });
+        s.sub("dwindle", [&](Section& sd) {
+          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit)
+              .boolean("new_exits_fullscreen", loaded.layout.dwindle.newExitsFullscreen);
+        });
         s.sub("master", [&](Section& sm) {
           if (const auto position = readMasterPosition(sm, "layout.master")) {
             loaded.layout.master.position = *position;
           }
           sm.real("default_width_fraction", 0.1, 0.9, loaded.layout.master.defaultWidthFraction)
               .boolean("new_on_top", loaded.layout.master.newOnTop)
-              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster);
+              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
+              .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
         });
       });
     }

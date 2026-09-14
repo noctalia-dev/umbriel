@@ -318,6 +318,15 @@ namespace umbriel {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;
     }
+    const bool exitFullscreen = (m_layoutMode == LayoutMode::Dwindle && m_layoutConfig.dwindle.newExitsFullscreen)
+        || (m_layoutMode == LayoutMode::Master && m_layoutConfig.master.newExitsFullscreen);
+    if (exitFullscreen) {
+      for (View* other : m_views) {
+        if (other != view && other->layoutFullscreen()) {
+          other->setFullscreen(false);
+        }
+      }
+    }
     ScrollingLayout* scrolling = scrollingLayout();
     const std::optional<std::string>& name = view->namedScrollingColumnName();
     const std::optional<NamedScrollingColumnPlacement> placement = scrolling != nullptr && name
