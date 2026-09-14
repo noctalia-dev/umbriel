@@ -1887,6 +1887,7 @@ namespace umbriel {
             .layoutSnapshot = nullptr,
             .layoutMember = 0,
             .ownsNamedScrollingColumnWidth = view->m_ownsNamedScrollingColumnWidth,
+            .pendingNamedScrollingColumnWidthPx = std::nullopt,
             .pendingNamedScrollingColumnWidth = std::nullopt,
             .layoutModeOverride = workspace->layoutModeOverride(),
             .floatingOutputPosition = std::nullopt,
@@ -2079,13 +2080,20 @@ namespace umbriel {
         continue;
       }
       const auto applyPendingNamedScrollingColumnWidth = [workspace](View* view, const View::DisplacedHome& home) {
-        if (!home.pendingNamedScrollingColumnWidth || !view->namedScrollingColumnName()) {
+        if ((!home.pendingNamedScrollingColumnWidthPx || !home.pendingNamedScrollingColumnWidth)
+            || !view->namedScrollingColumnName()) {
           return;
         }
         ScrollingLayout* scrolling = workspace->scrollingLayout();
         const int column = scrolling != nullptr ? scrolling->columnOf(view) : -1;
         if (column >= 0) {
-          scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnWidth);
+          if (home.pendingNamedScrollingColumnWidthPx) {
+            scrolling->setWidthFromPixels(
+                column, workspace->scrollViewportExtent(), *home.pendingNamedScrollingColumnWidthPx
+            );
+          } else if (home.pendingNamedScrollingColumnWidth) {
+            scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnWidth);
+          }
           workspace->markArrange(false);
         }
       };

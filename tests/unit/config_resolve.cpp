@@ -675,22 +675,22 @@ UMBRIEL_TEST(windowRulesMergeFractionSizingLastWriterWins) {
   first.appIdPattern = "^utility$";
   first.appIdRegex = std::regex(first.appIdPattern);
   first.defaultFloating = true;
-  first.defaultWidth = 0.5;
-  first.defaultHeight = 0.6;
+  first.defaultScrollingWidth = 0.5;
+  first.defaultScrollingWidthPx = 800;
   config.windowRules.push_back(std::move(first));
 
   WindowRule second;
   second.appIdPattern = "^utility$";
   second.appIdRegex = std::regex(second.appIdPattern);
-  second.defaultWidth = 0.75;
+  second.defaultScrollingWidth = 0.75;
   config.windowRules.push_back(std::move(second));
 
   const auto resolved =
       umbriel::resolveWindowRules(config, "utility", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(resolved.defaultFloating && *resolved.defaultFloating);
   // Later rules overwrite only the fields they set.
-  CHECK(resolved.defaultWidth && *resolved.defaultWidth == 0.75);
-  CHECK(resolved.defaultHeight && *resolved.defaultHeight == 0.6);
+  CHECK(resolved.defaultScrollingWidth && *resolved.defaultScrollingWidth == 0.75);
+  CHECK(resolved.defaultScrollingWidthPx && *resolved.defaultScrollingWidthPx == 800);
 }
 
 UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {

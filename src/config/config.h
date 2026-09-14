@@ -305,10 +305,11 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<std::string> defaultOutput;
     std::optional<bool> defaultFloating;
-    std::optional<std::array<int, 2>> defaultSize; // [width, height]
+    std::optional<std::array<int, 2>> defaultFloatingSizePx;  // [width, height] in pixels
+    std::optional<std::array<double, 2>> defaultFloatingSize; // [width, height] as fraction
     std::optional<WindowPosition> defaultPosition;
-    std::optional<double> defaultWidth;  // column width fraction override
-    std::optional<double> defaultHeight; // floating height fraction of the usable area
+    std::optional<int> defaultScrollingWidthPx;  // column width pixel override
+    std::optional<double> defaultScrollingWidth; // column width fraction override
     std::optional<WorkspaceReference> defaultWorkspace;
     std::optional<std::string> defaultScratchpad;
     std::optional<std::string> defaultScrollingColumn;
@@ -345,10 +346,11 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && defaultOutput == other.defaultOutput
           && defaultFloating == other.defaultFloating
-          && defaultSize == other.defaultSize
+          && defaultFloatingSizePx == other.defaultFloatingSizePx
+          && defaultFloatingSize == other.defaultFloatingSize
           && defaultPosition == other.defaultPosition
-          && defaultWidth == other.defaultWidth
-          && defaultHeight == other.defaultHeight
+          && defaultScrollingWidthPx == other.defaultScrollingWidthPx
+          && defaultScrollingWidth == other.defaultScrollingWidth
           && defaultWorkspace == other.defaultWorkspace
           && defaultScratchpad == other.defaultScratchpad
           && defaultScrollingColumn == other.defaultScrollingColumn
@@ -374,10 +376,11 @@ namespace umbriel {
   struct ResolvedWindowRule {
     std::optional<std::string> defaultOutput;
     std::optional<bool> defaultFloating;
-    std::optional<std::array<int, 2>> defaultSize;
+    std::optional<std::array<int, 2>> defaultFloatingSizePx;
+    std::optional<std::array<double, 2>> defaultFloatingSize;
     std::optional<WindowPosition> defaultPosition;
-    std::optional<double> defaultWidth;
-    std::optional<double> defaultHeight;
+    std::optional<int> defaultScrollingWidthPx;
+    std::optional<double> defaultScrollingWidth;
     std::optional<WorkspaceReference> defaultWorkspace;
     std::optional<std::string> defaultScratchpad;
     std::optional<std::string> defaultScrollingColumn;

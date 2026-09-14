@@ -69,6 +69,11 @@ namespace umbriel {
     return std::max(1, static_cast<int>(std::lround(fraction * (viewportPrimary + gap) - gap)));
   }
 
+  double Layout::getWidthFraction(int viewportPrimary, int width) const {
+    const int gap = m_config != nullptr ? m_config->totalGap : 0;
+    return static_cast<double>(std::max(1, width) + gap) / static_cast<double>(std::max(1, viewportPrimary) + gap);
+  }
+
   std::vector<View*> Layout::focusPeers(const View* from, const View* target) const {
     if (target == nullptr) {
       return {};

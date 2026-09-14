@@ -283,6 +283,8 @@ namespace umbriel {
     // Anything only one layout can answer lives on that layout. Reach it through the single downcast seam,
     // Workspace::scrollingLayout(), rather than by asking every layout a question most of them have no answer to.
 
+    double getWidthFraction(int viewportPrimary, int width) const;
+
   protected:
     // The usable area minus edge padding on both axes: the box the layout has
     // to fill.
