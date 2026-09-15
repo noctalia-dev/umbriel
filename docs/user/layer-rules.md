@@ -37,3 +37,17 @@ empty string.
 Layer-shell blur is off by default. As with window rules, every matching rule
 contributes its settings, and later values take precedence. Rules from included
 files come before the rules in the file that includes them.
+
+## Keyboard focus
+
+A layer surface declares its own keyboard interactivity through the layer-shell
+protocol; no rule overrides it.
+
+| Interactivity | Behavior |
+|---------------|----------|
+| `none` | Never receives keyboard focus. Clicking the surface leaves the focused window alone. |
+| `on_demand` | Takes keyboard focus when it maps. Clicking a window, a focus action, or a workspace switch moves focus away again, and closing the surface returns focus to the window that had it. |
+| `exclusive` | Holds the seat while it stays mapped. Windows keep their layout focus but receive no keys, and focus actions do not move the keyboard off the surface. |
+
+Launchers, quick terminals, and panels with a search field use `on_demand` and
+are usable as soon as they appear.

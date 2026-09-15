@@ -34,6 +34,12 @@ connection. The pid is only meaningful in the compositor's own namespaces: for
 a sandboxed client it names the process the sandbox engine connected, and paths
 under `/proc/<pid>` resolve in that sandbox's mount namespace.
 
+A window entry's `x` and `y` are its layout slot for a tiled window and its own
+position for a float. `w` and `h` are the size the window covers on screen.
+That is normally the window geometry the client committed, but a client that
+acks a configure and redraws at the new size without updating its window
+geometry, as Electron does, is reported at the size it actually covers.
+
 Each window entry also carries a `scratchpad` string. It is the configured
 scratchpad name while the window is stored, `"default"` for the implicit
 scratchpad, and an empty string for a regular workspace window. A stored window
@@ -69,7 +75,7 @@ line is `{"event":"<family>","data":…}`.
 | `overview` | the overview opening or closing |
 | `keyboard_layout` | layout switches; skipped in the initial state when no keyboard exists |
 | `windows` | window open, close, focus, title, app id, geometry, workspace, scratchpad membership, floating state |
-| `workspaces` | layout mode, activation, occupancy, names, named status, indices, and workspace or output membership |
+| `workspaces` | layout mode, activation, occupancy, names, named status, indices, workspace or output membership, and the cursor crossing to another output, which moves `focused` without activating a workspace |
 | `submap` | the active keybind submap changing; `null` is the default context |
 
 Subscribing to an unknown family answers

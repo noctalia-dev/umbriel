@@ -112,6 +112,7 @@ namespace {
     uint32_t inputSerial = 0;
     bool requestMaximized = false;
     bool requestMaximizedAfterConfigure = false;
+    bool requestMaximizedAfterMap = false;
     bool maximizeRequested = false;
     bool logConfigures = false;
     xdg_toplevel* parentOnFirstConfigure = nullptr;
@@ -400,6 +401,13 @@ namespace {
     wl_surface_attach(state.surface, state.buffer.resource, 0, 0);
     wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
     wl_surface_commit(state.surface);
+    if (state.requestMaximizedAfterMap && !state.maximizeRequested) {
+      // Queue the mapping commit first so the compositor observes this as a
+      // post-map session-state re-assertion in the same opening batch.
+      xdg_toplevel_set_maximized(state.toplevel);
+      wl_surface_commit(state.surface);
+      state.maximizeRequested = true;
+    }
     if (state.requestFullscreen && !state.fullscreenRequested) {
       xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
       wl_surface_commit(state.surface);
@@ -715,7 +723,9 @@ int main(int argc, char** argv) {
   const char* updatedTitle = std::getenv("TITLE_AFTER_MAP");
   // A toplevel that never sets a title, which is distinct from one that sets an empty title.
   const bool skipTitle = std::getenv("NO_TITLE") != nullptr;
-  const bool updateOnStdin = updatedContentType != nullptr || updatedXdgTag != nullptr || updatedTitle != nullptr;
+  const bool maximizeOnStdin = std::getenv("MAXIMIZE_ON_STDIN") != nullptr;
+  const bool updateOnStdin =
+      updatedContentType != nullptr || updatedXdgTag != nullptr || updatedTitle != nullptr || maximizeOnStdin;
   if (parseContentType(initialContentType) < 0 || parseContentType(updatedContentType) < 0) {
     std::println(stderr, "unmap-client: CONTENT_TYPE values must be none, photo, video, or game");
     return EXIT_FAILURE;
@@ -726,6 +736,7 @@ int main(int argc, char** argv) {
   }
   state.requestMaximized = std::getenv("REQUEST_MAXIMIZED") != nullptr;
   state.requestMaximizedAfterConfigure = std::getenv("REQUEST_MAXIMIZED_AFTER_CONFIGURE") != nullptr;
+  state.requestMaximizedAfterMap = std::getenv("REQUEST_MAXIMIZED_AFTER_MAP") != nullptr;
   state.logConfigures = std::getenv("LOG_CONFIGURES") != nullptr;
   state.followConfigures = std::getenv("FOLLOW_CONFIGURES") != nullptr;
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
@@ -1032,6 +1043,19 @@ int main(int argc, char** argv) {
             xdg_toplevel_set_parent(transientNested.toplevel, state.toplevel);
             wl_display_roundtrip(state.display);
             std::println("nested-parent-set");
+            std::fflush(stdout);
+          } else if (state.mapped && maximizeOnStdin && command == 's') {
+            wl_surface_commit(state.surface);
+            if (wl_display_roundtrip(state.display) < 0) {
+              return EXIT_FAILURE;
+            }
+            std::println("surface-committed");
+            std::fflush(stdout);
+          } else if (state.mapped && maximizeOnStdin && command == 'm') {
+            xdg_toplevel_set_maximized(state.toplevel);
+            wl_surface_commit(state.surface);
+            wl_display_flush(state.display);
+            std::println("maximize-requested");
             std::fflush(stdout);
           } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {

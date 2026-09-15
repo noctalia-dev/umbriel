@@ -480,6 +480,30 @@ namespace umbriel {
       };
     }
 
+    std::optional<Config::Input::Touchpad::ScrollFactor> readScrollFactor(Section& section) {
+      const toml::node* node = section.take("scroll_factor");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      Config::Input::Touchpad::ScrollFactor factor;
+      if (const toml::table* table = node->as_table()) {
+        Section axes(*table, "input.touchpad.scroll_factor", configStore().mutableDiagnostics());
+        axes.real("horizontal", 0.1, 10.0, factor.horizontal);
+        axes.real("vertical", 0.1, 10.0, factor.vertical);
+        return factor;
+      }
+      const auto value = node->value<double>();
+      if (!value || std::isnan(*value)) {
+        warnAt(node->source(), "ignoring input.touchpad.scroll_factor (expected number or table)");
+        return std::nullopt;
+      }
+      const double used = std::clamp(*value, 0.1, 10.0);
+      if (used != *value) {
+        warnAt(node->source(), "input.touchpad.scroll_factor = {} out of range, clamped to {}", *value, used);
+      }
+      return Config::Input::Touchpad::ScrollFactor{.horizontal = used, .vertical = used};
+    }
+
     std::optional<ClickMethod> readClickMethod(Section& section, std::string_view context) {
       const toml::node* node = section.take("click_method");
       if (node == nullptr) {
@@ -605,14 +629,18 @@ namespace umbriel {
                 overrides.scrolling.centerFocused = centerFocused;
               }
             });
-            s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", overrides.dwindle.preserveSplit); });
+            s.sub("dwindle", [&](Section& sd) {
+              sd.boolean("preserve_split", overrides.dwindle.preserveSplit)
+                  .boolean("new_exits_fullscreen", overrides.dwindle.newExitsFullscreen);
+            });
             s.sub("master", [&](Section& sm) {
               if (const auto position = readMasterPosition(sm, layoutContext + ".master")) {
                 overrides.master.position = position;
               }
               sm.real("default_width_fraction", 0.1, 0.9, overrides.master.defaultWidthFraction)
                   .boolean("new_on_top", overrides.master.newOnTop)
-                  .boolean("new_becomes_master", overrides.master.newBecomesMaster);
+                  .boolean("new_becomes_master", overrides.master.newBecomesMaster)
+                  .boolean("new_exits_fullscreen", overrides.master.newExitsFullscreen);
             });
           },
           layoutContext
@@ -1299,14 +1327,18 @@ namespace umbriel {
             loaded.layout.scrolling.centerFocused = *centerFocused;
           }
         });
-        s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit); });
+        s.sub("dwindle", [&](Section& sd) {
+          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit)
+              .boolean("new_exits_fullscreen", loaded.layout.dwindle.newExitsFullscreen);
+        });
         s.sub("master", [&](Section& sm) {
           if (const auto position = readMasterPosition(sm, "layout.master")) {
             loaded.layout.master.position = *position;
           }
           sm.real("default_width_fraction", 0.1, 0.9, loaded.layout.master.defaultWidthFraction)
               .boolean("new_on_top", loaded.layout.master.newOnTop)
-              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster);
+              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
+              .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
         });
       });
     }
@@ -1568,9 +1600,9 @@ namespace umbriel {
           t.boolean("tap", in.touchpad.tap)
               .boolean("natural_scroll", in.touchpad.naturalScroll)
               .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
-              .real("scroll_factor", 0.1, 10.0, in.touchpad.scrollFactor)
               .boolean("disable_while_typing", in.touchpad.disableWhileTyping)
               .boolean("disable_on_external_mouse", in.touchpad.disableOnExternalMouse);
+          in.touchpad.scrollFactor = readScrollFactor(t);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
           in.touchpad.clickMethod = readClickMethod(t, "input.touchpad");
         });

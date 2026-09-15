@@ -355,8 +355,10 @@ namespace umbriel {
         out->markBlurBackgroundDirty();
       }
     }
-    // Protocol: exclusive must receive keyboard focus. On-demand is click-to-focus.
-    if (exclusiveKeyboard()) {
+    // Protocol requires focus for exclusive. On-demand layers also take it as they map: launchers,
+    // quick terminals and panels expect the keyboard right away.
+    // A click or a focus action moves focus off them again, unlike an exclusive layer.
+    if (acceptsKeyboard()) {
       focus();
     }
     updateBlur();

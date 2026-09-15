@@ -114,6 +114,9 @@ namespace umbriel {
       if (overrides.dwindle.preserveSplit) {
         resolved.dwindle.preserveSplit = *overrides.dwindle.preserveSplit;
       }
+      if (overrides.dwindle.newExitsFullscreen) {
+        resolved.dwindle.newExitsFullscreen = *overrides.dwindle.newExitsFullscreen;
+      }
       if (overrides.master.defaultWidthFraction) {
         resolved.master.defaultWidthFraction = *overrides.master.defaultWidthFraction;
       }
@@ -122,6 +125,9 @@ namespace umbriel {
       }
       if (overrides.master.newBecomesMaster) {
         resolved.master.newBecomesMaster = *overrides.master.newBecomesMaster;
+      }
+      if (overrides.master.newExitsFullscreen) {
+        resolved.master.newExitsFullscreen = *overrides.master.newExitsFullscreen;
       }
       if (overrides.master.position) {
         resolved.master.position = *overrides.master.position;
@@ -375,9 +381,11 @@ namespace umbriel {
     resolved.scrolling.centerUnderfullStrip = config.layout.scrolling.centerUnderfullStrip;
     resolved.scrolling.centerFocused = config.layout.scrolling.centerFocused;
     resolved.dwindle.preserveSplit = config.layout.dwindle.preserveSplit;
+    resolved.dwindle.newExitsFullscreen = config.layout.dwindle.newExitsFullscreen;
     resolved.master.defaultWidthFraction = config.layout.master.defaultWidthFraction;
     resolved.master.newOnTop = config.layout.master.newOnTop;
     resolved.master.newBecomesMaster = config.layout.master.newBecomesMaster;
+    resolved.master.newExitsFullscreen = config.layout.master.newExitsFullscreen;
     resolved.master.position = config.layout.master.position;
     const int borderWidth = config.appearance.totalBorderWidth();
     resolved.totalGap = resolved.gap + 2 * borderWidth;

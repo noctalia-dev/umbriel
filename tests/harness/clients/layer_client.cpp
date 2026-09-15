@@ -1,5 +1,6 @@
 // Maps a top exclusive zone, a full-output background layer when the height is zero, or a 200x200 bottom-layer
-// square. It stays mapped until that output closes the layer surface.
+// square. It stays mapped until that output closes the layer surface. `keyboard=none|on-demand|exclusive` picks the
+// layer surface's keyboard interactivity, and every keyboard enter and leave the surface receives is logged.
 
 #include <wayland-client.h>
 
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -38,6 +40,8 @@ namespace {
     wl_compositor* compositor = nullptr;
     wl_shm* shm = nullptr;
     zwlr_layer_shell_v1* layerShell = nullptr;
+    wl_seat* seat = nullptr;
+    wl_keyboard* keyboard = nullptr;
     std::vector<std::unique_ptr<Output>> outputs;
     wl_surface* surface = nullptr;
     zwlr_layer_surface_v1* layerSurface = nullptr;
@@ -47,6 +51,7 @@ namespace {
     bool closed = false;
     bool failed = false;
     uint32_t fillColor = 0xFF202020;
+    uint32_t keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
   };
 
   void
@@ -148,12 +153,53 @@ namespace {
       .closed = layerClosed,
   };
 
+  void keyboardKeymap(void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) { close(fd); }
+  void keyboardEnter(void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) { std::println("keyboard-enter"); }
+  void keyboardLeave(void*, wl_keyboard*, uint32_t, wl_surface*) { std::println("keyboard-leave"); }
+  void keyboardKey(void*, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t keyState) {
+    std::println("keyboard-key code={} state={}", key, keyState);
+  }
+  void keyboardModifiers(void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {}
+  void keyboardRepeatInfo(void*, wl_keyboard*, int32_t, int32_t) {}
+
+  constexpr wl_keyboard_listener kKeyboardListener = {
+      .keymap = keyboardKeymap,
+      .enter = keyboardEnter,
+      .leave = keyboardLeave,
+      .key = keyboardKey,
+      .modifiers = keyboardModifiers,
+      .repeat_info = keyboardRepeatInfo,
+  };
+
+  // The harness creates and destroys virtual keyboards while the client runs, so the capability comes and goes.
+  void seatCapabilities(void* data, wl_seat* seat, uint32_t capabilities) {
+    auto& state = *static_cast<State*>(data);
+    const bool hasKeyboard = (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0;
+    if (hasKeyboard && state.keyboard == nullptr) {
+      state.keyboard = wl_seat_get_keyboard(seat);
+      wl_keyboard_add_listener(state.keyboard, &kKeyboardListener, &state);
+    } else if (!hasKeyboard && state.keyboard != nullptr) {
+      wl_keyboard_release(state.keyboard);
+      state.keyboard = nullptr;
+    }
+  }
+
+  void seatName(void*, wl_seat*, const char*) {}
+
+  constexpr wl_seat_listener kSeatListener = {
+      .capabilities = seatCapabilities,
+      .name = seatName,
+  };
+
   void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
     auto& state = *static_cast<State*>(data);
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
       state.compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, 4));
     } else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
       state.shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+    } else if (std::strcmp(interface, wl_seat_interface.name) == 0) {
+      state.seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 5U)));
+      wl_seat_add_listener(state.seat, &kSeatListener, &state);
     } else if (std::strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
       state.layerShell = static_cast<zwlr_layer_shell_v1*>(
           wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4U))
@@ -176,8 +222,14 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 3 || argc > 4) {
-    std::println(stderr, "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer]");
+  // Checks tail this log while the client keeps running, so a full stdio buffer would hide events until exit.
+  setvbuf(stdout, nullptr, _IOLBF, 0);
+  if (argc < 3) {
+    std::println(
+        stderr,
+        "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer] "
+        "[keyboard=none|on-demand|exclusive]"
+    );
     return EXIT_FAILURE;
   }
   const std::string outputName = argv[1];
@@ -186,10 +238,26 @@ int main(int argc, char** argv) {
     std::println(stderr, "layer-client: exclusive height must not be negative");
     return EXIT_FAILURE;
   }
-  // A 200x200 bottom-layer square in the top-left corner, which the overview mirrors into every workspace preview.
-  const bool bottom = argc == 4 && std::string(argv[3]) == "bottom-layer";
 
   State state;
+  // A 200x200 bottom-layer square in the top-left corner, which the overview mirrors into every workspace preview.
+  bool bottom = false;
+  for (int index = 3; index < argc; ++index) {
+    const std::string option = argv[index];
+    if (option == "bottom-layer") {
+      bottom = true;
+    } else if (option == "keyboard=none") {
+      state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+    } else if (option == "keyboard=on-demand") {
+      state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND;
+    } else if (option == "keyboard=exclusive") {
+      state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+    } else {
+      std::println(stderr, "layer-client: unknown option '{}'", option);
+      return EXIT_FAILURE;
+    }
+  }
+
   const bool background = !bottom && exclusiveHeight == 0;
   if (background) {
     state.fillColor = 0xFF5577AA;
@@ -227,6 +295,9 @@ int main(int argc, char** argv) {
       state.layerShell, state.surface, (*selected)->resource, layer, "umbriel-output-restore-regression"
   );
   zwlr_layer_surface_v1_add_listener(state.layerSurface, &kLayerSurfaceListener, &state);
+  if (state.keyboardInteractivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) {
+    zwlr_layer_surface_v1_set_keyboard_interactivity(state.layerSurface, state.keyboardInteractivity);
+  }
   uint32_t anchors = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
   if (bottom) {
     zwlr_layer_surface_v1_set_size(state.layerSurface, 200, 200);
@@ -251,6 +322,12 @@ int main(int argc, char** argv) {
   zwlr_layer_surface_v1_destroy(state.layerSurface);
   wl_surface_destroy(state.surface);
   destroyBuffer(state.buffer);
+  if (state.keyboard != nullptr) {
+    wl_keyboard_release(state.keyboard);
+  }
+  if (state.seat != nullptr) {
+    wl_seat_release(state.seat);
+  }
   for (const auto& output : state.outputs) {
     wl_output_release(output->resource);
   }

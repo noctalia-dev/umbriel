@@ -4,8 +4,12 @@
 # last monitor in layout order they wrap to the first, which no directional
 # action does. Each assertion observes the transition after the wrap, so an
 # implementation that merely walks to the adjacent monitor and stops fails here
-# even though its first step looks correct.
+# even though its first step looks correct. Changing monitor changes which
+# workspace is focused without activating one, so every transition is also
+# observed on the pushed workspaces event stream, not only in a poll.
 set -euo pipefail
+
+readonly EVENTS="$UMBRIEL_RUNTIME_DIR/workspace-events.log"
 
 accepts() {
   if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
@@ -26,16 +30,23 @@ window_output() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .workspace | split(":")[0]'
 }
 
+# The last pushed event, which only reports the new monitor once the stream has
+# been refreshed for the switch.
+pushed_focused_output() {
+  tail -n 1 "$EVENTS" 2> /dev/null | jq -r 'select(.event == "workspaces") | .data[] | select(.focused) | .output'
+}
+
 wait_for_focused_output() {
-  local expected=$1 actual=
+  local expected=$1 actual= pushed=
   for _ in $(seq 50); do
     actual=$(focused_output)
-    if [[ $actual == "$expected" ]]; then
+    pushed=$(pushed_focused_output || true)
+    if [[ $actual == "$expected" && $pushed == "$expected" ]]; then
       return 0
     fi
     sleep 0.1
   done
-  echo "expected focus on $expected, got '$actual'"
+  echo "expected focus on $expected, got '$actual' with the last workspaces event reporting '$pushed'"
   exit 1
 }
 
@@ -64,6 +75,11 @@ position = [0, 0]
 position = [1280, 0]
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" subscribe workspaces > "$EVENTS" &
+for _ in $(seq 40); do
+  [[ -s $EVENTS ]] && break
+  sleep 0.05
+done
 
 first=$(focused_output)
 case $first in

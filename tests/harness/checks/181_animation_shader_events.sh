@@ -14,7 +14,7 @@ configure() {
   cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [animation]
-duration_ms = 1200
+duration_ms = 300
 curve = "linear"
 [animation.windows_in]
 enabled = false
@@ -23,7 +23,7 @@ enabled = true
 shader = "fixture-1.glsl"
 EOF
   "$UMBRIEL" msg config-reload > /dev/null
-  sleep 1.4
+  sleep 0.45
 }
 
 red_pixels() {
@@ -41,13 +41,13 @@ assert_no_red() {
 }
 assert_transition() {
   local count
-  sleep 0.15
+  sleep 0.1
   count=$(red_pixels)
   if (( count < 30 )); then
     echo "$1: missing shader-only intermediate color ($count pixels)"
     exit 1
   fi
-  sleep 1.3
+  sleep 0.4
   assert_no_red "$1"
   echo "$1 shader transition verified"
 }
@@ -59,7 +59,7 @@ for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq length) == 2 ]] && break
   sleep 0.05
 done
-sleep 1.4
+sleep 0.45
 first=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-a") | .id')
 second=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-b") | .id')
 assert_no_red move
@@ -68,7 +68,7 @@ assert_transition resize
 
 configure border
 "$UMBRIEL" msg "window-focus:$second" > /dev/null
-sleep 1.4
+sleep 0.45
 assert_no_red border
 "$UMBRIEL" msg "window-focus:$first" > /dev/null
 assert_transition border
@@ -83,7 +83,7 @@ assert_no_red workspaces
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
 assert_transition workspaces
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
-sleep 1.4
+sleep 0.45
 
 configure overview
 assert_no_red overview
@@ -94,7 +94,7 @@ assert_transition overview-close
 
 configure scratchpad
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
-sleep 1.4
+sleep 0.45
 assert_no_red scratchpad
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 assert_transition scratchpad-show

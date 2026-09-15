@@ -895,6 +895,24 @@ namespace umbriel {
       return true;
     }
 
+    // Edge-anchored resize: `Edges` names the edge that moves and the opposite
+    // one stays put, so a positive argument grows the window there until the size
+    // saturates.
+    template <uint32_t Edges> bool actionResizeEdge(Server& server, const Keybind& bind, std::string* /*error*/) {
+      const auto* arg = payloadIf<WidthArg>(bind);
+      if (arg == nullptr) {
+        return true;
+      }
+      if (View* view = focusedScratchpadWindow(server)) {
+        view->resizeFloatingEdge(Edges, arg->fraction);
+        return true;
+      }
+      if (Workspace* workspace = activeWorkspace(server)) {
+        workspace->resizeFocusedEdge(Edges, arg->fraction);
+      }
+      return true;
+    }
+
     bool actionToggleMaximize(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (View* view = focusedScratchpadWindow(server)) {
         if (view->maximizedToEdges()) {
@@ -1766,6 +1784,10 @@ namespace umbriel {
         &actionLayoutMasterCountDecrease,
         &actionSetHeight,
         &actionModifyHeight,
+        &actionResizeEdge<WLR_EDGE_LEFT>,
+        &actionResizeEdge<WLR_EDGE_RIGHT>,
+        &actionResizeEdge<WLR_EDGE_TOP>,
+        &actionResizeEdge<WLR_EDGE_BOTTOM>,
         &actionCycleHeight<1>,
         &actionCycleHeight<-1>,
         &actionWindowFocusLast,

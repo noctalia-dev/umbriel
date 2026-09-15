@@ -61,12 +61,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       std::optional<bool> preserveSplit;
+      std::optional<bool> newExitsFullscreen;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> newOnTop;
       std::optional<bool> newBecomesMaster;
+      std::optional<bool> newExitsFullscreen;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -107,12 +109,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       bool preserveSplit = false;
+      bool newExitsFullscreen = false;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
       bool newOnTop = true;
       bool newBecomesMaster = false;
+      bool newExitsFullscreen = false;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -610,7 +614,7 @@ namespace umbriel {
     struct Overview {
       // Workspace scale when fully zoomed out.
       double zoom = 0.5;
-      // Touchpad travel per workspace or viewport in the overview, by the physical direction of the movement rather
+      // Touchpad travel and wheel accumulation in the overview, by the physical direction of the movement rather
       // than the output's workspace axis. Independent of an input device's own scroll_factor.
       double scrollFactorHorizontal = 1.0;
       double scrollFactorVertical = 1.0;
@@ -655,12 +659,14 @@ namespace umbriel {
       } scrolling;
       struct Dwindle {
         bool preserveSplit = false;
+        bool newExitsFullscreen = false;
         bool operator==(const Dwindle&) const = default;
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
         bool newOnTop = true;
         bool newBecomesMaster = false;
+        bool newExitsFullscreen = false;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;
@@ -746,7 +752,16 @@ namespace umbriel {
         std::optional<bool> naturalScroll;
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
-        std::optional<double> scrollFactor;
+        // Touchpad scroll speed multiplier. `scroll_factor` is either one number
+        // for both axes or a table with per-axis `horizontal`/`vertical` overrides.
+        // A missing axis, or the whole key absent, stays at identity 1.0. Only the
+        // continuous two-finger delta is scaled, never the discrete notches.
+        struct ScrollFactor {
+          std::optional<double> horizontal = std::nullopt;
+          std::optional<double> vertical = std::nullopt;
+          bool operator==(const ScrollFactor&) const = default;
+        };
+        std::optional<ScrollFactor> scrollFactor;
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
         std::optional<ClickMethod> clickMethod;

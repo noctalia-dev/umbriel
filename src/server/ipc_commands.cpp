@@ -373,8 +373,11 @@ namespace umbriel {
         entry["x"] = v->layoutTargetX();
         entry["y"] = v->layoutTargetY();
       }
-      entry["w"] = v->toplevel()->base->geometry.width;
-      entry["h"] = v->toplevel()->base->geometry.height;
+      // The size the window covers, which is its committed window geometry unless the client left that box behind a
+      // configure it already redrew for. Reporting the stale box would disagree with what is on screen.
+      const wlr_box content = v->committedContentBox();
+      entry["w"] = content.width;
+      entry["h"] = content.height;
       windows.push_back(std::move(entry));
     }
     return nlohmann::json{{"ok", windows}};

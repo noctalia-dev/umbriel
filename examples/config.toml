@@ -230,6 +230,7 @@ tap = true                                      # Tap-to-click
 # accel_profile = "adaptive"                    # flat, adaptive, or custom <step> <points...>
 # sensitivity = 0.5                             # Pointer speed, -1.0 to 1.0
 # scroll_factor = 1.5                           # Two-finger scroll multiplier, 0.1-10.0
+# scroll_factor = { horizontal = 2.0, vertical = 1.5 }   # or per axis instead of the line above, 0.1-10.0
 # disable_while_typing = true                   # Omit to preserve the libinput default
 # disable_on_external_mouse = true              # Native sessions only
 # click_method = "clickfinger"                  # button_areas or clickfinger; omit for the device default
@@ -427,6 +428,10 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # "Mod+Equal" = "window-modify-width:0.1"
 # "Mod+Alt+Minus" = "window-modify-height:-0.1"
 # "Mod+Alt+Equal" = "window-modify-height:0.1"
+# "Mod+Ctrl+H" = "window-modify-width-left:0.1"
+# "Mod+Ctrl+L" = "window-modify-width-right:0.1"
+# "Mod+Ctrl+K" = "window-modify-height-up:0.1"
+# "Mod+Ctrl+J" = "window-modify-height-down:0.1"
 # "Mod+Alt+R" = "window-cycle-height"
 # "Mod+Alt+Shift+R" = "window-cycle-height-back"
 # "Mod+Grave" = "window-focus-last"
@@ -501,12 +506,14 @@ center_focused = "never"                        # never, always, or on_overflow
 
 [layout.dwindle]
 # preserve_split = false                        # Keep every split direction fixed after creation
+new_exits_fullscreen = false                    # Exits fullscreen when a new window is opened in the workspace
 
 [layout.master]
 position = "left"                               # left, right, or center master area
 default_width_fraction = 0.55                   # Initial master area fraction, 0.1-0.9
 new_on_top = true                               # Put new windows at the top of the stack
 new_becomes_master = false                      # New windows take the master slot
+new_exits_fullscreen = false                    # Exits fullscreen when a new window is opened in the workspace
 
 # ───────────────────────────── Window Rules ─────────────────────────────────
 # Match windows by application ID, title, XDG tag, content type, or focus state.
@@ -789,8 +796,8 @@ curve = "easeout"
 
 [overview]
 zoom = 0.5                                      # Workspace scale in overview, 0.1-0.75
-scroll_factor_horizontal = 1.0                  # Overview gesture travel, left and right, 0.1-10.0
-scroll_factor_vertical = 1.0                    # Overview gesture travel, up and down, 0.1-10.0
+scroll_factor_horizontal = 1.0                  # Overview gesture/wheel multiplier, left and right, 0.1-10.0
+scroll_factor_vertical = 1.0                    # Overview gesture/wheel multiplier, up and down, 0.1-10.0
 # Pinned windows stay hidden until overview closes; visible scratchpads are dismissed.
 # background_blur = true                        # Blur the wallpaper behind overview rows
 # workspace_wallpaper = true                    # Mirror wallpapers inside workspace previews

@@ -49,9 +49,10 @@ namespace umbriel {
     }
 
     // `[input.touchpad] scroll_factor` scales a touchpad's smooth scroll delta before it reaches the focused client.
-    // Reads the live config per event so a successful reload applies on the very next axis; non-touchpads and unset
-    // values stay at identity (1.0). Only the continuous delta is scaled, never the discrete value120 notches.
-    double touchpadScrollFactor(wlr_pointer* pointer) {
+    // The `horizontal`/`vertical` table keys override it per direction. Reads the live config per event so a successful
+    // reload applies on the very next axis; non-touchpads and unset values stay
+    // at identity (1.0). Only the continuous delta is scaled, never the discrete value120 notches.
+    double touchpadScrollFactor(wlr_pointer* pointer, bool vertical) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
         return 1.0;
       }
@@ -59,7 +60,8 @@ namespace umbriel {
       if (device == nullptr || libinput_device_config_tap_get_finger_count(device) == 0) {
         return 1.0;
       }
-      return config().input.touchpad.scrollFactor.value_or(1.0);
+      const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
+      return factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0;
     }
 
     bool surfaceLocalCoordinates(wlr_scene* scene, wlr_surface* target, double lx, double ly, double* sx, double* sy) {
@@ -179,6 +181,8 @@ namespace umbriel {
   }
 
   void Cursor::attachInputDevice(wlr_input_device* device) { wlr_cursor_attach_input_device(m_cursor, device); }
+  void Cursor::resetWheelAccumulation() { m_wheelAccum[0] = m_wheelAccum[1] = 0; }
+
   void Cursor::applyConfig() {
     const Config::Input::Cursor& configured = config().input.cursor;
     updateHideTimer();
@@ -1152,9 +1156,15 @@ namespace umbriel {
       eventDir = rawDelta < 0 ? WheelDirection::Left : WheelDirection::Right;
     }
 
-    // Unmodified scrolling drives the overview filmstrip instead of the inert desktop under the cursor. Panels
-    // (top/overlay) keep their own scrolling, and modifier chords still fall through to the wheel binds below.
-    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active() && effective == 0) {
+    const bool shiftWheel = effective == WLR_MODIFIER_SHIFT && event->source != WL_POINTER_AXIS_SOURCE_FINGER;
+    const bool boundShiftWheel = shiftWheel && std::ranges::any_of(config().keybinds, [&](const Keybind& bind) {
+                                   return bind.submap == m_server->activeSubmap()
+                                       && bind.wheel == eventDir
+                                       && effective == (bind.modifiers | (bind.useMod ? m_server->modKey() : 0));
+                                 });
+    // Shift maps vertical wheel travel onto the horizontal axis. Explicit bindings and panels keep their input.
+    if (Overview* overview = m_server->overview();
+        overview != nullptr && overview->active() && (effective == 0 || (shiftWheel && !boundShiftWheel))) {
       double sx = 0;
       double sy = 0;
       wlr_surface* surface = nullptr;
@@ -1165,19 +1175,23 @@ namespace umbriel {
           return;
         }
         if (event->source == WL_POINTER_AXIS_SOURCE_FINGER) {
-          m_wheelAccum[0] = m_wheelAccum[1] = 0;
+          resetWheelAccumulation();
           // libinput already applies natural scrolling to axis events.
           overview->handleTouchpadAxis(
               event->pointer, isVertical, event->delta, event->time_msec, m_cursor->x, m_cursor->y
           );
           return;
         }
-        const int axis = isVertical ? 0 : 1;
+        const bool overviewVertical = isVertical && !shiftWheel;
+        const int axis = overviewVertical ? 0 : 1;
+        const double factor =
+            overviewVertical ? config().overview.scrollFactorVertical : config().overview.scrollFactorHorizontal;
         m_wheelAccum[axis] +=
-            event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0;
+            (event->delta_discrete != 0 ? static_cast<double>(event->delta_discrete) / 120.0 : event->delta / 15.0)
+            * factor;
         double& accumulated = m_wheelAccum[axis];
         while (std::abs(accumulated) >= 1.0) {
-          overview->handleAxisNotch(isVertical, accumulated, m_cursor->x, m_cursor->y);
+          overview->handleAxisNotch(overviewVertical, accumulated, m_cursor->x, m_cursor->y);
           accumulated -= std::copysign(1.0, accumulated);
         }
         return;
@@ -1205,7 +1219,7 @@ namespace umbriel {
     const int orientation = isVertical ? 0 : 1;
     if (!armed) {
       m_wheelAccum[orientation] = 0;
-      const double scale = touchpadScrollFactor(event->pointer);
+      const double scale = touchpadScrollFactor(event->pointer, isVertical);
       wlr_seat_pointer_notify_axis(
           m_server->seat()->wlr(), event->time_msec, event->orientation, event->delta * scale, event->delta_discrete,
           event->source, event->relative_direction
@@ -1504,6 +1518,9 @@ namespace umbriel {
     wlr_output* pointerOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
     if (pointerOutput != m_pointerOutput) {
       m_pointerOutput = pointerOutput;
+      // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
+      // it even when no workspace activates: a switch to a workspace already active elsewhere only warps the cursor.
+      m_server->scheduleIpcWorkspacesEvent();
       if (allowFocusChange
           && config().input.focus.followsMouse
           && !m_server->sessionLocked()

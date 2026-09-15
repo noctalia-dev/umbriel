@@ -95,7 +95,7 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
   {
     Config after;
-    after.input.touchpad.scrollFactor = 1.5;
+    after.input.touchpad.scrollFactor = Config::Input::Touchpad::ScrollFactor{.horizontal = 1.5, .vertical = 1.5};
     CHECK(ConfigChange::between(before, after).input);
     CHECK(ConfigEffects::between(before, after).input);
   }

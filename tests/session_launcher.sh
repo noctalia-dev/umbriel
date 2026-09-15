@@ -30,21 +30,12 @@ readonly DRS_INJECTION_MARKER="$TEST_DIR/drs-injected"
 readonly DANGEROUS_ARGUMENT="\$(touch '$INJECTION_MARKER')"
 
 mkdir -p "$TEST_HOME" "$TEST_BIN"
-cp "$SOURCE_LAUNCHER" "$LAUNCHER"
-cp "$SOURCE_DIRECT_LAUNCHER" "$DIRECT_LAUNCHER"
+sed 's|/etc/shells|"$HOME/shells"|g' "$SOURCE_LAUNCHER" > "$LAUNCHER"
+sed 's|/etc/shells|"$HOME/shells"|g' "$SOURCE_DIRECT_LAUNCHER" > "$DIRECT_LAUNCHER"
 chmod 700 "$LAUNCHER" "$DIRECT_LAUNCHER"
 
-login_shell=
-while IFS= read -r candidate; do
-  if [[ $candidate == */bash && -x $candidate ]]; then
-    login_shell=$candidate
-    break
-  fi
-done < /etc/shells
-if [[ -z $login_shell ]]; then
-  echo "session launcher check needs bash listed in /etc/shells"
-  exit 77
-fi
+login_shell=$BASH
+printf '%s\n' "$login_shell" > "$TEST_HOME/shells"
 
 cat > "$TEST_HOME/.bash_profile" <<'EOF'
 printf 'profile\n' >> "$UMBRIEL_TEST_PROFILE_TRACE"

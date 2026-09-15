@@ -8,6 +8,8 @@
 // OFFSET_GEOMETRY to a pixel margin places the child above and left of the parent and puts the window geometry origin
 // there, so the main surface is inset inside the window content box and its own corners are interior to the window;
 // the child then sits below the parent so both are visible.
+// Setting STALE_GEOMETRY declares the window geometry once, at the first size, and never updates it while still
+// redrawing both buffers at every configured size, which is how Electron presents after a compositor-driven resize.
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"
@@ -55,6 +57,12 @@ namespace {
     bool fullscreenBeforeMap = false;
     bool transparentContent = false;
     bool translucentContent = false;
+    // Declare the window geometry once and never again, the way Electron acks a configure and redraws at the new size
+    // while leaving set_window_geometry at the size it had before.
+    bool staleGeometry = false;
+    bool geometryDeclared = false;
+    int geometryWidth = 0;
+    int geometryHeight = 0;
     bool reportedFirstConfigure = false;
   };
 
@@ -155,7 +163,16 @@ namespace {
     }
     wl_surface_commit(state.child);
 
-    if (state.offset > 0) {
+    if (state.staleGeometry) {
+      if (!state.geometryDeclared) {
+        state.geometryWidth = state.width;
+        state.geometryHeight = state.height;
+        xdg_surface_set_window_geometry(state.xdgSurface, 0, 0, state.geometryWidth, state.geometryHeight);
+        state.geometryDeclared = true;
+      }
+      std::println("drew {}x{} geometry {}x{}", state.width, state.height, state.geometryWidth, state.geometryHeight);
+      std::fflush(stdout);
+    } else if (state.offset > 0) {
       // The window box starts at the child's top-left, which is outside the parent surface.
       xdg_surface_set_window_geometry(state.xdgSurface, -state.offset, -state.offset, state.width, state.height);
     }
@@ -266,6 +283,7 @@ int main(int argc, char** argv) {
   state.fullscreenBeforeMap = std::getenv("FULLSCREEN_BEFORE_MAP") != nullptr;
   state.transparentContent = std::getenv("TRANSPARENT_CONTENT") != nullptr;
   state.translucentContent = std::getenv("TRANSLUCENT_CONTENT") != nullptr;
+  state.staleGeometry = std::getenv("STALE_GEOMETRY") != nullptr;
   if (const char* offset = std::getenv("OFFSET_GEOMETRY")) {
     state.offset = std::max(0, std::atoi(offset));
   }

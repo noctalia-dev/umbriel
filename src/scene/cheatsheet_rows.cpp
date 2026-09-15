@@ -321,8 +321,12 @@ namespace {
     case A::WindowCycleWidthBack:
     case A::WindowSetWidth:
     case A::WindowModifyWidth:
+    case A::WindowModifyWidthLeft:
+    case A::WindowModifyWidthRight:
     case A::WindowSetHeight:
     case A::WindowModifyHeight:
+    case A::WindowModifyHeightUp:
+    case A::WindowModifyHeightDown:
     case A::WindowCycleHeight:
     case A::WindowCycleHeightBack:
     case A::WindowCenter:

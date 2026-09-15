@@ -271,7 +271,11 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 			buffer_width, buffer_height);
 
 		pixman_region32_translate(&opaque, -clip->x, -clip->y);
-		pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
+		// A shrunk subsurface can push width or height negative; the empty
+		// check below drops the buffer, so keep pixman off the invalid rect.
+		if (width > 0 && height > 0) {
+			pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
+		}
 	}
 
 	if (width <= 0 || height <= 0) {

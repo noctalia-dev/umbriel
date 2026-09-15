@@ -137,6 +137,8 @@ namespace umbriel {
 
     void attachInputDevice(wlr_input_device* device);
     void applyConfig();
+    // Discard partial notches when compositor-owned wheel input changes context.
+    void resetWheelAccumulation();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY);
     void setXcursor(const char* name);
     // A deferred move starts as a click and becomes a drag once the pointer travels, the way a tiled move does.
