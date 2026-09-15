@@ -25,6 +25,11 @@ namespace umbriel {
   class View;
   class WorkspaceGroup;
 
+  enum class LayoutAttachOrigin {
+    ExistingView,
+    OpeningView,
+  };
+
   class Workspace {
   public:
     enum class NamedScrollingColumnChange {
@@ -97,7 +102,8 @@ namespace umbriel {
     View* removeView(View* view, bool reconcile = true);
     void layoutAttach(
         View* view, std::optional<double> initialWidth = std::nullopt,
-        std::optional<int> initialPixelWidth = std::nullopt
+        std::optional<int> initialPixelWidth = std::nullopt,
+        LayoutAttachOrigin origin = LayoutAttachOrigin::ExistingView
     );
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.

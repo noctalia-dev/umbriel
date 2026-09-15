@@ -373,7 +373,7 @@ namespace umbriel {
     }
   }
 
-  bool View::attachToAvailableWorkspace(const ResolvedWindowRule& rule) {
+  bool View::attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin) {
     Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
     WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
     WorkspaceGroup* targetGroup = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
@@ -385,7 +385,7 @@ namespace umbriel {
     if (m_workspace != target) {
       return false;
     }
-    target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
+    target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule), origin);
     return true;
   }
 
@@ -2216,8 +2216,8 @@ namespace umbriel {
     showDecorations(!m_toplevel->scheduled.fullscreen);
 
     if (m_workspace != nullptr) {
-      m_workspace->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
-    } else if (!attachToAvailableWorkspace(rule)) {
+      m_workspace->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule), LayoutAttachOrigin::OpeningView);
+    } else if (!attachToAvailableWorkspace(rule, LayoutAttachOrigin::OpeningView)) {
       setOnActiveWorkspace(true);
     }
     bool assignedScratchpad = false;
@@ -3504,7 +3504,7 @@ namespace umbriel {
       if (target != nullptr && target != m_workspace) {
         setWorkspace(target, false);
         if (m_workspace == target) {
-          target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule));
+          target->layoutAttach(this, rule.defaultWidth, defaultSizeWidth(rule), LayoutAttachOrigin::OpeningView);
           if (m_tiled && m_toplevel->scheduled.maximized && !m_maximizedToEdges) {
             setMaximized(true);
           }

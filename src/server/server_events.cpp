@@ -2284,7 +2284,7 @@ namespace umbriel {
         const bool floating = view->floating();
         const bool positioned = view->m_positioned;
         const ResolvedWindowRule rule = view->resolvedRules();
-        if (!view->attachToAvailableWorkspace(rule)) {
+        if (!view->attachToAvailableWorkspace(rule, LayoutAttachOrigin::ExistingView)) {
           continue;
         }
         if (floating) {
