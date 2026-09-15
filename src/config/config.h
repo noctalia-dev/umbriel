@@ -36,6 +36,16 @@ namespace umbriel {
     Shift,
   };
 
+  // Which kinds of joining window are allowed to push a fullscreen window out of
+  // fullscreen (new_exits_fullscreen). A bitmask so any combination is expressible.
+  enum class FullscreenExitScope : uint8_t {
+    None = 0,
+    Tiled = 1 << 0,
+    Floating = 1 << 1,
+    Pinned = 1 << 2,
+    All = Tiled | Floating | Pinned,
+  };
+
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -61,14 +71,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       std::optional<bool> preserveSplit;
-      std::optional<bool> newExitsFullscreen;
+      std::optional<FullscreenExitScope> newExitsFullscreen;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> newOnTop;
       std::optional<bool> newBecomesMaster;
-      std::optional<bool> newExitsFullscreen;
+      std::optional<FullscreenExitScope> newExitsFullscreen;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -109,14 +119,14 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       bool preserveSplit = false;
-      bool newExitsFullscreen = false;
+      FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
       bool newOnTop = true;
       bool newBecomesMaster = false;
-      bool newExitsFullscreen = false;
+      FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -659,14 +669,14 @@ namespace umbriel {
       } scrolling;
       struct Dwindle {
         bool preserveSplit = false;
-        bool newExitsFullscreen = false;
+        FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
         bool operator==(const Dwindle&) const = default;
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
         bool newOnTop = true;
         bool newBecomesMaster = false;
-        bool newExitsFullscreen = false;
+        FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;

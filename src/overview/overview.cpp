@@ -2974,6 +2974,7 @@ namespace umbriel {
       view->rememberFloatingPosition();
       if (view->workspace() != target) {
         view->moveToWorkspace(target, /*attachToLayout=*/false);
+        target->exitFullscreenForIncomingView(view);
       }
       view->restoreFloatingPosition();
       m_server->focusView(view, FocusReason::DragDrop);
@@ -2986,6 +2987,7 @@ namespace umbriel {
         const int y = metrics.outputBox.y + static_cast<int>(std::lround((cardBox.y - preview.y) / metrics.zoom));
         if (view->workspace() != target) {
           view->moveToWorkspace(target, /*attachToLayout=*/false);
+          target->exitFullscreenForIncomingView(view);
         }
         view->setPosition(x, y);
       }

@@ -221,7 +221,7 @@ namespace umbriel {
     }
   }
 
-  void Workspace::addView(View* view, bool attachToLayout) {
+  void Workspace::addView(View* view, bool attachToLayout, LayoutAttachOrigin origin) {
     if (view == nullptr || std::ranges::find(m_views, view) != m_views.end()) {
       return;
     }
@@ -243,7 +243,7 @@ namespace umbriel {
     syncFloatingStack(view);
     applyVisibility();
     if (attachToLayout) {
-      layoutAttach(view);
+      layoutAttach(view, std::nullopt, std::nullopt, origin);
     }
     m_group->reconcileDynamic();
   }
@@ -314,21 +314,34 @@ namespace umbriel {
     return true;
   }
 
+  void Workspace::exitFullscreenForIncomingView(const View* joining) {
+    const FullscreenExitScope scope = m_layoutMode == LayoutMode::Dwindle ? m_layoutConfig.dwindle.newExitsFullscreen
+                                                                          : m_layoutConfig.master.newExitsFullscreen;
+    // The scope picks which kinds of arriving window are allowed to displace a fullscreen one; a joining window is
+    // classified the way it will live on the workspace (pinned wins over floating over tiled).
+    const auto joiningBit = static_cast<uint8_t>(
+        joining->pinned()      ? FullscreenExitScope::Pinned
+            : joining->tiled() ? FullscreenExitScope::Tiled
+                               : FullscreenExitScope::Floating
+    );
+    if ((static_cast<uint8_t>(scope) & joiningBit) == 0) {
+      return;
+    }
+    for (View* other : m_views) {
+      if (other != joining && other->layoutFullscreen()) {
+        other->setFullscreen(false);
+      }
+    }
+  }
+
   void Workspace::layoutAttach(
       View* view, std::optional<double> initialWidth, std::optional<int> initialPixelWidth, LayoutAttachOrigin origin
   ) {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;
     }
-    const bool exitFullscreen = origin == LayoutAttachOrigin::OpeningView
-        && ((m_layoutMode == LayoutMode::Dwindle && m_layoutConfig.dwindle.newExitsFullscreen)
-            || (m_layoutMode == LayoutMode::Master && m_layoutConfig.master.newExitsFullscreen));
-    if (exitFullscreen) {
-      for (View* other : m_views) {
-        if (other != view && other->layoutFullscreen()) {
-          other->setFullscreen(false);
-        }
-      }
+    if (origin == LayoutAttachOrigin::OpeningView || origin == LayoutAttachOrigin::MovedView) {
+      exitFullscreenForIncomingView(view);
     }
     ScrollingLayout* scrolling = scrollingLayout();
     const std::optional<std::string>& name = view->namedScrollingColumnName();

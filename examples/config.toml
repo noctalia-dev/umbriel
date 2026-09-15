@@ -506,14 +506,14 @@ center_focused = "never"                        # never, always, or on_overflow
 
 [layout.dwindle]
 # preserve_split = false                        # Keep every split direction fixed after creation
-new_exits_fullscreen = false                    # Exits fullscreen when a new window is opened in the workspace
+new_exits_fullscreen = []                       # Exits fullscreen when a window arrives in the workspace. Accepts "all", "tiled", "floating", "pinned" or a combination: ["tiled", "floating"]
 
 [layout.master]
 position = "left"                               # left, right, or center master area
 default_width_fraction = 0.55                   # Initial master area fraction, 0.1-0.9
 new_on_top = true                               # Put new windows at the top of the stack
 new_becomes_master = false                      # New windows take the master slot
-new_exits_fullscreen = false                    # Exits fullscreen when a new window is opened in the workspace
+new_exits_fullscreen = []                       # Exits fullscreen when a window arrives in the workspace. Accepts "all", "tiled", "floating", "pinned" or a combination: ["tiled", "floating"]
 
 # ───────────────────────────── Window Rules ─────────────────────────────────
 # Match windows by application ID, title, XDG tag, content type, or focus state.

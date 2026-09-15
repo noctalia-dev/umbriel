@@ -193,14 +193,32 @@ Dwindle recursively splits tiles into independently sized regions.
 
 ```toml
 [layout.dwindle]
-preserve_split = false # keep each split direction fixed after creation
-new_exits_fullscreen = false
+preserve_split = false          # keep each split direction fixed after creation
+new_exits_fullscreen = []       # "all", "tiled", "floating", "pinned" or a combination: ["tiled", "floating"]
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `preserve_split` | bool | `false` | Keep each split direction fixed after it is created. |
-| `new_exits_fullscreen` | bool | `false` | Exits fullscreen when a new window is opened in the workspace. |
+| `new_exits_fullscreen` | string/array | `[]` | Exits fullscreen when a window arrives in the workspace, for the kinds of arriving window listed. |
+
+### Window kinds
+
+The `new_exits_fullscreen` value selects which kinds of joining window push an
+existing fullscreen window out. A string names a single kind, an array combines
+several, `"all"` covers every kind, an empty array (`[]`, the default) disables
+the behavior.
+
+| Value | Meaning |
+| --- | --- |
+| `"tiled"` | A tiled window joining the layout. |
+| `"floating"` | A floating (non-pinned) window. |
+| `"pinned"` | A pinned window. |
+| `"all"` | Every kind of window. |
+
+A window arriving via an opening on the workspace, a move from another workspace,
+a drag-and-drop, or a scratchpad restore can trigger it, whichever of its arrival
+kinds is enabled.
 
 ### Behavior
 
@@ -231,7 +249,7 @@ position = "left"                   # "left", "right", or "center"
 default_width_fraction = 0.55       # 0.1-0.9
 new_on_top = true                   # place new windows at the top of the stack
 new_becomes_master = false          # new windows take the master slot
-new_exits_fullscreen = false
+new_exits_fullscreen = []           # "all", "tiled", "floating", "pinned" or a combination: ["tiled", "floating"]
 ```
 
 | Key | Type | Default | Description |
@@ -240,7 +258,7 @@ new_exits_fullscreen = false
 | `default_width_fraction` | float | `0.55` | Initial fraction assigned to the master area when both areas exist (0.1-0.9). |
 | `new_on_top` | bool | `true` | Place new windows at the top of the stack. Disable to place them at the bottom. |
 | `new_becomes_master` | bool | `false` | Give the master slot to each new window and move the last master row to the stack top. |
-| `new_exits_fullscreen` | bool | `false` | Exits fullscreen when a new window is opened in the workspace. |
+| `new_exits_fullscreen` | string/array | `[]` | Exits fullscreen when a window arrives in the workspace, for the kinds of arriving window listed. Accepts the same values as Dwindle, see [Window Kinds](#window-kinds). |
 
 ### Behavior
 

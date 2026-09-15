@@ -28,6 +28,7 @@ namespace umbriel {
   enum class LayoutAttachOrigin {
     ExistingView,
     OpeningView,
+    MovedView,
   };
 
   class Workspace {
@@ -98,13 +99,14 @@ namespace umbriel {
     void setFocusedView(View* view);
     void syncFloatingStack(View* view);
     void restackFloatingViews();
-    void addView(View* view, bool attachToLayout = true);
+    void addView(View* view, bool attachToLayout = true, LayoutAttachOrigin origin = LayoutAttachOrigin::ExistingView);
     View* removeView(View* view, bool reconcile = true);
     void layoutAttach(
         View* view, std::optional<double> initialWidth = std::nullopt,
         std::optional<int> initialPixelWidth = std::nullopt,
         LayoutAttachOrigin origin = LayoutAttachOrigin::ExistingView
     );
+    void exitFullscreenForIncomingView(const View* joining);
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
     [[nodiscard]] bool isOnlyTiledView(const View* view) const;
