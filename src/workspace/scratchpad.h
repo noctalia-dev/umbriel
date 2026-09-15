@@ -36,6 +36,9 @@ namespace umbriel {
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
     [[nodiscard]] bool contains(const View* view) const;
+    // The trees scratchpad windows and their shadows live in while they are not out on a drag.
+    [[nodiscard]] wlr_scene_tree* sceneRoot() const { return m_root; }
+    [[nodiscard]] wlr_scene_tree* shadowRoot() const { return m_shadowRoot; }
     [[nodiscard]] Output* outputFor(const View* view) const;
     [[nodiscard]] std::string_view nameFor(const View* view) const;
     [[nodiscard]] bool hasScratchpad(std::string_view name) const;
@@ -118,7 +121,10 @@ namespace umbriel {
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true
     );
     void remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea);
+    // Restore `view` and the dialogs it has with it.
     bool restoreView(View* view, Output* fallback, bool focus);
+    // Restore one entry to `into`, or to its saved location when that is null. Returns where it went.
+    Workspace* restoreEntry(View* view, Output* fallback, Workspace* into);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
     wlr_scene_rect* dimRectFor(Output* output);

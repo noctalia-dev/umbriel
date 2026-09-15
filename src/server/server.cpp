@@ -51,7 +51,7 @@ namespace umbriel {
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
     // [[security_context_rule]] widens the set for matching clients.
-    constexpr std::array<std::string_view, 29> kAllowedSecurityContextGlobals{
+    constexpr std::array<std::string_view, 30> kAllowedSecurityContextGlobals{
         "wl_shm",
         "wl_drm",
         "zwp_linux_dmabuf_v1",
@@ -70,6 +70,7 @@ namespace umbriel {
         "xdg_wm_base",
         "xdg_toplevel_tag_manager_v1",
         "zxdg_exporter_v2",
+        "xdg_wm_dialog_v1",
         "zxdg_decoration_manager_v1",
         "org_kde_kwin_server_decoration_manager",
         "zwp_relative_pointer_manager_v1",
@@ -461,6 +462,12 @@ namespace umbriel {
     if (wlr_xdg_foreign_v2_create(m_display, foreignRegistry) == nullptr) {
       throw std::runtime_error("failed to create xdg-foreign global");
     }
+    wlr_xdg_wm_dialog_v1* dialogManager = wlr_xdg_wm_dialog_v1_create(m_display, 1);
+    if (dialogManager == nullptr) {
+      throw std::runtime_error("failed to create xdg-dialog global");
+    }
+    m_newXdgDialog.notify = onNewXdgDialog;
+    wl_signal_add(&dialogManager->events.new_dialog, &m_newXdgDialog);
 
     m_xdgToplevelTagManager = wlr_xdg_toplevel_tag_manager_v1_create(m_display, 1);
     if (m_xdgToplevelTagManager == nullptr) {
@@ -564,6 +571,7 @@ namespace umbriel {
     wl_list_remove(&m_newInput.link);
     wl_list_remove(&m_newXdgToplevel.link);
     wl_list_remove(&m_setXdgToplevelTag.link);
+    wl_list_remove(&m_newXdgDialog.link);
     wl_list_remove(&m_newXdgPopup.link);
     wl_list_remove(&m_newXdgDecoration.link);
     wl_list_remove(&m_newLayerSurface.link);
