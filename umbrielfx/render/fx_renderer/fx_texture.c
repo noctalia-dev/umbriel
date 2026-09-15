@@ -83,7 +83,7 @@ static bool fx_texture_update_from_buffer(struct wlr_texture *wlr_texture,
 		int width = rect.x2 - rect.x1;
 		int height = rect.y2 - rect.y1;
 		glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x1, rect.y1, width, height,
-			fmt->gl_format, fmt->gl_type, data);
+			fmt->gl_format, fx_resolve_gl_type(texture->fx_renderer, fmt->gl_type), data);
 	}
 
 	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
@@ -195,12 +195,14 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 		goto out;
 	}
 
+	const GLenum read_gl_type = fx_resolve_gl_type(texture->fx_renderer, fmt->gl_type);
+
 	if (!is_fx_pixel_format_supported(texture->fx_renderer, fmt)) {
 		GLint read_format = 0, read_type = 0;
 		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &read_format);
 		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &read_type);
 		// Readback can support a format without its texture-upload extension.
-		if (read_format != fmt->gl_format || read_type != fmt->gl_type) {
+		if (read_format != fmt->gl_format || (GLenum)read_type != read_gl_type) {
 			wlr_log(WLR_ERROR, "Cannot read pixels: unsupported pixel format 0x%"PRIX32,
 				options->format);
 			goto out;
@@ -220,14 +222,14 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 		// Under these particular conditions, we can read the pixels with only
 		// one glReadPixels call
 
-		glReadPixels(src.x, src.y, src.width, src.height, fmt->gl_format, fmt->gl_type, p);
+		glReadPixels(src.x, src.y, src.width, src.height, fmt->gl_format, read_gl_type, p);
 	} else {
 		// Unfortunately GLES2 doesn't support GL_PACK_ROW_LENGTH, so we have to read
 		// the lines out row by row
 		for (int32_t i = 0; i < src.height; ++i) {
 			uint32_t y = src.y + i;
 			glReadPixels(src.x, y, src.width, 1, fmt->gl_format,
-				fmt->gl_type, p + i * options->stride);
+				read_gl_type, p + i * options->stride);
 		}
 	}
 
@@ -347,10 +349,7 @@ static struct wlr_texture *fx_texture_from_pixels(
 	texture->has_alpha = pixel_format_has_alpha(fmt->drm_format);
 	texture->drm_format = fmt->drm_format;
 
-	GLint internal_format = fmt->gl_internalformat;
-	if (!internal_format) {
-		internal_format = fmt->gl_format;
-	}
+	GLint internal_format = fx_resolve_internal_format(renderer, fmt);
 
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(renderer->egl, &prev_ctx);
@@ -364,7 +363,7 @@ static struct wlr_texture *fx_texture_from_pixels(
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
 	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
-		fmt->gl_format, fmt->gl_type, data);
+		fmt->gl_format, fx_resolve_gl_type(renderer, fmt->gl_type), data);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
 
 	glBindTexture(GL_TEXTURE_2D, 0);

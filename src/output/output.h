@@ -13,6 +13,7 @@
 struct wlr_gamma_control_v1;
 struct wlr_output;
 struct wlr_output_layout_output;
+struct wlr_output_state;
 struct wlr_scene_output;
 struct wlr_scene_optimized_blur;
 struct wlr_scene_tree;
@@ -75,8 +76,11 @@ namespace umbriel {
     [[nodiscard]] HdrMode hdrMode() const;
     [[nodiscard]] bool hdrRequested() const;
     [[nodiscard]] bool hdrActive() const;
+    [[nodiscard]] bool tenBitSdrActive() const;
     [[nodiscard]] const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
     [[nodiscard]] float configuredSdrWhite() const;
+    [[nodiscard]] int configuredBitDepth() const;
+    [[nodiscard]] const std::string& tenBitSdrFallbackReason() const { return m_tenBitFallbackReason; }
     [[nodiscard]] bool configuredDirectScanoutEnabled() const;
     [[nodiscard]] bool configuredTearingAllowed() const;
     [[nodiscard]] bool tearingRequested() const;
@@ -127,6 +131,7 @@ namespace umbriel {
     [[nodiscard]] View* findAutoHdrCandidate() const;
     [[nodiscard]] bool configuredVrrEnabled() const;
     void setHdrFallbackReason(std::string_view reason);
+    void setTenBitFallbackReason(std::string_view reason);
     void updateSceneSdrWhite();
     void rejectGammaControl(wlr_gamma_control_v1* control);
     void armFrameRetry();
@@ -156,17 +161,18 @@ namespace umbriel {
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
     bool m_dpmsOff = false;
-    bool m_hdrGammaWarningLogged = false;
+    bool m_appliedConfiguredScale = false;
     bool m_modeFallbackWarned = false;
+    bool m_hdrGammaWarningLogged = false;
     bool m_fullscreenHdrRequested = false;
     bool m_lastHdrRequested = false;
     bool m_lastCommitTearing = false;
     bool m_trackingPresentation = false;
-    bool m_appliedConfiguredScale = false;
     wl_event_source* m_frameRetryTimer = nullptr;
     View* m_autoHdrOwner = nullptr;
     std::string m_hdrFallbackReason;
     std::string m_tearingFallbackReason;
+    std::string m_tenBitFallbackReason;
     std::optional<bool> m_lastPresentationPresented;
     std::optional<uint32_t> m_lastPresentationFlags;
     uint32_t m_trackedPresentationCommitSeq = 0;
