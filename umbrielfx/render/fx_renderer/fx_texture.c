@@ -274,6 +274,19 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture *wlr_texture
 		get_fx_format_from_gl(gl_format, gl_type, alpha_size > 0);
 	if (pix_fmt != NULL && !is_packed_24bit_format(pix_fmt->drm_format)) {
 		fmt = pix_fmt->drm_format;
+		// fx render targets are GL_RGBA, so the implementation reports the RGBx byte
+		// order, while every other wlroots compositor publishes the BGRA order that
+		// capture consumers expect. Read back as BGRA when the driver allows it:
+		// fx_texture_read_pixels maps the fourcc back to the matching glReadPixels
+		// pair, so this stays a direct read. Only the 32-bit layouts are swapped,
+		// leaving 16-bit and 10-bit readback reporting what the driver produced.
+		if (texture->fx_renderer->exts.EXT_read_format_bgra) {
+			if (fmt == DRM_FORMAT_XBGR8888) {
+				fmt = DRM_FORMAT_XRGB8888;
+			} else if (fmt == DRM_FORMAT_ABGR8888) {
+				fmt = DRM_FORMAT_ARGB8888;
+			}
+		}
 		goto out;
 	}
 
