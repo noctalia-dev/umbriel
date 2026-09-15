@@ -179,6 +179,8 @@ namespace umbriel {
   }
 
   void Cursor::attachInputDevice(wlr_input_device* device) { wlr_cursor_attach_input_device(m_cursor, device); }
+  void Cursor::resetWheelAccumulation() { m_wheelAccum[0] = m_wheelAccum[1] = 0; }
+
   void Cursor::applyConfig() {
     const Config::Input::Cursor& configured = config().input.cursor;
     updateHideTimer();
@@ -1161,7 +1163,7 @@ namespace umbriel {
           return;
         }
         if (event->source == WL_POINTER_AXIS_SOURCE_FINGER) {
-          m_wheelAccum[0] = m_wheelAccum[1] = 0;
+          resetWheelAccumulation();
           // libinput already applies natural scrolling to axis events.
           overview->handleTouchpadAxis(
               event->pointer, isVertical, event->delta, event->time_msec, m_cursor->x, m_cursor->y

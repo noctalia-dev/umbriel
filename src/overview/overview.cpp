@@ -1384,6 +1384,7 @@ namespace umbriel {
     if (m_outputs.empty()) {
       return false;
     }
+    m_server->cursor()->resetWheelAccumulation();
 
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
       scratchpad->hideAll();
@@ -1484,6 +1485,7 @@ namespace umbriel {
     if (!m_active || m_closing) {
       return;
     }
+    m_server->cursor()->resetWheelAccumulation();
     cancelNavigation();
     if (m_dragCard != nullptr) {
       endDrag(false);
@@ -1616,6 +1618,7 @@ namespace umbriel {
   }
 
   void Overview::teardown() {
+    m_server->cursor()->resetWheelAccumulation();
     cancelNavigation();
     clearMiddlePress();
     hideDropHint();

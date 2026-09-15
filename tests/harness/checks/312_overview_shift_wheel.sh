@@ -54,6 +54,16 @@ done
 "$UMBRIEL_POINTER_CLIENT" 1280 720 mod shift notch -1 notch -1 mod none
 [[ $(selected_title) == shift-wheel-1 ]] || { echo 'reverse Shift-wheel did not select the previous column'; exit 1; }
 
+# A partial notch belongs only to the current overview interaction.
+"$UMBRIEL_POINTER_CLIENT" 1280 720 mod shift notch 1 mod none
+[[ $(selected_title) == shift-wheel-1 ]] || { echo 'half-factor wheel moved before overview close'; exit 1; }
+"$UMBRIEL" msg overview-close > /dev/null
+"$UMBRIEL" msg overview-open > /dev/null
+"$UMBRIEL_POINTER_CLIENT" 1280 720 mod shift notch 1 mod none
+[[ $(selected_title) == shift-wheel-1 ]] || { echo 'partial wheel accumulation survived overview close'; exit 1; }
+"$UMBRIEL_POINTER_CLIENT" 1280 720 mod shift notch 1 mod none
+[[ $(selected_title) == shift-wheel-2 ]] || { echo 'fresh half-factor notches did not select the next column'; exit 1; }
+
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
 "$UMBRIEL_POINTER_CLIENT" 1280 720 notch 1
 for _ in $(seq 60); do
