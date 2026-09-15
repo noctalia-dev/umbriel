@@ -1836,6 +1836,16 @@ namespace umbriel {
         return;
       }
 
+      bool repeatDefault = true;
+      if (const toml::node* repeatNode = section->get("repeat")) {
+        const auto value = repeatNode->value<bool>();
+        if (value) {
+          repeatDefault = *value;
+        } else {
+          warnAt(repeatNode->source(), "keybinds.repeat must be a boolean");
+        }
+      }
+
       std::vector<Keybind> configured;
       auto sameChord = [](const Keybind& left, const Keybind& right) {
         return left.submap == right.submap
@@ -1847,11 +1857,14 @@ namespace umbriel {
             && left.mouseButton == right.mouseButton;
       };
       for (const auto& [key, entry] : *section) {
+        if (key.str() == "repeat") {
+          continue;
+        }
         const std::string chord(key.str());
         std::string actionStr;
         std::string submapAfter;
         bool hasSubmapAfter = false;
-        bool repeatBind = true;
+        bool repeatBind = repeatDefault;
         bool allowWhenLocked = false;
         int cooldownMs = 0;
 

@@ -6,6 +6,7 @@ reference.
 
 ```toml
 [keybinds]
+repeat = true
 "Mod+T" = "spawn:kitty"
 "Mod+Q" = "window-close"
 "Mod+Left" = "window-focus-left"
@@ -88,7 +89,8 @@ the releases land on the other VT.
 ## Repeat
 
 Binds repeat while held, using `input.keyboard.repeat_rate` and
-`repeat_delay`. Opt out per bind with the table form:
+`repeat_delay`. Configure the global default or override per bind
+with the table form:
 
 ```toml
 "Mod+Return" = { action = "spawn:kitty", repeat = false }

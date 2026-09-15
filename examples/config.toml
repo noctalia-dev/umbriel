@@ -318,6 +318,7 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # ────────────────────────────────────────────────────────────────────────────
 
 [keybinds]
+repeat = true
 
 # Applications and session
 "Mod+Return" = "spawn:kitty"
