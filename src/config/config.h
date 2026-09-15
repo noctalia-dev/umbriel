@@ -492,6 +492,8 @@ namespace umbriel {
       int outerBorderWidth = 0;
       int cornerRadius = 10;
       double dragOpacity = 0.75;
+      // When true, fullscreen windows ignores window rules opacity and stays opaque
+      bool opaqueFullscreen = true;
       struct Blur {
         bool enabled = true;
         bool optimized = true;

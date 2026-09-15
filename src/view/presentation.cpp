@@ -84,7 +84,7 @@ namespace umbriel {
       bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
   ) {
     const bool validSize = tileWidth > 0 && tileHeight > 0;
-    setBackdropEnabled(fullscreen && validSize);
+    setBackdropEnabled(fullscreen && validSize && config().appearance.opaqueFullscreen);
     if (fullscreen && validSize) {
       setBackdropBox(0, 0, tileWidth, tileHeight);
       m_offsetX = fullscreenCenterOffset(tileWidth, geometry.width);

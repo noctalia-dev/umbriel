@@ -1207,7 +1207,8 @@ namespace umbriel {
             .integer("outer_border_width", 0, 100, appearance.outerBorderWidth)
             .integer("corner_radius", 0, 100, appearance.cornerRadius)
             .real("drag_opacity", 0.0, 1.0, appearance.dragOpacity)
-            .boolean("prefer_no_csd", appearance.preferNoCsd);
+            .boolean("prefer_no_csd", appearance.preferNoCsd)
+            .boolean("opaque_fullscreen", appearance.opaqueFullscreen);
 
         s.sub("blur", [&](Section& blur) {
           blur.boolean("enabled", appearance.blur.enabled)
