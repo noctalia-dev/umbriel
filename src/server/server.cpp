@@ -307,10 +307,7 @@ namespace umbriel {
     }
 
     if (drmFd >= 0 && m_renderer->features.timeline && m_backend->features.timeline) {
-      if (wlr_linux_drm_syncobj_manager_v1_create(m_display, 1, drmFd) == nullptr) {
-        throw std::runtime_error("failed to create linux-drm-syncobj manager");
-      }
-      kLog.info("explicit synchronization enabled");
+      kLog.warn("explicit synchronization is supported but disabled by this diagnostic build");
     }
 
     m_allocator = wlr_allocator_autocreate(m_backend, m_renderer);
