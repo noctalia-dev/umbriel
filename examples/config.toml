@@ -305,6 +305,7 @@ follows_mouse = false                           # Focus on motion after scene ch
 
 # [[scratchpad]]
 # name = "music"
+# spawn_when_empty = "spotify"                  # Run when toggled while empty; its window joins this scratchpad
 
 # A `default_scratchpad` window rule can store new matching windows
 # automatically. Use "default" while the definitions above remain commented,

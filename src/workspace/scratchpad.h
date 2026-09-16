@@ -3,11 +3,13 @@
 #include "core/animation.h"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +22,8 @@ struct wlr_scene_rect;
 struct wlr_scene_blur;
 
 namespace umbriel {
+
+  inline constexpr const char* kScratchpadTokenVariable = "UMBRIEL_SCRATCHPAD_TOKEN";
 
   class Output;
   class Server;
@@ -39,6 +43,8 @@ namespace umbriel {
     [[nodiscard]] Output* outputFor(const View* view) const;
     [[nodiscard]] std::string_view nameFor(const View* view) const;
     [[nodiscard]] bool hasScratchpad(std::string_view name) const;
+    [[nodiscard]] std::optional<std::string> spawnedScratchpadFor(pid_t pid) const;
+    [[nodiscard]] std::optional<std::string> pendingScratchpadOn(const Output* output) const;
     struct WindowRuleAdmission {
       Output* restoreOutput = nullptr;
       Workspace* restoreWorkspace = nullptr;
@@ -80,10 +86,20 @@ namespace umbriel {
     size_t restoreDisplaced(Output* fallback);
 
   private:
+    struct PendingSpawn {
+      Output* output = nullptr;
+      std::string token;
+      std::chrono::steady_clock::time_point expiresAt;
+      bool shown = true;
+
+      [[nodiscard]] bool live() const { return std::chrono::steady_clock::now() < expiresAt; }
+    };
+
     struct Scratchpad {
       Output* output = nullptr;
       bool visible = false;
       View* lastFocused = nullptr;
+      std::optional<PendingSpawn> pendingSpawn;
       // Set only while an output disappearance has temporarily parked this
       // scratchpad elsewhere.
       std::string displacedOutput;
@@ -136,6 +152,7 @@ namespace umbriel {
     std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
     std::unordered_map<Output*, AnimatedValue> m_backdropFades;
     View* m_focusedView = nullptr;
+    uint64_t m_spawnSerial = 0;
   };
 
 } // namespace umbriel

@@ -2387,15 +2387,18 @@ namespace umbriel {
       setOnActiveWorkspace(true);
     }
     bool assignedScratchpad = false;
-    if (rule.defaultScratchpad) {
-      if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-          scratchpad != nullptr && scratchpad->hasScratchpad(*rule.defaultScratchpad)) {
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager(); scratchpad != nullptr) {
+      const std::optional<std::string> scratchpadTarget =
+          scratchpad->spawnedScratchpadFor(pid()).or_else([&] { return rule.defaultScratchpad; }).or_else([&] {
+            return transientParent() == nullptr ? scratchpad->pendingScratchpadOn(currentOutput()) : std::nullopt;
+          });
+      if (scratchpadTarget && scratchpad->hasScratchpad(*scratchpadTarget)) {
         Workspace* restoreWorkspace = m_workspace;
         Output* restoreOutput = restoreWorkspace != nullptr && restoreWorkspace->group() != nullptr
             ? restoreWorkspace->group()->output()
             : currentOutput();
         assignedScratchpad = scratchpad->assignByWindowRule(
-            this, *rule.defaultScratchpad, restoreOutput,
+            this, *scratchpadTarget, restoreOutput,
             ScratchpadManager::WindowRuleAdmission{
                 .restoreOutput = restoreOutput,
                 .restoreWorkspace = restoreWorkspace,
