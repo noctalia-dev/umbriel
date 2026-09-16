@@ -300,7 +300,7 @@ namespace umbriel {
       if (wlr_drm_create(m_display, m_renderer) == nullptr) {
         kLog.warn("failed to create legacy wl_drm global");
       }
-      linuxDmabuf = wlr_linux_dmabuf_v1_create_with_renderer(m_display, 5, m_renderer);
+      linuxDmabuf = wlr_linux_dmabuf_v1_create_with_renderer(m_display, 4, m_renderer);
       if (linuxDmabuf == nullptr) {
         throw std::runtime_error("failed to create linux-dmabuf global");
       }
@@ -312,6 +312,7 @@ namespace umbriel {
       }
       kLog.info("explicit synchronization enabled");
     }
+    kLog.info("diagnostic control build: stock explicit-sync and linux-dmabuf v4 path");
 
     m_allocator = wlr_allocator_autocreate(m_backend, m_renderer);
     if (m_allocator == nullptr) {
