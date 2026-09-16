@@ -300,14 +300,17 @@ namespace umbriel {
       if (wlr_drm_create(m_display, m_renderer) == nullptr) {
         kLog.warn("failed to create legacy wl_drm global");
       }
-      linuxDmabuf = wlr_linux_dmabuf_v1_create_with_renderer(m_display, 4, m_renderer);
+      linuxDmabuf = wlr_linux_dmabuf_v1_create_with_renderer(m_display, 5, m_renderer);
       if (linuxDmabuf == nullptr) {
         throw std::runtime_error("failed to create linux-dmabuf global");
       }
     }
 
     if (drmFd >= 0 && m_renderer->features.timeline && m_backend->features.timeline) {
-      kLog.warn("explicit synchronization is supported but disabled by this diagnostic build");
+      if (wlr_linux_drm_syncobj_manager_v1_create(m_display, 1, drmFd) == nullptr) {
+        throw std::runtime_error("failed to create linux-drm-syncobj manager");
+      }
+      kLog.info("explicit synchronization enabled");
     }
 
     m_allocator = wlr_allocator_autocreate(m_backend, m_renderer);
