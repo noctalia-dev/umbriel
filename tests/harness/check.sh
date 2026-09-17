@@ -129,6 +129,7 @@ BINARY_DIR=$(dirname "$BINARY")
 # recipe having to export a matching set of paths.
 CLIENT_DIR=$BINARY_DIR/tests
 export UMBRIEL_POINTER_CLIENT="$CLIENT_DIR/pointer-client"
+export UMBRIEL_POINTER_MODIFIERS_CLIENT="$CLIENT_DIR/pointer-modifiers-client"
 export UMBRIEL_KEYBOARD_KEYMAP_CLIENT="$CLIENT_DIR/keyboard-keymap-client"
 export UMBRIEL_INPUT_METHOD_CLIENT="$CLIENT_DIR/input-method-client"
 export UMBRIEL_DRAG_CLIENT="$CLIENT_DIR/drag-client"

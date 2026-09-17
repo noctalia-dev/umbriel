@@ -218,6 +218,7 @@ namespace umbriel {
         } else {
           wlr_seat_keyboard_notify_modifiers(seat, &m_keyboard->modifiers);
         }
+        m_server->seat()->notifyPointerModifiers();
       }
       return;
     }
@@ -230,6 +231,11 @@ namespace umbriel {
     } else {
       wlr_seat_set_keyboard(seat, m_keyboard);
       wlr_seat_keyboard_notify_modifiers(seat, &m_keyboard->modifiers);
+    }
+    // A grabbed keyboard may differ from the seat keyboard. Only forward
+    // masks belonging to the keymap already sent to pointer clients.
+    if (wlr_seat_get_keyboard(seat) == m_keyboard) {
+      m_server->seat()->notifyPointerModifiers();
     }
     m_server->cursor()->refreshInteractiveCursor();
     notifyLayoutIfChanged();
