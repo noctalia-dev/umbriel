@@ -266,6 +266,9 @@ namespace umbriel {
     [[nodiscard]] bool hasActiveAnimations() const override;
     [[nodiscard]] bool animatesOn(const Output* output) const override;
 
+    std::optional<double> getSavedScrollingExtent() { return m_savedScrollingExtent; }
+    void setSavedScrollingExtent(double extent) { m_savedScrollingExtent = extent; }
+
   private:
     friend class Cursor;
     friend class ScratchpadManager;

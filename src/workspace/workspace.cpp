@@ -1513,10 +1513,35 @@ namespace umbriel {
   }
 
   void Workspace::overrideLayoutMode(LayoutMode mode) {
+    // Check if current mode is scrolling
+    const bool isMovingFromScroll = (m_layoutMode == LayoutMode::Scrolling && mode != LayoutMode::Scrolling);
+    const bool isMovingToScroll = (m_layoutMode != LayoutMode::Scrolling && mode == LayoutMode::Scrolling);
+    if (isMovingFromScroll) {
+      for (Column column : scrollingLayout()->columns()) {
+        auto view = column.views.begin();
+        if (view != column.views.end()) {
+          (*view)->m_savedScrollingExtent = column.widthFrac;
+        }
+      }
+    }
+
     m_layoutModeOverride = mode;
     ResolvedLayoutConfig copy = m_layoutConfig;
     copy.mode = mode;
     applyLayoutConfig(std::move(copy));
+
+    if (isMovingToScroll) {
+      ScrollingLayout* scrolling = scrollingLayout();
+      for (std::size_t i = 0; i < scrolling->columns().size(); i++) {
+        Column column = scrolling->columns()[i];
+        auto view = column.views.begin();
+        if (view != column.views.end() && (*view)->m_savedScrollingExtent) {
+          scrolling->setWidthFraction(i, *(*view)->m_savedScrollingExtent);
+        }
+      }
+      if (m_focusedView)
+        scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+    }
   }
 
   void Workspace::rename(std::string name, size_t index, bool named) {
