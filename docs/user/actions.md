@@ -44,7 +44,7 @@ are required, `[bracket]` forms are optional.
 | `output-focus-previous` | Focus the previous output, wrapping around |
 | `output-focus-right` | Focus the output to the right |
 | `output-focus-up` | Focus the output above |
-| `window-focus:<window-id>` | Focus the given window |
+| `window-focus:<window-id>` | Focus a window, revealing it from a hidden scratchpad |
 | `window-focus-down` | Focus the next window down in the column |
 | `window-focus-last` | Focus the previously focused window |
 | `window-focus-left` | Focus the window to the left |
@@ -59,7 +59,7 @@ are required, `[bracket]` forms are optional.
 | `window-focus-right` | Focus the window to the right |
 | `window-focus-switch-floating` | Focus the last window of the opposite floating state |
 | `window-focus-up` | Focus the next window up in the column |
-| `window-focus-warp:<window-id>` | Focus the given window and warp the cursor to it |
+| `window-focus-warp:<window-id>` | Focus or reveal a window and warp the cursor to it |
 | `workspace-focus-last` | Focus the previously active workspace |
 
 ## Move & size
@@ -127,7 +127,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-toggle-fullscreen` | Toggle fullscreen or exit a window covering the focus |
 | `window-toggle-maximize` | Toggle full width for the focused column |
 | `window-toggle-maximize-to-edges` | Toggle maximize without gaps, struts, or borders |
-| `window-toggle-pinned` | Pin the focused window above other windows |
+| `window-toggle-pinned` | Pin a window above others, or restore its previous state |
 
 ## Scratchpad
 
