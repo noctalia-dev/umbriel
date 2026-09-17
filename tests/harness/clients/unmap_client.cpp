@@ -15,6 +15,8 @@
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
 // so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to
 // another client's exported toplevel, the way a portal dialog is parented.
+// TRANSIENT_FOREIGN_PARENT_ON_STDIN delays that parent request until `p` is read
+// from stdin, after the child has mapped.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
@@ -764,6 +766,11 @@ int main(int argc, char** argv) {
   const bool mappedTogether = transientSuite && std::strcmp(transientSuiteMode, "mapped-together") == 0;
   const bool parentInitialCommitOnly = unmappedTransientParent || mappedTogether;
   const char* foreignHandle = std::getenv("TRANSIENT_FOREIGN_HANDLE");
+  const bool foreignParentOnStdin = std::getenv("TRANSIENT_FOREIGN_PARENT_ON_STDIN") != nullptr;
+  if (foreignParentOnStdin && foreignHandle == nullptr) {
+    std::println(stderr, "unmap-client: TRANSIENT_FOREIGN_PARENT_ON_STDIN requires TRANSIENT_FOREIGN_HANDLE");
+    return EXIT_FAILURE;
+  }
   if (foreignHandle != nullptr && state.importer == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing zxdg_importer_v2");
     return EXIT_FAILURE;
@@ -914,14 +921,17 @@ int main(int argc, char** argv) {
   zxdg_imported_v2* imported = nullptr;
   if (foreignHandle != nullptr) {
     imported = zxdg_importer_v2_import_toplevel(state.importer, foreignHandle);
-    zxdg_imported_v2_set_parent_of(imported, state.surface);
+    if (!foreignParentOnStdin) {
+      zxdg_imported_v2_set_parent_of(imported, state.surface);
+    }
   }
   wl_surface_commit(state.surface);
 
-  if (!remapOnStdin && !updateOnStdin) {
+  if (!remapOnStdin && !updateOnStdin && !foreignParentOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }
   } else {
+    bool foreignParentApplied = false;
     pollfd sources[2] = {
         {.fd = wl_display_get_fd(state.display), .events = POLLIN, .revents = 0},
         {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
@@ -953,6 +963,14 @@ int main(int argc, char** argv) {
             if (!issueInputActivationToken(state)) {
               return EXIT_FAILURE;
             }
+          } else if (
+              state.mapped && foreignParentOnStdin && !foreignParentApplied && imported != nullptr && command == 'p'
+          ) {
+            zxdg_imported_v2_set_parent_of(imported, state.surface);
+            wl_display_flush(state.display);
+            foreignParentApplied = true;
+            std::println("foreign-parent-set");
+            std::fflush(stdout);
           } else if (state.mapped && maximizeOnStdin && command == 's') {
             wl_surface_commit(state.surface);
             if (wl_display_roundtrip(state.display) < 0) {

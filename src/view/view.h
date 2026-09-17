@@ -429,7 +429,9 @@ namespace umbriel {
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
     void setPinned(bool pinned, bool focus);
+    [[nodiscard]] View* xdgParent() const;
     [[nodiscard]] View* transientParent() const;
+    [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
     void raiseTransientTree();
     void updateForeignIdentity();

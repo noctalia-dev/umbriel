@@ -698,7 +698,21 @@ static void scale_box(struct wlr_box *box, float scale) {
 
 static void transform_output_box(struct wlr_box *box, const struct render_data *data) {
 	enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
+	bool touches_right = box->width > 0 &&
+		box->x + box->width == data->logical.width;
+	bool touches_bottom = box->height > 0 &&
+		box->y + box->height == data->logical.height;
 	scale_box(box, data->scale);
+
+	// Effective resolution truncates the physical size divided by scale. When
+	// that logical edge scales back one pixel short, give it the output's exact
+	// physical edge. The output damage region remains the final clip.
+	if (touches_right) {
+		box->width = data->trans_width - box->x;
+	}
+	if (touches_bottom) {
+		box->height = data->trans_height - box->y;
+	}
 	wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
 }
 

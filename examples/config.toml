@@ -395,6 +395,8 @@ follows_mouse = false                           # Focus on motion after scene ch
 # Resize, maximize, fullscreen, and close actions target a scratchpad that owns
 # keyboard focus. Layout-relative window actions leave the workspace behind it
 # unchanged.
+# Parented dialogs, including portal file choosers from another process, join a
+# visible parent window's scratchpad unless an explicit placement rule wins.
 # `window-focus:<window-id>` and `window-focus-warp:<window-id>` also summon a
 # hidden scratchpad target to the output under the pointer. The first form
 # follows `input.cursor.follows_focus`; the `-warp` form always moves the cursor.
@@ -745,7 +747,8 @@ enabled = true
 duration_ms = 250
 curve = "easeout"
 # Filmstrip movement between workspace previews: wheel, keyboard, and touchpad
-# release alike. A spring curve settles from wherever the previews are and keeps
+# release alike. A spring curve keeps the release velocity; its final few pixels
+# stay monotonic on the logical layout grid.
 workspace_curve = "spring:1,1000"
 
 # Scratchpad show, hide, and backdrop

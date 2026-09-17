@@ -35,10 +35,12 @@ source moves it the same way through `Overview::animateRow`, which uses
 position through `AnimatedValue::settleSpring`, carrying the release velocity
 scaled by the rubber-band derivative at the release point; any other curve runs
 over `duration_ms` from rest. A gesture in flight snaps the value each frame,
-which also stops a settle still running on that output. A settling spring snaps
-to its target once the position and velocity energy bound fits within three
-layout pixels of the preview step. This removes isolated rounded-pixel movement
-at the tail without cutting off larger release motion or bounce.
+which also stops a settle still running on that output. Settled preview origins
+and gaps use an integral logical-pixel grid. Once a spring's position and
+velocity energy bound fits within three layout pixels, its presented offset
+advances toward zero by at least one pixel per output frame. This prevents the
+rounded tail from pausing and moving again without cutting off larger release
+motion or bounce.
 
 ## Animation ownership
 
@@ -151,6 +153,11 @@ The relevant checks are:
 
 - [`tests/harness/checks/310_overview_wheel.sh`](../../tests/harness/checks/310_overview_wheel.sh)
   for overview interaction and workspace navigation.
+- [`tests/harness/checks/313_overview_settle_stability.sh`](../../tests/harness/checks/313_overview_settle_stability.sh)
+  for the destination card reaching and holding its final projected position at
+  2560x1600, scale 1.5, and 165 Hz.
+- [`tests/unit/animation.cpp`](../../tests/unit/animation.cpp) for every terminal
+  spring tick moving monotonically in both directions at the same refresh rate.
 - [`tests/harness/checks/346_overview_keybind_actions.sh`](../../tests/harness/checks/346_overview_keybind_actions.sh)
   for configured directional actions and fallback arrow navigation.
 - [`tests/harness/checks/460_external_drag.sh`](../../tests/harness/checks/460_external_drag.sh)

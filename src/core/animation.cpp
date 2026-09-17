@@ -433,6 +433,22 @@ namespace umbriel {
     return std::hypot(current - target, velocity * std::sqrt(mass / stiffness));
   }
 
+  int advanceSpringTailPixels(int previousOffset, int solvedOffset) {
+    if (previousOffset == 0) {
+      return 0;
+    }
+    const bool sameDirection = (previousOffset > 0 && solvedOffset > 0) || (previousOffset < 0 && solvedOffset < 0);
+    if (!sameDirection) {
+      return 0;
+    }
+    const int previousMagnitude = std::abs(previousOffset);
+    int magnitude = std::min(previousMagnitude, std::abs(solvedOffset));
+    if (magnitude == previousMagnitude) {
+      --magnitude;
+    }
+    return previousOffset > 0 ? magnitude : -magnitude;
+  }
+
   double applyEasing(const AnimationCurve& curve, double progress) {
     const double linear = std::clamp(progress, 0.0, 1.0);
 
@@ -743,6 +759,8 @@ namespace umbriel {
     m_current += delta;
   }
 
+  void AnimatedValue::overrideCurrent(double value) { m_current = value; }
+
   double AnimatedValue::progress() const { return m_progress; }
 
   bool AnimatedValue::tick(uint64_t nowMsec) {
@@ -788,6 +806,32 @@ namespace umbriel {
     const double dtSec = std::max(0.001, static_cast<double>(elapsed) / 1000.0);
     m_velocity = (m_current - prevCurrent) / dtSec;
 
+    return true;
+  }
+
+  bool advanceSpringTail(AnimatedValue& value, double previous, double pixelsPerUnit, double maxRemainingPixels) {
+    if (!value.animating()
+        || value.curve().easing != Easing::Spring
+        || !std::isfinite(previous)
+        || !std::isfinite(pixelsPerUnit)
+        || pixelsPerUnit <= 0.0
+        || !std::isfinite(maxRemainingPixels)
+        || maxRemainingPixels < 0.0) {
+      return false;
+    }
+    const double remaining =
+        springDisplacementBound(value.current(), value.target(), value.velocity(), value.curve().spring);
+    if (remaining * pixelsPerUnit > maxRemainingPixels) {
+      return false;
+    }
+    const int previousOffset = static_cast<int>(std::lround((value.target() - previous) * pixelsPerUnit));
+    const int solvedOffset = static_cast<int>(std::lround((value.target() - value.current()) * pixelsPerUnit));
+    const int presentedOffset = advanceSpringTailPixels(previousOffset, solvedOffset);
+    if (presentedOffset == 0) {
+      value.snap(value.target());
+    } else {
+      value.overrideCurrent(value.target() - presentedOffset / pixelsPerUnit);
+    }
     return true;
   }
 

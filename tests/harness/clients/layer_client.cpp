@@ -51,6 +51,7 @@ namespace {
     bool closed = false;
     bool failed = false;
     uint32_t fillColor = 0xFF202020;
+    bool logConfigures = false;
     uint32_t keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
   };
 
@@ -126,6 +127,9 @@ namespace {
     zwlr_layer_surface_v1_ack_configure(layerSurface, serial);
     const int configuredWidth = std::max(1, static_cast<int>(width));
     const int configuredHeight = std::max(1, static_cast<int>(height));
+    if (state.logConfigures) {
+      std::println("configured-size={}x{}", configuredWidth, configuredHeight);
+    }
     if (state.buffer.resource == nullptr
         || state.buffer.width != configuredWidth
         || state.buffer.height != configuredHeight) {
@@ -226,8 +230,7 @@ int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IOLBF, 0);
   if (argc < 3) {
     std::println(
-        stderr,
-        "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer] "
+        "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer] [log-configures] "
         "[keyboard=none|on-demand|exclusive]"
     );
     return EXIT_FAILURE;
@@ -252,6 +255,8 @@ int main(int argc, char** argv) {
       state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND;
     } else if (option == "keyboard=exclusive") {
       state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+    } else if (option == "log-configures") {
+      state.logConfigures = true;
     } else {
       std::println(stderr, "layer-client: unknown option '{}'", option);
       return EXIT_FAILURE;
@@ -306,6 +311,7 @@ int main(int argc, char** argv) {
     anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
     if (background) {
       anchors |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+      zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, -1);
     } else {
       zwlr_layer_surface_v1_set_exclusive_zone(state.layerSurface, exclusiveHeight);
     }

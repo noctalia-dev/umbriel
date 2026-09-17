@@ -44,8 +44,9 @@ namespace umbriel {
 
     // Gap between workspace thumbnails, as a fraction of the scaled row height.
     constexpr double kRowGapFraction = 0.1;
-    // Once all remaining spring energy fits inside this many layout pixels, showing the tail only creates isolated
-    // rounded pixel steps. Snap it while preserving larger release motion and configured bounce.
+    // Once all remaining spring energy fits inside this many layout pixels, present the tail on the integer layout
+    // grid. This preserves larger release motion and configured bounce while preventing a rounded position from
+    // pausing and moving again.
     constexpr double kRowSpringSettlePixels = 3.0;
     // Pointer travel that promotes a press on a card into a relocate drag.
     constexpr double kDragThreshold = 10.0;
@@ -171,10 +172,10 @@ namespace umbriel {
     out.axis = group != nullptr ? group->workspaceAxis() : WorkspaceAxis::Vertical;
     out.previewW = std::max(1, static_cast<int>(std::lround(outputBox.width * zoom)));
     out.previewH = std::max(1, static_cast<int>(std::lround(outputBox.height * zoom)));
-    out.baseX = outputBox.x + (outputBox.width - out.previewW) / 2.0;
-    out.baseY = outputBox.y + (outputBox.height - out.previewH) / 2.0;
+    out.baseX = static_cast<int>(std::lround(outputBox.x + (outputBox.width - out.previewW) / 2.0));
+    out.baseY = static_cast<int>(std::lround(outputBox.y + (outputBox.height - out.previewH) / 2.0));
     const int axisExtent = out.axis == WorkspaceAxis::Horizontal ? outputBox.width : outputBox.height;
-    out.gap = kRowGapFraction * axisExtent * zoom;
+    out.gap = static_cast<int>(std::lround(kRowGapFraction * axisExtent * zoom));
     return true;
   }
 
@@ -1571,19 +1572,14 @@ namespace umbriel {
     }
     bool rowTicked = false;
     for (const auto& state : m_outputs) {
+      const double previous = state->rowScroll.current();
       const bool ticked = state->rowScroll.tick(nowMsec);
       if (ticked && state->rowScroll.animating() && state->rowScroll.curve().easing == Easing::Spring) {
         PreviewMetrics metrics;
         if (previewMetrics(*state, *m_server, zoom(), metrics)) {
           const double step =
               (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
-          const double remaining = springDisplacementBound(
-              state->rowScroll.current(), state->rowScroll.target(), state->rowScroll.velocity(),
-              state->rowScroll.curve().spring
-          );
-          if (remaining * step <= kRowSpringSettlePixels) {
-            state->rowScroll.snap(state->rowScroll.target());
-          }
+          static_cast<void>(advanceSpringTail(state->rowScroll, previous, step, kRowSpringSettlePixels));
         }
       }
       rowTicked = ticked || rowTicked;

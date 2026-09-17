@@ -180,9 +180,9 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::assignByWindowRule(
-      View* view, std::string_view name, Output* placementOutput, const WindowRuleAdmission& options
+      View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options
   ) {
-    if (!admit(view, name, placementOutput, Admission::WindowRule, options)) {
+    if (!admit(view, name, placementOutput, Admission::Automatic, options)) {
       return false;
     }
     Scratchpad* scratchpad = findScratchpad(name);
@@ -224,8 +224,25 @@ namespace umbriel {
     return std::nullopt;
   }
 
+  bool ScratchpadManager::assignFromParent(View* view, const View* parent, const AutomaticAdmission& options) {
+    const Entry* parentEntry = findEntry(parent);
+    const Scratchpad* scratchpad = parentEntry != nullptr ? findScratchpad(parentEntry->scratchpad) : nullptr;
+    if (view == nullptr
+        || parent == nullptr
+        || view == parent
+        || !parent->mapped()
+        || !parent->onActiveWorkspace()
+        || scratchpad == nullptr
+        || !scratchpad->visible
+        || scratchpad->output == nullptr) {
+      return false;
+    }
+    const std::string name = parentEntry->scratchpad;
+    return admit(view, name, scratchpad->output, Admission::Automatic, options);
+  }
+
   bool ScratchpadManager::admit(
-      View* view, std::string_view name, Output* invokingOutput, Admission admission, const WindowRuleAdmission& options
+      View* view, std::string_view name, Output* invokingOutput, Admission admission, const AutomaticAdmission& options
   ) {
     Scratchpad* scratchpad = findScratchpad(name);
     if (scratchpad == nullptr

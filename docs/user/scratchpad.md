@@ -188,6 +188,13 @@ Hiding it returns focus to a regular workspace window. Opening the workspaces
 overview immediately hides every visible scratchpad while keeping its windows
 stored.
 
+An XDG dialog parented to a window in a visible scratchpad automatically joins
+the same scratchpad. This includes portal dialogs attached through
+`xdg-foreign`, even when the dialog belongs to another process. The dialog is
+shown above and centered over its parent, and follows the scratchpad when it is
+hidden or shown. An explicit `default_scratchpad`, `default_workspace`, or
+`default_pinned = true` window rule takes precedence over this inheritance.
+
 Backdrop dim and blur apply only to an output with a visible scratchpad. Hiding
 or moving that scratchpad clears the old output's backdrop.
 

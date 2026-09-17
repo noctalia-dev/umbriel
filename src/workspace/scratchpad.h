@@ -45,7 +45,7 @@ namespace umbriel {
     [[nodiscard]] bool hasScratchpad(std::string_view name) const;
     [[nodiscard]] std::optional<std::string> spawnedScratchpadFor(pid_t pid) const;
     [[nodiscard]] std::optional<std::string> pendingScratchpadOn(const Output* output) const;
-    struct WindowRuleAdmission {
+    struct AutomaticAdmission {
       Output* restoreOutput = nullptr;
       Workspace* restoreWorkspace = nullptr;
       Output* focusOrigin = nullptr;
@@ -56,7 +56,8 @@ namespace umbriel {
     [[nodiscard]] Output* restoreOutputFor(const View* view) const;
     [[nodiscard]] bool moveToScratchpad(View* view, std::string_view name, Output* invokingOutput);
     [[nodiscard]] bool
-    assignByWindowRule(View* view, std::string_view name, Output* placementOutput, const WindowRuleAdmission& options);
+    assignByWindowRule(View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options);
+    [[nodiscard]] bool assignFromParent(View* view, const View* parent, const AutomaticAdmission& options);
     // Show a scratchpad on the invoking output without changing keyboard focus.
     bool summon(std::string_view name, Output* invokingOutput);
     bool toggle(std::string_view name, Output* invokingOutput);
@@ -124,10 +125,10 @@ namespace umbriel {
     [[nodiscard]] const Entry* findEntry(const View* view) const;
     [[nodiscard]] bool hasEntries(std::string_view name) const;
     [[nodiscard]] bool visibleOn(Output* output) const;
-    enum class Admission { Interactive, WindowRule };
+    enum class Admission { Interactive, Automatic };
     bool admit(
         View* view, std::string_view name, Output* invokingOutput, Admission admission,
-        const WindowRuleAdmission& options
+        const AutomaticAdmission& options
     );
     void setVisible(std::string_view name, bool visible, bool animateTransition = true);
     void moveScratchpad(

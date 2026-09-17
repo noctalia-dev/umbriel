@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# A critically damped overview row must not appear stationary and then move again by a rendered pixel. Captures are
-# requested in parallel so screencopy latency does not serialize the observation past the spring's tail.
+# A critically damped overview row must reach its final rendered position and remain there at the fractional-scale,
+# high-refresh geometry from issue 236. The animation unit check observes every quantized tail tick; concurrent
+# screencopy requests can coalesce onto a subset of output frames, so this check covers the real overview projection.
 set -euo pipefail
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -9,6 +10,8 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 workspace_curve = "spring:1,1000"
 
 [output."HEADLESS-1"]
+mode = "2560x1600@165"
+scale = 1.5
 workspaces = 5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -19,6 +22,7 @@ for _ in $(seq 60); do
   sleep 0.05
 done
 [[ $("$UMBRIEL" windows --json | jq 'length') -eq 1 ]]
+"$UMBRIEL" msg window-move-to-workspace:5 > /dev/null
 
 # Record the exact settled destination with workspace 5 already active.
 "$UMBRIEL" msg workspace-switch:5 > /dev/null
@@ -38,8 +42,8 @@ sleep 0.6
 "$UMBRIEL" msg workspace-switch:5 > /dev/null
 
 capture_pids=()
-for sample in $(seq 0 20); do
-  delay=$(awk -v sample="$sample" 'BEGIN { printf "%.2f", 0.14 + sample * 0.02 }')
+for sample in $(seq 0 35); do
+  delay=$(awk -v sample="$sample" 'BEGIN { printf "%.3f", 0.18 + sample * 0.007 }')
   (sleep "$delay"; grim "$UMBRIEL_RUNTIME_DIR/settle-$sample.png") &
   capture_pids+=("$!")
 done
@@ -47,13 +51,28 @@ for pid in "${capture_pids[@]}"; do
   wait "$pid"
 done
 
-for sample in $(seq 0 20); do
-  difference=$(magick "$UMBRIEL_RUNTIME_DIR/settle-$sample.png" "$UMBRIEL_RUNTIME_DIR/settle-target.png" \
-    -compose difference -composite -format '%[fx:mean]' info:)
-  if ((sample >= 7)) && awk -v difference="$difference" 'BEGIN { exit !(difference > 0) }'; then
-    echo "overview preview still moved at the one-pixel spring tail (frame $sample difference $difference)"
+card_y() {
+  magick "$1" -alpha on -fuzz 1% -fill none +opaque '#5577aa' -trim miff:- |
+    identify -format '%Y\n' -
+}
+
+target_y=$(card_y "$UMBRIEL_RUNTIME_DIR/settle-target.png")
+previous_y=$(card_y "$UMBRIEL_RUNTIME_DIR/settle-0.png")
+[[ $previous_y -ne $target_y ]]
+arrived=0
+transitions=0
+for sample in $(seq 1 35); do
+  y=$(card_y "$UMBRIEL_RUNTIME_DIR/settle-$sample.png")
+  if [[ $y -eq $target_y ]]; then
+    arrived=1
+  elif ((arrived)); then
+    echo "overview preview left its settled position again (frame $sample y $y, target $target_y)"
     exit 1
   fi
+  [[ $y -ne $previous_y ]] && transitions=$((transitions + 1))
+  previous_y=$y
 done
+((arrived))
+((transitions >= 3))
 
-echo 'overview spring has no late one-pixel preview step'
+echo 'overview spring reaches its settled row one logical pixel at a time'

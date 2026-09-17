@@ -712,13 +712,22 @@ namespace umbriel {
   }
 
   void Output::arrangeLayers() {
-    wlr_box fullArea{};
-    wlr_output_effective_resolution(m_output, &fullArea.width, &fullArea.height);
-    if (fullArea.width <= 0 || fullArea.height <= 0) {
+    wlr_box outputArea{};
+    wlr_output_effective_resolution(m_output, &outputArea.width, &outputArea.height);
+    if (outputArea.width <= 0 || outputArea.height <= 0) {
       return;
     }
 
-    wlr_box usableArea = fullArea;
+    int physicalWidth = 0;
+    int physicalHeight = 0;
+    wlr_output_transformed_resolution(m_output, &physicalWidth, &physicalHeight);
+    const wlr_box layerArea = {
+        .x = 0,
+        .y = 0,
+        .width = static_cast<int>(std::ceil(static_cast<double>(physicalWidth) / m_output->scale)),
+        .height = static_cast<int>(std::ceil(static_cast<double>(physicalHeight) / m_output->scale)),
+    };
+    wlr_box usableArea = outputArea;
 
     // Exclusive first, overlay down to background so higher layers win the zone.
     static constexpr uint32_t kExclusiveOrder[] = {
@@ -728,12 +737,12 @@ namespace umbriel {
         ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
     };
     for (uint32_t layer : kExclusiveOrder) {
-      arrangeLayer(m_layerTrees[layer], &fullArea, &usableArea, true);
+      arrangeLayer(m_layerTrees[layer], &layerArea, &usableArea, true);
     }
     for (uint32_t layer : kExclusiveOrder) {
-      arrangeLayer(m_layerTrees[layer], &fullArea, &usableArea, false);
+      arrangeLayer(m_layerTrees[layer], &layerArea, &usableArea, false);
     }
-    updateOptimizedBlur(fullArea);
+    updateOptimizedBlur(outputArea);
 
     // Layer trees are output-local; pin them to the scene-output origin.
     for (auto& m_layerTree : m_layerTrees) {
@@ -742,13 +751,13 @@ namespace umbriel {
     wlr_scene_node_set_position(&m_popupTree->node, m_sceneOutput->x, m_sceneOutput->y);
 
     // Content roots are clipped to this output's layout box, not repositioned: views are laid out in layout
-    // coordinates. A disabled output never gets here (fullArea is empty above), and its workspaces have already been
+    // coordinates. A disabled output never gets here (outputArea is empty above), and its workspaces have already been
     // evacuated, so the stale clip it keeps has nothing under it.
     const wlr_box outputBox = {
         .x = m_sceneOutput->x,
         .y = m_sceneOutput->y,
-        .width = fullArea.width,
-        .height = fullArea.height,
+        .width = outputArea.width,
+        .height = outputArea.height,
     };
     for (wlr_scene_tree* root : {m_viewRoot, m_fullscreenRoot, m_pinnedRoot, m_pinnedShadowRoot}) {
       wlr_scene_tree_set_clip(root, &outputBox);

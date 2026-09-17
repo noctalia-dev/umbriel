@@ -478,15 +478,64 @@ namespace umbriel {
     root->raiseTransientTree();
   }
 
-  View* View::transientParent() const {
-    if (!m_mapped || m_workspace == nullptr || m_toplevel->parent == nullptr) {
+  View* View::xdgParent() const {
+    if (m_toplevel->parent == nullptr || m_toplevel->parent->base == nullptr) {
       return nullptr;
     }
     View* parent = fromSurface(m_toplevel->parent->base->surface);
-    if (parent == this || parent == nullptr || !parent->m_mapped || parent->m_workspace != m_workspace) {
+    if (parent == this || parent == nullptr || !parent->m_mapped) {
       return nullptr;
     }
     return parent;
+  }
+
+  View* View::transientParent() const {
+    if (!m_mapped) {
+      return nullptr;
+    }
+    View* parent = xdgParent();
+    if (parent == nullptr) {
+      return nullptr;
+    }
+    if (m_workspace != nullptr && parent->m_workspace == m_workspace) {
+      return parent;
+    }
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    if (scratchpad == nullptr || !scratchpad->contains(this) || !scratchpad->contains(parent)) {
+      return nullptr;
+    }
+    const std::string_view name = scratchpad->nameFor(this);
+    return !name.empty() && scratchpad->nameFor(parent) == name ? parent : nullptr;
+  }
+
+  bool View::inheritScratchpadFromParent(bool restoreTiled) {
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    if (!m_mapped
+        || scratchpad == nullptr
+        || scratchpad->contains(this)
+        || m_initialRules.defaultScratchpad
+        || m_initialRules.defaultWorkspace
+        || m_initialRules.defaultPinned.value_or(false)) {
+      return false;
+    }
+    View* parent = xdgParent();
+    if (parent == nullptr) {
+      return false;
+    }
+    Workspace* restoreWorkspace = m_workspace;
+    Output* restoreOutput = restoreWorkspace != nullptr && restoreWorkspace->group() != nullptr
+        ? restoreWorkspace->group()->output()
+        : currentOutput();
+    return scratchpad->assignFromParent(
+        this, parent,
+        ScratchpadManager::AutomaticAdmission{
+            .restoreOutput = restoreOutput,
+            .restoreWorkspace = restoreWorkspace,
+            .focusOrigin = scratchpad->outputFor(parent),
+            .restoreTiled = restoreTiled,
+            .updateRestoreLocation = true,
+        }
+    );
   }
 
   void View::syncTransientSceneParent() {
@@ -2399,7 +2448,7 @@ namespace umbriel {
             : currentOutput();
         assignedScratchpad = scratchpad->assignByWindowRule(
             this, *scratchpadTarget, restoreOutput,
-            ScratchpadManager::WindowRuleAdmission{
+            ScratchpadManager::AutomaticAdmission{
                 .restoreOutput = restoreOutput,
                 .restoreWorkspace = restoreWorkspace,
                 .focusOrigin = restoreOutput,
@@ -2408,6 +2457,9 @@ namespace umbriel {
             }
         );
       }
+    }
+    if (!assignedScratchpad) {
+      assignedScratchpad = inheritScratchpadFromParent(restoreTiled);
     }
     if (!assignedScratchpad && rule.defaultPinned && *rule.defaultPinned) {
       setPinned(true, false);
@@ -3305,6 +3357,12 @@ namespace umbriel {
 
   void View::handleSetParent() {
     if (m_mapped) {
+      if (inheritScratchpadFromParent(m_tiled) && !scratchpadOwnsOpeningGeometry()) {
+        placeInUsableArea(m_initialRules.defaultPosition);
+        if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+          scratchpad->syncViewPresentation(this);
+        }
+      }
       raiseToTop();
     }
   }
@@ -3872,7 +3930,7 @@ namespace umbriel {
       if (targetOutput != nullptr) {
         assignedScratchpad = scratchpadManager->assignByWindowRule(
             this, *scratchpadTarget, targetOutput,
-            ScratchpadManager::WindowRuleAdmission{
+            ScratchpadManager::AutomaticAdmission{
                 .restoreOutput = targetOutput,
                 .restoreWorkspace = targetWorkspace,
                 .focusOrigin = currentOutput(),

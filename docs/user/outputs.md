@@ -154,6 +154,9 @@ An output's logical size is its transformed mode size divided by `scale`. A
 starts at `[0, 0]`, an output immediately to its right starts at `[2048, 0]`.
 A 1920-wide output at scale `1.0` immediately to its left starts at
 `[-1920, 0]`.
+When division produces a fractional logical size, Umbriel keeps output layout
+coordinates at whole logical units. Full-output layer-shell surfaces are rounded
+outward so wallpapers, panels, and overlays cover every physical output pixel.
 
 The pointer can cross only where output rectangles touch or overlap. Omit
 `position` to place outputs automatically from left to right and keep them

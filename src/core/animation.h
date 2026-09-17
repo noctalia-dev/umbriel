@@ -81,6 +81,9 @@ namespace umbriel {
   // expressed in the same units as current and target and follows from the spring's remaining mechanical energy.
   [[nodiscard]] double
   springDisplacementBound(double current, double target, double velocity, const SpringConfig& config);
+  // Keep a quantized spring tail moving toward zero by at least one pixel while never reversing or getting ahead of
+  // a solved offset that is already closer. The caller decides when the spring is inside its terminal energy bound.
+  [[nodiscard]] int advanceSpringTailPixels(int previousOffset, int solvedOffset);
   [[nodiscard]] double applyEasing(const AnimationCurve& curve, double progress);
   [[nodiscard]] inline double evaluateCurve(const AnimationCurve& curve, double progress) {
     return applyEasing(curve, progress);
@@ -154,6 +157,9 @@ namespace umbriel {
     // Shift from, current and target by the same amount, keeping any motion intact. For a coordinate space that is
     // renumbered under a running animation.
     void translate(double delta);
+    // Replace only the value presented by the owner. A physics tick still solves from the original transition on the
+    // next frame, which lets a quantized presentation advance through a subpixel solver tail without restarting it.
+    void overrideCurrent(double value);
 
     // Advances the value. Returns true when the value was animating at entry (i.e. the owner must apply current()). The
     // call that reaches the target returns true and leaves animating() false, so owners detect completion as (tick(now)
@@ -187,6 +193,11 @@ namespace umbriel {
     // Set by settleSpring(): tick() runs the physics solver instead of the duration curve.
     bool m_physics = false;
   };
+
+  // Project a physics spring inside its terminal energy envelope onto a pixel grid. `previous` is the value presented
+  // before the latest tick. Returns true when the tail was quantized or completed.
+  [[nodiscard]] bool
+  advanceSpringTail(AnimatedValue& value, double previous, double pixelsPerUnit, double maxRemainingPixels);
 
   // Helper class for animating 4-channel float RGBA colors smoothly with arbitrary curves.
   // Perfect for animated border transitions and unfocused window dimming.

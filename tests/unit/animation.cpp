@@ -153,6 +153,49 @@ UMBRIEL_TEST(springDisplacementBoundIncludesPositionAndVelocityEnergy) {
   CHECK(std::abs(umbriel::springDisplacementBound(1.15, 1.0, 2.0, spring) - std::hypot(0.15, 0.2)) < 1e-12);
 }
 
+UMBRIEL_TEST(springTailPixelsAdvanceWithoutAStationaryFrameOrReversal) {
+  CHECK_EQ(umbriel::advanceSpringTailPixels(3, 2), 2);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(2, 2), 1);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(1, 2), 0);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(-3, -2), -2);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(-2, -2), -1);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(-1, -2), 0);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(2, -1), 0);
+  CHECK_EQ(umbriel::advanceSpringTailPixels(-2, 1), 0);
+}
+
+UMBRIEL_TEST(springTailPresentationMovesEveryFrameAtTheReportedRefreshRate) {
+  constexpr double step = 587.0;
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
+  const auto checkDirection = [spring](double from, double target) {
+    umbriel::AnimatedValue value{from};
+    value.settleSpring(target, spring, 0.0);
+    CHECK(value.tick(1000));
+
+    bool enteredTail = false;
+    int terminalFrames = 0;
+    for (int frame = 1; frame < 200 && value.animating(); ++frame) {
+      const double previous = value.current();
+      const int previousOffset = static_cast<int>(std::lround((value.target() - previous) * step));
+      CHECK(value.tick(1000 + static_cast<uint64_t>(frame * 1000 / 165)));
+      if (!umbriel::advanceSpringTail(value, previous, step, 3.0)) {
+        continue;
+      }
+      enteredTail = true;
+      ++terminalFrames;
+      const int presentedOffset = static_cast<int>(std::lround((value.target() - value.current()) * step));
+      CHECK(std::abs(presentedOffset) < std::abs(previousOffset));
+    }
+    CHECK(enteredTail);
+    CHECK(terminalFrames >= 2);
+    CHECK(!value.animating());
+    CHECK_EQ(value.current(), target);
+  };
+
+  checkDirection(0.0, 4.0);
+  checkDirection(4.0, 0.0);
+}
+
 UMBRIEL_TEST(physicsSpringKeepsShaderIdentityWhenProgressReverses) {
   umbriel::AnimatedValue value;
   value.settleSpring(1.0, umbriel::SpringConfig{.damping = 0.1, .stiffness = 100.0, .mass = 1.0}, 0.0);
