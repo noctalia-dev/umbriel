@@ -302,15 +302,23 @@ namespace umbriel {
   wlr_scene_tree* View::captureTree() const { return m_captureScene != nullptr ? &m_captureScene->tree : nullptr; }
 
   void View::moveToWorkspace(Workspace* workspace, bool attachToLayout) {
+    moveToWorkspace(workspace, attachToLayout, LayoutAttachOrigin::ExistingView);
+  }
+
+  void View::moveToWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     const bool wasDisplaced = m_displacedHome.has_value();
     m_displacedHome.reset();
-    setWorkspace(workspace, attachToLayout);
+    setWorkspace(workspace, attachToLayout, origin);
     if (wasDisplaced) {
       m_server->scheduleDisplacedViewRestore();
     }
   }
 
   void View::setWorkspace(Workspace* workspace, bool attachToLayout) {
+    setWorkspace(workspace, attachToLayout, LayoutAttachOrigin::ExistingView);
+  }
+
+  void View::setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     if (workspace != nullptr
         && m_server->scratchpadManager() != nullptr
         && m_server->scratchpadManager()->contains(this)) {
@@ -331,7 +339,7 @@ namespace umbriel {
     }
     m_workspace = workspace;
     if (m_workspace != nullptr) {
-      m_workspace->addView(this, attachToLayout);
+      m_workspace->addView(this, attachToLayout, origin);
     } else {
       // A pinned view normally hangs below output-owned clipping roots. Park both of its scene branches on the
       // server-owned pinned roots before the last output is destroyed, then addView() can rehome them when an output
@@ -2476,6 +2484,9 @@ namespace umbriel {
       // visibility is resolved data-side (no per-render-pass pass to do it).
       if (m_workspace != nullptr) {
         m_workspace->syncViewPresentation(this);
+        // A floating or pinned opening skips layoutAttach (which guards on
+        // tiled), so the arriving-window fullscreen exit is driven here.
+        m_workspace->exitFullscreenForIncomingView(this);
       }
     }
 

@@ -377,6 +377,92 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    // Scope named by a single config token. "all" is not a single bit, so it comes back as std::nullopt on success.
+    std::optional<FullscreenExitScope> fullscreenExitScopeBit(std::string_view token, bool& wasAll) {
+      if (token == "all") {
+        wasAll = true;
+        return std::nullopt;
+      }
+      wasAll = false;
+      if (token == "tiled") {
+        return FullscreenExitScope::Tiled;
+      }
+      if (token == "floating") {
+        return FullscreenExitScope::Floating;
+      }
+      if (token == "pinned") {
+        return FullscreenExitScope::Pinned;
+      }
+      return std::nullopt;
+    }
+
+    std::optional<FullscreenExitScope> readFullscreenExitScope(Section& section, std::string_view context) {
+      const toml::node* node = section.take("new_exits_fullscreen");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      // A single string ("all", "tiled", "floating", "pinned").
+      if (const auto* value = node->as_string()) {
+        bool wasAll = false;
+        if (std::optional<FullscreenExitScope> bit = fullscreenExitScopeBit(value->get(), wasAll)) {
+          return bit;
+        }
+        if (wasAll) {
+          return FullscreenExitScope::All;
+        }
+        warnAt(
+            node->source(),
+            R"(unknown {}.new_exits_fullscreen "{}" (expected "all", "tiled", "floating", or "pinned"))", context,
+            value->get()
+        );
+        return std::nullopt;
+      }
+      // An array of strings, elements combine into a bitmask. An empty array is the explicit "off".
+      const auto* array = node->as_array();
+      if (array == nullptr) {
+        warnAt(
+            node->source(),
+            R"({}.new_exits_fullscreen must be a string or an array of strings ("tiled", "floating", "pinned"))",
+            context
+        );
+        return std::nullopt;
+      }
+      if (array->empty()) {
+        return FullscreenExitScope::None;
+      }
+      uint8_t combined = 0;
+      bool sawAll = false;
+      bool sawInvalid = false;
+      for (const toml::node& entry : *array) {
+        if (const auto* value = entry.as_string()) {
+          bool wasAll = false;
+          if (std::optional<FullscreenExitScope> bit = fullscreenExitScopeBit(value->get(), wasAll)) {
+            combined |= static_cast<uint8_t>(*bit);
+            continue;
+          }
+          if (wasAll) {
+            sawAll = true;
+            continue;
+          }
+        }
+        sawInvalid = true;
+      }
+      if (sawInvalid) {
+        warnAt(
+            node->source(),
+            R"(ignoring unknown element in {}.new_exits_fullscreen (expected "tiled", "floating", "pinned", or "all"))",
+            context
+        );
+      }
+      if (sawAll) {
+        combined |= static_cast<uint8_t>(FullscreenExitScope::All);
+        if (array->size() > 1) {
+          warnAt(node->source(), R"({}.new_exits_fullscreen "all" already covers every scope)", context);
+        }
+      }
+      return static_cast<FullscreenExitScope>(combined);
+    }
+
     std::optional<CenterFocusedColumn> readCenterFocused(Section& section, std::string_view context) {
       const toml::node* node = section.take("center_focused");
       if (node == nullptr) {
@@ -630,8 +716,10 @@ namespace umbriel {
               }
             });
             s.sub("dwindle", [&](Section& sd) {
-              sd.boolean("preserve_split", overrides.dwindle.preserveSplit)
-                  .boolean("new_exits_fullscreen", overrides.dwindle.newExitsFullscreen);
+              sd.boolean("preserve_split", overrides.dwindle.preserveSplit);
+              if (const auto scope = readFullscreenExitScope(sd, layoutContext + ".dwindle")) {
+                overrides.dwindle.newExitsFullscreen = scope;
+              }
             });
             s.sub("master", [&](Section& sm) {
               if (const auto position = readMasterPosition(sm, layoutContext + ".master")) {
@@ -639,8 +727,10 @@ namespace umbriel {
               }
               sm.real("default_width_fraction", 0.1, 0.9, overrides.master.defaultWidthFraction)
                   .boolean("new_on_top", overrides.master.newOnTop)
-                  .boolean("new_becomes_master", overrides.master.newBecomesMaster)
-                  .boolean("new_exits_fullscreen", overrides.master.newExitsFullscreen);
+                  .boolean("new_becomes_master", overrides.master.newBecomesMaster);
+              if (const auto scope = readFullscreenExitScope(sm, layoutContext + ".master")) {
+                overrides.master.newExitsFullscreen = scope;
+              }
             });
           },
           layoutContext
@@ -1328,8 +1418,10 @@ namespace umbriel {
           }
         });
         s.sub("dwindle", [&](Section& sd) {
-          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit)
-              .boolean("new_exits_fullscreen", loaded.layout.dwindle.newExitsFullscreen);
+          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit);
+          if (const auto scope = readFullscreenExitScope(sd, "layout.dwindle")) {
+            loaded.layout.dwindle.newExitsFullscreen = *scope;
+          }
         });
         s.sub("master", [&](Section& sm) {
           if (const auto position = readMasterPosition(sm, "layout.master")) {
@@ -1337,8 +1429,10 @@ namespace umbriel {
           }
           sm.real("default_width_fraction", 0.1, 0.9, loaded.layout.master.defaultWidthFraction)
               .boolean("new_on_top", loaded.layout.master.newOnTop)
-              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
-              .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
+              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster);
+          if (const auto scope = readFullscreenExitScope(sm, "layout.master")) {
+            loaded.layout.master.newExitsFullscreen = *scope;
+          }
         });
       });
     }
