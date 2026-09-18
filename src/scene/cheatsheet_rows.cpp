@@ -183,14 +183,14 @@ namespace {
           return name + ": " + (submap->name.empty() ? "unnamed" : submap->name);
         }
         return name;
-      case umbriel::ActionArgKind::WidthFraction:
-        if (const auto* width = umbriel::payloadIf<umbriel::WidthArg>(bind)) {
-          return std::format("{}: {:.2g}", name, width->fraction);
+      case umbriel::ActionArgKind::Fraction:
+        if (const auto* fraction = umbriel::payloadIf<umbriel::FractionArg>(bind)) {
+          return std::format("{}: {:.2g}", name, fraction->fraction);
         }
         return name;
-      case umbriel::ActionArgKind::WidthDelta:
-        if (const auto* width = umbriel::payloadIf<umbriel::WidthArg>(bind)) {
-          return std::format("{}: {:+.2g}", name, width->fraction);
+      case umbriel::ActionArgKind::FractionDelta:
+        if (const auto* fraction = umbriel::payloadIf<umbriel::FractionArg>(bind)) {
+          return std::format("{}: {:+.2g}", name, fraction->fraction);
         }
         return name;
       case umbriel::ActionArgKind::LayoutMode:
@@ -317,18 +317,18 @@ namespace {
     case A::WindowConsumeOrExpelLeft:
     case A::WindowConsumeRight:
     case A::WindowConsumeOrExpelRight:
-    case A::WindowCycleWidth:
-    case A::WindowCycleWidthBack:
-    case A::WindowSetWidth:
-    case A::WindowModifyWidth:
+    case A::WindowCyclePrimaryExtent:
+    case A::WindowCyclePrimaryExtentBack:
+    case A::WindowSetPrimaryExtent:
+    case A::WindowModifyPrimaryExtent:
     case A::WindowModifyWidthLeft:
     case A::WindowModifyWidthRight:
-    case A::WindowSetHeight:
-    case A::WindowModifyHeight:
+    case A::WindowSetSecondaryExtent:
+    case A::WindowModifySecondaryExtent:
     case A::WindowModifyHeightUp:
     case A::WindowModifyHeightDown:
-    case A::WindowCycleHeight:
-    case A::WindowCycleHeightBack:
+    case A::WindowCycleSecondaryExtent:
+    case A::WindowCycleSecondaryExtentBack:
     case A::WindowCenter:
     case A::LayoutScrollLeft:
     case A::LayoutScrollRight:
@@ -406,6 +406,7 @@ namespace {
     case A::CheatsheetOpen:
     case A::CheatsheetClose:
     case A::KeyboardLayoutNext:
+    case A::ShortcutsInhibitToggle:
       return Group::System;
     default:
       return Group::System;

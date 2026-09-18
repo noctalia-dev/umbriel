@@ -43,7 +43,7 @@ background_tint = "#000000FF"
 workspace_background = "#000000FF"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 zoom = 0.5

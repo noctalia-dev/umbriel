@@ -254,80 +254,91 @@ UMBRIEL_TEST(onlyResetPopsASubmap) {
   CHECK(!umbriel::isSubmapResetBind(bind));
 }
 
-UMBRIEL_TEST(parsesWidthFractions) {
+UMBRIEL_TEST(parsesPrimaryExtentFractions) {
   Keybind bind;
-  CHECK(parseAction("window-set-width:0.5", bind));
-  CHECK(bind.action == KeybindAction::WindowSetWidth);
-  const auto* width = umbriel::payloadIf<umbriel::WidthArg>(bind);
+  CHECK(parseAction("window-set-primary-extent:0.5", bind));
+  CHECK(bind.action == KeybindAction::WindowSetPrimaryExtent);
+  const auto* width = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(width != nullptr);
   CHECK(width != nullptr && std::fabs(width->fraction - 0.5) < 1e-9);
 
-  CHECK(parseAction("window-set-width:1.0", bind));
-  CHECK(parseAction("window-set-width:0.1", bind));
+  CHECK(parseAction("window-set-primary-extent:1.0", bind));
+  CHECK(parseAction("window-set-primary-extent:0.1", bind));
 }
 
-UMBRIEL_TEST(rejectsOutOfRangeWidthFractions) {
+UMBRIEL_TEST(rejectsOutOfRangePrimaryExtentFractions) {
   Keybind bind;
-  CHECK(!parseAction("window-set-width:0", bind)); // below the 0.1 floor
-  CHECK(!parseAction("window-set-width:0.09", bind));
-  CHECK(!parseAction("window-set-width:1.5", bind)); // above 1.0
-  CHECK(!parseAction("window-set-width:-0.5", bind));
-  CHECK(!parseAction("window-set-width:abc", bind));
-  CHECK(!parseAction("window-set-width:0.5x", bind)); // trailing garbage
-  CHECK(!parseAction("window-set-width:", bind));
-  CHECK(!parseAction("window-set-width:nan", bind));
+  CHECK(!parseAction("window-set-primary-extent:0", bind)); // below the 0.1 floor
+  CHECK(!parseAction("window-set-primary-extent:0.09", bind));
+  CHECK(!parseAction("window-set-primary-extent:1.5", bind)); // above 1.0
+  CHECK(!parseAction("window-set-primary-extent:-0.5", bind));
+  CHECK(!parseAction("window-set-primary-extent:abc", bind));
+  CHECK(!parseAction("window-set-primary-extent:0.5x", bind)); // trailing garbage
+  CHECK(!parseAction("window-set-primary-extent:", bind));
+  CHECK(!parseAction("window-set-primary-extent:nan", bind));
 }
 
-UMBRIEL_TEST(parsesWidthDeltas) {
+UMBRIEL_TEST(parsesPrimaryExtentDeltas) {
   const auto fraction = [](const Keybind& bind) {
-    const auto* width = umbriel::payloadIf<umbriel::WidthArg>(bind);
+    const auto* width = umbriel::payloadIf<umbriel::FractionArg>(bind);
     return width != nullptr ? width->fraction : 0.0;
   };
 
   Keybind bind;
-  CHECK(parseAction("window-modify-width:-0.2", bind));
-  CHECK(bind.action == KeybindAction::WindowModifyWidth);
+  CHECK(parseAction("window-modify-primary-extent:-0.2", bind));
+  CHECK(bind.action == KeybindAction::WindowModifyPrimaryExtent);
   CHECK(std::fabs(fraction(bind) + 0.2) < 1e-9);
 
-  CHECK(parseAction("window-modify-width:+0.1", bind)); // explicit plus is allowed
+  CHECK(parseAction("window-modify-primary-extent:+0.1", bind)); // explicit plus is allowed
   CHECK(std::fabs(fraction(bind) - 0.1) < 1e-9);
 
-  CHECK(parseAction("window-modify-width:0.25", bind));
+  CHECK(parseAction("window-modify-primary-extent:0.25", bind));
   CHECK(std::fabs(fraction(bind) - 0.25) < 1e-9);
 }
 
-UMBRIEL_TEST(rejectsInvalidWidthDeltas) {
+UMBRIEL_TEST(rejectsInvalidPrimaryExtentDeltas) {
   Keybind bind;
-  CHECK(!parseAction("window-modify-width:0", bind));    // zero delta is a no-op
-  CHECK(!parseAction("window-modify-width:1.5", bind));  // above the 0.9 cap
-  CHECK(!parseAction("window-modify-width:-1.0", bind)); // below -0.9
-  CHECK(!parseAction("window-modify-width:abc", bind));
-  CHECK(!parseAction("window-modify-width:", bind));      // empty arg
-  CHECK(!parseAction("window-modify-width", bind));       // requires an argument
-  CHECK(!parseAction("window-modify-width:++0.1", bind)); // only one leading '+'
-  CHECK(!parseAction("window-modify-width:0.1x", bind));  // trailing garbage
-  CHECK(!parseAction("window-modify-width:nan", bind));
+  CHECK(!parseAction("window-modify-primary-extent:0", bind));    // zero delta is a no-op
+  CHECK(!parseAction("window-modify-primary-extent:1.5", bind));  // above the 0.9 cap
+  CHECK(!parseAction("window-modify-primary-extent:-1.0", bind)); // below -0.9
+  CHECK(!parseAction("window-modify-primary-extent:abc", bind));
+  CHECK(!parseAction("window-modify-primary-extent:", bind));      // empty arg
+  CHECK(!parseAction("window-modify-primary-extent", bind));       // requires an argument
+  CHECK(!parseAction("window-modify-primary-extent:++0.1", bind)); // only one leading '+'
+  CHECK(!parseAction("window-modify-primary-extent:0.1x", bind));  // trailing garbage
+  CHECK(!parseAction("window-modify-primary-extent:nan", bind));
 }
 
-UMBRIEL_TEST(parsesHeightActions) {
+UMBRIEL_TEST(parsesSecondaryExtentActions) {
   Keybind bind;
-  CHECK(parseAction("window-set-height:0.5", bind));
-  CHECK(bind.action == KeybindAction::WindowSetHeight);
-  const auto* height = umbriel::payloadIf<umbriel::WidthArg>(bind);
+  CHECK(parseAction("window-set-secondary-extent:0.5", bind));
+  CHECK(bind.action == KeybindAction::WindowSetSecondaryExtent);
+  const auto* height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr);
   CHECK(height != nullptr && std::fabs(height->fraction - 0.5) < 1e-9);
 
-  CHECK(parseAction("window-modify-height:-0.2", bind));
-  CHECK(bind.action == KeybindAction::WindowModifyHeight);
-  height = umbriel::payloadIf<umbriel::WidthArg>(bind);
+  CHECK(parseAction("window-modify-secondary-extent:-0.2", bind));
+  CHECK(bind.action == KeybindAction::WindowModifySecondaryExtent);
+  height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr && std::fabs(height->fraction + 0.2) < 1e-9);
 
-  CHECK(parseAction("window-modify-height:+0.1", bind));
-  height = umbriel::payloadIf<umbriel::WidthArg>(bind);
+  CHECK(parseAction("window-modify-secondary-extent:+0.1", bind));
+  height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr && std::fabs(height->fraction - 0.1) < 1e-9);
 
-  CHECK(!parseAction("window-set-height:0.05", bind));
-  CHECK(!parseAction("window-modify-height:0", bind));
+  CHECK(!parseAction("window-set-secondary-extent:0.05", bind));
+  CHECK(!parseAction("window-modify-secondary-extent:0", bind));
+}
+
+UMBRIEL_TEST(rejectsRemovedWidthAndHeightActions) {
+  constexpr std::array<std::string_view, 8> removed{
+      "window-cycle-width",   "window-cycle-width-back", "window-cycle-height",     "window-cycle-height-back",
+      "window-set-width:0.5", "window-set-height:0.5",   "window-modify-width:0.1", "window-modify-height:0.1",
+  };
+  for (const std::string_view action : removed) {
+    Keybind bind;
+    CHECK(!parseAction(action, bind));
+  }
 }
 
 UMBRIEL_TEST(parsesLayoutModeActions) {
@@ -584,10 +595,10 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::Command:
       input += ":value";
       break;
-    case ActionArgKind::WidthFraction:
+    case ActionArgKind::Fraction:
       input += ":0.5";
       break;
-    case ActionArgKind::WidthDelta:
+    case ActionArgKind::FractionDelta:
       input += ":0.1";
       break;
     case ActionArgKind::LayoutMode:
@@ -612,9 +623,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
           || umbriel::payloadIf<umbriel::SubmapArg>(bind) != nullptr
       );
       break;
-    case ActionArgKind::WidthFraction:
-    case ActionArgKind::WidthDelta:
-      CHECK(umbriel::payloadIf<umbriel::WidthArg>(bind) != nullptr);
+    case ActionArgKind::Fraction:
+    case ActionArgKind::FractionDelta:
+      CHECK(umbriel::payloadIf<umbriel::FractionArg>(bind) != nullptr);
       break;
     case ActionArgKind::LayoutMode:
       CHECK(umbriel::payloadIf<umbriel::LayoutModeArg>(bind) != nullptr);
@@ -669,10 +680,10 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
     case ActionArgKind::Command:
       input += ":true";
       break;
-    case ActionArgKind::WidthFraction:
+    case ActionArgKind::Fraction:
       input += ":0.5";
       break;
-    case ActionArgKind::WidthDelta:
+    case ActionArgKind::FractionDelta:
       input += ":0.1";
       break;
     case ActionArgKind::LayoutMode:
@@ -786,7 +797,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return {};
     case ActionArgKind::Command:
       return ":true";
-    case ActionArgKind::WidthFraction:
+    case ActionArgKind::Fraction:
       return ":0.5";
     case ActionArgKind::Workspace:
       return ":1";
@@ -797,7 +808,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::WindowId:
     case ActionArgKind::OptionalWindowId:
       return ":window-1";
-    case ActionArgKind::WidthDelta:
+    case ActionArgKind::FractionDelta:
       return ":0.1";
     case ActionArgKind::LayoutMode:
       return ":scrolling";
@@ -813,7 +824,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "";
     case ActionArgKind::Command:
       return "<cmd>";
-    case ActionArgKind::WidthFraction:
+    case ActionArgKind::Fraction:
       return "<fraction>";
     case ActionArgKind::Workspace:
       return "<workspace>[/<output>]";
@@ -825,7 +836,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<window-id>";
     case ActionArgKind::OptionalWindowId:
       return "[<window-id>]";
-    case ActionArgKind::WidthDelta:
+    case ActionArgKind::FractionDelta:
       return "<delta>";
     case ActionArgKind::LayoutMode:
       return "<scrolling|dwindle|master|toggle>";

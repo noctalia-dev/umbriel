@@ -435,6 +435,10 @@ namespace umbriel {
       self->cancelRepeat();
       return 0;
     }
+    if (self->m_server->keyboardShortcutsInhibited() && !self->m_repeatBind.allowWhenInhibited) {
+      self->cancelRepeat();
+      return 0;
+    }
     self->m_server->notifyIdleActivity();
     self->m_server->executeKeybindAction(self->m_repeatBind);
     wl_event_source_timer_update(self->m_repeatTimer, self->m_repeatIntervalMs);

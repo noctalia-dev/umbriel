@@ -160,14 +160,14 @@ name = "overview-second"
 match.title = "^overview-scratch-first$"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^overview-scratch-second$"
 default_output = "HEADLESS-2"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

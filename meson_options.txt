@@ -5,3 +5,9 @@ option(
   description: 'Build unit tests, harness clients, and umbrielfx checks (auto: on for unsanitized debug builds)',
 )
 option('jemalloc', type: 'feature', value: 'auto', description: 'Use jemalloc on glibc builds')
+option(
+  'tracy',
+  type: 'feature',
+  value: 'disabled',
+  description: 'Compile umbrielfx\'s Tracy CPU and GPU render zones (needs a client built with TRACY_ENABLE and TRACY_ON_DEMAND)',
+)

@@ -953,6 +953,31 @@ namespace umbriel {
     server->updateIdleInhibit();
     kLog.debug("idle inhibitor removed");
   }
+
+  void Server::onNewShortcutsInhibitor(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newShortcutsInhibitor);
+    auto* inhibitor = static_cast<wlr_keyboard_shortcuts_inhibitor_v1*>(data);
+    auto watch = std::make_unique<ShortcutsInhibitorWatch>();
+    watch->server = self;
+    watch->inhibitor = inhibitor;
+    watch->destroy.notify = onShortcutsInhibitorDestroy;
+    wl_signal_add(&inhibitor->events.destroy, &watch->destroy);
+    self->m_shortcutsInhibitors.push_back(std::move(watch));
+    wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
+    kLog.debug("keyboard shortcuts inhibitor activated");
+  }
+
+  void Server::onShortcutsInhibitorDestroy(wl_listener* listener, void* /*data*/) {
+    ShortcutsInhibitorWatch* watch;
+    watch = wl_container_of(listener, watch, destroy);
+    Server* server = watch->server;
+    wl_list_remove(&watch->destroy.link);
+    std::erase_if(server->m_shortcutsInhibitors, [watch](const std::unique_ptr<ShortcutsInhibitorWatch>& candidate) {
+      return candidate.get() == watch;
+    });
+    kLog.debug("keyboard shortcuts inhibitor removed");
+  }
   void Server::onPointerDestroy(wl_listener* listener, void* /*data*/) {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
@@ -1291,6 +1316,7 @@ namespace umbriel {
     if (layoutBox.width <= 0 || layoutBox.height <= 0) {
       return;
     }
+    wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
     wlr_scene_rect_set_color(m_backdrop, config().colors.backdrop.data());
     wlr_scene_rect_set_size(m_backdrop, layoutBox.width, layoutBox.height);
     wlr_scene_node_set_position(&m_backdrop->node, layoutBox.x, layoutBox.y);
@@ -1895,8 +1921,9 @@ namespace umbriel {
             .workspaceNamed = workspace->named(),
             .layoutSnapshot = nullptr,
             .layoutMember = 0,
-            .ownsNamedScrollingColumnWidth = view->m_ownsNamedScrollingColumnWidth,
-            .pendingNamedScrollingColumnWidth = std::nullopt,
+            .ownsNamedScrollingColumnExtent = view->m_ownsNamedScrollingColumnExtent,
+            .pendingNamedScrollingColumnExtentPx = std::nullopt,
+            .pendingNamedScrollingColumnExtent = std::nullopt,
             .layoutModeOverride = workspace->layoutModeOverride(),
             .floatingOutputPosition = std::nullopt,
             .configGeneration = configStore().generation(),
@@ -2087,14 +2114,21 @@ namespace umbriel {
         first = last;
         continue;
       }
-      const auto applyPendingNamedScrollingColumnWidth = [workspace](View* view, const View::DisplacedHome& home) {
-        if (!home.pendingNamedScrollingColumnWidth || !view->namedScrollingColumnName()) {
+      const auto applyPendingNamedScrollingColumnExtent = [workspace](View* view, const View::DisplacedHome& home) {
+        if ((!home.pendingNamedScrollingColumnExtentPx && !home.pendingNamedScrollingColumnExtent)
+            || !view->namedScrollingColumnName()) {
           return;
         }
         ScrollingLayout* scrolling = workspace->scrollingLayout();
         const int column = scrolling != nullptr ? scrolling->columnOf(view) : -1;
         if (column >= 0) {
-          scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnWidth);
+          if (home.pendingNamedScrollingColumnExtentPx) {
+            scrolling->setWidthFromPixels(
+                column, workspace->scrollViewportExtent(), *home.pendingNamedScrollingColumnExtentPx
+            );
+          } else if (home.pendingNamedScrollingColumnExtent) {
+            scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnExtent);
+          }
           workspace->markArrange(false);
         }
       };
@@ -2158,9 +2192,9 @@ namespace umbriel {
       std::vector<View*> exactViews;
       if (exact != nullptr) {
         for (View* view : exact->views) {
-          const bool ownsNamedScrollingColumnWidth = view->displacedHome()->ownsNamedScrollingColumnWidth;
+          const bool ownsNamedScrollingColumnExtent = view->displacedHome()->ownsNamedScrollingColumnExtent;
           view->setWorkspace(workspace, false);
-          view->m_ownsNamedScrollingColumnWidth = ownsNamedScrollingColumnWidth;
+          view->m_ownsNamedScrollingColumnExtent = ownsNamedScrollingColumnExtent;
           if (view->workspace() == workspace && view->mapped() && view->tiled()) {
             exactViews.push_back(view);
           }
@@ -2211,7 +2245,7 @@ namespace umbriel {
           workspace->markArrange(false);
         }
         for (View* view : exactViews) {
-          applyPendingNamedScrollingColumnWidth(view, *view->displacedHome());
+          applyPendingNamedScrollingColumnExtent(view, *view->displacedHome());
         }
         restored += exactViews.size();
       }
@@ -2254,7 +2288,7 @@ namespace umbriel {
         if (moved) {
           view->setWorkspace(workspace);
         }
-        applyPendingNamedScrollingColumnWidth(view, home);
+        applyPendingNamedScrollingColumnExtent(view, home);
         if (floating && home.floatingOutputPosition && target != nullptr) {
           const wlr_box outputBox = target->layoutBox();
           if (outputBox.width > 0 && outputBox.height > 0) {

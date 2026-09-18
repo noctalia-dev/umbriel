@@ -89,14 +89,14 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-consume-or-expel-left` | Split the window out, or stack it into the column left |
 | `window-consume-or-expel-right` | Split the window out, or stack it into the column right |
 | `window-consume-right` | Stack the focused window into the column right |
-| `window-cycle-height` | Cycle the focused window through the height presets |
-| `window-cycle-height-back` | Cycle the height presets in reverse |
-| `window-cycle-width` | Cycle the focused column through the width presets |
-| `window-cycle-width-back` | Cycle the width presets in reverse |
-| `window-modify-height:<delta>` | Change the focused window's height by a fraction |
+| `window-cycle-primary-extent` | Cycle the focused area's primary extent through presets |
+| `window-cycle-primary-extent-back` | Cycle the primary extent presets in reverse |
+| `window-cycle-secondary-extent` | Cycle the focused area's secondary extent through presets |
+| `window-cycle-secondary-extent-back` | Cycle the secondary extent presets in reverse |
 | `window-modify-height-down:<delta>` | Resize the focused window from its bottom edge |
 | `window-modify-height-up:<delta>` | Resize the focused window from its top edge |
-| `window-modify-width:<delta>` | Change the focused column's width by a fraction |
+| `window-modify-primary-extent:<delta>` | Change the focused area's primary extent by a fraction |
+| `window-modify-secondary-extent:<delta>` | Change the focused area's secondary extent by a fraction |
 | `window-modify-width-left:<delta>` | Resize the focused column from its left edge |
 | `window-modify-width-right:<delta>` | Resize the focused column from its right edge |
 | `window-move-down` | Move the focused window down in its column |
@@ -113,8 +113,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-move-to-output-right` | Move the focused window to the output right |
 | `window-move-to-output-up` | Move the focused window to the output above |
 | `window-move-up` | Move the focused window up in its column |
-| `window-set-height:<fraction>` | Set the focused window's height fraction |
-| `window-set-width:<fraction>` | Set the focused column's width fraction |
+| `window-set-primary-extent:<fraction>` | Set the focused area's primary extent fraction |
+| `window-set-secondary-extent:<fraction>` | Set the focused area's secondary extent fraction |
 | `window-swap-next` | Swap with the next window in layout order |
 | `window-swap-previous` | Swap with the previous window in layout order |
 
@@ -196,6 +196,7 @@ are described in [Overview](workspaces-overview.md).
 | `dpms-on:[<output>]` | Power on one output, or every output when bare |
 | `keyboard-layout-next` | Switch one keyboard to its next configured layout |
 | `session-quit:[skip-confirmation]` | Quit the session, confirming first unless told to skip |
+| `shortcuts-inhibit-toggle` | Toggle shortcuts inhibition for the focused surface |
 | `submap:<name>` | Enter a submap layer, or leave one with 'reset' |
 
 ## Layout differences
@@ -210,7 +211,8 @@ does, this is the full list:
 | `column-move-to-first`, `column-move-to-last` | Moves the column to that end of the workspace | Swaps the focused window with the first or last tile | Exchanges master and stack unless the focused area is already first or last |
 | `window-consume-left`, `window-consume-right` | Stacks the window into the adjacent column | Swaps with the adjacent on-screen tile in that direction | Moves the window between the master and stack areas |
 | `window-consume-or-expel-left`, `window-consume-or-expel-right` | Splits a stacked window into its own column, or stacks a lone window into the adjacent one | Swaps with the adjacent on-screen tile in that direction | Moves the window between the master and stack areas |
-| `window-set-height`, `window-modify-height`, `window-cycle-height`, `window-cycle-height-back` | Sizes the row within its column | Adjusts the vertical splits containing the window | Sizes the row within the master or stack area |
+| `window-set-primary-extent`, `window-modify-primary-extent`, `window-cycle-primary-extent`, `window-cycle-primary-extent-back` | Sizes the lane along the strip axis | Adjusts the horizontal splits containing the window | Sizes the master and stack areas |
+| `window-set-secondary-extent`, `window-modify-secondary-extent`, `window-cycle-secondary-extent`, `window-cycle-secondary-extent-back` | Sizes the row within its column | Adjusts the vertical splits containing the window | Sizes the row within the master or stack area |
 | `column-center` | Centers the column in the viewport | Returns an IPC error | Returns an IPC error |
 | `layout-scroll-left`, `layout-scroll-right`, `layout-scroll-up`, `layout-scroll-down`, `layout-scroll-drag` | Pans the strip | No effect | No effect |
 | `layout-master-count-increase`, `layout-master-count-decrease` | No effect | No effect | Moves one window between master and stack |
@@ -249,7 +251,7 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   moves, transfers to another output, output focus actions, and foreign-
   toplevel activation requests from docks and taskbars. Pointer-driven and
   automatic focus changes never move the cursor. `window-focus:<window-id>`
-  stays focus-only, while `window-focus-warp:<window-id>` always moves it.
+  follows this setting, while `window-focus-warp:<window-id>` always moves it.
 - **Hidden scratchpads.** Either ID-targeted focus action summons a matching
   hidden scratchpad window to the output under the pointer before focusing it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction

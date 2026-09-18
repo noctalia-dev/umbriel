@@ -1,6 +1,7 @@
 #include "server/wine_color_manager.h"
 
 #include "color-management-v1-server-protocol.h"
+#include "core/tracy.h"
 #include "output/output.h"
 #include "server/server.h"
 #include "view/view.h"
@@ -1154,7 +1155,10 @@ namespace umbriel {
     m_impl->applySurfaceDescriptionToBuffer(surface, buffer);
   }
 
-  void WineColorManager::applySurfaceDescriptions() { m_impl->applySurfaceDescriptions(); }
+  void WineColorManager::applySurfaceDescriptions() {
+    UMBRIEL_ZONE("WineColorManager::applySurfaceDescriptions");
+    m_impl->applySurfaceDescriptions();
+  }
 
   void WineColorManager::updatePreferredDescriptions() { m_impl->updatePreferredDescriptions(); }
 

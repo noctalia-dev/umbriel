@@ -106,6 +106,26 @@ with the table form:
 "XF86MonBrightnessDown" = { action = "spawn:noctalia msg brightness-down 10", allow_when_locked = true }
 ```
 
+## Keyboard shortcuts inhibition
+
+Applications such as games and remote desktop clients can ask Umbriel to pass
+their keyboard shortcuts through while the requesting surface has keyboard
+focus. The request applies only to keyboard binds. Pointer and wheel binds are
+unchanged.
+
+Use `allow_when_inhibited = true` for bindings that must remain available. In
+particular, configure an escape binding that toggles the focused surface's
+inhibitor:
+
+```toml
+"Mod+Shift+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
+```
+
+The action sends `inactive` when disabling an inhibitor and `active` when
+enabling it again. It does nothing when the focused surface has not requested
+shortcuts inhibition. Switching focus makes an active inhibitor irrelevant,
+but does not deactivate it.
+
 ## Cooldown
 
 Set `cooldown_ms` to suppress repeated bind actions for the configured duration. Matching input remains consumed while the cooldown is active, and suppressed events do not extend it.
@@ -261,25 +281,26 @@ and widgets via `noctalia msg`. Typical bindings:
 "Mod+Escape" = "spawn:noctalia msg panel-toggle session"
 ```
 
-## Example: direct column widths
+## Example: direct primary extents
 
 ```toml
-"Mod+A" = "window-set-width:0.333"
-"Mod+S" = "window-set-width:0.5"
-"Mod+D" = "window-set-width:0.667"
-"Mod+F" = "window-set-width:1.0"
+"Mod+A" = "window-set-primary-extent:0.333"
+"Mod+S" = "window-set-primary-extent:0.5"
+"Mod+D" = "window-set-primary-extent:0.667"
+"Mod+F" = "window-set-primary-extent:1.0"
 ```
 
-These resize focused floating windows too, as fractions of the usable area.
-`window-cycle-width`, `window-cycle-width-back`, `window-cycle-height`, and
-`window-cycle-height-back` step through the layout width presets on either
-axis, tiling and floating alike:
+For floating windows, primary extent means physical width and secondary extent
+means physical height. `window-cycle-primary-extent`,
+`window-cycle-primary-extent-back`, `window-cycle-secondary-extent`, and
+`window-cycle-secondary-extent-back` step through the layout extent presets on
+either axis, tiling and floating alike:
 
 ```toml
-"Mod+R" = "window-cycle-width"
-"Mod+Shift+R" = "window-cycle-width-back"
-"Mod+Alt+R" = "window-cycle-height"
-"Mod+Alt+Shift+R" = "window-cycle-height-back"
+"Mod+R" = "window-cycle-primary-extent"
+"Mod+Shift+R" = "window-cycle-primary-extent-back"
+"Mod+Alt+R" = "window-cycle-secondary-extent"
+"Mod+Alt+Shift+R" = "window-cycle-secondary-extent-back"
 ```
 
 ## Example: scroll-wheel navigation

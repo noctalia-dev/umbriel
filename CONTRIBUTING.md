@@ -286,10 +286,14 @@ taking control of a seat.
 
 ## Debugging
 
-- Debug and ASan builds log at debug level to stderr and to `$XDG_CACHE_HOME/umbriel/umbriel.log`
-  (fallback `~/.cache/umbriel/umbriel.log`). The first startup record includes the
-  release version and commit revision, which helps identify the exact binary
-  behind a report.
+- Every build writes every level, debug included, to
+  `$XDG_CACHE_HOME/umbriel/umbriel.log` (fallback `~/.cache/umbriel/umbriel.log`).
+  The file is deliberately unfiltered (`src/core/log.cpp:270`); only the console
+  honours the build's minimum level, which is debug for debug and ASan builds and
+  info for release (`src/core/log.cpp:21-25`). So a release session still records
+  debug diagnostics to the file while keeping stderr quiet. The first startup
+  record includes the release version and commit revision, which helps identify
+  the exact binary behind a report.
 
 ### AddressSanitizer
 
@@ -322,6 +326,38 @@ started by a display manager, redirect them: `ASAN_OPTIONS=log_path=/var/tmp/umb
 An ASan build still links `jemalloc` when it is installed, since `-Djemalloc` is independent of `b_sanitize`, but
 `libasan` precedes it in the link order and services every allocation. The `jemalloc: narenas=...` startup record in
 an ASan build therefore describes an allocator nothing uses; configure with `-Djemalloc=disabled` to drop it.
+
+### Profiling
+
+`tracy` mode is a release build with `-Dtracy=enabled`. It compiles the Tracy zones in umbrielfx's render pass and
+in the compositor's per-frame path; every other build mode compiles them to nothing.
+
+```sh
+just tracy                                     # build build-tracy/umbriel
+just mode=tracy run                            # nested instrumented session
+tracy-capture -o /tmp/umbriel.tracy -s 10 -f   # 10 seconds, overwrite
+tracy-csvexport /tmp/umbriel.tracy             # name, counts, mean_ns, max_ns per zone
+```
+
+The client half of Tracy has to be built rather than installed. Both of its upstream build systems default
+`TRACY_ENABLE` and `TRACY_ON_DEMAND` to off, and distributions package those defaults, so the packaged `libtracy.so`
+links successfully and records nothing. `-Dtracy=enabled` probes for `___tracy_connected` and fails configuration
+rather than producing a silently empty trace. The GUI and the CLI tools can stay the packaged ones.
+
+```sh
+git clone --depth 1 --branch v0.14.1 https://github.com/wolfpld/tracy
+cmake -S tracy -B tracy/b -GNinja -DCMAKE_BUILD_TYPE=Release \
+      -DTRACY_ENABLE=ON -DTRACY_ON_DEMAND=ON \
+      -DCMAKE_INSTALL_PREFIX="$HOME/.local" -DCMAKE_INSTALL_LIBDIR=lib
+cmake --build tracy/b && cmake --install tracy/b
+```
+
+That installs `libTracyClient.a`, which links statically, so the instrumented binary needs no library path at
+runtime. `tracy` mode adds `$HOME/.local/lib/pkgconfig` to the pkg-config path; put a `tracy.pc` there whose `Libs`
+is `-L${libdir} -lTracyClient` and whose `Cflags` points at `${prefix}/include/tracy`.
+
+Which zones exist, what a capture can and cannot answer, and which workloads to measure with are in
+[Render performance](docs/design/render-performance.md).
 
 ### Runtime inspection
 

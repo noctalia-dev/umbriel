@@ -510,11 +510,11 @@ namespace umbriel {
   }
 
   Layout::InitialSize DwindleLayout::initialSize(
-      const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/, const View* splitAnchor
+      const wlr_box& usable, bool /*wantMaximize*/, std::optional<double> /*ruleExtent*/,
+      std::optional<int> /*ruleExtentPx*/, const View* splitAnchor
   ) const {
     const wlr_box content = contentArea(usable);
-    // A window rule's default_width is a viewport fraction, which a splitting layout has no use for. The first leaf
-    // owns the whole area.
+    // Scrolling extents do not affect a splitting layout. The first leaf owns the whole area.
     if (m_flatColumns.empty()) {
       return {.width = content.width, .height = content.height};
     }
@@ -619,7 +619,7 @@ namespace umbriel {
     for (const Split& split : axisSplits) {
       current *= splitShare(split);
     }
-    return applyFraction(axisSplits, nextFractionPreset(m_config->widthPresets, current, direction));
+    return applyFraction(axisSplits, nextFractionPreset(m_config->extentPresets, current, direction));
   }
 
   bool DwindleLayout::toggleFullWidth(int columnIndex) {

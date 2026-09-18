@@ -63,7 +63,7 @@ default_output = "HEADLESS-1"
 
 [[window_rule]]
 match.title = "^named-output-owner-late$"
-default_width = 0.7
+default_scrolling_extent = 0.7
 
 [[window_rule]]
 match.title = "^named-output-peer$"

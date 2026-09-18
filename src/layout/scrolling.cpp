@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <ranges>
 
 // wlr_box and WLR_EDGE_* only. Layout geometry must not pull src/wlr.h, which
 // drags SceneFX and the renderer into a translation unit that does arithmetic.
@@ -391,17 +390,17 @@ namespace umbriel {
     }
     const int index = std::clamp(columnIndex, 0, static_cast<int>(m_columns.size()));
     Column column;
-    column.widthFrac = m_config->scrolling.defaultWidthFraction.value_or(0.5);
+    column.widthFrac = m_config->scrolling.defaultExtentFraction.value_or(0.5);
     column.views.push_back(view);
     column.heightWeights.push_back(1.0);
     m_columns.insert(m_columns.begin() + index, std::move(column));
   }
 
   // Weight for a row about to be added at `row`, and the gap it takes over. A column keeps free space at its ends as
-  // gap weight (pointer drags and the height actions both put it there), and that free space is exactly where the next
-  // row belongs, so the incoming row claims it instead of squeezing in beside it. Without a gap to claim the row keeps
-  // `fallbackWeight`. The scaling keeps the other rows at their current pixel extents across the stack shrinking by
-  // one inter-row gap.
+  // gap weight (pointer drags and secondary extent actions both put it there), and that free space is exactly where the
+  // next row belongs, so the incoming row claims it instead of squeezing in beside it. Without a gap to claim the row
+  // keeps `fallbackWeight`. The scaling keeps the other rows at their current pixel extents across the stack shrinking
+  // by one inter-row gap.
   double ScrollingLayout::claimInsertWeight(Column& column, int row, double fallbackWeight) {
     ensureWeightCount(column);
     const int existingRows = static_cast<int>(column.views.size());
@@ -499,7 +498,7 @@ namespace umbriel {
       source.heightWeights.erase(source.heightWeights.begin() + row);
     }
     Column column;
-    column.widthFrac = m_config->scrolling.defaultWidthFraction.value_or(0.5);
+    column.widthFrac = m_config->scrolling.defaultExtentFraction.value_or(0.5);
     column.views.push_back(view);
     column.heightWeights.push_back(weight);
     const int destinationColumn = sourceColumn + (direction > 0 ? 1 : 0);
@@ -796,19 +795,25 @@ namespace umbriel {
   }
 
   Layout::InitialSize ScrollingLayout::initialSize(
-      const wlr_box& usable, std::optional<double> ruleWidthFraction, const View* /*splitAnchor*/
+      const wlr_box& usable, bool wantMaximized, std::optional<double> ruleExtent, std::optional<int> ruleExtentPx,
+      const View* /*splitAnchor*/
   ) const {
     const wlr_box content = contentArea(usable);
-    const std::optional<double> fraction =
-        ruleWidthFraction ? ruleWidthFraction : m_config->scrolling.defaultWidthFraction;
-    if (!fraction) {
-      return vertical() ? InitialSize{.width = content.width, .height = 0}
-                        : InitialSize{.width = 0, .height = content.height};
+    const int viewportPrimary = vertical() ? content.height : content.width;
+    int extent = 0;
+    if (wantMaximized) {
+      extent = viewportPrimary;
+    } else if (ruleExtentPx) {
+      extent = std::clamp(*ruleExtentPx, 1, viewportPrimary);
+    } else if (ruleExtent) {
+      extent = fractionalWidth(viewportPrimary, *ruleExtent);
+    } else if (m_config->scrolling.defaultExtentFraction) {
+      extent = fractionalWidth(viewportPrimary, *m_config->scrolling.defaultExtentFraction);
     }
     if (vertical()) {
-      return {.width = content.width, .height = fractionalWidth(content.height, *fraction)};
+      return {.width = content.width, .height = extent};
     }
-    return {.width = fractionalWidth(content.width, *fraction), .height = content.height};
+    return {.width = extent, .height = content.height};
   }
 
   wlr_box ScrollingLayout::targetBox(const View* view) const {
@@ -824,7 +829,7 @@ namespace umbriel {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
-    column.widthFrac = nextFractionPreset(m_config->widthPresets, column.widthFrac, direction);
+    column.widthFrac = nextFractionPreset(m_config->extentPresets, column.widthFrac, direction);
     column.savedWidthFrac = 0.0;
     return true;
   }
@@ -863,7 +868,7 @@ namespace umbriel {
 
   double ScrollingLayout::widthFraction(int columnIndex) const {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size())) {
-      return m_config->scrolling.defaultWidthFraction.value_or(0.5);
+      return m_config->scrolling.defaultExtentFraction.value_or(0.5);
     }
     return m_columns[static_cast<size_t>(columnIndex)].widthFrac;
   }

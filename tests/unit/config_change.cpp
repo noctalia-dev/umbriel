@@ -199,7 +199,7 @@ UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   CHECK(ConfigChange::between(before, shadowed).appearance);
 
   Config scrolled;
-  scrolled.layout.scrolling.defaultWidthFraction = 0.6;
+  scrolled.layout.scrolling.defaultExtentFraction = 0.6;
   CHECK(ConfigChange::between(before, scrolled).layout);
 
   Config focused;
@@ -575,7 +575,7 @@ UMBRIEL_TEST(outputScrollingDefaultOnlyRefreshesWorkspaceLayout) {
   before.outputs.push_back(output);
 
   Config after = before;
-  after.outputs[0].layout.scrolling.defaultWidthFraction = 0.75;
+  after.outputs[0].layout.scrolling.defaultExtentFraction = 0.75;
 
   const ConfigChange change = ConfigChange::between(before, after);
   CHECK(change.outputs);

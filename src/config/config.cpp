@@ -571,14 +571,14 @@ namespace umbriel {
       return matrix;
     }
 
-    std::optional<std::vector<double>> readWidthPresets(Section& section, std::string_view context) {
-      const toml::node* node = section.take("width_presets");
+    std::optional<std::vector<double>> readExtentPresets(Section& section, std::string_view context) {
+      const toml::node* node = section.take("extent_presets");
       if (node == nullptr) {
         return std::nullopt;
       }
       const auto* array = node->as_array();
       if (array == nullptr || array->empty()) {
-        warnAt(node->source(), "ignoring {}.width_presets (expected non-empty array of numbers)", context);
+        warnAt(node->source(), "ignoring {}.extent_presets (expected non-empty array of numbers)", context);
         return std::nullopt;
       }
 
@@ -587,12 +587,12 @@ namespace umbriel {
       for (const auto& entry : *array) {
         const auto value = entry.value<double>();
         if (!value || std::isnan(*value)) {
-          warnAt(node->source(), "ignoring {}.width_presets (expected non-empty array of numbers)", context);
+          warnAt(node->source(), "ignoring {}.extent_presets (expected non-empty array of numbers)", context);
           return std::nullopt;
         }
         const double used = std::clamp(*value, 0.1, 1.0);
         if (used != *value) {
-          warnAt(entry.source(), "{}.width_presets = {} out of range, clamped to {}", context, *value, used);
+          warnAt(entry.source(), "{}.extent_presets = {} out of range, clamped to {}", context, *value, used);
         }
         parsed.push_back(used);
       }
@@ -619,11 +619,11 @@ namespace umbriel {
             }
             s.integer("gap", 0, 500, overrides.gap);
             s.sub("struts", [&](Section& struts) { readLayoutStruts(struts, overrides.struts); });
-            if (auto presets = readWidthPresets(s, layoutContext)) {
-              overrides.widthPresets = std::move(*presets);
+            if (auto presets = readExtentPresets(s, layoutContext)) {
+              overrides.extentPresets = std::move(*presets);
             }
             s.sub("scrolling", [&](Section& sc) {
-              sc.real("default_width_fraction", 0.1, 1.0, overrides.scrolling.defaultWidthFraction)
+              sc.real("default_extent_fraction", 0.1, 1.0, overrides.scrolling.defaultExtentFraction)
                   .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
               if (const auto centerFocused = readCenterFocused(sc, layoutContext + ".scrolling")) {
                 overrides.scrolling.centerFocused = centerFocused;
@@ -1317,11 +1317,11 @@ namespace umbriel {
         }
         s.integer("gap", 0, 500, loaded.layout.gap);
         s.sub("struts", [&](Section& struts) { readLayoutStruts(struts, loaded.layout.struts); });
-        if (auto presets = readWidthPresets(s, "layout")) {
-          loaded.layout.widthPresets = std::move(*presets);
+        if (auto presets = readExtentPresets(s, "layout")) {
+          loaded.layout.extentPresets = std::move(*presets);
         }
         s.sub("scrolling", [&](Section& sc) {
-          sc.real("default_width_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultWidthFraction)
+          sc.real("default_extent_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultExtentFraction)
               .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
           if (const auto centerFocused = readCenterFocused(sc, "layout.scrolling")) {
             loaded.layout.scrolling.centerFocused = *centerFocused;
@@ -1677,7 +1677,7 @@ namespace umbriel {
             .boolean("direct_scanout", rule.directScanout);
         keys.sub("layout", [&](Section& layout) {
           layout.sub("scrolling", [&](Section& scrolling) {
-            scrolling.real("default_width_fraction", 0.1, 1.0, rule.layout.scrolling.defaultWidthFraction);
+            scrolling.real("default_extent_fraction", 0.1, 1.0, rule.layout.scrolling.defaultExtentFraction);
           });
         });
         keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces);
@@ -1853,6 +1853,7 @@ namespace umbriel {
         bool hasSubmapAfter = false;
         bool repeatBind = true;
         bool allowWhenLocked = false;
+        bool allowWhenInhibited = false;
         int cooldownMs = 0;
 
         if (const auto* tbl = entry.as_table()) {
@@ -1861,6 +1862,7 @@ namespace umbriel {
           // bad action must not also be told its `repeat` key is unknown.
           bind.boolean("repeat", repeatBind);
           bind.boolean("allow_when_locked", allowWhenLocked);
+          bind.boolean("allow_when_inhibited", allowWhenInhibited);
           bind.integer("cooldown_ms", 0, 3600000, cooldownMs);
           const toml::node* submapNode = bind.node("submap");
           hasSubmapAfter = submapNode != nullptr && submapNode->is_string();
@@ -1907,6 +1909,7 @@ namespace umbriel {
         }
         binding.repeat = repeatBind && !binding.modifierOnly && !binding.submapAfter.has_value();
         binding.allowWhenLocked = allowWhenLocked;
+        binding.allowWhenInhibited = allowWhenInhibited;
         binding.cooldownMs = cooldownMs;
         if (!parseAction(actionStr, binding)) {
           warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, actionStr);
@@ -2095,6 +2098,34 @@ namespace umbriel {
             .boolean("blur_optimized", rule.blurOptimized)
             .real("opacity", 0.0, 1.0, rule.opacity)
             .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha);
+        if (const toml::node* n = keys.take("default_floating_size")) {
+          const auto* table = n->as_table();
+          if (table == nullptr) {
+            warnAt(
+                n->source(),
+                "ignoring window_rule.default_floating_size "
+                "(expected {{ width = number, height = number }})"
+            );
+          } else {
+            Section size(*table, "window_rule.default_floating_size", configStore().mutableDiagnostics());
+            size.real("width", 0.1, 1.0, rule.defaultFloatingWidth)
+                .real("height", 0.1, 1.0, rule.defaultFloatingHeight);
+          }
+        }
+        if (const toml::node* n = keys.take("default_floating_size_px")) {
+          const auto* table = n->as_table();
+          if (table == nullptr) {
+            warnAt(
+                n->source(),
+                "ignoring window_rule.default_floating_size_px "
+                "(expected {{ width = integer, height = integer }})"
+            );
+          } else {
+            Section size(*table, "window_rule.default_floating_size_px", configStore().mutableDiagnostics());
+            size.integer("width", 1, 100000, rule.defaultFloatingWidthPx)
+                .integer("height", 1, 100000, rule.defaultFloatingHeightPx);
+          }
+        }
         if (const toml::node* vrrNode = keys.take("vrr")) {
           if (const auto value = readVrrMode(*vrrNode)) {
             rule.vrr = value;
@@ -2114,27 +2145,6 @@ namespace umbriel {
             rule.defaultOutput = *value;
           } else {
             warnAt(n->source(), "ignoring window_rule.default_output (expected string)");
-          }
-        }
-
-        if (const toml::node* n = keys.take("default_size")) {
-          const auto* arr = n->as_array();
-          bool valid = arr != nullptr && arr->size() == 2;
-          std::array<int, 2> parsed{};
-          if (valid) {
-            for (size_t index = 0; index < 2; ++index) {
-              const auto value = (*arr)[index].value<std::int64_t>();
-              if (!value || *value < 1 || *value > 100000) {
-                valid = false;
-                break;
-              }
-              parsed[index] = static_cast<int>(*value);
-            }
-          }
-          if (!valid) {
-            warnAt(n->source(), "ignoring window_rule.default_size (expected [width, height] positive integers)");
-          } else {
-            rule.defaultSize = parsed;
           }
         }
 
@@ -2194,31 +2204,8 @@ namespace umbriel {
           }
         }
 
-        if (const toml::node* n = keys.take("default_width")) {
-          const auto value = n->value<double>();
-          if (!value || std::isnan(*value)) {
-            warnAt(n->source(), "ignoring window_rule.default_width (expected number 0.1-1.0)");
-          } else {
-            const double used = std::clamp(*value, 0.1, 1.0);
-            if (used != *value) {
-              warnAt(n->source(), "window_rule.default_width = {} out of range, clamped to {}", *value, used);
-            }
-            rule.defaultWidth = used;
-          }
-        }
-
-        if (const toml::node* n = keys.take("default_height")) {
-          const auto value = n->value<double>();
-          if (!value || std::isnan(*value)) {
-            warnAt(n->source(), "ignoring window_rule.default_height (expected number 0.1-1.0)");
-          } else {
-            const double used = std::clamp(*value, 0.1, 1.0);
-            if (used != *value) {
-              warnAt(n->source(), "window_rule.default_height = {} out of range, clamped to {}", *value, used);
-            }
-            rule.defaultHeight = used;
-          }
-        }
+        keys.integer("default_scrolling_extent_px", 1, 100000, rule.defaultScrollingExtentPx)
+            .real("default_scrolling_extent", 0.1, 1.0, rule.defaultScrollingExtent);
 
         if (const toml::node* n = keys.take("default_workspace")) {
           if (const auto value = n->value<std::int64_t>()) {

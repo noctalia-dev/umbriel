@@ -238,7 +238,7 @@ wait_for_windows_query '
 focus_window scroll-c
 wait_for_stable_geometry > /dev/null
 scroll_default_width=$(field_of scroll-c w)
-"$UMBRIEL" msg window-set-width:0.67 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.67 > /dev/null
 wait_for_width_change scroll-c "$scroll_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "scroll-a")) as $a |
@@ -270,7 +270,7 @@ wait_for_windows_query '
 ' "dwindle column move did not put c in the left leaf"
 wait_for_stable_geometry > /dev/null
 dwindle_default_width=$(field_of dwindle-c w)
-"$UMBRIEL" msg window-set-width:0.67 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.67 > /dev/null
 wait_for_width_change dwindle-c "$dwindle_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "dwindle-a")) as $a |
@@ -306,7 +306,7 @@ wait_for_windows_query '
 ' "master move-up did not arrange [c,a]"
 wait_for_stable_geometry > /dev/null
 master_default_width=$(field_of master-c w)
-"$UMBRIEL" msg window-set-width:0.70 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.70 > /dev/null
 wait_for_width_change master-c "$master_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "master-a")) as $a |
@@ -357,7 +357,7 @@ wait_for_windows_query '
 focus_window refuge-scroll-c
 wait_for_stable_geometry > /dev/null
 refuge_default_width=$(field_of refuge-scroll-c w)
-"$UMBRIEL" msg window-set-width:0.63 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.63 > /dev/null
 wait_for_width_change refuge-scroll-c "$refuge_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "refuge-scroll-a")) as $a |

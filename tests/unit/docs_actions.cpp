@@ -70,8 +70,8 @@ namespace {
     return !cell.empty() && cell.find_first_not_of("-:") == std::string_view::npos;
   }
 
-  // `window-focus-left` or `window-set-width:<fraction>`: the exact spelling `msg --help` prints, wrapped in a code
-  // span, with any `|` escaped for the markdown table. Anything else in a two-column table (argument forms, config
+  // `window-focus-left` or `window-set-primary-extent:<fraction>`: the exact spelling `msg --help` prints, wrapped in a
+  // code span, with any `|` escaped for the markdown table. Anything else in a two-column table (argument forms, config
   // keys, prose) is not an action row.
   bool splitActionCell(std::string_view cell, std::string& name, std::string& param) {
     if (cell.size() < 3 || cell.front() != '`' || cell.back() != '`') {

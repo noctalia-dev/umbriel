@@ -22,12 +22,12 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [[window_rule]]
 match.title = "^alone-width$"
 match.is_alone = true
-default_width = 0.75
+default_scrolling_extent = 0.75
 
 [[window_rule]]
 match.title = "^alone-max$"

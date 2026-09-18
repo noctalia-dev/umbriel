@@ -56,7 +56,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 window_drag_toggle = "floating"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -70,13 +70,13 @@ sleep 0.5
 # be told apart from a drag that never resized anything.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 sleep 0.6
-"$UMBRIEL" msg window-set-width:0.3 > /dev/null
-"$UMBRIEL" msg window-set-height:0.4 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.3 > /dev/null
+"$UMBRIEL" msg window-set-secondary-extent:0.4 > /dev/null
 sleep 0.8
 read -r float_w float_h < <(window toggle-wide '"\(.w) \(.h)"')
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 sleep 0.6
-"$UMBRIEL" msg window-set-width:0.75 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
 sleep 0.8
 read -r tiled_w tiled_h < <(window toggle-wide '"\(.w) \(.h)"')
 neighbor_w=$(window toggle-keep .w)
@@ -107,7 +107,7 @@ fi
 # the width the drag detached has to reappear.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 sleep 0.6
-"$UMBRIEL" msg window-set-width:0.75 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
 sleep 0.8
 drag_toggling toggle-wide 1270 400 2
 read -r floating w h < <(window toggle-wide '"\(.floating) \(.w) \(.h)"')

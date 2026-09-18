@@ -34,13 +34,13 @@ an error naming the required layout.
 ```toml
 [layout]
 gap = 8
-width_presets = [0.333, 0.5, 0.667]
+extent_presets = [0.333, 0.5, 0.667]
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `gap` | int | `8` | Gap between windows in pixels (0-500). |
-| `width_presets` | float array | `[0.333, 0.5, 0.667]` | Fractions used by `window-cycle-width` and `window-cycle-height` in every layout. Both actions use this one list. |
+| `extent_presets` | float array | `[0.333, 0.5, 0.667]` | Fractions used by `window-cycle-primary-extent` and `window-cycle-secondary-extent` in every layout. Both actions use this one list. |
 
 ### Struts
 
@@ -84,23 +84,23 @@ horizontally scrolls vertically.
 
 ```toml
 [layout.scrolling]
-default_width_fraction = 0.5         # remove to let clients choose, 0.1-1.0
+default_extent_fraction = 0.5         # remove to let clients choose, 0.1-1.0
 center_underfull_strip = true
 center_focused = "never"             # "never", "always", or "on_overflow"
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `default_width_fraction` | float | unset | Initial strip-axis extent for new columns (0.1-1.0). The packaged config sets `0.5`; a matching output or workspace rule can override it. When it is unset at every level, the client chooses its initial extent. |
+| `default_extent_fraction` | float | unset | Initial strip-axis extent for new columns (0.1-1.0). The packaged config sets `0.5`; a matching output or workspace rule can override it. When it is unset at every level, the client chooses its initial extent. |
 | `center_underfull_strip` | bool | `true` | Center the complete strip when it is shorter than the viewport. Disable to align it at the start edge. |
 | `center_focused` | string | `"never"` | When a focus change centers the newly focused column. `"never"` only scrolls far enough to reveal it, `"always"` centers it, and `"on_overflow"` centers it when it cannot share the viewport with the neighboring column on the side focus came from. |
 
 ### Horizontal and vertical scrolling
 
-| Workspace axis | Layout | Width and height actions |
-| -------------- | ------ | ------------------------ |
-| `vertical` (default) | Columns run left to right. Windows within a column stack from top to bottom. | Width actions change a column's strip extent. Height actions change a window's extent within its column. |
-| `horizontal` | Horizontal lanes run top to bottom. Windows within a lane sit side by side. | Width actions change a lane's strip extent, which is its height on screen. Height actions change a window's extent within its lane, which is its visual width. |
+| Workspace axis | Layout | Primary and secondary extent actions |
+| -------------- | ------ | ------------------------------------ |
+| `vertical` (default) | Columns run left to right. Windows within a column stack from top to bottom. | Primary actions change a column's strip extent. Secondary actions change a window's extent within its column. |
+| `horizontal` | Horizontal lanes run top to bottom. Windows within a lane sit side by side. | Primary actions change a lane's strip extent, which is its height on screen. Secondary actions change a window's extent within its lane, which is its visual width. |
 
 On an output with horizontal workspaces, directional actions follow the screen;
 see [Vertical strips](#vertical-strips). The consume and expel actions use the
@@ -114,11 +114,11 @@ edge.
 
 ### Scrolling behavior
 
-The packaged config sets `default_width_fraction = 0.5`, so new columns start at
+The packaged config sets `default_extent_fraction = 0.5`, so new columns start at
 half the viewport. If the option is omitted, Umbriel leaves the strip-axis
 extent unconstrained during the initial configure and retains the logical size
-chosen by the client. A numeric `default_width` window rule takes precedence.
-For a new horizontal column, the pixel width from a matching `default_size`
+chosen by the client. A numeric `default_scrolling_extent` window rule takes precedence.
+The pixel extent from a matching `default_scrolling_extent_px`
 window rule takes precedence over both fractional settings.
 
 Fractional widths round cumulative column boundaries to logical pixels. When a
@@ -132,10 +132,10 @@ that output's section:
 
 ```toml
 [output.DP-1.layout.scrolling]
-default_width_fraction = 0.4
+default_extent_fraction = 0.4
 
 [output."Microstep MSI G2712F CD6T084401192".layout.scrolling]
-default_width_fraction = 0.6
+default_extent_fraction = 0.6
 ```
 
 Connector and monitor names follow the normal [output identity](outputs.md)
@@ -145,7 +145,7 @@ match the same display.
 The initial width is resolved from the global setting, then the matching output
 setting, then a matching workspace rule without an `output`, and finally a
 matching workspace rule with an `output`. Each later value takes precedence.
-Only `default_width_fraction` has this output-level layout override; the other
+Only `default_extent_fraction` has this output-level layout override; the other
 layout settings remain global or per workspace.
 
 Changing any of these defaults on reload affects columns created afterward. It
@@ -274,15 +274,15 @@ that window. `layout-master-count-increase` promotes the stack top into master,
 and `layout-master-count-decrease` demotes the master bottom into the stack. At
 least one window remains in master.
 
-Width actions operate on the master fraction; the stack fraction is its
-complement, and in center mode each side reports half of that complement.
-`window-modify-width:<delta>` changes the focused area's fraction, and the cycle
-actions walk `width_presets`. Width actions are inert while either area is
-empty, except in center mode where a nonempty master area always has margins to
-move. Height actions change a window's row fraction within its area; see
-[Sizing behavior](#sizing-behavior). Tiled resizing is available on the boundary
-between master and stack and between rows in either area. A center master
-resizes symmetrically: dragging one margin moves both.
+Primary extent actions operate on the master fraction; the stack fraction is
+its complement, and in center mode each side reports half of that complement.
+`window-modify-primary-extent:<delta>` changes the focused area's fraction, and
+the cycle actions walk `extent_presets`. Primary extent actions are inert while
+either area is empty, except in center mode where a nonempty master area always
+has margins to move. Secondary extent actions change a window's row fraction
+within its area; see [Sizing behavior](#sizing-behavior). Tiled resizing is
+available on the boundary between master and stack and between rows in either
+area. A center master resizes symmetrically: dragging one margin moves both.
 
 Dragging over a master workspace previews the destination row within the
 nearest area. Hint bands appear at the top, bottom, and between existing rows.
@@ -290,29 +290,33 @@ Dropping inserts the window at that row.
 
 ## Sizing behavior
 
-The width and height actions are shared by every layout, but each layout gives
-them a different meaning.
+The primary and secondary extent actions are shared by every layout, but each
+layout maps those axes to its own geometry.
 
-`window-modify-width:<delta>` changes the focused area's width by a signed
-fraction, and `window-cycle-width` / `window-cycle-width-back` walk
-`width_presets` in either direction.
+`window-set-primary-extent:<frac>` sets the focused area's primary extent,
+`window-modify-primary-extent:<delta>` changes it by a signed fraction, and
+`window-cycle-primary-extent` / `window-cycle-primary-extent-back` walk
+`extent_presets` in either direction. In scrolling this is the lane's extent
+along the strip axis: visual width on a horizontal strip and visual height on a
+vertical strip. Dwindle and master use the horizontal layout extent.
 
-`window-set-height:<frac>` sets the focused window's fraction of its column's
-stacking extent, `window-modify-height:<delta>` changes that fraction by a
-signed amount, and `window-cycle-height` / `window-cycle-height-back` cycle it
-through the same presets in either direction. In scrolling and master layouts
-this sizes a row within its column or area. In dwindle it adjusts the vertical
-splits containing the window. On a vertical strip the stacking axis is
-horizontal, so these actions change a window's width within its lane.
+`window-set-secondary-extent:<frac>` sets the focused window's fraction of its
+stacking extent, `window-modify-secondary-extent:<delta>` changes that fraction
+by a signed amount, and `window-cycle-secondary-extent` /
+`window-cycle-secondary-extent-back` cycle it through the same presets. In
+scrolling and master this sizes a row within its column or area. In dwindle it
+adjusts the vertical splits containing the window. On a vertical strip the
+stacking axis is horizontal, so these actions change a window's width within
+its lane.
 
-In the scrolling layout, a window alone in its column is resized from its bottom
-edge, exactly as dragging that edge does: the top edge stays where it is and the
-freed space collects below the window, so the next window stacked into that
-column fills it. A fraction of `1.0` reclaims the space. A window that a
+In the scrolling layout, a window alone in its column is resized from its
+bottom edge, exactly as dragging that edge does: the top edge stays where it is
+and the freed space collects below the window, so the next window stacked into
+that column fills it. A fraction of `1.0` reclaims the space. A window that a
 previous drag pushed against the column's bottom keeps that anchor and frees
 space above itself instead. In master and dwindle, a window with no neighbor on
-the stacking axis has nothing to trade space with, so the height actions leave
-it unchanged.
+the stacking axis has nothing to trade space with, so the secondary extent
+actions leave it unchanged.
 
 ### Client minimum sizes
 
@@ -333,10 +337,11 @@ all of its interface adapts to very narrow or short tiles.
 
 ### Floating windows
 
-All of the width and height actions resize a focused floating window directly,
-as fractions of the output's usable area clamped to the client's min/max size
-hints. Cycling walks `width_presets` on either axis, stepping to the next preset
-that changes the window's pixel size on that axis: a float's size is pixels, so
+For floating windows, primary extent actions resize physical width and
+secondary extent actions resize physical height. Fractions use the output's
+usable area and are clamped to the client's min/max size hints. Cycling walks
+`extent_presets` on either axis, stepping to the next preset that changes the
+window's pixel size on that axis: a float's size is pixels, so
 a preset that rounds to the size the window already has is skipped rather than
 applied as a step that does nothing. Resizing a maximized float leaves
 maximization behind and keeps the new size, so a later toggle maximizes rather

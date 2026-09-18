@@ -30,7 +30,7 @@ dim = 0.6
 
 [[window_rule]]
 default_floating = true
-default_size = [300, 200]
+default_floating_size_px = { width = 300, height = 200 }
 
 [window_rule.match]
 title = "^scratch-"

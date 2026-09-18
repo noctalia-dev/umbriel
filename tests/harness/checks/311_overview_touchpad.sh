@@ -40,7 +40,7 @@ autostart = []
 workspace_curve = "spring:1,120"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 background_blur = false

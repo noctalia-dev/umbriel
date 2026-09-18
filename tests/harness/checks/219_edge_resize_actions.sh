@@ -2,8 +2,8 @@
 # harness: outputs=1
 # The edge-anchored resize actions move only the named edge and leave the opposite
 # one where it is, so a positive delta always grows the window from that edge. That
-# is what separates them from window-modify-width/height, which resize around the
-# layout's own anchor.
+# is what separates them from primary and secondary extent actions, which resize
+# around the layout's own anchor.
 #
 # The height coverage uses the middle window of a three-window column: with two
 # windows each sitting at one end of a fixed-span pair the two behaviours are

@@ -74,8 +74,7 @@ name = "term"
 match.app_id = "^scratchpad-terminal$"
 default_scratchpad = "term"
 default_floating = true
-default_width = 0.6
-default_height = 0.5
+default_floating_size = { width = 0.6, height = 0.5 }
 default_position = { x = 0, y = 8, anchor = "top" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

@@ -57,7 +57,7 @@ Output state and workspace inventory are independent effects.
   and refreshes workspace layout.
 - Changing only layout settings refreshes workspace geometry without
   reconciling the inventory or reapplying output state.
-- Changing an output's `layout.scrolling.default_width_fraction` refreshes only
+- Changing an output's `layout.scrolling.default_extent_fraction` refreshes only
   resolved workspace layout configuration. Existing scrolling columns retain
   their stored widths; columns created after the reload use the new default.
 - Changing total border width refreshes window decoration and workspace layout

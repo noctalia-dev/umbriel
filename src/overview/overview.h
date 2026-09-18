@@ -246,9 +246,9 @@ namespace umbriel {
       WorkspaceAxis axis = WorkspaceAxis::Vertical;
       int previewW = 0;
       int previewH = 0;
-      double baseX = 0;
-      double baseY = 0;
-      double gap = 0;
+      int baseX = 0;
+      int baseY = 0;
+      int gap = 0;
     };
 
     static void onCardSurfaceCommit(wl_listener* listener, void* data);

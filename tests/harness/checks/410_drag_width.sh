@@ -32,7 +32,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [[window_rule]]
 match.title = "^wide-drag$"
-default_width = 0.75
+default_scrolling_extent = 0.75
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

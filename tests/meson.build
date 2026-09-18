@@ -294,6 +294,8 @@ seat_log_client = executable(
     xdg_shell_client_c,
     xdg_foreign_client_h,
     xdg_foreign_client_c,
+    keyboard_shortcuts_inhibit_client_h,
+    keyboard_shortcuts_inhibit_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

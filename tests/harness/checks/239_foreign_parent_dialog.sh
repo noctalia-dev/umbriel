@@ -156,7 +156,7 @@ wait_for_position foreign-child 320 315
 wait_for_field foreign-child focused true
 
 # Resizing the dialog keeps it centered on the parent, which now sits at 200,225.
-"$UMBRIEL" msg window-set-width:0.5 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.5 > /dev/null
 centered=
 for _ in $(seq 60); do
   child=$(windows | jq -c '.[] | select(.title == "foreign-child") | [.w, .h, .x, .y]')

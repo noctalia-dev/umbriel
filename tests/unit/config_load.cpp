@@ -268,7 +268,7 @@ prefer_no_csd = true
 
 [layout]
 mode = "dwindle"
-width_presets = [0.05, 0.5, 2.0]
+extent_presets = [0.05, 0.5, 2.0]
 
 [layout.scrolling]
 center_underfull_strip = false
@@ -285,7 +285,7 @@ name = "dev"
 
 [workspace.layout]
 mode = "scrolling"
-width_presets = [0.25, 0.75]
+extent_presets = [0.25, 0.75]
 
 [workspace.layout.scrolling]
 center_underfull_strip = true
@@ -299,10 +299,10 @@ preserve_split = false
 
   CHECK(result.success);
   CHECK(store.config().layout.mode == LayoutMode::Dwindle);
-  CHECK_EQ(store.config().layout.widthPresets.size(), size_t{3});
-  CHECK_EQ(store.config().layout.widthPresets[0], 0.1);
-  CHECK_EQ(store.config().layout.widthPresets[1], 0.5);
-  CHECK_EQ(store.config().layout.widthPresets[2], 1.0);
+  CHECK_EQ(store.config().layout.extentPresets.size(), size_t{3});
+  CHECK_EQ(store.config().layout.extentPresets[0], 0.1);
+  CHECK_EQ(store.config().layout.extentPresets[1], 0.5);
+  CHECK_EQ(store.config().layout.extentPresets[2], 1.0);
   CHECK(!store.config().layout.scrolling.centerUnderfullStrip);
   CHECK(store.config().layout.dwindle.preserveSplit);
   CHECK(store.config().appearance.preferNoCsd);
@@ -311,14 +311,25 @@ preserve_split = false
   CHECK_EQ(*store.config().outputs[0].scale, 4.0);
   CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
   CHECK(store.config().workspaceRules[0].layout.mode == LayoutMode::Scrolling);
-  CHECK(store.config().workspaceRules[0].layout.widthPresets.has_value());
-  CHECK_EQ(store.config().workspaceRules[0].layout.widthPresets->size(), size_t{2});
+  CHECK(store.config().workspaceRules[0].layout.extentPresets.has_value());
+  CHECK_EQ(store.config().workspaceRules[0].layout.extentPresets->size(), size_t{2});
   CHECK(store.config().workspaceRules[0].layout.scrolling.centerUnderfullStrip == true);
   CHECK(store.config().workspaceRules[0].layout.dwindle.preserveSplit == false);
   CHECK(containsDiagnostic(store, "unknown key unknown_root_key"));
   CHECK(containsDiagnostic(store, "output.DP-1.scale = 9"));
   CHECK(containsDiagnostic(store, "unknown key layout.scrolling.always_center_single_column"));
   CHECK(containsDiagnostic(store, "unknown key general.prefer_no_csd"));
+}
+
+UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
+  const TempConfig file;
+  file.write("[layout]\nwidth_presets = [0.75]\n");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layout.extentPresets.size(), size_t{3});
+  CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
@@ -579,26 +590,31 @@ UMBRIEL_TEST(masterPositionAcceptsCenterAndRejectsOtherValues) {
   CHECK(containsDiagnostic(store, R"(unknown layout.master.position "middle")"));
 }
 
-UMBRIEL_TEST(scrollingDefaultWidthIsOptional) {
+UMBRIEL_TEST(scrollingDefaultExtentIsOptional) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
   file.write("[layout.scrolling]\ncenter_underfull_strip = false\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().layout.scrolling.defaultWidthFraction.has_value());
+  CHECK(!store.config().layout.scrolling.defaultExtentFraction.has_value());
 
-  file.write("[layout.scrolling]\ndefault_width_fraction = 0.75\n");
+  file.write("[layout.scrolling]\ndefault_extent_fraction = 0.75\n");
   CHECK(store.reload().success);
-  CHECK(store.config().layout.scrolling.defaultWidthFraction.has_value());
-  CHECK_EQ(*store.config().layout.scrolling.defaultWidthFraction, 0.75);
+  CHECK(store.config().layout.scrolling.defaultExtentFraction.has_value());
+  CHECK_EQ(*store.config().layout.scrolling.defaultExtentFraction, 0.75);
+
+  file.write("[layout.scrolling]\ndefault_width_fraction = 0.25\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().layout.scrolling.defaultExtentFraction.has_value());
+  CHECK(containsDiagnostic(store, "unknown key layout.scrolling.default_width_fraction"));
 
   file.write("[layout.scrolling]\ncenter_underfull_strip = true\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().layout.scrolling.defaultWidthFraction.has_value());
+  CHECK(!store.config().layout.scrolling.defaultExtentFraction.has_value());
 }
 
-UMBRIEL_TEST(outputScrollingDefaultWidthUsesNarrowLayoutScope) {
+UMBRIEL_TEST(outputScrollingDefaultExtentUsesNarrowLayoutScope) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -608,24 +624,24 @@ UMBRIEL_TEST(outputScrollingDefaultWidthUsesNarrowLayoutScope) {
 gap = 12
 
 [output.DP-1.layout.scrolling]
-default_width_fraction = 0.05
+default_extent_fraction = 0.05
 center_focused = true
 )");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().outputs.size(), size_t{1});
-  CHECK(store.config().outputs[0].layout.scrolling.defaultWidthFraction.has_value());
-  if (store.config().outputs[0].layout.scrolling.defaultWidthFraction) {
-    CHECK_EQ(*store.config().outputs[0].layout.scrolling.defaultWidthFraction, 0.1);
+  CHECK(store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
+  if (store.config().outputs[0].layout.scrolling.defaultExtentFraction) {
+    CHECK_EQ(*store.config().outputs[0].layout.scrolling.defaultExtentFraction, 0.1);
   }
   CHECK(containsDiagnostic(
-      store, "output.DP-1.layout.scrolling.default_width_fraction = 0.05 out of range, clamped to 0.1"
+      store, "output.DP-1.layout.scrolling.default_extent_fraction = 0.05 out of range, clamped to 0.1"
   ));
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.gap"));
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.scrolling.center_focused"));
 
   file.write("[output.DP-1]\nenabled = true\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().outputs[0].layout.scrolling.defaultWidthFraction.has_value());
+  CHECK(!store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
 }
 
 UMBRIEL_TEST(outputWorkspaceAxisAcceptsOnlyItsTwoNames) {
@@ -744,6 +760,30 @@ UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
   CHECK(allowedWhenLocked);
   CHECK(defaultsToBlocked);
   CHECK(!containsDiagnostic(store, "allow_when_locked"));
+}
+
+UMBRIEL_TEST(keybindTableLoadsAllowWhenInhibited) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[keybinds]\n"
+      "\"Mod+Escape\" = { action = \"shortcuts-inhibit-toggle\", allow_when_inhibited = true }\n"
+      "\"Mod+Return\" = \"spawn:terminal\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{2});
+
+  bool allowedWhenInhibited = false;
+  bool defaultsToBlocked = false;
+  for (const auto& bind : store.config().keybinds) {
+    allowedWhenInhibited = allowedWhenInhibited || bind.allowWhenInhibited;
+    defaultsToBlocked = defaultsToBlocked || !bind.allowWhenInhibited;
+  }
+  CHECK(allowedWhenInhibited);
+  CHECK(defaultsToBlocked);
+  CHECK(!containsDiagnostic(store, "allow_when_inhibited"));
 }
 
 UMBRIEL_TEST(keybindTablePreservesWorkspaceReferenceKinds) {
@@ -1663,33 +1703,59 @@ UMBRIEL_TEST(windowTearingOverrideLoadsAsAnOptionalBoolean) {
   CHECK(containsDiagnostic(store, "ignoring window_rule.tearing (expected boolean)"));
 }
 
-UMBRIEL_TEST(windowRuleFractionSizingLoadsAndClamps) {
+UMBRIEL_TEST(windowRuleFloatingSizeTablesLoadIndependentAxesAndClamp) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
   file.write(
-      "[[window_rule]]\nmatch.app_id = \"^utility$\"\ndefault_floating = true\ndefault_width = 0.5\ndefault_height = "
-      "0.6\n"
+      "[[window_rule]]\n"
+      "match.app_id = \"^utility$\"\n"
+      "default_floating = true\n"
+      "default_floating_size = { width = 0.5, height = 0.6 }\n"
+      "default_floating_size_px = { width = 640, height = 480 }\n"
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
-  CHECK(store.config().windowRules[0].defaultWidth && *store.config().windowRules[0].defaultWidth == 0.5);
-  CHECK(store.config().windowRules[0].defaultHeight && *store.config().windowRules[0].defaultHeight == 0.6);
+  const auto& rule = store.config().windowRules[0];
+  CHECK(rule.defaultFloatingWidth && *rule.defaultFloatingWidth == 0.5);
+  CHECK(rule.defaultFloatingHeight && *rule.defaultFloatingHeight == 0.6);
+  CHECK(rule.defaultFloatingWidthPx && *rule.defaultFloatingWidthPx == 640);
+  CHECK(rule.defaultFloatingHeightPx && *rule.defaultFloatingHeightPx == 480);
 
-  // Out-of-range fractions clamp into [0.1, 1.0] with a diagnostic, like default_width.
-  file.write("[[window_rule]]\ndefault_width = 3.0\ndefault_height = 0.01\n");
+  // Each axis is optional, and out-of-range fractions clamp independently.
+  file.write("[[window_rule]]\ndefault_floating_size = { width = 3.0, height = 0.01 }\n");
   CHECK(store.reload().success);
-  CHECK(store.config().windowRules[0].defaultWidth && *store.config().windowRules[0].defaultWidth == 1.0);
-  CHECK(store.config().windowRules[0].defaultHeight && *store.config().windowRules[0].defaultHeight == 0.1);
-  CHECK(containsDiagnostic(store, "window_rule.default_width = 3 out of range, clamped to 1"));
-  CHECK(containsDiagnostic(store, "window_rule.default_height = 0.01 out of range, clamped to 0.1"));
+  CHECK(
+      store.config().windowRules[0].defaultFloatingWidth && *store.config().windowRules[0].defaultFloatingWidth == 1.0
+  );
+  CHECK(
+      store.config().windowRules[0].defaultFloatingHeight && *store.config().windowRules[0].defaultFloatingHeight == 0.1
+  );
+  CHECK(containsDiagnostic(store, "window_rule.default_floating_size.width = 3 out of range, clamped to 1"));
+  CHECK(containsDiagnostic(store, "window_rule.default_floating_size.height = 0.01 out of range, clamped to 0.1"));
+
+  file.write("[[window_rule]]\ndefault_floating_size = { width = 0.5 }\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].defaultFloatingWidth);
+  CHECK(!store.config().windowRules[0].defaultFloatingHeight);
+
+  file.write("[[window_rule]]\ndefault_floating_size = [0.5, 0.6]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].defaultFloatingWidth);
+  CHECK(!store.config().windowRules[0].defaultFloatingHeight);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.default_floating_size (expected"));
+
+  file.write("[[window_rule]]\ndefault_floating_width = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].defaultFloatingWidth);
+  CHECK(containsDiagnostic(store, "unknown key window_rule.default_floating_width"));
 
   // Non-numeric values are ignored with a diagnostic.
-  file.write("[[window_rule]]\ndefault_height = \"half\"\n");
+  file.write("[[window_rule]]\ndefault_scrolling_extent = \"half\"\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().windowRules[0].defaultHeight);
-  CHECK(containsDiagnostic(store, "ignoring window_rule.default_height (expected number 0.1-1.0)"));
+  CHECK(!store.config().windowRules[0].defaultScrollingExtent);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.default_scrolling_extent (expected number)"));
 }
 
 UMBRIEL_TEST(outputEnabledFlagParsesAndDefaultsTrue) {

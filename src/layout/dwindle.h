@@ -53,8 +53,10 @@ namespace umbriel {
     void arrange(const wlr_box& usable) override;
     [[nodiscard]] wlr_box targetBox(const View* view) const override;
 
-    [[nodiscard]] InitialSize
-    initialSize(const wlr_box& usable, std::optional<double> ruleWidthFraction, const View* splitAnchor) const override;
+    [[nodiscard]] InitialSize initialSize(
+        const wlr_box& usable, bool wantMaximized, std::optional<double> ruleExtent, std::optional<int> ruleExtentPx,
+        const View* /*splitAnchor*/
+    ) const override;
 
     [[nodiscard]] int leafIndexAt(double cx, double cy) const;
     [[nodiscard]] wlr_box targetBoxByIndex(int index) const;

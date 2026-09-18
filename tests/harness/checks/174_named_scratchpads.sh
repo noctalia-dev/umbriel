@@ -116,7 +116,7 @@ workspaces = ["RIGHT"]
 match.title = "^named-scratchpad-"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [360, 220]
+default_floating_size_px = { width = 360, height = 220 }
 default_position = { x = 240, y = 180, anchor = "top_left" }
 '
 

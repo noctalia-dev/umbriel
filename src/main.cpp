@@ -300,11 +300,9 @@ int main(int argc, char** argv) {
   }
 
   initLogFile();
-#ifdef NDEBUG
-  wlr_log_init(WLR_INFO, wlrLogHandler);
-#else
+  // Take everything: the log file is unfiltered and only the console honours
+  // the build's minimum level.
   wlr_log_init(WLR_DEBUG, wlrLogHandler);
-#endif
 
   raiseFileDescriptorLimit();
 

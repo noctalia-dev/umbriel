@@ -18,8 +18,7 @@ enabled = false
 [[window_rule]]
 match.title = "^float-maximize$"
 default_floating = true
-default_width = 0.5
-default_height = 0.5
+default_floating_size = { width = 0.5, height = 0.5 }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -67,7 +66,7 @@ assert_box 640 360 320 180
 # next toggle has to maximize. If the state survived, this would restore 640.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_field float-maximize w 1280
-"$UMBRIEL" msg window-modify-width:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-primary-extent:-0.2 > /dev/null
 wait_for_field float-maximize w 1024
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_field float-maximize w 1280

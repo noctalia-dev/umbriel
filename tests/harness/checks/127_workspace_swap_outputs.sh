@@ -77,7 +77,7 @@ workspace_id_named() {
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [animation]
 enabled = false
@@ -108,10 +108,10 @@ wait_for_windows 2
 # survive only if the transfer replays widths and row weights, not defaults.
 accepts "window-focus:$(field_of stack-bottom id)"
 accepts window-consume-or-expel-left
-accepts "window-modify-height:-0.2"
+accepts "window-modify-secondary-extent:-0.2"
 spawn_client wide
 wait_for_windows 3
-accepts "window-modify-width:0.15"
+accepts "window-modify-primary-extent:0.15"
 
 accepts "workspace-switch:RIGHT/HEADLESS-2"
 spawn_client lone
@@ -152,7 +152,7 @@ accepts "workspace-set-layout:dwindle"
 accepts "workspace-switch:LEFT/HEADLESS-1"
 accepts "workspace-set-layout:dwindle"
 accepts "window-focus:$(field_of wide id)"
-accepts "window-modify-width:0.15"
+accepts "window-modify-primary-extent:0.15"
 sleep 0.4
 top_dwindle=$(box_of stack-top)
 bottom_dwindle=$(box_of stack-bottom)

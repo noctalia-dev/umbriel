@@ -551,7 +551,7 @@ UMBRIEL_TEST(arrangeOnAnEmptyTreeIsHarmless) {
 // initial sizing
 UMBRIEL_TEST(initialSizeFillsTheAreaForTheFirstLeaf) {
   Fixture fixture;
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
 
   fixture.addLeaves(1);
   fixture.layout.arrange(kUsable);
@@ -565,9 +565,9 @@ UMBRIEL_TEST(initialSizeFillsTheAreaForTheFirstLeaf) {
 
 UMBRIEL_TEST(initialSizeShrinksOnceTheTreeIsPopulated) {
   Fixture fixture;
-  const Layout::InitialSize empty = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize empty = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
   fixture.addLeaves(1);
-  const Layout::InitialSize populated = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize populated = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
   CHECK(populated.width < empty.width);
 }
 
@@ -578,7 +578,7 @@ UMBRIEL_TEST(initialSizeMatchesTheSplitArrangeWillMake) {
   Fixture fixture;
   fixture.addLeaves(1);
   fixture.layout.arrange(kUsable);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
 
   fixture.layout.insertView(stub(1), 1);
   fixture.layout.arrange(kUsable);
@@ -593,7 +593,8 @@ UMBRIEL_TEST(initialSizeSplitsTheHeightOnAPortraitArea) {
   Fixture fixture;
   fixture.addLeaves(1);
   fixture.layout.arrange(kPortraitUsable);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kPortraitUsable, std::nullopt, nullptr);
+  const Layout::InitialSize initial =
+      fixture.layout.initialSize(kPortraitUsable, false, std::nullopt, std::nullopt, nullptr);
 
   fixture.layout.insertView(stub(1), 1);
   fixture.layout.arrange(kPortraitUsable);
@@ -603,21 +604,20 @@ UMBRIEL_TEST(initialSizeSplitsTheHeightOnAPortraitArea) {
   CHECK(initial.height < initial.width);
 }
 
-UMBRIEL_TEST(initialSizeIgnoresARuleWidthFraction) {
-  // default_width is a viewport fraction, which means nothing to a splitting
-  // layout; it must not change the answer.
+UMBRIEL_TEST(initialSizeIgnoresARuleExtentFraction) {
+  // A scrolling extent means nothing to a splitting layout, so it must not change the answer.
   Fixture fixture;
   fixture.addLeaves(1);
   CHECK_EQ(
-      fixture.layout.initialSize(kUsable, 1.0 / 3, nullptr).width,
-      fixture.layout.initialSize(kUsable, std::nullopt, nullptr).width
+      fixture.layout.initialSize(kUsable, false, 1.0 / 3, std::nullopt, nullptr).width,
+      fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr).width
   );
 }
 UMBRIEL_TEST(initialSizeMatchesTheFocusedSplitAnchor) {
   Fixture fixture;
   fixture.addLeaves(3);
   fixture.layout.arrange(kUsable);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, stub(0));
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, stub(0));
 
   const int anchorColumn = fixture.layout.columnOf(stub(0));
   fixture.layout.insertView(stub(3), anchorColumn + 1);
@@ -702,7 +702,7 @@ UMBRIEL_TEST(resizeBoundaryRejectsAScreenFacingEdge) {
 
 UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
   Fixture fixture;
-  fixture.config.widthPresets = {1.0 / 3.0, 0.5, 2.0 / 3.0};
+  fixture.config.extentPresets = {1.0 / 3.0, 0.5, 2.0 / 3.0};
   fixture.addLeaves(2);
   fixture.layout.arrange(kUsable);
 

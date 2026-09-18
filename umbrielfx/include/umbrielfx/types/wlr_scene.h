@@ -139,6 +139,10 @@ struct wlr_scene {
 		bool highlight_transparent_region;
 
 		struct blur_data blur_data;
+
+		// Painted where no node covers the output. A rect matching it exactly
+		// is dropped from the render list instead of drawn.
+		float background_color[4];
 	} WLR_PRIVATE;
 };
 
@@ -469,6 +473,9 @@ const char *umbrielfx_scene_check_helpers(void);
  */
 struct wlr_scene *wlr_scene_create(void);
 
+// Sets the color painted where no node covers an output. Defaults to opaque
+// black. Fully damages every output.
+void wlr_scene_set_background_color(struct wlr_scene *scene, const float color[4]);
 
 // Sets the global blur parameters
 void wlr_scene_set_blur_data(struct wlr_scene *scene, int num_passes,

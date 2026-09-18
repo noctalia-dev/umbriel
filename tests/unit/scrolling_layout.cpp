@@ -33,9 +33,9 @@ namespace {
     config.gap = 8;
     config.totalGap = 12;
     config.edgePad = 10;
-    config.scrolling.defaultWidthFraction = 0.5;
+    config.scrolling.defaultExtentFraction = 0.5;
     config.scrolling.centerUnderfullStrip = true;
-    config.widthPresets = {1.0 / 3, 0.5, 2.0 / 3};
+    config.extentPresets = {1.0 / 3, 0.5, 2.0 / 3};
     return config;
   }
 
@@ -676,7 +676,7 @@ UMBRIEL_TEST(initialSizeMatchesWhatArrangeWillAssign) {
   // The invariant: the size a view is configured with before it joins the layout must equal the size the layout gives
   // it once it has. Any drift and the client's first buffer is wrong and the window resizes on first paint.
   Fixture fixture;
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
 
   fixture.addColumns(1);
   fixture.layout.arrange(kUsable);
@@ -686,36 +686,52 @@ UMBRIEL_TEST(initialSizeMatchesWhatArrangeWillAssign) {
   CHECK_EQ(initial.height, arranged.height);
 }
 
-UMBRIEL_TEST(initialSizeHonoursARuleWidthFraction) {
+UMBRIEL_TEST(initialSizeHonoursARuleExtentFraction) {
   Fixture fixture;
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, 1.0 / 3, nullptr);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, 1.0 / 3, std::nullopt, nullptr);
 
   fixture.addColumns(1);
   CHECK(fixture.layout.setWidthFraction(0, 1.0 / 3));
   fixture.layout.arrange(kUsable);
 
   CHECK_EQ(initial.width, fixture.layout.targetBox(stub(0)).width);
-  CHECK(initial.width < fixture.layout.initialSize(kUsable, std::nullopt, nullptr).width);
+  CHECK(initial.width < fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr).width);
 }
 
 UMBRIEL_TEST(initialSizeUsesTheDefaultFractionWhenNoRuleApplies) {
   Fixture fixture;
-  CHECK_EQ(fixture.layout.initialSize(kUsable, std::nullopt, nullptr).width, 624);
-  CHECK_EQ(fixture.layout.initialSize(kUsable, std::nullopt, nullptr).height, 700);
+  CHECK_EQ(fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr).width, 624);
+  CHECK_EQ(fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr).height, 700);
 }
 
 UMBRIEL_TEST(initialSizeLeavesTheScrollAxisUnconstrainedWhenNoDefaultIsSet) {
   Fixture horizontal;
-  horizontal.config.scrolling.defaultWidthFraction.reset();
-  const Layout::InitialSize horizontalSize = horizontal.layout.initialSize(kUsable, std::nullopt, nullptr);
+  horizontal.config.scrolling.defaultExtentFraction.reset();
+  const Layout::InitialSize horizontalSize =
+      horizontal.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
   CHECK_EQ(horizontalSize.width, 0);
   CHECK_EQ(horizontalSize.height, 700);
 
   Fixture vertical(ScrollingDirection::Vertical);
-  vertical.config.scrolling.defaultWidthFraction.reset();
-  const Layout::InitialSize verticalSize = vertical.layout.initialSize(kUsable, std::nullopt, nullptr);
+  vertical.config.scrolling.defaultExtentFraction.reset();
+  const Layout::InitialSize verticalSize =
+      vertical.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
   CHECK_EQ(verticalSize.width, 1260);
   CHECK_EQ(verticalSize.height, 0);
+}
+
+UMBRIEL_TEST(initialSizeHonoursAPixelExtentWithoutAFractionDefault) {
+  Fixture horizontal;
+  horizontal.config.scrolling.defaultExtentFraction.reset();
+  const Layout::InitialSize horizontalSize = horizontal.layout.initialSize(kUsable, false, std::nullopt, 800, nullptr);
+  CHECK_EQ(horizontalSize.width, 800);
+  CHECK_EQ(horizontalSize.height, 700);
+
+  Fixture vertical(ScrollingDirection::Vertical);
+  vertical.config.scrolling.defaultExtentFraction.reset();
+  const Layout::InitialSize verticalSize = vertical.layout.initialSize(kUsable, false, std::nullopt, 300, nullptr);
+  CHECK_EQ(verticalSize.width, 1260);
+  CHECK_EQ(verticalSize.height, 300);
 }
 
 UMBRIEL_TEST(mappedClientWidthCanBecomeTheColumnWidth) {
@@ -1334,7 +1350,7 @@ UMBRIEL_TEST(verticalLaneExtentUsesTheGapAwareFormula) {
 
 UMBRIEL_TEST(verticalInitialSizeMatchesWhatArrangeWillAssign) {
   Fixture fixture(ScrollingDirection::Vertical);
-  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, std::nullopt, nullptr);
+  const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
   CHECK_EQ(initial.width, 1260);
   CHECK_EQ(initial.height, 344);
 

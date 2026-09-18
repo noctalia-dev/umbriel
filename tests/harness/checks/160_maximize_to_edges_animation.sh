@@ -26,7 +26,7 @@ outer_border_width = 0
 corner_radius = 0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

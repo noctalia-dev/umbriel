@@ -29,7 +29,7 @@ workspace_background = "#000000FF"
 drag_opacity = 0.0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 zoom = 0.5

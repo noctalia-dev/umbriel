@@ -32,7 +32,7 @@ corner_radius = 12
 [[window_rule]]
 match.title = "^fractional-content$"
 default_floating = true
-default_size = [602, 402]
+default_floating_size_px = { width = 602, height = 402 }
 default_position = { x = 9, y = 9, anchor = "top_left" }
 
 [output."HEADLESS-1"]

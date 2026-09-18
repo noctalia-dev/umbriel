@@ -608,7 +608,8 @@ namespace umbriel {
   }
 
   Layout::InitialSize MasterStackLayout::initialSize(
-      const wlr_box& usable, std::optional<double> /*ruleWidthFraction*/, const View* /*splitAnchor*/
+      const wlr_box& usable, bool /*wantMaximize*/, std::optional<double> /*ruleExtent*/,
+      std::optional<int> /*ruleExtentPx*/, const View* /*splitAnchor*/
   ) const {
     const wlr_box content = contentArea(usable);
     const int gap = m_config != nullptr ? m_config->totalGap : 0;
@@ -656,7 +657,7 @@ namespace umbriel {
     if (!widthAdjustable() || visualArea(columnIndex) == nullptr) {
       return false;
     }
-    const double next = nextFractionPreset(m_config->widthPresets, widthFraction(columnIndex), direction);
+    const double next = nextFractionPreset(m_config->extentPresets, widthFraction(columnIndex), direction);
     return setWidthFraction(columnIndex, next);
   }
 

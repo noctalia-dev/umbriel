@@ -24,6 +24,11 @@ configure m=mode install_prefix=prefix:
       asan)
         args+=(--buildtype=debug -Db_sanitize=address)
         ;;
+      tracy)
+        # Packaged Tracy clients are the no-op stub; build one under ~/.local.
+        args+=(--buildtype=release -Db_lto=true -Dtracy=enabled)
+        args+=(-Dpkg_config_path="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}")
+        ;;
       debug)
         args+=(--buildtype=debug)
         ;;
@@ -31,7 +36,7 @@ configure m=mode install_prefix=prefix:
         # Recipes that build take the mode as their first argument, so a stray
         # argument lands here. Configuring build-{{m}} for it would run whatever
         # follows against a fresh throwaway build directory.
-        echo "unknown build mode '{{m}}': expected debug, release, or asan" >&2
+        echo "unknown build mode '{{m}}': expected debug, release, asan, or tracy" >&2
         echo "harness checks select by name, not mode: 'just check {{m}}'" >&2
         exit 2
         ;;
@@ -62,6 +67,8 @@ debug: (build "debug")
 asan: (build "asan")
 
 release: (build "release")
+
+tracy: (build "tracy")
 
 install: (build "release")
     meson install -C build-release --no-rebuild

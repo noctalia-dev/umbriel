@@ -24,7 +24,7 @@ write_config() {
     printf '\n[output.HEADLESS-1]\nenabled = true\nmode = "1280x720"\nposition = [%s, 0]\nworkspaces = ["LEFT"]\n' "$1"
     printf '\n[output.HEADLESS-2]\nenabled = true\nmode = "%s"\nscale = %s\nposition = [%s, 0]\nworkspaces = ["RIGHT"]\n' "$second_mode" "$second_scale" "$2"
     printf '\n[[scratchpad]]\nname = "%s"\n' "$NAME"
-    printf '\n[[window_rule]]\nmatch.title = "^%s$"\ndefault_output = "HEADLESS-2"\ndefault_floating = true\ndefault_size = [360, 220]\ndefault_position = { x = 240, y = 180, anchor = "top_left" }\n' "$TITLE"
+    printf '\n[[window_rule]]\nmatch.title = "^%s$"\ndefault_output = "HEADLESS-2"\ndefault_floating = true\ndefault_floating_size_px = { width = 360, height = 220 }\ndefault_position = { x = 240, y = 180, anchor = "top_left" }\n' "$TITLE"
   } > "$UMBRIEL_CONFIG"
 }
 

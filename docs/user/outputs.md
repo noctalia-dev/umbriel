@@ -93,7 +93,7 @@ output is reconfigured, so reconnecting the display or reloading the configurati
 | `min_workspaces`                             | int                               | `1`         | Workspace count a dynamic output never shrinks below (1-64). Rejected together with a static `workspaces` inventory.                                |
 | `workspace_axis`                             | string                            | `"vertical"` | Axis the output's workspaces are arranged along: `"vertical"` or `"horizontal"`. The scrolling strip runs perpendicular to it. See [Workspace axis](workspaces.md#workspace-axis). |
 | `transform`                                  | string                            | `"normal"`  | Output rotation/flip.                                                                                                                               |
-| `layout.scrolling.default_width_fraction`    | float                             | inherited   | Initial scrolling strip-axis extent for new columns on this output (0.1-1.0). Inherits the global value when omitted.                               |
+| `layout.scrolling.default_extent_fraction`    | float                             | inherited   | Initial scrolling strip-axis extent for new columns on this output (0.1-1.0). Inherits the global value when omitted.                               |
 
 ### Workspace count
 
@@ -129,7 +129,7 @@ Override the global initial scrolling width for every workspace on one output:
 
 ```toml
 [output.DP-1.layout.scrolling]
-default_width_fraction = 0.4
+default_extent_fraction = 0.4
 ```
 
 The output name uses the same connector or monitor identity matching as the
@@ -154,6 +154,9 @@ An output's logical size is its transformed mode size divided by `scale`. A
 starts at `[0, 0]`, an output immediately to its right starts at `[2048, 0]`.
 A 1920-wide output at scale `1.0` immediately to its left starts at
 `[-1920, 0]`.
+When division produces a fractional logical size, Umbriel keeps output layout
+coordinates at whole logical units. Full-output layer-shell surfaces are rounded
+outward so wallpapers, panels, and overlays cover every physical output pixel.
 
 The pointer can cross only where output rectangles touch or overlap. Omit
 `position` to place outputs automatically from left to right and keep them

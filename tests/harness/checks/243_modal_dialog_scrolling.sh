@@ -72,7 +72,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.6
+default_extent_fraction = 0.6
 center_focused = "never"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

@@ -259,7 +259,7 @@ Workspace layout settings are applied in this order:
 
 1. The base `[layout]` settings.
 2. The matching output's
-   `layout.scrolling.default_width_fraction`, when configured.
+   `layout.scrolling.default_extent_fraction`, when configured.
 3. A matching `[[workspace]]` rule without an `output`.
 4. A matching `[[workspace]]` rule for the selected output.
 
@@ -267,7 +267,7 @@ Later steps take precedence. An unscoped name entry materializes one independent
 workspace on every dynamic output, and an output-scoped entry can override its
 layout on the matching output. Index rules are resolved again after anonymous
 workspaces are created, removed, or renumbered. The output step applies only to
-`default_width_fraction`; other layout fields pass directly from the global
+`default_extent_fraction`; other layout fields pass directly from the global
 settings to workspace rules.
 
 Strut edges are resolved independently. A rule that sets only
@@ -283,8 +283,8 @@ Strut edges are resolved independently. A rule that sets only
 | `layout.mode` | string | `"scrolling"`, `"dwindle"`, or `"master"`. |
 | `layout.gap` | int | Gap in pixels (0-500). |
 | `layout.struts.{left,right,top,bottom}` | int | Signed logical pixels reserved at each edge of the normal tiled layout (-65535 to 65535). Positive values shrink the area and negative values expand it. |
-| `layout.width_presets` | float array | Fractions used by the width-cycle and height-cycle actions in every layout. |
-| `layout.scrolling.default_width_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). It overrides the global and matching output values. When omitted at every level, the client chooses its initial logical extent. Reloading a default does not resize existing columns. |
+| `layout.extent_presets` | float array | Fractions used by the primary and secondary extent cycle actions in every layout. |
+| `layout.scrolling.default_extent_fraction` | float | Optional initial scrolling lane extent (0.1-1.0). It overrides the global and matching output values. When omitted at every level, the client chooses its initial logical extent. Reloading a default does not resize existing columns. |
 | `layout.scrolling.center_underfull_strip` | bool | Center the complete strip whenever it is narrower than the viewport. Disable to left-align underfull strips. |
 | `layout.scrolling.center_focused` | string | When a focus change centers the newly focused column. `"never"` only scrolls far enough to reveal it, `"always"` centers it, and `"on_overflow"` centers it when it cannot share the viewport with the neighboring column on the side focus came from. |
 | `layout.master.position` | string | Side occupied by the master area: `"left"`, `"right"`, or `"center"` between two stacks. |
@@ -316,14 +316,14 @@ layout.mode = "dwindle"
 
 # Customize workspace position 4 on DP-1
 [output.DP-1.layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [[workspace]]
 index = 4
 output = "DP-1"
 layout.gap = 0
 layout.struts.top = 24
-layout.scrolling.default_width_fraction = 0.667
+layout.scrolling.default_extent_fraction = 0.667
 ```
 
 In the last example, new columns on DP-1 use `0.5` except on workspace position

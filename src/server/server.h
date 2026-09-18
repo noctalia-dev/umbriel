@@ -38,6 +38,8 @@ struct wlr_idle_inhibit_manager_v1;
 struct wlr_idle_notifier_v1;
 struct wlr_input_device;
 struct wlr_keyboard;
+struct wlr_keyboard_shortcuts_inhibit_manager_v1;
+struct wlr_keyboard_shortcuts_inhibitor_v1;
 struct wlr_layer_shell_v1;
 struct wlr_output;
 struct wlr_output_layout;
@@ -297,6 +299,8 @@ namespace umbriel {
     // Combined state across keyboard devices. Media and brightness keys are
     // commonly exposed by a separate device from the held modifier keys.
     [[nodiscard]] uint32_t keyboardModifiers() const;
+    [[nodiscard]] bool keyboardShortcutsInhibited() const;
+    bool toggleKeyboardShortcutsInhibit();
     bool handleWheelBind(WheelDirection direction, uint32_t modifiers);
     // Null when no bind matched or its action declined. A throttled bind still
     // returns its chord so the caller can consume the press.
@@ -383,6 +387,8 @@ namespace umbriel {
     static void onVirtualPointerDestroy(wl_listener* listener, void* data);
     static void onNewIdleInhibitor(wl_listener* listener, void* data);
     static void onIdleInhibitorDestroy(wl_listener* listener, void* data);
+    static void onNewShortcutsInhibitor(wl_listener* listener, void* data);
+    static void onShortcutsInhibitorDestroy(wl_listener* listener, void* data);
     static void onNewActivationToken(wl_listener* listener, void* data);
     static void onActivationTokenDestroy(wl_listener* listener, void* data);
     static void onRequestActivate(wl_listener* listener, void* data);
@@ -477,6 +483,11 @@ namespace umbriel {
       Server* server = nullptr;
       wl_listener destroy{};
     };
+    struct ShortcutsInhibitorWatch {
+      Server* server = nullptr;
+      wlr_keyboard_shortcuts_inhibitor_v1* inhibitor = nullptr;
+      wl_listener destroy{};
+    };
     struct PointerDevice {
       Server* server = nullptr;
       wlr_input_device* device = nullptr;
@@ -533,6 +544,7 @@ namespace umbriel {
     wlr_virtual_pointer_manager_v1* m_virtualPointerManager = nullptr;
     wlr_tablet_manager_v2* m_tabletManager = nullptr;
     wlr_idle_inhibit_manager_v1* m_idleInhibitManager = nullptr;
+    wlr_keyboard_shortcuts_inhibit_manager_v1* m_shortcutsInhibitManager = nullptr;
     wlr_idle_notifier_v1* m_idleNotifier = nullptr;
     wlr_xdg_activation_v1* m_xdgActivation = nullptr;
     wlr_gamma_control_manager_v1* m_gammaManager = nullptr;
@@ -668,6 +680,7 @@ namespace umbriel {
     wl_listener m_newVirtualKeyboard{};
     wl_listener m_newVirtualPointer{};
     wl_listener m_newIdleInhibitor{};
+    wl_listener m_newShortcutsInhibitor{};
     wl_listener m_newActivationToken{};
     wl_listener m_requestActivate{};
     wl_listener m_workspaceCommit{};
@@ -681,6 +694,7 @@ namespace umbriel {
 
     std::vector<std::unique_ptr<Output>> m_outputs;
     std::vector<std::unique_ptr<Keyboard>> m_keyboards;
+    std::vector<std::unique_ptr<ShortcutsInhibitorWatch>> m_shortcutsInhibitors;
     SurfaceLayoutMemory m_surfaceLayouts;
     Keyboard* m_keyboardLayoutSource = nullptr;
     ModifierTapState m_modifierTap;

@@ -18,7 +18,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [output.HEADLESS-1]
 workspace_axis = "vertical"

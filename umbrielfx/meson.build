@@ -123,6 +123,12 @@ umbrielfx_c_args += cc.get_supported_arguments([
   '-Wno-unused-parameter',
 ])
 
+# Without these, tracy.c and every TRACY_* call site compile away.
+if tracy_dep.found()
+  umbrielfx_deps += tracy_dep
+  umbrielfx_c_args += ['-DTRACY_ENABLE', '-DTRACY_ON_DEMAND']
+endif
+
 # Shaders are compiled at runtime, so they ship as generated char arrays rather
 # than data files an installed binary would have to locate.
 umbrielfx_shader_embed = find_program(

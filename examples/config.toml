@@ -105,7 +105,7 @@ honor_restored_maximize = false                 # Honor restored maximized state
 # affects new columns only; existing columns keep their current size.
 # Documentation: https://docs.noctalia.dev/umbriel/outputs/#initial-scrolling-width
 # [output.DP-1.layout.scrolling]
-# default_width_fraction = 0.4
+# default_extent_fraction = 0.4
 
 # ────────────────────────────── Workspaces ──────────────────────────────────
 # Choose global workspace behavior. Each output uses dynamic workspaces unless
@@ -260,7 +260,7 @@ hide_when_typing = false                        # Keep visible while typing
 hide_timeout_ms = 0                             # Idle hide timeout, 0 disables; maximum is 3600000
 
 [input.focus]
-follows_mouse = false                           # Focus on pointer motion and Dwindle/master tiles revealed on close
+follows_mouse = false                           # Focus on motion after scene changes, client fullscreen exits, and closes
 # Refuse hover focus when revealing a window would scroll farther than this
 # many viewport widths. Omit the key for no limit.
 # follows_mouse_max_scroll = 0.5
@@ -343,6 +343,9 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 
 # Common keybinds
 "Mod+Escape" = "session-quit"
+# Keep one escape binding available when a game or remote desktop client asks
+# Umbriel to pass ordinary compositor shortcuts through.
+"Mod+Shift+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
 "Mod+F1" = "window-focus-next"
 "Mod+H" = "window-focus-left"
 "Mod+J" = "window-focus-down"
@@ -354,8 +357,8 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 "Mod+Shift+Right" = "column-move-right"
 "Mod+F" = "window-toggle-fullscreen"             # Exit restores the previous layout size immediately
 "Mod+Ctrl+F" = "window-toggle-maximize"
-"Mod+R" = "window-cycle-width"
-"Mod+Shift+R" = "window-cycle-width-back"
+"Mod+R" = "window-cycle-primary-extent"
+"Mod+Shift+R" = "window-cycle-primary-extent-back"
 "Mod+Comma" = "window-consume-left"
 "Mod+Period" = "window-consume-right"
 "Mod+WheelUp" = "window-focus-left"
@@ -391,9 +394,11 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # Resize, maximize, fullscreen, and close actions target a scratchpad that owns
 # keyboard focus. Layout-relative window actions leave the workspace behind it
 # unchanged.
+# Parented dialogs, including portal file choosers from another process, join a
+# visible parent window's scratchpad unless an explicit placement rule wins.
 # `window-focus:<window-id>` and `window-focus-warp:<window-id>` also summon a
-# hidden scratchpad target to the output under the pointer. The `-warp` form
-# then moves the cursor to that target.
+# hidden scratchpad target to the output under the pointer. The first form
+# follows `input.cursor.follows_focus`; the `-warp` form always moves the cursor.
 # Documentation: https://docs.noctalia.dev/umbriel/scratchpads/
 "Mod+Shift+Space" = "window-move-to-scratchpad"
 "Mod+Space" = "scratchpad-toggle"
@@ -424,16 +429,16 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # "Mod+Bracketleft" = "window-focus-previous"
 # "Mod+Shift+Bracketright" = "window-swap-next"
 # "Mod+Shift+Bracketleft" = "window-swap-previous"
-# "Mod+Minus" = "window-modify-width:-0.1"
-# "Mod+Equal" = "window-modify-width:0.1"
-# "Mod+Alt+Minus" = "window-modify-height:-0.1"
-# "Mod+Alt+Equal" = "window-modify-height:0.1"
+# "Mod+Minus" = "window-modify-primary-extent:-0.1"
+# "Mod+Equal" = "window-modify-primary-extent:0.1"
+# "Mod+Alt+Minus" = "window-modify-secondary-extent:-0.1"
+# "Mod+Alt+Equal" = "window-modify-secondary-extent:0.1"
 # "Mod+Ctrl+H" = "window-modify-width-left:0.1"
 # "Mod+Ctrl+L" = "window-modify-width-right:0.1"
 # "Mod+Ctrl+K" = "window-modify-height-up:0.1"
 # "Mod+Ctrl+J" = "window-modify-height-down:0.1"
-# "Mod+Alt+R" = "window-cycle-height"
-# "Mod+Alt+Shift+R" = "window-cycle-height-back"
+# "Mod+Alt+R" = "window-cycle-secondary-extent"
+# "Mod+Alt+Shift+R" = "window-cycle-secondary-extent-back"
 # "Mod+Grave" = "window-focus-last"
 # "Mod+BackSpace" = "window-consume-or-expel-left"
 # "Mod+C" = "column-center"
@@ -459,11 +464,11 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 # level, while a global reset provides an emergency exit from any layer.
 # Submaps: https://docs.noctalia.dev/umbriel/keybinds/#submaps
 # "Mod+S" = { action = "submap:resize", repeat = false }
-# "submap[resize],1" = { action = "window-set-width:0.5", submap = "reset" }
+# "submap[resize],1" = { action = "window-set-primary-extent:0.5", submap = "reset" }
 # "submap[resize],N" = { action = "submap:nudge", repeat = false }
 # "submap[resize],Escape" = "submap:reset"
-# "submap[nudge],Left" = "window-modify-width:-0.1"
-# "submap[nudge],Right" = "window-modify-width:0.1"
+# "submap[nudge],Left" = "window-modify-primary-extent:-0.1"
+# "submap[nudge],Right" = "window-modify-primary-extent:0.1"
 # "submap[nudge],Escape" = "submap:reset"
 # "Escape" = "submap:reset"
 
@@ -488,7 +493,7 @@ follows_mouse = false                           # Focus on pointer motion and Dw
 [layout]
 mode = "scrolling"                              # scrolling, dwindle, or master
 gap = 8                                         # Logical pixels between tiles, 0-500
-width_presets = [0.333, 0.5, 0.667]             # Width and height cycling fractions
+extent_presets = [0.333, 0.5, 0.667]             # Primary and secondary extent fractions
 
 [layout.struts]
 # Signed logical pixels reserved after panel exclusive zones. Negative values
@@ -500,7 +505,7 @@ bottom = 0
 
 [layout.scrolling]
 # The strip axis is perpendicular to the output's workspace_axis.
-default_width_fraction = 0.5                    # Initial width for new columns, 0.1-1.0
+default_extent_fraction = 0.5                   # Initial extent for new columns, 0.1-1.0
 center_underfull_strip = true                   # Center a strip narrower than the viewport
 center_focused = "never"                        # never, always, or on_overflow
 
@@ -531,13 +536,13 @@ blur_optimized = false
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true
-default_size = [1020, 900]
+default_floating_size_px = { width = 1020, height = 900 }
 
 # Noctalia share picker
 [[window_rule]]
 match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
-default_size = [800, 600]
+default_floating_size_px = { width = 800, height = 600 }
 
 # Browsers expose no semantic PiP role or global position control.
 [[window_rule]]
@@ -586,8 +591,7 @@ default_pinned = true
 # default_output = "DP-1"
 # default_workspace = 2
 # default_floating = true
-# default_width = 0.6
-# default_height = 0.5
+# default_floating_size = { width = 0.6, height = 0.5 }
 # default_position = { x = 0, y = 8, anchor = "top" }
 
 # [[window_rule]]
@@ -617,16 +621,14 @@ default_pinned = true
 
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Wide$"
-# default_size = [1200, 600]
+# default_scrolling_extent_px = 1200
 
-# Size a floating window as fractions of the usable area. `default_size` wins
-# on both axes if it is also present.
+# Size a floating window as fractions of the usable area.
 
 # [[window_rule]]
 # match.app_id = "^org[.]example[.]Utility$"
 # default_floating = true
-# default_width = 0.5
-# default_height = 0.6
+# default_floating_size = { width = 0.5, height = 0.6 }
 
 # Dynamic effects and output policies can be combined in one matching rule.
 
@@ -675,7 +677,7 @@ default_pinned = true
 # 75% width when the window is alone, the default width when another window opens.
 # [[window_rule]]
 # match.is_alone = true
-# default_width = 0.75
+# default_scrolling_extent = 0.75
 
 # ────────────────────────────── Layer Rules ─────────────────────────────────
 # Match layer-shell surfaces such as panels, launchers, notifications, and
@@ -744,8 +746,8 @@ enabled = true
 duration_ms = 250
 curve = "easeout"
 # Filmstrip movement between workspace previews: wheel, keyboard, and touchpad
-# release alike. A spring curve settles from wherever the previews are and keeps
-# the speed a swipe let go with; any other curve runs over duration_ms instead.
+# release alike. A spring curve keeps the release velocity; its final few pixels
+# stay monotonic on the logical layout grid.
 workspace_curve = "spring:1,1000"
 
 # Scratchpad show, hide, and backdrop

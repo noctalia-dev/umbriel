@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# Width and height actions follow the active scratchpad float instead of the
-# workspace focus retained behind it. Every distinct resize handler is covered,
+# Primary and secondary extent actions follow the active scratchpad float
+# instead of the workspace focus retained behind it. Every distinct resize handler is covered,
 # and the background box must remain stable throughout.
 set -euo pipefail
 
@@ -22,13 +22,12 @@ scale = 0
 [[window_rule]]
 match.title = "^scratchpad-resize-background$"
 default_floating = true
-default_width = 0.5
-default_height = 0.5
+default_floating_size = { width = 0.5, height = 0.5 }
 
 [[window_rule]]
 match.title = "^scratchpad-resize-foreground$"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -90,9 +89,9 @@ wait_for_field "$BACKGROUND" h 360
 
 # Positive control: the same action must reach the background while it owns
 # focus, then restore the exact baseline used by the isolation assertions.
-"$UMBRIEL" msg window-set-width:0.6 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.6 > /dev/null
 wait_for_field "$BACKGROUND" w 768
-"$UMBRIEL" msg window-set-width:0.5 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.5 > /dev/null
 wait_for_field "$BACKGROUND" w 640
 
 "$CLIENT" "$SCRATCHPAD" > "$SCRATCHPAD_LOG" 2>&1 &
@@ -110,13 +109,13 @@ assert_background_box setup
 
 # Direct setters, relative changes, and preset cycling have separate handlers.
 # Exercise both axes and both cycle directions while the scratchpad owns focus.
-resize_scratchpad window-set-width:0.25 320 260
-resize_scratchpad window-modify-width:+0.1 448 260
-resize_scratchpad window-cycle-width 640 260
-resize_scratchpad window-cycle-width-back 427 260
-resize_scratchpad window-set-height:0.25 427 180
-resize_scratchpad window-modify-height:+0.1 427 252
-resize_scratchpad window-cycle-height 427 360
-resize_scratchpad window-cycle-height-back 427 240
+resize_scratchpad window-set-primary-extent:0.25 320 260
+resize_scratchpad window-modify-primary-extent:+0.1 448 260
+resize_scratchpad window-cycle-primary-extent 640 260
+resize_scratchpad window-cycle-primary-extent-back 427 260
+resize_scratchpad window-set-secondary-extent:0.25 427 180
+resize_scratchpad window-modify-secondary-extent:+0.1 427 252
+resize_scratchpad window-cycle-secondary-extent 427 360
+resize_scratchpad window-cycle-secondary-extent-back 427 240
 
 echo "resize actions target the active scratchpad float without changing the background"

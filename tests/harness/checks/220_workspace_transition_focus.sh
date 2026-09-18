@@ -160,13 +160,13 @@ workspace_axis = "horizontal"
 [[window_rule]]
 match.title = "^axis-float$"
 default_floating = true
-default_size = [200, 200]
+default_floating_size_px = { width = 200, height = 200 }
 default_position = { x = 900, y = 420, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^axis-pinned$"
 default_floating = true
-default_size = [200, 200]
+default_floating_size_px = { width = 200, height = 200 }
 default_position = { x = 900, y = 60, anchor = "top_left" }
 EOF
 # This reload lands while the vertical slide above is still running: an axis change settles it and keeps the workspace

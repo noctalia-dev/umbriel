@@ -18,8 +18,7 @@ enabled = false
 [[window_rule]]
 match.title = "^float-resize$"
 default_floating = true
-default_width = 0.5
-default_height = 0.5
+default_floating_size = { width = 0.5, height = 0.5 }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -48,11 +47,11 @@ wait_for_field float-resize h 360
 "$UMBRIEL" msg "window-focus-warp:$(field_of float-resize id)" > /dev/null
 
 # The height verb reaches the float and resolves against the 720 output: 2/3 -> 480
-"$UMBRIEL" msg window-cycle-height > /dev/null
+"$UMBRIEL" msg window-cycle-secondary-extent > /dev/null
 wait_for_field float-resize h 480
 
 # Set assigns the fraction outright on the named axis only.
-"$UMBRIEL" msg window-set-width:0.25 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent:0.25 > /dev/null
 wait_for_field float-resize w 320
 wait_for_field float-resize h 480
 
@@ -62,7 +61,7 @@ wait_for_field float-resize h 480
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_field float-resize w 1280
 wait_for_field float-resize h 720
-"$UMBRIEL" msg window-modify-width:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-primary-extent:-0.2 > /dev/null
 wait_for_field float-resize w 1024
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_field float-resize w 1280

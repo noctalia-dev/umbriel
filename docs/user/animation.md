@@ -80,17 +80,17 @@ curve = "easeout"
 Each event table accepts `enabled`, `duration_ms`, and `curve`. The following
 fields are specific to individual event tables:
 
-| Table                      | Additional fields                                                                                                  | Transition                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `[animation.windows_in]`   | `style` (`popin`, `zoom`, `slide`, `fade`, or `none`); `scale` (0.1-1.0, for `popin`)                            | Window open.                                        |
-| `[animation.windows_out]`  | `style` (`fade` or `slide`)                                                                                       | Window close, using a scene snapshot.               |
-| `[animation.windows_move]` | None                                                                                                               | Window move, resize, and floating maximize transitions, including visible scratchpad size actions. |
-| `[animation.workspaces]`   | None                                                                                                               | Workspace switch.                                   |
-| `[animation.overview]`     | `workspace_curve` (default `spring:1,1000`)                                                                        | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews. |
-| `[animation.scratchpad]`   | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                                             | Scratchpad show, hide, and backdrop.                |
-| `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space, beginning from the current border color when focus changes. |
-| `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                                                 | Unfocused-window opacity. `dim = 0` disables it.    |
-| `[animation.layers]`       | None                                                                                                               | Layer-shell surface map and unmap fades.            |
+| Table                       | Additional fields                                                                     | Transition                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `[animation.windows_in]`    | `style` (`popin`, `zoom`, `slide`, `fade`, or `none`); `scale` (0.1-1.0, for `popin`) | Window open.                                                                                                  |
+| `[animation.windows_out]`   | `style` (`fade` or `slide`)                                                           | Window close, using a scene snapshot.                                                                         |
+| `[animation.windows_move]`  | None                                                                                  | Window move, resize, and floating maximize transitions, including visible scratchpad size actions.            |
+| `[animation.workspaces]`    | None                                                                                  | Workspace switch.                                                                                             |
+| `[animation.overview]`      | `workspace_curve` (default `spring:1,1000`)                                           | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews.                    |
+| `[animation.scratchpad]`    | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                  | Scratchpad show, hide, and backdrop.                                                                          |
+| `[animation.border]`        | None                                                                                  | Focus-ring color transition in OkLab color space, beginning from the current border color when focus changes. |
+| `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                       | Unfocused-window opacity. `dim = 0` disables it.                                                              |
+| `[animation.layers]`        | None                                                                                  | Layer-shell surface map and unmap fades.                                                                      |
 
 `workspace_curve` covers every way the filmstrip moves: a wheel notch, a
 keyboard action, and the release of a touchpad gesture. A spring curve settles
@@ -220,17 +220,17 @@ Write GLSL ES 1.00 with the entry point `vec4 animation(vec2 uv)`. Umbriel suppl
 `main`, precision declarations, and the following interface. Do not include a
 `#version` declaration or your own `main`.
 
-| Name | Meaning |
-| --- | --- |
-| `uv` | Normalized target coordinates: top-left `(0, 0)`, bottom-right `(1, 1)`, independent of output rotation |
-| `umbriel_sample(vec2 uv)` | Sample the rendered target; coordinates outside the target/output return transparent black |
-| `umbriel_sample_previous(vec2 uv)` | Sample this effect's prior successfully submitted result; the first sample uses the current rendered target |
-| `umbriel_size` | Current target bounding width and height in logical units |
-| `umbriel_progress` | Eased transition progress, normally 0 to 1; springs and overshooting curves may exceed that range |
-| `umbriel_clamped_progress` | Eased progress clamped to 0 to 1 |
-| `umbriel_linear_progress` | Timeline fraction before easing |
-| `umbriel_direction` | `1` for opening/showing/focusing, `-1` for closing/hiding/unfocusing; movement uses the sign of its controlling scalar, overview settling uses `1` |
-| `umbriel_random_seed` | Four independent pseudorandom values in `[0, 1)`, stable for one transition and refreshed for the next transition |
+| Name                               | Meaning                                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uv`                               | Normalized target coordinates: top-left `(0, 0)`, bottom-right `(1, 1)`, independent of output rotation                                            |
+| `umbriel_sample(vec2 uv)`          | Sample the rendered target; coordinates outside the target/output return transparent black                                                         |
+| `umbriel_sample_previous(vec2 uv)` | Sample this effect's prior successfully submitted result; the first sample uses the current rendered target                                        |
+| `umbriel_size`                     | Current target bounding width and height in logical units                                                                                          |
+| `umbriel_progress`                 | Eased transition progress, normally 0 to 1; springs and overshooting curves may exceed that range                                                  |
+| `umbriel_clamped_progress`         | Eased progress clamped to 0 to 1                                                                                                                   |
+| `umbriel_linear_progress`          | Timeline fraction before easing                                                                                                                    |
+| `umbriel_direction`                | `1` for opening/showing/focusing, `-1` for closing/hiding/unfocusing; movement uses the sign of its controlling scalar, overview settling uses `1` |
+| `umbriel_random_seed`              | Four independent pseudorandom values in `[0, 1)`, stable for one transition and refreshed for the next transition                                  |
 
 Progress always advances from the transition's start toward its end, including
 when closing. For a shared show/hide shader, use

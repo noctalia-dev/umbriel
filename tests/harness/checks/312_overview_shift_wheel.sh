@@ -9,7 +9,7 @@ scroll_factor_horizontal = 0.5
 scroll_factor_vertical = 2.0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [output."HEADLESS-1"]
 workspaces = 3

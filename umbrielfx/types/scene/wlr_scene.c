@@ -359,6 +359,7 @@ struct wlr_scene *wlr_scene_create(void) {
 	scene->highlight_transparent_region = env_parse_bool("WLR_SCENE_HIGHLIGHT_TRANSPARENT_REGION");
 
 	scene->blur_data = blur_data_get_default();
+	scene->background_color[3] = 1.0f;
 
 	return scene;
 }
@@ -697,7 +698,21 @@ static void scale_box(struct wlr_box *box, float scale) {
 
 static void transform_output_box(struct wlr_box *box, const struct render_data *data) {
 	enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
+	bool touches_right = box->width > 0 &&
+		box->x + box->width == data->logical.width;
+	bool touches_bottom = box->height > 0 &&
+		box->y + box->height == data->logical.height;
 	scale_box(box, data->scale);
+
+	// Effective resolution truncates the physical size divided by scale. When
+	// that logical edge scales back one pixel short, give it the output's exact
+	// physical edge. The output damage region remains the final clip.
+	if (touches_right) {
+		box->width = data->trans_width - box->x;
+	}
+	if (touches_bottom) {
+		box->height = data->trans_height - box->y;
+	}
 	wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
 }
 
@@ -1642,6 +1657,21 @@ void wlr_scene_blur_set_clipped_region(struct wlr_scene_blur *blur,
 
 	blur->clipped_region = clipped_region;
 	scene_node_update(&blur->node, NULL);
+}
+
+void wlr_scene_set_background_color(struct wlr_scene *scene, const float color[static 4]) {
+	if (memcmp(scene->background_color, color, sizeof(scene->background_color)) == 0) {
+		return;
+	}
+
+	memcpy(scene->background_color, color, sizeof(scene->background_color));
+
+	// The color decides both what the clear paints and which rects leave the
+	// render list, so every output's whole surface is stale.
+	struct wlr_scene_output *scene_output;
+	wl_list_for_each(scene_output, &scene->outputs, link) {
+		scene_output_damage_whole(scene_output);
+	}
 }
 
 void wlr_scene_set_blur_data(struct wlr_scene *scene, int num_passes,
@@ -3419,23 +3449,28 @@ struct render_list_constructor_data {
 	bool calculate_visibility;
 	bool highlight_transparent_region;
 	bool fractional_scale;
+	const float *background_color;
 };
 
-static bool scene_buffer_is_black_opaque(struct wlr_scene_buffer *scene_buffer) {
-	return scene_buffer->is_single_pixel_buffer &&
-		scene_buffer->single_pixel_buffer_color[0] == 0 &&
-		scene_buffer->single_pixel_buffer_color[1] == 0 &&
-		scene_buffer->single_pixel_buffer_color[2] == 0 &&
-		scene_buffer->single_pixel_buffer_color[3] == UINT32_MAX &&
-		scene_buffer->opacity == 1.0 &&
-		fx_corner_radii_is_empty(&scene_buffer->corners);
+static bool scene_buffer_matches_background(struct wlr_scene_buffer *scene_buffer,
+		const float background[static 4]) {
+	if (!scene_buffer->is_single_pixel_buffer || scene_buffer->opacity != 1.0 ||
+			!fx_corner_radii_is_empty(&scene_buffer->corners)) {
+		return false;
+	}
+	for (size_t i = 0; i < 4; i++) {
+		if (scene_buffer->single_pixel_buffer_color[i] !=
+				(uint32_t)(background[i] * UINT32_MAX)) {
+			return false;
+		}
+	}
+	return true;
 }
 
-static bool scene_rect_is_black_opaque(struct wlr_scene_rect *scene_rect) {
-	return scene_rect->color[0] == 0.f &&
-		scene_rect->color[1] == 0.f &&
-		scene_rect->color[2] == 0.f &&
-		scene_rect->color[3] == 1.f &&
+static bool scene_rect_matches_background(struct wlr_scene_rect *scene_rect,
+		const float background[static 4]) {
+	return background[3] == 1.f &&
+		memcmp(scene_rect->color, background, sizeof(scene_rect->color)) == 0 &&
 		fx_corner_radii_is_empty(&scene_rect->corners) &&
 		fx_corner_radii_is_empty(&scene_rect->clipped_region.corners) &&
 		wlr_box_empty(&scene_rect->clipped_region.area);
@@ -3449,25 +3484,25 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		return false;
 	}
 
-	// While rendering, the background should always be black. If we see a
-	// black rect, we can ignore rendering everything under the rect, and
-	// unless fractional scale is used even the rect itself (to avoid running
-	// into issues regarding damage region expansion).
+	// The clear paints the scene's background color, so a rect that matches it
+	// exactly renders nothing the clear would not. Skip it, and everything it
+	// covers, except under fractional scale where the damage region is expanded
+	// and the rect has to be drawn to cover the seam.
 	if (node->type == WLR_SCENE_NODE_RECT && data->calculate_visibility &&
 			(!data->fractional_scale || data->render_list->size == 0)) {
 		struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
 
-		if (scene_rect_is_black_opaque(rect)) {
+		if (scene_rect_matches_background(rect, data->background_color)) {
 			return false;
 		}
 	}
 
-	// Apply the same special-case to black opaque single-pixel buffers
+	// Same for a single-pixel buffer of that color
 	if (node->type == WLR_SCENE_NODE_BUFFER && data->calculate_visibility &&
 			(!data->fractional_scale || data->render_list->size == 0)) {
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
-		if (scene_buffer_is_black_opaque(scene_buffer)) {
+		if (scene_buffer_matches_background(scene_buffer, data->background_color)) {
 			return false;
 		}
 	}
@@ -4005,6 +4040,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		.calculate_visibility = scene_output->scene->calculate_visibility && !scene_has_animations(scene_output->scene),
 		.highlight_transparent_region = scene_output->scene->highlight_transparent_region,
 		.fractional_scale = floor(render_data.scale) != render_data.scale,
+		.background_color = scene_output->scene->background_color,
 	};
 
 	list_con.render_list->size = 0;
@@ -4319,7 +4355,12 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	wlr_render_pass_add_rect(render_pass, &(struct wlr_render_rect_options){
 		.box = { .width = buffer->width, .height = buffer->height },
-		.color = { .r = 0, .g = 0, .b = 0, .a = 1 },
+		.color = {
+			.r = scene_output->scene->background_color[0],
+			.g = scene_output->scene->background_color[1],
+			.b = scene_output->scene->background_color[2],
+			.a = scene_output->scene->background_color[3],
+		},
 		.clip = &background,
 	});
 	pixman_region32_fini(&background);

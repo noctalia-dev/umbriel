@@ -6,6 +6,7 @@
 // unanswered until a byte arrives on stdin, so the window keeps its size while
 // the resize stays pending.
 
+#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -41,6 +42,8 @@ namespace {
     wl_seat* seat = nullptr;
     xdg_wm_base* wmBase = nullptr;
     zxdg_exporter_v2* exporter = nullptr;
+    zwp_keyboard_shortcuts_inhibit_manager_v1* shortcutsInhibitManager = nullptr;
+    zwp_keyboard_shortcuts_inhibitor_v1* shortcutsInhibitor = nullptr;
     wl_pointer* pointer = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_surface* surface = nullptr;
@@ -96,6 +99,19 @@ namespace {
       .key = keyboardKey,
       .modifiers = keyboardModifiers,
       .repeat_info = keyboardRepeatInfo,
+  };
+
+  void shortcutsInhibitorActive(void*, zwp_keyboard_shortcuts_inhibitor_v1*) {
+    std::println("shortcuts-inhibitor active");
+  }
+
+  void shortcutsInhibitorInactive(void*, zwp_keyboard_shortcuts_inhibitor_v1*) {
+    std::println("shortcuts-inhibitor inactive");
+  }
+
+  constexpr zwp_keyboard_shortcuts_inhibitor_v1_listener kShortcutsInhibitorListener = {
+      .active = shortcutsInhibitorActive,
+      .inactive = shortcutsInhibitorInactive,
   };
 
   void pointerEnter(void*, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t, wl_fixed_t) {
@@ -282,6 +298,10 @@ namespace {
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
     } else if (std::strcmp(interface, zxdg_exporter_v2_interface.name) == 0) {
       state.exporter = static_cast<zxdg_exporter_v2*>(wl_registry_bind(registry, name, &zxdg_exporter_v2_interface, 1));
+    } else if (std::strcmp(interface, zwp_keyboard_shortcuts_inhibit_manager_v1_interface.name) == 0) {
+      state.shortcutsInhibitManager = static_cast<zwp_keyboard_shortcuts_inhibit_manager_v1*>(
+          wl_registry_bind(registry, name, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, std::min(version, 1U))
+      );
     }
   }
   void registryRemove(void*, wl_registry*, uint32_t) {}
@@ -330,6 +350,16 @@ int main(int argc, char** argv) {
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
   xdg_toplevel_add_listener(state.toplevel, &kToplevelListener, &state);
   xdg_toplevel_set_title(state.toplevel, title);
+  if (std::getenv("INHIBIT_SHORTCUTS") != nullptr) {
+    if (state.shortcutsInhibitManager == nullptr) {
+      std::println(stderr, "seat-log-client: compositor is missing zwp_keyboard_shortcuts_inhibit_manager_v1");
+      return EXIT_FAILURE;
+    }
+    state.shortcutsInhibitor = zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(
+        state.shortcutsInhibitManager, state.surface, state.seat
+    );
+    zwp_keyboard_shortcuts_inhibitor_v1_add_listener(state.shortcutsInhibitor, &kShortcutsInhibitorListener, &state);
+  }
   wl_surface_commit(state.surface);
   if (std::getenv("EXPORT_TOPLEVEL") != nullptr) {
     if (state.exporter == nullptr) {

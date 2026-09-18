@@ -13,6 +13,7 @@ boundaries, or regression-sensitive behavior.
 - [Workspace lifecycle](workspace-lifecycle.md)
 - [Overview rendering](overview-rendering.md)
 - [Border rendering](border-rendering.md)
+- [Render performance](render-performance.md)
 - [Xwayland input stability](xwayland-input-stability.md)
 - [Client buffer constraints](client-buffer-constraints.md)
 - [Scene helper ownership](scene-helper-ownership.md)

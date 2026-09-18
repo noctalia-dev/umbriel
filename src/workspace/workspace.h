@@ -101,9 +101,8 @@ namespace umbriel {
     void addView(View* view, bool attachToLayout = true);
     View* removeView(View* view, bool reconcile = true);
     void layoutAttach(
-        View* view, std::optional<double> initialWidth = std::nullopt,
-        std::optional<int> initialPixelWidth = std::nullopt,
-        LayoutAttachOrigin origin = LayoutAttachOrigin::ExistingView
+        View* view, std::optional<double> initialExtent = std::nullopt,
+        std::optional<int> initialExtentPx = std::nullopt, LayoutAttachOrigin origin = LayoutAttachOrigin::ExistingView
     );
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
@@ -116,10 +115,12 @@ namespace umbriel {
         View* view, const wlr_box& usable, std::string_view group, std::optional<int> order, bool maximized
     ) const;
     // Reposition a tiled view after a late title selects its named scrolling-column rule.
-    // initialWidth seeds a new column when its name has no existing member.
+    // The initial extent seeds a new column when its name has no existing member.
     // A name change permits a split; an order-only change preserves manual placement.
-    void
-    applyNamedScrollingColumnRule(View* view, std::optional<double> initialWidth, NamedScrollingColumnChange change);
+    void applyNamedScrollingColumnRule(
+        View* view, std::optional<double> initialExtent, std::optional<int> initialExtentPx,
+        NamedScrollingColumnChange change
+    );
     void layoutDetach(View* view, bool animate = false);
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however

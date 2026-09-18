@@ -109,7 +109,8 @@ scratchpad to be visible.
 
 `window-focus:<window-id>` and `window-focus-warp:<window-id>` summon a
 matching hidden scratchpad window to the output under the pointer before
-focusing it. The `-warp` form then moves the cursor to that window.
+focusing it. The first form follows `input.cursor.follows_focus`; the `-warp`
+form always moves the cursor to that window.
 
 Scratchpad visibility and cycling actions never repeat while their key is held,
 even if the binding does not set `repeat = false`.
@@ -156,6 +157,13 @@ If no window has been focused yet, Umbriel focuses the first stored window.
 Hiding it returns focus to a regular workspace window. Opening the workspaces
 overview immediately hides every visible scratchpad while keeping its windows
 stored.
+
+An XDG dialog parented to a window in a visible scratchpad automatically joins
+the same scratchpad. This includes portal dialogs attached through
+`xdg-foreign`, even when the dialog belongs to another process. The dialog is
+shown above and centered over its parent, and follows the scratchpad when it is
+hidden or shown. An explicit `default_scratchpad`, `default_workspace`, or
+`default_pinned = true` window rule takes precedence over this inheritance.
 
 Backdrop dim and blur apply only to an output with a visible scratchpad. Hiding
 or moving that scratchpad clears the old output's backdrop.
@@ -213,9 +221,10 @@ Scratchpad show and hide transitions, backdrop dimming and blur, and optional
 entry sizing are configured under
 [`animation.scratchpad`](animation.md#animation).
 
-While a scratchpad window has keyboard focus, width and height actions resize
-it directly using `animation.windows_move`. Maximize, maximize-to-edges,
-fullscreen, and bare `window-close` also target that scratchpad window.
+While a scratchpad window has keyboard focus, primary and secondary extent
+actions resize it directly using `animation.windows_move`. Maximize,
+maximize-to-edges, fullscreen, and bare `window-close` also target that
+scratchpad window.
 
 Actions that require a workspace layout are inactive while the scratchpad has
 focus. This includes plain directional focus and movement, consume and expel,

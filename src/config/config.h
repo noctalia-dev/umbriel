@@ -52,9 +52,9 @@ namespace umbriel {
     std::optional<LayoutMode> mode;
     std::optional<int> gap;
     LayoutStrutOverrides struts;
-    std::optional<std::vector<double>> widthPresets;
+    std::optional<std::vector<double>> extentPresets;
     struct Scrolling {
-      std::optional<double> defaultWidthFraction;
+      std::optional<double> defaultExtentFraction;
       std::optional<bool> centerUnderfullStrip;
       std::optional<CenterFocusedColumn> centerFocused;
       bool operator==(const Scrolling&) const = default;
@@ -98,9 +98,9 @@ namespace umbriel {
     LayoutMode mode = LayoutMode::Scrolling;
     int gap = 8;
     LayoutStruts struts;
-    std::vector<double> widthPresets{1.0 / 3, 0.5, 2.0 / 3};
+    std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
     struct Scrolling {
-      std::optional<double> defaultWidthFraction;
+      std::optional<double> defaultExtentFraction;
       bool centerUnderfullStrip = true;
       CenterFocusedColumn centerFocused = CenterFocusedColumn::Never;
       // Axis-agnostic layout state is preserved when config reload changes direction.
@@ -233,7 +233,7 @@ namespace umbriel {
     struct Layout {
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
-        std::optional<double> defaultWidthFraction;
+        std::optional<double> defaultExtentFraction;
         bool operator==(const Scrolling&) const = default;
       } scrolling;
       bool operator==(const Layout&) const = default;
@@ -309,10 +309,13 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<std::string> defaultOutput;
     std::optional<bool> defaultFloating;
-    std::optional<std::array<int, 2>> defaultSize; // [width, height]
+    std::optional<int> defaultFloatingWidthPx;
+    std::optional<int> defaultFloatingHeightPx;
+    std::optional<double> defaultFloatingWidth;
+    std::optional<double> defaultFloatingHeight;
     std::optional<WindowPosition> defaultPosition;
-    std::optional<double> defaultWidth;  // column width fraction override
-    std::optional<double> defaultHeight; // floating height fraction of the usable area
+    std::optional<int> defaultScrollingExtentPx;
+    std::optional<double> defaultScrollingExtent;
     std::optional<WorkspaceReference> defaultWorkspace;
     std::optional<std::string> defaultScratchpad;
     std::optional<std::string> defaultScrollingColumn;
@@ -349,10 +352,13 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && defaultOutput == other.defaultOutput
           && defaultFloating == other.defaultFloating
-          && defaultSize == other.defaultSize
+          && defaultFloatingWidthPx == other.defaultFloatingWidthPx
+          && defaultFloatingHeightPx == other.defaultFloatingHeightPx
+          && defaultFloatingWidth == other.defaultFloatingWidth
+          && defaultFloatingHeight == other.defaultFloatingHeight
           && defaultPosition == other.defaultPosition
-          && defaultWidth == other.defaultWidth
-          && defaultHeight == other.defaultHeight
+          && defaultScrollingExtentPx == other.defaultScrollingExtentPx
+          && defaultScrollingExtent == other.defaultScrollingExtent
           && defaultWorkspace == other.defaultWorkspace
           && defaultScratchpad == other.defaultScratchpad
           && defaultScrollingColumn == other.defaultScrollingColumn
@@ -378,10 +384,13 @@ namespace umbriel {
   struct ResolvedWindowRule {
     std::optional<std::string> defaultOutput;
     std::optional<bool> defaultFloating;
-    std::optional<std::array<int, 2>> defaultSize;
+    std::optional<int> defaultFloatingWidthPx;
+    std::optional<int> defaultFloatingHeightPx;
+    std::optional<double> defaultFloatingWidth;
+    std::optional<double> defaultFloatingHeight;
     std::optional<WindowPosition> defaultPosition;
-    std::optional<double> defaultWidth;
-    std::optional<double> defaultHeight;
+    std::optional<int> defaultScrollingExtentPx;
+    std::optional<double> defaultScrollingExtent;
     std::optional<WorkspaceReference> defaultWorkspace;
     std::optional<std::string> defaultScratchpad;
     std::optional<std::string> defaultScrollingColumn;
@@ -650,9 +659,9 @@ namespace umbriel {
       LayoutMode mode = LayoutMode::Scrolling;
       int gap = 8;
       LayoutStruts struts;
-      std::vector<double> widthPresets{1.0 / 3, 0.5, 2.0 / 3};
+      std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
       struct Scrolling {
-        std::optional<double> defaultWidthFraction;
+        std::optional<double> defaultExtentFraction;
         bool centerUnderfullStrip = true;
         CenterFocusedColumn centerFocused = CenterFocusedColumn::Never;
         bool operator==(const Scrolling&) const = default;

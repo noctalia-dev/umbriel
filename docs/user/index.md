@@ -19,7 +19,7 @@ instructions, and starting a session.
 
 ## Features
 
-- Scrolling, dwindle, and master layouts with per-workspace selection, width presets, animated navigation, and mouse-driven
+- Scrolling, dwindle, and master layouts with per-workspace selection, extent presets, animated navigation, and mouse-driven
   resizing and tiled reordering
 - Independent workspaces per output, with hotplug support and configurable modes, positions, scales, and transforms
 - Floating, pinned, and fullscreen windows with configurable placement, focus, sizing, opacity, and visual effects

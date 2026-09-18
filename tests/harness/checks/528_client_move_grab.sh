@@ -40,13 +40,13 @@ enabled = false
 [[window_rule]]
 match.title = "^client-move-source$"
 default_floating = true
-default_size = [300, 200]
+default_floating_size_px = { width = 300, height = 200 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^client-move-target$"
 default_floating = true
-default_size = [300, 200]
+default_floating_size_px = { width = 300, height = 200 }
 default_position = { x = 840, y = 410, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
