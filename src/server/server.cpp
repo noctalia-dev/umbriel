@@ -897,7 +897,9 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  void Server::spawn(
+      const char* command, const char* description, bool withActivationToken, std::string_view scratchpadToken
+  ) {
     if (m_socketName.empty()) {
       wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
       return;
@@ -916,6 +918,7 @@ namespace umbriel {
       }
     }
 
+    const std::string scratchpadTokenValue(scratchpadToken);
     pid_t pid = fork();
     if (pid < 0) {
       if (launchToken != nullptr) {
@@ -941,6 +944,11 @@ namespace umbriel {
       } else {
         unsetenv("XDG_ACTIVATION_TOKEN");
         unsetenv("DESKTOP_STARTUP_ID");
+      }
+      if (!scratchpadTokenValue.empty()) {
+        setenv(kScratchpadTokenVariable, scratchpadTokenValue.c_str(), 1);
+      } else {
+        unsetenv(kScratchpadTokenVariable);
       }
       execl("/bin/sh", "/bin/sh", "-c", command, nullptr);
       _exit(1);

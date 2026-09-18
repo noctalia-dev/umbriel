@@ -701,7 +701,9 @@ namespace umbriel {
           continue;
         }
 
-        loaded.scratchpads.push_back({.name = *name});
+        ScratchpadConfig scratchpad{.name = *name};
+        keys.text("spawn_when_empty", scratchpad.spawnWhenEmpty);
+        loaded.scratchpads.push_back(std::move(scratchpad));
         ++entryIndex;
       }
     }
