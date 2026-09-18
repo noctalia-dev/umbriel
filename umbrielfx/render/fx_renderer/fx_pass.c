@@ -84,11 +84,12 @@ static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass *pass,
 		&& (pass->output_buffer->drm_format == DRM_FORMAT_XRGB2101010
 			|| pass->output_buffer->drm_format == DRM_FORMAT_XBGR2101010);
 
-	const bool use_fp16 = pass->has_color_transform
-		|| (ten_bit_output
-			&& renderer->wlr_renderer.features.output_color_transform
-			&& renderer->exts.half_float_renderable);
+	const bool sdr10_fp16 = ten_bit_output
+		&& renderer->wlr_renderer.features.output_color_transform
+		&& renderer->exts.half_float_renderable
+		&& renderer->exts.half_float_linear;
 
+	const bool use_fp16 = pass->has_color_transform || sdr10_fp16;
 	if (use_fp16) {
 		return DRM_FORMAT_ABGR16161616F;
 	}
