@@ -186,10 +186,9 @@ corner_radius = 10                              # Radius of the final decorated 
 drag_opacity = 0.75                             # Window opacity during a tiled or floating drag
 
 [appearance.blur]
-# This is the global blur engine. A matching window or layer rule must still
-# opt a surface into blur.
-enabled = true                                  # Disable blur and release per-output effect buffers
-optimized = true                                # Reuse one cached background blur per output
+# Enable blur here, then opt in individual windows or layers with matching rules.
+enabled = true                                  # Enable blur for matching windows and layers
+optimized = true                                # Improve performance when several surfaces use blur
 passes = 3                                      # Blur passes, 0-8
 radius = 3                                      # Blur radius, 0-100
 noise = 0.02                                    # Noise overlay, 0.0-1.0
@@ -198,8 +197,8 @@ contrast = 0.9                                  # 0.0-2.0
 saturation = 1.1                                # 0.0-2.0
 
 [appearance.shadow]
-# Custom window shaders automatically shape the shadow from their output alpha.
-# Shadows stay beneath windows and follow closing snapshots as well.
+# Window shadows follow the visible shape produced by custom shaders, including
+# during closing animations.
 enabled = true                                  # Draw shadows behind non-fullscreen windows
 softness = 10                                   # Gaussian softness, 0-200; 0 is a hard edge
 offset_x = 2                                    # Horizontal offset, -200 to 200
@@ -696,12 +695,9 @@ blur_optimized = false
 # Parent values provide defaults for every event table. Nested values override
 # only that event. Disable one event to make just that transition instant.
 # Documentation: https://docs.noctalia.dev/umbriel/animation/
-# Every event accepts shader = "path/to/effect.glsl". Inline GLSL is not supported.
-# File paths are relative to this config, including configs loaded via include.
-# Bundled reveal.glsl and squash.glsl can be referenced by their installed absolute paths.
-# Shaders can use umbriel_sample_previous(uv) for target-local feedback.
-# umbriel_random_seed is a stable vec4 that changes for each transition.
-# Copy examples/shaders beside your config only if you want editable local versions.
+# Every event also accepts an optional shader file for a custom visual effect.
+# Relative paths start from the config file containing the option. The bundled
+# reveal.glsl and squash.glsl effects can be used directly or copied for editing.
 # ────────────────────────────────────────────────────────────────────────────
 
 [animation]
@@ -709,7 +705,7 @@ enabled = true                                  # Master animation switch
 duration_ms = 250                               # Shared duration, 1-10000 ms
 curve = "easeout"                               # Built-in or registered bezier/spring curve name
 
-# Window opening
+# Animation shown when a window opens.
 [animation.windows_in]
 enabled = true
 duration_ms = 150
@@ -718,7 +714,7 @@ style = "popin"                                 # popin, zoom, slide, fade, or n
 scale = 0.85                                    # Popin start scale, 0.1-1.0
 # shader = "shaders/reveal.glsl"      # Replaces the built-in opening style
 
-# Window closing
+# Animation shown when a window closes.
 [animation.windows_out]
 enabled = true
 duration_ms = 150
@@ -726,8 +722,8 @@ curve = "easeout"
 style = "fade"                                  # fade or slide
 # shader = "shaders/reveal.glsl"
 
-# Window movement, resizing, and floating maximize. Visible scratchpad keybind
-# resizing uses this event too.
+# Animation used for moving and resizing windows, layout changes, maximize,
+# restore, and visible scratchpad resizing.
 [animation.windows_move]
 enabled = true
 duration_ms = 250
@@ -745,9 +741,9 @@ curve = "easeout"
 enabled = true
 duration_ms = 250
 curve = "easeout"
-# Filmstrip movement between workspace previews: wheel, keyboard, and touchpad
-# release alike. A spring curve keeps the release velocity; its final few pixels
-# stay monotonic on the logical layout grid.
+# Movement between workspace previews, including wheel, keyboard, and touchpad
+# navigation. Springs preserve touchpad release momentum; other curves use the
+# overview duration above.
 workspace_curve = "spring:1,1000"
 
 # Scratchpad show, hide, and backdrop

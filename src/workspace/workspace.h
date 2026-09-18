@@ -10,6 +10,10 @@
 #include <string_view>
 #include <vector>
 
+extern "C" {
+#include <wlr/util/box.h>
+}
+
 struct wlr_ext_workspace_group_handle_v1;
 struct wlr_ext_workspace_handle_v1;
 struct wlr_ext_workspace_manager_v1;
@@ -122,6 +126,7 @@ namespace umbriel {
         NamedScrollingColumnChange change
     );
     void layoutDetach(View* view, bool animate = false);
+    void trackCloseSnapshot(uint64_t snapshot, const wlr_box& presentedBox, const wlr_box& layoutBox);
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
@@ -187,7 +192,29 @@ namespace umbriel {
     void clampScrollToRange();
 
   private:
+    friend class WorkspaceGroup;
+
+    enum class DeferredLayoutAxis : uint8_t {
+      Horizontal,
+      Vertical,
+    };
+    struct StagedLayoutEntry {
+      View* view = nullptr;
+      wlr_box held{};
+      wlr_box target{};
+    };
+    struct StagedLayoutMotion {
+      DeferredLayoutAxis deferredAxis = DeferredLayoutAxis::Horizontal;
+      bool secondPhase = false;
+      std::vector<StagedLayoutEntry> entries;
+    };
+
     void applyPositions(bool animate);
+    void
+    planStagedLayoutMotion(bool animate, const wlr_box& usable, const std::vector<std::pair<View*, wlr_box>>& previous);
+    [[nodiscard]] wlr_box stagedLayoutBox(View* view, const wlr_box& target) const;
+    bool advanceStagedLayoutMotion();
+    void retargetCloseSnapshots(const wlr_box& usable, bool animate);
     [[nodiscard]] wlr_box tiledTargetBox(const View* view, const wlr_box& usable) const;
     [[nodiscard]] std::unique_ptr<Layout> previewLayout() const;
     [[nodiscard]] int layoutAttachIndex(const View* view) const;
@@ -237,6 +264,23 @@ namespace umbriel {
     int m_slideOffsetX = 0;
     int m_slideOffsetY = 0;
     std::vector<View*> m_switchViews;
+    struct OpeningMotionAnchor {
+      View* view = nullptr;
+      wlr_box box{};
+      wlr_box layoutBox{};
+    };
+    struct PendingOpeningMotion {
+      View* view = nullptr;
+      std::vector<OpeningMotionAnchor> anchors;
+    };
+    std::vector<PendingOpeningMotion> m_pendingOpeningMotions;
+    struct ClosingMotion {
+      uint64_t snapshot = 0;
+      wlr_box presentedBox{};
+      wlr_box layoutBox{};
+    };
+    std::vector<ClosingMotion> m_closingMotions;
+    std::optional<StagedLayoutMotion> m_stagedLayoutMotion;
     wlr_scene_tree* m_tree = nullptr;
     wlr_scene_tree* m_shadowLayer = nullptr;
     wlr_scene_tree* m_tiledLayer = nullptr;

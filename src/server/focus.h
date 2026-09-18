@@ -48,9 +48,13 @@ namespace umbriel {
     // focus owner stays authoritative; otherwise the pointer output supplies a
     // workspace fallback.
     void refocus();
+    // Reconcile focus on `preferred`, keeping a visible scratchpad focused.
+    // Workspace transitions use this overload; otherwise it delegates to
+    // refocusExplicit.
+    void refocus(Output* preferred);
     // Deliberately select a fallback on `preferred`. Explicit focus actions use
     // this overload, including with null when no output is available.
-    void refocus(Output* preferred);
+    void refocusExplicit(Output* preferred);
 
     // Drop activation, focus ring, and foreign-activated on every mapped view
     // except `except`.

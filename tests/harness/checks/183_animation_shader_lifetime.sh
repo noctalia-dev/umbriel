@@ -23,6 +23,10 @@ shader = "lifetime.glsl"
 shader = "$EXAMPLES/squash.glsl"
 [animation.windows_out]
 shader = "fixture-1.glsl"
+
+[[window_rule]]
+match.title = "^shader-(example|retained|new-program)$"
+default_floating = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

@@ -36,11 +36,12 @@ position through `AnimatedValue::settleSpring`, carrying the release velocity
 scaled by the rubber-band derivative at the release point; any other curve runs
 over `duration_ms` from rest. A gesture in flight snaps the value each frame,
 which also stops a settle still running on that output. Settled preview origins
-and gaps use an integral logical-pixel grid. Once a spring's position and
-velocity energy bound fits within three layout pixels, its presented offset
-advances toward zero by at least one pixel per output frame. This prevents the
-rounded tail from pausing and moving again without cutting off larger release
-motion or bounce.
+and gaps use an integral logical-pixel grid. The analytic spring remains in
+control while its position and velocity energy could still cross a pixel
+boundary. Once that complete envelope is strictly below half a logical pixel,
+the solver stops at its target. The projected preview already rounds to that
+same target pixel, so stopping is invisible and cannot introduce a faster
+terminal step. Larger release motion and configured bounce remain intact.
 
 ## Animation ownership
 
@@ -156,8 +157,9 @@ The relevant checks are:
 - [`tests/harness/checks/313_overview_settle_stability.sh`](../../tests/harness/checks/313_overview_settle_stability.sh)
   for the destination card reaching and holding its final projected position at
   2560x1600, scale 1.5, and 165 Hz.
-- [`tests/unit/animation.cpp`](../../tests/unit/animation.cpp) for every terminal
-  spring tick moving monotonically in both directions at the same refresh rate.
+- [`tests/unit/animation.cpp`](../../tests/unit/animation.cpp) for terminal
+  spring motion following the analytic solution without accelerating in either
+  direction at the same refresh rate.
 - [`tests/harness/checks/346_overview_keybind_actions.sh`](../../tests/harness/checks/346_overview_keybind_actions.sh)
   for configured directional actions and fallback arrow navigation.
 - [`tests/harness/checks/460_external_drag.sh`](../../tests/harness/checks/460_external_drag.sh)

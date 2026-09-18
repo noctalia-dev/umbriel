@@ -1127,7 +1127,7 @@ namespace umbriel {
         }
       } else {
         wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-        m_server->refocus(m_server->outputFromWlr(wlrOutput));
+        m_server->refocusExplicit(m_server->outputFromWlr(wlrOutput));
       }
     }
   }
@@ -1525,7 +1525,7 @@ namespace umbriel {
           && config().input.focus.followsMouse
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
-        m_server->refocus(m_server->outputFromWlr(pointerOutput));
+        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
       }
     }
   }

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -180,6 +181,9 @@ namespace umbriel {
     // listings that order by position must read these instead.
     [[nodiscard]] int layoutTargetX() const { return static_cast<int>(std::lround(m_posX.target())); }
     [[nodiscard]] int layoutTargetY() const { return static_cast<int>(std::lround(m_posY.target())); }
+    [[nodiscard]] bool positionAnimatingTo(int x, int y) const {
+      return (m_posX.animating() || m_posY.animating()) && layoutTargetX() == x && layoutTargetY() == y;
+    }
     // The box this window is headed for: the output when fullscreen, its presented slot when tiled, which is the usable
     // area when maximized to edges, else its own position at the size it is resizing to. Valid ahead of the animation
     // that carries the node there and of the client's resize, and settles a pending arrange to get there.
@@ -380,7 +384,7 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    void beginCloseAnimation();
+    [[nodiscard]] uint64_t beginCloseAnimation();
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop

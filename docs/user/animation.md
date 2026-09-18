@@ -82,15 +82,19 @@ fields are specific to individual event tables:
 
 | Table                       | Additional fields                                                                     | Transition                                                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `[animation.windows_in]`    | `style` (`popin`, `zoom`, `slide`, `fade`, or `none`); `scale` (0.1-1.0, for `popin`) | Window open.                                                                                                  |
-| `[animation.windows_out]`   | `style` (`fade` or `slide`)                                                           | Window close, using a scene snapshot.                                                                         |
-| `[animation.windows_move]`  | None                                                                                  | Window move, resize, and floating maximize transitions, including visible scratchpad size actions.            |
+| `[animation.windows_in]`    | `style` (`popin`, `zoom`, `slide`, `fade`, or `none`); `scale` (0.1-1.0, for `popin`) | Window open. Tiled windows keep their gaps while the layout makes room.                                      |
+| `[animation.windows_out]`   | `style` (`fade` or `slide`)                                                           | Window close. Tiled windows keep their gaps while the remaining windows move into place.                     |
+| `[animation.windows_move]`  | None                                                                                  | Window movement and resizing, tiled layout changes, maximize and restore, and visible scratchpad resizing.   |
 | `[animation.workspaces]`    | None                                                                                  | Workspace switch.                                                                                             |
 | `[animation.overview]`      | `workspace_curve` (default `spring:1,1000`)                                           | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews.                    |
 | `[animation.scratchpad]`    | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                  | Scratchpad show, hide, and backdrop.                                                                          |
 | `[animation.border]`        | None                                                                                  | Focus-ring color transition in OkLab color space, beginning from the current border color when focus changes. |
 | `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                       | Unfocused-window opacity. `dim = 0` disables it.                                                              |
 | `[animation.layers]`        | None                                                                                  | Layer-shell surface map and unmap fades.                                                                      |
+
+Tiled windows keep their configured gaps while the layout animates. This includes opening, closing, maximizing,
+restoring, and starting another layout action before the current animation finishes. The behavior applies to
+scrolling, Dwindle, and Master layouts, and uses the `[animation.windows_move]` settings.
 
 `workspace_curve` covers every way the filmstrip moves: a wheel notch, a
 keyboard action, and the release of a touchpad gesture. A spring curve settles
@@ -244,29 +248,20 @@ otherwise transparent center of a border's rectangular target. Samples use the
 compositor's working color space: sRGB for ordinary SDR composition and linear
 light when the color-management pass uses an FP16 intermediate target.
 
-Calling `umbriel_sample_previous` opts that effect into target-local feedback.
-It samples the prior post-shader result for the same scene target, effect slot,
-output, and renderer. It is not a copy of the desktop or output. On the first
-rendered frame, it samples the current unprocessed target, so a shared shader
-can always start from valid content. Coordinates outside the target return
-transparent black.
+Calling `umbriel_sample_previous` enables feedback for that effect. It samples
+the effect's previous rendered frame, not the desktop or whole output. The first
+frame uses the current unprocessed target, and coordinates outside the target
+return transparent black.
 
-Feedback follows the target when it moves. If its size changes, the prior result
-is resampled over the new normalized target coordinates. A new transition or
-shader starts fresh, while an interrupted effect keeps its result when Umbriel
-transfers it into a closing snapshot. Output rotation, working color format, or
-renderer changes also start fresh.
-
-Feedback keeps two buffers for each active target, event, and output that uses
-it. Their size follows the target, and color-managed composition uses FP16
-buffers. Avoid enabling feedback in effects that do not need it, especially on
-large workspace or overview targets. If those buffers cannot be allocated,
-Umbriel still runs the shader with the current target as the previous sample.
+Feedback follows a moving target and scales with a resizing target. A new
+transition or shader starts with fresh feedback. Feedback uses additional GPU
+memory, especially for workspace and overview effects, so enable it only when
+the effect needs previous-frame data. If feedback is unavailable, the shader
+continues with the current target as its previous sample.
 
 `umbriel_random_seed` is intended for visual variation, not cryptography. Its
 four channels remain unchanged throughout a transition, including spring
-oscillation. If an active effect is transferred into a closing snapshot, that
-effect keeps its seed; the new closing transition receives its own seed.
+oscillation. A new transition receives a new seed.
 
 ### Targets and composition
 
@@ -275,44 +270,36 @@ opening shader also works with `style = "none"`. Layer and scratchpad window
 show/hide shaders replace their built-in window fade. Movement/resize,
 workspace, overview, border-color, dimming, and backdrop transitions retain
 their native presentation changes and apply the shader to that presentation.
-Shaders never change layout, client configure sizes, input coordinates, or focus.
+Shaders affect appearance only. They do not change layout, window geometry,
+input behavior, or focus.
 
-A window's scene subtree, including its subsurfaces and border, is processed as
-one target. Borders can also have their own inner effect. Workspace effects
-process the output's workspace view root, and overview effects process each
-output's overview tree. Scratchpad backdrops have their own targets.
+A window shader covers the window content, its subsurfaces, and its border.
+The border can also have its own effect. Workspace effects cover the visible
+workspace, overview effects are applied per output, and scratchpad backdrop
+effects cover the backdrop separately from the scratchpad window.
 
-Window shadows follow the alpha silhouette produced by active window or border
-shaders, including reveal masks and squash effects. The compositor applies the
-configured shadow color, softness, and offset automatically; shaders do not
-need to draw shadows. Shadows stay in their separate stacking layer beneath
-windows and do not tint visible translucent window pixels. Closing snapshots
-retain their shadows, including when a window closes during another animation.
-Enclosing workspace effects process the window and its shadow together.
-Without a window or border shader, the normal rounded-rectangle shadow path
-is used. No additional configuration is required.
+Window shadows follow the visible shape produced by window and border shaders,
+including reveal masks and squash effects. The configured shadow color,
+softness, and offset still apply automatically, including during closing
+animations. Shaders do not need to draw their own shadows.
 
-Child effects run before parent effects. Effects sharing a target run in this
-order: dimming, border, movement, window opening, window closing, scratchpad,
-layers, workspaces, overview. Thus an overview shader can sample a window's
-already-processed pixels. Sampling and drawing remain bounded by the target and
-its output/ancestor clips.
+Effects combine in this order: dimming, border, movement, window opening,
+window closing, scratchpad, layers, workspaces, and overview. Later effects see
+the result of earlier effects. Sampling and drawing remain inside the effect's
+target and visible output area.
 
 ### Reload and failures
 
-Programs are compiled on startup/config reload and cached per event, source,
-and renderer. Active transitions retain their program until completion or
-retargeting; disabling/removing an effect cancels its shader. Close snapshots
-retain the preceding effect parameters when a window closes mid-transition.
-GPU renderer recreation recompiles configured programs.
+Shaders load on startup and config reload. An active transition keeps the
+shader it started with until it finishes, while disabling or removing an effect
+stops using that shader.
 
-Missing sources and GLSL compilation failures produce diagnostics and use the
-built-in effect. Compiler details and the shader file label appear in Umbriel's
-log. If a render target cannot be allocated/imported, Umbriel draws the normal
-presentation rather than dropping the window. Intermediate textures are
-allocated only while needed and released after effects finish.
+Missing files and GLSL compilation failures produce diagnostics and fall back
+to the built-in effect. Compiler details and the shader file label appear in
+Umbriel's log. Runtime shader failures also fall back to the normal animation
+instead of hiding the affected content.
 
 Custom GLSL is trusted local GPU code, not sandboxed code. Expensive or
-nonterminating shaders can stall a driver. Effects add offscreen rendering work;
-opaque-region culling and direct scanout are suspended while custom effects are
-active. Prefer short transitions and inexpensive shaders.
+nonterminating shaders can stall a driver. Custom effects add GPU work and can
+prevent direct scanout while active, so prefer short transitions and inexpensive
+shaders.

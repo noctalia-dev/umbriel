@@ -971,10 +971,10 @@ namespace umbriel {
   }
 
   Server::CloseSnapshot::CloseSnapshot(
-      Server& server, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders, int durationMs,
-      const AnimationCurve& curve, std::string_view style, AnimationEvent event, ShadowSnapshot shadow
+      Server& server, CloseSnapshotId id, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders,
+      int durationMs, const AnimationCurve& curve, std::string_view style, AnimationEvent event, ShadowSnapshot shadow
   )
-      : m_server(&server), m_tree(tree), m_output(output), m_borders(std::move(borders)), m_shadow(shadow) {
+      : m_server(&server), m_id(id), m_tree(tree), m_output(output), m_borders(std::move(borders)), m_shadow(shadow) {
     m_event = event;
     if (m_tree != nullptr) {
       m_origX = m_tree->node.x;
@@ -990,10 +990,12 @@ namespace umbriel {
     );
     m_alpha.snap(1.0);
     m_alpha.retarget(0.0, durationMs, curve);
+    m_posX.snap(m_origX);
+    m_posY.snap(m_origY);
+    m_effectY.snap(0.0);
 
     if (style == "slide" && animationShader(server.renderer(), event) == nullptr) {
-      m_posY.snap(m_origY);
-      m_posY.retarget(m_origY + 80, durationMs, curve);
+      m_effectY.retarget(80.0, durationMs, curve);
     }
   }
 
@@ -1011,10 +1013,12 @@ namespace umbriel {
 
   bool Server::CloseSnapshot::tickAnimations(uint64_t nowMsec) {
     const bool movedAlpha = m_alpha.tick(nowMsec);
+    const bool movedX = m_posX.tick(nowMsec);
     const bool movedY = m_posY.tick(nowMsec);
+    const bool movedEffectY = m_effectY.tick(nowMsec);
     updateAnimationShader(&m_tree->node, m_server->renderer(), m_event, m_alpha, -1.0F);
 
-    if (!movedAlpha && !movedY) {
+    if (!movedAlpha && !movedX && !movedY && !movedEffectY) {
       return false;
     }
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
@@ -1038,13 +1042,43 @@ namespace umbriel {
       wlr_scene_shadow_set_color(m_shadow.node, color.data());
     }
 
-    if (m_tree != nullptr && movedY) {
-      wlr_scene_node_set_position(&m_tree->node, m_origX, static_cast<int>(std::lround(m_posY.current())));
+    if (m_tree != nullptr && (movedX || movedY || movedEffectY)) {
+      wlr_scene_node_set_position(
+          &m_tree->node, static_cast<int>(std::lround(m_posX.current())),
+          static_cast<int>(std::lround(m_posY.current() + m_effectY.current()))
+      );
       if (m_shadow.tree != nullptr) {
         wlr_scene_node_set_position(&m_shadow.tree->node, m_tree->node.x, m_tree->node.y);
       }
     }
-    return m_alpha.animating() || m_posY.animating();
+    return hasActiveAnimations();
+  }
+
+  void Server::CloseSnapshot::moveTo(int x, int y, int durationMs, const AnimationCurve& curve) {
+    if (durationMs <= 0) {
+      m_posX.snap(x);
+      m_posY.snap(y);
+      wlr_scene_node_set_position(&m_tree->node, x, y + static_cast<int>(std::lround(m_effectY.current())));
+      if (m_shadow.tree != nullptr) {
+        wlr_scene_node_set_position(&m_shadow.tree->node, m_tree->node.x, m_tree->node.y);
+      }
+      return;
+    }
+    // Preserve each axis timeline independently. A one-pixel cross-axis correction must not restart the edge-locking
+    // axis for only one snapshot, since that makes formerly equal progress diverge and consumes the configured gap.
+    if (static_cast<int>(std::lround(m_posX.target())) != x) {
+      m_posX.retarget(x, durationMs, curve);
+    }
+    if (static_cast<int>(std::lround(m_posY.target())) != y) {
+      m_posY.retarget(y, durationMs, curve);
+    }
+  }
+
+  std::array<int, 2> Server::CloseSnapshot::position() const {
+    return {
+        static_cast<int>(std::lround(m_posX.current())),
+        static_cast<int>(std::lround(m_posY.current())),
+    };
   }
 
   void Server::registerAnimatable(Animatable* animatable) {
@@ -1110,7 +1144,7 @@ namespace umbriel {
     });
   }
 
-  void Server::animateCloseSnapshot(
+  Server::CloseSnapshotId Server::animateCloseSnapshot(
       Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders,
       std::optional<CloseSnapshotOverrides> overrides, ShadowSnapshot shadow
   ) {
@@ -1129,7 +1163,7 @@ namespace umbriel {
           wlr_scene_node_destroy(&shadow.tree->node);
         }
         wlr_scene_node_destroy(&tree->node);
-        return;
+        return InvalidCloseSnapshot;
       }
       durationMs = close.durationMs;
       curve = close.curve;
@@ -1140,15 +1174,40 @@ namespace umbriel {
         wlr_scene_node_destroy(&shadow.tree->node);
       }
       wlr_scene_node_destroy(&tree->node);
-      return;
+      return InvalidCloseSnapshot;
     }
 
+    CloseSnapshotId id = m_nextCloseSnapshotId++;
+    if (id == InvalidCloseSnapshot) {
+      id = m_nextCloseSnapshotId++;
+    }
     auto snapshot = std::make_unique<CloseSnapshot>(
-        *this, output, tree, std::move(borders), durationMs, curve, style,
+        *this, id, output, tree, std::move(borders), durationMs, curve, style,
         overrides ? overrides->event : AnimationEvent::WindowsOut, shadow
     );
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
+    return id;
+  }
+
+  void Server::moveCloseSnapshot(CloseSnapshotId id, int x, int y, int durationMs, const AnimationCurve& curve) {
+    if (id == InvalidCloseSnapshot) {
+      return;
+    }
+    const auto snapshot =
+        std::ranges::find_if(m_closeSnapshots, [id](const auto& candidate) { return candidate->id() == id; });
+    if (snapshot != m_closeSnapshots.end()) {
+      (*snapshot)->moveTo(x, y, durationMs, curve);
+    }
+  }
+
+  std::optional<std::array<int, 2>> Server::closeSnapshotPosition(CloseSnapshotId id) const {
+    if (id == InvalidCloseSnapshot) {
+      return std::nullopt;
+    }
+    const auto snapshot =
+        std::ranges::find_if(m_closeSnapshots, [id](const auto& candidate) { return candidate->id() == id; });
+    return snapshot != m_closeSnapshots.end() ? std::optional{(*snapshot)->position()} : std::nullopt;
   }
 
   uint64_t Server::uptimeMs() const {

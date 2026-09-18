@@ -145,6 +145,20 @@ UMBRIEL_TEST(springSettleStartsFromTheReleaseVelocityAndStops) {
   CHECK_EQ(value.current(), 0.0);
 }
 
+UMBRIEL_TEST(overdampedSpringVelocityMatchesItsPositionDerivative) {
+  constexpr double sampleTime = 0.075;
+  constexpr double delta = 0.000001;
+  const umbriel::SpringConfig spring{.damping = 2.0, .stiffness = 100.0, .mass = 1.0};
+
+  double velocity = 0.0;
+  static_cast<void>(umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime, spring, &velocity));
+  const double before = umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime - delta, spring);
+  const double after = umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime + delta, spring);
+  const double derivative = (after - before) / (2.0 * delta);
+
+  CHECK(std::abs(velocity - derivative) < 0.00001);
+}
+
 UMBRIEL_TEST(springDisplacementBoundIncludesPositionAndVelocityEnergy) {
   const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 100.0, .mass = 1.0};
 
@@ -153,18 +167,50 @@ UMBRIEL_TEST(springDisplacementBoundIncludesPositionAndVelocityEnergy) {
   CHECK(std::abs(umbriel::springDisplacementBound(1.15, 1.0, 2.0, spring) - std::hypot(0.15, 0.2)) < 1e-12);
 }
 
-UMBRIEL_TEST(springTailPixelsAdvanceWithoutAStationaryFrameOrReversal) {
-  CHECK_EQ(umbriel::advanceSpringTailPixels(3, 2), 2);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(2, 2), 1);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(1, 2), 0);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(-3, -2), -2);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(-2, -2), -1);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(-1, -2), 0);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(2, -1), 0);
-  CHECK_EQ(umbriel::advanceSpringTailPixels(-2, 1), 0);
+UMBRIEL_TEST(springTailFinishesOnlyInsideTheTargetPixelsRoundingCell) {
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 100.0, .mass = 1.0};
+
+  umbriel::AnimatedValue halfPixel{0.5};
+  halfPixel.settleSpring(0.0, spring, 0.0);
+  CHECK(halfPixel.tick(1000));
+  CHECK(!halfPixel.finishSpringTail(1.0));
+  CHECK(halfPixel.animating());
+
+  umbriel::AnimatedValue insidePixel{0.49};
+  insidePixel.settleSpring(0.0, spring, 0.0);
+  CHECK(insidePixel.tick(1000));
+  CHECK(insidePixel.finishSpringTail(1.0));
+  CHECK(!insidePixel.animating());
+  CHECK_EQ(insidePixel.current(), 0.0);
+
+  umbriel::AnimatedValue offCenter{0.8};
+  offCenter.settleSpring(0.49, spring, 0.0);
+  CHECK(offCenter.tick(1000));
+  CHECK(!offCenter.finishSpringTail(1.0));
+  CHECK(offCenter.animating());
+
+  umbriel::AnimatedValue release{0.3};
+  release.settleSpring(0.3, spring, 4.0);
+  CHECK(release.tick(1000));
+  CHECK(!release.finishSpringTail(587.0));
+  CHECK(release.animating());
+
+  umbriel::AnimatedValue durationSpring{0.0};
+  durationSpring.retarget(0.1, 100, umbriel::Easing::Spring);
+  CHECK(durationSpring.tick(1000));
+  CHECK(!durationSpring.finishSpringTail(1.0));
+  CHECK(durationSpring.animating());
+
+  const umbriel::SpringConfig overdamped{.damping = 2.0, .stiffness = 100.0, .mass = 1.0};
+  umbriel::AnimatedValue overdampedRelease{0.0};
+  overdampedRelease.settleSpring(0.0, overdamped, 30.0);
+  CHECK(overdampedRelease.tick(1000));
+  CHECK(overdampedRelease.tick(1012));
+  CHECK(!overdampedRelease.finishSpringTail(1.0));
+  CHECK(overdampedRelease.animating());
 }
 
-UMBRIEL_TEST(springTailPresentationMovesEveryFrameAtTheReportedRefreshRate) {
+UMBRIEL_TEST(springTailPresentationDeceleratesAtTheReportedRefreshRate) {
   constexpr double step = 587.0;
   const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
   const auto checkDirection = [spring](double from, double target) {
@@ -172,22 +218,40 @@ UMBRIEL_TEST(springTailPresentationMovesEveryFrameAtTheReportedRefreshRate) {
     value.settleSpring(target, spring, 0.0);
     CHECK(value.tick(1000));
 
-    bool enteredTail = false;
-    int terminalFrames = 0;
+    int firstFrameAtThreePixels = -1;
+    int firstFrameAtTwoPixels = -1;
+    int firstFrameAtOnePixel = -1;
+    int firstFrameAtTarget = -1;
+    bool finishedTail = false;
     for (int frame = 1; frame < 200 && value.animating(); ++frame) {
-      const double previous = value.current();
-      const int previousOffset = static_cast<int>(std::lround((value.target() - previous) * step));
       CHECK(value.tick(1000 + static_cast<uint64_t>(frame * 1000 / 165)));
-      if (!umbriel::advanceSpringTail(value, previous, step, 3.0)) {
-        continue;
-      }
-      enteredTail = true;
-      ++terminalFrames;
+      const int solvedOffset = static_cast<int>(std::lround((value.target() - value.current()) * step));
+      finishedTail = value.finishSpringTail(step) || finishedTail;
+
       const int presentedOffset = static_cast<int>(std::lround((value.target() - value.current()) * step));
-      CHECK(std::abs(presentedOffset) < std::abs(previousOffset));
+      CHECK_EQ(presentedOffset, solvedOffset);
+      const int offset = std::abs(presentedOffset);
+      if (offset == 3 && firstFrameAtThreePixels < 0) {
+        firstFrameAtThreePixels = frame;
+      } else if (offset == 2 && firstFrameAtTwoPixels < 0) {
+        firstFrameAtTwoPixels = frame;
+      } else if (offset == 1 && firstFrameAtOnePixel < 0) {
+        firstFrameAtOnePixel = frame;
+      } else if (offset == 0 && firstFrameAtTarget < 0) {
+        firstFrameAtTarget = frame;
+      }
     }
-    CHECK(enteredTail);
-    CHECK(terminalFrames >= 2);
+
+    CHECK(firstFrameAtThreePixels >= 0);
+    CHECK(firstFrameAtTwoPixels > firstFrameAtThreePixels);
+    CHECK(firstFrameAtOnePixel > firstFrameAtTwoPixels);
+    CHECK(firstFrameAtTarget > firstFrameAtOnePixel);
+    const int threeToTwoFrames = firstFrameAtTwoPixels - firstFrameAtThreePixels;
+    const int twoToOneFrames = firstFrameAtOnePixel - firstFrameAtTwoPixels;
+    const int oneToTargetFrames = firstFrameAtTarget - firstFrameAtOnePixel;
+    CHECK(twoToOneFrames >= threeToTwoFrames);
+    CHECK(oneToTargetFrames >= twoToOneFrames);
+    CHECK(finishedTail);
     CHECK(!value.animating());
     CHECK_EQ(value.current(), target);
   };

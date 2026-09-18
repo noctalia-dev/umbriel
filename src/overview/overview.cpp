@@ -44,10 +44,6 @@ namespace umbriel {
 
     // Gap between workspace thumbnails, as a fraction of the scaled row height.
     constexpr double kRowGapFraction = 0.1;
-    // Once all remaining spring energy fits inside this many layout pixels, present the tail on the integer layout
-    // grid. This preserves larger release motion and configured bounce while preventing a rounded position from
-    // pausing and moving again.
-    constexpr double kRowSpringSettlePixels = 3.0;
     // Pointer travel that promotes a press on a card into a relocate drag.
     constexpr double kDragThreshold = 10.0;
     // How much of the focused border color mixes into the unfocused one for a landing target that is not the live one.
@@ -990,7 +986,7 @@ namespace umbriel {
       return;
     }
     wlr_scene_node_copy_animations_for_snapshot(&snapshot->node, &card.tree->node);
-    m_server->animateCloseSnapshot(card.owner->output, snapshot, std::move(borders));
+    (void)m_server->animateCloseSnapshot(card.owner->output, snapshot, std::move(borders));
     wlr_output_schedule_frame(card.owner->output->wlr());
   }
 
@@ -1572,14 +1568,13 @@ namespace umbriel {
     }
     bool rowTicked = false;
     for (const auto& state : m_outputs) {
-      const double previous = state->rowScroll.current();
       const bool ticked = state->rowScroll.tick(nowMsec);
       if (ticked && state->rowScroll.animating() && state->rowScroll.curve().easing == Easing::Spring) {
         PreviewMetrics metrics;
         if (previewMetrics(*state, *m_server, zoom(), metrics)) {
           const double step =
               (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
-          static_cast<void>(advanceSpringTail(state->rowScroll, previous, step, kRowSpringSettlePixels));
+          static_cast<void>(state->rowScroll.finishSpringTail(step));
         }
       }
       rowTicked = ticked || rowTicked;

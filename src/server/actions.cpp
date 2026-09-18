@@ -1286,7 +1286,7 @@ namespace umbriel {
     // Outputs
     bool focusOutput(Server& server, Output& target) {
       warpToOutputCenter(server, target);
-      server.refocus(&target);
+      server.refocusExplicit(&target);
       WorkspaceGroup* group = target.workspaceGroup();
       Workspace* workspace = group != nullptr ? group->active() : nullptr;
       maybeWarpCursorToWindow(server, workspace != nullptr ? workspace->focusedView() : nullptr);
@@ -1441,7 +1441,7 @@ namespace umbriel {
       if (focused != nullptr && focused->workspace() == destination) {
         server.focusView(focused, FocusReason::Directional);
       } else {
-        server.refocus(target);
+        server.refocusExplicit(target);
       }
       warpToOutputCenter(server, *target);
       return true;

@@ -408,7 +408,7 @@ namespace umbriel {
       const double coshVal = std::cosh(wd * t);
       const double c2 = (v0 + beta * x0) / wd;
       posOffset = env * (x0 * coshVal + c2 * sinhVal);
-      vel = env * ((v0 * coshVal) + (c2 * wd - beta * x0) * sinhVal - beta * c2 * coshVal);
+      vel = env * (v0 * coshVal + (x0 * wd - beta * c2) * sinhVal);
     }
 
     if (std::abs(posOffset) < 1e-4 && std::abs(vel) < 1e-4) {
@@ -431,22 +431,6 @@ namespace umbriel {
     const double mass = std::max(1e-4, std::isfinite(config.mass) ? config.mass : 1.0);
     const double stiffness = std::max(1e-4, std::isfinite(config.stiffness) ? config.stiffness : 100.0);
     return std::hypot(current - target, velocity * std::sqrt(mass / stiffness));
-  }
-
-  int advanceSpringTailPixels(int previousOffset, int solvedOffset) {
-    if (previousOffset == 0) {
-      return 0;
-    }
-    const bool sameDirection = (previousOffset > 0 && solvedOffset > 0) || (previousOffset < 0 && solvedOffset < 0);
-    if (!sameDirection) {
-      return 0;
-    }
-    const int previousMagnitude = std::abs(previousOffset);
-    int magnitude = std::min(previousMagnitude, std::abs(solvedOffset));
-    if (magnitude == previousMagnitude) {
-      --magnitude;
-    }
-    return previousOffset > 0 ? magnitude : -magnitude;
   }
 
   double applyEasing(const AnimationCurve& curve, double progress) {
@@ -753,13 +737,29 @@ namespace umbriel {
     m_physics = true;
   }
 
+  bool AnimatedValue::finishSpringTail(double pixelsPerUnit) {
+    if (!m_animating || !m_physics || !std::isfinite(pixelsPerUnit) || pixelsPerUnit <= 0.0) {
+      return false;
+    }
+    const double targetPixels = m_target * pixelsPerUnit;
+    if (!std::isfinite(targetPixels)) {
+      return false;
+    }
+    const double roundedTarget = std::round(targetPixels);
+    const double roundingMargin = 0.5 - std::abs(targetPixels - roundedTarget);
+    const double remaining = springDisplacementBound(m_current, m_target, m_velocity, m_curve.spring) * pixelsPerUnit;
+    if (roundingMargin <= 0.0 || remaining >= roundingMargin) {
+      return false;
+    }
+    snap(m_target);
+    return true;
+  }
+
   void AnimatedValue::translate(double delta) {
     m_from += delta;
     m_target += delta;
     m_current += delta;
   }
-
-  void AnimatedValue::overrideCurrent(double value) { m_current = value; }
 
   double AnimatedValue::progress() const { return m_progress; }
 
@@ -806,32 +806,6 @@ namespace umbriel {
     const double dtSec = std::max(0.001, static_cast<double>(elapsed) / 1000.0);
     m_velocity = (m_current - prevCurrent) / dtSec;
 
-    return true;
-  }
-
-  bool advanceSpringTail(AnimatedValue& value, double previous, double pixelsPerUnit, double maxRemainingPixels) {
-    if (!value.animating()
-        || value.curve().easing != Easing::Spring
-        || !std::isfinite(previous)
-        || !std::isfinite(pixelsPerUnit)
-        || pixelsPerUnit <= 0.0
-        || !std::isfinite(maxRemainingPixels)
-        || maxRemainingPixels < 0.0) {
-      return false;
-    }
-    const double remaining =
-        springDisplacementBound(value.current(), value.target(), value.velocity(), value.curve().spring);
-    if (remaining * pixelsPerUnit > maxRemainingPixels) {
-      return false;
-    }
-    const int previousOffset = static_cast<int>(std::lround((value.target() - previous) * pixelsPerUnit));
-    const int solvedOffset = static_cast<int>(std::lround((value.target() - value.current()) * pixelsPerUnit));
-    const int presentedOffset = advanceSpringTailPixels(previousOffset, solvedOffset);
-    if (presentedOffset == 0) {
-      value.snap(value.target());
-    } else {
-      value.overrideCurrent(value.target() - presentedOffset / pixelsPerUnit);
-    }
     return true;
   }
 
