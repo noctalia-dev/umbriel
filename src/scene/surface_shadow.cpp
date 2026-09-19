@@ -13,10 +13,21 @@ extern "C" {
 
 namespace umbriel {
 
+  SurfaceShadowOptions globalShadowOptions() {
+    const auto& shadow = config().appearance.shadow;
+    return {
+        .enabled = shadow.enabled,
+        .softness = shadow.softness,
+        .offsetX = shadow.offsetX,
+        .offsetY = shadow.offsetY,
+    };
+  }
+
   void SurfaceShadow::update(
-      wlr_scene_tree* parent, int contentWidth, int contentHeight, int borderTotal, int cornerRadius
+      wlr_scene_tree* parent, int contentWidth, int contentHeight, int borderTotal, int cornerRadius,
+      const SurfaceShadowOptions& options
   ) {
-    const auto& cfg = config().appearance.shadow;
+    const auto& cfg = options;
     const auto& shadow = config().colors.shadow;
     const int sigma = cfg.softness;
 

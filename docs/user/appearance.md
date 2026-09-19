@@ -125,6 +125,11 @@ and content radii decrease smoothly as their border inset grows, but never
 collapse to square; `corner_radius = 0` keeps every contour square. Inner and
 outer borders render outside the window and are included in layout spacing.
 
+These are the global defaults every window starts from, a
+[window rule](window-rules.md#settings-updated-while-a-window-is-open) can
+override `border_width`, `outer_border_width`, and `corner_radius` per window
+while it is open.
+
 See [Scratchpads](scratchpad.md) for how scratchpad windows behave and use the
 dedicated border colors.
 
@@ -184,3 +189,10 @@ Closing animations retain the shadow until their snapshot finishes.
 | `softness` | int   | `10`        | Gaussian blur sigma in pixels (0-200). 0 produces a hard-edged shadow. |
 | `offset_x` | int   | `2`         | Horizontal shadow offset (-200 to 200).                                |
 | `offset_y` | int   | `2`         | Vertical shadow offset (-200 to 200).                                  |
+
+As with the border geometry, a
+[window rule](window-rules.md#settings-updated-while-a-window-is-open) can
+override these shadow parameters per window (`shadow`, `shadow_softness`,
+`shadow_offset_x`, `shadow_offset_y`) while the window is open. Umbriel's own
+panels, the keybind cheatsheet, the session-quit confirmation, and the
+configuration diagnostics panel always keep the global settings.

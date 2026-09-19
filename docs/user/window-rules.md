@@ -275,10 +275,25 @@ sets the column width. `default_scrolling_column_order` has no effect without
 | `blur_popups` | bool | Enable/disable blur for its XDG popups. |
 | `blur_ignore_alpha` | float | Skip blur where surface alpha is below this threshold (0.0-1.0). Applies to the window and its popups. |
 | `blur_optimized` | bool | Override `appearance.blur.optimized` for this window. A `true` value keeps the cached background blur alive on every output even when the global switch is off. |
+| `border_width` | int | Inner border width in logical pixels (0-100). Overrides `appearance.border_width`. |
+| `outer_border_width` | int | Ring outside the inner border in logical pixels (0-100). Overrides `appearance.outer_border_width`. |
+| `corner_radius` | int | Final decorated outer-edge radius in logical pixels (0-100). 0 disables. Overrides `appearance.corner_radius`. |
+| `shadow` | bool | Enable/disable this window's drop shadow. Overrides `appearance.shadow.enabled`. |
+| `shadow_softness` | int | Shadow Gaussian blur sigma in pixels (0-200). 0 produces a hard-edged shadow. Overrides `appearance.shadow.softness`. |
+| `shadow_offset_x` | int | Horizontal shadow offset in logical pixels (-200 to 200). Overrides `appearance.shadow.offset_x`. |
+| `shadow_offset_y` | int | Vertical shadow offset in logical pixels (-200 to 200). Overrides `appearance.shadow.offset_y`. |
 | `focus_on_activate` | bool | Override `general.focus_on_activate` for activation requests targeting this window, including trusted launch tokens. `false` vetoes trusted activation focus and marks an otherwise unfocused target urgent. An untrusted request cannot suppress the window's normal `default_focused` map behavior. |
 | `vrr` | string | Override the focused window's output VRR policy: `"disabled"`, `"always"`, or `"fullscreen"`. Without this key, the output's configured `vrr` policy applies. |
 | `tearing` | bool | Override the client's tearing hint. Omit it to follow the hint, set `true` to request asynchronous presentation, or set `false` to veto it. The output must still opt in with `tearing = true`, and the window must be fullscreen. |
 | `hdr` | string | Override the focused window's output HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. Without this key, the output's configured `hdr` policy applies. This does not assign HDR metadata to the surface. |
+
+Border widths, the corner radius, and the shadow parameters start from the global
+[`[appearance]`](appearance.md) section. Setting any of them in a rule overrides
+that global value: keys the rule does not set keep the global value. These settings
+are re-applied whenever rules re-resolve, so focus, title, app-id, and state changes
+restyle the window's ring, surface rounding, and shadow right away. Per-window
+border widths affect only the drawn ring: workspace layout spacing always uses the global
+`appearance.border_width`.
 
 ## The only window in the workspace
 
@@ -351,7 +366,10 @@ default_scrolling_extent = 0.4
 
 The dynamic settings from the previous section can be combined with
 `match.is_alone` in the same rule: they are re-applied whenever the alone state
-flips, so a lone window can dim or blur itself until a companion arrives.
+flips, so a lone window can dim or blur itself until a companion arrives. The
+decoration settings (border widths, corner radius, shadow parameters) belong to
+the same dynamic set, so a lone window can also thicken its border or grow its
+shadow until a companion opens beside it.
 
 ## Examples
 

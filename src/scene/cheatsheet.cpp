@@ -565,7 +565,7 @@ namespace umbriel {
 
     // Shadow and panel use the configured corner radius.
     const int cornerRadius = config().appearance.cornerRadius;
-    m_shadow.update(m_tree, panelW, panelH, kBorderWidth, cornerRadius);
+    m_shadow.update(m_tree, panelW, panelH, kBorderWidth, cornerRadius, globalShadowOptions());
 
     float borderColor[4]{};
     premultiplied(borderColor, config().colors.accentPrimary, 1.0F);

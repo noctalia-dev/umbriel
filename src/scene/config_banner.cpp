@@ -216,7 +216,9 @@ namespace umbriel {
 
     // Shadow, severity-colored border, rounded panel, then text.
     const int cornerRadius = config().appearance.cornerRadius;
-    m_shadow.update(m_tree, rendered.logicalWidth, rendered.logicalHeight, kBorderWidth, cornerRadius);
+    m_shadow.update(
+        m_tree, rendered.logicalWidth, rendered.logicalHeight, kBorderWidth, cornerRadius, globalShadowOptions()
+    );
 
     float borderColor[4]{};
     premultiplied(borderColor, hasError ? colors.error : colors.warning, 1.0F);

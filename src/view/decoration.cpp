@@ -14,6 +14,19 @@ extern "C" {
 
 namespace umbriel {
 
+  void ViewDecoration::resetAppearance() {
+    const auto& appearance = config().appearance;
+    m_appearance.borderWidth = appearance.borderWidth;
+    m_appearance.outerBorderWidth = appearance.outerBorderWidth;
+    m_appearance.cornerRadius = appearance.cornerRadius;
+    m_appearance.shadow = SurfaceShadowOptions{
+        .enabled = appearance.shadow.enabled,
+        .softness = appearance.shadow.softness,
+        .offsetX = appearance.shadow.offsetX,
+        .offsetY = appearance.shadow.offsetY,
+    };
+  }
+
   // Borders
   void ViewDecoration::ensureBorders(wlr_scene_tree* parent) {
     if (m_borderTree != nullptr) {
@@ -43,13 +56,11 @@ namespace umbriel {
       return;
     }
 
-    const auto& appearance = config().appearance;
+    const int borderWidth = m_appearance.borderWidth;
+    const int outerBorderWidth = m_appearance.outerBorderWidth;
     applyBorderGeometry(
-        m_border,
-        makeBorderRing(
-            contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-        ),
-        appearance.borderWidth, appearance.outerBorderWidth
+        m_border, makeBorderRing(contentWidth, contentHeight, m_appearance.cornerRadius, borderWidth, outerBorderWidth),
+        borderWidth, outerBorderWidth
     );
   }
 
@@ -78,10 +89,10 @@ namespace umbriel {
     if (m_border == nullptr) {
       return false;
     }
-    const auto& appearance = config().appearance;
-    const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-    );
+    const int borderWidth = m_appearance.borderWidth;
+    const int outerBorderWidth = m_appearance.outerBorderWidth;
+    const BorderRing ring =
+        makeBorderRing(contentWidth, contentHeight, m_appearance.cornerRadius, borderWidth, outerBorderWidth);
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
@@ -112,7 +123,7 @@ namespace umbriel {
   }
 
   // Blur
-  void ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+  bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
     m_blurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blur.value_or(false),
@@ -123,6 +134,22 @@ namespace umbriel {
         .enabled = rule.blurPopups.value_or(false),
         .optimized = rule.blurOptimized,
     };
+
+    const auto& appearance = config().appearance;
+    const ViewDecorationAppearance next{
+        .borderWidth = rule.borderWidth.value_or(appearance.borderWidth),
+        .outerBorderWidth = rule.outerBorderWidth.value_or(appearance.outerBorderWidth),
+        .cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius),
+        .shadow = SurfaceShadowOptions{
+            .enabled = rule.shadow.value_or(appearance.shadow.enabled),
+            .softness = rule.shadowSoftness.value_or(appearance.shadow.softness),
+            .offsetX = rule.shadowOffsetX.value_or(appearance.shadow.offsetX),
+            .offsetY = rule.shadowOffsetY.value_or(appearance.shadow.offsetY),
+        },
+    };
+    const bool appearanceChanged = next != m_appearance;
+    m_appearance = next;
+    return appearanceChanged;
   }
 
   void ViewDecoration::updateBlur(
@@ -176,7 +203,7 @@ namespace umbriel {
     if (m_shadowContainer == nullptr) {
       return;
     }
-    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius);
+    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius, m_appearance.shadow);
   }
 
   void ViewDecoration::hideShadow() { m_shadow.hide(); }

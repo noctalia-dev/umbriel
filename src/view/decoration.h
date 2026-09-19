@@ -16,6 +16,17 @@ namespace umbriel {
 
   struct ResolvedWindowRule;
 
+  // Per-window decoration appearance, overrides the global [appearance]
+  struct ViewDecorationAppearance {
+    int borderWidth = 0;
+    int outerBorderWidth = 0;
+    int cornerRadius = 0;
+    SurfaceShadowOptions shadow;
+    bool operator==(const ViewDecorationAppearance&) const = default;
+
+    [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
+  };
+
   // Everything drawn around a view's surface: the inner border ring, the outer ring, the blur sampled behind the
   // surface, and the drop shadow. The shadow is deliberately not a child of the view's tree. It lives in the
   // workspace's shadow layer so it renders under every window rather than only under its own, which is why it needs its
@@ -23,9 +34,12 @@ namespace umbriel {
   // View. Everything that varies per view (content size, corner radius, fade alpha, focus) arrives as an argument,
   // because those are questions only the View can answer (a fullscreen window keeps its border tree but draws square,
   // and a size animation presents a size the committed geometry has not caught up with yet). Appearance settings are
-  // read from the config directly, as the other scene classes do.
+  // read from the config directly, as the other scene classes do, except the per-window decoration appearance, which
+  // window rules override through applyRule.
   class ViewDecoration {
   public:
+    ViewDecoration() { resetAppearance(); }
+
     // The single node resolves inner and outer colors from one shared curve.
     void ensureBorders(wlr_scene_tree* parent);
     // True while the ring exists and is showing. Fullscreen disables the tree
@@ -46,7 +60,13 @@ namespace umbriel {
     // Blur
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
-    void applyRule(const ResolvedWindowRule& rule);
+
+    // Merge a rule over the global appearance, true when the decoration changed,
+    // so the caller refreshes the ring, surface radius, and shadow.
+    bool applyRule(const ResolvedWindowRule& rule);
+    [[nodiscard]] int borderWidth() const { return m_appearance.borderWidth; }
+    [[nodiscard]] int cornerRadius() const { return m_appearance.cornerRadius; }
+    [[nodiscard]] int totalBorderWidth() const { return m_appearance.totalBorderWidth(); }
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
         const wlr_box* clip, float surfaceOpacity, float blurAlpha
@@ -73,6 +93,8 @@ namespace umbriel {
     void hideEffects();
 
   private:
+    void resetAppearance();
+
     wlr_scene_tree* m_borderTree = nullptr;
     wlr_scene_border* m_border = nullptr;
     SurfaceBlur m_blur;
@@ -80,6 +102,7 @@ namespace umbriel {
     SurfaceBlurOptions m_popupBlurOptions;
     SurfaceShadow m_shadow;
     wlr_scene_tree* m_shadowContainer = nullptr; // child of workspace shadow layer
+    ViewDecorationAppearance m_appearance;
   };
 
 } // namespace umbriel

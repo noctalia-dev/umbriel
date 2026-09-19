@@ -1681,12 +1681,11 @@ namespace umbriel {
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }
 
-  int View::borderInset() const { return decorated() ? config().appearance.totalBorderWidth() : 0; }
+  int View::borderInset() const { return decorated() ? m_decoration.totalBorderWidth() : 0; }
 
   int View::surfaceRadius() const {
-    return decorated() && !m_toplevel->scheduled.fullscreen
-        ? nestedRadius(config().appearance.cornerRadius, borderInset())
-        : 0;
+    return decorated() && !m_toplevel->scheduled.fullscreen ? nestedRadius(m_decoration.cornerRadius(), borderInset())
+                                                            : 0;
   }
 
   void View::setBorderFocused(bool focused) {
@@ -1824,9 +1823,7 @@ namespace umbriel {
   void View::updateShadow(int contentWidth, int contentHeight) {
     UMBRIEL_ZONE("View::updateShadow");
     const int borderTotal = borderInset();
-    m_decoration.updateShadow(
-        contentWidth, contentHeight, borderTotal, decorated() ? config().appearance.cornerRadius : 0
-    );
+    m_decoration.updateShadow(contentWidth, contentHeight, borderTotal, decorated() ? m_decoration.cornerRadius() : 0);
     m_decoration.setShadowAnimationSource(&m_sceneTree->node);
   }
 
@@ -4110,11 +4107,18 @@ namespace umbriel {
   void View::applyDynamicRules(const ResolvedWindowRule* resolved) {
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     m_appliedRuleState = ruleState();
-    m_decoration.applyRule(rule);
+    const bool decorationAppearanceChanged = m_decoration.applyRule(rule);
     const float newOpacity = rule.opacity ? static_cast<float>(*rule.opacity) : 1.0F;
     if (newOpacity != m_ruleOpacity) {
       m_ruleOpacity = newOpacity;
       setFadeAlpha(m_fadeAlpha); // refresh effective opacity
+    }
+    // The rule also sets border widths, radius, and shadow parameters; refresh
+    // them only when the effective appearance changed.
+    if (decorationAppearanceChanged) {
+      updateBorderGeometry();
+      applyCornerRadius();
+      updateShadow();
     }
     updateBlur();
     // updateBlur creates the full node box. Re-apply the owning output's clip immediately, because focus, title, and

@@ -336,6 +336,13 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
+    std::optional<int> shadowSoftness;
+    std::optional<int> shadowOffsetX;
+    std::optional<int> shadowOffsetY;
 
     // The compiled regexes are derived from the app ID, title, and XDG tag patterns and
     // are not comparable, so equality is decided by the patterns themselves.
@@ -376,7 +383,14 @@ namespace umbriel {
           && blur == other.blur
           && blurPopups == other.blurPopups
           && blurIgnoreAlpha == other.blurIgnoreAlpha
-          && blurOptimized == other.blurOptimized;
+          && blurOptimized == other.blurOptimized
+          && borderWidth == other.borderWidth
+          && outerBorderWidth == other.outerBorderWidth
+          && cornerRadius == other.cornerRadius
+          && shadow == other.shadow
+          && shadowSoftness == other.shadowSoftness
+          && shadowOffsetX == other.shadowOffsetX
+          && shadowOffsetY == other.shadowOffsetY;
     }
   };
 
@@ -409,6 +423,13 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
+    std::optional<int> shadowSoftness;
+    std::optional<int> shadowOffsetX;
+    std::optional<int> shadowOffsetY;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 
