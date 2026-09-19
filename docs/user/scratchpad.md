@@ -202,15 +202,21 @@ moved elsewhere in the meantime.
 
 ## Appearance and window actions
 
-Scratchpad windows use dedicated focused and unfocused border colors:
+Scratchpad windows use dedicated focused and unfocused border colors, set with a
+window rule that matches the scratchpad state:
 
 ```toml
-[colors.border]
-scratchpad_focused = "#E5C07BFF"
-scratchpad_unfocused = "#5C4A2AFF"
+[[window_rule]]
+match.is_scratchpad = true
+border_color_focused = "#E5C07BFF"
+border_color_unfocused = "#5C4A2AFF"
 ```
 
-See [Appearance](appearance.md) for the complete appearance reference.
+The rule re-applies whenever a window enters or leaves a scratchpad, so the
+colors follow the window's state. See
+[Window Rules](window-rules.md#border-colors) for the full set of border color
+keys, and [Appearance](appearance.md#border-colors) for the global defaults they
+override.
 
 Scratchpad show and hide transitions, backdrop dimming and blur, and optional
 entry sizing are configured under

@@ -34,14 +34,17 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* borderTree() const { return m_borderTree; }
     void setBordersEnabled(bool enabled);
     void updateBorderGeometry(int contentWidth, int contentHeight);
-    // `alpha` premultiplies the border color so a fading view's ring fades with it.
-    void setBorderColor(bool focused, bool scratchpad, float alpha);
-    void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
+    // `alpha` premultiplies both colors so a fading view's ring fades with it. The rule's per-focus
+    // border colors override [colors.border] when present, falling back to the global defaults.
+    void setBorderColor(bool focused, const ResolvedWindowRule& rule, float alpha);
+    void setBorderRawColor(const std::array<float, 4>& baseColor, const std::array<float, 4>& outerColor, float alpha);
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight) const;
     // Copy the border into a close-animation snapshot tree.
-    void snapshotBorders(wlr_scene_tree* snapshot, bool focused, std::vector<BorderSnapshot>& out) const;
+    void snapshotBorders(
+        wlr_scene_tree* snapshot, bool focused, const ResolvedWindowRule& rule, std::vector<BorderSnapshot>& out
+    ) const;
 
     // Blur
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }

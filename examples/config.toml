@@ -163,8 +163,6 @@ empty_above = false                             # Keep one empty workspace above
 [colors.border]
 # focused = "#7AA3FFFF"                         # Focused window border
 # unfocused = "#292933FF"                       # Unfocused window border
-# scratchpad_focused = "#E5C07BFF"              # Focused scratchpad border
-# scratchpad_unfocused = "#5C4A2AFF"            # Unfocused scratchpad border
 # outer = "#1A1A1FFF"                           # Outer border ring
 
 [colors.overview]
@@ -668,6 +666,12 @@ default_pinned = true
 # match.is_floating = true
 # match.is_scratchpad = false
 # blur = false
+
+# [[window_rule]]
+# match.is_scratchpad = true
+# border_color_focused = "#E5C07BFF"
+# border_color_unfocused = "#5C4A2AFF"
+# border_color_outer = "#2A2010FF"
 
 # Fill the viewport for a workspace's lone tiled column.
 # [[window_rule]]

@@ -661,7 +661,7 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     float effective = effectiveOpacity();
     wlr_scene_node_for_each_buffer(&m_sceneTree->node, setCompositorOpacity, &effective);
-    m_decoration.setBorderRawColor(m_borderColorAnim.current(), effective);
+    m_decoration.setBorderRawColor(m_borderColorAnim.current(), resolvedBorderOuter(resolvedRules()), effective);
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = m_customFade && m_fade.animating() ? effective * m_fadeAlpha : effective;
@@ -1118,7 +1118,9 @@ namespace umbriel {
     }
 
     if (m_borderColorAnim.tick(nowMsec)) {
-      m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
+      m_decoration.setBorderRawColor(
+          m_borderColorAnim.current(), resolvedBorderOuter(resolvedRules()), effectiveOpacity()
+      );
       active = active || m_borderColorAnim.animating();
     }
     syncAnimationShaders();
@@ -1707,9 +1709,8 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
     }
 
-    const auto& targetBase = m_inScratchpad
-        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
-        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
+    const ResolvedWindowRule& borderRule = resolvedRules();
+    const std::array<float, 4> targetBase = resolvedBorderBaseColor(focused, borderRule);
 
     const auto& border = animation.border;
     if (m_mapped && focusChanged && animation.enabled && border.enabled) {
@@ -1717,7 +1718,7 @@ namespace umbriel {
       scheduleFrame();
     } else {
       m_borderColorAnim.snap(targetBase);
-      m_decoration.setBorderColor(focused, m_inScratchpad, effectiveOpacity());
+      m_decoration.setBorderColor(focused, borderRule, effectiveOpacity());
     }
 
     if (focusChanged && m_mapped) {
@@ -1887,7 +1888,7 @@ namespace umbriel {
     wlr_scene_node_set_position(&snap->node, m_sceneTree->node.x, m_sceneTree->node.y);
 
     std::vector<BorderSnapshot> snapBorders;
-    m_decoration.snapshotBorders(snap, m_borderFocusedState, snapBorders);
+    m_decoration.snapshotBorders(snap, m_borderFocusedState, resolvedRules(), snapBorders);
 
     // Copy surface buffers.
     struct CopyCtx {
@@ -4111,6 +4112,17 @@ namespace umbriel {
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     m_appliedRuleState = ruleState();
     m_decoration.applyRule(rule);
+    const std::array<float, 4> targetBorder = resolvedBorderBaseColor(m_borderFocusedState, rule);
+    const auto& borderAnimation = config().animation.border;
+    if (m_mapped && m_borderColorAnim.animating() && borderAnimation.enabled) {
+      if (m_borderColorAnim.target() != targetBorder) {
+        m_borderColorAnim.retarget(targetBorder, borderAnimation.durationMs, borderAnimation.curve);
+        scheduleFrame();
+      }
+    } else {
+      m_borderColorAnim.snap(targetBorder);
+      m_decoration.setBorderColor(m_borderFocusedState, rule, effectiveOpacity());
+    }
     const float newOpacity = rule.opacity ? static_cast<float>(*rule.opacity) : 1.0F;
     if (newOpacity != m_ruleOpacity) {
       m_ruleOpacity = newOpacity;

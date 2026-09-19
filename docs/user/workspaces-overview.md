@@ -87,12 +87,14 @@ release. See [animation](animation.md).
 #### Which window actions act on
 
 No window holds the keyboard while the overview is open, so one card at a time
-carries the full `colors.border.focused` color: the window a focus or close
-action would act on. It sits on the current output, which is the output holding
-the cursor and the one every output-changing keybind warps the cursor to. Each
-other workspace preview marks its own window with a fainter border, showing
-where that preview would land when you zoom into it. When the current workspace
-is empty, no card is marked, and those actions have nothing to act on.
+carries the full focused border color: the window a focus or close action would
+act on. It sits on the current output, which is the output holding the cursor
+and the one every output-changing keybind warps the cursor to. Each other
+workspace preview marks its own window with a fainter border, showing where that
+preview would land when you zoom into it. When the current workspace is empty,
+no card is marked, and those actions have nothing to act on. A card uses its
+window's [window-rule](window-rules.md#border-colors) border colors when it has
+them, so a rule that overrides the global border colors colors the card as well.
 
 #### Keyboard shortcuts
 
@@ -178,8 +180,10 @@ lists only accept drops onto existing previews.
 ### Appearance
 
 Overview cards use the same borders, corner radius, transparency, and blur as
-their windows. The live target uses `colors.border.focused` unchanged, and the
-other rows' markers mix that color into `colors.border.unfocused`.
+their windows, including any per-window [border color override](window-rules.md#border-colors).
+The live target uses the window's focused border color unchanged, and the other
+rows' markers mix that color into its unfocused border color. Without a rule
+override those are `colors.border.focused` and `colors.border.unfocused`.
 Cards also retain each surface's color description, so HDR and
 extended-linear content keeps the same appearance while the overview is open.
 `colors.overview.workspace_background` adds a rounded background behind each

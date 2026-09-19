@@ -336,6 +336,10 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    // Overrides [colors.border] for windows this rule matches.
+    std::optional<std::array<float, 4>> borderColorFocused;
+    std::optional<std::array<float, 4>> borderColorUnfocused;
+    std::optional<std::array<float, 4>> borderColorOuter;
 
     // The compiled regexes are derived from the app ID, title, and XDG tag patterns and
     // are not comparable, so equality is decided by the patterns themselves.
@@ -376,7 +380,10 @@ namespace umbriel {
           && blur == other.blur
           && blurPopups == other.blurPopups
           && blurIgnoreAlpha == other.blurIgnoreAlpha
-          && blurOptimized == other.blurOptimized;
+          && blurOptimized == other.blurOptimized
+          && borderColorFocused == other.borderColorFocused
+          && borderColorUnfocused == other.borderColorUnfocused
+          && borderColorOuter == other.borderColorOuter;
     }
   };
 
@@ -409,6 +416,9 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    std::optional<std::array<float, 4>> borderColorFocused;
+    std::optional<std::array<float, 4>> borderColorUnfocused;
+    std::optional<std::array<float, 4>> borderColorOuter;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 
@@ -477,8 +487,6 @@ namespace umbriel {
       struct Border {
         std::array<float, 4> focused{0.4784314F, 0.6392157F, 1.0F, 1.0F};
         std::array<float, 4> unfocused{0.1607843F, 0.1607843F, 0.2F, 1.0F};
-        std::array<float, 4> scratchpadFocused{0.8980392F, 0.7529412F, 0.4823529F, 1.0F};
-        std::array<float, 4> scratchpadUnfocused{0.3607843F, 0.2901961F, 0.1647059F, 1.0F};
         // No focus variant.
         std::array<float, 4> outer{0.1019608F, 0.1019608F, 0.1215686F, 1.0F};
         bool operator==(const Border&) const = default;
@@ -874,6 +882,16 @@ namespace umbriel {
   };
 
   [[nodiscard]] const Config& config();
+
+  [[nodiscard]] inline std::array<float, 4> resolvedBorderBaseColor(bool focused, const ResolvedWindowRule& rule) {
+    return focused ? rule.borderColorFocused.value_or(config().colors.border.focused)
+                   : rule.borderColorUnfocused.value_or(config().colors.border.unfocused);
+  }
+
+  [[nodiscard]] inline std::array<float, 4> resolvedBorderOuter(const ResolvedWindowRule& rule) {
+    return rule.borderColorOuter.value_or(config().colors.border.outer);
+  }
+
   [[nodiscard]] bool loadConfig(const char* explicitPath);
   [[nodiscard]] ConfigReloadResult reloadConfig();
   [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();

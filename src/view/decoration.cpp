@@ -53,25 +53,24 @@ namespace umbriel {
     );
   }
 
-  void ViewDecoration::setBorderColor(bool focused, bool scratchpad, float alpha) {
+  void ViewDecoration::setBorderColor(bool focused, const ResolvedWindowRule& rule, float alpha) {
     if (m_borderTree == nullptr) {
       return;
     }
-    const auto& baseColor = scratchpad
-        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
-        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
-    setBorderRawColor(baseColor, alpha);
+    setBorderRawColor(resolvedBorderBaseColor(focused, rule), resolvedBorderOuter(rule), alpha);
   }
 
-  void ViewDecoration::setBorderRawColor(const std::array<float, 4>& baseColor, float alpha) {
+  void ViewDecoration::setBorderRawColor(
+      const std::array<float, 4>& baseColor, const std::array<float, 4>& outerColor, float alpha
+  ) {
     if (m_border == nullptr) {
       return;
     }
     float innerColor[4];
-    float outerColor[4];
+    float outer[4];
     premultiplied(innerColor, baseColor, alpha);
-    premultiplied(outerColor, config().colors.border.outer, alpha);
-    wlr_scene_border_set_colors(m_border, innerColor, outerColor);
+    premultiplied(outer, outerColor, alpha);
+    wlr_scene_border_set_colors(m_border, innerColor, outer);
   }
 
   bool ViewDecoration::borderGeometryStale(int contentWidth, int contentHeight) const {
@@ -85,7 +84,9 @@ namespace umbriel {
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
-  void ViewDecoration::snapshotBorders(wlr_scene_tree* snapshot, bool focused, std::vector<BorderSnapshot>& out) const {
+  void ViewDecoration::snapshotBorders(
+      wlr_scene_tree* snapshot, bool focused, const ResolvedWindowRule& rule, std::vector<BorderSnapshot>& out
+  ) const {
     if (!bordersVisible() || m_border == nullptr) {
       return;
     }
@@ -105,8 +106,8 @@ namespace umbriel {
     out.push_back(
         BorderSnapshot{
             .node = copy,
-            .innerColor = focused ? config().colors.border.focused : config().colors.border.unfocused,
-            .outerColor = config().colors.border.outer,
+            .innerColor = resolvedBorderBaseColor(focused, rule),
+            .outerColor = resolvedBorderOuter(rule),
         }
     );
   }

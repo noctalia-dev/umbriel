@@ -300,6 +300,7 @@ namespace umbriel {
     // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
     [[nodiscard]] View* liveTargetView() const;
     [[nodiscard]] std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
+    [[nodiscard]] std::array<float, 4> cardBorderOuter(View* view) const;
     void assignShortcuts();
     void renderCardShortcut(Card& card);
     bool handleShortcutKey(uint32_t keysym);

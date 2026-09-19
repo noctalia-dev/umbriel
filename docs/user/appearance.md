@@ -51,18 +51,20 @@ the smaller session-quit confirmation and the configuration diagnostics panel.
 [colors.border]
 focused = "#7AA3FFFF"
 unfocused = "#292933FF"
-scratchpad_focused = "#E5C07BFF"
-scratchpad_unfocused = "#5C4A2AFF"
 outer = "#1A1A1FFF"
 ```
 
-| Key                    | Type  | Default     | Description                                     |
-| ---------------------- | ----- | ----------- | ----------------------------------------------- |
-| `focused`              | color | `#7AA3FFFF` | Border color for the focused window.            |
-| `unfocused`            | color | `#292933FF` | Border color for unfocused windows.             |
-| `scratchpad_focused`   | color | `#E5C07BFF` | Border color for the focused scratchpad window. |
-| `scratchpad_unfocused` | color | `#5C4A2AFF` | Border color for unfocused scratchpad windows.  |
-| `outer`                | color | `#1A1A1FFF` | Outer border color. It has no focus variant.    |
+| Key         | Type  | Default     | Description                                  |
+| ----------- | ----- | ----------- | -------------------------------------------- |
+| `focused`   | color | `#7AA3FFFF` | Border color for the focused window.         |
+| `unfocused` | color | `#292933FF` | Border color for unfocused windows.          |
+| `outer`     | color | `#1A1A1FFF` | Outer border color. It has no focus variant. |
+
+These are the defaults for every window. A [window rule](window-rules.md#border-colors)
+can override the focused, unfocused, or outer color for the windows it matches.
+Each color is independent: a rule that sets only some of them keeps the global
+value for the rest. Because the state selectors are dynamic, this is how
+scratchpad, floating, or pinned windows get their own border colors.
 
 Border widths, the corner radius, and the other decoration geometry live in
 [`[appearance]`](#window-appearance).
@@ -125,8 +127,8 @@ and content radii decrease smoothly as their border inset grows, but never
 collapse to square; `corner_radius = 0` keeps every contour square. Inner and
 outer borders render outside the window and are included in layout spacing.
 
-See [Scratchpads](scratchpad.md) for how scratchpad windows behave and use the
-dedicated border colors.
+See [Scratchpads](scratchpad.md) for how scratchpad windows behave and how to
+give them their own border colors with a window rule.
 
 ### Blur
 

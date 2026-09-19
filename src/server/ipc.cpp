@@ -50,8 +50,6 @@ namespace umbriel {
                 {
                     {"focused", rgbaHex(colors.border.focused)},
                     {"unfocused", rgbaHex(colors.border.unfocused)},
-                    {"scratchpad_focused", rgbaHex(colors.border.scratchpadFocused)},
-                    {"scratchpad_unfocused", rgbaHex(colors.border.scratchpadUnfocused)},
                     {"outer", rgbaHex(colors.border.outer)},
                 }},
                {"overview",

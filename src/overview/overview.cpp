@@ -245,7 +245,7 @@ namespace umbriel {
           card.border, makeBorderRing(contentW, contentH, outerRadius, innerWidth, outerWidth), innerWidth, outerWidth
       );
       const std::array<float, 4> innerColor = tint(cardBorderColor(card, liveTarget), presentedOpacity);
-      const std::array<float, 4> outerColor = tint(config().colors.border.outer, presentedOpacity);
+      const std::array<float, 4> outerColor = tint(cardBorderOuter(card.view), presentedOpacity);
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
 
@@ -442,16 +442,25 @@ namespace umbriel {
 
   std::array<float, 4> Overview::cardBorderColor(const Card& card, const View* liveTarget) const {
     const auto& border = config().colors.border;
+    // A card mirrors its window's resolved border colors, includind per-window rule overrides.
+    // Focus and unfocus name the two variants a rule resolves; the card's role picks one,
+    // because no window holds the seat while the overview is up. The landing-target mix uses
+    // the same two variants.
+    const ResolvedWindowRule* rule = card.view != nullptr ? &card.view->resolvedRules() : nullptr;
+    const std::array<float, 4> focused = rule != nullptr ? resolvedBorderBaseColor(true, *rule) : border.focused;
+    const std::array<float, 4> unfocused = rule != nullptr ? resolvedBorderBaseColor(false, *rule) : border.unfocused;
     const Workspace* workspace = card.view != nullptr ? card.view->workspace() : nullptr;
     if (workspace == nullptr || workspace->focusedView() != card.view || &card == m_dragCard) {
-      return border.unfocused;
+      return unfocused;
     }
-    // No window holds the seat while the overview is up, so exactly one card wears the focused color: the one a focus
-    // or close action would act on. Every other row still marks the card it would land on, with a weaker mix.
     if (card.view == liveTarget) {
-      return border.focused;
+      return focused;
     }
-    return mixColor(border.unfocused, border.focused, kLandingTargetBlend);
+    return mixColor(unfocused, focused, kLandingTargetBlend);
+  }
+
+  std::array<float, 4> Overview::cardBorderOuter(View* view) const {
+    return view != nullptr ? resolvedBorderOuter(view->resolvedRules()) : config().colors.border.outer;
   }
 
   void Overview::applyProgress() {
@@ -892,8 +901,9 @@ namespace umbriel {
     if (card->tree == nullptr) {
       return nullptr;
     }
-    const std::array<float, 4> innerColor = tint(config().colors.border.unfocused, 1.0);
-    const std::array<float, 4> outerColor = tint(config().colors.border.outer, 1.0);
+    const ResolvedWindowRule& rule = view->resolvedRules();
+    const std::array<float, 4> innerColor = tint(resolvedBorderBaseColor(false, rule), 1.0);
+    const std::array<float, 4> outerColor = tint(resolvedBorderOuter(rule), 1.0);
     card->border = wlr_scene_border_create(card->tree, innerColor.data(), outerColor.data());
     if (card->border == nullptr) {
       wlr_scene_node_destroy(&card->tree->node);
@@ -967,7 +977,7 @@ namespace umbriel {
             &copy->node, card.tree->node.x + card.border->node.x, card.tree->node.y + card.border->node.y
         );
         std::array<float, 4> innerColor = cardBorderColor(card, liveTargetView());
-        std::array<float, 4> outerColor = config().colors.border.outer;
+        std::array<float, 4> outerColor = cardBorderOuter(card.view);
         const float presentedOpacity = card.view->presentedOpacity();
         innerColor[3] *= presentedOpacity;
         outerColor[3] *= presentedOpacity;

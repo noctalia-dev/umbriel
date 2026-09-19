@@ -179,6 +179,15 @@ namespace umbriel {
   }
 
   Section& Section::color(std::string_view key, std::array<float, 4>& target) {
+    std::optional<std::array<float, 4>> parsed;
+    color(key, parsed);
+    if (parsed) {
+      target = *parsed;
+    }
+    return *this;
+  }
+
+  Section& Section::color(std::string_view key, std::optional<std::array<float, 4>>& target) {
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;

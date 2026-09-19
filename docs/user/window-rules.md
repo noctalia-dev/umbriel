@@ -279,6 +279,33 @@ sets the column width. `default_scrolling_column_order` has no effect without
 | `vrr` | string | Override the focused window's output VRR policy: `"disabled"`, `"always"`, or `"fullscreen"`. Without this key, the output's configured `vrr` policy applies. |
 | `tearing` | bool | Override the client's tearing hint. Omit it to follow the hint, set `true` to request asynchronous presentation, or set `false` to veto it. The output must still opt in with `tearing = true`, and the window must be fullscreen. |
 | `hdr` | string | Override the focused window's output HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. Without this key, the output's configured `hdr` policy applies. This does not assign HDR metadata to the surface. |
+| `border_color_focused` | color | Border color for this window while it is focused. Falls back to `colors.border.focused`. |
+| `border_color_unfocused` | color | Border color for this window while it is not focused. Falls back to `colors.border.unfocused`. |
+| `border_color_outer` | color | Outer border color for this window. Falls back to `colors.border.outer`. |
+
+### Border colors
+
+`border_color_focused`, `border_color_unfocused`, and `border_color_outer`
+override the [`[colors.border]`](appearance.md#border-colors) defaults for the
+windows a rule matches. Each key is independent: one that is not set keeps the
+global color, and a later matching rule replaces an earlier one for that key.
+The colors are `#RRGGBB` or `#RRGGBBAA`.
+
+Because `match.is_floating`, `match.is_pinned`, `match.is_scratchpad`, and
+`match.is_alone` are dynamic selectors, the colors follow the window's state.
+They are a convenient way to tell floating, pinned, or scratchpad windows apart
+at a glance. A scratchpad window, for instance, gets distinct borders with:
+
+```toml
+[[window_rule]]
+match.is_scratchpad = true
+border_color_focused = "#E5C07BFF"
+border_color_unfocused = "#5C4A2AFF"
+border_color_outer = "#1A1A1FFF"
+```
+
+The same `border_color_*` keys match any selector, so an app, a floating window,
+or a pinned one can each be recolored with a rule of their own.
 
 ## The only window in the workspace
 

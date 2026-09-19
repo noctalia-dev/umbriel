@@ -931,8 +931,6 @@ namespace umbriel {
         s.sub("border", [&](Section& border) {
           border.color("focused", colors.border.focused)
               .color("unfocused", colors.border.unfocused)
-              .color("scratchpad_focused", colors.border.scratchpadFocused)
-              .color("scratchpad_unfocused", colors.border.scratchpadUnfocused)
               .color("outer", colors.border.outer);
         });
 
@@ -2097,7 +2095,10 @@ namespace umbriel {
             .boolean("blur_popups", rule.blurPopups)
             .boolean("blur_optimized", rule.blurOptimized)
             .real("opacity", 0.0, 1.0, rule.opacity)
-            .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha);
+            .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha)
+            .color("border_color_focused", rule.borderColorFocused)
+            .color("border_color_unfocused", rule.borderColorUnfocused)
+            .color("border_color_outer", rule.borderColorOuter);
         if (const toml::node* n = keys.take("default_floating_size")) {
           const auto* table = n->as_table();
           if (table == nullptr) {

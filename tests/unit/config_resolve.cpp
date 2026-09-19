@@ -708,6 +708,35 @@ UMBRIEL_TEST(windowRulesMergeSizingFieldsLastWriterWins) {
   CHECK(!resolved.defaultScrollingExtentPx);
 }
 
+UMBRIEL_TEST(windowRulesMergeBorderColorsLastWriterWins) {
+  Config config;
+
+  WindowRule app;
+  app.appIdPattern = "^foot$";
+  app.appIdRegex = std::regex(app.appIdPattern);
+  app.borderColorFocused = std::array<float, 4>{1.0F, 0.0F, 0.0F, 1.0F};
+  config.windowRules.push_back(std::move(app));
+
+  WindowRule title;
+  title.titlePattern = "shell";
+  title.titleRegex = std::regex(title.titlePattern);
+  title.borderColorFocused = std::array<float, 4>{0.0F, 1.0F, 0.0F, 1.0F};
+  title.borderColorOuter = std::array<float, 4>{0.1F, 0.2F, 0.3F, 1.0F};
+  config.windowRules.push_back(std::move(title));
+
+  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
+  CHECK(appOnly.borderColorFocused && (*appOnly.borderColorFocused)[0] == 1.0F);
+  CHECK(!appOnly.borderColorUnfocused);
+  CHECK(!appOnly.borderColorOuter);
+
+  // Each key is independent: the later rule replaces only the keys it sets.
+  const auto merged =
+      umbriel::resolveWindowRules(config, "foot", "project shell", std::nullopt, ContentType::None, {}, 0);
+  CHECK(merged.borderColorFocused && (*merged.borderColorFocused)[1] == 1.0F);
+  CHECK(!merged.borderColorUnfocused);
+  CHECK(merged.borderColorOuter && (*merged.borderColorOuter)[2] == 0.3F);
+}
+
 UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   Config config;
 

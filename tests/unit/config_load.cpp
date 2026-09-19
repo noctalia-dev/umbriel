@@ -1106,8 +1106,7 @@ UMBRIEL_TEST(colorsSectionOwnsEveryColor) {
 
   file.write(
       "[colors]\ninsert_hint = \"#11223344\"\nbackdrop = \"#55667788\"\nshadow = \"#99AABBCC\"\n"
-      "[colors.border]\nfocused = \"#01020304\"\nunfocused = \"#05060708\"\n"
-      "scratchpad_focused = \"#090A0B0C\"\nscratchpad_unfocused = \"#0D0E0F10\"\nouter = \"#11121314\"\n"
+      "[colors.border]\nfocused = \"#01020304\"\nunfocused = \"#05060708\"\nouter = \"#11121314\"\n"
       "[colors.overview]\nbackground_tint = \"#15161718\"\nworkspace_background = \"#191A1B1C\"\n"
       "badge = \"#12345678\"\n"
   );
@@ -1118,13 +1117,48 @@ UMBRIEL_TEST(colorsSectionOwnsEveryColor) {
   CHECK_EQ(colors.shadow[3], 204.0F / 255.0F);
   CHECK_EQ(colors.border.focused[3], 4.0F / 255.0F);
   CHECK_EQ(colors.border.unfocused[0], 5.0F / 255.0F);
-  CHECK_EQ(colors.border.scratchpadFocused[1], 10.0F / 255.0F);
-  CHECK_EQ(colors.border.scratchpadUnfocused[2], 15.0F / 255.0F);
   CHECK_EQ(colors.border.outer[0], 17.0F / 255.0F);
   CHECK_EQ(colors.overview.backgroundTint[1], 22.0F / 255.0F);
   CHECK_EQ(colors.overview.workspaceBackground[2], 27.0F / 255.0F);
   CHECK_EQ(colors.overview.badge[0], 18.0F / 255.0F);
   CHECK_EQ(colors.overview.badge[3], 120.0F / 255.0F);
+}
+
+// Per-window border colors override the global [colors.border] defaults and are read from window rules.
+UMBRIEL_TEST(windowRuleBorderColorsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[[window_rule]]\nmatch.is_scratchpad = true\n"
+      "border_color_focused = \"#E5C07BFF\"\nborder_color_unfocused = \"#5C4A2AFF\"\n"
+      "border_color_outer = \"#2A2010FF\"\n"
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_color_focused = \"#FF6B6BFF\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{2});
+
+  const auto& scratchpad = store.config().windowRules[0];
+  CHECK(scratchpad.matchScratchpad && *scratchpad.matchScratchpad);
+  CHECK(scratchpad.borderColorFocused && (*scratchpad.borderColorFocused)[0] == 229.0F / 255.0F);
+  CHECK(scratchpad.borderColorFocused && (*scratchpad.borderColorFocused)[3] == 1.0F);
+  CHECK(scratchpad.borderColorUnfocused && (*scratchpad.borderColorUnfocused)[1] == 74.0F / 255.0F);
+  CHECK(scratchpad.borderColorOuter && (*scratchpad.borderColorOuter)[2] == 16.0F / 255.0F);
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.border_color_outer"));
+
+  // Each key is independent: a rule that sets only some of them leaves the rest unset.
+  const auto& foot = store.config().windowRules[1];
+  CHECK(foot.borderColorFocused && (*foot.borderColorFocused)[0] == 1.0F);
+  CHECK(!foot.borderColorUnfocused);
+  CHECK(!foot.borderColorOuter);
+
+  // A non-color value is rejected on the same keys.
+  file.write("[[window_rule]]\nborder_color_focused = 12\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(!store.config().windowRules[0].borderColorFocused);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.border_color_focused (expected color"));
 }
 
 // Colors are recognized only inside [colors]; anywhere else they are ordinary

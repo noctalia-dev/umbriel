@@ -38,6 +38,7 @@ namespace umbriel {
     Section& boolean(std::string_view key, bool& target);
     Section& boolean(std::string_view key, std::optional<bool>& target);
     Section& color(std::string_view key, std::array<float, 4>& target);
+    Section& color(std::string_view key, std::optional<std::array<float, 4>>& target);
     // An array of non-empty strings. A single bad element rejects the whole array: a half-applied autostart list is
     // worse than none, because the user cannot tell which entries ran.
     Section& strings(std::string_view key, std::vector<std::string>& target);

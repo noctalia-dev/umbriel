@@ -115,8 +115,6 @@ The example is wrapped for readability; the stream writes it as one line.
   "border":{
     "focused":"#7AA3FFFF",
     "unfocused":"#292933FF",
-    "scratchpad_focused":"#E5C07BFF",
-    "scratchpad_unfocused":"#5C4A2AFF",
     "outer":"#1A1A1FFF"
   },
   "overview":{
