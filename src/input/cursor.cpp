@@ -951,6 +951,7 @@ namespace umbriel {
     // A client data-device drag owns the seat grab. Its initiating release must reach wlroots even when the drag began
     // from a panel over the overview. Otherwise the drag icon and both input grabs remain active indefinitely.
     if (wlr_seat* seat = m_server->seat()->wlr(); seat->drag != nullptr) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
       if (seat->drag == nullptr) {
         // The drag grab suppressed normal pointer motion. Re-run hit testing at
@@ -1003,6 +1004,7 @@ namespace umbriel {
         if (surface != nullptr) {
           setPointerFocus(surface, sx, sy);
         }
+        m_server->seat()->notifyPointerModifiers();
         wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
         // The popup's xdg-shell grab already owns focus. Refocusing its parent layer would end the keyboard grab, whose
         // wlroots cancel handler also ends the pointer grab before the menu receives the matching release.
@@ -1038,6 +1040,7 @@ namespace umbriel {
         resetMode();
         return;
       }
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
 
       // After the final release, refresh pointer focus so it matches the surface actually under the cursor. The
@@ -1062,6 +1065,7 @@ namespace umbriel {
     if (wlr_seat* seat = m_server->seat()->wlr(); seat->drag == nullptr
         && seat->pointer_state.button_count > 0
         && seat->pointer_state.focused_surface != nullptr) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
       return;
     }
@@ -1073,6 +1077,7 @@ namespace umbriel {
     View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
 
     if (m_server->sessionLocked()) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
       if (surface != nullptr) {
         if (wlr_session_lock_surface_v1* lockSurface = wlr_session_lock_surface_v1_try_from_wlr_surface(surface)) {
@@ -1105,6 +1110,7 @@ namespace umbriel {
       clearPointerFocus();
     }
 
+    m_server->seat()->notifyPointerModifiers();
     wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
     if (layer != nullptr) {
       if (!isXdgPopupSurface(surface)) {
