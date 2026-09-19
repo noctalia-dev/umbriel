@@ -100,6 +100,7 @@ honor_restored_maximize = false                 # Honor restored maximized state
 # can keep a minimum number of workspaces instead, so a bar always shows them:
 # [output.DP-1]
 # min_workspaces = 3                            # Dynamic floor; rejected with a static inventory
+# cyclic_workspaces = true                      # workspace-next/previous wrap at the ends
 
 # New scrolling columns on this output can use a different initial width. This
 # affects new columns only; existing columns keep their current size.

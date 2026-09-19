@@ -1680,7 +1680,8 @@ namespace umbriel {
             scrolling.real("default_extent_fraction", 0.1, 1.0, rule.layout.scrolling.defaultExtentFraction);
           });
         });
-        keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces);
+        keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces)
+            .boolean("cyclic_workspaces", rule.cyclicWorkspaces);
         if (const toml::node* axisNode = keys.take("workspace_axis")) {
           const auto value = axisNode->value<std::string>();
           if (value == "vertical") {

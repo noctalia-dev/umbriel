@@ -79,6 +79,8 @@ namespace umbriel {
     [[nodiscard]] float configuredSdrWhite() const;
     [[nodiscard]] bool configuredDirectScanoutEnabled() const;
     [[nodiscard]] bool configuredTearingAllowed() const;
+    // Whether a workspace step wraps around the ends of this output's inventory.
+    [[nodiscard]] bool configuredCyclicWorkspaces() const;
     [[nodiscard]] bool tearingRequested() const;
     [[nodiscard]] bool lastCommitTearing() const { return m_lastCommitTearing; }
     [[nodiscard]] const std::optional<uint32_t>& lastPresentationFlags() const { return m_lastPresentationFlags; }

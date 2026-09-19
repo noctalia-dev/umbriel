@@ -227,6 +227,10 @@ namespace umbriel {
     // Smallest workspace count a dynamic output keeps. Rejected alongside an
     // explicit inventory, which already states an exact count.
     int minWorkspaces = 1;
+    // Wrap a workspace step around the ends of the inventory instead of stopping
+    // there: workspace-next/previous and the window and column move variants that
+    // name a step.
+    bool cyclicWorkspaces = false;
     // Direction this output's workspaces are arranged along. Scrolling layouts on
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;

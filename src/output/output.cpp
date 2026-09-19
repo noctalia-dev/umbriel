@@ -148,6 +148,11 @@ namespace umbriel {
     return rule != nullptr && rule->allowTearing;
   }
 
+  bool Output::configuredCyclicWorkspaces() const {
+    const OutputRule* rule = findOutputRule(config(), identity());
+    return rule != nullptr && rule->cyclicWorkspaces;
+  }
+
   View* Output::tearingCandidate() const {
     const Workspace* workspace = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
     if (workspace == nullptr) {

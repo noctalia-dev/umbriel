@@ -91,6 +91,7 @@ output is reconfigured, so reconnecting the display or reloading the configurati
 | `sdr_white`                                  | float                             | `203`       | SDR reference white in cd/m2 while the output is in HDR mode (80-1000).                                                                             |
 | `workspaces`                                 | int, string array, or `"dynamic"` | `"dynamic"` | A dynamic inventory, which may include names declared by `[[workspace]]`, 1 to 64 anonymous fixed positions, or a static ordered list of 1 to 64 names. |
 | `min_workspaces`                             | int                               | `1`         | Workspace count a dynamic output never shrinks below (1-64). Rejected together with a static `workspaces` inventory.                                |
+| `cyclic_workspaces`                          | bool                              | `false`     | Wrap a workspace step around the ends of the inventory instead of stopping there. Applies to `workspace-next`, `workspace-previous`, and the window and column move variants. |
 | `workspace_axis`                             | string                            | `"vertical"` | Axis the output's workspaces are arranged along: `"vertical"` or `"horizontal"`. The scrolling strip runs perpendicular to it. See [Workspace axis](workspaces.md#workspace-axis). |
 | `transform`                                  | string                            | `"normal"`  | Output rotation/flip.                                                                                                                               |
 | `layout.scrolling.default_extent_fraction`    | float                             | inherited   | Initial scrolling strip-axis extent for new columns on this output (0.1-1.0). Inherits the global value when omitted.                               |
@@ -122,6 +123,31 @@ workspace or the optional leading one. Static inventories remain exact in the
 configuration: their workspace rules can customize existing members but cannot
 add new ones. See
 [Persistent names in a dynamic inventory](workspaces.md#persistent-names-in-a-dynamic-inventory).
+
+### Cyclic workspaces
+
+With `cyclic_workspaces = true`, a workspace step that would leave the
+inventory wraps to the other end instead of stopping there:
+
+```toml
+[output.DP-1]
+workspaces = 3
+cyclic_workspaces = true
+```
+
+It applies to `workspace-next` and `workspace-previous`, and to
+`window-move-to-workspace-next`/`previous` and
+`column-move-to-workspace-next`/`previous`, so the three stay consistent.
+
+A step wraps only where it would leave the inventory, and a dynamic output
+always keeps a trailing empty workspace (see
+[Dynamic workspaces](workspaces.md#dynamic-workspaces)). Stepping forward from
+the last populated workspace therefore enters that empty workspace instead of
+wrapping: it is a step inside the inventory, not past its end. To reach the
+first workspace, step forward once more from there. Stepping back from the first
+workspace wraps to the last, which on a dynamic output is that same empty
+workspace. A static inventory has no spare slot, so both ends wrap directly.
+See [Choose a workspace model](workspaces.md#choose-a-workspace-model).
 
 ### Initial scrolling width
 

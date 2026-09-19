@@ -1832,6 +1832,50 @@ UMBRIEL_TEST(outputMinWorkspacesLoadsAndRequiresDynamicWorkspaces) {
   CHECK(!containsDiagnostic(store, "unknown key output.DP-1.min_workspaces"));
 }
 
+// The wrap switch is an ordinary per-output boolean: it defaults off, survives a
+// reload without the key, and rejects a non-boolean the way its neighbours do.
+UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.cyclic_workspaces (expected boolean)"));
+}
+
+// The key is per output: enabling it in one section leaves the other alone. The
+// runtime side reads the same matching rule, so this covers the parse half of
+// the isolation the harness cannot reach without a pointer-driven output switch.
+UMBRIEL_TEST(outputCyclicWorkspacesIsPerOutput) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = true\n\n[output.DP-2]\nworkspaces = 3\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{2});
+  if (store.config().outputs.size() == 2) {
+    CHECK(store.config().outputs[0].cyclicWorkspaces);
+    CHECK(!store.config().outputs[1].cyclicWorkspaces);
+    CHECK(store.config().outputs[1].workspaces.has_value());
+  }
+}
+
 UMBRIEL_TEST(dynamicNamedWorkspaceDeclarationsReserveEmptySentinelCapacity) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
