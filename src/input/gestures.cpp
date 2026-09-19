@@ -36,6 +36,19 @@ namespace umbriel {
       }
       return libinput_device_config_scroll_get_natural_scroll_enabled(device) != 0 ? 1 : -1;
     }
+
+    int switchCommitDelta(double progress, double velocity, bool hasPrev, bool hasNext) {
+      const double lo = hasPrev ? -1.0 : 0.0;
+      const double hi = hasNext ? 1.0 : 0.0;
+      const double clamped = std::clamp(progress, lo, hi);
+      if (std::abs(clamped) >= kCommitProgress) {
+        return clamped > 0 ? 1 : -1;
+      }
+      if (std::abs(velocity) >= kCommitVelocityPxMs && velocity * clamped > 0) {
+        return clamped > 0 ? 1 : -1;
+      }
+      return 0;
+    }
   } // namespace
 
   // trampolines (same pattern as Cursor)
@@ -139,6 +152,34 @@ namespace umbriel {
     m_switchGroup = nullptr;
     m_scrollSource = ScrollSource::None;
     m_state = State::Idle;
+  }
+
+  Gestures::SwitchPick Gestures::pickSwitchForOverview() {
+    SwitchPick pick;
+    if (m_state == State::Scroll) {
+      finishScroll(false, 0);
+      return pick;
+    }
+    if (m_state != State::Switch || m_switchGroup == nullptr) {
+      return pick;
+    }
+    WorkspaceGroup* group = m_switchGroup;
+    pick.group = group;
+    pick.progress = m_progress;
+    pick.velocity = m_velocity * 1000.0 / kSwipeWorkspacePx;
+    if (group->active() != nullptr) {
+      const size_t index = group->active()->index();
+      const int delta = switchCommitDelta(m_progress, m_velocity, m_hasPrev, m_hasNext);
+      if (delta < 0 && index > 0) {
+        pick.target = group->workspaceAt(index - 1);
+      } else if (delta > 0 && index + 1 < group->workspaceCount()) {
+        pick.target = group->workspaceAt(index + 1);
+      }
+    }
+    m_switchGroup = nullptr;
+    m_output = nullptr;
+    m_state = State::Idle;
+    return pick;
   }
 
   void Gestures::cancelActive() {
@@ -416,11 +457,17 @@ namespace umbriel {
     }
 
     case State::Switch: {
-      // Abort if group changed.
+      // slideApply needs an active slide; overview open parks it underneath us.
       Output* out = m_server->outputFromWlr(m_server->preferredOutput());
-      if (out == nullptr || out->workspaceGroup() != m_switchGroup) {
-        m_switchGroup->slideFinish();
+      if (m_switchGroup == nullptr
+          || out == nullptr
+          || out->workspaceGroup() != m_switchGroup
+          || !m_switchGroup->slideActive()) {
+        if (m_switchGroup != nullptr) {
+          m_switchGroup->slideFinish();
+        }
         m_switchGroup = nullptr;
+        m_output = nullptr;
         m_state = State::Idle;
         return;
       }
@@ -664,27 +711,20 @@ namespace umbriel {
   // ===== Switch finish (Step 6) =====
 
   void Gestures::finishSwitch(bool cancelled) {
-    if (m_switchGroup == nullptr) {
+    if (m_switchGroup == nullptr || !m_switchGroup->slideActive()) {
+      m_switchGroup = nullptr;
+      m_output = nullptr;
       m_state = State::Idle;
       return;
     }
-    int delta = 0;
-    if (!cancelled) {
-      const double lo = m_hasPrev ? -1.0 : 0.0;
-      const double hi = m_hasNext ? 1.0 : 0.0;
-      const double clamped = std::clamp(m_progress, lo, hi);
-      if (std::abs(clamped) >= kCommitProgress) {
-        delta = clamped > 0 ? 1 : -1;
-      } else if (std::abs(m_velocity) >= kCommitVelocityPxMs && m_velocity * clamped > 0) {
-        delta = clamped > 0 ? 1 : -1;
-      }
-    }
+    const int delta = cancelled ? 0 : switchCommitDelta(m_progress, m_velocity, m_hasPrev, m_hasNext);
     m_switchGroup->slideSettle(delta);
     if (delta != 0) {
       m_server->cursor()->clearConstraint();
       m_server->refocus(m_output);
     }
     m_switchGroup = nullptr;
+    m_output = nullptr;
     m_state = State::Idle;
   }
 

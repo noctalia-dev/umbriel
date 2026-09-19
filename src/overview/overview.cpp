@@ -1367,6 +1367,11 @@ namespace umbriel {
       return false;
     }
     m_server->cursor()->resetMode();
+    // Commit any in-flight three-finger switch like a release, then continue it on the filmstrip.
+    const Gestures::SwitchPick switchPick = m_server->gestures()->pickSwitchForOverview();
+    const double fromRow = (switchPick.group != nullptr && switchPick.group->active() != nullptr)
+        ? static_cast<double>(switchPick.group->active()->index())
+        : 0.0;
     for (const auto& output : m_server->outputs()) {
       WorkspaceGroup* group = output->workspaceGroup();
       if (group == nullptr) {
@@ -1378,6 +1383,12 @@ namespace umbriel {
       if (Workspace* workspace = group->active()) {
         workspace->arrange(false);
       }
+    }
+    // Before buildState: reconcileDynamic must not invalidate cards mid-build.
+    if (switchPick.group != nullptr
+        && switchPick.target != nullptr
+        && switchPick.group->active() != switchPick.target) {
+      switchPick.group->activate(switchPick.target, false);
     }
 
     buildState();
@@ -1408,6 +1419,15 @@ namespace umbriel {
             workspace->arrange(false);
           }
         }
+      }
+    }
+    if (switchPick.group != nullptr) {
+      if (OutputState* pickState = stateFor(switchPick.group->output())) {
+        Workspace* active = switchPick.group->active();
+        const double targetRow = active != nullptr ? static_cast<double>(active->index()) : fromRow;
+        pickState->rowScroll.snap(fromRow + switchPick.progress);
+        pickState->activeWorkspaceIndex = active != nullptr ? active->index() : static_cast<size_t>(fromRow);
+        animateRow(*pickState, targetRow, switchPick.velocity);
       }
     }
     assignShortcuts();
@@ -1486,7 +1506,7 @@ namespace umbriel {
       return;
     }
     m_server->cursor()->resetWheelAccumulation();
-    cancelNavigation();
+    endNavigation(false, 0, m_navigationSource);
     if (m_dragCard != nullptr) {
       endDrag(false);
     }
