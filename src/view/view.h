@@ -353,8 +353,8 @@ namespace umbriel {
     // Record the dimensions currently rendered by the scene. Client geometry can lag a layout configure, so
     // presentation consumers must not infer their size independently from the committed geometry.
     void trackPresentedSize(int width, int height);
-    // Re-apply compositor-owned opacity to surface buffers. Fullscreen bypasses window-rule opacity, while fades,
-    // drag opacity, focus dimming, and client-provided alpha remain active.
+    // Re-apply compositor-owned opacity to surface buffers. With opaque_fullscreen (default), fullscreen bypasses
+    // window-rule opacity, while fades, drag opacity, focus dimming, and client-provided alpha remain active.
     [[nodiscard]] float effectiveOpacity() const;
     void applyEffectiveOpacity();
     void flushPendingEffectiveOpacity();

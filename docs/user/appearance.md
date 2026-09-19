@@ -98,6 +98,7 @@ border_width = 2               # 0-100
 outer_border_width = 0         # 0-100
 corner_radius = 10             # 0-100, final outer edge; 0 disables
 drag_opacity = 0.75
+opaque_fullscreen = true
 ```
 
 | Key                           | Type  | Default     | Description                                                                                                                                       |
@@ -107,6 +108,7 @@ drag_opacity = 0.75
 | `outer_border_width`          | int   | `0`         | Ring outside the inner border in logical pixels (0-100).                                                                                          |
 | `corner_radius`               | int   | `10`        | Final decorated outer-edge radius in logical pixels (0-100). 0 disables.                                                                          |
 | `drag_opacity`                | float | `0.75`      | Opacity of the window while dragging.                                                                                                             |
+| `opaque_fullscreen`           | bool  | `true`      | When true, fullscreen windows ignores window rules opacity and stays opaque.                                                                      |
 
 With `prefer_no_csd = true`, Umbriel advertises the XDG and KDE decoration
 managers and prefers its border-only server decoration. An explicit request for
