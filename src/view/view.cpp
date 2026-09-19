@@ -857,6 +857,7 @@ namespace umbriel {
   }
 
   void View::finishSizeAnimation() {
+    clearOpenCenterAnimation();
     const wlr_box content = committedContentBox();
     m_presentation.setSize(content.width, content.height);
     resetPresentedSurface();
@@ -867,7 +868,7 @@ namespace umbriel {
   }
 
   void View::cancelSizeAnimation() {
-    if (!sizeAnimating()) {
+    if (!sizeAnimating() && !m_openCenterBox) {
       return;
     }
     const wlr_box content = committedContentBox();
@@ -964,6 +965,15 @@ namespace umbriel {
       return;
     }
     const auto& animation = config().animation;
+    if (m_openCenterBox) {
+      // Keep the appear centered in the updated slot rather than starting a move tween.
+      m_openCenterBox->width = width;
+      m_openCenterBox->height = height;
+      m_presentation.animateTo(width, height, animation.windowsIn.durationMs, animation.windowsIn.curve);
+      applyOpenCenterPosition();
+      scheduleFrame();
+      return;
+    }
     const auto& move = animation.windowsMove;
     if (!animation.enabled || !move.enabled) {
       m_presentation.setSize(width, height);
@@ -976,6 +986,15 @@ namespace umbriel {
   }
 
   void View::setPosition(int x, int y) {
+    if (m_openCenterBox) {
+      m_openCenterBox->x = x;
+      m_openCenterBox->y = y;
+      m_posX.snap(x);
+      m_posY.snap(y);
+      m_positioned = true;
+      applyOpenCenterPosition();
+      return;
+    }
     m_posX.snap(x);
     m_posY.snap(y);
     m_positioned = true;
@@ -984,6 +1003,40 @@ namespace umbriel {
   }
 
   void View::snapPosition(int x, int y) { setPosition(x, y); }
+
+  int View::layoutTargetX() const {
+    if (m_openCenterBox) {
+      return m_openCenterBox->x;
+    }
+    return static_cast<int>(std::lround(m_posX.target()));
+  }
+
+  int View::layoutTargetY() const {
+    if (m_openCenterBox) {
+      return m_openCenterBox->y;
+    }
+    return static_cast<int>(std::lround(m_posY.target()));
+  }
+
+  void View::applyOpenCenterPosition() {
+    if (!m_openCenterBox || m_sceneTree == nullptr) {
+      return;
+    }
+    const int x = m_openCenterBox->x + (m_openCenterBox->width - m_presentation.width()) / 2;
+    const int y = m_openCenterBox->y + (m_openCenterBox->height - m_presentation.height()) / 2;
+    wlr_scene_node_set_position(&m_sceneTree->node, x, y);
+    m_decoration.setShadowPosition(x, y);
+  }
+
+  void View::clearOpenCenterAnimation() {
+    if (!m_openCenterBox) {
+      return;
+    }
+    const int x = m_openCenterBox->x;
+    const int y = m_openCenterBox->y;
+    m_openCenterBox.reset();
+    setPosition(x, y);
+  }
 
   void View::animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve) {
     m_customFade = m_inScratchpad && animationShader(m_server->renderer(), AnimationEvent::Scratchpad) != nullptr;
@@ -1003,6 +1056,12 @@ namespace umbriel {
     const Overview* overview = m_server->overview();
     const bool presentedInOverview = overview != nullptr && overview->active() && m_workspace != nullptr;
     if (!m_mapped || (!m_onActiveWorkspace && !presentedInOverview) || !m_positioned) {
+      setPosition(x, y);
+      return;
+    }
+    // Arrange must not replace the open-center offset with a move tween: keep the
+    // resting slot updated and re-center the current presented size inside it.
+    if (m_openCenterBox) {
       setPosition(x, y);
       return;
     }
@@ -1088,6 +1147,10 @@ namespace umbriel {
 
     if (m_presentation.tick(nowMsec)) {
       applyPresentedSize();
+      if (m_openCenterBox) {
+        applyOpenCenterPosition();
+        syncOwnedPresentation();
+      }
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPresentationChanged(this);
       }
@@ -2342,7 +2405,9 @@ namespace umbriel {
 
   void View::applyPresentation(const wlr_box& target) {
     updateFullscreenPresentation(target.width, target.height);
-    if (m_toplevel->current.fullscreen) {
+    if (m_openCenterBox) {
+      m_presentation.setBackdropEnabled(false);
+    } else if (m_toplevel->current.fullscreen) {
       // The whole tile: the output's clipped root scissors whatever hangs over the shared edge.
       m_presentation.setBackdropBox(0, 0, target.width, target.height);
     }
@@ -2543,28 +2608,36 @@ namespace umbriel {
         m_fade.retarget(1.0, open.durationMs, open.curve);
 
         if (!m_customFade && (open.style == "popin" || open.style == "zoom")) {
-          const int targetW = m_presentation.width();
-          const int targetH = m_presentation.height();
-          if (targetW > 0 && targetH > 0) {
-            const double scale = open.style == "zoom" ? 0.5 : open.scale;
-            const int startW = std::max(1, static_cast<int>(targetW * scale));
-            const int startH = std::max(1, static_cast<int>(targetH * scale));
-            const int targetX = m_sceneTree->node.x;
-            const int targetY = m_sceneTree->node.y;
-            const int startX = targetX + (targetW - startW) / 2;
-            const int startY = targetY + (targetH - startH) / 2;
+          // Flush so targetBox() is the resting slot, not a stale (0,0) node.
+          if (m_workspace != nullptr) {
+            m_workspace->flushArrange();
+          }
+          const wlr_box slot = targetBox();
+          if (slot.width > 0 && slot.height > 0) {
+            // Replace any arrange-started resize tween; open owns the appear.
+            m_presentation.setSize(slot.width, slot.height);
+            m_presentation.snapTo(slot.width, slot.height);
 
+            const double scale = open.style == "zoom" ? 0.5 : open.scale;
+            const int startW = std::max(1, static_cast<int>(slot.width * scale));
+            const int startH = std::max(1, static_cast<int>(slot.height * scale));
+
+            m_openCenterBox = slot;
             m_presentation.setSize(startW, startH);
-            m_presentation.animateTo(targetW, targetH, open.durationMs, open.curve);
-            wlr_scene_node_set_position(&m_sceneTree->node, startX, startY);
-            m_posX.snap(startX);
-            m_posY.snap(startY);
-            m_posX.retarget(targetX, open.durationMs, open.curve);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
+            m_presentation.animateTo(slot.width, slot.height, open.durationMs, open.curve);
+            m_posX.snap(slot.x);
+            m_posY.snap(slot.y);
+            m_positioned = true;
+            applyOpenCenterPosition();
+            applyPresentedSize();
           }
         } else if (!m_customFade && open.style == "slide") {
-          const int targetX = m_sceneTree->node.x;
-          const int targetY = m_sceneTree->node.y;
+          if (m_workspace != nullptr) {
+            m_workspace->flushArrange();
+          }
+          const wlr_box slot = targetBox();
+          const int targetX = slot.x;
+          const int targetY = slot.y;
           const int startY = targetY + 60;
           wlr_scene_node_set_position(&m_sceneTree->node, targetX, startY);
           m_posX.snap(targetX);

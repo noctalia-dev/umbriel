@@ -161,8 +161,8 @@ namespace umbriel {
     // The authoritative layout position: where the window's slot is, not where its scene node happens to be
     // mid-animation. Workspace slides and arrange reflows move nodes without touching the animation targets, so window
     // listings that order by position must read these instead.
-    [[nodiscard]] int layoutTargetX() const { return static_cast<int>(std::lround(m_posX.target())); }
-    [[nodiscard]] int layoutTargetY() const { return static_cast<int>(std::lround(m_posY.target())); }
+    [[nodiscard]] int layoutTargetX() const;
+    [[nodiscard]] int layoutTargetY() const;
     // The box this window is headed for: the output when fullscreen, its presented slot when tiled, which is the usable
     // area when maximized to edges, else its own position at the size it is resizing to. Valid ahead of the animation
     // that carries the node there and of the client's resize, and settles a pending arrange to get there.
@@ -380,6 +380,10 @@ namespace umbriel {
     // Shared tail of a finished/cancelled size animation: settle the presented
     // size on the committed geometry and refresh the derived chrome.
     void finishSizeAnimation();
+    // Place the node so the current presented size stays centered in m_openCenterBox.
+    void applyOpenCenterPosition();
+    // Drop open-center tracking and snap the node to the resting layout origin.
+    void clearOpenCenterAnimation();
     [[nodiscard]] bool sizeAnimating() const { return m_presentation.animating(); }
     // True while the border ring exists and is showing. Fullscreen keeps the
     // tree but disables it, so the pointer alone does not answer this.
@@ -572,6 +576,10 @@ namespace umbriel {
     std::optional<bool> m_deferredActivationTrusted;
     AnimatedValue m_posX;
     AnimatedValue m_posY;
+    // Final layout box while popin/zoom grows from a centered start. Arrange may
+    // rewrite the resting origin via setPosition/animateTo; the node stays centered
+    // in this box until the size animation ends.
+    std::optional<wlr_box> m_openCenterBox;
     AnimatedValue m_fade;
     bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
