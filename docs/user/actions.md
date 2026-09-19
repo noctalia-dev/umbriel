@@ -156,6 +156,9 @@ described in [Workspace selectors](workspaces.md#workspace-selectors).
 | `window-move-to-workspace:<workspace>[/<output>]` | Move the focused window to the selected workspace |
 | `window-move-to-workspace-next` | Move the focused window to the next workspace |
 | `window-move-to-workspace-previous` | Move the focused window to the previous workspace |
+| `window-move-to-workspace-silent:<workspace>[/<output>]` | Move the focused window to the selected workspace silently |
+| `window-move-to-workspace-silent-next` | Move the focused window to the next workspace silently |
+| `window-move-to-workspace-silent-previous` | Move the focused window to the previous workspace silently |
 | `workspace-move-down` | Move the focused workspace down the list |
 | `workspace-move-to-output-down` | Move every workspace window to the output below |
 | `workspace-move-to-output-left` | Move every workspace window to the output left |
@@ -252,6 +255,8 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   toplevel activation requests from docks and taskbars. Pointer-driven and
   automatic focus changes never move the cursor. `window-focus:<window-id>`
   follows this setting, while `window-focus-warp:<window-id>` always moves it.
+  The `window-move-to-workspace-silent` actions never move it, because they do
+  not move the seat either.
 - **Hidden scratchpads.** Either ID-targeted focus action summons a matching
   hidden scratchpad window to the output under the pointer before focusing it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction

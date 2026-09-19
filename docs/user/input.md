@@ -386,6 +386,10 @@ cursor. `window-focus:<id>` follows this setting, while
 Either action summons a target that is hidden in a scratchpad to the output
 under the pointer before focusing it.
 
+The `window-move-to-workspace-silent` actions are the one transfer this setting
+does not reach: they leave the seat on the source workspace instead of
+travelling with the window, so the cursor stays where it was.
+
 ### Focus
 
 ```toml

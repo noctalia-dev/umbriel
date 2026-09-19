@@ -163,8 +163,8 @@ swipe, strip drag or tiled resize is settled first, and an open overview closes.
 ## Workspace selectors
 
 Actions that take a workspace argument, such as `workspace-switch`,
-`window-move-to-workspace`, and `column-move-to-workspace`, resolve it with
-these rules:
+`window-move-to-workspace`, `window-move-to-workspace-silent`, and
+`column-move-to-workspace`, resolve it with these rules:
 
 - Bare ASCII digits from `1` to `64` always select that 1-based position on the
   pointer-preferred output. They are never interpreted as a name.
@@ -190,6 +190,12 @@ When `workspace-switch` targets another monitor, the cursor warps to that
 monitor's center so subsequent actions continue there. Window and column moves
 do the same by default. With `input.cursor.follows_focus` enabled, they warp to
 the moved focused window's visible center instead.
+
+The `window-move-to-workspace-silent` actions are the exception: the window
+lands on its target — named, or the `-silent-next` / `-silent-previous`
+neighbour — while the seat stays where it was, so the source workspace hands
+focus to the replacement window it selects, an emptied source clears the
+keyboard focus, and the cursor does not move.
 
 ## Inspect workspace state
 

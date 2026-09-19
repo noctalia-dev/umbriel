@@ -385,6 +385,10 @@ follows_mouse = false                           # Focus on motion after scene ch
 "Mod+Shift+9" = "window-move-to-workspace:9"
 # Quote an all-digit name to distinguish it from a position.
 # "Mod+Ctrl+2" = 'workspace-switch:"2"/DP-2'
+# The `-silent` forms deliver the window and leave the seat, the cursor, and the
+# active workspace where they were: `window-move-to-workspace-silent:<workspace>`,
+# plus the `-silent-next` / `-silent-previous` neighbours.
+# "Mod+Ctrl+Shift+2" = "window-move-to-workspace-silent:2"
 
 # Scratchpads
 # These bare actions use the implicit `default` scratchpad because no named
@@ -421,6 +425,8 @@ follows_mouse = false                           # Focus on motion after scene ch
 # "Mod+Page_Down" = "workspace-next"
 # "Mod+Shift+Page_Up" = "window-move-to-workspace-previous"
 # "Mod+Shift+Page_Down" = "window-move-to-workspace-next"
+# "Mod+Ctrl+Shift+Page_Up" = "window-move-to-workspace-silent-previous"
+# "Mod+Ctrl+Shift+Page_Down" = "window-move-to-workspace-silent-next"
 # "Mod+Home" = "column-focus-first"
 # "Mod+End" = "column-focus-last"
 # "Mod+Shift+Home" = "column-move-to-first"
