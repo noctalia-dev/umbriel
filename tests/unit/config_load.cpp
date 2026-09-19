@@ -2080,6 +2080,36 @@ UMBRIEL_TEST(ruleCollectionsAccumulateAcrossIncludesWhilePlainArraysReplace) {
   CHECK(!containsDiagnostic(store, "position"));
 }
 
+// Decoration keys are read from a window rule like every other effect key, so a
+// per-window frame, corner radius, and shadow reach the resolve path.
+UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
+  const TempConfig file;
+  file.write(
+      "[[window_rule]]\n"
+      "match.app_id = \"^csd-app$\"\n"
+      "border_width = 0\n"
+      "corner_radius = 0\n"
+      "shadow = false\n"
+  );
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult loaded = store.reload();
+
+  CHECK(loaded.success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  if (store.config().windowRules.empty()) {
+    return;
+  }
+  const umbriel::WindowRule& rule = store.config().windowRules.front();
+  CHECK(rule.borderWidth && *rule.borderWidth == 0);
+  CHECK(rule.cornerRadius && *rule.cornerRadius == 0);
+  CHECK(rule.shadow && !*rule.shadow);
+  CHECK(!containsDiagnostic(store, "border_width"));
+  CHECK(!containsDiagnostic(store, "corner_radius"));
+  CHECK(!containsDiagnostic(store, "shadow"));
+}
+
 UMBRIEL_TEST(emptyRuleArrayDropsRulesFromIncludes) {
   const TempConfig file;
   file.write("window_rule = []\n[include]\nfiles = [\"" + file.includeName() + "\"]\n");

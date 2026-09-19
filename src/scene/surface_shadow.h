@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 
 struct wlr_scene_shadow;
 struct wlr_scene_tree;
@@ -22,6 +23,10 @@ namespace umbriel {
     // contentWidth/Height: toplevel geometry size. borderTotal: decoration ring width drawn outside the content (0 when
     // borders are disabled/hidden). cornerRadius: radius of the decoration's outer edge (0 = square).
     void update(wlr_scene_tree* parent, int contentWidth, int contentHeight, int borderTotal, int cornerRadius);
+    // Owner override of appearance.shadow.enabled. std::nullopt follows the global
+    // switch, so a window rule can both drop a shadow the global config draws and
+    // draw one it does not. Owners that never call this follow the global switch.
+    void setEnabled(std::optional<bool> enabled);
     // Disable the node (unmap/fullscreen/off-output path); update() re-enables.
     void hide();
     // Forget the node pointer (caller is destroying the parent tree externally).
@@ -34,6 +39,8 @@ namespace umbriel {
   private:
     wlr_scene_shadow* m_node = nullptr;
     float m_alpha = 1.0F;
+    // Follows appearance.shadow.enabled until an owner overrides it either way.
+    std::optional<bool> m_enabled;
   };
 
 } // namespace umbriel

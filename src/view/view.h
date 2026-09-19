@@ -384,7 +384,8 @@ namespace umbriel {
     // True while the border ring exists and is showing. Fullscreen keeps the
     // tree but disables it, so the pointer alone does not answer this.
     [[nodiscard]] bool decorated() const;
-    // Border thickness actually being drawn, 0 when undecorated.
+    // Border thickness actually being drawn, 0 when undecorated. Follows the window's own border_width rule when it
+    // sets one, the global appearance.border_width otherwise.
     [[nodiscard]] int borderInset() const;
     // Radius to round the surface itself by: a fullscreen window is square even
     // though its borders are only hidden, not destroyed.

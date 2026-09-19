@@ -25,7 +25,8 @@ namespace umbriel {
     const int decWidth = contentWidth + 2 * borderTotal;
     const int decHeight = contentHeight + 2 * borderTotal;
 
-    const bool want = cfg.enabled && shadow[3] > 0.0F && contentWidth > 0 && contentHeight > 0;
+    const bool enabled = m_enabled.value_or(cfg.enabled);
+    const bool want = enabled && shadow[3] > 0.0F && contentWidth > 0 && contentHeight > 0;
     if (!want) {
       if (m_node != nullptr) {
         wlr_scene_node_set_enabled(&m_node->node, false);
@@ -80,6 +81,8 @@ namespace umbriel {
 
     wlr_scene_node_set_enabled(&m_node->node, true);
   }
+
+  void SurfaceShadow::setEnabled(std::optional<bool> enabled) { m_enabled = enabled; }
 
   void SurfaceShadow::hide() {
     if (m_node != nullptr) {

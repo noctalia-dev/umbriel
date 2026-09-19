@@ -336,6 +336,11 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    // Decoration overrides. An absent key keeps the global [appearance] value
+    // for this window, so a rule changes only what it names.
+    std::optional<int> borderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
 
     // The compiled regexes are derived from the app ID, title, and XDG tag patterns and
     // are not comparable, so equality is decided by the patterns themselves.
@@ -376,7 +381,10 @@ namespace umbriel {
           && blur == other.blur
           && blurPopups == other.blurPopups
           && blurIgnoreAlpha == other.blurIgnoreAlpha
-          && blurOptimized == other.blurOptimized;
+          && blurOptimized == other.blurOptimized
+          && borderWidth == other.borderWidth
+          && cornerRadius == other.cornerRadius
+          && shadow == other.shadow;
     }
   };
 
@@ -409,6 +417,9 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    std::optional<int> borderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 

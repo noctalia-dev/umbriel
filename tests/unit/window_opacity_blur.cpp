@@ -76,4 +76,28 @@ UMBRIEL_TEST(transitionOpacityStillAttenuatesBlur) {
   wlr_scene_node_destroy(&scene->tree.node);
 }
 
+// A decoration key the rule names overrides the global appearance value, and a
+// key it omits keeps it. applyRule reports whether the window's own decoration
+// changed, so a refresh that leaves it alone does not redraw the ring, the
+// surface radius, or the shadow.
+UMBRIEL_TEST(decorationRuleOverridesFallBackToGlobalAppearance) {
+  umbriel::ViewDecoration decoration;
+  const umbriel::ResolvedWindowRule empty;
+  CHECK(!decoration.applyRule(empty));
+  CHECK_EQ(decoration.borderWidth(), umbriel::config().appearance.borderWidth);
+  CHECK_EQ(decoration.cornerRadius(), umbriel::config().appearance.cornerRadius);
+  CHECK_EQ(decoration.shadowEnabled(), umbriel::config().appearance.shadow.enabled);
+
+  umbriel::ResolvedWindowRule rule;
+  rule.borderWidth = 0;
+  rule.cornerRadius = 0;
+  rule.shadow = false;
+  CHECK(decoration.applyRule(rule));
+  CHECK_EQ(decoration.borderWidth(), 0);
+  CHECK_EQ(decoration.cornerRadius(), 0);
+  CHECK_EQ(decoration.totalBorderWidth(), umbriel::config().appearance.outerBorderWidth);
+  CHECK(!decoration.shadowEnabled());
+  CHECK(!decoration.applyRule(rule));
+}
+
 int main() { return RUN_TESTS(); }

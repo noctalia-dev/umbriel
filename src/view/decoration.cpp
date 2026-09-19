@@ -38,18 +38,23 @@ namespace umbriel {
     }
   }
 
+  int ViewDecoration::borderWidth() const { return m_ruleBorderWidth.value_or(config().appearance.borderWidth); }
+
+  int ViewDecoration::totalBorderWidth() const { return borderWidth() + config().appearance.outerBorderWidth; }
+
+  int ViewDecoration::cornerRadius() const { return m_ruleCornerRadius.value_or(config().appearance.cornerRadius); }
+
+  bool ViewDecoration::shadowEnabled() const { return m_ruleShadow.value_or(config().appearance.shadow.enabled); }
+
   void ViewDecoration::updateBorderGeometry(int contentWidth, int contentHeight) {
     if (m_border == nullptr) {
       return;
     }
 
-    const auto& appearance = config().appearance;
+    const int outerWidth = config().appearance.outerBorderWidth;
+    const int width = borderWidth();
     applyBorderGeometry(
-        m_border,
-        makeBorderRing(
-            contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-        ),
-        appearance.borderWidth, appearance.outerBorderWidth
+        m_border, makeBorderRing(contentWidth, contentHeight, cornerRadius(), width, outerWidth), width, outerWidth
     );
   }
 
@@ -78,9 +83,8 @@ namespace umbriel {
     if (m_border == nullptr) {
       return false;
     }
-    const auto& appearance = config().appearance;
     const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
+        contentWidth, contentHeight, cornerRadius(), borderWidth(), config().appearance.outerBorderWidth
     );
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
@@ -112,7 +116,7 @@ namespace umbriel {
   }
 
   // Blur
-  void ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+  bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
     m_blurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blur.value_or(false),
@@ -123,6 +127,12 @@ namespace umbriel {
         .enabled = rule.blurPopups.value_or(false),
         .optimized = rule.blurOptimized,
     };
+    const bool chromeChanged =
+        m_ruleBorderWidth != rule.borderWidth || m_ruleCornerRadius != rule.cornerRadius || m_ruleShadow != rule.shadow;
+    m_ruleBorderWidth = rule.borderWidth;
+    m_ruleCornerRadius = rule.cornerRadius;
+    m_ruleShadow = rule.shadow;
+    return chromeChanged;
   }
 
   void ViewDecoration::updateBlur(
@@ -172,11 +182,14 @@ namespace umbriel {
     }
   }
 
-  void ViewDecoration::updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius) {
+  void ViewDecoration::updateShadow(int contentWidth, int contentHeight, int borderInset, int outerRadius) {
     if (m_shadowContainer == nullptr) {
       return;
     }
-    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius);
+    // std::nullopt leaves the global switch in charge; an explicit value overrides
+    // it either way, so a rule can drop a shadow or draw one the global config does not.
+    m_shadow.setEnabled(m_ruleShadow);
+    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, outerRadius);
   }
 
   void ViewDecoration::hideShadow() { m_shadow.hide(); }

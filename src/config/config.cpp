@@ -2096,8 +2096,11 @@ namespace umbriel {
             .boolean("blur", rule.blur)
             .boolean("blur_popups", rule.blurPopups)
             .boolean("blur_optimized", rule.blurOptimized)
+            .boolean("shadow", rule.shadow)
             .real("opacity", 0.0, 1.0, rule.opacity)
-            .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha);
+            .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha)
+            .integer("border_width", 0, 100, rule.borderWidth)
+            .integer("corner_radius", 0, 100, rule.cornerRadius);
         if (const toml::node* n = keys.take("default_floating_size")) {
           const auto* table = n->as_table();
           if (table == nullptr) {

@@ -123,7 +123,10 @@ Border widths and corner radius are measured in logical pixels. `corner_radius`
 describes the final outside edge of the complete decoration. Positive color-seam
 and content radii decrease smoothly as their border inset grows, but never
 collapse to square; `corner_radius = 0` keeps every contour square. Inner and
-outer borders render outside the window and are included in layout spacing.
+outer borders render outside the window and are included in layout spacing. A
+[window rule](window-rules.md#settings-updated-while-a-window-is-open) can
+override `border_width` and `corner_radius` for a single window; the spacing the
+layout reserves stays global, so a rule never moves another window.
 
 See [Scratchpads](scratchpad.md) for how scratchpad windows behave and use the
 dedicated border colors.
@@ -170,7 +173,10 @@ offset_y = 2
 ```
 
 Drop shadow behind windows (tiled and floating). Hidden while fullscreen. The
-shadow color is [`colors.shadow`](#colors).
+shadow color is [`colors.shadow`](#colors). A
+[window rule](window-rules.md#settings-updated-while-a-window-is-open) can
+disable it for a single window with `shadow = false`, or draw one where it is
+globally off with `shadow = true`; softness and offsets stay global.
 
 During a [custom window animation](animation.md#custom-glsl-shaders), shadows
 follow the shader's resulting alpha silhouette automatically. Color, softness,

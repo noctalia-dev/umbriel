@@ -618,6 +618,38 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(umbriel::anyWindowRuleHasTitlePattern(config));
 }
 
+// Decoration overrides merge per field like every other dynamic effect: the last
+// matching rule that names a key wins it, and a key no rule sets stays unset so
+// the window keeps the global [appearance] value.
+UMBRIEL_TEST(windowRuleDecorationOverridesMergePerField) {
+
+  Config config;
+
+  WindowRule app;
+  app.appIdPattern = "^foot$";
+  app.appIdRegex = std::regex(app.appIdPattern);
+  app.borderWidth = 0;
+  app.shadow = false;
+  config.windowRules.push_back(std::move(app));
+
+  WindowRule title;
+  title.titlePattern = "editor";
+  title.titleRegex = std::regex(title.titlePattern);
+  title.cornerRadius = 0;
+  title.shadow = true;
+  config.windowRules.push_back(std::move(title));
+
+  const auto both = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
+  CHECK(both.borderWidth && *both.borderWidth == 0);
+  CHECK(both.cornerRadius && *both.cornerRadius == 0);
+  CHECK(both.shadow && *both.shadow);
+
+  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "docs", std::nullopt, ContentType::None, {}, 0);
+  CHECK(appOnly.borderWidth && *appOnly.borderWidth == 0);
+  CHECK(appOnly.shadow && !*appOnly.shadow);
+  CHECK(!appOnly.cornerRadius);
+}
+
 UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {
   Config config;
 

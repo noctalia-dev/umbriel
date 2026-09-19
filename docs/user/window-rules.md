@@ -275,10 +275,38 @@ sets the column width. `default_scrolling_column_order` has no effect without
 | `blur_popups` | bool | Enable/disable blur for its XDG popups. |
 | `blur_ignore_alpha` | float | Skip blur where surface alpha is below this threshold (0.0-1.0). Applies to the window and its popups. |
 | `blur_optimized` | bool | Override `appearance.blur.optimized` for this window. A `true` value keeps the cached background blur alive on every output even when the global switch is off. |
+| `border_width` | int | Override `appearance.border_width` for this window (0-100). `0` draws no frame at all, which is what a client-side-decorated application wants: the compositor stops assuming square corners it cannot know about. |
+| `corner_radius` | int | Override `appearance.corner_radius` for this window (0-100). `0` leaves a client-side-decorated surface's own rounded corners untouched. |
+| `shadow` | bool | Override `appearance.shadow.enabled` for this window in either direction: `false` drops the shadow that would otherwise leak past a client's own rounded corners, and `true` draws one where the global switch is off. Softness, offsets, and the shadow color stay global. |
 | `focus_on_activate` | bool | Override `general.focus_on_activate` for activation requests targeting this window, including trusted launch tokens. `false` vetoes trusted activation focus and marks an otherwise unfocused target urgent. An untrusted request cannot suppress the window's normal `default_focused` map behavior. |
 | `vrr` | string | Override the focused window's output VRR policy: `"disabled"`, `"always"`, or `"fullscreen"`. Without this key, the output's configured `vrr` policy applies. |
 | `tearing` | bool | Override the client's tearing hint. Omit it to follow the hint, set `true` to request asynchronous presentation, or set `false` to veto it. The output must still opt in with `tearing = true`, and the window must be fullscreen. |
 | `hdr` | string | Override the focused window's output HDR policy: `"off"`, `"on"`, `"auto"`, or `"fullscreen"`. Without this key, the output's configured `hdr` policy applies. This does not assign HDR metadata to the surface. |
+
+The three decoration keys change what Umbriel draws around a window, not the
+space the layout reserves for it: tile spacing and edge padding keep using
+`appearance.border_width + appearance.outer_border_width`, so a window with
+`border_width = 0` keeps its gutters and draws nothing in them.
+`appearance.outer_border_width` stays global, and a key the rule omits keeps its
+global value. Because the layout is not consulted, a decoration rule never moves
+another window.
+
+`shadow` covers the switch alone, in either direction: a rule can set `true`
+where the global switch is off, which is how one window — a floating one, say —
+gets a shadow the rest of the session does not have. `appearance.shadow.softness`,
+its offsets, and `colors.shadow` stay global, the same way the per-window `blur`
+keys cover enablement and not `appearance.blur.radius`.
+
+Yielding to a client-side-decorated application, whose own rounded corners and
+shadow the compositor cannot know about:
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]gnome[.]TextEditor$"
+border_width = 0
+corner_radius = 0
+shadow = false
+```
 
 ## The only window in the workspace
 

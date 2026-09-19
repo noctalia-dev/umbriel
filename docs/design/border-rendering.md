@@ -151,6 +151,10 @@ a second scene node or draw order.
 - `723_small_border_corner.sh` verifies that a one-pixel outer radius does not
   grow with a thick double border, an eight-pixel radius keeps its inner contour
   rounded, and zero preserves a square outer corner.
+- `744_rule_decoration.sh` checks that a window rule's `border_width`,
+  `corner_radius`, and `shadow` reach the ring, the surface corner, and the drop
+  shadow, in both directions for `shadow`: off where the global switch is on,
+  and on where it is off.
 - `border-ring` unit tests protect the transparent raster margin and content-hole
   geometry.
 

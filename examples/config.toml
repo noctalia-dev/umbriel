@@ -645,6 +645,17 @@ default_pinned = true
 # tearing = true
 # hdr = "fullscreen"
 
+# Yield to a client-side-decorated application. Umbriel draws no frame, rounds
+# nothing, and casts no shadow, so the client's own decorations are left alone.
+# Tile spacing is unchanged: the window keeps its gutters and draws nothing in
+# them.
+
+# [[window_rule]]
+# match.app_id = "^org[.]gnome[.]TextEditor$"
+# border_width = 0
+# corner_radius = 0
+# shadow = false
+
 # Keep related tiled windows in one named scrolling column. Lower orders appear
 # higher in horizontal scrolling and farther left in vertical scrolling.
 

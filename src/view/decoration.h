@@ -5,6 +5,7 @@
 #include "scene/surface_shadow.h"
 
 #include <array>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -46,7 +47,18 @@ namespace umbriel {
     // Blur
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
-    void applyRule(const ResolvedWindowRule& rule);
+    // Applies the window's rule-supplied decoration overrides. True means they
+    // differ from the previous call, so the caller refreshes the ring, the
+    // surface radius, and the shadow.
+    bool applyRule(const ResolvedWindowRule& rule);
+    // Effective decoration values: the window's own rule when it names the key,
+    // the matching [appearance] value otherwise. Global by design: the outer
+    // ring, the layout spacing a ring reserves, and the shadow's softness and
+    // offsets. Only the shadow's switch is per window.
+    [[nodiscard]] int borderWidth() const;
+    [[nodiscard]] int totalBorderWidth() const;
+    [[nodiscard]] int cornerRadius() const;
+    [[nodiscard]] bool shadowEnabled() const;
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
         const wlr_box* clip, float surfaceOpacity, float blurAlpha
@@ -59,7 +71,7 @@ namespace umbriel {
     void setShadowPosition(int x, int y);
     void setShadowEnabled(bool enabled);
     void raiseShadowToTop();
-    void updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius);
+    void updateShadow(int contentWidth, int contentHeight, int borderInset, int outerRadius);
     void hideShadow();
     void setShadowAnimationSource(wlr_scene_node* source) { m_shadow.setAnimationSource(source); }
     [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source) const {
@@ -78,6 +90,10 @@ namespace umbriel {
     SurfaceBlur m_blur;
     SurfaceBlurOptions m_blurOptions;
     SurfaceBlurOptions m_popupBlurOptions;
+    // Absent means "use the global value", so an unset key never overrides.
+    std::optional<int> m_ruleBorderWidth;
+    std::optional<int> m_ruleCornerRadius;
+    std::optional<bool> m_ruleShadow;
     SurfaceShadow m_shadow;
     wlr_scene_tree* m_shadowContainer = nullptr; // child of workspace shadow layer
   };

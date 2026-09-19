@@ -62,6 +62,10 @@ Output state and workspace inventory are independent effects.
   their stored widths; columns created after the reload use the new default.
 - Changing total border width refreshes window decoration and workspace layout
   because borders contribute to resolved tile spacing.
+- Changing a window rule's decoration keys (`border_width`, `corner_radius`,
+  `shadow`) refreshes only the windows that rule matches. The layout is not
+  consulted: tile spacing and edge padding keep using the global border width,
+  so a decoration rule never rearranges the workspace.
 - Changing an output or window-rule tearing policy re-evaluates eligibility,
   clears async recovery state, and schedules a frame. It does not reapply
   output state or invalidate the overview.
@@ -96,6 +100,9 @@ The relevant regression coverage is in:
 - [`tests/harness/checks/050_config_reload.sh`](../../tests/harness/checks/050_config_reload.sh),
   which checks inert reloads, selective layout updates, border dependencies,
   and recovery after an included file fails to parse.
+- [`tests/harness/checks/744_rule_decoration.sh`](../../tests/harness/checks/744_rule_decoration.sh),
+  which checks that a window rule's decoration keys reach the window on reload
+  without moving it.
 - [`tests/harness/checks/144_output_scrolling_width.sh`](../../tests/harness/checks/144_output_scrolling_width.sh),
   which checks per-output initial scrolling widths and preserves existing
   column widths when that default changes on reload.
