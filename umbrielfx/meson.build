@@ -238,6 +238,25 @@ if build_tests
     suite: 'umbrielfx',
   )
 
+  # The single SHM readback format ext-image-copy-capture publishes has to be the
+  # BGRA byte order capture consumers expect, not the RGBx order the GL_RGBA fx
+  # render targets report.
+  umbrielfx_read_format_test = executable(
+    'umbrielfx-read-format-test',
+    'tests/read_format.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+
+  test(
+    'preferred-read-format',
+    umbrielfx_read_format_test,
+    suite: 'umbrielfx',
+  )
+
   # Renderer ownership and descriptor stability against a real GPU. It takes
   # DRM render nodes as arguments, so it is a tool run by `just gpu-test`
   # rather than a suite entry. Built by default so the warning gate compiles
