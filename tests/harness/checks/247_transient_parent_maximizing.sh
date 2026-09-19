@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A dialog that opens while its floating parent is still resizing to maximized centers over the size the parent is
-# taking, not the one it has yet to leave, and stays there once the parent gets there.
+# A dialog that opens while its floating parent is still resizing to maximized ends up centered over the maximized
+# parent. Attached to the parent, it sits over what shows of the parent until the resize lands.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -80,18 +80,19 @@ if [[ -z $handle ]]; then
 fi
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 
-# The 400x300 dialog centers over the whole 1280x720 output the parent is taking, at 440,210, not over its old box.
+# The 400x300 dialog is attached to the parent, so while the parent still shows its old box it is centered there, at
+# 120,90.
 TRANSIENT_FOREIGN_HANDLE=$handle "$CLIENT" maximizing-child 400 300 > "$CHILD_LOG" 2>&1 &
 wait_for_window_count 2
-wait_for_position maximizing-child 440 210
+wait_for_position maximizing-child 120 90
 if [[ "$(field_of maximizing-parent w)x$(field_of maximizing-parent h)" != 640x480 ]]; then
   echo "the parent was expected to still hold its 640x480: $(windows)"
   exit 1
 fi
 
-# Once the parent takes the output, the dialog is already centered over it.
+# Once the parent takes the whole 1280x720 output, the dialog follows it to the center, at 440,210.
 printf r >&"$parent_fd"
 wait_for_size maximizing-parent 1280x720
 wait_for_position maximizing-child 440 210
 
-echo "a dialog opened during its parent's maximize centers over the size the parent is taking"
+echo "a dialog opened during its parent's maximize ends centered over the maximized parent"
