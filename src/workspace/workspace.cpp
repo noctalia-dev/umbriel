@@ -6,7 +6,6 @@
 #include "core/log.h"
 #include "input/cursor.h"
 #include "layout/dwindle.h"
-#include "layout/lifecycle_motion.h"
 #include "layout/master.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
@@ -21,10 +20,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <format>
 #include <iterator>
-#include <limits>
 #include <ranges>
 #include <utility>
 #include "wlr.h"
@@ -255,9 +252,6 @@ namespace umbriel {
     if (view == nullptr) {
       return nullptr;
     }
-    // The next arrange replans from the surviving presentations. Do not retain
-    // an animation-stage entry after its view leaves this workspace.
-    m_stagedLayoutMotion.reset();
     if (!view->pinned()) {
       const bool fs = view->toplevel()->current.fullscreen || view->toplevel()->scheduled.fullscreen;
       wlr_scene_node_reparent(
@@ -336,25 +330,6 @@ namespace umbriel {
         }
       }
     }
-    PendingOpeningMotion openingMotion{.view = view, .anchors = {}};
-    if (origin == LayoutAttachOrigin::OpeningView && m_active) {
-      for (const Column& column : m_layout->columns()) {
-        for (View* candidate : column.views) {
-          if (candidate == nullptr || candidate == view || !candidate->mapped()) {
-            continue;
-          }
-          const wlr_box box = candidate->presentedBox();
-          if (box.width > 0 && box.height > 0) {
-            openingMotion.anchors.push_back({
-                .view = candidate,
-                .box = box,
-                .layoutBox = presentedTiledBox(candidate),
-            });
-          }
-        }
-      }
-    }
-
     ScrollingLayout* scrolling = scrollingLayout();
     const std::optional<std::string>& name = view->namedScrollingColumnName();
     const std::optional<NamedScrollingColumnPlacement> placement = scrolling != nullptr && name
@@ -382,12 +357,6 @@ namespace umbriel {
           scrolling->setWidthFromPixels(column, scrollViewportExtent(), primary);
         }
       }
-    }
-    if (!openingMotion.anchors.empty()) {
-      std::erase_if(m_pendingOpeningMotions, [view](const PendingOpeningMotion& pending) {
-        return pending.view == view;
-      });
-      m_pendingOpeningMotions.push_back(std::move(openingMotion));
     }
     markArrange(true);
   }
@@ -536,17 +505,6 @@ namespace umbriel {
     markArrange(animate);
   }
 
-  void Workspace::trackCloseSnapshot(uint64_t snapshot, const wlr_box& presentedBox, const wlr_box& layoutBox) {
-    if (snapshot == 0 || presentedBox.width <= 0 || presentedBox.height <= 0) {
-      return;
-    }
-    m_closingMotions.push_back({
-        .snapshot = snapshot,
-        .presentedBox = presentedBox,
-        .layoutBox = layoutBox,
-    });
-  }
-
   int Workspace::scrollViewportExtent() const {
     const wlr_box usable = tiledArea();
     const int extent = scrollingVertical() ? usable.height : usable.width;
@@ -570,10 +528,6 @@ namespace umbriel {
   wlr_box Workspace::presentedTiledBox(const View* view) const { return tiledTargetBox(view, usableArea()); }
 
   void Workspace::detachFromLayout(View* view) {
-    std::erase_if(m_pendingOpeningMotions, [view](PendingOpeningMotion& pending) {
-      std::erase_if(pending.anchors, [view](const OpeningMotionAnchor& anchor) { return anchor.view == view; });
-      return pending.view == view || pending.anchors.empty();
-    });
     ScrollingLayout* scrolling = scrollingLayout();
     // Measured before the removal, because it depends on where the column is.
     const double shift = scrolling != nullptr
@@ -670,27 +624,7 @@ namespace umbriel {
       return;
     }
 
-    // A later unanimated mark in the same frame must not erase a visible map transition. Opening records only exist
-    // for views mapped on the active workspace, so forcing this arrange to animate cannot replay an old hidden map.
-    const bool animateLayout = lifecycleArrangeShouldAnimate(animate, !m_pendingOpeningMotions.empty());
-
-    std::vector<std::pair<View*, wlr_box>> previousPresentations;
-    if (animateLayout) {
-      previousPresentations.reserve(m_views.size());
-      for (View* view : m_views) {
-        if (view != nullptr
-            && view->mapped()
-            && view->tiled()
-            && !view->layoutFullscreen()
-            && !view->maximizedToEdges()
-            && m_layout->columnOf(view) >= 0) {
-          previousPresentations.emplace_back(view, view->presentedBox());
-        }
-      }
-    }
-
     m_layout->arrange(applyLayoutStruts(usable, m_layoutConfig.struts));
-    planStagedLayoutMotion(animateLayout, usable, previousPresentations);
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
     // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
     m_group->server()->scheduleIpcWindowsEvent();
@@ -710,7 +644,7 @@ namespace umbriel {
                 || view->toplevel()->scheduled.height != fullArea.height)) {
           wlr_xdg_toplevel_set_size(view->toplevel(), fullArea.width, fullArea.height);
         }
-        if (animateLayout) {
+        if (animate) {
           view->beginResizeAnimation(fullArea.width, fullArea.height, true);
         }
         continue;
@@ -720,16 +654,13 @@ namespace umbriel {
       const int width = view->maximizedToEdges() ? target.width : clampXdgWidth(target.width, hints);
       const int height = view->maximizedToEdges() ? target.height : clampXdgHeight(target.height, hints);
       const auto& scheduled = view->toplevel()->scheduled;
-      const bool configureChanged = scheduled.width != width || scheduled.height != height;
-      if (configureChanged) {
+      if (scheduled.width != width || scheduled.height != height) {
         wlr_xdg_toplevel_set_size(view->toplevel(), width, height);
-      }
-      // A staged topology change can deliberately present an intermediate size
-      // after the final client configure has already been sent.
-      if (animateLayout && (configureChanged || m_stagedLayoutMotion)) {
-        const wlr_box animated =
-            stagedLayoutBox(view, {.x = target.x, .y = target.y, .width = width, .height = height});
-        view->beginResizeAnimation(animated.width, animated.height, view->toplevel()->current.fullscreen);
+        // Start the presentation animation when the compositor changes the assigned size. Client geometry can differ
+        // from a stable configure, notably with Chromium CSD, and must not replay the resize on focus.
+        if (animate) {
+          view->beginResizeAnimation(width, height, view->toplevel()->current.fullscreen);
+        }
       }
     }
 
@@ -742,8 +673,7 @@ namespace umbriel {
 
     // One positioning path for every layout: targets already include any
     // layout-specific offset, and each view animates or snaps itself.
-    applyPositions(animateLayout);
-    advanceStagedLayoutMotion();
+    applyPositions(animate);
     if (overviewActive) {
       overview->onWorkspaceArranged(this);
     }
@@ -824,52 +754,6 @@ namespace umbriel {
     }
     const int viewportPrimary = scrollViewportExtent();
 
-    retargetCloseSnapshots(usable, animate);
-
-    std::vector<std::pair<View*, wlr_box>> openingStarts;
-    if (animate) {
-      for (const PendingOpeningMotion& pending : m_pendingOpeningMotions) {
-        if (pending.view == nullptr || !pending.view->mapped() || m_layout->columnOf(pending.view) < 0) {
-          continue;
-        }
-        const wlr_box openingTarget = tiledTargetBox(pending.view, usable);
-        std::optional<wlr_box> bestStart;
-        std::int64_t bestOverlap = -1;
-        std::int64_t bestDistance = std::numeric_limits<std::int64_t>::max();
-        const int openingWidth =
-            pending.view->presentation().width() > 0 ? pending.view->presentation().width() : openingTarget.width;
-        const int openingHeight =
-            pending.view->presentation().height() > 0 ? pending.view->presentation().height() : openingTarget.height;
-        for (const OpeningMotionAnchor& anchor : pending.anchors) {
-          if (anchor.view == nullptr || !anchor.view->mapped() || m_layout->columnOf(anchor.view) < 0) {
-            continue;
-          }
-          const wlr_box anchorTarget = tiledTargetBox(anchor.view, usable);
-          const std::optional<wlr_box> start =
-              edgeLockedTargetSized(openingTarget, anchorTarget, anchor.box, openingWidth, openingHeight);
-          if (!start) {
-            continue;
-          }
-          // Select from authoritative pre-insert layout geometry. A previous slow lifecycle transition can leave a
-          // different presentation over this region, but that transient rectangle is not the Dwindle leaf or Master
-          // row the new view actually split.
-          const wlr_box& oldLayoutBox =
-              anchor.layoutBox.width > 0 && anchor.layoutBox.height > 0 ? anchor.layoutBox : anchor.box;
-          const std::int64_t overlap = boxIntersectionArea(openingTarget, oldLayoutBox);
-          const std::int64_t distance = boxDistanceSquared(openingTarget, anchorTarget);
-          if (!bestStart || overlap > bestOverlap || (overlap == bestOverlap && distance < bestDistance)) {
-            bestStart = start;
-            bestOverlap = overlap;
-            bestDistance = distance;
-          }
-        }
-        if (bestStart) {
-          openingStarts.emplace_back(pending.view, *bestStart);
-        }
-      }
-    }
-    m_pendingOpeningMotions.clear();
-
     // Position first, then let syncViewPresentation derive enable + clip from
     // the node's current position so animated and resting views share one path.
     for (View* view : m_views) {
@@ -894,7 +778,7 @@ namespace umbriel {
         }
         if (animate) {
           view->animateTo(target.x, target.y);
-        } else if (layoutPositionShouldSnap(animate, view->positionAnimatingTo(target.x, target.y))) {
+        } else {
           view->setPosition(target.x, target.y);
         }
         syncViewPresentation(view);
@@ -907,215 +791,13 @@ namespace umbriel {
         continue;
       }
       wlr_box target = tiledTargetBox(view, usable);
-      target = stagedLayoutBox(view, target);
       if (animate) {
-        const auto opening =
-            std::ranges::find_if(openingStarts, [view](const auto& entry) { return entry.first == view; });
-        if (opening != openingStarts.end()) {
-          view->setPosition(opening->second.x, opening->second.y);
-        }
         view->animateTo(target.x, target.y);
-      } else if (layoutPositionShouldSnap(animate, view->positionAnimatingTo(target.x, target.y))) {
+      } else {
         view->setPosition(target.x, target.y);
       }
       syncViewPresentation(view);
     }
-  }
-
-  void Workspace::planStagedLayoutMotion(
-      bool animate, const wlr_box& usable, const std::vector<std::pair<View*, wlr_box>>& previous
-  ) {
-    const Overview* overview = m_group != nullptr ? m_group->server()->overview() : nullptr;
-    const auto& animation = config().animation;
-    if (!animate
-        || !animation.enabled
-        || !animation.windowsMove.enabled
-        || !m_active
-        || m_inSwitchTransition
-        || (overview != nullptr && overview->active())) {
-      m_stagedLayoutMotion.reset();
-      return;
-    }
-
-    std::vector<StagedLayoutEntry> entries;
-    entries.reserve(previous.size());
-    for (const auto& [view, held] : previous) {
-      if (view == nullptr
-          || !view->mapped()
-          || !view->tiled()
-          || view->layoutFullscreen()
-          || view->maximizedToEdges()
-          || m_layout->columnOf(view) < 0
-          || held.width <= 0
-          || held.height <= 0) {
-        continue;
-      }
-      wlr_box target = tiledTargetBox(view, usable);
-      const XdgSizeHints hints = xdgSizeHints(view->toplevel());
-      target.width = clampXdgWidth(target.width, hints);
-      target.height = clampXdgHeight(target.height, hints);
-      entries.push_back({.view = view, .held = held, .target = target});
-    }
-
-    const auto sameTargets = [&]() {
-      if (!m_stagedLayoutMotion || m_stagedLayoutMotion->entries.size() != entries.size()) {
-        return false;
-      }
-      for (size_t i = 0; i < entries.size(); ++i) {
-        const StagedLayoutEntry& old = m_stagedLayoutMotion->entries[i];
-        const StagedLayoutEntry& current = entries[i];
-        if (old.view != current.view
-            || old.target.x != current.target.x
-            || old.target.y != current.target.y
-            || old.target.width != current.target.width
-            || old.target.height != current.target.height) {
-          return false;
-        }
-      }
-      return true;
-    };
-    if (sameTargets()) {
-      return;
-    }
-
-    enum SeparationAxis : uint8_t {
-      Horizontal = 1U << 0,
-      Vertical = 1U << 1,
-    };
-    const auto separationAxes = [gap = m_layoutConfig.totalGap](const wlr_box& a, const wlr_box& b) {
-      uint8_t axes = 0;
-      if (a.x + a.width + gap <= b.x || b.x + b.width + gap <= a.x) {
-        axes |= Horizontal;
-      }
-      if (a.y + a.height + gap <= b.y || b.y + b.height + gap <= a.y) {
-        axes |= Vertical;
-      }
-      return axes;
-    };
-
-    size_t deferHorizontal = 0;
-    size_t deferVertical = 0;
-    for (size_t i = 0; i < entries.size(); ++i) {
-      for (size_t j = i + 1; j < entries.size(); ++j) {
-        const uint8_t before = separationAxes(entries[i].held, entries[j].held);
-        const uint8_t after = separationAxes(entries[i].target, entries[j].target);
-        if (before == Vertical && after == Horizontal) {
-          ++deferVertical;
-        } else if (before == Horizontal && after == Vertical) {
-          ++deferHorizontal;
-        }
-      }
-    }
-
-    if ((deferHorizontal == 0) == (deferVertical == 0)) {
-      m_stagedLayoutMotion.reset();
-      return;
-    }
-    m_stagedLayoutMotion = StagedLayoutMotion{
-        .deferredAxis = deferHorizontal > 0 ? DeferredLayoutAxis::Horizontal : DeferredLayoutAxis::Vertical,
-        .secondPhase = false,
-        .entries = std::move(entries),
-    };
-  }
-
-  wlr_box Workspace::stagedLayoutBox(View* view, const wlr_box& target) const {
-    if (!m_stagedLayoutMotion || m_stagedLayoutMotion->secondPhase) {
-      return target;
-    }
-    const auto entry = std::ranges::find_if(m_stagedLayoutMotion->entries, [view](const StagedLayoutEntry& candidate) {
-      return candidate.view == view;
-    });
-    if (entry == m_stagedLayoutMotion->entries.end()) {
-      return target;
-    }
-    if (m_stagedLayoutMotion->deferredAxis == DeferredLayoutAxis::Horizontal) {
-      return {.x = entry->held.x, .y = entry->target.y, .width = entry->held.width, .height = entry->target.height};
-    }
-    return {.x = entry->target.x, .y = entry->held.y, .width = entry->target.width, .height = entry->held.height};
-  }
-
-  bool Workspace::advanceStagedLayoutMotion() {
-    if (!m_stagedLayoutMotion) {
-      return false;
-    }
-    const bool moving = std::ranges::any_of(m_stagedLayoutMotion->entries, [](const StagedLayoutEntry& entry) {
-      return entry.view != nullptr
-          && entry.view->mapped()
-          && (entry.view->m_posX.animating() || entry.view->m_posY.animating() || entry.view->sizeAnimating());
-    });
-    if (moving) {
-      return false;
-    }
-    if (m_stagedLayoutMotion->secondPhase) {
-      m_stagedLayoutMotion.reset();
-      return false;
-    }
-
-    m_stagedLayoutMotion->secondPhase = true;
-    bool started = false;
-    for (const StagedLayoutEntry& entry : m_stagedLayoutMotion->entries) {
-      View* view = entry.view;
-      if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) < 0) {
-        continue;
-      }
-      view->beginResizeAnimation(entry.target.width, entry.target.height, view->toplevel()->current.fullscreen);
-      view->animateTo(entry.target.x, entry.target.y);
-      syncViewPresentation(view);
-      started = started || view->m_posX.animating() || view->m_posY.animating() || view->sizeAnimating();
-    }
-    if (!started) {
-      m_stagedLayoutMotion.reset();
-    }
-    return started;
-  }
-
-  void Workspace::retargetCloseSnapshots(const wlr_box& usable, bool animate) {
-    if (m_group == nullptr || m_group->server() == nullptr) {
-      return;
-    }
-    Server* server = m_group->server();
-    const auto& animation = config().animation;
-    const auto& move = animation.windowsMove;
-    const int durationMs = animate && animation.enabled && move.enabled ? move.durationMs : 0;
-
-    std::erase_if(m_closingMotions, [&](const ClosingMotion& motion) {
-      const std::optional<std::array<int, 2>> position = server->closeSnapshotPosition(motion.snapshot);
-      if (!position) {
-        return true;
-      }
-
-      const wlr_box current = {
-          .x = (*position)[0],
-          .y = (*position)[1],
-          .width = motion.presentedBox.width,
-          .height = motion.presentedBox.height,
-      };
-      std::optional<wlr_box> bestTarget;
-      std::int64_t bestOverlap = -1;
-      std::int64_t bestDistance = std::numeric_limits<std::int64_t>::max();
-      for (View* candidate : m_views) {
-        if (candidate == nullptr || !candidate->mapped() || !candidate->tiled() || m_layout->columnOf(candidate) < 0) {
-          continue;
-        }
-        const wlr_box candidateBox = candidate->presentedBox();
-        const wlr_box candidateTarget = tiledTargetBox(candidate, usable);
-        const std::optional<wlr_box> target = edgeLockedTarget(current, candidateBox, candidateTarget);
-        if (!target) {
-          continue;
-        }
-        const std::int64_t overlap = boxIntersectionArea(motion.layoutBox, candidateTarget);
-        const std::int64_t distance = boxDistanceSquared(current, candidateBox);
-        if (!bestTarget || overlap > bestOverlap || (overlap == bestOverlap && distance < bestDistance)) {
-          bestTarget = target;
-          bestOverlap = overlap;
-          bestDistance = distance;
-        }
-      }
-      if (bestTarget) {
-        server->moveCloseSnapshot(motion.snapshot, bestTarget->x, bestTarget->y, durationMs, move.curve);
-      }
-      return false;
-    });
   }
 
   wlr_box Workspace::tiledTargetBox(const View* view, const wlr_box& usable) const {
@@ -2526,17 +2208,16 @@ namespace umbriel {
   }
 
   bool WorkspaceGroup::tickAnimations(uint64_t nowMsec) {
-    const bool staged = m_active != nullptr && m_active->advanceStagedLayoutMotion();
     const bool ticked = m_slideAnim.tick(nowMsec);
     updateAnimationShader(&m_output->viewRoot()->node, m_server->renderer(), AnimationEvent::Workspaces, m_slideAnim);
     if (!ticked) {
-      return staged;
+      return false;
     }
     slideApply(m_slideAnim.current());
     if (!m_slideAnim.animating()) {
       slideFinish();
       reconcileDynamic();
-      return staged;
+      return false;
     }
     return true;
   }

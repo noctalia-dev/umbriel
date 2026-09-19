@@ -39,8 +39,8 @@ namespace umbriel {
     // True when an animation is already heading exactly here, so a repeated
     // layout pass does not restart it from the current interpolated size.
     [[nodiscard]] bool targeting(int width, int height) const;
-    // Start changed axes from their presented size, not the committed one. An axis already moving to the requested
-    // extent keeps its timeline so a cross-axis change cannot desynchronize adjacent windows.
+    // Start from the presented size, not the committed one: mid-animation
+    // retargets must continue from what is on screen.
     void animateTo(int width, int height, int durationMs, const AnimationCurve& curve = AnimationCurve{});
     void snapTo(int width, int height);
     // Advance both axes. Returns true when the presented size moved this tick,

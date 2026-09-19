@@ -363,14 +363,10 @@ namespace umbriel {
       std::string style = "fade";
       AnimationEvent event = AnimationEvent::WindowsOut;
     };
-    using CloseSnapshotId = uint64_t;
-    static constexpr CloseSnapshotId InvalidCloseSnapshot = 0;
-    [[nodiscard]] CloseSnapshotId animateCloseSnapshot(
+    void animateCloseSnapshot(
         Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders,
         std::optional<CloseSnapshotOverrides> overrides = std::nullopt, ShadowSnapshot shadow = {}
     );
-    void moveCloseSnapshot(CloseSnapshotId id, int x, int y, int durationMs, const AnimationCurve& curve);
-    [[nodiscard]] std::optional<std::array<int, 2>> closeSnapshotPosition(CloseSnapshotId id) const;
 
   private:
     static void
@@ -592,37 +588,28 @@ namespace umbriel {
     uint64_t m_lastAnimTickMsec = 0;
     std::chrono::steady_clock::time_point m_startTime;
 
-    // A fading, moving copy of a closed window's scene tree. Owns that tree and
-    // destroys it once its lifecycle animations complete.
+    // A fading copy of a closed window's scene tree. Owns that tree and destroys
+    // it once the fade completes.
     class CloseSnapshot : public Animatable {
     public:
       CloseSnapshot(
-          Server& server, CloseSnapshotId id, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders,
-          int durationMs, const AnimationCurve& curve, std::string_view style, AnimationEvent event,
-          ShadowSnapshot shadow
+          Server& server, Output* output, wlr_scene_tree* tree, std::vector<BorderSnapshot> borders, int durationMs,
+          const AnimationCurve& curve, std::string_view style, AnimationEvent event, ShadowSnapshot shadow
       );
       ~CloseSnapshot() override;
 
       [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(uint64_t nowMsec) override;
-      [[nodiscard]] bool hasActiveAnimations() const override {
-        return m_alpha.animating() || m_posX.animating() || m_posY.animating() || m_effectY.animating();
-      }
+      [[nodiscard]] bool hasActiveAnimations() const override { return m_alpha.animating() || m_posY.animating(); }
       [[nodiscard]] bool animatesOn(const Output* output) const override { return m_output == output; }
-      [[nodiscard]] CloseSnapshotId id() const { return m_id; }
-      [[nodiscard]] std::array<int, 2> position() const;
-      void moveTo(int x, int y, int durationMs, const AnimationCurve& curve);
 
     private:
       Server* m_server = nullptr;
-      CloseSnapshotId m_id = InvalidCloseSnapshot;
       wlr_scene_tree* m_tree = nullptr;
       Output* m_output = nullptr;
       AnimatedValue m_alpha;
       AnimationEvent m_event = AnimationEvent::WindowsOut;
-      AnimatedValue m_posX;
       AnimatedValue m_posY;
-      AnimatedValue m_effectY;
       int m_origX = 0;
       int m_origY = 0;
       std::vector<std::pair<wlr_scene_buffer*, float>> m_buffers;
@@ -632,7 +619,6 @@ namespace umbriel {
     // unique_ptr because the registry holds raw pointers to these: a vector of
     // values would move them out from under it on reallocation.
     std::vector<std::unique_ptr<CloseSnapshot>> m_closeSnapshots;
-    CloseSnapshotId m_nextCloseSnapshotId = 1;
     std::vector<Animatable*> m_animatables;
     std::vector<Animatable*> m_animatablesScratch;
 

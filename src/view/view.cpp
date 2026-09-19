@@ -20,7 +20,6 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <ranges>
 #include <utility>
 #include <variant>
@@ -1149,30 +1148,23 @@ namespace umbriel {
     }
     const int fromX = m_sceneTree->node.x;
     const int fromY = m_sceneTree->node.y;
+    if (fromX == x && fromY == y) {
+      m_posX.snap(x);
+      m_posY.snap(y);
+      return;
+    }
     const auto& animation = config().animation;
     const auto& move = animation.windowsMove;
     if (!animation.enabled || !move.enabled) {
       setPosition(x, y);
       return;
     }
-    const auto animateAxis = [&](AnimatedValue& value, int from, int target) {
-      if (value.animating() && static_cast<int>(std::lround(value.target())) == target) {
-        return;
-      }
-      if (from == target) {
-        value.snap(target);
-        return;
-      }
-      // Retarget from wherever this axis is visually presented. An unchanged companion axis keeps its existing
-      // timeline so tiles sharing that boundary do not drift apart during interrupted layout transitions.
-      value.snap(from);
-      value.retarget(target, move.durationMs, move.curve);
-    };
-    animateAxis(m_posX, fromX, x);
-    animateAxis(m_posY, fromY, y);
-    if (m_posX.animating() || m_posY.animating()) {
-      scheduleFrame();
-    }
+    // Animate from wherever the node visually is, not from the last target.
+    m_posX.snap(fromX);
+    m_posX.retarget(x, move.durationMs, move.curve);
+    m_posY.snap(fromY);
+    m_posY.retarget(y, move.durationMs, move.curve);
+    scheduleFrame();
   }
 
   void View::centerModalDialogs() {
@@ -2078,7 +2070,7 @@ namespace umbriel {
     reloadBackdropColor();
   }
 
-  uint64_t View::beginCloseAnimation() {
+  void View::beginCloseAnimation() {
     const auto& animation = config().animation;
     if (!m_mapped
         || !m_onActiveWorkspace
@@ -2086,20 +2078,20 @@ namespace umbriel {
         || !animation.windowsOut.enabled
         || m_server->sessionLocked()
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
-      return Server::InvalidCloseSnapshot;
+      return;
     }
 
     Output* output =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
     if (output == nullptr) {
-      return Server::InvalidCloseSnapshot;
+      return;
     }
 
     // Under the output's clipped root, so a snapshot of a view straddling the shared edge stays contained while it
     // fades. Server::removeOutput purges this output's snapshots before the Output is destroyed.
     wlr_scene_tree* snap = wlr_scene_tree_create(output->viewRoot());
     if (snap == nullptr) {
-      return Server::InvalidCloseSnapshot;
+      return;
     }
     wlr_scene_node_set_position(&snap->node, m_sceneTree->node.x, m_sceneTree->node.y);
 
@@ -2148,15 +2140,13 @@ namespace umbriel {
 
     if (ctx.buffersCopied == 0) {
       wlr_scene_node_destroy(&snap->node);
-      return Server::InvalidCloseSnapshot;
+      return;
     }
 
     wlr_scene_node_copy_animations_for_snapshot(&snap->node, &m_sceneTree->node);
     const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node);
-    const uint64_t snapshot =
-        m_server->animateCloseSnapshot(output, snap, std::move(snapBorders), std::nullopt, shadow);
+    m_server->animateCloseSnapshot(output, snap, std::move(snapBorders), std::nullopt, shadow);
     wlr_output_schedule_frame(output->wlr());
-    return snapshot;
   }
 
   void View::setSurfaceTreeClip(const wlr_box* clip) {
@@ -2837,9 +2827,6 @@ namespace umbriel {
 
   void View::handleUnmap() {
     Workspace* closingWorkspace = m_workspace;
-    const wlr_box closingBox = m_presentedBox;
-    const wlr_box closingLayoutBox =
-        closingWorkspace != nullptr && m_tiled ? closingWorkspace->presentedTiledBox(this) : closingBox;
     Cursor* cursor = m_server->cursor();
     wlr_seat* seat = m_server->seat()->wlr();
     const Overview* overview = m_server->overview();
@@ -2912,7 +2899,7 @@ namespace umbriel {
         m_workspace->setFocusedView(nullptr);
       }
     }
-    const uint64_t closeSnapshot = beginCloseAnimation();
+    beginCloseAnimation();
     // The closing snapshot must retain any in-flight opening shader first.
     wlr_scene_node_clear_animations(&m_sceneTree->node);
     cancelFadeAnimation();
@@ -2942,13 +2929,7 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
     m_positioned = false;
     if (m_workspace != nullptr) {
-      if (m_tiled && closeSnapshot != Server::InvalidCloseSnapshot) {
-        m_workspace->trackCloseSnapshot(closeSnapshot, closingBox, closingLayoutBox);
-      }
-      m_workspace->layoutDetach(this, m_tiled);
-      if (closeSnapshot != Server::InvalidCloseSnapshot && m_tiled) {
-        m_workspace->flushArrange();
-      }
+      m_workspace->layoutDetach(this, m_workspace->scrollingLayout() != nullptr);
       if (focusRevealedTile) {
         // The scene may still be animating from its old geometry. Arrange now, then read the authoritative layout
         // targets once so compositor motion cannot produce a chain of hover focus changes.

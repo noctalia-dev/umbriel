@@ -21,7 +21,6 @@ unit_tests = [
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],
-  ['lifecycle-motion', ['unit/lifecycle_motion.cpp'], []],
   ['scrolling-layout', ['unit/scrolling_layout.cpp'], []],
   ['dwindle-layout', ['unit/dwindle_layout.cpp'], []],
   ['master-layout', ['unit/master_layout.cpp'], []],

@@ -17,7 +17,6 @@
 // TRANSIENT_MODAL, that `m` on stdin makes modal, `n` makes non-modal, and `x` destroys. TRANSIENT_NESTED_ON_STDIN
 // maps a modal dialog titled transient-nested before this toplevel, without a parent until `p` on stdin sets this one
 // and prints "nested-parent-set" once the compositor has it.
-// With MAXIMIZE_ON_STDIN, `m` requests maximization, `r` requests restoration, and `s` commits without changing state.
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
 // so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to another
 // client's exported toplevel, the way a portal dialog is parented.
@@ -108,7 +107,6 @@ namespace {
     Buffer colorChildBuffer;
     int width = 64;
     int height = 64;
-    uint32_t fillColor = 0xFF5577AA;
     bool mapped = false;
     bool closed = false;
     bool redrawOnClose = false;
@@ -282,7 +280,7 @@ namespace {
       close(fd);
       return buffer;
     }
-    std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
+    std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), 0xFF5577AA);
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
     buffer.resource = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
@@ -714,15 +712,6 @@ int main(int argc, char** argv) {
 
   State state;
   state.title = argc > 1 ? argv[1] : "unmap-client";
-  if (const char* fill = std::getenv("FILL_COLOR")) {
-    char* end = nullptr;
-    const unsigned long parsed = std::strtoul(fill, &end, 0);
-    if (end == fill || *end != '\0' || parsed > UINT32_MAX) {
-      std::println(stderr, "unmap-client: FILL_COLOR must be a 32-bit integer");
-      return EXIT_FAILURE;
-    }
-    state.fillColor = static_cast<uint32_t>(parsed);
-  }
   state.appId = std::getenv("APP_ID");
   state.remapAppId = std::getenv("APP_ID_AFTER_ACTIVATION");
   if (state.remapAppId == nullptr) {
@@ -1090,12 +1079,6 @@ int main(int argc, char** argv) {
             wl_surface_commit(state.surface);
             wl_display_flush(state.display);
             std::println("maximize-requested");
-            std::fflush(stdout);
-          } else if (state.mapped && maximizeOnStdin && command == 'r') {
-            xdg_toplevel_unset_maximized(state.toplevel);
-            wl_surface_commit(state.surface);
-            wl_display_flush(state.display);
-            std::println("unmaximize-requested");
             std::fflush(stdout);
           } else if (state.mapped && fullscreenOnStdin && command == 'f') {
             xdg_toplevel_set_fullscreen(state.toplevel, nullptr);

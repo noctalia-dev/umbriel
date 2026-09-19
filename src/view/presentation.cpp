@@ -31,19 +31,10 @@ namespace umbriel {
   }
 
   void ViewPresentation::animateTo(int width, int height, int durationMs, const AnimationCurve& curve) {
-    const auto animateAxis = [&](AnimatedValue& value, int from, int target) {
-      if (value.animating() && static_cast<int>(std::lround(value.target())) == target) {
-        return;
-      }
-      if (from == target) {
-        value.snap(target);
-        return;
-      }
-      value.snap(from);
-      value.retarget(target, durationMs, curve);
-    };
-    animateAxis(m_animW, m_width, width);
-    animateAxis(m_animH, m_height, height);
+    m_animW.snap(m_width);
+    m_animW.retarget(width, durationMs, curve);
+    m_animH.snap(m_height);
+    m_animH.retarget(height, durationMs, curve);
   }
 
   void ViewPresentation::snapTo(int width, int height) {
