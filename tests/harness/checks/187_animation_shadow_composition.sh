@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shadows must stay below other windows, avoid tinting translucent content,
-# and enter the enclosing workspace shader exactly once.
+# Shadows fall on the windows their own window overlaps, avoid tinting translucent content, and enter the enclosing
+# workspace shader exactly once.
 set -euo pipefail
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/composition.png"
 readonly BASE="$UMBRIEL_RUNTIME_DIR/base.toml"
@@ -76,9 +76,13 @@ pixel 556 170
 if ! (( g > 15 && r < 5 && b < 5 )); then
   echo "missing silhouette shadow outside the overlapping window: $r $g $b"; exit 1
 fi
+# The caster sits above the occluder, so its silhouette shadow reaches the occluder's surface. Compare against a
+# corner of the same window the silhouette cannot reach, rather than pinning the blended colour.
 pixel 556 270
-if ! (( r > 80 && r < 90 && g > 114 && g < 124 && b > 165 && b < 175 )); then
-  echo "shadow painted over a different window: $r $g $b"; exit 1
+shadowed_r=$r shadowed_g=$g shadowed_b=$b
+pixel 668 388
+if ! (( shadowed_g > g + 10 && shadowed_r < r && shadowed_b < b )); then
+  echo "shadow did not reach the window below it: $shadowed_r $shadowed_g $shadowed_b against $r $g $b"; exit 1
 fi
 pixel 540 170
 if ! (( r < 5 && g < 5 && b > 115 && b < 140 )); then

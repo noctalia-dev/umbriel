@@ -17,13 +17,13 @@ namespace umbriel {
   struct ResolvedWindowRule;
 
   // Everything drawn around a view's surface: the inner border ring, the outer ring, the blur sampled behind the
-  // surface, and the drop shadow. The shadow is deliberately not a child of the view's tree. It lives in the
-  // workspace's shadow layer so it renders under every window rather than only under its own, which is why it needs its
-  // own container node and its own position updates whenever the view moves. This class holds no reference back to its
-  // View. Everything that varies per view (content size, corner radius, fade alpha, focus) arrives as an argument,
-  // because those are questions only the View can answer (a fullscreen window keeps its border tree but draws square,
-  // and a size animation presents a size the committed geometry has not caught up with yet). Appearance settings are
-  // read from the config directly, as the other scene classes do.
+  // surface, and the drop shadow. The shadow is deliberately not a child of the view's tree: a tiled window's shadow
+  // belongs to the layer under every tile, and a floating window's sits beside the windows, directly below its own.
+  // Either way it needs its own container node and its own position updates whenever the view moves.
+  // This class holds no reference back to its View. Everything that varies per view (content size, corner radius, fade
+  // alpha, focus) arrives as an argument, because those are questions only the View can answer (a fullscreen window
+  // keeps its border tree but draws square, and a size animation presents a size the committed geometry has not caught
+  // up with yet). Appearance settings are read from the config directly, as the other scene classes do.
   class ViewDecoration {
   public:
     // The single node resolves inner and outer colors from one shared curve.
@@ -83,7 +83,7 @@ namespace umbriel {
     SurfaceBlurOptions m_blurOptions;
     SurfaceBlurOptions m_popupBlurOptions;
     SurfaceShadow m_shadow;
-    wlr_scene_tree* m_shadowContainer = nullptr; // child of workspace shadow layer
+    wlr_scene_tree* m_shadowContainer = nullptr; // child of the shadow layer, or of the layer the view is drawn in
   };
 
 } // namespace umbriel

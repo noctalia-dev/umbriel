@@ -576,7 +576,7 @@ namespace umbriel {
     if (target != homeTree()) {
       reparentShadow(target);
     } else {
-      reparentShadow(m_workspace->shadowLayer());
+      reparentShadowHome();
     }
   }
 
@@ -605,7 +605,20 @@ namespace umbriel {
 
   void View::reparentShadow(wlr_scene_tree* shadowLayer) {
     m_decoration.reparentShadow(shadowLayer, m_sceneTree->node.x, m_sceneTree->node.y, m_sceneTree->node.enabled);
+    // A shadow that shares its layer with the windows lands on top of it here, and raiseTransientTree puts it back
+    // under its own window: it raises the shadow first and the view second. Callers either raise the view afterwards
+    // or, on the unmap path, hide the shadow in the same handler, so the order is never rendered as it lands here.
     updateShadow();
+  }
+
+  void View::reparentShadowHome() {
+    if (m_workspace == nullptr) {
+      reparentShadow(nullptr);
+      return;
+    }
+    // A shadow belongs under the window it is cast by. A floating window's shadow left below the tiles is hidden by
+    // every tile the window floats over, and one left below its peers is hidden by the window it overlaps.
+    reparentShadow(m_workspace->shadowLayer(m_sceneTree->node.parent != m_workspace->viewLayer(false)));
   }
 
   void View::applySeatFocus(bool withKeyboard) {
@@ -1028,7 +1041,7 @@ namespace umbriel {
       setNodeEnabled(m_mapped && m_onActiveWorkspace);
       return;
     }
-    reparentShadow(m_workspace->shadowLayer());
+    reparentShadowHome();
     setNodeEnabled(m_mapped && m_onActiveWorkspace);
     m_workspace->restackFloatingViews();
     if (m_mapped) {
@@ -2974,7 +2987,7 @@ namespace umbriel {
       m_restoreTiledAfterUnpin = false;
       if (m_workspace != nullptr) {
         wlr_scene_node_reparent(&m_sceneTree->node, m_workspace->viewLayer(false));
-        reparentShadow(m_workspace->shadowLayer());
+        reparentShadowHome();
         setOnActiveWorkspace(m_workspace->active());
       }
     }
@@ -3799,7 +3812,7 @@ namespace umbriel {
     }
     if (m_workspace != nullptr) {
       wlr_scene_node_reparent(&m_sceneTree->node, m_workspace->viewLayer(false));
-      reparentShadow(m_workspace->shadowLayer());
+      reparentShadowHome();
       setOnActiveWorkspace(m_workspace->active());
       m_workspace->syncFloatingStack(this);
       m_workspace->syncViewPresentation(this);
@@ -3841,7 +3854,7 @@ namespace umbriel {
       m_restorePinnedAfterFullscreen = false;
       if (m_workspace != nullptr) {
         wlr_scene_node_reparent(&m_sceneTree->node, m_workspace->viewLayer(false));
-        reparentShadow(m_workspace->shadowLayer());
+        reparentShadowHome();
         setOnActiveWorkspace(m_workspace->active());
       }
     }
@@ -3883,6 +3896,7 @@ namespace umbriel {
       m_presentedTiledBox = {};
       if (m_workspace != nullptr) {
         wlr_scene_node_reparent(&m_sceneTree->node, m_workspace->viewLayer(m_tiled));
+        reparentShadowHome();
         m_workspace->syncFloatingStack(this);
       }
       const wlr_box usable = floatingUsableArea();
@@ -3972,6 +3986,7 @@ namespace umbriel {
     const bool wantFullscreen = fullscreen || refullscreen;
     if (m_workspace != nullptr) {
       wlr_scene_node_reparent(&m_sceneTree->node, homeTree());
+      reparentShadowHome();
       m_workspace->syncFloatingStack(this);
     }
     wlr_xdg_toplevel_set_tiled(m_toplevel, WLR_EDGE_TOP | WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT);
@@ -4057,7 +4072,7 @@ namespace umbriel {
         m_restorePinnedAfterFullscreen = true;
         if (m_workspace != nullptr) {
           wlr_scene_node_reparent(&m_sceneTree->node, m_workspace->viewLayer(false));
-          reparentShadow(m_workspace->shadowLayer());
+          reparentShadowHome();
           setOnActiveWorkspace(m_workspace->active());
         }
       }
@@ -4083,6 +4098,7 @@ namespace umbriel {
       }
     } else {
       wlr_scene_node_reparent(&m_sceneTree->node, homeTree());
+      reparentShadowHome();
       if (!m_tiled && m_workspace != nullptr) {
         m_workspace->restackFloatingViews();
       } else {

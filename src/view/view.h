@@ -281,8 +281,10 @@ namespace umbriel {
     // Enable/disable the view's scene tree and its shadow container together.
     void setNodeEnabled(bool enabled);
     void raiseToTop();
-    // Create or destroy the shadow container in the given workspace shadow layer.
+    // Create or destroy the shadow container in the given layer. A raise puts it back under this view.
     void reparentShadow(wlr_scene_tree* shadowLayer);
+    // Move the shadow to the layer the view's current scene parent casts into.
+    void reparentShadowHome();
     // Advances this view's animations; returns true while any is still running.
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Views; }
     bool tickAnimations(uint64_t nowMsec) override;

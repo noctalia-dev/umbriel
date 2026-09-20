@@ -141,6 +141,8 @@ offset_y = 2
 | `offset_x` | `2` | Horizontal offset from -200 to 200. |
 | `offset_y` | `2` | Vertical offset from -200 to 200. |
 
-Shadows are hidden for fullscreen windows. During a
+Shadows are hidden for fullscreen windows. A floating window casts its shadow
+over whatever it covers, a tile or another floating window; tiled windows never
+shadow each other. During a
 [custom window animation](animation.md#custom-glsl-shaders), the shadow follows
 the visible shape produced by the shader.

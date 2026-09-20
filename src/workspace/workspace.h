@@ -95,7 +95,9 @@ namespace umbriel {
     void clearLayoutModeOverride() { m_layoutModeOverride.reset(); }
     [[nodiscard]] View* focusedView() const { return m_focusedView; }
     [[nodiscard]] wlr_scene_tree* viewLayer(bool tiled) const { return tiled ? m_tiledLayer : m_floatingLayer; }
-    [[nodiscard]] wlr_scene_tree* shadowLayer() const { return m_shadowLayer; }
+    // Tiled shadows share one layer under every tile; a floating window's shadow sits in the floating layer, directly
+    // below the window that casts it.
+    [[nodiscard]] wlr_scene_tree* shadowLayer(bool tiled) const { return tiled ? m_shadowLayer : m_floatingLayer; }
     [[nodiscard]] wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
     [[nodiscard]] bool switchTransitionActive() const { return m_inSwitchTransition; }
     [[nodiscard]] bool isSwitchTransitionView(const View* view) const;

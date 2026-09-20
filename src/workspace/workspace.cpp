@@ -113,7 +113,9 @@ namespace umbriel {
     const uint32_t coords[1] = {static_cast<uint32_t>(m_index)};
     wlr_ext_workspace_handle_v1_set_coordinates(m_handle, coords, 1);
     m_tree = wlr_scene_tree_create(m_group->output()->viewRoot());
-    // Focus raises only within a layer: floating views can never fall below tiles.
+    // Focus raises only within a layer: floating views can never fall below tiles. Tiles never overlap, so one shadow
+    // layer under all of them keeps a tile from darkening the tile beside it across a small gap. Floating windows do
+    // overlap, so their shadows live in the floating layer itself, each one kept directly below its own window.
     m_shadowLayer = wlr_scene_tree_create(m_tree);
     m_tiledLayer = wlr_scene_tree_create(m_tree);
     m_floatingLayer = wlr_scene_tree_create(m_tree);
@@ -243,7 +245,7 @@ namespace umbriel {
       view->restorePinnedSceneParent();
     } else {
       wlr_scene_node_reparent(&view->sceneTree()->node, fs ? m_fullscreenTree : viewLayer(view->tiled()));
-      view->reparentShadow(m_shadowLayer);
+      view->reparentShadowHome();
     }
     syncFloatingStack(view);
     applyVisibility();
