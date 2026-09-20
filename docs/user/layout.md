@@ -209,7 +209,13 @@ window leaves maximization and keeps the new size. Extent actions do nothing
 while the window is fullscreen.
 
 Parented dialogs stay above their parent and normally open centered over its
-visible area.
+visible area. A dialog opens on its parent's workspace unless a rule sends it
+elsewhere. A modal dialog, one that says so through xdg-dialog-v1 or one another
+process attached through xdg-foreign, is attached to its parent: it stays
+centered over the parent as either moves or resizes, dragging it drags the
+parent, and while it is open the parent is shaded and gets neither focus nor
+pointer input. Focus and column actions such as `window-toggle-floating` act on
+the parent while the dialog is focused.
 
 ### Maximize and fullscreen
 

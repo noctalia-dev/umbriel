@@ -97,6 +97,10 @@ Toggling a scratchpad already visible on another output moves it to the invoking
 output. Toggling it again on the same output hides it. Only one scratchpad can
 be visible on an output, but different outputs can show different scratchpads.
 
+A window and its dialogs move as one. Moving either of them into a scratchpad
+takes the whole family, restoring brings it back together, and a dialog that
+opens while its parent sits in a scratchpad joins it there.
+
 ## Visibility and focus
 
 Showing a scratchpad focuses its most recently focused member. Hiding it returns
