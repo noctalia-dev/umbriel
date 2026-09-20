@@ -327,7 +327,7 @@ namespace umbriel {
   }
 
   int Workspace::layoutAttachIndex(const View* view) const {
-    int focusedColumn = m_layout->columnOf(m_focusedView);
+    int focusedColumn = m_layout->columnOf(layoutFocus());
     if (focusedColumn < 0 && m_group != nullptr) {
       for (const auto& entry : m_group->server()->registry().all()) {
         View* candidate = entry.get();
@@ -626,7 +626,7 @@ namespace umbriel {
     if (scrolling != nullptr) {
       // The column that just left may have been the focused one. Its survivor is judged now, against the column that
       // took its place, which is the first moment that pair can be measured.
-      scrolling->reevaluateAfterRemoval(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+      scrolling->reevaluateAfterRemoval(scrolling->columnOf(layoutFocus()), scrollViewportExtent());
     }
   }
 
@@ -1240,11 +1240,13 @@ namespace umbriel {
     return outputBox;
   }
 
+  View* Workspace::layoutFocus() const { return m_focusedView != nullptr ? m_focusedView->attachedRoot() : nullptr; }
+
   View* Workspace::focusAlongStrip(int direction) const {
-    if (const auto horizontal = m_layout->focusHorizontalLeaf(m_focusedView, direction)) {
+    if (const auto horizontal = m_layout->focusHorizontalLeaf(layoutFocus(), direction)) {
       return *horizontal;
     }
-    const int current = m_layout->columnOf(m_focusedView);
+    const int current = m_layout->columnOf(layoutFocus());
     const int target = current + direction;
     if (current < 0 || target < 0 || target >= static_cast<int>(m_layout->columns().size())) {
       return nullptr;
@@ -1253,11 +1255,11 @@ namespace umbriel {
   }
 
   View* Workspace::focusWithinLane(int direction) const {
-    if (const auto vertical = m_layout->focusVerticalLeaf(m_focusedView, direction)) {
+    if (const auto vertical = m_layout->focusVerticalLeaf(layoutFocus(), direction)) {
       return *vertical;
     }
-    const int column = m_layout->columnOf(m_focusedView);
-    const int row = m_layout->rowOf(m_focusedView);
+    const int column = m_layout->columnOf(layoutFocus());
+    const int row = m_layout->rowOf(layoutFocus());
     if (column < 0 || row < 0) {
       return nullptr;
     }
@@ -1275,7 +1277,7 @@ namespace umbriel {
     if (target == nullptr || m_group == nullptr) {
       return target;
     }
-    const std::vector<View*> peers = m_layout->focusPeers(m_focusedView, target);
+    const std::vector<View*> peers = m_layout->focusPeers(layoutFocus(), target);
     // A single peer is the only window the move may land on, such as the tab a tabbed column shows.
     if (peers.size() == 1) {
       return peers.front();
@@ -1482,7 +1484,7 @@ namespace umbriel {
     if (destination == nullptr) {
       return false;
     }
-    const int current = m_layout->columnOf(m_focusedView);
+    const int current = m_layout->columnOf(layoutFocus());
     const int target = m_layout->columnOf(destination);
     if (current < 0 || target < 0 || target >= static_cast<int>(m_layout->columns().size())) {
       return false;
@@ -1494,7 +1496,7 @@ namespace umbriel {
   }
 
   bool Workspace::consumeFocused(int direction) {
-    if (!m_layout->consume(m_focusedView, direction)) {
+    if (!m_layout->consume(layoutFocus(), direction)) {
       return false;
     }
     ensureFocusedVisible();
@@ -1503,7 +1505,7 @@ namespace umbriel {
   }
 
   bool Workspace::consumeFromFocused(int direction) {
-    if (!m_layout->consumeFrom(m_focusedView, direction)) {
+    if (!m_layout->consumeFrom(layoutFocus(), direction)) {
       return false;
     }
     ensureFocusedVisible();
@@ -1512,7 +1514,7 @@ namespace umbriel {
   }
 
   bool Workspace::expelFocused(int direction) {
-    if (!m_layout->expel(m_focusedView, direction)) {
+    if (!m_layout->expel(layoutFocus(), direction)) {
       return false;
     }
     ensureFocusedVisible();
@@ -1521,7 +1523,7 @@ namespace umbriel {
   }
 
   bool Workspace::moveWithinLane(int direction) {
-    if (!m_layout->moveViewVertical(m_focusedView, direction)) {
+    if (!m_layout->moveViewVertical(layoutFocus(), direction)) {
       return false;
     }
     markArrange();
@@ -1558,7 +1560,7 @@ namespace umbriel {
     if (m_focusedView == nullptr) {
       return false;
     }
-    const int current = m_layout->columnOf(m_focusedView);
+    const int current = m_layout->columnOf(layoutFocus());
     if (current <= 0) {
       return false;
     }
@@ -1572,7 +1574,7 @@ namespace umbriel {
     if (m_focusedView == nullptr) {
       return false;
     }
-    const int current = m_layout->columnOf(m_focusedView);
+    const int current = m_layout->columnOf(layoutFocus());
     const int last = static_cast<int>(m_layout->columns().size()) - 1;
     if (current < 0 || current >= last) {
       return false;
@@ -1895,7 +1897,9 @@ namespace umbriel {
     if (m_focusedView == nullptr || !m_focusedView->mapped()) {
       return false;
     }
-    m_focusedView->toggleFloating();
+    // A modal dialog holds the focus while it is open, but it has no place in the layout: the toggle is about the
+    // window it is attached to.
+    m_focusedView->attachedRoot()->toggleFloating();
     return true;
   }
 
@@ -1904,7 +1908,7 @@ namespace umbriel {
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
-    scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+    scrolling->ensureVisible(scrolling->columnOf(layoutFocus()), scrollViewportExtent());
   }
 
   void Workspace::activateFocusedColumn() {
@@ -1912,7 +1916,7 @@ namespace umbriel {
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
-    scrolling->activateColumn(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+    scrolling->activateColumn(scrolling->columnOf(layoutFocus()), scrollViewportExtent());
   }
 
   void Workspace::reevaluateFocusedColumn() {
@@ -1920,7 +1924,7 @@ namespace umbriel {
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
-    scrolling->reevaluateColumn(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+    scrolling->reevaluateColumn(scrolling->columnOf(layoutFocus()), scrollViewportExtent());
   }
 
   void Workspace::revealMovedFocusedColumn(int previousColumn) {
@@ -1928,7 +1932,7 @@ namespace umbriel {
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
-    scrolling->activateColumn(scrolling->columnOf(m_focusedView), scrollViewportExtent(), previousColumn);
+    scrolling->activateColumn(scrolling->columnOf(layoutFocus()), scrollViewportExtent(), previousColumn);
   }
 
   void Workspace::noteRemovalOfFocusedColumn(int columnIndex) {
@@ -2092,7 +2096,7 @@ namespace umbriel {
       m_layout->setConfig(&m_layoutConfig);
       m_layout->setConstraints(&viewLayoutConstraints);
       if (ScrollingLayout* scrolling = scrollingLayout(); scrolling != nullptr) {
-        const int focusedColumn = m_focusedView != nullptr ? scrolling->columnOf(m_focusedView) : -1;
+        const int focusedColumn = m_focusedView != nullptr ? scrolling->columnOf(layoutFocus()) : -1;
         const bool reconcile = centerFocusedChanged || strutsChanged || directionChanged;
         if (reconcile && focusedColumn >= 0) {
           scrolling->reconcileFocusedColumn(focusedColumn, scrollViewportExtent());
@@ -2146,7 +2150,7 @@ namespace umbriel {
         view->m_savedScrollingExtent.reset();
       }
       if (m_focusedView != nullptr) {
-        scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
+        scrolling->ensureVisible(scrolling->columnOf(layoutFocus()), scrollViewportExtent());
       }
     }
     markArrange();

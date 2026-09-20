@@ -85,18 +85,18 @@ focus_dialog
 "$UMBRIEL" msg scratchpad-window-show-previous > /dev/null
 expect_active focus-first "previous from the middle member's dialog"
 
-# Hidden with the dialog focused, the scratchpad shows the dialog's parent again.
+# Hidden with the dialog focused, the scratchpad shows the dialog's parent again. The dialog, attached from another
+# process, is modal and shows with its parent, so it takes the focus the parent is given.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 focus_dialog
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 "$UMBRIEL" msg scratchpad-window-show-next > /dev/null
-expect_active focus-parent "showing a scratchpad hidden while a dialog had focus"
+expect_active focus-dialog "showing a scratchpad hidden while a dialog had focus"
 
-# With the parent shown on its own, focus moves on from its focused dialog rather than staying there.
-focus_dialog
+# With the parent shown on its own, focus-next from its dialog has nowhere to go: the parent is blocked.
 "$UMBRIEL" msg scratchpad-focus-next > /dev/null
-expect_active focus-parent "focus-next from the dialog of the window on show"
+expect_active focus-dialog "focus-next from the dialog of the window on show"
 
 # The same holds when the dialog closes while the scratchpad is hidden.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null

@@ -17,6 +17,7 @@ extern "C" {
 #include "view/size_hints.h"
 #include "view/view_internal.h"
 // clang-format off
+#include <array>
 #include <ranges>
 #include <utility>
 #include <variant>
@@ -49,6 +50,11 @@ namespace umbriel {
         return false;
       }
     }
+
+    // How dark the shade over the parent of an open modal dialog gets.
+    constexpr double kModalParentDim = 0.3;
+
+    wl_client* clientOf(const wlr_xdg_toplevel* toplevel) { return wl_resource_get_client(toplevel->resource); }
   } // namespace
 
   namespace view_detail {
@@ -281,6 +287,7 @@ namespace umbriel {
     m_server->unregisterAnimatable(this);
     m_effects.detach();
     clearViewSurfaceWatches();
+    releaseDialog();
     setWorkspace(nullptr);
     // A view deleted while its role lives on (server teardown) must not leave the role pointing at freed scene nodes.
     if (m_map.link.next != nullptr) {
@@ -443,13 +450,24 @@ namespace umbriel {
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onViewWorkspaceChanged(this);
     }
+    retargetModalShadesAfterMove();
+  }
+
+  Workspace* View::parentWorkspace(const ResolvedWindowRule& rule) const {
+    if (rule.defaultWorkspace || rule.defaultOutput) {
+      return nullptr;
+    }
+    const View* parent = shellParent();
+    return parent != nullptr ? parent->m_workspace : nullptr;
   }
 
   bool View::attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin) {
-    Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
-    WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
-    WorkspaceGroup* targetGroup = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
-    Workspace* target = windowRuleWorkspace(targetGroup, rule);
+    Workspace* target = parentWorkspace(rule);
+    if (target == nullptr) {
+      Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+      WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
+      target = windowRuleWorkspace(windowRuleWorkspaceGroup(*m_server, rule, preferredGroup), rule);
+    }
     if (target == nullptr) {
       return false;
     }
@@ -645,6 +663,165 @@ namespace umbriel {
     return !name.empty() && scratchpad->nameFor(parent) == name ? parent : nullptr;
   }
 
+  bool View::modalDialog() const {
+    // X11 windows have neither xdg-dialog-v1 nor a Wayland client of their own to cross processes with.
+    if (m_toplevel == nullptr || m_toplevel->parent == nullptr) {
+      return false;
+    }
+    if (m_dialog != nullptr && m_dialog->modal) {
+      return true;
+    }
+    return clientOf(m_toplevel) != clientOf(m_toplevel->parent);
+  }
+
+  void View::setDialog(wlr_xdg_dialog_v1* dialog) {
+    releaseDialog();
+    m_dialog = dialog;
+    m_dialogSetModal.notify = onDialogSetModal;
+    wl_signal_add(&dialog->events.set_modal, &m_dialogSetModal);
+    m_dialogDestroy.notify = onDialogDestroy;
+    wl_signal_add(&dialog->events.destroy, &m_dialogDestroy);
+  }
+
+  void View::releaseDialog() {
+    if (m_dialog == nullptr) {
+      return;
+    }
+    wl_list_remove(&m_dialogSetModal.link);
+    wl_list_remove(&m_dialogDestroy.link);
+    m_dialog = nullptr;
+  }
+
+  void View::syncModalDialogEntry() { m_server->registry().setModalDialog(this, m_mapped && modalDialog()); }
+
+  void View::handleDialogModal() {
+    syncModalDialogEntry();
+    if (!m_mapped) {
+      return;
+    }
+    syncOwnedPresentation();
+    retargetModalShades();
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (View* focused = fromSurface(seat->keyboard_state.focused_surface);
+        focused != nullptr && focused->blockingDialog() != nullptr) {
+      m_server->focusView(focused);
+    }
+  }
+
+  bool View::blockedBy(const View& dialog) const {
+    const View* parent = dialog.attachedParent();
+    // A dialog blocks its parent even when it mapped first and took the parent on later, as its toolkit's grab does. A
+    // parent that is itself a dialog is blocked only by a newer one, so the focus walk up the blocking dialogs ends.
+    if (parent == this && (attachedParent() == nullptr || dialog.m_mapSerial > m_mapSerial)) {
+      return true;
+    }
+    if (dialog.m_mapSerial < m_mapSerial) {
+      return false;
+    }
+    // The application's own modal dialog is modal for every window it had open on the workspace, since that is what
+    // its toolkit does. X11 windows all share the Xwayland connection, so the rule cannot tell X11 apps apart.
+    if (clientOf(dialog.m_toplevel) == clientOf(parent->m_toplevel)) {
+      return m_toplevel != nullptr
+          && parent->m_workspace == m_workspace
+          && clientOf(parent->m_toplevel) == clientOf(m_toplevel);
+    }
+    // A dialog from another process, a portal's chooser, reaches only the parent's own open dialogs: the one it was
+    // opened from, when the application attached it to the main window instead.
+    for (const View* ancestor = transientParent(); ancestor != nullptr; ancestor = ancestor->transientParent()) {
+      if (ancestor == parent) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  View* View::blockingDialog() const {
+    View* newest = nullptr;
+    for (View* dialog : m_server->registry().modalDialogs()) {
+      // The surface is already unmapped when a closing dialog hands focus back to its parent.
+      if (dialog == this
+          || dialog->attachedParent() == nullptr
+          || !dialog->m_toplevel->base->surface->mapped
+          || !blockedBy(*dialog)) {
+        continue;
+      }
+      if (newest == nullptr || dialog->m_mapSerial > newest->m_mapSerial) {
+        newest = dialog;
+      }
+    }
+    return newest;
+  }
+
+  View* View::attachedParent() const { return modalDialog() ? transientParent() : nullptr; }
+
+  View* View::attachedRoot() {
+    View* root = this;
+    while (View* parent = root->attachedParent()) {
+      root = parent;
+    }
+    return root;
+  }
+
+  void View::centerModalDialogs() {
+    // Overview cards are not places a dialog can sit over; the layout re-centers it when the overview closes.
+    if (const Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      return;
+    }
+    for (const auto& view : m_server->registry().all()) {
+      if (view->attachedParent() == this) {
+        view->syncOwnedPresentation();
+      }
+    }
+  }
+
+  void View::retargetModalShade(bool animate) {
+    const double target = m_mapped && blockingDialog() != nullptr ? kModalParentDim : 0.0;
+    const auto& animation = config().animation;
+    const auto& dim = animation.dimUnfocused;
+    if (animate && animation.enabled && dim.enabled) {
+      m_modalShade.retarget(target, dim.durationMs, dim.curve);
+      scheduleFrame();
+    } else {
+      m_modalShade.snap(target);
+    }
+    syncModalShade();
+  }
+
+  void View::retargetModalShades() {
+    for (const auto& view : m_server->registry().all()) {
+      if (view.get() != this) {
+        view->retargetModalShade(true);
+      }
+    }
+  }
+
+  void View::retargetModalShadesAfterMove() {
+    if (!m_mapped || m_server->registry().modalDialogs().empty()) {
+      return;
+    }
+    retargetModalShade(true);
+    retargetModalShades();
+  }
+
+  void View::syncModalShade() {
+    const auto alpha = static_cast<float>(m_modalShade.current());
+    // Premultiplied black at `alpha`, drawn over the content and rounded with it.
+    const std::array<float, 4> color{0.0F, 0.0F, 0.0F, alpha};
+    if (m_modalShadeRect == nullptr) {
+      if (alpha <= 0.0F) {
+        return;
+      }
+      m_modalShadeRect = wlr_scene_rect_create(m_sceneTree, 0, 0, color.data());
+      // Hit-testing has to land on the shaded window, so its dialog gets the click and a drag moves it.
+      m_modalShadeRect->accepts_input = false;
+    }
+    wlr_scene_rect_set_color(m_modalShadeRect, color.data());
+    wlr_scene_rect_set_size(m_modalShadeRect, m_presentedBox.width, m_presentedBox.height);
+    wlr_scene_rect_set_corner_radius(m_modalShadeRect, surfaceRadius());
+    wlr_scene_node_set_enabled(&m_modalShadeRect->node, alpha > 0.0F);
+    wlr_scene_node_raise_to_top(&m_modalShadeRect->node);
+  }
+
   bool View::inheritScratchpadFromParent(bool restoreTiled) {
     ScratchpadManager* scratchpad = m_server->scratchpadManager();
     if (!m_mapped
@@ -718,6 +895,7 @@ namespace umbriel {
     m_inScratchpad = scratchpad;
     setBorderFocused(m_borderFocusedState);
     refreshStateRuleEffects();
+    retargetModalShadesAfterMove();
   }
 
   void View::setSceneParent(wlr_scene_tree* parent) {
@@ -807,6 +985,18 @@ namespace umbriel {
     auto* self = static_cast<View*>(data);
     self->clearLaunchPlacement(true, true);
     return 0;
+  }
+
+  void View::onDialogSetModal(wl_listener* listener, void* /*data*/) {
+    View* self = wl_container_of(listener, self, m_dialogSetModal);
+    self->handleDialogModal();
+  }
+
+  void View::onDialogDestroy(wl_listener* listener, void* /*data*/) {
+    View* self = wl_container_of(listener, self, m_dialogDestroy);
+    // Destroying the object undoes what it asked for, so the dialog is modal no longer unless it crosses processes.
+    self->releaseDialog();
+    self->handleDialogModal();
   }
 
   void View::onSetTitle(wl_listener* listener, void* /*data*/) {
