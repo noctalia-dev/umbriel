@@ -301,6 +301,31 @@ namespace umbriel {
       }
       return false;
     };
+    // Infrastructure refocus (e.g. exclusive layer unmap) restores wherever
+    // focus was whether it is a scratchpad or a workspace view.
+    const auto focusRecentOn = [this](Output* output) -> bool {
+      Workspace* active =
+          output != nullptr && output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+      ScratchpadManager* pad = m_server.scratchpadManager();
+      for (const auto& entry : m_server.registry().all()) {
+        View* view = entry.get();
+        if (!view->mapped()) {
+          continue;
+        }
+        if (pad != nullptr && pad->contains(view)) {
+          if (pad->outputFor(view) == output && view->onActiveWorkspace()) {
+            focusView(view);
+            return true;
+          }
+          continue;
+        }
+        if (active != nullptr && view->workspace() == active) {
+          focusView(view);
+          return true;
+        }
+      }
+      return false;
+    };
 
     if (preferred != nullptr) {
       if (focusMappedOn(preferred)) {
@@ -312,7 +337,7 @@ namespace umbriel {
     }
 
     Output* underCursor = m_server.outputFromWlr(m_server.preferredOutput());
-    if (focusMappedOn(underCursor)) {
+    if (focusRecentOn(underCursor)) {
       return;
     }
     // Stay on the pointer's output: never steal focus onto another display when
