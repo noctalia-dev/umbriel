@@ -60,6 +60,9 @@ namespace umbriel {
     bool focusNext(std::string_view name);
     [[nodiscard]] View* focused(std::string_view name) const;
     [[nodiscard]] bool hasFocus(std::string_view name) const;
+    // The most recently focused window when that focus went to a scratchpad
+    // and the window is still visible on `output`.
+    [[nodiscard]] View* focusedOn(const Output* output) const;
     void noteFocus(View* view);
     void finishMove(View* view, Output* output);
     // Apply the manager-owned floating presentation after a commit or while a

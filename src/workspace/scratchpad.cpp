@@ -839,6 +839,16 @@ namespace umbriel {
     return entry != nullptr && entry->scratchpad == name;
   }
 
+  View* ScratchpadManager::focusedOn(const Output* output) const {
+    if (output == nullptr
+        || m_focusedView == nullptr
+        || !m_focusedView->mapped()
+        || !m_focusedView->onActiveWorkspace()) {
+      return nullptr;
+    }
+    return outputFor(m_focusedView) == output ? m_focusedView : nullptr;
+  }
+
   void ScratchpadManager::noteFocus(View* view) {
     m_focusedView = nullptr;
     Entry* entry = findEntry(view);
