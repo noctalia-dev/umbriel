@@ -1662,7 +1662,8 @@ namespace umbriel {
           // would refuse focus even for a window already fully visible, which disables hover focus rather than limiting
           // it.
           f.boolean("follows_mouse", in.focus.followsMouse)
-              .real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, in.focus.followsMouseMaxScroll);
+              .real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, in.focus.followsMouseMaxScroll)
+              .boolean("follows_mouse_reveals", in.focus.followsMouseReveals);
         });
         readInputDevices(s, in);
       });

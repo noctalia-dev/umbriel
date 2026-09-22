@@ -27,6 +27,8 @@ namespace umbriel {
         return "pointer-press";
       case FocusReason::PointerHover:
         return "pointer-hover";
+      case FocusReason::PointerOutputCross:
+        return "pointer-output-cross";
       case FocusReason::Grab:
         return "grab";
       case FocusReason::DragDrop:
@@ -49,10 +51,14 @@ namespace umbriel {
       return;
     }
 
+    // Both follows_mouse keys resolve together, because a reveal is the thing the limit bounds: with reveals off there
+    // is no scroll to measure, so the limit stops gating focus and the hover focuses the window where it stands.
+    const bool hoverReveals = config().input.focus.followsMouseReveals;
+
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
     // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing, preserving the current behavior
-    // where cursor.cpp skipped focusView altogether.
-    if (reason == FocusReason::PointerHover && view->tiled()) {
+    // where cursor.cpp skipped focusView altogether. A hover that will not reveal has nothing to exceed.
+    if (reason == FocusReason::PointerHover && hoverReveals && view->tiled()) {
       if (Workspace* workspace = view->workspace()) {
         const auto& maxScroll = config().input.focus.followsMouseMaxScroll;
         if (maxScroll && workspace->scrollFractionToReveal(view) > *maxScroll) {
@@ -125,10 +131,17 @@ namespace umbriel {
     case FocusReason::Directional:
     case FocusReason::PointerPress:
     case FocusReason::PointerHover:
+    case FocusReason::PointerOutputCross:
     case FocusReason::DragDrop:
     case FocusReason::Startup:
     case FocusReason::XdgActivation:
     case FocusReason::ForeignActivation:
+      // The two pointer-driven reasons are the ones whose reveal is configurable: with follows_mouse_reveals off they
+      // focus the window where it stands rather than scrolling the strip under the pointer, which is the same
+      // decoupling Grab relies on below. Crossing outputs counts, or entering a head would scroll its strip.
+      if ((reason == FocusReason::PointerHover || reason == FocusReason::PointerOutputCross) && !hoverReveals) {
+        break;
+      }
       workspace->activateFocusedColumn();
       workspace->markArrange(true);
       break;
@@ -252,7 +265,7 @@ namespace umbriel {
         return;
       }
     }
-    refocusFallback(nullptr);
+    refocusFallback(nullptr, FocusReason::Startup);
   }
 
   void FocusManager::refocus(Output* preferred) {
@@ -274,7 +287,7 @@ namespace umbriel {
     refocusExplicit(preferred);
   }
 
-  void FocusManager::refocusExplicit(Output* preferred) {
+  void FocusManager::refocusExplicit(Output* preferred, FocusReason reason) {
     if (m_server.sessionLocked()) {
       return;
     }
@@ -283,11 +296,11 @@ namespace umbriel {
       return;
     }
 
-    refocusFallback(preferred);
+    refocusFallback(preferred, reason);
   }
 
-  void FocusManager::refocusFallback(Output* preferred) {
-    const auto focusMappedOn = [this](Output* output) -> bool {
+  void FocusManager::refocusFallback(Output* preferred, FocusReason reason) {
+    const auto focusMappedOn = [this, reason](Output* output) -> bool {
       if (output == nullptr || output->workspaceGroup() == nullptr) {
         return false;
       }
@@ -297,13 +310,13 @@ namespace umbriel {
       }
       if (View* focused = workspace->focusedView()) {
         if (focused->mapped() && focused->onActiveWorkspace()) {
-          focusView(focused);
+          focusView(focused, reason);
           return true;
         }
       }
       for (const auto& entry : m_server.registry().all()) {
         if (entry->mapped() && entry->workspace() == workspace) {
-          focusView(entry.get());
+          focusView(entry.get(), reason);
           return true;
         }
       }

@@ -2387,6 +2387,57 @@ hide_when_typing = true
   CHECK(!containsDiagnostic(store, "unknown key input.cursor.hide_when_typing"));
 }
 
+UMBRIEL_TEST(focusRevealDefaultsToEnabledAndUnlimited) {
+  const umbriel::Config defaults;
+  // Hover reveals by default, so the key is opt-out and an existing
+  // configuration keeps scrolling the strip to the window it focuses.
+  CHECK(defaults.input.focus.followsMouseReveals);
+  CHECK(!defaults.input.focus.followsMouse);
+  CHECK(!defaults.input.focus.followsMouseMaxScroll.has_value());
+}
+
+UMBRIEL_TEST(focusKeysLoad) {
+  const TempConfig file;
+  file.write(R"(
+[input.focus]
+follows_mouse = true
+follows_mouse_max_scroll = 0.75
+follows_mouse_reveals = false
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(store.config().input.focus.followsMouse);
+  CHECK(store.config().input.focus.followsMouseMaxScroll == std::optional<double>(0.75));
+  CHECK(!store.config().input.focus.followsMouseReveals);
+  CHECK(!containsDiagnostic(store, "unknown key input.focus.follows_mouse"));
+  CHECK(!containsDiagnostic(store, "unknown key input.focus.follows_mouse_max_scroll"));
+  CHECK(!containsDiagnostic(store, "unknown key input.focus.follows_mouse_reveals"));
+}
+
+UMBRIEL_TEST(focusMaxScrollClampsNegative) {
+  const TempConfig file;
+  file.write(R"(
+[input.focus]
+follows_mouse_max_scroll = -1.0
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  // An out-of-range value is a diagnostic, not a load failure.
+  CHECK(result.success);
+  // Below zero would refuse focus even for a window already fully visible, which
+  // disables hover focus rather than limiting it, so it clamps to that floor.
+  CHECK(store.config().input.focus.followsMouseMaxScroll == std::optional<double>(0.0));
+  CHECK(containsDiagnostic(store, "input.focus.follows_mouse_max_scroll"));
+  CHECK(containsDiagnostic(store, "out of range"));
+}
+
 UMBRIEL_TEST(cursorHideTimeoutLoads) {
   const TempConfig file;
   file.write(R"(

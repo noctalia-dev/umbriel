@@ -1515,7 +1515,7 @@ namespace umbriel {
           && config().input.focus.followsMouse
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
-        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
+        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput), FocusReason::PointerOutputCross);
       }
     }
   }

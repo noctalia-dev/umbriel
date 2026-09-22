@@ -247,6 +247,7 @@ moves the cursor regardless of this setting.
 [input.focus]
 follows_mouse = false
 follows_mouse_max_scroll = 0.5
+follows_mouse_reveals = true
 ```
 
 `follows_mouse = true` focuses the window under the pointer when pointer motion
@@ -255,3 +256,11 @@ or a layout change places a different window there.
 `follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal
 that window, measured in viewport widths. `0.0` allows only fully visible
 windows. Omit the key for no limit.
+
+`follows_mouse_reveals = false` focuses the window under the pointer where it
+stands, without scrolling the layout to bring it fully into view. Partially
+visible windows then take focus at any offset, and `follows_mouse_max_scroll`
+stops applying because there is no reveal left to bound. Carrying the pointer
+onto another output is covered too, so entering a head does not pull its layout
+back to whatever it had focused. This is the behaviour Mod+drag already has: it
+focuses what it grabs without moving the strip.

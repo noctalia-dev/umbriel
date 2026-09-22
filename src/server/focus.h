@@ -19,10 +19,14 @@ namespace umbriel {
     Directional,  // window-focus-* keybinds, focus-adjacent after close
     PointerPress, // plain click-to-focus
     PointerHover, // follows_mouse enter
-    Grab,         // Mod+drag / Mod+resize start
-    DragDrop,     // tile/float drag finished
-    Gesture,      // touchpad pan finished: the gesture already placed the strip
-    Startup,      // map, setFloating, refocus fallback
+    // follows_mouse carrying the pointer onto another output. Distinct from PointerHover because the fallback has to
+    // land focus somewhere on the output being entered, so it is never declined by follows_mouse_max_scroll, but it is
+    // pointer-driven and so honours follows_mouse_reveals.
+    PointerOutputCross,
+    Grab,     // Mod+drag / Mod+resize start
+    DragDrop, // tile/float drag finished
+    Gesture,  // touchpad pan finished: the gesture already placed the strip
+    Startup,  // map, setFloating, refocus fallback
     XdgActivation,
     ForeignActivation,
   };
@@ -54,8 +58,10 @@ namespace umbriel {
     // refocusExplicit.
     void refocus(Output* preferred);
     // Deliberately select a fallback on `preferred`. Explicit focus actions use
-    // this overload, including with null when no output is available.
-    void refocusExplicit(Output* preferred);
+    // this overload, including with null when no output is available. The reason
+    // reaches the focused view, so a pointer-driven crossing can decline the
+    // reveal an explicit action wants.
+    void refocusExplicit(Output* preferred, FocusReason reason = FocusReason::Startup);
 
     // Drop activation, focus ring, and foreign-activated on every mapped view
     // except `except`.
@@ -76,7 +82,7 @@ namespace umbriel {
 
   private:
     [[nodiscard]] bool retainCurrentKeyboardFocus();
-    void refocusFallback(Output* preferred);
+    void refocusFallback(Output* preferred, FocusReason reason);
 
     Server& m_server;
   };

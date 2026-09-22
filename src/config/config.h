@@ -809,6 +809,10 @@ namespace umbriel {
       struct Focus {
         bool followsMouse = false;
         std::optional<double> followsMouseMaxScroll;
+        // Whether a hover may scroll a layout to reveal the window it focuses. false focuses the window where it
+        // stands, which is what Mod+drag already does through FocusReason::Grab. Independent of
+        // followsMouseMaxScroll: that key bounds how far a reveal may go, this one decides whether there is one.
+        bool followsMouseReveals = true;
         bool operator==(const Focus&) const = default;
       } focus;
 
