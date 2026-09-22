@@ -247,7 +247,10 @@ namespace umbriel {
     void relayoutBanner();
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
-    void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
+    void spawn(
+        const char* command, const char* description = nullptr, bool withActivationToken = false,
+        std::string_view scratchpadToken = {}
+    );
     void handleConfigReload();
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.

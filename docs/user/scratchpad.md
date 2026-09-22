@@ -90,12 +90,47 @@ scratchpad scale, maximize, or fullscreen overrides it.
 If the scratchpad is already visible, the new window joins it without hiding
 the existing members.
 
+## Launching an application on demand
+
+A named scratchpad can set `spawn_when_empty` to a shell command. Toggling the
+scratchpad while it holds no windows runs that command instead of doing
+nothing:
+
+```toml
+[[scratchpad]]
+name = "monitor"
+spawn_when_empty = "foot btop"
+```
+
+Umbriel starts the command with `UMBRIEL_SCRATCHPAD_TOKEN` set. The first
+window whose process carries that token joins the scratchpad, is shown on the
+output that invoked the toggle, and takes focus. Child processes inherit the
+variable, so this also works when the command forks or detaches. No window
+rule is needed.
+
+The launch stays pending for 10 seconds. If no window appears in that time,
+the next toggle runs the command again. Toggling while the launch is still
+pending hides it instead: the window still joins the scratchpad when it
+appears, but stays hidden until the next toggle. Toggling once more before it
+appears shows it again. Once the scratchpad holds a window, the toggle shows
+and hides it and never runs the command again.
+
+While a launch is pending and shown, the next window opened on that output
+joins the scratchpad even if its process does not carry the token. This covers
+applications that hand their window to an instance that was already running,
+and X11 applications, whose windows belong to xwayland-satellite. Dialogs with
+a parent window and windows matched by a `default_scratchpad` rule keep their
+own placement.
+
+The implicit `default` scratchpad has no definition and therefore no
+`spawn_when_empty`.
+
 ## Actions
 
 | Action | What it does |
 |--------|--------------|
 | `window-move-to-scratchpad:[<scratchpad>]` | Move the focused workspace window into the selected scratchpad. |
-| `scratchpad-toggle:[<scratchpad>]` | Show or hide all windows in the selected scratchpad. |
+| `scratchpad-toggle:[<scratchpad>]` | Show or hide all windows in the selected scratchpad. An empty scratchpad runs its `spawn_when_empty` command. |
 | `window-restore-from-scratchpad:[<scratchpad>]` | Restore the selected scratchpad's remembered window. |
 | `window-toggle-scratchpad:[<scratchpad>]` | Move the focused window into the selected scratchpad, or restore it when it is already that scratchpad's focused window. |
 | `scratchpad-focus-next:[<scratchpad>]` | Focus the next visible window in the selected scratchpad, wrapping at the end. |

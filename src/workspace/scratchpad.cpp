@@ -11,8 +11,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
+#include <fstream>
 #include <ranges>
 #include <set>
+#include <unistd.h>
 #include <utility>
 
 namespace umbriel {
@@ -33,6 +36,20 @@ namespace umbriel {
 
     bool sameBox(const wlr_box& first, const wlr_box& second) {
       return first.x == second.x && first.y == second.y && first.width == second.width && first.height == second.height;
+    }
+
+    constexpr std::chrono::seconds kSpawnTimeout{10};
+
+    std::string processEnvironmentValue(pid_t pid, std::string_view variable) {
+      std::ifstream file(std::format("/proc/{}/environ", pid), std::ios::binary);
+      const std::string prefix = std::format("{}=", variable);
+      std::string entry;
+      while (std::getline(file, entry, '\0')) {
+        if (entry.starts_with(prefix)) {
+          return entry.substr(prefix.size());
+        }
+      }
+      return {};
     }
   } // namespace
 
@@ -165,7 +182,46 @@ namespace umbriel {
   bool ScratchpadManager::assignByWindowRule(
       View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options
   ) {
-    return admit(view, name, placementOutput, Admission::Automatic, options);
+    if (!admit(view, name, placementOutput, Admission::Automatic, options)) {
+      return false;
+    }
+    Scratchpad* scratchpad = findScratchpad(name);
+    if (scratchpad != nullptr && scratchpad->pendingSpawn) {
+      const PendingSpawn pending = *std::exchange(scratchpad->pendingSpawn, std::nullopt);
+      if (pending.live() && pending.shown) {
+        summon(name, pending.output);
+      }
+    }
+    return true;
+  }
+
+  std::optional<std::string> ScratchpadManager::spawnedScratchpadFor(pid_t pid) const {
+    const auto pending = [](const Scratchpad& scratchpad) {
+      return scratchpad.pendingSpawn && scratchpad.pendingSpawn->live();
+    };
+    if (pid <= 1 || std::ranges::none_of(m_scratchpads | std::views::values, pending)) {
+      return std::nullopt;
+    }
+    const std::string token = processEnvironmentValue(pid, kScratchpadTokenVariable);
+    if (token.empty()) {
+      return std::nullopt;
+    }
+    for (const auto& [name, scratchpad] : m_scratchpads) {
+      if (pending(scratchpad) && scratchpad.pendingSpawn->token == token) {
+        return name;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::string> ScratchpadManager::pendingScratchpadOn(const Output* output) const {
+    for (const auto& [name, scratchpad] : m_scratchpads) {
+      const auto& pending = scratchpad.pendingSpawn;
+      if (pending && pending->live() && pending->shown && pending->output == output) {
+        return name;
+      }
+    }
+    return std::nullopt;
   }
 
   bool ScratchpadManager::assignFromParent(View* view, const View* parent, const AutomaticAdmission& options) {
@@ -701,9 +757,12 @@ namespace umbriel {
 
   void ScratchpadManager::releaseOutput(Output* output) {
     std::vector<std::string> stranded;
-    for (const auto& [name, scratchpad] : m_scratchpads) {
+    for (auto& [name, scratchpad] : m_scratchpads) {
       if (scratchpad.output == output) {
         stranded.push_back(name);
+      }
+      if (scratchpad.pendingSpawn && scratchpad.pendingSpawn->output == output) {
+        scratchpad.pendingSpawn.reset();
       }
     }
     for (const std::string& name : stranded) {
@@ -782,8 +841,27 @@ namespace umbriel {
 
   bool ScratchpadManager::toggle(std::string_view name, Output* invokingOutput) {
     Scratchpad* scratchpad = findScratchpad(name);
-    if (scratchpad == nullptr || invokingOutput == nullptr || !hasEntries(name)) {
+    if (scratchpad == nullptr || invokingOutput == nullptr) {
       return false;
+    }
+    if (!hasEntries(name)) {
+      const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
+      if (definition == config().scratchpads.end() || definition->spawnWhenEmpty.empty()) {
+        return false;
+      }
+      if (auto& pending = scratchpad->pendingSpawn; pending && pending->live()) {
+        pending->shown = !pending->shown;
+        pending->output = invokingOutput;
+        return true;
+      }
+      std::string token = std::format("{}-{}", getpid(), ++m_spawnSerial);
+      m_server->spawn(definition->spawnWhenEmpty.c_str(), "scratchpad.spawn_when_empty", true, token);
+      scratchpad->pendingSpawn = PendingSpawn{
+          .output = invokingOutput,
+          .token = std::move(token),
+          .expiresAt = std::chrono::steady_clock::now() + kSpawnTimeout,
+      };
+      return true;
     }
     if (scratchpad->visible && scratchpad->output == invokingOutput) {
       setVisible(name, false);
