@@ -27,6 +27,7 @@ readonly -a NORMAL_GLOBALS=(
   xdg_wm_base
   xdg_toplevel_tag_manager_v1
   zxdg_exporter_v2
+  xdg_wm_dialog_v1
   zxdg_decoration_manager_v1
   org_kde_kwin_server_decoration_manager
   zwp_relative_pointer_manager_v1
