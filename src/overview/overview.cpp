@@ -8,6 +8,7 @@ extern "C" {
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/gesture_physics.h"
 #include "input/gestures.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
@@ -1614,7 +1615,7 @@ namespace umbriel {
     beginClose(focus);
   }
 
-  void Overview::beginClose(View* focus) {
+  void Overview::beginClose(View* focus, double releaseVelocity) {
     if (!m_active || m_closing) {
       return;
     }
@@ -1640,7 +1641,7 @@ namespace umbriel {
         animateRow(*state, static_cast<double>(group->active()->index()));
       }
     }
-    startAnimation(0.0, true);
+    startAnimation(0.0, true, releaseVelocity);
   }
 
   void Overview::forceClose() {
@@ -1659,7 +1660,7 @@ namespace umbriel {
     restoreFocus(nullptr);
   }
 
-  void Overview::startAnimation(double target, bool closing) {
+  void Overview::startAnimation(double target, bool closing, double releaseVelocity) {
     m_closing = closing;
     m_server->notifyOverviewChanged();
     m_targetProgress = target;
@@ -1677,8 +1678,10 @@ namespace umbriel {
     }
     m_zoomAnim.snap(0.0);
     if (overview.curve.easing == Easing::Spring) {
-      // Physics mode, so the tail can end once it no longer moves a pixel.
-      m_zoomAnim.settleSpring(1.0, overview.curve.spring, 0.0);
+      // Physics mode, so the tail can end once it no longer moves a pixel. The zoom runs the span from where the
+      // gesture left off to the target, so a release speed given in progress per second is that speed over this span.
+      const double span = m_targetProgress - m_progressFrom;
+      m_zoomAnim.settleSpring(1.0, overview.curve.spring, span != 0.0 ? releaseVelocity / span : 0.0);
     } else {
       m_zoomAnim.retarget(1.0, overview.durationMs, overview.curve);
     }
@@ -1860,16 +1863,16 @@ namespace umbriel {
     applyProgress();
   }
 
-  void Overview::gestureEnd(bool commitOpen) {
+  void Overview::gestureEnd(bool commitOpen, double releaseVelocity) {
     if (!m_active) {
       return;
     }
     m_gestureOpenedHere = false;
     if (commitOpen) {
-      startAnimation(1.0, false);
+      startAnimation(1.0, false, releaseVelocity);
       return;
     }
-    beginClose(nullptr);
+    beginClose(nullptr, releaseVelocity);
   }
 
   // -: hooks
@@ -2655,8 +2658,9 @@ namespace umbriel {
       const auto last = static_cast<double>(group->workspaceCount() - 1);
       // snap() also stops any settle still running on this output; row animations elsewhere and the zoom continue.
       state->rowScroll.snap(
-          OverviewNavigation::rubberBand(
-              m_navigationStart + m_navigation.position() * m_navigationScale, last, OverviewNavigation::kOverscroll
+          GesturePhysics::rubberBand(
+              m_navigationStart + m_navigation.position() * m_navigationScale, 0.0, last,
+              GesturePhysics::kOverscrollLimit
           )
       );
       applyProgress();
@@ -2675,10 +2679,10 @@ namespace umbriel {
       m_navigationStarted = true;
     }
     scrolling->setScroll(
-        OverviewNavigation::rubberBand(
-            m_navigationStart + m_navigation.position() * m_navigationScale,
+        GesturePhysics::rubberBand(
+            m_navigationStart + m_navigation.position() * m_navigationScale, 0.0,
             static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent())),
-            viewport * OverviewNavigation::kOverscroll
+            viewport * GesturePhysics::kOverscrollLimit
         )
     );
     workspace->markArrange(false);
@@ -2717,13 +2721,13 @@ namespace umbriel {
       }
       const auto last = static_cast<double>(group->workspaceCount() - 1);
       const int index = cancelled ? static_cast<int>(group->active()->index())
-                                  : OverviewNavigation::workspaceTarget(projected, static_cast<int>(last));
+                                  : GesturePhysics::stepTarget(projected, 0, static_cast<int>(last));
       // Rubber-banded travel moves the filmstrip slower than the fingers, so the release carries the visible speed.
       const double position = m_navigationStart + m_navigation.position() * m_navigationScale;
       const double velocity = cancelled ? 0.0
                                         : m_navigation.velocity()
               * m_navigationScale
-              * OverviewNavigation::rubberBandDerivative(position, last, OverviewNavigation::kOverscroll);
+              * GesturePhysics::rubberBandDerivative(position, 0.0, last, GesturePhysics::kOverscrollLimit);
       if (index != static_cast<int>(group->active()->index())) {
         group->select(group->workspaceAt(static_cast<size_t>(index)));
         state = stateFor(output);

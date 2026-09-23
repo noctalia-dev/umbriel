@@ -1,5 +1,6 @@
 #pragma once
 
+#include "input/gesture_physics.h"
 #include "input/swipe_tracker.h"
 
 #include <cstdint>
@@ -71,11 +72,16 @@ namespace umbriel {
 
     void cancelActive();
     void finishScroll(bool cancelled, uint32_t timeMsec);
-    void finishSwitch(bool cancelled);
-    void finishOverview(bool cancelled);
+    void finishSwitch(bool cancelled, uint32_t timeMsec);
+    void finishOverview(bool cancelled, uint32_t timeMsec);
     void silentCancel();
     [[nodiscard]] bool beginScroll(Workspace* workspace, double scale, ScrollSource source);
     void updateScroll(double delta, uint32_t timeMsec);
+    // Travel along the workspace axis, in the pixels libinput reports for it.
+    void updateSwitch(double travel, uint32_t timeMsec);
+    // Where a released workspace switch lands, and what the slide keeps of its speed. The release uses it, and so does
+    // the overview when it takes a swipe that is still in flight.
+    [[nodiscard]] GesturePhysics::StepRelease switchSettle(uint32_t timeMsec);
     // A held mouse button owns the scroll state until it is released, whether it pans the active workspace or an
     // overview row. Touchpad gestures step aside for it.
     [[nodiscard]] bool pointerScrollActive() const {
@@ -105,14 +111,16 @@ namespace umbriel {
 
     // Switch state (vertical 3-finger).
     WorkspaceGroup* m_switchGroup = nullptr;
-    double m_progress = 0;
-    double m_velocity = 0;
-    uint32_t m_lastTimeMsec = 0;
+    SwipeTracker m_switchTracker;
+    // Where the slide was, in steps from its base, when the gesture took it over: nonzero only when the gesture started
+    // while a settle was still running.
+    double m_switchStart = 0;
     bool m_hasPrev = false;
     bool m_hasNext = false;
 
     // Overview state (vertical 4-finger): swipe up opens, swipe down closes.
     bool m_overviewWasOpen = false;
+    SwipeTracker m_overviewTracker;
 
     wl_listener m_swipeBegin{};
     wl_listener m_swipeUpdate{};

@@ -330,9 +330,14 @@ namespace umbriel {
     void flushArrange();
 
     [[nodiscard]] bool slideActive() const { return m_slide.base != nullptr; }
+    // Where the slide sits between its steps right now. A gesture that starts mid-settle picks the slide up here
+    // instead of snapping it to an end first.
+    [[nodiscard]] double slideProgress() const { return m_slide.base != nullptr ? m_slide.progress : 0.0; }
     bool slideBegin(bool includePrev, bool includeNext);
     void slideApply(double progress);
-    void slideSettle(int delta);
+    // Settle onto `delta` steps from the base. `velocity` is what the gesture still had when it was released, in steps
+    // per second, and starts the settle from that speed instead of from rest; callers that are not a gesture pass 0.
+    void slideSettle(int delta, double velocity = 0);
     void slideFinish();
     // Advances the workspace slide; returns true while it is still running.
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Workspaces; }

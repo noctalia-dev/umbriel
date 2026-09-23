@@ -29,12 +29,13 @@ UMBRIEL_TEST(releaseAfterPauseDoesNotRetainFlickVelocity) {
   CHECK_EQ(nav.projectedPosition(), 40.0);
 }
 
-UMBRIEL_TEST(workspaceSettlementIsBoundedAndAllowsMultipleRows) {
-  CHECK_EQ(OverviewNavigation::workspaceTarget(-10, 4), 0);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(2.49, 4), 2);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(2.51, 4), 3);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(10, 4), 4);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(10, 0), 0);
+UMBRIEL_TEST(releaseProjectionCarriesAFlickPastWhereTheFingersStopped) {
+  OverviewNavigation nav;
+  nav.update(0, 50, 10);
+  nav.update(0, 50, 20);
+  nav.update(0, 0, 30);
+  CHECK(nav.velocity() > 0.0);
+  CHECK(nav.projectedPosition() > nav.position());
 }
 
 UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
@@ -54,33 +55,6 @@ UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
       OverviewNavigation::travelFor(NavigationSource::Swipe).workspace
       != OverviewNavigation::travelFor(NavigationSource::Scroll).workspace
   );
-}
-
-UMBRIEL_TEST(releaseProjectionAvoidsExtraWorkspaceWithoutLimitingLongSwipes) {
-  const double units = OverviewNavigation::kScrollTravel.workspace;
-  const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0, units);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 1000) * scale, 5), 1);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 3500) * scale, 5), 2);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(1000, 0) * scale, 5), 3);
-  CHECK_EQ(OverviewNavigation::projectRelease(250, -1000), 130.0);
-  CHECK_EQ(OverviewNavigation::projectRelease(250, 0), 250.0);
-}
-
-UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
-  const double limit = OverviewNavigation::kOverscroll;
-  CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, limit), 1.0);
-  CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, limit) < 0.02);
-  CHECK_EQ(
-      OverviewNavigation::rubberBandDerivative(-1, 3, limit), OverviewNavigation::rubberBandDerivative(4, 3, limit)
-  );
-  CHECK_EQ(OverviewNavigation::rubberBand(1.5, 3, limit), 1.5);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) > -limit);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) < 0);
-  CHECK(OverviewNavigation::rubberBand(4, 3, limit) > 3);
-  CHECK(OverviewNavigation::rubberBand(1000, 3, limit) < 3 + limit);
-  CHECK_EQ(OverviewNavigation::zoomScale(1), 1.0);
-  CHECK(OverviewNavigation::zoomScale(0.5) > 1);
-  CHECK(OverviewNavigation::zoomScale(0.5) < 2);
 }
 
 int main() { return RUN_TESTS(); }

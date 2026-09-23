@@ -1,6 +1,7 @@
 #include "input/gestures.h"
 
 #include "input/cursor.h"
+#include "input/gesture_physics.h"
 #include "input/seat.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
@@ -9,6 +10,7 @@
 #include "view/view.h"
 // clang-format off
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include "wlr.h"
 // clang-format on
@@ -17,14 +19,16 @@
 namespace umbriel {
 
   namespace {
-    // Tuning constants: file-local, no config keys.
-    constexpr double kAxisLockPx = 16.0;
-    constexpr double kCommitProgress = 0.35;
-    constexpr double kCommitVelocityPxMs = 0.9;
-    constexpr double kOverscrollCompress = 0.15;
-    constexpr double kOverscrollMaxWs = 0.08;
-    // Finger travel for a full overview open or close.
+    // Finger travel for a full overview open or close. One workspace of the three-finger switch travels the same
+    // distance, so the hand reads one gesture distance on either side of the overview.
     constexpr double kOverviewDistancePx = 300.0;
+
+    // Monotonic milliseconds, on the same clock the input path timestamps gesture events with. The overview taking
+    // over a swipe needs a release sample and has no event to read one from.
+    uint32_t nowMsec() {
+      const auto now = std::chrono::steady_clock::now().time_since_epoch();
+      return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+    }
 
     int touchpadGestureDirection(wlr_pointer* pointer) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
@@ -37,18 +41,6 @@ namespace umbriel {
       return libinput_device_config_scroll_get_natural_scroll_enabled(device) != 0 ? 1 : -1;
     }
 
-    int switchCommitDelta(double progress, double velocity, bool hasPrev, bool hasNext) {
-      const double lo = hasPrev ? -1.0 : 0.0;
-      const double hi = hasNext ? 1.0 : 0.0;
-      const double clamped = std::clamp(progress, lo, hi);
-      if (std::abs(clamped) >= kCommitProgress) {
-        return clamped > 0 ? 1 : -1;
-      }
-      if (std::abs(velocity) >= kCommitVelocityPxMs && velocity * clamped > 0) {
-        return clamped > 0 ? 1 : -1;
-      }
-      return 0;
-    }
   } // namespace
 
   // trampolines (same pattern as Cursor)
@@ -160,13 +152,17 @@ namespace umbriel {
     }
     WorkspaceGroup* group = m_switchGroup;
     Workspace* base = group != nullptr && group->slideActive() ? group->active() : nullptr;
+    // Read the release before clearing the state: the filmstrip picks the swipe up from where the fingers left it, and
+    // the projection is what decides which row that is.
+    const GesturePhysics::StepRelease settle =
+        base != nullptr ? switchSettle(nowMsec()) : GesturePhysics::StepRelease{};
     m_switchGroup = nullptr;
     m_output = nullptr;
     m_state = State::Idle;
     if (base == nullptr) {
       return {};
     }
-    int delta = switchCommitDelta(m_progress, m_velocity, m_hasPrev, m_hasNext);
+    int delta = settle.target;
     const size_t index = base->index();
     Workspace* target = base;
     if (delta < 0 && index > 0) {
@@ -179,8 +175,8 @@ namespace umbriel {
     return {
         .group = group,
         .target = target,
-        .offset = m_progress - delta,
-        .velocity = m_velocity * 1000.0 / kSwipeWorkspacePx,
+        .offset = settle.position - delta,
+        .velocity = settle.velocity,
     };
   }
 
@@ -190,10 +186,10 @@ namespace umbriel {
       finishScroll(true, 0);
       break;
     case State::Switch:
-      finishSwitch(true);
+      finishSwitch(true, 0);
       break;
     case State::Overview:
-      finishOverview(true);
+      finishOverview(true, 0);
       break;
     case State::Forward:
       // Forward a cancel end so clients see the end.
@@ -251,6 +247,29 @@ namespace umbriel {
     m_scrollWorkspace->markArrange(false);
   }
 
+  void Gestures::updateSwitch(double travel, uint32_t timeMsec) {
+    if (m_state != State::Switch || m_switchGroup == nullptr) {
+      return;
+    }
+    // Natural: swiping toward the negative axis direction moves to the next workspace.
+    m_switchTracker.push(-travel * m_naturalScrollDirection, timeMsec);
+    const double lo = m_hasPrev ? -1.0 : 0.0;
+    const double hi = m_hasNext ? 1.0 : 0.0;
+    const double position = GesturePhysics::rubberBand(
+        m_switchStart + m_switchTracker.pos() / kSwipeWorkspacePx, lo, hi, GesturePhysics::kOverscrollLimit
+    );
+    m_switchGroup->slideApply(position);
+  }
+
+  GesturePhysics::StepRelease Gestures::switchSettle(uint32_t timeMsec) {
+    // Idle time between the last motion event and the release still bleeds speed, so feed a zero-delta sample before
+    // reading the tracker. The strip scroll does the same for the same reason.
+    m_switchTracker.push(0.0, timeMsec);
+    return GesturePhysics::release(
+        m_switchTracker, kSwipeWorkspacePx, m_switchStart, m_hasPrev ? -1.0 : 0.0, m_hasNext ? 1.0 : 0.0
+    );
+  }
+
   bool Gestures::beginPointerScroll(double lx, double ly) {
     if (m_server->sessionLocked()) {
       return false;
@@ -303,10 +322,10 @@ namespace umbriel {
       finishScroll(true, 0);
       break;
     case State::Switch:
-      finishSwitch(true);
+      finishSwitch(true, 0);
       break;
     case State::Overview:
-      finishOverview(true);
+      finishOverview(true, 0);
       break;
     case State::OverviewSelect:
       if (Overview* overview = m_server->overview()) {
@@ -345,9 +364,7 @@ namespace umbriel {
       m_accumX = 0;
       m_accumY = 0;
       m_overviewWasOpen = overview->active();
-      m_progress = m_overviewWasOpen ? 1.0 : 0.0;
-      m_velocity = 0;
-      m_lastTimeMsec = event->time_msec;
+      m_overviewTracker.reset();
       return;
     }
     if (event->fingers == 3) {
@@ -396,7 +413,7 @@ namespace umbriel {
       m_accumX += event->dx;
       m_accumY += event->dy;
       const double maxAccum = std::max(std::abs(m_accumX), std::abs(m_accumY));
-      if (maxAccum < kAxisLockPx) {
+      if (maxAccum < GesturePhysics::kAxisLock) {
         return; // Not enough travel to decide axis.
       }
       // Resolve output.
@@ -443,10 +460,12 @@ namespace umbriel {
           return;
         }
         m_switchGroup = group;
-        m_progress = 0;
-        m_velocity = 0;
-        m_lastTimeMsec = event->time_msec;
+        m_switchTracker.reset();
+        m_switchStart = group->slideProgress();
         m_state = State::Switch;
+        // The travel that decided the axis is this gesture's first reading, so the slide moves with the fingers from
+        // the frame the lock happens instead of after it.
+        updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? event->dx : event->dy, event->time_msec);
       }
       return;
     }
@@ -468,25 +487,7 @@ namespace umbriel {
         m_state = State::Idle;
         return;
       }
-      const bool horizontal = m_workspaceAxis == WorkspaceAxis::Horizontal;
-      const double travel = horizontal ? event->dx : event->dy;
-      m_accumX += event->dx;
-      m_accumY += event->dy;
-      // Natural: swiping toward the negative axis direction moves to the next workspace.
-      double p = -(horizontal ? m_accumX : m_accumY) / kSwipeWorkspacePx * m_naturalScrollDirection;
-      const double lo = m_hasPrev ? -1.0 : 0.0;
-      const double hi = m_hasNext ? 1.0 : 0.0;
-      if (p < lo) {
-        p = std::max(lo + (p - lo) * kOverscrollCompress, lo - kOverscrollMaxWs);
-      }
-      if (p > hi) {
-        p = std::min(hi + (p - hi) * kOverscrollCompress, hi + kOverscrollMaxWs);
-      }
-      const uint32_t dt = std::max(1U, event->time_msec - m_lastTimeMsec);
-      m_velocity = 0.75 * m_velocity + 0.25 * (-travel / static_cast<double>(dt) * m_naturalScrollDirection);
-      m_lastTimeMsec = event->time_msec;
-      m_progress = p;
-      m_switchGroup->slideApply(p);
+      updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? event->dx : event->dy, event->time_msec);
       return;
     }
 
@@ -512,14 +513,12 @@ namespace umbriel {
         m_state = State::Idle;
         return;
       }
-      m_accumY += event->dy;
       // Swipe up opens, swipe down closes; base is where the gesture started.
       const double base = m_overviewWasOpen ? 1.0 : 0.0;
-      const double p = std::clamp(base - m_accumY / kOverviewDistancePx, 0.0, 1.0);
-      const uint32_t dt = std::max(1U, event->time_msec - m_lastTimeMsec);
-      m_velocity = 0.75 * m_velocity + 0.25 * (-event->dy / static_cast<double>(dt));
-      m_lastTimeMsec = event->time_msec;
-      m_progress = p;
+      m_overviewTracker.push(-event->dy, event->time_msec);
+      const double p = GesturePhysics::rubberBand(
+          base + m_overviewTracker.pos() / kOverviewDistancePx, 0.0, 1.0, GesturePhysics::kOverscrollLimit
+      );
       overview->gestureUpdate(p);
       return;
     }
@@ -564,11 +563,11 @@ namespace umbriel {
       return;
 
     case State::Switch:
-      finishSwitch(event->cancelled);
+      finishSwitch(event->cancelled, event->time_msec);
       return;
 
     case State::Overview:
-      finishOverview(event->cancelled);
+      finishOverview(event->cancelled, event->time_msec);
       return;
 
     case State::Idle:
@@ -578,23 +577,23 @@ namespace umbriel {
 
   // ===== Overview finish (4-finger) =====
 
-  void Gestures::finishOverview(bool cancelled) {
+  void Gestures::finishOverview(bool cancelled, uint32_t timeMsec) {
     m_state = State::Idle;
     Overview* overview = m_server->overview();
     if (overview == nullptr) {
       return;
     }
+    const double base = m_overviewWasOpen ? 1.0 : 0.0;
     bool commitOpen = m_overviewWasOpen;
+    double velocity = 0.0;
     if (!cancelled) {
-      const double base = m_overviewWasOpen ? 1.0 : 0.0;
-      const bool farEnough = std::abs(m_progress - base) > kCommitProgress;
-      // Positive velocity is a swipe up, which only commits an opening gesture.
-      const bool fastEnough = std::abs(m_velocity) > kCommitVelocityPxMs && (m_velocity > 0) == !m_overviewWasOpen;
-      if (farEnough || fastEnough) {
-        commitOpen = !m_overviewWasOpen;
-      }
+      m_overviewTracker.push(0.0, timeMsec);
+      const GesturePhysics::StepRelease release =
+          GesturePhysics::release(m_overviewTracker, kOverviewDistancePx, base, 0.0, 1.0);
+      commitOpen = release.target == 1;
+      velocity = release.velocity;
     }
-    overview->gestureEnd(commitOpen);
+    overview->gestureEnd(commitOpen, velocity);
   }
 
   // ===== Scroll finish (Step 5) =====
@@ -707,15 +706,21 @@ namespace umbriel {
 
   // ===== Switch finish (Step 6) =====
 
-  void Gestures::finishSwitch(bool cancelled) {
+  void Gestures::finishSwitch(bool cancelled, uint32_t timeMsec) {
     if (m_switchGroup == nullptr || !m_switchGroup->slideActive()) {
       m_switchGroup = nullptr;
       m_output = nullptr;
       m_state = State::Idle;
       return;
     }
-    const int delta = cancelled ? 0 : switchCommitDelta(m_progress, m_velocity, m_hasPrev, m_hasNext);
-    m_switchGroup->slideSettle(delta);
+    int delta = 0;
+    double velocity = 0.0;
+    if (!cancelled) {
+      const GesturePhysics::StepRelease settle = switchSettle(timeMsec);
+      delta = settle.target;
+      velocity = settle.velocity;
+    }
+    m_switchGroup->slideSettle(delta, velocity);
     if (delta != 0) {
       m_server->cursor()->clearConstraint();
       m_server->refocus(m_output);

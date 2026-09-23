@@ -12,6 +12,7 @@ boundaries, or regression-sensitive behavior.
 - [Custom animation shaders](animation-shaders.md)
 - [Workspace lifecycle](workspace-lifecycle.md)
 - [Overview rendering](overview-rendering.md)
+- [Touchpad gestures](touchpad-gestures.md)
 - [Border rendering](border-rendering.md)
 - [Render performance](render-performance.md)
 - [Xwayland input stability](xwayland-input-stability.md)

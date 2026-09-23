@@ -67,9 +67,11 @@ namespace umbriel {
     // Instant teardown with no animation (session lock, config reload, output loss).
     void forceClose();
 
-    // 4-finger swipe. `progress` is pre-clamped by the caller.
+    // 4-finger swipe. `progress` is rubber-banded by the caller, so it can sit slightly outside [0, 1] at either end.
+    // `releaseVelocity` is the speed the fingers were still moving at when they left, in overview progress per second,
+    // and is zero for callers that are not a gesture.
     void gestureUpdate(double progress);
-    void gestureEnd(bool commitOpen);
+    void gestureEnd(bool commitOpen, double releaseVelocity = 0);
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     // Advances the zoom and workspace-row animations; returns true while either is still running.
@@ -325,12 +327,14 @@ namespace umbriel {
     void clearShortcutInput();
     void updateShortcutAssignments();
 
-    void startAnimation(double target, bool closing);
+    // `releaseVelocity` is the speed a gesture left behind, in overview progress per second, and is zero for every
+    // other caller: it starts the zoom spring from the speed the fingers had instead of from rest.
+    void startAnimation(double target, bool closing, double releaseVelocity = 0);
     // Move one output's filmstrip onto row `target`. `releaseVelocity` is the speed a touchpad gesture left behind,
     // in rows per second, and is zero for every other caller.
     void animateRow(OutputState& state, double target, double releaseVelocity = 0);
     void finishAnimation();
-    void beginClose(View* focus);
+    void beginClose(View* focus, double releaseVelocity = 0);
     void teardown();
     // Hand the seat back after teardown: `focus`, or normal refocus when null or unmapped.
     void restoreFocus(View* focus);

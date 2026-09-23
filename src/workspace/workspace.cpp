@@ -2424,10 +2424,14 @@ namespace umbriel {
     if (extent <= 0) {
       return false;
     }
+    // A settle still running is heading for a whole step, so where it is on screen minus that step is where it sits
+    // relative to the workspace that is now active. A gesture that starts now carries on from there rather than
+    // snapping the slide to the end of the animation first.
+    const double start = m_slide.base != nullptr ? m_slideAnim.current() - m_slideAnim.target() : 0.0;
     slideFinish();
     m_slide.base = m_active;
     m_slide.extent = extent;
-    m_slide.progress = 0;
+    m_slide.progress = start;
     const size_t idx = m_active->index();
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
@@ -2442,7 +2446,7 @@ namespace umbriel {
       m_slide.next->showSwitchViews();
       m_slide.next->arrange(false);
     }
-    slideApply(0.0);
+    slideApply(start);
     return true;
   }
 
@@ -2465,7 +2469,7 @@ namespace umbriel {
     wlr_output_schedule_frame(m_output->wlr());
   }
 
-  void WorkspaceGroup::slideSettle(int delta) {
+  void WorkspaceGroup::slideSettle(int delta, double velocity) {
     Workspace* target = nullptr;
     if (delta < 0) {
       target = m_slide.previous;
@@ -2500,12 +2504,23 @@ namespace umbriel {
       return;
     }
     m_slideAnim.snap(m_slide.progress);
-    m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
+    if (workspaces.curve.easing == Easing::Spring) {
+      // A spring carries the release speed, so the slide keeps moving the way the fingers were instead of stopping
+      // dead at the release and starting over from rest.
+      m_slideAnim.settleSpring(static_cast<double>(delta), workspaces.curve.spring, velocity);
+    } else {
+      m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
+    }
     wlr_output_schedule_frame(m_output->wlr());
   }
 
   bool WorkspaceGroup::tickAnimations(uint64_t nowMsec) {
     const bool ticked = m_slideAnim.tick(nowMsec);
+    if (ticked && m_slideAnim.animating() && m_slideAnim.curve().easing == Easing::Spring) {
+      // One step is `extent` pixels, so a spring that can no longer move a pixel has already landed there: end it
+      // now rather than letting it creep at amplitudes the pixel grid rounds away.
+      static_cast<void>(m_slideAnim.finishSpringTail(m_slide.extent));
+    }
     updateAnimationShader(&m_output->viewRoot()->node, m_server->renderer(), AnimationEvent::Workspaces, m_slideAnim);
     bool active = false;
     if (ticked) {
