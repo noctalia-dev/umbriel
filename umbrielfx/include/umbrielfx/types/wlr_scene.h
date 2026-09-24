@@ -212,7 +212,6 @@ struct wlr_scene_blur {
 	bool should_only_blur_bottom_layer;
 
 	struct linked_node transparency_mask_source;
-
 };
 
 /** A scene-graph node telling SceneFX to render the optimized blur */
@@ -314,10 +313,10 @@ struct wlr_scene_buffer {
 	 * The identity value is 1.0.
 	 */
 	float luminance_multiplier;
-        // Source subrectangle sampling. Zero disables; positive values are repeat counts.
-        // 1 stretches once; fractional final repeats crop instead of rescaling.
-        float slice_repeat[2];
-        float slice_tint[4]; // Straight RGBA multiplier; defaults to white.
+	// Source subrectangle sampling. Zero disables; positive values are repeat counts.
+	// 1 stretches once; fractional final repeats crop instead of rescaling.
+	float slice_repeat[2];
+	float slice_tint[4]; // Straight RGBA multiplier; defaults to white.
 };
 
 /** A viewport for an output in the scene-graph */
@@ -911,11 +910,12 @@ void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
 void wlr_scene_buffer_set_transform(struct wlr_scene_buffer *scene_buffer,
 	enum wl_output_transform transform);
 
+/** Sets the straight RGBA multiplier for sliced texture rendering. */
+void wlr_scene_buffer_set_slice_tint(struct wlr_scene_buffer *scene_buffer, const float color[4]);
+
 /**
 * Sets the opacity of this buffer
 */
-void wlr_scene_buffer_set_slice_tint(struct wlr_scene_buffer *scene_buffer, const float color[4]);
-
 void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *scene_buffer,
 	float opacity);
 

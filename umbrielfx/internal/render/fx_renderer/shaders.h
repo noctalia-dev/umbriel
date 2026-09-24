@@ -154,9 +154,9 @@ struct tex_shader {
 
 	GLint discard_transparent;
 	GLint sample_bounds;
-        GLint slice_tint, slice_rect, slice_repeat;
+	GLint slice_tint, slice_rect, slice_repeat;
 
-        // Only used for the effects shader
+	// Only used for the effects shader
 	struct {
 		GLint size;
 		GLint position;
@@ -168,7 +168,8 @@ struct tex_shader {
 	} effects;
 };
 
-bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, int sample_clamp);
+bool link_tex_program(struct tex_shader *shader, enum fx_tex_shader_source source,
+		bool effects, int sample_clamp);
 
 struct output_shader {
 	GLuint program;
