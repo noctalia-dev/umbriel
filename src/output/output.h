@@ -44,6 +44,7 @@ namespace umbriel {
     [[nodiscard]] OutputIdentity identity() const;
     [[nodiscard]] wlr_scene_output* sceneOutput() const { return m_sceneOutput; }
     [[nodiscard]] wlr_scene_tree* layerTree(uint32_t layer) const;
+    [[nodiscard]] wlr_scene_tree* focusedLayerTree() const { return m_focusedLayerTree; }
     [[nodiscard]] wlr_scene_tree* popupTree() const { return m_popupTree; }
     // Clipped roots for this output's window content. Every descendant is scissored to the output's layout box, which
     // is what keeps a scrolled or animating view from rendering on, or entering, a neighbouring output. Positioned at
@@ -138,7 +139,7 @@ namespace umbriel {
     void rejectGammaControl(wlr_gamma_control_v1* control);
     void armFrameRetry();
     wlr_output_layout_output* addToLayout();
-    void arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
+    void arrangeLayer(uint32_t layer, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
     void updateOptimizedBlur(const wlr_box& fullArea);
 
     Server* m_server = nullptr;
@@ -147,6 +148,7 @@ namespace umbriel {
     wlr_scene_output* m_sceneOutput = nullptr;
     wlr_scene_tree* m_layerTrees[kLayerCount]{};
     wlr_scene_tree* m_popupTree = nullptr;
+    wlr_scene_tree* m_focusedLayerTree = nullptr;
     wlr_scene_tree* m_viewRoot = nullptr;
     wlr_scene_tree* m_fullscreenRoot = nullptr;
     wlr_scene_tree* m_pinnedRoot = nullptr;

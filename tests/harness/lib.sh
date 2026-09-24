@@ -45,3 +45,19 @@ pointer_release() {
   exec {POINTER_HOLD_FD}>&-
   wait "$POINTER_HOLD_PID"
 }
+
+events() {
+  local count
+  count=$(grep -c "^$2" "$1" 2>/dev/null) || true
+  echo "${count:-0}"
+}
+
+await_events() {
+  local file=$1 event=$2 expected=$3 label=${4:-$1}
+  for _ in $(seq 60); do
+    (($(events "$file" "$event") >= expected)) && return 0
+    sleep 0.1
+  done
+  echo "timed out waiting for $expected '$event' on $label: $(tr '\n' '|' < "$file")"
+  return 1
+}

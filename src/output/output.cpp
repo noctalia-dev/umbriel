@@ -85,6 +85,7 @@ namespace umbriel {
     for (uint32_t layer = 0; layer < kLayerCount; ++layer) {
       m_layerTrees[layer] = wlr_scene_tree_create(m_server->shellLayerTree(layer));
     }
+    m_focusedLayerTree = wlr_scene_tree_create(m_server->focusedLayerTree());
     m_popupTree = wlr_scene_tree_create(m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY));
     m_viewRoot = wlr_scene_tree_create(m_server->xdgTree());
     m_fullscreenRoot = wlr_scene_tree_create(m_server->fullscreenTree());
@@ -708,6 +709,10 @@ namespace umbriel {
         layerTree = nullptr;
       }
     }
+    if (m_focusedLayerTree != nullptr) {
+      wlr_scene_node_destroy(&m_focusedLayerTree->node);
+      m_focusedLayerTree = nullptr;
+    }
     if (m_popupTree != nullptr) {
       wlr_scene_node_destroy(&m_popupTree->node);
       m_popupTree = nullptr;
@@ -733,19 +738,13 @@ namespace umbriel {
     return m_layerTrees[layer];
   }
 
-  void Output::arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive) {
-    wlr_scene_node* node = nullptr;
-    wl_list_for_each(node, &tree->children, link) {
-      SceneNode* sceneNode = sceneNodeFrom(node->data);
-      if (sceneNode == nullptr || sceneNode->kind != SceneNodeKind::LayerSurface) {
-        continue;
-      }
-      auto* layerSurface = static_cast<LayerSurface*>(sceneNode);
-      if (layerSurface->scene() == nullptr || layerSurface->arrangingOut()) {
+  void Output::arrangeLayer(uint32_t layer, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive) {
+    for (const auto& layerSurface : m_server->layerSurfaces()) {
+      if (layerSurface->output() != this || layerSurface->scene() == nullptr || layerSurface->arrangingOut()) {
         continue;
       }
       wlr_layer_surface_v1* surface = layerSurface->layerSurface();
-      if (surface == nullptr || !surface->initialized) {
+      if (surface == nullptr || !surface->initialized || surface->current.layer != layer) {
         continue;
       }
       // Only exclusive_zone > 0 participates in the exclusive pass.
@@ -782,10 +781,10 @@ namespace umbriel {
         ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
     };
     for (uint32_t layer : kExclusiveOrder) {
-      arrangeLayer(m_layerTrees[layer], &layerArea, &usableArea, true);
+      arrangeLayer(layer, &layerArea, &usableArea, true);
     }
     for (uint32_t layer : kExclusiveOrder) {
-      arrangeLayer(m_layerTrees[layer], &layerArea, &usableArea, false);
+      arrangeLayer(layer, &layerArea, &usableArea, false);
     }
     updateOptimizedBlur(outputArea);
 
@@ -793,6 +792,7 @@ namespace umbriel {
     for (auto& m_layerTree : m_layerTrees) {
       wlr_scene_node_set_position(&m_layerTree->node, m_sceneOutput->x, m_sceneOutput->y);
     }
+    wlr_scene_node_set_position(&m_focusedLayerTree->node, m_sceneOutput->x, m_sceneOutput->y);
     wlr_scene_node_set_position(&m_popupTree->node, m_sceneOutput->x, m_sceneOutput->y);
 
     // Content roots are clipped to this output's layout box, not repositioned: views are laid out in layout

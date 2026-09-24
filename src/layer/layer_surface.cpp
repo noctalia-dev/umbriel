@@ -144,7 +144,7 @@ namespace umbriel {
       return;
     }
 
-    wlr_scene_tree* snap = wlr_scene_tree_create(out->layerTree(m_layerSurface->current.layer));
+    wlr_scene_tree* snap = wlr_scene_tree_create(m_scene->tree->node.parent);
     if (snap == nullptr) {
       return;
     }
@@ -239,12 +239,18 @@ namespace umbriel {
     return m_layerSurface != nullptr && fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == this;
   }
 
-  void LayerSurface::reparentToLayer(uint32_t layer) {
+  void LayerSurface::updateStacking() {
     Output* out = output();
     if (out == nullptr || m_scene == nullptr) {
       return;
     }
-    wlr_scene_node_reparent(&m_scene->tree->node, out->layerTree(layer));
+    const uint32_t layer = m_layerSurface->current.layer;
+    const bool aboveFullscreen = m_mapped && layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP && hasKeyboardFocus();
+    wlr_scene_tree* parent = aboveFullscreen ? out->focusedLayerTree() : out->layerTree(layer);
+    if (m_scene->tree->node.parent != parent) {
+      wlr_scene_node_reparent(&m_scene->tree->node, parent);
+      out->markDirty(Dirty::LayerArrange);
+    }
   }
 
   void LayerSurface::focus() {
@@ -429,7 +435,7 @@ namespace umbriel {
     }
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
-      reparentToLayer(m_layerSurface->current.layer);
+      updateStacking();
       notifyDesktopStack();
     }
 

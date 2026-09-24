@@ -3,6 +3,7 @@
 # quick terminals, and panels rely on. Unlike an exclusive layer it holds no grab, so focusing a window afterward
 # moves the keyboard back.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -17,21 +18,6 @@ if [[ ! -x $POINTER || ! -x $OBSERVER || ! -x $LAYER_CLIENT ]]; then
   echo "layer focus helpers are not available"
   exit 1
 fi
-
-events() {
-  # The window observer suffixes its enter with the held-key count, so events are matched as line prefixes.
-  grep -c "^$2" "$1" 2>/dev/null || true
-}
-
-await_events() {
-  local file=$1 event=$2 expected=$3 label=$4
-  for _ in $(seq 60); do
-    (($(events "$file" "$event") >= expected)) && return 0
-    sleep 0.1
-  done
-  echo "timed out waiting for $expected '$event' on $label: $(tr '\n' '|' < "$file")"
-  return 1
-}
 
 refuse_events() {
   local file=$1 event=$2 limit=$3 label=$4

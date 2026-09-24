@@ -440,6 +440,7 @@ namespace umbriel {
     m_shellLayerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP] = wlr_scene_tree_create(&m_scene->tree);
     m_fullscreenTree = wlr_scene_tree_create(&m_scene->tree);
     m_pinnedTree = wlr_scene_tree_create(&m_scene->tree);
+    m_focusedLayerTree = wlr_scene_tree_create(&m_scene->tree);
     m_shellLayerTrees[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY] = wlr_scene_tree_create(&m_scene->tree);
     m_imPopupTree = wlr_scene_tree_create(&m_scene->tree);
     m_cheatsheetTree = wlr_scene_tree_create(&m_scene->tree);
@@ -551,8 +552,8 @@ namespace umbriel {
 
     m_cursor = std::make_unique<Cursor>(*this);
     m_seat = std::make_unique<Seat>(*this);
-    m_padKeyboardFocusChange.notify = onPadKeyboardFocusChange;
-    wl_signal_add(&m_seat->wlr()->keyboard_state.events.focus_change, &m_padKeyboardFocusChange);
+    m_keyboardFocusChange.notify = onKeyboardFocusChange;
+    wl_signal_add(&m_seat->wlr()->keyboard_state.events.focus_change, &m_keyboardFocusChange);
     m_inputMethodRelay = std::make_unique<InputMethodRelay>(*this);
     m_gestures = std::make_unique<Gestures>(*this);
     m_overview = std::make_unique<Overview>(*this);
@@ -596,7 +597,7 @@ namespace umbriel {
     wl_list_remove(&m_outputLayoutChange.link);
     wl_list_remove(&m_rendererLost.link);
     wl_list_remove(&m_toplevelCaptureRequest.link);
-    wl_list_remove(&m_padKeyboardFocusChange.link);
+    wl_list_remove(&m_keyboardFocusChange.link);
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();
