@@ -36,6 +36,8 @@ namespace umbriel {
     constexpr int kOpenSlidePx = 60;
 
     void setCompositorOpacity(wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {
+      if (buffer->slice_repeat[0] > 0)
+        return;
       float opacity = *static_cast<float*>(data);
       if (wlr_scene_surface* sceneSurface = wlr_scene_surface_try_from_buffer(buffer)) {
         if (const wlr_alpha_modifier_surface_v1_state* clientAlpha =
@@ -1975,8 +1977,9 @@ namespace umbriel {
       h = geo.height > 0 ? geo.height : usable.height;
     }
     // Floats keep their own size; only center within the usable area.
-    const int width = w;
-    const int height = h;
+    const auto insets = config().appearance.useNineRect ? config().appearance.frameInsets() : FrameInsets{};
+    const int width = w + insets.left + insets.right;
+    const int height = h + insets.top + insets.bottom;
     FloatingPoint origin = centeredOrigin(usable, width, height);
     if (position) {
       origin = {.x = usable.x + position->x, .y = usable.y + position->y};
@@ -2014,6 +2017,8 @@ namespace umbriel {
       }
       origin = clampFloatingOrigin(origin, {.x = 0, .y = 0, .width = width, .height = height}, usable);
     }
+    origin.x += insets.left;
+    origin.y += insets.top;
     return origin;
   }
 
@@ -2043,7 +2048,7 @@ namespace umbriel {
   int View::borderInset() const { return decorated() ? config().appearance.totalBorderWidth() : 0; }
 
   int View::surfaceRadius() const {
-    return decorated() && !m_toplevel->scheduled.fullscreen
+    return decorated() && !config().appearance.useNineRect && !m_toplevel->scheduled.fullscreen
         ? nestedRadius(config().appearance.cornerRadius, borderInset())
         : 0;
   }
@@ -2273,11 +2278,12 @@ namespace umbriel {
     // Copy surface buffers.
     struct CopyCtx {
       wlr_scene_tree* snap;
+      wlr_scene_tree* chrome;
       int rootX;
       int rootY;
       int buffersCopied;
     };
-    CopyCtx ctx{content, m_contentTree->node.x, m_contentTree->node.y, 0};
+    CopyCtx ctx{content, snap, m_contentTree->node.x, m_contentTree->node.y, 0};
     wlr_scene_node_for_each_buffer(
         &m_contentTree->node,
         [](wlr_scene_buffer* src, int sx, int sy, void* data) {
@@ -2285,7 +2291,8 @@ namespace umbriel {
           if (src->buffer == nullptr || !src->node.enabled) {
             return;
           }
-          wlr_scene_buffer* copy = wlr_scene_buffer_create(c->snap, src->buffer);
+          // Artwork overflow belongs outside the captured client-content clip.
+          wlr_scene_buffer* copy = wlr_scene_buffer_create(src->slice_repeat[0] > 0 ? c->chrome : c->snap, src->buffer);
           if (copy == nullptr) {
             return;
           }
@@ -2296,6 +2303,12 @@ namespace umbriel {
           if (src->src_box.width > 0 && src->src_box.height > 0) {
             wlr_scene_buffer_set_source_box(copy, &src->src_box);
           }
+          if (src->slice_repeat[0] > 0)
+            copy->point_accepts_input = [](wlr_scene_buffer*, double*, double*) { return false; };
+          wlr_scene_buffer_set_slice_tint(copy, src->slice_tint);
+          copy->slice_repeat[0] = src->slice_repeat[0];
+          copy->slice_repeat[1] = src->slice_repeat[1];
+          wlr_scene_buffer_set_filter_mode(copy, src->filter_mode);
           wlr_scene_buffer_set_transform(copy, src->transform);
           wlr_scene_buffer_set_corner_radii(copy, src->corners);
           wlr_scene_buffer_set_corner_box(copy, &src->corner_box);
@@ -2530,7 +2543,8 @@ namespace umbriel {
       height = m_toplevel->scheduled.height;
     }
     if ((width <= 0 || height <= 0) && m_workspace != nullptr) {
-      const wlr_box target = m_workspace->layout().targetBox(this);
+      const wlr_box target = config().appearance.useNineRect ? m_workspace->presentedTiledBox(this)
+                                                             : m_workspace->layout().targetBox(this);
       if (target.width > 0 && target.height > 0) {
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
         width = clampXdgWidth(target.width, hints);
@@ -3391,6 +3405,13 @@ namespace umbriel {
               target != nullptr ? target->focusedView() : nullptr
           );
         }
+        if (config().appearance.useNineRect && !wantMaximizeToEdges) {
+          const auto insets = config().appearance.frameInsets();
+          if (initial.width > 0)
+            initial.width = std::max(1, initial.width - insets.left - insets.right);
+          if (initial.height > 0)
+            initial.height = std::max(1, initial.height - insets.top - insets.bottom);
+        }
         const XdgSizeHints hints = xdgSizeHints(m_toplevel);
         const int width =
             (initial.width > 0 && !wantMaximizeToEdges) ? clampXdgWidth(initial.width, hints) : initial.width;
@@ -3991,7 +4012,8 @@ namespace umbriel {
       if (inLayout) {
         m_workspace->flushArrange();
       }
-      const wlr_box slot = inLayout ? m_workspace->layout().targetBox(this)
+      const wlr_box slot = inLayout ? (config().appearance.useNineRect ? m_workspace->presentedTiledBox(this)
+                                                                       : m_workspace->layout().targetBox(this))
                                     : wlr_box{.x = layoutTargetX(), .y = layoutTargetY(), .width = 0, .height = 0};
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
@@ -4059,11 +4081,11 @@ namespace umbriel {
         }
       }
       if (usable.width > 0 && usable.height > 0 && keepWidth > 0 && keepHeight > 0) {
-        const int decoration = config().appearance.totalBorderWidth();
-        const int minX = usable.x + decoration;
-        const int minY = usable.y + decoration;
-        const int maxX = usable.x + usable.width - decoration - keepWidth;
-        const int maxY = usable.y + usable.height - decoration - keepHeight;
+        const auto insets = config().appearance.frameInsets();
+        const int minX = usable.x + insets.left;
+        const int minY = usable.y + insets.top;
+        const int maxX = usable.x + usable.width - insets.right - keepWidth;
+        const int maxY = usable.y + usable.height - insets.bottom - keepHeight;
         floatX = std::clamp(floatX, minX, std::max(minX, maxX));
         floatY = std::clamp(floatY, minY, std::max(minY, maxY));
         m_floating.rememberPositionFraction({.x = floatX, .y = floatY}, usable);

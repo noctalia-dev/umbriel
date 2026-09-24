@@ -1226,6 +1226,19 @@ namespace umbriel {
     void readAppearance(Section& root, Config& loaded) {
       auto& appearance = loaded.appearance;
       root.sub("appearance", [&](Section& s) {
+        if (const auto* node = s.take("use_nine_rect")) {
+          const auto value = node->value<bool>();
+          if (!value)
+            throw std::runtime_error("appearance.use_nine_rect must be a boolean");
+          appearance.useNineRect = *value;
+        }
+        bool nineRectPresent = false;
+        s.sub("nine_rect", [&](Section& nine) {
+          nineRectPresent = true;
+          appearance.nineRect = readNineRect(nine, appearance.useNineRect);
+        });
+        if (appearance.useNineRect && !nineRectPresent)
+          throw std::runtime_error("appearance.nine_rect is required");
         s.integer("border_width", 0, 100, appearance.borderWidth)
             .integer("outer_border_width", 0, 100, appearance.outerBorderWidth)
             .integer("corner_radius", 0, 100, appearance.cornerRadius)
@@ -2452,9 +2465,12 @@ namespace umbriel {
       }
 
       bool drmPolicyRequested = false;
+      bool nineRectRequested = false;
       try {
         auto result = configmerge::mergeWithIncludes(rootPath);
         drmPolicyRequested = hasRequestedDrmPolicy(result.merged);
+        nineRectRequested = result.merged["appearance"]["nine_rect"].node() != nullptr
+            || result.merged["appearance"]["use_nine_rect"].node() != nullptr;
         store.setMissingIncludes(result.missingIncludes);
         for (auto& diagnostic : result.diagnostics) {
           store.addDiagnostic(std::move(diagnostic));
@@ -2504,7 +2520,8 @@ namespace umbriel {
           return d.severity == ConfigDiagnostic::Severity::Error;
         });
         if (hasErrors) {
-          return drmPolicyRequested ? ConfigParseOutcome::Fatal : ConfigParseOutcome::DefaultsAllowed;
+          return drmPolicyRequested || nineRectRequested ? ConfigParseOutcome::Fatal
+                                                         : ConfigParseOutcome::DefaultsAllowed;
         }
 
         out = std::move(loaded);
@@ -2514,7 +2531,7 @@ namespace umbriel {
       } catch (...) {
         emitDiag(ConfigDiagnostic::Severity::Error, nullptr, "config load error: unknown error");
       }
-      return drmPolicyRequested ? ConfigParseOutcome::Fatal : ConfigParseOutcome::DefaultsAllowed;
+      return drmPolicyRequested || nineRectRequested ? ConfigParseOutcome::Fatal : ConfigParseOutcome::DefaultsAllowed;
     }
 
   } // namespace

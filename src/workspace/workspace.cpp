@@ -742,8 +742,14 @@ namespace umbriel {
       } else {
         // Floating views follow committed geometry; tiled ones follow the box
         // the layout assigned them.
-        const wlr_box sized =
-            m_layout->columnOf(view) < 0 ? view->toplevel()->base->geometry : tiledTargetBox(view, usable);
+        wlr_box sized = m_layout->columnOf(view) < 0 ? view->toplevel()->base->geometry : tiledTargetBox(view, usable);
+        // A dropped tile rejoins the layout before its next arrange computes a slot.
+        // Keep its dragged size as the starting point for the ensuing layout animation.
+        if (sized.width <= 0 || sized.height <= 0) {
+          sized = view->presentedBox();
+          if (sized.width <= 0 || sized.height <= 0)
+            sized = view->toplevel()->base->geometry;
+        }
         target = {node.x + m_slideOffsetX, node.y + m_slideOffsetY, sized.width, sized.height};
       }
     }
@@ -1074,7 +1080,17 @@ namespace umbriel {
 
   wlr_box Workspace::tiledTargetBox(const View* view, const wlr_box& usable) const {
     wlr_box target = m_layout->targetBox(view);
+    // An absent slot is not a tiny client: preserve the sentinel until arrange.
+    if (target.width <= 0 || target.height <= 0)
+      return target;
     if (view == nullptr || !view->maximizedToEdges()) {
+      if (view != nullptr && config().appearance.useNineRect && view->decorated()) {
+        const auto insets = config().appearance.frameInsets();
+        target.x += insets.left;
+        target.y += insets.top;
+        target.width = std::max(1, target.width - insets.left - insets.right);
+        target.height = std::max(1, target.height - insets.top - insets.bottom);
+      }
       return target;
     }
     if (scrollingLayout() != nullptr) {

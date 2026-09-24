@@ -13,6 +13,7 @@
   systemd,
   pixman,
   cairo,
+  libpng,
   pango,
   libGL,
   libdrm,
@@ -62,6 +63,7 @@ stdenv.mkDerivation {
     lcms2
     jemalloc
     cairo
+    libpng
     pango
   ];
 

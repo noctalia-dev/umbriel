@@ -111,6 +111,7 @@ libinput_dep = dependency('libinput', version: '>=1.23')
 pixman_dep = dependency('pixman-1', version: '>=0.43.0')
 tomlplusplus_dep = dependency('tomlplusplus')
 nlohmann_json_dep = dependency('nlohmann_json')
+png_dep = dependency('libpng')
 cairo_dep = dependency('cairo')
 pangocairo_dep = dependency('pangocairo')
 libdrm_dep = dependency('libdrm', version: '>=2.4.129')
@@ -503,6 +504,7 @@ pure_sources = files(
   'src/config/value_parse.cpp',
   'src/config/section.cpp',
   'src/config/animation_shader.cpp',
+  'src/config/nine_rect.cpp',
   'src/input/modifier_tap.cpp',
   'src/input/swipe_tracker.cpp',
   'src/input/keyboard_layout.cpp',
@@ -524,6 +526,7 @@ pure_sources = files(
 )
 
 umbriel_pure_deps = [
+  png_dep,
   wlroots_dep,
   xkbcommon_dep,
   umbrielfx_dep,
@@ -592,6 +595,7 @@ core_sources = files(
   'src/scene/quit_confirm.cpp',
   'src/scene/cheatsheet.cpp',
   'src/scene/text_buffer.cpp',
+  'src/scene/nine_rect.cpp',
   'src/lock/session_lock.cpp',
   'src/overview/overview.cpp',
   'src/workspace/workspace.cpp',

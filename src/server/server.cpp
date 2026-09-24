@@ -1061,6 +1061,24 @@ namespace umbriel {
         },
         &ctx
     );
+    // Textured chrome is outside the client clip, but shares the snapshot lifecycle.
+    wlr_scene_node_for_each_buffer(
+        &m_tree->node,
+        [](wlr_scene_buffer* buffer, int, int, void* data) {
+          auto* self = static_cast<CloseSnapshot*>(data);
+          if (buffer->slice_repeat[0] <= 0 || buffer->node.parent != self->m_tree)
+            return;
+          self->m_buffers.push_back({
+              .node = buffer,
+              .baseOpacity = buffer->opacity,
+              .x = buffer->node.x,
+              .y = buffer->node.y,
+              .width = buffer->dst_width,
+              .height = buffer->dst_height,
+          });
+        },
+        this
+    );
     m_alpha.snap(1.0);
     m_alpha.retarget(0.0, durationMs, curve);
 
@@ -1100,8 +1118,7 @@ namespace umbriel {
     const int radius = static_cast<int>(std::lround(appearance.cornerRadius * ringScale));
     const BorderRing ring = makeBorderRing(width, height, radius, innerWidth, outerWidth);
     const bool ringVisible = innerWidth + outerWidth > 0;
-    const wlr_box treeClip = m_borders.empty() || !ringVisible ? wlr_box{0, 0, width, height} : ring.box;
-    wlr_scene_tree_set_clip(m_tree, &treeClip);
+    wlr_box treeClip = m_borders.empty() || !ringVisible ? wlr_box{0, 0, width, height} : ring.box;
 
     if (m_content != nullptr && m_captured.width > 0 && m_captured.height > 0) {
       // Scale the frozen buffers into the shrinking box just like a live view's presented resize. The windows_out
@@ -1123,6 +1140,18 @@ namespace umbriel {
         wlr_scene_tree_set_clip(m_content, &contentClip);
       }
     }
+
+    for (const Buffer& buffer : m_buffers) {
+      if (buffer.node->slice_repeat[0] <= 0)
+        continue;
+      const int right = std::max(treeClip.x + treeClip.width, buffer.node->node.x + buffer.node->dst_width);
+      const int bottom = std::max(treeClip.y + treeClip.height, buffer.node->node.y + buffer.node->dst_height);
+      treeClip.x = std::min(treeClip.x, buffer.node->node.x);
+      treeClip.y = std::min(treeClip.y, buffer.node->node.y);
+      treeClip.width = right - treeClip.x;
+      treeClip.height = bottom - treeClip.y;
+    }
+    wlr_scene_tree_set_clip(m_tree, &treeClip);
 
     for (auto& border : m_borders) {
       wlr_scene_node_set_enabled(&border.node->node, ringVisible);

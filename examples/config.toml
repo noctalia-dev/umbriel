@@ -47,6 +47,20 @@ files = []
 [appearance.blur]
 radius = 3
 
+# Optional textured window frame. Paths are relative to the config file defining them.
+# [appearance]
+# use_nine_rect = true
+# [appearance.nine_rect]
+# texture = "themes/frame.png"
+# slice_px = { top = 16, bottom = 16, left = 16, right = 16 }
+# content_inset_px = { top = 12, bottom = 12, left = 12, right = 12 }
+# Or use content_inset with fractions of the source image dimensions.
+# horizontal_stretch_mode = "stretch"
+# vertical_stretch_mode = "tile"
+# center_mode = "none"
+# tint_with_border_color = false
+# See examples/nine-rect/theme.toml for a complete sample theme.
+
 # Choose the background color shown if the lock screen takes too long to appear.
 # [colors]
 # backdrop = "#000000FF"

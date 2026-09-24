@@ -98,7 +98,8 @@ static inline void free_shaders(struct fx_renderer *renderer) {
 	glDeleteProgram(renderer->shaders.quad_grad.program);
 	glDeleteProgram(renderer->shaders.quad_grad_round.program);
 	glDeleteProgram(renderer->shaders.tex_rgba.program);
-	glDeleteProgram(renderer->shaders.tex_rgbx.program);
+        glDeleteProgram(renderer->shaders.tex_slice.program);
+        glDeleteProgram(renderer->shaders.tex_rgbx.program);
 	glDeleteProgram(renderer->shaders.tex_ext.program);
 	glDeleteProgram(renderer->shaders.tex_effects_rgba.program);
 	glDeleteProgram(renderer->shaders.tex_effects_rgbx.program);
@@ -463,7 +464,11 @@ static bool link_shaders(struct fx_renderer *renderer) {
 		goto error;
 	}
 
-	// Basic fragment shaders
+        if (!link_tex_program(&renderer->shaders.tex_slice, SHADER_SOURCE_TEXTURE_RGBA, false, 2)) {
+          wlr_log(WLR_ERROR, "Could not link nine-rect texture shader");
+          goto error;
+        }
+        // Basic fragment shaders
 	if (!link_tex_program(&renderer->shaders.tex_rgba,
 				SHADER_SOURCE_TEXTURE_RGBA, false, false)) {
 		wlr_log(WLR_ERROR, "Could not link tex_RGBA shader");

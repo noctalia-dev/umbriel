@@ -714,7 +714,8 @@ namespace umbriel {
       // A focus or move may have updated the scrolling offset and marked the layout stale. Flush it before reading the
       // final logical target, while leaving its visual transition animated.
       workspace->flushArrange();
-      target = workspace->layout().targetBox(&view);
+      target =
+          config().appearance.useNineRect ? workspace->presentedTiledBox(&view) : workspace->layout().targetBox(&view);
     } else {
       target.x = view.layoutTargetX();
       target.y = view.layoutTargetY();
@@ -1087,6 +1088,11 @@ namespace umbriel {
     }
 
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
+    if (button == BTN_LEFT && !modHeld && surface == nullptr && view != nullptr && config().appearance.useNineRect) {
+      m_server->focusView(view, FocusReason::Grab);
+      beginResize(view, view->tiled() ? 0 : floatResizeEdges(view), button);
+      return;
+    }
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       beginMove(view, button);
@@ -2350,8 +2356,15 @@ namespace umbriel {
     }
 
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
-    if (modHeld && under != nullptr && under->mapped()) {
-      const uint32_t edges = hoverResizeEdges(under);
+    const bool decorationHit = config().appearance.useNineRect
+        && under != nullptr
+        && m_server->seat()->wlr()->pointer_state.focused_surface == nullptr;
+    if ((modHeld || decorationHit) && under != nullptr && under->mapped()) {
+      const uint32_t edges = decorationHit
+          ? (under->tiled() && under->workspace() != nullptr
+                 ? under->workspace()->layout().resolveResizeEdges(under, 0, m_cursor->x, m_cursor->y)
+                 : floatResizeEdges(under))
+          : hoverResizeEdges(under);
       if (edges != 0) {
         const char* name = wlr_xcursor_get_resize_name(static_cast<enum wlr_edges>(edges));
         setCompositorCursor(name != nullptr ? name : "default");

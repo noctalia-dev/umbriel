@@ -370,7 +370,8 @@ namespace umbriel {
       if (Workspace* workspace = v->workspace(); workspace != nullptr && workspace->layout().columnOf(v.get()) >= 0) {
         // A window that mapped in this dispatch has its arrange still pending, so its slot is missing or stale.
         workspace->flushArrange();
-        const wlr_box box = workspace->layout().targetBox(v.get());
+        const wlr_box box = config().appearance.useNineRect ? workspace->presentedTiledBox(v.get())
+                                                            : workspace->layout().targetBox(v.get());
         entry["x"] = box.x;
         entry["y"] = box.y;
       } else {

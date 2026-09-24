@@ -883,4 +883,26 @@ UMBRIEL_TEST(aFailedReloadResultCarriesNoChangesOrEffects) {
   CHECK(!result.effects.any());
 }
 
+UMBRIEL_TEST(nineRectArtworkAndGeometryInvalidateDifferentConsumers) {
+  Config before;
+  before.appearance.useNineRect = true;
+  auto initial = std::make_shared<umbriel::NineRectAsset>();
+  initial->contentInsets = umbriel::FrameInsets{1, 2, 3, 4};
+  initial->pixels = {0xFFFFFFFFu};
+  before.appearance.nineRect.asset = initial;
+  Config identical = before;
+  identical.appearance.nineRect.asset = std::make_shared<umbriel::NineRectAsset>(*initial);
+  CHECK(!ConfigChange::between(before, identical).any());
+  CHECK(!ConfigEffects::between(before, identical).any());
+  Config artwork = before;
+  auto recolored = std::make_shared<umbriel::NineRectAsset>(*initial);
+  recolored->pixels[0] = 0xFF112233u;
+  artwork.appearance.nineRect.asset = recolored;
+  CHECK(ConfigEffects::between(before, artwork).viewChrome);
+  CHECK(ConfigEffects::between(before, artwork).overviewPresentation);
+  CHECK(!ConfigEffects::between(before, artwork).workspaceLayout);
+  recolored->contentInsets->left++;
+  CHECK(ConfigEffects::between(before, artwork).workspaceLayout);
+}
+
 int main() { return RUN_TESTS(); }

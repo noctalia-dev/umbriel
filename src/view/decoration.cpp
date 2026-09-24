@@ -35,6 +35,7 @@ namespace umbriel {
   void ViewDecoration::setBordersEnabled(bool enabled) {
     if (m_borderTree != nullptr) {
       wlr_scene_node_set_enabled(&m_borderTree->node, enabled);
+      m_nineRect.setEnabled(enabled && config().appearance.useNineRect);
     }
   }
 
@@ -44,6 +45,13 @@ namespace umbriel {
     }
 
     const auto& appearance = config().appearance;
+    wlr_scene_node_set_enabled(&m_border->node, !appearance.useNineRect);
+    if (appearance.useNineRect) {
+      m_nineRect.update(m_borderTree, appearance.nineRect.asset, contentWidth, contentHeight);
+      m_nineRect.setEnabled(m_borderTree->node.enabled);
+      return;
+    }
+    m_nineRect.clear();
     applyBorderGeometry(
         m_border,
         makeBorderRing(
@@ -67,6 +75,8 @@ namespace umbriel {
     if (m_border == nullptr) {
       return;
     }
+    m_nineRect.setAlpha(alpha);
+    m_nineRect.setTint(baseColor);
     float innerColor[4];
     float outerColor[4];
     premultiplied(innerColor, baseColor, alpha);
@@ -79,6 +89,8 @@ namespace umbriel {
       return false;
     }
     const auto& appearance = config().appearance;
+    if (appearance.useNineRect)
+      return m_nineRect.stale(contentWidth, contentHeight, appearance.nineRect.asset);
     const BorderRing ring = makeBorderRing(
         contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
     );
@@ -88,7 +100,7 @@ namespace umbriel {
   void ViewDecoration::snapshotBorders(
       wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity, std::vector<BorderSnapshot>& out
   ) const {
-    if (!bordersVisible() || m_border == nullptr) {
+    if (!bordersVisible() || m_border == nullptr || config().appearance.useNineRect) {
       return;
     }
 
@@ -152,20 +164,26 @@ namespace umbriel {
       }
       wlr_scene_node_reparent(&m_shadowContainer->node, frame);
       wlr_scene_node_lower_to_bottom(&m_shadowContainer->node);
-      wlr_scene_node_set_position(&m_shadowContainer->node, 0, 0);
+      const auto insets =
+          config().appearance.useNineRect && bordersVisible() ? config().appearance.frameInsets() : FrameInsets{};
+      wlr_scene_node_set_position(&m_shadowContainer->node, -insets.left, -insets.top);
       wlr_scene_node_set_enabled(&m_shadowContainer->node, true);
       m_shadowPooled = false;
       return;
     }
     wlr_scene_node_reparent(&m_shadowContainer->node, pool);
-    wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
+    const auto inset =
+        config().appearance.useNineRect && bordersVisible() ? config().appearance.frameInsets() : FrameInsets{};
+    wlr_scene_node_set_position(&m_shadowContainer->node, x - inset.left, y - inset.top);
     wlr_scene_node_set_enabled(&m_shadowContainer->node, enabled);
     m_shadowPooled = true;
   }
 
   void ViewDecoration::setShadowPosition(int x, int y) {
     if (m_shadowPooled) {
-      wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
+      const auto inset =
+          config().appearance.useNineRect && bordersVisible() ? config().appearance.frameInsets() : FrameInsets{};
+      wlr_scene_node_set_position(&m_shadowContainer->node, x - inset.left, y - inset.top);
     }
   }
 
@@ -179,9 +197,35 @@ namespace umbriel {
     if (m_shadowContainer == nullptr) {
       return;
     }
-    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius);
+    if (config().appearance.useNineRect && bordersVisible()) {
+      const auto insets = config().appearance.frameInsets();
+      m_shadow.update(
+          m_shadowContainer, contentWidth + insets.left + insets.right, contentHeight + insets.top + insets.bottom, 0, 0
+      );
+      if (!m_shadowPooled)
+        wlr_scene_node_set_position(&m_shadowContainer->node, -insets.left, -insets.top);
+    } else {
+      if (!m_shadowPooled)
+        wlr_scene_node_set_position(&m_shadowContainer->node, 0, 0);
+      m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius);
+    }
   }
 
+  ShadowSnapshot ViewDecoration::snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
+    auto result = m_shadow.snapshot(parent, source, inPool);
+    if (result.node != nullptr && config().appearance.useNineRect && bordersVisible()) {
+      const auto insets = config().appearance.frameInsets();
+      wlr_scene_node_set_position(
+          &result.node->node, result.node->node.x - insets.left, result.node->node.y - insets.top
+      );
+      wlr_scene_shadow_set_animation_source(result.node, nullptr, config().colors.shadow.data());
+    }
+    return result;
+  }
+
+  void ViewDecoration::setShadowAnimationSource(wlr_scene_node* source) {
+    m_shadow.setAnimationSource(config().appearance.useNineRect ? nullptr : source);
+  }
   void ViewDecoration::hideShadow() { m_shadow.hide(); }
 
   void ViewDecoration::setAlpha(float decorationAlpha, float blurAlpha) {
@@ -190,7 +234,7 @@ namespace umbriel {
   }
 
   void ViewDecoration::hideEffects() {
-    m_blur.hide();
+    hideBlur();
     m_shadow.hide();
   }
 

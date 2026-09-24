@@ -55,7 +55,22 @@ uniform float clip_radius_bottom_right;
 
 uniform float discard_transparent;
 
-#if SAMPLE_CLAMP
+#if SAMPLE_CLAMP == 2
+uniform vec4 slice_rect;
+uniform vec2 slice_repeat;
+uniform vec4 slice_tint;
+uniform vec4 sample_bounds;
+vec2 slice_uv(vec2 uv, vec4 bounds) {
+    vec2 texel = 2.0 * (bounds.xy - slice_rect.xy);
+    vec2 count = floor(slice_rect.zw / texel + 0.5);
+    vec2 local = clamp((uv - slice_rect.xy) / slice_rect.zw, 0.0, 0.9999999);
+    // Resolve to texel centers explicitly. The tiny tolerance makes an exact
+    // source-pixel boundary deterministic despite fractional-scale interpolation.
+    vec2 pixel = mod(floor(local * slice_repeat * count + 0.001), count);
+    return clamp(slice_rect.xy + (pixel + 0.5) * texel, bounds.xy, bounds.zw);
+}
+#define SAMPLE_UV slice_uv(v_texcoord, sample_bounds)
+#elif SAMPLE_CLAMP
 // Normalized texel range the fragment may sample: xy is the first sampled texel
 // center, zw the last. A cropped surface whose crop edge falls between texels
 // snaps its source box to whole texels for sharpness, which can leave the box
@@ -170,6 +185,9 @@ float corner_alpha(vec2 size, vec2 position, bool is_cutout,
 
 void main() {
 	vec4 color = convert_color(sample_texture());
+#if SAMPLE_CLAMP == 2
+    color *= vec4(slice_tint.rgb * slice_tint.a, slice_tint.a);
+#endif
 #if EFFECTS
 	float quad_corner_alpha = corner_alpha(
 		size - 0.5,

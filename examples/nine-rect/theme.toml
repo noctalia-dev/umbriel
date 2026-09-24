@@ -1,0 +1,16 @@
+# Include this file from your config, or copy this whole directory and include the copy.
+[appearance]
+use_nine_rect = true
+
+[appearance.nine_rect]
+texture = "frame.png"
+slice_px = { top = 16, bottom = 16, left = 16, right = 16 }
+# Fractions of the 48×48 source image; equivalent to 12 pixels per side.
+content_inset = { top = 0.25, bottom = 0.25, left = 0.25, right = 0.25 }
+horizontal_stretch_mode = "stretch"
+vertical_stretch_mode = "stretch"
+center_mode = "none"
+
+# The artwork already includes a glow; no additional generated shadow is needed.
+[appearance.shadow]
+enabled = false

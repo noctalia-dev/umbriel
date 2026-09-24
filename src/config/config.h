@@ -1,7 +1,9 @@
 #pragma once
+
 #include "config/animation_shader.h"
 #include "config/config_diag.h"
 #include "config/keybind_parse.h"
+#include "config/nine_rect.h"
 #include "config/value_parse.h"
 #include "core/animation.h"
 #include "layout/layout.h"
@@ -497,6 +499,8 @@ namespace umbriel {
     } colors;
 
     struct Appearance {
+      bool useNineRect = false;
+      NineRectConfig nineRect;
       int borderWidth = 2;
       int outerBorderWidth = 0;
       int cornerRadius = 10;
@@ -524,7 +528,13 @@ namespace umbriel {
       } shadow;
       bool preferNoCsd = true;
 
-      [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
+      [[nodiscard]] int totalBorderWidth() const { return useNineRect ? 0 : borderWidth + outerBorderWidth; }
+      [[nodiscard]] FrameInsets frameInsets() const {
+        if (useNineRect && nineRect.asset)
+          return nineRect.asset->content();
+        const int b = totalBorderWidth();
+        return {b, b, b, b};
+      }
       bool operator==(const Appearance&) const = default;
     } appearance;
 

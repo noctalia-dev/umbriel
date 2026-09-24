@@ -269,14 +269,15 @@ namespace umbriel {
 
     const auto& appearance = config().appearance;
     const int total = appearance.totalBorderWidth();
-    const bool decorated = total > 0 && !view->toplevel()->current.fullscreen && !view->maximizedToEdges();
-    const int scaledRadius = static_cast<int>(std::lround(appearance.cornerRadius * z));
+    const bool decorated =
+        (appearance.useNineRect || total > 0) && !view->toplevel()->current.fullscreen && !view->maximizedToEdges();
+    const int scaledRadius = appearance.useNineRect ? 0 : static_cast<int>(std::lround(appearance.cornerRadius * z));
     const int outerRadius = decorated ? scaledRadius : 0;
     const auto scaledWidth = [z](int width) {
       return width > 0 ? std::max(1, static_cast<int>(std::lround(width * z))) : 0;
     };
-    const int innerWidth = scaledWidth(appearance.borderWidth);
-    const int outerWidth = scaledWidth(appearance.outerBorderWidth);
+    const int innerWidth = appearance.useNineRect ? 0 : scaledWidth(appearance.borderWidth);
+    const int outerWidth = appearance.useNineRect ? 0 : scaledWidth(appearance.outerBorderWidth);
     const int surfaceRadius = nestedRadius(outerRadius, innerWidth + outerWidth);
     const bool borderVisible = decorated && innerWidth + outerWidth > 0;
     wlr_scene_node_set_enabled(&card.border->node, borderVisible);
@@ -289,6 +290,16 @@ namespace umbriel {
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
 
+    if (appearance.useNineRect && decorated) {
+      card.nineRect.update(card.tree, appearance.nineRect.asset, contentW, contentH, static_cast<float>(z));
+      card.nineRect.setAlpha(presentedOpacity);
+      card.nineRect.setTint(cardBorderColor(card, liveTarget));
+      card.nineRect.setEnabled(true);
+      if (card.badge)
+        wlr_scene_node_raise_to_top(&card.badge->node);
+    } else {
+      card.nineRect.clear();
+    }
     if (card.badge != nullptr) {
       // Overshooting curves can push m_progress past [0, 1] and wlr_scene_buffer_set_opacity asserts.
       const auto badgeAlpha = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
@@ -433,7 +444,11 @@ namespace umbriel {
     const auto scaledCorner = [zoom](uint16_t value) {
       return static_cast<uint16_t>(std::lround(static_cast<double>(value) * zoom));
     };
-    wlr_scene_node_set_position(&card.shadow->node, scaled(source->node.x), scaled(source->node.y));
+    const auto insets =
+        config().appearance.useNineRect && card.view->decorated() ? config().appearance.frameInsets() : FrameInsets{};
+    wlr_scene_node_set_position(
+        &card.shadow->node, scaled(source->node.x - insets.left), scaled(source->node.y - insets.top)
+    );
     wlr_scene_shadow_set_size(card.shadow, std::max(0, scaled(source->width)), std::max(0, scaled(source->height)));
     wlr_scene_shadow_set_blur_sigma(card.shadow, static_cast<float>(source->blur_sigma * zoom));
     wlr_scene_shadow_set_corner_radius(card.shadow, scaled(source->corner_radius));
@@ -1077,6 +1092,7 @@ namespace umbriel {
       ++buffersCopied;
     }
 
+    card.nineRect.snapshot(snapshot, card.tree->node.x, card.tree->node.y);
     std::vector<BorderSnapshot> borders;
     if (card.border != nullptr && card.border->node.enabled) {
       wlr_scene_border* copy = wlr_scene_border_create(snapshot, card.border->inner_color, card.border->outer_color);

@@ -375,11 +375,9 @@ namespace umbriel {
 
     wlr_scene_buffer* sceneBuffer = wlr_scene_buffer_from_node(node);
     wlr_scene_surface* sceneSurface = wlr_scene_surface_try_from_buffer(sceneBuffer);
-    if (sceneSurface == nullptr) {
+    if (sceneSurface == nullptr && sceneBuffer->slice_repeat[0] <= 0.0F)
       return nullptr;
-    }
-
-    *surface = sceneSurface->surface;
+    *surface = sceneSurface != nullptr ? sceneSurface->surface : nullptr;
     wlr_scene_tree* tree = node->parent;
     SceneNode* sceneNode = nullptr;
     while (tree != nullptr && (sceneNode = sceneNodeFrom(tree->node.data)) == nullptr) {

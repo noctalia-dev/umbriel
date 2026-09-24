@@ -39,6 +39,8 @@ namespace umbriel {
         .change = m_generation == 0 ? ConfigChange::everything() : ConfigChange::between(m_config, config),
         .effects = m_generation == 0 ? ConfigEffects::everything() : ConfigEffects::between(m_config, config),
     };
+    if (config.appearance.nineRect == m_config.appearance.nineRect)
+      config.appearance.nineRect.asset = m_config.appearance.nineRect.asset;
     m_config = std::move(config);
     m_rootPath = std::move(rootPath);
     m_fileMissing = fileMissing;

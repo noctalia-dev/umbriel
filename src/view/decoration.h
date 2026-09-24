@@ -1,6 +1,7 @@
 #pragma once
 
 #include "scene/border_rect.h"
+#include "scene/nine_rect.h"
 #include "scene/surface_blur.h"
 #include "scene/surface_shadow.h"
 
@@ -68,11 +69,9 @@ namespace umbriel {
     void setShadowEnabled(bool enabled);
     void updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius);
     void hideShadow();
-    void setShadowAnimationSource(wlr_scene_node* source) { m_shadow.setAnimationSource(source); }
+    void setShadowAnimationSource(wlr_scene_node* source);
     // `inPool` places the copy under every window of `parent`, otherwise directly below `source`.
-    [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
-      return m_shadow.snapshot(parent, source, inPool);
-    }
+    [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const;
     [[nodiscard]] const wlr_scene_shadow* shadowNode() const { return m_shadow.node(); }
 
     // Shadows follow the full view opacity. Blur follows only transition
@@ -84,6 +83,7 @@ namespace umbriel {
   private:
     wlr_scene_tree* m_borderTree = nullptr;
     wlr_scene_border* m_border = nullptr;
+    NineRectDecoration m_nineRect;
     SurfaceBlur m_blur;
     SurfaceBlurOptions m_blurOptions;
     SurfaceBlurOptions m_popupBlurOptions;

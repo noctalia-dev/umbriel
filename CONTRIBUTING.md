@@ -33,6 +33,7 @@ Direct project dependencies. Transitive dependencies are owned by their providin
 | Input | `libinput`, `xkbcommon` |
 | Graphics | `pixman`, `libdrm`, OpenGL via wlroots |
 | Text | `cairo`, `pangocairo` |
+| Decoration assets | `libpng` |
 | Memory allocation | `jemalloc` (optional, glibc) |
 | Config | `tomlplusplus` |
 | JSON (IPC) | `nlohmann/json` |

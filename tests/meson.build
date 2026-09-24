@@ -1,6 +1,8 @@
 # Unit tests. Each entry is [name, test sources, extra dependencies]. Every test gets umbriel_pure_dep; add umbriel_core_dep to the third field for a test that
 # needs compositor code. Either way a test never lists or recompiles a source.
 unit_tests = [
+  ['nine-rect', ['unit/nine_rect.cpp'], []],
+  ['nine-rect-scene', ['unit/nine_rect_scene.cpp'], [umbriel_core_dep]],
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
   ['presented-crop', ['unit/presented_crop.cpp'], []],

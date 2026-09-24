@@ -87,6 +87,8 @@ struct fx_render_texture_options {
 	// with the regular shader and no sampling clamp at all; only pass a box when
 	// the source box actually reaches texels outside it.
 	struct wlr_fbox sample_box;
+        float slice_repeat[2];
+        const float *slice_tint; // Optional straight RGBA multiplier (NULL means white).
 };
 
 struct fx_render_rect_options {
@@ -141,7 +143,7 @@ struct fx_render_blur_pass_options {
 	bool use_optimized_blur;
 	float ignore_alpha; // 0.0 = blur whole box; >0 = skip pixels with mask alpha < value
 	float blur_strength;
-	struct fx_corner_fradii corners;
+        struct fx_corner_fradii corners;
 	struct clipped_fregion clipped_region;
 };
 

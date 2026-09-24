@@ -1263,6 +1263,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     abort();
   }
 
+  const bool use_slice = fx_options->slice_repeat[0] > 0.0f;
+  if (use_slice)
+    shader = &renderer->shaders.tex_slice;
+
   struct wlr_box dst_box;
   struct wlr_fbox src_fbox;
   wlr_render_texture_options_get_src_box(options, &src_fbox);
@@ -1326,7 +1330,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     }
   }
 
-  bool has_alpha = texture->has_alpha || alpha < 1.0 || use_effects;
+  bool has_alpha = texture->has_alpha || alpha < 1.0 || use_effects || use_slice;
   TRACY_ZONE_TEXT_f("Has Alpha: %d", has_alpha);
   setup_blending(!has_alpha ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
 
@@ -1386,8 +1390,17 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   glUniform1i(shader->target_tf, color_passthrough ? 0 : target_tf);
 
   glUniform1f(shader->discard_transparent, fx_options->discard_transparent);
-  if (use_clamp) {
+  if (use_clamp || use_slice) {
     glUniform4f(shader->sample_bounds, sample_bounds[0], sample_bounds[1], sample_bounds[2], sample_bounds[3]);
+  }
+
+  if (use_slice) {
+    const float *tint = fx_options->slice_tint;
+    glUniform4f(shader->slice_tint, tint ? tint[0] : 1.0f, tint ? tint[1] : 1.0f,
+        tint ? tint[2] : 1.0f, tint ? tint[3] : 1.0f);
+    glUniform2f(shader->slice_repeat, fx_options->slice_repeat[0], fx_options->slice_repeat[1]);
+    struct wlr_fbox slice = src_fbox;
+    glUniform4f(shader->slice_rect, slice.x, slice.y, slice.width, slice.height);
   }
 
   if (use_effects) {

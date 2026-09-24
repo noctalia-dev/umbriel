@@ -562,7 +562,7 @@ static void scene_node_opaque_region(struct wlr_scene_node* node, int x, int y, 
       return;
     }
 
-    if (scene_buffer->opacity != 1) {
+    if (scene_buffer->opacity != 1 || (scene_buffer->slice_repeat[0] > 0 && scene_buffer->slice_tint[3] != 1)) {
       return;
     }
 
@@ -1787,6 +1787,9 @@ struct wlr_scene_buffer* wlr_scene_buffer_create(struct wlr_scene_tree* parent, 
   wl_list_init(&scene_buffer->buffer_release.link);
   wl_list_init(&scene_buffer->renderer_destroy.link);
   scene_buffer->opacity = 1;
+  for (size_t i = 0; i < 4; ++i) {
+    scene_buffer->slice_tint[i] = 1.0f;
+  }
   scene_buffer->luminance_multiplier = 1.0f;
 
   scene_buffer->corners = corner_radii_none();
@@ -2019,6 +2022,17 @@ void wlr_scene_buffer_send_frame_done(struct wlr_scene_buffer* scene_buffer, str
   }
 }
 
+void wlr_scene_buffer_set_slice_tint(struct wlr_scene_buffer* scene_buffer, const float color[4]) {
+  if (memcmp(scene_buffer->slice_tint, color, sizeof(scene_buffer->slice_tint)) == 0) {
+    return;
+  }
+  for (size_t i = 0; i < 4; ++i) {
+    assert(color[i] >= 0.0f && color[i] <= 1.0f);
+    scene_buffer->slice_tint[i] = color[i];
+  }
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
 void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer* scene_buffer, float opacity) {
   if (scene_buffer->opacity == opacity) {
     return;
@@ -2123,7 +2137,8 @@ scene_buffer_get_texture(struct wlr_scene_buffer* scene_buffer, struct wlr_rende
   }
 
   struct wlr_texture* texture = wlr_texture_from_buffer(renderer, scene_buffer->buffer);
-  if (texture != NULL && scene_buffer->own_buffer) {
+  // Immutable decoration sources must survive GPU upload for snapshots and renderer recreation.
+  if (texture != NULL && scene_buffer->own_buffer && scene_buffer->slice_repeat[0] <= 0.0f) {
     scene_buffer->own_buffer = false;
     wlr_buffer_unlock(scene_buffer->buffer);
   }
@@ -2704,6 +2719,13 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .sample_box = sample_box,
     };
 
+    if (scene_buffer->slice_repeat[0] > 0.0f) {
+      tex_options.base.src_box = src_box;
+      tex_options.sample_box = src_box;
+      tex_options.slice_tint = scene_buffer->slice_tint;
+      tex_options.slice_repeat[0] = scene_buffer->slice_repeat[0];
+      tex_options.slice_repeat[1] = scene_buffer->slice_repeat[1];
+    }
     // TODO: Use the base wlr_render_pass_add_texture as a fast-path in the future
     fx_render_pass_add_texture(fx_pass, &tex_options);
 
@@ -3588,6 +3610,9 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
   }
 
   if (node->type != WLR_SCENE_NODE_BUFFER) {
+    return SCANOUT_INELIGIBLE;
+  }
+  if (wlr_scene_buffer_from_node(node)->slice_repeat[0] > 0) {
     return SCANOUT_INELIGIBLE;
   }
   // Direct scanout bypasses node->visible, so a node cropped by an ancestor

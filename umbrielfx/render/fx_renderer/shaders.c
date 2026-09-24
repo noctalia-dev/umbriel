@@ -401,9 +401,9 @@ bool link_quad_grad_round_program(struct quad_grad_round_shader *shader, int max
 }
 
 bool link_tex_program(struct tex_shader *shader, enum fx_tex_shader_source source,
-		bool effects, bool sample_clamp) {
-	GLchar frag_src_part[8192];
-	GLchar frag_src[12288];
+		bool effects, int sample_clamp) {
+	GLchar frag_src_part[16384];
+	GLchar frag_src[24576];
 	snprintf(frag_src_part, sizeof(frag_src_part),
 		tex_frag_src, source, effects, sample_clamp);
 	snprintf(frag_src, sizeof(frag_src),
@@ -425,6 +425,9 @@ bool link_tex_program(struct tex_shader *shader, enum fx_tex_shader_source sourc
 	shader->pos_attrib = glGetAttribLocation(prog, "pos");
 	shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
 
+	shader->slice_rect = glGetUniformLocation(prog, "slice_rect");
+	shader->slice_tint = glGetUniformLocation(prog, "slice_tint");
+	shader->slice_repeat = glGetUniformLocation(prog, "slice_repeat");
 	shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
 	shader->sample_bounds = sample_clamp
 		? glGetUniformLocation(prog, "sample_bounds")
