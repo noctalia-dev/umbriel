@@ -2,6 +2,7 @@
 #include "cli/outputs.h"
 #include "config/config.h"
 #include "config/config_diag.h"
+#include "config/schema.h"
 #include "core/build_info.h"
 #include "core/fdlimit.h"
 #include "core/log.h"
@@ -89,6 +90,7 @@ namespace {
     }
     row("       ", "outputs", "list outputs and modes");
     row("       ", "validate [-c <config>]", "check the config file");
+    row("       ", "config schema [--json]", "count or describe every config key");
     row("       ", "help | -h | --help", "show this help");
     row("       ", "-v | -V | --version", "print version");
     std::println(
@@ -124,6 +126,49 @@ int main(int argc, char** argv) {
 
     if (std::strcmp(argv[1], "validate") == 0) {
       return validateConfig(argc, argv);
+    }
+    // A group, so later commands that read the config without a running compositor have a home.
+    if (std::strcmp(argv[1], "config") == 0) {
+      if (argc < 3 || std::strcmp(argv[2], "schema") != 0) {
+        const bool help = argc >= 3 && isHelpFlag(argv[2]);
+        printHelp(help ? stdout : stderr);
+        return help ? EXIT_SUCCESS : EXIT_FAILURE;
+      }
+      bool json = false;
+      for (int i = 3; i < argc; ++i) {
+        if (isHelpFlag(argv[i])) {
+          printHelp(stdout);
+          return EXIT_SUCCESS;
+        }
+        if (isJsonFlag(argv[i])) {
+          json = true;
+        } else {
+          printHelp(stderr);
+          return EXIT_FAILURE;
+        }
+      }
+      // The schema run loads skeleton entries that lack required fields on purpose; the warnings that earns describe
+      // no real config.
+      setConsoleLogging(false);
+      const auto schema = umbriel::buildConfigSchema();
+      if (!schema) {
+        std::println(stderr, "error: {}", schema.error());
+        return EXIT_FAILURE;
+      }
+      if (!json) {
+        std::print("{}", umbriel::configSchemaSummary(*schema));
+        return EXIT_SUCCESS;
+      }
+      // Same rule as --version: a build outside git reports "unknown", which is no revision at all.
+      const std::string_view revision = umbriel::build_info::revision();
+      const bool knownRevision = !revision.empty() && revision != "unknown";
+      std::print(
+          "{}",
+          umbriel::configSchemaJson(
+              *schema, umbriel::build_info::version(), knownRevision ? std::optional(revision) : std::nullopt
+          )
+      );
+      return EXIT_SUCCESS;
     }
     if (std::strcmp(argv[1], "outputs") == 0) {
       bool json = false;
