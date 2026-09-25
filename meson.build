@@ -588,6 +588,7 @@ core_sources = files(
   'src/scene/hint_rect.cpp',
   'src/scene/border_rect.cpp',
   'src/scene/surface_shadow.cpp',
+  'src/scene/tab_bar.cpp',
   'src/scene/config_banner.cpp',
   'src/scene/quit_confirm.cpp',
   'src/scene/cheatsheet.cpp',

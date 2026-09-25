@@ -16,6 +16,8 @@ namespace umbriel {
     // Logical pixels every wrapped continuation line is indented by, so a wrapped
     // list entry stays under its own text instead of returning to the margin.
     int hangingIndent = 0;
+    // One line cut to `maxWidth` with a trailing ellipsis, instead of wrapping.
+    bool ellipsize = false;
     // Background colour.
     double bgR = 0.0;
     double bgG = 0.0;

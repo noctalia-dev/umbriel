@@ -176,6 +176,17 @@ namespace umbriel {
     bool toggleFocusedMaximizedToEdges();
     bool toggleFocusedFullscreen();
     bool toggleFocusedFloating();
+    // Tabbed columns. Toggling tabs the focused window's column (scrolling) or area (master) and keeps that window on
+    // show; dwindle has no multi-window containers and refuses.
+    bool toggleFocusedTabbed();
+    // The tab `direction` steps from the focused one, wrapping at either end. Null outside a tabbed column, or when
+    // the column holds a single tab.
+    [[nodiscard]] View* focusTabTarget(int direction) const;
+    // The tab whose bar slot contains the layout point, null when no bar on this workspace is there.
+    [[nodiscard]] View* tabAt(double lx, double ly) const;
+    // Hide every tab a tabbed column is not showing, reveal the rest, and give each shown tab its column's bar. Cheap
+    // to repeat: views skip whatever did not change.
+    void syncTabs();
     void ensureFocusedVisible();
     void activateFocusedColumn();
     void snapVisible(const View* view);

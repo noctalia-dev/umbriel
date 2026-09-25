@@ -429,6 +429,14 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(bind.action == KeybindAction::LayoutMasterCountDecrease);
   CHECK(!parseAction("master-count-increase", bind)); // clean cutover: the old name is simply unknown
 
+  CHECK(parseAction("column-toggle-tabbed", bind));
+  CHECK(bind.action == KeybindAction::ColumnToggleTabbed);
+  CHECK(parseAction("column-focus-tab-next", bind));
+  CHECK(bind.action == KeybindAction::ColumnFocusTabNext);
+  CHECK(parseAction("column-focus-tab-previous", bind));
+  CHECK(bind.action == KeybindAction::ColumnFocusTabPrevious);
+  CHECK(!parseAction("column-toggle-tabbed:on", bind));
+
   CHECK(parseAction("window-focus-last", bind));
   CHECK(bind.action == KeybindAction::WindowFocusLast);
   CHECK(parseAction("window-consume-left", bind));

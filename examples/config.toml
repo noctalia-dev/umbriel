@@ -96,6 +96,7 @@ numlock_toggle = true
 "Mod+T" = { action = "window-toggle-floating", repeat = false }
 "Mod+Shift+T" = { action = "window-focus-switch-floating", repeat = false }
 "Mod+P" = { action = "window-toggle-pinned", repeat = false }
+"Mod+W" = { action = "column-toggle-tabbed", repeat = false }
 "Mod+M" = { action = "window-toggle-maximize-to-edges", repeat = false }
 "Mod+F" = { action = "window-toggle-fullscreen", repeat = false }
 "Mod+Ctrl+F" = { action = "window-toggle-maximize", repeat = false }

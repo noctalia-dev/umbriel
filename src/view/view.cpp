@@ -315,6 +315,8 @@ namespace umbriel {
       m_captureScene = nullptr;
     }
     if (m_sceneTree != nullptr) {
+      // The bar's tree is a child of the frame: release it first so its owner never destroys a freed node.
+      m_tabBar.reset();
       m_decoration.poolShadow(m_sceneTree, nullptr, 0, 0, false);
       wlr_scene_node_destroy(&m_sceneTree->node);
       m_sceneTree = nullptr;
@@ -461,12 +463,12 @@ namespace umbriel {
       return;
     }
     m_onActiveWorkspace = active;
+    // A hidden tab stays hidden when its workspace comes back.
+    const bool shown = active && !m_tabHidden;
     if (m_sceneTree != nullptr) {
-      wlr_scene_node_set_enabled(&m_sceneTree->node, active);
-      m_decoration.setShadowEnabled(active);
-    } else {
-      m_decoration.setShadowEnabled(active);
+      wlr_scene_node_set_enabled(&m_sceneTree->node, shown);
     }
+    m_decoration.setShadowEnabled(shown);
     if (!m_mapped) {
       return;
     }
@@ -488,8 +490,81 @@ namespace umbriel {
     }
   }
 
+  void View::setTabHidden(bool hidden) {
+    if (m_tabHidden == hidden) {
+      return;
+    }
+    m_tabHidden = hidden;
+    // A revealed tab shows exactly when its workspace does. The workspace re-presents it afterwards, which also settles
+    // switch transitions and the overview.
+    setNodeEnabled(!hidden && m_mapped && m_onActiveWorkspace);
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onViewPresentationChanged(this);
+    }
+    m_server->scheduleIpcWindowsEvent();
+  }
+
+  void View::setTabBar(std::optional<TabBarModel> model) {
+    if (m_tabBarModel == model) {
+      return;
+    }
+    m_tabBarModel = std::move(model);
+    updateTabBar(m_tabBarContentWidth);
+  }
+
+  wlr_box View::tabBarLocalBox(int contentWidth) const {
+    if (!m_tabBarModel
+        || !m_mapped
+        || m_workspace == nullptr
+        || contentWidth <= 0
+        || maximizedToEdges()
+        || m_toplevel->current.fullscreen
+        || m_toplevel->scheduled.fullscreen) {
+      return {};
+    }
+    // The column reserved the bar and the gap below it above this view's border (Layout::tabBarReserve), so the bar
+    // spans the border's outer width and ends one gap above it.
+    const ResolvedLayoutConfig& layout = m_workspace->layoutConfig();
+    const int inset = borderInset();
+    return {
+        .x = m_contentTree->node.x - inset,
+        .y = m_contentTree->node.y - inset - layout.gap - layout.tabs.barHeight,
+        .width = contentWidth + 2 * inset,
+        .height = layout.tabs.barHeight,
+    };
+  }
+
+  wlr_box View::tabBarBox() const {
+    const wlr_box local = tabBarLocalBox(m_tabBarContentWidth);
+    int frameX = 0;
+    int frameY = 0;
+    if (local.width <= 0 || m_tabBar == nullptr || !wlr_scene_node_coords(&m_sceneTree->node, &frameX, &frameY)) {
+      return {};
+    }
+    return {.x = frameX + local.x, .y = frameY + local.y, .width = local.width, .height = local.height};
+  }
+
+  void View::updateTabBar(int contentWidth) {
+    m_tabBarContentWidth = contentWidth;
+    const wlr_box local = tabBarLocalBox(contentWidth);
+    if (local.width <= 0) {
+      if (m_tabBar != nullptr) {
+        m_tabBar->setEnabled(false);
+      }
+      return;
+    }
+    if (m_tabBar == nullptr) {
+      m_tabBar = std::make_unique<TabBar>(m_sceneTree);
+    }
+    const Output* output = currentOutput();
+    const float scale = output != nullptr ? output->wlr()->scale : 1.0F;
+    m_tabBar->setAlpha(m_fadeAlpha * m_dragOpacity * m_overviewOpacity);
+    m_tabBar->update(*m_tabBarModel, m_borderFocusedState, local.x, local.y, local.width, scale);
+    m_tabBar->setEnabled(true);
+  }
+
   void View::setNodeEnabled(bool enabled) {
-    enabled = enabled && !m_tiledOpeningDeferred;
+    enabled = enabled && !m_tiledOpeningDeferred && !m_tabHidden;
     wlr_scene_node_set_enabled(&m_sceneTree->node, enabled);
     m_decoration.setShadowEnabled(enabled);
     m_server->updateIdleInhibit();
@@ -725,6 +800,9 @@ namespace umbriel {
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = fadeComposited() ? effective * m_fadeAlpha : effective;
     m_decoration.setAlpha(shadowOpacity, m_fadeAlpha * m_overviewOpacity);
+    if (m_tabBar != nullptr) {
+      m_tabBar->setAlpha(m_fadeAlpha * m_dragOpacity * m_overviewOpacity);
+    }
   }
 
   void View::setOverviewOpacity(float opacity) {
@@ -2051,6 +2129,9 @@ namespace umbriel {
   void View::setBorderFocused(bool focused) {
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
+    if (focusChanged && m_tabBarModel) {
+      updateTabBar(m_tabBarContentWidth);
+    }
 
     const auto& animation = config().animation;
     const auto& dim = animation.dimUnfocused;
@@ -2217,9 +2298,13 @@ namespace umbriel {
 
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {
     m_decoration.updateBorderGeometry(contentWidth, contentHeight);
+    updateTabBar(contentWidth);
   }
 
   void View::refreshConfigChrome() {
+    if (m_tabBar != nullptr) {
+      m_tabBar->invalidate();
+    }
     m_focusDimInitialized = false;
     setBorderFocused(false);
     updateBorderGeometry();
@@ -2236,6 +2321,7 @@ namespace umbriel {
     const auto& animation = config().animation;
     if (!m_mapped
         || m_tiledOpeningDeferred
+        || m_tabHidden
         || !m_onActiveWorkspace
         || !animation.enabled
         || !animation.windowsOut.enabled

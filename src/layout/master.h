@@ -18,6 +18,10 @@ namespace umbriel {
     struct Area {
       std::vector<View*> views;
       std::vector<double> weights;
+      // The area's tab state. It belongs to the area rather than to its views, so an emptied tabbed stack is still
+      // tabbed when the next window arrives.
+      bool tabbed = false;
+      size_t activeTab = 0;
     };
 
     [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Master; }
@@ -61,6 +65,9 @@ namespace umbriel {
     [[nodiscard]] uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
     std::unique_ptr<ResizeGrab> beginResize(View* view, uint32_t edges, const wlr_box& usable) override;
 
+    bool setColumnTabbed(int columnIndex, bool tabbed) override;
+    bool setActiveTab(const View* view) override;
+
   private:
     [[nodiscard]] double masterFrac() const;
     [[nodiscard]] bool masterIsLeft() const;
@@ -84,6 +91,13 @@ namespace umbriel {
     [[nodiscard]] const Area* visualArea(int columnIndex) const;
     [[nodiscard]] int rowInArea(const Area& area, const View* view) const;
     [[nodiscard]] uint32_t resizableEdges(const View* view) const;
+    // Row insertion and removal for every area, keeping the tab selection on its view.
+    static void insertRow(Area& area, size_t row, View* view, double weight);
+    static double eraseRow(Area& area, size_t row);
+    // Targets minus hidden tabs, which share the box of the tab on show and would otherwise tie with it.
+    [[nodiscard]] std::vector<LayoutTarget> visibleTargets() const;
+    // Height an area's rows start below: its top edge, or the tab bar's reserve when it is tabbed.
+    [[nodiscard]] int areaTopReserve(const Area& area, int height) const;
     void eraseFromAreas(View* view);
     void rebuildColumns();
 

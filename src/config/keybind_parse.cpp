@@ -177,6 +177,9 @@ namespace umbriel {
         {"column-center", "", "Center the focused column in the viewport", KeybindAction::ColumnCenter},
         {"column-focus-first", "", "Focus the first column in the workspace", KeybindAction::ColumnFocusFirst},
         {"column-focus-last", "", "Focus the last column in the workspace", KeybindAction::ColumnFocusLast},
+        {"column-focus-tab-next", "", "Focus the next tab in the focused column", KeybindAction::ColumnFocusTabNext},
+        {"column-focus-tab-previous", "", "Focus the previous tab in the focused column",
+         KeybindAction::ColumnFocusTabPrevious},
         {"column-move-left", "", "Move the focused column one position left", KeybindAction::ColumnMoveLeft},
         {"column-move-right", "", "Move the focused column one position right", KeybindAction::ColumnMoveRight},
         {"column-move-to-first", "", "Move the focused column to the first position", KeybindAction::ColumnMoveToFirst},
@@ -195,6 +198,7 @@ namespace umbriel {
          KeybindAction::ColumnMoveToWorkspaceNext},
         {"column-move-to-workspace-previous", "", "Move the focused column to the previous workspace",
          KeybindAction::ColumnMoveToWorkspacePrevious},
+        {"column-toggle-tabbed", "", "Toggle tabs for the focused column", KeybindAction::ColumnToggleTabbed},
         {"config-reload", "", "Reload the configuration file", KeybindAction::ConfigReload},
         {"dpms-off", "[<output>]", "Power off one output, or every output when bare", KeybindAction::DpmsOff,
          ActionArgKind::OptionalOutput},
@@ -674,6 +678,7 @@ namespace umbriel {
     add(KeybindAction::ToggleMaximizeToEdges, XKB_KEY_m);
     add(KeybindAction::ToggleFloating, XKB_KEY_t);
     add(KeybindAction::TogglePinned, XKB_KEY_p);
+    add(KeybindAction::ColumnToggleTabbed, XKB_KEY_w);
     // Holding the overview key would thrash open/close.
     add(KeybindAction::OverviewToggle, XKB_KEY_o).repeat = false;
 

@@ -1618,4 +1618,186 @@ UMBRIEL_TEST(snapshotUsesMemberIdsInsteadOfCapturedViewPointers) {
   CHECK_EQ(restored.layout.columns()[1].views[1], stub(12));
 }
 
+// tabbed columns
+namespace {
+
+  // One column holding stub(0..count-1) top to bottom.
+  void stackColumn(Fixture& fixture, int count) {
+    fixture.layout.insertView(stub(0), 0);
+    for (int row = 1; row < count; ++row) {
+      fixture.layout.insertViewIntoColumn(stub(row), 0, row);
+    }
+  }
+
+  // bar_height 24 plus the 8 px gap below it.
+  constexpr int kTabReserve = 32;
+
+} // namespace
+
+UMBRIEL_TEST(tabbedColumnGivesEveryTabTheColumnBoxBelowTheBar) {
+  Fixture fixture;
+  stackColumn(fixture, 3);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK(!fixture.layout.setColumnTabbed(0, true));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box first = fixture.layout.targetBox(stub(0));
+  CHECK_EQ(first.y, fixture.config.edgePad + kTabReserve);
+  CHECK_EQ(first.height, kUsable.height - 2 * fixture.config.edgePad - kTabReserve);
+  CHECK_EQ(first.width, fixture.layout.columnWidth(0, kViewport));
+  for (int row = 1; row < 3; ++row) {
+    const wlr_box box = fixture.layout.targetBox(stub(row));
+    CHECK_EQ(box.x, first.x);
+    CHECK_EQ(box.y, first.y);
+    CHECK_EQ(box.width, first.width);
+    CHECK_EQ(box.height, first.height);
+  }
+}
+
+UMBRIEL_TEST(verticalTabbedLaneReservesTheBarFromItsPrimaryExtent) {
+  Fixture fixture(ScrollingDirection::Vertical);
+  stackColumn(fixture, 2);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box box = fixture.layout.targetBox(stub(0));
+  CHECK_EQ(box.x, fixture.config.edgePad);
+  CHECK_EQ(box.width, kUsable.width - 2 * fixture.config.edgePad);
+  CHECK_EQ(box.height, fixture.layout.columnWidth(0, kVerticalViewport) - kTabReserve);
+  const wlr_box other = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(other.y, box.y);
+  CHECK_EQ(other.height, box.height);
+}
+
+UMBRIEL_TEST(onlyTheActiveTabIsShown) {
+  Fixture fixture;
+  stackColumn(fixture, 3);
+  // Recorded while untabbed, so tabbing shows the row that was last selected.
+  CHECK(!fixture.layout.setActiveTab(stub(2)));
+  CHECK(!fixture.layout.tabHidden(stub(0)));
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK_EQ(fixture.layout.columns()[0].activeTab, size_t{2});
+  CHECK(fixture.layout.tabHidden(stub(0)));
+  CHECK(fixture.layout.tabHidden(stub(1)));
+  CHECK(!fixture.layout.tabHidden(stub(2)));
+
+  CHECK(fixture.layout.setActiveTab(stub(0)));
+  CHECK(!fixture.layout.setActiveTab(stub(0)));
+  CHECK(!fixture.layout.tabHidden(stub(0)));
+  CHECK(fixture.layout.tabHidden(stub(2)));
+  CHECK(fixture.layout.tabbedColumnOf(stub(1)) == fixture.layout.columns().data());
+
+  CHECK(fixture.layout.setColumnTabbed(0, false));
+  CHECK(fixture.layout.tabbedColumnOf(stub(1)) == nullptr);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+}
+
+UMBRIEL_TEST(removingTabsKeepsTheSelectionOnItsViewOrItsPredecessor) {
+  Fixture fixture;
+  stackColumn(fixture, 4);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK(fixture.layout.setActiveTab(stub(2)));
+
+  // A row before the active tab leaves: the same view stays on show.
+  fixture.layout.removeView(stub(0));
+  CHECK(!fixture.layout.tabHidden(stub(2)));
+  // The shown tab leaves: its predecessor shows, as focus falls back to it.
+  fixture.layout.removeView(stub(2));
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+  CHECK(fixture.layout.tabHidden(stub(3)));
+  // The first tab leaves while shown: the next one takes over.
+  fixture.layout.removeView(stub(1));
+  CHECK(!fixture.layout.tabHidden(stub(3)));
+  CHECK_EQ(fixture.layout.columns()[0].activeTab, size_t{0});
+}
+
+UMBRIEL_TEST(insertingAndReorderingTabsKeepsTheShownView) {
+  Fixture fixture;
+  stackColumn(fixture, 2);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK(fixture.layout.setActiveTab(stub(1)));
+
+  fixture.layout.insertViewIntoColumn(stub(5), 0, 0);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+  CHECK(fixture.layout.tabHidden(stub(5)));
+
+  // Moving the shown tab carries the selection with it; moving another one past it does not change what shows.
+  CHECK(fixture.layout.moveViewVertical(stub(1), -1));
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+  CHECK(fixture.layout.moveViewVertical(stub(5), 1));
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 0);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+}
+
+UMBRIEL_TEST(consumeAndExpelMoveViewsInAndOutOfTabs) {
+  Fixture fixture;
+  stackColumn(fixture, 2);
+  fixture.layout.insertView(stub(7), 1);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK(!fixture.layout.setActiveTab(stub(0)));
+
+  CHECK(fixture.layout.consume(stub(7), -1));
+  CHECK(fixture.layout.tabbedColumnOf(stub(7)) != nullptr);
+  CHECK(fixture.layout.tabHidden(stub(7)));
+  CHECK(!fixture.layout.tabHidden(stub(0)));
+
+  CHECK(fixture.layout.expel(stub(0), 1));
+  CHECK(fixture.layout.tabbedColumnOf(stub(0)) == nullptr);
+  CHECK(!fixture.layout.tabHidden(stub(0)));
+  // The expelled tab's predecessor slot is empty, so the next tab shows.
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+}
+
+UMBRIEL_TEST(tabbedColumnsHaveNoRowsToResize) {
+  Fixture fixture;
+  stackColumn(fixture, 2);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  fixture.layout.arrange(kUsable);
+  CHECK_EQ(fixture.layout.heightFraction(stub(1)), 1.0);
+  CHECK(!fixture.layout.setHeightFraction(stub(1), 0.3));
+  CHECK_EQ(
+      fixture.layout.sanitizeResizeEdges(stub(1), WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT),
+      static_cast<uint32_t>(WLR_EDGE_RIGHT)
+  );
+}
+
+UMBRIEL_TEST(focusEnteringATabbedColumnLandsOnTheShownTab) {
+  Fixture fixture;
+  stackColumn(fixture, 3);
+  fixture.layout.insertView(stub(9), 1);
+  CHECK(fixture.layout.setColumnTabbed(0, true));
+  CHECK(fixture.layout.setActiveTab(stub(1)));
+  const std::vector<View*> peers = fixture.layout.focusPeers(stub(9), stub(0));
+  CHECK_EQ(peers.size(), size_t{1});
+  CHECK(peers.front() == stub(1));
+}
+
+UMBRIEL_TEST(snapshotKeepsTabsAndMovesTheSelectionOffAMissingTab) {
+  Fixture source;
+  stackColumn(source, 3);
+  CHECK(source.layout.setColumnTabbed(0, true));
+  CHECK(source.layout.setActiveTab(stub(2)));
+  const auto capture = source.layout.captureState();
+
+  Fixture complete;
+  CHECK(complete.layout.restoreState(*capture.snapshot, capture.members));
+  CHECK(complete.layout.columns()[0].tabbed);
+  CHECK(!complete.layout.tabHidden(stub(2)));
+
+  // The shown tab did not come back: its predecessor shows instead.
+  std::vector<umbriel::LayoutMember> partial;
+  for (const auto& member : capture.members) {
+    if (member.view != stub(2)) {
+      partial.push_back(member);
+    }
+  }
+  Fixture missing;
+  CHECK(missing.layout.restoreState(*capture.snapshot, partial));
+  CHECK(missing.layout.columns()[0].tabbed);
+  CHECK_EQ(missing.layout.columns()[0].views.size(), size_t{2});
+  CHECK(!missing.layout.tabHidden(stub(1)));
+  CHECK(missing.layout.tabHidden(stub(0)));
+}
+
 int main() { return RUN_TESTS(); }

@@ -408,6 +408,7 @@ namespace umbriel {
     resolved.master.newBecomesMaster = config.layout.master.newBecomesMaster;
     resolved.master.newExitsFullscreen = config.layout.master.newExitsFullscreen;
     resolved.master.position = config.layout.master.position;
+    resolved.tabs.barHeight = config.layout.tabs.barHeight;
     const int borderWidth = config.appearance.totalBorderWidth();
     resolved.totalGap = resolved.gap + 2 * borderWidth;
     resolved.edgePad = resolved.gap + borderWidth;

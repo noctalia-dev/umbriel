@@ -12,6 +12,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/animation_shader.h"
+#include "scene/tab_bar_geometry.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/registry.h"
@@ -200,7 +201,120 @@ namespace umbriel {
         m_floatingStack.push_back(view);
         restackFloatingViews();
       }
+      // Whatever focused a tab, a click on its bar, a keybind, activation, or IPC, puts that tab on show. The boxes do
+      // not move, so the switch needs no arrange.
+      if (view != nullptr && m_layout->setActiveTab(view)) {
+        syncTabs();
+      }
     }
+  }
+
+  namespace {
+
+    // Where focus enters a column from outside: the tab it shows when tabbed, else its first row.
+    View* columnEntry(const Column& column) {
+      if (column.tabbed && column.activeTab < column.views.size()) {
+        return column.views[column.activeTab];
+      }
+      return column.views.empty() ? nullptr : column.views.front();
+    }
+
+    // A tab is labelled with its title, or its app id while it has none.
+    std::string tabTitle(const View* view) {
+      const wlr_xdg_toplevel* toplevel = view->toplevel();
+      if (toplevel->title != nullptr && toplevel->title[0] != '\0') {
+        return toplevel->title;
+      }
+      return toplevel->app_id != nullptr ? toplevel->app_id : "";
+    }
+
+  } // namespace
+
+  void Workspace::syncTabs() {
+    // The focused window is always its column's shown tab, however it got into the column: a consume, a drop, or a
+    // swap moves it in without a focus change.
+    if (m_focusedView != nullptr && m_focusedView->workspace() == this) {
+      m_layout->setActiveTab(m_focusedView);
+    }
+    for (View* view : m_views) {
+      if (view == nullptr) {
+        continue;
+      }
+      const Column* column = view->mapped() && view->tiled() ? m_layout->tabbedColumnOf(view) : nullptr;
+      const bool hidden = column != nullptr && m_layout->tabHidden(view);
+      const bool revealed = view->tabHidden() && !hidden;
+      view->setTabHidden(hidden);
+      if (revealed) {
+        syncViewPresentation(view);
+      }
+      if (column == nullptr || hidden) {
+        view->setTabBar(std::nullopt);
+        continue;
+      }
+      TabBarModel model;
+      model.active = column->activeTab;
+      model.titles.reserve(column->views.size());
+      for (const View* tab : column->views) {
+        model.titles.push_back(tab != nullptr ? tabTitle(tab) : std::string{});
+      }
+      view->setTabBar(std::move(model));
+    }
+  }
+
+  bool Workspace::toggleFocusedTabbed() {
+    View* view = m_focusedView;
+    const int column = view != nullptr && view->tiled() ? m_layout->columnOf(view) : -1;
+    if (column < 0) {
+      return false;
+    }
+    const bool tabbed = !m_layout->columns()[static_cast<size_t>(column)].tabbed;
+    // Select the focused row first, so tabbing shows the window the user is looking at.
+    m_layout->setActiveTab(view);
+    if (!m_layout->setColumnTabbed(column, tabbed)) {
+      return false;
+    }
+    ensureFocusedVisible();
+    markArrange();
+    return true;
+  }
+
+  View* Workspace::focusTabTarget(int direction) const {
+    const Column* column = m_layout->tabbedColumnOf(m_focusedView);
+    if (column == nullptr || column->views.size() < 2 || direction == 0) {
+      return nullptr;
+    }
+    const auto it = std::ranges::find(column->views, m_focusedView);
+    if (it == column->views.end()) {
+      return nullptr;
+    }
+    const auto count = static_cast<std::ptrdiff_t>(column->views.size());
+    const auto index = static_cast<std::ptrdiff_t>(it - column->views.begin());
+    const auto target = (index + (direction > 0 ? 1 : -1) + count) % count;
+    return column->views[static_cast<size_t>(target)];
+  }
+
+  View* Workspace::tabAt(double lx, double ly) const {
+    for (View* view : m_views) {
+      if (view == nullptr || !view->tabBarModel()) {
+        continue;
+      }
+      const wlr_box bar = view->tabBarBox();
+      if (bar.width <= 0
+          || bar.height <= 0
+          || lx < bar.x
+          || ly < bar.y
+          || lx >= bar.x + bar.width
+          || ly >= bar.y + bar.height) {
+        continue;
+      }
+      const Column* column = m_layout->tabbedColumnOf(view);
+      if (column == nullptr) {
+        continue;
+      }
+      const int index = tabIndexAt(bar.width, column->views.size(), lx - bar.x);
+      return index >= 0 ? column->views[static_cast<size_t>(index)] : nullptr;
+    }
+    return nullptr;
   }
 
   void Workspace::syncFloatingStack(View* view) {
@@ -534,6 +648,9 @@ namespace umbriel {
         ? scrolling->scrollShiftForColumnRemoval(scrolling->columnOf(view), scrollViewportExtent())
         : 0.0;
     m_layout->removeView(view);
+    // Outside the layout a view is never a tab. Its node comes back with whatever presents it next.
+    view->setTabBar(std::nullopt);
+    view->setTabHidden(false);
     releaseLayoutMotion(view);
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
@@ -624,6 +741,9 @@ namespace umbriel {
     }
 
     m_layout->arrange(applyLayoutStruts(usable, m_layoutConfig.struts));
+    // Tab visibility follows the layout on hidden workspaces too, so a workspace always comes back showing the right
+    // tabs.
+    syncTabs();
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
     // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
     m_group->server()->scheduleIpcWindowsEvent();
@@ -1127,8 +1247,7 @@ namespace umbriel {
     if (current < 0 || target < 0 || target >= static_cast<int>(m_layout->columns().size())) {
       return nullptr;
     }
-    const Column& column = m_layout->columns()[static_cast<size_t>(target)];
-    return column.views.empty() ? nullptr : column.views.front();
+    return columnEntry(m_layout->columns()[static_cast<size_t>(target)]);
   }
 
   View* Workspace::focusWithinLane(int direction) const {
@@ -1175,8 +1294,7 @@ namespace umbriel {
     if (columns.empty()) {
       return nullptr;
     }
-    const Column& firstColumn = columns.front();
-    return firstColumn.views.empty() ? nullptr : firstColumn.views.front();
+    return columnEntry(columns.front());
   }
 
   View* Workspace::focusLastColumn() const {
@@ -1184,8 +1302,7 @@ namespace umbriel {
     if (columns.empty()) {
       return nullptr;
     }
-    const Column& lastColumn = columns.back();
-    return lastColumn.views.empty() ? nullptr : lastColumn.views.front();
+    return columnEntry(columns.back());
   }
 
   View* Workspace::focusReplacementForRemoval(const View* view) const {
@@ -1231,7 +1348,13 @@ namespace umbriel {
       }
     }
     const auto recentInColumn = [&](int targetColumn) -> View* {
-      const auto& members = columns[static_cast<size_t>(targetColumn)].views;
+      const Column& target = columns[static_cast<size_t>(targetColumn)];
+      // A tabbed column is re-entered on the tab it shows.
+      if (target.tabbed && target.activeTab < target.views.size()) {
+        View* shown = target.views[target.activeTab];
+        return mappedCandidate(shown) ? shown : nullptr;
+      }
+      const auto& members = target.views;
       for (const auto& entry : m_group->server()->registry().all()) {
         View* candidate = entry.get();
         if (mappedCandidate(candidate) && std::ranges::find(members, candidate) != members.end()) {

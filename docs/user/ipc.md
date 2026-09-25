@@ -27,7 +27,9 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 
 Window entries include IDs, application identity, process ID, geometry,
 workspace, and scratchpad membership. XWayland windows report an unknown client
-PID because they share the xwayland-satellite connection.
+PID because they share the xwayland-satellite connection. `tabbed` is true for a
+window in a [tabbed column](layout.md#tabbed-columns), and `tab_hidden` for one of
+its tabs the column is not currently showing.
 
 Workspace entries include a stable ID, display name, index, output, layout,
 occupancy, and active and focused states. Use the `named` boolean instead of

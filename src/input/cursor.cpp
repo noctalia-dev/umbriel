@@ -44,6 +44,19 @@ namespace umbriel {
       return which == ZWLR_LAYER_SHELL_V1_LAYER_TOP || which == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
     }
 
+    // The tab whose bar slot lies under a layout point on that output's active workspace. A bar is compositor-drawn, so
+    // the scene hit test never reports it: the caller asks only when what it did hit is not above the bar. Windows,
+    // their popups, and top or overlay panels are; background and bottom layer surfaces, a wallpaper, are below it.
+    View* tabAtPoint(Server& server, double lx, double ly, const View* hitView, const LayerSurface* hitLayer) {
+      if (hitView != nullptr || overviewPassthroughLayer(hitLayer)) {
+        return nullptr;
+      }
+      Output* output = server.outputFromWlr(wlr_output_layout_output_at(server.outputLayout(), lx, ly));
+      WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
+      Workspace* workspace = group != nullptr ? group->active() : nullptr;
+      return workspace != nullptr ? workspace->tabAt(lx, ly) : nullptr;
+    }
+
     // Programmatic pointer events have no input event timestamp. libinput stamps events from the same clock.
     uint32_t monotonicMsec() {
       const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -1086,6 +1099,18 @@ namespace umbriel {
       return;
     }
 
+    // A press on a tabbed column's bar is the compositor's: the left button selects the tab under it, and no client
+    // sees the press or its release.
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+      if (View* tab = tabAtPoint(*m_server, m_cursor->x, m_cursor->y, view, layer)) {
+        if (button == BTN_LEFT && m_server->exclusiveKeyboardLayer() == nullptr) {
+          m_server->focusView(tab, FocusReason::PointerPress);
+        }
+        m_swallowedButtons.push_back(button);
+        return;
+      }
+    }
+
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
@@ -1301,6 +1326,14 @@ namespace umbriel {
         overview->handleButton(BTN_LEFT, false, lx, ly, event->time_msec);
       }
       return;
+    }
+
+    if (!m_server->sessionLocked() && m_server->exclusiveKeyboardLayer() == nullptr) {
+      // A tap on a tabbed column's bar selects that tab, as a left click does.
+      if (View* tab = tabAtPoint(*m_server, lx, ly, view, layer)) {
+        m_server->focusView(tab, FocusReason::PointerPress);
+        return;
+      }
     }
 
     if (surface != nullptr) {

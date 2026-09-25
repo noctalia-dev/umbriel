@@ -169,6 +169,7 @@ Inside the session:
 | mod+R / mod+F | Cycle width / toggle fullscreen |
 | mod+T | Toggle floating for the focused window |
 | mod+P | Toggle pin for the focused window |
+| mod+W | Toggle tabs for the focused column |
 | mod+O | Toggle the overview |
 | mod+1..9 | Switch workspace on focused monitor |
 | mod+Shift+1..9 | Move focused window to workspace and follow |

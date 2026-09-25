@@ -96,6 +96,9 @@ namespace umbriel {
 
   void View::handleSetTitle() {
     updateForeignIdentity();
+    if (m_workspace != nullptr) {
+      m_workspace->syncTabs();
+    }
     // A title the client set settles the opening rules even when it is empty: an empty title is matchable, an absent
     // one is not. applyWindowRules refreshes dynamic effects itself.
     if (!m_initialRulesSettled && m_toplevel->title != nullptr) {
@@ -109,6 +112,10 @@ namespace umbriel {
   void View::handleSetAppId() {
     kLog.debug("app_id='{}'", m_toplevel->app_id != nullptr ? m_toplevel->app_id : "");
     updateForeignIdentity();
+    // An untitled tab is labelled with its app id.
+    if (m_workspace != nullptr) {
+      m_workspace->syncTabs();
+    }
     if (!m_initialRulesSettled) {
       // Title hasn't arrived yet. If no rule cares about title, we can settle now.
       // Otherwise only update non-disruptive effects; disruptive rules wait for the title.

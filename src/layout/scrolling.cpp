@@ -31,6 +31,8 @@ namespace umbriel {
         double widthFraction = 0.5;
         double savedWidthFraction = 0.0;
         double viewportCenterFraction = 0.5;
+        bool tabbed = false;
+        size_t activeTab = 0;
       };
 
       [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Scrolling; }
@@ -163,6 +165,8 @@ namespace umbriel {
           .widthFraction = column.widthFrac,
           .savedWidthFraction = column.savedWidthFrac,
           .viewportCenterFraction = 0.5,
+          .tabbed = column.tabbed,
+          .activeTab = column.activeTab,
       };
       if (viewportPrimary > 0) {
         const double center = static_cast<double>(columnX(static_cast<int>(columnIndex), viewportPrimary))
@@ -217,12 +221,18 @@ namespace umbriel {
           .bottomGapWeight = saved.bottomGapWeight,
           .widthFrac = saved.widthFraction,
           .savedWidthFrac = saved.savedWidthFraction,
+          .tabbed = saved.tabbed,
+          .activeTab = saved.activeTab,
       };
-      for (const ScrollingSnapshot::Row& row : saved.rows) {
-        View* view = (*resolved)[static_cast<size_t>(row.member)];
+      for (size_t row = 0; row < saved.rows.size(); ++row) {
+        View* view = (*resolved)[static_cast<size_t>(saved.rows[row].member)];
         if (view != nullptr) {
           column.views.push_back(view);
-          column.heightWeights.push_back(row.heightWeight);
+          column.heightWeights.push_back(saved.rows[row].heightWeight);
+        } else {
+          // A member that did not come back is a removed row: the selection keeps its view, or leaves it as a close
+          // would.
+          tabRowErased(column.activeTab, column.views.size(), column.views.size() + (saved.rows.size() - row - 1));
         }
       }
       if (!column.views.empty()) {
@@ -451,6 +461,7 @@ namespace umbriel {
     const double insertedWeight = claimInsertWeight(column, row, 1.0);
     column.views.insert(column.views.begin() + row, view);
     column.heightWeights.insert(column.heightWeights.begin() + row, insertedWeight);
+    tabRowInserted(column.activeTab, static_cast<size_t>(row), column.views.size());
   }
 
   bool ScrollingLayout::consume(View* view, int direction) {
@@ -472,9 +483,11 @@ namespace umbriel {
     if (row >= 0 && row < static_cast<int>(source.heightWeights.size())) {
       source.heightWeights.erase(source.heightWeights.begin() + row);
     }
+    tabRowErased(source.activeTab, static_cast<size_t>(std::max(0, row)), source.views.size());
     const double insertedWeight = claimInsertWeight(destination, static_cast<int>(destination.views.size()), weight);
     destination.views.push_back(view);
     destination.heightWeights.push_back(insertedWeight);
+    tabRowInserted(destination.activeTab, destination.views.size() - 1, destination.views.size());
     if (source.views.empty()) {
       m_columns.erase(m_columns.begin() + sourceColumn);
     }
@@ -497,6 +510,7 @@ namespace umbriel {
     if (row >= 0 && row < static_cast<int>(source.heightWeights.size())) {
       source.heightWeights.erase(source.heightWeights.begin() + row);
     }
+    tabRowErased(source.activeTab, static_cast<size_t>(std::max(0, row)), source.views.size());
     Column column;
     column.widthFrac = m_config->scrolling.defaultExtentFraction.value_or(0.5);
     column.views.push_back(view);
@@ -520,6 +534,7 @@ namespace umbriel {
     }
     std::swap(col.views[static_cast<size_t>(row)], col.views[static_cast<size_t>(target)]);
     std::swap(col.heightWeights[static_cast<size_t>(row)], col.heightWeights[static_cast<size_t>(target)]);
+    tabRowsSwapped(col.activeTab, static_cast<size_t>(row), static_cast<size_t>(target));
     return true;
   }
 
@@ -560,6 +575,7 @@ namespace umbriel {
     if (row >= 0 && row < static_cast<int>(column.heightWeights.size())) {
       column.heightWeights.erase(column.heightWeights.begin() + row);
     }
+    tabRowErased(column.activeTab, static_cast<size_t>(std::max(0, row)), column.views.size());
     if (column.views.empty()) {
       m_columns.erase(m_columns.begin() + columnIndex);
     }
@@ -770,6 +786,10 @@ namespace umbriel {
       const int primary =
           (v ? usable.y : usable.x) + edgePad + runningColumnX - static_cast<int>(std::lround(m_scroll));
       runningColumnX += primarySize + gap + bleed.after;
+      if (column.tabbed) {
+        arrangeTabbedColumn(column, primary, primarySize, (v ? usable.x : usable.y) + edgePad, availableCross);
+        continue;
+      }
       const int rowCount = static_cast<int>(column.views.size());
       const int gapsTotal = std::max(0, rowCount - 1) * gap;
       const int stackCross = std::max(rowCount, availableCross - gapsTotal);
@@ -805,6 +825,52 @@ namespace umbriel {
         used += crossSize;
       }
     }
+  }
+
+  void ScrollingLayout::arrangeTabbedColumn(
+      const Column& column, int primaryStart, int primarySize, int crossStart, int crossSize
+  ) {
+    // The lane's whole box, as its stacked rows would span it, less the bar across its top. Edge gap weights belong to
+    // the stacked presentation and wait there for the column to be untabbed.
+    const bool v = vertical();
+    wlr_box box = v ? wlr_box{.x = crossStart, .y = primaryStart, .width = crossSize, .height = primarySize}
+                    : wlr_box{.x = primaryStart, .y = crossStart, .width = primarySize, .height = crossSize};
+    const int reserve = std::min(tabBarReserve(), box.height - 1);
+    box.y += reserve;
+    box.height -= reserve;
+    for (View* view : column.views) {
+      const LayoutConstraints constraints = constraintsFor(view);
+      // The primary extent is the lane's, already clamped for every member; only the cross extent is per view.
+      const int width = v ? constraints.clampWidth(box.width) : box.width;
+      const int height = v ? box.height : constraints.clampHeight(box.height);
+      m_targets.push_back({.view = view, .x = box.x, .y = box.y, .width = width, .height = height});
+    }
+  }
+
+  bool ScrollingLayout::setColumnTabbed(int columnIndex, bool tabbed) {
+    if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size())) {
+      return false;
+    }
+    Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    if (column.tabbed == tabbed) {
+      return false;
+    }
+    column.tabbed = tabbed;
+    column.activeTab = column.views.empty() ? 0 : std::min(column.activeTab, column.views.size() - 1);
+    return true;
+  }
+
+  bool ScrollingLayout::setActiveTab(const View* view) {
+    const int columnIndex = columnOf(view);
+    const int row = rowOf(view);
+    if (columnIndex < 0 || row < 0) {
+      return false;
+    }
+    Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    const auto tab = static_cast<size_t>(row);
+    const bool changed = column.activeTab != tab;
+    column.activeTab = tab;
+    return changed && column.tabbed;
   }
 
   Layout::InitialSize ScrollingLayout::initialSize(
@@ -892,6 +958,9 @@ namespace umbriel {
       return 1.0;
     }
     const Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    if (column.tabbed) {
+      return 1.0;
+    }
     const int row = rowOf(view);
     // A lone row is not automatically full height: the edge gaps it can be dragged away from count towards the
     // column's weight, so the same weight-over-total ratio describes solo and stacked rows alike.
@@ -904,6 +973,9 @@ namespace umbriel {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    if (column.tabbed) {
+      return false;
+    }
     const int row = rowOf(view);
     if (column.views.size() == 1) {
       // No sibling row to trade weight with, so the remainder goes to the column's edge gaps, exactly as dragging the
@@ -1268,6 +1340,11 @@ namespace umbriel {
   uint32_t ScrollingLayout::sanitizeResizeEdges(const View* view, uint32_t edges) const {
     if (columnOf(view) == 0 && !m_config->scrolling.centerUnderfullStrip) {
       edges &= ~(vertical() ? WLR_EDGE_TOP : WLR_EDGE_LEFT);
+    }
+    // Tabs share one box, so there is no row boundary to drag and no edge gap to open.
+    if (tabbedColumnOf(view) != nullptr) {
+      edges &= vertical() ? ~static_cast<uint32_t>(WLR_EDGE_LEFT | WLR_EDGE_RIGHT)
+                          : ~static_cast<uint32_t>(WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
     }
     return edges;
   }

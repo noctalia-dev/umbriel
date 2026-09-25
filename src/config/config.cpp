@@ -939,6 +939,15 @@ namespace umbriel {
               .color("workspace_background", colors.overview.workspaceBackground)
               .color("badge", colors.overview.badge);
         });
+
+        s.sub("tab_bar", [&](Section& tabBar) {
+          tabBar.color("background", colors.tabBar.background)
+              .color("text", colors.tabBar.text)
+              .color("active", colors.tabBar.active)
+              .color("active_text", colors.tabBar.activeText)
+              .color("active_unfocused", colors.tabBar.activeUnfocused)
+              .color("active_unfocused_text", colors.tabBar.activeUnfocusedText);
+        });
       });
     }
 
@@ -1361,6 +1370,10 @@ namespace umbriel {
               .boolean("new_on_top", loaded.layout.master.newOnTop)
               .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
               .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
+        });
+        s.sub("tabs", [&](Section& st) {
+          st.integer("bar_height", 12, 96, loaded.layout.tabs.barHeight)
+              .integer("font_size", 6, 48, loaded.layout.tabs.fontSize);
         });
       });
     }
