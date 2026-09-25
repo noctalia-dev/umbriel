@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <format>
 
 namespace umbriel {
@@ -20,6 +21,21 @@ namespace umbriel {
     template <typename T> Clamped<T> clampTo(T value, T minimum, T maximum) {
       const T used = std::clamp(value, minimum, maximum);
       return {.value = used, .changed = used != value};
+    }
+
+    std::string formatColor(const std::array<float, 4>& color) {
+      std::string text = "#";
+      for (const float component : color) {
+        text += std::format("{:02x}", static_cast<int>(std::lround(std::clamp(component, 0.0F, 1.0F) * 255.0F)));
+      }
+      return text;
+    }
+
+    template <typename T> std::optional<SchemaValue> schemaDefault(const std::optional<T>& value) {
+      if (!value) {
+        return std::nullopt;
+      }
+      return SchemaValue{*value};
     }
 
   } // namespace
@@ -73,11 +89,13 @@ namespace umbriel {
   }
 
   Section& Section::custom(std::string_view key) {
+    note(key, [] { return KeySpec(); });
     m_seen.emplace_back(key);
     return *this;
   }
 
   Section& Section::freeform() {
+    note("<name>", [] { return KeySpec(); });
     m_freeform = true;
     return *this;
   }
@@ -89,6 +107,7 @@ namespace umbriel {
   }
 
   Section& Section::integer(std::string_view key, int minimum, int maximum, std::optional<int>& target) {
+    note(key, [&] { return KeySpec(SchemaType::Int).withRange(minimum, maximum).withDefault(schemaDefault(target)); });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -107,7 +126,8 @@ namespace umbriel {
   }
 
   Section& Section::integer(std::string_view key, int minimum, int maximum, int& target) {
-    std::optional<int> parsed;
+    // Seeded with the target so the schema reports it as the default; parsing only ever replaces it.
+    std::optional<int> parsed = target;
     integer(key, minimum, maximum, parsed);
     if (parsed) {
       target = *parsed;
@@ -116,6 +136,9 @@ namespace umbriel {
   }
 
   Section& Section::real(std::string_view key, double minimum, double maximum, std::optional<double>& target) {
+    note(key, [&] {
+      return KeySpec(SchemaType::Float).withRange(minimum, maximum).withDefault(schemaDefault(target));
+    });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -134,7 +157,7 @@ namespace umbriel {
   }
 
   Section& Section::real(std::string_view key, double minimum, double maximum, double& target) {
-    std::optional<double> parsed;
+    std::optional<double> parsed = target;
     real(key, minimum, maximum, parsed);
     if (parsed) {
       target = *parsed;
@@ -143,6 +166,7 @@ namespace umbriel {
   }
 
   Section& Section::text(std::string_view key, std::string& target) {
+    note(key, [&] { return KeySpec(SchemaType::String).withDefault(target); });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -157,6 +181,7 @@ namespace umbriel {
   }
 
   Section& Section::boolean(std::string_view key, std::optional<bool>& target) {
+    note(key, [&] { return KeySpec(SchemaType::Bool).withDefault(schemaDefault(target)); });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -170,7 +195,7 @@ namespace umbriel {
   }
 
   Section& Section::boolean(std::string_view key, bool& target) {
-    std::optional<bool> parsed;
+    std::optional<bool> parsed = target;
     boolean(key, parsed);
     if (parsed) {
       target = *parsed;
@@ -179,7 +204,7 @@ namespace umbriel {
   }
 
   Section& Section::color(std::string_view key, std::array<float, 4>& target) {
-    std::optional<std::array<float, 4>> parsed;
+    std::optional<std::array<float, 4>> parsed = target;
     color(key, parsed);
     if (parsed) {
       target = *parsed;
@@ -188,6 +213,10 @@ namespace umbriel {
   }
 
   Section& Section::color(std::string_view key, std::optional<std::array<float, 4>>& target) {
+    note(key, [&] {
+      return KeySpec(SchemaType::Color)
+          .withDefault(target ? std::optional<SchemaValue>(formatColor(*target)) : std::nullopt);
+    });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -207,6 +236,7 @@ namespace umbriel {
   }
 
   Section& Section::strings(std::string_view key, std::vector<std::string>& target) {
+    note(key, [&] { return KeySpec(SchemaType::StringArray).withDefault(target); });
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;

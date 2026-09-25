@@ -329,4 +329,62 @@ UMBRIEL_TEST(diagnosticsCarryTheSourcePositionOfTheOffendingKey) {
   CHECK_EQ(static_cast<int>(diagnostics[0].line), 3);
 }
 
+// The schema recorder only observes: a table read with and without one yields the same values and the same reports.
+UMBRIEL_TEST(recordingLeavesParsingUnchanged) {
+  const auto table = toml::parse(R"(
+    count = 700
+    ratio = "half"
+    tint = "#00ff0080"
+    names = ["a", ""]
+    stray = 1
+    [nested]
+    flag = true
+  )");
+
+  struct Result {
+    int count = 3;
+    double ratio = 0.25;
+    std::array<float, 4> tint{};
+    std::vector<std::string> names;
+    bool flag = false;
+    std::string messages;
+  };
+  const auto read = [&table] {
+    Result result;
+    std::vector<ConfigDiagnostic> diagnostics;
+    {
+      Section s(table, "demo", diagnostics);
+      s.integer("count", 0, 100, result.count)
+          .real("ratio", 0.0, 1.0, result.ratio)
+          .color("tint", result.tint)
+          .strings("names", result.names)
+          .sub("nested", [&](Section& nested) { nested.boolean("flag", result.flag); });
+    }
+    result.messages = messages(diagnostics);
+    return result;
+  };
+
+  const Result plain = read();
+  umbriel::SchemaRecorder recorder;
+  Result recorded;
+  {
+    const umbriel::SchemaRecording recording(recorder);
+    recorded = read();
+  }
+
+  CHECK_EQ(recorded.count, plain.count);
+  CHECK(recorded.ratio == plain.ratio);
+  CHECK(recorded.tint == plain.tint);
+  CHECK(recorded.names == plain.names);
+  CHECK(recorded.flag == plain.flag);
+  CHECK(recorded.messages == plain.messages);
+  CHECK(plain.messages.contains("unknown key demo.stray"));
+  // A default is the target as the reader found it, before the table changed it.
+  const auto& count = recorder.entries().at("demo.count");
+  CHECK(count.type == umbriel::SchemaType::Int);
+  CHECK(count.defaultValue == umbriel::SchemaValue{std::int64_t{3}});
+  CHECK(recorder.entries().contains("demo.nested.flag"));
+  CHECK(umbriel::SchemaRecorder::active() == nullptr);
+}
+
 int main() { return RUN_TESTS(); }
