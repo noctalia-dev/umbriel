@@ -46,6 +46,7 @@ pointer_release() {
   wait "$POINTER_HOLD_PID"
 }
 
+# The window observer suffixes its enter with the held-key count, so events are matched as line prefixes.
 events() {
   local count
   count=$(grep -c "^$2" "$1" 2>/dev/null) || true

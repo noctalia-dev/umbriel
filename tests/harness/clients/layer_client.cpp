@@ -1,6 +1,7 @@
-// Maps a top exclusive zone, a full-output background layer when the height is zero, or a 200x200 bottom-layer
-// square. It stays mapped until that output closes the layer surface. `keyboard=none|on-demand|exclusive` picks the
-// layer surface's keyboard interactivity, and every keyboard enter and leave the surface receives is logged.
+// Maps a top exclusive zone, a full-output background layer when the height is zero, or a 200x200 bottom-layer or
+// red overlay-layer square. It stays mapped until that output closes the layer surface. `keyboard=none|on-demand|
+// exclusive` picks the layer surface's keyboard interactivity, and every keyboard enter and leave the surface receives
+// is logged. `release-on-escape` drops the interactivity to none when Escape is released.
 
 #include <wayland-client.h>
 

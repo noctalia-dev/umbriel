@@ -359,7 +359,9 @@ namespace umbriel {
         out->markBlurBackgroundDirty();
       }
     }
-    // On-demand panels expect focus on map, but allow subsequent window focus.
+    // Protocol requires focus for exclusive. On-demand layers also take it as they map: launchers,
+    // quick terminals and panels expect the keyboard right away.
+    // A click or a focus action moves focus off them again, unlike an exclusive layer.
     if (acceptsKeyboard()) {
       focus();
     }
