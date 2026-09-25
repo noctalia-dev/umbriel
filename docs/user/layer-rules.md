@@ -47,4 +47,6 @@ Launchers and panels with search fields commonly use `on_demand`.
 
 While a fullscreen window is showing on an output, top-layer surfaces on that
 output remain underneath it and cannot receive keyboard focus, including with
-`exclusive` interactivity. Overlay-layer surfaces can still take focus.
+`exclusive` interactivity. Overlay-layer surfaces can still take focus. Once the
+fullscreen window leaves, an `exclusive` top-layer surface takes keyboard focus
+back; an `on_demand` one waits to be clicked.

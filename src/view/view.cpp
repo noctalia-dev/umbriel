@@ -3499,6 +3499,13 @@ namespace umbriel {
     if (Output* output = currentOutput()) {
       output->updateHdr();
     }
+    // The commit that leaves fullscreen uncovers top-layer surfaces, so an exclusive one takes the seat back.
+    if (m_committedFullscreen && !m_toplevel->current.fullscreen && m_mapped) {
+      if (LayerSurface* layer = m_server->exclusiveKeyboardLayer()) {
+        layer->focus();
+      }
+    }
+    m_committedFullscreen = m_toplevel->current.fullscreen;
     if (m_mapped
         && m_acceptClientMaximizeSerial
         && static_cast<int32_t>(m_toplevel->base->current.configure_serial - *m_acceptClientMaximizeSerial) >= 0) {

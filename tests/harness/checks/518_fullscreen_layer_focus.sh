@@ -88,7 +88,11 @@ for mode in on-demand exclusive; do
   assert_pixel 20 "51 136 204"
   "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
   "$UMBRIEL" settle > /dev/null
-  "$UMBRIEL_POINTER_CLIENT" 2560 720 move "$((home_x + 100))" 20 click 272
+  # Leaving fullscreen uncovers the panel: an exclusive one takes the seat back, an on-demand one waits for a click.
+  if [[ $mode == on-demand ]]; then
+    assert_no_enter
+    "$UMBRIEL_POINTER_CLIENT" 2560 720 move "$((home_x + 100))" 20 click 272
+  fi
   await_events "$PANEL_LOG" keyboard-enter 1
   "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
   await_events "$PANEL_LOG" keyboard-leave 1
