@@ -238,14 +238,6 @@ out:
 	return ok;
 }
 
-// Packed 24-bit RGB has a 3-byte pixel, so its rows are not 4-byte aligned.
-// Capture clients routinely assume a 4-byte pixel and derive a stride wl_shm
-// then rejects, and every framebuffer a driver reports these formats for can be
-// read back as 32-bit instead, so they are never worth offering for readback.
-static bool is_packed_24bit_format(uint32_t drm_format) {
-	return drm_format == DRM_FORMAT_RGB888 || drm_format == DRM_FORMAT_BGR888;
-}
-
 static uint32_t fx_texture_preferred_read_format(struct wlr_texture *wlr_texture) {
 	struct fx_texture *texture = fx_get_texture(wlr_texture);
 
@@ -270,19 +262,30 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture *wlr_texture
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	pop_fx_debug(texture->fx_renderer);
 
+	// GLES2 can always read a framebuffer back as GL_RGBA/GL_UNSIGNED_BYTE, and
+	// as GL_BGRA_EXT with EXT_read_format_bgra. Capture clients are commonly
+	// written against the BGRA byte order, but drivers report GL_RGBA for 8-bit
+	// targets without a real alpha channel (Mesa does for XRGB8888), so 8-bit
+	// readback publishes the BGRA order whenever the driver can read it.
+	// Packed 24-bit RGB (the NVIDIA proprietary driver reports GL_RGB for opaque
+	// targets) has rows that are not 4-byte aligned, which clients assuming a
+	// 4-byte pixel turn into a stride wl_shm rejects, so it is read as 32-bit.
+	bool bgra = texture->fx_renderer->exts.EXT_read_format_bgra;
 	const struct fx_pixel_format *pix_fmt =
 		get_fx_format_from_gl(gl_format, gl_type, alpha_size > 0);
-	if (pix_fmt != NULL && !is_packed_24bit_format(pix_fmt->drm_format)) {
+	switch (pix_fmt != NULL ? pix_fmt->drm_format : DRM_FORMAT_INVALID) {
+	case DRM_FORMAT_ABGR8888:
+		fmt = bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888;
+		break;
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_BGR888:
+	case DRM_FORMAT_INVALID:
+		fmt = bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888;
+		break;
+	default:
 		fmt = pix_fmt->drm_format;
-		goto out;
+		break;
 	}
-
-	// The driver either reported a format we cannot express or a packed 24-bit
-	// one (the NVIDIA proprietary driver reports GL_RGB/GL_UNSIGNED_BYTE for
-	// opaque render targets). GLES2 always allows reading a framebuffer back as
-	// GL_RGBA/GL_UNSIGNED_BYTE, and as GL_BGRA_EXT with EXT_read_format_bgra.
-	fmt = texture->fx_renderer->exts.EXT_read_format_bgra ?
-		DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888;
 
 out:
 	wlr_egl_restore_context(&prev_ctx);

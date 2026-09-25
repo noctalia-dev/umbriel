@@ -55,9 +55,15 @@ write_config() {
     fi
   } > "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload > /dev/null
-  sleep 0.3
+  finish
 }
 
+# Animation time only moves by clock-advance; 2000 ms finishes any animation in this check.
+finish() {
+  "$UMBRIEL" clock-advance 2000
+}
+
+"$UMBRIEL" clock-freeze
 "$CLIENT" shortcut-first 1200 700 > "$FIRST_LOG" 2>&1 &
 wait_for_count 1
 "$CLIENT" shortcut-second 1200 700 > "$SECOND_LOG" 2>&1 &
@@ -65,18 +71,25 @@ wait_for_count 2
 "$CLIENT" shortcut-third 1200 700 > "$THIRD_LOG" 2>&1 &
 wait_for_count 3
 focus_title shortcut-first
-sleep 0.2
+finish
 
 write_config
-pointer pause 500 tap 4 pause 500 tap 30 &
-pointer_pid=$!
-sleep 0.1
 "$UMBRIEL" msg overview-open > /dev/null
-wait "$pointer_pid"
+finish
+# One virtual keyboard sends both keys, so the key after the overview closes reaches the client it focused. The pause
+# only has to outlast the clock-advance that finishes the close.
+pointer tap 4 pause 300 tap 30 &
+pointer_pid=$!
+for _ in $(seq 40); do
+  [[ $(focused_title) == shortcut-third ]] && break
+  sleep 0.025
+done
 if [[ $(focused_title) != shortcut-third ]]; then
   echo "single-key shortcut did not focus the third card: $("$UMBRIEL" windows --json)"
   exit 1
 fi
+finish
+wait "$pointer_pid"
 for _ in $(seq 40); do
   grep -q '^key 30 1$' "$THIRD_LOG" 2>/dev/null && break
   sleep 0.05
@@ -96,9 +109,9 @@ fi
 
 write_config 'shortcut_keys = "12"'
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.5
+finish
 pointer tap 3 tap 2
-sleep 0.5
+finish
 if [[ $(focused_title) != shortcut-second ]]; then
   echo "multi-key shortcut 21 did not focus the second card: $("$UMBRIEL" windows --json)"
   exit 1
@@ -106,9 +119,9 @@ fi
 
 write_config 'shortcuts = false'
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.5
+finish
 pointer tap 2
-sleep 0.5
+finish
 if [[ $(focused_title) != shortcut-second ]]; then
   echo "disabled overview shortcuts changed focus: $("$UMBRIEL" windows --json)"
   exit 1
@@ -121,14 +134,14 @@ fi
 
 write_config
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
-sleep 0.2
+finish
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.5
+finish
 "$CLIENT" shortcut-fourth 1200 700 > "$FOURTH_LOG" 2>&1 &
 wait_for_count 4
-sleep 0.5
+finish
 pointer tap 5
-sleep 0.5
+finish
 if [[ $(active_title) != shortcut-fourth ]]; then
   echo "a new window stole an existing badge instead of receiving shortcut 4: $("$UMBRIEL" windows --json)"
   exit 1
@@ -136,15 +149,14 @@ fi
 
 write_config
 focus_title shortcut-first
-sleep 0.2
+finish
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.5
+finish
 pointer move 620 360 press "$BTN_LEFT" move 760 360 release "$BTN_LEFT"
 focus_title shortcut-second
-sleep 0.2
-sleep 0.5
+finish
 pointer tap 2
-sleep 0.5
+finish
 if [[ $(active_title) != shortcut-first ]]; then
   echo "the dragged card lost its shortcut badge after drop: $("$UMBRIEL" windows --json)"
   exit 1

@@ -30,7 +30,7 @@ dim = 0.6
 
 [[window_rule]]
 default_floating = true
-default_size = [300, 200]
+default_floating_size_px = { width = 300, height = 200 }
 
 [window_rule.match]
 title = "^scratch-"
@@ -58,7 +58,7 @@ wait_for_count 2
 
 # Show both scratchpad windows: the backdrop dims.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 grim "$BEFORE"
 before=$(sample_corner "$BEFORE")
 if (( before > 200 )); then
@@ -69,7 +69,7 @@ fi
 # Restore the first (currently scratchpad-focused) window. One scratchpad window remains, so the
 # dim must stay.
 "$UMBRIEL" msg window-toggle-scratchpad > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 if ! wait_for_count 2; then
   echo "restoring the first window changed the window count unexpectedly"
   exit 1
@@ -80,7 +80,7 @@ fi
 "$UMBRIEL" msg scratchpad-focus-next > /dev/null
 sleep 0.1
 "$UMBRIEL" msg window-toggle-scratchpad > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 
 grim "$AFTER"
 after=$(sample_corner "$AFTER")

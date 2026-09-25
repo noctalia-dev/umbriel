@@ -48,16 +48,16 @@ mode = "scrolling"
 gap = 0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 center_underfull_strip = false
 
 [output.HEADLESS-1]
 position = [0, 0]
-layout.scrolling.default_width_fraction = 0.25
+layout.scrolling.default_extent_fraction = 0.25
 
 [output.HEADLESS-2]
 position = [1280, 0]
-layout.scrolling.default_width_fraction = 0.75
+layout.scrolling.default_extent_fraction = 0.75
 
 [[window_rule]]
 match.app_id = "^output-width-left$"
@@ -80,7 +80,7 @@ wait_for_window output-width-right-old 960 HEADLESS-2
 # config. The old column retains its owned width, while the next one starts at
 # exactly 800 pixels.
 sed -i \
-  's/^layout\.scrolling\.default_width_fraction = 0\.75$/layout.scrolling.default_width_fraction = 0.625/' \
+  's/^layout\.scrolling\.default_extent_fraction = 0\.75$/layout.scrolling.default_extent_fraction = 0.625/' \
   "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 

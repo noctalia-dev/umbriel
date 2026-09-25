@@ -1,104 +1,73 @@
 # IPC
 
-Umbriel listens on a single UNIX socket. The same connection answers one-shot
-queries and, on request, becomes an event stream. `UMBRIEL_SOCKET` holds the
-path; without it, clients derive
+Umbriel exposes a local UNIX socket for queries, actions, and event
+subscriptions. Most users should use the `umbriel` command rather than connect
+to the socket directly.
+
+`UMBRIEL_SOCKET` contains the socket path. Without it, use
 `$XDG_RUNTIME_DIR/umbriel-$WAYLAND_DISPLAY.sock`.
 
-Every request is one JSON object on one line. Every reply is one JSON object on
-one line: `{"ok": …}` or `{"err": "…"}`. The `umbriel` subcommands in
-[Actions](actions.md) and `umbriel --help` are thin clients over this socket, so
-anything they do is available to a script.
+Each request and reply is one JSON object per line:
 
 ```sh
 printf '{"cmd":"workspaces"}\n' | socat -t 5 STDIO "$UMBRIEL_SOCKET"
 ```
 
+Replies use `{"ok": ...}` or `{"err": "..."}`.
+
 ## Queries
 
-| Request | CLI | Reply |
-| ------- | --- | ----- |
-| `{"cmd":"windows"}` | `umbriel windows --json` | window list with ids, app ids, titles, client pids, geometry, workspace ids, and scratchpad membership |
-| `{"cmd":"workspaces"}` | `umbriel workspaces --json` | workspace list with names, named flags, indices, outputs, active/focused/occupied flags, layout modes |
-| `{"cmd":"submap"}` | `umbriel submap --json` | active keybind submap, or `null` |
-| `{"cmd":"layers"}` | `umbriel layers --json` | layer-shell surfaces |
-| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>` | runs an [action](actions.md) |
+| Request | CLI |
+| --- | --- |
+| `{"cmd":"windows"}` | `umbriel windows --json` |
+| `{"cmd":"workspaces"}` | `umbriel workspaces --json` |
+| `{"cmd":"submap"}` | `umbriel submap --json` |
+| `{"cmd":"layers"}` | `umbriel layers --json` |
+| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>` |
 
-A connection with no subscription closes once its replies are written, and a
-connection that sends nothing is dropped after a second.
+Window entries include IDs, application identity, process ID, geometry,
+workspace, and scratchpad membership. XWayland windows report an unknown client
+PID because they share the xwayland-satellite connection.
 
-Each window entry carries `pid`, the process that owns the window's Wayland
-connection. It is `-1` when that process is unknown, which covers every
-XWayland window, since all of them belong to the single xwayland-satellite
-connection. The pid is only meaningful in the compositor's own namespaces: for
-a sandboxed client it names the process the sandbox engine connected, and paths
-under `/proc/<pid>` resolve in that sandbox's mount namespace.
-
-A window entry's `x` and `y` are its layout slot for a tiled window and its own
-position for a float. `w` and `h` are the size the window covers on screen.
-That is normally the window geometry the client committed, but a client that
-acks a configure and redraws at the new size without updating its window
-geometry, as Electron does, is reported at the size it actually covers.
-
-Each window entry also carries a `scratchpad` string. It is the configured
-scratchpad name while the window is stored, `"default"` for the implicit
-scratchpad, and an empty string for a regular workspace window. A stored window
-has an empty `workspace`; its restore destination is kept internally. The
-human `umbriel windows` output appends `[scratchpad=<name>]` to stored windows.
-
-Each workspace entry carries a `named` boolean. It is `true` for a member of a
-static string list or a persistent named member materialized within a dynamic
-inventory. It is `false` for an anonymous position created by a static count or
-dynamic inventory. Clients should use `named` rather than guessing from the
-`name` string because an explicit name such as `"2"` is valid. An anonymous
-workspace can change `name` and `index` when it moves or when dynamic neighbors
-are pruned; its `id` remains stable for that workspace's lifetime.
-
-Each workspace entry also carries an `occupied` boolean: `true` while the
-workspace holds at least one window, including windows that are not currently
-visible. A window stored in a scratchpad belongs to no workspace, so it does
-not make its return destination occupied.
+Workspace entries include a stable ID, display name, index, output, layout,
+occupancy, and active and focused states. Use the `named` boolean instead of
+guessing from the display name; an explicitly named workspace may still be
+called `"2"`.
 
 ## Event stream
+
+Subscribe with:
 
 ```json
 {"cmd":"subscribe","events":["workspaces","windows"]}
 ```
 
-The connection stays open. Umbriel first writes the current state of every
-subscribed family, one line each, then a line whenever that family changes. Each
-line is `{"event":"<family>","data":…}`.
+The connection first receives the current state of each family, then a new
+snapshot whenever that family changes:
 
-| Family | Fires on |
-| ------ | -------- |
-| `theme` | color or corner-radius changes from a config reload; see [payload](#theme-payload) |
-| `overview` | the overview opening or closing |
-| `keyboard_layout` | layout switches; skipped in the initial state when no keyboard exists |
-| `windows` | window open, close, focus, title, app id, geometry, workspace, scratchpad membership, floating state |
-| `workspaces` | layout mode, activation, occupancy, names, named status, indices, workspace or output membership, and the cursor crossing to another output, which moves `focused` without activating a workspace |
-| `submap` | the active keybind submap changing; `null` is the default context |
+```json
+{"event":"workspaces","data":[]}
+```
 
-Subscribing to an unknown family answers
-`{"err":"unknown subscription event: <name>"}` and closes, so a typo fails
-immediately rather than waiting on a stream that never opens.
+| Family | Changes reported |
+| --- | --- |
+| `theme` | Colors and corner radius |
+| `overview` | Overview opened, or started closing |
+| `keyboard_layout` | Active keyboard layout |
+| `windows` | Window identity, geometry, focus, state, workspace, or scratchpad |
+| `workspaces` | Inventory, layout, activity, occupancy, output, or focus |
+| `submap` | Active keybind submap |
 
-Each family is a **full snapshot**, not a delta: the payload is the same
-structure the matching query returns. A client replaces its state with the
-newest line and never reassembles it from increments, so a stream cannot
-desync. Window and workspace updates are coalesced per event-loop iteration,
-and a payload identical to the last one sent for that family is dropped, so a
-resize that ends where it started wakes nobody.
+Payloads are full snapshots rather than deltas. Replace local state with the
+newest event instead of trying to merge increments. Identical consecutive
+payloads are omitted.
 
-Events are the only way to follow a workspace's **layout mode**: the
-`ext-workspace-v1` protocol publishes workspace lists, names, and activation to
-any Wayland client, but it has no concept of a layout, and Umbriel selects
-scrolling, dwindle, or master per workspace.
+An unknown family returns an error and closes the subscription.
 
 ### Theme payload
 
-The `theme` payload mirrors the color configuration. Every color is an
-`#RRGGBBAA` string, and `corner_radius` is an integer count of logical pixels.
-The example is wrapped for readability; the stream writes it as one line.
+The `theme` event mirrors `[colors]`, `[colors.border]`,
+`[colors.overview]`, and `appearance.corner_radius`:
 
 ```json
 {"event":"theme","data":{
@@ -128,12 +97,11 @@ The example is wrapped for readability; the stream writes it as one line.
 }}
 ```
 
-The flat keys, the `border` object, and the `overview` object carry `[colors]`,
-`[colors.border]`, and `[colors.overview]` as written in the configuration, and
-`corner_radius` carries `appearance.corner_radius`. See
-[Appearance](appearance.md#colors) for what each color paints.
+See [Appearance](appearance.md#colors) for the meaning of each value.
 
 ### From the command line
+
+The CLI exposes the same event stream:
 
 ```sh
 umbriel subscribe workspaces
@@ -141,20 +109,15 @@ umbriel subscribe workspaces,windows
 umbriel subscribe submap
 ```
 
-One JSON line per event on stdout, flushed as it arrives, until the compositor
-exits or the reader closes the pipe. This is the same stream as the socket
-request, so a bar, a status script, or a plugin can consume it without a socket
-library:
+It writes one JSON line per event until Umbriel exits or the reader closes:
 
 ```sh
-umbriel subscribe workspaces | while read -r line; do
-  jq -r '.data[] | select(.focused) | "\(.output) \(.name) \(.layout)"' <<< "$line"
-done
+umbriel subscribe workspaces |
+  jq -r '.data[] | select(.focused) | "\(.output) \(.name) \(.layout)"'
 ```
 
 ## Inspection commands
 
 `umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and
-`umbriel keyboard-layouts` print human-readable state; each takes `--json` for
-the machine-readable form. `umbriel validate` checks a config file without a
-running compositor.
+`umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
+`umbriel validate` checks a configuration without a running compositor.

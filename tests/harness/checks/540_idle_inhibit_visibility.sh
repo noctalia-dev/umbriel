@@ -17,7 +17,7 @@ if ! grep -q '^mapped$' "$CLIENT_LOG"; then
   exit 1
 fi
 
-sleep 0.35
+sleep 0.35 # real time: outlast the idle timeout
 if grep -q '^idled$' "$CLIENT_LOG"; then
   echo "visible surface failed to inhibit idle"
   exit 1

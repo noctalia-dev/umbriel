@@ -40,6 +40,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [output.HEADLESS-1]
 workspaces = ["2", "CHAT", "LEFT_LATE"]

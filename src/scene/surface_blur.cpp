@@ -34,14 +34,14 @@ namespace umbriel {
       return lookup.buffer;
     }
 
-    bool isTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {
-      const pixman_box32_t box = {
-          surfaceBox.x, surfaceBox.y, surfaceBox.x + surfaceBox.width, surfaceBox.y + surfaceBox.height
-      };
-      return pixman_region32_contains_rectangle(&surface->opaque_region, &box) != PIXMAN_REGION_IN;
-    }
-
   } // namespace
+
+  bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {
+    const pixman_box32_t box = {
+        surfaceBox.x, surfaceBox.y, surfaceBox.x + surfaceBox.width, surfaceBox.y + surfaceBox.height
+    };
+    return pixman_region32_contains_rectangle(&surface->opaque_region, &box) != PIXMAN_REGION_IN;
+  }
 
   void SurfaceBlur::update(
       wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox, int cornerRadius,
@@ -64,7 +64,7 @@ namespace umbriel {
         && options.enabled.value_or(false)
         && drawBox.width > 0
         && drawBox.height > 0
-        && (surfaceOpacity < 1.0F || isTransparent(surface, surfaceBox));
+        && (surfaceOpacity < 1.0F || surfaceTransparent(surface, surfaceBox));
     if (!want) {
       if (m_node != nullptr) {
         wlr_scene_node_set_enabled(&m_node->node, false);

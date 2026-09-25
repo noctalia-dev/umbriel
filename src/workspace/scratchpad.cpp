@@ -36,8 +36,7 @@ namespace umbriel {
     }
   } // namespace
 
-  ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root, wlr_scene_tree* shadowRoot)
-      : m_server(&server), m_root(root), m_shadowRoot(shadowRoot) {
+  ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root) : m_server(&server), m_root(root) {
     m_server->registerAnimatable(this);
     if (config().scratchpads.empty()) {
       m_scratchpads.try_emplace(std::string(kImplicitScratchpad));
@@ -163,20 +162,33 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::assignByWindowRule(
-      View* view, std::string_view name, Output* placementOutput, const WindowRuleAdmission& options
+      View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options
   ) {
-    return admit(view, name, placementOutput, Admission::WindowRule, options);
+    return admit(view, name, placementOutput, Admission::Automatic, options);
+  }
+
+  bool ScratchpadManager::assignFromParent(View* view, const View* parent, const AutomaticAdmission& options) {
+    const Entry* parentEntry = findEntry(parent);
+    const Scratchpad* scratchpad = parentEntry != nullptr ? findScratchpad(parentEntry->scratchpad) : nullptr;
+    if (view == nullptr
+        || parent == nullptr
+        || view == parent
+        || !parent->mapped()
+        || !parent->onActiveWorkspace()
+        || scratchpad == nullptr
+        || !scratchpad->visible
+        || scratchpad->output == nullptr) {
+      return false;
+    }
+    const std::string name = parentEntry->scratchpad;
+    return admit(view, name, scratchpad->output, Admission::Automatic, options);
   }
 
   bool ScratchpadManager::admit(
-      View* view, std::string_view name, Output* invokingOutput, Admission admission, const WindowRuleAdmission& options
+      View* view, std::string_view name, Output* invokingOutput, Admission admission, const AutomaticAdmission& options
   ) {
     Scratchpad* scratchpad = findScratchpad(name);
-    if (scratchpad == nullptr
-        || invokingOutput == nullptr
-        || m_server == nullptr
-        || m_root == nullptr
-        || m_shadowRoot == nullptr) {
+    if (scratchpad == nullptr || invokingOutput == nullptr || m_server == nullptr || m_root == nullptr) {
       return false;
     }
     if (view == nullptr || !view->mapped()) {
@@ -298,8 +310,7 @@ namespace umbriel {
       view->moveToWorkspace(nullptr);
       m_entries.push_back(std::move(*newEntry));
     }
-    wlr_scene_node_reparent(&view->sceneTree()->node, m_root);
-    view->reparentShadow(m_shadowRoot);
+    view->setSceneParent(m_root);
     view->setInScratchpad(true);
     const bool visible = scratchpad->visible;
     setVisible(name, visible, admission == Admission::Interactive);
@@ -488,8 +499,7 @@ namespace umbriel {
       }
 
       if (state->visible && output != nullptr) {
-        wlr_scene_node_reparent(&view->sceneTree()->node, m_root);
-        view->reparentShadow(m_shadowRoot);
+        view->setSceneParent(m_root);
         view->setOnActiveWorkspace(true);
         std::erase(m_hidingViews, view);
         view->setNodeEnabled(true);
@@ -822,6 +832,16 @@ namespace umbriel {
     return entry != nullptr && entry->scratchpad == name;
   }
 
+  View* ScratchpadManager::focusedOn(const Output* output) const {
+    if (output == nullptr
+        || m_focusedView == nullptr
+        || !m_focusedView->mapped()
+        || !m_focusedView->onActiveWorkspace()) {
+      return nullptr;
+    }
+    return outputFor(m_focusedView) == output ? m_focusedView : nullptr;
+  }
+
   void ScratchpadManager::noteFocus(View* view) {
     m_focusedView = nullptr;
     Entry* entry = findEntry(view);
@@ -858,8 +878,7 @@ namespace umbriel {
     if (view == nullptr || entry == nullptr || scratchpad == nullptr || scratchpad->output == nullptr) {
       return;
     }
-    wlr_scene_node_reparent(&view->sceneTree()->node, m_root);
-    view->reparentShadow(m_shadowRoot);
+    view->setSceneParent(m_root);
     view->setOnActiveWorkspace(scratchpad->visible);
     view->enterForeignOutput(scratchpad->output);
     view->setNodeEnabled(scratchpad->visible);
@@ -943,7 +962,6 @@ namespace umbriel {
     }
     std::erase(m_hidingViews, view);
 
-    view->reparentShadow(nullptr);
     view->setInScratchpad(false);
     Output* restoreOutput = m_server->outputFromName(entry.returnOutput);
     if (restoreOutput == nullptr) {
@@ -1014,7 +1032,6 @@ namespace umbriel {
     }
     const std::string name = iterator->scratchpad;
     Scratchpad* scratchpad = findScratchpad(name);
-    view->reparentShadow(nullptr);
     view->setInScratchpad(false);
     if (m_focusedView == view) {
       m_focusedView = nullptr;

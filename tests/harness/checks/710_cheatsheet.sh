@@ -7,7 +7,7 @@ readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 
-printf '\n[layout.scrolling]\ndefault_width_fraction = 0.5\n' >> "$UMBRIEL_CONFIG"
+printf '\n[layout.scrolling]\ndefault_extent_fraction = 0.5\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 alive() {
@@ -91,7 +91,7 @@ wait_for_focus_at 10
 # The dismissing press is consumed, so focus stays on the left window even
 # though the cursor is over the right one.
 pointer move "$RIGHT_X" "$MID_Y" click "$BTN_LEFT"
-sleep 0.5
+"$UMBRIEL" settle
 if [[ $(focused_x) != "10" ]]; then
   echo "the dismissing click reached the window under the cursor: focus moved to $(focused_x)"
   exit 1

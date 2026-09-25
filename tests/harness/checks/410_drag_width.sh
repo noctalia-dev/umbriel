@@ -32,7 +32,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [[window_rule]]
 match.title = "^wide-drag$"
-default_width = 0.75
+default_scrolling_extent = 0.75
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -40,7 +40,7 @@ spawn_client terminal-drag
 wait_for_count 1
 spawn_client wide-drag
 wait_for_count 2
-sleep 0.5
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 wide_before=$(jq -r '.[] | select(.title == "wide-drag") | .w' <<< "$windows")
@@ -55,12 +55,12 @@ start_y=$(jq -r --argjson origin "$OVERVIEW_Y" --argjson zoom "$OVERVIEW_ZOOM" \
   '.[] | select(.title == "wide-drag") | ($origin + ((.y + .h / 2) * $zoom) | round)' <<< "$windows")
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 # The left side of the overview row maps to the gap before the terminal.
 pointer move "$start_x" "$start_y" press "$BTN_LEFT" move 345 360 release "$BTN_LEFT"
-sleep 0.2
+"$UMBRIEL" settle
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 wide_after=$(jq -r '.[] | select(.title == "wide-drag") | .w' <<< "$windows")

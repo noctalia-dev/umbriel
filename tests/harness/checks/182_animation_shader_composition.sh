@@ -61,22 +61,26 @@ if ! (( blue > 220 && red < 30 )); then
   echo "logical right side was not blue on rotated/scaled output: $red $blue"
   exit 1
 fi
+# Animation time only moves by clock-advance: the overview sample lands halfway through its 4000 ms timeline, while
+# the window's own opening shader is still running.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.25
+"$UMBRIEL" clock-advance 2000
 grim -s 1 -o "$home" "$IMAGE"
-green=$(magick "$IMAGE" -fx '(g > 0.9 && r < 0.1 && b < 0.1) ? 1 : 0' -format '%[fx:round(mean*w*h)]' info:)
+green=$("$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'g > 0.9 && r < 0.1 && b < 0.1')
 if (( green < 1000 )); then
   echo "outer shader did not sample the inner window effect: $green green pixels"
   exit 1
 fi
 grim -s 1 -o "$neighbour" "$IMAGE"
-green=$(magick "$IMAGE" -fx '(g > 0.9 && r < 0.1 && b < 0.1) ? 1 : 0' -format '%[fx:round(mean*w*h)]' info:)
+green=$("$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'g > 0.9 && r < 0.1 && b < 0.1')
 if (( green > 10 )); then
   echo "window effect escaped to neighbouring output: $green green pixels"
   exit 1
 fi
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 4.2
+"$UMBRIEL" clock-advance 8000
+"$UMBRIEL" settle
 
 # An invalid program must produce a labelled compiler error and leave the
 # compositor able to map another client through its built-in animation.

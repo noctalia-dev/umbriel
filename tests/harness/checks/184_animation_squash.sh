@@ -27,6 +27,8 @@ offset_x = 0
 offset_y = 0
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
+# Animation time only moves by clock-advance: the middle sample lands at 1000 ms of the 2400 ms timeline.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL_UNMAP_CLIENT" squash-example 700 700 > "$UMBRIEL_RUNTIME_DIR/client.log" 2>&1 &
 for _ in $(seq 80); do
   window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "squash-example")')
@@ -34,8 +36,7 @@ for _ in $(seq 80); do
   sleep 0.025
 done
 [[ -n $window ]]
-# Allow the initial configure/commit to settle before choosing edge samples.
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "squash-example")')
 x=$(jq -r '.x + (.w / 2 | floor)' <<< "$window")
 top=$(jq -r '.y + 4' <<< "$window")
@@ -44,7 +45,7 @@ bottom=$(jq -r '.y + .h - 6' <<< "$window")
 blue_at() {
   magick "$IMAGE" -crop "2x2+$x+$1" -format '%[fx:round(mean.b*255)]' info:
 }
-sleep 0.85
+"$UMBRIEL" clock-advance 850
 grim "$IMAGE"
 if (( $(blue_at "$top") > 10 || $(blue_at "$bottom") > 10 || $(blue_at "$middle") < 130 )); then
   echo "squash did not compress both edges while preserving the center"
@@ -57,7 +58,8 @@ for edge in "$top" "$bottom"; do
     exit 1
   fi
 done
-sleep 1.6
+"$UMBRIEL" clock-advance 2400
+"$UMBRIEL" settle
 grim "$IMAGE"
 if (( $(blue_at "$top") < 130 || $(blue_at "$bottom") < 130 || $(blue_at "$middle") < 130 )); then
   echo "squash did not restore edge and center pixels at x=$x y=$top,$middle,$bottom"

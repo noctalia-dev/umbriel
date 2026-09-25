@@ -98,6 +98,13 @@ struct fx_animation_shader *fx_animation_shader_ref(struct fx_animation_shader *
 	return shader;
 }
 
+void fx_animation_shader_set_shape_preserving(struct fx_animation_shader *shader,
+		bool shape_preserving) {
+	if (shader != NULL) {
+		shader->shape_preserving = shape_preserving;
+	}
+}
+
 void fx_animation_shader_unref(struct fx_animation_shader *shader) {
 	if (shader == NULL || --shader->references != 0) {
 		return;

@@ -26,26 +26,26 @@ wait_for_windows() {
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [[window_rule]]
 match.title = "^named-later$"
 default_scrolling_column = "browser-stack"
 default_scrolling_column_order = 20
-default_width = 0.6
+default_scrolling_extent = 0.6
 
 [[window_rule]]
 match.title = "^named-first$"
 default_scrolling_column = "browser-stack"
-default_size = [300, 300]
+default_floating_size_px = { width = 300, height = 300 }
 default_scrolling_column_order = 10
-default_width = 0.25
+default_scrolling_extent = 0.25
 
 [[window_rule]]
 match.title = "^named-delayed$"
 default_scrolling_column = "browser-stack"
 default_scrolling_column_order = 15
-default_width = 0.4
+default_scrolling_extent = 0.4
 
 [[window_rule]]
 match.title = "^named-max-order$"
@@ -55,6 +55,14 @@ default_scrolling_column_order = 2147483647
 [[window_rule]]
 match.title = "^named-unordered$"
 default_scrolling_column = "browser-stack"
+
+[[window_rule]]
+match.title = "^named-floating-joiner$"
+default_floating = true
+default_floating_size_px = { width = 300, height = 200 }
+default_scrolling_column = "browser-stack"
+default_scrolling_column_order = 12
+default_scrolling_extent = 0.25
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -74,7 +82,7 @@ for _ in $(seq 60); do
   sleep 0.1
 done
 
-sleep 0.2
+"$UMBRIEL" settle
 first_configure=$(awk -F= '/^configured-size=/{print $2; exit}' "$FIRST_LOG")
 first_arranged=$(awk -F= '/^configured-size=/{size=$2} END {print size}' "$FIRST_LOG")
 if [[ $first_configure != "$first_arranged" ]]; then
@@ -143,9 +151,32 @@ if ((delayed_x < 0)); then
   failed=1
 fi
 if ((unrelated_x - first_x <= 640)); then
-  echo "a joining client changed the named column width: $windows"
+  echo "a joining client changed the named column extent: $windows"
+  failed=1
+fi
+
+# A floating member may carry a future scrolling extent, but joining an established named column must not apply it to
+# the whole column.
+column_gap_before=$((unrelated_x - first_x))
+spawn_client named-floating-joiner
+wait_for_windows 10
+"$UMBRIEL" msg window-toggle-floating > /dev/null
+for _ in $(seq 60); do
+  windows=$("$UMBRIEL" windows --json)
+  first_x=$(jq -r '.[] | select(.title == "named-first") | .x' <<< "$windows")
+  joiner_x=$(jq -r '.[] | select(.title == "named-floating-joiner") | .x' <<< "$windows")
+  unrelated_x=$(jq -r '.[] | select(.title == "unrelated") | .x' <<< "$windows")
+  joiner_floating=$(jq -r '.[] | select(.title == "named-floating-joiner") | .floating' <<< "$windows")
+  [[ $joiner_floating == false && $joiner_x == "$first_x" ]] && break
+  sleep 0.1
+done
+if [[ $joiner_floating != false || $joiner_x != "$first_x" ]]; then
+  echo "floating named member did not join its established column: $windows"
+  failed=1
+elif ((unrelated_x - first_x != column_gap_before)); then
+  echo "floating named member changed the established column extent: before=$column_gap_before after=$((unrelated_x - first_x))"
   failed=1
 fi
 
 ((failed == 0)) || exit 1
-echo "named clients shared the first window's column in configured order"
+echo "named members preserve ordering and established column extents"

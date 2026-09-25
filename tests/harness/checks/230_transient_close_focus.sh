@@ -33,12 +33,13 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [layout]
 mode = "scrolling"
 
 [layout.scrolling]
-default_width_fraction = 0.75
+default_extent_fraction = 0.75
 
 [[window_rule]]
 match.title = "^transient-child-ready$"
@@ -92,7 +93,7 @@ if [[ $(jq -r --arg id "$child_id" '.[] | select(.id == $id) | .title' <<< "$win
   echo "transient title did not settle after map: $windows"
   exit 1
 fi
-sleep 0.2
+"$UMBRIEL" settle
 if grep -q '^configured-maximized$' "$CLIENT_LOG"; then
   echo "late default_maximize reached a parented transient: $(< "$CLIENT_LOG")"
   exit 1
@@ -120,7 +121,7 @@ if ! kill -0 "$client_pid" 2>/dev/null; then
 fi
 
 wait_for_focus "$parent_id"
-sleep 0.1
+"$UMBRIEL" settle
 windows=$("$UMBRIEL" windows --json)
 if [[ $(jq -r --arg id "$unrelated_id" '.[] | select(.id == $id) | .focused' <<< "$windows") != false ]]; then
   echo "unrelated view received focus after the transient closed: $windows"

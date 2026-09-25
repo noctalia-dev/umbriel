@@ -18,6 +18,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors.border]
 focused = "#FF0000"
@@ -34,7 +35,7 @@ enabled = false
 [[window_rule]]
 match.title = "^csd-crop$"
 default_floating = true
-default_size = [602, 402]
+default_floating_size_px = { width = 602, height = 402 }
 default_position = { x = 9, y = 9, anchor = "top_left" }
 
 [output."HEADLESS-1"]
@@ -51,7 +52,7 @@ if ! grep -q '^mapped ' "$CLIENT_LOG"; then
   echo "csd crop client never mapped: $(cat "$CLIENT_LOG")"
   exit 1
 fi
-sleep 0.3
+"$UMBRIEL" settle
 
 read -r window_w window_h buffer_w surface_w margin < <(
   sed -n 's/^mapped \([0-9]*\)x\([0-9]*\) buffer \([0-9]*\)x[0-9]* surface \([0-9]*\)x[0-9]* margin \([0-9]*\) .*/\1 \2 \3 \4 \5/p' \

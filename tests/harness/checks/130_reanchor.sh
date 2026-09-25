@@ -48,7 +48,7 @@ done
 for _ in 1 2 3 4; do
   "$UMBRIEL" msg layout-scroll-left > /dev/null
 done
-sleep 0.6
+"$UMBRIEL" settle
 
 a_x=$(field_of A x)
 a_w=$(field_of A w)
@@ -77,7 +77,7 @@ before=$(survivors)
 # Close A without focusing it: focusing would scroll it back into view first.
 kill -TERM "${CLIENT_PID[A]}" 2>/dev/null || true
 wait_for_count 5
-sleep 0.6
+"$UMBRIEL" settle
 
 after=$(survivors)
 

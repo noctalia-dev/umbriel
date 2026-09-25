@@ -12,7 +12,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 enabled = false
 [layout.scrolling]
-default_width_fraction = 0.25
+default_extent_fraction = 0.25
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

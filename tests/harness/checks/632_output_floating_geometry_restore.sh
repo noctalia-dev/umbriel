@@ -25,7 +25,7 @@ position = [2560, 0]
 match.title = "^restore-(float|pin)$"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [500, 300]
+default_floating_size_px = { width = 500, height = 300 }
 default_position = { x = 2000, y = 1000, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

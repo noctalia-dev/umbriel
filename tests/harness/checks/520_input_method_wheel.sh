@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # An input method can own a virtual keyboard while grabbing events from physical keyboards. Modifier mouse and wheel
 # binds must use the combined physical state, not the input method keyboard that happens to be current on the seat.
+# It builds its own keyboard topology, so the harness keyboard stays out.
+# harness: keyboard=none
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -14,7 +16,7 @@ readonly FIRST_LOG="$UMBRIEL_RUNTIME_DIR/input-first.log"
 readonly SECOND_LOG="$UMBRIEL_RUNTIME_DIR/input-second.log"
 
 spawn_client() {
-  "$CLIENT" "$1" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$1.log" 2>&1 &
+  UMBRIEL_LOG_KEYMAPS=1 "$CLIENT" "$1" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$1.log" 2>&1 &
 }
 
 wait_for_count() {
@@ -35,6 +37,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [keybinds]
 "Mod+WheelDown" = "workspace-next"
@@ -54,7 +57,7 @@ sleep 0.1
 
 # Create the physical harness keyboard first, then pause while the input method creates its own current keyboard and
 # grabs the physical one. This is the ordering used by input methods that inject composed text through a virtual device.
-"$POINTER" "$OUTPUT_W" "$OUTPUT_H" pause 1000 mod logo notch 1 mod none tap 30 > "$POINTER_LOG" 2>&1 &
+"$POINTER" "$OUTPUT_W" "$OUTPUT_H" lock num pause 1000 mod logo notch 1 mod none tap 30 > "$POINTER_LOG" 2>&1 &
 POINTER_PID=$!
 sleep 0.1
 "$INPUT_METHOD" > "$INPUT_METHOD_LOG" 2>&1 &
@@ -66,6 +69,14 @@ for _ in $(seq 40); do
 done
 if ! grep -qx 'grabbed' "$INPUT_METHOD_LOG" 2>/dev/null; then
   echo "input method did not establish its keyboard grab: $(< "$INPUT_METHOD_LOG")"
+  exit 1
+fi
+for _ in $(seq 40); do
+  [[ $(grep -c '^keymap$' "$FIRST_LOG") -gt 1 ]] && break
+  sleep 0.01
+done
+if [[ $(grep -c '^keymap$' "$FIRST_LOG") -ne 1 ]]; then
+  echo "input method's mirrored virtual keyboard changed the client keymap: $(< "$FIRST_LOG")"
   exit 1
 fi
 
@@ -130,8 +141,17 @@ if [[ $(active_title) != input-first ]]; then
   exit 1
 fi
 
+keymaps_before_removal=$(grep -c '^keymap$' "$FIRST_LOG")
 kill "$INPUT_METHOD_PID"
 wait "$INPUT_METHOD_PID" || true
+for _ in $(seq 40); do
+  [[ $(grep -c '^keymap$' "$FIRST_LOG") -gt $keymaps_before_removal ]] && break
+  sleep 0.01
+done
+if [[ $(grep -c '^keymap$' "$FIRST_LOG") -ne $keymaps_before_removal ]]; then
+  echo "removing the input method's mirrored keyboard changed the client keymap: $(< "$FIRST_LOG")"
+  exit 1
+fi
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" tap 56
 if [[ $(active_title) != input-second ]]; then
   echo "virtual keyboard modifier tap did not switch to workspace 2 without an input method"

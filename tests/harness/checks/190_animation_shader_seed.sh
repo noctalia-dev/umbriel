@@ -52,6 +52,10 @@ default_position = { x = 300, y = 180, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
+# Animation time only moves by clock-advance: samples land 150 ms and 500 ms into the 1800 ms opening timeline and
+# 150 ms into the 900 ms closing one.
+"$UMBRIEL" clock-freeze
+
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 REMAP_ON_STDIN=1 "$UMBRIEL_UNMAP_CLIENT" shader-seed 800 420 \
@@ -82,9 +86,9 @@ sample_seed() {
 }
 
 wait_for_map 1
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 first=$(sample_seed)
-sleep 0.35
+"$UMBRIEL" clock-advance 350
 first_later=$(sample_seed)
 if [[ $first != "$first_later" ]]; then
   echo "shader seed changed during one transition: $first then $first_later"
@@ -93,7 +97,7 @@ fi
 
 window_id=$(jq -r .id <<< "$window")
 "$UMBRIEL" msg "window-close:$window_id" > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 closing=$(sample_seed)
 if [[ $closing != "$first" ]]; then
   echo "closing snapshot did not preserve the opening seed: $first then $closing"
@@ -108,12 +112,13 @@ if [[ $(grep -c '^unmapped$' "$CLIENT_LOG" || true) -ne 1 ]]; then
   exit 1
 fi
 
-sleep 0.9
+"$UMBRIEL" clock-advance 1800
+"$UMBRIEL" settle
 printf r >&"$control_fd"
 wait_for_map 2
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 second=$(sample_seed)
-sleep 0.35
+"$UMBRIEL" clock-advance 350
 second_later=$(sample_seed)
 if [[ $second != "$second_later" ]]; then
   echo "shader seed changed during the second transition: $second then $second_later"

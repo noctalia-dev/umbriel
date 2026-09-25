@@ -17,6 +17,7 @@ struct fx_animation_shader {
 	GLint proj, tex_proj, position, tex, sample_matrix;
 	GLint previous_tex, previous_sample_matrix;
 	GLint progress, linear_progress, direction, size, random_seed;
+	bool shape_preserving;
 };
 
 GLuint compile_shader(GLuint type, const GLchar *src);

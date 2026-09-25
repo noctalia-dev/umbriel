@@ -49,6 +49,7 @@ stdenv.mkDerivation {
     wlroots_0_20
     libxkbcommon
     libinput
+    # Supplies libudev for the optional native DRM policy support.
     systemd
     pixman
     tomlplusplus

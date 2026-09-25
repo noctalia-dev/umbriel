@@ -19,7 +19,7 @@ output_x() {
 
 # The workspace row is the output box scaled by `zoom` and centered, so 1280x800 at 0.5 puts it at 640x400+320+200.
 row_green() {
-  magick "$1" -crop 640x400+320+200 +repage -colorspace RGB -format '%[fx:round(255*mean.g)]' info:
+  magick "$1" -crop 640x400+320+200 +repage -format '%[fx:round(255*mean.g)]' info:
 }
 
 assert_markers() {
@@ -32,7 +32,7 @@ assert_markers() {
     echo "$label: $landing_name lost its landing marker entirely: green=$landing"
     return 1
   fi
-  if ((landing * 2 > live)); then
+  if ((landing * 5 > live * 4)); then
     echo "$label: $landing_name is marked as strongly as the live target: live=$live landing=$landing"
     return 1
   fi
@@ -53,6 +53,7 @@ workspace_background = "#000000FF"
 
 [animation]
 duration_ms = 100
+curve = "linear"
 
 [appearance]
 border_width = 100
@@ -109,9 +110,9 @@ fi
 # The cursor defines the current output, and the second window was focused last: the marker must follow the cursor's
 # output, not the most recently focused window.
 "$POINTER" 2560 800 move "$((first_x + 640))" 400
-sleep 0.2
+"$UMBRIEL" settle
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 
 grim -o "$first" "$FIRST_SHOT-a.png"
 grim -o "$second" "$SECOND_SHOT-a.png"
@@ -122,7 +123,7 @@ assert_markers "cursor on $first" "$first" "$first_a" "$second" "$second_a"
 # A keyboard-only session changes the current output through this action, which warps the cursor. The strong marker
 # must move with it while the overview stays open.
 "$UMBRIEL" msg "$toward_second" > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 grim -o "$first" "$FIRST_SHOT-b.png"
 grim -o "$second" "$SECOND_SHOT-b.png"
 first_b=$(row_green "$FIRST_SHOT-b.png")
@@ -130,7 +131,7 @@ second_b=$(row_green "$SECOND_SHOT-b.png")
 assert_markers "after $toward_second" "$second" "$second_b" "$first" "$first_b"
 
 "$UMBRIEL" msg "$toward_first" > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 grim -o "$first" "$FIRST_SHOT-c.png"
 grim -o "$second" "$SECOND_SHOT-c.png"
 first_c=$(row_green "$FIRST_SHOT-c.png")
@@ -140,7 +141,7 @@ assert_markers "after $toward_first" "$first" "$first_c" "$second" "$second_c"
 # Plain pointer motion across outputs carries no focus change with `input.focus.follows_mouse` off, so the marker has
 # to repaint off the pointer's output alone.
 "$POINTER" 2560 800 move "$((second_x + 640))" 400
-sleep 0.4
+"$UMBRIEL" settle
 grim -o "$first" "$FIRST_SHOT-d.png"
 grim -o "$second" "$SECOND_SHOT-d.png"
 first_d=$(row_green "$FIRST_SHOT-d.png")

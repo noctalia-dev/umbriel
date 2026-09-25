@@ -69,6 +69,30 @@ if [[ -z ${maximize_line:-} || $maximize_line -le $request_line ]]; then
 fi
 stop_client
 
+# kitty restores maximize one dispatch after its first frame, before acknowledging the opening configure.
+readonly FRAME_LOG="$UMBRIEL_RUNTIME_DIR/initial-maximize-after-frame.log"
+env LOG_CONFIGURES=1 REQUEST_MAXIMIZED_AFTER_FRAME=1 MAXIMIZE_ON_STDIN=1 \
+  "$CLIENT" initial-maximize-after-frame <&"$control_fd" > "$FRAME_LOG" 2>&1 &
+CLIENT_PID=$!
+wait_for_log "$FRAME_LOG" '^maximize-after-frame$' || exit 1
+# Two roundtrips: the second one's reply follows any configure answering the request.
+printf s >&"$control_fd"
+wait_for_log "$FRAME_LOG" '^surface-committed$' || exit 1
+printf s >&"$control_fd"
+for _ in $(seq 40); do
+  (($(grep -c '^surface-committed$' "$FRAME_LOG") >= 2)) && break
+  sleep 0.05
+done
+if (($(grep -c '^surface-committed$' "$FRAME_LOG") < 2)); then
+  echo "after-frame client did not finish its second roundtrip: $(cat "$FRAME_LOG")"
+  exit 1
+fi
+if grep -q '^configured-maximized$' "$FRAME_LOG"; then
+  echo "maximize restored after the first frame was accepted by default"
+  exit 1
+fi
+stop_client
+
 printf '\nhonor_restored_maximize = true\n\n[animation]\nenabled = false\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 

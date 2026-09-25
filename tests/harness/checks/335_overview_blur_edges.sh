@@ -44,7 +44,7 @@ if ! grep -q '^ready$' "$LAYER_LOG"; then
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 grim "$SCREENSHOT"
 
 sample_rgb() {

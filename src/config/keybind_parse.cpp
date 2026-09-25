@@ -226,6 +226,8 @@ namespace umbriel {
          KeybindAction::ScratchpadToggle, ActionArgKind::OptionalScratchpad},
         {"session-quit", "[skip-confirmation]", "Quit the session, confirming first unless told to skip",
          KeybindAction::SessionQuit, ActionArgKind::SkipConfirmation},
+        {"shortcuts-inhibit-toggle", "", "Toggle shortcuts inhibition for the focused surface",
+         KeybindAction::ShortcutsInhibitToggle},
         {"spawn", "<cmd>", "Run a command with a launch activation token", KeybindAction::Spawn,
          ActionArgKind::Command},
         {"submap", "<name>", "Enter a submap layer, or leave one with 'reset'", KeybindAction::Submap,
@@ -240,12 +242,14 @@ namespace umbriel {
          KeybindAction::WindowConsumeOrExpelRight},
         {"window-consume-right", "", "Stack the focused window into the column right",
          KeybindAction::WindowConsumeRight},
-        {"window-cycle-height", "", "Cycle the focused window through the height presets",
-         KeybindAction::WindowCycleHeight},
-        {"window-cycle-height-back", "", "Cycle the height presets in reverse", KeybindAction::WindowCycleHeightBack},
-        {"window-cycle-width", "", "Cycle the focused column through the width presets",
-         KeybindAction::WindowCycleWidth},
-        {"window-cycle-width-back", "", "Cycle the width presets in reverse", KeybindAction::WindowCycleWidthBack},
+        {"window-cycle-primary-extent", "", "Cycle the focused area's primary extent through presets",
+         KeybindAction::WindowCyclePrimaryExtent},
+        {"window-cycle-primary-extent-back", "", "Cycle the primary extent presets in reverse",
+         KeybindAction::WindowCyclePrimaryExtentBack},
+        {"window-cycle-secondary-extent", "", "Cycle the focused area's secondary extent through presets",
+         KeybindAction::WindowCycleSecondaryExtent},
+        {"window-cycle-secondary-extent-back", "", "Cycle the secondary extent presets in reverse",
+         KeybindAction::WindowCycleSecondaryExtentBack},
         {"window-focus", "<window-id>", "Focus the given window", KeybindAction::WindowFocusId,
          ActionArgKind::WindowId},
         {"window-focus-down", "", "Focus the next window down in the column", KeybindAction::WindowFocusDown},
@@ -271,18 +275,18 @@ namespace umbriel {
         {"window-focus-up", "", "Focus the next window up in the column", KeybindAction::WindowFocusUp},
         {"window-focus-warp", "<window-id>", "Focus the given window and warp the cursor to it",
          KeybindAction::WindowFocusWarpId, ActionArgKind::WindowId},
-        {"window-modify-height", "<delta>", "Change the focused window's height by a fraction",
-         KeybindAction::WindowModifyHeight, ActionArgKind::WidthDelta},
         {"window-modify-height-down", "<delta>", "Resize the focused window from its bottom edge",
-         KeybindAction::WindowModifyHeightDown, ActionArgKind::WidthDelta},
+         KeybindAction::WindowModifyHeightDown, ActionArgKind::FractionDelta},
         {"window-modify-height-up", "<delta>", "Resize the focused window from its top edge",
-         KeybindAction::WindowModifyHeightUp, ActionArgKind::WidthDelta},
-        {"window-modify-width", "<delta>", "Change the focused column's width by a fraction",
-         KeybindAction::WindowModifyWidth, ActionArgKind::WidthDelta},
+         KeybindAction::WindowModifyHeightUp, ActionArgKind::FractionDelta},
+        {"window-modify-primary-extent", "<delta>", "Change the focused area's primary extent by a fraction",
+         KeybindAction::WindowModifyPrimaryExtent, ActionArgKind::FractionDelta},
+        {"window-modify-secondary-extent", "<delta>", "Change the focused area's secondary extent by a fraction",
+         KeybindAction::WindowModifySecondaryExtent, ActionArgKind::FractionDelta},
         {"window-modify-width-left", "<delta>", "Resize the focused column from its left edge",
-         KeybindAction::WindowModifyWidthLeft, ActionArgKind::WidthDelta},
+         KeybindAction::WindowModifyWidthLeft, ActionArgKind::FractionDelta},
         {"window-modify-width-right", "<delta>", "Resize the focused column from its right edge",
-         KeybindAction::WindowModifyWidthRight, ActionArgKind::WidthDelta},
+         KeybindAction::WindowModifyWidthRight, ActionArgKind::FractionDelta},
         {"window-move-down", "", "Move the focused window down in its column", KeybindAction::WindowMoveDown},
         {"window-move-or-output-down", "", "Move down, or the column to the output below",
          KeybindAction::WindowMoveOrOutputDown},
@@ -316,17 +320,25 @@ namespace umbriel {
          KeybindAction::WindowMoveToWorkspaceNext},
         {"window-move-to-workspace-previous", "", "Move the focused window to the previous workspace",
          KeybindAction::WindowMoveToWorkspacePrevious},
+        {"window-move-to-workspace-silent", "<workspace>[/<output>]",
+         "Move the focused window to the selected workspace silently", KeybindAction::WindowMoveToWorkspaceSilent,
+         ActionArgKind::Workspace},
+        {"window-move-to-workspace-silent-next", "", "Move the focused window to the next workspace silently",
+         KeybindAction::WindowMoveToWorkspaceSilentNext},
+        {"window-move-to-workspace-silent-previous", "", "Move the focused window to the previous workspace silently",
+         KeybindAction::WindowMoveToWorkspaceSilentPrevious},
         {"window-move-up", "", "Move the focused window up in its column", KeybindAction::WindowMoveUp},
         {"window-restore-from-scratchpad", "[<scratchpad>]", "Return a scratchpad window to its saved workspace",
          KeybindAction::WindowRestoreFromScratchpad, ActionArgKind::OptionalScratchpad},
-        {"window-set-height", "<fraction>", "Set the focused window's height fraction", KeybindAction::WindowSetHeight,
-         ActionArgKind::WidthFraction},
-        {"window-set-width", "<fraction>", "Set the focused column's width fraction", KeybindAction::WindowSetWidth,
-         ActionArgKind::WidthFraction},
+        {"window-set-primary-extent", "<fraction>", "Set the focused area's primary extent fraction",
+         KeybindAction::WindowSetPrimaryExtent, ActionArgKind::Fraction},
+        {"window-set-secondary-extent", "<fraction>", "Set the focused area's secondary extent fraction",
+         KeybindAction::WindowSetSecondaryExtent, ActionArgKind::Fraction},
         {"window-swap-next", "", "Swap with the next window in layout order", KeybindAction::WindowSwapNext},
         {"window-swap-previous", "", "Swap with the previous window in layout order",
          KeybindAction::WindowSwapPrevious},
-        {"window-toggle-floating", "", "Float or tile the focused window", KeybindAction::ToggleFloating},
+        {"window-toggle-floating", "[<window-id>]", "Float or tile the focused window, or the given window",
+         KeybindAction::ToggleFloating, ActionArgKind::OptionalWindowId},
         {"window-toggle-fullscreen", "", "Toggle fullscreen or exit a window covering the focus",
          KeybindAction::ToggleFullscreen},
         {"window-toggle-maximize", "", "Toggle full width for the focused column", KeybindAction::ToggleMaximize},
@@ -482,7 +494,7 @@ namespace umbriel {
           return true;
         }
         break;
-      case ActionArgKind::WidthFraction: {
+      case ActionArgKind::Fraction: {
         if (!takeActionArg(value, spec, arg)) {
           break;
         }
@@ -496,10 +508,10 @@ namespace umbriel {
           break;
         }
         output.action = spec.action;
-        output.payload = WidthArg{.fraction = fraction};
+        output.payload = FractionArg{.fraction = fraction};
         return true;
       }
-      case ActionArgKind::WidthDelta: {
+      case ActionArgKind::FractionDelta: {
         if (!takeActionArg(value, spec, arg)) {
           break;
         }
@@ -517,7 +529,7 @@ namespace umbriel {
           break;
         }
         output.action = spec.action;
-        output.payload = WidthArg{.fraction = delta};
+        output.payload = FractionArg{.fraction = delta};
         return true;
       }
       case ActionArgKind::Workspace: {
@@ -621,17 +633,18 @@ namespace umbriel {
     keybinds.reserve(60);
     // Built by assignment rather than aggregate initialisation: the trigger and payload fields already carry default
     // member initialisers, and naming every one of them just to satisfy -Wmissing-field-initializers is noise.
-    auto add = [&keybinds](KeybindAction action, uint32_t keysym, uint32_t modifiers = 0) {
+    auto add = [&keybinds](KeybindAction action, uint32_t keysym, uint32_t modifiers = 0) -> Keybind& {
       Keybind bind;
       bind.modifiers = modifiers;
       bind.useMod = true;
       bind.keysym = xkb_keysym_to_lower(keysym);
       bind.action = action;
-      keybinds.push_back(std::move(bind));
+      return keybinds.emplace_back(std::move(bind));
     };
 
     add(KeybindAction::SessionQuit, XKB_KEY_Escape);
-    add(KeybindAction::WindowClose, XKB_KEY_q);
+    // Holding close would also close each window that focus moves to.
+    add(KeybindAction::WindowClose, XKB_KEY_q).repeat = false;
     add(KeybindAction::WindowFocusNext, XKB_KEY_F1);
 
     add(KeybindAction::WindowFocusLeft, XKB_KEY_Left);
@@ -654,22 +667,15 @@ namespace umbriel {
 
     add(KeybindAction::WindowConsumeLeft, XKB_KEY_comma);
     add(KeybindAction::WindowConsumeRight, XKB_KEY_period);
-    add(KeybindAction::WindowCycleWidth, XKB_KEY_r);
-    add(KeybindAction::WindowCycleWidthBack, XKB_KEY_r, WLR_MODIFIER_SHIFT);
+    add(KeybindAction::WindowCyclePrimaryExtent, XKB_KEY_r);
+    add(KeybindAction::WindowCyclePrimaryExtentBack, XKB_KEY_r, WLR_MODIFIER_SHIFT);
     add(KeybindAction::ToggleFullscreen, XKB_KEY_f);
     add(KeybindAction::ToggleMaximize, XKB_KEY_f, WLR_MODIFIER_CTRL);
     add(KeybindAction::ToggleMaximizeToEdges, XKB_KEY_m);
     add(KeybindAction::ToggleFloating, XKB_KEY_t);
     add(KeybindAction::TogglePinned, XKB_KEY_p);
-    // Overview must not repeat: holding the key would thrash open/close.
-    {
-      Keybind overview;
-      overview.useMod = true;
-      overview.keysym = XKB_KEY_o;
-      overview.repeat = false;
-      overview.action = KeybindAction::OverviewToggle;
-      keybinds.push_back(std::move(overview));
-    }
+    // Holding the overview key would thrash open/close.
+    add(KeybindAction::OverviewToggle, XKB_KEY_o).repeat = false;
 
     for (int index = 0; index < 9; ++index) {
       const uint32_t digit = XKB_KEY_1 + static_cast<uint32_t>(index);

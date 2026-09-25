@@ -71,15 +71,20 @@ fi
 systemctl --user reset-failed
 systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
   XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE UMBRIEL_SOCKET
-awk 'BEGIN {
-  for (name in ENVIRON) {
-    if (name != "AWKPATH" && name != "AWKLIBPATH" &&
-        name ~ /^[A-Za-z_][A-Za-z0-9_]*$/)
-      print name
-  }
-}' </dev/null | xargs -r systemctl --user import-environment
+# Keep the user manager's PATH so environment.d remains authoritative for the
+# managed session. Other login-profile variables are imported below.
+session_environment_names() {
+  awk 'BEGIN {
+    for (name in ENVIRON) {
+      if (name != "AWKPATH" && name != "AWKLIBPATH" && name != "PATH" &&
+          name ~ /^[A-Za-z_][A-Za-z0-9_]*$/)
+        print name
+    }
+  }' </dev/null
+}
+session_environment_names | xargs -r systemctl --user import-environment
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-  dbus-update-activation-environment --all
+  session_environment_names | xargs -r dbus-update-activation-environment
 fi
 
 systemctl --user --wait start umbriel.service

@@ -3,12 +3,12 @@
 # an implicit pointer grab. Restoring it on later pointer activity would send a
 # leave and enter sequence that cancels held-button actions in games.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly LEFT_BUTTON=272
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
-readonly POINTER_LOG="$UMBRIEL_RUNTIME_DIR/hide-typing-pointer.log"
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/hide-typing-before.png"
 readonly AFTER="$UMBRIEL_RUNTIME_DIR/hide-typing-after.png"
 
@@ -21,6 +21,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [input.cursor]
 hide_when_typing = true
@@ -47,12 +48,7 @@ crop="48x48+$pointer_x+$pointer_y"
 
 # Keep the press down while a second helper sends a key. Separate connections
 # make both cursor-inclusive captures deterministic without timing guesses.
-"$POINTER" "$OUTPUT_W" "$OUTPUT_H" \
-  move "$pointer_x" "$pointer_y" press "$LEFT_BUTTON" pause 5000 release "$LEFT_BUTTON" \
-  > "$POINTER_LOG" 2>&1 &
-pointer_pid=$!
-
-sleep 0.5
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" "$pointer_y" press "$LEFT_BUTTON" -- release "$LEFT_BUTTON"
 grim -c "$BEFORE"
 before_colors=$(magick "$BEFORE" -crop "$crop" +repage -format '%k' info:)
 if ((before_colors < 2)); then
@@ -70,8 +66,8 @@ if [[ $before_hash != "$after_hash" ]]; then
   exit 1
 fi
 
-wait "$pointer_pid" || {
-  echo "pointer client failed: $(< "$POINTER_LOG")"
+pointer_release || {
+  echo "pointer client failed: $(< "$POINTER_HOLD_LOG")"
   exit 1
 }
 

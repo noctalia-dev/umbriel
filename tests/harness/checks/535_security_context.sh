@@ -34,6 +34,7 @@ readonly -a NORMAL_GLOBALS=(
   zwp_pointer_gestures_v1
   zwp_tablet_manager_v2
   zwp_idle_inhibit_manager_v1
+  zwp_keyboard_shortcuts_inhibit_manager_v1
   xdg_activation_v1
   wl_seat
   wp_cursor_shape_manager_v1

@@ -21,7 +21,7 @@ spawn_client() {
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [keybinds]
 "Mod+WheelUp" = "window-focus-left"
@@ -36,12 +36,12 @@ for id in $(seq 1 6); do
     sleep 0.25
   done
 done
-sleep 0.5
+"$UMBRIEL" settle
 
 for _ in $(seq 1 5); do
   "$UMBRIEL" msg window-focus-left > /dev/null
 done
-sleep 0.5
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 if [[ $(jq -r '.[] | select(.focused) | .title' <<< "$windows") != drag-wheel-1 ]]; then
@@ -57,7 +57,7 @@ for _ in $(seq 1 5); do
 done
 commands+=(release "$BTN_LEFT" mod none)
 pointer "${commands[@]}"
-sleep 0.8
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 source_x=$(jq -r '.[] | select(.title == "drag-wheel-1") | .x' <<< "$windows")

@@ -11,8 +11,11 @@ readonly TEST_BIN="$TEST_DIR/bin"
 readonly PROFILE_TRACE="$TEST_DIR/profile-trace"
 readonly IMPORT_TRACE="$TEST_DIR/import-trace"
 readonly SERVICE_ENV="$TEST_DIR/service-environment"
+readonly SERVICE_PATH="$TEST_DIR/service-path"
+readonly MANAGER_PATH='/environment.d/bin:/usr/bin'
 readonly SERVICE_SESSION_ENV="$TEST_DIR/service-session-environment"
 readonly DBUS_ENV="$TEST_DIR/dbus-environment"
+readonly DBUS_IMPORT_TRACE="$TEST_DIR/dbus-import-trace"
 readonly DIRECT_ENV="$TEST_DIR/direct-environment"
 readonly DIRECT_ARGUMENTS="$TEST_DIR/direct-arguments"
 readonly DIRECT_SESSION_ENV="$TEST_DIR/direct-session-environment"
@@ -61,6 +64,14 @@ if [ "${3:-}" = "is-active" ]; then
 fi
 if [ "${2:-}" = "import-environment" ]; then
   printf '%s\n' "$@" > "$UMBRIEL_TEST_IMPORT_TRACE"
+  service_path=$UMBRIEL_TEST_MANAGER_PATH
+  for name in "$@"; do
+    if [ "$name" = PATH ]; then
+      service_path=$PATH
+      break
+    fi
+  done
+  printf '%s\n' "$service_path" > "$UMBRIEL_TEST_SERVICE_PATH"
   exit 0
 fi
 if [ "${3:-}" = "start" ] && [ "${4:-}" = "umbriel.service" ]; then
@@ -81,9 +92,7 @@ EOF
 
 cat > "$TEST_BIN/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
-if [ "$#" -ne 1 ] || [ "$1" != "--all" ]; then
-  exit 1
-fi
+printf '%s\n' "$@" > "$UMBRIEL_TEST_DBUS_IMPORT_TRACE"
 printf '%s\n' "${UMBRIEL_LOGIN_PROFILE_MARKER:-missing}" > "$UMBRIEL_TEST_DBUS_ENV"
 EOF
 
@@ -114,10 +123,13 @@ env -i \
   UMBRIEL_TEST_PROFILE_TRACE="$PROFILE_TRACE" \
   UMBRIEL_TEST_IMPORT_TRACE="$IMPORT_TRACE" \
   UMBRIEL_TEST_SERVICE_ENV="$SERVICE_ENV" \
+  UMBRIEL_TEST_SERVICE_PATH="$SERVICE_PATH" \
   UMBRIEL_TEST_SERVICE_SESSION_ENV="$SERVICE_SESSION_ENV" \
   UMBRIEL_TEST_DBUS_ENV="$DBUS_ENV" \
+  UMBRIEL_TEST_DBUS_IMPORT_TRACE="$DBUS_IMPORT_TRACE" \
   UMBRIEL_TEST_BIN="$TEST_BIN" \
   UMBRIEL_TEST_HOST_PATH="$PATH" \
+  UMBRIEL_TEST_MANAGER_PATH="$MANAGER_PATH" \
   UMBRIEL_TEST_SYSTEMD_AVAILABLE=true \
   drs="touch $DRS_INJECTION_MARKER" \
   "$LAUNCHER" plain "two words" 'semi;colon' "quote'and\"double"
@@ -134,8 +146,20 @@ if [[ $(< "$SERVICE_ENV") != 'from login profile' ]]; then
   echo "profile variable did not reach the compositor service"
   exit 1
 fi
+if [[ $(< "$SERVICE_PATH") != "$MANAGER_PATH" ]]; then
+  echo "login PATH replaced the environment.d PATH for the compositor service"
+  exit 1
+fi
 if [[ $(< "$DBUS_ENV") != 'from login profile' ]]; then
   echo "profile variable did not reach D-Bus activation"
+  exit 1
+fi
+if grep -Fxq -- --all "$DBUS_IMPORT_TRACE" || grep -Fxq PATH "$DBUS_IMPORT_TRACE"; then
+  echo "login PATH replaced the environment.d PATH for D-Bus activation"
+  exit 1
+fi
+if ! grep -Fxq UMBRIEL_LOGIN_PROFILE_MARKER "$DBUS_IMPORT_TRACE"; then
+  echo "profile variable was not included in the D-Bus environment import"
   exit 1
 fi
 cat > "$TEST_DIR/expected-native-session-environment" <<'EOF'

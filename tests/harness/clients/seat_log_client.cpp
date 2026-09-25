@@ -1,11 +1,13 @@
 // Maps a plain xdg toplevel and logs every seat input event it receives, so
-// checks can assert which keys and buttons reach a focused surface. With
+// checks can assert which keys and buttons reach a focused surface, and where
+// the surface believes the pointer is when a button is pressed. With
 // EXPORT_TOPLEVEL set it also exports the toplevel through xdg-foreign and
 // prints the handle, so another client can parent a dialog to it. With
 // HOLD_RESIZE set it leaves any configure that resizes the mapped window
 // unanswered until a byte arrives on stdin, so the window keeps its size while
 // the resize stays pending.
 
+#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -41,6 +43,8 @@ namespace {
     wl_seat* seat = nullptr;
     xdg_wm_base* wmBase = nullptr;
     zxdg_exporter_v2* exporter = nullptr;
+    zwp_keyboard_shortcuts_inhibit_manager_v1* shortcutsInhibitManager = nullptr;
+    zwp_keyboard_shortcuts_inhibitor_v1* shortcutsInhibitor = nullptr;
     wl_pointer* pointer = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_surface* surface = nullptr;
@@ -60,6 +64,9 @@ namespace {
     std::optional<uint32_t> heldSerial;
     PressAction pressAction = PressAction::None;
     bool actionRequested = false;
+    // Surface-local pointer position from the latest enter or motion.
+    double pointerX = 0;
+    double pointerY = 0;
   };
 
   const char* keyStateName(uint32_t value) { return value == WL_KEYBOARD_KEY_STATE_PRESSED ? "pressed" : "released"; }
@@ -98,7 +105,23 @@ namespace {
       .repeat_info = keyboardRepeatInfo,
   };
 
-  void pointerEnter(void*, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t, wl_fixed_t) {
+  void shortcutsInhibitorActive(void*, zwp_keyboard_shortcuts_inhibitor_v1*) {
+    std::println("shortcuts-inhibitor active");
+  }
+
+  void shortcutsInhibitorInactive(void*, zwp_keyboard_shortcuts_inhibitor_v1*) {
+    std::println("shortcuts-inhibitor inactive");
+  }
+
+  constexpr zwp_keyboard_shortcuts_inhibitor_v1_listener kShortcutsInhibitorListener = {
+      .active = shortcutsInhibitorActive,
+      .inactive = shortcutsInhibitorInactive,
+  };
+
+  void pointerEnter(void* data, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t sx, wl_fixed_t sy) {
+    auto& state = *static_cast<State*>(data);
+    state.pointerX = wl_fixed_to_double(sx);
+    state.pointerY = wl_fixed_to_double(sy);
     std::println("pointer-enter");
   }
 
@@ -106,11 +129,18 @@ namespace {
 
   // Motion is deliberately silent: a single pointer move floods the log the
   // checks parse.
-  void pointerMotion(void*, wl_pointer*, uint32_t, wl_fixed_t, wl_fixed_t) {}
+  void pointerMotion(void* data, wl_pointer*, uint32_t, wl_fixed_t sx, wl_fixed_t sy) {
+    auto& state = *static_cast<State*>(data);
+    state.pointerX = wl_fixed_to_double(sx);
+    state.pointerY = wl_fixed_to_double(sy);
+  }
 
   void pointerButton(void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t buttonState) {
     auto& state = *static_cast<State*>(data);
     std::println("pointer-button code={} state={}", button, buttonStateName(buttonState));
+    if (buttonState == WL_POINTER_BUTTON_STATE_PRESSED) {
+      std::println("press-position x={:.0f} y={:.0f}", state.pointerX, state.pointerY);
+    }
     if (state.pressAction != PressAction::None
         && !state.actionRequested
         && button == kLeftButton
@@ -282,6 +312,10 @@ namespace {
       xdg_wm_base_add_listener(state.wmBase, &kWmBaseListener, &state);
     } else if (std::strcmp(interface, zxdg_exporter_v2_interface.name) == 0) {
       state.exporter = static_cast<zxdg_exporter_v2*>(wl_registry_bind(registry, name, &zxdg_exporter_v2_interface, 1));
+    } else if (std::strcmp(interface, zwp_keyboard_shortcuts_inhibit_manager_v1_interface.name) == 0) {
+      state.shortcutsInhibitManager = static_cast<zwp_keyboard_shortcuts_inhibit_manager_v1*>(
+          wl_registry_bind(registry, name, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, std::min(version, 1U))
+      );
     }
   }
   void registryRemove(void*, wl_registry*, uint32_t) {}
@@ -330,6 +364,16 @@ int main(int argc, char** argv) {
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
   xdg_toplevel_add_listener(state.toplevel, &kToplevelListener, &state);
   xdg_toplevel_set_title(state.toplevel, title);
+  if (std::getenv("INHIBIT_SHORTCUTS") != nullptr) {
+    if (state.shortcutsInhibitManager == nullptr) {
+      std::println(stderr, "seat-log-client: compositor is missing zwp_keyboard_shortcuts_inhibit_manager_v1");
+      return EXIT_FAILURE;
+    }
+    state.shortcutsInhibitor = zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(
+        state.shortcutsInhibitManager, state.surface, state.seat
+    );
+    zwp_keyboard_shortcuts_inhibitor_v1_add_listener(state.shortcutsInhibitor, &kShortcutsInhibitorListener, &state);
+  }
   wl_surface_commit(state.surface);
   if (std::getenv("EXPORT_TOPLEVEL") != nullptr) {
     if (state.exporter == nullptr) {

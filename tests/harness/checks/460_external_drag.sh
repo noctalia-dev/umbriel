@@ -97,7 +97,7 @@ if ! grep -q '^drag-started$' "$CLIENT_LOG"; then
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.3
+sleep 0.3 # real time: proves the overview stays closed
 if [[ $(overview_state) != false ]]; then
   echo "overview opened while a client drag was active"
   exit 1

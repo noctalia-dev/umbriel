@@ -49,20 +49,24 @@ sample() {
     -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:)
 }
 
+# Animation time only moves by clock-advance: opening samples land at 120 ms and 770 ms (progress 0.075 and 0.48),
+# the closing sample at 150 ms, and advancing 1600 ms finishes each timeline.
+"$UMBRIEL" clock-freeze
 spawn shader-first
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red > 220 && green < 30 && blue < 30 )); then
   echo "opening shader did not sample the client and produce red: $red $green $blue"
   exit 1
 fi
-sleep 0.65
+"$UMBRIEL" clock-advance 650
 sample
 if ! (( red > 220 && green > 220 && blue < 30 )); then
   echo "shader progress did not transition red to yellow: $red $green $blue"
   exit 1
 fi
-sleep 1
+"$UMBRIEL" clock-advance 1600
+"$UMBRIEL" settle
 sample
 if ! (( blue > 80 && red < 200 )); then
   echo "opening shader did not release its target at completion: $red $green $blue"
@@ -70,13 +74,14 @@ if ! (( blue > 80 && red < 200 )); then
 fi
 
 "$UMBRIEL" msg "window-close:$window_id" > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 sample
 if ! (( green > 220 && red < 30 && blue < 30 )); then
   echo "closing snapshot did not run its shader: $red $green $blue"
   exit 1
 fi
-sleep 1.6
+"$UMBRIEL" clock-advance 1600
+"$UMBRIEL" settle
 
 # Do not explicitly reload: the imported file must be a watcher dependency.
 mark=$(wc -l < "$UMBRIEL_LOG")
@@ -94,7 +99,7 @@ if ! tail -n +"$((mark + 1))" "$UMBRIEL_LOG" | grep -q 'config reloaded'; then
   exit 1
 fi
 spawn shader-reloaded
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red < 30 && green > 220 && blue > 220 )); then
   echo "new transition did not use edited shader source: $red $green $blue"

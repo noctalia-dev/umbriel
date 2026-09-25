@@ -11,6 +11,7 @@ readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-cli
 readonly LAYER_CLIENT="${UMBRIEL_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly BASE_CONFIG="$UMBRIEL_RUNTIME_DIR/layout-struts-base.toml"
 readonly PANEL_LOG="$UMBRIEL_RUNTIME_DIR/layout-struts-panel.log"
+readonly BACKGROUND_LOG="$UMBRIEL_RUNTIME_DIR/layout-struts-background.log"
 readonly SCREENSHOT="$UMBRIEL_RUNTIME_DIR/layout-struts.png"
 
 cp "$UMBRIEL_CONFIG" "$BASE_CONFIG"
@@ -41,6 +42,8 @@ EOF
 [output.HEADLESS-1]
 workspaces = ["base", "override", "scroll-h", "scroll-v"]
 workspace_axis = "$2"
+scale = ${3:-1.0}
+mode = "${4:-1280x720}"
 EOF
   cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -48,20 +51,20 @@ EOF
 name = "scroll-h"
 layout.mode = "scrolling"
 layout.gap = 8
-layout.scrolling.default_width_fraction = 0.5
+layout.scrolling.default_extent_fraction = 0.5
 layout.scrolling.center_underfull_strip = false
 
 [[workspace]]
 name = "scroll-v"
 layout.mode = "scrolling"
 layout.gap = 8
-layout.scrolling.default_width_fraction = 0.5
+layout.scrolling.default_extent_fraction = 0.5
 layout.scrolling.center_underfull_strip = false
 
 [[window_rule]]
 match.title = "^strut-float$"
 default_floating = true
-default_size = [200, 100]
+default_floating_size_px = { width = 200, height = 100 }
 default_position = { x = 0, y = 0, anchor = "top_left" }
 EOF
   if [[ $1 == with-struts ]]; then
@@ -146,6 +149,24 @@ assert_not_client_pixel() {
   color=$(pixel_color "$image" "$x" "$y")
   if [[ $color == 0000FF* || $color == 00FF00* ]]; then
     echo "expected non-client content at $x,$y, got #$color"
+    return 1
+  fi
+}
+
+assert_not_backdrop_pixel() {
+  local image=$1 x=$2 y=$3 color
+  color=$(pixel_color "$image" "$x" "$y")
+  if [[ $color == 000000* ]]; then
+    echo "expected content over backdrop at $x,$y, got #$color"
+    return 1
+  fi
+}
+
+assert_image_size() {
+  local image=$1 expected="$2x$3" actual
+  actual=$(magick "$image" -format "%wx%h" info:)
+  if [[ $actual != "$expected" ]]; then
+    echo "expected screenshot size $expected, got $actual"
     return 1
   fi
 }
@@ -280,5 +301,30 @@ assert_box strut-override 1280 680 0 40
 "$UMBRIEL" msg workspace-switch:base > /dev/null
 assert_box strut-base 1280 680 0 40
 assert_box strut-float 200 100 0 40
+# The truncated 915x500 logical box still covers the 1282x700 output.
+write_config without-struts horizontal 1.4 1282x700
+"$UMBRIEL" msg config-reload > /dev/null
+focus_window strut-base
+"$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+assert_size strut-base 915 500
+grim -o HEADLESS-1 "$SCREENSHOT"
+assert_image_size "$SCREENSHOT" 1282 700
+assert_not_backdrop_pixel "$SCREENSHOT" 1281 0
+assert_not_backdrop_pixel "$SCREENSHOT" 1281 699
 
-echo "layout struts covered layer zones, workspace overrides, tiled states, scrolling directions, and reload"
+# Fully anchored layer surfaces round outward on both axes, allowing a
+# fractional-scale buffer to cover every physical output pixel.
+write_config without-struts horizontal 1.4 1282x702
+"$UMBRIEL" msg config-reload > /dev/null
+"$LAYER_CLIENT" HEADLESS-1 0 log-configures > "$BACKGROUND_LOG" 2>&1 &
+for _ in $(seq 80); do
+  if grep -q '^configured-size=916x502$' "$BACKGROUND_LOG" && grep -q '^ready$' "$BACKGROUND_LOG"; then
+    break
+  fi
+  sleep 0.1
+done
+if ! grep -q '^configured-size=916x502$' "$BACKGROUND_LOG" || ! grep -q '^ready$' "$BACKGROUND_LOG"; then
+  echo "full-output layer was not rounded outward: $(< "$BACKGROUND_LOG")"
+  exit 1
+fi
+echo "layout struts and fractional fullscreen and layer edges covered output geometry"

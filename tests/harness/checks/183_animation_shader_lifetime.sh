@@ -23,6 +23,10 @@ shader = "lifetime.glsl"
 shader = "$EXAMPLES/squash.glsl"
 [animation.windows_out]
 shader = "fixture-1.glsl"
+# Centre sampling right after map assumes the window is already at full size; a tiled window grows into its slot.
+[[window_rule]]
+match.title = "^shader-(example|retained|new-program)$"
+default_floating = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -45,27 +49,30 @@ sample() {
     -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
 }
 
+# Animation time only moves by clock-advance, measured from each trigger; advancing 3000 ms finishes every
+# 2400 ms timeline.
+"$UMBRIEL" clock-freeze
 spawn shader-example
-sleep 0.3
+"$UMBRIEL" clock-advance 300
 sample
 if ! (( red < 10 && green < 10 && blue < 10 )); then
   echo "reveal example did not mask the center during its opening: $red $green $blue"
   exit 1
 fi
-sleep 1.2
+"$UMBRIEL" clock-advance 1200
 sample
 if ! (( blue > 130 && red > 50 && red < 120 )); then
   echo "reveal example did not expose the center as progress advanced: $red $green $blue"
   exit 1
 fi
-sleep 1
+"$UMBRIEL" clock-advance 3000
 
 cat > "$SOURCE" <<'EOF'
 vec4 animation(vec2 uv) { return vec4(1.0, 0.0, 1.0, 1.0); }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 spawn shader-retained
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red > 220 && green < 30 && blue > 220 )); then
   echo "initial program did not render magenta: $red $green $blue"
@@ -75,22 +82,22 @@ cat > "$SOURCE" <<'EOF'
 vec4 animation(vec2 uv) { return vec4(0.0, 1.0, 1.0, 1.0); }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red > 220 && green < 30 && blue > 220 )); then
   echo "source reload replaced a program during its active transition: $red $green $blue"
   exit 1
 fi
 "$UMBRIEL" msg "window-close:$window_id" > /dev/null
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red < 30 && green > 220 && blue < 30 )); then
   echo "closing shader did not sample the frozen opening effect: $red $green $blue"
   exit 1
 fi
-sleep 2.4
+"$UMBRIEL" clock-advance 3000
 spawn shader-new-program
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 sample
 if ! (( red < 30 && green > 220 && blue > 220 )); then
   echo "next transition did not adopt the new program: $red $green $blue"
@@ -103,7 +110,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 sample
 # The shader must disappear immediately. An existing native fade may still
 # finish its timeline, so check the client's color ratios before full brightness.
@@ -111,7 +118,7 @@ if ! (( red > 0 && green < blue && blue < 3 * red )); then
   echo "disabling animations did not remove the cyan shader: $red $green $blue"
   exit 1
 fi
-sleep 2.4
+"$UMBRIEL" clock-advance 3000
 sample
 if ! (( blue > 130 && red > 50 && red < 120 && green < 180 )); then
   echo "disabling animations did not restore ordinary client pixels: $red $green $blue"

@@ -55,7 +55,11 @@ fi
 
 # Full width is a configure the client answers with a wider buffer while its declared geometry stays behind.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-sleep 0.5
+for _ in $(seq 60); do
+  [[ $(drawn_size) != "$pinned" ]] && break
+  sleep 0.05
+done
+"$UMBRIEL" settle
 drawn=$(drawn_size)
 if [[ $(pinned_size) != "$pinned" ]]; then
   echo "client stopped pinning its geometry, so this check observes nothing: $(tr '\n' '|' < "$CLIENT_LOG")"

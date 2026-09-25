@@ -1,9 +1,7 @@
 # Animation
 
-Animation settings live in the top-level `animation` section. `duration_ms` and
-`curve` set defaults for every event when present; a nested event can override
-either value. The master switch makes every transition instant. Each event also
-has its own switch.
+Animation settings live under `[animation]`. The top-level values provide
+defaults, and each event can override them.
 
 ```toml
 [animation]
@@ -13,106 +11,107 @@ curve = "easeout"
 
 [animation.windows_in]
 enabled = true
-duration_ms = 150
-curve = "easeout"
-style = "popin"       # "popin", "zoom", "slide", "fade", or "none"
-scale = 0.85          # 0.1-1.0, used by "popin"
+curve = "spring:1,900"
+style = "popin"
+scale = 0.5
 
 [animation.windows_out]
 enabled = true
-duration_ms = 150
-curve = "easeout"
-style = "fade"        # "fade" or "slide"
+curve = "spring:1,1400"
+style = "popin"
+scale = 0.8
 
 [animation.windows_move]
 enabled = true
-duration_ms = 250
-curve = "snappy"
+curve = "spring:1,900"
 
 [animation.workspaces]
 enabled = true
-duration_ms = 250
-curve = "easeout"
+curve = "spring:1,800"
 
 [animation.overview]
 enabled = true
-duration_ms = 250
-curve = "easeout"
+curve = "spring:1,800"
 workspace_curve = "spring:1,1000"
 
 [animation.scratchpad]
-enabled = false
-duration_ms = 250
-curve = "easeout"
-dim = 0.5             # 0.0-1.0
-blur = false          # requires appearance.blur.enabled
-scale = 0.0           # 0 preserves geometry; 0.1-1.0 sizes and centers on entry
-maximize = false      # maximize to edges on entry
-fullscreen = false    # fullscreen on entry
+enabled = true
+curve = "spring:1,800"
+dim = 0.8
+blur = false
+scale = 0.0
+maximize = false
+fullscreen = false
 
 [animation.border]
-enabled = false
-duration_ms = 250
-curve = "easeout"
+enabled = true
+curve = "spring:1,900"
 
 [animation.dim_unfocused]
 enabled = false
-duration_ms = 250
-curve = "easeout"
-dim = 0.0             # 0.0-1.0
+dim = 0.0
 
 [animation.layers]
 enabled = false
-duration_ms = 250
-curve = "easeout"
 ```
 
 ## Defaults
 
-| Key           | Type   | Default   | Description                                                                 |
-| ------------- | ------ | --------- | --------------------------------------------------------------------------- |
-| `enabled`     | bool   | `true`    | Master switch. When false, every animation transition is instant.           |
-| `duration_ms` | int    | `250`     | Default duration for all events when explicitly set (1-10000 milliseconds). |
-| `curve`       | string | `easeout` | Default curve for all events when explicitly set.                           |
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `true` | Master switch for every transition. |
+| `duration_ms` | `250` | Default duration for non-spring curves. |
+| `curve` | `"easeout"` | Default easing curve. |
+
+Each event also accepts `enabled`, `duration_ms`, and `curve`. A spring curve
+chooses its own duration, so `duration_ms` has no effect on that event.
 
 ## Event tables
 
-Each event table accepts `enabled`, `duration_ms`, and `curve`. The following
-fields are specific to individual event tables:
+| Table | Additional fields | Transition |
+| --- | --- | --- |
+| `[animation.windows_in]` | `style`, `scale` | Window opening |
+| `[animation.windows_out]` | `style`, `scale` | Window closing |
+| `[animation.windows_move]` | none | Move, resize, reflow, maximize, and restore |
+| `[animation.workspaces]` | none | Workspace switching |
+| `[animation.overview]` | `workspace_curve` | Overview opening, closing, and filmstrip movement |
+| `[animation.scratchpad]` | `dim`, `blur`, `scale`, `maximize`, `fullscreen` | Scratchpad windows and backdrop |
+| `[animation.border]` | none | Focus-border color |
+| `[animation.dim_unfocused]` | `dim` | Unfocused-window opacity |
+| `[animation.layers]` | none | Layer-shell map and unmap |
 
-| Table                      | Additional fields                                                                                                  | Transition                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `[animation.windows_in]`   | `style` (`popin`, `zoom`, `slide`, `fade`, or `none`); `scale` (0.1-1.0, for `popin`)                            | Window open.                                        |
-| `[animation.windows_out]`  | `style` (`fade` or `slide`)                                                                                       | Window close, using a scene snapshot.               |
-| `[animation.windows_move]` | None                                                                                                               | Window move, resize, and floating maximize transitions, including visible scratchpad size actions. |
-| `[animation.workspaces]`   | None                                                                                                               | Workspace switch.                                   |
-| `[animation.overview]`     | `workspace_curve` (default `spring:1,1000`)                                                                        | Overview open and close; `workspace_curve` moves the filmstrip between workspace previews. |
-| `[animation.scratchpad]`   | `dim` (0.0-1.0); `blur`; `scale` (0.0-1.0); `maximize`; `fullscreen`                                             | Scratchpad show, hide, and backdrop.                |
-| `[animation.border]`       | None                                                                                                               | Focus-ring color transition in OkLab color space, beginning from the current border color when focus changes. |
-| `[animation.dim_unfocused]` | `dim` (0.0-1.0)                                                                                                 | Unfocused-window opacity. `dim = 0` disables it.    |
-| `[animation.layers]`       | None                                                                                                               | Layer-shell surface map and unmap fades.            |
+`windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`.
+`windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `scale` applies to
+`popin`: an opening window grows from it to full size, and a closing window
+shrinks toward it, while both fade.
 
-`workspace_curve` covers every way the filmstrip moves: a wheel notch, a
-keyboard action, and the release of a touchpad gesture. A spring curve settles
-from wherever the previews currently are and keeps the speed a swipe let go
-with, so `duration_ms` does not apply to it; any other curve runs over
-`duration_ms` and starts from rest. The shared `[animation] curve` does not
-reach it, because dropping the spring would drop the release velocity with it.
+`animation.overview.workspace_curve` controls filmstrip movement after wheel,
+keyboard, and touchpad navigation.
 
-An event's `enabled = false` makes only that transition instant. Scratchpad
-`dim` and `blur` remain active, without a fade, when animation is disabled.
-Scratchpad `scale`, `maximize`, and `fullscreen` apply when a window enters the
-scratchpad.
+Scratchpad `dim` and `blur` remain active without a fade when animation is
+disabled. `scale`, `maximize`, and `fullscreen` set the presentation applied
+when a window enters a scratchpad.
 
 ## Curves
 
-Each curve accepts a built-in name such as `linear`, `ease`, `easeout`,
-`snappy`, `bounce`, or `elastic`; a cubic bezier string
-`"x1,y1,x2,y2"`; or a spring string `"spring: damping,stiffness"`. Bezier x
-coordinates must be between 0 and 1. Spring damping must be between 0.01 and 5,
-and stiffness between 1 and 1000.
+Use a built-in curve such as `linear`, `ease`, `easeout`, `snappy`, `bounce`, or
+`elastic`; a cubic Bézier string; or a spring:
 
-Custom named curves can be registered once and reused by name:
+```toml
+curve = "0.05,0.9,0.1,1.0"
+# Or use a spring:
+# curve = "spring:1,1000"
+```
+
+For Bézier curves, x coordinates must be between 0 and 1. Spring syntax is
+`spring:<damping>,<stiffness>`:
+
+- Damping below 1 overshoots.
+- Damping 1 reaches the target without overshoot.
+- Damping above 1 approaches more slowly.
+- Greater stiffness settles faster.
+
+Register reusable names when several events share a curve:
 
 ```toml
 [animation.beziers]
@@ -122,197 +121,96 @@ myBezier = [0.05, 0.9, 0.1, 1.05]
 myBounce = { damping = 0.5, stiffness = 200 }
 ```
 
-Then reference them as `curve = "myBezier"` or `curve = "myBounce"` in any
-event section.
+Then set `curve = "myBezier"` or `curve = "myBounce"`.
 
 ## Custom GLSL shaders
 
-Every event section supports a custom fragment shader: `windows_in`,
-`windows_out`, `windows_move`, `workspaces`, `overview`, `scratchpad`, `border`,
-`dim_unfocused`, and `layers`. Existing configurations keep their built-in
-animations. The event's `enabled`, `duration_ms`, and `curve` still control its
-timeline.
+Every animation event can use a custom fragment shader. The event's enabled
+state and curve still control its timeline.
 
-Umbriel ships `reveal.glsl` and `squash.glsl` in the installed data directory's
-`umbriel/shaders/` directory. **No copying is required.** These are bundled
-shader files, not effects selected by name.
-
-`reveal.glsl` reveals or hides a window. `squash.glsl` adds a subtle, smooth
-compression and return during movement or resizing, without rippling. It keeps
-the window centered, compresses its width by up to 2% and height by up to 4.5%,
-and leaves both endpoints unchanged.
-
-For a package installed under `/usr`, reference the bundled files directly:
+Umbriel ships `reveal.glsl` and `squash.glsl`. Reference the installed files
+directly:
 
 ```toml
 [animation.windows_in]
 duration_ms = 300
+curve = "easeout"
 shader = "/usr/share/umbriel/shaders/reveal.glsl"
 
 [animation.windows_out]
 duration_ms = 250
+curve = "easeout"
 shader = "/usr/share/umbriel/shaders/reveal.glsl"
 
 [animation.windows_move]
 shader = "/usr/share/umbriel/shaders/squash.glsl"
 ```
 
-Adjust `/usr/share` to your package's data directory, for example
-`/usr/local/share` for a default local installation.
+Adjust `/usr/share` for the package prefix. Relative paths resolve from the
+configuration file containing the setting. Shader files are watched and reload
+with the configuration.
 
-With the Umbriel Home Manager module on NixOS, derive the path from your
-configured package instead of hardcoding a Nix store path. This assumes
-`programs.umbriel.package` is set to your Umbriel package:
+NixOS users can derive the path from the configured package:
 
 ```nix
-{ config, ... }:
-let
-  shaders = "${config.programs.umbriel.package}/share/umbriel/shaders";
-in
 {
-  programs.umbriel.settings.animation = {
-    windows_in = {
-      duration_ms = 300;
-      shader = "${shaders}/reveal.glsl";
-    };
-    windows_out = {
-      duration_ms = 250;
-      shader = "${shaders}/reveal.glsl";
-    };
-    windows_move.shader = "${shaders}/squash.glsl";
-  };
+  programs.umbriel.settings.animation.windows_in.shader =
+    "${config.programs.umbriel.package}/share/umbriel/shaders/reveal.glsl";
 }
 ```
 
-If you want editable copies, copy the repository's `examples/shaders/` directory
-beside your config and use paths such as `"shaders/reveal.glsl"` instead.
-Relative paths resolve against the config file containing the setting, including
-an included theme config. Absolute paths are also accepted. Shader-file edits trigger
-the normal automatic config reload; `umbriel msg config-reload` also re-reads
-them. Shell/environment expansion and recursive GLSL includes are not supported.
-
-The `shader` setting accepts only a file path, not inline GLSL. Omit it to use
-the built-in animation. Files must be regular, contain nonblank GLSL without
-NUL bytes, and fit within 256 KiB.
-
-For example, save this as `shaders/border-pulse.glsl` beside your config:
-
-```glsl
-vec4 animation(vec2 uv) {
-    vec4 color = umbriel_sample(uv);
-    float pulse = 0.3 * sin(3.14159265 * umbriel_clamped_progress);
-    vec3 highlight = vec3(1.0, 0.4, 0.1) * color.a;
-    return vec4(mix(color.rgb, highlight, pulse), color.a);
-}
-```
-
-Then reference it:
-
-```toml
-[animation.border]
-enabled = true
-shader = "shaders/border-pulse.glsl"
-```
+The `shader` value must name a regular GLSL file smaller than 256 KiB. Inline
+GLSL and recursive includes are not supported.
 
 ### Shader interface
 
-Write GLSL ES 1.00 with the entry point `vec4 animation(vec2 uv)`. Umbriel supplies
-`main`, precision declarations, and the following interface. Do not include a
-`#version` declaration or your own `main`.
+Write GLSL ES 1.00 with this entry point. Do not add a `#version` declaration
+or your own `main`:
+
+```glsl
+vec4 animation(vec2 uv) {
+    return umbriel_sample(uv);
+}
+```
+
+Umbriel supplies `main`, precision declarations, and these commonly used
+values:
 
 | Name | Meaning |
 | --- | --- |
-| `uv` | Normalized target coordinates: top-left `(0, 0)`, bottom-right `(1, 1)`, independent of output rotation |
-| `umbriel_sample(vec2 uv)` | Sample the rendered target; coordinates outside the target/output return transparent black |
-| `umbriel_sample_previous(vec2 uv)` | Sample this effect's prior successfully submitted result; the first sample uses the current rendered target |
-| `umbriel_size` | Current target bounding width and height in logical units |
-| `umbriel_progress` | Eased transition progress, normally 0 to 1; springs and overshooting curves may exceed that range |
-| `umbriel_clamped_progress` | Eased progress clamped to 0 to 1 |
-| `umbriel_linear_progress` | Timeline fraction before easing |
-| `umbriel_direction` | `1` for opening/showing/focusing, `-1` for closing/hiding/unfocusing; movement uses the sign of its controlling scalar, overview settling uses `1` |
-| `umbriel_random_seed` | Four independent pseudorandom values in `[0, 1)`, stable for one transition and refreshed for the next transition |
+| `uv` | Normalized target coordinates |
+| `umbriel_sample(vec2 uv)` | Sample the rendered target |
+| `umbriel_sample_previous(vec2 uv)` | Sample this target's previous shader result |
+| `umbriel_size` | Target width and height in logical units |
+| `umbriel_progress` | Eased progress, including overshoot |
+| `umbriel_clamped_progress` | Eased progress clamped to 0 through 1 |
+| `umbriel_linear_progress` | Progress before easing |
+| `umbriel_direction` | `1` for entering and `-1` for leaving |
+| `umbriel_random_seed` | Four stable random values for this transition |
 
-Progress always advances from the transition's start toward its end, including
-when closing. For a shared show/hide shader, use
-`umbriel_direction > 0.0 ? umbriel_clamped_progress : 1.0 - umbriel_clamped_progress`
-as the amount visible. Shaders run only during transitions and are removed at
-completion, so their endpoint must match the normal visible or hidden state.
+Return premultiplied RGBA. Preserve sampled alpha when modifying colors so a
+shader does not fill transparent parts of its target.
 
-Return premultiplied RGBA. Preserve the sampled alpha when modifying colors,
-especially for borders: a shader returning an opaque constant can fill the
-otherwise transparent center of a border's rectangular target. Samples use the
-compositor's working color space: sRGB for ordinary SDR composition and linear
-light when the color-management pass uses an FP16 intermediate target.
-
-Calling `umbriel_sample_previous` opts that effect into target-local feedback.
-It samples the prior post-shader result for the same scene target, effect slot,
-output, and renderer. It is not a copy of the desktop or output. On the first
-rendered frame, it samples the current unprocessed target, so a shared shader
-can always start from valid content. Coordinates outside the target return
-transparent black.
-
-Feedback follows the target when it moves. If its size changes, the prior result
-is resampled over the new normalized target coordinates. A new transition or
-shader starts fresh, while an interrupted effect keeps its result when Umbriel
-transfers it into a closing snapshot. Output rotation, working color format, or
-renderer changes also start fresh.
-
-Feedback keeps two buffers for each active target, event, and output that uses
-it. Their size follows the target, and color-managed composition uses FP16
-buffers. Avoid enabling feedback in effects that do not need it, especially on
-large workspace or overview targets. If those buffers cannot be allocated,
-Umbriel still runs the shader with the current target as the previous sample.
-
-`umbriel_random_seed` is intended for visual variation, not cryptography. Its
-four channels remain unchanged throughout a transition, including spring
-oscillation. If an active effect is transferred into a closing snapshot, that
-effect keeps its seed; the new closing transition receives its own seed.
+`umbriel_sample_previous` enables feedback and allocates two additional buffers
+for the active target. Avoid it when an effect does not need feedback,
+especially for workspace and overview shaders.
 
 ### Targets and composition
 
-Window open/close shaders replace the built-in fade/scale/slide style. A custom
-opening shader also works with `style = "none"`. Layer and scratchpad window
-show/hide shaders replace their built-in window fade. Movement/resize,
-workspace, overview, border-color, dimming, and backdrop transitions retain
-their native presentation changes and apply the shader to that presentation.
-Shaders never change layout, client configure sizes, input coordinates, or focus.
+Window shaders process the window, subsurfaces, and border as one target.
+Workspace and overview shaders process their corresponding scene trees.
+Shaders change presentation only; they do not affect layout, client sizes,
+input coordinates, or focus.
 
-A window's scene subtree, including its subsurfaces and border, is processed as
-one target. Borders can also have their own inner effect. Workspace effects
-process the output's workspace view root, and overview effects process each
-output's overview tree. Scratchpad backdrops have their own targets.
-
-Window shadows follow the alpha silhouette produced by active window or border
-shaders, including reveal masks and squash effects. The compositor applies the
-configured shadow color, softness, and offset automatically; shaders do not
-need to draw shadows. Shadows stay in their separate stacking layer beneath
-windows and do not tint visible translucent window pixels. Closing snapshots
-retain their shadows, including when a window closes during another animation.
-Enclosing workspace effects process the window and its shadow together.
-Without a window or border shader, the normal rounded-rectangle shadow path
-is used. No additional configuration is required.
-
-Child effects run before parent effects. Effects sharing a target run in this
-order: dimming, border, movement, window opening, window closing, scratchpad,
-layers, workspaces, overview. Thus an overview shader can sample a window's
-already-processed pixels. Sampling and drawing remain bounded by the target and
-its output/ancestor clips.
+Window shadows follow the alpha shape produced by window and border shaders.
+The compositor still applies configured color, softness, and offset.
 
 ### Reload and failures
 
-Programs are compiled on startup/config reload and cached per event, source,
-and renderer. Active transitions retain their program until completion or
-retargeting; disabling/removing an effect cancels its shader. Close snapshots
-retain the preceding effect parameters when a window closes mid-transition.
-GPU renderer recreation recompiles configured programs.
+Shaders compile on startup or configuration reload. A missing source or compile
+failure produces a diagnostic and falls back to the built-in effect. Compiler
+details appear in the Umbriel log.
 
-Missing sources and GLSL compilation failures produce diagnostics and use the
-built-in effect. Compiler details and the shader file label appear in Umbriel's
-log. If a render target cannot be allocated/imported, Umbriel draws the normal
-presentation rather than dropping the window. Intermediate textures are
-allocated only while needed and released after effects finish.
-
-Custom GLSL is trusted local GPU code, not sandboxed code. Expensive or
-nonterminating shaders can stall a driver. Effects add offscreen rendering work;
-opaque-region culling and direct scanout are suspended while custom effects are
-active. Prefer short transitions and inexpensive shaders.
+Custom shaders are trusted local GPU code. Expensive or nonterminating shaders
+can stall the driver, and active effects disable direct scanout. Prefer short,
+inexpensive effects.

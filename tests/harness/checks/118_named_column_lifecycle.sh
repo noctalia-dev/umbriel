@@ -51,9 +51,10 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [output."HEADLESS-1"]
 workspaces = 4
@@ -61,7 +62,7 @@ workspaces = 4
 [[window_rule]]
 match.app_id = "^named-move-owner$"
 default_scrolling_column = "move-source"
-default_width = 0.4
+default_scrolling_extent = 0.4
 
 [[window_rule]]
 match.title = "^named-move-late$"
@@ -116,7 +117,7 @@ default_scrolling_column = "owner-width-stack"
 [[window_rule]]
 match.title = "^named-owner-width-late$"
 default_scrolling_column_order = 10
-default_width = 0.7
+default_scrolling_extent = 0.7
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

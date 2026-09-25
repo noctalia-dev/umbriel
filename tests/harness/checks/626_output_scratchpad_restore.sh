@@ -152,7 +152,7 @@ write_config '[[window_rule]]
 match.title = "^scratch-restore$"
 default_output = "HEADLESS-2"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 91, y = 73, anchor = "top_left" }'
 "$UMBRIEL" msg config-reload > /dev/null
 

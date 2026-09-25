@@ -167,6 +167,9 @@ namespace umbriel {
       if (m_sessionLocked && !bind.allowWhenLocked) {
         continue;
       }
+      if (keyboardShortcutsInhibited() && !bind.allowWhenInhibited) {
+        continue;
+      }
       if (bind.submap != currentSubmap) {
         if (m_activeSubmaps.empty() || !bind.submap.empty() || !isSubmapResetBind(bind)) {
           continue;
@@ -185,7 +188,43 @@ namespace umbriel {
     if (bind && m_sessionLocked && !bind->allowWhenLocked) {
       return std::nullopt;
     }
+    if (bind && keyboardShortcutsInhibited() && !bind->allowWhenInhibited) {
+      return std::nullopt;
+    }
     return bind;
+  }
+
+  bool Server::keyboardShortcutsInhibited() const {
+    if (m_seat == nullptr) {
+      return false;
+    }
+    wlr_seat* seat = m_seat->wlr();
+    wlr_surface* focused = seat->keyboard_state.focused_surface;
+    return focused != nullptr && std::ranges::any_of(m_shortcutsInhibitors, [seat, focused](const auto& watch) {
+             const wlr_keyboard_shortcuts_inhibitor_v1* inhibitor = watch->inhibitor;
+             return inhibitor->active && inhibitor->seat == seat && inhibitor->surface == focused;
+           });
+  }
+
+  bool Server::toggleKeyboardShortcutsInhibit() {
+    if (m_seat == nullptr) {
+      return false;
+    }
+    wlr_seat* seat = m_seat->wlr();
+    wlr_surface* focused = seat->keyboard_state.focused_surface;
+    const auto found = std::ranges::find_if(m_shortcutsInhibitors, [seat, focused](const auto& watch) {
+      return focused != nullptr && watch->inhibitor->seat == seat && watch->inhibitor->surface == focused;
+    });
+    if (found == m_shortcutsInhibitors.end()) {
+      return false;
+    }
+    wlr_keyboard_shortcuts_inhibitor_v1* inhibitor = (*found)->inhibitor;
+    if (inhibitor->active) {
+      wlr_keyboard_shortcuts_inhibitor_v1_deactivate(inhibitor);
+    } else {
+      wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
+    }
+    return true;
   }
 
   const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const {
@@ -204,6 +243,9 @@ namespace umbriel {
         }
       }
       if (m_sessionLocked && !bind.allowWhenLocked) {
+        continue;
+      }
+      if (keyboardShortcutsInhibited() && !bind.allowWhenInhibited) {
         continue;
       }
       if (bind.modifierOnly) {

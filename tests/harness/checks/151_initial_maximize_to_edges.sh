@@ -48,6 +48,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [appearance]
 border_width = 0
@@ -55,7 +56,7 @@ outer_border_width = 0
 corner_radius = 0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [[window_rule]]
 match.title = "^maximize-ruled$"
@@ -69,7 +70,7 @@ EOF
 
 # The unmatched window keeps the half-width fraction: the measurement baseline.
 spawn_client edges-baseline "$UMBRIEL_RUNTIME_DIR/initial-maximize-to-edges-baseline.log" || exit 1
-sleep 0.3
+"$UMBRIEL" settle
 grim "$BASELINE"
 baseline_width=$(presented_width "$BASELINE")
 stop_client
@@ -79,7 +80,7 @@ if (( baseline_width > 900 )); then
 fi
 readonly MAXIMIZED_SCREENSHOT="$UMBRIEL_RUNTIME_DIR/initial-maximize-ruled.png"
 spawn_client maximize-ruled "$MAXIMIZED_LOG" || exit 1
-sleep 0.3
+"$UMBRIEL" settle
 grim "$MAXIMIZED_SCREENSHOT"
 maximized_width=$(presented_width "$MAXIMIZED_SCREENSHOT")
 stop_client
@@ -91,7 +92,7 @@ fi
 
 # Same fraction, but the rule maximizes it to the edges at map.
 spawn_client edges-ruled "$EDGES_LOG" || exit 1
-sleep 0.3
+"$UMBRIEL" settle
 grim "$RULED"
 ruled_width=$(presented_width "$RULED")
 stop_client

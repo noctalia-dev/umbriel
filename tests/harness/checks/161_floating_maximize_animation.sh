@@ -28,7 +28,7 @@ enabled = false
 [[window_rule]]
 match.title = "^floating-maximize-animation$"
 default_floating = true
-default_size = [480, 300]
+default_floating_size_px = { width = 480, height = 300 }
 default_position = { x = 173, y = 109, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -73,15 +73,17 @@ assert_exact_box() {
 
 "$CLIENT" "$TITLE" 480 300 > "$CLIENT_LOG" 2>&1 &
 wait_for_box 480x300+173+109
-sleep 0.2
+"$UMBRIEL" settle
 
 read -r before_x before_y before_w before_h < <(capture_box before)
 assert_exact_box before "$before_x" "$before_y" "$before_w" "$before_h" 173 109 480 300
 
+# Animation time only moves by clock-advance: samples land at 150 ms and 450 ms of each 2000 ms timeline.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 read -r max_x1 max_y1 max_w1 max_h1 < <(capture_box maximize-150ms)
-sleep 0.30
+"$UMBRIEL" clock-advance 300
 read -r max_x2 max_y2 max_w2 max_h2 < <(capture_box maximize-450ms)
 
 if ! (( 173 > max_x1 && max_x1 > max_x2 && max_x2 > 0
@@ -92,14 +94,15 @@ if ! (( 173 > max_x1 && max_x1 > max_x2 && max_x2 > 0
   exit 1
 fi
 
-sleep 1.75
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" settle
 read -r maximized_x maximized_y maximized_w maximized_h < <(capture_box maximized)
 assert_exact_box maximized "$maximized_x" "$maximized_y" "$maximized_w" "$maximized_h" 0 0 1280 720
 
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 read -r restore_x1 restore_y1 restore_w1 restore_h1 < <(capture_box restore-150ms)
-sleep 0.30
+"$UMBRIEL" clock-advance 300
 read -r restore_x2 restore_y2 restore_w2 restore_h2 < <(capture_box restore-450ms)
 
 if ! (( 0 < restore_x1 && restore_x1 < restore_x2 && restore_x2 < 173
@@ -110,7 +113,8 @@ if ! (( 0 < restore_x1 && restore_x1 < restore_x2 && restore_x2 < 173
   exit 1
 fi
 
-sleep 1.75
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" settle
 read -r restored_x restored_y restored_w restored_h < <(capture_box restored)
 assert_exact_box restored "$restored_x" "$restored_y" "$restored_w" "$restored_h" 173 109 480 300
 

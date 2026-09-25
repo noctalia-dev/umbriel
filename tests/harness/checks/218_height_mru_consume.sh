@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Directional consume actions change column membership, height actions resize
-# stacked windows, and focus-last follows global MRU order across workspaces.
+# Directional consume actions change column membership, secondary extent
+# actions resize stacked windows, and focus-last follows global MRU order across workspaces.
 set -euo pipefail
 
 accepts() {
@@ -109,8 +109,8 @@ accepts window-consume-or-expel-left
 wait_for_stacked
 
 # The modify verb steps from the fraction the window already carries: 0.7 - 0.2.
-accepts window-set-height:0.7
-accepts window-modify-height:-0.2
+accepts window-set-secondary-extent:0.7
+accepts window-modify-secondary-extent:-0.2
 wait_for_b_height_percent 46 54
 
 accepts window-consume-or-expel-left

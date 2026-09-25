@@ -15,7 +15,8 @@ if ! "$UMBRIEL" msg session-quit > /dev/null 2>&1; then
   echo "msg session-quit was rejected"
   exit 1
 fi
-sleep 0.5
+# settle replies only after a frame drawn past the request; a compositor that quit fails it and the IPC probe below.
+"$UMBRIEL" settle > /dev/null 2>&1 || true
 if ! answers_ipc; then
   echo "compositor stopped answering IPC after a single session-quit"
   exit 1

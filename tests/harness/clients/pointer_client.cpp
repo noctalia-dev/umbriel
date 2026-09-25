@@ -9,6 +9,10 @@
 // pause <ms> keep the pointer connection and current input state. Commands run in order, each followed by a frame and
 // a roundtrip so the compositor has processed one before the next is sent.
 // axis <horizontal|vertical> <delta> sends smooth finger input; axis-stop <horizontal|vertical> ends it.
+// mark <label> prints the label on its own stdout line once every earlier command has been processed, so a check polls
+// for it instead of sleeping. hold keeps the current input state until a line or end of input arrives on stdin, so a
+// check can hold a drag across its screenshots and release it by writing to the client's stdin. A leading
+// keyboard-only creates no pointer, for a client that only supplies a keyboard.
 
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
 #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
@@ -118,6 +122,10 @@ namespace {
       xkbName = XKB_MOD_NAME_ALT;
     } else if (name == "logo" || name == "super") {
       xkbName = XKB_MOD_NAME_LOGO;
+    } else if (name == "caps") {
+      xkbName = XKB_MOD_NAME_CAPS;
+    } else if (name == "num") {
+      xkbName = XKB_MOD_NAME_NUM;
     } else if (name == "none") {
       return 0;
     } else {
@@ -181,14 +189,25 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  zwlr_virtual_pointer_v1* pointer =
-      zwlr_virtual_pointer_manager_v1_create_virtual_pointer(state.pointerManager, state.seat);
-  if (pointer == nullptr) {
-    std::println(stderr, "pointer-client: failed to create a virtual pointer");
-    return EXIT_FAILURE;
+  std::vector<std::string> args(argv + 3, argv + argc);
+  const bool keyboardOnly = args.front() == "keyboard-only";
+  if (keyboardOnly) {
+    args.erase(args.begin());
   }
+  zwlr_virtual_pointer_v1* pointer = nullptr;
+  if (!keyboardOnly) {
+    pointer = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(state.pointerManager, state.seat);
+    if (pointer == nullptr) {
+      std::println(stderr, "pointer-client: failed to create a virtual pointer");
+      return EXIT_FAILURE;
+    }
+  }
+  const auto frame = [pointer] {
+    if (pointer != nullptr) {
+      zwlr_virtual_pointer_v1_frame(pointer);
+    }
+  };
 
-  const std::vector<std::string> args(argv + 3, argv + argc);
   const bool needsKeyboard = std::ranges::any_of(args, [](const std::string& command) {
     return command == "mod" || command == "tap" || command == "key-press" || command == "key-release";
   });
@@ -204,6 +223,19 @@ int main(int argc, char** argv) {
         std::exit(EXIT_FAILURE);
       }
     };
+
+    if (pointer == nullptr
+        && (command == "move"
+            || command == "press"
+            || command == "release"
+            || command == "click"
+            || command == "notch"
+            || command == "notch-horizontal"
+            || command == "axis"
+            || command == "axis-stop")) {
+      std::println(stderr, "pointer-client: '{}' needs a pointer, which keyboard-only does not create", command);
+      return EXIT_FAILURE;
+    }
 
     if (command == "move") {
       needs(2);
@@ -252,11 +284,13 @@ int main(int argc, char** argv) {
         i += 1;
         zwlr_virtual_pointer_v1_axis_stop(pointer, nextTime(), axis);
       }
-    } else if (command == "mod") {
+    } else if (command == "mod" || command == "lock") {
       needs(1);
-      const uint32_t depressed = modifierMask(keyboard, args[i + 1]);
+      const uint32_t mask = modifierMask(keyboard, args[i + 1]);
       i += 1;
-      zwp_virtual_keyboard_v1_modifiers(keyboard.protocol, depressed, 0, 0, 0);
+      zwp_virtual_keyboard_v1_modifiers(
+          keyboard.protocol, command == "mod" ? mask : 0, 0, command == "lock" ? mask : 0, 0
+      );
     } else if (command == "tap" || command == "key-press" || command == "key-release") {
       needs(1);
       const auto key = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
@@ -265,11 +299,20 @@ int main(int argc, char** argv) {
         zwp_virtual_keyboard_v1_key(keyboard.protocol, nextTime(), key, WL_KEYBOARD_KEY_STATE_PRESSED);
       }
       if (command == "tap") {
-        zwlr_virtual_pointer_v1_frame(pointer);
+        frame();
         wl_display_roundtrip(display);
       }
       if (command != "key-press") {
         zwp_virtual_keyboard_v1_key(keyboard.protocol, nextTime(), key, WL_KEYBOARD_KEY_STATE_RELEASED);
+      }
+    } else if (command == "mark") {
+      needs(1);
+      std::println("{}", args[i + 1]);
+      std::fflush(stdout);
+      i += 1;
+    } else if (command == "hold") {
+      int c = 0;
+      while ((c = std::getchar()) != EOF && c != '\n') {
       }
     } else if (command == "pause") {
       needs(1);
@@ -281,14 +324,16 @@ int main(int argc, char** argv) {
       return EXIT_FAILURE;
     }
 
-    zwlr_virtual_pointer_v1_frame(pointer);
+    frame();
     if (wl_display_roundtrip(display) < 0) {
       std::println(stderr, "pointer-client: connection lost");
       return EXIT_FAILURE;
     }
   }
 
-  zwlr_virtual_pointer_v1_destroy(pointer);
+  if (pointer != nullptr) {
+    zwlr_virtual_pointer_v1_destroy(pointer);
+  }
   destroyKeyboard(keyboard);
   wl_display_roundtrip(display);
   wl_display_disconnect(display);

@@ -19,6 +19,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 2000
+curve = "linear"
 
 [appearance]
 border_width = 0
@@ -26,14 +27,16 @@ outer_border_width = 0
 corner_radius = 0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
+# Animation time only moves by clock-advance: the sample lands halfway through the 2000 ms linear timeline.
+"$UMBRIEL" clock-freeze
 "$CLIENT" "maximize-to-edges-animation" 1280 720 > "$CLIENT_LOG" 2>&1 &
 
 for _ in $(seq 60); do
-  grep -q '^mapped$' "$CLIENT_LOG" && break
+  "$UMBRIEL" windows --json | jq -e '.[] | select(.title == "maximize-to-edges-animation")' > /dev/null && break
   sleep 0.05
 done
 if ! grep -q '^mapped$' "$CLIENT_LOG"; then
@@ -41,16 +44,18 @@ if ! grep -q '^mapped$' "$CLIENT_LOG"; then
   exit 1
 fi
 
-sleep 2.1
+"$UMBRIEL" clock-advance 2500
+"$UMBRIEL" settle
 grim "$BEFORE"
 before_width=$(presented_width "$BEFORE")
 
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
-sleep 0.25
+"$UMBRIEL" clock-advance 1000
 grim "$DURING"
 during_width=$(presented_width "$DURING")
 
-sleep 2.1
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" settle
 grim "$AFTER"
 after_width=$(presented_width "$AFTER")
 

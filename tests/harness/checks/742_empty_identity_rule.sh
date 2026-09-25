@@ -51,7 +51,7 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 # The inotify watcher reloads this append 150ms later. Its generation bump invalidates the per-identity rule cache, so
 # let it land before the clients: an assertion here must observe the title change, not a reload.
-sleep 0.3
+sleep 0.3 # real time: inotify reload timer
 
 await_window() {
   local filter=$1 message=$2 windows=
@@ -81,7 +81,7 @@ exec {dim_fd}<>"$DIM_FIFO"
 env APP_ID=dim-blank-title NO_TITLE=1 TITLE_AFTER_MAP= \
   "$CLIENT" dim-blank-title 800 600 <&"$dim_fd" > "$DIM_LOG" 2>&1 &
 await_window 'length == 1 and .[0].app_id == "dim-blank-title"' "titleless window did not map" || exit 1
-sleep 0.1
+"$UMBRIEL" settle
 grim "$BEFORE_SHOT"
 before_green=$(window_green "$BEFORE_SHOT")
 

@@ -26,6 +26,9 @@ namespace umbriel {
       : m_server(&server), m_keyboard(wlr_keyboard_from_input_device(device)),
         m_virtual(wlr_input_device_get_virtual_keyboard(device) != nullptr),
         m_deviceName(device->name != nullptr ? device->name : "") {
+    if (m_virtual) {
+      m_server->inputMethodRelay()->canonicalizeOwnedKeyboardKeymap(m_keyboard);
+    }
     applyConfig();
     if (!m_virtual && config().input.keyboard.numlockToggle && m_keyboard->keymap != nullptr) {
       const xkb_mod_index_t numLock = xkb_keymap_mod_get_index(m_keyboard->keymap, XKB_MOD_NAME_NUM);
@@ -432,6 +435,10 @@ namespace umbriel {
       return 0;
     }
     if (self->m_server->sessionLocked() && !self->m_repeatBind.allowWhenLocked) {
+      self->cancelRepeat();
+      return 0;
+    }
+    if (self->m_server->keyboardShortcutsInhibited() && !self->m_repeatBind.allowWhenInhibited) {
       self->cancelRepeat();
       return 0;
     }

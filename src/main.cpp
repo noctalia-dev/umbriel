@@ -327,8 +327,9 @@ int main(int argc, char** argv) {
     }
     umbriel::Server server;
 
-    // SIGINT and SIGTERM are handled on the event loop by the server itself. SIG_IGN for SIGCHLD reaps spawned children
-    // without a handler; every fork in Server restores the default before exec.
+    // SIGINT and SIGTERM are handled on the event loop by the server itself.
+    // SIG_IGN for SIGCHLD reaps spawned children without a handler. Every fork
+    // in Server restores the default before exec.
     std::signal(SIGCHLD, SIG_IGN);
 
     if (!server.start(startupCmd)) {

@@ -15,6 +15,12 @@
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure
 // so the compositor maps both in the same dispatch. TRANSIENT_FOREIGN_HANDLE=<handle> parents this toplevel to
 // another client's exported toplevel, the way a portal dialog is parented.
+// TRANSIENT_FOREIGN_PARENT_ON_STDIN delays that parent request until `p` is read
+// from stdin, after the child has mapped.
+// FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
+// FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
+// RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
+// colour, the way a real client follows its tile.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
@@ -30,6 +36,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <poll.h>
 #include <print>
 #include <sys/mman.h>
@@ -103,6 +110,7 @@ namespace {
     bool requestMaximized = false;
     bool requestMaximizedAfterConfigure = false;
     bool requestMaximizedAfterMap = false;
+    bool requestMaximizedAfterFrame = false;
     bool maximizeRequested = false;
     bool logConfigures = false;
     xdg_toplevel* parentOnFirstConfigure = nullptr;
@@ -125,6 +133,10 @@ namespace {
     bool imageDescriptionFailed = false;
     bool metadataUpdated = false;
     int tearingHint = -1;
+    uint32_t fillColor = 0xFF5577AA;
+    std::optional<uint32_t> resizeFillColor;
+    int configuredWidth = 0;
+    int configuredHeight = 0;
     const char* title = "unmap-client";
     const char* appId = nullptr;
     const char* remapAppId = nullptr;
@@ -189,7 +201,13 @@ namespace {
       .ready2 = imageDescriptionReady2,
   };
 
-  void keyboardKeymap(void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) { close(fd); }
+  void keyboardKeymap(void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) {
+    close(fd);
+    if (std::getenv("UMBRIEL_LOG_KEYMAPS") != nullptr) {
+      std::println("keymap");
+      std::fflush(stdout);
+    }
+  }
 
   void keyboardEnter(void* data, wl_keyboard*, uint32_t, wl_surface* surface, wl_array*) {
     auto& state = *static_cast<State*>(data);
@@ -264,7 +282,7 @@ namespace {
       close(fd);
       return buffer;
     }
-    std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), 0xFF5577AA);
+    std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
     buffer.resource = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
@@ -342,10 +360,40 @@ namespace {
     return waitForAuxiliaryToplevel(state, window);
   }
 
+  // Sends the restored maximize one compositor dispatch after the mapping commit and before acknowledging the
+  // configure that answers it, the order kitty uses.
+  void maximizeAfterFrameDone(void* data, wl_callback* callback, uint32_t /*time*/) {
+    auto& state = *static_cast<State*>(data);
+    wl_callback_destroy(callback);
+    xdg_toplevel_set_maximized(state.toplevel);
+    wl_surface_commit(state.surface);
+    wl_display_flush(state.display);
+    std::println("maximize-after-frame");
+    std::fflush(stdout);
+  }
+
+  constexpr wl_callback_listener kMaximizeAfterFrameListener = {.done = maximizeAfterFrameDone};
+
   void xdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
+    const bool followSize = state.resizeFillColor
+        && state.configuredWidth > 0
+        && state.configuredHeight > 0
+        && (state.configuredWidth != state.width || state.configuredHeight != state.height);
+    if (followSize) {
+      if (state.mapped) {
+        state.fillColor = *state.resizeFillColor;
+      }
+      state.width = state.configuredWidth;
+      state.height = state.configuredHeight;
+      state.buffer = createBuffer(state, state.width, state.height);
+    }
     if (state.mapped) {
+      if (followSize) {
+        wl_surface_attach(state.surface, state.buffer.resource, 0, 0);
+        wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+      }
       // Apply later toplevel state transitions, such as leaving fullscreen. Acknowledging the configure without a
       // surface commit leaves the requested state pending forever.
       wl_surface_commit(state.surface);
@@ -376,6 +424,10 @@ namespace {
       wl_surface_commit(state.surface);
       state.maximizeRequested = true;
     }
+    if (state.requestMaximizedAfterFrame && !state.maximizeRequested) {
+      wl_callback_add_listener(wl_display_sync(state.display), &kMaximizeAfterFrameListener, &state);
+      state.maximizeRequested = true;
+    }
     if (state.requestFullscreen && !state.fullscreenRequested) {
       xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
       wl_surface_commit(state.surface);
@@ -391,6 +443,8 @@ namespace {
 
   void toplevelConfigure(void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
     auto& state = *static_cast<State*>(data);
+    state.configuredWidth = width;
+    state.configuredHeight = height;
     bool fullscreen = false;
     if (state.logConfigures) {
       std::println("configured-size={}x{}", width, height);
@@ -684,8 +738,12 @@ int main(int argc, char** argv) {
   // A toplevel that never sets a title, which is distinct from one that sets an empty title.
   const bool skipTitle = std::getenv("NO_TITLE") != nullptr;
   const bool maximizeOnStdin = std::getenv("MAXIMIZE_ON_STDIN") != nullptr;
-  const bool updateOnStdin =
-      updatedContentType != nullptr || updatedXdgTag != nullptr || updatedTitle != nullptr || maximizeOnStdin;
+  const bool fullscreenOnStdin = std::getenv("FULLSCREEN_ON_STDIN") != nullptr;
+  const bool updateOnStdin = updatedContentType != nullptr
+      || updatedXdgTag != nullptr
+      || updatedTitle != nullptr
+      || maximizeOnStdin
+      || fullscreenOnStdin;
   if (parseContentType(initialContentType) < 0 || parseContentType(updatedContentType) < 0) {
     std::println(stderr, "unmap-client: CONTENT_TYPE values must be none, photo, video, or game");
     return EXIT_FAILURE;
@@ -697,6 +755,7 @@ int main(int argc, char** argv) {
   state.requestMaximized = std::getenv("REQUEST_MAXIMIZED") != nullptr;
   state.requestMaximizedAfterConfigure = std::getenv("REQUEST_MAXIMIZED_AFTER_CONFIGURE") != nullptr;
   state.requestMaximizedAfterMap = std::getenv("REQUEST_MAXIMIZED_AFTER_MAP") != nullptr;
+  state.requestMaximizedAfterFrame = std::getenv("REQUEST_MAXIMIZED_AFTER_FRAME") != nullptr;
   state.logConfigures = std::getenv("LOG_CONFIGURES") != nullptr;
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
   state.requestHdr = std::getenv("COLOR_HDR") != nullptr;
@@ -714,6 +773,26 @@ int main(int argc, char** argv) {
       std::println(stderr, "unmap-client: TEARING_HINT must be async or vsync");
       return EXIT_FAILURE;
     }
+  }
+  if (const char* fill = std::getenv("FILL_COLOR")) {
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long value = std::strtoul(fill, &end, 0);
+    if (*fill == '\0' || end == nullptr || *end != '\0' || errno != 0 || value > 0xFFFFFFFFUL) {
+      std::println(stderr, "unmap-client: FILL_COLOR must be a 32-bit ARGB value");
+      return EXIT_FAILURE;
+    }
+    state.fillColor = static_cast<uint32_t>(value);
+  }
+  if (const char* fill = std::getenv("RESIZE_FILL_COLOR")) {
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long value = std::strtoul(fill, &end, 0);
+    if (*fill == '\0' || end == nullptr || *end != '\0' || errno != 0 || value > 0xFFFFFFFFUL) {
+      std::println(stderr, "unmap-client: RESIZE_FILL_COLOR must be a 32-bit ARGB value");
+      return EXIT_FAILURE;
+    }
+    state.resizeFillColor = static_cast<uint32_t>(value);
   }
   if (argc > 2) {
     state.width = std::max(1, std::atoi(argv[2]));
@@ -764,6 +843,11 @@ int main(int argc, char** argv) {
   const bool mappedTogether = transientSuite && std::strcmp(transientSuiteMode, "mapped-together") == 0;
   const bool parentInitialCommitOnly = unmappedTransientParent || mappedTogether;
   const char* foreignHandle = std::getenv("TRANSIENT_FOREIGN_HANDLE");
+  const bool foreignParentOnStdin = std::getenv("TRANSIENT_FOREIGN_PARENT_ON_STDIN") != nullptr;
+  if (foreignParentOnStdin && foreignHandle == nullptr) {
+    std::println(stderr, "unmap-client: TRANSIENT_FOREIGN_PARENT_ON_STDIN requires TRANSIENT_FOREIGN_HANDLE");
+    return EXIT_FAILURE;
+  }
   if (foreignHandle != nullptr && state.importer == nullptr) {
     std::println(stderr, "unmap-client: compositor is missing zxdg_importer_v2");
     return EXIT_FAILURE;
@@ -914,14 +998,17 @@ int main(int argc, char** argv) {
   zxdg_imported_v2* imported = nullptr;
   if (foreignHandle != nullptr) {
     imported = zxdg_importer_v2_import_toplevel(state.importer, foreignHandle);
-    zxdg_imported_v2_set_parent_of(imported, state.surface);
+    if (!foreignParentOnStdin) {
+      zxdg_imported_v2_set_parent_of(imported, state.surface);
+    }
   }
   wl_surface_commit(state.surface);
 
-  if (!remapOnStdin && !updateOnStdin) {
+  if (!remapOnStdin && !updateOnStdin && !foreignParentOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }
   } else {
+    bool foreignParentApplied = false;
     pollfd sources[2] = {
         {.fd = wl_display_get_fd(state.display), .events = POLLIN, .revents = 0},
         {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
@@ -953,6 +1040,14 @@ int main(int argc, char** argv) {
             if (!issueInputActivationToken(state)) {
               return EXIT_FAILURE;
             }
+          } else if (
+              state.mapped && foreignParentOnStdin && !foreignParentApplied && imported != nullptr && command == 'p'
+          ) {
+            zxdg_imported_v2_set_parent_of(imported, state.surface);
+            wl_display_flush(state.display);
+            foreignParentApplied = true;
+            std::println("foreign-parent-set");
+            std::fflush(stdout);
           } else if (state.mapped && maximizeOnStdin && command == 's') {
             wl_surface_commit(state.surface);
             if (wl_display_roundtrip(state.display) < 0) {
@@ -965,6 +1060,18 @@ int main(int argc, char** argv) {
             wl_surface_commit(state.surface);
             wl_display_flush(state.display);
             std::println("maximize-requested");
+            std::fflush(stdout);
+          } else if (state.mapped && fullscreenOnStdin && command == 'f') {
+            xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
+            wl_surface_commit(state.surface);
+            wl_display_flush(state.display);
+            std::println("fullscreen-requested");
+            std::fflush(stdout);
+          } else if (state.mapped && fullscreenOnStdin && command == 'u') {
+            xdg_toplevel_unset_fullscreen(state.toplevel);
+            wl_surface_commit(state.surface);
+            wl_display_flush(state.display);
+            std::println("unfullscreen-requested");
             std::fflush(stdout);
           } else if (state.mapped && updateOnStdin && !state.metadataUpdated) {
             if (updatedContentType != nullptr) {

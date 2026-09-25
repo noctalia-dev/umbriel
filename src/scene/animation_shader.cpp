@@ -18,6 +18,29 @@ namespace umbriel {
       std::shared_ptr<fx_animation_shader> shader;
     };
     std::array<CacheEntry, FX_ANIMATION_SLOTS> cache;
+
+    // Entering transitions fade in with progress and leaving ones fade out. Only alpha changes, uniformly, so the
+    // window's shape and its analytic shadow are unaffected.
+    constexpr const char* kBuiltinFade = R"(vec4 animation(vec2 uv) {
+    float alpha = umbriel_direction < 0.0 ? 1.0 - umbriel_clamped_progress : umbriel_clamped_progress;
+    return umbriel_sample(uv) * alpha;
+})";
+    struct BuiltinEntry {
+      wlr_renderer* renderer = nullptr;
+      std::shared_ptr<fx_animation_shader> shader;
+    };
+    BuiltinEntry builtinFade;
+
+    fx_animation_shader* builtinFadeShader(wlr_renderer* renderer) {
+      if (builtinFade.renderer != renderer) {
+        builtinFade.renderer = renderer;
+        builtinFade.shader = {
+            fx_animation_shader_create(renderer, kBuiltinFade, "animation.builtin_fade"), fx_animation_shader_unref
+        };
+        fx_animation_shader_set_shape_preserving(builtinFade.shader.get(), true);
+      }
+      return builtinFade.shader.get();
+    }
     static_assert(static_cast<unsigned>(AnimationEvent::Overview) + 1 == FX_ANIMATION_SLOTS);
 
     template <typename Value>
@@ -35,7 +58,7 @@ namespace umbriel {
       parameters.transition_id = value.transitionId();
       std::ranges::copy(value.shaderSeed(), parameters.random_seed);
       wlr_scene_node_set_animation(
-          node, static_cast<unsigned>(event), value.animating() ? animationShader(renderer, event) : nullptr,
+          node, static_cast<unsigned>(event), value.animating() ? lifecycleShader(renderer, event) : nullptr,
           &parameters
       );
     }
@@ -81,13 +104,30 @@ namespace umbriel {
     return entry.shader.get();
   }
 
+  fx_animation_shader* lifecycleShader(wlr_renderer* renderer, AnimationEvent event) {
+    if (fx_animation_shader* custom = animationShader(renderer, event)) {
+      return custom;
+    }
+    const auto& settings = config().animation;
+    // Slide keeps per-buffer alpha: its opacity curve differs from the lifecycle progress.
+    const bool builtin = settings.enabled
+        && ((event == AnimationEvent::WindowsIn && settings.windowsIn.enabled && settings.windowsIn.style != "slide")
+            || (event == AnimationEvent::WindowsOut
+                && settings.windowsOut.enabled
+                && settings.windowsOut.style != "slide"));
+    return builtin ? builtinFadeShader(renderer) : nullptr;
+  }
+
   void prepareAnimationShaders(wlr_renderer* renderer) {
     for (unsigned event = 0; event < FX_ANIMATION_SLOTS; ++event) {
-      (void)animationShader(renderer, static_cast<AnimationEvent>(event));
+      (void)lifecycleShader(renderer, static_cast<AnimationEvent>(event));
     }
   }
 
-  void clearAnimationShaderCache() { cache = {}; }
+  void clearAnimationShaderCache() {
+    cache = {};
+    builtinFade = {};
+  }
 
   void updateAnimationShader(
       wlr_scene_node* node, wlr_renderer* renderer, AnimationEvent event, const AnimatedValue& value, float direction

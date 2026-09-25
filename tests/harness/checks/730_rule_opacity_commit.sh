@@ -9,6 +9,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors]
 backdrop = "#00FF00FF"
@@ -39,7 +40,7 @@ fi
 # preserve the 0.5 compositor opacity rather than restoring opaque black.
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
-sleep 0.5
+sleep 0.5 # real time: foot commits fresh content after the switch
 grim "$SCREENSHOT"
 
 # The sampled pixel is black client content over the solid green compositor

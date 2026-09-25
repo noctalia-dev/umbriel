@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=2
-# follows_focus keeps the pointer on the focused window after an in-workspace move, an output focus action, and a
-# foreign-toplevel activation such as a taskbar or dock request.
+# follows_focus keeps the pointer on the focused window after an ID-targeted focus, an in-workspace move, an output
+# focus action, and a foreign-toplevel activation such as a taskbar or dock request.
 set -euo pipefail
 
 readonly BTN_LEFT=272
@@ -61,7 +61,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [input.cursor]
 follows_focus = true
@@ -105,8 +105,8 @@ if [[ $first_output == "$other_output" ]]; then
   exit 1
 fi
 
-# Put the pointer on the focused window, then swap that window with its neighbor. A focus-only detour and an unmoved
-# click must return focus to the moved window at its new pointer-followed position.
+# Put the pointer on the focused window, then swap that window with its neighbor. ID-targeted focus must move the
+# pointer to the newly focused window, so an unmoved click must keep focus there.
 "$UMBRIEL" msg "window-focus:$first_id" > /dev/null
 "$POINTER" 2560 720 move "$(window_center_x "$first_id")" "$(window_center_y "$first_id")"
 before_x=$(window_x "$first_id")
@@ -124,10 +124,10 @@ if [[ $after_x == "$before_x" ]]; then
 fi
 "$UMBRIEL" msg "window-focus:$second_id" > /dev/null
 "$POINTER" 2560 720 click "$BTN_LEFT"
-wait_for_active "$first_id"
+wait_for_active "$second_id"
 
 # Output focus must use the target window when follows_focus is enabled. The output center itself is outside the
-# focused half-width fixture, so a focus-only detour followed by a click distinguishes the two landing points.
+# focused half-width fixture, so an unmoved click distinguishes the two landing points.
 first_output_x=$(output_x "$first_output")
 other_output_x=$(output_x "$other_output")
 if ((other_output_x > first_output_x)); then
@@ -139,16 +139,14 @@ fi
 "$UMBRIEL" msg "window-focus:$first_id" > /dev/null
 "$UMBRIEL" msg "$output_action" > /dev/null
 wait_for_active "$other_id"
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null
 "$POINTER" 2560 720 click "$BTN_LEFT"
 wait_for_active "$other_id"
 
-# A dock uses foreign-toplevel activation rather than Umbriel's IPC. It must receive the same configured pointer
-# following behavior while the explicit window-focus action remains focus-only.
+# A dock uses foreign-toplevel activation rather than Umbriel's IPC. It must receive the same configured pointer-following
+# behavior.
 "$FOREIGN_TOPLEVEL" follow-first "$first_output" activate
 wait_for_active "$first_id"
-"$UMBRIEL" msg "window-focus:$other_id" > /dev/null
 "$POINTER" 2560 720 click "$BTN_LEFT"
 wait_for_active "$first_id"
 
-echo "follows_focus tracks local moves, output focus, and foreign-toplevel activation"
+echo "follows_focus tracks ID focus, local moves, output focus, and foreign-toplevel activation"

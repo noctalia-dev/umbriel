@@ -59,9 +59,9 @@ namespace umbriel {
     WindowConsumeOrExpelLeft,
     WindowConsumeRight,
     WindowConsumeOrExpelRight,
-    WindowCycleWidth,
-    WindowCycleWidthBack,
-    WindowSetWidth,
+    WindowCyclePrimaryExtent,
+    WindowCyclePrimaryExtentBack,
+    WindowSetPrimaryExtent,
     ToggleMaximize,
     ToggleMaximizeToEdges,
     ToggleFullscreen,
@@ -70,10 +70,14 @@ namespace umbriel {
     WindowFocusNext,
     WorkspaceSwitch,
     WindowMoveToWorkspace,
+    WindowMoveToWorkspaceSilent,
+    WindowMoveToWorkspaceSilentNext,
+    WindowMoveToWorkspaceSilentPrevious,
     WindowMoveToWorkspaceNext,
     WindowMoveToWorkspacePrevious,
     ConfigReload,
     KeyboardLayoutNext,
+    ShortcutsInhibitToggle,
     LayoutScrollDrag,
     LayoutScrollLeft,
     LayoutScrollRight,
@@ -121,7 +125,7 @@ namespace umbriel {
     WorkspaceSwapActiveOutputDown,
     WorkspaceSwapActiveOutputNext,
     WorkspaceSwapActiveOutputPrevious,
-    WindowModifyWidth,
+    WindowModifyPrimaryExtent,
     WindowCenter,
     WorkspaceSetLayout,
     DpmsOff,
@@ -138,14 +142,14 @@ namespace umbriel {
     WindowSwapPrevious,
     LayoutMasterCountIncrease,
     LayoutMasterCountDecrease,
-    WindowSetHeight,
-    WindowModifyHeight,
+    WindowSetSecondaryExtent,
+    WindowModifySecondaryExtent,
     WindowModifyWidthLeft,
     WindowModifyWidthRight,
     WindowModifyHeightUp,
     WindowModifyHeightDown,
-    WindowCycleHeight,
-    WindowCycleHeightBack,
+    WindowCycleSecondaryExtent,
+    WindowCycleSecondaryExtentBack,
     WindowFocusLast,
     WorkspaceFocusLast,
     Count,
@@ -167,9 +171,9 @@ namespace umbriel {
     return !name.empty() && name != "disable" && !name.contains(']');
   }
 
-  struct WidthArg {
+  struct FractionArg {
     double fraction = 0.0;
-    bool operator==(const WidthArg&) const = default;
+    bool operator==(const FractionArg&) const = default;
   };
   struct WorkspaceIndex {
     size_t value = 0;
@@ -207,8 +211,8 @@ namespace umbriel {
   };
 
   using KeybindPayload = std::variant<
-      std::monostate, SpawnArg, SubmapArg, WidthArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg, LayoutModeArg,
-      QuitArg>;
+      std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
+      LayoutModeArg, QuitArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -221,6 +225,7 @@ namespace umbriel {
     uint32_t mouseButton = 0; // evdev BTN_* code, 0 = not a mouse bind
     bool repeat = true;
     bool allowWhenLocked = false;
+    bool allowWhenInhibited = false;
     int cooldownMs = 0;
 
     // What it does.
@@ -257,13 +262,13 @@ namespace umbriel {
   enum class ActionArgKind : uint8_t {
     None,
     Command,
-    WidthFraction,
+    Fraction,
     Workspace,
     OptionalOutput,
     OptionalScratchpad,
     WindowId,
     OptionalWindowId,
-    WidthDelta,
+    FractionDelta,
     LayoutMode,
     SkipConfirmation
   };
@@ -290,9 +295,10 @@ namespace umbriel {
   // default-constructed on any malformed input.
   bool parseChord(std::string_view chord, Keybind& output);
 
-  // Parse an action such as "window-close", "spawn:foot", "window-set-width:0.5", or "workspace-switch:2/DP-1",
-  // writing the action and its payload into `output` without touching the trigger fields. Numeric workspace selectors
-  // are positions; surround a name with double quotes when the name itself contains only digits.
+  // Parse an action such as "window-close", "spawn:foot", "window-set-primary-extent:0.5", or
+  // "workspace-switch:2/DP-1", writing the action and its payload into `output` without touching the trigger fields.
+  // Numeric workspace selectors are positions; surround a name with double quotes when the name itself contains only
+  // digits.
   bool parseAction(std::string_view value, Keybind& output);
 
   std::span<const ActionSpec> actionSpecs();

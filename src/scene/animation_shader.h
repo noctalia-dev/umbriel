@@ -20,7 +20,11 @@ namespace umbriel {
     Overview
   };
 
+  // The configured custom shader for `event`, or null.
   [[nodiscard]] fx_animation_shader* animationShader(wlr_renderer* renderer, AnimationEvent event);
+  // The program a lifecycle fade composes through: the custom shader, or for windows_in and windows_out without one, a
+  // built-in fade that applies the lifecycle alpha to the whole window at once. Null when buffers fade individually.
+  [[nodiscard]] fx_animation_shader* lifecycleShader(wlr_renderer* renderer, AnimationEvent event);
   void prepareAnimationShaders(wlr_renderer* renderer);
   void clearAnimationShaderCache();
   void updateAnimationShader(

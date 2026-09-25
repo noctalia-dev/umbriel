@@ -18,7 +18,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [output.HEADLESS-1]
 workspace_axis = "vertical"
@@ -222,7 +222,7 @@ if [[ $(window_count) -ne 4 ]]; then
 fi
 pointer move 560 360 press "$BTN_MIDDLE" pause 500 release "$BTN_MIDDLE" &
 middle_click_pid=$!
-sleep 0.2
+sleep 0.2 # real time: the press alone must not close the card before release
 if [[ $(window_count) -ne 4 ]]; then
   echo "overview middle press closed a card before release"
   exit 1

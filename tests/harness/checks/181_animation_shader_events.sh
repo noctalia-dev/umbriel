@@ -23,33 +23,45 @@ enabled = true
 shader = "fixture-1.glsl"
 EOF
   "$UMBRIEL" msg config-reload > /dev/null
-  sleep 0.45
+  "$UMBRIEL" clock-advance 1000
 }
 
 red_pixels() {
   grim "$IMAGE"
-  magick "$IMAGE" -resize 50% -fx '(r > 0.9 && g < 0.1 && b < 0.1) ? 1 : 0' \
-    -format '%[fx:round(mean*w*h)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'r > 0.9 && g < 0.1 && b < 0.1'
 }
 assert_no_red() {
   local count
   count=$(red_pixels)
-  if (( count > 10 )); then
+  if (( count > 40 )); then
     echo "$1: stale shader color before transition or after completion ($count pixels)"
     exit 1
   fi
 }
 assert_transition() {
   local count
-  sleep 0.1
+  "$UMBRIEL" clock-advance 100
   count=$(red_pixels)
-  if (( count < 30 )); then
+  if (( count < 120 )); then
     echo "$1: missing shader-only intermediate color ($count pixels)"
     exit 1
   fi
-  sleep 0.4
+  "$UMBRIEL" clock-advance 1000
   assert_no_red "$1"
   echo "$1 shader transition verified"
+}
+
+# Animation time only moves by clock-advance: each 300 ms transition is sampled 100 ms after its trigger, and
+# advancing 1000 ms finishes it.
+"$UMBRIEL" clock-freeze
+# Layer mapping is client-driven, so the transition starts only once the compositor has seen it.
+wait_for_mapped_layers() {
+  for _ in $(seq 100); do
+    [[ $("$UMBRIEL" layers --json | jq '[.[] | select(.mapped)] | length') == "$1" ]] && return 0
+    sleep 0.025
+  done
+  echo "timed out waiting for $1 mapped layer surfaces"
+  exit 1
 }
 
 configure windows_move
@@ -59,7 +71,7 @@ for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq length) == 2 ]] && break
   sleep 0.05
 done
-sleep 0.45
+"$UMBRIEL" clock-advance 1000
 first=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-a") | .id')
 second=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-b") | .id')
 assert_no_red move
@@ -68,7 +80,7 @@ assert_transition resize
 
 configure border
 "$UMBRIEL" msg "window-focus:$second" > /dev/null
-sleep 0.45
+"$UMBRIEL" clock-advance 1000
 assert_no_red border
 "$UMBRIEL" msg "window-focus:$first" > /dev/null
 assert_transition border
@@ -83,7 +95,7 @@ assert_no_red workspaces
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
 assert_transition workspaces
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
-sleep 0.45
+"$UMBRIEL" clock-advance 1000
 
 configure overview
 assert_no_red overview
@@ -94,7 +106,7 @@ assert_transition overview-close
 
 configure scratchpad
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
-sleep 0.45
+"$UMBRIEL" clock-advance 1000
 assert_no_red scratchpad
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 assert_transition scratchpad-show
@@ -105,6 +117,8 @@ configure layers
 assert_no_red layers
 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 > "$UMBRIEL_RUNTIME_DIR/layer.log" 2>&1 &
 layer_pid=$!
+wait_for_mapped_layers 1
 assert_transition layer-open
 kill -TERM "$layer_pid"
+wait_for_mapped_layers 0
 assert_transition layer-close

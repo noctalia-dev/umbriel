@@ -328,7 +328,7 @@ UMBRIEL_TEST(directionalFocusWaitsForTheArrangeAfterAStructuralChange) {
 UMBRIEL_TEST(initialSizeMatchesTheArrangeThatFollows) {
   Fixture fixture;
   for (int id = 0; id < 3; ++id) {
-    const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, 0.25, nullptr);
+    const Layout::InitialSize initial = fixture.layout.initialSize(kUsable, false, 0.25, std::nullopt, nullptr);
     fixture.layout.insertView(stub(id), id);
     fixture.layout.arrange(kUsable);
     const wlr_box arranged = fixture.layout.targetBox(stub(id));

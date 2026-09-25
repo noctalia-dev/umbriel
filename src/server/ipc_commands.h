@@ -18,6 +18,12 @@ namespace umbriel {
     static nlohmann::json msg(Server& server, std::string_view arg);
     static nlohmann::json outputCreate(Server& server, std::string_view arg);
     static nlohmann::json outputDestroy(Server& server, std::string_view arg);
+    // The reply to a settle request. The IPC server holds the request until the compositor is settled.
+    static nlohmann::json settle(Server& server, std::string_view arg);
+    static nlohmann::json clockFreeze(Server& server, std::string_view arg);
+    // The reply to clock-advance. The IPC server advances the clock and holds the reply until every output has drawn.
+    static nlohmann::json clockAdvance(Server& server, std::string_view arg);
+    static nlohmann::json clockResume(Server& server, std::string_view arg);
   };
 
   struct IpcCommandSpec {
@@ -27,6 +33,8 @@ namespace umbriel {
     bool takesArg;
     nlohmann::json (*handle)(Server& server, std::string_view arg);
     void (*printHuman)(const nlohmann::json& ok);
+    // How long the CLI waits for the reply.
+    int replyTimeoutSec = 2;
   };
 
   std::span<const IpcCommandSpec> ipcCommands();

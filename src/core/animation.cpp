@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <mutex>
 #include <numbers>
 #include <shared_mutex>
@@ -17,6 +18,12 @@ namespace umbriel {
 
   namespace {
     constexpr double kPi = std::numbers::pi;
+    // Energy the unit step may keep and still count as settled, in target units. Matches the residual
+    // solveSpringPhysics itself treats as arrived.
+    constexpr double kSpringSettleEpsilon = 1e-4;
+    // A spring's derived duration stays inside the duration_ms range a configured event accepts.
+    constexpr int kSpringMinDurationMs = 1;
+    constexpr int kSpringMaxDurationMs = 10000;
 
     struct AnimationTransition {
       uint64_t id;
@@ -154,12 +161,11 @@ namespace umbriel {
             || damping < 0.01
             || damping > 5.0
             || stiffness < 1.0
-            || stiffness > 1000.0) {
+            || stiffness > 10000.0) {
           return std::nullopt;
         }
         return AnimationCurve{
-            .easing = Easing::Spring,
-            .spring = {.damping = damping, .stiffness = stiffness, .mass = 1.0, .initialVelocity = 0.0}
+            .easing = Easing::Spring, .spring = {.damping = damping, .stiffness = stiffness, .mass = 1.0}
         };
       }
 
@@ -243,21 +249,14 @@ namespace umbriel {
         m_curves["easeoutquint"] = AnimationCurve{.easing = Easing::CustomBezier, .bezier = {0.23, 1.0, 0.32, 1.0}};
 
         // Standard Named Springs
-        m_curves["defaultspring"] = AnimationCurve{
-            .easing = Easing::Spring,
-            .spring = {.damping = 0.75, .stiffness = 100.0, .mass = 1.0, .initialVelocity = 0.0}
-        };
-        m_curves["bouncy"] = AnimationCurve{
-            .easing = Easing::Spring,
-            .spring = {.damping = 0.5, .stiffness = 120.0, .mass = 1.0, .initialVelocity = 0.0}
-        };
-        m_curves["smooth"] = AnimationCurve{
-            .easing = Easing::Spring, .spring = {.damping = 0.9, .stiffness = 90.0, .mass = 1.0, .initialVelocity = 0.0}
-        };
-        m_curves["stiff"] = AnimationCurve{
-            .easing = Easing::Spring,
-            .spring = {.damping = 0.8, .stiffness = 200.0, .mass = 1.0, .initialVelocity = 0.0}
-        };
+        m_curves["defaultspring"] =
+            AnimationCurve{.easing = Easing::Spring, .spring = {.damping = 0.75, .stiffness = 100.0, .mass = 1.0}};
+        m_curves["bouncy"] =
+            AnimationCurve{.easing = Easing::Spring, .spring = {.damping = 0.5, .stiffness = 120.0, .mass = 1.0}};
+        m_curves["smooth"] =
+            AnimationCurve{.easing = Easing::Spring, .spring = {.damping = 0.9, .stiffness = 90.0, .mass = 1.0}};
+        m_curves["stiff"] =
+            AnimationCurve{.easing = Easing::Spring, .spring = {.damping = 0.8, .stiffness = 200.0, .mass = 1.0}};
       }
 
       mutable std::shared_mutex m_mutex;
@@ -333,30 +332,44 @@ namespace umbriel {
     return evalY(t);
   }
 
-  double solveSpring(double damping, double stiffness, double linear) {
-    if (linear <= 0.0) {
-      return 0.0;
+  int springDurationMs(const SpringConfig& config) {
+    thread_local SpringConfig cachedConfig{};
+    thread_local int cachedMs = 0;
+    if (cachedMs != 0 && config == cachedConfig) {
+      return cachedMs;
     }
-    if (linear >= 1.0) {
-      return 1.0;
-    }
-    constexpr double m = 1.0;
-    const double k = std::max(0.1, stiffness);
-    const double w0 = std::sqrt(k / m);
-    const double zeta = std::clamp(damping, 0.001, 5.0);
-    const double t = linear * 6.0 / w0;
 
-    if (zeta < 0.9999) {
-      const double wd = w0 * std::sqrt(1.0 - zeta * zeta);
-      return 1.0
-          - std::exp(-zeta * w0 * t) * (std::cos(wd * t) + (zeta / std::sqrt(1.0 - zeta * zeta)) * std::sin(wd * t));
+    const double mass = std::max(1e-4, std::isfinite(config.mass) ? config.mass : 1.0);
+    const double stiffness = std::max(1e-4, std::isfinite(config.stiffness) ? config.stiffness : 100.0);
+    // Remaining mechanical energy of the unit step, which decays monotonically, so the settle time is bisectable.
+    const auto remaining = [&config, mass, stiffness](double seconds) {
+      double velocity = 0.0;
+      const double position = solveSpringPhysics(0.0, 1.0, 0.0, seconds, config, &velocity);
+      return std::hypot(1.0 - position, velocity * std::sqrt(mass / stiffness));
+    };
+
+    constexpr double kMaxSeconds = static_cast<double>(kSpringMaxDurationMs) / 1000.0;
+    double settled = std::min(kMaxSeconds, std::sqrt(mass / stiffness));
+    while (settled < kMaxSeconds && remaining(settled) > kSpringSettleEpsilon) {
+      settled = std::min(kMaxSeconds, settled * 2.0);
     }
-    if (zeta <= 1.0001) {
-      return 1.0 - std::exp(-w0 * t) * (1.0 + w0 * t);
+    int durationMs = kSpringMaxDurationMs;
+    if (remaining(settled) <= kSpringSettleEpsilon) {
+      double unsettled = 0.0;
+      for (int i = 0; i < 40; ++i) {
+        const double middle = 0.5 * (unsettled + settled);
+        if (remaining(middle) > kSpringSettleEpsilon) {
+          unsettled = middle;
+        } else {
+          settled = middle;
+        }
+      }
+      durationMs = static_cast<int>(std::ceil(settled * 1000.0));
     }
-    const double wd = w0 * std::sqrt(zeta * zeta - 1.0);
-    return 1.0
-        - std::exp(-zeta * w0 * t) * (std::cosh(wd * t) + (zeta / std::sqrt(zeta * zeta - 1.0)) * std::sinh(wd * t));
+
+    cachedConfig = config;
+    cachedMs = std::clamp(durationMs, kSpringMinDurationMs, kSpringMaxDurationMs);
+    return cachedMs;
   }
 
   double solveSpringPhysics(
@@ -407,7 +420,7 @@ namespace umbriel {
       const double coshVal = std::cosh(wd * t);
       const double c2 = (v0 + beta * x0) / wd;
       posOffset = env * (x0 * coshVal + c2 * sinhVal);
-      vel = env * ((v0 * coshVal) + (c2 * wd - beta * x0) * sinhVal - beta * c2 * coshVal);
+      vel = env * (v0 * coshVal + (x0 * wd - beta * c2) * sinhVal);
     }
 
     if (std::abs(posOffset) < 1e-4 && std::abs(vel) < 1e-4) {
@@ -421,6 +434,15 @@ namespace umbriel {
       *outVelocity = vel;
     }
     return to + posOffset;
+  }
+
+  double springDisplacementBound(double current, double target, double velocity, const SpringConfig& config) {
+    if (!std::isfinite(current) || !std::isfinite(target) || !std::isfinite(velocity)) {
+      return std::numeric_limits<double>::infinity();
+    }
+    const double mass = std::max(1e-4, std::isfinite(config.mass) ? config.mass : 1.0);
+    const double stiffness = std::max(1e-4, std::isfinite(config.stiffness) ? config.stiffness : 100.0);
+    return std::hypot(current - target, velocity * std::sqrt(mass / stiffness));
   }
 
   double applyEasing(const AnimationCurve& curve, double progress) {
@@ -622,11 +644,89 @@ namespace umbriel {
     case Easing::CustomBezier:
       return solveCubicBezier(curve.bezier.x1, curve.bezier.y1, curve.bezier.x2, curve.bezier.y2, linear);
 
-    case Easing::Spring:
-      return solveSpring(curve.spring.damping, curve.spring.stiffness, linear);
+    case Easing::Spring: {
+      // Physics over the spring's own settle time, so damping shapes the response while stiffness and mass set how
+      // long it takes. Normalized time would cancel both, leaving damping as the only observable parameter.
+      const double seconds = linear * static_cast<double>(springDurationMs(curve.spring)) / 1000.0;
+      return solveSpringPhysics(0.0, 1.0, 0.0, seconds, curve.spring);
+    }
     }
 
     return linear;
+  }
+
+  MonotonicEasing::MonotonicEasing() { reset(AnimationCurve{.easing = Easing::Linear}); }
+
+  MonotonicEasing::MonotonicEasing(const AnimationCurve& curve) { reset(curve); }
+
+  void MonotonicEasing::reset(const AnimationCurve& curve) {
+    m_curve = curve;
+    std::array<double, kSampleCount + 1> raw{};
+    raw.front() = 0.0;
+    raw.back() = 1.0;
+
+    m_direct = true;
+    double previous = raw.front();
+    for (std::size_t i = 1; i < kSampleCount; ++i) {
+      const double progress = static_cast<double>(i) / static_cast<double>(kSampleCount);
+      const double current = evaluateCurve(curve, progress);
+      if (!std::isfinite(current)) {
+        m_curve = AnimationCurve{.easing = Easing::Linear};
+        m_direct = true;
+        return;
+      }
+      raw[i] = current;
+      if (current < previous || current < 0.0 || current > 1.0) {
+        m_direct = false;
+      }
+      previous = current;
+    }
+    if (raw.back() < previous) {
+      m_direct = false;
+    }
+    if (m_direct) {
+      return;
+    }
+
+    // Scale before subtracting so even extreme, but finite, custom Bezier control points cannot overflow a delta.
+    double scale = 1.0;
+    for (const double sample : raw) {
+      scale = std::max(scale, std::abs(sample));
+    }
+    m_progress.front() = 0.0;
+    for (std::size_t i = 1; i <= kSampleCount; ++i) {
+      const double delta = std::abs(raw[i] / scale - raw[i - 1] / scale);
+      m_progress[i] = m_progress[i - 1] + delta;
+    }
+    const double total = m_progress.back();
+    if (!std::isfinite(total) || total <= std::numeric_limits<double>::epsilon()) {
+      m_curve = AnimationCurve{.easing = Easing::Linear};
+      m_direct = true;
+      return;
+    }
+    for (double& sample : m_progress) {
+      sample /= total;
+    }
+    m_progress.front() = 0.0;
+    m_progress.back() = 1.0;
+  }
+
+  double MonotonicEasing::value(double linearProgress) const {
+    const double linear = std::clamp(linearProgress, 0.0, 1.0);
+    if (linear <= 0.0) {
+      return 0.0;
+    }
+    if (linear >= 1.0) {
+      return 1.0;
+    }
+    if (m_direct) {
+      return std::clamp(evaluateCurve(m_curve, linear), 0.0, 1.0);
+    }
+
+    const double sample = linear * static_cast<double>(kSampleCount);
+    const std::size_t lower = static_cast<std::size_t>(sample);
+    const double fraction = sample - static_cast<double>(lower);
+    return std::lerp(m_progress[lower], m_progress[lower + 1], fraction);
   }
 
   // CurveRegistry methods
@@ -644,7 +744,7 @@ namespace umbriel {
   void CurveRegistry::registerSpring(std::string_view name, double damping, double stiffness, double mass) {
     AnimationCurve c;
     c.easing = Easing::Spring;
-    c.spring = {damping, stiffness, mass, 0.0};
+    c.spring = {damping, stiffness, mass};
     registryImpl().registerCurve(name, c);
   }
 
@@ -685,7 +785,8 @@ namespace umbriel {
     m_shaderSeed = transition.seed;
     m_from = m_current;
     m_target = to;
-    m_durationMsec = static_cast<uint64_t>(std::max(1, durationMs));
+    m_durationMsec = curve.easing == Easing::Spring ? static_cast<uint64_t>(springDurationMs(curve.spring))
+                                                    : static_cast<uint64_t>(std::max(1, durationMs));
     m_curve = curve;
     m_startMsec = 0;
     m_progress = 0.0;
@@ -705,11 +806,11 @@ namespace umbriel {
     retarget(to, durationMs, c);
   }
 
-  void AnimatedValue::retargetSpring(double to, int durationMs, double damping, double stiffness) {
+  void AnimatedValue::retargetSpring(double to, double damping, double stiffness) {
     AnimationCurve c;
     c.easing = Easing::Spring;
-    c.spring = {damping, stiffness, 1.0, 0.0};
-    retarget(to, durationMs, c);
+    c.spring = {damping, stiffness, 1.0};
+    retarget(to, 0, c);
   }
 
   void AnimatedValue::settleSpring(double to, const SpringConfig& spring, double initialVelocity) {
@@ -725,6 +826,24 @@ namespace umbriel {
     m_progress = 0.0;
     m_animating = true;
     m_physics = true;
+  }
+
+  bool AnimatedValue::finishSpringTail(double pixelsPerUnit) {
+    if (!m_animating || !m_physics || !std::isfinite(pixelsPerUnit) || pixelsPerUnit <= 0.0) {
+      return false;
+    }
+    const double targetPixels = m_target * pixelsPerUnit;
+    if (!std::isfinite(targetPixels)) {
+      return false;
+    }
+    const double roundedTarget = std::round(targetPixels);
+    const double roundingMargin = 0.5 - std::abs(targetPixels - roundedTarget);
+    const double remaining = springDisplacementBound(m_current, m_target, m_velocity, m_curve.spring) * pixelsPerUnit;
+    if (roundingMargin <= 0.0 || remaining >= roundingMargin) {
+      return false;
+    }
+    snap(m_target);
+    return true;
   }
 
   void AnimatedValue::translate(double delta) {
@@ -807,7 +926,8 @@ namespace umbriel {
     m_target = to;
     m_fromOkLab = srgbToOkLab(m_from);
     m_targetOkLab = srgbToOkLab(m_target);
-    m_durationMsec = static_cast<uint64_t>(std::max(1, durationMs));
+    m_durationMsec = curve.easing == Easing::Spring ? static_cast<uint64_t>(springDurationMs(curve.spring))
+                                                    : static_cast<uint64_t>(std::max(1, durationMs));
     m_curve = curve;
     m_startMsec = 0;
     m_progress = 0.0;
@@ -831,11 +951,11 @@ namespace umbriel {
     retarget(to, durationMs, c);
   }
 
-  void AnimatedColor::retargetSpring(const std::array<float, 4>& to, int durationMs, double damping, double stiffness) {
+  void AnimatedColor::retargetSpring(const std::array<float, 4>& to, double damping, double stiffness) {
     AnimationCurve c;
     c.easing = Easing::Spring;
-    c.spring = {damping, stiffness, 1.0, 0.0};
-    retarget(to, durationMs, c);
+    c.spring = {damping, stiffness, 1.0};
+    retarget(to, 0, c);
   }
 
   double AnimatedColor::progress() const { return m_progress; }

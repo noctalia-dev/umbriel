@@ -84,6 +84,7 @@ namespace {
   ) {
     auto& state = *static_cast<State*>(data);
     zwp_virtual_keyboard_v1_modifiers(state.ownedKeyboard, depressed, latched, locked, group);
+    wl_display_flush(state.display);
   }
   void grabRepeatInfo(void*, zwp_input_method_keyboard_grab_v2*, int32_t, int32_t) {}
 
@@ -113,7 +114,6 @@ int main() {
     std::println(stderr, "input-method-client: compositor is missing a required Wayland global");
     return EXIT_FAILURE;
   }
-
   state.ownedKeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.keyboardManager, state.seat);
   zwp_input_method_v2* inputMethod = zwp_input_method_manager_v2_get_input_method(state.inputMethodManager, state.seat);
   zwp_input_method_v2_add_listener(inputMethod, &kInputMethodListener, nullptr);
@@ -121,6 +121,10 @@ int main() {
   zwp_input_method_keyboard_grab_v2_add_listener(grab, &kGrabListener, &state);
   if (wl_display_roundtrip(display) < 0) {
     std::println(stderr, "input-method-client: connection lost while creating the keyboard grab");
+    return EXIT_FAILURE;
+  }
+  if (wl_display_roundtrip(display) < 0) {
+    std::println(stderr, "input-method-client: connection lost while synchronizing the owned keyboard");
     return EXIT_FAILURE;
   }
 

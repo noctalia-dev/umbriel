@@ -107,7 +107,9 @@ namespace umbriel {
       }
     }
 
+#ifdef UMBRIEL_TEST_IPC
     void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
+#endif
 
     std::string fourccName(uint32_t format) {
       if (format == DRM_FORMAT_INVALID) {
@@ -366,6 +368,8 @@ namespace umbriel {
       // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
       // (dwindle) regardless of visibility or in-flight animations.
       if (Workspace* workspace = v->workspace(); workspace != nullptr && workspace->layout().columnOf(v.get()) >= 0) {
+        // A window that mapped in this dispatch has its arrange still pending, so its slot is missing or stale.
+        workspace->flushArrange();
         const wlr_box box = workspace->layout().targetBox(v.get());
         entry["x"] = box.x;
         entry["y"] = box.y;
@@ -613,6 +617,28 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::settle(Server& /*server*/, std::string_view /*arg*/) {
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
+  nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, std::string_view /*arg*/) {
+#ifdef UMBRIEL_TEST_IPC
+    server.freezeAnimationClock();
+#endif
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
+  nlohmann::json IpcCommands::clockAdvance(Server& /*server*/, std::string_view /*arg*/) {
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
+  nlohmann::json IpcCommands::clockResume([[maybe_unused]] Server& server, std::string_view /*arg*/) {
+#ifdef UMBRIEL_TEST_IPC
+    server.resumeAnimationClock();
+#endif
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"msg", "<action> [args...]", "send an action to the compositor", true, &IpcCommands::msg, nullptr},
       {"windows", "", "list windows (app id and title)", false, &IpcCommands::windows, &printWindows},
@@ -622,10 +648,19 @@ namespace umbriel {
       {"color", "", "show color-management state", false, &IpcCommands::color, &printColor},
       {"tearing", "", "show tearing-control state", false, &IpcCommands::tearing, &printTearing},
       {"keyboard-layouts", "", "list keyboard layouts", false, &IpcCommands::keyboardLayouts, &printKeyboardLayouts},
+#ifdef UMBRIEL_TEST_IPC
       {"output-create", "<name>", "create a headless output (headless sessions only)", true, &IpcCommands::outputCreate,
        &printOutputName},
       {"output-destroy", "<name>", "destroy an output (headless sessions only)", true, &IpcCommands::outputDestroy,
        nullptr},
+      {"settle", "", "wait until no layout or animation is pending and every output has drawn a frame", false,
+       &IpcCommands::settle, nullptr, 35},
+      {"clock-freeze", "", "stop animation time", false, &IpcCommands::clockFreeze, nullptr},
+      {"clock-advance", "<ms>", "move frozen animation time forward and wait until every output has drawn it", true,
+       &IpcCommands::clockAdvance, nullptr, 35},
+      {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped", false,
+       &IpcCommands::clockResume, nullptr},
+#endif
   };
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }

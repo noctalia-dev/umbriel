@@ -5,6 +5,7 @@
 # horizontally arranged workspaces the strip scrolls vertically and its cards
 # overhang the preview's bottom edge instead of its left one.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
@@ -25,9 +26,9 @@ spawn_client() {
 }
 
 wait_for_count() {
-  for _ in $(seq 60); do
+  for _ in $(seq 300); do
     [[ $("$UMBRIEL" windows --json | jq 'length') -eq $1 ]] && return 0
-    sleep 0.25
+    sleep 0.05
   done
   echo "timed out waiting for $1 window(s)"
   return 1
@@ -43,7 +44,7 @@ background_tint = "#000000FF"
 workspace_background = "#000000FF"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 zoom = 0.5
@@ -52,17 +53,32 @@ zoom = 0.5
 workspace_axis = "vertical"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
+# Animation time only moves by clock-advance.
+"$UMBRIEL" clock-freeze
+
+# Runs every animation to its end. A resize crossfade starts only once its client commits, which happens in real time,
+# so advance until a settle probe succeeds.
+finish() {
+  for _ in $(seq 20); do
+    "$UMBRIEL" clock-advance 2000 > /dev/null
+    if timeout 0.3 "$UMBRIEL" settle > /dev/null 2>&1; then
+      return 0
+    fi
+  done
+  echo "animations never finished: $("$UMBRIEL" windows --json)"
+  return 1
+}
 
 for id in $(seq 1 7); do
   spawn_client "$id"
   wait_for_count "$id"
 done
-sleep 0.5
+finish
 
 # Keep the source column alive after detaching the dragged view so the strip's
 # scroll range and the target card's projection remain stable.
 "$UMBRIEL" msg window-consume-left > /dev/null
-sleep 0.6
+finish
 
 windows=$("$UMBRIEL" windows --json)
 source_column_x=$(jq -r '.[] | select(.title == "overhang-7") | .x' <<< "$windows")
@@ -94,27 +110,28 @@ if (( sample_w < 40 )); then
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.6
-pointer move "$start_x" "$start_y" press "$BTN_LEFT" move "$drop_x" "$drop_y" pause 1500 release "$BTN_LEFT" &
-pointer_pid=$!
-sleep 0.5
+finish
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$start_x" "$start_y" press "$BTN_LEFT" move "$drop_x" "$drop_y" \
+  -- release "$BTN_LEFT"
+# Once the pointer holds at the drop point, animation time brings in the hint.
+"$UMBRIEL" clock-advance 500 > /dev/null
 
 screenshot="$UMBRIEL_RUNTIME_DIR/drag-overhanging-card.png"
 grim "$screenshot"
-red=$(magick "$screenshot" -crop "${sample_w}x50+${sample_x}+195" -colorspace RGB \
+red=$(magick "$screenshot" -crop "${sample_w}x50+${sample_x}+195" \
   -format '%[fx:round(255*mean.r)]' info:)
-green=$(magick "$screenshot" -crop "${sample_w}x50+${sample_x}+195" -colorspace RGB \
+green=$(magick "$screenshot" -crop "${sample_w}x50+${sample_x}+195" \
   -format '%[fx:round(255*mean.g)]' info:)
-wait "$pointer_pid"
+pointer_release
 
 if (( red < green + 35 )); then
   echo "the overhanging card center was replaced by the left-edge prepend target: red=$red green=$green"
   exit 1
 fi
 
-sleep 0.2
+finish
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+finish
 
 windows=$("$UMBRIEL" windows --json)
 read -r source_x source_y source_w < <(
@@ -179,28 +196,28 @@ if ((press_y <= OVERVIEW_Y + 5 || press_y >= 535)); then
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.6
-pointer move "$press_x" "$press_y" press "$BTN_LEFT" move "$drop_x" "$drop_y" pause 1500 release "$BTN_LEFT" &
-pointer_pid=$!
-sleep 0.5
+finish
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$press_x" "$press_y" press "$BTN_LEFT" move "$drop_x" "$drop_y" \
+  -- release "$BTN_LEFT"
+"$UMBRIEL" clock-advance 500 > /dev/null
 
 # The stack hint for the first row is a bar along the column's leading cross edge, projected into the overhanging
 # part of the preview. The dragged card trails to the right of the pointer, so it cannot cover that bar.
 vertical_shot="$UMBRIEL_RUNTIME_DIR/drag-overhanging-card-vertical.png"
 grim "$vertical_shot"
 hint_sample="45x30+$((OVERVIEW_X + target_x / 2 + 8))+$((target_top + 15))"
-vertical_red=$(magick "$vertical_shot" -crop "$hint_sample" -colorspace RGB -format '%[fx:round(255*mean.r)]' info:)
-vertical_green=$(magick "$vertical_shot" -crop "$hint_sample" -colorspace RGB -format '%[fx:round(255*mean.g)]' info:)
-wait "$pointer_pid"
+vertical_red=$(magick "$vertical_shot" -crop "$hint_sample" -format '%[fx:round(255*mean.r)]' info:)
+vertical_green=$(magick "$vertical_shot" -crop "$hint_sample" -format '%[fx:round(255*mean.g)]' info:)
+pointer_release
 
 if ((vertical_red < vertical_green + 35)); then
   echo "no stack hint at the projected overhang position $hint_sample: red=$vertical_red green=$vertical_green"
   exit 1
 fi
 
-sleep 0.2
+finish
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+finish
 
 windows=$("$UMBRIEL" windows --json)
 read -r moved_x moved_y moved_h < <(

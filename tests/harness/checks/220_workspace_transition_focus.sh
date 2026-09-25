@@ -37,6 +37,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [input.focus]
 follows_mouse = true
@@ -49,11 +50,11 @@ EOF
 spawn_client "transition-first"
 wait_for_count 1
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 spawn_client "transition-second"
 wait_for_count 2
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 
 # Slow only the transition under test. The setup switches stay fast so this check does not spend twenty seconds waiting
 # for animations that are unrelated to the assertion.
@@ -137,7 +138,7 @@ settle_to() {
   fast_animations
   "$UMBRIEL" msg "workspace-switch:$via" > /dev/null
   "$UMBRIEL" msg "workspace-switch:$target" > /dev/null
-  sleep 0.4
+  "$UMBRIEL" settle
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -160,19 +161,19 @@ workspace_axis = "horizontal"
 [[window_rule]]
 match.title = "^axis-float$"
 default_floating = true
-default_size = [200, 200]
+default_floating_size_px = { width = 200, height = 200 }
 default_position = { x = 900, y = 420, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^axis-pinned$"
 default_floating = true
-default_size = [200, 200]
+default_floating_size_px = { width = 200, height = 200 }
 default_position = { x = 900, y = 60, anchor = "top_left" }
 EOF
 # This reload lands while the vertical slide above is still running: an axis change settles it and keeps the workspace
 # the switch already committed to.
 fast_animations
-sleep 0.4
+"$UMBRIEL" settle
 if [[ $(active_workspace) != 2 ]]; then
   echo "the axis reload dropped the committed workspace: $("$UMBRIEL" workspaces --json)"
   exit 1
@@ -183,7 +184,7 @@ fi
 "$UMBRIEL" msg workspace-switch:3 > /dev/null
 spawn_sized axis-tiled 600 300
 wait_for_count 3
-sleep 0.5
+"$UMBRIEL" settle
 read -r tiled_x tiled_y tiled_w tiled_h <<< "$(box_of axis-tiled)"
 if ((tiled_y < 60 || tiled_w < 200 || tiled_h < 100)); then
   echo "the vertical strip did not leave room around its tile: $(box_of axis-tiled)"
@@ -203,9 +204,12 @@ if ((rest_near < 100 || rest_far < 100 || rest_above > 10)); then
   exit 1
 fi
 
+# Each slow slide below runs on a frozen animation clock and is sampled 500 ms into its 10000 ms timeline; the clock
+# resumes before the fast switches that bring every workspace back to rest.
 slow_animations
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg workspace-switch:4 > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_near=$(sample_blue "$tile_near" "$tile_row")
 slide_far=$(sample_blue "$tile_far" "$tile_row")
@@ -233,15 +237,16 @@ if [[ $(active_workspace) != 4 ]]; then
 fi
 
 # Floating content travels with its workspace, a pinned window never does.
+"$UMBRIEL" clock-resume
 settle_to 4
 spawn_sized axis-float 200 200
 wait_for_count 4
 spawn_sized axis-pinned 200 200
 wait_for_count 5
-sleep 0.5
+"$UMBRIEL" settle
 "$UMBRIEL" msg "window-focus-warp:$(id_of axis-pinned)" > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 read -r float_x float_y float_w float_h <<< "$(box_of axis-float)"
 read -r pin_x pin_y pin_w _ <<< "$(box_of axis-pinned)"
 float_inside_y=$((float_y + 60))
@@ -265,8 +270,9 @@ fi
 
 # Backwards along the axis: workspace 3 is left of workspace 4, so its content leaves to the right.
 slow_animations
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg workspace-switch:3 > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_float_right=$(sample_blue "$float_right" "$float_inside_y")
 slide_pin_inside=$(sample_blue "$pin_x" "$pin_inside")
@@ -285,13 +291,14 @@ if ((slide_pin_right > 10)); then
 fi
 
 # A fullscreen window covers its output exactly, so its own right edge uncovers as it travels.
+"$UMBRIEL" clock-resume
 settle_to 3
 spawn_sized axis-fullscreen "$OUTPUT_W" "$OUTPUT_H"
 wait_for_count 6
-sleep 0.5
+"$UMBRIEL" settle
 "$UMBRIEL" msg "window-focus-warp:$(id_of axis-fullscreen)" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.5
+"$UMBRIEL" settle
 grim "$SHOT"
 rest_full=$(sample_blue 1240 400)
 if ((rest_full < 100)); then
@@ -299,8 +306,9 @@ if ((rest_full < 100)); then
   exit 1
 fi
 slow_animations
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg workspace-switch:4 > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_full_left=$(sample_blue 20 400)
 slide_full_right=$(sample_blue 1240 400)
@@ -312,19 +320,21 @@ if ((slide_full_left < 100)); then
   echo "the outgoing fullscreen window left the output instead of sliding: blue=$slide_full_left at x=20"
   exit 1
 fi
+"$UMBRIEL" clock-resume
 settle_to 3
 "$UMBRIEL" msg "window-focus-warp:$(id_of axis-fullscreen)" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 
 # Reloading the axis mid-transition: the committed workspace stays, both offsets are settled to zero, and the next
 # switch travels on the new axis.
 slow_animations
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg workspace-switch:4 > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 if [[ $(active_workspace) != 4 ]]; then
   echo "the mid-transition axis reload dropped the committed workspace: $("$UMBRIEL" workspaces --json)"
   exit 1
@@ -351,7 +361,7 @@ fi
 
 # Vertical workspaces again: workspace 3 is above workspace 4, so its content leaves downwards, not sideways.
 "$UMBRIEL" msg workspace-switch:3 > /dev/null
-sleep 0.8
+"$UMBRIEL" clock-advance 800
 grim "$SHOT"
 next_below=$(region_blue "$band_below")
 next_right=$(region_blue "$band_right")
@@ -366,13 +376,15 @@ fi
 
 # Settling a live slide follows the layout effect of the reload, not the axis value: a reload that only widens the
 # layout gap has to leave the transition at rest as well.
+"$UMBRIEL" clock-resume
 settle_to 3
 slow_animations
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg workspace-switch:4 > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 sed -i 's/^gap = 8$/gap = 24/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.5
+"$UMBRIEL" clock-advance 500
 if [[ $(active_workspace) != 4 ]]; then
   echo "the mid-transition gap reload dropped the committed workspace: $("$UMBRIEL" workspaces --json)"
   exit 1

@@ -31,7 +31,7 @@ threshold. Two situations cross it:
 Defense:
 
 **Per-output clipped scene roots** (`Output::viewRoot`, `fullscreenRoot`,
-`pinnedRoot`, `pinnedShadowRoot`): each output owns four scene trees carrying
+`pinnedRoot`): each output owns three scene trees carrying
 a `wlr_scene_tree_set_clip` of that output's layout box, and every workspace
 tree, fullscreen tree, pinned view and close snapshot hangs under them.
 `umbrielfx` folds an ancestor tree clip into the visibility walk

@@ -4,6 +4,7 @@
 # its client. The compositor must resize through the requested layout edge,
 # finish on the raw release, and restore ordinary input for the next surface.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
@@ -36,7 +37,7 @@ corner_radius = 0
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.35
+default_extent_fraction = 0.35
 center_underfull_strip = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -139,7 +140,7 @@ HOLD_SIZE=1 "$PATTERN" "$SOURCE" 1200 700 > "$SOURCE_LOG" 2>&1 &
 await_windows 1
 HOLD_SIZE=1 "$PATTERN" "$TARGET" 1200 700 > "$TARGET_LOG" 2>&1 &
 await_windows 2
-sleep 0.2
+"$UMBRIEL" settle
 read -r source_x source_y source_w source_h < <(window_box "$SOURCE")
 read -r target_x target_y target_w target_h < <(window_box "$TARGET")
 resize_start_x=$((target_x - 30))
@@ -152,15 +153,12 @@ impure_pixels() {
     tail -n +2 | grep -c -E -v '#(0000FF|00FF00) ' || true
 }
 
-"$POINTER" "$OUTPUT_W" "$OUTPUT_H" \
-  move "$resize_start_x" "$resize_y" mod logo press 273 \
-  move "$((resize_start_x - 160))" "$resize_y" pause 1500 \
-  release 273 mod none > "$POINTER_LOG" 2>&1 &
-pointer_pid=$!
-sleep 0.4
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+  move "$resize_start_x" "$resize_y" mod logo press 273 move "$((resize_start_x - 160))" "$resize_y" \
+  -- release 273 mod none
 grim -o HEADLESS-1 "$HELD"
-wait "$pointer_pid"
-sleep 0.1
+pointer_release
+"$UMBRIEL" settle
 grim -o HEADLESS-1 "$RELEASED"
 read -r target_x target_y target_w target_h < <(window_box "$TARGET")
 for sample_x in "$((source_x + 40))" "$((target_x + 40))"; do

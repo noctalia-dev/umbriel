@@ -1,10 +1,7 @@
-// Guards the ABI Umbriel depends on: umbrielfx replaces wlroots' scene graph,
-// but reuses the scene helpers it does not reimplement
-// (wlr_scene_xdg_surface_create, wlr_scene_subsurface_tree_create,
-// wlr_scene_layer_surface_v1_create, wlr_scene_drag_icon_create,
-// wlr_scene_attach_output_layout, ...) straight from libwlroots. Those read and
-// write the structs below at wlroots' field offsets, so every field wlroots
-// declares must sit at the same offset in umbrielfx's version.
+// Guards the scene struct layout: every field wlroots declares must sit at the
+// same offset in umbrielfx's version. umbrielfx allocates every node through its
+// own vendored helpers, so this keeps a helper that ever resolves to libwlroots
+// from corrupting memory before the startup guard catches it.
 //
 // Built twice, once against each header, and the two outputs are compared.
 // The same field list compiles on both sides, so a field wlroots adds that

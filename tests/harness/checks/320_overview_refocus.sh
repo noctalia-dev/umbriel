@@ -56,7 +56,7 @@ if [[ $("$UMBRIEL" windows --json | jq -r --arg id "$unmap_id" '.[] | select(.id
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 
 "$UMBRIEL" msg "window-close:$unmap_id" > /dev/null
 for _ in $(seq 40); do
@@ -86,7 +86,7 @@ fi
 
 # Zooming back in must land on the same window and keep it focused.
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 if [[ $("$UMBRIEL" windows --json | jq -r --arg id "$adjacent_id" '.[] | select(.id == $id) | .focused') != true ]]; then
   echo "adjacent predecessor lost focus after zooming out of the overview: $("$UMBRIEL" windows --json)"
   exit 1

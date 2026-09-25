@@ -26,7 +26,7 @@ enabled = false
 [[window_rule]]
 match.title = "^floating-drag-maximize-restore$"
 default_floating = true
-default_size = [480, 300]
+default_floating_size_px = { width = 480, height = 300 }
 default_position = { x = 173, y = 109, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

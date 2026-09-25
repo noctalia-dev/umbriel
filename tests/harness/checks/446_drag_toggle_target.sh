@@ -47,7 +47,7 @@ drag_toggling() {
   done
   args+=(move "$x" "$y" release "$BTN_LEFT" mod none)
   pointer "${args[@]}"
-  sleep 0.9
+  "$UMBRIEL" settle
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -56,7 +56,11 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 window_drag_toggle = "floating"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
+
+# The check asserts drop outcomes, not motion; settle still waits for each client to commit its new size.
+[animation]
+enabled = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -64,20 +68,20 @@ spawn_client toggle-keep
 wait_for_count 1
 spawn_client toggle-wide
 wait_for_count 2
-sleep 0.5
+"$UMBRIEL" settle
 
 # Give the window a floating size that differs from its column, so the drop can
 # be told apart from a drag that never resized anything.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
-sleep 0.6
-"$UMBRIEL" msg window-set-width:0.3 > /dev/null
-"$UMBRIEL" msg window-set-height:0.4 > /dev/null
-sleep 0.8
+"$UMBRIEL" settle
+"$UMBRIEL" msg window-set-primary-extent:0.3 > /dev/null
+"$UMBRIEL" msg window-set-secondary-extent:0.4 > /dev/null
+"$UMBRIEL" settle
 read -r float_w float_h < <(window toggle-wide '"\(.w) \(.h)"')
 "$UMBRIEL" msg window-toggle-floating > /dev/null
-sleep 0.6
-"$UMBRIEL" msg window-set-width:0.75 > /dev/null
-sleep 0.8
+"$UMBRIEL" settle
+"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
+"$UMBRIEL" settle
 read -r tiled_w tiled_h < <(window toggle-wide '"\(.w) \(.h)"')
 neighbor_w=$(window toggle-keep .w)
 if [[ $tiled_w == "$float_w" || $tiled_w == "$neighbor_w" ]]; then
@@ -106,9 +110,9 @@ fi
 # back into it. Dropping past the last column opens a new one, which is where
 # the width the drag detached has to reappear.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
-sleep 0.6
-"$UMBRIEL" msg window-set-width:0.75 > /dev/null
-sleep 0.8
+"$UMBRIEL" settle
+"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
+"$UMBRIEL" settle
 drag_toggling toggle-wide 1270 400 2
 read -r floating w h < <(window toggle-wide '"\(.floating) \(.w) \(.h)"')
 if [[ $floating != false ]]; then
@@ -124,7 +128,7 @@ fi
 # with one press puts it back where it was pinned from.
 sed -i 's/window_drag_toggle = "floating"/window_drag_toggle = "pinned"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 drag_toggling toggle-wide 700 400 1
 if [[ $(window toggle-wide .floating) != true ]]; then
   echo "pinned mode did not take the window out of the layout: $("$UMBRIEL" windows --json)"
@@ -139,7 +143,7 @@ fi
 # A fullscreen window refuses to be pinned, so the drop has to fall back to the
 # layout instead of leaving it detached.
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.8
+"$UMBRIEL" settle
 fullscreen_title=$("$UMBRIEL" windows --json | jq -r '.[] | select(.focused) | .title')
 if [[ -z $fullscreen_title ]]; then
   echo "no focused window to fullscreen: $("$UMBRIEL" windows --json)"
@@ -151,7 +155,7 @@ if [[ $(window "$fullscreen_title" .floating) != false ]]; then
   exit 1
 fi
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.9
+"$UMBRIEL" settle
 # In the layout its column is narrower than the output, and layout-directed
 # focus can leave it. A detached window keeps the full output size and holds
 # focus with no way back.
@@ -160,7 +164,7 @@ if [[ $(window "$fullscreen_title" .w) -ge $OUTPUT_W ]]; then
   exit 1
 fi
 "$UMBRIEL" msg window-focus-left > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 if [[ $("$UMBRIEL" windows --json | jq -r '.[] | select(.focused) | .title') == "$fullscreen_title" ]]; then
   echo "focus could not leave the dropped window: $("$UMBRIEL" windows --json)"
   exit 1

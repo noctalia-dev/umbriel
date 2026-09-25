@@ -78,6 +78,24 @@ namespace umbriel {
         && wl_resource_get_client(virtualKeyboard->resource) == wl_resource_get_client(m_inputMethod->resource);
   }
 
+  void InputMethodRelay::canonicalizeOwnedKeyboardKeymap(wlr_keyboard* keyboard) const {
+    if (!ownsKeyboard(keyboard) || m_inputMethod->keyboard_grab == nullptr) {
+      return;
+    }
+    wlr_keyboard* grabbedKeyboard = m_inputMethod->keyboard_grab->keyboard;
+    if (grabbedKeyboard == nullptr
+        || grabbedKeyboard->keymap == nullptr
+        || keyboard->keymap == nullptr
+        || grabbedKeyboard->keymap == keyboard->keymap
+        || !wlr_keyboard_keymaps_match(grabbedKeyboard->keymap, keyboard->keymap)) {
+      return;
+    }
+    // An input method can send the grabbed map back through its virtual
+    // keyboard. Share the map object so selecting that mirror is not exposed
+    // to every client as a keymap change.
+    wlr_keyboard_set_keymap(keyboard, grabbedKeyboard->keymap);
+  }
+
   void InputMethodRelay::onNewTextInput(wl_listener* listener, void* data) {
     InputMethodRelay* self;
     self = wl_container_of(listener, self, m_newTextInput);
@@ -247,7 +265,9 @@ namespace umbriel {
     wlr_input_method_keyboard_grab_v2* grab = m_inputMethod != nullptr ? m_inputMethod->keyboard_grab : nullptr;
     removeListener(m_grabDestroy);
     if (grab != nullptr && grab->keyboard != nullptr) {
-      wlr_seat_keyboard_notify_modifiers(m_server->seat()->wlr(), &grab->keyboard->modifiers);
+      wlr_seat* seat = m_server->seat()->wlr();
+      wlr_seat_set_keyboard(seat, grab->keyboard);
+      wlr_seat_keyboard_notify_modifiers(seat, &grab->keyboard->modifiers);
     }
   }
 

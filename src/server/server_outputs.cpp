@@ -94,11 +94,11 @@ namespace umbriel {
 
   wlr_output* Server::preferredOutput() const {
     wlr_output* output = wlr_output_layout_output_at(m_outputLayout, m_cursor->wlr()->x, m_cursor->wlr()->y);
-    if (output != nullptr) {
+    if (output != nullptr && output->enabled) {
       return output;
     }
-    // Disabled outputs are removed from the layout; never fall back onto one,
-    // or focus and new layer surfaces would land on a monitor that is off.
+    // Protocol-disabled outputs leave the layout, while DPMS-off outputs stay
+    // mapped. Neither is a live focus, placement, or restoration target.
     for (const auto& entry : m_outputs) {
       if (entry->wlr()->enabled) {
         return entry->wlr();

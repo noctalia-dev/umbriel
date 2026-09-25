@@ -19,6 +19,7 @@ cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors]
 backdrop = "#00FF00FF"
@@ -56,7 +57,7 @@ if [[ -z $box ]]; then
   exit 1
 fi
 # Sample the box the layout settled on, after the (1 ms) open animation has run.
-sleep 0.5
+"$UMBRIEL" settle
 read -r win_x win_y win_w win_h <<< "$(window_box)"
 grim "$SCREENSHOT"
 

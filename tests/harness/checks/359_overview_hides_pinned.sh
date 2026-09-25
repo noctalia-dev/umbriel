@@ -13,7 +13,7 @@ readonly CLOSED="$UMBRIEL_RUNTIME_DIR/overview-pinned-closed.png"
 readonly SWITCHED="$UMBRIEL_RUNTIME_DIR/overview-pinned-switched.png"
 
 sample_rgb() {
-  magick "$1" -crop 20x20+390+240 -colorspace RGB \
+  magick "$1" -crop 20x20+390+240 \
     -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
 }
 
@@ -66,7 +66,7 @@ workspaces = 2
 [[window_rule]]
 match.title = "^overview-pinned$"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

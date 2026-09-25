@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Focus changes must interpolate each border from its current color instead of
-# snapping it to the new focus color before the animation is retargeted.
+# snapping it to the new focus color before the animation is retargeted. An
+# overview round trip must reveal the borders settled rather than replaying.
 set -euo pipefail
 
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/border-focus-transition.png"
+readonly LAYER_CLIENT="${UMBRIEL_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -29,6 +31,8 @@ enabled = false
 enabled = false
 [animation.border]
 enabled = true
+[animation.overview]
+duration_ms = 400
 
 [[window_rule]]
 match.title = "^focus-border-a$"
@@ -85,15 +89,62 @@ window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "focus-border
 b_id=$(jq -r .id <<< "$window")
 
 "$UMBRIEL" msg "window-focus:$a_id" > /dev/null
-sleep 1.1
+"$UMBRIEL" settle
 grim "$IMAGE"
 assert_color focus-border-a red
 assert_color focus-border-b blue
 
+# Animation time only moves by clock-advance; advancing 1000 ms finishes every border and overview timeline.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg "window-focus:$b_id" > /dev/null
-sleep 0.35
+"$UMBRIEL" clock-advance 350
 grim "$IMAGE"
 assert_color focus-border-a mixed
 assert_color focus-border-b mixed
 
-echo "focus border colors interpolate during focus changes"
+# Opening the overview clears focus on the hidden windows and closing restores it; the reveal must show the settled
+# result instead of the transition.
+overview_round_trip() {
+  "$UMBRIEL" clock-advance 1000
+  "$UMBRIEL" settle
+  "$UMBRIEL" msg overview-open > /dev/null
+  "$UMBRIEL" clock-advance 600
+  "$UMBRIEL" msg overview-close > /dev/null
+  "$UMBRIEL" clock-advance 600
+  grim "$IMAGE"
+  assert_color focus-border-a blue
+  assert_color focus-border-b red
+}
+overview_round_trip
+
+# A shell's overview-scoped capture layer holds the keyboard exclusively while the overview is open and is dropped
+# on the closed event. That event must go out as the close starts, so focus returns while the windows are still
+# hidden.
+"$UMBRIEL" subscribe overview | while read -r event; do
+  if [[ $(jq -r .data.open <<< "$event") == true ]]; then
+    "$LAYER_CLIENT" HEADLESS-1 0 bottom-layer keyboard=exclusive > /dev/null 2>&1 &
+    capture=$!
+  elif [[ -n ${capture:-} ]]; then
+    kill "$capture"
+    capture=
+  fi
+done &
+overview_round_trip
+
+"$UMBRIEL" clock-advance 1000
+"$UMBRIEL" clock-resume
+
+# A zero-width border has nothing to fade, so a focus change leaves no animation running and settle succeeds on a
+# frozen clock.
+sed -i 's/^border_width = 20$/border_width = 0/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" msg "window-focus:$a_id" > /dev/null
+if ! timeout 5 "$UMBRIEL" settle; then
+  echo "a focus change animated a zero-width border"
+  exit 1
+fi
+"$UMBRIEL" clock-resume
+
+echo "focus border colors interpolate during focus changes and settle across the overview"

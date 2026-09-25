@@ -2,6 +2,7 @@
 #include "scene/color.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -59,7 +60,6 @@ namespace umbriel {
     double damping = 0.75;
     double stiffness = 100.0;
     double mass = 1.0;
-    double initialVelocity = 0.0;
     bool operator==(const SpringConfig&) const = default;
   };
 
@@ -72,15 +72,41 @@ namespace umbriel {
 
   // Standalone math and evaluation functions
   [[nodiscard]] double solveCubicBezier(double x1, double y1, double x2, double y2, double x);
-  [[nodiscard]] double solveSpring(double damping, double stiffness, double linear);
+  // Wall-clock length of a spring curve: the time a unit step from rest needs to settle within
+  // kSpringSettleEpsilon of its target. Stiffness and mass set that timescale, damping only the shape, so a spring
+  // curve owns its duration and the configured duration_ms does not apply to it. Clamped to the duration_ms range.
+  [[nodiscard]] int springDurationMs(const SpringConfig& config);
   [[nodiscard]] double solveSpringPhysics(
       double from, double to, double velocity, double elapsedSec, const SpringConfig& config,
       double* outVelocity = nullptr
   );
+  // Upper bound on the displacement a damped spring can reach from its current position and velocity. The bound is
+  // expressed in the same units as current and target and follows from the spring's remaining mechanical energy.
+  [[nodiscard]] double
+  springDisplacementBound(double current, double target, double velocity, const SpringConfig& config);
   [[nodiscard]] double applyEasing(const AnimationCurve& curve, double progress);
   [[nodiscard]] inline double evaluateCurve(const AnimationCurve& curve, double progress) {
     return applyEasing(curve, progress);
   }
+
+  // Logical layout geometry must remain between its endpoints and advance in one direction. Curves that reverse or
+  // overshoot are projected onto cumulative travel, so their timing remains visible for the full configured duration
+  // without letting tiled boxes cross a protected boundary. Already bounded monotonic curves are evaluated directly.
+  class MonotonicEasing {
+  public:
+    MonotonicEasing();
+    explicit MonotonicEasing(const AnimationCurve& curve);
+
+    void reset(const AnimationCurve& curve);
+    [[nodiscard]] double value(double linearProgress) const;
+
+  private:
+    static constexpr std::size_t kSampleCount = 512;
+
+    AnimationCurve m_curve{.easing = Easing::Linear};
+    std::array<double, kSampleCount + 1> m_progress{};
+    bool m_direct = true;
+  };
 
   // Registry for named animation curves (supporting custom named beziers and springs)
   class CurveRegistry {
@@ -125,6 +151,10 @@ namespace umbriel {
     [[nodiscard]] virtual bool animatesOn(const Output* output) const = 0;
   };
 
+  // Identifies a Server::CloseSnapshot for as long as it fades; 0 is never assigned.
+  using CloseSnapshotId = uint64_t;
+  constexpr CloseSnapshotId kInvalidCloseSnapshot = 0;
+
   // A single animatable scalar owned by the animated object. The owner ticks it from the central Server tick and reads
   // current() to drive its scene state. Retargeting mid-flight restarts the curve from the current value, so there is
   // no cancel bookkeeping and no snapping when a target changes.
@@ -138,15 +168,19 @@ namespace umbriel {
     void snap(double value);
 
     // Retargeting: always animates, even when `to` equals current(), so completion is always
-    // observable via a final tick. Restarts smoothly from current with the full duration.
+    // observable via a final tick. Restarts smoothly from current with the full duration. A spring curve replaces
+    // `durationMs` with its own springDurationMs(), because its parameters already define the timescale.
     void retarget(double to, int durationMs, Easing easing = Easing::EaseOutCubic);
     void retarget(double to, int durationMs, const AnimationCurve& curve);
     void retarget(double to, int durationMs, std::string_view curveName);
     void retargetBezier(double to, int durationMs, double x1, double y1, double x2, double y2);
-    void retargetSpring(double to, int durationMs, double damping = 0.75, double stiffness = 100.0);
-    // Physics spring: continues from the current value with `initialVelocity` in units per second and settles when the
-    // solver reaches the target, so the configured duration does not apply. Every other entry point is duration-based.
+    void retargetSpring(double to, double damping = 0.75, double stiffness = 100.0);
+    // Physics spring: continues from the current value with `initialVelocity` in units per second and settles when
+    // the solver reaches the target. Retargeting runs the same solver, but from rest over a precomputed duration.
     void settleSpring(double to, const SpringConfig& spring, double initialVelocity = 0.0);
+    // Stop a physics spring once its remaining energy cannot leave the projected target's pixel rounding cell. Returns
+    // true only when the spring was finished. The solver remains untouched while any visible motion is still possible.
+    [[nodiscard]] bool finishSpringTail(double pixelsPerUnit);
     // Shift from, current and target by the same amount, keeping any motion intact. For a coordinate space that is
     // renumbered under a running animation.
     void translate(double delta);
@@ -204,8 +238,7 @@ namespace umbriel {
     void retarget(const std::array<float, 4>& to, int durationMs, std::string_view curveName);
     void retarget(float r, float g, float b, float a, int durationMs, const AnimationCurve& curve = AnimationCurve{});
     void retargetBezier(const std::array<float, 4>& to, int durationMs, double x1, double y1, double x2, double y2);
-    void
-    retargetSpring(const std::array<float, 4>& to, int durationMs, double damping = 0.75, double stiffness = 100.0);
+    void retargetSpring(const std::array<float, 4>& to, double damping = 0.75, double stiffness = 100.0);
 
     // Advances the color animation
     bool tick(uint64_t nowMsec);

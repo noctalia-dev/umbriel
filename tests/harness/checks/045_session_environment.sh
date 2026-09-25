@@ -151,6 +151,12 @@ case "$action" in
 esac
 EOF
 
+  cat > "$runtime/bin/systemd-run" << 'EOF'
+#!/bin/sh
+: > "$TRACE_DIR/unexpected-systemd-run"
+exit 1
+EOF
+
   cat > "$runtime/bin/dbus-update-activation-environment" << 'EOF'
 #!/bin/sh
 set -eu
@@ -175,7 +181,8 @@ printf '%s\n' dbus-graphical >> "$TRACE_DIR/order"
 EOF
 
   chmod +x "$runtime/bin/capture-environment" "$runtime/bin/capture-reloaded-environment" \
-    "$runtime/bin/xwayland-satellite" "$runtime/bin/systemctl" "$runtime/bin/dbus-update-activation-environment"
+    "$runtime/bin/xwayland-satellite" "$runtime/bin/systemctl" "$runtime/bin/systemd-run" \
+    "$runtime/bin/dbus-update-activation-environment"
 }
 
 start_private() {
@@ -203,7 +210,7 @@ start_private() {
   local -a unset=(
     -u WAYLAND_SOCKET -u DISPLAY -u UMBRIEL_SOCKET
     -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u XDG_SESSION_TYPE
-    -u UMBRIEL_TEST_ONE -u UMBRIEL_TEST_TWO
+    -u UMBRIEL_TEST_ONE -u UMBRIEL_TEST_TWO -u SYSTEMD_EXEC_PID
   )
 
   if [[ $nested == true ]]; then
@@ -219,8 +226,13 @@ start_private() {
 wait_for_file() {
   local runtime=$1
   local expected=$2
+  local require_content=${3:-false}
   for _ in $(seq 100); do
-    [[ -e $expected ]] && return
+    if [[ $require_content == true ]]; then
+      [[ -s $expected ]] && return
+    else
+      [[ -e $expected ]] && return
+    fi
     if ! kill -0 "$PRIVATE_PID" 2>/dev/null; then
       echo "the private compositor died during environment synchronization"
       sed 's/^/  | /' "$runtime/compositor.log"
@@ -272,8 +284,8 @@ write_fixture "$NATIVE" true
 start_private "$NATIVE" false false true
 wait_for_file "$NATIVE" "$NATIVE/trace/target-inherited"
 wait_for_file "$NATIVE" "$NATIVE/trace/dbus-graphical"
-wait_for_file "$NATIVE" "$NATIVE/autostart-environment"
-wait_for_file "$NATIVE" "$NATIVE/xwayland-environment"
+wait_for_file "$NATIVE" "$NATIVE/autostart-environment" true
+wait_for_file "$NATIVE" "$NATIVE/xwayland-environment" true
 assert_autostart_environment "$NATIVE"
 assert_xwayland_environment "$NATIVE"
 [[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\ntarget' ]]
@@ -284,7 +296,7 @@ sed -i 's/UMBRIEL_TEST_ONE = "alpha beta"/UMBRIEL_TEST_ONE = "reloaded"/' "$NATI
 env UMBRIEL_SOCKET="$NATIVE/umbriel-wayland-0.sock" "$UMBRIEL" msg config-reload > /dev/null
 env UMBRIEL_SOCKET="$NATIVE/umbriel-wayland-0.sock" \
   "$UMBRIEL" msg "spawn:$NATIVE/bin/capture-reloaded-environment" > /dev/null
-wait_for_file "$NATIVE" "$NATIVE/reloaded-environment"
+wait_for_file "$NATIVE" "$NATIVE/reloaded-environment" true
 reloaded_value=$(< "$NATIVE/reloaded-environment")
 if [[ $reloaded_value != "alpha beta" ]]; then
   echo "an environment reload changed newly spawned processes before restart: $reloaded_value"
@@ -294,16 +306,18 @@ fi
 [[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\ntarget' ]]
 stop_private "$NATIVE"
 [[ ! -e $NATIVE/trace/unexpected-systemctl ]]
+[[ ! -e $NATIVE/trace/unexpected-systemd-run ]]
 [[ $(< "$NATIVE/manager/one") == "alpha beta" ]]
 
 NO_SYSTEMD=$WORK_ROOT/no-systemd
 write_fixture "$NO_SYSTEMD" false
 start_private "$NO_SYSTEMD" false true false
 wait_for_file "$NO_SYSTEMD" "$NO_SYSTEMD/trace/dbus-graphical"
-wait_for_file "$NO_SYSTEMD" "$NO_SYSTEMD/autostart-environment"
+wait_for_file "$NO_SYSTEMD" "$NO_SYSTEMD/autostart-environment" true
 assert_autostart_environment "$NO_SYSTEMD"
 [[ -e $NO_SYSTEMD/trace/systemctl-probed ]]
 [[ ! -e $NO_SYSTEMD/trace/unexpected-systemctl ]]
+[[ ! -e $NO_SYSTEMD/trace/unexpected-systemd-run ]]
 [[ ! -e $NO_SYSTEMD/trace/target-inherited ]]
 [[ $(< "$NO_SYSTEMD/trace/order") == dbus-graphical ]]
 stop_private "$NO_SYSTEMD"
@@ -311,9 +325,10 @@ stop_private "$NO_SYSTEMD"
 NESTED=$WORK_ROOT/nested
 write_fixture "$NESTED" false
 start_private "$NESTED" true false false
-wait_for_file "$NESTED" "$NESTED/autostart-environment"
+wait_for_file "$NESTED" "$NESTED/autostart-environment" true
 assert_autostart_environment "$NESTED"
 [[ ! -e $NESTED/trace/order ]]
 stop_private "$NESTED"
+[[ ! -e $NESTED/trace/unexpected-systemd-run ]]
 
 echo "configured environment reached systemd before target startup and remained startup-only"

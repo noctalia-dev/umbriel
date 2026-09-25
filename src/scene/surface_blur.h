@@ -16,6 +16,9 @@ namespace umbriel {
     std::optional<bool> optimized;
   };
 
+  // True when the surface's opaque region does not cover surfaceBox, given in surface-local coordinates.
+  [[nodiscard]] bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox);
+
   // Owns the desired-state logic for one SceneFX backdrop-blur node. The node itself is a child of the owner's scene
   // tree and is freed by scene-tree teardown, never by this class (no destructor).
   class SurfaceBlur {

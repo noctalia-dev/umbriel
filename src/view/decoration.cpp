@@ -85,7 +85,9 @@ namespace umbriel {
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
-  void ViewDecoration::snapshotBorders(wlr_scene_tree* snapshot, bool focused, std::vector<BorderSnapshot>& out) const {
+  void ViewDecoration::snapshotBorders(
+      wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity, std::vector<BorderSnapshot>& out
+  ) const {
     if (!bordersVisible() || m_border == nullptr) {
       return;
     }
@@ -102,13 +104,12 @@ namespace umbriel {
         &copy->node, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y
     );
     wlr_scene_node_copy_animations_for_snapshot(&copy->node, &m_borderTree->node);
-    out.push_back(
-        BorderSnapshot{
-            .node = copy,
-            .innerColor = focused ? config().colors.border.focused : config().colors.border.unfocused,
-            .outerColor = config().colors.border.outer,
-        }
-    );
+    // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
+    // and stays in step with the content buffers, which keep their current opacity as their base.
+    BorderSnapshot captured{.node = copy, .innerColor = innerColor, .outerColor = config().colors.border.outer};
+    captured.innerColor[3] *= opacity;
+    captured.outerColor[3] *= opacity;
+    out.push_back(captured);
   }
 
   // Blur
@@ -136,39 +137,41 @@ namespace umbriel {
   void ViewDecoration::hideBlur() { m_blur.hide(); }
 
   // Shadow
-  void ViewDecoration::reparentShadow(wlr_scene_tree* layer, int x, int y, bool enabled) {
-    if (layer == nullptr) {
-      m_shadow.reset();
-      if (m_shadowContainer != nullptr) {
-        wlr_scene_node_destroy(&m_shadowContainer->node);
-        m_shadowContainer = nullptr;
-      }
+  void ViewDecoration::createShadow(wlr_scene_tree* frame) {
+    m_shadowContainer = wlr_scene_tree_create(frame);
+    wlr_scene_node_lower_to_bottom(&m_shadowContainer->node);
+  }
+
+  void ViewDecoration::poolShadow(wlr_scene_tree* frame, wlr_scene_tree* pool, int x, int y, bool enabled) {
+    if (m_shadowContainer == nullptr) {
       return;
     }
-    if (m_shadowContainer == nullptr) {
-      m_shadowContainer = wlr_scene_tree_create(layer);
-    } else {
-      wlr_scene_node_reparent(&m_shadowContainer->node, layer);
+    if (pool == nullptr) {
+      if (!m_shadowPooled) {
+        return;
+      }
+      wlr_scene_node_reparent(&m_shadowContainer->node, frame);
+      wlr_scene_node_lower_to_bottom(&m_shadowContainer->node);
+      wlr_scene_node_set_position(&m_shadowContainer->node, 0, 0);
+      wlr_scene_node_set_enabled(&m_shadowContainer->node, true);
+      m_shadowPooled = false;
+      return;
     }
+    wlr_scene_node_reparent(&m_shadowContainer->node, pool);
     wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
     wlr_scene_node_set_enabled(&m_shadowContainer->node, enabled);
+    m_shadowPooled = true;
   }
 
   void ViewDecoration::setShadowPosition(int x, int y) {
-    if (m_shadowContainer != nullptr) {
+    if (m_shadowPooled) {
       wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
     }
   }
 
   void ViewDecoration::setShadowEnabled(bool enabled) {
-    if (m_shadowContainer != nullptr) {
+    if (m_shadowPooled) {
       wlr_scene_node_set_enabled(&m_shadowContainer->node, enabled);
-    }
-  }
-
-  void ViewDecoration::raiseShadowToTop() {
-    if (m_shadowContainer != nullptr) {
-      wlr_scene_node_raise_to_top(&m_shadowContainer->node);
     }
   }
 

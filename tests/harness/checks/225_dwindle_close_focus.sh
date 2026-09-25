@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Closing a focused Dwindle tile has two distinct stationary-pointer cases. A pointer over another existing survivor
 # must not replace the layout predecessor chosen for a keyboard-focused close. A pointer over the closing tile must
-# follow the survivor that expands into that position. The clients stay alive after unmapping, so both assertions
-# observe the unmap transition instead of relying on destroy-time fallback focus.
+# follow each survivor that expands into that position, including across consecutive closes without pointer motion.
+# The clients stay alive after unmapping, so the assertions observe the unmap transition instead of relying on
+# destroy-time fallback focus.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -71,6 +72,7 @@ mode = "dwindle"
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [input.focus]
 follows_mouse = true
@@ -122,12 +124,12 @@ wait_for_focus "$predecessor_id"
 # Use another workspace for the close-under-pointer scenario so its Dwindle tree is independent of the first one.
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
 
-# Repeated insertion builds a nested Dwindle branch. Closing the fourth leaf collapses its fifth-leaf sibling into the
-# same origin, while the ordinary layout predecessor is the third leaf. That makes the two possible focus policies
-# observably different.
+# Repeated insertion builds a nested Dwindle branch. Closing the fourth leaf exposes the fifth, then closing the fifth
+# exposes the sixth. The ordinary layout predecessor remains the third leaf, so both focus policies stay observably
+# different across the consecutive closes.
 count=2
 for title in dwindle-close-a dwindle-close-b dwindle-reveal-predecessor dwindle-close-under-pointer \
-  dwindle-close-expander; do
+  dwindle-close-expander dwindle-close-next-expander; do
   spawn_client "$title"
   count=$((count + 1))
   wait_for_count "$count"
@@ -138,9 +140,10 @@ sleep 0.1
 windows=$("$UMBRIEL" windows --json)
 closing_id=$(jq -r '.[] | select(.title == "dwindle-close-under-pointer") | .id' <<< "$windows")
 expander_id=$(jq -r '.[] | select(.title == "dwindle-close-expander") | .id' <<< "$windows")
+next_expander_id=$(jq -r '.[] | select(.title == "dwindle-close-next-expander") | .id' <<< "$windows")
 closing_x=$(jq -r '.[] | select(.title == "dwindle-close-under-pointer") | .x' <<< "$windows")
 closing_y=$(jq -r '.[] | select(.title == "dwindle-close-under-pointer") | .y' <<< "$windows")
-if [[ -z $closing_id || -z $expander_id || -z $closing_x || -z $closing_y ]]; then
+if [[ -z $closing_id || -z $expander_id || -z $next_expander_id || -z $closing_x || -z $closing_y ]]; then
   echo "could not resolve Dwindle window state: $windows"
   exit 1
 fi
@@ -161,11 +164,28 @@ if ! grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-under-pointer.log"
   echo "focused client did not unmap: $(< "$UMBRIEL_RUNTIME_DIR/dwindle-close-under-pointer.log")"
   exit 1
 fi
-wait_for_count 6
+wait_for_count 7
 
 # First prove the intended survivor has taken over the cursor's old tile, then require focus to follow that scene
 # transition without sending another pointer event.
 wait_for_origin "$expander_id" "$closing_x" "$closing_y"
 wait_for_focus "$expander_id"
 
-echo "Dwindle close focus preserves keyboard intent and follows a survivor revealed beneath the pointer"
+# Close the revealed tile too, without moving the pointer. Its predecessor now expands into the same position and must
+# inherit hover focus just like the first survivor did. This catches stale seat pointer focus left by the first unmap.
+# The close decides hover ownership from what is on screen, so the survivor must have been drawn in its new slot.
+"$UMBRIEL" settle
+"$UMBRIEL" msg "window-close:$expander_id" > /dev/null
+for _ in $(seq 40); do
+  grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-expander.log" && break
+  sleep 0.1
+done
+if ! grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-expander.log"; then
+  echo "first revealed client did not unmap: $(< "$UMBRIEL_RUNTIME_DIR/dwindle-close-expander.log")"
+  exit 1
+fi
+wait_for_count 6
+wait_for_origin "$next_expander_id" "$closing_x" "$closing_y"
+wait_for_focus "$next_expander_id"
+
+echo "Dwindle close focus preserves keyboard intent across consecutive survivors revealed beneath a stationary pointer"

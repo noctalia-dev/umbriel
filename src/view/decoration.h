@@ -17,9 +17,9 @@ namespace umbriel {
   struct ResolvedWindowRule;
 
   // Everything drawn around a view's surface: the inner border ring, the outer ring, the blur sampled behind the
-  // surface, and the drop shadow. The shadow is deliberately not a child of the view's tree. It lives in the
-  // workspace's shadow layer so it renders under every window rather than only under its own, which is why it needs its
-  // own container node and its own position updates whenever the view moves. This class holds no reference back to its
+  // surface, and the drop shadow. The shadow container is a child of the view's frame, below its content, so it follows
+  // the frame's parent, stacking order, position, and visibility. The one exception is a tile: its container is lent to
+  // the workspace's tile shadow layer, so tiles never shadow each other. This class holds no reference back to its
   // View. Everything that varies per view (content size, corner radius, fade alpha, focus) arrives as an argument,
   // because those are questions only the View can answer (a fullscreen window keeps its border tree but draws square,
   // and a size animation presents a size the committed geometry has not caught up with yet). Appearance settings are
@@ -40,8 +40,12 @@ namespace umbriel {
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight) const;
-    // Copy the border into a close-animation snapshot tree.
-    void snapshotBorders(wlr_scene_tree* snapshot, bool focused, std::vector<BorderSnapshot>& out) const;
+    // Copy the border into a close-animation snapshot tree. `innerColor` is the straight colour the ring currently
+    // shows and `opacity` the effective opacity it is drawn at.
+    void snapshotBorders(
+        wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity,
+        std::vector<BorderSnapshot>& out
+    ) const;
 
     // Blur
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
@@ -54,17 +58,22 @@ namespace umbriel {
     void hideBlur();
 
     // Shadow
-    // Pass a null layer to tear the shadow down (the view left every workspace).
-    void reparentShadow(wlr_scene_tree* layer, int x, int y, bool enabled);
+    void createShadow(wlr_scene_tree* frame);
+    // Lend the container to `pool` at the frame's position and visibility, or return it below the frame's content when
+    // `pool` is null.
+    void poolShadow(wlr_scene_tree* frame, wlr_scene_tree* pool, int x, int y, bool enabled);
+    [[nodiscard]] bool shadowPooled() const { return m_shadowPooled; }
+    // Only a pooled container needs these; under the frame it inherits both.
     void setShadowPosition(int x, int y);
     void setShadowEnabled(bool enabled);
-    void raiseShadowToTop();
     void updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius);
     void hideShadow();
     void setShadowAnimationSource(wlr_scene_node* source) { m_shadow.setAnimationSource(source); }
-    [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source) const {
-      return m_shadow.snapshot(parent, source);
+    // `inPool` places the copy under every window of `parent`, otherwise directly below `source`.
+    [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
+      return m_shadow.snapshot(parent, source, inPool);
     }
+    [[nodiscard]] const wlr_scene_shadow* shadowNode() const { return m_shadow.node(); }
 
     // Shadows follow the full view opacity. Blur follows only transition
     // opacity, otherwise a window rule attenuates the backdrop twice.
@@ -79,7 +88,8 @@ namespace umbriel {
     SurfaceBlurOptions m_blurOptions;
     SurfaceBlurOptions m_popupBlurOptions;
     SurfaceShadow m_shadow;
-    wlr_scene_tree* m_shadowContainer = nullptr; // child of workspace shadow layer
+    wlr_scene_tree* m_shadowContainer = nullptr;
+    bool m_shadowPooled = false;
   };
 
 } // namespace umbriel

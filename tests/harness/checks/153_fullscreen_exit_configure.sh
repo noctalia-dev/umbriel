@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Leaving fullscreen must restore the tiled size in the first windowed configure.
+# Entering fullscreen must send the output size, and leaving it must restore the tiled size, in the first configure
+# of the new state.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -14,7 +15,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -127,17 +128,18 @@ normal_count=$(grep -Fxc "$normal_event" "$CLIENT_LOG")
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_event_count "$normal_event" "$((normal_count + 1))"
 
+output_size=$("$UMBRIEL" outputs --json | jq -r '.[0].modes[] | select(.current) | "\(.width)x\(.height)"')
+before_enter_count=$(grep -c '^configured-state=.* fullscreen$' "$CLIENT_LOG" || true)
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen true "client did not enter fullscreen"
 for _ in $(seq 80); do
-  fullscreen_event=$(grep '^configured-state=.* fullscreen$' "$CLIENT_LOG" | tail -1 || true)
-  if [[ -n $fullscreen_event && $fullscreen_event != "configured-state=$normal_size fullscreen" ]]; then
-    break
-  fi
+  fullscreen_event=$(grep '^configured-state=.* fullscreen$' "$CLIENT_LOG" | sed -n "$((before_enter_count + 1))p")
+  [[ -n $fullscreen_event ]] && break
   sleep 0.05
 done
-if [[ -z $fullscreen_event || $fullscreen_event == "configured-state=$normal_size fullscreen" ]]; then
-  echo "client did not receive its fullscreen size: $(< "$CLIENT_LOG")"
+if [[ $fullscreen_event != "configured-state=$output_size fullscreen" ]]; then
+  echo "first fullscreen configure did not carry the output size: expected '$output_size', got '${fullscreen_event:-missing}'"
+  echo "configure log: $(< "$CLIENT_LOG")"
   exit 1
 fi
 sleep 0.1

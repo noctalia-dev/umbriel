@@ -50,6 +50,9 @@ namespace umbriel {
     // Fullscreen
     void createBackdrop(wlr_scene_tree* parent);
     void setBackdropEnabled(bool enabled);
+    // Whether a fullscreen window hides what is behind it. The backdrop shows
+    // only for an opaque fullscreen window with a valid tile.
+    void setFullscreenOpaque(bool opaque);
     void setBackdropBox(int x, int y, int width, int height);
     // Re-read the backdrop color after a config reload.
     void reloadBackdropColor();
@@ -81,6 +84,8 @@ namespace umbriel {
     int m_offsetX = 0;
     int m_offsetY = 0;
     bool m_contentCentered = false;
+    bool m_fullscreenSized = false;
+    bool m_fullscreenOpaque = true;
   };
 
 } // namespace umbriel

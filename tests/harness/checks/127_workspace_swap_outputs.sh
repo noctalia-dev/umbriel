@@ -77,7 +77,7 @@ workspace_id_named() {
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [animation]
 enabled = false
@@ -108,16 +108,16 @@ wait_for_windows 2
 # survive only if the transfer replays widths and row weights, not defaults.
 accepts "window-focus:$(field_of stack-bottom id)"
 accepts window-consume-or-expel-left
-accepts "window-modify-height:-0.2"
+accepts "window-modify-secondary-extent:-0.2"
 spawn_client wide
 wait_for_windows 3
-accepts "window-modify-width:0.15"
+accepts "window-modify-primary-extent:0.15"
 
 accepts "workspace-switch:RIGHT/HEADLESS-2"
 spawn_client lone
 wait_for_windows 4
 accepts "workspace-switch:LEFT/HEADLESS-1"
-sleep 0.4
+"$UMBRIEL" settle
 
 top_before=$(box_of stack-top)
 bottom_before=$(box_of stack-bottom)
@@ -130,7 +130,7 @@ fi
 
 accepts workspace-swap-active-output-next
 wait_for_workspace stack-top "$right"
-sleep 0.4
+"$UMBRIEL" settle
 assert_box stack-top "$right" "$OFFSET" "$top_before"
 assert_box stack-bottom "$right" "$OFFSET" "$bottom_before"
 assert_box wide "$right" "$OFFSET" "$wide_before"
@@ -140,7 +140,7 @@ assert_box lone "$left" "-$OFFSET" "$lone_before"
 accepts "workspace-switch:RIGHT/HEADLESS-2"
 accepts workspace-swap-active-output-left
 wait_for_workspace stack-top "$left"
-sleep 0.4
+"$UMBRIEL" settle
 assert_box stack-top "$left" 0 "$top_before"
 assert_box stack-bottom "$left" 0 "$bottom_before"
 assert_box wide "$left" 0 "$wide_before"
@@ -152,8 +152,8 @@ accepts "workspace-set-layout:dwindle"
 accepts "workspace-switch:LEFT/HEADLESS-1"
 accepts "workspace-set-layout:dwindle"
 accepts "window-focus:$(field_of wide id)"
-accepts "window-modify-width:0.15"
-sleep 0.4
+accepts "window-modify-primary-extent:0.15"
+"$UMBRIEL" settle
 top_dwindle=$(box_of stack-top)
 bottom_dwindle=$(box_of stack-bottom)
 wide_dwindle=$(box_of wide)
@@ -161,7 +161,7 @@ lone_dwindle=$(box_of lone)
 
 accepts workspace-swap-active-output-next
 wait_for_workspace stack-top "$right"
-sleep 0.4
+"$UMBRIEL" settle
 assert_box stack-top "$right" "$OFFSET" "$top_dwindle"
 assert_box stack-bottom "$right" "$OFFSET" "$bottom_dwindle"
 assert_box wide "$right" "$OFFSET" "$wide_dwindle"

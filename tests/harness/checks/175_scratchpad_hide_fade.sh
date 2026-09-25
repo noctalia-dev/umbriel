@@ -53,10 +53,13 @@ if ! grep -q '^ready$' "$CLIENT_LOG"; then
   exit 1
 fi
 
+# Animation time only moves by clock-advance: 2000 ms finishes any scratchpad fade, and the mid-fade sample lands at
+# 300 ms of the hide.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
-sleep 2.1
+"$UMBRIEL" clock-advance 2000
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
-sleep 2.1
+"$UMBRIEL" clock-advance 2000
 grim "$BEFORE"
 before_blue=$(sample_blue "$BEFORE")
 if (( before_blue < 80 )); then
@@ -78,7 +81,7 @@ enters_before_hide=$(grep -c '^pointer-enter$' "$CLIENT_LOG")
 pointer move 0 0
 
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
-sleep 0.3
+"$UMBRIEL" clock-advance 300
 pointer move 630 350
 sleep 0.1
 enters_during_fade=$(grep -c '^pointer-enter$' "$CLIENT_LOG")
@@ -93,7 +96,7 @@ if (( during_blue < 40 )); then
   exit 1
 fi
 
-sleep 1.9
+"$UMBRIEL" clock-advance 2000
 grim "$AFTER"
 after_blue=$(sample_blue "$AFTER")
 if (( after_blue > 10 )); then

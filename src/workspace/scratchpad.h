@@ -27,7 +27,7 @@ namespace umbriel {
   class Workspace;
   class ScratchpadManager : public Animatable {
   public:
-    ScratchpadManager(Server& server, wlr_scene_tree* root, wlr_scene_tree* shadowRoot);
+    ScratchpadManager(Server& server, wlr_scene_tree* root);
     ~ScratchpadManager() override;
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
@@ -39,7 +39,7 @@ namespace umbriel {
     [[nodiscard]] Output* outputFor(const View* view) const;
     [[nodiscard]] std::string_view nameFor(const View* view) const;
     [[nodiscard]] bool hasScratchpad(std::string_view name) const;
-    struct WindowRuleAdmission {
+    struct AutomaticAdmission {
       Output* restoreOutput = nullptr;
       Workspace* restoreWorkspace = nullptr;
       Output* focusOrigin = nullptr;
@@ -50,7 +50,8 @@ namespace umbriel {
     [[nodiscard]] Output* restoreOutputFor(const View* view) const;
     [[nodiscard]] bool moveToScratchpad(View* view, std::string_view name, Output* invokingOutput);
     [[nodiscard]] bool
-    assignByWindowRule(View* view, std::string_view name, Output* placementOutput, const WindowRuleAdmission& options);
+    assignByWindowRule(View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options);
+    [[nodiscard]] bool assignFromParent(View* view, const View* parent, const AutomaticAdmission& options);
     // Show a scratchpad on the invoking output without changing keyboard focus.
     bool summon(std::string_view name, Output* invokingOutput);
     bool toggle(std::string_view name, Output* invokingOutput);
@@ -59,6 +60,9 @@ namespace umbriel {
     bool focusNext(std::string_view name);
     [[nodiscard]] View* focused(std::string_view name) const;
     [[nodiscard]] bool hasFocus(std::string_view name) const;
+    // The most recently focused window when that focus went to a scratchpad
+    // and the window is still visible on `output`.
+    [[nodiscard]] View* focusedOn(const Output* output) const;
     void noteFocus(View* view);
     void finishMove(View* view, Output* output);
     // Apply the manager-owned floating presentation after a commit or while a
@@ -108,10 +112,10 @@ namespace umbriel {
     [[nodiscard]] const Entry* findEntry(const View* view) const;
     [[nodiscard]] bool hasEntries(std::string_view name) const;
     [[nodiscard]] bool visibleOn(Output* output) const;
-    enum class Admission { Interactive, WindowRule };
+    enum class Admission { Interactive, Automatic };
     bool admit(
         View* view, std::string_view name, Output* invokingOutput, Admission admission,
-        const WindowRuleAdmission& options
+        const AutomaticAdmission& options
     );
     void setVisible(std::string_view name, bool visible, bool animateTransition = true);
     void moveScratchpad(
@@ -127,7 +131,6 @@ namespace umbriel {
 
     Server* m_server = nullptr;
     wlr_scene_tree* m_root = nullptr;
-    wlr_scene_tree* m_shadowRoot = nullptr;
     std::map<std::string, Scratchpad, std::less<>> m_scratchpads;
     std::vector<Entry> m_entries;
     // Views mid fade-out on hide, still enabled until tickAnimations disables the node once the fade completes.

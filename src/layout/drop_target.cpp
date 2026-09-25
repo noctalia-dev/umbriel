@@ -487,7 +487,7 @@ namespace umbriel {
     }
     const auto restoreSceneParent = [&view, &target]() {
       const bool fullscreen = view.toplevel()->current.fullscreen || view.toplevel()->scheduled.fullscreen;
-      wlr_scene_node_reparent(&view.sceneTree()->node, fullscreen ? target.fullscreenTree() : target.viewLayer(true));
+      view.setSceneParent(fullscreen ? target.fullscreenTree() : target.viewLayer(true));
     };
     // Policy fork again: a dwindle drop splits a leaf, while other layouts use
     // the generic column and row insertion interface.

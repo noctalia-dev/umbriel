@@ -24,6 +24,7 @@ struct wlr_xcursor_manager;
 namespace umbriel {
 
   class LayerSurface;
+  class Output;
   class Server;
   class View;
   class Workspace;
@@ -90,6 +91,7 @@ namespace umbriel {
       // Deliver via wl_pointer instead of tablet-v2.
       bool emulating = false;
       bool tipDown = false;
+      bool inProximity = false;
       // Last absolute position, 0..1.
       double x = 0;
       double y = 0;
@@ -164,6 +166,9 @@ namespace umbriel {
     void clearConstraint();
     // Recompute compositor cursor (mod-held resize/move affordance, or active grab).
     void refreshInteractiveCursor();
+    // Re-resolve what lies under a stationary cursor on `output` once its content has settled, so the client under it
+    // sees the pointer where it is drawn.
+    void refreshPointerContents(const Output* output);
     // Hide immediately after a non-modifier key press when configured.
     void noteTyping();
     // A logical focus change can leave the pointer over a different window without crossing a scene boundary. Let the
@@ -179,7 +184,9 @@ namespace umbriel {
     // the surface that received the press: wlroots drops its pressed-button
     // bookkeeping on every focus change, and the matching release would then
     // have nowhere to go, leaving the client with a button held forever.
-    void setPointerFocus(wlr_surface* surface, double sx, double sy);
+    // An already focused surface receives a motion instead, so a press never uses a position from before the surface
+    // moved under the cursor.
+    void setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec);
     void clearPointerFocus();
     // Clear pointer focus even while a client holds a button: a session lock
     // takes the seat away entirely, and a tablet handing a stroke back to
@@ -263,6 +270,8 @@ namespace umbriel {
     void restoreClientCursor();
     // True while a client owns an implicit pointer grab, which pins focus.
     [[nodiscard]] bool pointerFocusPinned() const;
+    // The pointer would land on a different surface or position than the focused client last saw.
+    [[nodiscard]] bool pointerContentsStale(const wlr_surface* surface, double sx, double sy) const;
     // Re-resolve pointer focus against the surface under the cursor.
     void refreshPointerFocus();
     void applyClientCursor();

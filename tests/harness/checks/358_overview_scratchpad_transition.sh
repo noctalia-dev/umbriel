@@ -10,7 +10,7 @@ readonly SETTLED="$UMBRIEL_RUNTIME_DIR/overview-scratchpad-transition-settled.pn
 
 sample_rgb() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$((x - 10))+$((y - 10))" -colorspace RGB \
+  magick "$image" -crop "20x20+$((x - 10))+$((y - 10))" \
     -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
 }
 
@@ -84,7 +84,7 @@ shortcuts = false
 [[window_rule]]
 match.title = "^overview-scratchpad-transition$"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 430, y = 230, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

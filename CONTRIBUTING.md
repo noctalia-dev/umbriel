@@ -50,6 +50,7 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 | `just test` | Run the Meson test suite: unit tests plus the umbrielfx suites |
 | `just gpu-test` | Run the umbrielfx renderer ownership check against this machine's DRM render nodes; it needs a GPU, so `just test` does not cover it |
 | `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check 721`, `just check drag`, `just check 721 -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 721` |
+| `just check-stress <name> [n]` | Run `n` copies (default 32) of one harness check at once, to expose races that load reveals |
 | `just check-names` | List every harness check name. Builds nothing |
 | `just lint` | Rebuild without compiler warnings and run clang-tidy |
 | `just format` | Format source and test files |
@@ -63,6 +64,7 @@ Tests live in three places, and which one a change belongs in follows from what 
 tests/unit/             C++ unit tests, one binary per test, run by `just test`
 tests/meson.build       the unit test table and the harness client targets
 tests/harness/check.sh  the headless compositor harness, run by `just check`
+tests/harness/lib.sh    helpers a check sources with `source "$UMBRIEL_HARNESS_LIB"`
 tests/harness/checks/   one script per behaviour it asserts
 tests/harness/clients/  Wayland helper clients the checks drive
 ```
@@ -74,16 +76,19 @@ seat grabs, live reloads. Every unit test gets `umbriel_pure_dep`, and one that 
 table is not built and will rot unnoticed.
 
 Test targets exist only where the `tests` feature option resolves to enabled. `just configure` passes
-`-Dtests=enabled` for every mode, so `just test` and `just check` work in debug, asan, and release build directories.
+`-Dtests=enabled` for every mode, so `just test` works in debug, asan, and release build directories.
 A build directory configured by hand without that option follows `auto`: unsanitized debug builds get the targets, a
-release build gets none. Test binaries land in the build directory's `tests` subdir.
+release build gets none. Test binaries land in the build directory's `tests` subdir. Checks also drive IPC commands
+that exist only with the `test_ipc` option (auto: debug builds, which includes asan), so `just check` refuses a
+release binary unless it was configured with `-Dtests=enabled -Dtest_ipc=enabled`.
 
 `check.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless
 instance is booted per check, the check runs in its own process group with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`
 already pointing at that instance, and the harness kills the group and asserts the instance exited cleanly. Boot plus
 teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. That isolation is also what lets the
-harness run several checks at once, bounded by `-j` (default: the core count, capped at eight). Reports stay in
-declaration order whatever order the checks finish in. Six rules follow:
+harness run several checks at once, bounded by `-j` (default: the core count), starting the slowest first by the
+durations the previous run recorded. Reports stay in declaration order whatever order the checks finish in. Seven rules
+follow:
 
 - A check must pass in a plain `just check` run, with no environment overrides.
 - A check starts from a pristine instance (no windows, overview closed, workspace 1 focused, `$UMBRIEL_CONFIG` holding
@@ -97,10 +102,24 @@ declaration order whatever order the checks finish in. Six rules follow:
   and `WAYLAND_DISPLAY`, so a missing prefix used to query the developer's live session instead of the instance.
 - Never retain `$!` from a backgrounded shell *function*. Bash forks a subshell, so the captured pid is the wrapper and
   a signal to it leaves the client running. Background the client binary directly when a pid must be kept.
-- Never size a wait to an animation. `animation.duration_ms` defaults to 200ms, so a multi-second `sleep` ahead of a
-  screenshot is dead time on every run, and it still races a slower machine. Grab until two consecutive frames match
-  and keep the fixed wait down to a primer that only covers dispatch, as `650_two_output_containment` does. Its settle
-  loop is the barrier; the primers around it are 0.3s.
+- Never time a check with the wall clock. Wait for an end state with `umbriel settle`: it replies once no animation
+  runs, no arrange is pending, every mapped window has acknowledged and committed its latest configure, and every
+  output has drawn a frame. Sample mid-animation on the animation clock: `umbriel clock-freeze` stops animation time,
+  `umbriel clock-advance <ms>` moves it and replies once every output has drawn that instant, and an animation started
+  while frozen counts from the frozen instant, so long configured durations cost nothing
+  (`191_builtin_window_styles` is the reference). Poll a client's log or IPC state for anything a client does. The
+  pointer helper's `mark <label>` prints once every earlier command has been processed, and `hold` keeps buttons and
+  modifiers pressed until a line arrives on its stdin; `pointer_hold`, `pointer_step`, and `pointer_release` in
+  `lib.sh` wrap both, so a drag stays held across screenshots without a timed `pause` (`455_drag_overhanging_card`).
+  `check.sh` refuses a fixed `sleep` of 0.2s or more outside a polling loop unless the line ends with
+  `# real time: <reason>`, which is for compositor timers, helper-client pauses, and proofs that nothing reacts
+  within a window. `windows --json` reports layout targets, not what is on screen, so it is not proof that motion
+  has been drawn.
+- Analyse screenshots with `$UMBRIEL_PIXEL_PROBE` (`count`, `bbox`, `mean`, `max`, `pixel`, `size`; its source
+  documents the predicate syntax) rather than ImageMagick. Read pixels as `grim` encodes them, which is what the
+  compositor blended and shows: a colourspace conversion such as `magick -colorspace RGB` only moves blended values
+  and makes thresholds harder to reason about. Pass a new or materially changed check through
+  `just check-stress <name>` before relying on it.
 - Never depend on a machine-wide resource a sibling check could be using at the same time: a fixed port, a shared
   path outside `$UMBRIEL_RUNTIME_DIR`, a named process matched with `pkill`, or the wall-clock cost of a neighbour.
   Everything a check needs lives in its own instance and its own runtime directory.
@@ -109,9 +128,10 @@ Check names group by topic, and the leading number is the group: `0xx` session, 
 `2xx` workspaces, `3xx` overview, `4xx` drag, `5xx` input and seat, `6xx` output and display, `7xx` rendering. Numbers
 step by ten inside a group so a new check lands next to its relatives.
 
-A boot costs about 80ms and the pool runs checks side by side, so the suite's wall time is set by its longest check,
-not by their sum: three six-second siblings finish in six seconds, and folding them into one check makes the whole
-suite wait thirteen. Split a check that grows past a few seconds instead of merging relatives to save a boot.
+A boot costs about 80ms and the pool runs checks side by side, so the suite's wall time is bounded below by its longest
+check: three six-second siblings finish in six seconds, and folding them into one check makes the whole suite wait
+eighteen. Split a check that grows past a few seconds instead of merging relatives to save a boot. After a full run
+the summary names the slowest checks and any over `CHECK_BUDGET` (default 8s).
 
 A harness check that asserts a value a unit test computes is coverage in the wrong tier: it costs a compositor to
 re-derive what `tests/unit` already pins, and it fails a second time for the same bug. Assert layout arithmetic,
@@ -123,6 +143,12 @@ An instance has one output unless the check asks for more with a `# harness: out
 `620_output_disable`, `630_dpms`, and `650_two_output_containment` use. Output count is fixed when the compositor
 starts, so it cannot be a runtime config change. Single-output instances are what `610_output_actions` relies on to
 assert that directional output actions are rejected when there is nowhere to move.
+
+A headless session starts with no keyboard, so the harness connects a keyboard-only helper to each instance before
+its check runs and keeps it through teardown, the way a real session always has one. Without it the seat's keyboard
+capability would come and go with each pointer-client run, and clients would bind `wl_keyboard` too late for the first
+keys. A check about how keyboards themselves arrive opts out with `# harness: keyboard=none` in its header, as
+`520_input_method_wheel` and `521_keyboard_keymap` do.
 
 A check that stops making progress is killed after 120 seconds, so the suite reports instead of hanging. Set
 `CHECK_TIMEOUT` to change the cap, and `CHECK_VERBOSE=1` (or `-v`) to keep the full output of passing checks.

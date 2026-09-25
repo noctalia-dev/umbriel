@@ -23,6 +23,7 @@ struct wlr_scene_buffer;
 struct wlr_scene_border;
 struct wlr_scene_blur;
 struct wlr_scene_rect;
+struct wlr_scene_shadow;
 struct wlr_scene_tree;
 struct wlr_surface;
 struct wlr_pointer;
@@ -51,7 +52,8 @@ namespace umbriel {
 
     // Open, opening, or zooming back in.
     [[nodiscard]] bool active() const { return m_active; }
-    // Open and not already zooming back in: pointer/keyboard edits still apply.
+    // Open and not already zooming back in: pointer/keyboard edits still apply. The IPC `overview` event reports this
+    // as `open`, so clients drop overview-scoped surfaces while the windows are still hidden.
     [[nodiscard]] bool interactive() const { return m_active && !m_closing; }
 
     void toggle();
@@ -168,6 +170,10 @@ namespace umbriel {
       wlr_scene_tree* tree = nullptr;
       wlr_scene_border* border = nullptr;
       SurfaceBlur blur;
+      // Scaled copy of the view's drop shadow. Its tree lives under `tree` or, for a view whose shadow the workspace
+      // pools below every tile, under the output's `tileShadows`.
+      wlr_scene_tree* shadowTree = nullptr;
+      wlr_scene_shadow* shadow = nullptr;
       std::vector<std::unique_ptr<CardSurface>> surfaces;
       wlr_box box{}; // content box in layout coordinates
       wlr_scene_tree* badge = nullptr;
@@ -225,6 +231,8 @@ namespace umbriel {
       wlr_scene_tree* tree = nullptr;
       wlr_scene_blur* backgroundBlur = nullptr;
       wlr_scene_rect* backgroundTint = nullptr;
+      // Card shadows the real scene draws below every tile, above the workspace backgrounds and below every card.
+      wlr_scene_tree* tileShadows = nullptr;
       std::vector<WorkspaceBackground> workspaceBackgrounds;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;
@@ -246,9 +254,9 @@ namespace umbriel {
       WorkspaceAxis axis = WorkspaceAxis::Vertical;
       int previewW = 0;
       int previewH = 0;
-      double baseX = 0;
-      double baseY = 0;
-      double gap = 0;
+      int baseX = 0;
+      int baseY = 0;
+      int gap = 0;
     };
 
     static void onCardSurfaceCommit(wl_listener* listener, void* data);
@@ -264,6 +272,12 @@ namespace umbriel {
 
     // Preview scale for the current open or close progress.
     [[nodiscard]] double zoom() const;
+    // How much of the desktop's own chrome (window shadows, pinned windows) shows: 1 at rest on the desktop, fading to
+    // 0 over the first stretch of the open, so a close brings it back while the zoom is still settling.
+    [[nodiscard]] float desktopChromeAlpha() const;
+    // Upper bound on how far any visible card pixel moves per unit of zoom animation value, for ending a spring once
+    // its remaining motion can no longer change a pixel.
+    [[nodiscard]] double zoomPixelsPerUnit() const;
     [[nodiscard]] static bool
     previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
@@ -276,6 +290,8 @@ namespace umbriel {
     Card* createCard(OutputState& state, View* view, size_t workspaceIndex);
     void snapshotCardForClose(Card& card);
     void destroyCard(Card* card);
+    void layoutCardShadow(Card& card, double zoom, float alpha) const;
+    static void destroyCardShadow(Card& card);
     static void syncCardBuffer(CardSurface& entry);
     void dropCard(View* view);
     void rebuildCard(View* view);
@@ -294,6 +310,8 @@ namespace umbriel {
     [[nodiscard]] static bool desktopSourceBox(const DesktopSurface& source, wlr_box& out);
 
     void applyProgress();
+    // Applies `alpha` to every pinned window and full opacity to every other.
+    void applyPinnedOpacity(float alpha) const;
     void layoutOutput(OutputState& state);
     void layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget);
     // The window a focus or close action would act on right now: the focused view of the active workspace on the
@@ -314,6 +332,8 @@ namespace umbriel {
     void finishAnimation();
     void beginClose(View* focus);
     void teardown();
+    // Hand the seat back after teardown: `focus`, or normal refocus when null or unmapped.
+    void restoreFocus(View* focus);
     void scheduleFrames() const;
 
     [[nodiscard]] Card* cardAt(double lx, double ly);

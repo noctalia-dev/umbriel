@@ -25,3 +25,6 @@ result-*
 /TODO.md
 /pr-*.md
 /.github/workflows/scripts/__pycache__
+
+# Scratch copies from `just check-stress`
+tests/harness/.stress.*/

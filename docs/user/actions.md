@@ -89,14 +89,14 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-consume-or-expel-left` | Split the window out, or stack it into the column left |
 | `window-consume-or-expel-right` | Split the window out, or stack it into the column right |
 | `window-consume-right` | Stack the focused window into the column right |
-| `window-cycle-height` | Cycle the focused window through the height presets |
-| `window-cycle-height-back` | Cycle the height presets in reverse |
-| `window-cycle-width` | Cycle the focused column through the width presets |
-| `window-cycle-width-back` | Cycle the width presets in reverse |
-| `window-modify-height:<delta>` | Change the focused window's height by a fraction |
+| `window-cycle-primary-extent` | Cycle the focused area's primary extent through presets |
+| `window-cycle-primary-extent-back` | Cycle the primary extent presets in reverse |
+| `window-cycle-secondary-extent` | Cycle the focused area's secondary extent through presets |
+| `window-cycle-secondary-extent-back` | Cycle the secondary extent presets in reverse |
 | `window-modify-height-down:<delta>` | Resize the focused window from its bottom edge |
 | `window-modify-height-up:<delta>` | Resize the focused window from its top edge |
-| `window-modify-width:<delta>` | Change the focused column's width by a fraction |
+| `window-modify-primary-extent:<delta>` | Change the focused area's primary extent by a fraction |
+| `window-modify-secondary-extent:<delta>` | Change the focused area's secondary extent by a fraction |
 | `window-modify-width-left:<delta>` | Resize the focused column from its left edge |
 | `window-modify-width-right:<delta>` | Resize the focused column from its right edge |
 | `window-move-down` | Move the focused window down in its column |
@@ -113,8 +113,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-move-to-output-right` | Move the focused window to the output right |
 | `window-move-to-output-up` | Move the focused window to the output above |
 | `window-move-up` | Move the focused window up in its column |
-| `window-set-height:<fraction>` | Set the focused window's height fraction |
-| `window-set-width:<fraction>` | Set the focused column's width fraction |
+| `window-set-primary-extent:<fraction>` | Set the focused area's primary extent fraction |
+| `window-set-secondary-extent:<fraction>` | Set the focused area's secondary extent fraction |
 | `window-swap-next` | Swap with the next window in layout order |
 | `window-swap-previous` | Swap with the previous window in layout order |
 
@@ -123,7 +123,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | Action | Effect |
 |--------|--------|
 | `window-close:[<window-id>]` | Close the focused window, or the given window |
-| `window-toggle-floating` | Float or tile the focused window |
+| `window-toggle-floating:[<window-id>]` | Float or tile the focused window, or the given window |
 | `window-toggle-fullscreen` | Toggle fullscreen or exit a window covering the focus |
 | `window-toggle-maximize` | Toggle full width for the focused column |
 | `window-toggle-maximize-to-edges` | Toggle maximize without gaps, struts, or borders |
@@ -156,6 +156,9 @@ described in [Workspace selectors](workspaces.md#workspace-selectors).
 | `window-move-to-workspace:<workspace>[/<output>]` | Move the focused window to the selected workspace |
 | `window-move-to-workspace-next` | Move the focused window to the next workspace |
 | `window-move-to-workspace-previous` | Move the focused window to the previous workspace |
+| `window-move-to-workspace-silent:<workspace>[/<output>]` | Move the focused window to the selected workspace silently |
+| `window-move-to-workspace-silent-next` | Move the focused window to the next workspace silently |
+| `window-move-to-workspace-silent-previous` | Move the focused window to the previous workspace silently |
 | `workspace-move-down` | Move the focused workspace down the list |
 | `workspace-move-to-output-down` | Move every workspace window to the output below |
 | `workspace-move-to-output-left` | Move every workspace window to the output left |
@@ -196,108 +199,35 @@ are described in [Overview](workspaces-overview.md).
 | `dpms-on:[<output>]` | Power on one output, or every output when bare |
 | `keyboard-layout-next` | Switch one keyboard to its next configured layout |
 | `session-quit:[skip-confirmation]` | Quit the session, confirming first unless told to skip |
+| `shortcuts-inhibit-toggle` | Toggle shortcuts inhibition for the focused surface |
 | `submap:<name>` | Enter a submap layer, or leave one with 'reset' |
 
 ## Layout differences
 
-Column-scoped actions operate on the active layout's column projection,
-described in [Layouts](layout.md). Where that projection changes what an action
-does, this is the full list:
+Column and extent actions adapt to the active layout:
 
-| Action | Scrolling | Dwindle | Master |
-|--------|-----------|---------|--------|
-| `column-move-left`, `column-move-right` | Reorders the focused column | Swaps the focused window with the neighboring tile | Exchanges the master and stack contents, and does nothing while either area is empty |
-| `column-move-to-first`, `column-move-to-last` | Moves the column to that end of the workspace | Swaps the focused window with the first or last tile | Exchanges master and stack unless the focused area is already first or last |
-| `window-consume-left`, `window-consume-right` | Stacks the window into the adjacent column | Swaps with the adjacent on-screen tile in that direction | Moves the window between the master and stack areas |
-| `window-consume-or-expel-left`, `window-consume-or-expel-right` | Splits a stacked window into its own column, or stacks a lone window into the adjacent one | Swaps with the adjacent on-screen tile in that direction | Moves the window between the master and stack areas |
-| `window-set-height`, `window-modify-height`, `window-cycle-height`, `window-cycle-height-back` | Sizes the row within its column | Adjusts the vertical splits containing the window | Sizes the row within the master or stack area |
-| `column-center` | Centers the column in the viewport | Returns an IPC error | Returns an IPC error |
-| `layout-scroll-left`, `layout-scroll-right`, `layout-scroll-up`, `layout-scroll-down`, `layout-scroll-drag` | Pans the strip | No effect | No effect |
-| `layout-master-count-increase`, `layout-master-count-decrease` | No effect | No effect | Moves one window between master and stack |
+| Action group | Scrolling | Dwindle | Master |
+| --- | --- | --- | --- |
+| Column movement | Reorders columns | Swaps neighboring tiles | Exchanges master and stack contents |
+| Consume and expel | Joins or splits columns | Swaps directional neighbors | Moves between master and stack |
+| Primary extent | Changes column width | Adjusts horizontal splits | Changes master fraction |
+| Secondary extent | Changes a row | Adjusts vertical splits | Changes a row |
+| Layout scrolling | Pans the strip | No effect | No effect |
+| Master count | No effect | No effect | Moves a window between master and stack |
 
-Dwindle and master have no horizontal viewport, so the vertical splits and areas
-absorb what scrolling would express as column geometry. On an output with
-horizontal workspaces the strip is vertical and the directional actions follow
-their visual directions; see [Vertical strips](layout.md#vertical-strips).
+See [Layout](layout.md) for geometry, directions, and resizing behavior.
 
 ## Notes
 
-- **Edge-anchored resizing.** `window-modify-width-left`/`-right` and
-  `window-modify-height-up`/`-down` move only the named edge and leave the
-  opposite one where it is, so a positive delta grows the window from that edge
-  until the size saturates. They drive the same interactive resize path as a
-  pointer drag, so each layout offers the edges it can resize: an edge the layout
-  cannot resize leaves the window untouched (a screen-facing edge in Dwindle does
-  nothing at all), and a floating window grows from the named edge within its
-  client size hints. While a scrolling strip is narrower than the viewport and
-  `layout.scrolling.center_underfull_strip` is on, the strip resizes around its
-  center and both edges move symmetrically. A center-positioned master area
-  likewise moves both margins when either edge is resized. Pointer drags behave
-  the same way in both cases.
-- **Launch tokens.** `spawn:` exports a one-shot `XDG_ACTIVATION_TOKEN` and a
-  matching `DESKTOP_STARTUP_ID` to the command. A single-instance application
-  can pass that token to its existing window so Umbriel reveals it, including
-  when the window remaps after hiding in a tray. Startup commands from
-  `general.autostart` receive no launch token.
-- **Quitting.** Bare `session-quit` opens an on-screen confirmation: Enter or
-  the quit bind confirms, any other key or a click cancels, and a second
-  `session-quit` also quits. While the session is locked it quits without the
-  dialog.
-- **Cursor.** With `input.cursor.follows_focus` enabled, focus navigation and
-  window or column transfers between workspaces warp the cursor to the visible
-  center of the focused window. This includes local `window-move-or-output-*`
-  moves, transfers to another output, output focus actions, and foreign-
-  toplevel activation requests from docks and taskbars. Pointer-driven and
-  automatic focus changes never move the cursor. `window-focus:<window-id>`
-  stays focus-only, while `window-focus-warp:<window-id>` always moves it.
-- **Hidden scratchpads.** Either ID-targeted focus action summons a matching
-  hidden scratchpad window to the output under the pointer before focusing it.
-- **Across outputs.** Directions never wrap: with no monitor in that direction
-  the action fails with an IPC error naming it ("no output to the left" and
-  friends). Otherwise the cursor warps to the center of the target monitor so
-  focus follows the action. With `input.cursor.follows_focus` enabled, it then
-  settles on the focused window's visible center when the target workspace has
-  one. A moved window or column uses that same target. Output direction comes
-  from output centers in logical coordinates, so fractional-scale rounding does
-  not hide a neighbor.
-- **Around the outputs.** The `-next` and `-previous` output actions cycle
-  instead of pointing: they step through the monitors in layout order (left to
-  right, then top to bottom, by output center) and wrap at both ends, so a
-  single keybind reaches the other screen of a two-monitor setup in either
-  direction. Their order follows how the monitors are arranged, not the order
-  they were plugged in, and they fail with "no other output" when the session
-  has only one. They otherwise behave exactly like their directional siblings,
-  cursor warp included.
-- **Cycling.** `window-focus-next` and `window-focus-previous` walk the tiled
-  windows in layout order, then the floating ones, wrapping in both directions.
-  `window-swap-next` and `window-swap-previous` exchange the focused tiled
-  window with its layout-order neighbor, wrap at both ends, and keep focus on
-  the moved window.
-- **Focus memory.** Directional focus that leaves the current group lands on
-  the window that was focused there most recently: the target column in
-  scrolling and master, the split it enters in dwindle. When nothing in that
-  group has been focused yet, it lands on the geometric neighbor.
-- **Workspace order.** `workspace-next`, `workspace-previous`, `workspace-move-
-  up`, and `workspace-move-down` never wrap: on the first workspace, the
-  previous forms are silent no-ops. On a dynamic output, `workspace-next`
-  reaches the trailing empty workspace, which becomes active as usual.
-- **Columns as a unit.** A whole-column move preserves member order, the column
-  width, its full-width restore value, and stacked row proportions. In master
-  layout it transfers every member of the focused master or stack area. A column
-  moved onto a dwindle workspace flattens into single-window columns. With a
-  floating window focused there is no column, so the destination-moving column
-  actions act like their window counterparts.
-- **Floating and pinned.** `window-toggle-floating` remembers the window's
-  floating size and position; the first time a window floats, Umbriel places it
-  slightly below and to the right of its tiled position while keeping it on-
-  screen. `window-toggle-pinned` floats the window and keeps it above fullscreen
-  windows on its output, visible across workspace switches and hidden for as
-  long as the overview is open. Unpinning restores the state from before it was
-  pinned: a tiled window returns to its layout, while a floating window remains
-  floating with its saved geometry. Use `window-toggle-floating` to unpin and
-  place a pinned window in the layout regardless of its pre-pin state. A
-  fullscreen window cannot be pinned, and making a pinned window fullscreen
-  drops the pin.
-- **Unavailable actions.** When an action has no meaning in the active layout,
-  its keybind does nothing and `umbriel msg` returns an error naming the
-  requirement.
+- Output direction actions do not wrap. The `next` and `previous` variants do.
+- Workspace `next`, `previous`, `move-up`, and `move-down` do not wrap.
+- A whole-column move preserves order, proportions, and column extent.
+- Moving a multi-window column into Dwindle creates separate tiles.
+- Floating and pinned behavior is described in [Layout](layout.md) and
+  [Scratchpads](scratchpad.md).
+- An action unavailable in the active layout does nothing from a keybind and
+  returns an explanatory error through `umbriel msg`.
+- `spawn:` supplies an activation token so the launched application can request
+  focus. Autostart commands do not receive one.
+- Bare `session-quit` asks for confirmation. Use
+  `session-quit:skip-confirmation` only when an immediate exit is intended.

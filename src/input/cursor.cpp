@@ -44,6 +44,12 @@ namespace umbriel {
       return which == ZWLR_LAYER_SHELL_V1_LAYER_TOP || which == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
     }
 
+    // Programmatic pointer events have no input event timestamp. libinput stamps events from the same clock.
+    uint32_t monotonicMsec() {
+      const auto now = std::chrono::steady_clock::now().time_since_epoch();
+      return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+    }
+
     bool isXdgPopupSurface(wlr_surface* surface) {
       return surface != nullptr && wlr_xdg_popup_try_from_wlr_surface(wlr_surface_get_root_surface(surface)) != nullptr;
     }
@@ -730,12 +736,8 @@ namespace umbriel {
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
-    // processMotion needs a timestamp and no real input event backs a
-    // programmatic warp; derive one from the monotonic clock.
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    const uint32_t timeMsec = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
     m_server->notifyIdleActivity();
-    processMotion(timeMsec, oldX, oldY, allowFocusChange);
+    processMotion(monotonicMsec(), oldX, oldY, allowFocusChange);
   }
 
   void Cursor::resetMode() {
@@ -1001,7 +1003,7 @@ namespace umbriel {
       wlr_seat* seat = m_server->seat()->wlr();
       if (overviewPassthroughLayer(layer) && !overview->dragging()) {
         if (surface != nullptr) {
-          setPointerFocus(surface, sx, sy);
+          setPointerFocus(surface, sx, sy, timeMsec);
         }
         wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
         // The popup's xdg-shell grab already owns focus. Refocusing its parent layer would end the keyboard grab, whose
@@ -1100,7 +1102,7 @@ namespace umbriel {
     // event so wl_data_device drag serial validation succeeds.
     wlr_seat* seat = m_server->seat()->wlr();
     if (surface != nullptr) {
-      setPointerFocus(surface, sx, sy);
+      setPointerFocus(surface, sx, sy, timeMsec);
     } else {
       clearPointerFocus();
     }
@@ -1117,7 +1119,7 @@ namespace umbriel {
         }
       } else {
         wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-        m_server->refocus(m_server->outputFromWlr(wlrOutput));
+        m_server->refocusExplicit(m_server->outputFromWlr(wlrOutput));
       }
     }
   }
@@ -1406,7 +1408,7 @@ namespace umbriel {
       LayerSurface* layer = nullptr;
       m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
       if (overviewPassthroughLayer(layer) && surface != nullptr) {
-        setPointerFocus(surface, sx, sy);
+        setPointerFocus(surface, sx, sy, timeMsec);
         wlr_seat_pointer_notify_motion(m_server->seat()->wlr(), timeMsec, sx, sy);
         return;
       }
@@ -1482,7 +1484,7 @@ namespace umbriel {
     }
 
     if (surface != nullptr) {
-      setPointerFocus(surface, sx, sy);
+      setPointerFocus(surface, sx, sy, timeMsec);
       wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
     } else {
       if (!m_compositorOwnsCursor) {
@@ -1515,7 +1517,7 @@ namespace umbriel {
           && config().input.focus.followsMouse
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
-        m_server->refocus(m_server->outputFromWlr(pointerOutput));
+        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
       }
     }
   }
@@ -1539,7 +1541,10 @@ namespace umbriel {
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
     const bool entered = refocus || view != oldView;
-    const bool alreadyFocused = view->workspace() != nullptr && view->workspace()->focusedView() == view;
+    // Workspace focus is remembered independently from the seat. A pinned window from another workspace can own the
+    // seat while this view remains its active workspace's remembered focus, so only seat-global activation makes this
+    // handoff redundant.
+    const bool alreadyFocused = view->activated();
     if (entered && !alreadyFocused) {
       m_server->focusView(view, FocusReason::PointerHover);
       // Scroll may have moved another surface under the cursor; refresh hit-test for
@@ -1742,6 +1747,7 @@ namespace umbriel {
     }
     if (event->state == WLR_TABLET_TOOL_PROXIMITY_IN) {
       TabletToolState* state = toolState(event->tool);
+      state->inProximity = true;
       state->x = event->x;
       state->y = event->y;
       const double oldX = m_cursor->x;
@@ -1771,6 +1777,7 @@ namespace umbriel {
       wlr_tablet_v2_tablet_tool_notify_proximity_out(state->v2);
     }
     state->tipDown = false;
+    state->inProximity = false;
   }
 
   void Cursor::handleTabletToolTip(void* data) {
@@ -2235,16 +2242,31 @@ namespace umbriel {
         && seat->pointer_state.focused_surface != nullptr;
   }
 
-  void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy) {
+  bool Cursor::pointerContentsStale(const wlr_surface* surface, double sx, double sy) const {
+    const wlr_seat* seat = m_server->seat()->wlr();
+    if (surface != seat->pointer_state.focused_surface) {
+      return true;
+    }
+    // Compare what the client receives, as wlroots does before sending motion.
+    return surface != nullptr
+        && (wl_fixed_from_double(sx) != wl_fixed_from_double(seat->pointer_state.sx)
+            || wl_fixed_from_double(sy) != wl_fixed_from_double(seat->pointer_state.sy));
+  }
+
+  void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
     if (surface == nullptr) {
       clearPointerFocus();
       return;
     }
-    wlr_seat* seat = m_server->seat()->wlr();
-    if (pointerFocusPinned() && surface != seat->pointer_state.focused_surface) {
+    if (pointerFocusPinned()) {
       return;
     }
-    wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (surface == seat->pointer_state.focused_surface) {
+      wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+    } else {
+      wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+    }
   }
 
   void Cursor::clearPointerFocus() {
@@ -2261,7 +2283,51 @@ namespace umbriel {
     double sy = 0;
     wlr_surface* surface = nullptr;
     m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy);
-    setPointerFocus(surface, sx, sy);
+    const bool stale = !pointerFocusPinned() && pointerContentsStale(surface, sx, sy);
+    setPointerFocus(surface, sx, sy, monotonicMsec());
+    if (stale) {
+      wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
+    }
+  }
+
+  void Cursor::refreshPointerContents(const Output* output) {
+    const wlr_seat* seat = m_server->seat()->wlr();
+    if (output == nullptr
+        || !isPassthrough()
+        || m_cursorHidden
+        || seat->drag != nullptr
+        || seat->pointer_state.button_count != 0
+        || std::ranges::any_of(m_tools, [](const auto& tool) { return tool->inProximity; })
+        || wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y) != output->wlr()) {
+      return;
+    }
+    // Content still in motion would flicker hover state on every frame. The next press resolves it regardless.
+    if (!m_server->sessionLocked()
+        && ((m_server->overview() != nullptr && m_server->overview()->active())
+            || m_server->animationsActiveFor(output)
+            || (m_server->gestures() != nullptr && m_server->gestures()->movingContent()))) {
+      return;
+    }
+
+    double sx = 0;
+    double sy = 0;
+    wlr_surface* surface = nullptr;
+    LayerSurface* layer = nullptr;
+    View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+    if (!pointerContentsStale(surface, sx, sy)) {
+      return;
+    }
+    if (surface != nullptr) {
+      setPointerFocus(surface, sx, sy, monotonicMsec());
+    } else {
+      if (!m_compositorOwnsCursor) {
+        setXcursor("default");
+      }
+      clearPointerFocus();
+    }
+    wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
+    updateConstraintForSurface(surface);
+    updateInteractiveCursor(view);
   }
 
   void Cursor::updateInteractiveCursor(View* under) {

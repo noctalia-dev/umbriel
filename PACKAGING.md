@@ -105,8 +105,13 @@ Distribution package names vary.
 `xwayland-satellite` must be discoverable on `PATH`. It may be omitted when a
 package or installation deliberately disables Xwayland in the configuration.
 
-On systems with a working systemd user manager, `start-umbriel` runs the
-compositor as `umbriel.service`. Other init systems use the direct fallback.
+For a native launch with a working systemd user manager, `start-umbriel` runs
+the compositor as `umbriel.service`. Umbriel uses `systemd-run` from that
+existing systemd installation to place application commands in transient
+scopes under `app.slice`. Managed sessions require systemd 254 or newer so
+command arguments can be passed without systemd-side environment expansion.
+Without a reachable systemd user manager, and for nested launches, Umbriel does
+not invoke `systemd-run` and uses the direct launch path.
 
 The packaged config contains a `spawn:kitty` keybind as an editable example.
 Kitty is not an Umbriel runtime dependency and does not need to be forced into
@@ -194,14 +199,28 @@ An external service manager can invoke `start-umbriel` as its service process.
 That fast path does not enter the login shell and instead preserves the
 manager-provided environment.
 
-The managed path imports the resulting login environment and starts
-`umbriel.service`. The service also inherits variables generated from
-`environment.d`. Once ready, Umbriel publishes its graphical session variables
-and validated `[environment]` assignments to the systemd user manager, then
-starts `umbriel-session.target`. Arbitrary configured values are not copied to
-traditional D-Bus activation. The configured values remain in the user manager
+The managed path imports the resulting login environment except for `PATH`,
+then starts `umbriel.service`. The service inherits `PATH` and other variables
+generated from `environment.d`, so the user manager's `PATH` takes precedence
+over the login profile's value. Once ready, Umbriel publishes its graphical
+session variables and validated `[environment]` assignments to the systemd user
+manager, then starts `umbriel-session.target`. Login-profile values other than
+`PATH` are also copied to traditional D-Bus activation. Arbitrary configured
+values are not copied there. The configured values remain in the user manager
 for its lifetime. The launcher activates `umbriel-shutdown.target` and removes
 the graphical variables after Umbriel exits.
+
+In a managed native session, Umbriel creates a separate transient scope under
+`app.slice` for the `-s` startup command and every autostart, event hook, and
+`spawn:` command. Each scope is part of `umbriel-session.target` and bound to
+the systemd unit that owns the compositor, normally `umbriel.service`. Stopping
+either one, or an unexpected compositor exit, cleans up the scope, including
+when session-target activation fails.
+An application failure or OOM kill does not propagate in the other direction,
+so it cannot stop `umbriel.service`. `systemd-run` waits for scope creation
+before it replaces itself with the command. If isolation cannot be confirmed,
+the command is aborted instead of running inside `umbriel.service`. Direct and
+nested sessions launch the same commands as ordinary compositor children.
 
 No display manager or desktop shell is required by Umbriel itself. It can be
 paired with [Noctalia](https://github.com/noctalia-dev/noctalia) for panels,

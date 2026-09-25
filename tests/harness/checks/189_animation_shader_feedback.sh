@@ -71,6 +71,9 @@ default_position = { x = 700, y = 80, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
+# Animation time only moves by clock-advance. Opening frames are drawn at 700, 2100, 3500, and 4550 ms of the 7000 ms
+# timeline, one in each feedback phase; the closing sample lands 150 ms into its 1200 ms timeline.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL_UNMAP_CLIENT" feedback-small 320 360 > "$UMBRIEL_RUNTIME_DIR/feedback-small.log" 2>&1 &
 "$UMBRIEL_UNMAP_CLIENT" feedback-large 650 360 > "$UMBRIEL_RUNTIME_DIR/feedback-large.log" 2>&1 &
 
@@ -86,7 +89,10 @@ if [[ -z ${small:-} || -z ${large:-} ]]; then
   exit 1
 fi
 
-sleep 4.55
+"$UMBRIEL" clock-advance 700
+"$UMBRIEL" clock-advance 1400
+"$UMBRIEL" clock-advance 1400
+"$UMBRIEL" clock-advance 1050
 grim "$IMAGE"
 
 sample() {
@@ -125,7 +131,7 @@ fi
 
 small_id=$(jq -r .id <<< "$small")
 "$UMBRIEL" msg "window-close:$small_id" > /dev/null
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 grim "$IMAGE"
 read -r closing_red closing_green closing_blue <<< "$(sample "$small" 0.25 0.55)"
 if ! (( closing_red > 52 && closing_red < 76 && closing_green < 8 && closing_blue < 8 )); then

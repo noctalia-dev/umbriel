@@ -64,6 +64,61 @@ UMBRIEL_TEST(animatedValueReachesItsTargetOnTheConfiguredTimeline) {
   CHECK(!value.animating());
 }
 
+UMBRIEL_TEST(monotonicEasingPreservesSafeCurvesAndProjectsOvershootAcrossTheFullTimeline) {
+  const umbriel::AnimationCurve ordinary{
+      .easing = umbriel::Easing::CustomBezier,
+      .bezier = {.x1 = 0.25, .y1 = 0.46, .x2 = 0.35, .y2 = 1.0},
+  };
+  const umbriel::MonotonicEasing ordinaryMotion{ordinary};
+  for (int step = 0; step <= 20; ++step) {
+    const double linear = static_cast<double>(step) / 20.0;
+    CHECK(std::abs(ordinaryMotion.value(linear) - umbriel::evaluateCurve(ordinary, linear)) < 0.000001);
+  }
+
+  const umbriel::AnimationCurve snappy{.easing = umbriel::Easing::Snappy};
+  const umbriel::MonotonicEasing safeMotion{snappy};
+  double previous = 0.0;
+  for (int step = 0; step <= 100; ++step) {
+    const double linear = static_cast<double>(step) / 100.0;
+    const double progress = safeMotion.value(linear);
+    CHECK(progress >= previous);
+    CHECK(progress >= 0.0);
+    CHECK(progress <= 1.0);
+    if (step < 100) {
+      CHECK(progress < 1.0);
+    }
+    previous = progress;
+  }
+  CHECK(safeMotion.value(0.75) < safeMotion.value(1.0));
+}
+
+UMBRIEL_TEST(monotonicEasingBoundsReversingPresets) {
+  for (const umbriel::Easing easing : {
+           umbriel::Easing::EaseInBack,
+           umbriel::Easing::EaseOutBack,
+           umbriel::Easing::EaseInOutBack,
+           umbriel::Easing::EaseInElastic,
+           umbriel::Easing::EaseOutElastic,
+           umbriel::Easing::EaseInOutElastic,
+           umbriel::Easing::EaseInBounce,
+           umbriel::Easing::EaseOutBounce,
+           umbriel::Easing::EaseInOutBounce,
+           umbriel::Easing::Spring,
+       }) {
+    const umbriel::MonotonicEasing motion{umbriel::AnimationCurve{.easing = easing}};
+    double previous = 0.0;
+    for (int step = 0; step <= 200; ++step) {
+      const double progress = motion.value(static_cast<double>(step) / 200.0);
+      CHECK(progress >= previous);
+      CHECK(progress >= 0.0);
+      CHECK(progress <= 1.0);
+      previous = progress;
+    }
+    CHECK_EQ(motion.value(0.0), 0.0);
+    CHECK_EQ(motion.value(1.0), 1.0);
+  }
+}
+
 UMBRIEL_TEST(animationTransitionIdentityIsStableAndRefreshesOnRetarget) {
   umbriel::AnimatedValue value{10.0};
   CHECK_EQ(value.transitionId(), uint64_t{0});
@@ -143,6 +198,174 @@ UMBRIEL_TEST(springSettleStartsFromTheReleaseVelocityAndStops) {
   value.translate(-1.0);
   CHECK_EQ(value.target(), 1.0);
   CHECK_EQ(value.current(), 0.0);
+}
+
+UMBRIEL_TEST(springCurveTimescaleComesFromItsParameters) {
+  const auto stiff = umbriel::CurveRegistry::parse("spring:1,4000");
+  const auto soft = umbriel::CurveRegistry::parse("spring:1,250");
+  CHECK(stiff.has_value());
+  CHECK(soft.has_value());
+  if (!stiff || !soft) {
+    return;
+  }
+
+  umbriel::AnimatedValue fast;
+  fast.retarget(1.0, 5000, *stiff);
+  umbriel::AnimatedValue slow;
+  slow.retarget(1.0, 5000, *soft);
+
+  // duration_ms never reaches a spring; the sixteenfold stiffness quarters the settle time.
+  CHECK(fast.durationMs() != 5000);
+  CHECK(slow.durationMs() != 5000);
+  const double stiffnessRatio = static_cast<double>(slow.durationMs()) / static_cast<double>(fast.durationMs());
+  CHECK(std::abs(stiffnessRatio - 4.0) < 0.05);
+
+  // Mass is the other half of the timescale: four times the mass takes twice as long.
+  const int light = umbriel::springDurationMs({.damping = 1.0, .stiffness = 1000.0, .mass = 1.0});
+  const int heavy = umbriel::springDurationMs({.damping = 1.0, .stiffness = 1000.0, .mass = 4.0});
+  const double massRatio = static_cast<double>(heavy) / static_cast<double>(light);
+  CHECK(std::abs(massRatio - 2.0) < 0.05);
+
+  // Damping shapes the response instead: it must not leave the timescale untouched either.
+  CHECK(umbriel::springDurationMs({.damping = 2.0, .stiffness = 1000.0, .mass = 1.0}) > light);
+}
+
+UMBRIEL_TEST(springCurveSettlesOnItsTargetBeforeTheTimelineEnds) {
+  struct Case {
+    const char* text;
+    bool overshoots;
+  };
+  // Underdamped, critically damped, and overdamped all have to be within a tenth of a percent of the target on the
+  // last frame, otherwise the timeline's final snap is a visible jump.
+  for (const Case& probe : {Case{"spring:0.4,600", true}, Case{"spring:1,600", false}, Case{"spring:2,600", false}}) {
+    const auto curve = umbriel::CurveRegistry::parse(probe.text);
+    CHECK(curve.has_value());
+    if (!curve) {
+      continue;
+    }
+    CHECK(std::abs(umbriel::applyEasing(*curve, 0.999) - 1.0) < 0.001);
+
+    double peak = 0.0;
+    for (int sample = 0; sample <= 1000; ++sample) {
+      peak = std::max(peak, umbriel::applyEasing(*curve, static_cast<double>(sample) / 1000.0));
+    }
+    CHECK_EQ(peak > 1.001, probe.overshoots);
+  }
+}
+
+UMBRIEL_TEST(overdampedSpringVelocityMatchesItsPositionDerivative) {
+  constexpr double sampleTime = 0.075;
+  constexpr double delta = 0.000001;
+  const umbriel::SpringConfig spring{.damping = 2.0, .stiffness = 100.0, .mass = 1.0};
+
+  double velocity = 0.0;
+  static_cast<void>(umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime, spring, &velocity));
+  const double before = umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime - delta, spring);
+  const double after = umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime + delta, spring);
+  const double derivative = (after - before) / (2.0 * delta);
+
+  CHECK(std::abs(velocity - derivative) < 0.00001);
+}
+
+UMBRIEL_TEST(springDisplacementBoundIncludesPositionAndVelocityEnergy) {
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 100.0, .mass = 1.0};
+
+  CHECK(std::abs(umbriel::springDisplacementBound(1.25, 1.0, 0.0, spring) - 0.25) < 1e-12);
+  CHECK(std::abs(umbriel::springDisplacementBound(1.0, 1.0, 2.0, spring) - 0.2) < 1e-12);
+  CHECK(std::abs(umbriel::springDisplacementBound(1.15, 1.0, 2.0, spring) - std::hypot(0.15, 0.2)) < 1e-12);
+}
+
+UMBRIEL_TEST(springTailFinishesOnlyInsideTheTargetPixelsRoundingCell) {
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 100.0, .mass = 1.0};
+
+  umbriel::AnimatedValue halfPixel{0.5};
+  halfPixel.settleSpring(0.0, spring, 0.0);
+  CHECK(halfPixel.tick(1000));
+  CHECK(!halfPixel.finishSpringTail(1.0));
+  CHECK(halfPixel.animating());
+
+  umbriel::AnimatedValue insidePixel{0.49};
+  insidePixel.settleSpring(0.0, spring, 0.0);
+  CHECK(insidePixel.tick(1000));
+  CHECK(insidePixel.finishSpringTail(1.0));
+  CHECK(!insidePixel.animating());
+  CHECK_EQ(insidePixel.current(), 0.0);
+
+  umbriel::AnimatedValue offCenter{0.8};
+  offCenter.settleSpring(0.49, spring, 0.0);
+  CHECK(offCenter.tick(1000));
+  CHECK(!offCenter.finishSpringTail(1.0));
+  CHECK(offCenter.animating());
+
+  umbriel::AnimatedValue release{0.3};
+  release.settleSpring(0.3, spring, 4.0);
+  CHECK(release.tick(1000));
+  CHECK(!release.finishSpringTail(587.0));
+  CHECK(release.animating());
+
+  umbriel::AnimatedValue durationSpring{0.0};
+  durationSpring.retarget(0.1, 100, umbriel::Easing::Spring);
+  CHECK(durationSpring.tick(1000));
+  CHECK(!durationSpring.finishSpringTail(1.0));
+  CHECK(durationSpring.animating());
+
+  const umbriel::SpringConfig overdamped{.damping = 2.0, .stiffness = 100.0, .mass = 1.0};
+  umbriel::AnimatedValue overdampedRelease{0.0};
+  overdampedRelease.settleSpring(0.0, overdamped, 30.0);
+  CHECK(overdampedRelease.tick(1000));
+  CHECK(overdampedRelease.tick(1012));
+  CHECK(!overdampedRelease.finishSpringTail(1.0));
+  CHECK(overdampedRelease.animating());
+}
+
+UMBRIEL_TEST(springTailPresentationDeceleratesAtTheReportedRefreshRate) {
+  constexpr double step = 587.0;
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
+  const auto checkDirection = [spring](double from, double target) {
+    umbriel::AnimatedValue value{from};
+    value.settleSpring(target, spring, 0.0);
+    CHECK(value.tick(1000));
+
+    int firstFrameAtThreePixels = -1;
+    int firstFrameAtTwoPixels = -1;
+    int firstFrameAtOnePixel = -1;
+    int firstFrameAtTarget = -1;
+    bool finishedTail = false;
+    for (int frame = 1; frame < 200 && value.animating(); ++frame) {
+      CHECK(value.tick(1000 + static_cast<uint64_t>(frame * 1000 / 165)));
+      const int solvedOffset = static_cast<int>(std::lround((value.target() - value.current()) * step));
+      finishedTail = value.finishSpringTail(step) || finishedTail;
+
+      const int presentedOffset = static_cast<int>(std::lround((value.target() - value.current()) * step));
+      CHECK_EQ(presentedOffset, solvedOffset);
+      const int offset = std::abs(presentedOffset);
+      if (offset == 3 && firstFrameAtThreePixels < 0) {
+        firstFrameAtThreePixels = frame;
+      } else if (offset == 2 && firstFrameAtTwoPixels < 0) {
+        firstFrameAtTwoPixels = frame;
+      } else if (offset == 1 && firstFrameAtOnePixel < 0) {
+        firstFrameAtOnePixel = frame;
+      } else if (offset == 0 && firstFrameAtTarget < 0) {
+        firstFrameAtTarget = frame;
+      }
+    }
+
+    CHECK(firstFrameAtThreePixels >= 0);
+    CHECK(firstFrameAtTwoPixels > firstFrameAtThreePixels);
+    CHECK(firstFrameAtOnePixel > firstFrameAtTwoPixels);
+    CHECK(firstFrameAtTarget > firstFrameAtOnePixel);
+    const int threeToTwoFrames = firstFrameAtTwoPixels - firstFrameAtThreePixels;
+    const int twoToOneFrames = firstFrameAtOnePixel - firstFrameAtTwoPixels;
+    const int oneToTargetFrames = firstFrameAtTarget - firstFrameAtOnePixel;
+    CHECK(twoToOneFrames >= threeToTwoFrames);
+    CHECK(oneToTargetFrames >= twoToOneFrames);
+    CHECK(finishedTail);
+    CHECK(!value.animating());
+    CHECK_EQ(value.current(), target);
+  };
+
+  checkDirection(0.0, 4.0);
+  checkDirection(4.0, 0.0);
 }
 
 UMBRIEL_TEST(physicsSpringKeepsShaderIdentityWhenProgressReverses) {

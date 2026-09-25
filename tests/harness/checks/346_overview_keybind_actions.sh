@@ -30,8 +30,10 @@ active_workspace() {
   "$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name'
 }
 
-overview_closed_count() {
-  jq -s '[.[] | select(.event == "overview" and .data.open == false)] | length' "$OVERVIEW_EVENTS"
+# The closed event goes out as the zoom starts. The zoom hands the keyboard back as it lands, so a new keyboard enter
+# on the landing window marks its end.
+keyboard_enters() {
+  grep -c '^keyboard-enter$' "$UMBRIEL_RUNTIME_DIR/$1.log" || true
 }
 
 overview_open_count() {
@@ -72,9 +74,10 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation.overview]
 duration_ms = 500
+curve = "linear"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [input.cursor]
 follows_focus = true
@@ -97,6 +100,11 @@ for _ in $(seq 40); do
   [[ -s $OVERVIEW_EVENTS ]] && break
   sleep 0.05
 done
+
+# Clients bind their keyboard while the seat has one, and the headless seat only has a virtual one. Keep it alive for
+# the whole check so every window can receive the keyboard enter that marks a finished close.
+pointer mod none pause 60000 > /dev/null 2>&1 &
+sleep 0.2 # real time: the keyboard holder connects before the clients bind
 
 "$CLIENT" overview-vim-first 1200 700 > "$UMBRIEL_RUNTIME_DIR/overview-vim-first.log" 2>&1 &
 wait_for_count 1
@@ -135,7 +143,7 @@ read -r top_id top_title bottom_id bottom_title <<< "$("$UMBRIEL" windows --json
    | "\(.[0].id) \(.[0].title) \(.[1].id) \(.[1].title)"')"
 "$UMBRIEL" msg "window-focus:$top_id" > /dev/null
 wait_for_focus "$top_title"
-sleep 0.1
+"$UMBRIEL" settle
 
 read -r top_x top_y bottom_y <<< "$("$UMBRIEL" windows --json | jq -r --arg top "$top_id" --arg bottom "$bottom_id" \
   '(.[] | select(.id == $top)) as $top_view | (.[] | select(.id == $bottom)) as $bottom_view
@@ -145,7 +153,7 @@ read -r top_x top_y bottom_y <<< "$("$UMBRIEL" windows --json | jq -r --arg top 
 pointer move "$((top_x + 100))" "$(((top_y + bottom_y) / 2))"
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.55
+"$UMBRIEL" settle
 
 # Vim-style custom bindings and the built-in arrow fallback share horizontal card navigation.
 chord 38 # L
@@ -177,14 +185,14 @@ fi
 # Overview focus updates its card selection without applying the normal follows_focus cursor warp. Close the overview,
 # focus the top window without a warp, then click without moving: the pointer must still be over that top window.
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 "$UMBRIEL" msg "window-focus:$top_id" > /dev/null
 wait_for_focus "$top_title"
 pointer click "$BTN_LEFT"
 wait_for_focus "$top_title"
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.55
+"$UMBRIEL" settle
 
 # A normal action operates on the selected overview card and leaves the overview interactive.
 chord 38 # L
@@ -217,17 +225,24 @@ wait_for_focus "$top_title"
 wait_for_workspace 1
 
 # Enter closes toward the selected card. Configured binds remain effective
-# during that close, and row retargeting must not restart the zoom timeline.
-closed_before=$(overview_closed_count)
+# during that close, and row retargeting must not restart the zoom timeline: on a frozen clock the 500 ms zoom has
+# landed 550 ms after Enter, while a restart at either bind would still be running.
+entered_before=$(keyboard_enters overview-vim-row)
+"$UMBRIEL" clock-freeze
 pointer tap 28 # Enter
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 chord 49 # N, focus the lower card
 wait_for_focus "$bottom_title"
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 chord 49 # N, switch to workspace 2
 wait_for_workspace 2
-sleep 0.3
-if (( $(overview_closed_count) <= closed_before )); then
+"$UMBRIEL" clock-advance 250
+for _ in $(seq 20); do
+  (( $(keyboard_enters overview-vim-row) > entered_before )) && break
+  sleep 0.05
+done
+"$UMBRIEL" clock-resume
+if (( $(keyboard_enters overview-vim-row) <= entered_before )); then
   echo "workspace binds extended the overview closing timeline"
   exit 1
 fi
@@ -293,7 +308,7 @@ fi
 "$UMBRIEL" msg "window-focus:$left_id" > /dev/null
 wait_for_focus "$left_title"
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.55
+"$UMBRIEL" settle
 
 # Along the workspace axis: the stacked neighbour first, the next workspace only once the lane has no card that way.
 pointer tap 106 # Right
@@ -314,7 +329,7 @@ pointer tap "$toward"
 wait_for_focus overview-vim-lane
 wait_for_workspace 1
 pointer tap "$toward"
-sleep 0.2
+"$UMBRIEL" settle
 wait_for_focus overview-vim-lane
 wait_for_workspace 1
 pointer tap "$back"
@@ -326,19 +341,26 @@ chord 38 # L
 wait_for_focus "$right_title"
 wait_for_workspace 1
 chord 38 # L again, with nothing to the right
-sleep 0.2
+"$UMBRIEL" settle
 wait_for_focus "$right_title"
 wait_for_workspace 1
 
-# Retargeting the close with a configured bind must land the focus without revealing the overview a second time.
-closed_before=$(overview_closed_count)
+# Retargeting the close with a configured bind must land the focus without revealing the overview a second time. The
+# 500 ms zoom has landed 550 ms after Enter on a frozen clock, while a restart at the bind would still be running.
+entered_before=$(keyboard_enters "$left_title")
 opened_before=$(overview_open_count)
+"$UMBRIEL" clock-freeze
 pointer tap 28 # Enter
-sleep 0.15
+"$UMBRIEL" clock-advance 150
 chord 35 # H, focus the card to the left during the closing zoom
 wait_for_focus "$left_title"
-sleep 0.6
-if (( $(overview_closed_count) <= closed_before )); then
+"$UMBRIEL" clock-advance 400
+for _ in $(seq 20); do
+  (( $(keyboard_enters "$left_title") > entered_before )) && break
+  sleep 0.05
+done
+"$UMBRIEL" clock-resume
+if (( $(keyboard_enters "$left_title") <= entered_before )); then
   echo "the closing zoom never finished on horizontally arranged workspaces"
   exit 1
 fi

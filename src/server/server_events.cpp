@@ -60,6 +60,33 @@ namespace umbriel {
       return device->name != nullptr ? device->name : "unknown";
     }
 
+    bool outputStateMatchesCurrentBackend(const wlr_output_state& state, const wlr_output& output) {
+      if ((state.committed & WLR_OUTPUT_STATE_MODE) != 0) {
+        if (state.mode_type == WLR_OUTPUT_STATE_MODE_FIXED) {
+          if (state.mode != output.current_mode) {
+            return false;
+          }
+        } else if (
+            output.current_mode != nullptr
+            || state.custom_mode.width != output.width
+            || state.custom_mode.height != output.height
+            || state.custom_mode.refresh != output.refresh
+        ) {
+          return false;
+        }
+      }
+      if ((state.committed & WLR_OUTPUT_STATE_SCALE) != 0
+          && wl_fixed_from_double(state.scale) != wl_fixed_from_double(output.scale)) {
+        return false;
+      }
+      if ((state.committed & WLR_OUTPUT_STATE_TRANSFORM) != 0 && state.transform != output.transform) {
+        return false;
+      }
+      const bool adaptiveSyncEnabled = output.adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+      return (state.committed & WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED) == 0
+          || state.adaptive_sync_enabled == adaptiveSyncEnabled;
+    }
+
     wlr_xdg_toplevel_decoration_v1_mode resolvedDecorationMode(wlr_xdg_toplevel_decoration_v1* decoration) {
       // Only clients whose connection prefers SSD can see the manager. Honor
       // an explicit request, otherwise keep the server-side preference.
@@ -510,16 +537,18 @@ namespace umbriel {
       markDirty(Dirty::Cheatsheet);
     }
     if (effects.outputState) {
+      m_deferOutputManagerConfig = true;
       for (const auto& output : m_outputs) {
         output->applyOutputState();
       }
+      m_deferOutputManagerConfig = false;
       for (const auto& output : m_outputs) {
-        if (output->wlr()->enabled) {
+        if (output->desktopEnabled()) {
           continue;
         }
         Output* fallback = nullptr;
         for (const auto& candidate : m_outputs) {
-          if (candidate.get() != output.get() && candidate->wlr()->enabled) {
+          if (candidate.get() != output.get() && candidate->desktopEnabled() && candidate->wlr()->enabled) {
             fallback = candidate.get();
             break;
           }
@@ -944,6 +973,31 @@ namespace umbriel {
     server->updateIdleInhibit();
     kLog.debug("idle inhibitor removed");
   }
+
+  void Server::onNewShortcutsInhibitor(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newShortcutsInhibitor);
+    auto* inhibitor = static_cast<wlr_keyboard_shortcuts_inhibitor_v1*>(data);
+    auto watch = std::make_unique<ShortcutsInhibitorWatch>();
+    watch->server = self;
+    watch->inhibitor = inhibitor;
+    watch->destroy.notify = onShortcutsInhibitorDestroy;
+    wl_signal_add(&inhibitor->events.destroy, &watch->destroy);
+    self->m_shortcutsInhibitors.push_back(std::move(watch));
+    wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
+    kLog.debug("keyboard shortcuts inhibitor activated");
+  }
+
+  void Server::onShortcutsInhibitorDestroy(wl_listener* listener, void* /*data*/) {
+    ShortcutsInhibitorWatch* watch;
+    watch = wl_container_of(listener, watch, destroy);
+    Server* server = watch->server;
+    wl_list_remove(&watch->destroy.link);
+    std::erase_if(server->m_shortcutsInhibitors, [watch](const std::unique_ptr<ShortcutsInhibitorWatch>& candidate) {
+      return candidate.get() == watch;
+    });
+    kLog.debug("keyboard shortcuts inhibitor removed");
+  }
   void Server::onPointerDestroy(wl_listener* listener, void* /*data*/) {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
@@ -1187,7 +1241,7 @@ namespace umbriel {
 
   void Server::wakeDpmsOutputs() {
     const bool anyPowered = std::ranges::any_of(m_outputs, [](const std::unique_ptr<Output>& output) {
-      return output->configuredEnabled() && !output->dpmsOff();
+      return output->desktopEnabled() && !output->dpmsOff();
     });
     if (anyPowered) {
       return;
@@ -1206,37 +1260,49 @@ namespace umbriel {
       return;
     }
 
-    cancelModifierTap();
-    m_sessionLocked = true;
-    m_overview->forceClose();
-    if (m_cheatsheet != nullptr) {
-      m_cheatsheet->hide();
+    m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    m_sessionLock->start();
+  }
+
+  void Server::activateSessionLock(SessionLock* lock) {
+    if (m_sessionLock.get() != lock) {
+      return;
     }
-    if (m_quitConfirm != nullptr) {
-      m_quitConfirm->hide();
-    }
-    m_cursor->resetMode();
-    m_cursor->clearConstraint();
-    m_lockFocusOutput.clear();
-    if (View* focused = View::fromSurface(m_seat->wlr()->keyboard_state.focused_surface)) {
-      if (Workspace* workspace = focused->workspace(); workspace != nullptr && workspace->group() != nullptr) {
-        if (const Output* output = workspace->group()->output(); output != nullptr) {
-          m_lockFocusOutput = output->wlr()->name;
+
+    if (!m_sessionLocked) {
+      m_lockFocusOutput.clear();
+      if (View* focused = View::fromSurface(m_seat->wlr()->keyboard_state.focused_surface)) {
+        if (Workspace* workspace = focused->workspace(); workspace != nullptr && workspace->group() != nullptr) {
+          if (const Output* output = workspace->group()->output(); output != nullptr) {
+            m_lockFocusOutput = output->wlr()->name;
+          }
         }
       }
+
+      m_sessionLocked = true;
+      cancelModifierTap();
+      m_overview->forceClose();
+      if (m_cheatsheet != nullptr) {
+        m_cheatsheet->hide();
+      }
+      if (m_quitConfirm != nullptr) {
+        m_quitConfirm->hide();
+      }
+      m_cursor->resetMode();
+      m_cursor->clearConstraint();
+      clearNormalFocus();
+      updateIdleInhibit();
     }
-    clearNormalFocus();
-    updateIdleInhibit();
+
     updateLockBlank();
     setLockBlankEnabled(true);
     raiseLockTree();
-    m_sessionLock = std::make_unique<SessionLock>(*this, lock);
   }
 
   void Server::unlockSession() {
     m_sessionLocked = false;
     updateIdleInhibit();
-    wlr_scene_node_set_enabled(&m_lockBlank->node, false);
+    setLockBlankEnabled(false);
     // The cursor need not sit on the output that had focus, so restore the
     // remembered one. refocus() then keeps that output's active workspace, which
     // is what makes unlocking on an empty workspace stay there.
@@ -1271,7 +1337,9 @@ namespace umbriel {
     if (layoutBox.width <= 0 || layoutBox.height <= 0) {
       return;
     }
-    wlr_scene_rect_set_color(m_lockBlank, config().colors.backdrop.data());
+    auto color = config().colors.backdrop;
+    color[3] = 1.0F;
+    wlr_scene_rect_set_color(m_lockBlank, color.data());
     wlr_scene_rect_set_size(m_lockBlank, layoutBox.width, layoutBox.height);
     wlr_scene_node_set_position(&m_lockBlank->node, layoutBox.x, layoutBox.y);
   }
@@ -1304,6 +1372,9 @@ namespace umbriel {
     if (m_sessionLocked) {
       updateLockBlank();
       raiseLockTree();
+    }
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->outputsChanged();
     }
     updateOutputManagerConfig();
     refreshSurfaceScales();
@@ -1827,10 +1898,16 @@ namespace umbriel {
       m_scratchpadManager->releaseOutput(output);
     }
 
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->forgetOutput(output->wlr());
+    }
     std::erase_if(m_outputs, [output](const std::unique_ptr<Output>& entry) { return entry.get() == output; });
     markDirty(Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
     if (m_sessionLocked) {
       updateLockBlank();
+    }
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->outputsChanged();
     }
     updateOutputManagerConfig();
     // Scratchpad and pinned views rehome without going through setWorkspace.
@@ -1887,8 +1964,9 @@ namespace umbriel {
             .workspaceNamed = workspace->named(),
             .layoutSnapshot = nullptr,
             .layoutMember = 0,
-            .ownsNamedScrollingColumnWidth = view->m_ownsNamedScrollingColumnWidth,
-            .pendingNamedScrollingColumnWidth = std::nullopt,
+            .ownsNamedScrollingColumnExtent = view->m_ownsNamedScrollingColumnExtent,
+            .pendingNamedScrollingColumnExtentPx = std::nullopt,
+            .pendingNamedScrollingColumnExtent = std::nullopt,
             .layoutModeOverride = workspace->layoutModeOverride(),
             .floatingOutputPosition = std::nullopt,
             .configGeneration = configStore().generation(),
@@ -1896,8 +1974,8 @@ namespace umbriel {
         };
         if (view->floating() && outputBox.width > 0 && outputBox.height > 0) {
           home.floatingOutputPosition = {{
-              static_cast<double>(view->sceneTree()->node.x - outputBox.x) / outputBox.width,
-              static_cast<double>(view->sceneTree()->node.y - outputBox.y) / outputBox.height,
+              static_cast<double>(view->layoutTargetX() - outputBox.x) / outputBox.width,
+              static_cast<double>(view->layoutTargetY() - outputBox.y) / outputBox.height,
           }};
         }
         if (member != capture.members.end()) {
@@ -2079,14 +2157,21 @@ namespace umbriel {
         first = last;
         continue;
       }
-      const auto applyPendingNamedScrollingColumnWidth = [workspace](View* view, const View::DisplacedHome& home) {
-        if (!home.pendingNamedScrollingColumnWidth || !view->namedScrollingColumnName()) {
+      const auto applyPendingNamedScrollingColumnExtent = [workspace](View* view, const View::DisplacedHome& home) {
+        if ((!home.pendingNamedScrollingColumnExtentPx && !home.pendingNamedScrollingColumnExtent)
+            || !view->namedScrollingColumnName()) {
           return;
         }
         ScrollingLayout* scrolling = workspace->scrollingLayout();
         const int column = scrolling != nullptr ? scrolling->columnOf(view) : -1;
         if (column >= 0) {
-          scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnWidth);
+          if (home.pendingNamedScrollingColumnExtentPx) {
+            scrolling->setWidthFromPixels(
+                column, workspace->scrollViewportExtent(), *home.pendingNamedScrollingColumnExtentPx
+            );
+          } else if (home.pendingNamedScrollingColumnExtent) {
+            scrolling->setWidthFraction(column, *home.pendingNamedScrollingColumnExtent);
+          }
           workspace->markArrange(false);
         }
       };
@@ -2150,9 +2235,9 @@ namespace umbriel {
       std::vector<View*> exactViews;
       if (exact != nullptr) {
         for (View* view : exact->views) {
-          const bool ownsNamedScrollingColumnWidth = view->displacedHome()->ownsNamedScrollingColumnWidth;
+          const bool ownsNamedScrollingColumnExtent = view->displacedHome()->ownsNamedScrollingColumnExtent;
           view->setWorkspace(workspace, false);
-          view->m_ownsNamedScrollingColumnWidth = ownsNamedScrollingColumnWidth;
+          view->m_ownsNamedScrollingColumnExtent = ownsNamedScrollingColumnExtent;
           if (view->workspace() == workspace && view->mapped() && view->tiled()) {
             exactViews.push_back(view);
           }
@@ -2203,7 +2288,7 @@ namespace umbriel {
           workspace->markArrange(false);
         }
         for (View* view : exactViews) {
-          applyPendingNamedScrollingColumnWidth(view, *view->displacedHome());
+          applyPendingNamedScrollingColumnExtent(view, *view->displacedHome());
         }
         restored += exactViews.size();
       }
@@ -2246,7 +2331,7 @@ namespace umbriel {
         if (moved) {
           view->setWorkspace(workspace);
         }
-        applyPendingNamedScrollingColumnWidth(view, home);
+        applyPendingNamedScrollingColumnExtent(view, home);
         if (floating && home.floatingOutputPosition && target != nullptr) {
           const wlr_box outputBox = target->layoutBox();
           if (outputBox.width > 0 && outputBox.height > 0) {
@@ -2553,16 +2638,21 @@ namespace umbriel {
     for (const auto& output : self->m_outputs) {
       output->markDirty(Dirty::LayerArrange);
     }
-    self->updateOutputManagerConfig();
+    if (!self->m_deferOutputManagerConfig) {
+      self->updateOutputManagerConfig();
+    }
   }
 
   void Server::updateOutputManagerConfig() {
-    if (m_outputManager == nullptr) {
+    if (m_outputManager == nullptr || m_deferOutputManagerConfig) {
       return;
     }
     wlr_output_configuration_v1* cfg = wlr_output_configuration_v1_create();
     for (const auto& output : m_outputs) {
       wlr_output_configuration_head_v1* head = wlr_output_configuration_head_v1_create(cfg, output->wlr());
+      // Physical DPMS is not logical disablement. Protocol-disabled heads are
+      // absent from the desktop; DPMS-off heads remain mapped there.
+      head->state.enabled = output->desktopEnabled();
       if (wlr_output_layout_output* lo = wlr_output_layout_get(m_outputLayout, output->wlr())) {
         head->state.x = lo->x;
         head->state.y = lo->y;
@@ -2572,18 +2662,6 @@ namespace umbriel {
   }
 
   void Server::applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
-    // Reject disabling outputs: the protocol commit would bypass the layout and scene handling that
-    // Output::applyOutputState does for the config `enabled` key, leaving the monitor off but still on the desktop.
-    wlr_output_configuration_head_v1* head = nullptr;
-    wl_list_for_each(head, &config->heads, link) {
-      if (!head->state.enabled) {
-        kLog.warn("output-management: disabling outputs is not supported, use the config `enabled` key");
-        wlr_output_configuration_v1_send_failed(config);
-        wlr_output_configuration_v1_destroy(config);
-        return;
-      }
-    }
-
     size_t statesLen = 0;
     wlr_backend_output_state* states = wlr_output_configuration_v1_build_state(config, &statesLen);
     if (states == nullptr) {
@@ -2592,26 +2670,297 @@ namespace umbriel {
       return;
     }
 
-    bool ok = wlr_backend_test(m_backend, states, statesLen);
+    struct RequestedHead {
+      wlr_output_configuration_head_v1* head = nullptr;
+      Output* output = nullptr;
+      bool wasDesktopEnabled = false;
+    };
+    std::vector<RequestedHead> requested;
+    wlr_output_configuration_head_v1* head = nullptr;
+    wl_list_for_each(head, &config->heads, link) {
+      if (Output* output = outputFromWlr(head->state.output)) {
+        requested.push_back({.head = head, .output = output, .wasDesktopEnabled = output->desktopEnabled()});
+      }
+    }
+
+    // Output management describes logical desktop membership, while DPMS is
+    // physical power. Keep an already sleeping logical output asleep. Its
+    // advertised backend properties remain available for complete client
+    // transactions, but reject changes that cannot be applied while asleep.
+    bool sleepingStateValid = true;
+    for (size_t i = 0; i < statesLen; ++i) {
+      Output* output = outputFromWlr(states[i].output);
+      if (output == nullptr || !output->desktopEnabled() || !output->dpmsOff() || !states[i].base.enabled) {
+        continue;
+      }
+      if (!outputStateMatchesCurrentBackend(states[i].base, *states[i].output)) {
+        kLog.warn("rejecting output-management property changes for DPMS-off output '{}'", states[i].output->name);
+        sleepingStateValid = false;
+        continue;
+      }
+      wlr_output_state_finish(&states[i].base);
+      wlr_output_state_init(&states[i].base);
+      wlr_output_state_set_enabled(&states[i].base, false);
+    }
+
+    const auto buildSceneStates =
+        [this](wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending, size_t pendingLen) {
+          for (size_t i = 0; i < pendingLen; ++i) {
+            Output* output = outputFromWlr(pending[i].output);
+            if (output == nullptr) {
+              return false;
+            }
+            wlr_scene_output_state_options options{};
+            options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
+            if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
+              kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
+              return false;
+            }
+          }
+          return true;
+        };
+
+    struct BackendSnapshot {
+      wlr_output* output = nullptr;
+      bool enabled = false;
+      wlr_output_mode* mode = nullptr;
+      int width = 0;
+      int height = 0;
+      int refresh = 0;
+      float scale = 1.0F;
+      wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
+      bool adaptiveSyncSupported = false;
+      bool adaptiveSyncEnabled = false;
+    };
+    const auto stageSnapshot = [](wlr_output_state& state, const BackendSnapshot& snapshot, bool enabled) {
+      wlr_output_state_set_enabled(&state, enabled);
+      if (!enabled) {
+        return;
+      }
+      if (snapshot.mode != nullptr) {
+        wlr_output_state_set_mode(&state, snapshot.mode);
+      } else {
+        wlr_output_state_set_custom_mode(&state, snapshot.width, snapshot.height, snapshot.refresh);
+      }
+      wlr_output_state_set_scale(&state, snapshot.scale);
+      wlr_output_state_set_transform(&state, snapshot.transform);
+      if (snapshot.adaptiveSyncSupported) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, snapshot.adaptiveSyncEnabled);
+      }
+    };
+
+    wlr_output_swapchain_manager swapchainManager{};
+    wlr_output_swapchain_manager_init(&swapchainManager, m_backend);
+    bool swapchainManagerFinished = false;
+    bool ok = sleepingStateValid && wlr_output_swapchain_manager_prepare(&swapchainManager, states, statesLen);
+    bool commitAttempted = false;
+    std::vector<BackendSnapshot> snapshots;
+    std::vector<wlr_backend_output_state> rollbackStates;
     if (ok && !testOnly) {
-      ok = wlr_backend_commit(m_backend, states, statesLen);
+      snapshots.resize(statesLen);
+      rollbackStates.resize(statesLen);
+      for (size_t i = 0; i < statesLen; ++i) {
+        wlr_output* output = states[i].output;
+        BackendSnapshot& snapshot = snapshots[i];
+        snapshot = {
+            .output = output,
+            .enabled = output->enabled,
+            .mode = output->current_mode,
+            .width = output->width,
+            .height = output->height,
+            .refresh = output->refresh,
+            .scale = output->scale,
+            .transform = output->transform,
+            .adaptiveSyncSupported = output->adaptive_sync_supported,
+            .adaptiveSyncEnabled = output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED,
+        };
+        wlr_backend_output_state& rollback = rollbackStates[i];
+        rollback.output = output;
+        wlr_output_state_init(&rollback.base);
+        stageSnapshot(rollback.base, snapshot, snapshot.enabled);
+      }
+
+      ok = buildSceneStates(swapchainManager, states, statesLen);
+      if (ok) {
+        // Commits can synchronously emit layout changes for mode, scale, and
+        // transform updates. Suppress those partial configurations until the
+        // logical layout transaction is complete.
+        m_deferOutputManagerConfig = true;
+        commitAttempted = true;
+        ok = wlr_backend_commit(m_backend, states, statesLen);
+        if (ok) {
+          wlr_output_swapchain_manager_apply(&swapchainManager);
+        }
+      }
+
+      if (!ok && commitAttempted) {
+        wlr_output_swapchain_manager_finish(&swapchainManager);
+        swapchainManagerFinished = true;
+        for (size_t i = 0; i < statesLen; ++i) {
+          wlr_output_state_finish(&states[i].base);
+          wlr_output_state_init(&states[i].base);
+        }
+
+        wlr_output_swapchain_manager rollbackManager{};
+        wlr_output_swapchain_manager_init(&rollbackManager, m_backend);
+        bool restoredAsGroup =
+            wlr_output_swapchain_manager_prepare(&rollbackManager, rollbackStates.data(), rollbackStates.size());
+        if (restoredAsGroup) {
+          restoredAsGroup = buildSceneStates(rollbackManager, rollbackStates.data(), rollbackStates.size())
+              && wlr_backend_commit(m_backend, rollbackStates.data(), rollbackStates.size());
+        }
+        if (restoredAsGroup) {
+          wlr_output_swapchain_manager_apply(&rollbackManager);
+        }
+        wlr_output_swapchain_manager_finish(&rollbackManager);
+
+        // Release any buffers built from the grouped rollback swapchains
+        // before trying a one-output recovery path.
+        for (wlr_backend_output_state& rollback : rollbackStates) {
+          wlr_output_state_finish(&rollback.base);
+        }
+        rollbackStates.clear();
+
+        const auto restoreEnabled = [this, &buildSceneStates, &stageSnapshot](const BackendSnapshot& snapshot) {
+          wlr_backend_output_state restore{};
+          restore.output = snapshot.output;
+          wlr_output_state_init(&restore.base);
+          stageSnapshot(restore.base, snapshot, true);
+
+          wlr_output_swapchain_manager manager{};
+          wlr_output_swapchain_manager_init(&manager, m_backend);
+          bool restored = wlr_output_swapchain_manager_prepare(&manager, &restore, 1);
+          if (restored) {
+            restored = buildSceneStates(manager, &restore, 1) && wlr_backend_commit(m_backend, &restore, 1);
+          }
+          if (restored) {
+            wlr_output_swapchain_manager_apply(&manager);
+          }
+          wlr_output_swapchain_manager_finish(&manager);
+          wlr_output_state_finish(&restore.base);
+          return restored;
+        };
+
+        // A successful child-backend commit can change the remembered mode of
+        // an output which was disabled before the transaction. Restore each
+        // such head alone and disable it immediately, avoiding resource
+        // pressure from temporarily enabling several dormant heads at once.
+        const auto restoreDormant = [&restoreEnabled, &stageSnapshot](const BackendSnapshot& snapshot) {
+          wlr_output_state expected{};
+          wlr_output_state_init(&expected);
+          stageSnapshot(expected, snapshot, true);
+          bool restored = (snapshot.mode == nullptr && (snapshot.width <= 0 || snapshot.height <= 0))
+              || outputStateMatchesCurrentBackend(expected, *snapshot.output)
+              || restoreEnabled(snapshot);
+          wlr_output_state_finish(&expected);
+
+          if (snapshot.output->enabled) {
+            wlr_output_state disabled{};
+            wlr_output_state_init(&disabled);
+            wlr_output_state_set_enabled(&disabled, false);
+            restored = wlr_output_commit_state(snapshot.output, &disabled) && restored;
+            wlr_output_state_finish(&disabled);
+          }
+          return restored;
+        };
+
+        bool restoredIndividually = restoredAsGroup;
+        if (restoredAsGroup) {
+          for (const BackendSnapshot& snapshot : snapshots) {
+            if (!snapshot.enabled && !restoreDormant(snapshot)) {
+              restoredIndividually = false;
+            }
+          }
+        } else {
+          restoredIndividually = true;
+          for (const BackendSnapshot& snapshot : snapshots) {
+            if (!snapshot.enabled && !restoreDormant(snapshot)) {
+              restoredIndividually = false;
+            }
+          }
+          for (const BackendSnapshot& snapshot : snapshots) {
+            if (snapshot.enabled && !restoreEnabled(snapshot)) {
+              restoredIndividually = false;
+            }
+          }
+        }
+
+        if (restoredIndividually) {
+          if (!restoredAsGroup) {
+            kLog.warn("restored a partial output-management commit one output at a time");
+          }
+        } else {
+          kLog.error("failed to restore all outputs after a partial output-management commit");
+        }
+      }
     }
 
     if (ok && !testOnly) {
-      // Apply layout positions and refresh affected outputs.
-      wl_list_for_each(head, &config->heads, link) {
-        wlr_output_layout_add(m_outputLayout, head->state.output, head->state.x, head->state.y);
-        if (Output* out = outputFromWlr(head->state.output)) {
-          out->handleExternalConfigChange();
+      // Make logical enablement authoritative before any callback can refresh
+      // configured output policy and accidentally revive a disabled head.
+      for (const RequestedHead& entry : requested) {
+        entry.output->adoptOutputManagerEnabled(entry.head->state.enabled);
+      }
+
+      cancelModifierTap();
+      m_cursor->cancelLayoutInteraction();
+      m_gestures->cancelForLayoutChange();
+      m_overview->forceClose();
+      for (const auto& output : m_outputs) {
+        if (WorkspaceGroup* group = output->workspaceGroup()) {
+          group->slideFinish();
         }
       }
+
+      // Layout mutations emit synchronously. Add every destination before
+      // removing sources, then publish only the finished transaction.
+      for (const RequestedHead& entry : requested) {
+        if (entry.head->state.enabled) {
+          entry.output->applyOutputManagerLayout(entry.head->state.x, entry.head->state.y);
+        }
+      }
+      for (const RequestedHead& entry : requested) {
+        if (!entry.head->state.enabled) {
+          entry.output->applyOutputManagerLayout(entry.head->state.x, entry.head->state.y);
+        }
+      }
+
+      for (const RequestedHead& entry : requested) {
+        if (!entry.wasDesktopEnabled || entry.head->state.enabled) {
+          continue;
+        }
+        Output* fallback = nullptr;
+        for (const auto& candidate : m_outputs) {
+          if (candidate.get() != entry.output && candidate->desktopEnabled() && candidate->wlr()->enabled) {
+            fallback = candidate.get();
+            break;
+          }
+        }
+        reassignOutputViews(entry.output, fallback);
+      }
+      scheduleDisplacedViewRestore();
       markDirty(Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
       if (m_sessionLocked) {
         updateLockBlank();
       }
+      updateIdleInhibit();
+      updateColorPreferences();
+      refocus();
       refreshSurfaceScales();
     }
+    if (commitAttempted) {
+      m_deferOutputManagerConfig = false;
+    }
 
+    if (!swapchainManagerFinished) {
+      wlr_output_swapchain_manager_finish(&swapchainManager);
+    }
+    for (size_t i = 0; i < statesLen; ++i) {
+      wlr_output_state_finish(&states[i].base);
+    }
+    for (wlr_backend_output_state& rollback : rollbackStates) {
+      wlr_output_state_finish(&rollback.base);
+    }
     free(states);
     if (ok) {
       wlr_output_configuration_v1_send_succeeded(config);
@@ -2620,7 +2969,7 @@ namespace umbriel {
     }
     wlr_output_configuration_v1_destroy(config);
 
-    if (ok && !testOnly) {
+    if (commitAttempted) {
       updateOutputManagerConfig();
     }
   }

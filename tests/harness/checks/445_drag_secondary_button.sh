@@ -35,7 +35,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 window_drag_toggle = "none"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -47,7 +47,7 @@ done
 for _ in $(seq 1 3); do
   "$UMBRIEL" msg window-focus-left > /dev/null
 done
-sleep 0.5
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 read -r source_x source_y source_w source_h < <(
@@ -66,7 +66,7 @@ start_y=$((source_y + source_h / 2))
 pointer move "$start_x" "$start_y" mod logo press "$BTN_LEFT" \
   move 1000 "$start_y" press "$BTN_RIGHT" release "$BTN_RIGHT" \
   move 1270 "$start_y" release "$BTN_LEFT" mod none
-sleep 0.8
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 source_x=$(jq -r '.[] | select(.title == "secondary-button-1") | .x' <<< "$windows")

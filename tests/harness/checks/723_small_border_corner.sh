@@ -13,6 +13,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors.border]
 focused = "#00FF00"
@@ -35,7 +36,7 @@ if ! grep -q '^mapped$' "$CLIENT_LOG"; then
   echo "small border client never mapped: $(cat "$CLIENT_LOG")"
   exit 1
 fi
-sleep 0.5
+"$UMBRIEL" settle
 
 window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "small-border")')
 if [[ -z $window ]]; then
@@ -65,7 +66,7 @@ echo "one-pixel outer radius stayed independent of border width: corner=$corner 
 
 sed -i 's/^corner_radius = 1$/corner_radius = 8/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 grim -o HEADLESS-1 "$SCREENSHOT"
 rounded_inner=$(sample "$x" "$y")
 read -r rounded_inner_red rounded_inner_green rounded_inner_blue <<< "$rounded_inner"
@@ -78,7 +79,7 @@ echo "eight-pixel outer radius kept its inner contour rounded: corner=$rounded_i
 
 sed -i 's/^corner_radius = 8$/corner_radius = 0/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 grim -o HEADLESS-1 "$SCREENSHOT"
 square_corner=$(sample "$((x - TOTAL_WIDTH))" "$((y - TOTAL_WIDTH))")
 read -r square_red square_green square_blue <<< "$square_corner"

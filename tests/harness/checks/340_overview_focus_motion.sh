@@ -28,7 +28,7 @@ wait_for_count() {
   return 1
 }
 
-printf '\n[animation.overview]\nduration_ms = 2000\n' >> "$UMBRIEL_CONFIG"
+printf '\n[animation.overview]\nduration_ms = 2000\ncurve = "linear"\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 spawn_client overview-motion-first
@@ -44,10 +44,10 @@ if [[ -z $first_id ]]; then
   exit 1
 fi
 "$UMBRIEL" msg "window-focus:$first_id" > /dev/null
-sleep 2.1
+"$UMBRIEL" settle
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 2.1
+"$UMBRIEL" settle
 
 # At zoom 0.5 the third 624-pixel column is visible from x=961 to x=1273. Click its visible center, then sample focus
 # well before the two-second close animation can finish.

@@ -46,10 +46,11 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 mode = "scrolling"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [input.focus]
 follows_mouse = true

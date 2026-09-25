@@ -25,6 +25,16 @@ namespace umbriel {
     // Settle every compositor-owned gesture before a layout change replaces the
     // objects and axes it captured. Client-forwarded gestures are left alone.
     void cancelForLayoutChange();
+    // Ends an in-flight workspace swipe without settling its slide, for the overview to finish on the filmstrip.
+    // `target` is where a release would land, the starting workspace when it would snap back; `offset` is the swipe's
+    // position relative to it in rows. `group` is null when no swipe was in flight.
+    struct SwitchPick {
+      WorkspaceGroup* group = nullptr;
+      Workspace* target = nullptr;
+      double offset = 0;
+      double velocity = 0; // rows/s
+    };
+    [[nodiscard]] SwitchPick pickSwitchForOverview();
     // Mouse-button bindings use the same overscroll, velocity projection, and
     // column settling as the three-finger strip gesture, but pointer travel is
     // mapped one-to-one to content travel. The point picks the strip: the active
@@ -32,6 +42,10 @@ namespace umbriel {
     [[nodiscard]] bool beginPointerScroll(double lx, double ly);
     void updatePointerScroll(double dx, double dy, uint32_t timeMsec);
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
+    // A gesture or pointer scroll is moving compositor content.
+    [[nodiscard]] bool movingContent() const {
+      return m_state != State::Idle && m_state != State::Forward && m_state != State::Pending;
+    }
 
   private:
     enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect };

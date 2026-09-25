@@ -31,15 +31,16 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [[window_rule]]
 match.title = "^named-width-owner$"
 default_scrolling_column = "width-stack"
 default_scrolling_column_order = 10
-default_width = 0.25
+default_scrolling_extent = 0.25
 
 [[window_rule]]
 match.app_id = "^named-width-joiner$"
@@ -48,7 +49,7 @@ default_scrolling_column_order = 20
 
 [[window_rule]]
 match.title = "^named-width-late$"
-default_width = 0.9
+default_scrolling_extent = 0.9
 
 [[window_rule]]
 match.title = "^named-reclass-owner$"
@@ -57,7 +58,7 @@ default_scrolling_column = "old-stack"
 [[window_rule]]
 match.app_id = "^named-reclass-joiner$"
 default_scrolling_column = "old-stack"
-default_width = 0.4
+default_scrolling_extent = 0.4
 
 [[window_rule]]
 match.title = "^named-reclass-late$"
@@ -75,7 +76,7 @@ default_workspace = 2
 [[window_rule]]
 match.title = "^named-order-late$"
 default_scrolling_column_order = 10
-default_width = 0.9
+default_scrolling_extent = 0.9
 
 [[window_rule]]
 match.title = "^named-order-owner$"

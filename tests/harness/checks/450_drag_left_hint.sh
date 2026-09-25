@@ -2,6 +2,7 @@
 # The first scrolling column's prepend hint must remain outside the card when
 # the pointer crosses the centered preview boundary into the overview margin.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
@@ -9,7 +10,6 @@ readonly OUTPUT_H=720
 readonly OVERVIEW_ZOOM=0.5
 readonly OVERVIEW_X=320
 readonly OVERVIEW_Y=180
-readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 
 spawn_client() {
   foot --config=/dev/null --override=colors.background=000000 \
@@ -29,7 +29,7 @@ workspace_background = "#000000FF"
 drag_opacity = 0.0
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 zoom = 0.5
@@ -43,12 +43,12 @@ for id in $(seq 1 6); do
     sleep 0.25
   done
 done
-sleep 0.5
+"$UMBRIEL" settle
 
 for _ in $(seq 1 5); do
   "$UMBRIEL" msg window-focus-left > /dev/null
 done
-sleep 0.5
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 start_x=$(jq -r --argjson origin "$OVERVIEW_X" --argjson zoom "$OVERVIEW_ZOOM" \
@@ -62,42 +62,44 @@ touch_x=$((OVERVIEW_X - 13))
 inside_x=$((OVERVIEW_X + 30))
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.6
-"$POINTER" "$OUTPUT_W" "$OUTPUT_H" \
-  move "$start_x" "$start_y" press "$BTN_LEFT" \
-  move "$touch_x" 360 pause 1200 move "$inside_x" 360 pause 1200 release "$BTN_LEFT" &
-POINTER_PID=$!
-sleep 0.5
+"$UMBRIEL" settle
+# Animation time only moves by clock-advance while the drag is sampled.
+"$UMBRIEL" clock-freeze
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$start_x" "$start_y" press "$BTN_LEFT" move "$touch_x" 360 \
+  -- move "$inside_x" 360 mark inside hold release "$BTN_LEFT"
+"$UMBRIEL" clock-advance 500 > /dev/null
 
 outside_screenshot="$UMBRIEL_RUNTIME_DIR/drag-left-outside-hint.png"
 grim "$outside_screenshot"
 
-outside_red=$(magick "$outside_screenshot" -crop 100x240+190+240 -colorspace RGB \
+outside_red=$(magick "$outside_screenshot" -crop 100x240+190+240 \
   -format '%[fx:round(255*mean.r)]' info:)
-outside_green=$(magick "$outside_screenshot" -crop 100x240+190+240 -colorspace RGB \
+outside_green=$(magick "$outside_screenshot" -crop 100x240+190+240 \
   -format '%[fx:round(255*mean.g)]' info:)
 if (( outside_red < outside_green + 35 )); then
   echo "leading gap hint overlapped the first card instead of staying in the overview margin: red=$outside_red green=$outside_green"
   exit 1
 fi
 
-sleep 1.2
+pointer_step inside
+"$UMBRIEL" clock-advance 500 > /dev/null
 inside_screenshot="$UMBRIEL_RUNTIME_DIR/drag-left-inside-hint.png"
 grim "$inside_screenshot"
 
-inside_red=$(magick "$inside_screenshot" -crop 100x50+400+195 -colorspace RGB \
+inside_red=$(magick "$inside_screenshot" -crop 100x50+400+195 \
   -format '%[fx:round(255*mean.r)]' info:)
-inside_green=$(magick "$inside_screenshot" -crop 100x50+400+195 -colorspace RGB \
+inside_green=$(magick "$inside_screenshot" -crop 100x50+400+195 \
   -format '%[fx:round(255*mean.g)]' info:)
 if (( inside_red < inside_green + 35 )); then
   echo "the first card's outer side remained a duplicate prepend target: red=$inside_red green=$inside_green"
   exit 1
 fi
 
-wait "$POINTER_PID"
-sleep 0.2
+pointer_release
+"$UMBRIEL" clock-resume
+"$UMBRIEL" settle
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 0.6
+"$UMBRIEL" settle
 
 windows=$("$UMBRIEL" windows --json)
 read -r source_x source_y source_w < <(

@@ -613,4 +613,68 @@ PY
 # An "ok" reply only says the request was accepted. The window must actually
 # leave the list, which is the close path itself, not tidying up after it.
 wait_for_windows 0
-echo "IPC commands return documented JSON, human-readable listings, events, and clean window lifecycle replies"
+
+# settle holds its reply while an animation runs: a close answers only after its windows_out, and the next capture no
+# longer shows the snapshot.
+printf '\n[animation.windows_out]\nduration_ms = 1500\ncurve = "linear"\n' >> "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" ipc-settle 600 400 > "$UMBRIEL_RUNTIME_DIR/ipc-settle.log" 2>&1 &
+wait_for_windows 1
+"$UMBRIEL" settle
+settle_id=$("$UMBRIEL" windows --json | jq -r '.[0].id')
+"$UMBRIEL" msg "window-close:$settle_id" > /dev/null
+settle_start=${EPOCHREALTIME/[.,]/}
+"$UMBRIEL" settle
+settle_ms=$(((${EPOCHREALTIME/[.,]/} - settle_start) / 1000))
+if ((settle_ms < 1400)); then
+  echo "settle answered ${settle_ms} ms into a 1500 ms windows_out"
+  exit 1
+fi
+grim "$UMBRIEL_RUNTIME_DIR/ipc-settle.png"
+settle_red=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/ipc-settle.png" count 'r > 0.5 && g < 0.2 && b < 0.2')
+if ((settle_red > 0)); then
+  echo "the close snapshot was still drawn after settle answered: $settle_red red pixels"
+  exit 1
+fi
+# A frozen animation clock holds an opening fade however long real time passes; clock-advance moves it exactly, and an
+# animation that began while frozen counts from the frozen instant.
+printf '\n[animation.windows_in]\nduration_ms = 1000\ncurve = "linear"\nstyle = "fade"\n' >> "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+"$UMBRIEL" clock-freeze
+# A frame at the frozen instant before the window opens, so the fade starts on an instant that has already ticked.
+grim "$UMBRIEL_RUNTIME_DIR/ipc-clock.png"
+FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" ipc-clock 600 400 > "$UMBRIEL_RUNTIME_DIR/ipc-clock.log" 2>&1 &
+wait_for_windows 1
+sleep 0.3 # real time: frozen animation time must hold while real time passes
+clock_red() {
+  grim "$UMBRIEL_RUNTIME_DIR/ipc-clock.png"
+  "$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/ipc-clock.png" mean 20x20+630+350 | cut -d' ' -f1
+}
+if (($(clock_red) != 0)); then
+  echo "the opening fade advanced while the animation clock was frozen"
+  exit 1
+fi
+# settle refuses at once rather than waiting for an animation that cannot end.
+if frozen_settle=$(timeout 5 "$UMBRIEL" settle 2>&1) || [[ $frozen_settle != *"frozen animation clock"* ]]; then
+  echo "settle did not refuse a running animation on the frozen clock: ${frozen_settle:-no output}"
+  exit 1
+fi
+"$UMBRIEL" clock-advance 500
+halfway=$(clock_red)
+if ((halfway < 120 || halfway > 136)); then
+  echo "500 ms into a 1000 ms linear fade drew red $halfway, expected about 128"
+  exit 1
+fi
+"$UMBRIEL" clock-advance 600
+if (($(clock_red) != 255)); then
+  echo "the opening fade did not finish after its full duration on the frozen clock"
+  exit 1
+fi
+"$UMBRIEL" clock-resume
+if "$UMBRIEL" clock-advance 10 2> /dev/null; then
+  echo "clock-advance accepted an unfrozen clock"
+  exit 1
+fi
+"$UMBRIEL" settle
+echo "IPC commands return documented JSON, human-readable listings, events, clean window lifecycle replies, settle, and the animation clock"

@@ -40,7 +40,7 @@ autostart = []
 workspace_curve = "spring:1,120"
 
 [layout.scrolling]
-default_width_fraction = 0.5
+default_extent_fraction = 0.5
 
 [overview]
 background_blur = false
@@ -81,7 +81,7 @@ for workspace_axis in vertical horizontal; do
   "$UMBRIEL" msg column-focus-first > /dev/null
   "$UMBRIEL_POINTER_CLIENT" 1280 720 move 640 360
   "$UMBRIEL" msg overview-open > /dev/null
-  sleep 0.4
+  "$UMBRIEL" settle
 
   # Travel across the workspace axis pans the strip. It keeps panning through drift onto the other axis, and never
   # activates another workspace. The client stays alive so the position can be read mid-gesture.
@@ -134,21 +134,21 @@ for workspace_axis in vertical horizontal; do
   # Halving this physical axis halves its travel, whatever the workspace arrangement is.
   configure "$workspace_axis" 0.5 0.5
   "$UMBRIEL_POINTER_CLIENT" 1280 720 axis "$workspace_axis" 210 pause 180 axis-stop "$workspace_axis"
-  sleep 0.3
+  "$UMBRIEL" settle
   [[ $(active_workspace) == 1 ]] || { echo "$workspace_axis: halved scroll factor still selected a workspace"; exit 1; }
 
   # Travel means the same thing before the opening zoom has landed as it does after.
   if [[ $workspace_axis == vertical ]]; then
     configure "$workspace_axis" 1.0 1.0
     "$UMBRIEL" msg overview-close > /dev/null
-    sleep 0.4
+    "$UMBRIEL" settle
     "$UMBRIEL" msg overview-open > /dev/null
     "$UMBRIEL_POINTER_CLIENT" 1280 720 axis "$workspace_axis" 210 pause 180 axis-stop "$workspace_axis"
     wait_workspace 2
     "$UMBRIEL" msg workspace-switch:1 > /dev/null
   fi
   "$UMBRIEL" msg overview-close > /dev/null
-  sleep 0.4
+  "$UMBRIEL" settle
 done
 
 echo 'finger travel pans the strip, drags the filmstrip, settles on release, cancels with the device, and scales per axis'

@@ -1,12 +1,11 @@
 # Installing Umbriel
 
-Umbriel is available for Arch Linux, Fedora, Debian, and Ubuntu. You can also
-[build it manually](#manual-build) on another Linux distribution.
+Umbriel is packaged for several Linux distributions. Prefer a distribution
+package when one is available; it provides the simplest installation and
+upgrade path.
 
-> Package ownership: the Umbriel team maintains the manual build instructions.
-> Distribution packages are maintained by their distributions or package
-> repository maintainers. Review third-party repositories before installing
-> from them.
+> Distribution packages and third-party repositories are maintained by their
+> respective maintainers. Review a repository before installing from it.
 
 ## Arch Linux
 
@@ -27,7 +26,9 @@ sudo dnf install umbriel-nightly
 
 ## openSUSE
 
-[home:neifua:Noctalia](https://build.opensuse.org/project/show/home:neifua:Noctalia) repo provides [umbriel-git](https://build.opensuse.org/package/show/home:neifua:Noctalia/umbriel-git) on OBS.
+The [Noctalia OBS repository](https://build.opensuse.org/project/show/home:neifua:Noctalia)
+provides
+[`umbriel-git`](https://build.opensuse.org/package/show/home:neifua:Noctalia/umbriel-git).
 
 #### Tumbleweed
 ```sh
@@ -79,6 +80,28 @@ sudo apt install umbriel
 
 The repository provides `amd64` and `arm64` packages only.
 
+## GNU Guix
+
+Umbriel and its XDG portal are available through the third-party
+[`midnight`](https://codeberg.org/stampede/midnight) Guix channel. Add the
+channel to `~/.config/guix/channels.scm`:
+
+```scheme
+(channel
+  (name 'midnight)
+  (url "https://codeberg.org/stampede/midnight.git")
+  (branch "main")
+  (introduction
+    (make-channel-introduction
+      "d97d1568954cfcbf543c9fcdfd5771e2b730ae19"
+      (openpgp-fingerprint
+        "640A 2C3C E948 22D3 394B 40C3 CAFA EECA 00FF 9B1E"))))
+```
+
+Run `guix pull`, then install `umbriel` and
+`xdg-desktop-portal-umbriel`. Adding them to the system configuration makes the
+Umbriel session available to display managers.
+
 ## Manual build
 
 Manual installations have no automatic upgrade path. Prefer a distribution
@@ -107,27 +130,26 @@ just install
 
 ## Starting Umbriel
 
-Installed display-manager sessions use `start-umbriel`. For supported account
-shells listed in `/etc/shells`, including bash, zsh, and fish, the launcher
-enters the configured shell as a noninteractive login shell before starting a
-native session. Exports from its login profile, such as `~/.zprofile` for zsh,
-are inherited by Umbriel and the session. Interactive startup files such as
-`~/.zshrc` are not read. Starting `start-umbriel` from a TTY performs this step
-even if the TTY login already loaded the profile.
-
-When a systemd user manager is available, the launcher imports that environment
-and runs Umbriel as a user service. This also includes variables from
-`environment.d`. On other init systems it starts the compositor directly with
-the login environment.
-
-Run `umbriel` directly for nested development sessions or explicit unmanaged
-startup.
-
-From a TTY, start a normal installed session with:
+Installed display-manager sessions start Umbriel through `start-umbriel`.
+Select Umbriel from your display manager, or start it from a TTY:
 
 ```sh
 start-umbriel
 ```
+
+The launcher loads the login profile for supported shells such as bash, zsh,
+and fish. Environment variables from that profile are available to Umbriel and
+applications started in the session. Interactive shell files such as
+`~/.zshrc` are not loaded. In a systemd-managed session, `PATH` remains the
+value supplied by the user manager, including `environment.d`; the direct
+fallback inherits `PATH` from the login profile like the other variables.
+
+In a managed native session, Umbriel places startup, autostart, event, and
+`spawn:` commands in scopes bound to the compositor service, so they are
+cleaned up when the session ends. This requires systemd 254 or newer.
+
+Run `umbriel` directly only for a nested development session or an explicitly
+unmanaged launch.
 
 ## Logs
 

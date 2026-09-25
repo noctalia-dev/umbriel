@@ -53,7 +53,7 @@ center_resize_click() {
   x=$(jq -r '.[0].x + (.[0].w / 2 | floor)' <<< "$windows")
   y=$(jq -r '.[0].y + (.[0].h / 2 | floor)' <<< "$windows")
   pointer move "$x" "$y" mod logo click "$BTN_RIGHT" mod none
-  sleep 0.8
+  "$UMBRIEL" settle
 }
 
 check_maximized_size_unchanged() {

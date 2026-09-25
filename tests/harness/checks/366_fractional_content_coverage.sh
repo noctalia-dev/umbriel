@@ -19,6 +19,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors.border]
 focused = "#FF0000"
@@ -32,7 +33,7 @@ corner_radius = 12
 [[window_rule]]
 match.title = "^fractional-content$"
 default_floating = true
-default_size = [602, 402]
+default_floating_size_px = { width = 602, height = 402 }
 default_position = { x = 9, y = 9, anchor = "top_left" }
 
 [output."HEADLESS-1"]
@@ -49,7 +50,7 @@ if ! grep -q '^mapped ' "$CLIENT_LOG"; then
   echo "fractional content client never mapped: $(cat "$CLIENT_LOG")"
   exit 1
 fi
-sleep 0.3
+"$UMBRIEL" settle
 
 # The client answers the unsized initial configure with its own size and only
 # learns the layout's size once mapped, so the last report is the one that

@@ -32,7 +32,7 @@ enabled = false
 [[window_rule]]
 match.title = "^scratchpad-resize-animation$"
 default_floating = true
-default_size = [1000, 300]
+default_floating_size_px = { width = 1000, height = 300 }
 default_position = { x = 100, y = 200, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -72,7 +72,7 @@ wait_for_box 1000x300+100+200
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 wait_for_box 1000x300+100+200
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 
 read -r before_x before_y before_w before_h < <(capture_box before)
 if ((before_x != 100 || before_y != 200 || before_w != 1000 || before_h != 300)); then
@@ -80,10 +80,12 @@ if ((before_x != 100 || before_y != 200 || before_w != 1000 || before_h != 300))
   exit 1
 fi
 
-"$UMBRIEL" msg window-set-width:0.2 > /dev/null
-sleep 0.25
+# Animation time only moves by clock-advance; advancing 2000 ms finishes the 2000 ms timeline.
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" msg window-set-primary-extent:0.2 > /dev/null
+"$UMBRIEL" clock-advance 250
 read -r first_x first_y first_w first_h < <(capture_box resize-250ms)
-sleep 1.00
+"$UMBRIEL" clock-advance 1000
 read -r second_x second_y second_w second_h < <(capture_box resize-1250ms)
 
 if ! ((first_x == 100 && second_x == 100
@@ -94,7 +96,8 @@ if ! ((first_x == 100 && second_x == 100
   exit 1
 fi
 
-sleep 1.00
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" settle
 wait_for_box 256x300+100+200
 read -r after_x after_y after_w after_h < <(capture_box after)
 if ((after_x != 100 || after_y != 200 || after_w != 256 || after_h != 300)); then
@@ -103,9 +106,9 @@ if ((after_x != 100 || after_y != 200 || after_w != 256 || after_h != 300)); the
 fi
 
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-sleep 0.25
+"$UMBRIEL" clock-advance 250
 read -r max_first_x max_first_y max_first_w max_first_h < <(capture_box maximize-250ms)
-sleep 1.00
+"$UMBRIEL" clock-advance 1000
 read -r max_second_x max_second_y max_second_w max_second_h < <(capture_box maximize-1250ms)
 
 if ! ((100 > max_first_x && max_first_x > max_second_x && max_second_x > 0
@@ -116,7 +119,8 @@ if ! ((100 > max_first_x && max_first_x > max_second_x && max_second_x > 0
   exit 1
 fi
 
-sleep 1.00
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" settle
 wait_for_box 1280x720+0+0
 read -r max_after_x max_after_y max_after_w max_after_h < <(capture_box maximize-after)
 if ((max_after_x != 0 || max_after_y != 0 || max_after_w != 1280 || max_after_h != 720)); then

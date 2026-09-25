@@ -88,7 +88,7 @@ window_center() {
 
 sample_rgb() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$((x - 10))+$((y - 10))" -colorspace RGB \
+  magick "$image" -crop "20x20+$((x - 10))+$((y - 10))" \
     -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
 }
 
@@ -160,14 +160,14 @@ name = "overview-second"
 match.title = "^overview-scratch-first$"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^overview-scratch-second$"
 default_output = "HEADLESS-2"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 120, y = 100, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null

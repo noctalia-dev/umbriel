@@ -131,6 +131,28 @@ check *filters: (_ensure-configured mode)
     fi
     bash tests/harness/check.sh ./build-{{mode}}/umbriel {{filters}}
 
+# Runs n copies of one harness check at once, each against its own instance, to expose races that load reveals. `just check-stress 225`, `just check-stress 225 64`.
+[no-exit-message]
+check-stress name n="32": (_ensure-configured mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! build_log=$(meson compile -C build-{{mode}} umbriel harness-clients 2>&1); then
+        printf '%s\n' "$build_log" >&2
+        exit 1
+    fi
+    mapfile -t matches < <(bash tests/harness/check.sh ./build-{{mode}}/umbriel --list {{name}})
+    if ((${#matches[@]} != 1)); then
+        echo "check-stress: '{{name}}' must match exactly one check, matched ${#matches[@]}: ${matches[*]}" >&2
+        exit 2
+    fi
+    # Beside checks/, so copies resolve repository files the way the original does.
+    scratch=$(mktemp -d tests/harness/.stress.XXXXXXXX)
+    trap 'rm -rf "$scratch"' EXIT
+    for ((i = 1; i <= {{n}}; i++)); do
+        cp "tests/harness/checks/${matches[0]}.sh" "$scratch/${matches[0]}.$(printf '%03d' "$i").sh"
+    done
+    CHECK_DIR="$scratch" CHECK_DURATIONS_FILE="$scratch/durations" bash tests/harness/check.sh ./build-{{mode}}/umbriel -j {{n}}
+
 # Names of every harness check. Boots and builds nothing.
 check-names:
     @bash tests/harness/check.sh ./build-{{mode}}/umbriel --list

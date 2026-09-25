@@ -51,7 +51,6 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* viewRoot() const { return m_viewRoot; }
     [[nodiscard]] wlr_scene_tree* fullscreenRoot() const { return m_fullscreenRoot; }
     [[nodiscard]] wlr_scene_tree* pinnedRoot() const { return m_pinnedRoot; }
-    [[nodiscard]] wlr_scene_tree* pinnedShadowRoot() const { return m_pinnedShadowRoot; }
     // Full logical box at the live layout origin, or the last arranged origin while temporarily removed.
     [[nodiscard]] wlr_box layoutBox() const;
     [[nodiscard]] wlr_box usableArea() const;
@@ -67,11 +66,18 @@ namespace umbriel {
     void markDirty(Dirty what);
     void onGammaChanged(wlr_gamma_control_v1* control);
     void applyOutputState();
-    // DPMS power is independent of configured enablement. A powered-off output
+    // Adopt a successfully committed wlr-output-management state in two
+    // phases. Logical state changes first so callbacks cannot revive a
+    // disabled output, then layout membership changes after transient UI has
+    // been closed safely.
+    void adoptOutputManagerEnabled(bool enabled);
+    void applyOutputManagerLayout(int x, int y);
+    // DPMS power is independent of logical enablement. A powered-off output
     // stays in the logical layout with its workspace and windows intact.
     [[nodiscard]] bool setPowered(bool powered);
     [[nodiscard]] bool dpmsOff() const { return m_dpmsOff; }
     [[nodiscard]] bool configuredEnabled() const;
+    [[nodiscard]] bool desktopEnabled() const { return m_desktopEnabled; }
     [[nodiscard]] HdrMode hdrMode() const;
     [[nodiscard]] bool hdrRequested() const;
     [[nodiscard]] bool hdrActive() const;
@@ -98,6 +104,7 @@ namespace umbriel {
     void updateHdr();
     void forgetHdrView(const View* view);
     void markBlurBackgroundDirty();
+    void scheduleFullFrame();
     void handleExternalConfigChange();
     // Tell one surface this output's scale (fractional + integer preferred buffer scale). Both wlroots calls dedup
     // internally, so re-notifying is free. Shaped as a wlr_surface_iterator_func_t so shell for_each helpers can walk a
@@ -143,7 +150,6 @@ namespace umbriel {
     wlr_scene_tree* m_viewRoot = nullptr;
     wlr_scene_tree* m_fullscreenRoot = nullptr;
     wlr_scene_tree* m_pinnedRoot = nullptr;
-    wlr_scene_tree* m_pinnedShadowRoot = nullptr;
     wlr_scene_optimized_blur* m_optimizedBlur = nullptr;
     std::unique_ptr<WorkspaceGroup> m_workspaceGroup;
     wlr_box m_localUsableArea{};
@@ -155,6 +161,7 @@ namespace umbriel {
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
+    bool m_desktopEnabled = true;
     bool m_dpmsOff = false;
     bool m_hdrGammaWarningLogged = false;
     bool m_modeFallbackWarned = false;

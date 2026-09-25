@@ -80,9 +80,9 @@ namespace umbriel {
       return EXIT_FAILURE;
     }
 
-    // A one-shot request answers immediately or not at all; the event stream deliberately skips this.
+    // A one-shot request answers within its command's limit or not at all; the event stream deliberately skips this.
     timeval tv{};
-    tv.tv_sec = 2;
+    tv.tv_sec = spec.replyTimeoutSec;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     // Build request.

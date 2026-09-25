@@ -7,7 +7,7 @@ readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 
-printf '\n[layout.scrolling]\ndefault_width_fraction = 0.5\n' >> "$UMBRIEL_CONFIG"
+printf '\n[layout.scrolling]\ndefault_extent_fraction = 0.5\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 if [[ ! -x $POINTER ]]; then
@@ -80,7 +80,7 @@ wait_for_focus_at 10
 # Motion alone must not move focus: follows_mouse is off by default. This also
 # proves the next assertion is the click's doing and not the hover's.
 pointer move "$RIGHT_X" "$MID_Y"
-sleep 0.5
+"$UMBRIEL" settle
 if [[ $(focused_x) != "10" ]]; then
   echo "hovering moved focus with follows_mouse off: focus is at $(focused_x)"
   exit 1
@@ -116,17 +116,23 @@ pointer click "$BTN_LEFT"
 wait_for_focus_at 10
 
 # With follows_focus enabled, the same navigation moves the cursor into the
-# newly focused right window. Plain window-focus remains focus-only, so moving
-# keyboard focus left and clicking without pointer motion must return focus to
-# the right window under the warped cursor.
+# newly focused right window. Disable follow-warp without moving the cursor,
+# then focus left and click without pointer motion. Focus must return to the
+# right window under the cursor.
 printf '\n[input.cursor]\nfollows_focus = true\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg window-focus-right > /dev/null
 wait_for_focus_at 646
+sed -i 's/follows_focus = true/follows_focus = false/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg "window-focus:$left_id" > /dev/null
 wait_for_focus_at 10
 pointer click "$BTN_LEFT"
 wait_for_focus_at 646
+
+# Restore follow-warp for workspace restoration and workspace-transfer checks.
+sed -i 's/follows_focus = false/follows_focus = true/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
 
 # Workspace focus history is local to the focused output. Returning to that
 # output's previous workspace is still focus navigation, so follows_focus must
@@ -140,7 +146,7 @@ wait_for_count 3
 pointer move "$RIGHT_X" "$MID_Y"
 "$UMBRIEL" msg workspace-focus-last > /dev/null
 wait_for_focus_at 10
-sleep 1
+"$UMBRIEL" settle
 pointer click "$BTN_LEFT"
 wait_for_focus_at 10
 
@@ -154,8 +160,10 @@ destination_id=$("$UMBRIEL" windows --json | jq -r \
   --arg left "$left_id" --arg right "$right_id" '.[] | select(.id != $left and .id != $right) | .id')
 "$UMBRIEL" msg "window-move-to-workspace:2" > /dev/null
 wait_for_window_x "$left_id" 646
-sleep 1
+"$UMBRIEL" settle
 wait_for_focus_at 646
+sed -i 's/follows_focus = true/follows_focus = false/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg "window-focus:$destination_id" > /dev/null
 wait_for_focus_at 10
 pointer click "$BTN_LEFT"

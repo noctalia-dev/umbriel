@@ -17,6 +17,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
 duration_ms = 1
+curve = "linear"
 
 [colors]
 backdrop = "#00FF00FF"
@@ -64,7 +65,7 @@ if [[ $(jq -r '.[] | select(.title == "subsurface-opacity") | .focused' <<< "$wi
   exit 1
 fi
 
-sleep 0.5
+sleep 0.5 # real time: let the desynchronized child commit on its own schedule
 windows=$("$UMBRIEL" windows --json)
 read -r win_x win_y win_w win_h <<< "$(
   jq -r '.[] | select(.title == "subsurface-opacity") | "\(.x) \(.y) \(.w) \(.h)"' <<< "$windows"

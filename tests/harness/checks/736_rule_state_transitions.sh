@@ -67,7 +67,7 @@ sample_blue() {
 # Failures go to stderr: the caller captures stdout to report the samples it saw.
 expect_state() {
   local label=$1 want=$2 blue=
-  sleep 0.3
+  "$UMBRIEL" settle
   blue=$(sample_blue)
   if [[ $want == applied ]] && ((blue > 200)); then
     echo "$label: state rule was not applied (blue=$blue)" >&2

@@ -1,17 +1,21 @@
 // Takes an ext-session-lock, paints one lock surface per output, and reports
-// "locked" once the compositor confirms the lock. Any line on stdin unlocks the
-// session and prints "unlocked", which is what lets a check compare focus
-// before and after a real lock cycle. "finished" means the compositor refused
-// or dropped the lock.
+// "locked" once the compositor confirms the lock. In the default mode, any line
+// on stdin unlocks the session and prints "unlocked", which is what lets a check
+// compare focus before and after a real lock cycle. The deferred mode accepts
+// explicit "commit" and "unlock" commands. "finished" means the compositor
+// refused or dropped the lock.
 
 #include "ext-session-lock-v1-client-protocol.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <poll.h>
 #include <print>
+#include <string>
+#include <string_view>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <vector>
@@ -25,6 +29,9 @@ namespace {
     wl_output* output = nullptr;
     wl_surface* surface = nullptr;
     ext_session_lock_surface_v1* lockSurface = nullptr;
+    int width = 0;
+    int height = 0;
+    bool configured = false;
   };
 
   struct State {
@@ -34,6 +41,10 @@ namespace {
     ext_session_lock_manager_v1* manager = nullptr;
     ext_session_lock_v1* lock = nullptr;
     std::vector<LockOutput> outputs;
+    bool deferCommit = false;
+    bool paintBuffers = true;
+    bool configuredAnnounced = false;
+    bool unlockRequested = false;
     bool locked = false;
     bool finished = false;
   };
@@ -42,7 +53,11 @@ namespace {
     const int stride = width * 4;
     const size_t size = static_cast<size_t>(stride) * static_cast<size_t>(height);
     const int fd = memfd_create("umbriel-lock-client", MFD_CLOEXEC);
-    if (fd < 0 || ftruncate(fd, static_cast<off_t>(size)) < 0) {
+    if (fd < 0) {
+      return nullptr;
+    }
+    if (ftruncate(fd, static_cast<off_t>(size)) < 0) {
+      close(fd);
       return nullptr;
     }
     void* pixels = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -59,6 +74,18 @@ namespace {
     return buffer;
   }
 
+  void commitBuffer(LockOutput& entry) {
+    if (!entry.configured || entry.width <= 0 || entry.height <= 0) {
+      return;
+    }
+    wl_buffer* buffer = createBuffer(*entry.state, entry.width, entry.height);
+    if (buffer != nullptr) {
+      wl_surface_attach(entry.surface, buffer, 0, 0);
+      wl_surface_damage_buffer(entry.surface, 0, 0, entry.width, entry.height);
+    }
+    wl_surface_commit(entry.surface);
+  }
+
   // A lock surface must ack every configure and commit a buffer of the size it
   // was given, or the compositor keeps waiting and never reports the lock.
   void lockSurfaceConfigure(
@@ -66,12 +93,21 @@ namespace {
   ) {
     auto& entry = *static_cast<LockOutput*>(data);
     ext_session_lock_surface_v1_ack_configure(surface, serial);
-    wl_buffer* buffer = createBuffer(*entry.state, static_cast<int>(width), static_cast<int>(height));
-    if (buffer != nullptr) {
-      wl_surface_attach(entry.surface, buffer, 0, 0);
-      wl_surface_damage_buffer(entry.surface, 0, 0, static_cast<int>(width), static_cast<int>(height));
+    entry.width = static_cast<int>(width);
+    entry.height = static_cast<int>(height);
+    entry.configured = true;
+
+    State& state = *entry.state;
+    if (state.deferCommit
+        && !state.configuredAnnounced
+        && std::ranges::all_of(state.outputs, [](const LockOutput& output) { return output.configured; })) {
+      state.configuredAnnounced = true;
+      std::println("configured");
+      std::fflush(stdout);
     }
-    wl_surface_commit(entry.surface);
+    if (state.paintBuffers) {
+      commitBuffer(entry);
+    }
   }
   constexpr ext_session_lock_surface_v1_listener kLockSurfaceListener = {.configure = lockSurfaceConfigure};
 
@@ -108,7 +144,20 @@ namespace {
   void registryRemove(void*, wl_registry*, uint32_t) {}
   constexpr wl_registry_listener kRegistryListener = {.global = registryGlobal, .global_remove = registryRemove};
 
-  // Dispatches Wayland events until the lock settles or stdin asks for the unlock.
+  void handleDeferredCommand(State& state, std::string_view command) {
+    if (command == "commit") {
+      if (!state.paintBuffers) {
+        state.paintBuffers = true;
+        for (LockOutput& output : state.outputs) {
+          commitBuffer(output);
+        }
+      }
+    } else if (command == "unlock") {
+      state.unlockRequested = true;
+    }
+  }
+
+  // Dispatches Wayland events until the lock settles or the compositor rejects it.
   bool pumpUntilLocked(State& state) {
     while (!state.locked && !state.finished) {
       if (wl_display_dispatch(state.display) < 0) {
@@ -137,15 +186,57 @@ namespace {
         const ssize_t read = ::read(STDIN_FILENO, buffer, sizeof(buffer));
         return read > 0;
       }
-      if (state.finished) {
+      if (state.finished || (fds[0].revents & (POLLERR | POLLHUP)) != 0) {
         return false;
       }
     }
   }
+
+  bool waitForDeferredLockAndUnlockRequest(State& state) {
+    const int displayFd = wl_display_get_fd(state.display);
+    std::string commands;
+    while (!state.finished && !(state.locked && state.unlockRequested)) {
+      wl_display_flush(state.display);
+      pollfd fds[2] = {
+          {.fd = displayFd, .events = POLLIN, .revents = 0},
+          {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
+      };
+      if (poll(fds, 2, -1) < 0) {
+        return false;
+      }
+      if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0) {
+        return false;
+      }
+      if ((fds[1].revents & (POLLIN | POLLHUP)) != 0) {
+        char buffer[64];
+        const ssize_t read = ::read(STDIN_FILENO, buffer, sizeof(buffer));
+        if (read <= 0) {
+          return false;
+        }
+        commands.append(buffer, static_cast<size_t>(read));
+        size_t newline = 0;
+        while ((newline = commands.find('\n')) != std::string::npos) {
+          handleDeferredCommand(state, std::string_view(commands).substr(0, newline));
+          commands.erase(0, newline + 1);
+        }
+      }
+      if ((fds[0].revents & (POLLERR | POLLHUP)) != 0) {
+        return false;
+      }
+    }
+    return state.locked && state.unlockRequested;
+  }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
   State state;
+  if (argc == 2 && std::string_view(argv[1]) == "--defer-commit") {
+    state.deferCommit = true;
+    state.paintBuffers = false;
+  } else if (argc != 1) {
+    std::println(stderr, "usage: lock-client [--defer-commit]");
+    return EXIT_FAILURE;
+  }
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
     std::println(stderr, "lock-client: cannot connect");
@@ -168,11 +259,15 @@ int main() {
   }
   wl_display_flush(state.display);
 
-  if (!pumpUntilLocked(state)) {
+  if (state.deferCommit) {
+    if (!waitForDeferredLockAndUnlockRequest(state)) {
+      std::println(stderr, "lock-client: lost the deferred lock before unlocking");
+      return EXIT_FAILURE;
+    }
+  } else if (!pumpUntilLocked(state)) {
     std::println(stderr, "lock-client: the session never locked");
     return EXIT_FAILURE;
-  }
-  if (!waitForUnlockRequest(state)) {
+  } else if (!waitForUnlockRequest(state)) {
     std::println(stderr, "lock-client: lost the lock before unlocking");
     return EXIT_FAILURE;
   }

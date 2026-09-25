@@ -70,7 +70,7 @@ assert_rgb() {
 }
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 grim "$MIRRORED"
 "$UMBRIEL" msg overview-close > /dev/null
 assert_rgb "wallpaper mirrored" "$MIRRORED" 632 352 85 119 170
@@ -81,7 +81,7 @@ assert_rgb "bottom layer hidden" "$MIRRORED" 40 40 85 119 170
 { cat "$BASE_CONFIG"; printf 'workspace_wallpaper = false\n'; } > "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 grim "$FLAT"
 "$UMBRIEL" msg overview-close > /dev/null
 assert_rgb "wallpaper disabled" "$FLAT" 632 352 255 0 0
@@ -105,7 +105,7 @@ EOF
 write_horizontal_config true
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 grim "$HORIZONTAL"
 "$UMBRIEL" msg overview-close > /dev/null
 # The active preview still spans 320,180 to 960,540, and the second steps 640 + 0.1 * 1280 * 0.5 = 704 px along X, so
@@ -123,7 +123,7 @@ assert_rgb "bottom layer hidden" "$HORIZONTAL" 40 40 85 119 170
 write_horizontal_config false
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 grim "$HORIZONTAL_FLAT"
 "$UMBRIEL" msg overview-close > /dev/null
 assert_rgb "active fill" "$HORIZONTAL_FLAT" 632 352 255 0 0

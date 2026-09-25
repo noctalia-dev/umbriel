@@ -11,21 +11,10 @@ rc=0
 
 shot() { grim -o "$1" "$2"; }
 
-# Animations (overview zoom, card motion) mean a single grab can catch a moving frame and make comparisons flaky. Grab
-# until two consecutive frames 0.25s apart match, so every baseline and result below is a settled frame. That gap is
-# wider than the 200ms default animation, so this loop is the barrier: callers need only a short primer to guarantee the
-# animation has started, never a wait sized to the animation itself.
+# Callers finish every animation first; settle then also waits for clients to commit their latest configure.
 shot_settled() {
-  local output=$1 dest=$2 previous=$UMBRIEL_RUNTIME_DIR/.settle.png
-  shot "$output" "$previous"
-  for _ in $(seq 24); do
-    sleep 0.25
-    shot "$output" "$dest"
-    cmp -s "$previous" "$dest" && return 0
-    mv "$dest" "$previous"
-  done
-  echo "  $output never settled"
-  return 1
+  "$UMBRIEL" settle
+  shot "$1" "$2"
 }
 
 spawn() {
@@ -47,7 +36,7 @@ output_x() {
 
 # Mean of a crop, as a stable fingerprint of one screen region.
 region_mean() {
-  magick "$1" -crop "$2" -colorspace RGB -format '%[fx:mean]' info:
+  magick "$1" -crop "$2" -format '%[fx:mean]' info:
 }
 
 check() {
@@ -59,6 +48,12 @@ check() {
   fi
 }
 
+focused_width() {
+  "$UMBRIEL" windows --json | jq -r '.[] | select(.active) | .w'
+}
+
+# Animation time only moves by clock-advance; 2000 ms finishes any animation in this check.
+"$UMBRIEL" clock-freeze
 spawn probe
 wait_windows 1
 home=$("$UMBRIEL" windows --json | jq -r '.[0].workspace' | cut -d: -f1)
@@ -66,7 +61,7 @@ if [[ $home == HEADLESS-1 ]]; then neighbour=HEADLESS-2; else neighbour=HEADLESS
 home_x=$(output_x "$home")
 echo "windows land on $home (x=$home_x), watching $neighbour (x=$(output_x "$neighbour"))"
 
-sleep 0.3
+"$UMBRIEL" clock-advance 2000
 shot_settled "$neighbour" "$UMBRIEL_RUNTIME_DIR/neighbour-base.png"
 shot_settled "$home" "$UMBRIEL_RUNTIME_DIR/home-base.png"
 # The rightmost on-strip column ends just short of the shared edge, so this crop is window content when the strip is
@@ -77,16 +72,17 @@ home_base_edge=$(region_mean "$UMBRIEL_RUNTIME_DIR/home-base.png" "$edge_crop")
 # Overview baseline while the home output holds a single card: its filmstrip cannot overhang the shared edge yet, so
 # this is the neighbour showing nothing but its own filmstrip.
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.3
+"$UMBRIEL" clock-advance 2000
 shot_settled "$neighbour" "$UMBRIEL_RUNTIME_DIR/neighbour-ov-base.png"
 "$UMBRIEL" msg overview-close > /dev/null
+"$UMBRIEL" clock-advance 2000
 
 # 624-wide columns on a 1280-wide output fit two at a time. Focusing the leftmost column scrolls the surplus off the
 # RIGHT edge, which in a side-by-side layout is exactly where the neighbouring output lives.
 for i in 2 3 4 5; do spawn "bleed-$i"; done
 wait_windows 5
-for _ in $(seq 6); do "$UMBRIEL" msg window-focus-left > /dev/null; sleep 0.2; done
-sleep 0.3
+"$UMBRIEL" clock-advance 2000
+for _ in $(seq 6); do "$UMBRIEL" msg window-focus-left > /dev/null; "$UMBRIEL" clock-advance 2000; done
 
 edge=$((home_x + 1280))
 "$UMBRIEL" windows --json | jq -c '[.[] | {title, x, w}] | sort_by(.x)'
@@ -110,14 +106,21 @@ check "content drawn on $home" "$home_same" changed
 check "content reaches the strip edge on the home output" "$edge_state" changed
 
 # Transitions are where containment used to be re-derived per move: a workspace slide, a fullscreen enter/leave, and a
-# focus scroll all move nodes while columns hang over the neighbour. Sample the neighbour after each step; it must never
-# change, including mid-animation.
+# focus scroll all move nodes while columns hang over the neighbour. Sample the neighbour 80, 160, and 240 ms into each
+# step; it must never change, including mid-animation. A fullscreen change animates from the client's resized commit.
 transition_drift=0
 for action in window-toggle-fullscreen window-toggle-fullscreen workspace-next workspace-previous \
   window-focus-right window-focus-left column-move-right column-move-left; do
+  width=$(focused_width)
   "$UMBRIEL" msg "$action" > /dev/null
+  if [[ $action == window-toggle-fullscreen ]]; then
+    for _ in $(seq 80); do
+      [[ $(focused_width) != "$width" ]] && break
+      sleep 0.025
+    done
+  fi
   for _ in 1 2 3; do
-    sleep 0.08
+    "$UMBRIEL" clock-advance 80
     shot "$neighbour" "$UMBRIEL_RUNTIME_DIR/neighbour-step.png"
     if ! cmp -s "$UMBRIEL_RUNTIME_DIR/neighbour-base.png" "$UMBRIEL_RUNTIME_DIR/neighbour-step.png"; then
       echo "  drift after $action"
@@ -126,13 +129,14 @@ for action in window-toggle-fullscreen window-toggle-fullscreen workspace-next w
       break
     fi
   done
+  "$UMBRIEL" clock-advance 2000
 done
 check "no bleed onto $neighbour across transitions" "$transition_drift" 0
 
 # Same output, now with a populated and scrolled strip: cards for off-strip columns land past the shared edge. The
 # neighbour must look exactly as it did with one card next door.
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.3
+"$UMBRIEL" clock-advance 2000
 shot_settled "$neighbour" "$UMBRIEL_RUNTIME_DIR/neighbour-ov-full.png"
 overview_same=$(cmp -s "$UMBRIEL_RUNTIME_DIR/neighbour-ov-base.png" "$UMBRIEL_RUNTIME_DIR/neighbour-ov-full.png" && echo same || echo changed)
 "$UMBRIEL" msg overview-close > /dev/null

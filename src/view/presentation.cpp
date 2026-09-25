@@ -67,6 +67,11 @@ namespace umbriel {
     }
   }
 
+  void ViewPresentation::setFullscreenOpaque(bool opaque) {
+    m_fullscreenOpaque = opaque;
+    setBackdropEnabled(m_fullscreenSized && m_fullscreenOpaque);
+  }
+
   void ViewPresentation::setBackdropBox(int x, int y, int width, int height) {
     if (m_backdrop != nullptr) {
       wlr_scene_node_set_position(&m_backdrop->node, x, y);
@@ -84,8 +89,9 @@ namespace umbriel {
       bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
   ) {
     const bool validSize = tileWidth > 0 && tileHeight > 0;
-    setBackdropEnabled(fullscreen && validSize);
-    if (fullscreen && validSize) {
+    m_fullscreenSized = fullscreen && validSize;
+    setBackdropEnabled(m_fullscreenSized && m_fullscreenOpaque);
+    if (m_fullscreenSized) {
       setBackdropBox(0, 0, tileWidth, tileHeight);
       m_offsetX = fullscreenCenterOffset(tileWidth, geometry.width);
       m_offsetY = fullscreenCenterOffset(tileHeight, geometry.height);

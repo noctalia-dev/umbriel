@@ -26,7 +26,7 @@ output_y() {
 
 # Samples a 40x40 patch centered on the given point of an output-local screenshot.
 sample_at() {
-  magick "$1" -crop "40x40+$(($2 - 20))+$(($3 - 20))" -colorspace RGB \
+  magick "$1" -crop "40x40+$(($2 - 20))+$(($3 - 20))" \
     -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
 }
 
@@ -59,6 +59,7 @@ workspace_background = "#000000FF"
 
 [animation]
 duration_ms = 100
+curve = "linear"
 
 [appearance]
 border_width = 0
@@ -131,7 +132,7 @@ for _ in $(seq 60); do
 done
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 0.3
+"$UMBRIEL" settle
 grim -o "$source" "$SOURCE_SHOT"
 assert_blue_card source "$SOURCE_SHOT" 640 360
 
@@ -173,7 +174,7 @@ if (( lane_x != moved_x || lane_dy < 200 )); then
   exit 1
 fi
 
-sleep 0.3
+"$UMBRIEL" settle
 # 1280x720 at zoom 0.5: the active preview spans 320,180 to 960,540 in output-local coordinates. Sample inside the
 # moved card, offset from its origin so the workspace badge in the preview corner cannot answer for it.
 card_x=$((320 + (moved_x - target_x) / 2 + 200))
@@ -186,7 +187,7 @@ assert_no_card source "$SOURCE_SHOT" 640 360
 # Selecting the destination's second workspace slides its previews sideways, because that output arranges workspaces
 # along X. The card of the workspace left behind must appear left of the active preview, not above or below it.
 "$UMBRIEL" msg "workspace-switch:2/$target" > /dev/null
-sleep 0.4
+"$UMBRIEL" settle
 grim -o "$target" "$TARGET_SHOT"
 assert_no_card "destination active preview" "$TARGET_SHOT" "$card_x" "$card_y"
 # Preview step: a 640 px preview plus a 0.1 * 1280 * 0.5 gap, so the previous preview slides 704 px to the left and

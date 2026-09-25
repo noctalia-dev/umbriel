@@ -5,17 +5,13 @@
 # until the drop, so the client's ack of the new size arrives while it is still
 # tiled and must not be mistaken for an interactive resize tracking the pointer.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly TITLE=drag-toggle-animation
 readonly BTN_LEFT=272
 readonly BTN_RIGHT=273
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
-readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
-
-pointer() {
-  "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
-}
 
 wait_for_box() {
   local expected=$1 actual=
@@ -55,9 +51,11 @@ corner_radius = 0
 enabled = false
 
 [layout.scrolling]
-default_width_fraction = 1.0
+default_extent_fraction = 1.0
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
+# Animation time only moves by clock-advance; advancing 3000 ms finishes any 2000 ms timeline.
+"$UMBRIEL" clock-freeze
 
 foot --title="$TITLE" sh -c 'sleep 120' > /dev/null 2>&1 &
 wait_for_box 1264x704
@@ -65,30 +63,33 @@ wait_for_box 1264x704
 # Give it a floating size well below its column, so the retarget has a visible
 # distance to animate, then tile it again for the drag to start from.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
-sleep 0.4
-"$UMBRIEL" msg window-set-width:0.25 > /dev/null
-"$UMBRIEL" msg window-set-height:0.3 > /dev/null
+"$UMBRIEL" clock-advance 3000
+"$UMBRIEL" msg window-set-primary-extent:0.25 > /dev/null
+"$UMBRIEL" msg window-set-secondary-extent:0.3 > /dev/null
 wait_for_box 320x216
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 wait_for_box 1264x704
 # The re-tile animates too; sample only once it has settled.
-sleep 2.5
+"$UMBRIEL" clock-advance 3000
 tiled_width=$(capture_width tiled)
 if ((tiled_width < 1264)); then
   echo "setup did not fill the output with the tiled window: $tiled_width"
   exit 1
 fi
 
-# Hold the drag open while the animation runs, and sample it twice on the way.
-pointer move 640 360 mod logo press "$BTN_LEFT" move 640 400 \
-  press "$BTN_RIGHT" release "$BTN_RIGHT" pause 4000 move 641 400 release "$BTN_LEFT" mod none &
-sleep 0.45
+# Hold the drag open while the animation runs, and sample it twice on the way. The retarget starts once the pointer
+# client's right click reaches the compositor.
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move 640 360 mod logo press "$BTN_LEFT" move 640 400 \
+  press "$BTN_RIGHT" release "$BTN_RIGHT" -- move 641 400 release "$BTN_LEFT" mod none
+wait_for_box 320x216
+"$UMBRIEL" clock-advance 350
 early=$(capture_width early)
-sleep 0.8
+"$UMBRIEL" clock-advance 800
 late=$(capture_width late)
-sleep 1.6
+"$UMBRIEL" clock-advance 3000
 settled=$(capture_width settled)
-sleep 2.0
+pointer_release
+"$UMBRIEL" clock-advance 3000
 
 if ((early <= late || late <= settled)); then
   echo "the retarget did not animate: widths ${early} -> ${late} -> ${settled} (expected a shrinking presented size)"

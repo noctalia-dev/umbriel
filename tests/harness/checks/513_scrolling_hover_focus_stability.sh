@@ -42,11 +42,12 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 mode = "scrolling"
 
 [layout.scrolling]
-default_width_fraction = 0.6
+default_extent_fraction = 0.6
 center_focused = "always"
 
 [animation]
 duration_ms = 1200
+curve = "linear"
 
 [input.focus]
 follows_mouse = true
@@ -63,7 +64,7 @@ wait_for_active hover-stability-c
 
 # The last column rests centered at x=264. The previous column extends from x=-499 to x=252, leaving the trigger
 # point inside it. Wait for map-time position animations so this starting presentation is deterministic.
-sleep 1.4
+"$UMBRIEL" settle
 
 # Keep one virtual pointer alive for the whole sequence. Establish pointer focus on C, cross once into B, then move
 # only one pixel vertically while B's reveal carries A horizontally underneath x=20.

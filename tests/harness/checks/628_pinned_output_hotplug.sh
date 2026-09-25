@@ -2,9 +2,20 @@
 # A globally pinned view hangs below an output-owned clipping root while an output exists. Destroying the last output
 # must park that view on the server-owned pinned roots before the output roots disappear. A client redraw after the
 # removal catches stale scene-node ownership immediately. Real VT deactivation removes multiple outputs in sequence,
-# so the check also proves that temporary rehoming does not overwrite the view's saved floating geometry.
+# so the check also proves that temporary rehoming does not overwrite the view's saved floating geometry. The outputs
+# disappear while the tiled-to-floating placement is still animating, so the saved geometry must be the placement
+# target rather than the node's in-flight position.
 # harness: outputs=2
 set -euo pipefail
+
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[animation.windows_move]
+enabled = true
+duration_ms = 5000
+curve = "linear"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/pinned-output-hotplug-client.log"
@@ -28,8 +39,6 @@ fi
 "$UMBRIEL" msg "window-focus:$window_id" > /dev/null
 "$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
-# Let the tiled-to-floating placement settle so the check records the position the user actually sees before VT loss.
-sleep 0.3
 before=$(
   "$UMBRIEL" windows --json \
     | jq -c --arg id "$window_id" '.[] | select(.id == $id) | {x, y, w, h, floating}'

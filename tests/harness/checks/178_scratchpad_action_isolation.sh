@@ -40,14 +40,14 @@ name = "actions"
 match.title = "^scratchpad-actions-foreground$"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 default_position = { x = 430, y = 230, anchor = "top_left" }
 
 [[window_rule]]
 match.title = "^scratchpad-actions-close$"
 default_output = "HEADLESS-1"
 default_floating = true
-default_size = [420, 260]
+default_floating_size_px = { width = 420, height = 260 }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -147,15 +147,14 @@ scratch_signature() {
 assert_isolated() {
   local action=$1 current_background current_scratch
   accepts "$action"
-  for _ in $(seq 10); do
-    sleep 0.1
-    current_background=$(background_signature)
-    current_scratch=$(scratch_signature)
-    if [[ $current_background != "$baseline_background" || $current_scratch != "$baseline_scratch" ]]; then
-      echo "'$action' escaped the focused scratchpad: $(windows)"
-      return 1
-    fi
-  done
+  # Every compared field except size is compositor state, final once the action is handled and the layout settled.
+  "$UMBRIEL" settle
+  current_background=$(background_signature)
+  current_scratch=$(scratch_signature)
+  if [[ $current_background != "$baseline_background" || $current_scratch != "$baseline_scratch" ]]; then
+    echo "'$action' escaped the focused scratchpad: $(windows)"
+    return 1
+  fi
 }
 
 rejects_without_focus_escape() {

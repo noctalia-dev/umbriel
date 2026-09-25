@@ -15,7 +15,7 @@ border_pixels() {
 }
 
 capture() {
-  sleep 0.3
+  "$UMBRIEL" settle
   grim -o HEADLESS-1 "$SHOT"
 }
 

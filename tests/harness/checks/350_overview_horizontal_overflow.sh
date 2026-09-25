@@ -40,6 +40,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation.overview]
 duration_ms = 1000
+curve = "linear"
 
 [colors]
 backdrop = "#000000FF"
@@ -71,9 +72,9 @@ if [[ -z $first_id ]]; then
   exit 1
 fi
 "$UMBRIEL" msg "window-focus:$first_id" > /dev/null
-sleep 0.2
+"$UMBRIEL" settle
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 1.1
+"$UMBRIEL" settle
 grim "$SCREENSHOT"
 blue=$(magick "$SCREENSHOT" -crop 20x20+1090+350 -format '%[fx:round(255*mean.b)]' info:)
 if (( blue < 80 )); then
@@ -82,7 +83,7 @@ if (( blue < 80 )); then
 fi
 
 "$UMBRIEL" msg overview-close > /dev/null
-sleep 1.1
+"$UMBRIEL" settle
 
 # Arrange the workspaces horizontally: the strip turns vertical, so the same three columns now stack downwards past the
 # output's bottom edge instead of past its right edge.
@@ -97,13 +98,12 @@ EOF
 # A client on the neighbouring workspace makes its preview identifiable by colour: the shared black workspace
 # background cannot be told apart from the backdrop.
 "$UMBRIEL" msg workspace-switch:2 > /dev/null
-sleep 0.3
 spawn_client horizontal-overflow-neighbour
 wait_for_count 4
-sleep 0.3
+"$UMBRIEL" settle
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
-sleep 0.3
 "$UMBRIEL" msg column-focus-first > /dev/null
+"$UMBRIEL" settle
 
 strip_windows() {
   "$UMBRIEL" windows --json |
@@ -152,7 +152,7 @@ if ((neighbour_x <= 970 || neighbour_x >= 1250 || neighbour_y <= 190 || neighbou
 fi
 
 "$UMBRIEL" msg overview-open > /dev/null
-sleep 1.1
+"$UMBRIEL" settle
 grim "$VERTICAL_SHOT"
 
 overhang_blue=$(sample_blue "$VERTICAL_SHOT" $((overhang_x - 10)) $((overhang_y - 10)))

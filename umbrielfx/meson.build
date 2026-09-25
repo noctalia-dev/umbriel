@@ -213,6 +213,7 @@ if build_tests
     'shared-output-transform-transition',
     'shared-sdr-capture-lock',
     'shared-sdr-capture-storage-change',
+    'capture-read-format',
   ]
     test(
       'color-' + case_name,
@@ -263,9 +264,8 @@ if build_tests
     )
     test('umbrielfx-egl-abi', umbrielfx_egl_abi_test, suite: 'umbrielfx')
   endif
-  # The compositor calls scene helpers umbrielfx does not reimplement, so they
-  # resolve to libwlroots and read umbrielfx's structs at wlroots' field offsets.
-  # One source, built against each header, proves the offsets still agree.
+  # umbrielfx's scene structs must extend wlroots' as a strict prefix. One source,
+  # built against each header, proves the offsets still agree.
   umbrielfx_abi_probes = []
   foreach probe : [
     ['wlroots', '<wlr/types/wlr_scene.h>', [wlroots_dep]],

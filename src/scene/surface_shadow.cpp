@@ -104,7 +104,7 @@ namespace umbriel {
     }
   }
 
-  ShadowSnapshot SurfaceShadow::snapshot(wlr_scene_tree* parent, wlr_scene_node* source) const {
+  ShadowSnapshot SurfaceShadow::snapshot(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
     if (m_node == nullptr || !m_node->node.enabled) {
       return {};
     }
@@ -120,11 +120,18 @@ namespace umbriel {
       return {};
     }
     wlr_scene_node_set_position(&tree->node, source->x, source->y);
-    wlr_scene_node_lower_to_bottom(&tree->node);
+    if (inPool) {
+      wlr_scene_node_lower_to_bottom(&tree->node);
+    } else {
+      wlr_scene_node_place_below(&tree->node, source);
+    }
     wlr_scene_node_set_position(&node->node, m_node->node.x, m_node->node.y);
     wlr_scene_shadow_set_clipped_region(node, m_node->clipped_region);
     wlr_scene_shadow_set_animation_source(node, source, config().colors.shadow.data());
-    ShadowSnapshot result{.tree = tree, .node = node};
+    ShadowSnapshot result{
+        .tree = tree,
+        .node = node,
+    };
     std::copy_n(m_node->color, 4, result.color.begin());
     return result;
   }

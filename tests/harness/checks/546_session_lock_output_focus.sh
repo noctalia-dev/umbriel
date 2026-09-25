@@ -42,7 +42,10 @@ wait_for_windows 1
 stay_output=$(window_output lock-focus-stay)
 
 "$UMBRIEL" msg output-focus-right > /dev/null
-sleep 0.2
+for _ in $(seq 40); do
+  [[ $(cursor_output) != "$stay_output" ]] && break
+  sleep 0.05
+done
 "$WINDOW_CLIENT" lock-focus-target > "$UMBRIEL_RUNTIME_DIR/lock-focus-target.log" 2>&1 &
 wait_for_windows 2
 target_output=$(window_output lock-focus-target)
@@ -54,7 +57,10 @@ fi
 # Park the cursor back on the first output, then move keyboard focus to the
 # second output's window without the pointer following it.
 "$UMBRIEL" msg output-focus-left > /dev/null
-sleep 0.2
+for _ in $(seq 40); do
+  [[ $(cursor_output) == "$stay_output" ]] && break
+  sleep 0.05
+done
 target_id=$(windows | jq -r '.[] | select(.title == "lock-focus-target") | .id')
 "$UMBRIEL" msg "window-focus:$target_id" > /dev/null
 for _ in $(seq 40); do
