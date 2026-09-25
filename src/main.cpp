@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
           return EXIT_FAILURE;
         }
       }
-      // The schema run loads skeleton entries that lack required fields on purpose; the warnings that earns describe
+      // The schema run loads skeleton entries that lack required fields on purpose, so the warnings it draws describe
       // no real config.
       setConsoleLogging(false);
       const auto schema = umbriel::buildConfigSchema();

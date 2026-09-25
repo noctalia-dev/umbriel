@@ -22,9 +22,10 @@ namespace umbriel {
 
     using Shapes = std::map<std::string, SchemaShape>;
 
-    // What the typed Section readers cannot say for themselves: enum spellings and string meanings of keys read through
-    // `take`, and keys read from raw tables that no Section claims. Everything else in the schema comes from the
-    // readers. A key missing here still appears, with the type the run could observe.
+    // What the readers cannot say for themselves: enum spellings, string formats, compound types, and the ranges and
+    // defaults of keys read through `take` or into an empty target, plus keys read from raw tables that no Section
+    // claims. Everything else in the schema comes from the readers. A key missing here still appears, with the type
+    // the run could observe.
     struct OverlayEntry {
       std::string path;
       KeySpec spec;
@@ -284,7 +285,8 @@ namespace umbriel {
     }
 
     // Entries that only parse as the right kind of container claim keys beneath them. The map sample is a keybind chord
-    // because that reader validates entry names before it reads an entry's keys; every other map takes any name.
+    // because that reader validates entry names before it reads an entry's keys; the other maps accept it as a name
+    // too.
     std::expected<std::optional<SchemaShape>, std::string>
     probeShape(const toml::table& document, const Shapes& shapes, const std::string& path) {
       const std::array candidates{
