@@ -1815,16 +1815,10 @@ namespace umbriel {
     );
   }
 
-  void Server::onKeyboardFocusChange(wl_listener* listener, void* data) {
+  void Server::onPadKeyboardFocusChange(wl_listener* listener, void* data) {
     Server* self;
-    self = wl_container_of(listener, self, m_keyboardFocusChange);
+    self = wl_container_of(listener, self, m_padKeyboardFocusChange);
     auto* event = static_cast<wlr_seat_keyboard_focus_change_event*>(data);
-    if (LayerSurface* previous = LayerSurface::fromSurface(event->old_surface)) {
-      previous->updateStacking();
-    }
-    if (LayerSurface* current = LayerSurface::fromSurface(event->new_surface)) {
-      current->updateStacking();
-    }
     for (const auto& pad : self->m_tabletPads) {
       if (pad->tablet == nullptr) {
         continue;

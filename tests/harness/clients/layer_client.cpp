@@ -1,3 +1,7 @@
+// Maps a top exclusive zone, a full-output background layer when the height is zero, or a 200x200 bottom-layer
+// square. It stays mapped until that output closes the layer surface. `keyboard=none|on-demand|exclusive` picks the
+// layer surface's keyboard interactivity, and every keyboard enter and leave the surface receives is logged.
+
 #include <wayland-client.h>
 
 #define namespace namespace_

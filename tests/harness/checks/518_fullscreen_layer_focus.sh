@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# harness: outputs=2
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -26,61 +27,91 @@ enabled = false
 follows_mouse = false
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
-pointer_hold 1280 720 move 640 360 mod none
+home_x=$("$UMBRIEL" outputs | awk '$1 == "HEADLESS-1" {found = 1; next} found && /Position:/ {split($2, p, ","); print p[1]; exit}')
+pointer_hold 2560 720 move "$((home_x + 640))" 360 mod none
 "$UMBRIEL_SEAT_LOG_CLIENT" fullscreen-layer-window > "$WINDOW_LOG" 2>&1 &
 await_events "$WINDOW_LOG" keyboard-enter 1
 window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "fullscreen-layer-window") | .id')
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 assert_pixel 20 "51 136 204"
 
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 log-configures > "$UMBRIEL_RUNTIME_DIR/fullscreen-layer-bar.log" 2>&1 &
-await_events "$UMBRIEL_RUNTIME_DIR/fullscreen-layer-bar.log" configure 1
-assert_pixel 20 "51 136 204"
+# Hidden surfaces may not receive frame callbacks, so wait for compositor mapping instead of client readiness.
+wait_layers() {
+  local expected=$1
+  for _ in $(seq 60); do
+    [[ $("$UMBRIEL" layers --json | jq '[.[] | select(.mapped)] | length') == "$expected" ]] && return 0
+    sleep 0.1
+  done
+  echo "expected $expected mapped layers: $("$UMBRIEL" layers --json)"
+  return 1
+}
 
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 keyboard=on-demand > "$PANEL_LOG" 2>&1 &
-panel_pid=$!
-await_events "$PANEL_LOG" keyboard-enter 1
-assert_pixel 60 "32 32 32"
-assert_pixel 20 "51 136 204"
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 0 overlay-layer > "$UMBRIEL_RUNTIME_DIR/fullscreen-layer-overlay.log" 2>&1 &
-overlay_pid=$!
-await_events "$UMBRIEL_RUNTIME_DIR/fullscreen-layer-overlay.log" ready 1
-assert_pixel 60 "255 0 0"
-kill "$overlay_pid"
-wait "$overlay_pid" || true
-assert_pixel 60 "32 32 32"
-"$UMBRIEL_POINTER_CLIENT" 1280 720 tap 57
-await_events "$PANEL_LOG" 'keyboard-key code=57 state=1' 1
+assert_no_enter() {
+  if [[ $(events "$PANEL_LOG" keyboard-enter) != 0 ]]; then
+    echo "hidden top-layer panel received keyboard focus: $(cat "$PANEL_LOG")"
+    return 1
+  fi
+}
 
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
-await_events "$WINDOW_LOG" keyboard-enter 2
-await_events "$PANEL_LOG" keyboard-leave 1
-assert_pixel 60 "51 136 204"
-kill "$panel_pid"
-wait "$panel_pid" || true
+key_count=0
+for mode in on-demand exclusive; do
+  "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 "keyboard=$mode" > "$PANEL_LOG" 2>&1 &
+  panel_pid=$!
+  wait_layers 1
+  assert_pixel 20 "51 136 204"
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  key_count=$((key_count + 1))
+  await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+  assert_no_enter
 
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive release-on-escape > "$PANEL_LOG" 2>&1 &
-panel_pid=$!
-await_events "$PANEL_LOG" keyboard-enter 1
-assert_pixel 60 "32 32 32"
-"$UMBRIEL_POINTER_CLIENT" 1280 720 tap 1
-await_events "$PANEL_LOG" 'keyboard-key code=1 state=0' 1
-await_events "$WINDOW_LOG" keyboard-enter 3
-assert_pixel 60 "51 136 204"
-"$UMBRIEL_POINTER_CLIENT" 1280 720 tap 57
-await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' 1
-kill "$panel_pid"
-wait "$panel_pid" || true
+  "$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  key_count=$((key_count + 1))
+  await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+  assert_no_enter
 
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$PANEL_LOG" 2>&1 &
-panel_pid=$!
-await_events "$PANEL_LOG" keyboard-enter 1
-assert_pixel 60 "32 32 32"
-kill "$panel_pid"
-wait "$panel_pid" || true
-await_events "$WINDOW_LOG" keyboard-enter 4
-assert_pixel 60 "51 136 204"
-"$UMBRIEL_POINTER_CLIENT" 1280 720 tap 1
-await_events "$WINDOW_LOG" 'keyboard-key code=1 state=pressed' 1
+  overlay_log="$UMBRIEL_RUNTIME_DIR/fullscreen-overlay-$mode.log"
+  "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 0 overlay-layer "keyboard=$mode" release-on-escape > "$overlay_log" 2>&1 &
+  overlay_pid=$!
+  await_events "$overlay_log" keyboard-enter 1
+  assert_pixel 20 "255 0 0"
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57 tap 1
+  await_events "$overlay_log" 'keyboard-key code=57 state=1' 1
+  await_events "$overlay_log" keyboard-leave 1
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  key_count=$((key_count + 1))
+  await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+  assert_no_enter
+  kill "$overlay_pid"
+  wait "$overlay_pid" || true
+  wait_layers 1
+  assert_pixel 20 "51 136 204"
+  "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+  "$UMBRIEL" settle > /dev/null
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 move "$((home_x + 100))" 20 click 272
+  await_events "$PANEL_LOG" keyboard-enter 1
+  "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+  await_events "$PANEL_LOG" keyboard-leave 1
+  assert_pixel 20 "51 136 204"
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  key_count=$((key_count + 1))
+  await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+  kill "$panel_pid"
+  wait "$panel_pid" || true
+  wait_layers 0
 
-echo "focused top-layer panels stay visible above fullscreen and return keyboard input when dismissed"
+  other_log="$UMBRIEL_RUNTIME_DIR/other-output-$mode.log"
+  "$UMBRIEL_LAYER_CLIENT" HEADLESS-2 40 "keyboard=$mode" > "$other_log" 2>&1 &
+  other_pid=$!
+  await_events "$other_log" keyboard-enter 1
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  await_events "$other_log" 'keyboard-key code=57 state=1' 1
+  kill "$other_pid"
+  wait "$other_pid" || true
+  wait_layers 0
+  "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
+  key_count=$((key_count + 1))
+  await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+done
+
+echo "fullscreen retains keyboard focus over top layers; overlays still take and release it"

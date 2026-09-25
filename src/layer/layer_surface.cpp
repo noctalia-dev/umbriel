@@ -144,7 +144,7 @@ namespace umbriel {
       return;
     }
 
-    wlr_scene_tree* snap = wlr_scene_tree_create(m_scene->tree->node.parent);
+    wlr_scene_tree* snap = wlr_scene_tree_create(out->layerTree(m_layerSurface->current.layer));
     if (snap == nullptr) {
       return;
     }
@@ -221,14 +221,18 @@ namespace umbriel {
   }
 
   bool LayerSurface::exclusiveKeyboard() const {
-    return m_mapped
-        && m_layerSurface != nullptr
+    return acceptsKeyboard()
         && m_layerSurface->current.keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
   }
 
   bool LayerSurface::acceptsKeyboard() const {
     if (!m_mapped || m_layerSurface == nullptr) {
       return false;
+    }
+    if (m_layerSurface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
+      if (Output* out = output(); out != nullptr && out->hasFullscreenView()) {
+        return false;
+      }
     }
     const auto interactivity = m_layerSurface->current.keyboard_interactive;
     return interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
@@ -239,18 +243,12 @@ namespace umbriel {
     return m_layerSurface != nullptr && fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == this;
   }
 
-  void LayerSurface::updateStacking() {
+  void LayerSurface::reparentToLayer(uint32_t layer) {
     Output* out = output();
     if (out == nullptr || m_scene == nullptr) {
       return;
     }
-    const uint32_t layer = m_layerSurface->current.layer;
-    const bool aboveFullscreen = m_mapped && layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP && hasKeyboardFocus();
-    wlr_scene_tree* parent = aboveFullscreen ? out->focusedLayerTree() : out->layerTree(layer);
-    if (m_scene->tree->node.parent != parent) {
-      wlr_scene_node_reparent(&m_scene->tree->node, parent);
-      out->markDirty(Dirty::LayerArrange);
-    }
+    wlr_scene_node_reparent(&m_scene->tree->node, out->layerTree(layer));
   }
 
   void LayerSurface::focus() {
@@ -361,9 +359,7 @@ namespace umbriel {
         out->markBlurBackgroundDirty();
       }
     }
-    // Protocol requires focus for exclusive. On-demand layers also take it as they map: launchers,
-    // quick terminals and panels expect the keyboard right away.
-    // A click or a focus action moves focus off them again, unlike an exclusive layer.
+    // On-demand panels expect focus on map, but allow subsequent window focus.
     if (acceptsKeyboard()) {
       focus();
     }
@@ -435,11 +431,13 @@ namespace umbriel {
     }
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
-      updateStacking();
+      reparentToLayer(m_layerSurface->current.layer);
       notifyDesktopStack();
     }
 
-    if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY) != 0) {
+    if ((m_layerSurface->current.committed
+         & (WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY | WLR_LAYER_SURFACE_V1_STATE_LAYER))
+        != 0) {
       if (exclusiveKeyboard()) {
         focus();
       } else if (hasKeyboardFocus() && !acceptsKeyboard()) {

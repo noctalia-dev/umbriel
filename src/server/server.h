@@ -179,7 +179,6 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* imPopupTree() const { return m_imPopupTree; }
     [[nodiscard]] wlr_scene_tree* lockTree() const { return m_lockTree; }
     [[nodiscard]] wlr_scene_tree* shellLayerTree(uint32_t layer) const;
-    [[nodiscard]] wlr_scene_tree* focusedLayerTree() const { return m_focusedLayerTree; }
     [[nodiscard]] wlr_output_layout* outputLayout() const { return m_outputLayout; }
     [[nodiscard]] wlr_scene_output_layout* sceneLayout() const { return m_sceneLayout; }
     [[nodiscard]] InputMethodRelay* inputMethodRelay() const { return m_inputMethodRelay.get(); }
@@ -427,7 +426,7 @@ namespace umbriel {
     static void onTabletPadButton(wl_listener* listener, void* data);
     static void onTabletPadRing(wl_listener* listener, void* data);
     static void onTabletPadStrip(wl_listener* listener, void* data);
-    static void onKeyboardFocusChange(wl_listener* listener, void* data);
+    static void onPadKeyboardFocusChange(wl_listener* listener, void* data);
     static void onSwitchDestroy(wl_listener* listener, void* data);
     static void onSwitchToggle(wl_listener* listener, void* data);
     static void onOutputManagerApply(wl_listener* listener, void* data);
@@ -581,7 +580,6 @@ namespace umbriel {
     // multi-output transaction has reached its final logical state.
     bool m_deferOutputManagerConfig = false;
     wlr_scene_tree* m_shellLayerTrees[kLayerCount]{};
-    wlr_scene_tree* m_focusedLayerTree = nullptr;
     wlr_scene_tree* m_xdgTree = nullptr;
     wlr_scene_tree* m_scratchpadTree = nullptr;
     wlr_scene_tree* m_overviewBlurTree = nullptr;
@@ -756,7 +754,7 @@ namespace umbriel {
     wl_listener m_outputLayoutChange{};
     wl_listener m_toplevelCaptureRequest{};
     wl_listener m_rendererLost{};
-    wl_listener m_keyboardFocusChange{};
+    wl_listener m_padKeyboardFocusChange{};
 
     std::vector<std::unique_ptr<Output>> m_outputs;
     std::vector<std::unique_ptr<Keyboard>> m_keyboards;

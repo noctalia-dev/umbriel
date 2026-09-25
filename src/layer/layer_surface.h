@@ -65,7 +65,7 @@ namespace umbriel {
     void handleCommit();
     void handleDestroy();
     void handleNewPopup(void* data);
-    void updateStacking();
+    void reparentToLayer(uint32_t layer);
     // Tell an open overview to re-resolve this output's mirrored background stack.
     void notifyDesktopStack();
     void updateBlur();

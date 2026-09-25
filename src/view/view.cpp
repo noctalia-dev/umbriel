@@ -7,6 +7,7 @@
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "layer/layer_surface.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -4275,6 +4276,12 @@ namespace umbriel {
     if (unpinning) {
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPinnedChanged(this);
+      }
+    }
+    if (fullscreen && m_mapped && m_onActiveWorkspace) {
+      LayerSurface* layer = LayerSurface::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+      if (layer != nullptr && layer->output() == currentOutput() && !layer->acceptsKeyboard()) {
+        m_server->focusView(this);
       }
     }
     if (refreshHoverFocus) {
