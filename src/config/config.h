@@ -847,6 +847,15 @@ namespace umbriel {
         bool operator==(const Tablet&) const = default;
       } tablet;
 
+      struct Touch {
+        // empty = follow map_to_focused_output
+        std::string mapToOutput;
+        // Map the touchscreen to the focused output so absolute coordinates follow the output's transform (rotation,
+        // scale). Turn this off to map against the whole output layout instead.
+        bool mapToFocusedOutput = true;
+        bool operator==(const Touch&) const = default;
+      } touch;
+
       struct Device {
         std::string name;
         std::optional<std::string> layout;
