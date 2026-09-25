@@ -559,6 +559,7 @@ core_sources = files(
   'src/config/store.cpp',
   'src/config/config_merge.cpp',
   'src/config/config_watcher.cpp',
+  'src/config/schema.cpp',
   'src/layout/drop_target.cpp',
   'src/server/wine_color_manager.cpp',
   'src/server/backend_manager.cpp',

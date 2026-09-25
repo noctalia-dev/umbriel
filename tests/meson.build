@@ -42,6 +42,7 @@ unit_tests = [
     [umbriel_core_dep],
     ['-DUMBRIEL_EXAMPLE_CONFIG="' + meson.project_source_root() / 'examples/config.toml' + '"'],
   ],
+  ['config-schema', ['unit/config_schema.cpp'], [umbriel_core_dep]],
   ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [umbriel_core_dep]],
