@@ -3,7 +3,9 @@
 # running layout produces. A window that opens as the only tiled one is
 # configured in its alone state before its first buffer, at the alone width and
 # maximized. Both give way when a second window joins, and the width comes back
-# when that window goes away.
+# when that window goes away. A pinned window floats, so it never opens in the
+# alone state, whether its rules leave the tiled decision to the client or ask
+# for tiling on unpin.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
@@ -33,6 +35,19 @@ default_width = 0.75
 match.title = "^alone-max$"
 match.is_alone = true
 default_maximize = true
+
+[[window_rule]]
+match.title = "^pinned-"
+match.is_alone = true
+default_maximize = true
+
+[[window_rule]]
+match.title = "^pinned-"
+default_pinned = true
+
+[[window_rule]]
+match.title = "^pinned-tiled$"
+default_floating = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -118,6 +133,7 @@ wait_gone alone-width
 
 readonly MAX_LOG="$UMBRIEL_RUNTIME_DIR/alone-max.log"
 env LOG_CONFIGURES=1 "$STATE_CLIENT" alone-max > "$MAX_LOG" 2>&1 &
+alone_max_pid=$!
 wait_mapped alone-max
 
 # Each configure prints its size, then its states, so the lines after the last
@@ -136,6 +152,7 @@ fi
 maximized_width=$(sed -n '1s/^configured-size=\([0-9]\{1,\}\)x.*/\1/p' "$MAX_LOG")
 
 "$STATE_CLIENT" max-neighbor > "$UMBRIEL_RUNTIME_DIR/max-neighbor.log" 2>&1 &
+max_neighbor_pid=$!
 wait_mapped max-neighbor
 for _ in $(seq 40); do
   current_configure | grep -q '^configured-maximized$' || break
@@ -152,4 +169,35 @@ if ((shared_width >= maximized_width)); then
   exit 1
 fi
 
-echo "is_alone configured the width and the maximized state at open: width $alone -> $shared -> $restored, maximized width $maximized_width -> $shared_width"
+kill "$alone_max_pid" "$max_neighbor_pid"
+wait_gone alone-max
+wait_gone max-neighbor
+
+for title in pinned-default pinned-tiled; do
+  log="$UMBRIEL_RUNTIME_DIR/$title.log"
+  env LOG_CONFIGURES=1 "$STATE_CLIENT" "$title" > "$log" 2>&1 &
+  pid=$!
+  wait_mapped "$title"
+  if grep -q '^configured-maximized$' "$log"; then
+    echo "the pinned window '$title' opened in the alone state:"
+    cat "$log"
+    exit 1
+  fi
+  if [[ $(field_of "$title" floating) != true ]]; then
+    echo "the pinned window '$title' did not open floating"
+    exit 1
+  fi
+  "$UMBRIEL" msg window-toggle-pinned > /dev/null
+  for _ in $(seq 40); do
+    [[ $(field_of "$title" floating) == false ]] && break
+    sleep 0.1
+  done
+  if [[ $(field_of "$title" floating) != false ]]; then
+    echo "unpinning '$title' did not return it to tiling"
+    exit 1
+  fi
+  kill "$pid"
+  wait_gone "$title"
+done
+
+echo "is_alone configured the width and the maximized state at open, never on a pinned window: width $alone -> $shared -> $restored, maximized width $maximized_width -> $shared_width"

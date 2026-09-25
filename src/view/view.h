@@ -547,7 +547,6 @@ namespace umbriel {
     bool m_hasFullscreenRestoreBox = false;
     bool m_pinned = false;
     bool m_restoreTiledAfterUnpin = false;
-    bool m_restoreTiledAfterUnpinOverride = false;
     bool m_restorePinnedAfterFullscreen = false;
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen BEFORE the layout attach, so the client
     // never receives a transient column-sized configure (game engines latch it for input mapping and go dead outside

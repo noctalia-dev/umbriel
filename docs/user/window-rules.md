@@ -296,7 +296,9 @@ sets the column width. `default_scrolling_column_order` has no effect without
 
 `match.is_alone` matches when the window is the only tiled window on its
 workspace. Floating windows, empty columns, and windows on other workspaces do
-not count. Like focus, alone is evaluated while the window is open: opening one
+not count, and a window that opens with `default_pinned = true` opens floating,
+so it never opens in the alone state.
+Like focus, alone is evaluated while the window is open: opening one
 more window or closing the companion flips the rules right away.
 
 A lone window that should fill the viewport:
