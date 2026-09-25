@@ -5,9 +5,11 @@
 # each strip's scroll offset arrive on the other output unchanged, which the
 # translation of each window box by the output offset observes exactly. Swapping
 # back has to land on the original boxes, so an asymmetric transfer fails here
-# even when the first swap looked right.
+# even when the first swap looked right. The seat follows the focused window
+# across the swap, and the pointer follows the seat even without a follow-warp.
 set -euo pipefail
 
+readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 readonly OFFSET=1280
 
@@ -72,6 +74,28 @@ assert_box() {
 
 workspace_id_named() {
   "$WORKSPACE" --all | awk -F'\t' -v name="$1" '$2 == name { print $1; exit }'
+}
+
+# Asserts that exactly `title` on `workspace` holds seat activation and is also
+# its workspace's remembered focus.
+assert_seat_on() {
+  local workspace=$1 title=$2 want="$1 $2" actual=
+  for _ in $(seq 50); do
+    actual=$("$UMBRIEL" windows --json \
+      | jq -r '[.[] | select(.active)] | if length == 1 then "\(.[0].workspace) \(.[0].title)" else "count=\(length)" end')
+    if [[ $actual == "$want" ]]; then
+      break
+    fi
+    sleep 0.05
+  done
+  if [[ $actual != "$want" ]]; then
+    echo "expected the activated window to be '$want', got '$actual'"
+    exit 1
+  fi
+  if [[ $(field_of "$title" focused) != true ]]; then
+    echo "'$title' holds seat activation but is not its workspace's remembered focus"
+    exit 1
+  fi
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -148,6 +172,7 @@ assert_box lone "$right" 0 "$lone_before"
 
 # Dwindle keeps a split tree rather than columns, so its ratios only survive if
 # the transfer replays the layout's own state instead of rebuilding columns.
+accepts "workspace-switch:RIGHT/HEADLESS-2"
 accepts "workspace-set-layout:dwindle"
 accepts "workspace-switch:LEFT/HEADLESS-1"
 accepts "workspace-set-layout:dwindle"
@@ -167,4 +192,20 @@ assert_box stack-bottom "$right" "$OFFSET" "$bottom_dwindle"
 assert_box wide "$right" "$OFFSET" "$wide_dwindle"
 assert_box lone "$left" "-$OFFSET" "$lone_dwindle"
 
-echo "active workspace swap exchanged both outputs' windows with their scrolling widths, row splits, scroll offset and dwindle split ratios intact"
+# Without a follow-warp (the default) the pointer still has to follow the seat
+# to the output the focused window travelled to.
+"$POINTER" 2560 720 move 640 360
+accepts "window-focus:$(field_of lone id)"
+assert_seat_on "$left" lone
+
+accepts workspace-swap-active-output-next
+wait_for_workspace lone "$right"
+assert_seat_on "$right" lone
+
+# A swap resolves its source from the pointer, and only the right output has a
+# neighbour to its left, so this is accepted only if the pointer followed.
+accepts workspace-swap-active-output-left
+wait_for_workspace lone "$left"
+assert_seat_on "$left" lone
+
+echo "active workspace swap exchanged both outputs' windows with their scrolling widths, row splits, scroll offset and dwindle split ratios intact, and carried the seat and pointer with the focused window"

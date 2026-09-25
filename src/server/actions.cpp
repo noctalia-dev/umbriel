@@ -1589,24 +1589,12 @@ namespace umbriel {
         sourceWs->setFocusedView(sourceWs->allViews().front());
       }
 
-      // Seat focus belongs to the output the swap was invoked from, not to the window that happened to hold it.
-      // `sourceOutput` is the pointer's output, so following the window's identity across the swap would leave the
-      // focus ring, xdg activation, and keyboard focus on `targetOutput` while the pointer, this workspace's
-      // remembered focus, and every pointer-resolved action stay here. Only a source workspace left with nothing to
-      // focus keeps the travelling window, since dropping keyboard focus entirely is worse than holding it across
-      // the swap.
-      View* seatTarget = seatFocus;
-      if (seatTarget == nullptr || !seatTarget->mapped() || seatTarget->workspace() == targetWs) {
-        View* local = sourceWs->focusedView();
-        if (local != nullptr && local->mapped()) {
-          seatTarget = local;
-        }
-      }
       // Gesture keeps the seat focus where it is without revealing its column: the restored scroll offset above is
       // what both strips must settle on.
-      if (seatTarget != nullptr && seatTarget->mapped()) {
+      View* seatTarget = seatFocus != nullptr && seatFocus->mapped() ? seatFocus : sourceWs->focusedView();
+      if (seatTarget != nullptr) {
         server.focusView(seatTarget, FocusReason::Gesture);
-        maybeWarpCursorToWindow(server, seatTarget);
+        finishWorkspaceTransfer(server, *seatTarget);
       }
 
       sourceWs->markArrange(true);
