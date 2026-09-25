@@ -97,6 +97,8 @@ namespace umbriel {
     void resetTearingState();
     void applyDirectScanoutConfig();
     void applyCursorConfig();
+    // Attach-render locks held by capture consumers, excluding our own animation lock.
+    [[nodiscard]] int externalRenderLockCount() const;
     // Re-evaluate fullscreen-controlled VRR after a view or workspace changes.
     void updateVrr();
     // Re-evaluate automatic HDR after surface color, fullscreen, visibility,

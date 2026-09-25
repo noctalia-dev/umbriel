@@ -113,6 +113,7 @@ namespace umbriel {
     double lx = m_cursor->x + (constraint->current.cursor_hint.x - sx);
     double ly = m_cursor->y + (constraint->current.cursor_hint.y - sy);
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
+    damagePlaneCursorOutputs();
     // Keep wlroots' surface-local pointer state in sync with the layout
     // cursor, avoiding a synthetic jump on the next pointer rebase.
     wlr_seat_pointer_warp(seat, constraint->current.cursor_hint.x, constraint->current.cursor_hint.y);

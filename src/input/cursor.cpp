@@ -1378,7 +1378,24 @@ namespace umbriel {
 
   void Cursor::handleTouchFrame() { wlr_seat_touch_notify_frame(m_server->seat()->wlr()); }
 
+  void Cursor::damagePlaneCursorOutputs() {
+    for (const auto& output : m_server->outputs()) {
+      const wlr_output_cursor* planeCursor = output->wlr()->hardware_cursor;
+      if (planeCursor == nullptr || !planeCursor->visible || output->externalRenderLockCount() == 0) {
+        continue;
+      }
+      const wlr_box box{
+          .x = static_cast<int>(planeCursor->x - planeCursor->hotspot_x),
+          .y = static_cast<int>(planeCursor->y - planeCursor->hotspot_y),
+          .width = static_cast<int>(planeCursor->width),
+          .height = static_cast<int>(planeCursor->height),
+      };
+      wlr_scene_output_damage_box(output->sceneOutput(), &box);
+    }
+  }
+
   void Cursor::processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange) {
+    damagePlaneCursorOutputs();
     updateHotCorner();
     if (auto* grab = std::get_if<ScrollDragGrab>(&m_grab)) {
       if (m_server->sessionLocked()) {
@@ -1641,6 +1658,7 @@ namespace umbriel {
 
   void
   Cursor::processTabletMotion(uint32_t timeMsec, double oldX, double oldY, TabletToolState* state, wlr_tablet* tablet) {
+    damagePlaneCursorOutputs();
     wlr_tablet_v2_tablet* v2tablet = m_server->tabletV2FromWlr(tablet);
     wlr_seat* seat = m_server->seat()->wlr();
     // Emulation wholesale: no tablet-v2 handle for this device, or a compositor state (overview, grab, lock, drag) that

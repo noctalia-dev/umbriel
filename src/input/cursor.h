@@ -235,6 +235,8 @@ namespace umbriel {
     void handleTabletToolButton(void* data);
 
     void warpTo(double lx, double ly, bool allowFocusChange);
+    // Capture consumers cannot see the cursor plane, so a plane-cursor move has to damage the scene while they hold it.
+    void damagePlaneCursorOutputs();
     void processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange = true);
     void processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
     void updatePointerOutput(bool allowFocusChange = true);

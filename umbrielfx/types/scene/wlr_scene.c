@@ -3214,20 +3214,32 @@ static void scene_output_handle_commit(struct wl_listener* listener, void* data)
     scene_output->gamma_lut_changed = true;
   }
 }
-
-static void scene_output_handle_damage(struct wl_listener* listener, void* data) {
-  struct wlr_scene_output* scene_output = wl_container_of(listener, scene_output, output_damage);
+// Convert output damage to scene coordinates once.
+static void scene_output_damage_output_space(struct wlr_scene_output* scene_output, const pixman_region32_t* damage) {
   struct wlr_output* output = scene_output->output;
-  struct wlr_output_event_damage* event = data;
 
   int width, height;
   wlr_output_transformed_resolution(output, &width, &height);
 
+  pixman_region32_t transformed;
+  pixman_region32_init(&transformed);
+  pixman_region32_copy(&transformed, damage);
+  wlr_region_transform(&transformed, &transformed, wlr_output_transform_invert(output->transform), width, height);
+  scene_output_damage(scene_output, &transformed);
+  pixman_region32_fini(&transformed);
+}
+
+static void scene_output_handle_damage(struct wl_listener* listener, void* data) {
+  struct wlr_scene_output* scene_output = wl_container_of(listener, scene_output, output_damage);
+  struct wlr_output_event_damage* event = data;
+
+  scene_output_damage_output_space(scene_output, event->damage);
+}
+
+void wlr_scene_output_damage_box(struct wlr_scene_output* scene_output, const struct wlr_box* box) {
   pixman_region32_t damage;
-  pixman_region32_init(&damage);
-  pixman_region32_copy(&damage, event->damage);
-  wlr_region_transform(&damage, &damage, wlr_output_transform_invert(output->transform), width, height);
-  scene_output_damage(scene_output, &damage);
+  pixman_region32_init_rect(&damage, box->x, box->y, box->width, box->height);
+  scene_output_damage_output_space(scene_output, &damage);
   pixman_region32_fini(&damage);
 }
 

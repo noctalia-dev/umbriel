@@ -124,6 +124,12 @@ int main(void) {
 	update(real, desktop_output);
 	frame(real, desktop_output);
 	CHECK(callbacks == 4);
+	// Plane-cursor damage must arrive unchanged on an untransformed output.
+	pixman_region32_clear(&capture_output->pending_commit_damage);
+	struct wlr_box cursor_box = {.x = 40, .y = 30, .width = 24, .height = 24};
+	wlr_scene_output_damage_box(capture_output, &cursor_box);
+	pixman_box32_t *extents = pixman_region32_extents(&capture_output->pending_commit_damage);
+	CHECK(extents->x1 == 40 && extents->y1 == 30 && extents->x2 == 64 && extents->y2 == 54);
 	wl_signal_emit_mutable(&surface.events.destroy, &surface);
 	wlr_scene_node_destroy(&desktop->tree.node);
 	wlr_scene_node_destroy(&mirror->tree.node);

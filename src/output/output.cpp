@@ -651,6 +651,10 @@ namespace umbriel {
     return true;
   }
 
+  int Output::externalRenderLockCount() const {
+    return m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
+  }
+
   void Output::applyCursorConfig() {
     const bool lockSoftwareCursor = !config().input.cursor.hardwareCursor;
     if (lockSoftwareCursor == m_softwareCursorLocked) {
@@ -1026,7 +1030,7 @@ namespace umbriel {
       colorManager->applySurfaceDescriptions();
     }
 
-    const int externalRenderLocks = m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
+    const int externalRenderLocks = externalRenderLockCount();
     const bool captureActive = externalRenderLocks > 0;
     View* tearingView = tearingCandidate();
     const bool tearingPolicyRequested = tearingEligible(tearingView);
