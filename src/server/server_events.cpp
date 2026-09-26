@@ -2640,6 +2640,9 @@ namespace umbriel {
       }
       // Detach wlroots' later destroy listener so it cannot clear the replacement.
       wlr_seat_set_keyboard(seat, replacement);
+      // Publish the replacement keymap before its masks, or neutralize the
+      // pointer-only client before removing the final keyboard capability.
+      m_seat->notifyPointerModifiers(replacement == nullptr);
     }
     if (sourceRemoved) {
       m_keyboardLayoutSource = nullptr;
