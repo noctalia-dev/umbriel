@@ -1732,6 +1732,9 @@ namespace umbriel {
               .boolean("left_handed", in.tablet.leftHanded);
           in.tablet.calibrationMatrix = readCalibrationMatrix(t, "input.tablet");
         });
+        s.sub("touch", [&](Section& t) {
+          t.boolean("enabled", in.touch.enabled).text("map_to_output", in.touch.mapToOutput);
+        });
         s.sub("cursor", [&](Section& c) {
           c.text("theme", in.cursor.theme)
               .integer("size", 1, 512, in.cursor.size)

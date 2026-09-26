@@ -62,6 +62,11 @@ numlock_toggle = true
 # [input.focus]
 # follows_mouse = true
 
+# Confine touch input to one display.
+# [input.touch]
+# enabled = true
+# map_to_output = "eDP-1"
+
 # ==============================================================================
 # Keybinds
 # Defining this table replaces the built-in bind set, so every active bind that
