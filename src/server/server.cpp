@@ -531,7 +531,9 @@ namespace umbriel {
     wlr_screencopy_manager_v1_create(m_display);
     m_exportDmabufManager = wlr_export_dmabuf_manager_v1_create(m_display);
     wlr_ext_output_image_capture_source_manager_v1_create(m_display, 1);
-    wlr_ext_image_copy_capture_manager_v1_create(m_display, 1);
+    m_copyCaptureManager = wlr_ext_image_copy_capture_manager_v1_create(m_display, 1);
+    m_copyNewSession.notify = onCopyNewSession;
+    wl_signal_add(&m_copyCaptureManager->events.new_session, &m_copyNewSession);
 
     // Create the manager so apply/test listeners stay wired, but leave heads empty (see updateOutputManagerConfig).
     // Advertising a full configuration on bind currently takes down the desktop shell from this flake.
@@ -562,13 +564,85 @@ namespace umbriel {
     wl_signal_add(&m_backend->events.new_output, &m_newOutput);
     m_newInput.notify = onNewInput;
     wl_signal_add(&m_backend->events.new_input, &m_newInput);
-
     wlr_log(WLR_INFO, "mod key: %s (%s session)", m_nested ? "Alt" : "Super", m_nested ? "nested" : "native");
     kLog.info("mod key: {} ({} session)", m_nested ? "Alt" : "Super", m_nested ? "nested" : "native");
+  }
+  namespace {
+    // wlroots owns ext-image-copy-capture cursor sessions and never announces them, so the only visible trace of "this
+    // client asked for cursor metadata" is the protocol resource it created. ponytail: keyed on the client, not on the
+    // source, so a client recording several outputs with one cursor session also paces the others; drop this when
+    // wlroots exposes the cursor session.
+    constexpr std::string_view kCursorSessionInterface = "ext_image_copy_capture_cursor_session_v1";
+    wl_iterator_result probeCursorSession(wl_resource* resource, void* data) {
+      auto* wantsCursor = static_cast<bool*>(data);
+      const char* klass = wl_resource_get_class(resource);
+      if (klass != nullptr && std::string_view(klass) == kCursorSessionInterface) {
+        *wantsCursor = true;
+        return WL_ITERATOR_STOP;
+      }
+      return WL_ITERATOR_CONTINUE;
+    }
+  } // namespace
+
+  void Server::onCopyNewSession(wl_listener* listener, void* data) {
+    Server* self = wl_container_of(listener, self, m_copyNewSession);
+    auto* session = static_cast<wlr_ext_image_copy_capture_session_v1*>(data);
+    if (session == nullptr) {
+      return;
+    }
+    auto track = std::make_unique<CopyCaptureTrack>();
+    track->owner = self;
+    track->session = session;
+    track->destroy.notify = onCopySessionDestroy;
+    wl_signal_add(&session->events.destroy, &track->destroy);
+    self->m_copyCaptureSessions.push_back(std::move(track));
+  }
+
+  bool Server::hasCopyCaptureFor(const wlr_output* output) const {
+    if (output == nullptr) {
+      return false;
+    }
+    for (const auto& track : m_copyCaptureSessions) {
+      const auto* session = track->session;
+      if (session == nullptr || session->source == nullptr) {
+        continue;
+      }
+      if (wlr_output_try_from_ext_image_capture_source_v1(session->source) != output) {
+        continue;
+      }
+      wl_client* client = wl_resource_get_client(session->resource);
+      if (client == nullptr) {
+        continue;
+      }
+      bool wantsCursor = false;
+      wl_client_for_each_resource(client, probeCursorSession, &wantsCursor);
+      if (wantsCursor) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Server::onCopySessionDestroy(wl_listener* listener, void* /*data*/) {
+    CopyCaptureTrack* track = wl_container_of(listener, track, destroy);
+    Server* self = track->owner;
+    wl_list_remove(&track->destroy.link);
+    std::erase_if(self->m_copyCaptureSessions, [track](const std::unique_ptr<CopyCaptureTrack>& entry) {
+      return entry.get() == track;
+    });
   }
 
   Server::~Server() {
     m_stopping = true;
+    wl_list_remove(&m_copyNewSession.link);
+    // Unlink each session's destroy listener before freeing its track --
+    // otherwise a session that outlives this point in teardown still holds a
+    // wl_listener pointing into memory we're about to free, and its destroy
+    // signal firing later is a use-after-free.
+    for (const auto& track : m_copyCaptureSessions) {
+      wl_list_remove(&track->destroy.link);
+    }
+    m_copyCaptureSessions.clear();
     if (m_rendererRecoveryIdle != nullptr) {
       wl_event_source_remove(m_rendererRecoveryIdle);
       m_rendererRecoveryIdle = nullptr;

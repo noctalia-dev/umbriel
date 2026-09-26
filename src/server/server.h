@@ -34,6 +34,9 @@ struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
 struct wlr_export_dmabuf_manager_v1;
+struct wlr_screencopy_manager_v1;
+struct wlr_ext_image_copy_capture_manager_v1;
+struct wlr_ext_image_copy_capture_session_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_idle_inhibit_manager_v1;
 struct wlr_idle_notifier_v1;
@@ -151,6 +154,13 @@ namespace umbriel {
     [[nodiscard]] const wlr_security_context_v1_state* clientSecurityContext(const wl_client* client) const;
     [[nodiscard]] wlr_color_manager_v1* colorManager() const { return m_colorManager; }
     [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
+    struct CopyCaptureTrack {
+      Server* owner = nullptr;
+      wlr_ext_image_copy_capture_session_v1* session = nullptr;
+      wl_listener destroy{};
+    };
+    // Cursor-metadata capture sweep; plain per-output snapshot compare.
+    [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
     [[nodiscard]] wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     [[nodiscard]] WineColorManager* wineColorManager() const { return m_wineColorManager.get(); }
     [[nodiscard]] const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
@@ -563,6 +573,11 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_list_v1* m_extForeignToplevelList = nullptr;
     wlr_ext_foreign_toplevel_image_capture_source_manager_v1* m_toplevelCaptureSourceManager = nullptr;
     wlr_export_dmabuf_manager_v1* m_exportDmabufManager = nullptr;
+    wlr_ext_image_copy_capture_manager_v1* m_copyCaptureManager = nullptr;
+    wl_listener m_copyNewSession{};
+    std::vector<std::unique_ptr<CopyCaptureTrack>> m_copyCaptureSessions{};
+    static void onCopyNewSession(wl_listener* listener, void* data);
+    static void onCopySessionDestroy(wl_listener* listener, void* data);
     wlr_tearing_control_manager_v1* m_tearingControlManager = nullptr;
     wlr_ext_workspace_manager_v1* m_workspaceManager = nullptr;
     wlr_session_lock_manager_v1* m_sessionLockManager = nullptr;

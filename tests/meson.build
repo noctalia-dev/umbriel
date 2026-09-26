@@ -20,6 +20,7 @@ unit_tests = [
   ['output-direction', ['unit/output_direction.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],
   ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
+  ['cursor-plane-pace', ['unit/cursor_plane_pace.cpp'], []],
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],

@@ -84,6 +84,14 @@ skip and decides eligibility from window state instead of render-list
 cardinality.
 
 ## Per-frame work outside the render pass
+### Hardware-cursor capture pacing
+
+With `hardware_cursor=true` the cursor lives on the plane, excluded from the
+render pass: cursor-only moves set `needs_frame` with empty damage, so
+commit-fed capture keeps stale cursor metadata. `paceCursorPlaneTransition()`
+damages old box ∪ new box on plane change with cursor-metadata capture
+active, plus a `1x1` wakeup when the old box clipped away. Otherwise idle.
+Covered by `capture_pacing` + `746_cursor_capture_pacing.sh`.
 
 `Output::handleFrame` (`output.cpp:925`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every

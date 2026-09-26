@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/dirty.h"
+#include "output/cursor_plane_pace.h"
 #include "output/frame_schedule.h"
 
 #include <cstdint>
@@ -97,8 +98,15 @@ namespace umbriel {
     void resetTearingState();
     void applyDirectScanoutConfig();
     void applyCursorConfig();
+    // Compare live hardware_cursor against snapshot, damage old box ∪ new
+    // box when it changed and cursor-metadata capture needs it, schedule
+    // the frame so an idle source actually wakes. Returns true when it
+    // paced. Single-threaded, non-blocking, bounded per output.
+    bool paceCursorPlaneTransition();
     // Attach-render locks held by capture consumers, excluding our own animation lock.
     [[nodiscard]] int externalRenderLockCount() const;
+    // True only for sessions needing separate cursor metadata
+    [[nodiscard]] bool needsCursorCapturePacing() const;
     // Re-evaluate fullscreen-controlled VRR after a view or workspace changes.
     void updateVrr();
     // Re-evaluate automatic HDR after surface color, fullscreen, visibility,
@@ -163,6 +171,10 @@ namespace umbriel {
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
+    umbriel_cursor_plane_state m_lastCursorPlane{};
+    // wlroots notifies compositors through needs_frame after every plane mutation; frame is not scheduled for those.
+    wl_listener m_needsFrame{};
+    static void onNeedsFrame(wl_listener* listener, void* data);
     bool m_desktopEnabled = true;
     bool m_dpmsOff = false;
     bool m_hdrGammaWarningLogged = false;

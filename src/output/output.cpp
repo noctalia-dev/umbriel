@@ -8,6 +8,7 @@
 #include "input/seat.h"
 #include "layer/layer_surface.h"
 #include "lock/session_lock.h"
+#include "output/cursor_plane_pace.h"
 #include "output/frame_schedule.h"
 #include "output/hdr_format.h"
 #include "output/identity.h"
@@ -58,6 +59,8 @@ namespace umbriel {
 
     m_frame.notify = onFrame;
     wl_signal_add(&m_output->events.frame, &m_frame);
+    m_needsFrame.notify = onNeedsFrame;
+    wl_signal_add(&m_output->events.needs_frame, &m_needsFrame);
 
     m_requestState.notify = onRequestState;
     wl_signal_add(&m_output->events.request_state, &m_requestState);
@@ -655,6 +658,56 @@ namespace umbriel {
     return m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0);
   }
 
+  bool Output::paceCursorPlaneTransition() {
+    if (m_output == nullptr || m_sceneOutput == nullptr) {
+      return false;
+    }
+    const wlr_output_cursor* plane = m_output->hardware_cursor;
+    umbriel_cursor_plane_state now{
+        .valid = true,
+        .enabled = plane != nullptr && plane->enabled,
+        .visible = plane != nullptr && plane->visible,
+        .x = plane != nullptr ? plane->x : 0,
+        .y = plane != nullptr ? plane->y : 0,
+        .width = plane != nullptr ? static_cast<int>(plane->width) : 0,
+        .height = plane != nullptr ? static_cast<int>(plane->height) : 0,
+        .hotspot_x = plane != nullptr ? plane->hotspot_x : 0,
+        .hotspot_y = plane != nullptr ? plane->hotspot_y : 0,
+        .image = plane != nullptr ? m_output->cursor_front_buffer : nullptr,
+    };
+    if (m_softwareCursorLocked) {
+      return false;
+    }
+    const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(
+        &m_lastCursorPlane, now, needsCursorCapturePacing(), m_output->width, m_output->height
+    );
+    if (!damage.paced) {
+      return false;
+    }
+    if (damage.has_leave) {
+      wlr_scene_output_damage_box(m_sceneOutput, &damage.leave_box);
+    }
+    if (damage.has_enter) {
+      wlr_scene_output_damage_box(m_sceneOutput, &damage.enter_box);
+    }
+    if (damage.has_wake) {
+      wlr_scene_output_damage_box(m_sceneOutput, &damage.wake_box);
+    }
+    // Source wakeup: wlroots may have flagged only the destination.
+    wlr_output_schedule_frame(m_output);
+    return true;
+  }
+
+  bool Output::needsCursorCapturePacing() const {
+    if (m_output == nullptr) {
+      return false;
+    }
+    // Any live ext-image-copy session for this output. Source mapping uses
+    // the public wlr_output_try_from_ext_image_capture_source_v1(); no
+    // WLR_PRIVATE access. Export-dmabuf is deliberately absent here.
+    return m_server->hasCopyCaptureFor(m_output);
+  }
+
   void Output::applyCursorConfig() {
     const bool lockSoftwareCursor = !config().input.cursor.hardwareCursor;
     if (lockSoftwareCursor == m_softwareCursorLocked) {
@@ -702,6 +755,7 @@ namespace umbriel {
       wl_list_remove(&m_requestState.link);
       wl_list_remove(&m_present.link);
       wl_list_remove(&m_destroy.link);
+      wl_list_remove(&m_needsFrame.link);
     }
     // Workspace destructors reparent leftover views onto the server trees, so the group has to go before the roots it
     // hangs under.
@@ -886,6 +940,12 @@ namespace umbriel {
     Output* self;
     self = wl_container_of(listener, self, m_frame);
     self->handleFrame();
+  }
+
+  void Output::onNeedsFrame(wl_listener* listener, void* /*data*/) {
+    Output* self;
+    self = wl_container_of(listener, self, m_needsFrame);
+    self->paceCursorPlaneTransition();
   }
 
   void Output::onRequestState(wl_listener* listener, void* data) {
@@ -1084,6 +1144,10 @@ namespace umbriel {
     // "nothing to render" path, they never commit again -> damage stays clean -> wlr_scene_output_needs_frame returns
     // false forever -> compositor parks in epoll_wait. (Reproducible with any mailbox/FIFO Vulkan game.)
     bool commitFailed = false;
+    // Cursor-plane backstop for wlroots-internal transitions (Xcursor timer,
+    // client surface commit, output-state changes). Synchronous sweeps after
+    // owned changes (§2) wake idle sources immediately; this catches the rest.
+    paceCursorPlaneTransition();
     const bool sceneChanged = wlr_scene_output_needs_frame(m_sceneOutput);
     if (sceneChanged) {
       // Scene motion under a stationary cursor must reach the client before its next press.
@@ -1280,10 +1344,12 @@ namespace umbriel {
     wl_list_remove(&m_requestState.link);
     wl_list_remove(&m_present.link);
     wl_list_remove(&m_destroy.link);
+    wl_list_remove(&m_needsFrame.link);
     m_frame.link.next = nullptr;
     m_requestState.link.next = nullptr;
     m_present.link.next = nullptr;
     m_destroy.link.next = nullptr;
+    m_needsFrame.link.next = nullptr;
     if (m_optimizedBlur != nullptr && m_server->scene() != nullptr) {
       wlr_scene_node_destroy(&m_optimizedBlur->node);
     }
