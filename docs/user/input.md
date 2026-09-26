@@ -190,8 +190,11 @@ sensitivity = 0.0
 ```
 
 Each rule inherits its keyboard, touchpad, or mouse class settings and replaces
-only the keys it contains. Duplicate rules for the same device name are
-rejected.
+only the keys it contains. A rule accepts every keyboard, touchpad, and mouse
+key, including `options`, `scroll_button`, and `scroll_button_lock`, except the
+session-wide `numlock_toggle`, `track_layout`, `disable_on_external_mouse`,
+`scroll_factor`, and `scroll_wheel_step`. Duplicate rules for the same device
+name are rejected.
 
 ### Tablet
 

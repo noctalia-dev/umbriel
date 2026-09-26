@@ -119,3 +119,6 @@ umbriel subscribe workspaces |
 `umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and
 `umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
 `umbriel validate` checks a configuration without a running compositor.
+`umbriel config schema` counts the configuration keys the installed binary
+accepts, per section, also without a running compositor. With `--json` it
+describes each key with its type, range, accepted values, and default.

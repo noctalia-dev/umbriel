@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/config_diag.h"
+#include "config/schema_recorder.h"
 
 #include <array>
 #include <optional>
@@ -45,6 +46,7 @@ namespace umbriel {
     // Descend into a nested table, if it is there and is a table. `fn` takes a `Section&`. Taking a callback rather
     // than returning a Section keeps this type immovable, which is what makes the destructor-based warning safe.
     template <typename F> Section& sub(std::string_view key, F&& fn) {
+      note(key, [] { return KeySpec(SchemaType::Table); });
       const toml::table* nested = nestedTable(key);
       if (nested != nullptr) {
         Section child(*nested, qualified(key), m_diagnostics);
@@ -55,7 +57,10 @@ namespace umbriel {
 
     // Claim a key and hand back its raw node, for parsing that does not fit the shapes above. Preferred over `node` +
     // `custom`: fetching is what marks the key known, so the two cannot come apart.
-    [[nodiscard]] const toml::node* take(std::string_view key) { return claim(key); }
+    [[nodiscard]] const toml::node* take(std::string_view key) {
+      note(key, [] { return KeySpec(); });
+      return claim(key);
+    }
     // The raw node without claiming, when the key is claimed elsewhere.
     [[nodiscard]] const toml::node* node(std::string_view key) const { return m_table.get(key); }
     // The table itself, for bespoke readers that predate this class.
@@ -74,6 +79,13 @@ namespace umbriel {
     [[nodiscard]] bool allKeysKnown() const;
 
   private:
+    // Tell the schema recorder, when one is running, what `key` accepts. `describe` builds the KeySpec only then, so a
+    // normal load does not pay for copying targets or formatting colors it would throw away.
+    template <typename Describe> void note(std::string_view key, Describe&& describe) const {
+      if (SchemaRecorder* recorder = SchemaRecorder::active()) {
+        recorder->record(qualified(key), std::forward<Describe>(describe)());
+      }
+    }
     [[nodiscard]] std::string qualified(std::string_view key) const;
     const toml::node* claim(std::string_view key);
     [[nodiscard]] const toml::table* nestedTable(std::string_view key);
