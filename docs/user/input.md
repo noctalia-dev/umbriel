@@ -213,6 +213,19 @@ Focused-window mapping takes precedence over focused-output mapping, which
 takes precedence over `map_to_output`. When the selected target is unavailable,
 the next configured mapping is used.
 
+### Touch
+
+```toml
+[input.touch]
+enabled = true
+map_to_output = "eDP-1"
+```
+
+| Key | Description |
+| --- | --- |
+| `enabled` | Enable or disable touch input. |
+| `map_to_output` | Confine touch input to a connector or monitor name. |
+
 ### Cursor
 
 ```toml

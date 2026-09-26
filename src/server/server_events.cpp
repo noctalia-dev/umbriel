@@ -557,6 +557,9 @@ namespace umbriel {
       for (const auto& tablet : m_tabletDevices) {
         applyTabletConfig(*tablet);
       }
+      for (const auto& touch : m_touchDevices) {
+        applyTouchConfig(*touch);
+      }
       for (const auto& pad : m_tabletPads) {
         applyTabletPadConfig(*pad);
       }
@@ -1584,6 +1587,7 @@ namespace umbriel {
     touch->destroy.notify = onTouchDestroy;
     wl_signal_add(&device->events.destroy, &touch->destroy);
     m_cursor->attachInputDevice(device);
+    applyTouchConfig(*touch);
     m_touchDevices.push_back(std::move(touch));
     kLog.info("input: added touch device '{}'", deviceName(device));
   }
@@ -1691,6 +1695,26 @@ namespace umbriel {
     remapTablets();
   }
 
+  void Server::applyTouchConfig(TouchDevice& touch) {
+    if (wlr_input_device_is_libinput(touch.device) == 0) {
+      kLog.debug("input: touch device '{}' is not a libinput device; touch settings skipped", deviceName(touch.device));
+      return;
+    }
+    libinput_device* libinputDevice = wlr_libinput_get_device_handle(touch.device);
+    if (libinputDevice == nullptr) {
+      return;
+    }
+    const Config::Input::Touch& cfg = config().input.touch;
+    if ((libinput_device_config_send_events_get_modes(libinputDevice) & LIBINPUT_CONFIG_SEND_EVENTS_DISABLED) != 0) {
+      libinput_device_config_send_events_set_mode(
+          libinputDevice, cfg.enabled ? LIBINPUT_CONFIG_SEND_EVENTS_ENABLED : LIBINPUT_CONFIG_SEND_EVENTS_DISABLED
+      );
+    } else if (!cfg.enabled) {
+      kLog.warn("input: '{}' cannot be disabled", deviceName(touch.device));
+    }
+    remapTouches();
+  }
+
   void Server::addTabletPad(wlr_input_device* device) {
     auto pad = std::make_unique<TabletPadDevice>();
     pad->server = this;
@@ -1784,6 +1808,19 @@ namespace umbriel {
       }
       wlr_cursor_map_input_to_region(m_cursor->wlr(), tablet->device, &region);
       wlr_cursor_map_input_to_output(m_cursor->wlr(), tablet->device, output);
+    }
+  }
+
+  void Server::remapTouches() {
+    const Config::Input::Touch& cfg = config().input.touch;
+    for (const auto& touch : m_touchDevices) {
+      wlr_output* output = nullptr;
+      if (output == nullptr && !cfg.mapToOutput.empty()) {
+        if (Output* out = outputFromName(cfg.mapToOutput)) {
+          output = out->wlr();
+        }
+      }
+      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, output);
     }
   }
 

@@ -865,6 +865,13 @@ namespace umbriel {
         bool operator==(const Tablet&) const = default;
       } tablet;
 
+      struct Touch {
+        bool enabled = true;
+        // empty = no static output mapping
+        std::string mapToOutput;
+        bool operator==(const Touch&) const = default;
+      } touch;
+
       struct Device {
         std::string name;
         std::optional<std::string> layout;
