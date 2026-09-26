@@ -59,9 +59,12 @@ namespace umbriel {
             "{}{}{}\t{}\t[{} {}x{}{:+}{:+}]{}{}{}",
             entry.value("focused", false) ? "*" : (entry.value("urgent", false) ? "!" : " "),
             entry.value("xwayland", false) ? "[Xwayland] " : "", appId.empty() ? "-" : appId,
-            title.empty() ? "-" : title, entry.value("floating", false) ? "float" : "tile", entry.value("w", 0),
-            entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix, contentTypeSuffix,
-            scratchpadSuffix
+            title.empty() ? "-" : title,
+            entry.value("floating", false)     ? "float"
+                : entry.value("tabbed", false) ? "tab"
+                                               : "tile",
+            entry.value("w", 0), entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix,
+            contentTypeSuffix, scratchpadSuffix
         );
       }
     }
@@ -357,6 +360,10 @@ namespace umbriel {
       entry["xdg_tag"] = v->xdgTag().value_or("");
       entry["content_type"] = contentTypeName(v->contentType());
       entry["floating"] = v->floating();
+      // Membership of a tabbed column, and whether this tab is one it is not showing.
+      const Workspace* home = v->workspace();
+      entry["tabbed"] = home != nullptr && home->layout().tabbedColumnOf(v.get()) != nullptr;
+      entry["tab_hidden"] = v->tabHidden();
       // Workspace-local remembered focus. Seat-global activation is reported
       // separately by `active`; scratchpad windows have no workspace focus.
       entry["focused"] = v->workspace() != nullptr && v->workspace()->focusedView() == v.get();

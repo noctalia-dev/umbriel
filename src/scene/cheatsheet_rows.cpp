@@ -286,6 +286,8 @@ namespace {
     case A::WindowFocusOrOutputRight:
     case A::ColumnFocusFirst:
     case A::ColumnFocusLast:
+    case A::ColumnFocusTabNext:
+    case A::ColumnFocusTabPrevious:
     case A::WindowFocusUp:
     case A::WindowFocusDown:
     case A::WindowFocusOrWorkspaceUp:
@@ -353,6 +355,7 @@ namespace {
     case A::WindowClose:
     case A::ToggleFloating:
     case A::ToggleMaximize:
+    case A::ColumnToggleTabbed:
     case A::ToggleMaximizeToEdges:
     case A::ToggleFullscreen:
     case A::TogglePinned:

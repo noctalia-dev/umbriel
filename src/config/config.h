@@ -128,6 +128,11 @@ namespace umbriel {
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
+    struct Tabs {
+      // Logical height of the bar above a tabbed column.
+      int barHeight = 24;
+      bool operator==(const Tabs&) const = default;
+    } tabs;
     // Derived from gap + appearance border widths; set by resolve function.
     int totalGap = 0; // gap + 2 * totalBorderWidth
     int edgePad = 0;  // gap + totalBorderWidth
@@ -533,6 +538,19 @@ namespace umbriel {
         bool operator==(const Overview&) const = default;
       } overview;
 
+      struct TabBar {
+        // The bar itself, behind every tab but the active one.
+        std::array<float, 4> background{0.1019608F, 0.1019608F, 0.1215686F, 1.0F};
+        std::array<float, 4> text{0.5411765F, 0.5411765F, 0.5725490F, 1.0F};
+        // The active tab of the focused column.
+        std::array<float, 4> active{0.4784314F, 0.6392157F, 1.0F, 1.0F};
+        std::array<float, 4> activeText{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        // The active tab of any other column.
+        std::array<float, 4> activeUnfocused{0.1607843F, 0.1607843F, 0.2F, 1.0F};
+        std::array<float, 4> activeUnfocusedText{0.9098039F, 0.9098039F, 0.9176471F, 1.0F};
+        bool operator==(const TabBar&) const = default;
+      } tabBar;
+
       bool operator==(const Colors&) const = default;
     } colors;
 
@@ -723,6 +741,11 @@ namespace umbriel {
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;
+      struct Tabs {
+        int barHeight = 24;
+        int fontSize = 10;
+        bool operator==(const Tabs&) const = default;
+      } tabs;
       bool operator==(const Layout&) const = default;
     } layout;
 

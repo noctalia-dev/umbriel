@@ -77,8 +77,29 @@ namespace umbriel {
     if (column < 0 || column == columnOf(from)) {
       return {};
     }
-    return columns()[static_cast<size_t>(column)].views;
+    const Column& peers = columns()[static_cast<size_t>(column)];
+    // Entering a tabbed column lands on the tab it shows, not on the most recently focused hidden one.
+    if (peers.tabbed && peers.activeTab < peers.views.size()) {
+      return {peers.views[peers.activeTab]};
+    }
+    return peers.views;
   }
+
+  const Column* Layout::tabbedColumnOf(const View* view) const {
+    const int column = view != nullptr ? columnOf(view) : -1;
+    if (column < 0 || column >= static_cast<int>(columns().size())) {
+      return nullptr;
+    }
+    const Column& candidate = columns()[static_cast<size_t>(column)];
+    return candidate.tabbed ? &candidate : nullptr;
+  }
+
+  bool Layout::tabHidden(const View* view) const {
+    const Column* column = tabbedColumnOf(view);
+    return column != nullptr && column->activeTab < column->views.size() && column->views[column->activeTab] != view;
+  }
+
+  int Layout::tabBarReserve() const { return m_config != nullptr ? m_config->tabs.barHeight + m_config->gap : 0; }
 
   View* directionalNeighbor(std::span<const LayoutTarget> targets, const View* view, bool horizontal, int direction) {
     if (view == nullptr || direction == 0) {

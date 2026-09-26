@@ -207,6 +207,44 @@ In center mode, stack windows are balanced between the left and right sides.
 Primary extent actions resize the master area. Secondary extent actions resize
 rows within an area.
 
+## Tabbed columns
+
+A tabbed column gives all of its windows the whole column. Only one window, the
+active tab, is shown. A bar across the top of the column lists every window by
+title, and the active tab is highlighted. In the scrolling layout this works on
+columns. In the master layout it works on the master area and on each stack.
+Dwindle tiles hold a single window, so they cannot be tabbed.
+
+`column-toggle-tabbed` (default `Mod+W`) switches the focused window's column
+between stacked and tabbed. The focused window becomes the active tab.
+
+| To | Do |
+| --- | --- |
+| Switch tabs | Click a tab, use `window-focus-up` and `window-focus-down`, or use `column-focus-tab-next` and `column-focus-tab-previous` (these wrap) |
+| Add a tab | Consume a window into the column, or drop one onto it |
+| Remove a tab | Expel the window, float it, or move it away |
+| Reorder tabs | Use `window-move-up` and `window-move-down` |
+
+Focusing a window by any means shows its tab: a keybind, a click, activation, or
+IPC. Moving focus into a tabbed column from outside it lands on the active tab.
+Hidden tabs stay mapped at the column's size, so switching tabs is instant and
+never resizes a window. Tabs have no rows, so secondary extent actions and
+row resizing have no effect in a tabbed column. A master area stays tabbed
+after its last window leaves, so the next window to arrive becomes a tab.
+
+```toml
+[layout.tabs]
+bar_height = 24
+font_size = 10
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `bar_height` | `24` | Height of the tab bar in logical pixels, from 12 to 96. The column also keeps one `gap` below it. |
+| `font_size` | `10` | Tab title font size in points, from 6 to 48. |
+
+[Tab bar colors](appearance.md#tab-bar-colors) set the bar's colors.
+
 ## Sizing behavior
 
 Primary and secondary extent actions use `layout.extent_presets`:

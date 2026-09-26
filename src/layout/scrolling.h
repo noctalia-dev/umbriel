@@ -92,6 +92,9 @@ namespace umbriel {
     [[nodiscard]] double topGapWeight(int columnIndex) const;
     [[nodiscard]] double bottomGapWeight(int columnIndex) const;
 
+    bool setColumnTabbed(int columnIndex, bool tabbed) override;
+    bool setActiveTab(const View* view) override;
+
   private:
     struct Target {
       View* view = nullptr;
@@ -114,6 +117,8 @@ namespace umbriel {
     void revealColumn(int columnIndex, int viewportPrimary, bool center);
     [[nodiscard]] bool vertical() const;
     void syncHeightWeights(Column& column);
+    // Targets for a tabbed lane: every member in the lane's box below the tab bar.
+    void arrangeTabbedColumn(const Column& column, int primaryStart, int primarySize, int crossStart, int crossSize);
     // Weight for a row being added to `column` at `row`, taking over the column's edge gap when the row lands against
     // one. Shared by fresh inserts and by consume, so free space always becomes the incoming row's extent.
     double claimInsertWeight(Column& column, int row, double fallbackWeight);

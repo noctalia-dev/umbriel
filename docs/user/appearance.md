@@ -64,6 +64,29 @@ badge = "#7AA3FFFF"
 See [Workspaces Overview](workspaces-overview.md#settings-and-behavior) for
 overview behavior.
 
+### Tab bar colors
+
+```toml
+[colors.tab_bar]
+background = "#1A1A1FFF"
+text = "#8A8A92FF"
+active = "#7AA3FFFF"
+active_text = "#141419FF"
+active_unfocused = "#292933FF"
+active_unfocused_text = "#E8E8EAFF"
+```
+
+| Key | Description |
+| --- | --- |
+| `background` | The bar, behind every tab except the active one. |
+| `text` | Titles of the tabs that are not shown. |
+| `active` | The active tab of the focused column. |
+| `active_text` | Its title. |
+| `active_unfocused` | The active tab of any other column. |
+| `active_unfocused_text` | Its title. |
+
+See [Tabbed columns](layout.md#tabbed-columns).
+
 ## Window appearance
 
 ```toml

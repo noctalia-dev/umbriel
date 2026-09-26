@@ -1065,6 +1065,23 @@ namespace umbriel {
       return true;
     }
 
+    bool actionColumnToggleTabbed(Server& server, const Keybind& /*bind*/, std::string* error) {
+      if (Workspace* workspace = windowActionWorkspace(server)) {
+        if (workspace->layoutMode() == LayoutMode::Dwindle) {
+          return reject(error, "column-toggle-tabbed requires the scrolling or master layout");
+        }
+        workspace->toggleFocusedTabbed();
+      }
+      return true;
+    }
+
+    template <int Direction> bool actionFocusTab(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = windowActionWorkspace(server)) {
+        focusWindowFromNavigation(server, workspace->focusTabTarget(Direction));
+      }
+      return true;
+    }
+
     template <int Direction> bool actionFocusCycle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
         if (View* target = workspace->cycleFocusTarget(Direction)) {
@@ -1863,6 +1880,9 @@ namespace umbriel {
         &actionCycleHeight<-1>,
         &actionWindowFocusLast,
         &actionWorkspaceFocusLast,
+        &actionColumnToggleTabbed,
+        &actionFocusTab<1>,
+        &actionFocusTab<-1>,
     };
 
     consteval bool everyActionHasHandler() {

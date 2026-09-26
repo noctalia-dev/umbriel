@@ -152,6 +152,9 @@ namespace umbriel {
     WindowCycleSecondaryExtentBack,
     WindowFocusLast,
     WorkspaceFocusLast,
+    ColumnToggleTabbed,
+    ColumnFocusTabNext,
+    ColumnFocusTabPrevious,
     Count,
   };
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -127,7 +129,39 @@ namespace umbriel {
     double bottomGapWeight = 0.0;
     double widthFrac = 0.5;
     double savedWidthFrac = 0.0;
+    // A tabbed column gives every view the same box below a tab bar and shows only `activeTab`. The index is kept in
+    // range, and on the same view, by every structural change, tabbed or not, so toggling tabs on shows the row that
+    // was last selected.
+    bool tabbed = false;
+    size_t activeTab = 0;
   };
+
+  // Tab selection bookkeeping shared by every container that can be tabbed. Each takes the row count after the change.
+  // A removed row before the active tab shifts it back; removing the active tab itself selects its predecessor, the
+  // same row focus falls back to (Workspace::focusReplacementForRemoval), so the bar and focus agree.
+  constexpr void tabRowErased(size_t& activeTab, size_t row, size_t remaining) {
+    if (row < activeTab || (row == activeTab && activeTab > 0)) {
+      --activeTab;
+    }
+    activeTab = remaining == 0 ? 0 : std::min(activeTab, remaining - 1);
+  }
+
+  // An inserted row at or before the active tab pushes it forward, so the view on show does not change.
+  constexpr void tabRowInserted(size_t& activeTab, size_t row, size_t count) {
+    if (count > 1 && row <= activeTab) {
+      ++activeTab;
+    }
+    activeTab = count == 0 ? 0 : std::min(activeTab, count - 1);
+  }
+
+  // Two rows traded places: the selection follows its view.
+  constexpr void tabRowsSwapped(size_t& activeTab, size_t first, size_t second) {
+    if (activeTab == first) {
+      activeTab = second;
+    } else if (activeTab == second) {
+      activeTab = first;
+    }
+  }
 
   struct LayoutTarget {
     View* view = nullptr;
@@ -274,6 +308,19 @@ namespace umbriel {
     virtual std::unique_ptr<ResizeGrab> beginResize(View* /*view*/, uint32_t /*edges*/, const wlr_box& /*usable*/) {
       return nullptr;
     }
+
+    // Tabbed containers. Scrolling columns and master areas can be tabbed; dwindle leaves hold one view and cannot.
+    // Returns false when the column does not exist, the layout has no tabbed containers, or nothing changed.
+    virtual bool setColumnTabbed(int /*columnIndex*/, bool /*tabbed*/) { return false; }
+    // Select the tab that shows `view`. The selection is recorded in untabbed columns too, so it survives a later
+    // toggle. Returns true only when a tabbed column now shows a different view.
+    virtual bool setActiveTab(const View* /*view*/) { return false; }
+    // The column holding `view` when that column is tabbed, else null.
+    [[nodiscard]] const Column* tabbedColumnOf(const View* view) const;
+    // True for a member of a tabbed column other than the one it shows.
+    [[nodiscard]] bool tabHidden(const View* view) const;
+    // Primary-axis space a tabbed column reserves above its views: the bar plus the gap below it.
+    [[nodiscard]] int tabBarReserve() const;
 
     // Every layout presents its contents as columns. Scrolling owns them
     // directly, dwindle flattens its tree, and master exposes its occupied areas.

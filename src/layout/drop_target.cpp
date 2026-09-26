@@ -101,6 +101,25 @@ namespace umbriel {
       const int crossOrigin = v ? usable.x : usable.y;
       const int crossExtent = v ? usable.width : usable.height;
 
+      const int primaryPosition = (v ? usable.y : usable.x)
+          + edgePad
+          + layout.columnX(columnIndex, viewportPrimary)
+          - static_cast<int>(std::lround(scroll));
+      const int primaryExtent = layout.columnWidth(columnIndex, viewportPrimary);
+      if (column.tabbed) {
+        // A drop joins the tabs, so the hint is the bar it will appear in.
+        const int barHeight = workspace.layoutConfig().tabs.barHeight;
+        if (v) {
+          return {
+              .x = crossOrigin + edgePad,
+              .y = primaryPosition,
+              .width = crossExtent - 2 * edgePad,
+              .height = barHeight,
+          };
+        }
+        return {.x = primaryPosition, .y = crossOrigin + edgePad, .width = primaryExtent, .height = barHeight};
+      }
+
       int hintCross = 0;
       int hintCrossExtent = 0;
       if (row == 0) {
@@ -116,11 +135,6 @@ namespace umbriel {
         hintCrossExtent = kRowHintMidHeight;
       }
 
-      const int primaryPosition = (v ? usable.y : usable.x)
-          + edgePad
-          + layout.columnX(columnIndex, viewportPrimary)
-          - static_cast<int>(std::lround(scroll));
-      const int primaryExtent = layout.columnWidth(columnIndex, viewportPrimary);
       if (v) {
         return {
             .x = hintCross,
@@ -251,6 +265,10 @@ namespace umbriel {
           continue;
         }
         const Column& column = layout.columns()[static_cast<size_t>(columnIndex)];
+        // Tabs share one box, so there is no row boundary to choose: a drop becomes the last tab.
+        if (column.tabbed) {
+          return {.column = columnIndex, .row = static_cast<int>(column.views.size())};
+        }
         int nearestRow = 0;
         double rowDistance = std::abs(crossWorld - (crossOrigin + edgePad));
         for (int row = 1; row <= static_cast<int>(column.views.size()); ++row) {
@@ -335,9 +353,23 @@ namespace umbriel {
       }
 
       const Column& column = layout.columns()[static_cast<size_t>(selectedColumn)];
+      const int rowCount = static_cast<int>(column.views.size());
+      if (column.tabbed) {
+        // A drop becomes the last tab; the hint is the bar above the area's shared box.
+        const int barHeight = workspace.layoutConfig().tabs.barHeight;
+        return {
+            .column = selectedColumn,
+            .row = rowCount,
+            .hint = {
+                .x = selectedArea.x,
+                .y = selectedArea.y - layout.tabBarReserve(),
+                .width = selectedArea.width,
+                .height = barHeight,
+            },
+        };
+      }
       int nearestRow = 0;
       double nearestDistance = std::abs(worldY - selectedArea.y);
-      const int rowCount = static_cast<int>(column.views.size());
       for (int row = 1; row <= rowCount; ++row) {
         const int boundary = row == rowCount
             ? selectedArea.y + selectedArea.height

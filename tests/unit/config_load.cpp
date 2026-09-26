@@ -1,4 +1,5 @@
 #include "check.h"
+#include "config/resolve.h"
 #include "config/store.h"
 
 #include <algorithm>
@@ -588,6 +589,36 @@ UMBRIEL_TEST(masterPositionAcceptsCenterAndRejectsOtherValues) {
   CHECK(store.reload().success);
   CHECK(store.config().layout.master.position == umbriel::MasterPosition::Left);
   CHECK(containsDiagnostic(store, R"(unknown layout.master.position "middle")"));
+}
+
+UMBRIEL_TEST(tabBarSizesAndColorsLoadAndClamp) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(R"([layout.tabs]
+bar_height = 200
+font_size = 12
+surprise = true
+
+[colors.tab_bar]
+active = "#FF000080"
+active_text = "green"
+)");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.layout.tabs.barHeight, 96);
+  CHECK_EQ(config.layout.tabs.fontSize, 12);
+  CHECK_EQ(config.colors.tabBar.active[0], 1.0F);
+  CHECK_EQ(config.colors.tabBar.active[3], 128.0F / 255.0F);
+  // An invalid colour keeps the default.
+  const umbriel::Config defaults;
+  CHECK_EQ(config.colors.tabBar.activeText[0], defaults.colors.tabBar.activeText[0]);
+  CHECK(containsDiagnostic(store, "layout.tabs.bar_height = 200 out of range, clamped to 96"));
+  CHECK(containsDiagnostic(store, "unknown key layout.tabs.surprise"));
+  // The layout reserves exactly the bar that is drawn.
+  const umbriel::ResolvedLayoutConfig resolved = umbriel::resolveGlobalLayout(config);
+  CHECK_EQ(resolved.tabs.barHeight, 96);
 }
 
 UMBRIEL_TEST(scrollingDefaultExtentIsOptional) {

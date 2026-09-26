@@ -686,4 +686,113 @@ UMBRIEL_TEST(leavingCenterFoldsTheSecondStackOntoTheStack) {
   CHECK_EQ(fixture.layout.columns()[1].views[1], stub(2));
 }
 
+// tabbed areas
+namespace {
+
+  // bar_height 24 plus the 8 px gap below it.
+  constexpr int kTabReserve = 32;
+
+  // Master stub(0), stack stub(2) above stub(1): new stack rows land on top, and an insertion keeps the shown tab, so
+  // stub(1) shows.
+  void masterAndTabbedStack(Fixture& fixture) {
+    fixture.addViews(3);
+    CHECK(fixture.layout.setColumnTabbed(1, true));
+    fixture.layout.arrange(kUsable);
+  }
+
+} // namespace
+
+UMBRIEL_TEST(tabbedStackSharesOneBoxBelowTheBarBesideItsMaster) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  const wlr_box master = fixture.layout.targetBox(stub(0));
+  const wlr_box top = fixture.layout.targetBox(stub(2));
+  const wlr_box bottom = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(master.y, fixture.config.edgePad);
+  CHECK_EQ(master.height, kUsable.height - 2 * fixture.config.edgePad);
+  CHECK_EQ(top.y, fixture.config.edgePad + kTabReserve);
+  CHECK_EQ(top.height, master.height - kTabReserve);
+  CHECK_EQ(bottom.x, top.x);
+  CHECK_EQ(bottom.y, top.y);
+  CHECK_EQ(bottom.width, top.width);
+  CHECK_EQ(bottom.height, top.height);
+  CHECK(fixture.layout.tabbedColumnOf(stub(0)) == nullptr);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+  CHECK(fixture.layout.tabHidden(stub(2)));
+  CHECK_EQ(fixture.layout.heightFraction(stub(1)), 1.0);
+  CHECK(!fixture.layout.setHeightFraction(stub(1), 0.3));
+  CHECK_EQ(
+      fixture.layout.sanitizeResizeEdges(stub(1), WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT),
+      static_cast<uint32_t>(WLR_EDGE_LEFT)
+  );
+}
+
+UMBRIEL_TEST(verticalFocusStepsThroughTabsAndStopsAtTheEnds) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  const auto down = fixture.layout.focusVerticalLeaf(stub(2), 1);
+  CHECK(down.has_value() && *down == stub(1));
+  const auto pastEnd = fixture.layout.focusVerticalLeaf(stub(1), 1);
+  CHECK(pastEnd.has_value() && *pastEnd == nullptr);
+  const auto pastStart = fixture.layout.focusVerticalLeaf(stub(2), -1);
+  CHECK(pastStart.has_value() && *pastStart == nullptr);
+}
+
+UMBRIEL_TEST(horizontalFocusIntoATabbedStackLandsOnTheShownTab) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  CHECK(fixture.layout.setActiveTab(stub(2)));
+  // Selecting a tab moves no box, so the arranged targets still answer without another arrange.
+  const auto right = fixture.layout.focusHorizontalLeaf(stub(0), 1);
+  CHECK(right.has_value() && *right == stub(2));
+  CHECK(fixture.layout.setActiveTab(stub(1)));
+  const auto again = fixture.layout.focusHorizontalLeaf(stub(0), 1);
+  CHECK(again.has_value() && *again == stub(1));
+}
+
+UMBRIEL_TEST(movingWithinATabbedStackReordersTabsAndKeepsTheShownView) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  CHECK(fixture.layout.moveViewVertical(stub(1), -1));
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 0);
+  CHECK(!fixture.layout.tabHidden(stub(1)));
+  CHECK(!fixture.layout.moveViewVertical(stub(1), -1));
+}
+
+UMBRIEL_TEST(anEmptiedTabbedStackStaysTabbedForTheNextWindow) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  fixture.layout.removeView(stub(1));
+  fixture.layout.removeView(stub(2));
+  fixture.layout.insertView(stub(5), 1);
+  CHECK(fixture.layout.tabbedColumnOf(stub(5)) != nullptr);
+  CHECK(fixture.layout.tabbedColumnOf(stub(0)) == nullptr);
+  CHECK(!fixture.layout.tabHidden(stub(5)));
+}
+
+UMBRIEL_TEST(initialSizeOfANewTabMatchesItsArrangedBox) {
+  Fixture fixture;
+  masterAndTabbedStack(fixture);
+  const Layout::InitialSize size = fixture.layout.initialSize(kUsable, false, std::nullopt, std::nullopt, nullptr);
+  fixture.layout.insertView(stub(3), 1);
+  fixture.layout.arrange(kUsable);
+  const wlr_box box = fixture.layout.targetBox(stub(3));
+  CHECK_EQ(size.width, box.width);
+  CHECK_EQ(size.height, box.height);
+}
+
+UMBRIEL_TEST(snapshotKeepsEachAreasTabs) {
+  Fixture source;
+  masterAndTabbedStack(source);
+  CHECK(source.layout.setActiveTab(stub(2)));
+  const auto capture = source.layout.captureState();
+
+  Fixture restored;
+  CHECK(restored.layout.restoreState(*capture.snapshot, capture.members));
+  CHECK(restored.layout.tabbedColumnOf(stub(0)) == nullptr);
+  CHECK(restored.layout.tabbedColumnOf(stub(1)) != nullptr);
+  CHECK(!restored.layout.tabHidden(stub(2)));
+  CHECK(restored.layout.tabHidden(stub(1)));
+}
+
 int main() { return RUN_TESTS(); }

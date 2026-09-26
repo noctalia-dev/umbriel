@@ -2,6 +2,7 @@
 #include "config/config.h"
 #include "core/animation.h"
 #include "scene/node.h"
+#include "scene/tab_bar.h"
 #include "view/decoration.h"
 #include "view/deferred_unfullscreen.h"
 #include "view/floating.h"
@@ -176,6 +177,15 @@ namespace umbriel {
     void clearDisplaced() { m_displacedHome.reset(); }
 
     void setOnActiveWorkspace(bool active);
+    // Tabbed columns. A hidden tab keeps its layout slot and stays mapped and configured, but its node stays disabled
+    // whatever else asks to enable it. The workspace re-presents a tab it reveals.
+    void setTabHidden(bool hidden);
+    [[nodiscard]] bool tabHidden() const { return m_tabHidden; }
+    // The bar of the tabbed column this view is on show in, or nullopt when it shows none.
+    void setTabBar(std::optional<TabBarModel> model);
+    [[nodiscard]] const std::optional<TabBarModel>& tabBarModel() const { return m_tabBarModel; }
+    // The drawn bar in layout coordinates, empty while none is drawn.
+    [[nodiscard]] wlr_box tabBarBox() const;
     // Scratchpad membership: selects the scratchpad border palette and animation event, and matches is_scratchpad.
     void setInScratchpad(bool scratchpad);
     void animateTo(int x, int y);
@@ -392,6 +402,10 @@ namespace umbriel {
     void handleCaptureSourceDestroy();
     void updateBorderGeometry();
     void updateBorderGeometry(int contentWidth, int contentHeight);
+    // Lay the tab bar out for `contentWidth`, or hide it when this view shows none or covers its slot.
+    void updateTabBar(int contentWidth);
+    // The bar's box relative to the frame; empty while it is not drawn.
+    [[nodiscard]] wlr_box tabBarLocalBox(int contentWidth) const;
     void applyCornerRadius();
     void reloadBackdropColor() { m_presentation.reloadBackdropColor(); }
     void refreshConfigChrome();
@@ -614,6 +628,12 @@ namespace umbriel {
     // must never sample the composited desktop behind translucent content.
     wlr_scene* m_captureScene = nullptr;
     ViewDecoration m_decoration;
+    // Drawn above the content while this view is the shown tab of a tabbed column. It sits under the frame rather than
+    // the content tree, so content opacity and close snapshots, which walk the content tree's buffers, leave it alone.
+    std::unique_ptr<TabBar> m_tabBar;
+    std::optional<TabBarModel> m_tabBarModel;
+    int m_tabBarContentWidth = 0;
+    bool m_tabHidden = false;
     ViewPresentation m_presentation;
     ResizeCrossfade m_resizeCrossfade;
     wlr_box m_presentedBox{};

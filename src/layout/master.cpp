@@ -28,9 +28,15 @@ namespace umbriel {
       [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Master; }
       [[nodiscard]] size_t memberCount() const override { return members; }
 
+      struct Tabs {
+        bool tabbed = false;
+        size_t activeTab = 0;
+      };
+
       std::vector<Row> master;
       std::vector<Row> stack;
       std::vector<Row> secondStack;
+      std::array<Tabs, 3> tabs;
       size_t members = 0;
       double masterFraction = -1.0;
       double savedFraction = 0.0;
@@ -159,6 +165,7 @@ namespace umbriel {
     m_stack.weights.insert(m_stack.weights.end(), m_secondStack.weights.begin(), m_secondStack.weights.end());
     m_secondStack.views.clear();
     m_secondStack.weights.clear();
+    m_secondStack.activeTab = 0;
   }
 
   bool MasterStackLayout::widthAdjustable() const {
@@ -203,6 +210,64 @@ namespace umbriel {
     return nullptr;
   }
 
+  void MasterStackLayout::insertRow(Area& area, size_t row, View* view, double weight) {
+    row = std::min(row, area.views.size());
+    area.views.insert(area.views.begin() + static_cast<std::ptrdiff_t>(row), view);
+    area.weights.insert(area.weights.begin() + static_cast<std::ptrdiff_t>(row), weight);
+    tabRowInserted(area.activeTab, row, area.views.size());
+  }
+
+  double MasterStackLayout::eraseRow(Area& area, size_t row) {
+    const double weight = area.weights[row];
+    area.views.erase(area.views.begin() + static_cast<std::ptrdiff_t>(row));
+    area.weights.erase(area.weights.begin() + static_cast<std::ptrdiff_t>(row));
+    tabRowErased(area.activeTab, row, area.views.size());
+    return weight;
+  }
+
+  std::vector<LayoutTarget> MasterStackLayout::visibleTargets() const {
+    std::vector<LayoutTarget> visible;
+    visible.reserve(m_targets.size());
+    for (const LayoutTarget& target : m_targets) {
+      if (!tabHidden(target.view)) {
+        visible.push_back(target);
+      }
+    }
+    return visible;
+  }
+
+  int MasterStackLayout::areaTopReserve(const Area& area, int height) const {
+    return area.tabbed ? std::min(tabBarReserve(), height - 1) : 0;
+  }
+
+  bool MasterStackLayout::setColumnTabbed(int columnIndex, bool tabbed) {
+    Area* area = visualArea(columnIndex);
+    if (area == nullptr || area->tabbed == tabbed) {
+      return false;
+    }
+    area->tabbed = tabbed;
+    area->activeTab = area->views.empty() ? 0 : std::min(area->activeTab, area->views.size() - 1);
+    rebuildColumns();
+    return true;
+  }
+
+  bool MasterStackLayout::setActiveTab(const View* view) {
+    Area* area = areaOf(view);
+    if (area == nullptr) {
+      return false;
+    }
+    const auto tab = static_cast<size_t>(rowInArea(*area, view));
+    const bool changed = area->activeTab != tab;
+    area->activeTab = tab;
+    if (changed) {
+      // Selecting a tab moves no box, so the targets stay valid for directional focus.
+      const bool stale = m_geometryStale;
+      rebuildColumns();
+      m_geometryStale = stale;
+    }
+    return changed && area->tabbed;
+  }
+
   int MasterStackLayout::rowInArea(const Area& area, const View* view) const {
     const auto it = std::ranges::find(area.views, view);
     return it == area.views.end() ? -1 : static_cast<int>(it - area.views.begin());
@@ -236,6 +301,11 @@ namespace umbriel {
     saveArea(m_master, snapshot->master);
     saveArea(m_stack, snapshot->stack);
     saveArea(m_secondStack, snapshot->secondStack);
+    snapshot->tabs = {{
+        {.tabbed = m_master.tabbed, .activeTab = m_master.activeTab},
+        {.tabbed = m_stack.tabbed, .activeTab = m_stack.activeTab},
+        {.tabbed = m_secondStack.tabbed, .activeTab = m_secondStack.activeTab},
+    }};
     snapshot->members = capture.members.size();
     snapshot->masterFraction = m_masterFrac;
     snapshot->savedFraction = m_savedFrac;
@@ -252,24 +322,30 @@ namespace umbriel {
       return false;
     }
 
-    const auto restoreArea = [&resolved](const std::vector<MasterSnapshot::Row>& rows, Area& area) {
-      for (const MasterSnapshot::Row& row : rows) {
-        View* view = (*resolved)[static_cast<size_t>(row.member)];
-        if (view != nullptr) {
-          area.views.push_back(view);
-          area.weights.push_back(row.weight);
-        }
-      }
-    };
-    restoreArea(snapshot->master, m_master);
-    restoreArea(snapshot->stack, m_stack);
-    restoreArea(snapshot->secondStack, m_secondStack);
+    const auto restoreArea =
+        [&resolved](const std::vector<MasterSnapshot::Row>& rows, const MasterSnapshot::Tabs& tabs, Area& area) {
+          area.tabbed = tabs.tabbed;
+          area.activeTab = tabs.activeTab;
+          for (size_t row = 0; row < rows.size(); ++row) {
+            View* view = (*resolved)[static_cast<size_t>(rows[row].member)];
+            if (view != nullptr) {
+              area.views.push_back(view);
+              area.weights.push_back(rows[row].weight);
+            } else {
+              // A member that did not come back leaves its row as a close would.
+              tabRowErased(area.activeTab, area.views.size(), area.views.size() + (rows.size() - row - 1));
+            }
+          }
+          area.activeTab = area.views.empty() ? 0 : std::min(area.activeTab, area.views.size() - 1);
+        };
+    restoreArea(snapshot->master, snapshot->tabs[0], m_master);
+    restoreArea(snapshot->stack, snapshot->tabs[1], m_stack);
+    restoreArea(snapshot->secondStack, snapshot->tabs[2], m_secondStack);
     if (m_master.views.empty()) {
       if (Area* stack = promotionStack(); stack != nullptr) {
-        m_master.views.push_back(stack->views.front());
-        m_master.weights.push_back(stack->weights.front());
-        stack->views.erase(stack->views.begin());
-        stack->weights.erase(stack->weights.begin());
+        View* promoted = stack->views.front();
+        const double weight = eraseRow(*stack, 0);
+        insertRow(m_master, m_master.views.size(), promoted, weight);
       }
     }
     m_masterFrac = snapshot->masterFraction;
@@ -285,9 +361,7 @@ namespace umbriel {
       if (it == area.views.end()) {
         return;
       }
-      const auto index = static_cast<size_t>(it - area.views.begin());
-      area.views.erase(it);
-      area.weights.erase(area.weights.begin() + static_cast<std::ptrdiff_t>(index));
+      eraseRow(area, static_cast<size_t>(it - area.views.begin()));
     };
     erase(m_master);
     erase(m_stack);
@@ -308,6 +382,8 @@ namespace umbriel {
       column.views = area->views;
       column.heightWeights = area->weights;
       column.widthFrac = area == &m_master ? masterFrac() : sideFrac;
+      column.tabbed = area->tabbed;
+      column.activeTab = area->activeTab;
       m_columns.push_back(std::move(column));
     }
   }
@@ -318,22 +394,18 @@ namespace umbriel {
     }
     eraseFromAreas(view);
     if (m_master.views.empty()) {
-      m_master.views.push_back(view);
-      m_master.weights.push_back(1.0);
+      insertRow(m_master, 0, view, 1.0);
     } else if (m_config != nullptr && m_config->master.newBecomesMaster) {
       // The master count does not change, so the last master row drops to the stack top with its weight.
       Area& stack = insertionStack();
-      stack.views.insert(stack.views.begin(), m_master.views.back());
-      stack.weights.insert(stack.weights.begin(), m_master.weights.back());
-      m_master.views.pop_back();
-      m_master.weights.pop_back();
-      m_master.views.insert(m_master.views.begin(), view);
-      m_master.weights.insert(m_master.weights.begin(), 1.0);
+      View* demoted = m_master.views.back();
+      const double weight = eraseRow(m_master, m_master.views.size() - 1);
+      insertRow(stack, 0, demoted, weight);
+      insertRow(m_master, 0, view, 1.0);
     } else {
       const bool newOnTop = m_config == nullptr || m_config->master.newOnTop;
       Area& stack = insertionStack();
-      stack.views.insert(newOnTop ? stack.views.begin() : stack.views.end(), view);
-      stack.weights.insert(newOnTop ? stack.weights.begin() : stack.weights.end(), 1.0);
+      insertRow(stack, newOnTop ? 0 : stack.views.size(), view, 1.0);
     }
     rebuildColumns();
   }
@@ -356,8 +428,7 @@ namespace umbriel {
     }
 
     const int row = std::clamp(rowIndex, 0, static_cast<int>(destination->views.size()));
-    destination->views.insert(destination->views.begin() + row, view);
-    destination->weights.insert(destination->weights.begin() + row, 1.0);
+    insertRow(*destination, static_cast<size_t>(row), view, 1.0);
     rebuildColumns();
   }
 
@@ -380,11 +451,8 @@ namespace umbriel {
     Area* source = ordered[index];
     Area* destination = ordered[target];
     const int row = rowInArea(*source, view);
-    const double weight = source->weights[static_cast<size_t>(row)];
-    source->views.erase(source->views.begin() + row);
-    source->weights.erase(source->weights.begin() + row);
-    destination->views.push_back(view);
-    destination->weights.push_back(weight);
+    const double weight = eraseRow(*source, static_cast<size_t>(row));
+    insertRow(*destination, destination->views.size(), view, weight);
     rebuildColumns();
     return true;
   }
@@ -392,6 +460,19 @@ namespace umbriel {
   bool MasterStackLayout::expel(View* view, int direction) { return consume(view, direction); }
 
   bool MasterStackLayout::moveViewVertical(View* view, int direction) {
+    // Tabs share one box, so the neighbour is the adjacent tab rather than whatever lies above or below.
+    if (Area* tabbed = areaOf(view); tabbed != nullptr && tabbed->tabbed) {
+      const int row = rowInArea(*tabbed, view);
+      const int target = row + direction;
+      if ((direction != -1 && direction != 1) || target < 0 || target >= static_cast<int>(tabbed->views.size())) {
+        return false;
+      }
+      std::swap(tabbed->views[static_cast<size_t>(row)], tabbed->views[static_cast<size_t>(target)]);
+      std::swap(tabbed->weights[static_cast<size_t>(row)], tabbed->weights[static_cast<size_t>(target)]);
+      tabRowsSwapped(tabbed->activeTab, static_cast<size_t>(row), static_cast<size_t>(target));
+      rebuildColumns();
+      return true;
+    }
     View* neighbor = directionalNeighbor(m_targets, view, false, direction);
     if (neighbor == nullptr) {
       return false;
@@ -448,10 +529,9 @@ namespace umbriel {
     if (stack == nullptr) {
       return false;
     }
-    m_master.views.push_back(stack->views.front());
-    m_master.weights.push_back(stack->weights.front());
-    stack->views.erase(stack->views.begin());
-    stack->weights.erase(stack->weights.begin());
+    View* promoted = stack->views.front();
+    const double weight = eraseRow(*stack, 0);
+    insertRow(m_master, m_master.views.size(), promoted, weight);
     rebuildColumns();
     return true;
   }
@@ -461,10 +541,9 @@ namespace umbriel {
       return false;
     }
     Area& stack = insertionStack();
-    stack.views.insert(stack.views.begin(), m_master.views.back());
-    stack.weights.insert(stack.weights.begin(), m_master.weights.back());
-    m_master.views.pop_back();
-    m_master.weights.pop_back();
+    View* demoted = m_master.views.back();
+    const double weight = eraseRow(m_master, m_master.views.size() - 1);
+    insertRow(stack, 0, demoted, weight);
     rebuildColumns();
     return true;
   }
@@ -477,10 +556,9 @@ namespace umbriel {
     eraseFromAreas(view);
     if (wasMaster && m_master.views.empty()) {
       if (Area* stack = promotionStack(); stack != nullptr) {
-        m_master.views.push_back(stack->views.front());
-        m_master.weights.push_back(stack->weights.front());
-        stack->views.erase(stack->views.begin());
-        stack->weights.erase(stack->weights.begin());
+        View* promoted = stack->views.front();
+        const double weight = eraseRow(*stack, 0);
+        insertRow(m_master, 0, promoted, weight);
       }
     }
     rebuildColumns();
@@ -507,6 +585,20 @@ namespace umbriel {
 
     const auto arrangeArea = [&](const Area& area, const wlr_box& box) {
       if (area.views.empty()) {
+        return;
+      }
+      if (area.tabbed) {
+        // Every tab takes the whole area below the bar.
+        const int reserve = areaTopReserve(area, box.height);
+        for (View* view : area.views) {
+          m_targets.push_back({
+              .view = view,
+              .x = box.x,
+              .y = box.y + reserve,
+              .width = box.width,
+              .height = box.height - reserve,
+          });
+        }
         return;
       }
       const int rowCount = static_cast<int>(area.views.size());
@@ -615,26 +707,33 @@ namespace umbriel {
     const int gap = m_config != nullptr ? m_config->totalGap : 0;
     const bool becomesMaster = m_master.views.empty() || (m_config != nullptr && m_config->master.newBecomesMaster);
 
+    // A tabbed destination hands the newcomer the area below its bar, whatever it already holds.
+    const auto rowHeight = [&](const Area& area) {
+      return area.tabbed ? content.height - areaTopReserve(area, content.height)
+                         : stackRowHeight(area, content.height, gap);
+    };
+    const int masterHeight = content.height - areaTopReserve(m_master, content.height);
+
     if (masterIsCenter()) {
       const CenterWidths widths = centerWidths(content.width, gap, masterFrac());
       if (becomesMaster) {
-        return {.width = widths.master, .height = content.height};
+        return {.width = widths.master, .height = masterHeight};
       }
       const Area& stack = insertionStack();
       return {
           .width = &stack == &m_secondStack ? widths.secondSide : widths.side,
-          .height = stackRowHeight(stack, content.height, gap),
+          .height = rowHeight(stack),
       };
     }
 
     if (m_master.views.empty() && m_stack.views.empty()) {
-      return {.width = content.width, .height = content.height};
+      return {.width = content.width, .height = masterHeight};
     }
     const auto [masterWidth, stackWidth] = columnWidths(content.width, gap, masterFrac());
     if (becomesMaster) {
-      return {.width = masterWidth, .height = content.height};
+      return {.width = masterWidth, .height = masterHeight};
     }
-    return {.width = stackWidth, .height = stackRowHeight(m_stack, content.height, gap)};
+    return {.width = stackWidth, .height = rowHeight(m_stack)};
   }
 
   std::optional<View*> MasterStackLayout::focusHorizontalLeaf(const View* view, int direction) const {
@@ -643,14 +742,22 @@ namespace umbriel {
     if (m_geometryStale) {
       return std::nullopt;
     }
-    return directionalNeighbor(m_targets, view, true, direction);
+    return directionalNeighbor(visibleTargets(), view, true, direction);
   }
 
   std::optional<View*> MasterStackLayout::focusVerticalLeaf(const View* view, int direction) const {
+    // Up and down walk a tabbed area's tabs in order, and stop at either end as they stop at a stack's ends.
+    if (const Area* area = areaOf(view); area != nullptr && area->tabbed) {
+      const int target = rowInArea(*area, view) + (direction < 0 ? -1 : 1);
+      if (target < 0 || target >= static_cast<int>(area->views.size())) {
+        return nullptr;
+      }
+      return area->views[static_cast<size_t>(target)];
+    }
     if (m_geometryStale) {
       return std::nullopt;
     }
-    return directionalNeighbor(m_targets, view, false, direction);
+    return directionalNeighbor(visibleTargets(), view, false, direction);
   }
 
   bool MasterStackLayout::cycleWidth(int columnIndex, int direction) {
@@ -739,7 +846,7 @@ namespace umbriel {
 
   double MasterStackLayout::heightFraction(const View* view) const {
     const Area* area = areaOf(view);
-    if (area == nullptr || area->views.size() <= 1) {
+    if (area == nullptr || area->views.size() <= 1 || area->tabbed) {
       return 1.0;
     }
     const int row = rowInArea(*area, view);
@@ -749,7 +856,7 @@ namespace umbriel {
 
   bool MasterStackLayout::setHeightFraction(View* view, double fraction) {
     Area* area = areaOf(view);
-    if (area == nullptr || area->views.size() <= 1) {
+    if (area == nullptr || area->views.size() <= 1 || area->tabbed) {
       return false;
     }
     const int row = rowInArea(*area, view);
@@ -780,6 +887,10 @@ namespace umbriel {
     } else if (!m_master.views.empty() && !m_stack.views.empty()) {
       const bool areaIsLeft = (area == &m_master) == masterIsLeft();
       edges |= areaIsLeft ? WLR_EDGE_RIGHT : WLR_EDGE_LEFT;
+    }
+    if (area->tabbed) {
+      // Tabs share one box: there is no row boundary to drag.
+      return edges;
     }
     const int row = rowInArea(*area, view);
     if (row > 0) {

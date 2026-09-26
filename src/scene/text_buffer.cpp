@@ -74,9 +74,17 @@ namespace umbriel {
     PangoLayout* measureLayout = pango_cairo_create_layout(measureCr);
     PangoFontDescription* fontDesc = pango_font_description_from_string(params.font.c_str());
     pango_layout_set_font_description(measureLayout, fontDesc);
-    pango_layout_set_width(measureLayout, params.maxWidth * PANGO_SCALE);
-    pango_layout_set_wrap(measureLayout, PANGO_WRAP_WORD_CHAR);
-    pango_layout_set_indent(measureLayout, -params.hangingIndent * PANGO_SCALE);
+    const auto shapeLayout = [&params](PangoLayout* layout, int width) {
+      pango_layout_set_width(layout, width * PANGO_SCALE);
+      if (params.ellipsize) {
+        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_single_paragraph_mode(layout, TRUE);
+      } else {
+        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+        pango_layout_set_indent(layout, -params.hangingIndent * PANGO_SCALE);
+      }
+    };
+    shapeLayout(measureLayout, params.maxWidth);
     pango_layout_set_markup(measureLayout, params.markup.c_str(), -1);
 
     // pango_layout_get_pixel_size returns logical (pre-transform) dimensions.
@@ -107,9 +115,8 @@ namespace umbriel {
     // Text (all coordinates are logical; cairo_scale handles device mapping).
     PangoLayout* layout = pango_cairo_create_layout(cr);
     pango_layout_set_font_description(layout, fontDesc);
-    pango_layout_set_width(layout, textW * PANGO_SCALE);
-    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-    pango_layout_set_indent(layout, -params.hangingIndent * PANGO_SCALE);
+    // An ellipsized line keeps the measuring width: shaping it to its own measured width can round into a second cut.
+    shapeLayout(layout, params.ellipsize ? params.maxWidth : textW);
     pango_layout_set_markup(layout, params.markup.c_str(), -1);
     cairo_move_to(cr, params.padding, params.padding);
     pango_cairo_show_layout(cr, layout);

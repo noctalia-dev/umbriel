@@ -38,6 +38,8 @@ are required, `[bracket]` forms are optional.
 |--------|--------|
 | `column-focus-first` | Focus the first column in the workspace |
 | `column-focus-last` | Focus the last column in the workspace |
+| `column-focus-tab-next` | Focus the next tab in the focused column |
+| `column-focus-tab-previous` | Focus the previous tab in the focused column |
 | `output-focus-down` | Focus the output below |
 | `output-focus-left` | Focus the output to the left |
 | `output-focus-next` | Focus the next output, wrapping around |
@@ -122,6 +124,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 
 | Action | Effect |
 |--------|--------|
+| `column-toggle-tabbed` | Toggle tabs for the focused column |
 | `window-close:[<window-id>]` | Close the focused window, or the given window |
 | `window-toggle-floating:[<window-id>]` | Float or tile the focused window, or the given window |
 | `window-toggle-fullscreen` | Toggle fullscreen or exit a window covering the focus |
@@ -214,6 +217,7 @@ Column and extent actions adapt to the active layout:
 | Secondary extent | Changes a row | Adjusts vertical splits | Changes a row |
 | Layout scrolling | Pans the strip | No effect | No effect |
 | Master count | No effect | No effect | Moves a window between master and stack |
+| Tabs | Tabs the focused column | Refused | Tabs the focused master or stack area |
 
 See [Layout](layout.md) for geometry, directions, and resizing behavior.
 
@@ -223,6 +227,8 @@ See [Layout](layout.md) for geometry, directions, and resizing behavior.
 - Workspace `next`, `previous`, `move-up`, and `move-down` do not wrap.
 - A whole-column move preserves order, proportions, and column extent.
 - Moving a multi-window column into Dwindle creates separate tiles.
+- The tab focus actions wrap within the column. `window-focus-up` and
+  `window-focus-down` also step through a tabbed column's tabs, without wrapping.
 - Floating and pinned behavior is described in [Layout](layout.md) and
   [Scratchpads](scratchpad.md).
 - An action unavailable in the active layout does nothing from a keybind and
