@@ -218,6 +218,26 @@ Focused-window mapping takes precedence over focused-output mapping, which
 takes precedence over `map_to_output`. When the selected target is unavailable,
 the next configured mapping is used.
 
+### Touch
+
+```toml
+[input.touch]
+map_to_output = ""             # confine the touchscreen to the named output
+map_to_focused_output = true   # map to the focused output instead
+```
+
+| Key                      | Type  | Default | Description                                                                                                        |
+| ------------------------ | ----- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `map_to_output`          | str   | (none)  | Confines the touchscreen to the named output, using the same names as `[output.NAME]`.                             |
+| `map_to_focused_output`  | bool  | `true`  | Maps the touchscreen to the output holding keyboard focus, so absolute coordinates follow that output's transform. |
+
+Mapping matters because a touchscreen's coordinates are normalized to its own
+panel. Without a mapped output they stretch across the whole output layout and
+ignore the output's rotation and scale, so taps land where the panel points
+only when the panel matches the output orientation exactly. Each mapping
+option falls back to the full layout when its target is unavailable; mapping
+changes apply on config reload and on the next touch.
+
 ### Cursor
 
 ```toml

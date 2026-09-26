@@ -587,6 +587,7 @@ namespace umbriel {
       for (const auto& tablet : m_tabletDevices) {
         applyTabletConfig(*tablet);
       }
+      remapTouch();
       for (const auto& pad : m_tabletPads) {
         applyTabletPadConfig(*pad);
       }
@@ -1615,6 +1616,7 @@ namespace umbriel {
     wl_signal_add(&device->events.destroy, &touch->destroy);
     m_cursor->attachInputDevice(device);
     m_touchDevices.push_back(std::move(touch));
+    remapTouch();
     kLog.info("input: added touch device '{}'", deviceName(device));
   }
 
@@ -1814,6 +1816,23 @@ namespace umbriel {
       }
       wlr_cursor_map_input_to_region(m_cursor->wlr(), tablet->device, &region);
       wlr_cursor_map_input_to_output(m_cursor->wlr(), tablet->device, output);
+    }
+  }
+
+  void Server::remapTouch() {
+    const Config::Input::Touch& cfg = config().input.touch;
+    wlr_output* output = nullptr;
+    if (!cfg.mapToOutput.empty()) {
+      if (Output* out = outputFromName(cfg.mapToOutput)) {
+        output = out->wlr();
+      }
+    } else if (cfg.mapToFocusedOutput) {
+      if (Output* out = focusedOutput()) {
+        output = out->wlr();
+      }
+    }
+    for (const auto& touch : m_touchDevices) {
+      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, output);
     }
   }
 

@@ -1282,6 +1282,8 @@ namespace umbriel {
     auto* event = static_cast<wlr_touch_down_event*>(data);
     m_server->notifyInputActivity();
     m_server->cancelModifierTap();
+    // Re-resolve the output mapping so a focused-output target reflects current focus, like tablets do.
+    m_server->remapTouch();
 
     double lx = 0;
     double ly = 0;
