@@ -1712,7 +1712,6 @@ namespace umbriel {
     } else if (!cfg.enabled) {
       kLog.warn("input: '{}' cannot be disabled", deviceName(touch.device));
     }
-    remapTouches();
   }
 
   void Server::addTabletPad(wlr_input_device* device) {
@@ -1815,7 +1814,7 @@ namespace umbriel {
     const Config::Input::Touch& cfg = config().input.touch;
     for (const auto& touch : m_touchDevices) {
       wlr_output* output = nullptr;
-      if (output == nullptr && !cfg.mapToOutput.empty()) {
+      if (!cfg.mapToOutput.empty()) {
         if (Output* out = outputFromName(cfg.mapToOutput)) {
           output = out->wlr();
         }
