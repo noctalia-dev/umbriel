@@ -1021,6 +1021,11 @@ struct wlr_scene_output_state_options {
  */
 bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output);
 
+
+/** Damage a box in wlr_output.events.damage coordinates. */
+void wlr_scene_output_damage_box(struct wlr_scene_output *scene_output,
+	const struct wlr_box *box);
+
 /**
  * Render and commit an output.
  */
