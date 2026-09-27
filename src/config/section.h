@@ -35,6 +35,7 @@ namespace umbriel {
     Section& real(std::string_view key, double minimum, double maximum, double& target);
     Section& real(std::string_view key, double minimum, double maximum, std::optional<double>& target);
     Section& text(std::string_view key, std::string& target);
+    Section& text(std::string_view key, std::optional<std::string>& target);
     Section& boolean(std::string_view key, bool& target);
     Section& boolean(std::string_view key, std::optional<bool>& target);
     Section& color(std::string_view key, std::array<float, 4>& target);
@@ -53,17 +54,13 @@ namespace umbriel {
       return *this;
     }
 
-    // Claim a key and hand back its raw node, for parsing that does not fit the shapes above. Preferred over `node` +
-    // `custom`: fetching is what marks the key known, so the two cannot come apart.
+    // Claim a key and hand back its raw node, for parsing that does not fit the shapes above. Fetching is what marks
+    // the key known, so the claim and the read cannot come apart.
     [[nodiscard]] const toml::node* take(std::string_view key) { return claim(key); }
     // The raw node without claiming, when the key is claimed elsewhere.
     [[nodiscard]] const toml::node* node(std::string_view key) const { return m_table.get(key); }
-    // The table itself, for bespoke readers that predate this class.
+    // The table itself, for readers that walk user-chosen names.
     [[nodiscard]] const toml::table& table() const { return m_table; }
-
-    // Claim a key that bespoke code reads (arrays, keybind lists, rule tables) so
-    // it is not reported as unknown.
-    Section& custom(std::string_view key);
 
     // Suppress the unknown-key report entirely, for tables whose keys are
     // user-chosen names rather than a fixed vocabulary.
@@ -73,11 +70,19 @@ namespace umbriel {
     // an entry on a stray key instead of only warning.
     [[nodiscard]] bool allKeysKnown() const;
 
-  private:
+    // This table's path, as diagnostics name it.
+    [[nodiscard]] const std::string& name() const { return m_name; }
+    // `key` as diagnostics name it, qualified by this table's path.
     [[nodiscard]] std::string qualified(std::string_view key) const;
+    // Report against `node` into this table's diagnostics, for readers built on top of this class.
+    void warn(const toml::node& node, std::string message);
+    void error(const toml::node& node, std::string message);
+    [[nodiscard]] std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
+
+  private:
     const toml::node* claim(std::string_view key);
     [[nodiscard]] const toml::table* nestedTable(std::string_view key);
-    void warn(const toml::node& node, std::string message);
+    void report(ConfigDiagnostic::Severity severity, const toml::node& node, std::string message);
 
     const toml::table& m_table;
     std::string m_name;
@@ -85,37 +90,5 @@ namespace umbriel {
     std::vector<std::string> m_seen;
     bool m_freeform = false;
   };
-
-  // Read `name` from `table` if present. Warns and skips when the key exists but is not a table. Returns whether `fn`
-  // ran. `displayName` overrides how the section is named in diagnostics, for tables nested under a per-entry context
-  // (a workspace's own `layout` block reports as `workspace[2].layout`, not `layout`).
-  template <typename F>
-  bool readSection(
-      const toml::table& table, std::string_view name, std::vector<ConfigDiagnostic>& diagnostics, F&& fn,
-      std::string_view displayName = {}
-  ) {
-    const toml::node* node = table.get(name);
-    if (node == nullptr) {
-      return false;
-    }
-    const toml::table* section = node->as_table();
-    if (section == nullptr) {
-      ConfigDiagnostic diag;
-      diag.severity = ConfigDiagnostic::Severity::Warning;
-      diag.message =
-          std::string("ignoring ") + std::string(displayName.empty() ? name : displayName) + " (expected table)";
-      const auto& src = node->source();
-      diag.line = src.begin.line;
-      diag.column = src.begin.column;
-      if (src.path != nullptr) {
-        diag.file = *src.path;
-      }
-      diagnostics.push_back(std::move(diag));
-      return false;
-    }
-    Section reader(*section, std::string(displayName.empty() ? name : displayName), diagnostics);
-    fn(reader);
-    return true;
-  }
 
 } // namespace umbriel

@@ -2,12 +2,13 @@
 
 namespace umbriel {
 
-  BorderRing makeBorderRing(int contentWidth, int contentHeight, int outerRadius, int innerWidth, int outerWidth) {
+  BorderRing
+  makeBorderRing(int contentWidth, int contentHeight, int outerRadius, int innerWidth, int outerWidth, int padding) {
     const int thickness = innerWidth + outerWidth;
     // One transparent logical pixel gives fractional outer coverage a fragment
     // to land in instead of clipping it at the scene box.
     const int renderMargin = thickness > 0 ? 1 : 0;
-    const int extent = thickness + renderMargin;
+    const int extent = thickness + renderMargin + (padding > 0 ? padding : 0);
     const int innerRadius = nestedRadius(outerRadius, thickness);
     const int seamRadius = nestedRadius(outerRadius, outerWidth);
     return {

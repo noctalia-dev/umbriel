@@ -152,7 +152,7 @@ offset_y = 2
 A window's shadow falls on everything below it, including other floating,
 pinned, or scratchpad windows it overlaps. Tiled windows never shadow each
 other. Shadows are hidden for fullscreen windows. During a
-[custom window animation](animation.md#custom-glsl-shaders), the shadow follows
+[custom window animation](animation.md#custom-effects), the shadow follows
 the visible shape produced by the shader. A
 [window rule](window-rules.md#decoration) can turn the shadow on or off for the
 windows it matches.

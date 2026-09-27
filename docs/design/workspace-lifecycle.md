@@ -71,6 +71,22 @@ The incoming active workspace remains interactive throughout the transition.
 Pinned windows and scratchpad windows do not inherit this inactive-workspace
 restriction.
 
+## Cyclic switching
+
+`cyclic_workspaces` wraps a workspace step around the ends of the inventory. It
+is read from the owning output's rule when the action runs, so a reload applies
+it and nothing else holds state derived from it. The adjacent switch and move
+actions resolve their target through `stepWorkspace()` in
+`src/server/actions.cpp`, so they cannot disagree at the ends.
+
+The wrap applies only where a step leaves the inventory. On a dynamic output,
+the trailing empty sentinel is the last member: stepping forward from the last
+populated workspace enters it, and the forward wrap happens from the sentinel
+itself, or at the workspace limit where no sentinel can be appended. Stepping
+back from the first workspace wraps to that sentinel. A static inventory has no
+sentinel, so both ends wrap directly. Without the key, a step past either end is
+a silent no-op.
+
 ## Pointer focus after scene changes
 
 Mapping a window, activating a workspace, or running a layout command can
@@ -112,16 +128,16 @@ When it must cross into a surviving column with several rows, it resolves those
 rows through the global focus history. Visual row order describes placement,
 not which member the user focused before opening the window that just closed.
 
-Closing a focused Dwindle or master tile is a bounded exception. Umbriel records
-the pointer position only when the closing view owns keyboard focus, is visibly
-beneath the pointer, and the position lies inside its current presented box. It chooses the
-normal layout replacement before detaching the view, then flushes the new layout
-and checks its final tiled target boxes once. A survivor that inherits the
-recorded position receives pointer-hover focus; otherwise the normal replacement
-remains focused. Scene hit-testing instead of cached seat pointer focus keeps
-consecutive closes correct without pointer motion. Reading final layout geometry
-avoids treating every view that moves through the pointer during an animation as
-another hover transition.
+Closing a focused tiled window is a bounded exception. Umbriel records the
+pointer position only when the closing view owns keyboard focus, is visibly
+beneath the pointer, and the position lies inside its current presented box. It
+chooses the normal layout replacement before detaching the view, then flushes the
+new layout and checks its final tiled target boxes once. A survivor that inherits
+the recorded position receives pointer-hover focus; otherwise the normal
+replacement remains focused. Scene hit-testing instead of cached seat pointer
+focus keeps consecutive closes correct without pointer motion. Reading final
+layout geometry avoids treating every view that moves through the pointer during
+an animation as another hover transition, including a moving scrolling strip.
 
 ## Data-device drag focus
 
@@ -196,44 +212,47 @@ Configuration resolution and change classification are covered by
 [`tests/unit/config_resolve.cpp`](../../tests/unit/config_resolve.cpp) and
 [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp). Live
 workspace selection is exercised by
-[`tests/harness/checks/210_workspace_selectors.sh`](../../tests/harness/checks/210_workspace_selectors.sh),
+[`tests/harness/checks/workspace/selectors.sh`](../../tests/harness/checks/workspace/selectors.sh),
 including a bare position on the pointer-preferred output versus an exact
 numeric name selected with quotes.
 Leading and trailing dynamic sentinels, including renumbering after workspace
 movement, are covered by
-[`tests/harness/checks/215_empty_above.sh`](../../tests/harness/checks/215_empty_above.sh).
+[`tests/harness/checks/workspace/empty_above.sh`](../../tests/harness/checks/workspace/empty_above.sh).
 The per-output dynamic floor is covered by
-[`tests/harness/checks/216_min_workspaces.sh`](../../tests/harness/checks/216_min_workspaces.sh).
+[`tests/harness/checks/workspace/min_workspaces.sh`](../../tests/harness/checks/workspace/min_workspaces.sh).
 Persistent names mixed with dynamic anonymous workspaces, including reload
 addition, removal, ordering, sentinels, and numeric-looking names, are covered
 by
-[`tests/harness/checks/217_dynamic_named_workspaces.sh`](../../tests/harness/checks/217_dynamic_named_workspaces.sh).
+[`tests/harness/checks/workspace/dynamic_named.sh`](../../tests/harness/checks/workspace/dynamic_named.sh).
 Pending name materialization and sentinel preservation at the runtime limit are
 covered by
-[`tests/harness/checks/217_dynamic_named_capacity.sh`](../../tests/harness/checks/217_dynamic_named_capacity.sh).
+[`tests/harness/checks/workspace/dynamic_named_capacity.sh`](../../tests/harness/checks/workspace/dynamic_named_capacity.sh).
 Pointer isolation during a wheel-triggered workspace transition is covered by
-[`tests/harness/checks/220_workspace_transition_focus.sh`](../../tests/harness/checks/220_workspace_transition_focus.sh).
+[`tests/harness/checks/focus/workspace_transition.sh`](../../tests/harness/checks/focus/workspace_transition.sh).
 Hover focus after a window maps under the pointer and after returning to a
 workspace is covered by
-[`tests/harness/checks/511_spawn_hover_focus.sh`](../../tests/harness/checks/511_spawn_hover_focus.sh)
+[`tests/harness/checks/focus/spawn_hover.sh`](../../tests/harness/checks/focus/spawn_hover.sh)
 and
-[`tests/harness/checks/512_workspace_return_hover_focus.sh`](../../tests/harness/checks/512_workspace_return_hover_focus.sh).
+[`tests/harness/checks/focus/workspace_return_hover.sh`](../../tests/harness/checks/focus/workspace_return_hover.sh).
 The handoff from a pinned window owned by another workspace is covered by
-[`tests/harness/checks/512_pinned_workspace_hover_focus.sh`](../../tests/harness/checks/512_pinned_workspace_hover_focus.sh).
+[`tests/harness/checks/focus/pinned_workspace_hover.sh`](../../tests/harness/checks/focus/pinned_workspace_hover.sh).
 Scrolling close restoration within a stacked neighboring column is covered by
-[`tests/harness/checks/225_scrolling_close_focus_memory.sh`](../../tests/harness/checks/225_scrolling_close_focus_memory.sh).
+[`tests/harness/checks/focus/scrolling_close_focus_memory.sh`](../../tests/harness/checks/focus/scrolling_close_focus_memory.sh).
 Scrolling reveal animations are kept from cascading hover focus by
-[`tests/harness/checks/513_scrolling_hover_focus_stability.sh`](../../tests/harness/checks/513_scrolling_hover_focus_stability.sh).
+[`tests/harness/checks/focus/scrolling_hover_focus_stability.sh`](../../tests/harness/checks/focus/scrolling_hover_focus_stability.sh).
 Command-driven strip scrolling, resizing, column movement, and fullscreen exit
-are covered by the `518_*_hover_focus.sh` checks.
+are covered by the `focus/*_hover.sh` checks.
 Client-requested XDG fullscreen exit is covered by
-[`tests/harness/checks/519_client_fullscreen_exit_hover_focus.sh`](../../tests/harness/checks/519_client_fullscreen_exit_hover_focus.sh).
+[`tests/harness/checks/focus/client_fullscreen_exit_hover.sh`](../../tests/harness/checks/focus/client_fullscreen_exit_hover.sh).
 Modifier-wheel switching and the resulting keyboard-focus handoff through an
 input-method keyboard grab are covered by
-[`tests/harness/checks/520_input_method_wheel.sh`](../../tests/harness/checks/520_input_method_wheel.sh).
+[`tests/harness/checks/input/input_method_wheel.sh`](../../tests/harness/checks/input/input_method_wheel.sh).
+Modifier release across text-input activation changes, including Fcitx's
+persistent virtual-keyboard mode, is covered by
+[`tests/harness/checks/input/input_method_modifier_release.sh`](../../tests/harness/checks/input/input_method_modifier_release.sh).
 Client-cursor refresh after a short data-device drag is covered by
-[`tests/harness/checks/460_external_drag.sh`](../../tests/harness/checks/460_external_drag.sh).
+[`tests/harness/checks/drag/external_drag.sh`](../../tests/harness/checks/drag/external_drag.sh).
 Keyboard-focus replay after a logical focus change during a drag is covered by
-[`tests/harness/checks/470_data_drag_focus.sh`](../../tests/harness/checks/470_data_drag_focus.sh).
+[`tests/harness/checks/drag/data_drag_focus.sh`](../../tests/harness/checks/drag/data_drag_focus.sh).
 Drop-target hover focus and the subsequent keyboard-focus handoff are covered by
-[`tests/harness/checks/471_data_drag_hover_focus.sh`](../../tests/harness/checks/471_data_drag_hover_focus.sh).
+[`tests/harness/checks/drag/data_drag_hover_focus.sh`](../../tests/harness/checks/drag/data_drag_hover_focus.sh).

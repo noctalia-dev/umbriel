@@ -278,35 +278,48 @@ namespace umbriel {
           handled = true;
         }
       }
-      // Modal quit confirmation: Enter or the session-quit bind confirms, any other non-modifier key cancels. The press
-      // is consumed either way, reaching neither binds nor clients. Modifier-only presses pass through so held chords
-      // stay intact.
-      bool quitConfirmConsumed = false;
+      // Modal confirmation: Enter or a matching action confirms, while any other non-modifier key cancels. The press is
+      // consumed either way, reaching neither binds nor clients. Modifier-only presses pass through so held chords stay
+      // intact.
+      bool confirmationConsumed = false;
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
         if (!modifierOnly) {
           bool confirmed = false;
           for (int i = 0; i < nsyms; ++i) {
             confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
           }
-          // Pressing the quit bind again confirms. matchKeybind mirrors handleKeybind without running the action, so a
-          // press that would fire session-quit quits; any other matched or unbound press dismisses.
+          // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
+          // matchKeybind mirrors handleKeybind without running the action, so the pending screencast command remains
+          // the one whose warning is visible.
           for (int i = 0; i < nsyms && !confirmed; ++i) {
             const Keybind* matched = m_server->matchKeybind(syms[i], rawSym, modifiers);
-            if (matched != nullptr && matched->action == KeybindAction::SessionQuit) {
-              confirmed = true;
+            if (matched == nullptr) {
+              continue;
+            }
+            if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+              confirmed = matched->action == KeybindAction::SessionQuit;
+            } else {
+              confirmed = matched->action == KeybindAction::ScreenCastSetOutput
+                  || matched->action == KeybindAction::ScreenCastSetWindow
+                  || matched->action == KeybindAction::ScreenCastFollowWindow
+                  || matched->action == KeybindAction::ScreenCastFollowOutput;
             }
           }
           if (confirmed) {
-            m_server->stop();
+            if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+              m_server->stop();
+            } else {
+              m_server->confirmScreenCastDynamic();
+            }
           } else {
-            confirm->hide();
+            m_server->dismissConfirmation();
           }
           handled = true;
-          quitConfirmConsumed = true;
+          confirmationConsumed = true;
         }
       }
       std::optional<Keybind> matched;
-      if (!quitConfirmConsumed) {
+      if (!confirmationConsumed) {
         for (int i = 0; i < nsyms; ++i) {
           // The action can move focus, and the enter it sends must already know
           // this press is consumed, or the incoming surface is handed a held key

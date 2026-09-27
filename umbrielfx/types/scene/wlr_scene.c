@@ -2,6 +2,7 @@
 
 #include "render/color.h"
 #include "render/fx_renderer/animation_history.h"
+#include "render/fx_renderer/effect.h"
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/tracy.h"
 #include "types/fx/clipped_region.h"
@@ -126,20 +127,120 @@ struct highlight_region {
   struct wl_list link;
 };
 
-// Addons preserve the wlroots node/tree ABI. The registry is only used while
-// custom effects exist, to suspend occlusion across sampling boundaries.
+// Addons preserve the wlroots node/tree ABI. Each scene keeps its own list so
+// one scene's effects never change another scene's policy (a view's capture
+// scene must not inherit the desktop's animation state).
 struct scene_animation {
   struct wlr_addon addon;
-  struct wl_list link;
+  struct wl_list link; // scene_effects.animations
   struct wlr_scene_node* node;
   struct wlr_scene* scene;
-  struct fx_animation_shader* shaders[FX_ANIMATION_SLOTS];
+  struct fx_effect_shader* shaders[FX_ANIMATION_SLOTS];
   struct fx_animation_parameters parameters[FX_ANIMATION_SLOTS];
   struct fx_animation_history histories[FX_ANIMATION_SLOTS];
   bool output_clip_enabled;
   struct wlr_box output_clip;
+  // Populated-slot classes. Transient slots keep the scene-wide conservative
+  // policy; persistent slots only ever affect their own subtree and outputs.
+  bool transient;
+  bool persistent;
+  bool in_place;
+  struct scene_light* light;
 };
-static struct wl_list scene_animations = {&scene_animations, &scene_animations};
+
+struct scene_effects {
+  struct wlr_addon addon;
+  struct wlr_scene* scene;
+  struct wl_list animations; // scene_animation.link
+  unsigned transient;
+  unsigned persistent;
+  struct wlr_scene_tree* light_layer;
+  struct wl_listener light_layer_destroy;
+};
+
+static void output_effects_release_capture(struct wlr_scene_output* scene_output);
+
+static void scene_effects_destroy(struct wlr_addon* addon) {
+  struct scene_effects* effects = wl_container_of(addon, effects, addon);
+  // Frames of a scene without effect state neither save nor release captures.
+  struct wlr_scene_output* output;
+  wl_list_for_each(output, &effects->scene->outputs, link) {
+    output_effects_release_capture(output);
+  }
+  // Scene teardown finishes the root's addons before destroying descendants
+  // that still carry slots; they leave an empty list of their own.
+  struct scene_animation *animation, *tmp;
+  wl_list_for_each_safe(animation, tmp, &effects->animations, link) {
+    wl_list_remove(&animation->link);
+    wl_list_init(&animation->link);
+  }
+  if (effects->light_layer != NULL) {
+    wl_list_remove(&effects->light_layer_destroy.link);
+  }
+  wlr_addon_finish(addon);
+  free(effects);
+}
+
+static const struct wlr_addon_interface scene_effects_impl = {
+    .name = "scene_effects",
+    .destroy = scene_effects_destroy,
+};
+
+static struct scene_effects* scene_effects_get(struct wlr_scene* scene, bool create) {
+  struct wlr_addon* addon = wlr_addon_find(&scene->tree.node.addons, &scene_effects_impl, &scene_effects_impl);
+  if (addon != NULL) {
+    struct scene_effects* effects = wl_container_of(addon, effects, addon);
+    return effects;
+  }
+  if (!create) {
+    return NULL;
+  }
+  struct scene_effects* effects = calloc(1, sizeof(*effects));
+  if (effects == NULL) {
+    return NULL;
+  }
+  effects->scene = scene;
+  wl_list_init(&effects->animations);
+  wlr_addon_init(&effects->addon, &scene->tree.node.addons, &scene_effects_impl, &scene_effects_impl);
+  return effects;
+}
+
+static void scene_animation_classify(struct scene_animation* animation) {
+  animation->transient = false;
+  animation->persistent = false;
+  animation->in_place = false;
+  for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
+    if (animation->shaders[slot] == NULL) {
+      continue;
+    }
+    if (fx_slot_persistent(slot)) {
+      animation->persistent = true;
+    } else {
+      animation->transient = true;
+    }
+    animation->in_place |= fx_slot_in_place(slot);
+  }
+}
+
+static void scene_effects_recount(struct scene_effects* effects) {
+  effects->transient = 0;
+  effects->persistent = 0;
+  struct scene_animation* animation;
+  wl_list_for_each(animation, &effects->animations, link) {
+    effects->transient += animation->transient;
+    effects->persistent += animation->persistent;
+  }
+}
+
+static int animation_expand(const struct scene_animation* animation) {
+  int expand = 0;
+  for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
+    if (animation->shaders[slot] != NULL && fx_slot_expands(slot) && animation->parameters[slot].expand > expand) {
+      expand = animation->parameters[slot].expand;
+    }
+  }
+  return expand;
+}
 
 struct animation_shadow {
   struct wlr_addon addon;
@@ -205,13 +306,63 @@ void wlr_scene_shadow_set_animation_source(
   wlr_addon_init(&shadow->addon, &node->node.addons, &animation_shadow_impl, &animation_shadow_impl);
 }
 
+// A border slot's light: an input-transparent rect in the scene's light layer
+// that marks where the light draws and what it damages.
+struct scene_light {
+  struct wlr_addon addon;
+  struct wlr_scene_rect* rect;
+  struct scene_animation* source;
+  struct fx_effect_light_cache* cache;
+};
+
+static void scene_light_destroy(struct wlr_addon* addon) {
+  struct scene_light* light = wl_container_of(addon, light, addon);
+  if (light->source != NULL) {
+    light->source->light = NULL;
+  }
+  fx_effect_light_cache_destroy(light->cache);
+  wlr_addon_finish(addon);
+  free(light);
+}
+
+static const struct wlr_addon_interface scene_light_impl = {
+    .name = "scene_effect_light",
+    .destroy = scene_light_destroy,
+};
+
+static struct scene_light* scene_light_from_node(struct wlr_scene_node* node) {
+  struct wlr_addon* addon = wlr_addon_find(&node->addons, &scene_light_impl, &scene_light_impl);
+  if (addon == NULL) {
+    return NULL;
+  }
+  struct scene_light* light = wl_container_of(addon, light, addon);
+  return light;
+}
+
+static void scene_light_remove(struct scene_animation* animation) {
+  if (animation->light != NULL) {
+    struct wlr_scene_rect* rect = animation->light->rect;
+    animation->light->source = NULL;
+    animation->light = NULL;
+    wlr_scene_node_destroy(&rect->node); // destroys the addon with it
+  }
+}
+
 static void scene_animation_destroy(struct wlr_addon* addon) {
   struct scene_animation* animation = wl_container_of(addon, animation, addon);
+  scene_light_remove(animation);
   for (unsigned i = 0; i < FX_ANIMATION_SLOTS; i++) {
-    fx_animation_shader_unref(animation->shaders[i]);
+    fx_effect_shader_unref(animation->shaders[i]);
     fx_animation_history_finish(&animation->histories[i]);
   }
   wl_list_remove(&animation->link);
+  struct scene_effects* effects = scene_effects_get(animation->scene, false);
+  if (effects != NULL) {
+    scene_effects_recount(effects);
+    if (wl_list_empty(&effects->animations) && effects->light_layer == NULL) {
+      scene_effects_destroy(&effects->addon);
+    }
+  }
   wlr_addon_finish(addon);
   free(animation);
 }
@@ -230,18 +381,21 @@ static struct scene_animation* scene_animation_get(struct wlr_scene_node* node) 
   return animation;
 }
 
-static bool scene_has_animations(struct wlr_scene* scene) {
-  struct scene_animation* animation;
-  wl_list_for_each(animation, &scene_animations, link) {
-    if (animation->scene == scene) {
-      return true;
+// The nearest self-or-ancestor carrying any populated slot. Callers guard
+// with the scene counts so the walk never runs on an effect-free scene.
+static struct scene_animation* effect_over_node(struct wlr_scene_node* node) {
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    struct scene_animation* animation = scene_animation_get(node);
+    if (animation != NULL) {
+      return animation;
     }
   }
-  return false;
+  return NULL;
 }
 
 static void scene_buffer_set_buffer(struct wlr_scene_buffer* scene_buffer, struct wlr_buffer* buffer);
 static void scene_buffer_set_texture(struct wlr_scene_buffer* scene_buffer, struct wlr_texture* texture);
+static void scene_effect_damage_margins(struct wlr_scene_node* node);
 
 void wlr_scene_node_destroy(struct wlr_scene_node* node) {
   if (node == NULL) {
@@ -252,6 +406,9 @@ void wlr_scene_node_destroy(struct wlr_scene_node* node) {
   // in case the destroy signal would like to remove children before they
   // are recursively destroyed.
   wl_signal_emit_mutable(&node->events.destroy, NULL);
+  // Effect margins are damaged while the slots still exist: finishing the
+  // addons drops them before the disable damage below.
+  scene_effect_damage_margins(node);
   wlr_addon_set_finish(&node->addons);
 
   wlr_scene_node_set_enabled(node, false);
@@ -520,8 +677,14 @@ create_corner_location_region(struct fx_corner_radii corners, int x, int y, int 
   return corner_region;
 }
 
-static void scene_node_opaque_region(struct wlr_scene_node* node, int x, int y, pixman_region32_t* opaque) {
-  if (scene_has_animations(scene_node_get_root(node))) {
+// `effects` is the scene's effect state, already looked up by the caller (NULL
+// when the scene has none). Transient animations keep the conservative
+// scene-wide policy. A persistent effect only exempts its own subtree: the
+// program may expose pixels its input would have covered.
+static void scene_node_opaque_region(
+    const struct scene_effects* effects, struct wlr_scene_node* node, int x, int y, pixman_region32_t* opaque
+) {
+  if (effects != NULL && (effects->transient > 0 || (effects->persistent > 0 && effect_over_node(node) != NULL))) {
     return;
   }
   int width, height;
@@ -606,6 +769,7 @@ static void scene_node_opaque_region(struct wlr_scene_node* node, int x, int y, 
 }
 
 struct scene_update_data {
+  const struct scene_effects* effects;
   pixman_region32_t* visible;
   const pixman_region32_t* update_region;
   struct wlr_box update_box;
@@ -643,6 +807,9 @@ struct render_data {
   float scale;
   struct wlr_box logical;
   int trans_width, trans_height;
+  // Physical translation into a capture, applied after output scaling/rotation.
+  int capture_x, capture_y;
+  bool full_capture;
 
   struct wlr_scene_output* output;
 
@@ -651,12 +818,24 @@ struct render_data {
   struct render_list_entry* entries;
   int entry_count;
   bool shadow_capture;
+  // Rendering an unfiltered effect capture: in-place slots do not run and
+  // capture composites use the capture role's history.
+  bool effect_capture;
+  // An earlier composition this frame emitted output_sample.
+  bool sampled_earlier;
+  // The scene's effect state for this frame, NULL when it has none. Nothing may
+  // add or remove slots while entries render: output_sample listeners run then.
+  struct scene_effects* effects;
+  bool transient_effects;
+  // A persistent effect draws on this output this frame: veto scanout and keep effect buffers.
+  bool persistent_visible;
 };
 
 static void logical_to_buffer_coords(pixman_region32_t* region, const struct render_data* data, bool round_up) {
   enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
   scale_region(region, data->scale, round_up);
   wlr_region_transform(region, region, transform, data->trans_width, data->trans_height);
+  pixman_region32_translate(region, data->capture_x, data->capture_y);
 }
 
 static void output_to_buffer_coords(pixman_region32_t* damage, struct wlr_output* output) {
@@ -693,6 +872,8 @@ static void transform_output_box(struct wlr_box* box, const struct render_data* 
     box->height = data->trans_height - box->y;
   }
   wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
+  box->x += data->capture_x;
+  box->y += data->capture_y;
 }
 
 static void scene_output_damage(struct wlr_scene_output* scene_output, const pixman_region32_t* damage) {
@@ -919,8 +1100,15 @@ scene_node_update_iterator(struct wlr_scene_node* node, int lx, int ly, const st
   struct wlr_box box = {.x = lx, .y = ly};
   scene_node_get_size(node, &box.width, &box.height);
 
+  // Occluders never cull a persistent effect's input, which its program may sample anywhere.
+  // A fully covered window with a persistent effect keeps its output membership and frame callbacks.
+  struct scene_animation* animation = NULL;
+  if (data->effects != NULL && data->effects->persistent > 0) {
+    animation = effect_over_node(node);
+  }
+  const bool keep_input = animation != NULL && animation->persistent;
   pixman_region32_subtract(&node->visible, &node->visible, data->update_region);
-  pixman_region32_union(&node->visible, &node->visible, data->visible);
+  pixman_region32_union(&node->visible, &node->visible, keep_input ? data->update_region : data->visible);
   pixman_region32_intersect_rect(&node->visible, &node->visible, lx, ly, box.width, box.height);
 
   if (acc_clip != NULL) {
@@ -935,7 +1123,7 @@ scene_node_update_iterator(struct wlr_scene_node* node, int lx, int ly, const st
   if (data->calculate_visibility) {
     pixman_region32_t opaque;
     pixman_region32_init(&opaque);
-    scene_node_opaque_region(node, lx, ly, &opaque);
+    scene_node_opaque_region(data->effects, node, lx, ly, &opaque);
     if (acc_clip != NULL) {
       // Clipped away opaque content must not cull nodes below it.
       pixman_region32_intersect_rect(&opaque, &opaque, acc_clip->x, acc_clip->y, acc_clip->width, acc_clip->height);
@@ -969,6 +1157,19 @@ static void scene_node_visibility(struct wlr_scene_node* node, pixman_region32_t
   pixman_region32_union(visible, visible, &node->visible);
 }
 
+bool wlr_scene_node_visible_in_box(struct wlr_scene_node* node, const struct wlr_box* box) {
+  if (node == NULL) {
+    return false;
+  }
+  pixman_region32_t visible;
+  pixman_region32_init(&visible);
+  scene_node_visibility(node, &visible);
+  pixman_region32_intersect_rect(&visible, &visible, box->x, box->y, box->width, box->height);
+  const bool result = pixman_region32_not_empty(&visible);
+  pixman_region32_fini(&visible);
+  return result;
+}
+
 static void scene_node_bounds(struct wlr_scene_node* node, int x, int y, pixman_region32_t* visible) {
   if (!node->enabled) {
     return;
@@ -988,6 +1189,172 @@ static void scene_node_bounds(struct wlr_scene_node* node, int x, int y, pixman_
   pixman_region32_union_rect(visible, visible, x, y, width, height);
 }
 
+bool wlr_scene_node_effect_bounds(struct wlr_scene_node* node, struct wlr_box* box) {
+  pixman_region32_t bounds;
+  pixman_region32_init(&bounds);
+  scene_node_bounds(node, 0, 0, &bounds);
+  const bool drawn = pixman_region32_not_empty(&bounds);
+  const pixman_box32_t* extents = pixman_region32_extents(&bounds);
+  *box = drawn ? (struct wlr_box){extents->x1, extents->y1, extents->x2 - extents->x1, extents->y2 - extents->y1}
+               : (struct wlr_box){0};
+  pixman_region32_fini(&bounds);
+  return drawn;
+}
+
+static bool node_belongs_to(struct wlr_scene_node* node, struct wlr_scene_node* ancestor);
+
+// True when `node`'s root-level ancestor sorts above `layer` among the scene
+// root's children. Children list order is bottom to top (raise_to_top appends),
+// so meeting the layer before the ancestor means the ancestor is above it.
+static bool node_above_layer(struct wlr_scene_node* node, struct wlr_scene_tree* layer) {
+  struct wlr_scene* scene = scene_node_get_root(node);
+  struct wlr_scene_node* top = node;
+  while (top->parent != NULL && top->parent != &scene->tree) {
+    top = &top->parent->node;
+  }
+  struct wlr_scene_node* child;
+  wl_list_for_each(child, &scene->tree.children, link) {
+    if (child == top) {
+      return false;
+    }
+    if (child == &layer->node) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool transient_ancestor(struct wlr_scene_node* node) {
+  for (struct wlr_scene_tree* parent = node->parent; parent != NULL; parent = parent->node.parent) {
+    struct scene_animation* animation = scene_animation_get(&parent->node);
+    if (animation != NULL && animation->transient) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Creates, positions, or removes the light proxy for a border slot. Called
+// whenever the slot, the layer, or the node's placement changes. Under a
+// transient ancestor the proxy and its cache stay, disabled.
+static void scene_light_sync(struct scene_effects* effects, struct scene_animation* animation) {
+  struct fx_effect_shader* shader = animation->shaders[FX_SLOT_BORDER_EFFECT];
+  const struct fx_animation_parameters* parameters = &animation->parameters[FX_SLOT_BORDER_EFFECT];
+  int lx, ly;
+  const bool wanted = effects != NULL
+      && effects->light_layer != NULL
+      && shader != NULL
+      && shader->renderer != NULL
+      && parameters->light.enabled
+      && parameters->light.intensity > 0
+      && parameters->light.spread > 0
+      && wlr_scene_node_coords(animation->node, &lx, &ly)
+      && !node_above_layer(animation->node, effects->light_layer);
+  if (wanted && transient_ancestor(animation->node)) {
+    if (animation->light != NULL) {
+      wlr_scene_node_set_enabled(&animation->light->rect->node, false);
+    }
+    return;
+  }
+  pixman_region32_t bounds;
+  pixman_region32_init(&bounds);
+  if (wanted) {
+    scene_node_bounds(animation->node, lx, ly, &bounds);
+  }
+  if (pixman_region32_empty(&bounds)) {
+    pixman_region32_fini(&bounds);
+    scene_light_remove(animation);
+    return;
+  }
+  struct scene_light* light = animation->light;
+  if (light == NULL) {
+    light = calloc(1, sizeof(*light));
+    if (light == NULL) {
+      pixman_region32_fini(&bounds);
+      return;
+    }
+    // The rect only tracks visibility and damage; the addon renders in its place.
+    const float color[4] = {0, 0, 0, 0.5f};
+    light->rect = wlr_scene_rect_create(effects->light_layer, 1, 1, color);
+    if (light->rect == NULL) {
+      free(light);
+      pixman_region32_fini(&bounds);
+      return;
+    }
+    light->rect->accepts_input = false;
+    light->source = animation;
+    wlr_addon_init(&light->addon, &light->rect->node.addons, &scene_light_impl, &scene_light_impl);
+    animation->light = light;
+  }
+  if (light->cache == NULL || light->cache->renderer != shader->renderer) {
+    fx_effect_light_cache_destroy(light->cache);
+    light->cache = fx_effect_light_cache_create(shader->renderer);
+  }
+  const pixman_box32_t* extents = pixman_region32_extents(&bounds);
+  const int margin = (int)ceilf(parameters->light.spread * 2 + 8) + animation_expand(animation);
+  int layer_x, layer_y;
+  wlr_scene_node_coords(&effects->light_layer->node, &layer_x, &layer_y);
+  wlr_scene_node_set_position(&light->rect->node, extents->x1 - margin - layer_x, extents->y1 - margin - layer_y);
+  wlr_scene_rect_set_size(light->rect, extents->x2 - extents->x1 + 2 * margin, extents->y2 - extents->y1 + 2 * margin);
+  wlr_scene_node_set_enabled(&light->rect->node, true);
+  pixman_region32_fini(&bounds);
+}
+
+// Re-places the lights of border slots on, above, or inside `node`, and every
+// light when `node` is the light layer.
+static void scene_lights_sync(struct scene_effects* effects, struct wlr_scene_node* node) {
+  if (effects == NULL || effects->persistent == 0) {
+    return;
+  }
+  const bool layer = effects->light_layer != NULL && node == &effects->light_layer->node;
+  struct scene_animation* animation;
+  wl_list_for_each(animation, &effects->animations, link) {
+    if ((animation->light != NULL || animation->parameters[FX_SLOT_BORDER_EFFECT].light.enabled)
+        && (layer || node_belongs_to(animation->node, node) || node_belongs_to(node, animation->node))) {
+      scene_light_sync(effects, animation);
+    }
+  }
+}
+
+static void scene_effects_light_layer_destroy(struct wl_listener* listener, void* data) {
+  struct scene_effects* effects = wl_container_of(listener, effects, light_layer_destroy);
+  wl_list_remove(&effects->light_layer_destroy.link);
+  effects->light_layer = NULL;
+  struct scene_animation* animation;
+  wl_list_for_each(animation, &effects->animations, link) {
+    scene_light_remove(animation);
+  }
+  if (wl_list_empty(&effects->animations)) {
+    scene_effects_destroy(&effects->addon);
+  }
+}
+
+void wlr_scene_set_effect_light_layer(struct wlr_scene* scene, struct wlr_scene_tree* layer) {
+  struct scene_effects* effects = scene_effects_get(scene, layer != NULL);
+  if (effects == NULL || effects->light_layer == layer) {
+    return;
+  }
+  struct scene_animation* animation;
+  if (effects->light_layer != NULL) {
+    wl_list_remove(&effects->light_layer_destroy.link);
+    wl_list_for_each(animation, &effects->animations, link) {
+      scene_light_remove(animation);
+    }
+  }
+  effects->light_layer = layer;
+  if (layer == NULL) {
+    if (wl_list_empty(&effects->animations)) {
+      scene_effects_destroy(&effects->addon);
+    }
+    return;
+  }
+  effects->light_layer_destroy.notify = scene_effects_light_layer_destroy;
+  wl_signal_add(&layer->node.events.destroy, &effects->light_layer_destroy);
+  wl_list_for_each(animation, &effects->animations, link) {
+    scene_light_sync(effects, animation);
+  }
+}
+
 static void scene_update_region(struct wlr_scene* scene, const pixman_region32_t* update_region) {
   pixman_region32_t visible;
   pixman_region32_init(&visible);
@@ -995,6 +1362,7 @@ static void scene_update_region(struct wlr_scene* scene, const pixman_region32_t
 
   struct pixman_box32* region_box = pixman_region32_extents(update_region);
   struct scene_update_data data = {
+      .effects = scene_effects_get(scene, false),
       .visible = &visible,
       .update_region = update_region,
       .update_box =
@@ -1045,6 +1413,66 @@ scene_node_cleanup_when_disabled(struct wlr_scene_node* node, bool xwayland_rest
 #endif
 }
 
+// The largest expand among the enabled descendants of `node`.
+static int scene_subtree_effect_expand(struct wlr_scene_node* node) {
+  if (node->type != WLR_SCENE_NODE_TREE) {
+    return 0;
+  }
+  int expand = 0;
+  struct wlr_scene_node* child;
+  wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
+    if (!child->enabled) {
+      continue;
+    }
+    struct scene_animation* animation = scene_animation_get(child);
+    const int own = animation != NULL ? animation_expand(animation) : 0;
+    const int nested = scene_subtree_effect_expand(child);
+    expand = own > expand ? own : expand;
+    expand = nested > expand ? nested : expand;
+  }
+  return expand;
+}
+
+static int scene_node_effect_expand(struct wlr_scene_node* node) {
+  int expand = 0;
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    struct scene_animation* animation = scene_animation_get(node);
+    if (animation != NULL) {
+      const int own = animation_expand(animation);
+      expand = own > expand ? own : expand;
+    }
+  }
+  return expand;
+}
+
+// The largest expand margin any slot in the scene draws past its node's bounds.
+static int scene_effects_max_expand(struct scene_effects* effects) {
+  int expand = 0;
+  if (effects == NULL) {
+    return expand;
+  }
+  struct scene_animation* animation;
+  wl_list_for_each(animation, &effects->animations, link) {
+    const int own = animation_expand(animation);
+    expand = own > expand ? own : expand;
+  }
+  return expand;
+}
+
+// The node's own, its ancestors', and its descendants' expand margins: everything drawn past its bounds.
+static int scene_node_drawn_expand(struct wlr_scene_node* node) {
+  TRACY_ZONE_START_N("scene_node_drawn_expand");
+  const int own = scene_node_effect_expand(node);
+  const int nested = scene_subtree_effect_expand(node);
+  TRACY_ZONE_END_QUIET;
+  return own > nested ? own : nested;
+}
+
+int wlr_scene_node_animation_expand(struct wlr_scene_node* node) {
+  struct scene_animation* animation = scene_animation_get(node);
+  return animation != NULL ? animation_expand(animation) : 0;
+}
+
 /**
  * Updates the nodes visibility, xwayland restacking, send leave/enter events
  * and damages the screen. The damage region is used to not only damage the
@@ -1061,13 +1489,23 @@ scene_node_cleanup_when_disabled(struct wlr_scene_node* node, bool xwayland_rest
  */
 static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* damage) {
   struct wlr_scene* scene = scene_node_get_root(node);
+  struct scene_effects* effects = NULL;
 
   int x, y;
   if (!wlr_scene_node_coords(node, &x, &y)) {
     // We assume explicit damage on a disabled tree means the node was just
     // disabled.
     if (damage) {
+      effects = scene_effects_get(scene, false);
+      scene_lights_sync(effects, node);
       scene_node_cleanup_when_disabled(node, scene->restack_xwayland_surfaces, &scene->outputs);
+
+      if (effects != NULL) {
+        const int expand = scene_node_drawn_expand(node);
+        if (expand > 0) {
+          wlr_region_expand(damage, damage, expand);
+        }
+      }
 
       scene_update_region(scene, damage);
       scene_damage_outputs(scene, damage);
@@ -1076,6 +1514,8 @@ static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* da
 
     return;
   }
+  effects = scene_effects_get(scene, false);
+  scene_lights_sync(effects, node);
 
   pixman_region32_t visible;
   if (!damage) {
@@ -1087,7 +1527,16 @@ static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* da
   pixman_region32_t update_region;
   pixman_region32_init(&update_region);
   pixman_region32_copy(&update_region, damage);
+  TRACY_ZONE_START_N("scene_node_bounds");
   scene_node_bounds(node, x, y, &update_region);
+  TRACY_ZONE_END_QUIET;
+  if (effects != NULL) {
+    const int expand = scene_node_drawn_expand(node);
+    if (expand > 0) {
+      wlr_region_expand(&update_region, &update_region, expand);
+      wlr_region_expand(damage, damage, expand);
+    }
+  }
 
   scene_update_region(scene, &update_region);
   pixman_region32_fini(&update_region);
@@ -1097,8 +1546,102 @@ static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* da
   pixman_region32_fini(damage);
 }
 
+// Damages the node's drawn bounds, including any expand margin, on every
+// output. Persistent effects change only what they draw. `min_expand` keeps
+// a margin the node's slots drew before they changed.
+static void scene_effect_damage(struct wlr_scene_node* node, int min_expand) {
+  int x, y;
+  if (!wlr_scene_node_coords(node, &x, &y)) {
+    return;
+  }
+  pixman_region32_t bounds;
+  pixman_region32_init(&bounds);
+  scene_node_bounds(node, x, y, &bounds);
+  const int expand = scene_node_effect_expand(node);
+  const int margin = expand > min_expand ? expand : min_expand;
+  if (margin > 0) {
+    wlr_region_expand(&bounds, &bounds, margin);
+  }
+  struct scene_animation* animation = scene_animation_get(node);
+  int rx, ry;
+  if (animation != NULL && animation->light != NULL && wlr_scene_node_coords(&animation->light->rect->node, &rx, &ry)) {
+    const struct wlr_scene_rect* rect = animation->light->rect;
+    pixman_region32_union_rect(&bounds, &bounds, rx, ry, rect->width, rect->height);
+  }
+  scene_damage_outputs(scene_node_get_root(node), &bounds);
+  pixman_region32_fini(&bounds);
+}
+
+static void scene_effect_damage_subtree(struct wlr_scene_node* node) {
+  struct scene_animation* animation = scene_animation_get(node);
+  if (animation != NULL) {
+    scene_effect_damage(node, animation_expand(animation));
+  }
+  if (node->type != WLR_SCENE_NODE_TREE) {
+    return;
+  }
+  struct wlr_scene_node* child;
+  wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
+    if (child->enabled) {
+      scene_effect_damage_subtree(child);
+    }
+  }
+}
+
+// Damages the drawn bounds and expand margins of every effect on `node` and
+// its enabled descendants. A node that is not drawn has nothing to damage.
+static void scene_effect_damage_margins(struct wlr_scene_node* node) {
+  int x, y;
+  // The root goes down with its outputs; nothing is left to damage.
+  if (node->parent == NULL || scene_effects_get(scene_node_get_root(node), false) == NULL
+      || !wlr_scene_node_coords(node, &x, &y)) {
+    return;
+  }
+  scene_effect_damage_subtree(node);
+}
+
+static bool uniforms_equal(const struct fx_animation_parameters* a, const struct fx_animation_parameters* b) {
+  if (a->uniform_count != b->uniform_count) {
+    return false;
+  }
+  for (unsigned i = 0; i < a->uniform_count && i < FX_UNIFORMS_MAX; i++) {
+    const struct fx_uniform* x = &a->uniforms[i];
+    const struct fx_uniform* y = &b->uniforms[i];
+    if (x->type != y->type || x->count != y->count || strncmp(x->name, y->name, FX_UNIFORM_NAME_MAX) != 0) {
+      return false;
+    }
+    unsigned values = x->count * fx_uniform_components(x->type);
+    if (x->type == FX_UNIFORM_INT || x->type == FX_UNIFORM_BOOL) {
+      values = values > 4 ? 4 : values;
+      if (memcmp(x->ints, y->ints, values * sizeof(x->ints[0])) != 0) {
+        return false;
+      }
+    } else {
+      values = values > FX_UNIFORM_FLOATS_MAX ? FX_UNIFORM_FLOATS_MAX : values;
+      if (memcmp(x->floats, y->floats, values * sizeof(x->floats[0])) != 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static bool parameters_equal(const struct fx_animation_parameters* a, const struct fx_animation_parameters* b) {
+  return a->progress == b->progress
+      && a->linear_progress == b->linear_progress
+      && a->direction == b->direction
+      && a->transition_id == b->transition_id
+      && memcmp(a->random_seed, b->random_seed, sizeof(a->random_seed)) == 0
+      && a->expand == b->expand
+      && a->light.enabled == b->light.enabled
+      && a->light.spread == b->light.spread
+      && a->light.intensity == b->light.intensity
+      && a->light.threshold == b->light.threshold
+      && uniforms_equal(a, b);
+}
+
 void wlr_scene_node_set_animation(
-    struct wlr_scene_node* node, unsigned slot, struct fx_animation_shader* shader,
+    struct wlr_scene_node* node, unsigned slot, struct fx_effect_shader* shader,
     const struct fx_animation_parameters* parameters
 ) {
   assert(slot < FX_ANIMATION_SLOTS);
@@ -1106,6 +1649,7 @@ void wlr_scene_node_set_animation(
   if (animation == NULL && shader == NULL) {
     return;
   }
+  struct wlr_scene* scene = scene_node_get_root(node);
   if (animation == NULL) {
     animation = calloc(1, sizeof(*animation));
     if (animation == NULL) {
@@ -1116,15 +1660,24 @@ void wlr_scene_node_set_animation(
     for (unsigned i = 0; i < FX_ANIMATION_SLOTS; i++) {
       fx_animation_history_init(&animation->histories[i]);
     }
+    struct scene_effects* effects = scene_effects_get(animation->scene, true);
+    if (effects == NULL) {
+      free(animation);
+      return;
+    }
     wlr_addon_init(&animation->addon, &node->addons, &scene_animation_impl, &scene_animation_impl);
-    wl_list_insert(&scene_animations, &animation->link);
+    wl_list_insert(&effects->animations, &animation->link);
   }
-  struct fx_animation_shader* previous = animation->shaders[slot];
+  struct fx_effect_shader* previous = animation->shaders[slot];
   const bool same_transition = previous != NULL
       && shader != NULL
       && parameters != NULL
+      && !fx_slot_persistent(slot)
       && parameters->transition_id == animation->parameters[slot].transition_id;
-  const bool restarted = previous != NULL && shader != NULL && !same_transition;
+  // A transient slot restarts when its transition changes; a persistent slot only when its program does
+  // (a reload with a new source). Either resets the slot's feedback history.
+  const bool restarted = previous != NULL && shader != NULL
+      && (fx_slot_persistent(slot) ? previous != shader : !same_transition);
   if (previous != NULL
       && shader != NULL
       && parameters != NULL
@@ -1133,19 +1686,16 @@ void wlr_scene_node_set_animation(
     shader = previous;
   }
   struct fx_animation_parameters next = parameters != NULL ? *parameters : animation->parameters[slot];
-  const bool parameters_equal = next.progress == animation->parameters[slot].progress
-      && next.linear_progress == animation->parameters[slot].linear_progress
-      && next.direction == animation->parameters[slot].direction
-      && next.transition_id == animation->parameters[slot].transition_id
-      && memcmp(next.random_seed, animation->parameters[slot].random_seed, sizeof(next.random_seed)) == 0;
-  if (previous == shader && !restarted && parameters_equal) {
+  const bool parameters_equal_now = parameters_equal(&next, &animation->parameters[slot]);
+  if (previous == shader && !restarted && parameters_equal_now) {
     return;
   }
   if (previous != shader || restarted) {
     fx_animation_history_reset(&animation->histories[slot]);
   }
-  animation->shaders[slot] = fx_animation_shader_ref(shader);
-  fx_animation_shader_unref(previous);
+  const int previous_expand = animation_expand(animation);
+  animation->shaders[slot] = fx_effect_shader_ref(shader);
+  fx_effect_shader_unref(previous);
   if (parameters != NULL || shader != NULL) {
     animation->parameters[slot] = next;
   }
@@ -1153,20 +1703,55 @@ void wlr_scene_node_set_animation(
   for (unsigned i = 0; i < FX_ANIMATION_SLOTS; i++) {
     populated |= animation->shaders[i] != NULL;
   }
-  struct wlr_scene* scene = scene_node_get_root(node);
-  if (!populated) {
-    scene_animation_destroy(&animation->addon);
+  const bool was_transient = animation->transient;
+  const bool was_persistent = animation->persistent;
+  scene_animation_classify(animation);
+  const bool presence_changed = previous == NULL
+      || shader == NULL
+      || was_transient != animation->transient
+      || was_persistent != animation->persistent;
+  const bool transient_now = animation->transient;
+  struct scene_effects* effects = scene_effects_get(animation->scene, false);
+  if (effects != NULL) {
+    scene_effects_recount(effects);
   }
-  // Rebuild coverage on both activation and removal. Progress can change
-  // arbitrary texels, so damage the complete scene while custom effects run.
-  scene_node_update(&scene->tree.node, NULL);
+  if (populated && (animation->shaders[FX_SLOT_BORDER_EFFECT] != NULL || animation->light != NULL)) {
+    scene_light_sync(effects, animation);
+  }
+  if (!populated) {
+    scene_effect_damage(node, previous_expand);
+    scene_animation_destroy(&animation->addon);
+    if (fx_slot_persistent(slot)) {
+      scene_node_update(node, NULL);
+    } else {
+      scene_node_update(&scene->tree.node, NULL);
+    }
+    return;
+  }
+  if (transient_now || (previous != NULL && !fx_slot_persistent(slot) && shader == NULL)) {
+    // Progress can change arbitrary texels, so damage the complete scene while custom effects run.
+    scene_node_update(&scene->tree.node, NULL);
+  } else if (presence_changed) {
+    scene_effect_damage(node, previous_expand);
+    scene_node_update(node, NULL);
+  } else {
+    scene_effect_damage(node, previous_expand);
+  }
 }
 
 void wlr_scene_node_clear_animations(struct wlr_scene_node* node) {
   struct scene_animation* animation = scene_animation_get(node);
   if (animation != NULL) {
+    const bool transient = animation->transient;
+    if (!transient) {
+      scene_effect_damage(node, 0);
+    }
     scene_animation_destroy(&animation->addon);
-    scene_node_update(&scene_node_get_root(node)->tree.node, NULL);
+    if (transient) {
+      scene_node_update(&scene_node_get_root(node)->tree.node, NULL);
+    } else {
+      scene_node_update(node, NULL);
+    }
   }
 }
 
@@ -1188,7 +1773,7 @@ bool wlr_scene_node_set_animation_output_clip(struct wlr_scene_node* node, const
     animation->output_clip_enabled = true;
     animation->output_clip = *box;
   }
-  // Animation shaders can sample or produce any texel inside their canvas.
+  // Animation effects can sample or produce any texel inside their canvas.
   // Rebuild complete coverage for both the old and new output clip.
   scene_node_update(&scene->tree.node, NULL);
   return true;
@@ -1201,13 +1786,14 @@ void wlr_scene_node_copy_animations_for_snapshot(struct wlr_scene_node* destinat
   }
   for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
     if (animation->shaders[slot] != NULL) {
-      const unsigned destination_slot = slot >= 4 ? 3 : slot;
-      wlr_scene_node_set_animation(
-          destination, destination_slot, animation->shaders[slot], &animation->parameters[slot]
-      );
+      // Outer lifecycle slots (closing and above) become the opening slot; every other slot keeps its index.
+      const unsigned destination_slot = slot >= FX_SLOT_WINDOWS_OUT ? FX_SLOT_WINDOWS_IN : slot;
+      struct fx_animation_parameters frozen = animation->parameters[slot];
+      frozen.light.enabled = false;
+      wlr_scene_node_set_animation(destination, destination_slot, animation->shaders[slot], &frozen);
       struct scene_animation* copy = scene_animation_get(destination);
       if (copy != NULL) {
-        copy->parameters[destination_slot] = animation->parameters[slot];
+        copy->parameters[destination_slot] = frozen;
         fx_animation_history_move(&copy->histories[destination_slot], &animation->histories[slot]);
       }
     }
@@ -2434,18 +3020,30 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
   pixman_region32_t opaque;
   pixman_region32_init(&opaque);
-  scene_node_opaque_region(node, x, y, &opaque);
+  scene_node_opaque_region(data->effects, node, x, y, &opaque);
   logical_to_buffer_coords(&opaque, data, false);
   pixman_region32_subtract(&opaque, &render_region, &opaque);
 
   enum wl_output_transform node_transform = wlr_output_transform_compose(WL_OUTPUT_TRANSFORM_NORMAL, data->transform);
 
   struct wlr_scene* scene = data->output->scene;
+  struct scene_light* light =
+      node->type == WLR_SCENE_NODE_RECT && data->effects != NULL && data->effects->light_layer != NULL
+      ? scene_light_from_node(node)
+      : NULL;
   switch (node->type) {
   case WLR_SCENE_NODE_TREE:
     assert(false);
     break;
   case WLR_SCENE_NODE_RECT:;
+    if (light != NULL) {
+      if (light->source != NULL && light->source->shaders[FX_SLOT_BORDER_EFFECT] != NULL) {
+        fx_render_pass_add_effect_light(
+            fx_pass, light->cache, &light->source->parameters[FX_SLOT_BORDER_EFFECT].light, &dst_box, &render_region
+        );
+      }
+      break;
+    }
     struct wlr_scene_rect* scene_rect = wlr_scene_rect_from_node(node);
     struct fx_corner_radii rect_corners = scene_rect->corners;
 
@@ -2586,10 +3184,14 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       fx_corner_radii_transform(transform, &buffer_corners);
     }
 
-    struct wlr_color_primaries primaries = {0};
-    if (scene_buffer->primaries != 0) {
-      wlr_color_primaries_from_named(&primaries, scene_buffer->primaries);
+    // Scene buffers use zero for unset colorimetry. Resolve that implicit
+    // sRGB state before calling the strict named-primaries converter.
+    enum wlr_color_named_primaries named_primaries = scene_buffer->primaries;
+    if (named_primaries == 0) {
+      named_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
     }
+    struct wlr_color_primaries primaries;
+    wlr_color_primaries_from_named(&primaries, named_primaries);
 
     struct wlr_color_luminances src_lum, srgb_lum;
     wlr_color_transfer_function_get_default_luminance(scene_buffer->transfer_function, &src_lum);
@@ -2691,7 +3293,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                     ? WLR_RENDER_BLEND_MODE_PREMULTIPLIED
                     : WLR_RENDER_BLEND_MODE_NONE,
                 .transfer_function = scene_buffer->transfer_function,
-                .primaries = scene_buffer->primaries != 0 ? &primaries : NULL,
+                .primaries = &primaries,
                 .color_encoding = scene_buffer->color_encoding,
                 .color_range = scene_buffer->color_range,
                 .luminance_multiplier = &luminance_multiplier,
@@ -2713,7 +3315,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .release_timeline = data->output->in_timeline,
         .release_point = data->output->in_point,
     };
-    if (!data->shadow_capture) {
+    if (!data->shadow_capture && !data->sampled_earlier) {
       wl_signal_emit_mutable(&scene_buffer->events.output_sample, &sample_event);
     }
 
@@ -2885,13 +3487,16 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
   // shadow. Capture only the window's own effects, never those ancestors twice.
   // Shape-preserving effects leave the analytic shadow correct as it is.
   bool animated = false;
+  if (data->effects == NULL) {
+    return false;
+  }
   struct scene_animation* effect;
-  wl_list_for_each(effect, &scene_animations, link) {
+  wl_list_for_each(effect, &data->effects->animations, link) {
     if (!node_belongs_to(effect->node, source)) {
       continue;
     }
     for (unsigned i = 0; i < FX_ANIMATION_SLOTS && !animated; i++) {
-      const struct fx_animation_shader* shader = effect->shaders[i];
+      const struct fx_effect_shader* shader = effect->shaders[i];
       animated = shader != NULL && shader->renderer == pass->buffer->renderer && !shader->shape_preserving;
     }
     if (animated) {
@@ -2942,6 +3547,177 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
   return rendered;
 }
 
+// The border node a border slot composites: the node itself, or the single
+// enabled border child of a tree (a view's border tree). `hole` comes back in
+// logical coordinates relative to the extents' origin (the animated node's bounds).
+static bool scene_border_geometry(
+    struct wlr_scene_node* node, int lx, int ly, const pixman_box32_t* extents, struct fx_effect_geometry* geometry
+) {
+  struct wlr_scene_border* border = NULL;
+  int bx = lx, by = ly;
+  if (node->type == WLR_SCENE_NODE_BORDER) {
+    border = wlr_scene_border_from_node(node);
+  } else if (node->type == WLR_SCENE_NODE_TREE) {
+    struct wlr_scene_node* child;
+    wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
+      if (child->enabled && child->type == WLR_SCENE_NODE_BORDER) {
+        if (border != NULL) {
+          return false;
+        }
+        border = wlr_scene_border_from_node(child);
+        bx = lx + child->x;
+        by = ly + child->y;
+      }
+    }
+  }
+  if (border == NULL) {
+    return false;
+  }
+  geometry->hole = border->clipped_region.area;
+  geometry->hole.x += bx - extents->x1;
+  geometry->hole.y += by - extents->y1;
+  geometry->radius[0] = border->clipped_region.corners.top_left;
+  geometry->radius[1] = border->clipped_region.corners.top_right;
+  geometry->radius[2] = border->clipped_region.corners.bottom_right;
+  geometry->radius[3] = border->clipped_region.corners.bottom_left;
+  return true;
+}
+
+static bool region_touches_box(const pixman_region32_t* region, const struct wlr_box* box) {
+  const pixman_box32_t rect = {.x1 = box->x, .y1 = box->y, .x2 = box->x + box->width, .y2 = box->y + box->height};
+  return pixman_region32_contains_rectangle(region, &rect) != PIXMAN_REGION_OUT;
+}
+
+// The in-place mask's corner radii: a rect's or buffer's own, or a tree's
+// first enabled buffer (the toplevel surface). When that buffer has a corner
+// box (its content inside client-side margins), `box` receives it in layout
+// coordinates; otherwise `box` is empty.
+static bool in_place_shape(struct wlr_scene_node* node, int lx, int ly, float corners[4], struct wlr_box* box) {
+  *box = (struct wlr_box){0};
+  if (node->type == WLR_SCENE_NODE_TREE) {
+    struct wlr_scene_node* child;
+    struct wlr_scene_node* surface = NULL;
+    wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
+      if (child->enabled && child->type == WLR_SCENE_NODE_BUFFER) {
+        surface = child;
+        break;
+      }
+    }
+    if (surface == NULL) {
+      return false;
+    }
+    node = surface;
+    lx += surface->x;
+    ly += surface->y;
+  }
+  const struct fx_corner_radii* radii = NULL;
+  if (node->type == WLR_SCENE_NODE_RECT) {
+    radii = &wlr_scene_rect_from_node(node)->corners;
+  } else if (node->type == WLR_SCENE_NODE_BUFFER) {
+    const struct wlr_scene_buffer* buffer = wlr_scene_buffer_from_node(node);
+    radii = &buffer->corners;
+    if (!wlr_box_empty(&buffer->corner_box)) {
+      *box = buffer->corner_box;
+      box->x += lx;
+      box->y += ly;
+    }
+  }
+  if (radii == NULL) {
+    return false;
+  }
+  corners[0] = radii->top_left;
+  corners[1] = radii->top_right;
+  corners[2] = radii->bottom_right;
+  corners[3] = radii->bottom_left;
+  return true;
+}
+
+// Runs the node's in-place slots over what its subtree has drawn into the
+// current target, within its corner box when it has one. Nothing runs when
+// `clip` misses that rectangle, so feedback history carries over.
+static void render_in_place_slots(
+    struct scene_animation* animation, const struct render_data* data, int lx, int ly, const struct wlr_box* box,
+    const struct wlr_box* logical_box, const pixman_region32_t* clip
+) {
+  if (data->effect_capture || !animation->in_place) {
+    return;
+  }
+  struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
+  float corners[4];
+  const float* corner_radius = NULL;
+  struct wlr_box shape_box = *box;
+  struct wlr_box shape_logical = *logical_box;
+  bool shape_known = false;
+  for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
+    struct fx_effect_shader* shader = animation->shaders[slot];
+    if (!fx_slot_in_place(slot) || shader == NULL || shader->renderer != pass->buffer->renderer) {
+      continue;
+    }
+    if (!shape_known) {
+      struct wlr_box corner_box;
+      corner_radius = in_place_shape(animation->node, lx, ly, corners, &corner_box) ? corners : NULL;
+      if (!wlr_box_empty(&corner_box)) {
+        corner_box.x -= data->logical.x;
+        corner_box.y -= data->logical.y;
+        // The node bounds can cut edges off the corner box (a client buffer lagging a resize);
+        // the scene draws those edges square, so zero the radius of every corner they touch.
+        if (corner_radius != NULL) {
+          if (corner_box.x < logical_box->x) {
+            corners[0] = corners[3] = 0;
+          }
+          if (corner_box.y < logical_box->y) {
+            corners[0] = corners[1] = 0;
+          }
+          if (corner_box.x + corner_box.width > logical_box->x + logical_box->width) {
+            corners[1] = corners[2] = 0;
+          }
+          if (corner_box.y + corner_box.height > logical_box->y + logical_box->height) {
+            corners[2] = corners[3] = 0;
+          }
+        }
+        if (!wlr_box_intersection(&shape_logical, &corner_box, logical_box)) {
+          return;
+        }
+        shape_box = shape_logical;
+        transform_output_box(&shape_box, data);
+      }
+      if (!region_touches_box(clip, &shape_box)) {
+        return;
+      }
+      shape_known = true;
+    }
+    const struct fx_effect_composite composite = {
+        .shader = shader,
+        .parameters = &animation->parameters[slot],
+        .box = shape_box,
+        .logical_box = shape_logical,
+        .transform = data->transform,
+        .expand = 0,
+        .capture_clip = clip,
+        .output_clip = clip,
+        .history = &animation->histories[slot],
+        .output = data->output->output,
+        .update_history = !data->shadow_capture,
+        .role = 0,
+        .corner_radius = corner_radius,
+    };
+    fx_render_pass_effect_in_place(pass, &composite);
+  }
+}
+
+static bool
+persistent_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box);
+
+// Whether this frame's damage, within `clip` when set, reaches a persistent effect's drawn box.
+static bool persistent_effect_damaged(
+    struct scene_animation* animation, const struct render_data* data, const struct wlr_box* clip
+) {
+  struct wlr_box box;
+  return persistent_effect_box(animation, data, &box)
+      && (clip == NULL || wlr_box_intersection(&box, &box, clip))
+      && region_touches_box(&data->damage, &box);
+}
+
 static void render_animated_range(
     struct render_list_entry* entries, int high, int low, struct wlr_scene_node* stop, const struct render_data* data
 ) {
@@ -2961,6 +3737,40 @@ static void render_animated_range(
     }
     int lx, ly;
     wlr_scene_node_coords(animation->node, &lx, &ly);
+    // Keep off-output pixels until after deformation: they can bend back on screen.
+    if (!data->full_capture && animation->shaders[FX_SLOT_DRAG] != NULL) {
+      pixman_region32_t bounds;
+      pixman_region32_init(&bounds);
+      scene_node_bounds(animation->node, lx, ly, &bounds);
+      wlr_region_expand(&bounds, &bounds, scene_node_drawn_expand(animation->node));
+      pixman_region32_translate(&bounds, -data->logical.x, -data->logical.y);
+      logical_to_buffer_coords(&bounds, data, true);
+      const pixman_box32_t* extents = pixman_region32_extents(&bounds);
+      struct wlr_box capture_box = {
+          .x = extents->x1,
+          .y = extents->y1,
+          .width = extents->x2 - extents->x1,
+          .height = extents->y2 - extents->y1,
+      };
+      const struct wlr_box target = {.width = pass->buffer->buffer->width, .height = pass->buffer->buffer->height};
+      const bool needs_capture = !wlr_box_empty(&capture_box) && !wlr_box_contains_box(&target, &capture_box);
+      pixman_region32_fini(&bounds);
+      // Reuse the allocation across small changes in the spring's margin.
+      capture_box.width = (capture_box.width + 127) / 128 * 128;
+      capture_box.height = (capture_box.height + 127) / 128 * 128;
+      if (needs_capture && fx_render_pass_begin_capture(pass, &capture_box)) {
+        struct render_data capture = *data;
+        capture.capture_x -= capture_box.x;
+        capture.capture_y -= capture_box.y;
+        capture.full_capture = true;
+        pixman_region32_init_rect(&capture.damage, 0, 0, capture_box.width, capture_box.height);
+        render_animated_range(entries, i, end, stop, &capture);
+        pixman_region32_fini(&capture.damage);
+        fx_render_pass_end_capture(pass, &capture_box, &data->damage);
+        i = end - 1;
+        continue;
+      }
+    }
     const bool has_animation_clip = animation->output_clip_enabled && !data->shadow_capture;
     struct wlr_box output_box = {0};
     if (has_animation_clip) {
@@ -2969,45 +3779,6 @@ static void render_animated_range(
       output_box.y += ly - data->logical.y;
       transform_output_box(&output_box, data);
     }
-    bool captured[FX_ANIMATION_SLOTS] = {0};
-    bool captured_any = false;
-    for (int slot = FX_ANIMATION_SLOTS - 1; slot >= 0; slot--) {
-      struct fx_animation_shader* shader = animation->shaders[slot];
-      if (shader != NULL && shader->renderer == pass->buffer->renderer) {
-        captured[slot] = fx_render_pass_begin_animation(pass);
-        captured_any |= captured[slot];
-      }
-    }
-    if (!captured_any && has_animation_clip) {
-      struct render_data fallback = *data;
-      pixman_region32_init(&fallback.damage);
-      pixman_region32_copy(&fallback.damage, &data->damage);
-      pixman_region32_intersect_rect(
-          &fallback.damage, &fallback.damage, output_box.x, output_box.y, output_box.width, output_box.height
-      );
-      render_animated_range(entries, i, end, animation->node, &fallback);
-      pixman_region32_fini(&fallback.damage);
-      i = end - 1;
-      continue;
-    }
-    render_animated_range(entries, i, end, animation->node, data);
-
-    pixman_region32_t bounds;
-    pixman_region32_init(&bounds);
-    scene_node_bounds(animation->node, lx, ly, &bounds);
-    const pixman_box32_t* extents = pixman_region32_extents(&bounds);
-    struct wlr_box logical_box = {
-        .x = extents->x1 - data->logical.x,
-        .y = extents->y1 - data->logical.y,
-        .width = extents->x2 - extents->x1,
-        .height = extents->y2 - extents->y1,
-    };
-    pixman_region32_fini(&bounds);
-    struct wlr_box box = logical_box;
-    transform_output_box(&box, data);
-    pixman_region32_t clip;
-    pixman_region32_init(&clip);
-    pixman_region32_copy(&clip, &data->damage);
     struct wlr_box ancestor_clip;
     bool has_clip = scene_node_ancestor_clip(animation->node, lx, ly, &ancestor_clip);
     if (animation->node->type == WLR_SCENE_NODE_TREE) {
@@ -3028,10 +3799,57 @@ static void render_animated_range(
       ancestor_clip.x -= data->logical.x;
       ancestor_clip.y -= data->logical.y;
       transform_output_box(&ancestor_clip, data);
+    }
+    // A persistent slot this frame's damage misses would composite nothing and blank its history.
+    const bool persistent_damaged =
+        animation->persistent && persistent_effect_damaged(animation, data, has_clip ? &ancestor_clip : NULL);
+    bool captured[FX_ANIMATION_SLOTS] = {0};
+    bool captured_any = false;
+    for (int slot = FX_ANIMATION_SLOTS - 1; slot >= 0; slot--) {
+      struct fx_effect_shader* shader = animation->shaders[slot];
+      if (shader != NULL
+          && shader->renderer == pass->buffer->renderer
+          && !fx_slot_in_place(slot)
+          && (persistent_damaged || !fx_slot_persistent(slot))) {
+        captured[slot] = fx_render_pass_begin_animation(pass);
+        captured_any |= captured[slot];
+      }
+    }
+    // Without a capture to clip, the output clip limits the subtree and its in-place slots.
+    struct render_data clipped;
+    const struct render_data* subtree = data;
+    if (!captured_any && has_animation_clip) {
+      clipped = *data;
+      pixman_region32_init(&clipped.damage);
+      pixman_region32_copy(&clipped.damage, &data->damage);
+      pixman_region32_intersect_rect(
+          &clipped.damage, &clipped.damage, output_box.x, output_box.y, output_box.width, output_box.height
+      );
+      subtree = &clipped;
+    }
+    render_animated_range(entries, i, end, animation->node, subtree);
+
+    pixman_region32_t bounds;
+    pixman_region32_init(&bounds);
+    scene_node_bounds(animation->node, lx, ly, &bounds);
+    const pixman_box32_t* extents = pixman_region32_extents(&bounds);
+    struct wlr_box logical_box = {
+        .x = extents->x1 - data->logical.x,
+        .y = extents->y1 - data->logical.y,
+        .width = extents->x2 - extents->x1,
+        .height = extents->y2 - extents->y1,
+    };
+    struct wlr_box box = logical_box;
+    transform_output_box(&box, data);
+    pixman_region32_t clip;
+    pixman_region32_init(&clip);
+    pixman_region32_copy(&clip, &subtree->damage);
+    if (has_clip) {
       pixman_region32_intersect_rect(
           &clip, &clip, ancestor_clip.x, ancestor_clip.y, ancestor_clip.width, ancestor_clip.height
       );
     }
+    render_in_place_slots(animation, data, lx, ly, &box, &logical_box, &clip);
     pixman_region32_t output_clip;
     bool has_output_clip = false;
     if (has_animation_clip) {
@@ -3048,19 +3866,44 @@ static void render_animated_range(
         final_slot = (int)slot;
       }
     }
+    const int expand = animation_expand(animation);
     for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
       if (captured[slot]) {
         const pixman_region32_t* composite_clip = has_output_clip && (int)slot == final_slot ? &output_clip : &clip;
-        fx_render_pass_end_animation_with_history(
-            pass, animation->shaders[slot], &animation->parameters[slot], &box, &logical_box, data->transform, &clip,
-            composite_clip, &animation->histories[slot], data->output->output, !data->shadow_capture
-        );
+        struct fx_effect_geometry geometry;
+        const bool has_geometry = slot == FX_SLOT_BORDER_EFFECT
+            && fx_effect_shader_kind(animation->shaders[slot]) == FX_EFFECT_BORDER
+            && scene_border_geometry(animation->node, lx, ly, extents, &geometry);
+        const struct fx_effect_composite composite = {
+            .shader = animation->shaders[slot],
+            .parameters = &animation->parameters[slot],
+            .box = box,
+            .logical_box = logical_box,
+            .transform = data->transform,
+            .expand = expand,
+            .capture_clip = &clip,
+            .output_clip = composite_clip,
+            .history = &animation->histories[slot],
+            .output = data->output->output,
+            .update_history = !data->shadow_capture,
+            .geometry = has_geometry ? &geometry : NULL,
+            .light = slot == FX_SLOT_BORDER_EFFECT && animation->light != NULL && animation->light->rect->node.enabled
+                    && !data->shadow_capture && !data->effect_capture
+                ? animation->light->cache
+                : NULL,
+            .role = data->effect_capture ? 1 : 0,
+        };
+        fx_render_pass_end_effect(pass, &composite);
       }
     }
+    pixman_region32_fini(&bounds);
     if (has_output_clip) {
       pixman_region32_fini(&output_clip);
     }
     pixman_region32_fini(&clip);
+    if (subtree == &clipped) {
+      pixman_region32_fini(&clipped.damage);
+    }
     i = end - 1;
   }
 }
@@ -3171,6 +4014,310 @@ static void scene_output_update_geometry(struct wlr_scene_output* scene_output, 
   );
 }
 
+// A committed buffer acknowledges its damage, or all pending damage when it carries none.
+static void
+scene_output_acknowledge_damage(struct wlr_scene_output* scene_output, const struct wlr_output_state* state) {
+  if (state->committed & WLR_OUTPUT_STATE_DAMAGE) {
+    pixman_region32_subtract(
+        &scene_output->pending_commit_damage, &scene_output->pending_commit_damage, &state->damage
+    );
+  } else {
+    pixman_region32_fini(&scene_output->pending_commit_damage);
+    pixman_region32_init(&scene_output->pending_commit_damage);
+  }
+}
+
+struct scene_output_effects {
+  struct wlr_addon addon;
+  struct wlr_scene_output* output;
+  struct wl_listener destroy;
+  bool in_capture;
+  bool capture_was_pending;
+  struct fx_effect_shader* screen;
+  struct fx_animation_parameters screen_parameters;
+  struct fx_animation_history screen_history;
+  struct fx_effect_shader* cursor;
+  struct fx_animation_parameters cursor_parameters;
+  struct fx_animation_history cursor_history;
+  int cursor_radius;
+  double pointer_x, pointer_y; // layout coordinates
+  bool pointer_visible;        // shown and inside the output
+};
+
+// Drops the effect captures this scene output saved into its swapchain buffers.
+static void output_effects_release_capture(struct wlr_scene_output* scene_output) {
+  struct wlr_renderer* renderer = scene_output->output->renderer;
+  if (renderer == NULL || !wlr_renderer_is_fx(renderer)) {
+    return;
+  }
+  struct fx_renderer* fx_renderer = fx_get_renderer(renderer);
+  // Dropping a capture removes its framebuffer from this list: rescan after each.
+  bool released;
+  do {
+    released = false;
+    struct fx_framebuffer* buffer;
+    wl_list_for_each(buffer, &fx_renderer->buffers, link) {
+      if (buffer->effect_capture_owner == scene_output) {
+        fx_framebuffer_release_effect_capture(buffer);
+        released = true;
+        break;
+      }
+    }
+  } while (released);
+}
+
+static void scene_output_effects_destroy(struct wlr_addon* addon) {
+  struct scene_output_effects* effects = wl_container_of(addon, effects, addon);
+  output_effects_release_capture(effects->output);
+  effects->output->output_effects_configured = false;
+  fx_effect_shader_unref(effects->screen);
+  fx_effect_shader_unref(effects->cursor);
+  fx_animation_history_finish(&effects->screen_history);
+  fx_animation_history_finish(&effects->cursor_history);
+  wl_list_remove(&effects->destroy.link);
+  wlr_addon_finish(addon);
+  free(effects);
+}
+
+static const struct wlr_addon_interface scene_output_effects_impl = {
+    .name = "scene_output_effects",
+    .destroy = scene_output_effects_destroy,
+};
+
+static void scene_output_effects_handle_destroy(struct wl_listener* listener, void* data) {
+  struct scene_output_effects* effects = wl_container_of(listener, effects, destroy);
+  scene_output_effects_destroy(&effects->addon);
+}
+
+static struct scene_output_effects* scene_output_effects_get(struct wlr_scene_output* output, bool create) {
+  struct wlr_addon* addon = wlr_addon_find(&output->output->addons, output, &scene_output_effects_impl);
+  if (addon != NULL) {
+    struct scene_output_effects* effects = wl_container_of(addon, effects, addon);
+    return effects;
+  }
+  if (!create) {
+    return NULL;
+  }
+  struct scene_output_effects* effects = calloc(1, sizeof(*effects));
+  if (effects == NULL) {
+    return NULL;
+  }
+  effects->output = output;
+  fx_animation_history_init(&effects->screen_history);
+  fx_animation_history_init(&effects->cursor_history);
+  wlr_addon_init(&effects->addon, &output->output->addons, output, &scene_output_effects_impl);
+  effects->destroy.notify = scene_output_effects_handle_destroy;
+  wl_signal_add(&output->events.destroy, &effects->destroy);
+  return effects;
+}
+
+// Drops the capture-role feedback history of every effect on `output` only.
+static void scene_reset_capture_histories(struct wlr_scene* scene, struct wlr_output* output) {
+  struct scene_effects* effects = scene_effects_get(scene, false);
+  if (effects == NULL) {
+    return;
+  }
+  struct scene_animation* animation;
+  wl_list_for_each(animation, &effects->animations, link) {
+    for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
+      fx_animation_history_reset_role(&animation->histories[slot], output, 1);
+    }
+  }
+}
+
+void wlr_scene_output_set_effect_capture_policy(struct wlr_scene_output* output, bool in_capture) {
+  // The default (false) needs no state, so only true creates the addon.
+  struct scene_output_effects* effects = scene_output_effects_get(output, in_capture);
+  if (effects == NULL || effects->in_capture == in_capture) {
+    return;
+  }
+  effects->in_capture = in_capture;
+  scene_reset_capture_histories(output->scene, output->output);
+  output_effects_release_capture(output);
+  scene_output_damage_whole(output);
+}
+
+// The cursor effect's square in output-local logical coordinates on an output
+// `width` x `height` logical px.
+static struct wlr_box output_effects_cursor_box(const struct scene_output_effects* effects, int width, int height) {
+  const struct wlr_scene_output* output = effects->output;
+  if (effects->cursor_radius <= 0) {
+    return (struct wlr_box){.width = width, .height = height};
+  }
+  const int r = effects->cursor_radius;
+  return (struct wlr_box){
+      .x = (int)floor(effects->pointer_x - output->x) - r,
+      .y = (int)floor(effects->pointer_y - output->y) - r,
+      .width = 2 * r + 1,
+      .height = 2 * r + 1,
+  };
+}
+
+static void output_effects_damage_cursor(struct scene_output_effects* effects) {
+  if (effects->cursor == NULL || !effects->pointer_visible) {
+    return;
+  }
+  struct wlr_scene_output* output = effects->output;
+  int width, height;
+  wlr_output_effective_resolution(output->output, &width, &height);
+  const struct wlr_box box = output_effects_cursor_box(effects, width, height);
+  pixman_region32_t damage;
+  pixman_region32_init_rect(&damage, box.x, box.y, box.width, box.height);
+  scale_region(&damage, output->output->scale, true);
+  output_to_buffer_coords(&damage, output->output);
+  scene_output_damage(output, &damage);
+  pixman_region32_fini(&damage);
+}
+
+static void output_effects_update_configured(struct scene_output_effects* effects) {
+  effects->output->output_effects_configured = effects->screen != NULL || effects->cursor != NULL;
+}
+
+static const struct fx_animation_parameters output_effects_no_parameters = {0};
+
+void wlr_scene_output_set_screen_effect(
+    struct wlr_scene_output* output, struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters
+) {
+  struct scene_output_effects* effects = scene_output_effects_get(output, shader != NULL);
+  if (effects == NULL) {
+    return;
+  }
+  if (parameters == NULL) {
+    parameters = &output_effects_no_parameters;
+  }
+  if (effects->screen == shader && (shader == NULL || parameters_equal(parameters, &effects->screen_parameters))) {
+    return;
+  }
+  if (effects->screen != shader) {
+    fx_animation_history_reset(&effects->screen_history);
+  }
+  fx_effect_shader_unref(effects->screen);
+  effects->screen = fx_effect_shader_ref(shader);
+  effects->screen_parameters = *parameters;
+  output_effects_update_configured(effects);
+  scene_output_damage_whole(output);
+}
+
+void wlr_scene_output_set_cursor_effect(
+    struct wlr_scene_output* output, struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters,
+    int radius
+) {
+  struct scene_output_effects* effects = scene_output_effects_get(output, shader != NULL);
+  if (effects == NULL) {
+    return;
+  }
+  if (parameters == NULL) {
+    parameters = &output_effects_no_parameters;
+  }
+  if (effects->cursor == shader
+      && effects->cursor_radius == radius
+      && (shader == NULL || parameters_equal(parameters, &effects->cursor_parameters))) {
+    return;
+  }
+  output_effects_damage_cursor(effects);
+  // Pointer updates are dropped without a program, so a new one waits for the next push.
+  if (effects->cursor != shader) {
+    fx_animation_history_reset(&effects->cursor_history);
+    effects->pointer_visible = false;
+  }
+  fx_effect_shader_unref(effects->cursor);
+  effects->cursor = fx_effect_shader_ref(shader);
+  effects->cursor_radius = radius;
+  effects->cursor_parameters = *parameters;
+  output_effects_update_configured(effects);
+  output_effects_damage_cursor(effects);
+}
+
+void wlr_scene_output_set_effect_pointer(struct wlr_scene_output* output, double lx, double ly, bool visible) {
+  if (!output->output_effects_configured) {
+    return;
+  }
+  struct scene_output_effects* effects = scene_output_effects_get(output, false);
+  if (effects == NULL || effects->cursor == NULL) {
+    return;
+  }
+  int width, height;
+  wlr_output_effective_resolution(output->output, &width, &height);
+  const bool inside = lx >= output->x && ly >= output->y && lx < output->x + width && ly < output->y + height;
+  const bool shown = visible && inside;
+  if (effects->pointer_visible == shown && effects->pointer_x == lx && effects->pointer_y == ly) {
+    return;
+  }
+  output_effects_damage_cursor(effects);
+  if (effects->pointer_visible && !shown) {
+    fx_animation_history_reset(&effects->cursor_history);
+  }
+  effects->pointer_x = lx;
+  effects->pointer_y = ly;
+  effects->pointer_visible = shown;
+  output_effects_damage_cursor(effects);
+}
+
+static bool output_effects_active(const struct scene_output_effects* effects) {
+  return effects != NULL && (effects->screen != NULL || (effects->cursor != NULL && effects->pointer_visible));
+}
+
+// Runs one output slot in place over `logical_box` of what the target holds.
+// Nothing runs when the damage misses the box, so feedback history carries over.
+static void render_output_effect(
+    struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters,
+    struct fx_animation_history* history, const struct wlr_box* logical_box, const float* pointer,
+    const struct render_data* data
+) {
+  struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
+  if (shader == NULL || shader->renderer != pass->buffer->renderer) {
+    return;
+  }
+  struct wlr_box box = *logical_box;
+  transform_output_box(&box, data);
+  if (!region_touches_box(&data->damage, &box)) {
+    return;
+  }
+  const struct fx_effect_composite composite = {
+      .shader = shader,
+      .parameters = parameters,
+      .box = box,
+      .logical_box = *logical_box,
+      .transform = data->transform,
+      .capture_clip = &data->damage,
+      .output_clip = &data->damage,
+      .history = history,
+      .output = data->output->output,
+      .update_history = true,
+      .role = 0,
+      .pointer = pointer,
+  };
+  fx_render_pass_effect_in_place(pass, &composite);
+}
+
+// The screen slot, then the cursor slot over its result.
+static void render_output_effects(struct scene_output_effects* effects, const struct render_data* data) {
+  if (effects == NULL || data->effect_capture) {
+    return;
+  }
+  const struct wlr_box whole = {.width = data->logical.width, .height = data->logical.height};
+  render_output_effect(effects->screen, &effects->screen_parameters, &effects->screen_history, &whole, NULL, data);
+  if (effects->cursor == NULL || !effects->pointer_visible) {
+    return;
+  }
+  const struct wlr_box box = output_effects_cursor_box(effects, data->logical.width, data->logical.height);
+  const float pointer[2] = {
+      box.width > 0 ? (float)((effects->pointer_x - effects->output->x - box.x) / box.width) : 0,
+      box.height > 0 ? (float)((effects->pointer_y - effects->output->y - box.y) / box.height) : 0,
+  };
+  render_output_effect(effects->cursor, &effects->cursor_parameters, &effects->cursor_history, &box, pointer, data);
+}
+
+void wlr_scene_output_damage_whole_for_test(struct wlr_scene_output* scene_output) {
+  scene_output_damage_whole(scene_output);
+}
+
+void wlr_scene_output_acknowledge_damage_for_test(
+    struct wlr_scene_output* scene_output, const struct wlr_output_state* state
+) {
+  scene_output_acknowledge_damage(scene_output, state);
+}
+
 static void scene_output_handle_commit(struct wl_listener* listener, void* data) {
   struct wlr_scene_output* scene_output = wl_container_of(listener, scene_output, output_commit);
   struct wlr_output_event_commit* event = data;
@@ -3180,14 +4327,7 @@ static void scene_output_handle_commit(struct wl_listener* listener, void* data)
   // will be acknowledged by the backend so we don't need to keep track of it
   // anymore
   if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
-    if (state->committed & WLR_OUTPUT_STATE_DAMAGE) {
-      pixman_region32_subtract(
-          &scene_output->pending_commit_damage, &scene_output->pending_commit_damage, &state->damage
-      );
-    } else {
-      pixman_region32_fini(&scene_output->pending_commit_damage);
-      pixman_region32_init(&scene_output->pending_commit_damage);
-    }
+    scene_output_acknowledge_damage(scene_output, state);
   }
 
   bool force_update =
@@ -3426,6 +4566,9 @@ struct render_list_constructor_data {
   bool highlight_transparent_region;
   bool fractional_scale;
   const float* background_color;
+  bool persistent_effects;
+  // The scene's largest expand margin; 0 when no slot draws past its node.
+  int effect_expand;
 };
 
 static bool scene_buffer_matches_background(struct wlr_scene_buffer* scene_buffer, const float background[static 4]) {
@@ -3465,7 +4608,8 @@ static bool construct_render_list_iterator(
   // and the rect has to be drawn to cover the seam.
   if (node->type == WLR_SCENE_NODE_RECT
       && data->calculate_visibility
-      && (!data->fractional_scale || data->render_list->size == 0)) {
+      && (!data->fractional_scale || data->render_list->size == 0)
+      && !(data->persistent_effects && effect_over_node(node) != NULL)) {
     struct wlr_scene_rect* rect = wlr_scene_rect_from_node(node);
 
     if (scene_rect_matches_background(rect, data->background_color)) {
@@ -3476,7 +4620,8 @@ static bool construct_render_list_iterator(
   // Same for a single-pixel buffer of that color
   if (node->type == WLR_SCENE_NODE_BUFFER
       && data->calculate_visibility
-      && (!data->fractional_scale || data->render_list->size == 0)) {
+      && (!data->fractional_scale || data->render_list->size == 0)
+      && !(data->persistent_effects && effect_over_node(node) != NULL)) {
     struct wlr_scene_buffer* scene_buffer = wlr_scene_buffer_from_node(node);
 
     if (scene_buffer_matches_background(scene_buffer, data->background_color)) {
@@ -3486,9 +4631,20 @@ static bool construct_render_list_iterator(
 
   pixman_region32_t intersection;
   pixman_region32_init(&intersection);
-  pixman_region32_intersect_rect(
-      &intersection, &node->visible, data->box.x, data->box.y, data->box.width, data->box.height
-  );
+  const int expand = data->effect_expand > 0 ? scene_node_effect_expand(node) : 0;
+  if (expand > 0) {
+    pixman_region32_t visible;
+    pixman_region32_init(&visible);
+    wlr_region_expand(&visible, &node->visible, expand);
+    pixman_region32_intersect_rect(
+        &intersection, &visible, data->box.x, data->box.y, data->box.width, data->box.height
+    );
+    pixman_region32_fini(&visible);
+  } else {
+    pixman_region32_intersect_rect(
+        &intersection, &node->visible, data->box.x, data->box.y, data->box.width, data->box.height
+    );
+  }
   if (pixman_region32_empty(&intersection)) {
     pixman_region32_fini(&intersection);
     return false;
@@ -3595,7 +4751,8 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 
   if (!scene_output->scene->direct_scanout
       || !scene_output->direct_scanout_enabled
-      || scene_has_animations(scene_output->scene)) {
+      || data->transient_effects
+      || data->persistent_visible) {
     return SCANOUT_INELIGIBLE;
   }
 
@@ -3934,6 +5091,149 @@ cleanup_transforms:
   return result;
 }
 
+// Adds `box` (buffer coordinates) to the output's damage without scheduling a
+// frame: this runs inside build_state, where a schedule would loop.
+static void scene_output_damage_box_quiet(struct wlr_scene_output* scene_output, const struct wlr_box* box) {
+  pixman_region32_t damage;
+  pixman_region32_init_rect(&damage, box->x, box->y, box->width, box->height);
+  pixman_region32_intersect_rect(&damage, &damage, 0, 0, scene_output->output->width, scene_output->output->height);
+  wlr_damage_ring_add(&scene_output->damage_ring, &damage);
+  pixman_region32_union(&scene_output->pending_commit_damage, &scene_output->pending_commit_damage, &damage);
+  pixman_region32_fini(&damage);
+}
+
+// Transforms an output-local logical box to buffer coordinates, clipped to the
+// buffer so commit and render damage stay inside it. False when nothing is left.
+static bool effect_buffer_box(struct wlr_box* box, const struct render_data* data) {
+  if (box->width <= 0 || box->height <= 0) {
+    return false;
+  }
+  transform_output_box(box, data);
+  struct wlr_box buffer_box = {.width = data->trans_width, .height = data->trans_height};
+  if (data->transform & WL_OUTPUT_TRANSFORM_90) {
+    buffer_box.width = data->trans_height;
+    buffer_box.height = data->trans_width;
+  }
+  return wlr_box_intersection(box, box, &buffer_box);
+}
+
+// The drawn box of a persistent effect, in buffer coordinates: node bounds plus expand.
+static bool
+persistent_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box) {
+  int lx, ly;
+  if (!animation->persistent || !wlr_scene_node_coords(animation->node, &lx, &ly)) {
+    return false;
+  }
+  pixman_region32_t bounds;
+  pixman_region32_init(&bounds);
+  scene_node_bounds(animation->node, lx, ly, &bounds);
+  if (pixman_region32_empty(&bounds)) {
+    pixman_region32_fini(&bounds);
+    return false;
+  }
+  const int expand = animation_expand(animation);
+  wlr_region_expand(&bounds, &bounds, expand);
+  int rx, ry;
+  // The light is drawn from this box's result, so damage over either covers both.
+  if (animation->light != NULL && wlr_scene_node_coords(&animation->light->rect->node, &rx, &ry)) {
+    const struct wlr_scene_rect* rect = animation->light->rect;
+    pixman_region32_union_rect(&bounds, &bounds, rx, ry, rect->width, rect->height);
+  }
+  const pixman_box32_t* extents = pixman_region32_extents(&bounds);
+  *box = (struct wlr_box){
+      .x = extents->x1 - data->logical.x,
+      .y = extents->y1 - data->logical.y,
+      .width = extents->x2 - extents->x1,
+      .height = extents->y2 - extents->y1,
+  };
+  pixman_region32_fini(&bounds);
+  return effect_buffer_box(box, data);
+}
+
+// Adds `box` to `damage` when the region touches it without covering it.
+// Returns true only on real growth.
+static bool damage_grow_to_box(
+    struct wlr_scene_output* scene_output, pixman_region32_t* damage, const struct wlr_box* box, bool commit
+) {
+  pixman_box32_t rect = {.x1 = box->x, .y1 = box->y, .x2 = box->x + box->width, .y2 = box->y + box->height};
+  if (pixman_region32_contains_rectangle(damage, &rect) != PIXMAN_REGION_PART) {
+    return false; // untouched, or already covered
+  }
+  pixman_region32_union_rect(damage, damage, box->x, box->y, box->width, box->height);
+  if (commit) {
+    scene_output_damage_box_quiet(scene_output, box);
+  }
+  return true;
+}
+
+// Grows `damage` to cover every persistent effect box and output effect box
+// it touches, and repeats until nothing grows: covering one box can reach
+// another. A program may read any texel of its box, and its input only holds
+// this frame's pixels where they were damaged. With `commit` the growth also
+// reaches the damage ring and the commit damage.
+static bool expand_damage_to_effects(
+    struct wlr_scene_output* scene_output, struct scene_effects* effects,
+    const struct scene_output_effects* output_effects, const struct render_data* data, pixman_region32_t* damage,
+    bool commit
+) {
+  const bool persistent = effects != NULL && effects->persistent > 0;
+  if (!persistent && !output_effects_active(output_effects)) {
+    return false;
+  }
+  struct wlr_box screen_box = {0}, cursor_box = {0};
+  if (output_effects != NULL && output_effects->screen != NULL) {
+    screen_box = (struct wlr_box){.width = data->logical.width, .height = data->logical.height};
+    effect_buffer_box(&screen_box, data);
+  }
+  if (output_effects != NULL && output_effects->cursor != NULL && output_effects->pointer_visible) {
+    cursor_box = output_effects_cursor_box(output_effects, data->logical.width, data->logical.height);
+    effect_buffer_box(&cursor_box, data);
+  }
+  bool grew_any = false;
+  bool grew;
+  do {
+    grew = false;
+    if (persistent) {
+      struct scene_animation* animation;
+      wl_list_for_each(animation, &effects->animations, link) {
+        struct wlr_box box;
+        if (persistent_effect_box(animation, data, &box)) {
+          grew |= damage_grow_to_box(scene_output, damage, &box, commit);
+        }
+      }
+    }
+    if (!wlr_box_empty(&screen_box)) {
+      grew |= damage_grow_to_box(scene_output, damage, &screen_box, commit);
+    }
+    if (!wlr_box_empty(&cursor_box)) {
+      grew |= damage_grow_to_box(scene_output, damage, &cursor_box, commit);
+    }
+    grew_any |= grew;
+  } while (grew);
+  return grew_any;
+}
+
+static void render_background(
+    struct wlr_render_pass* render_pass, const struct wlr_scene* scene, const struct wlr_buffer* buffer,
+    const pixman_region32_t* clip, enum wlr_render_blend_mode blend_mode
+) {
+  wlr_render_pass_add_rect(
+      render_pass,
+      &(struct wlr_render_rect_options){
+          .box = {.width = buffer->width, .height = buffer->height},
+          .color =
+              {
+                  .r = scene->background_color[0],
+                  .g = scene->background_color[1],
+                  .b = scene->background_color[2],
+                  .a = scene->background_color[3],
+              },
+          .blend_mode = blend_mode,
+          .clip = clip,
+      }
+  );
+}
+
 bool wlr_scene_output_build_state(
     struct wlr_scene_output* scene_output, struct wlr_output_state* state,
     const struct wlr_scene_output_state_options* options
@@ -3957,9 +5257,9 @@ bool wlr_scene_output_build_state(
 
   struct wlr_output* output = scene_output->output;
   enum wlr_scene_debug_damage_option debug_damage = scene_output->scene->debug_damage_option;
-  if (!scene_has_animations(scene_output->scene)) {
-    fx_renderer_clear_animation_buffers(output);
-  }
+  struct scene_effects* effects = scene_effects_get(scene_output->scene, false);
+  const bool transient_effects = effects != NULL && effects->transient > 0;
+  const bool persistent_effects = effects != NULL && effects->persistent > 0;
 
   bool render_gamma_lut = false;
   if (wlr_output_get_gamma_size(output) == 0 && output->renderer->features.output_color_transform) {
@@ -3976,6 +5276,8 @@ bool wlr_scene_output_build_state(
       .scale = output->scale,
       .logical = {.x = scene_output->x, .y = scene_output->y},
       .output = scene_output,
+      .effects = effects,
+      .transient_effects = transient_effects,
   };
 
   int resolution_width, resolution_height;
@@ -4007,22 +5309,89 @@ bool wlr_scene_output_build_state(
   struct render_list_constructor_data list_con = {
       .box = render_data.logical,
       .render_list = &scene_output->render_list,
-      .calculate_visibility = scene_output->scene->calculate_visibility && !scene_has_animations(scene_output->scene),
+      .calculate_visibility = scene_output->scene->calculate_visibility && !transient_effects,
       .highlight_transparent_region = scene_output->scene->highlight_transparent_region,
       .fractional_scale = floor(render_data.scale) != render_data.scale,
       .background_color = scene_output->scene->background_color,
+      .persistent_effects = persistent_effects,
+      .effect_expand = scene_effects_max_expand(effects),
   };
+  // A leaf whose own box misses the output can still reach it with an expand margin; the iterator tests each leaf's
+  // expanded visible region against the output box itself.
+  struct wlr_box list_walk_box = list_con.box;
+  list_walk_box.x -= list_con.effect_expand;
+  list_walk_box.y -= list_con.effect_expand;
+  list_walk_box.width += 2 * list_con.effect_expand;
+  list_walk_box.height += 2 * list_con.effect_expand;
 
-  list_con.render_list->size = 0;
-  scene_nodes_in_box(&scene_output->scene->tree.node, &list_con.box, construct_render_list_iterator, &list_con);
-  array_realloc(list_con.render_list, list_con.render_list->size);
+  {
+    TRACY_ZONE_START_N("render list");
+    list_con.render_list->size = 0;
+    scene_nodes_in_box(&scene_output->scene->tree.node, &list_walk_box, construct_render_list_iterator, &list_con);
+    array_realloc(list_con.render_list, list_con.render_list->size);
+    TRACY_WHEN_CONNECTED(TRACY_ZONE_TEXT_f(
+        "%s %zu", output->name, list_con.render_list->size / sizeof(struct render_list_entry)
+    );)
+    TRACY_ZONE_END_QUIET;
+  }
 
   struct render_list_entry* list_data = list_con.render_list->data;
   int list_len = list_con.render_list->size / sizeof(*list_data);
   render_data.entries = list_data;
   render_data.entry_count = list_len;
 
-  if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_RERENDER || scene_has_animations(scene_output->scene)) {
+  // Looked up only with scene effects, output slots, or a pending capture; otherwise
+  // there is nothing to draw, save, or release.
+  const bool capture_pending = options->effect_capture_pending;
+  struct scene_output_effects* output_effects =
+      effects != NULL || capture_pending || scene_output->output_effects_configured
+      ? scene_output_effects_get(scene_output, false)
+      : NULL;
+
+  // Only a visible in-place slot makes a pending capture differ from the display.
+  bool in_place_visible = false;
+  render_data.persistent_visible = false;
+  if (persistent_effects) {
+    for (int i = 0; i < list_len; i++) {
+      struct scene_animation* animation = effect_over_node(list_data[i].node);
+      if (animation == NULL || !animation->persistent) {
+        continue;
+      }
+      render_data.persistent_visible = true;
+      in_place_visible = animation->in_place;
+      if (in_place_visible || !capture_pending) {
+        break;
+      }
+    }
+  }
+  if (output_effects_active(output_effects)) {
+    render_data.persistent_visible = true;
+    in_place_visible = true;
+  }
+  if (!transient_effects && !render_data.persistent_visible) {
+    fx_renderer_clear_animation_buffers(output);
+  }
+
+  bool unfiltered_pass =
+      capture_pending && in_place_visible && (output_effects == NULL || !output_effects->in_capture);
+  if (unfiltered_pass && output_effects == NULL) {
+    output_effects = scene_output_effects_get(scene_output, true);
+    unfiltered_pass = output_effects != NULL;
+  }
+  if (output_effects != NULL) {
+    if (output_effects->capture_was_pending && !capture_pending) {
+      // The capture ended: its histories and buffers go with it.
+      scene_reset_capture_histories(scene_output->scene, output);
+      output_effects_release_capture(scene_output);
+    }
+    output_effects->capture_was_pending = capture_pending;
+  }
+  if (unfiltered_pass) {
+    // The display composition redraws everything the unfiltered one drew.
+    scene_output_damage_whole(scene_output);
+  }
+
+  if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_RERENDER || transient_effects) {
     scene_output_damage_whole(scene_output);
   }
 
@@ -4062,6 +5431,9 @@ bool wlr_scene_output_build_state(
     pixman_region32_fini(&acc_damage);
   }
 
+  expand_damage_to_effects(
+      scene_output, effects, output_effects, &render_data, &scene_output->pending_commit_damage, true
+  );
   wlr_output_state_set_damage(state, &scene_output->pending_commit_damage);
 
   // We only want to try direct scanout if:
@@ -4176,6 +5548,7 @@ bool wlr_scene_output_build_state(
 
   pixman_region32_init(&render_data.damage);
   wlr_damage_ring_rotate_buffer(&scene_output->damage_ring, buffer, &render_data.damage);
+  expand_damage_to_effects(scene_output, effects, output_effects, &render_data, &render_data.damage, false);
 
   struct fx_gles_render_pass* fx_pass = fx_get_render_pass(render_pass);
   if (fx_pass->needs_full_damage) {
@@ -4258,10 +5631,15 @@ bool wlr_scene_output_build_state(
     pixman_region32_fini(&original_damage);
   }
 
-  if ((fx_pass->has_blur || scene_has_animations(scene_output->scene))
-      && !fx_render_pass_init_offscreen_buffers(render_pass, output)) {
-    fx_pass->has_blur = false;
-    should_compensate_blur = false;
+  if (fx_pass->has_blur || transient_effects || render_data.persistent_visible) {
+    TRACY_ZONE_START_N("fx_render_pass_init_offscreen_buffers");
+    TRACY_ZONE_TEXT(output->name, strlen(output->name));
+    const bool initialized = fx_render_pass_init_offscreen_buffers(render_pass, output);
+    TRACY_ZONE_END_QUIET;
+    if (!initialized) {
+      fx_pass->has_blur = false;
+      should_compensate_blur = false;
+    }
   }
   struct fx_framebuffer* blur_saved_pixels = NULL;
   if (should_compensate_blur) {
@@ -4291,7 +5669,7 @@ bool wlr_scene_output_build_state(
       // rendering in that black rect region, consider the node's visibility.
       pixman_region32_t opaque;
       pixman_region32_init(&opaque);
-      scene_node_opaque_region(entry->node, entry->x, entry->y, &opaque);
+      scene_node_opaque_region(effects, entry->node, entry->x, entry->y, &opaque);
       pixman_region32_intersect(&opaque, &opaque, &entry->node->visible);
       pixman_region32_translate(&opaque, -scene_output->x, -scene_output->y);
       logical_to_buffer_coords(&opaque, &render_data, false);
@@ -4308,23 +5686,30 @@ bool wlr_scene_output_build_state(
     }
   }
 
-  wlr_render_pass_add_rect(
-      render_pass,
-      &(struct wlr_render_rect_options){
-          .box = {.width = buffer->width, .height = buffer->height},
-          .color =
-              {
-                  .r = scene_output->scene->background_color[0],
-                  .g = scene_output->scene->background_color[1],
-                  .b = scene_output->scene->background_color[2],
-                  .a = scene_output->scene->background_color[3],
-              },
-          .clip = &background,
-      }
-  );
+  render_background(render_pass, scene_output->scene, buffer, &background, WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
   pixman_region32_fini(&background);
 
-  render_animated_range(list_data, list_len - 1, 0, NULL, &render_data);
+  // The unfiltered composition, when it runs, emits output_sample; a display
+  // composition drawn after it does not.
+  bool cursors_drawn = false;
+  if (unfiltered_pass) {
+    struct render_data clean = render_data;
+    clean.effect_capture = true;
+    render_animated_range(list_data, list_len - 1, 0, NULL, &clean);
+    wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
+    if (fx_render_pass_save_effect_capture(fx_pass)) {
+      fx_pass->output_buffer->effect_capture_owner = scene_output;
+      // Start the display composition from the background again.
+      render_background(render_pass, scene_output->scene, buffer, &render_data.damage, WLR_RENDER_BLEND_MODE_NONE);
+      render_data.sampled_earlier = true;
+      render_animated_range(list_data, list_len - 1, 0, NULL, &render_data);
+    } else {
+      // Without its capture the frame is shown unfiltered.
+      cursors_drawn = true;
+    }
+  } else {
+    render_animated_range(list_data, list_len - 1, 0, NULL, &render_data);
+  }
   for (int i = list_len - 1; i >= 0; i--) {
     struct render_list_entry* entry = &list_data[i];
 
@@ -4346,6 +5731,11 @@ bool wlr_scene_output_build_state(
     }
   }
 
+  // A frame left unfiltered for a failed capture save shows no output effects either.
+  if (!cursors_drawn) {
+    render_output_effects(output_effects, &render_data);
+  }
+
   if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
     struct highlight_region* damage;
     wl_list_for_each(damage, &scene_output->damage_highlight_regions, link) {
@@ -4365,7 +5755,9 @@ bool wlr_scene_output_build_state(
     }
   }
 
-  wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
+  if (!cursors_drawn) {
+    wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
+  }
 
   if (blur_saved_pixels != NULL) {
     // Render the saved pixels over the blur artifacts

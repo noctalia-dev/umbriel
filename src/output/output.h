@@ -25,6 +25,7 @@ extern "C" {
 
 namespace umbriel {
 
+  enum class FormatTier : uint8_t;
   enum class HdrMode;
   class Server;
   class View;
@@ -65,6 +66,20 @@ namespace umbriel {
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
     // recording is always enough on its own: marking work that nothing then asks for would simply never happen.
     void markDirty(Dirty what);
+    // Asks for a frame on behalf of persistent effects.
+    void scheduleEffectFrame();
+    // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
+    // effects are suspended; the instances are visible only while the output is enabled.
+    void applyOutputEffects();
+    // Captures are released only by a built frame: asks for one when the last frame kept effects out of a capture.
+    void scheduleEffectCaptureRelease();
+    // Drawn frames that advanced persistent effects' time.
+    [[nodiscard]] uint64_t effectFrames() const { return m_effectFrames; }
+    // Seconds persistent effects on this output draw at. Advances on effect frames, follows the clock while nothing
+    // here needs them, and holds the frozen instant while the clock is frozen.
+    [[nodiscard]] float effectSeconds() const { return m_effectSeconds; }
+    // Effect instances on this output that need frames of their own.
+    [[nodiscard]] unsigned effectEligible() const;
     void onGammaChanged(wlr_gamma_control_v1* control);
     void applyOutputState();
     // Adopt a successfully committed wlr-output-management state in two
@@ -82,10 +97,15 @@ namespace umbriel {
     [[nodiscard]] HdrMode hdrMode() const;
     [[nodiscard]] bool hdrRequested() const;
     [[nodiscard]] bool hdrActive() const;
+    [[nodiscard]] bool bitDepthActive() const;
     [[nodiscard]] const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
     [[nodiscard]] float configuredSdrWhite() const;
+    [[nodiscard]] int configuredBitDepth() const;
+    [[nodiscard]] const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
     [[nodiscard]] bool configuredDirectScanoutEnabled() const;
     [[nodiscard]] bool configuredTearingAllowed() const;
+    // Whether a workspace step wraps around the ends of this output's inventory.
+    [[nodiscard]] bool configuredCyclicWorkspaces() const;
     [[nodiscard]] bool tearingRequested() const;
     [[nodiscard]] bool lastCommitTearing() const { return m_lastCommitTearing; }
     [[nodiscard]] const std::optional<uint32_t>& lastPresentationFlags() const { return m_lastPresentationFlags; }
@@ -120,8 +140,6 @@ namespace umbriel {
       };
     }
 #endif
-    // Attach-render locks held by capture consumers, excluding our own animation lock.
-    [[nodiscard]] int externalRenderLockCount() const;
     // True only for sessions needing separate cursor metadata
     [[nodiscard]] bool needsCursorCapturePacing() const;
     // Re-evaluate fullscreen-controlled VRR after a view or workspace changes.
@@ -150,6 +168,7 @@ namespace umbriel {
     static void onPresent(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
     static int onFrameRetryTimer(void* data);
+    static int onEffectFrameTimer(void* data);
 
     void handleFrame();
     void handleRequestState(void* data);
@@ -161,9 +180,18 @@ namespace umbriel {
     [[nodiscard]] View* findAutoHdrCandidate() const;
     [[nodiscard]] bool configuredVrrEnabled() const;
     void setHdrFallbackReason(std::string_view reason);
+    void setBitDepthFallbackReason(std::string_view reason);
     void updateSceneSdrWhite();
     void rejectGammaControl(wlr_gamma_control_v1* control);
     void armFrameRetry();
+    void armEffectFrame(uint64_t nowMsec);
+    // Render locks other than this output's animation lock.
+    [[nodiscard]] int externalRenderLocks() const;
+    // The screencopy and image-copy share of `externalLocks`: export-dmabuf frames do not count.
+    [[nodiscard]] int captureRenderLocks(int externalLocks) const;
+    // A capture holding `captureLocks` must see frames without in-place effects.
+    [[nodiscard]] bool effectCapturePending(int captureLocks) const;
+    void disarmEffectFrame();
     wlr_output_layout_output* addToLayout();
     void arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
     void updateOptimizedBlur(const wlr_box& fullArea);
@@ -184,6 +212,7 @@ namespace umbriel {
     int m_arrangedLayoutY = 0;
 
     bool m_inFrame = false;
+    bool m_handlingFrame = false;
     bool m_hasDeferredMode = false;
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
@@ -199,15 +228,26 @@ namespace umbriel {
     bool m_dpmsOff = false;
     bool m_hdrGammaWarningLogged = false;
     bool m_modeFallbackWarned = false;
+    std::optional<FormatTier> m_vrrDroppedTier;
     bool m_fullscreenHdrRequested = false;
     bool m_lastHdrRequested = false;
     bool m_lastCommitTearing = false;
     bool m_trackingPresentation = false;
     bool m_appliedConfiguredScale = false;
     wl_event_source* m_frameRetryTimer = nullptr;
+    wl_event_source* m_effectFrameTimer = nullptr;
+    uint64_t m_lastEffectFrameMsec = 0;
+    bool m_effectFrameDue = false;
+    bool m_effectFrameArmed = false;
+    uint64_t m_effectFrames = 0;
+    float m_effectSeconds = 0.0F;
+    bool m_outputEffectsTimed = false; // a visible screen or cursor instance here reads umbriel_time
+    char m_cursorEffectOwner{};        // ledger identity of the cursor slot; the screen slot uses `this`
+    bool m_effectCaptureBuilt = false; // the last built frame had an effect capture pending
     View* m_autoHdrOwner = nullptr;
     std::string m_hdrFallbackReason;
     std::string m_tearingFallbackReason;
+    std::string m_bitDepthFallbackReason;
     std::optional<bool> m_lastPresentationPresented;
     std::optional<uint32_t> m_lastPresentationFlags;
     uint32_t m_trackedPresentationCommitSeq = 0;

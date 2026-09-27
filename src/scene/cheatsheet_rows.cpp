@@ -221,6 +221,7 @@ namespace {
           return label;
         }
         return name;
+      case umbriel::ActionArgKind::Output:
       case umbriel::ActionArgKind::OptionalOutput:
         if (const auto* output = umbriel::payloadIf<umbriel::OutputArg>(bind);
             output != nullptr && !output->output.empty()) {
@@ -256,6 +257,8 @@ namespace {
     switch (group) {
     case Group::Apps:
       return "Apps";
+    case Group::Screencasting:
+      return "Screencasting";
     case Group::Focus:
       return "Focus";
     case Group::MoveSize:
@@ -280,6 +283,13 @@ namespace {
     switch (action) {
     case A::Spawn:
       return Group::Apps;
+    case A::ScreenCastClear:
+    case A::ScreenCastSetOutput:
+    case A::ScreenCastSetWindow:
+    case A::ScreenCastFollowWindow:
+    case A::ScreenCastFollowOutput:
+    case A::ScreenCastFollowStop:
+      return Group::Screencasting;
     case A::WindowFocusLeft:
     case A::WindowFocusRight:
     case A::WindowFocusOrOutputLeft:
@@ -403,6 +413,9 @@ namespace {
     case A::ConfigReload:
     case A::DpmsOff:
     case A::DpmsOn:
+    case A::OutputDisable:
+    case A::OutputEnable:
+    case A::OutputToggle:
     case A::SessionQuit:
     case A::Submap:
     case A::CheatsheetToggle:
@@ -492,8 +505,8 @@ namespace umbriel {
 
   std::span<const Group> fixedGroupOrder() {
     static constexpr Group kFixedGroups[] = {
-        Group::Apps,       Group::Focus,      Group::MoveSize, Group::Windows,
-        Group::Scratchpad, Group::Workspaces, Group::Overview, Group::System,
+        Group::Apps,       Group::Screencasting, Group::Focus,    Group::MoveSize, Group::Windows,
+        Group::Scratchpad, Group::Workspaces,    Group::Overview, Group::System,
     };
     return kFixedGroups;
   }

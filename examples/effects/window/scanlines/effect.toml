@@ -1,0 +1,5 @@
+# Include this file, then select it: [effects] window = "scanlines"
+# or per window: [[window_rule]] window_effect = "scanlines"
+[effects.preset.scanlines]
+kind = "window"
+shader = "shader.glsl"

@@ -38,11 +38,25 @@ closes after ten seconds; an error remains until the next successful reload.
 Check a file without starting the compositor:
 
 ```sh
-umbriel validate
+umbriel config validate
 ```
 
 The command prints every diagnostic with its file, line, and column, and exits
 nonzero when it finds a problem.
+
+List every configuration key the installed binary accepts:
+
+```sh
+umbriel config schema
+umbriel config schema --json
+```
+
+Without `--json` it prints how many options each section has. With `--json` it
+prints each key's path, type, range, accepted values, format, and built-in
+default, plus the binary's `version` and `revision` (`null` for a build outside
+git). `name[]` marks the entries of an array of tables, such as
+`window_rule[].match.app_id`, and `<name>` a name you choose, such as
+`output.<name>.scale`.
 
 ## Include
 
@@ -72,8 +86,11 @@ Included files are applied in list order. The including file is applied last:
 - Plain arrays and scalar values are replaced by the last file that sets them.
 - Setting a rule list to `[]` discards entries collected earlier.
 
-Every file must contain valid TOML. Duplicate device or workspace selectors are
-still errors when they come from different files.
+Every file must contain valid TOML. Duplicate device or workspace selectors,
+and an effect preset defined in two files, are errors even when they come from
+different files: at startup Umbriel uses the default configuration and shows
+an error banner (unless the configuration sets `[drm]`, which refuses to
+start), and a reload keeps the previous configuration.
 
 If any included file defines `[drm]`, also declare `[drm]` in the main file.
 This prevents an incomplete GPU exclusion policy from loading when an include
@@ -164,6 +181,31 @@ Run commands when the laptop lid closes or opens:
 lid_close = "notify-send 'The laptop lid is closed!'"
 lid_open = "notify-send 'The laptop lid is open!'"
 ```
+
+Logical output actions can remove the laptop panel from the desktop instead of
+merely powering it off:
+
+```toml
+[events]
+lid_close = "umbriel msg output-disable:eDP-1"
+lid_open = "umbriel msg output-enable:eDP-1"
+```
+
+## Screencast
+
+Target-changing screencast actions ask for confirmation the first time they are
+used during an active single-source share. Dismissing the panel cancels only the
+pending action, so invoking one again asks again. Approval lasts until the share
+ends.
+
+```toml
+[screencast]
+disable_dynamic_confirmation = false
+```
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `disable_dynamic_confirmation` | bool | `false` | Apply set and follow actions immediately without first confirming them. This can expose another window or output after an accidental key press. |
 
 ## Scratchpads
 

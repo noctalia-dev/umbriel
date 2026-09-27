@@ -16,6 +16,15 @@
 
 namespace umbriel {
 
+  uint64_t nextAnimationTransitionId() {
+    static std::atomic<uint64_t> nextId{1};
+    uint64_t id = nextId.fetch_add(1, std::memory_order_relaxed);
+    if (id == 0) {
+      id = nextId.fetch_add(1, std::memory_order_relaxed);
+    }
+    return id;
+  }
+
   namespace {
     constexpr double kPi = std::numbers::pi;
     // Energy the unit step may keep and still count as settled, in target units. Matches the residual
@@ -47,12 +56,8 @@ namespace umbriel {
     }
 
     [[nodiscard]] AnimationTransition beginAnimationTransition() {
-      static std::atomic<uint64_t> nextId{1};
       static const uint64_t salt = animationRandomSalt();
-      uint64_t id = nextId.fetch_add(1, std::memory_order_relaxed);
-      if (id == 0) {
-        id = nextId.fetch_add(1, std::memory_order_relaxed);
-      }
+      const uint64_t id = nextAnimationTransitionId();
       AnimationTransition transition{.id = id, .seed = {}};
       for (std::size_t channel = 0; channel < transition.seed.size(); ++channel) {
         const uint64_t value = mixRandom(salt ^ mixRandom(id + UINT64_C(0x9e3779b97f4a7c15) * (channel + 1)));

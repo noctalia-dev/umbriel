@@ -27,7 +27,8 @@ namespace umbriel {
     return rounded > 0 ? rounded : 1;
   }
 
+  // `padding` is transparent space around the ring that a border effect may paint into.
   [[nodiscard]] BorderRing
-  makeBorderRing(int contentWidth, int contentHeight, int outerRadius, int innerWidth, int outerWidth);
+  makeBorderRing(int contentWidth, int contentHeight, int outerRadius, int innerWidth, int outerWidth, int padding = 0);
 
 } // namespace umbriel

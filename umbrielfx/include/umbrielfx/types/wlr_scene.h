@@ -373,6 +373,8 @@ struct wlr_scene_output {
 		float sdr_white_level;
 		bool color_transform_dirty;
 		bool direct_scanout_enabled;
+		// A screen or cursor effect is set on this output.
+		bool output_effects_configured;
 	} WLR_PRIVATE;
 };
 
@@ -1013,6 +1015,13 @@ struct wlr_scene_output_state_options {
 	 * wlr_output_state or output size if not specified.
 	 */
 	struct wlr_swapchain *swapchain;
+
+	/**
+	 * A screencopy or image-copy client will read this frame. With a visible
+	 * in-place effect excluded from captures, the scene composes an unfiltered
+	 * frame for it.
+	 */
+	bool effect_capture_pending;
 };
 
 /**

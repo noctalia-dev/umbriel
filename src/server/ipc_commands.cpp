@@ -275,9 +275,28 @@ namespace umbriel {
             output.value("render_format", "invalid"), output.value("transfer_function", "none"),
             output.value("primaries", "none"), output.value("sdr_white", 0.0)
         );
+
         if (!fallback.empty()) {
           std::println("  fallback: {}", fallback);
         }
+
+        const int configuredDepth = output.value("bit_depth", 8);
+        const std::string format = output.value("render_format", "invalid");
+        const std::string_view activeDepth = !output.value("enabled", false) ? "none"
+            : format == "XR30" || format == "XB30"                           ? "10"
+            : format == "XR24" || format == "XB24"                           ? "8"
+                                                                             : "unknown";
+        std::println("  bit depth: {} (configured {})", activeDepth, configuredDepth);
+
+        if (output.value("enabled", false) && configuredDepth != 8) {
+          const std::string bitFallback = output.value("bit_depth_fallback_reason", "");
+          if (!bitFallback.empty()) {
+            std::println("  10-bit SDR unavailable: {}", bitFallback);
+          } else if (output.value("bit_depth_active", false)) {
+            std::println("  10-bit SDR: active");
+          }
+        }
+
         std::println(
             "  supported transfer functions: {}; primaries: {}", joinNames(output.at("supported_transfer_functions")),
             joinNames(output.at("supported_primaries"))
@@ -448,6 +467,7 @@ namespace umbriel {
       const wlr_output_image_description* description = wlrOutput->image_description;
       outputs.push_back({
           {"name", wlrOutput->name},
+          {"enabled", wlrOutput->enabled},
           {"hdr_mode", hdrModeName(output->hdrMode())},
           {"hdr_requested", output->hdrRequested()},
           {"hdr_active", output->hdrActive()},
@@ -456,6 +476,9 @@ namespace umbriel {
           {"transfer_function", description != nullptr ? transferFunctionName(description->transfer_function) : "none"},
           {"primaries", description != nullptr ? primariesName(description->primaries) : "none"},
           {"sdr_white", output->configuredSdrWhite()},
+          {"bit_depth", output->configuredBitDepth()},
+          {"bit_depth_active", output->bitDepthActive()},
+          {"bit_depth_fallback_reason", output->bitDepthFallbackReason()},
           {"supported_transfer_functions", supportedTransferFunctions(wlrOutput->supported_transfer_functions)},
           {"supported_primaries", supportedPrimaries(wlrOutput->supported_primaries)},
       });
@@ -654,6 +677,18 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::effectFrames(Server& server, std::string_view /*arg*/) {
+    nlohmann::json outputs = nlohmann::json::array();
+    for (const auto& output : server.outputs()) {
+      outputs.push_back({
+          {"name", output->wlr()->name},
+          {"effect_frames", output->effectFrames()},
+          {"eligible", output->effectEligible()},
+      });
+    }
+    return nlohmann::json{{"ok", {{"outputs", std::move(outputs)}}}};
+  }
+
 #endif
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -681,6 +716,8 @@ namespace umbriel {
        nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image>", "synthesize a hardware cursor plane sample (harness only)",
        true, &IpcCommands::planeCursor, nullptr},
+      {"effect-frames", "", "count frames drawn for persistent effects per output", false, &IpcCommands::effectFrames,
+       nullptr},
 #endif
   };
 

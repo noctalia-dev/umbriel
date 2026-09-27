@@ -8,6 +8,7 @@
 // the resize stays pending.
 
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+#include "text-input-unstable-v3-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -45,6 +46,8 @@ namespace {
     zxdg_exporter_v2* exporter = nullptr;
     zwp_keyboard_shortcuts_inhibit_manager_v1* shortcutsInhibitManager = nullptr;
     zwp_keyboard_shortcuts_inhibitor_v1* shortcutsInhibitor = nullptr;
+    zwp_text_input_manager_v3* textInputManager = nullptr;
+    zwp_text_input_v3* textInput = nullptr;
     wl_pointer* pointer = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_surface* surface = nullptr;
@@ -64,6 +67,8 @@ namespace {
     std::optional<uint32_t> heldSerial;
     PressAction pressAction = PressAction::None;
     bool actionRequested = false;
+    bool useTextInput = false;
+    bool logModifiers = false;
     // Surface-local pointer position from the latest enter or motion.
     double pointerX = 0;
     double pointerY = 0;
@@ -93,7 +98,14 @@ namespace {
     std::println("keyboard-key code={} state={}", key, keyStateName(keyState));
   }
 
-  void keyboardModifiers(void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {}
+  void keyboardModifiers(
+      void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group
+  ) {
+    const auto& state = *static_cast<State*>(data);
+    if (state.logModifiers) {
+      std::println("keyboard-modifiers depressed={} latched={} locked={} group={}", depressed, latched, locked, group);
+    }
+  }
   void keyboardRepeatInfo(void*, wl_keyboard*, int32_t, int32_t) {}
 
   constexpr wl_keyboard_listener kKeyboardListener = {
@@ -103,6 +115,39 @@ namespace {
       .key = keyboardKey,
       .modifiers = keyboardModifiers,
       .repeat_info = keyboardRepeatInfo,
+  };
+
+  void textInputEnter(void* data, zwp_text_input_v3* textInput, wl_surface* surface) {
+    auto& state = *static_cast<State*>(data);
+    if (surface != state.surface) {
+      return;
+    }
+    zwp_text_input_v3_enable(textInput);
+    zwp_text_input_v3_commit(textInput);
+    std::println("text-input-enter");
+  }
+
+  void textInputLeave(void*, zwp_text_input_v3* textInput, wl_surface*) {
+    zwp_text_input_v3_disable(textInput);
+    zwp_text_input_v3_commit(textInput);
+    std::println("text-input-leave");
+  }
+
+  void textInputPreeditString(void*, zwp_text_input_v3*, const char*, int32_t, int32_t) {}
+  void textInputCommitString(void*, zwp_text_input_v3*, const char*) {}
+  void textInputDeleteSurroundingText(void*, zwp_text_input_v3*, uint32_t, uint32_t) {}
+  void textInputDone(void*, zwp_text_input_v3*, uint32_t) {}
+
+  constexpr zwp_text_input_v3_listener kTextInputListener = {
+      .enter = textInputEnter,
+      .leave = textInputLeave,
+      .preedit_string = textInputPreeditString,
+      .commit_string = textInputCommitString,
+      .delete_surrounding_text = textInputDeleteSurroundingText,
+      .done = textInputDone,
+      .action = nullptr,
+      .language = nullptr,
+      .preedit_hint = nullptr,
   };
 
   void shortcutsInhibitorActive(void*, zwp_keyboard_shortcuts_inhibitor_v1*) {
@@ -316,6 +361,10 @@ namespace {
       state.shortcutsInhibitManager = static_cast<zwp_keyboard_shortcuts_inhibit_manager_v1*>(
           wl_registry_bind(registry, name, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, std::min(version, 1U))
       );
+    } else if (state.useTextInput && std::strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
+      state.textInputManager = static_cast<zwp_text_input_manager_v3*>(
+          wl_registry_bind(registry, name, &zwp_text_input_manager_v3_interface, std::min(version, 1U))
+      );
     }
   }
   void registryRemove(void*, wl_registry*, uint32_t) {}
@@ -340,6 +389,8 @@ int main(int argc, char** argv) {
 
   State state;
   state.holdResize = std::getenv("HOLD_RESIZE") != nullptr;
+  state.useTextInput = std::getenv("ENABLE_TEXT_INPUT") != nullptr;
+  state.logModifiers = std::getenv("LOG_MODIFIERS") != nullptr;
   if (mode == "move-on-press") {
     state.pressAction = PressAction::Move;
   } else if (mode == "resize-on-press") {
@@ -356,6 +407,14 @@ int main(int argc, char** argv) {
   if (state.compositor == nullptr || state.shm == nullptr || state.seat == nullptr || state.wmBase == nullptr) {
     std::println(stderr, "seat-log-client: missing required Wayland globals");
     return EXIT_FAILURE;
+  }
+  if (state.useTextInput) {
+    if (state.textInputManager == nullptr) {
+      std::println(stderr, "seat-log-client: compositor is missing zwp_text_input_manager_v3");
+      return EXIT_FAILURE;
+    }
+    state.textInput = zwp_text_input_manager_v3_get_text_input(state.textInputManager, state.seat);
+    zwp_text_input_v3_add_listener(state.textInput, &kTextInputListener, &state);
   }
 
   state.surface = wl_compositor_create_surface(state.compositor);

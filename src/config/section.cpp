@@ -60,8 +60,16 @@ namespace umbriel {
   }
 
   void Section::warn(const toml::node& node, std::string message) {
+    report(ConfigDiagnostic::Severity::Warning, node, std::move(message));
+  }
+
+  void Section::error(const toml::node& node, std::string message) {
+    report(ConfigDiagnostic::Severity::Error, node, std::move(message));
+  }
+
+  void Section::report(ConfigDiagnostic::Severity severity, const toml::node& node, std::string message) {
     ConfigDiagnostic diag;
-    diag.severity = ConfigDiagnostic::Severity::Warning;
+    diag.severity = severity;
     diag.message = std::move(message);
     const auto& src = node.source();
     diag.line = src.begin.line;
@@ -70,11 +78,6 @@ namespace umbriel {
       diag.file = *src.path;
     }
     m_diagnostics.push_back(std::move(diag));
-  }
-
-  Section& Section::custom(std::string_view key) {
-    m_seen.emplace_back(key);
-    return *this;
   }
 
   Section& Section::freeform() {
@@ -142,7 +145,7 @@ namespace umbriel {
     return *this;
   }
 
-  Section& Section::text(std::string_view key, std::string& target) {
+  Section& Section::text(std::string_view key, std::optional<std::string>& target) {
     const toml::node* node = claim(key);
     if (node == nullptr) {
       return *this;
@@ -153,6 +156,15 @@ namespace umbriel {
       return *this;
     }
     target = *value;
+    return *this;
+  }
+
+  Section& Section::text(std::string_view key, std::string& target) {
+    std::optional<std::string> parsed;
+    text(key, parsed);
+    if (parsed) {
+      target = std::move(*parsed);
+    }
     return *this;
   }
 

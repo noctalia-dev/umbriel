@@ -7,7 +7,6 @@
 #include "render/fx_renderer/shaders.h"
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/egl.h"
-#include <umbrielfx/render/animation.h>
 
 // shaders
 #include "GLES2/gl2.h"
@@ -81,123 +80,6 @@ GLuint link_program(const GLchar *frag_src) {
 error:
 	return 0;
 }
-
-static void animation_renderer_destroy(struct wl_listener *listener, void *data) {
-	struct fx_animation_shader *shader = wl_container_of(listener, shader, destroy);
-	// Context destruction releases the GL program. Scene and config references
-	// may outlive that context, but may never use its object names again.
-	shader->renderer = NULL;
-	shader->program = 0;
-	wl_list_remove(&shader->destroy.link);
-}
-
-struct fx_animation_shader *fx_animation_shader_ref(struct fx_animation_shader *shader) {
-	if (shader != NULL) {
-		shader->references++;
-	}
-	return shader;
-}
-
-void fx_animation_shader_set_shape_preserving(struct fx_animation_shader *shader,
-		bool shape_preserving) {
-	if (shader != NULL) {
-		shader->shape_preserving = shape_preserving;
-	}
-}
-
-void fx_animation_shader_unref(struct fx_animation_shader *shader) {
-	if (shader == NULL || --shader->references != 0) {
-		return;
-	}
-	if (shader->renderer != NULL) {
-		struct wlr_egl_context previous;
-		if (wlr_egl_make_current(shader->renderer->egl, &previous)) {
-			glDeleteProgram(shader->program);
-			wlr_egl_restore_context(&previous);
-		}
-		wl_list_remove(&shader->destroy.link);
-	}
-	free(shader);
-}
-
-struct fx_animation_shader *fx_animation_shader_create(struct wlr_renderer *renderer,
-		const char *source, const char *label) {
-	static const char preamble[] =
-		"precision highp float;\n"
-		"varying vec2 v_texcoord;\n"
-		"uniform sampler2D umbriel_texture;\n"
-		"uniform mat3 umbriel_sample_matrix;\n"
-		"uniform sampler2D umbriel_previous_texture;\n"
-		"uniform mat3 umbriel_previous_sample_matrix;\n"
-		"uniform float umbriel_progress;\n"
-		"uniform float umbriel_linear_progress;\n"
-		"uniform float umbriel_direction;\n"
-		"uniform vec2 umbriel_size;\n"
-		"uniform vec4 umbriel_random_seed;\n"
-		"#define umbriel_clamped_progress clamp(umbriel_progress, 0.0, 1.0)\n"
-		"vec4 umbriel_sample(vec2 uv) {\n"
-		"  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);\n"
-		"  vec2 p = (vec3(uv, 1.0) * umbriel_sample_matrix).xy;\n"
-		"  if (any(lessThan(p, vec2(0.0))) || any(greaterThan(p, vec2(1.0)))) return vec4(0.0);\n"
-		"  return texture2D(umbriel_texture, p);\n"
-		"}\n#line 1\n";
-	static const char previous_sample[] =
-		"vec4 umbriel_sample_previous(vec2 uv) {\n"
-		"  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);\n"
-		"  vec2 p = (vec3(uv, 1.0) * umbriel_previous_sample_matrix).xy;\n"
-		"  if (any(lessThan(p, vec2(0.0))) || any(greaterThan(p, vec2(1.0)))) return vec4(0.0);\n"
-		"  return texture2D(umbriel_previous_texture, p);\n"
-		"}\n#line 1\n";
-	static const char suffix[] =
-		"\nvoid main() { gl_FragColor = animation(v_texcoord); }\n";
-	if (source == NULL || !wlr_renderer_is_fx(renderer)) {
-		return NULL;
-	}
-	struct fx_renderer *fx = fx_get_renderer(renderer);
-	struct wlr_egl_context previous;
-	if (!wlr_egl_make_current(fx->egl, &previous)) {
-		return NULL;
-	}
-	struct fx_animation_shader *shader = calloc(1, sizeof(*shader));
-	char *fragment = malloc(sizeof(preamble) + sizeof(previous_sample) +
-		strlen(source) + sizeof(suffix));
-	if (shader == NULL || fragment == NULL) {
-		free(shader);
-		free(fragment);
-		wlr_egl_restore_context(&previous);
-		return NULL;
-	}
-	sprintf(fragment, "%s%s%s%s", preamble, previous_sample, source, suffix);
-	wlr_log(WLR_DEBUG, "Compiling animation shader: %s", label);
-	shader->program = link_program(fragment);
-	free(fragment);
-	if (shader->program == 0) {
-		wlr_log(WLR_ERROR, "Animation shader '%s' rejected; using built-in animation", label);
-		free(shader);
-		wlr_egl_restore_context(&previous);
-		return NULL;
-	}
-	shader->renderer = fx;
-	shader->references = 1;
-	shader->destroy.notify = animation_renderer_destroy;
-	wl_signal_add(&renderer->events.destroy, &shader->destroy);
-	shader->proj = glGetUniformLocation(shader->program, "proj");
-	shader->tex_proj = glGetUniformLocation(shader->program, "tex_proj");
-	shader->position = glGetAttribLocation(shader->program, "pos");
-	shader->tex = glGetUniformLocation(shader->program, "umbriel_texture");
-	shader->sample_matrix = glGetUniformLocation(shader->program, "umbriel_sample_matrix");
-	shader->previous_tex = glGetUniformLocation(shader->program, "umbriel_previous_texture");
-	shader->previous_sample_matrix = glGetUniformLocation(
-		shader->program, "umbriel_previous_sample_matrix");
-	shader->progress = glGetUniformLocation(shader->program, "umbriel_progress");
-	shader->linear_progress = glGetUniformLocation(shader->program, "umbriel_linear_progress");
-	shader->direction = glGetUniformLocation(shader->program, "umbriel_direction");
-	shader->size = glGetUniformLocation(shader->program, "umbriel_size");
-	shader->random_seed = glGetUniformLocation(shader->program, "umbriel_random_seed");
-	wlr_egl_restore_context(&previous);
-	return shader;
-}
-
 
 bool check_gl_ext(const char *exts, const char *ext) {
 	size_t extlen = strlen(ext);

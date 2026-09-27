@@ -96,12 +96,12 @@ buffer straddling the shared edge, and assertions on the enter/leave stream,
 the primary output and hit testing as the clip is set, nested, and cleared.
 
 Compositor-level containment is covered by
-[`tests/harness/checks/650_two_output_containment.sh`](../../tests/harness/checks/650_two_output_containment.sh),
+[`tests/harness/checks/output/two_output_containment.sh`](../../tests/harness/checks/output/two_output_containment.sh),
 which declares `# harness: outputs=2` so the harness boots it a two-output
 instance, and compares real framebuffers while a strip overflows the shared
-edge. Run it as `just check 650`.
+edge. Run it as `just check output/two_output_containment`.
 
-The shared fullscreen-exit ordering is covered by `just check 153`: the first
+The shared fullscreen-exit ordering is covered by `just check layout/fullscreen_exit_configure`: the first
 windowed configure must already contain the restored tile size. The headless
 harness cannot exercise satellite or multi-output X coordinate spaces, so the
 X11 path still needs a running session with Steam or another X11 game. A

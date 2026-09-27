@@ -11,7 +11,7 @@
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
-#include "scene/animation_shader.h"
+#include "scene/effect_registry.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/registry.h"
@@ -225,7 +225,7 @@ namespace umbriel {
     }
   }
 
-  void Workspace::addView(View* view, bool attachToLayout) {
+  void Workspace::addView(View* view, bool attachToLayout, LayoutAttachOrigin origin) {
     if (view == nullptr || std::ranges::find(m_views, view) != m_views.end()) {
       return;
     }
@@ -246,7 +246,7 @@ namespace umbriel {
     syncFloatingStack(view);
     applyVisibility();
     if (attachToLayout) {
-      layoutAttach(view);
+      layoutAttach(view, std::nullopt, std::nullopt, origin);
     }
     m_group->reconcileDynamic();
   }
@@ -314,21 +314,35 @@ namespace umbriel {
     return true;
   }
 
+  void Workspace::exitFullscreenForIncomingView(const View* joining) {
+    const FullscreenExitScope scope = m_layoutConfig.newExitsFullscreen;
+    // The scope picks which kinds of arriving window are allowed to displace a fullscreen one; a joining window is
+    // classified the way it will live on the workspace (pinned wins over floating over tiled).
+    const auto joiningBit = static_cast<uint8_t>(
+        joining->pinned()      ? FullscreenExitScope::Pinned
+            : joining->tiled() ? FullscreenExitScope::Tiled
+                               : FullscreenExitScope::Floating
+    );
+    // A tiled arrival on a scrolling workspace opens beside the fullscreen column and the strip scrolls to it.
+    if ((static_cast<uint8_t>(scope) & joiningBit) == 0
+        || (m_layoutMode == LayoutMode::Scrolling && joiningBit == static_cast<uint8_t>(FullscreenExitScope::Tiled))) {
+      return;
+    }
+    for (View* other : m_views) {
+      if (other != joining && other->layoutFullscreen()) {
+        other->setFullscreen(false);
+      }
+    }
+  }
+
   void Workspace::layoutAttach(
       View* view, std::optional<double> initialExtent, std::optional<int> initialExtentPx, LayoutAttachOrigin origin
   ) {
     if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
       return;
     }
-    const bool exitFullscreen = origin == LayoutAttachOrigin::OpeningView
-        && ((m_layoutMode == LayoutMode::Dwindle && m_layoutConfig.dwindle.newExitsFullscreen)
-            || (m_layoutMode == LayoutMode::Master && m_layoutConfig.master.newExitsFullscreen));
-    if (exitFullscreen) {
-      for (View* other : m_views) {
-        if (other != view && other->layoutFullscreen()) {
-          other->setFullscreen(false);
-        }
-      }
+    if (origin == LayoutAttachOrigin::OpeningView || origin == LayoutAttachOrigin::MovedView) {
+      exitFullscreenForIncomingView(view);
     }
     ScrollingLayout* scrolling = scrollingLayout();
     const std::optional<std::string>& name = view->namedScrollingColumnName();
@@ -2511,7 +2525,7 @@ namespace umbriel {
 
   bool WorkspaceGroup::tickAnimations(uint64_t nowMsec) {
     const bool ticked = m_slideAnim.tick(nowMsec);
-    updateAnimationShader(&m_output->viewRoot()->node, m_server->renderer(), AnimationEvent::Workspaces, m_slideAnim);
+    bindAnimationEffect(&m_output->viewRoot()->node, AnimationEvent::Workspaces, m_slideAnim);
     bool active = false;
     if (ticked) {
       slideApply(m_slideAnim.current());

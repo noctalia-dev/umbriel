@@ -1,0 +1,5 @@
+# Wipe the window in from the left while opening, out to the left while closing.
+# Include this file, then select it: [animation.windows_in] effect = "reveal"
+[effects.preset.reveal]
+kind = "animation"
+shader = "shader.glsl"

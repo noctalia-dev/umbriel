@@ -11,6 +11,7 @@
 #include <cmath>
 #include <format>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -28,7 +29,10 @@ namespace umbriel {
 
   QuitConfirm::~QuitConfirm() { hide(); }
 
-  void QuitConfirm::show() { render(); }
+  void QuitConfirm::show(Kind kind) {
+    m_kind = kind;
+    render();
+  }
 
   void QuitConfirm::hide() {
     if (m_tree != nullptr) {
@@ -72,14 +76,19 @@ namespace umbriel {
     }
 
     const auto& colors = config().colors;
-    const std::string headingColor = rgbaHex(colors.error);
+    const auto& accent = m_kind == Kind::SessionQuit ? colors.error : colors.warning;
+    const std::string headingColor = rgbaHex(accent);
     const std::string textColor = rgbaHex(colors.textPrimary);
 
     // Static strings, no user input, so no escaping needed. Transparent background: the panel rect behind provides the
     // surface. The title is sized like the cheatsheet's heading.
+    const std::string_view heading = m_kind == Kind::SessionQuit ? "Quit Umbriel?" : "Allow screencast target changes?";
+    const std::string_view detail = m_kind == Kind::SessionQuit
+        ? "Enter confirms; any other key or click cancels"
+        : "This can reveal another window or screen. Enter confirms; any other key or click cancels";
     std::string markup =
-        std::format("<span size='14pt' weight='bold' foreground='{}'>Quit Umbriel?</span>", headingColor);
-    markup += std::format("\n<span foreground='{}'>Enter confirms; any other key or click cancels</span>", textColor);
+        std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
+    markup += std::format("\n<span foreground='{}'>{}</span>", textColor, detail);
     TextBufferResult rendered = renderTextBuffer({
         .markup = std::move(markup),
         .font = "monospace 11",
@@ -102,7 +111,7 @@ namespace umbriel {
     m_shadow.update(m_tree, rendered.logicalWidth, rendered.logicalHeight, kBorderWidth, cornerRadius);
 
     float borderColor[4]{};
-    premultiplied(borderColor, colors.error, 1.0F);
+    premultiplied(borderColor, accent, 1.0F);
     wlr_scene_border* panelBorder = wlr_scene_border_create(m_tree, borderColor, borderColor);
     applyBorderGeometry(
         panelBorder, makeBorderRing(rendered.logicalWidth, rendered.logicalHeight, cornerRadius, kBorderWidth, 0),

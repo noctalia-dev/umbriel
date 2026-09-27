@@ -17,6 +17,7 @@ are required, `[bracket]` forms are optional.
 | `<cmd>` | Command line, run through the shell: `spawn:kitty` |
 | `<name>` | Submap to enter; `submap:reset` leaves one level |
 | `<workspace>[/<output>]` | Bare digits select a 1-based position, other text selects a name, and double quotes force a name; append `/output` to scope either form |
+| `<output>` | Connector or monitor name from `umbriel outputs` |
 | `<window-id>` | Window id from `umbriel windows` |
 | `[<window-id>]` | The same id; the bare action targets the focused window |
 | `[<output>]` | Connector or monitor name. Bare `dpms-off` and `dpms-on` target every configured output |
@@ -31,6 +32,28 @@ are required, `[bracket]` forms are optional.
 | Action | Effect |
 |--------|--------|
 | `spawn:<cmd>` | Run a command with a launch activation token |
+
+## Screencasting
+
+Select one screen or window normally. The selected source starts sharing immediately, and the actions below can later
+change it while keeping the same PipeWire stream alive. Shares containing several selected sources remain fixed.
+
+The first set or follow action during an active share opens an Umbriel confirmation panel. Enter, or repeat a
+target-changing action, to approve it. Any other key or pointer click dismisses the panel and cancels only that pending
+action. A later action asks again. Once approved, target changes are immediate until the share ends. Set
+[`screencast.disable_dynamic_confirmation`](configuration.md#screencast) to `true` to skip this protection.
+
+Changing a window stream to an output, or an output stream to a window, is supported. Follow mode lasts only for the
+active portal session. Be careful with window following because focusing a private window immediately shares it.
+
+| Action | Effect |
+|--------|--------|
+| `screencast-clear` | Pause the screencast and stop following |
+| `screencast-follow-output` | Follow the focused output |
+| `screencast-follow-stop` | Stop following and keep the current target |
+| `screencast-follow-window` | Follow the focused window |
+| `screencast-set-output:[<output>]` | Share the focused output, or the selected output |
+| `screencast-set-window:[<window-id>]` | Share the focused window, or the selected window |
 
 ## Focus
 
@@ -198,6 +221,9 @@ are described in [Overview](workspaces-overview.md).
 | `dpms-off:[<output>]` | Power off one output, or every output when bare |
 | `dpms-on:[<output>]` | Power on one output, or every output when bare |
 | `keyboard-layout-next` | Switch one keyboard to its next configured layout |
+| `output-disable:<output>` | Remove an output from the desktop |
+| `output-enable:<output>` | Add an output to the desktop |
+| `output-toggle:<output>` | Add or remove an output from the desktop |
 | `session-quit:[skip-confirmation]` | Quit the session, confirming first unless told to skip |
 | `shortcuts-inhibit-toggle` | Toggle shortcuts inhibition for the focused surface |
 | `submap:<name>` | Enter a submap layer, or leave one with 'reset' |

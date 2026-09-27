@@ -1,0 +1,6 @@
+# Include this file, then select it: [effects] cursor = "glow"
+[effects.preset.glow]
+kind = "cursor"
+shader = "shader.glsl"
+palette = true
+radius = 96

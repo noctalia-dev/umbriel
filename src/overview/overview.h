@@ -169,7 +169,11 @@ namespace umbriel {
       View* view = nullptr;
       size_t workspaceIndex = 0; // workspace index inside the output's group
       wlr_scene_tree* tree = nullptr;
+      // Parent of every `surfaces` buffer, at the card origin: the card's window and overlay slots live here, as they
+      // live on the view's surface tree.
+      wlr_scene_tree* surfaceTree = nullptr;
       wlr_scene_border* border = nullptr;
+      int borderPadding = 0; // effect padding the ring was last laid out with, scaled
       SurfaceBlur blur;
       // Scaled copy of the view's drop shadow. Its tree lives under `tree` or, for a view whose shadow the workspace
       // pools below every tile, under the output's `tileShadows`.
@@ -315,6 +319,9 @@ namespace umbriel {
     void applyPinnedOpacity(float alpha) const;
     void layoutOutput(OutputState& state);
     void layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget);
+    // Refreshes a card's animation and persistent effect slots from its view.
+    void syncCardEffects(Card& card);
+    void syncCardEffects();
     // The window a focus or close action would act on right now: the focused view of the active workspace on the
     // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
     [[nodiscard]] View* liveTargetView() const;

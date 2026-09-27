@@ -1,7 +1,7 @@
 # Umbriel starting configuration
 #
 # Copy this file to ~/.config/umbriel/config.toml. Most changes apply when the
-# file is saved. Check edits with `umbriel validate`.
+# file is saved. Check edits with `umbriel config validate`.
 #
 # Complete reference: https://docs.noctalia.dev/umbriel/
 #
@@ -28,6 +28,27 @@ files = []
 # xwayland = false
 
 # ==============================================================================
+# Lid events
+
+# Remove the laptop panel from the desktop while the lid is closed, then
+# restore it when the lid opens. Replace eDP-1 with the name from
+# `umbriel outputs`.
+# https://docs.noctalia.dev/umbriel/configuration/#events
+# [events]
+# lid_close = "umbriel msg output-disable:eDP-1"
+# lid_open = "umbriel msg output-enable:eDP-1"
+
+# ==============================================================================
+# Screencast
+
+# By default, the first target-changing action during an active share asks for
+# confirmation. Disable that protection only if immediate keybind changes are
+# preferred.
+# https://docs.noctalia.dev/umbriel/configuration/#screencast
+# [screencast]
+# disable_dynamic_confirmation = true
+
+# ==============================================================================
 # Outputs
 
 # Outputs are machine-specific. Run `umbriel outputs` to find names and modes.
@@ -52,6 +73,16 @@ radius = 3
 # backdrop = "#000000FF"
 
 # ==============================================================================
+# Effects
+# Every effect is off until a preset is selected. Include a bundled preset
+# (adjust /usr for the package prefix), then select it by name.
+# https://docs.noctalia.dev/umbriel/effects/
+# [include]
+# files = ["/usr/share/umbriel/effects/border/pulse/effect.toml"]
+# [effects]
+# border = "pulse"
+
+# ==============================================================================
 # Input
 # Enable NumLock when a physical keyboard connects.
 # https://docs.noctalia.dev/umbriel/input/
@@ -61,6 +92,11 @@ numlock_toggle = true
 # Focus can follow the pointer across tiled, floating, and pinned windows.
 # [input.focus]
 # follows_mouse = true
+
+# Confine touch input to one display.
+# [input.touch]
+# enabled = true
+# map_to_output = "eDP-1"
 
 # ==============================================================================
 # Keybinds

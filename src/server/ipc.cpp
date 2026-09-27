@@ -103,6 +103,34 @@ namespace umbriel {
     nlohmann::json submapEvent(Server& server) {
       return nlohmann::json{{"event", "submap"}, {"data", IpcCommands::submap(server, {}).at("ok")}};
     }
+
+    nlohmann::json screenCastEvent(Server& server) {
+      const ScreenCastCommand& command = server.screenCastCommand();
+      nlohmann::json data{{"serial", command.serial}};
+      switch (command.kind) {
+      case ScreenCastCommandKind::Clear:
+        data["kind"] = "clear";
+        break;
+      case ScreenCastCommandKind::SetOutput:
+        data["kind"] = "output";
+        data["output"] = command.value;
+        break;
+      case ScreenCastCommandKind::SetWindow:
+        data["kind"] = "window";
+        data["identifier"] = command.value;
+        break;
+      case ScreenCastCommandKind::FollowWindow:
+        data["kind"] = "follow_window";
+        break;
+      case ScreenCastCommandKind::FollowOutput:
+        data["kind"] = "follow_output";
+        break;
+      case ScreenCastCommandKind::FollowStop:
+        data["kind"] = "follow_stop";
+        break;
+      }
+      return nlohmann::json{{"event", "screencast"}, {"data", std::move(data)}};
+    }
   } // namespace
 
   Ipc::Ipc(Server& server, const std::string& waylandSocketName) : m_server(&server) {
@@ -227,11 +255,22 @@ namespace umbriel {
     }
 
     bool keep = true;
-    if (!connection->responding && (mask & (WL_EVENT_READABLE | WL_EVENT_HANGUP)) != 0) {
-      keep = owner->readRequest(*connection);
-    }
-    if (keep && connection->responding) {
-      keep = owner->writeResponse(*connection);
+    bool mayRead = (mask & (WL_EVENT_READABLE | WL_EVENT_HANGUP)) != 0;
+    while (keep) {
+      if (!connection->responding) {
+        const bool bufferedRequest = connection->input.contains('\n');
+        if ((!mayRead && !bufferedRequest) || connection->frameWait != FrameWait::None) {
+          break;
+        }
+        keep = owner->readRequest(*connection);
+        mayRead = false;
+      }
+      if (keep && connection->responding) {
+        keep = owner->writeResponse(*connection);
+      }
+      if (!keep || connection->responding || !connection->input.contains('\n')) {
+        break;
+      }
     }
     if (!keep) {
       owner->removeConnection(connection);
@@ -242,20 +281,20 @@ namespace umbriel {
   bool Ipc::readRequest(Connection& connection) {
     char chunk[4096];
     while (true) {
+      if (connection.input.contains('\n')) {
+        const size_t newline = connection.input.find('\n');
+        const std::string line = connection.input.substr(0, newline);
+        connection.input.erase(0, newline + 1);
+        if (auto response = handleRequest(connection, line)) {
+          prepareResponse(connection, std::move(*response));
+        }
+        return true;
+      }
       const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
       if (size > 0) {
         connection.input.append(chunk, static_cast<size_t>(size));
         if (connection.input.size() > kMaxRequestSize) {
           prepareResponse(connection, R"({"err":"request too long"})");
-          return true;
-        }
-        if (connection.input.contains('\n')) {
-          const size_t newline = connection.input.find('\n');
-          const std::string line = connection.input.substr(0, newline);
-          connection.input.erase(0, newline + 1);
-          if (auto response = handleRequest(connection, line)) {
-            prepareResponse(connection, std::move(*response));
-          }
           return true;
         }
         continue;
@@ -400,6 +439,13 @@ namespace umbriel {
     }
     closeConnection(**entry);
     m_connections.erase(entry);
+    refreshScreenCastActive();
+  }
+
+  void Ipc::refreshScreenCastActive() {
+    m_server->setScreenCastActive(std::ranges::any_of(m_connections, [](const auto& connection) {
+      return connection->screenCastActive;
+    }));
   }
 
   void Ipc::closeConnection(Connection& connection) {
@@ -423,6 +469,15 @@ namespace umbriel {
       return R"({"err":"malformed request"})";
     }
     const std::string cmd = req["cmd"].get<std::string>();
+    if (cmd == "screencast-session") {
+      const auto active = req.find("active");
+      if (active == req.end() || !active->is_boolean()) {
+        return R"({"err":"malformed request"})";
+      }
+      connection.screenCastActive = active->get<bool>();
+      refreshScreenCastActive();
+      return R"({"ok":null})";
+    }
     if (cmd == "subscribe") {
       if (!req.contains("events") || !req["events"].is_array() || req["events"].empty()) {
         return R"({"err":"malformed request"})";
@@ -478,6 +533,9 @@ namespace umbriel {
       }
       if ((requested & Ipc::kEventSubmap) != 0) {
         append(submapEvent(*m_server));
+      }
+      if ((requested & Ipc::kEventScreenCast) != 0) {
+        append(screenCastEvent(*m_server));
       }
       return response;
     }
@@ -569,5 +627,7 @@ namespace umbriel {
   void Ipc::notifyWorkspacesChanged() { broadcastEvent(kEventWorkspaces, workspacesEvent(*m_server)); }
 
   void Ipc::notifySubmapChanged() { broadcastEvent(kEventSubmap, submapEvent(*m_server)); }
+
+  void Ipc::notifyScreenCastChanged() { broadcastEvent(kEventScreenCast, screenCastEvent(*m_server)); }
 
 } // namespace umbriel

@@ -127,11 +127,15 @@ the compositor package.
 <prefix>/lib/systemd/user/umbriel.service
 <prefix>/lib/systemd/user/umbriel-session.target
 <prefix>/lib/systemd/user/umbriel-shutdown.target
+<prefix>/share/umbriel/effects/<kind>/<name>/{shader.glsl,effect.toml}
 ```
 
 `share/umbriel/config.toml` is required. It is installed directly from
 [`examples/config.toml`](examples/config.toml) and serves as the default when
 no user or system configuration exists.
+
+Bundled effect presets install under `share/umbriel/effects/`; users include
+an `effect.toml` and select its name, and nothing is active until selected.
 
 The desktop entry must launch `start-umbriel`. The generated launcher and
 `umbriel.service` contain the configured absolute path to the `umbriel` binary.

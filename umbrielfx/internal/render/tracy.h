@@ -80,6 +80,11 @@ struct tracy_data *tracy_gpu_context_new(struct fx_renderer *renderer);
 		TRACY_ZONE_TEXT_f("Success On Line: %d", __LINE__) \
 		TracyCZoneEnd(ctx); \
 	)
+// Ends the zone without text, for zones too short to absorb the formatting.
+#define TRACY_ZONE_END_QUIET \
+	TRACY_FN( \
+		TracyCZoneEnd(ctx); \
+	)
 #define TRACY_ZONE_END_FAIL \
 	TRACY_FN( \
 		TRACY_ZONE_TEXT_f("Fail On Line: %d", __LINE__) \

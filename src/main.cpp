@@ -2,6 +2,7 @@
 #include "cli/outputs.h"
 #include "config/config.h"
 #include "config/config_diag.h"
+#include "config/schema.h"
 #include "core/build_info.h"
 #include "core/fdlimit.h"
 #include "core/log.h"
@@ -17,6 +18,7 @@
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <print>
 #include <string>
 #include <string_view>
@@ -35,11 +37,11 @@ namespace {
 
   int validateConfig(int argc, char** argv) {
     const char* configPath = nullptr;
-    for (int i = 2; i < argc; ++i) {
+    for (int i = 3; i < argc; ++i) {
       if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
         configPath = argv[++i];
       } else {
-        std::println(stderr, "error: unknown option '{}' for validate", argv[i]);
+        std::println(stderr, "error: unknown option '{}' for config validate", argv[i]);
         return EXIT_FAILURE;
       }
     }
@@ -60,6 +62,24 @@ namespace {
     }
     std::println(stderr, "configuration invalid");
     return EXIT_FAILURE;
+  }
+
+  int printConfigSchema(bool json) {
+    const umbriel::registry::Descriptions keys = umbriel::registry::describeConfig(umbriel::Config{});
+    if (!json) {
+      std::print("{}", umbriel::configSchemaSummary(keys));
+      return EXIT_SUCCESS;
+    }
+    // Same rule as --version: a build outside git reports "unknown", which is no revision at all.
+    const std::string_view revision = umbriel::build_info::revision();
+    const bool knownRevision = !revision.empty() && revision != "unknown";
+    std::print(
+        "{}",
+        umbriel::configSchemaJson(
+            keys, umbriel::build_info::version(), knownRevision ? std::optional(revision) : std::nullopt
+        )
+    );
+    return EXIT_SUCCESS;
   }
 
   void printHelp(FILE* stream) {
@@ -88,7 +108,8 @@ namespace {
       std::println(stream, "{:>15}{}", "", "events: " + names);
     }
     row("       ", "outputs", "list outputs and modes");
-    row("       ", "validate [-c <config>]", "check the config file");
+    row("       ", "config validate [-c <config>]", "check the config file");
+    row("       ", "config schema [--json]", "count or describe every config key");
     row("       ", "help | -h | --help", "show this help");
     row("       ", "-v | -V | --version", "print version");
     std::println(
@@ -122,8 +143,29 @@ int main(int argc, char** argv) {
     auto isJsonFlag = [](const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; };
     auto isHelpFlag = [](const char* arg) { return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0; };
 
-    if (std::strcmp(argv[1], "validate") == 0) {
-      return validateConfig(argc, argv);
+    // Commands that read the config without a running compositor.
+    if (std::strcmp(argv[1], "config") == 0) {
+      if (argc >= 3 && std::strcmp(argv[2], "validate") == 0) {
+        return validateConfig(argc, argv);
+      }
+      if (argc >= 3 && std::strcmp(argv[2], "schema") == 0) {
+        bool json = false;
+        for (int i = 3; i < argc; ++i) {
+          if (isHelpFlag(argv[i])) {
+            printHelp(stdout);
+            return EXIT_SUCCESS;
+          }
+          if (!isJsonFlag(argv[i])) {
+            printHelp(stderr);
+            return EXIT_FAILURE;
+          }
+          json = true;
+        }
+        return printConfigSchema(json);
+      }
+      const bool help = argc >= 3 && isHelpFlag(argv[2]);
+      printHelp(help ? stdout : stderr);
+      return help ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     if (std::strcmp(argv[1], "outputs") == 0) {
       bool json = false;

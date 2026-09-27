@@ -192,7 +192,8 @@ namespace umbriel {
     if (total > shown) {
       footer += std::format("+{} more \xc2\xb7 ", total - shown);
     }
-    footer += hasError ? "configuration not applied \xc2\xb7 run `umbriel validate`" : "run `umbriel validate`";
+    footer +=
+        hasError ? "configuration not applied \xc2\xb7 run `umbriel config validate`" : "run `umbriel config validate`";
     markup += std::format("\n\n<span foreground='{}'>{}</span>", mutedColor, escapeMarkup(footer));
 
     // Transparent background: the panel rect behind provides the surface.

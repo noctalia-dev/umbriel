@@ -170,41 +170,38 @@ is dropped.
 
 The relevant checks are:
 
-- [`tests/harness/checks/310_overview_wheel.sh`](../../tests/harness/checks/310_overview_wheel.sh)
+- [`tests/harness/checks/overview/wheel.sh`](../../tests/harness/checks/overview/wheel.sh)
   for overview interaction and workspace navigation.
-- [`tests/harness/checks/313_overview_settle_stability.sh`](../../tests/harness/checks/313_overview_settle_stability.sh)
-  for the destination card reaching and holding its final projected position at
-  2560x1600, scale 1.5, and 165 Hz.
 - [`tests/unit/animation.cpp`](../../tests/unit/animation.cpp) for terminal
   spring motion following the analytic solution without accelerating in either
   direction at the same refresh rate.
-- [`tests/harness/checks/346_overview_keybind_actions.sh`](../../tests/harness/checks/346_overview_keybind_actions.sh)
+- [`tests/harness/checks/overview/keybind_actions.sh`](../../tests/harness/checks/overview/keybind_actions.sh)
   for configured directional actions and fallback arrow navigation.
-- [`tests/harness/checks/460_external_drag.sh`](../../tests/harness/checks/460_external_drag.sh)
+- [`tests/harness/checks/drag/external_drag.sh`](../../tests/harness/checks/drag/external_drag.sh)
   for client drag ownership during overview activation.
-- [`tests/harness/checks/430_drag_opacity.sh`](../../tests/harness/checks/430_drag_opacity.sh)
+- [`tests/harness/checks/drag/opacity.sh`](../../tests/harness/checks/drag/opacity.sh)
   for composed drag opacity.
-- [`tests/harness/checks/450_drag_left_hint.sh`](../../tests/harness/checks/450_drag_left_hint.sh)
+- [`tests/harness/checks/drag/left_hint.sh`](../../tests/harness/checks/drag/left_hint.sh)
   for the visible prepend target on an overflowing scrolling strip.
-- [`tests/harness/checks/320_overview_refocus.sh`](../../tests/harness/checks/320_overview_refocus.sh)
+- [`tests/harness/checks/overview/refocus.sh`](../../tests/harness/checks/overview/refocus.sh)
   for adjacent focus reassignment when the focused window closes in the
   overview.
-- [`tests/harness/checks/330_overview_close_fade.sh`](../../tests/harness/checks/330_overview_close_fade.sh)
+- [`tests/harness/checks/overview/card_lifecycle.sh`](../../tests/harness/checks/overview/card_lifecycle.sh)
   for a card dropping its live movement effect, running the configured
   `windows_out` shader after unmap, and disappearing when the close snapshot
   settles.
-- [`tests/harness/checks/340_overview_focus_motion.sh`](../../tests/harness/checks/340_overview_focus_motion.sh)
+- [`tests/harness/checks/overview/focus_motion.sh`](../../tests/harness/checks/overview/focus_motion.sh)
   for selected-column focus and reveal beginning during the closing zoom.
-- [`tests/harness/checks/361_overview_focus_marker.sh`](../../tests/harness/checks/361_overview_focus_marker.sh)
+- [`tests/harness/checks/overview/focus_marker.sh`](../../tests/harness/checks/overview/focus_marker.sh)
   for one live marker across two outputs, following both an output-changing
   keybind and plain pointer motion.
-- [`tests/harness/checks/350_overview_horizontal_overflow.sh`](../../tests/harness/checks/350_overview_horizontal_overflow.sh)
+- [`tests/harness/checks/overview/horizontal_overflow.sh`](../../tests/harness/checks/overview/horizontal_overflow.sh)
   for cards extending past the scaled workspace preview on either axis while
   staying inside the output.
-- [`tests/harness/checks/360_slide_viewport_clips.sh`](../../tests/harness/checks/360_slide_viewport_clips.sh)
+- [`tests/harness/checks/workspace/slide_viewport_clips.sh`](../../tests/harness/checks/workspace/slide_viewport_clips.sh)
   for a sliding workspace clipping its overhanging content to the viewport it
   travels with.
-- [`tests/harness/checks/650_two_output_containment.sh`](../../tests/harness/checks/650_two_output_containment.sh)
+- [`tests/harness/checks/output/two_output_containment.sh`](../../tests/harness/checks/output/two_output_containment.sh)
   for cards staying off a neighbouring output, overview included.
 - [`tests/unit/presented_crop.cpp`](../../tests/unit/presented_crop.cpp) for the
   presented-crop math shared with window presentation.

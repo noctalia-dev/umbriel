@@ -1,0 +1,5 @@
+# Include this file, then select it: [effects] screen = "vignette"
+# or per output: [output."DP-1"] screen_effect = "vignette"
+[effects.preset.vignette]
+kind = "screen"
+shader = "shader.glsl"

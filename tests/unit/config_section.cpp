@@ -4,7 +4,6 @@
 #include <string>
 
 using umbriel::ConfigDiagnostic;
-using umbriel::readSection;
 using umbriel::Section;
 
 namespace {
@@ -63,7 +62,7 @@ UMBRIEL_TEST(absentKeysLeaveTargetsAlone) {
   int count = 42;
   {
     Section s(table, "demo", diagnostics);
-    s.integer("count", 0, 100, count).custom("other");
+    s.integer("count", 0, 100, count);
   }
   // A key the user did not write must not reset the default.
   CHECK_EQ(count, 42);
@@ -106,16 +105,6 @@ UMBRIEL_TEST(unknownKeysAreReportedEvenWhenTheReaderStopsEarly) {
     // Reader bails immediately.
   }
   CHECK(contains(diagnostics, "unknown key demo.typo"));
-}
-
-UMBRIEL_TEST(customClaimsAKeyWithoutReadingIt) {
-  const auto table = toml::parse("binds = [1, 2]");
-  std::vector<ConfigDiagnostic> diagnostics;
-  {
-    Section s(table, "demo", diagnostics);
-    s.custom("binds");
-  }
-  CHECK_EQ(static_cast<int>(diagnostics.size()), 0);
 }
 
 UMBRIEL_TEST(freeformSuppressesTheWholeReport) {
@@ -302,20 +291,6 @@ UMBRIEL_TEST(anAbsentNestedTableIsNotAnError) {
   }
   CHECK(!entered);
   CHECK_EQ(static_cast<int>(diagnostics.size()), 0);
-}
-
-UMBRIEL_TEST(readSectionSkipsAnAbsentSection) {
-  const auto table = toml::parse("other = 1");
-  std::vector<ConfigDiagnostic> diagnostics;
-  CHECK(!readSection(table, "demo", diagnostics, [](Section&) {}));
-  CHECK_EQ(static_cast<int>(diagnostics.size()), 0);
-}
-
-UMBRIEL_TEST(readSectionReportsANonTableSection) {
-  const auto table = toml::parse(R"(demo = "oops")");
-  std::vector<ConfigDiagnostic> diagnostics;
-  CHECK(!readSection(table, "demo", diagnostics, [](Section&) {}));
-  CHECK(contains(diagnostics, "ignoring demo (expected table)"));
 }
 
 UMBRIEL_TEST(diagnosticsCarryTheSourcePositionOfTheOffendingKey) {

@@ -9,16 +9,7 @@
 
 struct fx_renderer;
 
-struct fx_animation_shader {
-	struct fx_renderer *renderer;
-	unsigned references;
-	struct wl_listener destroy;
-	GLuint program;
-	GLint proj, tex_proj, position, tex, sample_matrix;
-	GLint previous_tex, previous_sample_matrix;
-	GLint progress, linear_progress, direction, size, random_seed;
-	bool shape_preserving;
-};
+#include "render/fx_renderer/effect.h"
 
 GLuint compile_shader(GLuint type, const GLchar *src);
 

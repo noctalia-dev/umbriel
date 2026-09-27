@@ -63,8 +63,9 @@ enabled = false
 | `duration_ms` | `250` | Default duration for non-spring curves. |
 | `curve` | `"easeout"` | Default easing curve. |
 
-Each event also accepts `enabled`, `duration_ms`, and `curve`. A spring curve
-chooses its own duration, so `duration_ms` has no effect on that event.
+Each event other than `windows_drag` also accepts `enabled`, `duration_ms`,
+and `curve`. A spring curve chooses its own duration, so `duration_ms` has no
+effect on that event.
 
 ## Event tables
 
@@ -79,6 +80,7 @@ chooses its own duration, so `duration_ms` has no effect on that event.
 | `[animation.border]` | none | Focus-border color |
 | `[animation.dim_unfocused]` | `dim` | Unfocused-window opacity |
 | `[animation.layers]` | none | Layer-shell map and unmap |
+| `[animation.windows_drag]` | `physics` (default `false`), its only key | Drag physics |
 
 `windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`.
 `windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `scale` applies to
@@ -123,94 +125,75 @@ myBounce = { damping = 0.5, stiffness = 200 }
 
 Then set `curve = "myBezier"` or `curve = "myBounce"`.
 
-## Custom GLSL shaders
+## Custom effects
 
-Every animation event can use a custom fragment shader. The event's enabled
-state and curve still control its timeline.
-
-Umbriel ships `reveal.glsl` and `squash.glsl`. Reference the installed files
-directly:
+Every animation event other than `windows_drag` can run a custom program.
+Define an `animation` preset and select it with `effect`; the event's enabled
+state, duration, and curve still control its timeline. Umbriel ships `reveal`
+and `squash`:
 
 ```toml
+[include]
+files = [
+  "/usr/share/umbriel/effects/animation/reveal/effect.toml",
+  "/usr/share/umbriel/effects/animation/squash/effect.toml",
+]
+
 [animation.windows_in]
 duration_ms = 300
 curve = "easeout"
-shader = "/usr/share/umbriel/shaders/reveal.glsl"
+effect = "reveal"
 
 [animation.windows_out]
 duration_ms = 250
 curve = "easeout"
-shader = "/usr/share/umbriel/shaders/reveal.glsl"
+effect = "reveal"
 
 [animation.windows_move]
-shader = "/usr/share/umbriel/shaders/squash.glsl"
+effect = "squash"
 ```
 
-Adjust `/usr/share` for the package prefix. Relative paths resolve from the
-configuration file containing the setting. Shader files are watched and reload
-with the configuration.
+Adjust `/usr` for the package prefix. Defining your own preset, the shader
+interface, and reload behavior are in [Effects](effects.md). `windows_in` and
+`windows_out` without an effect keep their built-in fade and `style`; with an
+effect selected, `style` and `scale` are ignored. A running event keeps its
+program; a reload affects the next event.
 
-NixOS users can derive the path from the configured package:
-
-```nix
-{
-  programs.umbriel.settings.animation.windows_in.shader =
-    "${config.programs.umbriel.package}/share/umbriel/shaders/reveal.glsl";
-}
-```
-
-The `shader` value must name a regular GLSL file smaller than 256 KiB. Inline
-GLSL and recursive includes are not supported.
-
-### Shader interface
-
-Write GLSL ES 1.00 with this entry point. Do not add a `#version` declaration
-or your own `main`:
-
-```glsl
-vec4 animation(vec2 uv) {
-    return umbriel_sample(uv);
-}
-```
-
-Umbriel supplies `main`, precision declarations, and these commonly used
-values:
+### Animation uniforms
 
 | Name | Meaning |
 | --- | --- |
-| `uv` | Normalized target coordinates |
-| `umbriel_sample(vec2 uv)` | Sample the rendered target |
-| `umbriel_sample_previous(vec2 uv)` | Sample this target's previous shader result |
-| `umbriel_size` | Target width and height in logical units |
 | `umbriel_progress` | Eased progress, including overshoot |
 | `umbriel_clamped_progress` | Eased progress clamped to 0 through 1 |
 | `umbriel_linear_progress` | Progress before easing |
 | `umbriel_direction` | `1` for entering and `-1` for leaving |
 | `umbriel_random_seed` | Four stable random values for this transition |
 
-Return premultiplied RGBA. Preserve sampled alpha when modifying colors so a
-shader does not fill transparent parts of its target.
+### Targets
 
-`umbriel_sample_previous` enables feedback and allocates two additional buffers
-for the active target. Avoid it when an effect does not need feedback,
-especially for workspace and overview shaders.
+`windows_in`, `windows_out`, `windows_move`, and `dim_unfocused` process the
+window and its subsurfaces as one target; `border` processes the ring alone.
+`scratchpad` covers the window's show and hide fade and the dim and blur
+backdrops. `layers` covers a layer-shell surface's own tree. `workspaces` and
+`overview` process whole workspace or overview trees, so they see the results
+of inner effects. Effects composite descendants before ancestors.
 
-### Targets and composition
+## Drag physics
 
-Window shaders process the window, subsurfaces, and border as one target.
-Workspace and overview shaders process their corresponding scene trees.
-Shaders change presentation only; they do not affect layout, client sizes,
-input coordinates, or focus.
+```toml
+[animation.windows_drag]
+physics = true
+```
 
-Window shadows follow the alpha shape produced by window and border shaders.
-The compositor still applies configured color, softness, and offset.
+With drag physics on, a window dragged with the pointer bends like an elastic
+sheet pinned under the pointer, trails its motion, and settles when released
+or held still. It needs the animation master switch. Border, window, and
+overlay effects keep rendering on the deformed window. A window closed
+mid-drag keeps its shape while it fades.
 
-### Reload and failures
-
-Shaders compile on startup or configuration reload. A missing source or compile
-failure produces a diagnostic and falls back to the built-in effect. Compiler
-details appear in the Umbriel log.
-
-Custom shaders are trusted local GPU code. Expensive or nonterminating shaders
-can stall the driver, and active effects disable direct scanout. Prefer short,
-inexpensive effects.
+Only the window's own content deforms; its drop shadow follows that
+deformation within the window's shadow bounds. Re-grabbing a window while it
+settles continues its motion. Under the default `popin` style, or under
+`zoom`, the closing snapshot's clip grows by the deformation margin, so a
+client-side decoration extending past the window's geometry can remain
+visible within that margin while the snapshot fades.

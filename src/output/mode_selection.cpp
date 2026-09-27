@@ -10,6 +10,20 @@ extern "C" {
 
 namespace umbriel {
 
+  bool outputCanAutoEnable(wlr_output* output) {
+    if (wl_list_empty(&output->modes)) {
+      return true;
+    }
+    wlr_output_mode* mode = nullptr;
+    wl_list_for_each(mode, &output->modes, link) {
+      if (mode->preferred) {
+        return true;
+      }
+    }
+    const auto populated = [](const char* value) { return value != nullptr && value[0] != '\0'; };
+    return populated(output->make) || populated(output->model) || populated(output->serial);
+  }
+
   wlr_output_mode* selectOutputMode(wlr_output* output, const OutputMode& configured) {
     wlr_output_mode* selected = nullptr;
     wlr_output_mode* mode = nullptr;

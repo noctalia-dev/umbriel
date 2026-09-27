@@ -87,4 +87,20 @@ UMBRIEL_TEST(ineligibleFramesNeverRequestTearing) {
   CHECK(!recovery.regularCommitPending());
 }
 
+UMBRIEL_TEST(effectFrameDelayFollowsRefreshOrCapsAtMaxFps) {
+  CHECK_EQ(umbriel::effectFrameDelayMs(0, 1000, 990), uint64_t{0});
+  CHECK_EQ(umbriel::effectFrameDelayMs(60, 1000, 1000), uint64_t{17});
+  CHECK_EQ(umbriel::effectFrameDelayMs(60, 1010, 1000), uint64_t{7});
+  CHECK_EQ(umbriel::effectFrameDelayMs(60, 1100, 1000), uint64_t{1});
+  CHECK_EQ(umbriel::effectFrameDelayMs(1, 1000, 1000), uint64_t{1000});
+}
+
+UMBRIEL_TEST(effectFrameDelayWaitsAFullIntervalWhenTheLastFrameIsAhead) {
+  CHECK_EQ(umbriel::effectFrameDelayMs(60, 990, 1000), uint64_t{17});
+}
+
+UMBRIEL_TEST(effectFrameDelayNeverDropsBelowOneMillisecond) {
+  CHECK_EQ(umbriel::effectFrameDelayMs(2000, 1000, 1000), uint64_t{1});
+}
+
 int main() { return RUN_TESTS(); }

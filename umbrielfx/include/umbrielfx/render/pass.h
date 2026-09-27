@@ -10,7 +10,7 @@
 
 #include "render/egl.h"
 #include "types/fx/clipped_region.h"
-#include <umbrielfx/render/animation.h>
+#include <umbrielfx/render/effect.h>
 
 struct fx_gles_render_pass {
 	struct wlr_render_pass base;
@@ -46,14 +46,29 @@ struct fx_gles_render_pass {
 	struct fx_framebuffer *animation_parents[FX_ANIMATION_DEPTH];
 	struct wlr_texture *animation_textures[FX_ANIMATION_DEPTH];
 	bool animation_suppress[FX_ANIMATION_DEPTH];
+	struct wlr_box animation_boxes[FX_ANIMATION_DEPTH];
+	// One past the capture index of the open group capture, or 0. Captures
+	// inside it allocate from the offscreen group set.
+	unsigned group_depth;
+	bool group_used;
 	struct wl_list animation_history_updates;
+	// The target's unfiltered composition was copied into the output buffer's
+	// effect capture; it becomes readable once the pass submits.
+	bool effect_capture_saved;
 };
 
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass *pass);
+// Opens the pass's single group capture. box is in parent pixels; translate
+// draws into the capture before end_capture.
+bool fx_render_pass_begin_capture(struct fx_gles_render_pass *pass, const struct wlr_box *box);
+void fx_render_pass_end_capture(struct fx_gles_render_pass *pass,
+	const struct wlr_box *box, const pixman_region32_t *clip);
+// `box` and `logical_box` are the node's boxes; `expand` (logical px) grows the
+// drawn rectangle on every side. `uv` in the program spans the drawn rectangle.
 void fx_render_pass_end_animation(struct fx_gles_render_pass *pass,
-	struct fx_animation_shader *shader, const struct fx_animation_parameters *parameters,
+	struct fx_effect_shader *shader, const struct fx_animation_parameters *parameters,
 	const struct wlr_box *box, const struct wlr_box *logical_box,
-	enum wl_output_transform transform, const pixman_region32_t *clip);
+	enum wl_output_transform transform, const pixman_region32_t *clip, int expand);
 
 // Consume the current capture as a shadow caster. Always restores the parent
 // target, including on allocation failure. False requests the analytic fallback.
@@ -217,9 +232,9 @@ bool fx_render_pass_add_optimized_blur(struct fx_gles_render_pass *pass,
 		struct fx_render_blur_pass_options *fx_options);
 
 /**
- * Render from one buffer to another
+ * Render from one buffer to another. False when the source cannot be sampled.
  */
-void fx_render_pass_read_to_buffer(struct fx_gles_render_pass *pass,
+bool fx_render_pass_read_to_buffer(struct fx_gles_render_pass *pass,
 		pixman_region32_t *region, struct fx_framebuffer *dst_buffer,
 		struct fx_framebuffer *src_buffer);
 
