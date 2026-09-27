@@ -1411,6 +1411,35 @@ UMBRIEL_TEST(outputHdrPolicyAndSdrWhiteLoad) {
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.hdr"));
 }
 
+UMBRIEL_TEST(outputBitDepthLoadsAndDefaults8) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+
+  file.write("[output.DP-1]\nbit_depth = 10\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 10);
+
+  file.write("[output.DP-1]\nbit_depth = 8\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+
+  file.write("[output.DP-1]\nbit_depth = 12\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.bit_depth"));
+
+  file.write("[output.DP-1]\nbit_depth = \"ten\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs[0].bitDepth, 8);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.bit_depth"));
+}
+
 UMBRIEL_TEST(windowOutputPoliciesLoadAndRejectInvalidValues) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -1896,6 +1925,32 @@ UMBRIEL_TEST(outputMinWorkspacesLoadsAndRequiresDynamicWorkspaces) {
   CHECK(!containsDiagnostic(store, "unknown key output.DP-1.min_workspaces"));
 }
 
+// The wrap switch is an ordinary per-output boolean: it defaults off, survives a
+// reload without the key, and rejects a non-boolean the way its neighbours do.
+UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+
+  file.write("[output.DP-1]\ncyclic_workspaces = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].cyclicWorkspaces);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.cyclic_workspaces (expected boolean)"));
+}
+
 UMBRIEL_TEST(dynamicNamedWorkspaceDeclarationsReserveEmptySentinelCapacity) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2275,6 +2330,20 @@ UMBRIEL_TEST(restoredMaximizePolicyLoadsAndDefaultsOff) {
   CHECK(!store.config().general.honorRestoredMaximize);
 }
 
+UMBRIEL_TEST(screencastDynamicConfirmationDefaultsOnAndCanBeDisabled) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[screencast]\ndisable_dynamic_confirmation = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().screenCast.disableDynamicConfirmation);
+
+  file.write("[screencast]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().screenCast.disableDynamicConfirmation);
+}
+
 UMBRIEL_TEST(deviceInputOverridesLoadAndMatchExactNames) {
   const TempConfig file;
   file.write(R"(
@@ -2285,14 +2354,17 @@ repeat_rate = 25
 [input.touchpad]
 tap = true
 natural_scroll = true
+left_handed = true
 accel_profile = "adaptive"
 sensitivity = 0.1
 scroll_factor = { horizontal = 0.8, vertical = 0.6 }
 disable_while_typing = true
 disable_on_external_mouse = true
 click_method = "button_areas"
+tap_button_map = "left_middle_right"
 
 [input.mouse]
+left_handed = true
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
 sensitivity = 0.25
 scroll_button = "MouseForward"
@@ -2309,10 +2381,12 @@ repeat_delay = 250
 name = "Acme Precision Touchpad"
 tap = false
 natural_scroll = false
+left_handed = false
 accel_profile = "flat"
 sensitivity = -0.5
 disable_while_typing = false
 click_method = "clickfinger"
+tap_button_map = "left_right_middle"
 
 [[input.device]]
 name = "Acme Gaming Mouse"
@@ -2335,6 +2409,7 @@ scroll_button_lock = false
   CHECK_EQ(input.mouse.sensitivity, 0.25);
   CHECK(input.mouse.scrollButton == std::optional<uint32_t>(BTN_EXTRA));
   CHECK(input.mouse.scrollButtonLock == std::optional<bool>(true));
+  CHECK(input.mouse.leftHanded == std::optional<bool>(true));
   CHECK(input.touchpad.accelProfile.has_value());
   if (input.touchpad.accelProfile.has_value()) {
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
@@ -2346,6 +2421,8 @@ scroll_button_lock = false
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK(input.touchpad.disableOnExternalMouse == std::optional<bool>(true));
   CHECK(input.touchpad.clickMethod == std::optional(umbriel::ClickMethod::ButtonAreas));
+  CHECK(input.touchpad.tapButtonMap == std::optional(umbriel::TapButtonMap::LeftMiddleRight));
+  CHECK(input.touchpad.leftHanded == std::optional<bool>(true));
   CHECK_EQ(input.devices.size(), size_t{3});
 
   const auto* keyboard = input.findDevice("Acme Split Keyboard");
@@ -2362,6 +2439,7 @@ scroll_button_lock = false
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
+    CHECK(touchpad->leftHanded == std::optional<bool>(false));
     CHECK(touchpad->accelProfile.has_value());
     if (touchpad->accelProfile.has_value()) {
       CHECK(touchpad->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
@@ -2369,6 +2447,7 @@ scroll_button_lock = false
     CHECK(touchpad->sensitivity == std::optional<double>(-0.5));
     CHECK(touchpad->disableWhileTyping == std::optional<bool>(false));
     CHECK(touchpad->clickMethod == std::optional(umbriel::ClickMethod::ClickFinger));
+    CHECK(touchpad->tapButtonMap == std::optional(umbriel::TapButtonMap::LeftRightMiddle));
   }
 
   const auto* mouse = input.findDevice("Acme Gaming Mouse");
@@ -2380,6 +2459,7 @@ scroll_button_lock = false
     CHECK(!mouse->clickMethod.has_value());
     CHECK(mouse->scrollButton == std::optional<uint32_t>(BTN_SIDE));
     CHECK(mouse->scrollButtonLock == std::optional<bool>(false));
+    CHECK(!mouse->leftHanded.has_value());
   }
 
   CHECK(input.findDevice("acme split keyboard") == nullptr);
@@ -2503,6 +2583,23 @@ click_method = "button-areas"
   CHECK(!store.config().input.touchpad.clickMethod.has_value());
   CHECK(containsDiagnostic(store, R"(invalid input.touchpad.click_method "button-areas")"));
   CHECK(!containsDiagnostic(store, "unknown key input.touchpad.click_method"));
+}
+
+UMBRIEL_TEST(invalidTapButtonMapIsRejectedAndStillClaimsTheKey) {
+  const TempConfig file;
+  file.write(R"(
+[input.touchpad]
+tap_button_map = "lmr"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(!store.config().input.touchpad.tapButtonMap.has_value());
+  CHECK(containsDiagnostic(store, R"(invalid input.touchpad.tap_button_map "lmr")"));
+  CHECK(!containsDiagnostic(store, "unknown key input.touchpad.tap_button_map"));
 }
 
 UMBRIEL_TEST(scrollButtonRejectsEvdevCodesAndStillClaimsTheKey) {
@@ -2674,13 +2771,13 @@ UMBRIEL_TEST(tabletConfigDefaults) {
   CHECK(!tablet.calibrationMatrix.has_value());
 }
 
-UMBRIEL_TEST(animationShadersResolveIncludedFilesAcrossAllEventsAndTrackContentChanges) {
+UMBRIEL_TEST(animationEffectsResolveIncludedPresetsAcrossAllEventsAndTrackContentChanges) {
   const TempConfigTree tree;
   const std::array sections{"windows_in", "windows_out", "windows_move",  "workspaces", "overview",
                             "scratchpad", "border",      "dim_unfocused", "layers"};
-  std::string theme;
+  std::string theme = "[effects.preset.reveal]\nkind = 'animation'\nshader = 'effect.glsl'\n";
   for (const char* section : sections) {
-    theme += std::format("[animation.{}]\nshader = 'effect.glsl'\n", section);
+    theme += std::format("[animation.{}]\neffect = 'reveal'\n", section);
   }
   tree.write("config.toml", "[include]\nfiles = ['theme/animation.toml']\n");
   tree.write("theme/animation.toml", theme);
@@ -2690,15 +2787,17 @@ UMBRIEL_TEST(animationShadersResolveIncludedFilesAcrossAllEventsAndTrackContentC
   store.setRootPath(tree.path("config.toml"), true);
   CHECK(store.reload().success);
   const auto& animation = store.config().animation;
-  const std::array sources{&animation.windowsIn.shader,  &animation.windowsOut.shader,   &animation.windowsMove.shader,
-                           &animation.workspaces.shader, &animation.overview.shader,     &animation.scratchpad.shader,
-                           &animation.border.shader,     &animation.dimUnfocused.shader, &animation.layers.shader};
-  for (const auto* source : sources) {
-    CHECK(source->has_value());
-    if (*source) {
-      CHECK_EQ((*source)->code, std::string("first shader"));
-      CHECK((*source)->file == tree.path("theme/effect.glsl"));
-    }
+  const std::array effects{&animation.windowsIn.effect,  &animation.windowsOut.effect,   &animation.windowsMove.effect,
+                           &animation.workspaces.effect, &animation.overview.effect,     &animation.scratchpad.effect,
+                           &animation.border.effect,     &animation.dimUnfocused.effect, &animation.layers.effect};
+  for (const auto* effect : effects) {
+    CHECK_EQ(*effect, std::string("reveal"));
+  }
+  const umbriel::EffectPreset* reveal = umbriel::findEffectPreset(store.config().effects, "reveal");
+  CHECK(reveal != nullptr);
+  if (reveal != nullptr) {
+    CHECK_EQ(reveal->shader.code, std::string("first shader"));
+    CHECK(reveal->shader.file == tree.path("theme/effect.glsl"));
   }
   CHECK(!containsDiagnostic(store, "unknown key"));
   CHECK_EQ(std::ranges::count(store.watchPaths(), tree.path("theme/effect.glsl")), 1);
@@ -2706,21 +2805,33 @@ UMBRIEL_TEST(animationShadersResolveIncludedFilesAcrossAllEventsAndTrackContentC
   tree.write("theme/effect.glsl", "edited shader");
   const auto edited = store.reload();
   CHECK(edited.success);
-  CHECK(edited.effects.animation);
-  CHECK(store.config().animation.windowsIn.shader.has_value());
-  if (store.config().animation.windowsIn.shader) {
-    CHECK_EQ(store.config().animation.windowsIn.shader->code, std::string("edited shader"));
-  }
+  CHECK(edited.effects.effects);
+  CHECK(!edited.effects.animation);
+  reveal = umbriel::findEffectPreset(store.config().effects, "reveal");
+  CHECK(reveal != nullptr && reveal->shader.code == "edited shader");
 
   tree.write("theme/replacement.glsl", "replacement shader");
-  tree.write("theme/animation.toml", "[animation.windows_in]\nshader = 'replacement.glsl'\n");
+  tree.write(
+      "theme/animation.toml",
+      "[effects.preset.reveal]\nkind = 'animation'\nshader = 'replacement.glsl'\n[animation.windows_in]\neffect = "
+      "'reveal'\n"
+  );
   CHECK(store.reload().success);
   CHECK(std::ranges::find(store.watchPaths(), tree.path("theme/effect.glsl")) == store.watchPaths().end());
-  CHECK(store.config().animation.windowsIn.shader.has_value());
-  if (store.config().animation.windowsIn.shader) {
-    CHECK_EQ(store.config().animation.windowsIn.shader->code, std::string("replacement shader"));
-  }
-  CHECK(!store.config().animation.layers.shader.has_value());
+  CHECK(store.config().animation.layers.effect.empty());
+  CHECK_EQ(store.config().animation.windowsIn.effect, std::string("reveal"));
+  reveal = umbriel::findEffectPreset(store.config().effects, "reveal");
+  CHECK(reveal != nullptr && reveal->shader.code == "replacement shader");
+}
+
+UMBRIEL_TEST(removedAnimationShaderKeyIsUnknown) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[animation.windows_in]\nshader = \"reveal.glsl\"\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "unknown key animation.windows_in.shader"));
+  CHECK(store.config().animation.windowsIn.effect.empty());
 }
 
 UMBRIEL_TEST(animationUsesCanonicalTopLevelNamespace) {
@@ -3194,6 +3305,357 @@ UMBRIEL_TEST(packagedAnimationDefaultsMatchCompiledDefaults) {
 
   CHECK(result.success);
   CHECK(store.config().animation == umbriel::Config{}.animation);
+}
+
+UMBRIEL_TEST(effectPresetsClaimOnlyTheirKindsKeys) {
+  const TempConfigTree tree;
+  tree.write("pulse.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("glow.glsl", "vec4 cursor(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects]\nmax_fps = 60\nin_capture = true\n"
+      "[effects.preset.pulse]\nkind = \"border\"\nshader = \"pulse.glsl\"\npadding = 12\nspeed = 2.5\nanimated = "
+      "false\n"
+      "palette = true\nradius = 5\n"
+      "[effects.preset.pulse.light]\nspread = 40\nintensity = 2\nthreshold = 0.25\n"
+      "[effects.preset.glow]\nkind = \"cursor\"\nshader = \"glow.glsl\"\nradius = 96\npadding = 3\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& effects = store.config().effects;
+  CHECK_EQ(effects.maxFps, 60);
+  CHECK(effects.inCapture);
+  CHECK_EQ(effects.presets.size(), size_t{2});
+  const umbriel::EffectPreset* pulse = umbriel::findEffectPreset(effects, "pulse");
+  CHECK(pulse != nullptr);
+  if (pulse != nullptr) {
+    CHECK(pulse->kind == umbriel::EffectKind::Border);
+    CHECK_EQ(pulse->padding, 12);
+    CHECK(pulse->speed == 2.5F);
+    CHECK(!pulse->animated);
+    CHECK(pulse->palette);
+    CHECK(pulse->light.has_value());
+    if (pulse->light) {
+      CHECK_EQ(pulse->light->spread, 40);
+      CHECK(pulse->light->intensity == 2.0F);
+      CHECK(pulse->light->threshold == 0.25F);
+    }
+    CHECK(pulse->shader.file == tree.path("pulse.glsl"));
+    CHECK(!pulse->inert());
+  }
+  const umbriel::EffectPreset* glow = umbriel::findEffectPreset(effects, "glow");
+  CHECK(glow != nullptr);
+  if (glow != nullptr) {
+    CHECK_EQ(glow->radius, 96);
+  }
+  CHECK(containsDiagnostic(store, "unknown key effects.preset.pulse.radius"));
+  CHECK(containsDiagnostic(store, "unknown key effects.preset.glow.padding"));
+  CHECK_EQ(std::ranges::count(store.watchPaths(), tree.path("pulse.glsl")), 1);
+}
+
+UMBRIEL_TEST(effectPresetsNeedAKindAndKeepTheirNameWithoutAShader) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[effects.preset.nokind]\nshader = \"x.glsl\"\n[effects.preset.missing]\nkind = \"screen\"\nshader = "
+      "\"absent.glsl\"\n[effects.preset.off]\nkind = \"screen\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(umbriel::findEffectPreset(store.config().effects, "nokind") == nullptr);
+  CHECK(
+      containsDiagnostic(store, "ignoring effects.preset.nokind (kind must be animation|border|window|screen|cursor)")
+  );
+  const umbriel::EffectPreset* missing = umbriel::findEffectPreset(store.config().effects, "missing");
+  CHECK(missing != nullptr && missing->inert());
+  CHECK(containsDiagnostic(store, "cannot read shader file"));
+  CHECK(umbriel::findEffectPreset(store.config().effects, "off") == nullptr);
+  CHECK(containsDiagnostic(store, "ignoring effects.preset.off ('off' is reserved)"));
+}
+
+UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
+  const TempConfigTree tree;
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("w.glsl", "vec4 window(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("s.glsl", "vec4 screen(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("c.glsl", "vec4 cursor(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("o.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects]\nborder = \"ring\"\nwindow = \"lines\"\nscreen = \"vig\"\ncursor = \"glow\"\n"
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\noverlay = \"lines\"\n"
+      "[effects.preset.lines]\nkind = \"window\"\nshader = \"w.glsl\"\n"
+      "[effects.preset.vig]\nkind = \"screen\"\nshader = \"s.glsl\"\n"
+      "[effects.preset.glow]\nkind = \"cursor\"\nshader = \"c.glsl\"\n"
+      "[effects.preset.open]\nkind = \"animation\"\nshader = \"o.glsl\"\n"
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_effect = \"off\"\nwindow_effect = \"lines\"\n"
+      "[output.\"HEADLESS-1\"]\nscreen_effect = \"off\"\n"
+      "[animation.windows_in]\neffect = \"open\"\n"
+      "[animation.windows_drag]\nphysics = true\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.effects.border, std::string("ring"));
+  CHECK_EQ(config.effects.window, std::string("lines"));
+  CHECK_EQ(config.effects.screen, std::string("vig"));
+  CHECK_EQ(config.effects.cursor, std::string("glow"));
+  CHECK_EQ(config.windowRules.size(), size_t{1});
+  CHECK(config.windowRules[0].borderEffect == "off");
+  CHECK(config.windowRules[0].windowEffect == "lines");
+  CHECK_EQ(config.outputs.size(), size_t{1});
+  CHECK(config.outputs[0].screenEffect == "off");
+  CHECK_EQ(config.animation.windowsIn.effect, std::string("open"));
+  CHECK(config.animation.windowsDrag.physics);
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
+  CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {
+  const TempConfigTree tree;
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      // Forward reference: the selector precedes the preset in the file and the preset comes from an include.
+      "[effects]\nborder = \"ring\"\nwindow = \"ring\"\nscreen = \"nope\"\n"
+      "[include]\nfiles = [\"presets.toml\"]\n"
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_effect = \"nope\"\nwindow_effect = \"\"\n"
+      "[output.\"HEADLESS-1\"]\nscreen_effect = \"ring\"\n"
+      "[animation.windows_out]\neffect = \"ring\"\n"
+  );
+  tree.write(
+      "presets.toml",
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\noverlay = \"nope\"\n"
+      "[effects.preset.ring2]\nkind = \"border\"\nshader = \"a.glsl\"\noverlay = \"ring\"\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.effects.border, std::string("ring"));
+  CHECK(config.effects.window.empty());
+  CHECK(containsDiagnostic(store, "ignoring effects.window (effect 'ring' is a border preset, not a window preset)"));
+  CHECK(config.effects.screen.empty());
+  CHECK(containsDiagnostic(store, "ignoring effects.screen (unknown effect 'nope')"));
+  CHECK_EQ(config.windowRules.size(), size_t{1});
+  CHECK_EQ(config.outputs.size(), size_t{1});
+  if (config.windowRules.size() != 1 || config.outputs.size() != 1) {
+    return;
+  }
+  CHECK(!config.windowRules[0].borderEffect);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.border_effect (unknown effect 'nope')"));
+  CHECK(config.windowRules[0].windowEffect == "");
+  CHECK(!config.outputs[0].screenEffect);
+  CHECK(containsDiagnostic(
+      store, "ignoring output.HEADLESS-1.screen_effect (effect 'ring' is a border preset, not a screen preset)"
+  ));
+  CHECK(config.animation.windowsOut.effect.empty());
+  CHECK(containsDiagnostic(
+      store, "ignoring animation.windows_out.effect (effect 'ring' is a border preset, not an animation preset)"
+  ));
+  const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
+  CHECK(ring != nullptr && ring->overlay.empty());
+  CHECK(containsDiagnostic(store, "ignoring effects.preset.ring.overlay (unknown effect 'nope')"));
+  // An overlay must name a window preset: a border preset is the wrong kind.
+  const umbriel::EffectPreset* ring2 = umbriel::findEffectPreset(config.effects, "ring2");
+  CHECK(ring2 != nullptr && ring2->overlay.empty());
+  CHECK(containsDiagnostic(
+      store, "ignoring effects.preset.ring2.overlay (effect 'ring' is a border preset, not a window preset)"
+  ));
+}
+
+UMBRIEL_TEST(effectPaletteFollowsTheColorsSectionOrder) {
+  umbriel::Config config;
+  config.colors.accentPrimary = {1, 0, 0, 1};
+  config.colors.accentSecondary = {0, 1, 0, 1};
+  config.colors.warning = {0, 0, 1, 1};
+  config.colors.error = {1, 1, 0, 1};
+  const auto palette = umbriel::effectPalette(config.colors);
+  CHECK(palette[0] == config.colors.accentPrimary);
+  CHECK(palette[1] == config.colors.accentSecondary);
+  CHECK(palette[2] == config.colors.warning);
+  CHECK(palette[3] == config.colors.error);
+}
+
+UMBRIEL_TEST(effectReloadsFlagOnlyEffectDependentState) {
+  const TempConfigTree tree;
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\n[effects]\nborder = \"ring\"\n"
+      "[output.\"HEADLESS-1\"]\nenabled = true\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto same = store.reload();
+  CHECK(same.success);
+  CHECK(!same.effects.effects);
+  CHECK(!same.effects.any());
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv) * 0.5; }");
+  const auto edited = store.reload();
+  CHECK(edited.success);
+  CHECK(edited.effects.effects);
+  CHECK(edited.change.effects);
+  CHECK(!edited.effects.animation);
+  tree.write(
+      "config.toml",
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\n[effects]\nborder = \"ring\"\n"
+      "[output.\"HEADLESS-1\"]\nenabled = true\nscreen_effect = \"off\"\n"
+  );
+  const auto output = store.reload();
+  CHECK(output.success);
+  CHECK(output.effects.effects);
+  CHECK(!output.effects.outputState);
+  CHECK_EQ(output.effects.summary(), std::string("effects"));
+}
+
+UMBRIEL_TEST(effectSelectorNonStringValueWarnsAndLeavesSettingUnset) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_effect = 3\n");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.windowRules.size(), size_t{1});
+  if (config.windowRules.size() != 1) {
+    return;
+  }
+  CHECK(!config.windowRules[0].borderEffect);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.border_effect (expected string)"));
+}
+
+UMBRIEL_TEST(effectSelectorOnADroppedWindowRuleRecordsNoReference) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.app_id = \"[\"\nborder_effect = \"off\"\n");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK(config.windowRules.empty());
+  CHECK(containsDiagnostic(store, "invalid regex in window_rule.match.app_id"));
+  CHECK(!containsDiagnostic(store, "border_effect"));
+}
+
+UMBRIEL_TEST(duplicateOutputSectionDoesNotCorruptASurvivingScreenEffectReference) {
+  const TempConfigTree tree;
+  tree.write("vig.glsl", "vec4 screen(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects.preset.vig]\nkind = \"screen\"\nshader = \"vig.glsl\"\n"
+      "[output.\"DP-1\"]\nscreen_effect = \"nope\"\n"
+      "[output.\"HDMI-A-1\"]\nscreen_effect = \"vig\"\n"
+      "[output.\"dp-1\"]\nenabled = true\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.outputs.size(), size_t{2});
+  const auto hdmi =
+      std::ranges::find_if(config.outputs, [](const umbriel::OutputRule& rule) { return rule.name == "HDMI-A-1"; });
+  CHECK(hdmi != config.outputs.end());
+  if (hdmi != config.outputs.end()) {
+    CHECK(hdmi->screenEffect == "vig");
+  }
+  CHECK(containsDiagnostic(store, "duplicate output section 'dp-1'"));
+  // The discarded DP-1 section's own screen_effect setting is superseded along with the rest of the section: it is
+  // never validated, so it produces no warning of its own.
+  CHECK(!containsDiagnostic(store, "screen_effect (unknown effect 'nope')"));
+}
+
+UMBRIEL_TEST(duplicateEffectPresetsAcrossIncludesAreRejected) {
+  const TempConfigTree tree;
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("theme.toml", "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\n");
+  tree.write("config.toml", "[include]\nfiles = [\"theme.toml\"]\n[effects]\nborder = \"ring\"\n");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const uint64_t generation = store.generation();
+  const umbriel::Config previous = store.config();
+
+  tree.write(
+      "config.toml",
+      "[include]\nfiles = [\"theme.toml\"]\n[effects]\nborder = \"ring\"\n"
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\npadding = 4\n"
+  );
+  const auto duplicate = store.reload();
+  CHECK(!duplicate.success);
+  CHECK(containsDiagnostic(store, "effects.preset.ring is also defined in"));
+  CHECK(containsDiagnostic(store, "theme.toml"));
+  CHECK(store.config() == previous);
+  CHECK_EQ(store.generation(), generation);
+}
+
+UMBRIEL_TEST(initialDuplicateEffectPresetsKeepCompatibilityDefaults) {
+  const TempConfigTree tree;
+  const std::string preset = "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\n";
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("theme.toml", preset);
+  tree.write("config.toml", "[include]\nfiles = [\"theme.toml\"]\n" + preset);
+
+  ConfigStore& store = umbriel::configStore();
+  const uint64_t generation = store.generation();
+
+  CHECK(store.load(tree.path("config.toml").c_str()));
+  CHECK_EQ(store.generation(), generation + 1);
+  CHECK(store.config().effects.presets.empty());
+  CHECK(std::ranges::any_of(store.diagnostics(), [](const ConfigDiagnostic& diagnostic) {
+    return diagnostic.severity == ConfigDiagnostic::Severity::Error
+        && diagnostic.message.contains("effects.preset.ring is also defined in");
+  }));
+}
+
+UMBRIEL_TEST(duplicateEffectPresetsInSiblingIncludesNameTheFirstSibling) {
+  const TempConfigTree tree;
+  const std::string preset = "[effects.preset.ring]\nkind = \"border\"\nshader = \"a.glsl\"\n";
+  tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("first.toml", preset);
+  tree.write("second.toml", preset);
+  tree.write("config.toml", "[include]\nfiles = [\"first.toml\", \"second.toml\"]\n");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(!store.reload().success);
+  const auto isDuplicate = [](const ConfigDiagnostic& diagnostic) {
+    return diagnostic.message.contains("is also defined in");
+  };
+  CHECK_EQ(std::ranges::count_if(store.diagnostics(), isDuplicate), std::ptrdiff_t{1});
+  const auto duplicate = std::ranges::find_if(store.diagnostics(), isDuplicate);
+  CHECK(duplicate != store.diagnostics().end());
+  if (duplicate == store.diagnostics().end()) {
+    return;
+  }
+  CHECK(duplicate->severity == ConfigDiagnostic::Severity::Error);
+  CHECK(duplicate->message.ends_with("first.toml"));
+  CHECK(duplicate->file.ends_with("second.toml"));
+}
+
+UMBRIEL_TEST(bundledEffectPresetsDefineWithoutSelecting) {
+  const TempConfigTree tree;
+  std::string includes = "[include]\nfiles = [\n";
+  for (const char* effect :
+       {"animation/reveal", "animation/squash", "border/pulse", "window/scanlines", "screen/vignette", "cursor/glow"}) {
+    includes += std::format("  \"{}/examples/effects/{}/effect.toml\",\n", UMBRIEL_SOURCE_ROOT, effect);
+  }
+  includes += "]\n";
+  tree.write("config.toml", includes);
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  CHECK(!containsDiagnostic(store, "cannot read shader"));
+  const auto& effects = store.config().effects;
+  CHECK_EQ(effects.presets.size(), size_t{6});
+  CHECK(effects.border.empty() && effects.window.empty() && effects.screen.empty() && effects.cursor.empty());
+  const umbriel::EffectPreset* pulse = umbriel::findEffectPreset(effects, "pulse");
+  CHECK(pulse != nullptr && pulse->kind == umbriel::EffectKind::Border && pulse->light.has_value());
+  const umbriel::EffectPreset* glow = umbriel::findEffectPreset(effects, "glow");
+  CHECK(glow != nullptr && glow->kind == umbriel::EffectKind::Cursor && glow->radius > 0);
 }
 
 int main() { return RUN_TESTS(); }

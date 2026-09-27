@@ -3,7 +3,7 @@
 #include "config/config.h"
 #include "input/cursor.h"
 #include "output/output.h"
-#include "scene/animation_shader.h"
+#include "scene/effect_registry.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -63,10 +63,10 @@ namespace umbriel {
       if (fade.tick(nowMsec)) {
         updateDimAndBlur(output);
         if (const auto rect = m_dimRects.find(output); rect != m_dimRects.end()) {
-          updateAnimationShader(&rect->second->node, m_server->renderer(), AnimationEvent::Scratchpad, fade);
+          bindAnimationEffect(&rect->second->node, AnimationEvent::Scratchpad, fade);
         }
         if (const auto blur = m_blurNodes.find(output); blur != m_blurNodes.end()) {
-          updateAnimationShader(&blur->second->node, m_server->renderer(), AnimationEvent::Scratchpad, fade);
+          bindAnimationEffect(&blur->second->node, AnimationEvent::Scratchpad, fade);
         }
         movedBackdrop = true;
       }
@@ -999,6 +999,7 @@ namespace umbriel {
       }
     }
     if (workspace != nullptr) {
+      workspace->exitFullscreenForIncomingView(view);
       workspace->syncViewPresentation(view);
     }
 

@@ -26,12 +26,33 @@ Change the current workspace at runtime with
 [layout]
 gap = 8
 extent_presets = [0.333, 0.5, 0.667]
+new_exits_fullscreen = []  # "tiled", "floating", "pinned", "all", or an array such as ["tiled", "floating"]
 ```
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `gap` | `8` | Gap between windows in logical pixels. |
 | `extent_presets` | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions. |
+| `new_exits_fullscreen` | `[]` | Kinds of arriving window that make a fullscreen window on the workspace leave fullscreen. See [Leaving fullscreen](#leaving-fullscreen). |
+
+### Leaving fullscreen
+
+`new_exits_fullscreen` selects which kinds of window make a fullscreen window
+leave fullscreen when they arrive on its workspace. A window arrives when it
+opens there, is moved there from another workspace or output, is dropped there
+by drag-and-drop, or returns there from a scratchpad.
+
+| Value | Arriving window |
+| --- | --- |
+| `"tiled"` | A tiled window in the Dwindle or Master layout. |
+| `"floating"` | A floating window that is not pinned. |
+| `"pinned"` | A pinned window. |
+| `"all"` | Any window. |
+
+A string selects one kind and an array selects several. The empty array, the
+default, disables the behavior. In the scrolling layout a tiled window opens as
+a column beside the fullscreen one and the strip scrolls to it, so it never
+exits fullscreen.
 
 ### Struts
 
@@ -112,6 +133,11 @@ Closing a focused column moves focus to the nearest surviving column. When that
 column contains stacked windows, Umbriel restores its most recently focused
 member instead of always selecting its first row.
 
+With `follows_mouse = true`, closing a focused window beneath the pointer instead
+focuses the tiled window that occupies that position after the layout reflows.
+This also applies when another row in the same scrolling column expands into the
+stationary pointer.
+
 ## Vertical strips
 
 With horizontal workspaces, screen directions remain literal:
@@ -133,13 +159,11 @@ Dwindle recursively splits tiles into independently sized regions.
 ```toml
 [layout.dwindle]
 preserve_split = false
-new_exits_fullscreen = false
 ```
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `preserve_split` | `false` | Keep each split direction fixed after creation. |
-| `new_exits_fullscreen` | `false` | Exit fullscreen when a new window opens. |
 
 ### Behavior
 
@@ -163,7 +187,6 @@ position = "left"
 default_width_fraction = 0.55
 new_on_top = true
 new_becomes_master = false
-new_exits_fullscreen = false
 ```
 
 | Key | Default | Description |
@@ -172,7 +195,6 @@ new_exits_fullscreen = false
 | `default_width_fraction` | `0.55` | Initial master-area fraction. |
 | `new_on_top` | `true` | Put new stack windows at the top. |
 | `new_becomes_master` | `false` | Give the master slot to each new window. |
-| `new_exits_fullscreen` | `false` | Exit fullscreen when a new window opens. |
 
 ### Behavior
 

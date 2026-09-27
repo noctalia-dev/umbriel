@@ -33,6 +33,7 @@ umbrielfx_sources = files(
   'render/fx_renderer/fx_pass.c',
   'render/fx_renderer/fx_renderer.c',
   'render/fx_renderer/fx_texture.c',
+  'render/fx_renderer/effect_shader.c',
   'render/fx_renderer/pixel_format.c',
   'render/fx_renderer/shaders.c',
   'render/fx_renderer/tracy.c',
@@ -143,6 +144,7 @@ foreach shader : [
   'box_shadow.frag',
   'common.vert',
   'corner_alpha.frag',
+  'effect_light.frag',
   'gradient.frag',
   'output.frag',
   'quad.frag',
@@ -200,6 +202,7 @@ if build_tests
   )
   foreach case_name : [
     'implicit-srgb-target',
+    'scene-unset-primaries',
     'gamma22-to-srgb',
     'pq-roundtrip',
     'bt2020-to-srgb',
@@ -207,6 +210,8 @@ if build_tests
     'fp16-blur',
     'fp16-blur-effects',
     'fp16-save-restore',
+    'sdr10-blur-buffer-format',
+    'optimized-blur-format-cache',
     'shared-output-buffers',
     'output-lut-cache',
     'shared-sdr-capture',
@@ -238,6 +243,48 @@ if build_tests
     umbrielfx_capture_pacing_test,
     suite: 'umbrielfx',
   )
+
+  umbrielfx_effects_test = executable(
+    'umbrielfx-effects-test',
+    'tests/effects.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  foreach case_name : [
+    'kinds',
+    'reads',
+    'uniforms',
+    'expand',
+    'renderer-destroy',
+    'persistent-scene',
+    'occlusion',
+    'damage-confinement',
+    'whole-box-invalidation',
+    'transient-policy',
+    'margin-damage',
+    'move-margin-damage',
+    'offscreen-margin',
+    'effect-bounds',
+    'border-geometry',
+    'border-geometry-tree',
+    'border-light',
+    'border-light-lifecycle',
+    'visible-in-box',
+    'in-place',
+    'damage-expansion',
+    'capture-policy',
+    'capture-policy-encoding',
+    'capture-feedback',
+    'in-place-feedback',
+    'capture-composition',
+    'in-place-shape',
+    'output-effects',
+  ]
+    test('effects-' + case_name, umbrielfx_effects_test, args: case_name, suite: 'umbrielfx')
+  endforeach
 
   # Renderer ownership and descriptor stability against a real GPU. It takes
   # DRM render nodes as arguments, so it is a tool run by `just gpu-test`

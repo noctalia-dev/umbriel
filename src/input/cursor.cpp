@@ -220,6 +220,7 @@ namespace umbriel {
   void Cursor::noteActivity() {
     if (m_cursorHidden) {
       m_cursorHidden = false;
+      forwardEffectPointer();
       if (m_compositorOwnsCursor) {
         setXcursor(m_compositorCursorName.c_str());
       } else {
@@ -243,6 +244,7 @@ namespace umbriel {
       }
       if (m_cursorHidden) {
         m_cursorHidden = false;
+        forwardEffectPointer();
         if (m_compositorOwnsCursor) {
           setXcursor(m_compositorCursorName.c_str());
         } else {
@@ -271,7 +273,19 @@ namespace umbriel {
       return;
     }
     m_cursorHidden = true;
+    forwardEffectPointer();
     wlr_cursor_set_surface(m_cursor, nullptr, 0, 0);
+  }
+
+  void Cursor::forwardEffectPointer() const {
+    if (m_server->effects().cursorEffectActive()) {
+      m_server->effects().pointerMoved(m_cursor->x, m_cursor->y, !m_cursorHidden);
+    }
+  }
+
+  void Cursor::handleOutputLayoutChange() const {
+    m_server->effects().forgetPointerOutput();
+    forwardEffectPointer();
   }
 
   int Cursor::onHideTimer(void* data) {
@@ -538,6 +552,8 @@ namespace umbriel {
         .pending = tiled,
         .startX = m_cursor->x,
         .startY = m_cursor->y,
+        .lastX = m_cursor->x,
+        .lastY = m_cursor->y,
     };
     if (grab.sourceWorkspace != nullptr) {
       grab.sourceColumn = grab.sourceWorkspace->layout().columnOf(view);
@@ -551,6 +567,7 @@ namespace umbriel {
     m_grabButton = button;
     if (!grab.pending) {
       view->enterDragPresentation();
+      std::get<MoveGrab>(m_grab).physics = view->beginDragPhysics(grab.offsetX, grab.offsetY);
     }
     updateInteractiveCursor(view);
     return true;
@@ -747,6 +764,9 @@ namespace umbriel {
       m_server->gestures()->endPointerScroll(true, 0);
     }
     const bool restoreDragPresentation = isDraggingView(view);
+    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != nullptr && grab->physics) {
+      grab->view->endDragPhysics();
+    }
     const auto* tiledResize = std::get_if<TiledResizeGrab>(&m_grab);
     Workspace* resizedWorkspace = tiledResize != nullptr ? tiledResize->workspace : nullptr;
     const bool restoreResizePresentation = std::holds_alternative<FloatingResizeGrab>(m_grab);
@@ -905,7 +925,7 @@ namespace umbriel {
       // Any pointer press cancels the confirmation without being consumed; the
       // click still reaches whatever it hit.
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
-        confirm->hide();
+        m_server->dismissConfirmation();
       }
     }
 
@@ -1282,8 +1302,7 @@ namespace umbriel {
     auto* event = static_cast<wlr_touch_down_event*>(data);
     m_server->notifyInputActivity();
     m_server->cancelModifierTap();
-    // Re-resolve the output mapping so a focused-output target reflects current focus, like tablets do.
-    m_server->remapTouch();
+    m_server->remapTouches();
 
     double lx = 0;
     double ly = 0;
@@ -1382,6 +1401,7 @@ namespace umbriel {
 
   void Cursor::processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange) {
     updateHotCorner();
+    forwardEffectPointer();
     if (auto* grab = std::get_if<ScrollDragGrab>(&m_grab)) {
       if (m_server->sessionLocked()) {
         m_server->gestures()->endPointerScroll(true, timeMsec);
@@ -1668,6 +1688,7 @@ namespace umbriel {
       double sy = 0;
       surfaceLocalCoordinates(m_server->scene(), state->v2->focused_surface, m_cursor->x, m_cursor->y, &sx, &sy);
       wlr_tablet_v2_tablet_tool_notify_motion(state->v2, sx, sy);
+      forwardEffectPointer();
       return;
     }
 
@@ -1697,6 +1718,7 @@ namespace umbriel {
     }
     wlr_tablet_v2_tablet_tool_notify_proximity_in(state->v2, v2tablet, surface);
     wlr_tablet_v2_tablet_tool_notify_motion(state->v2, sx, sy);
+    forwardEffectPointer();
   }
 
   void Cursor::handleTabletToolAxis(void* data) {
@@ -1858,7 +1880,7 @@ namespace umbriel {
   }
 
   void Cursor::processMove() {
-    const auto* grab = std::get_if<MoveGrab>(&m_grab);
+    auto* grab = std::get_if<MoveGrab>(&m_grab);
     if (grab == nullptr || grab->view == nullptr) {
       resetMode();
       return;
@@ -1866,6 +1888,11 @@ namespace umbriel {
     grab->view->setDragPosition(
         static_cast<int>(m_cursor->x - grab->offsetX), static_cast<int>(m_cursor->y - grab->offsetY)
     );
+    if (grab->physics) {
+      grab->view->moveDragPhysics(m_cursor->x - grab->lastX, m_cursor->y - grab->lastY);
+      grab->lastX = m_cursor->x;
+      grab->lastY = m_cursor->y;
+    }
     presentGrabbedViewSpanning();
   }
 
@@ -1886,6 +1913,9 @@ namespace umbriel {
       grab.sourceWorkspace->layoutDetach(grab.view);
     }
     grab.view->enterDragPresentation();
+    grab.physics = grab.view->beginDragPhysics(grab.offsetX, grab.offsetY);
+    grab.lastX = m_cursor->x;
+    grab.lastY = m_cursor->y;
   }
 
   void Cursor::updateDropTarget() {
@@ -1936,6 +1966,9 @@ namespace umbriel {
       return;
     }
     View* view = grab->view;
+    if (grab->physics) {
+      view->endDragPhysics();
+    }
     // Where the drag left the window. Read before the state change: becoming
     // floating re-places the window at its remembered origin, immediately when
     // position animations are off.
@@ -2013,6 +2046,7 @@ namespace umbriel {
     } else if (output != nullptr && output->workspaceGroup() != nullptr) {
       if (Workspace* target = output->workspaceGroup()->active(); view->workspace() != target) {
         view->moveToWorkspace(target);
+        target->exitFullscreenForIncomingView(view);
       }
     }
     // Drag presentation moves only the scene node. Commit its final position
@@ -2080,6 +2114,9 @@ namespace umbriel {
     }
     view->requestFloatingSize(width, height);
     view->beginResizeAnimation(width, height);
+    if (grab.physics) {
+      view->setDragPhysicsGrab(grab.offsetX, grab.offsetY);
+    }
     processMove();
   }
 

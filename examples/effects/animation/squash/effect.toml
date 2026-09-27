@@ -1,0 +1,5 @@
+# A restrained squash-and-settle for window movement and resizing.
+# Include this file, then select it: [animation.windows_move] effect = "squash"
+[effects.preset.squash]
+kind = "animation"
+shader = "shader.glsl"

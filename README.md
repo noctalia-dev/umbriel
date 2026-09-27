@@ -131,8 +131,10 @@ checks print their whole output. A failing check keeps its runtime directory
 Installed display-manager sessions start through `start-umbriel`. For supported
 account shells, it loads the noninteractive login environment, then runs the
 compositor as a user service on systemd or directly on other init systems.
-Systemd sessions also inherit `environment.d`. Its `PATH` takes precedence over
-the login profile's `PATH` in the managed session.
+In a managed systemd session, the launcher imports that login environment into
+the user manager before starting Umbriel. Login-profile values take precedence
+over values with the same names from `environment.d`, including `PATH`;
+variables found only in the user manager remain available.
 
 Start an installed native session from a TTY with:
 

@@ -49,7 +49,7 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 | `just run <mode> [startup]` | Build and run a nested session, optionally spawning a command |
 | `just test` | Run the Meson test suite: unit tests plus the umbrielfx suites |
 | `just gpu-test` | Run the umbrielfx renderer ownership check against this machine's DRM render nodes; it needs a GPU, so `just test` does not cover it |
-| `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check 721`, `just check drag`, `just check 721 -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 721` |
+| `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check render/`, `just check drag`, `just check render/ -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check render/` |
 | `just check-stress <name> [n]` | Run `n` copies (default 32) of one harness check at once, to expose races that load reveals |
 | `just check-names` | List every harness check name. Builds nothing |
 | `just lint [file ...]` | Run clang-tidy on everything, or only the given files |
@@ -95,7 +95,7 @@ follow:
   the harness default) and owes nothing to whatever runs next. It appends the config it needs, spawns what it needs,
   and asserts. It must not restore config, close the overview, return to workspace 1, or reap its clients at exit: the
   harness owns all of that. A check that needs a different compositor lifecycle boots a private instance and tears it
-  down itself, as `030_session_quit` does.
+  down itself, as `session/quit` does.
 - Never re-apply `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, or `-u DBUS_SESSION_BUS_ADDRESS` per command. The harness
   already put the body in that environment. This is containment, not convenience: only IPC subcommands honour
   `UMBRIEL_SOCKET`, while `umbriel outputs` and every helper client are Wayland clients resolving `XDG_RUNTIME_DIR`
@@ -107,10 +107,10 @@ follow:
   output has drawn a frame. Sample mid-animation on the animation clock: `umbriel clock-freeze` stops animation time,
   `umbriel clock-advance <ms>` moves it and replies once every output has drawn that instant, and an animation started
   while frozen counts from the frozen instant, so long configured durations cost nothing
-  (`191_builtin_window_styles` is the reference). Poll a client's log or IPC state for anything a client does. The
+  (`animation/builtin_window_styles` is the reference). Poll a client's log or IPC state for anything a client does. The
   pointer helper's `mark <label>` prints once every earlier command has been processed, and `hold` keeps buttons and
   modifiers pressed until a line arrives on its stdin; `pointer_hold`, `pointer_step`, and `pointer_release` in
-  `lib.sh` wrap both, so a drag stays held across screenshots without a timed `pause` (`455_drag_overhanging_card`).
+  `lib.sh` wrap both, so a drag stays held across screenshots without a timed `pause` (`drag/overhanging_card`).
   `check.sh` refuses a fixed `sleep` of 0.2s or more outside a polling loop unless the line ends with
   `# real time: <reason>`, which is for compositor timers, helper-client pauses, and proofs that nothing reacts
   within a window. `windows --json` reports layout targets, not what is on screen, so it is not proof that motion
@@ -124,9 +124,13 @@ follow:
   path outside `$UMBRIEL_RUNTIME_DIR`, a named process matched with `pkill`, or the wall-clock cost of a neighbour.
   Everything a check needs lives in its own instance and its own runtime directory.
 
-Check names group by topic, and the leading number is the group: `0xx` session, IPC, and config reload, `1xx` layout,
-`2xx` workspaces, `3xx` overview, `4xx` drag, `5xx` input and seat, `6xx` output and display, `7xx` rendering. Numbers
-step by ten inside a group so a new check lands next to its relatives.
+Checks live in topic directories under `tests/harness/checks/`, and a check's name is its path without `.sh`:
+`overview/wheel`. `just check overview/` runs a topic. The topics are `session` (IPC, config, actions, spawn and
+activation), `protocol` (protocol globals and session lock), `layout`, `workspace`, `scratchpad`, `transient`, `rule`
+(window rules), `overview`, `drag`, `focus`, `input` (keyboard, input method, pointer grabs), `output`, `render`,
+`effect`, and `animation` (geometry motion and window lifecycle timing). File a check under the behavior it asserts,
+not under what it sets up: a scratchpad focus regression belongs in `focus/`. Name it without repeating its topic:
+`scratchpad/named`, not `scratchpad/named_scratchpads`. Checks reach repository files through `$UMBRIEL_REPO`.
 
 A boot costs about 80ms and the pool runs checks side by side, so the suite's wall time is bounded below by its longest
 check: three six-second siblings finish in six seconds, and folding them into one check makes the whole suite wait
@@ -140,15 +144,15 @@ that a real client's first configure agrees with the arrangement, that a reload 
 pixels land where the geometry said.
 
 An instance has one output unless the check asks for more with a `# harness: outputs=N` directive in its header, which
-`620_output_disable`, `630_dpms`, and `650_two_output_containment` use. Output count is fixed when the compositor
-starts, so it cannot be a runtime config change. Single-output instances are what `610_output_actions` relies on to
+`output/disable`, `output/dpms`, and `output/two_output_containment` use. Output count is fixed when the compositor
+starts, so it cannot be a runtime config change. Single-output instances are what `session/action_dispatch` relies on to
 assert that directional output actions are rejected when there is nowhere to move.
 
 A headless session starts with no keyboard, so the harness connects a keyboard-only helper to each instance before
 its check runs and keeps it through teardown, the way a real session always has one. Without it the seat's keyboard
 capability would come and go with each pointer-client run, and clients would bind `wl_keyboard` too late for the first
 keys. A check about how keyboards themselves arrive opts out with `# harness: keyboard=none` in its header, as
-`520_input_method_wheel` and `521_keyboard_keymap` do.
+`input/input_method_wheel` and `input/keyboard_keymap` do.
 
 A check that stops making progress is killed after 120 seconds, so the suite reports instead of hanging. Set
 `CHECK_TIMEOUT` to change the cap, and `CHECK_VERBOSE=1` (or `-v`) to keep the full output of passing checks.
@@ -338,7 +342,7 @@ points into them with file and line. `just configure` also repoints the `compile
 to unsanitized work needs `just configure debug`.
 
 In asan mode those recipes prepend `abort_on_error=1:detect_leaks=0:halt_on_error=1` to `ASAN_OPTIONS`. A later key
-wins, so `ASAN_OPTIONS=detect_leaks=1 just mode=asan check 310` overrides one default and keeps the others.
+wins, so `ASAN_OPTIONS=detect_leaks=1 just mode=asan check overview/wheel` overrides one default and keeps the others.
 
 Leak detection is off because Mesa leaks its EGL display setup on every renderer teardown, under `dri2_initialize`
 below `wlr_egl_create_with_drm_fd`: about 400 KB in 7900 allocations when the compositor exits, and 115 KB in the

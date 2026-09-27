@@ -11,6 +11,10 @@ namespace umbriel {
 
   class Output;
 
+  // A fresh id for one animation transition, never 0 (reserved for "no transition") and never repeated
+  // for the process lifetime. Shared by every transition source, including drag physics.
+  [[nodiscard]] uint64_t nextAnimationTransitionId();
+
   enum class Easing : uint8_t {
     Linear,
     EaseInSine,

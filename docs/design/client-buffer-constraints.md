@@ -70,6 +70,19 @@ is core functionality in GLES3. The capability is enabled by either the
 context version or the extension string. Framebuffer readback retains its
 separate implementation-format check.
 
+## Implicit scene-buffer primaries
+
+A raw `wlr_scene_buffer` uses zero primaries as an internal unset sentinel.
+This can remain visible while a new surface or a copied snapshot enters an
+animation, before protocol color metadata has been applied. Unset colorimetry
+has the same rendering meaning as implicit sRGB.
+
+The scene render boundary snapshots the named value and resolves zero to sRGB
+before calling `wlr_color_primaries_from_named`. The converter remains strict
+for invalid named values. `color-scene-unset-primaries` builds a composited
+frame from a raw scene buffer and covers this boundary; removing the resolution
+causes the check to abort in the converter.
+
 ## HDR capture view
 
 Capture protocols negotiate their buffer constraints before they lock the

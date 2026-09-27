@@ -218,6 +218,18 @@ void fx_framebuffer_bind(struct fx_framebuffer *fx_buffer) {
 	glBindFramebuffer(GL_FRAMEBUFFER, fx_framebuffer_get_fbo(fx_buffer));
 }
 
+void fx_framebuffer_release_effect_capture(struct fx_framebuffer *fx_buffer) {
+	struct fx_framebuffer *capture = fx_buffer->effect_capture_buffer;
+	fx_buffer->effect_capture_valid = false;
+	fx_buffer->effect_capture_owner = NULL;
+	if (capture == NULL) {
+		return;
+	}
+	fx_buffer->effect_capture_buffer = NULL;
+	capture->effect_capture_parent = NULL;
+	wlr_buffer_drop(capture->buffer);
+}
+
 void fx_framebuffer_destroy(struct fx_framebuffer *fx_buffer) {
 	if (!fx_buffer) {
 		wlr_log(WLR_ERROR, "Trying to destroy an already destroyed fx_framebuffer");
@@ -245,6 +257,12 @@ void fx_framebuffer_destroy(struct fx_framebuffer *fx_buffer) {
 		fx_buffer->sdr_capture_parent->sdr_capture_buffer = NULL;
 		fx_buffer->sdr_capture_parent->sdr_capture_valid = false;
 		fx_buffer->sdr_capture_parent = NULL;
+	}
+	fx_framebuffer_release_effect_capture(fx_buffer);
+	if (fx_buffer->effect_capture_parent != NULL) {
+		fx_buffer->effect_capture_parent->effect_capture_buffer = NULL;
+		fx_buffer->effect_capture_parent->effect_capture_valid = false;
+		fx_buffer->effect_capture_parent = NULL;
 	}
 
 	// Release the framebuffer

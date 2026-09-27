@@ -116,7 +116,7 @@ gpu-test m=mode: (_ensure-configured m)
 test-workflows:
     python3 -m unittest discover -s .github/workflows/scripts -p 'test_*.py'
 
-# Harness checks: the whole suite, or the ones whose names contain any given fragment, each against its own headless compositor instance. `just check 310`, `just check 310 520`, `just check overview`, `just check 310 -v` to keep the output of passing checks. Checks run several at a time; `just check -j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 310`.
+# Harness checks: the whole suite, or the ones whose names contain any given fragment, each against its own headless compositor instance. `just check overview/wheel`, `just check overview/wheel input_method`, `just check overview/`, `just check overview/wheel -v` to keep the output of passing checks. Checks run several at a time; `just check -j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check overview/wheel`.
 [no-exit-message]
 check *filters: (_ensure-configured mode)
     #!/usr/bin/env bash
@@ -131,7 +131,7 @@ check *filters: (_ensure-configured mode)
     fi
     bash tests/harness/check.sh ./build-{{mode}}/umbriel {{filters}}
 
-# Runs n copies of one harness check at once, each against its own instance, to expose races that load reveals. `just check-stress 225`, `just check-stress 225 64`.
+# Runs n copies of one harness check at once, each against its own instance, to expose races that load reveals. `just check-stress focus/dwindle_close`, `just check-stress focus/dwindle_close 64`.
 [no-exit-message]
 check-stress name n="32": (_ensure-configured mode)
     #!/usr/bin/env bash
@@ -145,11 +145,11 @@ check-stress name n="32": (_ensure-configured mode)
         echo "check-stress: '{{name}}' must match exactly one check, matched ${#matches[@]}: ${matches[*]}" >&2
         exit 2
     fi
-    # Beside checks/, so copies resolve repository files the way the original does.
-    scratch=$(mktemp -d tests/harness/.stress.XXXXXXXX)
+    scratch=$(mktemp -d /tmp/umv-stress.XXXXXXXX)
     trap 'rm -rf "$scratch"' EXIT
+    copy=${matches[0]//\//_}
     for ((i = 1; i <= {{n}}; i++)); do
-        cp "tests/harness/checks/${matches[0]}.sh" "$scratch/${matches[0]}.$(printf '%03d' "$i").sh"
+        cp "tests/harness/checks/${matches[0]}.sh" "$scratch/$copy.$(printf '%03d' "$i").sh"
     done
     CHECK_DIR="$scratch" CHECK_DURATIONS_FILE="$scratch/durations" bash tests/harness/check.sh ./build-{{mode}}/umbriel -j {{n}}
 

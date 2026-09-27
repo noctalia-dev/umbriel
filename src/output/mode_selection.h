@@ -7,6 +7,10 @@ struct wlr_output_mode;
 
 namespace umbriel {
 
+  // Whether an output that has no matching config section exposes enough
+  // information for Umbriel to choose a safe initial mode automatically.
+  [[nodiscard]] bool outputCanAutoEnable(wlr_output* output);
+
   // The advertised mode a configured `mode` names, or nullptr when the output advertises no mode at that resolution.
   // A configured refresh picks the closest advertised one; without a refresh the preferred mode wins, then the
   // highest refresh.

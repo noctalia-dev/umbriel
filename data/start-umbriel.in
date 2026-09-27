@@ -71,12 +71,11 @@ fi
 systemctl --user reset-failed
 systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
   XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE UMBRIEL_SOCKET
-# Keep the user manager's PATH so environment.d remains authoritative for the
-# managed session. Other login-profile variables are imported below.
+# Import the login-profile environment before starting the managed session.
 session_environment_names() {
   awk 'BEGIN {
     for (name in ENVIRON) {
-      if (name != "AWKPATH" && name != "AWKLIBPATH" && name != "PATH" &&
+      if (name != "AWKPATH" && name != "AWKLIBPATH" &&
           name ~ /^[A-Za-z_][A-Za-z0-9_]*$/)
         print name
     }

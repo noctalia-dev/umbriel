@@ -1,176 +1,4 @@
-#include <assert.h>
-#include <drm_fourcc.h>
-#include <fcntl.h>
-#include <math.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <wayland-server-core.h>
-#include <wlr/backend/headless.h>
-#include <wlr/render/allocator.h>
-#include <wlr/render/interface.h>
-#include <wlr/render/pass.h>
-#include <wlr/render/wlr_renderer.h>
-#include <wlr/render/wlr_texture.h>
-#include <wlr/types/wlr_buffer.h>
-#include <wlr/types/wlr_output.h>
-#include <xf86drm.h>
-
-#include "render/color.h"
-#include "render/fx_renderer/fx_renderer.h"
-#include "umbrielfx/render/fx_renderer/fx_renderer.h"
-#include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
-#include "umbrielfx/render/pass.h"
-#include "umbrielfx/types/fx/blur_data.h"
-
-#define TEST_WIDTH 16
-#define TEST_HEIGHT 16
-
-struct fixture {
-	struct wl_display *display;
-	struct wlr_backend *backend;
-	struct wlr_renderer *renderer;
-	struct wlr_allocator *allocator;
-	struct wlr_output *output;
-	int drm_fd;
-};
-
-static bool check(bool condition, const char *message) {
-	if (!condition) {
-		fprintf(stderr, "FAIL: %s\n", message);
-	}
-	return condition;
-}
-
-static bool fixture_try_device(struct fixture *fixture, const char *path) {
-	int drm_fd = open(path, O_RDWR | O_CLOEXEC);
-	if (drm_fd < 0) {
-		return false;
-	}
-
-	struct wlr_renderer *renderer = fx_renderer_create_with_drm_fd(drm_fd);
-	if (renderer == NULL || !renderer->features.output_color_transform) {
-		if (renderer != NULL) {
-			wlr_renderer_destroy(renderer);
-		}
-		close(drm_fd);
-		return false;
-	}
-
-	fixture->backend->buffer_caps |= WLR_BUFFER_CAP_DMABUF;
-	struct wlr_allocator *allocator =
-		wlr_allocator_autocreate(fixture->backend, renderer);
-	if (allocator == NULL) {
-		wlr_renderer_destroy(renderer);
-		close(drm_fd);
-		return false;
-	}
-
-	fixture->renderer = renderer;
-	fixture->allocator = allocator;
-	fixture->drm_fd = drm_fd;
-	return true;
-}
-
-static bool fixture_init(struct fixture *fixture) {
-	*fixture = (struct fixture) { .drm_fd = -1 };
-	fixture->display = wl_display_create();
-	if (fixture->display == NULL) {
-		return false;
-	}
-	fixture->backend = wlr_headless_backend_create(
-		wl_display_get_event_loop(fixture->display));
-	if (fixture->backend == NULL) {
-		return false;
-	}
-
-	const char *requested_device = getenv("UMBRIELFX_TEST_DRM_DEVICE");
-	if (requested_device != NULL &&
-			fixture_try_device(fixture, requested_device)) {
-		goto create_output;
-	}
-
-	drmDevicePtr devices[64] = {0};
-	int devices_len = drmGetDevices2(0, devices, 64);
-	for (int i = 0; i < devices_len && fixture->renderer == NULL; i++) {
-		if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER))) {
-			continue;
-		}
-		fixture_try_device(fixture, devices[i]->nodes[DRM_NODE_RENDER]);
-	}
-	if (devices_len > 0) {
-		drmFreeDevices(devices, devices_len);
-	}
-	if (fixture->renderer == NULL) {
-		return false;
-	}
-
-create_output:
-	fixture->output = wlr_headless_add_output(
-		fixture->backend, TEST_WIDTH, TEST_HEIGHT);
-	if (fixture->output == NULL || !wlr_output_init_render(fixture->output,
-			fixture->allocator, fixture->renderer)) {
-		return false;
-	}
-	fx_renderer_set_allocator(fixture->renderer, fixture->allocator);
-	return true;
-}
-
-static void fixture_finish(struct fixture *fixture) {
-	if (fixture->allocator != NULL) {
-		wlr_allocator_destroy(fixture->allocator);
-	}
-	if (fixture->renderer != NULL) {
-		wlr_renderer_destroy(fixture->renderer);
-	}
-	if (fixture->backend != NULL) {
-		wlr_backend_destroy(fixture->backend);
-	}
-	if (fixture->display != NULL) {
-		wl_display_destroy(fixture->display);
-	}
-	if (fixture->drm_fd >= 0) {
-		close(fixture->drm_fd);
-	}
-}
-
-static const struct wlr_drm_format *get_render_format(
-		struct fixture *fixture, uint32_t format) {
-	const struct wlr_drm_format_set *formats =
-		fixture->renderer->impl->get_render_formats(fixture->renderer);
-	return wlr_drm_format_set_get(formats, format);
-}
-
-static struct wlr_buffer *create_output_buffer(struct fixture *fixture,
-		uint32_t format, int width, int height) {
-	const struct wlr_drm_format *drm_format =
-		get_render_format(fixture, format);
-	if (drm_format == NULL) {
-		return NULL;
-	}
-	return wlr_allocator_create_buffer(
-		fixture->allocator, width, height, drm_format);
-}
-
-static bool read_buffer(struct fixture *fixture, struct wlr_buffer *buffer,
-		uint32_t format, uint32_t stride, void *data) {
-	struct wlr_texture *texture =
-		wlr_texture_from_buffer(fixture->renderer, buffer);
-	if (texture == NULL) {
-		return false;
-	}
-	bool ok = wlr_texture_read_pixels(texture,
-		&(struct wlr_texture_read_pixels_options) {
-			.data = data,
-			.format = format,
-			.stride = stride,
-		});
-	wlr_texture_destroy(texture);
-	return ok;
-}
+#include "render_fixture.h"
 
 static bool submit_solid_frame(struct wlr_render_pass *pass,
 		int width, int height, float red) {
@@ -180,6 +8,81 @@ static bool submit_solid_frame(struct wlr_render_pass *pass,
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
 	});
 	return wlr_render_pass_submit(pass);
+}
+
+static bool test_scene_unset_primaries(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_scene *scene = NULL;
+	struct wlr_buffer *source = NULL;
+
+	struct wlr_output_state enable_state;
+	wlr_output_state_init(&enable_state);
+	wlr_output_state_set_enabled(&enable_state, true);
+	wlr_output_state_set_custom_mode(&enable_state,
+		TEST_WIDTH, TEST_HEIGHT, 0);
+	bool enabled = wlr_output_commit_state(fixture->output, &enable_state);
+	wlr_output_state_finish(&enable_state);
+	if (!check(enabled, "enable scene output")) {
+		return false;
+	}
+
+	source = create_output_buffer(fixture, DRM_FORMAT_ABGR8888,
+		TEST_WIDTH, TEST_HEIGHT);
+	if (!check(source != NULL, "allocate scene source buffer")) {
+		return false;
+	}
+
+	struct wlr_render_pass *source_pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, source, NULL);
+	if (!check(source_pass != NULL, "begin scene source pass") ||
+			!check(submit_solid_frame(source_pass,
+				TEST_WIDTH, TEST_HEIGHT, 0.25f),
+				"submit scene source pass")) {
+		ok = false;
+		goto out;
+	}
+
+	scene = wlr_scene_create();
+	if (!check(scene != NULL, "create scene")) {
+		ok = false;
+		goto out;
+	}
+	struct wlr_scene_output *scene_output =
+		wlr_scene_output_create(scene, fixture->output);
+	if (!check(scene_output != NULL, "create scene output")) {
+		ok = false;
+		goto out;
+	}
+	wlr_scene_output_set_direct_scanout_enabled(scene_output, false);
+
+	struct wlr_scene_buffer *scene_buffer =
+		wlr_scene_buffer_create(&scene->tree, source);
+	if (!check(scene_buffer != NULL, "create scene buffer")) {
+		ok = false;
+		goto out;
+	}
+	ok = check(scene_buffer->primaries == 0,
+		"new scene buffer leaves primaries unset") && ok;
+
+	struct wlr_output_state render_state;
+	wlr_output_state_init(&render_state);
+	bool built = wlr_scene_output_build_state(
+		scene_output, &render_state, NULL);
+	ok = check(built, "render scene buffer with unset primaries") && ok;
+	ok = check(built &&
+			(render_state.committed & WLR_OUTPUT_STATE_BUFFER) != 0 &&
+			render_state.buffer != NULL,
+		"scene render produced an output buffer") && ok;
+	wlr_output_state_finish(&render_state);
+
+out:
+	if (scene != NULL) {
+		wlr_scene_node_destroy(&scene->tree.node);
+	}
+	if (source != NULL) {
+		wlr_buffer_drop(source);
+	}
+	return ok;
 }
 
 static size_t output_lut_count(struct fixture *fixture) {
@@ -618,6 +521,87 @@ static bool test_fp16_save_restore(struct fixture *fixture) {
 	int actual = pixel & 0x3FF;
 	return check(abs(actual - expected) <= 2,
 		"FP16 save/restore round trip preserves luminance");
+}
+
+// An untransformed 10-bit pass must still use FP16 effect buffers for blur when
+// half-float textures can be linearly filtered. Pixel averages alone cannot
+// distinguish an 8-bit intermediate from the intended FP16 intermediate.
+static bool test_sdr10_blur_buffer_format(struct fixture *fixture) {
+	struct wlr_buffer *target = create_output_buffer(fixture,
+		DRM_FORMAT_XRGB2101010, TEST_WIDTH, TEST_HEIGHT);
+	// Some GBM drivers advertise XR30 but cannot allocate it; XBGR2101010
+	// exercises the same untransformed 10-bit effect-buffer path.
+	if (target == NULL) {
+		target = create_output_buffer(fixture,
+			DRM_FORMAT_XBGR2101010, TEST_WIDTH, TEST_HEIGHT);
+	}
+	if (!check(target != NULL, "allocate 10-bit blur target")) {
+		return false;
+	}
+
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, NULL);
+	if (!check(pass != NULL, "begin untransformed 10-bit blur pass")) {
+		wlr_buffer_drop(target);
+		return false;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+	struct wlr_box box = { .width = TEST_WIDTH, .height = TEST_HEIGHT };
+	pixman_region32_t region;
+	pixman_region32_init_rect(&region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+		.box = box,
+		.color = { .r = 0.4f, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+
+	bool ok = check(!fx_pass->has_color_transform,
+		"10-bit blur pass has no color transform") &&
+		check(fx_render_pass_init_offscreen_buffers(pass, fixture->output),
+			"initialize 10-bit blur buffers");
+	if (ok) {
+		const float opacity = 1.0f;
+		struct blur_data blur_data = {
+			.num_passes = 1,
+			.radius = 1.0f,
+			.brightness = 1.0f,
+			.contrast = 1.0f,
+			.saturation = 1.0f,
+		};
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = {
+					.dst_box = box,
+					.clip = &region,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+					.alpha = &opacity,
+				},
+				.clip_box = &box,
+			},
+			.blur_data = &blur_data,
+			.blur_strength = 1.0f,
+		};
+		fx_render_pass_add_blur(fx_pass, &blur_options);
+
+		struct fx_offscreen_buffers *fbos = fx_pass->fx_offscreen_buffers;
+		uint32_t expected = fx_get_renderer(fixture->renderer)->exts.half_float_linear
+			? DRM_FORMAT_ABGR16161616F : DRM_FORMAT_ABGR8888;
+		ok = check(fbos != NULL && fbos->output.effects_buffer != NULL &&
+			fbos->output.effects_buffer_swapped != NULL,
+			"10-bit blur allocates both effect buffers") && ok;
+		if (fbos != NULL && fbos->output.effects_buffer != NULL &&
+				fbos->output.effects_buffer_swapped != NULL) {
+			ok = check(fbos->output.effects_buffer->drm_format == expected &&
+				fbos->output.effects_buffer_swapped->drm_format == expected,
+				"untransformed 10-bit blur uses the expected effect format") && ok;
+		}
+	}
+	pixman_region32_fini(&region);
+	ok = check(wlr_render_pass_submit(pass), "submit 10-bit blur pass") && ok;
+	wlr_buffer_drop(target);
+	return ok;
 }
 
 static bool test_shared_output_buffers(struct fixture *fixture) {
@@ -1279,6 +1263,190 @@ static bool test_capture_read_format(struct fixture *fixture) {
 	return ok;
 }
 
+// Populates the output's optimized-blur cache with a solid backdrop by running
+// an optimized-blur pass into an 8-bit SDR target. The cache buffers are
+// output-local, so they survive into a later pass on the same output. Returns
+// the DRM format the cache buffers were allocated with, or DRM_FORMAT_INVALID.
+static uint32_t prime_optimized_blur_cache(struct fixture *fixture,
+		float backdrop_red, struct blur_data *blur_data) {
+	struct wlr_buffer *target = create_output_buffer(fixture,
+		DRM_FORMAT_XBGR8888, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(target != NULL, "allocate SDR8 optimized-blur target")) {
+		return DRM_FORMAT_INVALID;
+	}
+
+	// Create the stale 8-bit format we want cached.
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &(struct wlr_buffer_pass_options) {0});
+	if (!check(pass != NULL, "begin optimized-blur producer pass")) {
+		wlr_buffer_drop(target);
+		return DRM_FORMAT_INVALID;
+	}
+	struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+
+	struct wlr_box box = { .width = TEST_WIDTH, .height = TEST_HEIGHT };
+	wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+		.box = box,
+		.color = { .r = backdrop_red, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+
+	pixman_region32_t region;
+	pixman_region32_init_rect(&region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+
+	uint32_t cache_format = DRM_FORMAT_INVALID;
+	bool ok = check(fx_render_pass_init_offscreen_buffers(pass, fixture->output),
+		"init producer offscreen buffers");
+	if (ok) {
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = {
+					.dst_box = box,
+					.clip = &region,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+				},
+				.clip_box = &box,
+			},
+			.blur_data = blur_data,
+			.blur_strength = 1.0f,
+		};
+		ok = check(fx_render_pass_add_optimized_blur(fx_pass, &blur_options),
+			"populate optimized-blur cache");
+		if (ok) {
+			struct fx_offscreen_buffers *fbos = fx_pass->fx_offscreen_buffers;
+			ok = check(fbos != NULL && fbos->optimized_blur_buffer != NULL,
+				"optimized-blur cache exists");
+			if (ok) {
+				cache_format = fbos->optimized_blur_buffer->drm_format;
+			}
+		}
+	}
+	pixman_region32_fini(&region);
+	ok = wlr_render_pass_submit(pass) && ok;
+	wlr_buffer_drop(target);
+	return ok ? cache_format : DRM_FORMAT_INVALID;
+}
+
+// A stale-format optimized-blur cache must not be reused after the output's
+// render format changes. The offscreen effect buffers are output-local, so a
+// cache primed while the output was 8-bit SDR can survive into a 10-bit pass
+// whose effect buffers are FP16.
+static bool test_optimized_blur_format_cache(struct fixture *fixture) {
+	uint32_t format = select_10bit_format(fixture);
+	if (!check(format != DRM_FORMAT_INVALID, "find 10-bit output format")) {
+		return false;
+	}
+
+	struct blur_data blur_data = {
+		.num_passes = 1,
+		.radius = 1.0f,
+		.brightness = 1.0f,
+		.contrast = 1.0f,
+		.saturation = 1.0f,
+	};
+
+	// Prime the cache with a bright-red backdrop while the output is 8-bit.
+	const float stale_red = 0.9f;
+	uint32_t cache_format = prime_optimized_blur_cache(
+		fixture, stale_red, &blur_data);
+	if (!check(cache_format != DRM_FORMAT_INVALID, "prime optimized-blur cache")) {
+		return false;
+	}
+	if (!check(cache_format == DRM_FORMAT_XBGR8888,
+			"cache primed at 8-bit SDR format")) {
+		return false;
+	}
+
+	// Now render a consumer blur pass into a 10-bit target with a color
+	// transform, so its effect buffers want FP16. The live backdrop is a
+	// dark red, different from the cached bright red.
+	const float live_red = 0.1f;
+	struct wlr_buffer *target = create_output_buffer(
+		fixture, format, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(target != NULL, "allocate 10-bit consumer target")) {
+		return false;
+	}
+	struct wlr_color_transform *transform =
+		wlr_color_transform_init_linear_to_inverse_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_SRGB);
+	if (!check(transform != NULL, "create consumer output transform")) {
+		wlr_buffer_drop(target);
+		return false;
+	}
+
+	uint32_t output[TEST_WIDTH * TEST_HEIGHT] = {0};
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, target, &(struct wlr_buffer_pass_options) {
+			.color_transform = transform,
+		});
+	bool ok = check(pass != NULL, "begin consumer blur pass");
+	if (ok) {
+		struct fx_gles_render_pass *fx_pass = fx_get_render_pass(pass);
+		struct wlr_box box = { .width = TEST_WIDTH, .height = TEST_HEIGHT };
+		pixman_region32_t region;
+		pixman_region32_init_rect(&region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+
+		wlr_render_pass_add_rect(pass, &(struct wlr_render_rect_options) {
+			.box = box,
+			.color = { .r = live_red, .g = 0.25f, .b = 0.5f, .a = 1.0f },
+			.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+		});
+
+		ok = check(fx_render_pass_init_offscreen_buffers(pass, fixture->output),
+			"init consumer offscreen buffers") && ok;
+		// The cache from the producer pass should still be present and stale.
+		struct fx_offscreen_buffers *fbos = fx_pass->fx_offscreen_buffers;
+		ok = check(fbos != NULL && fbos->optimized_blur_buffer != NULL &&
+			fbos->optimized_blur_buffer->drm_format == DRM_FORMAT_XBGR8888,
+			"consumer sees the stale 8-bit optimized-blur cache") && ok;
+
+		const float opacity = 1.0f;
+		struct fx_render_blur_pass_options blur_options = {
+			.tex_options = {
+				.base = {
+					.dst_box = box,
+					.clip = &region,
+					.transform = WL_OUTPUT_TRANSFORM_NORMAL,
+					.filter_mode = WLR_SCALE_FILTER_BILINEAR,
+					.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+					.alpha = &opacity,
+				},
+				.clip_box = &box,
+			},
+			// Request the optimized path.
+			.use_optimized_blur = true,
+			.blur_data = &blur_data,
+			.blur_strength = 1.0f,
+		};
+		fx_render_pass_add_blur(fx_pass, &blur_options);
+		pixman_region32_fini(&region);
+
+		ok = check(wlr_render_pass_submit(pass), "submit consumer blur pass") && ok;
+	}
+
+	if (ok) {
+		ok = check(read_buffer(fixture, target, format,
+			TEST_WIDTH * sizeof(uint32_t), output), "read consumer output");
+	}
+
+	wlr_color_transform_unref(transform);
+	wlr_buffer_drop(target);
+	if (!ok) {
+		return false;
+	}
+
+	uint32_t pixel = output[(TEST_HEIGHT / 2) * TEST_WIDTH + TEST_WIDTH / 2];
+	int actual = pixel & 0x3FF;
+	int expected = lroundf(live_red * 1023.0f);
+	int stale = lroundf(stale_red * 1023.0f);
+	fprintf(stderr, "INFO: red actual=%d expected(live)=%d stale(cache)=%d\n",
+		actual, expected, stale);
+	return check(abs(actual - expected) <= 24,
+		"format-mismatched optimized-blur cache is not reused");
+}
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -1295,6 +1463,8 @@ int main(int argc, char *argv[]) {
 	bool ok;
 	if (strcmp(argv[1], "implicit-srgb-target") == 0) {
 		ok = test_implicit_srgb_target(&fixture);
+	} else if (strcmp(argv[1], "scene-unset-primaries") == 0) {
+		ok = test_scene_unset_primaries(&fixture);
 	} else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
 		ok = test_gamma22_to_srgb(&fixture);
 	} else if (strcmp(argv[1], "pq-roundtrip") == 0) {
@@ -1309,6 +1479,10 @@ int main(int argc, char *argv[]) {
 		ok = test_fp16_blur_effects(&fixture);
 	} else if (strcmp(argv[1], "fp16-save-restore") == 0) {
 		ok = test_fp16_save_restore(&fixture);
+	} else if (strcmp(argv[1], "sdr10-blur-buffer-format") == 0) {
+		ok = test_sdr10_blur_buffer_format(&fixture);
+	} else if (strcmp(argv[1], "optimized-blur-format-cache") == 0) {
+		ok = test_optimized_blur_format_cache(&fixture);
 	} else if (strcmp(argv[1], "shared-output-buffers") == 0) {
 		ok = test_shared_output_buffers(&fixture);
 	} else if (strcmp(argv[1], "output-lut-cache") == 0) {

@@ -51,6 +51,7 @@ namespace umbriel {
   // Group assignment.
   enum class Group : int {
     Apps = 0,
+    Screencasting,
     Focus,
     MoveSize,
     Windows,

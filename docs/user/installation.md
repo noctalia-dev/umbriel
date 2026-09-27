@@ -138,11 +138,14 @@ start-umbriel
 ```
 
 The launcher loads the login profile for supported shells such as bash, zsh,
-and fish. Environment variables from that profile are available to Umbriel and
-applications started in the session. Interactive shell files such as
-`~/.zshrc` are not loaded. In a systemd-managed session, `PATH` remains the
-value supplied by the user manager, including `environment.d`; the direct
-fallback inherits `PATH` from the login profile like the other variables.
+and fish. Environment variables from that profile, including `PATH`, are
+available to Umbriel and applications started in the session. Interactive
+shell files such as `~/.zshrc` are not loaded. In a systemd-managed session,
+the launcher imports the login environment into the user manager before
+starting Umbriel. Login-profile values take precedence over values with the
+same names from `environment.d`; variables found only in the user manager
+remain available. The direct fallback inherits the same login environment
+without importing it.
 
 In a managed native session, Umbriel places startup, autostart, event, and
 `spawn:` commands in scopes bound to the compositor service, so they are

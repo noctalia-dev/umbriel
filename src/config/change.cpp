@@ -49,7 +49,8 @@ namespace umbriel {
           && lhs.transform == rhs.transform
           && lhs.vrr == rhs.vrr
           && lhs.hdr == rhs.hdr
-          && lhs.sdrWhite == rhs.sdrWhite;
+          && lhs.sdrWhite == rhs.sdrWhite
+          && lhs.bitDepth == rhs.bitDepth;
     }
 
     bool sameOutputTearingPolicy(const OutputRule* before, const OutputRule* after) {
@@ -57,6 +58,31 @@ namespace umbriel {
       const OutputRule& lhs = before != nullptr ? *before : defaults;
       const OutputRule& rhs = after != nullptr ? *after : defaults;
       return lhs.allowTearing == rhs.allowTearing;
+    }
+
+    bool sameOutputScreenEffect(const OutputRule* before, const OutputRule* after) {
+      static const OutputRule defaults;
+      const OutputRule& lhs = before != nullptr ? *before : defaults;
+      const OutputRule& rhs = after != nullptr ? *after : defaults;
+      return lhs.screenEffect == rhs.screenEffect;
+    }
+
+    bool sameAnimationEffects(const Config::Animation& before, const Config::Animation& after) {
+      // Overview is the last event.
+      for (unsigned slot = 0; slot <= static_cast<unsigned>(AnimationEvent::Overview); ++slot) {
+        const auto event = static_cast<AnimationEvent>(slot);
+        const std::string* lhs = before.eventEffect(event).effect;
+        if (lhs != nullptr && *lhs != *after.eventEffect(event).effect) {
+          return false;
+        }
+      }
+      return before.windowsDrag == after.windowsDrag;
+    }
+
+    bool selectsEffect(const std::vector<WindowRule>& rules) {
+      return std::ranges::any_of(rules, [](const WindowRule& rule) {
+        return rule.borderEffect.has_value() || rule.windowEffect.has_value();
+      });
     }
 
     bool sameOutputDirectScanoutPolicy(const OutputRule* before, const OutputRule* after) {
@@ -160,6 +186,11 @@ namespace umbriel {
         before.appearance.blur != after.appearance.blur || before.optimizedBlurNeeded() != after.optimizedBlurNeeded();
     const bool focusDim = before.animation.enabled != after.animation.enabled
         || before.animation.dimUnfocused != after.animation.dimUnfocused;
+    const bool effectsChanged = before.effects != after.effects
+        || outputProjectionChanged(before, after, sameOutputScreenEffect)
+        || !sameAnimationEffects(before.animation, after.animation)
+        || (before.windowRules != after.windowRules
+            && (selectsEffect(before.windowRules) || selectsEffect(after.windowRules)));
     return {
         .outputState = outputState,
         .tearingPolicy = tearingPolicy,
@@ -182,6 +213,7 @@ namespace umbriel {
         .input = before.input != after.input || before.hotCorners != after.hotCorners,
         .overviewPresentation = before.overview != after.overview || before.colors != after.colors,
         .internalUi = before.colors != after.colors || before.general.modKey != after.general.modKey,
+        .effects = effectsChanged,
     };
   }
 
@@ -199,6 +231,7 @@ namespace umbriel {
         .input = true,
         .overviewPresentation = true,
         .internalUi = true,
+        .effects = true,
     };
   }
 
@@ -223,6 +256,7 @@ namespace umbriel {
         .securityContextRules = true,
         .scratchpads = true,
         .workspaceRules = true,
+        .effects = true,
     };
   }
 
@@ -247,6 +281,7 @@ namespace umbriel {
         .securityContextRules = before.securityContextRules != after.securityContextRules,
         .scratchpads = before.scratchpads != after.scratchpads,
         .workspaceRules = before.workspaceRules != after.workspaceRules,
+        .effects = before.effects != after.effects,
     };
   }
 
@@ -280,6 +315,7 @@ namespace umbriel {
     add(securityContextRules, "security context rules");
     add(scratchpads, "scratchpads");
     add(workspaceRules, "workspace rules");
+    add(effects, "effects");
     return out;
   }
 
@@ -306,6 +342,7 @@ namespace umbriel {
     add(layerEffects, "layer effects");
     add(input, "input");
     add(overviewPresentation, "overview presentation");
+    add(effects, "effects");
     return out;
   }
 } // namespace umbriel

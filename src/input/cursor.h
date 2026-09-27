@@ -58,6 +58,11 @@ namespace umbriel {
       bool pending = true;
       double startX = 0;
       double startY = 0;
+      // The pointer at the last drag physics update.
+      double lastX = 0;
+      double lastY = 0;
+      // The view's drag physics took the grab; without it the drag makes no drag physics calls.
+      bool physics = false;
     };
     struct FloatingResizeGrab {
       View* view = nullptr;
@@ -123,6 +128,10 @@ namespace umbriel {
     Cursor& operator=(const Cursor&) = delete;
 
     [[nodiscard]] wlr_cursor* wlr() const { return m_cursor; }
+    [[nodiscard]] bool visible() const { return !m_cursorHidden; }
+    // Re-sends the pointer to the cursor effect after outputs were added, moved or removed. wlr_cursor must have
+    // clamped the pointer onto the new layout first.
+    void handleOutputLayoutChange() const;
     [[nodiscard]] wlr_xcursor_manager* xcursorManager() const { return m_xcursorManager; }
     [[nodiscard]] bool isPassthrough() const;
     [[nodiscard]] View* grabbedView() const;
@@ -280,6 +289,8 @@ namespace umbriel {
     void noteActivity();
     void updateHideTimer();
     void hideCursor();
+    // Sends the pointer and its visibility to the cursor effect, only while one is active.
+    void forwardEffectPointer() const;
     static int onHideTimer(void* data);
     void updateHotCorner();
     void cancelHotCorner();

@@ -72,6 +72,17 @@ Output state and workspace inventory are independent effects.
 - Changing an output's direct scanout policy damages and schedules only outputs
   whose resolved policy changed. It does not reapply output state or invalidate
   the overview.
+- Changing `[effects]`, any `[effects.preset.*]` table or its shader file, an
+  output's `screen_effect`, an animation event's `effect`,
+  `[animation.windows_drag]`, or any window rule while a rule sets
+  `border_effect` or `window_effect` sets the `effects` flag. The registry
+  re-prepares, compiling only presets whose kind or source changed; every mapped
+  window re-resolves its effects; outputs reapply screen and cursor effects,
+  and each output with an eligible instance schedules an effect frame. The flag
+  refreshes nothing else.
+- A `[colors]` change reaches palette uniforms without recompiling any program:
+  `viewChrome` rebinds border and window slots and reapplies every output's
+  screen and cursor effects, and animation slots take it at their next update.
 - `general.autostart` commands run only during startup, never during reload.
 - `general.xwayland` changes require a compositor restart.
 - `[drm]` changes require a restart because GPU selection happens before backend creation.
@@ -97,20 +108,23 @@ The relevant regression coverage is in:
   startup.
 - [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks
   change classification and runtime effects.
-- [`tests/harness/checks/050_config_reload.sh`](../../tests/harness/checks/050_config_reload.sh),
+- [`tests/harness/checks/session/config_reload.sh`](../../tests/harness/checks/session/config_reload.sh),
   which checks inert reloads, selective layout updates, border dependencies,
   and recovery after an included file fails to parse.
-- [`tests/harness/checks/744_rule_decoration.sh`](../../tests/harness/checks/744_rule_decoration.sh),
+- [`tests/harness/checks/rule/decoration.sh`](../../tests/harness/checks/rule/decoration.sh),
   which checks that a window rule's decoration keys reach the window on reload
   without moving it.
-- [`tests/harness/checks/144_output_scrolling_width.sh`](../../tests/harness/checks/144_output_scrolling_width.sh),
+- [`tests/harness/checks/effect/reload.sh`](../../tests/harness/checks/effect/reload.sh),
+  which checks effect recovery after a missing shader appears, reference
+  diagnostics, palette updates without recompilation, and light layer reloads.
+- [`tests/harness/checks/layout/output_scrolling_width.sh`](../../tests/harness/checks/layout/output_scrolling_width.sh),
   which checks per-output initial scrolling widths and preserves existing
   column widths when that default changes on reload.
-- [`tests/harness/checks/179_scratchpad_seat_focus_output.sh`](../../tests/harness/checks/179_scratchpad_seat_focus_output.sh),
+- [`tests/harness/checks/focus/scratchpad_seat_focus_output.sh`](../../tests/harness/checks/focus/scratchpad_seat_focus_output.sh),
   which checks that an output scale reload preserves keyboard focus when the
   pointer and focused scratchpad are on different outputs.
-- [`tests/harness/checks/622_scratchpad_output_reposition.sh`](../../tests/harness/checks/622_scratchpad_output_reposition.sh),
+- [`tests/harness/checks/output/scratchpad_reposition.sh`](../../tests/harness/checks/output/scratchpad_reposition.sh),
   which checks scratchpad geometry, backdrop, and focus across live output
   changes.
-- [`tests/harness/checks/045_session_environment.sh`](../../tests/harness/checks/045_session_environment.sh),
+- [`tests/harness/checks/session/environment.sh`](../../tests/harness/checks/session/environment.sh),
   which checks that environment changes remain unapplied until restart.

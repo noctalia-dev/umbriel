@@ -20,7 +20,7 @@
 
 #include "render/egl.h"
 #include "render/fx_renderer/shaders.h"
-#include <umbrielfx/render/animation.h>
+#include <umbrielfx/render/effect.h>
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/fx_renderer/util.h"
 #include "render/pass.h"
@@ -114,13 +114,14 @@ static inline void free_shaders(struct fx_renderer *renderer) {
 	glDeleteProgram(renderer->shaders.blur1.program);
 	glDeleteProgram(renderer->shaders.blur2.program);
 	glDeleteProgram(renderer->shaders.blur_effects.program);
+	glDeleteProgram(renderer->effect_light_program);
 	pop_fx_debug(renderer);
 }
 
 static void fx_renderer_destroy(struct wlr_renderer *wlr_renderer) {
 	struct fx_renderer *renderer = fx_get_renderer(wlr_renderer);
-	fx_animation_shader_unref(renderer->animation_shadow_horizontal);
-	fx_animation_shader_unref(renderer->animation_shadow_vertical);
+	fx_effect_shader_unref(renderer->animation_shadow_horizontal);
+	fx_effect_shader_unref(renderer->animation_shadow_vertical);
 
 	TRACY_GPU_CONTEXT_DESTROY(renderer->tracy_data);
 
@@ -596,6 +597,7 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 	const bool is_gles3 = gl_version != NULL &&
 		sscanf(gl_version, "OpenGL ES %d", &gles_major) == 1 &&
 		gles_major >= 3;
+	renderer->is_gles3 = is_gles3;
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
 	wlr_log(WLR_INFO, "Supported FX extensions: %s", exts_str);
@@ -625,6 +627,8 @@ struct wlr_renderer *fx_renderer_create_egl(struct wlr_egl *egl) {
 
 	renderer->exts.OES_texture_half_float_linear =
 		check_gl_ext(exts_str, "GL_OES_texture_half_float_linear");
+	renderer->exts.half_float_linear =
+		is_gles3 || renderer->exts.OES_texture_half_float_linear;
 
 	renderer->exts.EXT_texture_norm16 =
 		check_gl_ext(exts_str, "GL_EXT_texture_norm16");

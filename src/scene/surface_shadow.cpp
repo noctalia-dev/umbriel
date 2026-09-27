@@ -4,7 +4,7 @@
 
 #include <algorithm>
 extern "C" {
-#include <umbrielfx/render/animation.h>
+#include <umbrielfx/render/effect.h>
 }
 // clang-format off
 #include <cstring> // IWYU pragma: keep

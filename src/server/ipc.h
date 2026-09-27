@@ -28,14 +28,15 @@ namespace umbriel {
       kEventWindows = 1 << 3,
       kEventWorkspaces = 1 << 4,
       kEventSubmap = 1 << 5,
+      kEventScreenCast = 1 << 6,
     };
     // Number of bits above; sizes the last-broadcast cache.
-    static constexpr size_t kEventCount = 6;
+    static constexpr size_t kEventCount = 7;
     // Subscribable names in bit order: the subscribe handler matches against this table and `umbriel subscribe`
     // lists it, so a new family cannot be accepted by one and unknown to the other.
-    static constexpr std::array<std::string_view, kEventCount> kEventNames = {"theme",           "overview",
-                                                                              "keyboard_layout", "windows",
-                                                                              "workspaces",      "submap"};
+    static constexpr std::array<std::string_view, kEventCount> kEventNames = {
+        "theme", "overview", "keyboard_layout", "windows", "workspaces", "submap", "screencast"
+    };
 
     Ipc(Server& server, const std::string& waylandSocketName);
     ~Ipc();
@@ -49,6 +50,7 @@ namespace umbriel {
     void notifyWindowsChanged();
     void notifyWorkspacesChanged();
     void notifySubmapChanged();
+    void notifyScreenCastChanged();
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
 
@@ -64,6 +66,7 @@ namespace umbriel {
       wl_event_source* fdSource = nullptr;
       wl_event_source* deadline = nullptr;
       bool responding = false;
+      bool screenCastActive = false;
       uint8_t subscribedEvents = 0;
       // A frame wait holds its reply until these outputs have each drawn a frame, and for settle until the server is
       // settled as well.
@@ -88,6 +91,7 @@ namespace umbriel {
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
     void broadcastEvent(uint8_t event, const nlohmann::json& payload);
+    void refreshScreenCastActive();
 
     Server* m_server;
     std::string m_socketPath;

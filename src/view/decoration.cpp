@@ -4,10 +4,6 @@
 #include "scene/border_rect.h"
 #include "scene/color.h"
 
-extern "C" {
-#include <umbrielfx/render/animation.h>
-}
-
 // clang-format off
 #include "wlr.h"
 // clang-format on
@@ -44,7 +40,8 @@ namespace umbriel {
     }
 
     applyBorderGeometry(
-        m_border, makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth),
+        m_border,
+        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth, m_borderPadding),
         m_borderWidth, m_outerBorderWidth
     );
   }
@@ -72,7 +69,7 @@ namespace umbriel {
       return false;
     }
     const BorderRing ring =
-        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth);
+        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth, m_borderPadding);
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
@@ -82,32 +79,29 @@ namespace umbriel {
     if (!bordersVisible() || m_border == nullptr) {
       return;
     }
-
-    wlr_scene_border* copy = wlr_scene_border_create(snapshot, m_border->inner_color, m_border->outer_color);
-    if (copy == nullptr) {
-      return;
-    }
-    wlr_scene_border_set_geometry(
-        copy, m_border->width, m_border->height, m_border->inner_width, m_border->outer_width, m_border->clipped_region,
-        m_border->seam_corners, m_border->outer_corners
-    );
-    wlr_scene_node_set_position(
-        &copy->node, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y
-    );
-    wlr_scene_node_copy_animations_for_snapshot(&copy->node, &m_borderTree->node);
     // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
     // and stays in step with the content buffers, which keep their current opacity as their base.
-    BorderSnapshot captured{
-        .node = copy,
-        .innerColor = innerColor,
-        .outerColor = m_borderColors.outer,
-        .innerWidth = m_borderWidth,
-        .outerWidth = m_outerBorderWidth,
-        .cornerRadius = m_cornerRadius,
-    };
-    captured.innerColor[3] *= opacity;
-    captured.outerColor[3] *= opacity;
-    out.push_back(captured);
+    snapshotBorder(
+        snapshot, *m_border, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y,
+        &m_borderTree->node,
+        {
+            .innerColor = innerColor,
+            .outerColor = m_borderColors.outer,
+            .innerWidth = m_borderWidth,
+            .outerWidth = m_outerBorderWidth,
+            .cornerRadius = m_cornerRadius,
+            .padding = m_borderPadding,
+        },
+        opacity, out
+    );
+  }
+
+  bool ViewDecoration::setBorderPadding(int padding) {
+    if (padding == m_borderPadding) {
+      return false;
+    }
+    m_borderPadding = padding;
+    return true;
   }
 
   bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {

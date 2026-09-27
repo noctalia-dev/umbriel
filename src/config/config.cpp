@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
@@ -377,6 +378,65 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    constexpr std::string_view kFullscreenExitScopeValues = R"("tiled", "floating", "pinned", or "all")";
+
+    std::optional<FullscreenExitScope> parseFullscreenExitScope(std::string_view token) {
+      if (token == "tiled") {
+        return FullscreenExitScope::Tiled;
+      }
+      if (token == "floating") {
+        return FullscreenExitScope::Floating;
+      }
+      if (token == "pinned") {
+        return FullscreenExitScope::Pinned;
+      }
+      if (token == "all") {
+        return FullscreenExitScope::All;
+      }
+      return std::nullopt;
+    }
+
+    // A string names one scope; an array combines several, and an empty array disables the behavior.
+    std::optional<FullscreenExitScope> readFullscreenExitScope(Section& section, std::string_view context) {
+      const toml::node* node = section.take("new_exits_fullscreen");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      if (const auto* value = node->as_string()) {
+        const std::optional<FullscreenExitScope> scope = parseFullscreenExitScope(value->get());
+        if (!scope) {
+          warnAt(
+              node->source(), R"(ignoring {}.new_exits_fullscreen "{}" (expected {}))", context, value->get(),
+              kFullscreenExitScopeValues
+          );
+        }
+        return scope;
+      }
+      const auto* array = node->as_array();
+      if (array == nullptr) {
+        warnAt(
+            node->source(), "ignoring {}.new_exits_fullscreen (expected a string or an array of strings, each {})",
+            context, kFullscreenExitScopeValues
+        );
+        return std::nullopt;
+      }
+      auto combined = static_cast<uint8_t>(FullscreenExitScope::None);
+      for (const toml::node& entry : *array) {
+        const auto* value = entry.as_string();
+        const std::optional<FullscreenExitScope> scope =
+            value != nullptr ? parseFullscreenExitScope(value->get()) : std::nullopt;
+        if (!scope) {
+          warnAt(
+              entry.source(), "ignoring {}.new_exits_fullscreen entry (expected {})", context,
+              kFullscreenExitScopeValues
+          );
+          continue;
+        }
+        combined |= static_cast<uint8_t>(*scope);
+      }
+      return static_cast<FullscreenExitScope>(combined);
+    }
+
     std::optional<CenterFocusedColumn> readCenterFocused(Section& section, std::string_view context) {
       const toml::node* node = section.take("center_focused");
       if (node == nullptr) {
@@ -528,6 +588,30 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    std::optional<TapButtonMap> readTapButtonMap(Section& section, std::string_view context) {
+      const toml::node* node = section.take("tap_button_map");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      const auto* value = node->as_string();
+      if (value == nullptr) {
+        warnAt(node->source(), "{}.tap_button_map must be a string", context);
+        return std::nullopt;
+      }
+      const std::string map = lowercase(value->get());
+      if (map == "left_right_middle") {
+        return TapButtonMap::LeftRightMiddle;
+      }
+      if (map == "left_middle_right") {
+        return TapButtonMap::LeftMiddleRight;
+      }
+      warnAt(
+          node->source(), R"(invalid {}.tap_button_map "{}" (expected "left_right_middle" or "left_middle_right"))",
+          context, value->get()
+      );
+      return std::nullopt;
+    }
+
     std::optional<uint32_t> readScrollButton(Section& section, std::string_view context) {
       const toml::node* node = section.take("scroll_button");
       if (node == nullptr) {
@@ -622,6 +706,9 @@ namespace umbriel {
             if (auto presets = readExtentPresets(s, layoutContext)) {
               overrides.extentPresets = std::move(*presets);
             }
+            if (const auto scope = readFullscreenExitScope(s, layoutContext)) {
+              overrides.newExitsFullscreen = scope;
+            }
             s.sub("scrolling", [&](Section& sc) {
               sc.real("default_extent_fraction", 0.1, 1.0, overrides.scrolling.defaultExtentFraction)
                   .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
@@ -629,18 +716,14 @@ namespace umbriel {
                 overrides.scrolling.centerFocused = centerFocused;
               }
             });
-            s.sub("dwindle", [&](Section& sd) {
-              sd.boolean("preserve_split", overrides.dwindle.preserveSplit)
-                  .boolean("new_exits_fullscreen", overrides.dwindle.newExitsFullscreen);
-            });
+            s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", overrides.dwindle.preserveSplit); });
             s.sub("master", [&](Section& sm) {
               if (const auto position = readMasterPosition(sm, layoutContext + ".master")) {
                 overrides.master.position = position;
               }
               sm.real("default_width_fraction", 0.1, 0.9, overrides.master.defaultWidthFraction)
                   .boolean("new_on_top", overrides.master.newOnTop)
-                  .boolean("new_becomes_master", overrides.master.newBecomesMaster)
-                  .boolean("new_exits_fullscreen", overrides.master.newExitsFullscreen);
+                  .boolean("new_becomes_master", overrides.master.newBecomesMaster);
             });
           },
           layoutContext
@@ -1032,7 +1115,173 @@ namespace umbriel {
       return std::nullopt;
     }
 
-    void parseAnimationSection(Section& s, Config::Animation& animation) {
+    // A selector recorded while parsing and checked once every section is
+    // read, so forward and cross-include references resolve.
+    struct EffectReference {
+      std::string context;
+      std::string name;
+      EffectKind kind;
+      bool allowOff;
+      toml::source_region source;
+      std::function<void()> clear;
+    };
+
+    // Reads a string selector under `key`, reporting the section's own "(expected string)" warning through
+    // Section::text so every caller shares one wording. Returns the value and its source location, or nullopt when
+    // the key was absent or not a string.
+    std::optional<std::pair<std::string, toml::source_region>> takeEffectSelector(Section& keys, std::string_view key) {
+      const toml::node* node = keys.node(key);
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      std::string value;
+      keys.text(key, value); // claims the key and warns if it is not a string
+      if (!node->is_string()) {
+        return std::nullopt;
+      }
+      return std::make_pair(std::move(value), node->source());
+    }
+
+    void addEffectReference(
+        std::vector<EffectReference>& references, std::string context,
+        const std::pair<std::string, toml::source_region>& selector, EffectKind kind, bool allowOff,
+        std::function<void()> clear
+    ) {
+      references.push_back({
+          .context = std::move(context),
+          .name = selector.first,
+          .kind = kind,
+          .allowOff = allowOff,
+          .source = selector.second,
+          .clear = std::move(clear),
+      });
+    }
+
+    // Reads a string selector into `target` and records it for validation.
+    void readEffectSelector(
+        Section& keys, std::string_view key, std::string_view context, EffectKind kind, bool allowOff,
+        std::string& target, std::vector<EffectReference>& references
+    ) {
+      const auto selector = takeEffectSelector(keys, key);
+      if (!selector) {
+        return;
+      }
+      target = selector->first;
+      addEffectReference(references, std::string(context), *selector, kind, allowOff, [&target] { target.clear(); });
+    }
+
+    void readEffects(Section& root, Config& loaded, std::vector<EffectReference>& references) {
+      root.sub("effects", [&](Section& s) {
+        Effects& effects = loaded.effects;
+        s.integer("max_fps", 0, 240, effects.maxFps).boolean("in_capture", effects.inCapture);
+        readEffectSelector(s, "border", "effects.border", EffectKind::Border, false, effects.border, references);
+        readEffectSelector(s, "window", "effects.window", EffectKind::Window, false, effects.window, references);
+        readEffectSelector(s, "screen", "effects.screen", EffectKind::Screen, false, effects.screen, references);
+        readEffectSelector(s, "cursor", "effects.cursor", EffectKind::Cursor, false, effects.cursor, references);
+        const toml::node* node = s.take("preset");
+        if (node == nullptr) {
+          return;
+        }
+        const auto* presets = node->as_table();
+        if (presets == nullptr) {
+          warnAt(node->source(), "ignoring effects.preset (expected table)");
+          return;
+        }
+        for (const auto& [key, entry] : *presets) {
+          const std::string name(key.str());
+          const std::string context = "effects.preset." + name;
+          const auto* table = entry.as_table();
+          if (table == nullptr) {
+            warnAt(entry.source(), "ignoring {} (expected table)", context);
+            continue;
+          }
+          if (name == kEffectOff) {
+            warnAt(key.source(), "ignoring {} ('off' is reserved)", context);
+            continue;
+          }
+          Section keys(*table, context, configStore().mutableDiagnostics());
+          const toml::node* kindNode = keys.take("kind");
+          const std::optional<EffectKind> kind =
+              kindNode != nullptr ? parseEffectKind(kindNode->value<std::string>().value_or("")) : std::nullopt;
+          if (!kind) {
+            warnAt(
+                kindNode != nullptr ? kindNode->source() : key.source(),
+                "ignoring {} (kind must be animation|border|window|screen|cursor)", context
+            );
+            keys.freeform();
+            continue;
+          }
+          EffectPreset preset;
+          preset.name = name;
+          preset.kind = *kind;
+          auto shader = readShaderSource(keys, "shader", configStore().mutableDiagnostics());
+          for (auto& path : shader.watchPaths) {
+            configStore().addWatchPath(std::move(path));
+          }
+          if (shader.source) {
+            preset.shader = std::move(*shader.source);
+          } else if (keys.node("shader") == nullptr) {
+            warnAt(key.source(), "{} has no shader; the preset is inert", context);
+          }
+          keys.boolean("palette", preset.palette);
+          // The preset moves into the vector; register the overlay reference by index after the push.
+          std::optional<std::pair<std::string, toml::source_region>> overlay;
+          switch (*kind) {
+          case EffectKind::Border: {
+            double speed = preset.speed;
+            keys.integer("padding", 0, 1024, preset.padding)
+                .real("speed", 0.0, 10.0, speed)
+                .boolean("animated", preset.animated);
+            preset.speed = static_cast<float>(speed);
+            overlay = takeEffectSelector(keys, "overlay");
+            if (overlay) {
+              preset.overlay = overlay->first;
+            }
+            keys.sub("light", [&](Section& light) {
+              BorderLight settings;
+              double intensity = settings.intensity;
+              double threshold = settings.threshold;
+              light.integer("spread", 1, 256, settings.spread)
+                  .real("intensity", 0.0, 4.0, intensity)
+                  .real("threshold", 0.0, 1.0, threshold);
+              settings.intensity = static_cast<float>(intensity);
+              settings.threshold = static_cast<float>(threshold);
+              preset.light = settings;
+            });
+            break;
+          }
+          case EffectKind::Cursor:
+            keys.integer("radius", 0, 4096, preset.radius);
+            break;
+          case EffectKind::Animation:
+          case EffectKind::Window:
+          case EffectKind::Screen:
+            break;
+          }
+          loaded.effects.presets.push_back(std::move(preset));
+          if (overlay) {
+            const size_t index = loaded.effects.presets.size() - 1;
+            addEffectReference(references, context + ".overlay", *overlay, EffectKind::Window, false, [&loaded, index] {
+              loaded.effects.presets[index].overlay.clear();
+            });
+          }
+        }
+      });
+    }
+
+    // Every recorded reference is checked against the final preset table. `clear` mutates `loaded` through
+    // references captured while parsing, so this takes it non-const to say so.
+    void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references) {
+      for (EffectReference& reference : references) {
+        if (const auto error =
+                effectReferenceError(loaded.effects, reference.name, reference.kind, reference.allowOff)) {
+          warnAt(reference.source, "ignoring {} ({})", reference.context, *error);
+          reference.clear();
+        }
+      }
+    }
+
+    void parseAnimationSection(Section& s, Config::Animation& animation, std::vector<EffectReference>& references) {
       s.boolean("enabled", animation.enabled);
 
       if (const toml::node* node = s.take("beziers")) {
@@ -1093,13 +1342,6 @@ namespace umbriel {
         }
       }
 
-      const auto readShader = [&](Section& section, auto& event) {
-        auto result = readAnimationShader(section, configStore().mutableDiagnostics());
-        event.shader = std::move(result.source);
-        for (auto& path : result.watchPaths) {
-          configStore().addWatchPath(std::move(path));
-        }
-      };
       const auto readCurveKey = [&](Section& section, std::string_view key, std::string_view context,
                                     AnimationCurve& target) {
         if (const toml::node* node = section.take(key)) {
@@ -1144,29 +1386,44 @@ namespace umbriel {
       };
 
       s.sub("windows_in", [&](Section& section) {
-        readShader(section, animation.windowsIn);
+        readEffectSelector(
+            section, "effect", "animation.windows_in.effect", EffectKind::Animation, false, animation.windowsIn.effect,
+            references
+        );
         section.boolean("enabled", animation.windowsIn.enabled).real("scale", 0.1, 1.0, animation.windowsIn.scale);
         readStyle(section, animation.windowsIn.style, {"popin", "zoom", "slide", "fade", "none"});
         readTimeline(section, "animation.windows_in", animation.windowsIn.durationMs, animation.windowsIn.curve);
       });
       s.sub("windows_out", [&](Section& section) {
-        readShader(section, animation.windowsOut);
+        readEffectSelector(
+            section, "effect", "animation.windows_out.effect", EffectKind::Animation, false,
+            animation.windowsOut.effect, references
+        );
         section.boolean("enabled", animation.windowsOut.enabled).real("scale", 0.1, 1.0, animation.windowsOut.scale);
         readStyle(section, animation.windowsOut.style, {"fade", "slide", "popin", "zoom"});
         readTimeline(section, "animation.windows_out", animation.windowsOut.durationMs, animation.windowsOut.curve);
       });
       s.sub("windows_move", [&](Section& section) {
-        readShader(section, animation.windowsMove);
+        readEffectSelector(
+            section, "effect", "animation.windows_move.effect", EffectKind::Animation, false,
+            animation.windowsMove.effect, references
+        );
         section.boolean("enabled", animation.windowsMove.enabled);
         readTimeline(section, "animation.windows_move", animation.windowsMove.durationMs, animation.windowsMove.curve);
       });
       s.sub("workspaces", [&](Section& section) {
-        readShader(section, animation.workspaces);
+        readEffectSelector(
+            section, "effect", "animation.workspaces.effect", EffectKind::Animation, false, animation.workspaces.effect,
+            references
+        );
         section.boolean("enabled", animation.workspaces.enabled);
         readTimeline(section, "animation.workspaces", animation.workspaces.durationMs, animation.workspaces.curve);
       });
       s.sub("overview", [&](Section& section) {
-        readShader(section, animation.overview);
+        readEffectSelector(
+            section, "effect", "animation.overview.effect", EffectKind::Animation, false, animation.overview.effect,
+            references
+        );
         section.boolean("enabled", animation.overview.enabled);
         readTimeline(section, "animation.overview", animation.overview.durationMs, animation.overview.curve);
         readCurveKey(
@@ -1174,7 +1431,10 @@ namespace umbriel {
         );
       });
       s.sub("scratchpad", [&](Section& section) {
-        readShader(section, animation.scratchpad);
+        readEffectSelector(
+            section, "effect", "animation.scratchpad.effect", EffectKind::Animation, false, animation.scratchpad.effect,
+            references
+        );
         section.boolean("enabled", animation.scratchpad.enabled)
             .real("dim", 0.0, 1.0, animation.scratchpad.dim)
             .boolean("blur", animation.scratchpad.blur)
@@ -1184,22 +1444,32 @@ namespace umbriel {
         readTimeline(section, "animation.scratchpad", animation.scratchpad.durationMs, animation.scratchpad.curve);
       });
       s.sub("border", [&](Section& section) {
-        readShader(section, animation.border);
+        readEffectSelector(
+            section, "effect", "animation.border.effect", EffectKind::Animation, false, animation.border.effect,
+            references
+        );
         section.boolean("enabled", animation.border.enabled);
         readTimeline(section, "animation.border", animation.border.durationMs, animation.border.curve);
       });
       s.sub("dim_unfocused", [&](Section& section) {
-        readShader(section, animation.dimUnfocused);
+        readEffectSelector(
+            section, "effect", "animation.dim_unfocused.effect", EffectKind::Animation, false,
+            animation.dimUnfocused.effect, references
+        );
         section.boolean("enabled", animation.dimUnfocused.enabled).real("dim", 0.0, 1.0, animation.dimUnfocused.dim);
         readTimeline(
             section, "animation.dim_unfocused", animation.dimUnfocused.durationMs, animation.dimUnfocused.curve
         );
       });
       s.sub("layers", [&](Section& section) {
-        readShader(section, animation.layers);
+        readEffectSelector(
+            section, "effect", "animation.layers.effect", EffectKind::Animation, false, animation.layers.effect,
+            references
+        );
         section.boolean("enabled", animation.layers.enabled);
         readTimeline(section, "animation.layers", animation.layers.durationMs, animation.layers.curve);
       });
+      s.sub("windows_drag", [&](Section& section) { section.boolean("physics", animation.windowsDrag.physics); });
 
       // The shared duration reaches nothing once every timeline it feeds derives its own length.
       if (defaultDuration) {
@@ -1217,8 +1487,8 @@ namespace umbriel {
       }
     }
 
-    void readAnimation(Section& root, Config& loaded) {
-      root.sub("animation", [&](Section& section) { parseAnimationSection(section, loaded.animation); });
+    void readAnimation(Section& root, Config& loaded, std::vector<EffectReference>& references) {
+      root.sub("animation", [&](Section& section) { parseAnimationSection(section, loaded.animation, references); });
     }
 
     void readAppearance(Section& root, Config& loaded) {
@@ -1342,6 +1612,9 @@ namespace umbriel {
         if (auto presets = readExtentPresets(s, "layout")) {
           loaded.layout.extentPresets = std::move(*presets);
         }
+        if (const auto scope = readFullscreenExitScope(s, "layout")) {
+          loaded.layout.newExitsFullscreen = *scope;
+        }
         s.sub("scrolling", [&](Section& sc) {
           sc.real("default_extent_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultExtentFraction)
               .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
@@ -1349,18 +1622,14 @@ namespace umbriel {
             loaded.layout.scrolling.centerFocused = *centerFocused;
           }
         });
-        s.sub("dwindle", [&](Section& sd) {
-          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit)
-              .boolean("new_exits_fullscreen", loaded.layout.dwindle.newExitsFullscreen);
-        });
+        s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit); });
         s.sub("master", [&](Section& sm) {
           if (const auto position = readMasterPosition(sm, "layout.master")) {
             loaded.layout.master.position = *position;
           }
           sm.real("default_width_fraction", 0.1, 0.9, loaded.layout.master.defaultWidthFraction)
               .boolean("new_on_top", loaded.layout.master.newOnTop)
-              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
-              .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
+              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster);
         });
       });
     }
@@ -1369,6 +1638,12 @@ namespace umbriel {
       root.sub("workspaces", [&](Section& s) {
         s.boolean("back_and_forth", loaded.workspaces.backAndForth)
             .boolean("empty_above", loaded.workspaces.emptyAbove);
+      });
+    }
+
+    void readScreenCast(Section& root, Config& loaded) {
+      root.sub("screencast", [&](Section& s) {
+        s.boolean("disable_dynamic_confirmation", loaded.screenCast.disableDynamicConfirmation);
       });
     }
 
@@ -1548,11 +1823,13 @@ namespace umbriel {
             .integer("repeat_delay", 0, 10000, device.repeatDelay)
             .boolean("tap", device.tap)
             .boolean("natural_scroll", device.naturalScroll)
+            .boolean("left_handed", device.leftHanded)
             .real("sensitivity", -1.0, 1.0, device.sensitivity)
             .boolean("disable_while_typing", device.disableWhileTyping)
             .boolean("scroll_button_lock", device.scrollButtonLock);
         device.accelProfile = readAccelProfile(keys, "accel_profile", "input.device");
         device.clickMethod = readClickMethod(keys, "input.device");
+        device.tapButtonMap = readTapButtonMap(keys, "input.device");
         device.scrollButton = readScrollButton(keys, "input.device");
 
         if (!validName) {
@@ -1589,7 +1866,7 @@ namespace umbriel {
     void readInput(Section& root, Config& loaded) {
       auto& in = loaded.input;
       root.sub("input", [&](Section& s) {
-        s.boolean("middle_click_paste", in.middleClickPaste);
+        s.boolean("middle_click_paste", in.middleClickPaste).boolean("client_window_drag", in.clientWindowDrag);
         if (const toml::node* node = s.take("window_drag_toggle")) {
           if (const auto value = readWindowDragToggle(*node)) {
             in.windowDragToggle = *value;
@@ -1621,15 +1898,18 @@ namespace umbriel {
         s.sub("touchpad", [&](Section& t) {
           t.boolean("tap", in.touchpad.tap)
               .boolean("natural_scroll", in.touchpad.naturalScroll)
+              .boolean("left_handed", in.touchpad.leftHanded)
               .real("sensitivity", -1.0, 1.0, in.touchpad.sensitivity)
               .boolean("disable_while_typing", in.touchpad.disableWhileTyping)
               .boolean("disable_on_external_mouse", in.touchpad.disableOnExternalMouse);
           in.touchpad.scrollFactor = readScrollFactor(t);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
           in.touchpad.clickMethod = readClickMethod(t, "input.touchpad");
+          in.touchpad.tapButtonMap = readTapButtonMap(t, "input.touchpad");
         });
         s.sub("mouse", [&](Section& m) {
           m.boolean("natural_scroll", in.mouse.naturalScroll)
+              .boolean("left_handed", in.mouse.leftHanded)
               .real("sensitivity", -1.0, 1.0, in.mouse.sensitivity)
               .integer("scroll_wheel_step", 1, 1000, in.mouse.scrollWheelStep)
               .boolean("scroll_button_lock", in.mouse.scrollButtonLock);
@@ -1647,7 +1927,7 @@ namespace umbriel {
           in.tablet.calibrationMatrix = readCalibrationMatrix(t, "input.tablet");
         });
         s.sub("touch", [&](Section& t) {
-          t.text("map_to_output", in.touch.mapToOutput).boolean("map_to_focused_output", in.touch.mapToFocusedOutput);
+          t.boolean("enabled", in.touch.enabled).text("map_to_output", in.touch.mapToOutput);
         });
         s.sub("cursor", [&](Section& c) {
           c.text("theme", in.cursor.theme)
@@ -1669,7 +1949,14 @@ namespace umbriel {
       });
     }
 
-    void readOutputs(Section& root, Config& loaded) {
+    OutputRule* findOutputRuleMutable(Config& loaded, const std::string& name) {
+      const auto it = std::ranges::find_if(loaded.outputs, [&](const OutputRule& rule) {
+        return outputNamesEqual(rule.name, name);
+      });
+      return it != loaded.outputs.end() ? &*it : nullptr;
+    }
+
+    void readOutputs(Section& root, Config& loaded, std::vector<EffectReference>& references) {
       const toml::node* node = root.take("output");
       if (node == nullptr) {
         return;
@@ -1693,6 +1980,12 @@ namespace umbriel {
               return outputNamesEqual(rule.name, name);
             })) {
           warnAt(key.source(), "duplicate output section '{}'", name);
+          // Drop the discarded section's references so they cannot clear the surviving rule's value by name.
+          std::erase_if(references, [&](const EffectReference& reference) {
+            return std::ranges::any_of(loaded.outputs, [&](const OutputRule& rule) {
+              return outputNamesEqual(rule.name, name) && reference.context == "output." + rule.name + ".screen_effect";
+            });
+          });
           std::erase_if(loaded.outputs, [&](const OutputRule& rule) { return outputNamesEqual(rule.name, name); });
         }
         OutputRule rule;
@@ -1700,12 +1993,17 @@ namespace umbriel {
         keys.boolean("enabled", rule.enabled)
             .boolean("tearing", rule.allowTearing)
             .boolean("direct_scanout", rule.directScanout);
+        const auto screenEffect = takeEffectSelector(keys, "screen_effect");
+        if (screenEffect) {
+          rule.screenEffect = screenEffect->first;
+        }
         keys.sub("layout", [&](Section& layout) {
           layout.sub("scrolling", [&](Section& scrolling) {
             scrolling.real("default_extent_fraction", 0.1, 1.0, rule.layout.scrolling.defaultExtentFraction);
           });
         });
-        keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces);
+        keys.integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), rule.minWorkspaces)
+            .boolean("cyclic_workspaces", rule.cyclicWorkspaces);
         if (const toml::node* axisNode = keys.take("workspace_axis")) {
           const auto value = axisNode->value<std::string>();
           if (value == "vertical") {
@@ -1825,6 +2123,15 @@ namespace umbriel {
         keys.real("sdr_white", 80.0, 1000.0, sdrWhite);
         rule.sdrWhite = static_cast<float>(sdrWhite);
 
+        if (const toml::node* bitDepthNode = keys.take("bit_depth")) {
+          const auto value = bitDepthNode->value<std::int64_t>();
+          if (value && (*value == 8 || *value == 10)) {
+            rule.bitDepth = static_cast<int>(*value);
+          } else {
+            warnAt(bitDepthNode->source(), "ignoring output.{}.bit_depth (expected 8 or 10)", name);
+          }
+        }
+
         if (const toml::node* transformNode = keys.take("transform")) {
           const auto value = transformNode->value<std::string>();
           static constexpr std::pair<std::string_view, int> transforms[] = {
@@ -1847,6 +2154,16 @@ namespace umbriel {
         }
 
         loaded.outputs.push_back(std::move(rule));
+        if (screenEffect) {
+          addEffectReference(
+              references, "output." + name + ".screen_effect", *screenEffect, EffectKind::Screen, true,
+              [&loaded, name] {
+                if (OutputRule* rule = findOutputRuleMutable(loaded, name)) {
+                  rule->screenEffect.reset();
+                }
+              }
+          );
+        }
       }
     }
 
@@ -1978,7 +2295,7 @@ namespace umbriel {
       }
     }
 
-    void readWindowRules(Section& root, Config& loaded) {
+    void readWindowRules(Section& root, Config& loaded, std::vector<EffectReference>& references) {
       const toml::node* node = root.take("window_rule");
       if (node == nullptr) {
         return;
@@ -2130,6 +2447,14 @@ namespace umbriel {
             .integer("outer_border_width", 0, 100, rule.outerBorderWidth)
             .integer("corner_radius", 0, 100, rule.cornerRadius)
             .boolean("shadow", rule.shadow);
+        const auto borderEffect = takeEffectSelector(keys, "border_effect");
+        if (borderEffect) {
+          rule.borderEffect = borderEffect->first;
+        }
+        const auto windowEffect = takeEffectSelector(keys, "window_effect");
+        if (windowEffect) {
+          rule.windowEffect = windowEffect->first;
+        }
         if (const toml::node* n = keys.take("default_floating_size")) {
           const auto* table = n->as_table();
           if (table == nullptr) {
@@ -2285,6 +2610,19 @@ namespace umbriel {
 
         if (valid) {
           loaded.windowRules.push_back(std::move(rule));
+          const size_t index = loaded.windowRules.size() - 1;
+          if (borderEffect) {
+            addEffectReference(
+                references, "window_rule.border_effect", *borderEffect, EffectKind::Border, true,
+                [&loaded, index] { loaded.windowRules[index].borderEffect.reset(); }
+            );
+          }
+          if (windowEffect) {
+            addEffectReference(
+                references, "window_rule.window_effect", *windowEffect, EffectKind::Window, true,
+                [&loaded, index] { loaded.windowRules[index].windowEffect.reset(); }
+            );
+          }
         }
       }
     }
@@ -2483,10 +2821,12 @@ namespace umbriel {
         }
 
         Config loaded;
+        std::vector<EffectReference> effectReferences;
         {
           Section root(result.merged, "", store.mutableDiagnostics());
           readColors(root, loaded);
-          readAnimation(root, loaded);
+          readEffects(root, loaded, effectReferences);
+          readAnimation(root, loaded, effectReferences);
           readAppearance(root, loaded);
           readOverview(root, loaded);
           readScratchpads(root, loaded);
@@ -2497,14 +2837,16 @@ namespace umbriel {
           readEnvironment(root, loaded);
           readEvents(root, loaded);
           readWorkspaceSettings(root, loaded);
+          readScreenCast(root, loaded);
           readInput(root, loaded);
-          readOutputs(root, loaded);
+          readOutputs(root, loaded, effectReferences);
           readKeybinds(root, loaded);
-          readWindowRules(root, loaded);
+          readWindowRules(root, loaded, effectReferences);
           readLayerRules(root, loaded);
           readSecurityContextRules(root, loaded);
           readWorkspaces(root, loaded);
           warnScrollButtonBinds(loaded);
+          validateEffectReferences(loaded, effectReferences);
         }
 
         // Reject config if any error-level diagnostics were emitted.

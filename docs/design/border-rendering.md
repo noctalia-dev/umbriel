@@ -130,28 +130,28 @@ a second scene node or draw order.
 
 ## Regression coverage
 
-- `365_fractional_border_coverage.sh` checks a one-logical-pixel border at scale
+- `render/fractional_border_coverage.sh` checks a one-logical-pixel border at scale
   1.25. The top and side must have equal opaque and fractional coverage.
-- `366_fractional_content_coverage.sh` pins a float at scale 1.25 whose floored
+- `render/fractional_content_coverage.sh` pins a float at scale 1.25 whose floored
   buffer is one physical pixel short of its content box on both axes. The last
   column and row inside the box must be client content, and an interior run must
   hold no blend of the client's alternating columns.
-- `367_csd_crop_edge_coverage.sh` pins a float at scale 1.25 whose surface
+- `render/csd_crop_edge_coverage.sh` pins a float at scale 1.25 whose surface
   carries a transparent one-logical-pixel margin around its declared window, so
   the crop lands a quarter texel off the grid on every side. All four edge lines
   inside the content box must be window content.
-- `720_subsurface_corner_radius.sh` checks that content drawn through a
+- `render/subsurface_corner_radius.sh` checks that content drawn through a
   full-window subsurface follows the window radius.
-- `721_offset_main_surface_radius.sh` puts the window geometry origin at a
+- `render/offset_main_surface_radius.sh` puts the window geometry origin at a
   subsurface above and left of the main surface. The inset main surface must
   keep its interior corners square while both window corners still round.
-- `722_subsurface_border_corner.sh` checks the outer arc, smooth two-color seam,
+- `render/subsurface_border_corner.sh` checks the outer arc, smooth two-color seam,
   positive content radius, and straight-to-curve tangency against a full-window
   subsurface.
-- `723_small_border_corner.sh` verifies that a one-pixel outer radius does not
+- `render/small_border_corner.sh` verifies that a one-pixel outer radius does not
   grow with a thick double border, an eight-pixel radius keeps its inner contour
   rounded, and zero preserves a square outer corner.
-- `744_rule_decoration.sh` checks that a window rule's `border_width`,
+- `rule/decoration.sh` checks that a window rule's `border_width`,
   `corner_radius`, and `shadow` reach the ring, the surface corner, and the drop
   shadow, in both directions for `shadow`: off where the global switch is on,
   and on where it is off.

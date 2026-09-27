@@ -11,6 +11,7 @@ extern "C" {
 #undef static
 }
 
+using umbriel::outputCanAutoEnable;
 using umbriel::OutputMode;
 using umbriel::preferredFallbackMode;
 using umbriel::selectOutputMode;
@@ -42,6 +43,42 @@ UMBRIEL_TEST(configuredResolutionSelectsClosestRefresh) {
 
   CHECK(selected == &closest);
   CHECK_EQ(selected->refresh, 143987);
+}
+
+UMBRIEL_TEST(unidentifiedOutputWithoutPreferredModeNeedsExplicitConfiguration) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode stale = outputMode(1920, 1080, 59994);
+  addMode(output, stale);
+
+  CHECK(!outputCanAutoEnable(&output));
+}
+
+UMBRIEL_TEST(preferredModeMakesUnconfiguredOutputSafeToEnable) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(1920, 1080, 60150, true);
+  addMode(output, preferred);
+
+  CHECK(outputCanAutoEnable(&output));
+}
+
+UMBRIEL_TEST(edidIdentityMakesUnconfiguredOutputSafeWithoutPreferredMode) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode mode = outputMode(1920, 1080, 60000);
+  addMode(output, mode);
+  char make[] = "Microstep";
+  output.make = make;
+
+  CHECK(outputCanAutoEnable(&output));
+}
+
+UMBRIEL_TEST(backendManagedOutputWithoutModesRemainsAutoEnabled) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+
+  CHECK(outputCanAutoEnable(&output));
 }
 
 UMBRIEL_TEST(configuredResolutionWithoutRefreshPrefersMarkedMode) {

@@ -57,12 +57,29 @@ snapshot whenever that family changes:
 | `windows` | Window identity, geometry, focus, state, workspace, or scratchpad |
 | `workspaces` | Inventory, layout, activity, occupancy, output, or focus |
 | `submap` | Active keybind submap |
+| `screencast` | Manual target and focus-following screencast commands |
 
 Payloads are full snapshots rather than deltas. Replace local state with the
 newest event instead of trying to merge increments. Identical consecutive
 payloads are omitted.
 
 An unknown family returns an error and closes the subscription.
+
+### Screencast payload
+
+The `screencast` event carries a monotonically increasing serial and one of six commands:
+
+```json
+{"event":"screencast","data":{"serial":12,"kind":"window","identifier":"window-id"}}
+{"event":"screencast","data":{"serial":13,"kind":"output","output":"DP-1"}}
+{"event":"screencast","data":{"serial":14,"kind":"follow_window"}}
+{"event":"screencast","data":{"serial":15,"kind":"follow_output"}}
+{"event":"screencast","data":{"serial":16,"kind":"follow_stop"}}
+{"event":"screencast","data":{"serial":17,"kind":"clear"}}
+```
+
+Every command advances the serial, even when it selects the same source or mode again. Portal backends use that edge
+so a newly authorized manual stream stays empty until the user performs another target action.
 
 ### Theme payload
 
@@ -105,6 +122,7 @@ The CLI exposes the same event stream:
 umbriel subscribe workspaces
 umbriel subscribe workspaces,windows
 umbriel subscribe submap
+umbriel subscribe screencast
 ```
 
 It writes one JSON line per event until Umbriel exits or the reader closes:

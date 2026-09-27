@@ -1,0 +1,13 @@
+# Include this file, then select it: [effects] border = "pulse"
+# or per window: [[window_rule]] border_effect = "pulse"
+[effects.preset.pulse]
+kind = "border"
+shader = "shader.glsl"
+palette = true
+padding = 24
+speed = 1.0
+
+[effects.preset.pulse.light]
+spread = 48
+intensity = 1.2
+threshold = 0.4

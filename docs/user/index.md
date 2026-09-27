@@ -26,7 +26,7 @@ without a running session.
 - Scrolling, Dwindle, and Master layouts
 - Independent workspaces and configuration per output
 - Floating, pinned, fullscreen, and [scratchpad](scratchpad.md) windows
-- Configurable keybinds, gestures, window rules, blur, shadows, and animations
+- Configurable keybinds, gestures, window rules, blur, shadows, animations, and [effects](effects.md)
 - X11 application support through xwayland-satellite
 - Local [IPC](ipc.md) for scripts, panels, and runtime inspection
 

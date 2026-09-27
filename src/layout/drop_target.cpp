@@ -498,6 +498,7 @@ namespace umbriel {
         // Auto-attach would split the focused leaf and send a stale configure
         // before the explicit placement below.
         view.moveToWorkspace(&target, /*attachToLayout=*/false);
+        target.exitFullscreenForIncomingView(&view);
       } else {
         dwindle->removeView(&view);
       }
@@ -514,6 +515,7 @@ namespace umbriel {
 
     if (view.workspace() != &target) {
       view.moveToWorkspace(&target, /*attachToLayout=*/false);
+      target.exitFullscreenForIncomingView(&view);
     } else {
       target.layout().removeView(&view);
     }

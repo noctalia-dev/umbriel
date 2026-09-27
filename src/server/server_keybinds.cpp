@@ -2,6 +2,7 @@
 #include "input/cursor.h"
 #include "input/keyboard.h"
 #include "input/seat.h"
+#include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -267,9 +268,15 @@ namespace umbriel {
   uint32_t Server::keyboardModifiers() const {
     uint32_t modifiers = 0;
     for (const auto& keyboard : m_keyboards) {
-      if (keyboard != nullptr && keyboard->wlr() != nullptr) {
-        modifiers |= wlr_keyboard_get_modifiers(keyboard->wlr());
+      if (keyboard == nullptr
+          || keyboard->wlr() == nullptr
+          || (m_inputMethodRelay != nullptr && m_inputMethodRelay->ownsKeyboard(keyboard->wlr()))) {
+        continue;
       }
+      // Input-method-owned virtual keyboards mirror events that already ran
+      // through shortcut matching. Their last mask can also outlive the grab,
+      // so folding it back in can turn a later plain key into a stale chord.
+      modifiers |= wlr_keyboard_get_modifiers(keyboard->wlr());
     }
     return modifiers;
   }

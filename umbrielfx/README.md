@@ -5,15 +5,15 @@ Umbriel's scene graph and GLES2 renderer, a hard fork of
 
 ## Layout
 
-| Path                    | Contents                                          |
-| ----------------------- | ------------------------------------------------- |
-| `include/umbrielfx/`    | Public API, the only headers the compositor sees   |
-| `internal/`             | Private headers, not on the compositor's include path |
-| `render/`               | EGL setup, color transforms, pixel formats        |
-| `render/fx_renderer/`   | GLES2 renderer, render passes, shaders            |
-| `types/`                | Scene graph, output helpers, blur and clip state   |
-| `util/`                 | Helpers shared inside the library                  |
-| `tests/`                | Color transform, scene ABI, and frame pacing regressions |
+| Path                  | Contents                                                                 |
+| --------------------- | ------------------------------------------------------------------------ |
+| `include/umbrielfx/`  | Public API, the only headers the compositor sees                         |
+| `internal/`           | Private headers, not on the compositor's include path                    |
+| `render/`             | EGL setup, color transforms, pixel formats                               |
+| `render/fx_renderer/` | GLES2 renderer, render passes, effect programs, shaders                  |
+| `types/`              | Scene graph, output helpers, blur and clip state                         |
+| `util/`               | Helpers shared inside the library                                        |
+| `tests/`              | Color transform, effect program, scene ABI, and frame pacing regressions |
 
 ## Building
 
@@ -59,6 +59,12 @@ is destroyed.
   for frame callbacks that never arrive. Keep it aligned with
   [wlroots 0.20.2 surface.c](https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/0.20.2/types/scene/surface.c);
   `tests/capture_pacing.c` covers it.
+- Effect slots come in two classes. Transient (animation) slots keep the
+  scene-wide policy: no scanout, no opaque culling, whole-output damage while
+  one runs. Persistent (window, overlay, border) slots exempt only their own
+  subtree from culling, damage only their drawn bounds, and veto scanout only
+  on outputs where they draw. `tests/effects.c` covers culling and damage
+  isolation.
 
 ## License
 

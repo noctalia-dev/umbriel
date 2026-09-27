@@ -211,12 +211,18 @@ namespace umbriel {
         {"layout-scroll-left", "", "Scroll the strip toward its start", KeybindAction::LayoutScrollLeft},
         {"layout-scroll-right", "", "Scroll the strip toward its end", KeybindAction::LayoutScrollRight},
         {"layout-scroll-up", "", "Scroll the strip toward its start", KeybindAction::LayoutScrollUp},
+        {"output-disable", "<output>", "Remove an output from the desktop", KeybindAction::OutputDisable,
+         ActionArgKind::Output},
+        {"output-enable", "<output>", "Add an output to the desktop", KeybindAction::OutputEnable,
+         ActionArgKind::Output},
         {"output-focus-down", "", "Focus the output below", KeybindAction::OutputFocusDown},
         {"output-focus-left", "", "Focus the output to the left", KeybindAction::OutputFocusLeft},
         {"output-focus-next", "", "Focus the next output, wrapping around", KeybindAction::OutputFocusNext},
         {"output-focus-previous", "", "Focus the previous output, wrapping around", KeybindAction::OutputFocusPrevious},
         {"output-focus-right", "", "Focus the output to the right", KeybindAction::OutputFocusRight},
         {"output-focus-up", "", "Focus the output above", KeybindAction::OutputFocusUp},
+        {"output-toggle", "<output>", "Add or remove an output from the desktop", KeybindAction::OutputToggle,
+         ActionArgKind::Output},
         {"overview-close", "", "Close the workspace overview", KeybindAction::OverviewClose},
         {"overview-open", "", "Open the workspace overview", KeybindAction::OverviewOpen},
         {"overview-toggle", "", "Open or close the workspace overview", KeybindAction::OverviewToggle},
@@ -224,6 +230,15 @@ namespace umbriel {
          KeybindAction::ScratchpadFocusNext, ActionArgKind::OptionalScratchpad},
         {"scratchpad-toggle", "[<scratchpad>]", "Show or hide the selected scratchpad windows",
          KeybindAction::ScratchpadToggle, ActionArgKind::OptionalScratchpad},
+        {"screencast-clear", "", "Pause the screencast and stop following", KeybindAction::ScreenCastClear},
+        {"screencast-follow-output", "", "Follow the focused output", KeybindAction::ScreenCastFollowOutput},
+        {"screencast-follow-stop", "", "Stop following and keep the current target",
+         KeybindAction::ScreenCastFollowStop},
+        {"screencast-follow-window", "", "Follow the focused window", KeybindAction::ScreenCastFollowWindow},
+        {"screencast-set-output", "[<output>]", "Share the focused output, or the selected output",
+         KeybindAction::ScreenCastSetOutput, ActionArgKind::OptionalOutput},
+        {"screencast-set-window", "[<window-id>]", "Share the focused window, or the selected window",
+         KeybindAction::ScreenCastSetWindow, ActionArgKind::OptionalWindowId},
         {"session-quit", "[skip-confirmation]", "Quit the session, confirming first unless told to skip",
          KeybindAction::SessionQuit, ActionArgKind::SkipConfirmation},
         {"shortcuts-inhibit-toggle", "", "Toggle shortcuts inhibition for the focused surface",
@@ -544,6 +559,13 @@ namespace umbriel {
         output.payload = std::move(workspace);
         return true;
       }
+      case ActionArgKind::Output:
+        if (takeActionArg(value, spec, arg)) {
+          output.action = spec.action;
+          output.payload = OutputArg{.output = std::string(arg)};
+          return true;
+        }
+        break;
       case ActionArgKind::OptionalOutput:
         if (value == spec.name) {
           output.action = spec.action;

@@ -28,6 +28,7 @@ namespace umbriel {
     bool securityContextRules = false;
     bool scratchpads = false;
     bool workspaceRules = false;
+    bool effects = false;
 
     [[nodiscard]] bool any() const {
       return colors
@@ -48,7 +49,8 @@ namespace umbriel {
           || layerRules
           || securityContextRules
           || scratchpads
-          || workspaceRules;
+          || workspaceRules
+          || effects;
     }
 
     // Comma-separated names of the sections that changed, empty when none did.
@@ -78,6 +80,7 @@ namespace umbriel {
     bool input = false;
     bool overviewPresentation = false;
     bool internalUi = false;
+    bool effects = false;
 
     [[nodiscard]] bool any() const {
       return outputState
@@ -91,7 +94,8 @@ namespace umbriel {
           || animation
           || input
           || overviewPresentation
-          || internalUi;
+          || internalUi
+          || effects;
     }
 
     [[nodiscard]] bool invalidatesOverview() const {
