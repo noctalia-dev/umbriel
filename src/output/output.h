@@ -127,8 +127,10 @@ namespace umbriel {
     // Single-threaded, non-blocking, bounded per output.
     bool paceCursorPlaneTransition(bool wakeFrame);
 #ifdef UMBRIEL_TEST_IPC
-    // Harness-only: synthesize the plane sample a headless backend cannot produce (fixed 24x24, no hotspot).
-    void setSyntheticPlaneCursorForTest(double x, double y, bool visible, std::uintptr_t image);
+    // Harness-only: synthesize the plane sample a headless backend cannot produce.
+    void setSyntheticPlaneCursorForTest(
+        double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
+    );
 #endif
     // True only for sessions needing separate cursor metadata
     [[nodiscard]] bool needsCursorCapturePacing() const;

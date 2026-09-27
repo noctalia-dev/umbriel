@@ -834,17 +834,19 @@ namespace umbriel {
   }
 
 #ifdef UMBRIEL_TEST_IPC
-  void Output::setSyntheticPlaneCursorForTest(double x, double y, bool visible, std::uintptr_t image) {
+  void Output::setSyntheticPlaneCursorForTest(
+      double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
+  ) {
     m_syntheticPlaneCursor = umbriel_cursor_plane_state{
         .valid = false,
         .enabled = true,
         .visible = visible,
         .x = x,
         .y = y,
-        .width = 24,
-        .height = 24,
-        .hotspot_x = 0,
-        .hotspot_y = 0,
+        .width = width,
+        .height = height,
+        .hotspot_x = hotspotX,
+        .hotspot_y = hotspotY,
         .image = reinterpret_cast<const void*>(image),
     };
   }

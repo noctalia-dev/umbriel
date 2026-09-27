@@ -40,4 +40,20 @@ await_lines "$right_log" 'frame ' $((right + 2)) 0.05
 "$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3" > /dev/null
 await_lines "$right_log" 'frame ' $((right + 3)) 0.05
 
-echo "  ok   move, crossing (source and destination), hide, and image swap each delivered a frame"
+# Stationary geometry and hotspot changes take the same path: the box moves
+# relative to the cursor position, so the diff and the damage are identical.
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 24 24 8 8" > /dev/null
+await_lines "$right_log" 'frame ' $((right + 4)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 48 32 0 0" > /dev/null
+await_lines "$right_log" 'frame ' $((right + 5)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 24 24 0 0" > /dev/null
+await_lines "$right_log" 'frame ' $((right + 6)) 0.05
+
+# And back the other way: the destination of a crossing becomes its source.
+"$UMBRIEL" plane-cursor "HEADLESS-2 2000 100 1 4" > /dev/null
+"$UMBRIEL" settle
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 4" > /dev/null
+await_lines "$right_log" 'frame ' $((right + 7)) 0.05
+await_lines "$left_log" 'frame ' $((left + 3)) 0.05
+
+echo "  ok   move, crossings both directions, hide, image, hotspot, and size each delivered a frame"

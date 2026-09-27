@@ -1582,15 +1582,28 @@ namespace umbriel {
     double y = 0.0;
     int visible = 0;
     std::uint64_t image = 0;
+    // Geometry and hotspot default to the 24x24 hotspot-0 cursor, so existing checks keep working unchanged.
+    int width = 24;
+    int height = 24;
+    int hotspotX = 0;
+    int hotspotY = 0;
     if (!(stream >> name >> x >> y >> visible >> image)) {
-      *error = "plane-cursor needs '<output> <x> <y> <visible> <image>'";
+      *error = "plane-cursor needs '<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]'";
       return false;
+    }
+    if (!(stream >> width >> height >> hotspotX >> hotspotY)) {
+      width = 24;
+      height = 24;
+      hotspotX = 0;
+      hotspotY = 0;
     }
     for (const auto& output : m_outputs) {
       if (name != output->wlr()->name) {
         continue;
       }
-      output->setSyntheticPlaneCursorForTest(x, y, visible != 0, static_cast<std::uintptr_t>(image));
+      output->setSyntheticPlaneCursorForTest(
+          x, y, visible != 0, static_cast<std::uintptr_t>(image), width, height, hotspotX, hotspotY
+      );
       // A real plane mutation notifies compositors through needs_frame; emit it so the production onNeedsFrame
       // listener runs instead of a test-only shortcut.
       wl_signal_emit_mutable(&output->wlr()->events.needs_frame, nullptr);
