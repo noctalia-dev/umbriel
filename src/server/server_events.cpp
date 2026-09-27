@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -542,6 +543,27 @@ namespace umbriel {
               : isTouchpad                             ? "input.touchpad.sensitivity"
                                                        : "input.mouse.sensitivity"
       );
+    }
+
+    // A touchscreen is a physical panel, so with no map_to_output it follows the output the device reports, or else
+    // the only enabled built-in panel. Two built-in panels are ambiguous and leave the device on the full layout.
+    Output* defaultTouchOutput(std::span<const std::unique_ptr<Output>> outputs, const char* reported) {
+      Output* builtin = nullptr;
+      bool ambiguous = false;
+      for (const auto& output : outputs) {
+        if (!output->wlr()->enabled) {
+          continue;
+        }
+        const std::string_view name = output->wlr()->name;
+        if (reported != nullptr && name == reported) {
+          return output.get();
+        }
+        if (name.starts_with("eDP-") || name.starts_with("LVDS-") || name.starts_with("DSI-")) {
+          ambiguous = builtin != nullptr;
+          builtin = output.get();
+        }
+      }
+      return ambiguous ? nullptr : builtin;
     }
   } // namespace
   void Server::applyConfig(const ConfigEffects& effects) {
@@ -1892,13 +1914,10 @@ namespace umbriel {
   void Server::remapTouches() {
     const Config::Input::Touch& cfg = config().input.touch;
     for (const auto& touch : m_touchDevices) {
-      wlr_output* output = nullptr;
-      if (!cfg.mapToOutput.empty()) {
-        if (Output* out = outputFromName(cfg.mapToOutput)) {
-          output = out->wlr();
-        }
-      }
-      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, output);
+      Output* target = !cfg.mapToOutput.empty()
+          ? outputFromName(cfg.mapToOutput)
+          : defaultTouchOutput(outputs(), wlr_touch_from_input_device(touch->device)->output_name);
+      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, target != nullptr ? target->wlr() : nullptr);
     }
   }
 

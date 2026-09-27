@@ -236,6 +236,10 @@ map_to_output = "eDP-1"
 | `enabled` | Enable or disable touch input. |
 | `map_to_output` | Confine touch input to a connector or monitor name. |
 
+Without `map_to_output`, a touchscreen maps to the output its device reports,
+or else to the built-in panel (`eDP-`, `LVDS-`, or `DSI-`) when exactly one is
+enabled. Otherwise it spans the whole output layout.
+
 ### Cursor
 
 ```toml
