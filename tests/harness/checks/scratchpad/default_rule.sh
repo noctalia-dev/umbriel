@@ -2,7 +2,9 @@
 # harness: outputs=1
 # A default_scratchpad window rule stores a matching window without showing or
 # focusing it, preserves its opening floating position, and lets the ordinary
-# scratchpad action summon it afterwards.
+# scratchpad action summon it afterwards. Toggling an empty scratchpad runs its
+# spawn_when_empty command and shows the arriving window, unless a second toggle
+# hid the pending launch first.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -57,15 +59,6 @@ wait_for_geometry() {
   return 1
 }
 
-wait_for_file() {
-  for _ in $(seq 80); do
-    [[ -e $1 ]] && return 0
-    sleep 0.1
-  done
-  echo "expected $1 to exist"
-  return 1
-}
-
 wait_for_window() {
   local title=$1 scratchpad=$2 active=$3 state=
   for _ in $(seq 80); do
@@ -103,7 +96,7 @@ spawn_when_empty = "sh -c '(\"$CLIENT\" scratchpad-spawned 480 300 &)' > '$UMBRI
 
 [[scratchpad]]
 name = "late"
-spawn_when_empty = "touch '$UMBRIEL_RUNTIME_DIR/late-started'; sleep 0.5; exec '$CLIENT' scratchpad-late 480 300 > '$UMBRIEL_RUNTIME_DIR/scratchpad-late.log' 2>&1"
+spawn_when_empty = "while [ ! -e '$UMBRIEL_RUNTIME_DIR/late-release' ]; do sleep 0.05; done; exec '$CLIENT' scratchpad-late 480 300 > '$UMBRIEL_RUNTIME_DIR/scratchpad-late.log' 2>&1"
 
 [[window_rule]]
 match.app_id = "^scratchpad-terminal$"
@@ -144,8 +137,8 @@ if [[ $(windows | jq '[.[] | select(.title == "scratchpad-spawned")] | length') 
 fi
 
 "$UMBRIEL" msg scratchpad-toggle:late > /dev/null
-wait_for_file "$UMBRIEL_RUNTIME_DIR/late-started"
 "$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+touch "$UMBRIEL_RUNTIME_DIR/late-release"
 wait_for_window scratchpad-late late false
 
 "$UMBRIEL" msg scratchpad-toggle:late > /dev/null
