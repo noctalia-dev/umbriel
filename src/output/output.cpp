@@ -833,6 +833,23 @@ namespace umbriel {
     return true;
   }
 
+#ifdef UMBRIEL_TEST_IPC
+  void Output::setSyntheticPlaneCursorForTest(double x, double y, bool visible, std::uintptr_t image) {
+    m_syntheticPlaneCursor = umbriel_cursor_plane_state{
+        .valid = false,
+        .enabled = true,
+        .visible = visible,
+        .x = x,
+        .y = y,
+        .width = 24,
+        .height = 24,
+        .hotspot_x = 0,
+        .hotspot_y = 0,
+        .image = reinterpret_cast<const void*>(image),
+    };
+  }
+#endif
+
   bool Output::paceCursorPlaneTransition(bool wakeFrame) {
     if (m_output == nullptr || m_sceneOutput == nullptr) {
       return false;

@@ -62,3 +62,15 @@ await_events() {
   echo "timed out waiting for $expected '$event' on $label: $(tr '\n' '|' < "$file")"
   return 1
 }
+
+# Waits for at least $3 lines matching $2 in $1, then returns. Poll step is $4 (default 0.1s), matching
+# await_events; a check whose waits are tight under parallel stress passes a shorter step.
+await_lines() {
+  local file=$1 pattern=$2 expected=$3 step=${4:-0.1}
+  for _ in $(seq 60); do
+    (($(events "$file" "$pattern") >= expected)) && return 0
+    sleep "$step"
+  done
+  echo "timed out waiting for $expected '$pattern' in $file: $(tr '\n' '|' < "$file")"
+  return 1
+}

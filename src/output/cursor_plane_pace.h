@@ -29,9 +29,9 @@ struct umbriel_cursor_plane_damage {
   bool has_wake;
 };
 
-// `previous` (which may be NULL when the caller has no use for it), and reports
-// whether the two differ. The seeding call and an unchanged sample both report
-// false. Reads no compositor state, so it stays usable without the runtime.
+// `previous`, and reports whether the two differ. The seeding call and an
+// unchanged sample both report false. Reads no compositor state, so it stays
+// usable without the runtime.
 bool umbriel_cursor_plane_advance(
     struct umbriel_cursor_plane_state* state, struct umbriel_cursor_plane_state now,
     struct umbriel_cursor_plane_state* previous

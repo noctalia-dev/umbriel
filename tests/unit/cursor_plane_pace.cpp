@@ -23,18 +23,10 @@ namespace {
   }
 
   umbriel_cursor_plane_state hiddenCursor(double x = 0.0, double y = 0.0) {
-    return umbriel_cursor_plane_state{
-        .valid = false,
-        .enabled = true,
-        .visible = false,
-        .x = x,
-        .y = y,
-        .width = 24,
-        .height = 24,
-        .hotspot_x = 0,
-        .hotspot_y = 0,
-        .image = nullptr,
-    };
+    umbriel_cursor_plane_state cursor = cursorAt(x, y);
+    cursor.visible = false;
+    cursor.image = nullptr;
+    return cursor;
   }
 
   // Mirrors Output::paceCursorPlaneTransition: advance the snapshot, then ask
