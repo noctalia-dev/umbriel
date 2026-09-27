@@ -91,43 +91,40 @@ skip and decides eligibility from window state instead of render-list
 cardinality.
 
 ## Per-frame work outside the render pass
+
 ### Hardware-cursor capture pacing
 
 With `hardware_cursor = true` the cursor lives on the output's cursor plane, so a
-cursor-only move updates KMS state without producing scene damage:
-`wlr_output_update_needs_frame` notifies compositors, but no `frame` is scheduled
-and the plane is not part of the scene. Capture consumers are fed from output
-commits — the ext-image-copy-capture main and cursor sources both listen to
-`wlr_output.events.commit` — and a portal attaches the cursor state it receives
-to the next delivered main frame, so an otherwise idle output records a frozen
-or skipping cursor.
+cursor-only move updates KMS state without producing scene damage. Capture
+consumers are fed from output commits, and a portal attaches cursor metadata to
+the next delivered main frame, so an otherwise idle output records a frozen or
+skipping cursor.
 
-`Output::onNeedsFrame` (on `wlr_output.events.needs_frame`, the notification
-every plane mutation emits) and the frame path resync compare a plane sample —
-visibility, enabled state, position, dimensions, hotspot, cursor-buffer
-identity — against the last one delivered. A transition damages the old and new
-cursor boxes, clipped to the output: the old box is what delivers a leave, and a
-1x1 in-bounds wakeup covers the case where the cursor was already off the output.
-The new box covers an enter, a move, a show, and any image, hotspot or size
-change.
+`Output::paceCursorPlaneTransition` diffs a plane sample — visibility, enabled
+state, position, dimensions, hotspot, cursor-buffer identity — against the last
+one, and on a change damages the old and new boxes. The old box is what delivers
+a leave, so an output the cursor just left still gets a nonempty frame; a 1x1
+in-bounds wakeup covers a cursor that was already off it. The new box covers an
+enter, a move, a show, and any image, hotspot or size change.
 
-Only consumers that asked for separate cursor metadata are paced: live
-ext-image-copy-capture sessions are tracked from the manager's `new_session`
-event, and an output is paced when a session's client also created a cursor
-session. Screencopy, export-dmabuf and pixel-only ext-image-copy-capture never
-register or are filtered out, and the software-cursor path is inert because
-locking software cursors makes `hardware_cursor` `NULL`.
+Only ext-image-copy-capture consumers that created a cursor session are paced.
+Screencopy, export-dmabuf and pixel-only capture never register, and a software
+cursor makes `hardware_cursor` `NULL`, so those paths are untouched. The gate is
+keyed on the client, so one client recording two outputs paces both.
 
-Coverage: `tests/unit/cursor_plane_pace.cpp` pins the transition decisions,
-`umbrielfx`'s `capture-pacing` pins the damage helper including a transformed
-output, `746_cursor_capture_pacing.sh` pins that a cursor-excluding screencopy
-stays idle, and `651`, `652` and `653` drive the production listener through the
-harness-only `plane-cursor` command (a headless backend has no DRM plane):
-delivered frames for a move, both sides of a crossing, a hide and an image swap,
-none for a pixel-only consumer, and none while software cursors are locked.
-Cursor metadata payloads, scaled and transformed outputs, and animated or
-client-updated cursors are asserted in the running-session matrix recorded on
-the pull request.
+Two triggers. `Output::onNeedsFrame`, on `wlr_output.events.needs_frame` (emitted
+by every plane mutation), arms the wake. `Output::handleFrame` resyncs for
+mutations that emitted nothing; it damages but does not arm, because the frame
+already running picks the damage up.
+
+Coverage: `651`, `652` and `653` drive the production listener through the
+harness-only `plane-cursor` command (a headless backend has no DRM plane) —
+delivered frames for a move, both sides of a crossing, a hide and an image swap;
+none for a pixel-only consumer; none while software cursors are locked.
+`746_cursor_capture_pacing.sh` pins that a cursor-excluding screencopy stays
+idle, `tests/unit/cursor_plane_pace.cpp` pins the transition decisions, and
+umbrielfx's `capture-pacing` pins the damage helper on a transformed output.
+Real-plane behaviour needs a native session.
 
 `Output::handleFrame` (`output.cpp:1269`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every

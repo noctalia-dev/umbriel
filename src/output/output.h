@@ -118,16 +118,19 @@ namespace umbriel {
     void resetTearingState();
     void applyDirectScanoutConfig();
     void applyCursorConfig();
-    // Compare live hardware_cursor against snapshot, damage old box ∪ new
-    // box when it changed and cursor-metadata capture needs it, schedule
-    // the frame so an idle source actually wakes. Returns true when it
-    // paced. Single-threaded, non-blocking, bounded per output.
-    bool paceCursorPlaneTransition();
+    // Compare the live hardware cursor against the snapshot and, when it moved
+    // and a cursor-metadata consumer wants it, damage the box it left, the box
+    // it entered and a 1x1 in-bounds wakeup, so the transition reaches a
+    // delivered frame. `wakeFrame` arms the commit for the case where no box
+    // landed in bounds; the frame path passes false because the frame it is
+    // already running picks the damage up. Returns true when it paced.
+    // Single-threaded, non-blocking, bounded per output.
+    bool paceCursorPlaneTransition(bool wakeFrame);
 #ifdef UMBRIEL_TEST_IPC
     // Harness-only: synthesize the plane sample a headless backend cannot produce (fixed 24x24, no hotspot).
     void setSyntheticPlaneCursorForTest(double x, double y, bool visible, std::uintptr_t image) {
       m_syntheticPlaneCursor = umbriel_cursor_plane_state{
-          .valid = true,
+          .valid = false,
           .enabled = true,
           .visible = visible,
           .x = x,

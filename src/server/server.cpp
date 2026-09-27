@@ -739,7 +739,7 @@ namespace umbriel {
       return false;
     }
     for (const auto& watch : m_imageCopySessions) {
-      if (watch->output != output) {
+      if (watch->session == nullptr || watch->output != output) {
         continue;
       }
       wl_client* client = wl_resource_get_client(watch->session->resource);
@@ -757,14 +757,6 @@ namespace umbriel {
 
   Server::~Server() {
     m_stopping = true;
-    // Unlink each session's destroy listener before freeing its track --
-    // otherwise a session that outlives this point in teardown still holds a
-    // wl_listener pointing into memory we're about to free, and its destroy
-    // signal firing later is a use-after-free.
-    for (const auto& track : m_imageCopySessions) {
-      wl_list_remove(&track->destroy.link);
-    }
-    m_imageCopySessions.clear();
     if (m_rendererRecoveryIdle != nullptr) {
       wl_event_source_remove(m_rendererRecoveryIdle);
       m_rendererRecoveryIdle = nullptr;
@@ -788,6 +780,15 @@ namespace umbriel {
     wl_list_remove(&m_newIdleInhibitor.link);
     wl_list_remove(&m_newShortcutsInhibitor.link);
     wl_list_remove(&m_newImageCopySession.link);
+    // The manager listener is gone, so no new track can appear. Unlink each
+    // session's destroy listener before freeing its track: otherwise a session
+    // that outlives this point in teardown still holds a wl_listener pointing
+    // into memory we're about to free, and its destroy signal firing later is a
+    // use-after-free.
+    for (const auto& track : m_imageCopySessions) {
+      wl_list_remove(&track->destroy.link);
+    }
+    m_imageCopySessions.clear();
     wl_list_remove(&m_newActivationToken.link);
     wl_list_remove(&m_requestActivate.link);
     wl_list_remove(&m_workspaceCommit.link);

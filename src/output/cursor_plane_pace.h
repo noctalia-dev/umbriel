@@ -9,6 +9,8 @@ extern "C" {
 #include <wlr/util/box.h>
 
 struct umbriel_cursor_plane_state {
+  // Output-side only: false until the first umbriel_cursor_plane_advance seeds
+  // the snapshot. A `now` sample's valid field is never read.
   bool valid;
   bool enabled;
   bool visible;
@@ -19,7 +21,6 @@ struct umbriel_cursor_plane_state {
 };
 
 struct umbriel_cursor_plane_damage {
-  bool paced;
   struct wlr_box leave_box;
   bool has_leave;
   struct wlr_box enter_box;
@@ -28,13 +29,21 @@ struct umbriel_cursor_plane_damage {
   bool has_wake;
 };
 
-// Pure decision function: diffs `*state` against `now`, updates `*state` in
-// place, and reports what should be damaged. `capture_needs_pacing` and
-// `output_width`/`output_height` (for clamping the leave-off-output wake
-// box) are passed in rather than read from a live Output.
-struct umbriel_cursor_plane_damage umbriel_pace_cursor_plane(
-    struct umbriel_cursor_plane_state* state, struct umbriel_cursor_plane_state now, bool capture_needs_pacing,
-    int output_width, int output_height
+// `previous` (which may be NULL when the caller has no use for it), and reports
+// whether the two differ. The seeding call and an unchanged sample both report
+// false. Reads no compositor state, so it stays usable without the runtime.
+bool umbriel_cursor_plane_advance(
+    struct umbriel_cursor_plane_state* state, struct umbriel_cursor_plane_state now,
+    struct umbriel_cursor_plane_state* previous
+);
+
+// Pure: the boxes to damage for a transition umbriel_cursor_plane_advance has
+// already reported -- the box the cursor left, the box it entered, and a 1x1
+// in-bounds wakeup covering a cursor that was already off the output.
+// `output_width`/`output_height` clamp that wakeup.
+struct umbriel_cursor_plane_damage umbriel_cursor_plane_damage_for(
+    const struct umbriel_cursor_plane_state* previous, const struct umbriel_cursor_plane_state* now, int output_width,
+    int output_height
 );
 
 #ifdef __cplusplus

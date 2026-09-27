@@ -833,13 +833,13 @@ namespace umbriel {
     return true;
   }
 
-  bool Output::paceCursorPlaneTransition() {
+  bool Output::paceCursorPlaneTransition(bool wakeFrame) {
     if (m_output == nullptr || m_sceneOutput == nullptr) {
       return false;
     }
     const wlr_output_cursor* plane = m_output->hardware_cursor;
     umbriel_cursor_plane_state now{
-        .valid = true,
+        .valid = false,
         .enabled = plane != nullptr && plane->enabled,
         .visible = plane != nullptr && plane->visible,
         .x = plane != nullptr ? plane->x : 0,
@@ -858,12 +858,20 @@ namespace umbriel {
     if (m_softwareCursorLocked) {
       return false;
     }
-    const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(
-        &m_lastCursorPlane, now, needsCursorCapturePacing(), m_output->width, m_output->height
-    );
-    if (!damage.paced) {
+    // The snapshot advances on every sample, consumer or not: a client that
+    // starts recording later must diff from where the cursor is now, not from
+    // wherever it was when the last session ended.
+    umbriel_cursor_plane_state previous;
+    if (!umbriel_cursor_plane_advance(&m_lastCursorPlane, now, &previous)) {
       return false;
     }
+    // Past this point the transition is real, so the sweep over live capture
+    // sessions is worth its cost; on a stationary cursor it never runs.
+    if (!needsCursorCapturePacing()) {
+      return false;
+    }
+    const umbriel_cursor_plane_damage damage =
+        umbriel_cursor_plane_damage_for(&previous, &now, m_output->width, m_output->height);
     if (damage.has_leave) {
       wlr_scene_output_damage_box(m_sceneOutput, &damage.leave_box);
     }
@@ -873,8 +881,12 @@ namespace umbriel {
     if (damage.has_wake) {
       wlr_scene_output_damage_box(m_sceneOutput, &damage.wake_box);
     }
-    // Source wakeup: wlroots may have flagged only the destination.
-    wlr_output_schedule_frame(m_output);
+    if (wakeFrame) {
+      // A hidden cursor that moved lands no box at all, and nothing else has
+      // armed the commit a cursor-metadata client is blocked on. When a box did
+      // land, wlr_scene_output_damage_box already scheduled the frame.
+      wlr_output_schedule_frame(m_output);
+    }
     return true;
   }
 
@@ -895,6 +907,10 @@ namespace umbriel {
     }
     wlr_output_lock_software_cursors(m_output, lockSoftwareCursor);
     m_softwareCursorLocked = lockSoftwareCursor;
+    // Locking drops the plane and unlocking brings it back wherever the cursor
+    // happens to be; neither is a transition a recorder should see, so discard
+    // the snapshot and let the next sample re-seed it.
+    m_lastCursorPlane = {};
     wlr_output_schedule_frame(m_output);
   }
 
@@ -1129,7 +1145,7 @@ namespace umbriel {
   void Output::onNeedsFrame(wl_listener* listener, void* /*data*/) {
     Output* self;
     self = wl_container_of(listener, self, m_needsFrame);
-    self->paceCursorPlaneTransition();
+    self->paceCursorPlaneTransition(true);
   }
 
   void Output::onRequestState(wl_listener* listener, void* data) {
@@ -1395,10 +1411,12 @@ namespace umbriel {
     // "nothing to render" path, they never commit again -> damage stays clean -> wlr_scene_output_needs_frame returns
     // false forever -> compositor parks in epoll_wait. (Reproducible with any mailbox/FIFO Vulkan game.)
     bool commitFailed = false;
-    // Cursor-plane backstop for wlroots-internal transitions (Xcursor timer,
-    // client surface commit, output-state changes). Synchronous sweeps after
-    // owned changes (§2) wake idle sources immediately; this catches the rest.
-    paceCursorPlaneTransition();
+    // Resync for plane changes that never reached us through needs_frame: an
+    // Xcursor timer tick, a client cursor surface commit, an output-state
+    // change. The damage lands before the needs_frame test below, so the frame
+    // already running commits it; no wake of its own is armed from inside the
+    // callback.
+    paceCursorPlaneTransition(false);
     const bool sceneChanged = wlr_scene_output_needs_frame(m_sceneOutput);
     if (sceneChanged) {
       // Scene motion under a stationary cursor must reach the client before its next press.

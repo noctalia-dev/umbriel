@@ -566,6 +566,9 @@ namespace umbriel {
     };
     struct ImageCopySessionWatch {
       Server* server = nullptr;
+      // Owned by wlroots and freed in session_destroy; the session's own destroy
+      // listener erases this watch before that happens, so the pointer stays
+      // valid for as long as the watch is in m_imageCopySessions.
       wlr_ext_image_copy_capture_session_v1* session = nullptr;
       // Identity only; never dereferenced, so output teardown order cannot dangle.
       wlr_output* output = nullptr;

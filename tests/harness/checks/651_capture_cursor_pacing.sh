@@ -48,6 +48,7 @@ wait_frames "$left_log" $((left + 1))
 
 # A crossing: 2000 is off the left output (1280 wide), 120 is inside the right one.
 "$UMBRIEL" plane-cursor "HEADLESS-1 2000 100 1 2" > /dev/null
+"$UMBRIEL" settle
 "$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 2" > /dev/null
 wait_frames "$left_log" $((left + 2))
 wait_frames "$right_log" $((right + 1))

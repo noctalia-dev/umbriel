@@ -9,7 +9,7 @@ namespace {
 
   umbriel_cursor_plane_state cursorAt(double x, double y, std::uintptr_t image = 1) {
     return umbriel_cursor_plane_state{
-        .valid = true,
+        .valid = false,
         .enabled = true,
         .visible = true,
         .x = x,
@@ -22,13 +22,13 @@ namespace {
     };
   }
 
-  umbriel_cursor_plane_state hiddenCursor() {
+  umbriel_cursor_plane_state hiddenCursor(double x = 0.0, double y = 0.0) {
     return umbriel_cursor_plane_state{
-        .valid = true,
+        .valid = false,
         .enabled = true,
         .visible = false,
-        .x = 0.0,
-        .y = 0.0,
+        .x = x,
+        .y = y,
         .width = 24,
         .height = 24,
         .hotspot_x = 0,
@@ -36,63 +36,100 @@ namespace {
         .image = nullptr,
     };
   }
+
+  // Mirrors Output::paceCursorPlaneTransition: advance the snapshot, then ask
+  // the boxes, with the consumer gate in between.
+  struct Paced {
+    bool paced = false;
+    umbriel_cursor_plane_damage damage{};
+  };
+
+  Paced pace(umbriel_cursor_plane_state* state, umbriel_cursor_plane_state now, bool captureWantsPacing) {
+    umbriel_cursor_plane_state previous;
+    if (!umbriel_cursor_plane_advance(state, now, &previous) || !captureWantsPacing) {
+      return {};
+    }
+    return {.paced = true, .damage = umbriel_cursor_plane_damage_for(&previous, &now, 800, 600)};
+  }
 } // namespace
 
 UMBRIEL_TEST(firstSampleOnlySeedsTheState) {
   umbriel_cursor_plane_state state{};
-  CHECK(!umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), true, 800, 600).paced);
+  CHECK(!pace(&state, cursorAt(10.0, 10.0), true).paced);
   CHECK(state.valid);
-}
-
-UMBRIEL_TEST(movingDamagesTheNewBox) {
-  umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), true, 800, 600);
-  const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(&state, cursorAt(200.0, 150.0), true, 800, 600);
-  CHECK(damage.paced);
-  CHECK(damage.has_enter);
-  CHECK(damage.enter_box.x == 200 && damage.enter_box.y == 150);
-}
-
-UMBRIEL_TEST(leavingDamagesTheExitedBoxAndWakesInBounds) {
-  umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), true, 800, 600);
-  const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(&state, hiddenCursor(), true, 800, 600);
-  CHECK(damage.paced);
-  CHECK(damage.has_leave);
-  CHECK(!damage.has_enter);
-  CHECK(damage.leave_box.x == 10.0 && damage.leave_box.y == 10.0);
-  CHECK(damage.has_wake);
-  CHECK(damage.wake_box.x >= 0 && damage.wake_box.x < 800);
-  CHECK(damage.wake_box.y >= 0 && damage.wake_box.y < 600);
-}
-
-UMBRIEL_TEST(aCursorOffTheOutputStillWakesInsideIt) {
-  umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(2000.0, 100.0), true, 800, 600);
-  const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(&state, hiddenCursor(), true, 800, 600);
-  CHECK(damage.has_wake);
-  CHECK(damage.wake_box.x == 799);
-}
-
-UMBRIEL_TEST(anImageSwapAtTheSamePlaceIsATransition) {
-  umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0, 1), true, 800, 600);
-  const umbriel_cursor_plane_damage damage = umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0, 2), true, 800, 600);
-  CHECK(damage.paced);
-  CHECK(damage.has_enter);
 }
 
 UMBRIEL_TEST(aStationaryCursorIsNeverDamaged) {
   umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), true, 800, 600);
-  CHECK(!umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), true, 800, 600).paced);
+  pace(&state, cursorAt(10.0, 10.0), true);
+  CHECK(!pace(&state, cursorAt(10.0, 10.0), true).paced);
+}
+
+UMBRIEL_TEST(movingDamagesTheNewBox) {
+  umbriel_cursor_plane_state state{};
+  pace(&state, cursorAt(10.0, 10.0), true);
+  const Paced paced = pace(&state, cursorAt(200.0, 150.0), true);
+  CHECK(paced.paced);
+  CHECK(paced.damage.has_enter);
+  CHECK(paced.damage.enter_box.x == 200 && paced.damage.enter_box.y == 150);
+}
+
+UMBRIEL_TEST(leavingDamagesTheExitedBoxAndWakesInBounds) {
+  umbriel_cursor_plane_state state{};
+  pace(&state, cursorAt(10.0, 10.0), true);
+  const Paced paced = pace(&state, hiddenCursor(), true);
+  CHECK(paced.paced);
+  CHECK(paced.damage.has_leave);
+  CHECK(!paced.damage.has_enter);
+  CHECK(paced.damage.leave_box.x == 10.0 && paced.damage.leave_box.y == 10.0);
+  CHECK(paced.damage.has_wake);
+  CHECK(paced.damage.wake_box.x >= 0 && paced.damage.wake_box.x < 800);
+  CHECK(paced.damage.wake_box.y >= 0 && paced.damage.wake_box.y < 600);
+}
+
+UMBRIEL_TEST(aCursorOffTheOutputStillWakesInsideIt) {
+  umbriel_cursor_plane_state state{};
+  pace(&state, cursorAt(2000.0, 100.0), true);
+  const Paced paced = pace(&state, hiddenCursor(), true);
+  CHECK(paced.damage.has_wake);
+  CHECK(paced.damage.wake_box.x == 799);
+}
+
+UMBRIEL_TEST(anImageSwapAtTheSamePlaceIsATransition) {
+  umbriel_cursor_plane_state state{};
+  pace(&state, cursorAt(10.0, 10.0, 1), true);
+  const Paced paced = pace(&state, cursorAt(10.0, 10.0, 2), true);
+  CHECK(paced.paced);
+  CHECK(paced.damage.has_enter);
+}
+
+UMBRIEL_TEST(aHiddenCursorThatMovesReportsNoBoxes) {
+  umbriel_cursor_plane_state state{};
+  pace(&state, hiddenCursor(10.0, 10.0), true);
+  const Paced paced = pace(&state, hiddenCursor(400.0, 300.0), true);
+  CHECK(paced.paced);
+  CHECK(!paced.damage.has_leave);
+  CHECK(!paced.damage.has_enter);
+  CHECK(!paced.damage.has_wake);
 }
 
 UMBRIEL_TEST(noConsumerReportsNothingButKeepsTheSampleFresh) {
   umbriel_cursor_plane_state state{};
-  umbriel_pace_cursor_plane(&state, cursorAt(10.0, 10.0), false, 800, 600);
-  CHECK(!umbriel_pace_cursor_plane(&state, hiddenCursor(), false, 800, 600).paced);
+  CHECK(!pace(&state, cursorAt(10.0, 10.0), false).paced);
+  CHECK(!pace(&state, hiddenCursor(10.0, 10.0), false).paced);
   CHECK(!state.visible);
+  // The next real transition diffs from the hidden sample, not the first one.
+  CHECK(pace(&state, cursorAt(400.0, 300.0), true).paced);
+}
+
+UMBRIEL_TEST(advanceHandsBackTheReplacedSample) {
+  umbriel_cursor_plane_state state{};
+  umbriel_cursor_plane_state previous{};
+  CHECK(!umbriel_cursor_plane_advance(&state, cursorAt(10.0, 10.0), &previous));
+  CHECK(!previous.valid);
+  CHECK(umbriel_cursor_plane_advance(&state, cursorAt(400.0, 300.0), &previous));
+  CHECK(previous.valid);
+  CHECK(previous.x == 10.0 && previous.y == 10.0);
 }
 
 int main() { return RUN_TESTS(); }
