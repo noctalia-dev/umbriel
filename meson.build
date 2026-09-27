@@ -367,6 +367,34 @@ fractional_scale_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+ext_image_capture_source_client_h = custom_target(
+  'ext-image-capture-source-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-image-capture-source/ext-image-capture-source-v1.xml',
+  output: 'ext-image-capture-source-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+
+ext_image_capture_source_client_c = custom_target(
+  'ext-image-capture-source-v1-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-image-capture-source/ext-image-capture-source-v1.xml',
+  output: 'ext-image-capture-source-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+ext_image_copy_capture_client_h = custom_target(
+  'ext-image-copy-capture-v1-client-protocol.h',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml',
+  output: 'ext-image-copy-capture-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+
+ext_image_copy_capture_client_c = custom_target(
+  'ext-image-copy-capture-v1-client-protocol.c',
+  input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml',
+  output: 'ext-image-copy-capture-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 idle_inhibit_client_h = custom_target(
   'idle-inhibit-unstable-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable/idle-inhibit/idle-inhibit-unstable-v1.xml',

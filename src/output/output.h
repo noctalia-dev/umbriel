@@ -103,6 +103,23 @@ namespace umbriel {
     // the frame so an idle source actually wakes. Returns true when it
     // paced. Single-threaded, non-blocking, bounded per output.
     bool paceCursorPlaneTransition();
+#ifdef UMBRIEL_TEST_IPC
+    // Harness-only: synthesize the plane sample a headless backend cannot produce (fixed 24x24, no hotspot).
+    void setSyntheticPlaneCursorForTest(double x, double y, bool visible, std::uintptr_t image) {
+      m_syntheticPlaneCursor = umbriel_cursor_plane_state{
+          .valid = true,
+          .enabled = true,
+          .visible = visible,
+          .x = x,
+          .y = y,
+          .width = 24,
+          .height = 24,
+          .hotspot_x = 0,
+          .hotspot_y = 0,
+          .image = reinterpret_cast<const void*>(image),
+      };
+    }
+#endif
     // Attach-render locks held by capture consumers, excluding our own animation lock.
     [[nodiscard]] int externalRenderLockCount() const;
     // True only for sessions needing separate cursor metadata
@@ -172,6 +189,9 @@ namespace umbriel {
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
     umbriel_cursor_plane_state m_lastCursorPlane{};
+#ifdef UMBRIEL_TEST_IPC
+    std::optional<umbriel_cursor_plane_state> m_syntheticPlaneCursor;
+#endif
     // wlroots notifies compositors through needs_frame after every plane mutation; frame is not scheduled for those.
     wl_listener m_needsFrame{};
     static void onNeedsFrame(wl_listener* listener, void* data);

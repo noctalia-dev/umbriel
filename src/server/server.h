@@ -214,6 +214,7 @@ namespace umbriel {
     void resumeAnimationClock();
     [[nodiscard]] bool animationClockFrozen() const { return m_frozenAnimationClockMsec.has_value(); }
     void emitRendererLostForTest();
+    [[nodiscard]] bool injectPlaneCursor(std::string_view spec, std::string* error);
 #endif
     [[nodiscard]] Ipc* ipc() const { return m_ipc.get(); }
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
@@ -575,7 +576,7 @@ namespace umbriel {
     wlr_export_dmabuf_manager_v1* m_exportDmabufManager = nullptr;
     wlr_ext_image_copy_capture_manager_v1* m_copyCaptureManager = nullptr;
     wl_listener m_copyNewSession{};
-    std::vector<std::unique_ptr<CopyCaptureTrack>> m_copyCaptureSessions{};
+    std::vector<std::unique_ptr<CopyCaptureTrack>> m_copyCaptureSessions;
     static void onCopyNewSession(wl_listener* listener, void* data);
     static void onCopySessionDestroy(wl_listener* listener, void* data);
     wlr_tearing_control_manager_v1* m_tearingControlManager = nullptr;

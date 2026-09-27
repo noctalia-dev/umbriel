@@ -46,6 +46,7 @@ extern "C" {
 #include <fcntl.h>
 #include <optional>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -585,7 +586,8 @@ namespace umbriel {
   } // namespace
 
   void Server::onCopyNewSession(wl_listener* listener, void* data) {
-    Server* self = wl_container_of(listener, self, m_copyNewSession);
+    Server* self;
+    self = wl_container_of(listener, self, m_copyNewSession);
     auto* session = static_cast<wlr_ext_image_copy_capture_session_v1*>(data);
     if (session == nullptr) {
       return;
@@ -624,7 +626,8 @@ namespace umbriel {
   }
 
   void Server::onCopySessionDestroy(wl_listener* listener, void* /*data*/) {
-    CopyCaptureTrack* track = wl_container_of(listener, track, destroy);
+    CopyCaptureTrack* track;
+    track = wl_container_of(listener, track, destroy);
     Server* self = track->owner;
     wl_list_remove(&track->destroy.link);
     std::erase_if(self->m_copyCaptureSessions, [track](const std::unique_ptr<CopyCaptureTrack>& entry) {
@@ -1424,6 +1427,31 @@ namespace umbriel {
   }
 
   void Server::emitRendererLostForTest() { wl_signal_emit_mutable(&m_renderer->events.lost, nullptr); }
+
+  bool Server::injectPlaneCursor(std::string_view spec, std::string* error) {
+    std::istringstream stream{std::string(spec)};
+    std::string name;
+    double x = 0.0;
+    double y = 0.0;
+    int visible = 0;
+    std::uint64_t image = 0;
+    if (!(stream >> name >> x >> y >> visible >> image)) {
+      *error = "plane-cursor needs '<output> <x> <y> <visible> <image>'";
+      return false;
+    }
+    for (const auto& output : m_outputs) {
+      if (name != output->wlr()->name) {
+        continue;
+      }
+      output->setSyntheticPlaneCursorForTest(x, y, visible != 0, static_cast<std::uintptr_t>(image));
+      // A real plane mutation notifies compositors through needs_frame; emit it so the production onNeedsFrame
+      // listener runs instead of a test-only shortcut.
+      wl_signal_emit_mutable(&output->wlr()->events.needs_frame, nullptr);
+      return true;
+    }
+    *error = "no such output: " + name;
+    return false;
+  }
 #endif
 
   bool Server::settled() const {

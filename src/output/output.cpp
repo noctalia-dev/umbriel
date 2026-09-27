@@ -675,6 +675,11 @@ namespace umbriel {
         .hotspot_y = plane != nullptr ? plane->hotspot_y : 0,
         .image = plane != nullptr ? m_output->cursor_front_buffer : nullptr,
     };
+#ifdef UMBRIEL_TEST_IPC
+    if (m_syntheticPlaneCursor.has_value()) {
+      now = *m_syntheticPlaneCursor;
+    }
+#endif
     if (m_softwareCursorLocked) {
       return false;
     }

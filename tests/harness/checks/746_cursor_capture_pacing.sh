@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # harness: outputs=2
+# Scope of the capture-pacing fix: grim is a cursor-excluding screencopy consumer, so these assertions pin that a
+# hardware-cursor-only move, a crossing between two outputs, and a stationary cursor never make an output that does not
+# want cursor metadata produce frames. The delivered-frame case for a cursor-metadata consumer needs a plane transition
+# a headless backend cannot produce and is covered by the running-session matrix.
 set -euo pipefail
 rc=0
 shot() { grim -o "$1" "$2"; }

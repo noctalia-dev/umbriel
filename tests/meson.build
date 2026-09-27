@@ -323,8 +323,23 @@ pixel_probe = executable(
   override_options: ['optimization=2'],
 )
 
+# Harness helper that captures one output through ext-image-copy-capture and reports every delivered frame;
+# --cursor also asks for cursor metadata, which is what the compositor gates capture pacing on.
+capture_client = executable(
+  'capture-client',
+  [
+    'harness/clients/capture_client.cpp',
+    ext_image_capture_source_client_h,
+    ext_image_capture_source_client_c,
+    ext_image_copy_capture_client_h,
+    ext_image_copy_capture_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 harness_client_targets = [
   pixel_probe,
+  capture_client,
   pointer_client,
   keyboard_keymap_client,
   input_method_client,

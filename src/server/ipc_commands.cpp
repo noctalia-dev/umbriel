@@ -645,6 +645,15 @@ namespace umbriel {
     server.emitRendererLostForTest();
     return nlohmann::json{{"ok", nullptr}};
   }
+
+  nlohmann::json IpcCommands::planeCursor(Server& server, std::string_view arg) {
+    std::string error;
+    if (!server.injectPlaneCursor(arg, &error)) {
+      return nlohmann::json{{"err", error}};
+    }
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
 #endif
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -670,6 +679,8 @@ namespace umbriel {
        &IpcCommands::clockResume, nullptr},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", false, &IpcCommands::rendererRecover,
        nullptr},
+      {"plane-cursor", "<output> <x> <y> <visible> <image>", "synthesize a hardware cursor plane sample (harness only)",
+       true, &IpcCommands::planeCursor, nullptr},
 #endif
   };
 

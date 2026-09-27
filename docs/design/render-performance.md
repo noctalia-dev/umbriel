@@ -86,14 +86,43 @@ cardinality.
 ## Per-frame work outside the render pass
 ### Hardware-cursor capture pacing
 
-With `hardware_cursor=true` the cursor lives on the plane, excluded from the
-render pass: cursor-only moves set `needs_frame` with empty damage, so
-commit-fed capture keeps stale cursor metadata. `paceCursorPlaneTransition()`
-damages old box ∪ new box on plane change with cursor-metadata capture
-active, plus a `1x1` wakeup when the old box clipped away. Otherwise idle.
-Covered by `capture_pacing` + `746_cursor_capture_pacing.sh`.
+With `hardware_cursor = true` the cursor lives on the output's cursor plane, so a
+cursor-only move updates KMS state without producing scene damage:
+`wlr_output_update_needs_frame` notifies compositors, but no `frame` is scheduled
+and the plane is not part of the scene. Capture consumers are fed from output
+commits — the ext-image-copy-capture main and cursor sources both listen to
+`wlr_output.events.commit` — and a portal attaches the cursor state it receives
+to the next delivered main frame, so an otherwise idle output records a frozen
+or skipping cursor.
 
-`Output::handleFrame` (`output.cpp:925`) runs before any damage test:
+`Output::onNeedsFrame` (on `wlr_output.events.needs_frame`, the notification
+every plane mutation emits) and the frame path resync compare a plane sample —
+visibility, enabled state, position, dimensions, hotspot, cursor-buffer
+identity — against the last one delivered. A transition damages the old and new
+cursor boxes, clipped to the output: the old box is what delivers a leave, and a
+1x1 in-bounds wakeup covers the case where the cursor was already off the output.
+The new box covers an enter, a move, a show, and any image, hotspot or size
+change.
+
+Only consumers that asked for separate cursor metadata are paced: live
+ext-image-copy-capture sessions are tracked from the manager's `new_session`
+event, and an output is paced when a session's client also created a cursor
+session. Screencopy, export-dmabuf and pixel-only ext-image-copy-capture never
+register or are filtered out, and the software-cursor path is inert because
+locking software cursors makes `hardware_cursor` `NULL`.
+
+Coverage: `tests/unit/cursor_plane_pace.cpp` pins the transition decisions,
+`umbrielfx`'s `capture-pacing` pins the damage helper including a transformed
+output, `746_cursor_capture_pacing.sh` pins that a cursor-excluding screencopy
+stays idle, and `651`, `652` and `653` drive the production listener through the
+harness-only `plane-cursor` command (a headless backend has no DRM plane):
+delivered frames for a move, both sides of a crossing, a hide and an image swap,
+none for a pixel-only consumer, and none while software cursors are locked.
+Cursor metadata payloads, scaled and transformed outputs, and animated or
+client-updated cursors are asserted in the running-session matrix recorded on
+the pull request.
+
+`Output::handleFrame` (`output.cpp:1056`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every
 view, and `WineColorManager::applySurfaceDescriptions`, which walks every
 `wlr_scene_buffer` in the scene with a map lookup per buffer
