@@ -72,12 +72,41 @@ The window remembers where and how it would otherwise have opened.
 `default_output`, `default_workspace`, and `default_floating` control that
 restore destination.
 
+## Launching an application on demand
+
+A named scratchpad can set `spawn_when_empty` to a shell command. Toggling the
+scratchpad while it holds no windows runs that command instead of doing
+nothing:
+
+```toml
+[[scratchpad]]
+name = "monitor"
+spawn_when_empty = "foot btop"
+
+[[window_rule]]
+match.app_id = "^btop$"
+default_scratchpad = "monitor"
+```
+
+A matching `default_scratchpad` window rule assigns the window to the
+scratchpad. When it arrives within 10 seconds of the launch, Umbriel shows the
+scratchpad on the invoking output and gives it focus.
+
+Toggling while the launch is still pending hides it instead: the window still
+joins the scratchpad when it appears, but stays hidden until the next toggle.
+If no window appears within 10 seconds, the launch expires and the next toggle
+runs the command again. Once the scratchpad holds a window, toggling shows and
+hides it and never runs the command again.
+
+The implicit `default` scratchpad has no definition and therefore no
+`spawn_when_empty`.
+
 ## Actions
 
 | Action | What it does |
 | --- | --- |
 | `window-move-to-scratchpad:[<scratchpad>]` | Store the focused workspace window. |
-| `scratchpad-toggle:[<scratchpad>]` | Show or hide the selected scratchpad. |
+| `scratchpad-toggle:[<scratchpad>]` | Show or hide the selected scratchpad. An empty scratchpad runs its `spawn_when_empty` command. |
 | `window-restore-from-scratchpad:[<scratchpad>]` | Restore one remembered window. |
 | `window-toggle-scratchpad:[<scratchpad>]` | Store the focused window or restore it when already selected. |
 | `scratchpad-focus-next:[<scratchpad>]` | Focus the next visible member. |

@@ -3,6 +3,7 @@
 #include "core/animation.h"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <map>
 #include <optional>
@@ -84,10 +85,19 @@ namespace umbriel {
     size_t restoreDisplaced(Output* fallback);
 
   private:
+    struct PendingSpawn {
+      Output* output = nullptr;
+      std::chrono::steady_clock::time_point expiresAt;
+      bool shown = true;
+
+      [[nodiscard]] bool live() const { return std::chrono::steady_clock::now() < expiresAt; }
+    };
+
     struct Scratchpad {
       Output* output = nullptr;
       bool visible = false;
       View* lastFocused = nullptr;
+      std::optional<PendingSpawn> pendingSpawn;
       // Set only while an output disappearance has temporarily parked this
       // scratchpad elsewhere.
       std::string displacedOutput;

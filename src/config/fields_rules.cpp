@@ -37,6 +37,7 @@ namespace umbriel {
                 return false;
               }
           ),
+          registry::text("spawn_when_empty", &ScratchpadConfig::spawnWhenEmpty),
       };
       return fields;
     }

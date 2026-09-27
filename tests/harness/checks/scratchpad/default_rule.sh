@@ -57,7 +57,34 @@ wait_for_geometry() {
   return 1
 }
 
-cat >> "$UMBRIEL_CONFIG" <<'EOF'
+wait_for_file() {
+  for _ in $(seq 80); do
+    [[ -e $1 ]] && return 0
+    sleep 0.1
+  done
+  echo "expected $1 to exist"
+  return 1
+}
+
+wait_for_window() {
+  local title=$1 scratchpad=$2 active=$3 state=
+  for _ in $(seq 80); do
+    state=$(windows)
+    if jq -e --arg title "$title" --arg scratchpad "$scratchpad" --argjson active "$active" '
+      any(.[];
+        .title == $title
+        and .scratchpad == $scratchpad
+        and .active == $active)
+    ' <<< "$state" > /dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "expected '$title' in scratchpad '$scratchpad' with active=$active: $state"
+  return 1
+}
+
+cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [animation]
 enabled = false
@@ -70,12 +97,28 @@ fullscreen = false
 [[scratchpad]]
 name = "term"
 
+[[scratchpad]]
+name = "spawned"
+spawn_when_empty = "sh -c '(\"$CLIENT\" scratchpad-spawned 480 300 &)' > '$UMBRIEL_RUNTIME_DIR/scratchpad-spawned.log' 2>&1"
+
+[[scratchpad]]
+name = "late"
+spawn_when_empty = "touch '$UMBRIEL_RUNTIME_DIR/late-started'; sleep 0.5; exec '$CLIENT' scratchpad-late 480 300 > '$UMBRIEL_RUNTIME_DIR/scratchpad-late.log' 2>&1"
+
 [[window_rule]]
 match.app_id = "^scratchpad-terminal$"
 default_scratchpad = "term"
 default_floating = true
 default_floating_size = { width = 0.6, height = 0.5 }
 default_position = { x = 0, y = 8, anchor = "top" }
+
+[[window_rule]]
+match.title = "^scratchpad-spawned$"
+default_scratchpad = "spawned"
+
+[[window_rule]]
+match.title = "^scratchpad-late$"
+default_scratchpad = "late"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -87,4 +130,26 @@ wait_for_geometry 400 8 480 300
 wait_for_state true
 wait_for_geometry 400 8 480 300
 
-echo "default scratchpad rule preserved its opening floating position"
+"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+wait_for_window scratchpad-spawned spawned true
+
+"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+wait_for_window scratchpad-spawned spawned false
+
+"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+wait_for_window scratchpad-spawned spawned true
+if [[ $(windows | jq '[.[] | select(.title == "scratchpad-spawned")] | length') != 1 ]]; then
+  echo "toggling a populated scratchpad ran spawn_when_empty again: $(windows)"
+  exit 1
+fi
+
+"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+wait_for_file "$UMBRIEL_RUNTIME_DIR/late-started"
+"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+wait_for_window scratchpad-late late false
+
+"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+wait_for_window scratchpad-late late true
+
+echo "default scratchpad rule and spawn_when_empty verified"
+

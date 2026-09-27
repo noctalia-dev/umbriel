@@ -99,6 +99,7 @@ namespace umbriel {
   // implicit scratchpad named "default" instead.
   struct ScratchpadConfig {
     std::string name;
+    std::string spawnWhenEmpty;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
