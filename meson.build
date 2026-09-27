@@ -588,6 +588,7 @@ core_sources = files(
   'src/layout/drop_target.cpp',
   'src/server/wine_color_manager.cpp',
   'src/server/backend_manager.cpp',
+  'src/server/allocator.cpp',
   'src/server/server.cpp',
   'src/server/server_events.cpp',
   'src/server/server_keybinds.cpp',

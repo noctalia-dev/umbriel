@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'ci/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  flake:
+    name: Flake Check & Nix Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Check flake outputs and evaluations
+        run: nix flake check
+
+      - name: Check Nix code formatting
+        run: nix fmt -- --ci
+
+  style:
+    name: Code Formatting & Workflow Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Check C++ code formatting
+        run: |
+          nix develop --command just format
+          git diff --exit-code
+
+      - name: Run workflow regressions
+        run: nix develop --command just test-workflows
+
+  build:
+    name: Package Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Build Nix package
+        run: nix build .#default --print-build-logs
+
+      - name: Verify build artifact
+        run: ./result/bin/umbriel --version
+
+  test:
+    name: Unit & Harness Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Set up compiler cache
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Set up graphics drivers for Nix
+        run: |
+          MESA_DIR="$(nix build --inputs-from . nixpkgs#mesa --no-link --print-out-paths)"
+          sudo mkdir -p /run/opengl-driver
+          sudo ln -sfn "$MESA_DIR"/* /run/opengl-driver/
+          test -f /run/opengl-driver/share/glvnd/egl_vendor.d/50_mesa.json
+          sudo modprobe udmabuf || true
+          sudo modprobe vkms || true
+          if [ -e /dev/udmabuf ]; then
+            sudo chmod 666 /dev/udmabuf
+          fi
+          if [ -d /dev/dri ]; then
+            sudo chmod -R 666 /dev/dri/* || true
+          fi
+          ls -la /dev/udmabuf || true
+          ls -la /dev/dri || true
+
+      - name: Run unit tests
+        run: |
+          nix shell --inputs-from . nixpkgs#ccache --command nix develop --command bash -c "
+            export NIX_HARDENING_ENABLE='format pic relro stackprotector'
+            export CC='ccache gcc'
+            export CXX='ccache g++'
+            export CCACHE_DIR=\"\$HOME/.cache/ccache\"
+            just test
+          "
+
+      - name: Run headless harness checks
+        run: |
+          sudo modprobe udmabuf || true
+          if [ -e /dev/udmabuf ]; then
+            sudo chmod 666 /dev/udmabuf
+          fi
+          nix shell --inputs-from . nixpkgs#ccache --command nix develop --command bash -c "
+            export NIX_HARDENING_ENABLE='format pic relro stackprotector'
+            export WLR_RENDERER_FORCE_SOFTWARE=1
+            export LIBGL_ALWAYS_SOFTWARE=1
+            export __EGL_VENDOR_LIBRARY_FILENAMES='/run/opengl-driver/share/glvnd/egl_vendor.d/50_mesa.json'
+            export LIBGL_DRIVERS_PATH='/run/opengl-driver/lib/dri'
+            export CC='ccache gcc'
+            export CXX='ccache g++'
+            export CCACHE_DIR=\"\$HOME/.cache/ccache\"
+            just check
+          "
+
+      - name: Print compiler cache statistics
+        if: always()
+        run: |
+          nix shell --inputs-from . nixpkgs#ccache --command ccache -s || true
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4
+        with:
+          name: test-failure-logs
+          path: |
+            build-debug/meson-logs/
+            /tmp/umv.*
+          if-no-files-found: ignore
