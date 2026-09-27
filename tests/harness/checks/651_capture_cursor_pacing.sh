@@ -55,7 +55,7 @@ wait_frames "$right_log" $((right + 1))
 # Non-motion transitions on the same path: hide, then a stationary image swap.
 "$UMBRIEL" plane-cursor "HEADLESS-2 120 100 0 2" > /dev/null
 wait_frames "$right_log" $((right + 2))
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 0 3" > /dev/null
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3" > /dev/null
 wait_frames "$right_log" $((right + 3))
 
 echo "  ok   move, crossing (source and destination), hide, and image swap each delivered a frame"

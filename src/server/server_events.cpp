@@ -1094,7 +1094,7 @@ namespace umbriel {
     Server* server = watch->server;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
-      return  entry.get() == watch;
+      return entry.get() == watch;
     });
     for (const auto& output : server->m_outputs) {
       output->scheduleEffectCaptureRelease();

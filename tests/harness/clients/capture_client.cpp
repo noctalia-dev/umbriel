@@ -190,7 +190,7 @@ namespace {
     } else if (iface == wl_seat_interface.name) {
       auto* seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
       wl_seat_add_listener(seat, &kSeatListener, nullptr);
-    } else if (wl_output_interface.name) {
+    } else if (iface == wl_output_interface.name) {
       // v4 for the name event, so a two-output check can pick its own output.
       auto* output =
           static_cast<wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4U)));

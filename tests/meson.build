@@ -343,6 +343,7 @@ capture_client = executable(
     ext_image_capture_source_client_c,
     ext_image_copy_capture_client_h,
     ext_image_copy_capture_client_c,
+    ext_foreign_toplevel_list_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

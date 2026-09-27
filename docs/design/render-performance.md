@@ -31,8 +31,8 @@ The fork adds three conditions upstream does not have:
   composition even when nothing overlaps the node.
 
 Umbriel holds `wlr_output_lock_attach_render` while an output animates
-([`output.cpp:1265-1268`](../../src/output/output.cpp)) and vetoes tearing for
-the same frames (`:1308-1309`). Persistent effects trigger neither.
+([`output.cpp:1330-1333`](../../src/output/output.cpp)) and vetoes tearing for
+the same frames (`:1372-1374`). Persistent effects trigger neither.
 
 `direct_scanout = false` on an output, or `WLR_SCENE_DISABLE_DIRECT_SCANOUT=1`
 process-wide, forces composition. Both are documented in the
@@ -129,14 +129,14 @@ Cursor metadata payloads, scaled and transformed outputs, and animated or
 client-updated cursors are asserted in the running-session matrix recorded on
 the pull request.
 
-`Output::handleFrame` (`output.cpp:1204`) runs before any damage test:
+`Output::handleFrame` (`output.cpp:1269`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every
 view, and `WineColorManager::applySurfaceDescriptions`, which walks every
 `wlr_scene_buffer` in the scene with a map lookup per buffer
 ([`wine_color_manager.cpp:1061-1100`](../../src/server/wine_color_manager.cpp)).
 
 `wlr_scene_output_send_frame_done` at the end of that function is unconditional
-and must stay so (`output.cpp:1474`). Mailbox and FIFO clients block on
+and must stay so (`output.cpp:1543`). Mailbox and FIFO clients block on
 `wl_surface.frame`, so skipping it on the nothing-to-render path stalls them
 permanently.
 
