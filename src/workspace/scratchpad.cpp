@@ -800,11 +800,9 @@ namespace umbriel {
       if (auto& pending = scratchpad->pendingSpawn; pending && pending->live()) {
         pending->shown = !pending->shown;
         pending->output = invokingOutput;
-        scratchpad->output = invokingOutput;
         return true;
       }
       m_server->spawn(definition->spawnWhenEmpty.c_str(), "scratchpad.spawn_when_empty", true);
-      scratchpad->output = invokingOutput;
       scratchpad->pendingSpawn = PendingSpawn{
           .output = invokingOutput,
           .expiresAt = std::chrono::steady_clock::now() + kSpawnTimeout,
