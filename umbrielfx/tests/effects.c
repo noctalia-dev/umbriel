@@ -1343,17 +1343,18 @@ static bool test_capture_policy(struct fixture *fixture) {
 		uint8_t display[4], captured[4];
 		// The swapchain buffer holds the display composition. Read it through its framebuffer: a texture import
 		// of the same buffer is exactly what the capture policy redirects.
-		ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
-		ok = ok && check(display[1] > 250 && display[2] < 5, "the display shows the window effect");
+		const bool shown = fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
+		ok &= shown && check(display[1] > 250 && display[2] < 5, "the display shows the window effect");
 		// A dmabuf import (what screencopy and image-copy do) resolves to the unfiltered capture.
 		struct wlr_texture *import = wlr_texture_from_buffer(fixture->renderer, state.buffer);
 		uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4];
-		ok &= check(import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
-			.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 }), "import reads");
-		if (ok) {
+		const bool imported = import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
+			.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 });
+		ok &= check(imported, "import reads");
+		if (imported) {
 			memcpy(captured, &pixels[(8 * TEST_WIDTH + 8) * 4], 4);
 		}
-		ok = ok && check(captured[2] > 250 && captured[1] < 5, "the capture sees the plain red window");
+		ok &= imported && check(captured[2] > 250 && captured[1] < 5, "the capture sees the plain red window");
 		wlr_texture_destroy(import);
 	}
 	wlr_output_state_finish(&state);
@@ -1369,10 +1370,11 @@ static bool test_capture_policy(struct fixture *fixture) {
 			"renders with a failed capture save");
 		if (ok) {
 			uint8_t display[4], captured[4];
-			ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
-			ok = ok && check(display[2] > 250 && display[1] < 5, "without a capture the display shows the plain window");
-			ok &= check(fixture_read_pixel(fixture, state.buffer, 8, 8, captured), "import reads");
-			ok = ok && check(captured[2] > 250 && captured[1] < 5, "without a capture the import sees the plain window");
+			const bool shown = fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
+			ok &= shown && check(display[2] > 250 && display[1] < 5, "without a capture the display shows the plain window");
+			const bool imported = fixture_read_pixel(fixture, state.buffer, 8, 8, captured);
+			ok &= check(imported, "import reads");
+			ok &= imported && check(captured[2] > 250 && captured[1] < 5, "without a capture the import sees the plain window");
 		}
 		wlr_output_state_finish(&state);
 	}
@@ -1386,9 +1388,10 @@ static bool test_capture_policy(struct fixture *fixture) {
 	if (state.buffer != NULL) {
 		struct wlr_texture *import = wlr_texture_from_buffer(fixture->renderer, state.buffer);
 		uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4];
-		ok &= check(import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
-			.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 }), "import reads");
-		ok = ok && check(pixels[(8 * TEST_WIDTH + 8) * 4 + 1] > 250, "with in_capture the capture includes the effect");
+		const bool imported = import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
+			.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 });
+		ok &= check(imported, "import reads");
+		ok &= imported && check(pixels[(8 * TEST_WIDTH + 8) * 4 + 1] > 250, "with in_capture the capture includes the effect");
 		wlr_texture_destroy(import);
 	}
 	wlr_output_state_finish(&state);
@@ -1437,26 +1440,27 @@ static bool test_capture_feedback(struct fixture *fixture) {
 			wlr_output_state_finish(&state);
 			break;
 		}
-		ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
+		const bool shown = fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
 		if (frame < 2) {
 			struct wlr_texture *import = wlr_texture_from_buffer(fixture->renderer, state.buffer);
-			ok &= check(import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
-				.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 }), "import reads");
-			if (ok) {
-				memcpy(captured, &pixels[(8 * TEST_WIDTH + 8) * 4], 4);
-			}
+			const bool imported = import != NULL && wlr_texture_read_pixels(import, &(struct wlr_texture_read_pixels_options) {
+				.data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4 });
+			ok &= check(imported, "import reads");
 			wlr_texture_destroy(import);
-			// Capture role: first frame red 0.25 (fallback to its own input), second 0.5; blue from the plain client.
-			ok = ok && check(captured[0] > 250, "the capture role sees the plain client");
-			// Green is the previous blue: the capture's own (blue client), never the display's (green client).
-			ok = ok && check(captured[1] > 250, "the capture role reads only its own history");
-			ok = ok && check(captured[2] > 52 + 64 * frame && captured[2] < 76 + 64 * frame,
-				"the capture role accumulates on its own");
+			if (imported) {
+				memcpy(captured, &pixels[(8 * TEST_WIDTH + 8) * 4], 4);
+				// Capture role: first frame red 0.25 (fallback to its own input), second 0.5; blue from the plain client.
+				ok &= check(captured[0] > 250, "the capture role sees the plain client");
+				// Green is the previous blue: the capture's own (blue client), never the display's (green client).
+				ok &= check(captured[1] > 250, "the capture role reads only its own history");
+				ok &= check(captured[2] > 52 + 64 * frame && captured[2] < 76 + 64 * frame,
+					"the capture role accumulates on its own");
+			}
 		}
 		// Display role: red grows by 0.25 per frame regardless of captures, and the window is green underneath (blue 0).
 		const int expected = 64 * (frame + 1);
-		ok = ok && check(display[2] > expected - 12 && display[2] < expected + 12, "the display role accumulates once per frame");
-		ok = ok && check(display[0] < 5, "the display role never sees the capture's plain client");
+		ok &= shown && check(display[2] > expected - 12 && display[2] < expected + 12, "the display role accumulates once per frame");
+		ok &= shown && check(display[0] < 5, "the display role never sees the capture's plain client");
 		if (frame == 1) {
 			held = wlr_buffer_lock(state.buffer);
 		}
@@ -1521,15 +1525,16 @@ static bool test_capture_policy_encoding(struct fixture *fixture) {
 			}
 			if (ok && frame == 0) {
 				uint8_t display[4], captured[4];
-				ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
-				ok = ok && check(display[1] > 250 && display[2] < 5, "the display shows the window effect");
-				ok &= check(fixture_read_pixel(fixture, state.buffer, 8, 8, captured), "import reads");
-				ok = ok && check(captured[2] > 250 && captured[1] < 5, "the capture sees the plain red window");
+				const bool shown = fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
+				ok &= shown && check(display[1] > 250 && display[2] < 5, "the display shows the window effect");
+				const bool imported = fixture_read_pixel(fixture, state.buffer, 8, 8, captured);
+				ok &= check(imported, "import reads");
+				ok &= imported && check(captured[2] > 250 && captured[1] < 5, "the capture sees the plain red window");
 			}
 			if (ok && frame == 0 && mode == 1) {
 				uint8_t display[4];
-				ok &= fixture_read_display_pixel(fixture, state.buffer, 14, 14, display);
-				ok = ok && check(display[0] > 122 && display[0] < 134 && display[2] < 5,
+				const bool shown = fixture_read_display_pixel(fixture, state.buffer, 14, 14, display);
+				ok &= shown && check(display[0] > 122 && display[0] < 134 && display[2] < 5,
 					"an in-place swap under a colour transform keeps the encoding");
 			}
 			wlr_output_state_finish(&state);
