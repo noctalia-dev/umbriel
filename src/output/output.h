@@ -223,6 +223,7 @@ namespace umbriel {
     TearingCommitRecovery m_tearingRecovery;
     int m_deferredWidth = 0;
     int m_deferredHeight = 0;
+    int m_deferredRefresh = 0;
 
     wl_listener m_frame{};
     wl_listener m_requestState{};

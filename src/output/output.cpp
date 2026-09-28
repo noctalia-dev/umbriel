@@ -1222,7 +1222,7 @@ namespace umbriel {
     flushDirty();
     if (m_hasDeferredMode) {
       m_hasDeferredMode = false;
-      applyMode(m_deferredWidth, m_deferredHeight);
+      applyMode(m_deferredWidth, m_deferredHeight, m_deferredRefresh);
     }
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1438,7 +1438,7 @@ namespace umbriel {
     // A request_state that arrived mid-commit is applied now that we're out of it.
     if (m_hasDeferredMode) {
       m_hasDeferredMode = false;
-      applyMode(m_deferredWidth, m_deferredHeight);
+      applyMode(m_deferredWidth, m_deferredHeight, m_deferredRefresh);
     }
 
     if (commitFailed && m_output->idle_frame != nullptr) {
@@ -1488,6 +1488,7 @@ namespace umbriel {
         && event->state->mode_type == WLR_OUTPUT_STATE_MODE_CUSTOM) {
       m_deferredWidth = event->state->custom_mode.width;
       m_deferredHeight = event->state->custom_mode.height;
+      m_deferredRefresh = event->state->custom_mode.refresh;
       m_hasDeferredMode = true;
       return;
     }
