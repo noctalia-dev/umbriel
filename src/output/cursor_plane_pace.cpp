@@ -30,8 +30,8 @@ namespace umbriel {
       result.leave_box = wlr_box{
           .x = static_cast<int32_t>(previous->x - previous->hotspot_x),
           .y = static_cast<int32_t>(previous->y - previous->hotspot_y),
-          .width = static_cast<uint32_t>(previous->width),
-          .height = static_cast<uint32_t>(previous->height),
+          .width = static_cast<int32_t>(previous->width),
+          .height = static_cast<int32_t>(previous->height),
       };
     }
 
@@ -40,8 +40,8 @@ namespace umbriel {
       result.enter_box = wlr_box{
           .x = static_cast<int32_t>(now->x - now->hotspot_x),
           .y = static_cast<int32_t>(now->y - now->hotspot_y),
-          .width = static_cast<uint32_t>(now->width),
-          .height = static_cast<uint32_t>(now->height),
+          .width = static_cast<int32_t>(now->width),
+          .height = static_cast<int32_t>(now->height),
       };
     }
 

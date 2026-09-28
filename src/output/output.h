@@ -212,10 +212,6 @@ namespace umbriel {
 #ifdef UMBRIEL_TEST_IPC
     std::optional<CursorPlaneState> m_syntheticPlaneCursor;
 #endif
-
-    // wlroots notifies compositors through needs_frame after every plane mutation; frame is not scheduled for those.
-    wl_listener m_needsFrame{};
-    static void onNeedsFrame(wl_listener* listener, void* data);
     bool m_desktopEnabled = true;
     bool m_dpmsOff = false;
     bool m_hdrGammaWarningLogged = false;

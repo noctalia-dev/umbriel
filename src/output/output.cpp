@@ -835,7 +835,7 @@ namespace umbriel {
   void Output::setSyntheticPlaneCursorForTest(
       double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
   ) {
-    m_syntheticPlaneCursor = umbriel_cursor_plane_state{
+    m_syntheticPlaneCursor = CursorPlaneState{
         .valid = false,
         .enabled = true,
         .visible = visible,

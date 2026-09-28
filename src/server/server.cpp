@@ -714,6 +714,7 @@ namespace umbriel {
     wl_signal_add(&m_backend->events.new_output, &m_newOutput);
     m_newInput.notify = onNewInput;
     wl_signal_add(&m_backend->events.new_input, &m_newInput);
+
     wlr_log(WLR_INFO, "mod key: %s (%s session)", m_nested ? "Alt" : "Super", m_nested ? "nested" : "native");
     kLog.info("mod key: {} ({} session)", m_nested ? "Alt" : "Super", m_nested ? "nested" : "native");
   }
@@ -1602,8 +1603,6 @@ namespace umbriel {
       output->setSyntheticPlaneCursorForTest(
           x, y, visible != 0, static_cast<std::uintptr_t>(image), width, height, hotspotX, hotspotY
       );
-      // A real plane mutation notifies compositors through needs_frame; emit it so the production onNeedsFrame
-      // listener runs instead of a test-only shortcut.
       wl_signal_emit_mutable(&output->wlr()->events.needs_frame, nullptr);
       return true;
     }

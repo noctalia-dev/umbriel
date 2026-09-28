@@ -114,7 +114,7 @@ two outputs with one cursor session paces both. Screencopy and export-dmabuf
 never register; pixel-only sessions register but fail the cursor-metadata
 probe. Software cursors drop the plane entirely.
 
-**Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1418`), before
+**Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1416`), before
 the `wlr_scene_output_needs_frame` test, so the frame already running commits
 the damage. wlroots clears `needs_frame` on commit, so every plane mutation
 since the last commit is diffed exactly once; the umbrielfx scene's own
@@ -127,14 +127,14 @@ output) through the synthetic `plane-cursor` command, since the harness has no
 DRM plane, plus `tests/unit/cursor_plane_pace.cpp` for the transition
 decisions. Real-plane behaviour needs a native session.
 
-`Output::handleFrame` (`output.cpp:1283`) runs before any damage test:
+`Output::handleFrame` (`output.cpp:1282`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every
 view, and `WineColorManager::applySurfaceDescriptions`, which walks every
 `wlr_scene_buffer` in the scene with a map lookup per buffer
 ([`wine_color_manager.cpp:1061-1100`](../../src/server/wine_color_manager.cpp)).
 
 `wlr_scene_output_send_frame_done` at the end of that function is unconditional
-and must stay so (`output.cpp:1523`). Mailbox and FIFO clients block on
+and must stay so (`output.cpp:1558`). Mailbox and FIFO clients block on
 `wl_surface.frame`, so skipping it on the nothing-to-render path stalls them
 permanently.
 
