@@ -105,31 +105,36 @@ output would record a frozen cursor.
 state, position, dimensions, hotspot, buffer identity — and on change damages
 both the old and the new box. The old box is the load-bearing part: a leave must
 come from the *previous* sample, because wlroots has already marked the cursor
-invisible by the time `needs_frame` fires. A 1x1 in-bounds wakeup covers a
-cursor that was already off the output, where the leave box is empty.
+invisible by the time the move is observed. A transition always lands at least
+one box, and the damage itself schedules the commit a cursor-metadata client is
+blocked on.
 
 **Gate:** `Server::hasCopyCaptureFor`, keyed on the client — one client recording
-two outputs paces both. Screencopy, export-dmabuf and pixel-only capture never
-register; software cursors drop the plane entirely.
+two outputs with one cursor session paces both. Screencopy and export-dmabuf
+never register; pixel-only sessions register but fail the cursor-metadata
+probe. Software cursors drop the plane entirely.
 
-**Triggers:** `onNeedsFrame` arms the wake, `handleFrame` (`output.cpp:1431`)
-resyncs without arming, since the running frame already picks the damage up.
-That second path is what catches Xcursor timer ticks and client cursor-surface
-commits, which raise no event. Checked by `render/capture_pacing_*`: plane
-transition (move, crossings both directions, hide, image, hotspot, size),
-pixel-only idle, software-cursor idle, source-only crossing, screencopy idle —
-all through the synthetic `plane-cursor` command, since the harness has no DRM
-plane — plus `tests/unit/cursor_plane_pace.cpp` for the transition decisions.
-Real-plane behaviour needs a native session.
+**Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1418`), before
+the `wlr_scene_output_needs_frame` test, so the frame already running commits
+the damage. wlroots clears `needs_frame` on commit, so every plane mutation
+since the last commit is diffed exactly once; the umbrielfx scene's own
+`needs_frame` listener is what scheduled that frame. Sampling at frame time —
+not inside `wlr_cursor_move` — also keeps position and cursor-buffer identity
+consistent, since wlroots raises the signal before it swaps
+`cursor_front_buffer`. Checked by `render/capture_pacing` (move, crossings both
+directions, hide, image, hotspot, size, and pixel-only idle on a gate-closed
+output) through the synthetic `plane-cursor` command, since the harness has no
+DRM plane, plus `tests/unit/cursor_plane_pace.cpp` for the transition
+decisions. Real-plane behaviour needs a native session.
 
-`Output::handleFrame` (`output.cpp:1269`) runs before any damage test:
+`Output::handleFrame` (`output.cpp:1283`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every
 view, and `WineColorManager::applySurfaceDescriptions`, which walks every
 `wlr_scene_buffer` in the scene with a map lookup per buffer
 ([`wine_color_manager.cpp:1061-1100`](../../src/server/wine_color_manager.cpp)).
 
 `wlr_scene_output_send_frame_done` at the end of that function is unconditional
-and must stay so (`output.cpp:1543`). Mailbox and FIFO clients block on
+and must stay so (`output.cpp:1523`). Mailbox and FIFO clients block on
 `wl_surface.frame`, so skipping it on the nothing-to-render path stalls them
 permanently.
 

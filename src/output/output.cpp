@@ -65,8 +65,6 @@ namespace umbriel {
 
     m_frame.notify = onFrame;
     wl_signal_add(&m_output->events.frame, &m_frame);
-    m_needsFrame.notify = onNeedsFrame;
-    wl_signal_add(&m_output->events.needs_frame, &m_needsFrame);
 
     m_requestState.notify = onRequestState;
     wl_signal_add(&m_output->events.request_state, &m_requestState);
@@ -852,12 +850,12 @@ namespace umbriel {
   }
 #endif
 
-  bool Output::paceCursorPlaneTransition(bool wakeFrame) {
+  bool Output::paceCursorPlaneTransition() {
     if (m_output == nullptr || m_sceneOutput == nullptr) {
       return false;
     }
     const wlr_output_cursor* plane = m_output->hardware_cursor;
-    umbriel_cursor_plane_state now{
+    CursorPlaneState now{
         .valid = false,
         .enabled = plane != nullptr && plane->enabled,
         .visible = plane != nullptr && plane->visible,
@@ -874,14 +872,11 @@ namespace umbriel {
       now = *m_syntheticPlaneCursor;
     }
 #endif
-    if (m_softwareCursorLocked) {
-      return false;
-    }
     // The snapshot advances on every sample, consumer or not: a client that
     // starts recording later must diff from where the cursor is now, not from
     // wherever it was when the last session ended.
-    umbriel_cursor_plane_state previous;
-    if (!umbriel_cursor_plane_advance(&m_lastCursorPlane, now, &previous)) {
+    CursorPlaneState previous;
+    if (!cursorPlaneAdvance(&m_lastCursorPlane, now, &previous)) {
       return false;
     }
     // Past this point the transition is real, so the sweep over live capture
@@ -889,22 +884,12 @@ namespace umbriel {
     if (!needsCursorCapturePacing()) {
       return false;
     }
-    const umbriel_cursor_plane_damage damage =
-        umbriel_cursor_plane_damage_for(&previous, &now, m_output->width, m_output->height);
+    const CursorPlaneDamage damage = cursorPlaneDamageFor(&previous, &now);
     if (damage.has_leave) {
       wlr_scene_output_damage_box(m_sceneOutput, &damage.leave_box);
     }
     if (damage.has_enter) {
       wlr_scene_output_damage_box(m_sceneOutput, &damage.enter_box);
-    }
-    if (damage.has_wake) {
-      wlr_scene_output_damage_box(m_sceneOutput, &damage.wake_box);
-    }
-    if (wakeFrame) {
-      // A hidden cursor that moved lands no box at all, and nothing else has
-      // armed the commit a cursor-metadata client is blocked on. When a box did
-      // land, wlr_scene_output_damage_box already scheduled the frame.
-      wlr_output_schedule_frame(m_output);
     }
     return true;
   }
@@ -974,7 +959,6 @@ namespace umbriel {
       wl_list_remove(&m_requestState.link);
       wl_list_remove(&m_present.link);
       wl_list_remove(&m_destroy.link);
-      wl_list_remove(&m_needsFrame.link);
     }
     // Workspace destructors reparent leftover views onto the server trees, so the group has to go before the roots it
     // hangs under.
@@ -1159,12 +1143,6 @@ namespace umbriel {
     Output* self;
     self = wl_container_of(listener, self, m_frame);
     self->handleFrame();
-  }
-
-  void Output::onNeedsFrame(wl_listener* listener, void* /*data*/) {
-    Output* self;
-    self = wl_container_of(listener, self, m_needsFrame);
-    self->paceCursorPlaneTransition(true);
   }
 
   void Output::onRequestState(wl_listener* listener, void* data) {
@@ -1430,12 +1408,12 @@ namespace umbriel {
     // "nothing to render" path, they never commit again -> damage stays clean -> wlr_scene_output_needs_frame returns
     // false forever -> compositor parks in epoll_wait. (Reproducible with any mailbox/FIFO Vulkan game.)
     bool commitFailed = false;
-    // Resync for plane changes that never reached us through needs_frame: an
-    // Xcursor timer tick, a client cursor surface commit, an output-state
-    // change. The damage lands before the needs_frame test below, so the frame
-    // already running commits it; no wake of its own is armed from inside the
-    // callback.
-    paceCursorPlaneTransition(false);
+    // Sample the plane before the needs_frame test below: a cursor-only move
+    // damages nothing else, so this frame is the only commit that can carry
+    // the damage. wlroots clears needs_frame on commit, so every mutation
+    // since the last commit is diffed here exactly once; the umbrielfx scene's
+    // own needs_frame listener is what scheduled this frame for them.
+    paceCursorPlaneTransition();
     const bool sceneChanged = wlr_scene_output_needs_frame(m_sceneOutput);
     if (sceneChanged) {
       // Scene motion under a stationary cursor must reach the client before its next press.
@@ -1641,12 +1619,10 @@ namespace umbriel {
     wl_list_remove(&m_requestState.link);
     wl_list_remove(&m_present.link);
     wl_list_remove(&m_destroy.link);
-    wl_list_remove(&m_needsFrame.link);
     m_frame.link.next = nullptr;
     m_requestState.link.next = nullptr;
     m_present.link.next = nullptr;
     m_destroy.link.next = nullptr;
-    m_needsFrame.link.next = nullptr;
     if (m_optimizedBlur != nullptr && m_server->scene() != nullptr) {
       wlr_scene_node_destroy(&m_optimizedBlur->node);
     }

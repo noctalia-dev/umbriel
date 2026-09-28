@@ -719,9 +719,7 @@ namespace umbriel {
   }
   namespace {
     // wlroots owns ext-image-copy-capture cursor sessions and never announces them, so the only visible trace of "this
-    // client asked for cursor metadata" is the protocol resource it created. ponytail: keyed on the client, not on the
-    // source, so a client recording several outputs with one cursor session also paces the others; drop this when
-    // wlroots exposes the cursor session.
+    // client asked for cursor metadata" is the protocol resource it created.
     constexpr std::string_view kCursorSessionInterface = "ext_image_copy_capture_cursor_session_v1";
     wl_iterator_result probeCursorSession(wl_resource* resource, void* data) {
       auto* wantsCursor = static_cast<bool*>(data);

@@ -118,14 +118,13 @@ namespace umbriel {
     void resetTearingState();
     void applyDirectScanoutConfig();
     void applyCursorConfig();
-    // Compare the live hardware cursor against the snapshot and, when it moved
-    // and a cursor-metadata consumer wants it, damage the box it left, the box
-    // it entered and a 1x1 in-bounds wakeup, so the transition reaches a
-    // delivered frame. `wakeFrame` arms the commit for the case where no box
-    // landed in bounds; the frame path passes false because the frame it is
-    // already running picks the damage up. Returns true when it paced.
-    // Single-threaded, non-blocking, bounded per output.
-    bool paceCursorPlaneTransition(bool wakeFrame);
+    // Compare the live hardware cursor against the snapshot and, when it
+    // changed and a cursor-metadata consumer wants it, damage the box it left
+    // and the box it entered, so the transition reaches a delivered frame.
+    // Called once per frame, before the needs_frame test, so the frame already
+    // running commits the damage. Single-threaded, non-blocking, bounded per
+    // output.
+    bool paceCursorPlaneTransition();
 #ifdef UMBRIEL_TEST_IPC
     // Harness-only: synthesize the plane sample a headless backend cannot produce.
     void setSyntheticPlaneCursorForTest(
@@ -209,10 +208,11 @@ namespace umbriel {
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
-    umbriel_cursor_plane_state m_lastCursorPlane{};
+    CursorPlaneState m_lastCursorPlane{};
 #ifdef UMBRIEL_TEST_IPC
-    std::optional<umbriel_cursor_plane_state> m_syntheticPlaneCursor;
+    std::optional<CursorPlaneState> m_syntheticPlaneCursor;
 #endif
+
     // wlroots notifies compositors through needs_frame after every plane mutation; frame is not scheduled for those.
     wl_listener m_needsFrame{};
     static void onNeedsFrame(wl_listener* listener, void* data);

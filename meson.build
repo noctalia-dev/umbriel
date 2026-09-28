@@ -415,7 +415,6 @@ ext_foreign_toplevel_list_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
-
 idle_inhibit_client_h = custom_target(
   'idle-inhibit-unstable-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable/idle-inhibit/idle-inhibit-unstable-v1.xml',
@@ -566,7 +565,7 @@ pure_sources = files(
   'src/output/identity.cpp',
   'src/output/format_sequence.cpp',
   'src/output/mode_selection.cpp',
-  'src/output/cursor_plane_pace.c',
+  'src/output/cursor_plane_pace.cpp',
   'src/server/drm_policy.cpp',
   'src/scene/cheatsheet_rows.cpp',
   'src/overview/shortcut_labels.cpp',

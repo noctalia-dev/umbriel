@@ -688,7 +688,6 @@ namespace umbriel {
     }
     return nlohmann::json{{"ok", {{"outputs", std::move(outputs)}}}};
   }
-
 #endif
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -714,7 +713,8 @@ namespace umbriel {
        &IpcCommands::clockResume, nullptr},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", false, &IpcCommands::rendererRecover,
        nullptr},
-      {"plane-cursor", "<output> <x> <y> <visible> <image>", "synthesize a hardware cursor plane sample (harness only)",
+      {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",
+       "synthesize a hardware cursor plane sample (harness only)",
        true, &IpcCommands::planeCursor, nullptr},
       {"effect-frames", "", "count frames drawn for persistent effects per output", false, &IpcCommands::effectFrames,
        nullptr},

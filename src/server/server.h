@@ -34,8 +34,6 @@ struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
 struct wlr_export_dmabuf_manager_v1;
-struct wlr_screencopy_manager_v1;
-struct wlr_ext_image_copy_capture_manager_v1;
 struct wlr_ext_image_copy_capture_session_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_idle_inhibit_manager_v1;
