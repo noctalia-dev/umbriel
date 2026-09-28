@@ -132,7 +132,7 @@ UMBRIEL_TEST(statedDefaultsLoadAsTheBuiltInValues) {
     toml::table* target = &document;
     const toml::table* source = &single;
     while (true) {
-      const auto& [name, node] = *source->begin();
+      const auto [name, node] = *source->begin();
       if (const toml::table* nested = node.as_table()) {
         target = target->insert(name, toml::table{}).first->second.as_table();
         source = nested;
