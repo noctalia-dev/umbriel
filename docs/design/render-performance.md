@@ -31,8 +31,8 @@ The fork adds three conditions upstream does not have:
   composition even when nothing overlaps the node.
 
 Umbriel holds `wlr_output_lock_attach_render` while an output animates
-([`output.cpp:1330-1333`](../../src/output/output.cpp)) and vetoes tearing for
-the same frames (`:1372-1374`). Persistent effects trigger neither.
+([`output.cpp:1343-1346`](../../src/output/output.cpp)) and vetoes tearing for
+the same frames (`:1385-1387`). Persistent effects trigger neither.
 
 `direct_scanout = false` on an output, or `WLR_SCENE_DISABLE_DIRECT_SCANOUT=1`
 process-wide, forces composition. Both are documented in the
@@ -105,16 +105,17 @@ output would record a frozen cursor.
 state, position, dimensions, hotspot, buffer identity — and on change damages
 both the old and the new box. The old box is the load-bearing part: a leave must
 come from the *previous* sample, because wlroots has already marked the cursor
-invisible by the time the move is observed. A transition always lands at least
-one box, and the damage itself schedules the commit a cursor-metadata client is
-blocked on.
+invisible by the time the move is observed. A transition that changes what the
+cursor presents lands at least one box — a hidden cursor in motion deliberately
+lands none, since nothing visible changed — and the damage itself schedules the
+commit a cursor-metadata client is blocked on.
 
 **Gate:** `Server::hasCopyCaptureFor`, keyed on the client — one client recording
 two outputs with one cursor session paces both. Screencopy and export-dmabuf
 never register; pixel-only sessions register but fail the cursor-metadata
 probe. Software cursors drop the plane entirely.
 
-**Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1416`), before
+**Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1415`), before
 the `wlr_scene_output_needs_frame` test, so the frame already running commits
 the damage. wlroots clears `needs_frame` on commit, so every plane mutation
 since the last commit is diffed exactly once; the umbrielfx scene's own
@@ -134,7 +135,7 @@ view, and `WineColorManager::applySurfaceDescriptions`, which walks every
 ([`wine_color_manager.cpp:1061-1100`](../../src/server/wine_color_manager.cpp)).
 
 `wlr_scene_output_send_frame_done` at the end of that function is unconditional
-and must stay so (`output.cpp:1558`). Mailbox and FIFO clients block on
+and must stay so (`output.cpp:1557`). Mailbox and FIFO clients block on
 `wl_surface.frame`, so skipping it on the nothing-to-render path stalls them
 permanently.
 

@@ -1,71 +1,71 @@
 #!/usr/bin/env bash
-# harness: outputs=3
-# A hardware-cursor plane transition must reach a capture consumer that asked for cursor metadata: a move, both sides of
-# an output crossing, and non-motion transitions. A pixel-only consumer on a third output — where the pacing gate stays
-# closed — must never be woken. The headless backend has no DRM plane, so transitions are synthesized with the
-# harness-only plane-cursor command, which drives the production handleFrame path through the same needs_frame
-# notification production gets; the transition detector, the consumer gate, and the damage path under test are the real
-# ones.
+# harness: outputs=2
+# One check, one boot: plane_transition + source_only_crossing + pixel_only_idle folded together.
+# HEADLESS-1 holds the cursor-metadata consumer (the captured side); HEADLESS-2 holds the pixel-only
+# consumer, whose gate is closed — no plane transition or crossing on either output may wake it.
+# The headless backend has no DRM plane, so transitions are synthesized with the harness-only
+# plane-cursor command; the transition detector, the consumer gate, and the damage path are real.
 set -euo pipefail
 
 left_log=$UMBRIEL_RUNTIME_DIR/capture-left.log
-right_log=$UMBRIEL_RUNTIME_DIR/capture-right.log
 pixel_log=$UMBRIEL_RUNTIME_DIR/capture-pixel.log
 "$UMBRIEL_CAPTURE_CLIENT" --cursor --output HEADLESS-1 > "$left_log" 2>&1 &
-"$UMBRIEL_CAPTURE_CLIENT" --cursor --output HEADLESS-2 > "$right_log" 2>&1 &
-"$UMBRIEL_CAPTURE_CLIENT" --output HEADLESS-3 > "$pixel_log" 2>&1 &
+"$UMBRIEL_CAPTURE_CLIENT" --output HEADLESS-2 > "$pixel_log" 2>&1 &
 
 source "$UMBRIEL_HARNESS_LIB"
 await_lines "$left_log" session-ready 1
-await_lines "$right_log" session-ready 1
 await_lines "$pixel_log" session-ready 1
 
 # No transition, no damage: idle outputs deliver nothing.
 "$UMBRIEL" settle
 left=$(events "$left_log" 'frame ')
-right=$(events "$right_log" 'frame ')
 pixel=$(events "$pixel_log" 'frame ')
 "$UMBRIEL" settle
-[[ $(events "$left_log" 'frame ') -eq $left && $(events "$right_log" 'frame ') -eq $right && $(events "$pixel_log" 'frame ') -eq $pixel ]] || { echo "capture advanced with no transition"; exit 1; }
+[[ $(events "$left_log" 'frame ') -eq $left && $(events "$pixel_log" 'frame ') -eq $pixel ]] || { echo "capture advanced with no transition"; exit 1; }
 echo "  ok   idle outputs deliver nothing"
 
-# A move inside the captured output.
+# plane_transition: a move inside the captured output.
 "$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 1" > /dev/null
 await_lines "$left_log" 'frame ' $((left + 1)) 0.05
 
-# A crossing: 2000 is off the left output (1280 wide), 120 is inside the right one.
-"$UMBRIEL" plane-cursor "HEADLESS-1 2000 100 1 2" > /dev/null
-"$UMBRIEL" settle
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 2" > /dev/null
+# plane_transition: non-motion transitions on the captured side — hide, image, hotspot, size.
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 0 1" > /dev/null
 await_lines "$left_log" 'frame ' $((left + 2)) 0.05
-await_lines "$right_log" 'frame ' $((right + 1)) 0.05
-
-# Non-motion transitions on the same path: hide, then a stationary image swap.
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 0 2" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 2)) 0.05
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 3)) 0.05
-
-# Stationary geometry and hotspot changes take the same path: the box moves
-# relative to the cursor position, so the diff and the damage are identical.
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 24 24 8 8" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 4)) 0.05
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 48 32 0 0" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 5)) 0.05
-"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3 24 24 0 0" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 6)) 0.05
-
-# The pixel-only consumer never asked for cursor metadata, so the gate stays
-# closed on its output: none of the transitions above may have woken it.
-after=$(events "$pixel_log" 'frame ')
-[[ $after -eq $pixel ]] || { echo "pixel-only capture was woken by cursor transitions: $after frame(s)"; exit 1; }
-echo "  ok   pixel-only capture stayed idle across move, crossing, hide, image, hotspot, and size"
-
-# And back the other way: the destination of a crossing becomes its source.
-"$UMBRIEL" plane-cursor "HEADLESS-2 2000 100 1 4" > /dev/null
-"$UMBRIEL" settle
-"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 4" > /dev/null
-await_lines "$right_log" 'frame ' $((right + 7)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 2" > /dev/null
 await_lines "$left_log" 'frame ' $((left + 3)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 2 24 24 8 8" > /dev/null
+await_lines "$left_log" 'frame ' $((left + 4)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 2 48 32 0 0" > /dev/null
+await_lines "$left_log" 'frame ' $((left + 5)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 2 24 24 0 0" > /dev/null
+await_lines "$left_log" 'frame ' $((left + 6)) 0.05
 
-echo "  ok   move, crossings both directions, hide, image, hotspot, and size each delivered a frame"
+# Seed the pixel-only output's sample (invisible); its gate is closed, so this stays silent.
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 0 0" > /dev/null
+"$UMBRIEL" settle
+
+# source_only_crossing + pixel_only in one crossing: the leave must deliver on the captured
+# source; landing on the pixel-only destination must not wake it. 2000 is off HEADLESS-1 (1280 wide).
+"$UMBRIEL" plane-cursor "HEADLESS-1 2000 100 1 3" > /dev/null
+await_lines "$left_log" 'frame ' $((left + 7)) 0.05
+"$UMBRIEL" plane-cursor "HEADLESS-2 120 100 1 3" > /dev/null
+"$UMBRIEL" settle
+[[ $(events "$pixel_log" 'frame ') -eq $pixel ]] || { echo "pixel-only capture was woken landing on it"; exit 1; }
+
+# pixel_only: plane transitions on the pixel-only output itself stay silent (move, hide, show).
+for spec in "HEADLESS-2 300 100 1 4" "HEADLESS-2 300 100 0 4" "HEADLESS-2 300 100 1 4"; do
+  "$UMBRIEL" plane-cursor "$spec" > /dev/null
+  "$UMBRIEL" settle
+done
+[[ $(events "$pixel_log" 'frame ') -eq $pixel ]] || { echo "pixel-only capture was woken by transitions on its own output"; exit 1; }
+echo "  ok   pixel-only capture stayed idle across the crossing and its own output's transitions"
+
+# And back: the destination becomes its source — the leave on the uncaptured side is silent,
+# the enter on the captured side delivers.
+"$UMBRIEL" plane-cursor "HEADLESS-2 2000 100 0 5" > /dev/null
+"$UMBRIEL" plane-cursor "HEADLESS-1 100 100 1 5" > /dev/null
+await_lines "$left_log" 'frame ' $((left + 8)) 0.05
+"$UMBRIEL" settle
+[[ $(events "$pixel_log" 'frame ') -eq $pixel ]] || { echo "pixel-only capture was woken by the return crossing"; exit 1; }
+
+echo "  ok   move, leave/enter crossing, non-motion transitions delivered; pixel-only never woken"
