@@ -125,6 +125,8 @@ namespace umbriel {
     void forgetHdrView(const View* view);
     void markBlurBackgroundDirty();
     void scheduleFullFrame();
+    // Commit this custom mode and arrange around it. `refreshMHz` paces frames; 0 keeps the backend's default.
+    void applyMode(int width, int height, int refreshMHz = 0);
     void handleExternalConfigChange();
     // Tell one surface this output's scale (fractional + integer preferred buffer scale). Both wlroots calls dedup
     // internally, so re-notifying is free. Shaped as a wlr_surface_iterator_func_t so shell for_each helpers can walk a
@@ -149,7 +151,6 @@ namespace umbriel {
     void handleRequestState(void* data);
     void handlePresent(void* data);
     void handleDestroy();
-    void applyMode(int width, int height);
     [[nodiscard]] bool applyConfiguredState();
     [[nodiscard]] bool autoHdrEligible(const View* view) const;
     [[nodiscard]] View* findAutoHdrCandidate() const;

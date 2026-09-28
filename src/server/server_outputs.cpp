@@ -12,7 +12,8 @@
 namespace umbriel {
 
   namespace {
-    // Headless outputs are created at the size the backend gives the ones from WLR_HEADLESS_OUTPUTS.
+    // The size a virtual output gets without a requested mode: what the backend gives the ones from
+    // WLR_HEADLESS_OUTPUTS.
     constexpr unsigned int kHeadlessWidth = 1280;
     constexpr unsigned int kHeadlessHeight = 720;
 
@@ -37,7 +38,8 @@ namespace umbriel {
     }
   } // namespace
 
-  std::string Server::createHeadlessOutput(const std::string& name, std::string* error) {
+  std::string
+  Server::createHeadlessOutput(const std::string& name, std::optional<OutputMode> mode, std::string* error) {
     if (!validVirtualOutputName(name)) {
       *error = "invalid output name: " + name + " (use letters, digits, '-', '_' and '.')";
       return {};
@@ -53,12 +55,21 @@ namespace umbriel {
         return {};
       }
     }
+    const unsigned int width = mode.has_value() ? static_cast<unsigned int>(mode->width) : kHeadlessWidth;
+    const unsigned int height = mode.has_value() ? static_cast<unsigned int>(mode->height) : kHeadlessHeight;
     m_pendingOutputName = name;
-    wlr_output* output = wlr_headless_add_output(headless, kHeadlessWidth, kHeadlessHeight);
+    wlr_output* output = wlr_headless_add_output(headless, width, height);
     m_pendingOutputName.clear();
     if (output == nullptr) {
       *error = "failed to create a headless output";
       return {};
+    }
+    if (mode.has_value()) {
+      // add_output only sets the size. This also supplies the requested refresh, which paces frames, and wins over
+      // the mode an output section applied while the output came up.
+      if (Output* created = outputFromWlr(output)) {
+        created->applyMode(mode->width, mode->height, mode->refreshMHz);
+      }
     }
     return output->name != nullptr ? output->name : "";
   }

@@ -1,6 +1,10 @@
 #pragma once
+#include "config/value_parse.h"
+
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace umbriel {
@@ -51,5 +55,10 @@ namespace umbriel {
 
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+
+  // Splits an output-create argument into the output name and its optional mode, in the config `mode` format
+  // ("WIDTHxHEIGHT[@HZ]"). Returns false with `error` set on anything else.
+  bool
+  parseOutputCreateArg(std::string_view arg, std::string& name, std::optional<OutputMode>& mode, std::string& error);
 
 } // namespace umbriel

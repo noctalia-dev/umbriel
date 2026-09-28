@@ -1138,14 +1138,14 @@ namespace umbriel {
     }
   }
 
-  void Output::applyMode(int width, int height) {
+  void Output::applyMode(int width, int height, int refreshMHz) {
     if (width <= 0 || height <= 0) {
       return;
     }
 
     wlr_output_state state{};
     wlr_output_state_init(&state);
-    wlr_output_state_set_custom_mode(&state, width, height, 0);
+    wlr_output_state_set_custom_mode(&state, width, height, refreshMHz);
     if (!wlr_output_commit_state(m_output, &state)) {
       wlr_log(WLR_ERROR, "failed to commit output mode %dx%d for '%s'", width, height, m_output->name);
     } else {

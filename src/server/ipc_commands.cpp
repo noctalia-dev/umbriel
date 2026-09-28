@@ -622,12 +622,17 @@ namespace umbriel {
   }
 
   nlohmann::json IpcCommands::outputCreate(Server& server, std::string_view arg) {
+    std::string name;
+    std::optional<OutputMode> mode;
     std::string error;
-    const std::string name = server.createHeadlessOutput(std::string(arg), &error);
+    if (!parseOutputCreateArg(arg, name, mode, error)) {
+      return nlohmann::json{{"err", error}};
+    }
+    const std::string created = server.createHeadlessOutput(name, mode, &error);
     if (!error.empty()) {
       return nlohmann::json{{"err", error}};
     }
-    return nlohmann::json{{"ok", name}};
+    return nlohmann::json{{"ok", created}};
   }
 
   nlohmann::json IpcCommands::outputDestroy(Server& server, std::string_view arg) {
@@ -680,11 +685,43 @@ namespace umbriel {
   }
 #endif
 
+  bool
+  parseOutputCreateArg(std::string_view arg, std::string& name, std::optional<OutputMode>& mode, std::string& error) {
+    const size_t nameStart = arg.find_first_not_of(" \t");
+    if (nameStart == std::string_view::npos) {
+      error = "usage: output-create <name> [mode]";
+      return false;
+    }
+    const size_t nameEnd = arg.find_first_of(" \t", nameStart);
+    name = arg.substr(nameStart, nameEnd == std::string_view::npos ? arg.size() : nameEnd - nameStart);
+    if (nameEnd == std::string_view::npos) {
+      return true;
+    }
+    const size_t modeStart = arg.find_first_not_of(" \t", nameEnd);
+    if (modeStart == std::string_view::npos) {
+      return true;
+    }
+    const size_t modeEnd = arg.find_first_of(" \t", modeStart);
+    if (modeEnd != std::string_view::npos && arg.find_first_not_of(" \t", modeEnd) != std::string_view::npos) {
+      error = "usage: output-create <name> [mode]";
+      return false;
+    }
+    const std::string_view modeText =
+        arg.substr(modeStart, modeEnd == std::string_view::npos ? arg.size() : modeEnd - modeStart);
+    OutputMode parsed;
+    if (!parseOutputMode(modeText, parsed)) {
+      error = "invalid mode: " + std::string(modeText) + " (use WIDTHxHEIGHT[@HZ])";
+      return false;
+    }
+    mode = parsed;
+    return true;
+  }
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"msg", "<action> [args...]", "send an action to the compositor", IpcCommandGroup::Control, true,
        &IpcCommands::msg, nullptr},
-      {"output-create", "<name>", "create a virtual output", IpcCommandGroup::Control, true, &IpcCommands::outputCreate,
-       &printOutputName},
+      {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",
+       IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
        &IpcCommands::outputDestroy, nullptr},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,

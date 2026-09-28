@@ -1,4 +1,5 @@
 #pragma once
+#include "config/value_parse.h"
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
@@ -377,8 +378,9 @@ namespace umbriel {
     [[nodiscard]] wlr_tablet_v2_tablet* tabletV2FromWlr(const wlr_tablet* tablet) const;
 
     // Create and destroy headless outputs at runtime, which is how a test drives a monitor being unplugged and coming
-    // back. Returns the new output's name, or an empty string with `error` set.
-    std::string createHeadlessOutput(const std::string& name, std::string* error);
+    // back. `mode` sizes the new output and paces its frames; without one it starts at 1280x720. Returns the new
+    // output's name, or an empty string with `error` set.
+    std::string createHeadlessOutput(const std::string& name, std::optional<OutputMode> mode, std::string* error);
     bool destroyOutput(const std::string& name, std::string* error);
 
     void removeOutput(Output* output);

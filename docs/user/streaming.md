@@ -6,7 +6,7 @@
 only for the session, at the client's resolution and frame rate, while the
 physical monitors keep their layout.
 
-This setup needs Sunshine, `wlr-randr`, and `jq`.
+This setup needs Sunshine and `jq`.
 
 ## Session script
 
@@ -22,9 +22,8 @@ name=sunshine
 case "$1" in
     create)
         umbriel output-destroy "$name" >/dev/null 2>&1 || true
-        umbriel output-create "$name" >/dev/null
-        wlr-randr --output "$name" \
-            --custom-mode "${SUNSHINE_CLIENT_WIDTH:-1920}x${SUNSHINE_CLIENT_HEIGHT:-1080}@${SUNSHINE_CLIENT_FPS:-60}Hz"
+        umbriel output-create "$name" \
+            "${SUNSHINE_CLIENT_WIDTH:-1920}x${SUNSHINE_CLIENT_HEIGHT:-1080}@${SUNSHINE_CLIENT_FPS:-60}" >/dev/null
         ;;
     remove)
         # Give windows that the app's undo command is closing up to 5 seconds to

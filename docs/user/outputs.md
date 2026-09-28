@@ -280,13 +280,16 @@ target for remote desktop and game streaming. See
 
 ```sh
 umbriel output-create stream
+umbriel output-create stream 2560x1440@120
 umbriel output-destroy stream
 ```
 
 The name uses ASCII letters, digits, `-`, `_`, and `.`, and must not match an
-existing output, ignoring case. `output-create` prints the new output's name. A
-virtual output starts at 1280x720; set its size with an output section or with
-an output-management tool such as `wlr-randr`:
+existing output, ignoring case. `output-create` prints the new output's name.
+The optional mode takes the same `WIDTHxHEIGHT[@HZ]` form as the `mode` setting
+below and sets the size and frame pacing at creation; without it, a virtual
+output starts at 1280x720. An output section or an output-management tool such
+as `wlr-randr` changes the mode afterwards:
 
 ```toml
 [output.stream]

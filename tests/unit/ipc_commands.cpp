@@ -156,4 +156,63 @@ UMBRIEL_TEST(colorHumanDepthIgnoresActivityFlags) {
   CHECK(out.contains("bit depth: 8 (configured 8)"));
 }
 
+UMBRIEL_TEST(parsesOutputCreateNameOnly) {
+  std::string name;
+  std::optional<umbriel::OutputMode> mode;
+  std::string error;
+  CHECK(umbriel::parseOutputCreateArg("stream", name, mode, error));
+  CHECK_EQ(name, "stream");
+  CHECK(!mode.has_value());
+  CHECK(error.empty());
+}
+
+UMBRIEL_TEST(parsesOutputCreateMode) {
+  std::string name;
+  std::optional<umbriel::OutputMode> mode;
+  std::string error;
+  CHECK(umbriel::parseOutputCreateArg("  stream   2560x1440@120  ", name, mode, error));
+  CHECK_EQ(name, "stream");
+  CHECK(mode.has_value());
+  if (mode.has_value()) {
+    CHECK_EQ(mode->width, 2560);
+    CHECK_EQ(mode->height, 1440);
+    CHECK_EQ(mode->refreshMHz, 120000);
+  }
+  CHECK(error.empty());
+}
+
+UMBRIEL_TEST(parsesOutputCreateModeWithoutRefresh) {
+  std::string name;
+  std::optional<umbriel::OutputMode> mode;
+  std::string error;
+  CHECK(umbriel::parseOutputCreateArg("stream 400x300", name, mode, error));
+  CHECK(mode.has_value());
+  if (mode.has_value()) {
+    CHECK_EQ(mode->width, 400);
+    CHECK_EQ(mode->height, 300);
+    CHECK_EQ(mode->refreshMHz, 0);
+  }
+}
+
+UMBRIEL_TEST(rejectsOutputCreateInvalidMode) {
+  std::string name;
+  std::optional<umbriel::OutputMode> mode;
+  std::string error;
+  CHECK(!umbriel::parseOutputCreateArg("stream 1920x1080p", name, mode, error));
+  CHECK(!error.empty());
+  CHECK(!mode.has_value());
+}
+
+UMBRIEL_TEST(rejectsOutputCreateExtraArguments) {
+  std::string name;
+  std::optional<umbriel::OutputMode> mode;
+  std::string error;
+  CHECK(!umbriel::parseOutputCreateArg("stream 1920x1080 extra", name, mode, error));
+  CHECK(!error.empty());
+
+  error.clear();
+  CHECK(!umbriel::parseOutputCreateArg("   ", name, mode, error));
+  CHECK(!error.empty());
+}
+
 int main() { return RUN_TESTS(); }
