@@ -3,17 +3,23 @@
 #include <cstdint>
 
 namespace umbriel {
-  bool cursorPlaneAdvance(CursorPlaneState *state, CursorPlaneState now, CursorPlaneState *previous) {
-      *previous = *state;
+  bool cursorPlaneAdvance(CursorPlaneState* state, CursorPlaneState now, CursorPlaneState* previous) {
+    *previous = *state;
 
-      const bool changed = state->valid && (state->enabled != now.enabled || state->visible != now.visible ||
-                                            state->x != now.x || state->y != now.y || state->width != now.width ||
-                                            state->height != now.height || state->hotspot_x != now.hotspot_x ||
-                                            state->hotspot_y != now.hotspot_y || state->image != now.image);
-      *state = now;
-      state->valid = true;
+    const bool changed = state->valid
+        && (state->enabled != now.enabled
+            || state->visible != now.visible
+            || state->x != now.x
+            || state->y != now.y
+            || state->width != now.width
+            || state->height != now.height
+            || state->hotspot_x != now.hotspot_x
+            || state->hotspot_y != now.hotspot_y
+            || state->image != now.image);
+    *state = now;
+    state->valid = true;
 
-      return changed;
+    return changed;
   }
 
   CursorPlaneDamage cursorPlaneDamageFor(const CursorPlaneState* previous, const CursorPlaneState* now) {
@@ -41,4 +47,4 @@ namespace umbriel {
 
     return result;
   }
-} // namespace
+} // namespace umbriel
