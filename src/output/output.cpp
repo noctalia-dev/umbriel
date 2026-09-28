@@ -898,9 +898,9 @@ namespace umbriel {
     if (m_output == nullptr) {
       return false;
     }
-    // Any live ext-image-copy session for this output. Source mapping uses
-    // the public wlr_output_try_from_ext_image_capture_source_v1(); no
-    // WLR_PRIVATE access. Export-dmabuf is deliberately absent here.
+    // Only an output whose capture source carries a live cursor-metadata
+    // session is paced. The session bookkeeping and the source mapping live
+    // in Server; screencopy and export-dmabuf never register there.
     return m_server->hasCopyCaptureFor(m_output);
   }
 

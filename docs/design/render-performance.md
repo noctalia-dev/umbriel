@@ -94,8 +94,10 @@ cardinality.
 
 ### Hardware-cursor capture pacing
 
-**Invariant:** a plane-cursor transition on an output with a live cursor-metadata
-capture session must deliver a frame, even when nothing else damaged the output.
+**Invariant:** a plane-cursor transition on an output whose capture source
+carries a live cursor-metadata session must deliver a frame, even when nothing
+else damaged the output — except a cursor that is already hidden and merely
+moves, which presents nothing and therefore lands no damage.
 
 With `hardware_cursor = true` the cursor is KMS state, so a cursor-only move
 produces no scene damage. Capture consumers are fed from commits, so an idle
@@ -110,10 +112,13 @@ cursor presents lands at least one box — a hidden cursor in motion deliberatel
 lands none, since nothing visible changed — and the damage itself schedules the
 commit a cursor-metadata client is blocked on.
 
-**Gate:** `Server::hasCopyCaptureFor`, keyed on the client — one client recording
-two outputs with one cursor session paces both. Screencopy and export-dmabuf
-never register; pixel-only sessions register but fail the cursor-metadata
-probe. Software cursors drop the plane entirely.
+**Gate:** `Server::hasCopyCaptureFor`, keyed on the source output: a live cursor
+session attaches its update listener to the cursor of the source it was created
+for, and the gate reads that attachment for this output's sources only — one
+client recording output A with cursor metadata never paces its pixel-only
+capture of output B. Screencopy and export-dmabuf never register; pixel-only
+sessions register but no cursor session is attached to their source. Software
+cursors drop the plane entirely.
 
 **Trigger:** once per frame, in `Output::handleFrame` (`output.cpp:1415`), before
 the `wlr_scene_output_needs_frame` test, so the frame already running commits
@@ -123,10 +128,11 @@ since the last commit is diffed exactly once; the umbrielfx scene's own
 not inside `wlr_cursor_move` — also keeps position and cursor-buffer identity
 consistent, since wlroots raises the signal before it swaps
 `cursor_front_buffer`. Checked by `render/capture_pacing` (move, crossings both
-directions, hide, image, hotspot, size, and pixel-only idle on a gate-closed
-output) through the synthetic `plane-cursor` command, since the harness has no
-DRM plane, plus `tests/unit/cursor_plane_pace.cpp` for the transition
-decisions. Real-plane behaviour needs a native session.
+directions, hide, image, hotspot, size, and pixel-only idle held by the same
+client that holds the cursor session on the other output) through the synthetic
+`plane-cursor` command, since the harness has no DRM plane, plus
+`tests/unit/cursor_plane_pace.cpp` for the transition decisions. Real-plane
+behaviour needs a native session.
 
 `Output::handleFrame` (`output.cpp:1282`) runs before any damage test:
 `flushDirty`, `Server::tickAnimations`, `flushPendingViewOpacities` over every

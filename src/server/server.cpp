@@ -719,14 +719,33 @@ namespace umbriel {
     kLog.info("mod key: {} ({} session)", m_nested ? "Alt" : "Super", m_nested ? "nested" : "native");
   }
   namespace {
-    // wlroots owns ext-image-copy-capture cursor sessions and never announces them, so the only visible trace of "this
-    // client asked for cursor metadata" is the protocol resource it created.
-    constexpr std::string_view kCursorSessionInterface = "ext_image_copy_capture_cursor_session_v1";
+    // wlroots never announces ext-image-copy-capture cursor sessions and their struct is private, so the only
+    // public trace of "this client asked for cursor metadata for this source" is the update listener the session
+    // attaches to that source's cursor. Probing it per source keeps a cursor session bound to output A from
+    // pacing the same client's pixel-only capture of output B. The seat is only what the interface takes; the
+    // output source ignores it.
+    constexpr std::string_view kSourceInterface = "ext_image_capture_source_v1";
+
+    struct CursorSessionProbe {
+      const wlr_output* output = nullptr;
+      wlr_seat* seat = nullptr;
+      bool found = false;
+    };
+
     wl_iterator_result probeCursorSession(wl_resource* resource, void* data) {
-      auto* wantsCursor = static_cast<bool*>(data);
+      auto* probe = static_cast<CursorSessionProbe*>(data);
       const char* klass = wl_resource_get_class(resource);
-      if (klass != nullptr && std::string_view(klass) == kCursorSessionInterface) {
-        *wantsCursor = true;
+      if (klass == nullptr || std::string_view(klass) != kSourceInterface) {
+        return WL_ITERATOR_CONTINUE;
+      }
+      wlr_ext_image_capture_source_v1* source = wlr_ext_image_capture_source_v1_from_resource(resource);
+      if (source == nullptr || wlr_output_try_from_ext_image_capture_source_v1(source) != probe->output) {
+        return WL_ITERATOR_CONTINUE;
+      }
+      // Only a live cursor session for exactly this source has a listener here; its destroy path removes it.
+      const wlr_ext_image_capture_source_v1_cursor* cursor = source->impl->get_pointer_cursor(source, probe->seat);
+      if (cursor != nullptr && !wl_list_empty(&cursor->events.update.listener_list)) {
+        probe->found = true;
         return WL_ITERATOR_STOP;
       }
       return WL_ITERATOR_CONTINUE;
@@ -745,9 +764,9 @@ namespace umbriel {
       if (client == nullptr) {
         continue;
       }
-      bool wantsCursor = false;
-      wl_client_for_each_resource(client, probeCursorSession, &wantsCursor);
-      if (wantsCursor) {
+      CursorSessionProbe probe{.output = output, .seat = m_seat != nullptr ? m_seat->wlr() : nullptr};
+      wl_client_for_each_resource(client, probeCursorSession, &probe);
+      if (probe.found) {
         return true;
       }
     }
