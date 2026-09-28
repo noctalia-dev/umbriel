@@ -39,10 +39,8 @@ namespace {
   constexpr std::size_t kBufferedFileLogFlushLines = 64;
   constexpr auto kBufferedFileLogFlushInterval = std::chrono::milliseconds(500);
 
-  // A per-frame failure (a dead EGL context, an exhausted fd table) turns into thousands of identical lines per second.
-  // When stderr is a VT the write()s are synchronous and expensive enough to stall the main loop outright, so an error
-  // that should degrade a frame instead freezes the session. Collapse runs of an identical message and report the count
-  // once the run ends.
+  // Collapse runs of an identical message and report the count once the run ends: a per-frame failure can emit
+  // thousands of lines per second, and synchronous VT writes at that rate stall the main loop.
   constexpr auto kRepeatWindow = std::chrono::seconds(1);
 
   std::string gLastMessage;
@@ -306,9 +304,8 @@ namespace {
   }
 
   // If fd 1 or fd 2 points at a TTY (greetd wires them to /dev/tty1), replace them with an append-mode file inside
-  // `cacheDir`: synchronous VT writes on the main thread turned a per-frame wlroots error into a hard livelock (see
-  // gpu-hang-handoff.md, Bug C). `cacheDir` may be empty; we fall through to /dev/null in that case. Silencing raw
-  // writes is strictly better than leaving fd 1/2 pointing at /dev/tty1.
+  // `cacheDir` (or /dev/null if `cacheDir` is empty): synchronous VT writes on the main thread can turn a per-frame
+  // wlroots error into a hard livelock.
   void redirectStdioIfTty(const std::string& cacheDir) {
     const bool stdoutIsTty = isatty(STDOUT_FILENO) != 0;
     const bool stderrIsTty = isatty(STDERR_FILENO) != 0;

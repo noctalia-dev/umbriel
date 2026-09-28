@@ -1,5 +1,7 @@
 #include "output/identity.h"
 
+#include <algorithm>
+
 namespace umbriel {
 
   namespace {
@@ -36,6 +38,17 @@ namespace umbriel {
       }
     }
     return true;
+  }
+
+  bool validVirtualOutputName(std::string_view name) {
+    return !name.empty() && std::ranges::all_of(name, [](char value) {
+      return (value >= 'a' && value <= 'z')
+          || (value >= 'A' && value <= 'Z')
+          || (value >= '0' && value <= '9')
+          || value == '-'
+          || value == '_'
+          || value == '.';
+    });
   }
 
   std::string outputDescriptor(const OutputIdentity& identity) {

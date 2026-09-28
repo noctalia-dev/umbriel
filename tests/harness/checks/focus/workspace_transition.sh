@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # An outgoing workspace remains visible during its slide, but it must be visual only. With focus-follows-mouse enabled,
-# a tiny pointer motion over that outgoing view used to focus it and reactivate its workspace. This reproduces the
-# reported Mod+Wheel workspace switching failure with the real virtual pointer and modifier paths.
+# pointer motion over that outgoing view must not focus it or reactivate its workspace. Drives Mod+Wheel switching
+# through the real virtual pointer and modifier paths.
 set -euo pipefail
 
 readonly OUTPUT_W=1280

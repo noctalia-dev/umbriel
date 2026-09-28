@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Shrinking a static workspace list has to relocate every window off each removed workspace. The relocation loop walks
-# the source workspace's own view list while setWorkspace() erases from it, so this needs three windows: erasing the
-# first shifts the third into the second slot, and an iteration that reads the live vector then skips the middle
-# window and revisits the last one. The skipped window keeps a pointer to a workspace that is freed moments later.
-# Asserting that every window reports the one surviving workspace id observes that transition, where the relocation
-# count alone cannot: the double visit keeps the tally at three.
+# Shrinking a static workspace list has to relocate every window off each removed workspace. The relocation erases
+# from the source workspace's view list while walking it, so three windows are needed to expose a skipped middle
+# window. Every window must report the one surviving workspace id; the relocation count alone cannot show a skip.
 set -euo pipefail
 
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"

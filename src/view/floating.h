@@ -118,12 +118,9 @@ namespace umbriel {
     return static_cast<double>(size) / static_cast<double>(usable);
   }
 
-  // A float's cycle basis. `floatingFractionSize` rounds, so a size read back as
-  // a fraction can sit just under the preset that produced it (a third of 700 is
-  // 233, which reads back as 0.3329), and `nextFractionPreset` would hand that
-  // same preset back and stall the cycle. Snapping onto the preset whose pixel
-  // size matches keeps the basis exact; any other size, a pointer resize say,
-  // keeps its measured fraction. The caller guarantees extent > 0.
+  // A float's cycle basis. `floatingFractionSize` rounds, so a size read back as a fraction can sit just under its
+  // preset and stall `nextFractionPreset`. Snaps onto the preset whose pixel size matches; any other size keeps its
+  // measured fraction. The caller guarantees extent > 0.
   [[nodiscard]] inline double presetSnappedFraction(const std::vector<double>& presets, int size, int extent) {
     for (const double preset : presets) {
       if (floatingFractionSize(preset, extent) == size) {

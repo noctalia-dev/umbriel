@@ -41,7 +41,7 @@ UMBRIEL_TEST(fullscreenCenteringSurvivesSceneReconfiguration) {
   CHECK_EQ(surfaceTree->node.y, 150);
 
   // Leaving fullscreen drops the centering, otherwise the tiled view renders
-  // offset by half the difference it no longer has.
+  // offset by half a size difference that no longer applies.
   presentation.updateFullscreen(false, 2560, 1440, &surfaceTree->node, geometry);
   CHECK_EQ(presentation.offsetX(), 0);
   CHECK_EQ(presentation.offsetY(), 0);

@@ -1,6 +1,6 @@
 // Holds an input-method keyboard grab and an input-method-owned virtual keyboard. Optional lifecycle modes create the
-// grab only while text input is active, with either a transient or persistent owned keyboard, matching both Fcitx
-// modes. A separate harness virtual keyboard drives physical modifiers through the grab.
+// grab only while text input is active, with either a transient or persistent owned keyboard. A separate harness
+// virtual keyboard drives physical modifiers through the grab.
 
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"

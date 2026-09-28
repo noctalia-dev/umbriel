@@ -755,10 +755,8 @@ UMBRIEL_TEST(maxScrollGrowsWithOverflowingColumns) {
   CHECK(fixture.layout.maxScroll(kViewport) > 0);
 }
 
-// re-anchoring when a column closes off-screen: Removing a column closes the space it held, so everything to its right
-// moves left by its width plus a gap. When that space was off-screen to the left, the user did not ask to see it
-// happen: a window closing several columns back should not shift the one being read. These pin the compensation that
-// keeps the visible strip still, and the cases where there is deliberately none.
+// Re-anchoring when a column closes off-screen: removing a column left of the viewport must not shift the visible
+// strip. These pin that compensation and the cases where there is deliberately none.
 
 // Screen position of a column: layout coordinate minus the scroll offset.
 int screenX(const ScrollingLayout& layout, int column) {
@@ -854,10 +852,8 @@ UMBRIEL_TEST(anOutOfRangeColumnShiftsNothing) {
 }
 
 UMBRIEL_TEST(setScrollStoresVerbatimAndDoesNotClamp) {
-  // Pinning current behavior, not endorsing it: setScroll is a raw setter, and every caller is responsible for clamping
-  // to [0, maxScroll] itself. See the hand-rolled clamp in Server::executeKeybindAction (layout-scroll-*), which exists
-  // because overscroll here parks the strip past an edge and seeds sub-pixel scroll residue. The clamp belongs in the
-  // layout.
+  // setScroll is a raw setter; callers clamp to [0, maxScroll] themselves (see Server::executeKeybindAction,
+  // layout-scroll-*). Unclamped overscroll parks the strip past an edge.
   Fixture fixture;
   fixture.addColumns(6);
 

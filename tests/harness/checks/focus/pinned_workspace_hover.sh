@@ -68,7 +68,7 @@ wait_for_active workspace-two
 
 # Establish the active workspace window as both its remembered focus and the seat-global focus. Focusing the pinned
 # window changes only the latter because the pinned window belongs to inactive workspace 1. The explicit focus
-# reproduces the issue's starting state without depending on how the workspace switch itself selected focus.
+# sets up that state without depending on how the workspace switch itself selected focus.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 200 200
 pin_id=$(windows | jq -r '.[] | select(.title == "pinned-hover") | .id')
 "$UMBRIEL" msg "window-focus:$pin_id" > /dev/null

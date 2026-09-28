@@ -22,6 +22,8 @@
         "aarch64-linux"
       ];
 
+      rev = self.shortRev or self.dirtyShortRev;
+
       forEachSystem =
         perSystem: nixpkgs.lib.genAttrs systems (system: perSystem nixpkgs.legacyPackages.${system});
 
@@ -37,11 +39,11 @@
       formatter = forEachSystem (pkgs: pkgs.nixfmt-tree);
 
       overlays.default = final: _: {
-        umbriel = final.callPackage ./nix/package.nix { };
+        umbriel = final.callPackage ./nix/package.nix { inherit rev; };
       };
 
       packages = forEachSystem (pkgs: {
-        default = pkgs.callPackage ./nix/package.nix { };
+        default = pkgs.callPackage ./nix/package.nix { inherit rev; };
       });
 
       devShells = forEachSystem (pkgs: {

@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # A toolkit that renders one buffer at the exact fractional output scale reports
 # a pixel count that can be one short of the physical extent the compositor
-# derives from the window's logical edges. Resolving that disagreement by
-# shrinking the destination leaves an unpainted line inside the border's punched
-# content hole, where the background shows through. The window must cover every
-# pixel inside its content box, and its alternating columns must still land on
-# exact texel centers, which is why the destination is not stretched instead.
+# derives from the window's logical edges. The window must still cover every
+# pixel inside its content box (no background line inside the border's content
+# hole), and its alternating columns must land on exact texel centers.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"

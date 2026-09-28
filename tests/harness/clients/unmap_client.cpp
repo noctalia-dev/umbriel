@@ -1,7 +1,6 @@
-// Maps an xdg toplevel, then on a compositor close request unmaps it without destroying the surface. The compositor
-// therefore keeps the View registered and unmapped, which is what makes this client useful: closing a window this way
-// never reaches Server::removeView, so any focus reassignment the compositor performs must happen at unmap time, the
-// same point a card disappears from the overview. Prints "mapped" once the toplevel is up and "unmapped" once the close
+// Maps an xdg toplevel, then on a compositor close request unmaps it without destroying the surface. The View stays
+// registered and unmapped and never reaches Server::removeView, so focus reassignment must happen at unmap time.
+// Prints "mapped" once the toplevel is up and "unmapped" once the close
 // request lands, then keeps the connection alive until the harness kills it. Usage: unmap-client [title [width
 // height]]. The optional dimensions let pointer checks expose a surface that fills its assigned tile. With
 // REMAP_ON_STDIN set, reading any byte performs a fresh initial commit and maps the same toplevel again.
@@ -9,7 +8,7 @@
 // token instead. An `i` command requests a token from the latest focused key press and writes it to that file. When the
 // surface is hidden, `a` or `c` queues activation before the remap commit.
 // CONTENT_TYPE sets a surface hint before its initial commit. CONTENT_TYPE_ON_SUBSURFACE places it on a rendering
-// child, matching current Proton behavior. XDG_TAG sets a toplevel tag before the initial commit.
+// child. XDG_TAG sets a toplevel tag before the initial commit.
 // CONTENT_TYPE_AFTER_MAP, XDG_TAG_AFTER_MAP, and TITLE_AFTER_MAP update their metadata on stdin. NO_TITLE never sets a
 // title at all. With TRANSIENT_SUITE, TRANSIENT_PARENT_SIZE=<width>x<height> gives the parent its own size.
 // TRANSIENT_SUITE=mapped-together maps the parent and this toplevel in one flush, parenting from the first configure

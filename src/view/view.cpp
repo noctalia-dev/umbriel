@@ -2271,12 +2271,9 @@ namespace umbriel {
   }
 
   void View::applyCornerRadius() {
-    // Apps that draw through subsurfaces (Firefox renders all of its chrome and web content into one desynchronized
-    // MozContainer subsurface) leave their content square unless those buffers round too. Every buffer under the
-    // toplevel's surface tree is rounded against one box, the window's content box, so the arc always lands on the
-    // window's corners whichever surface draws them: an inset main surface, a full-window subsurface and an interior
-    // subsurface (embedded video) all follow from that box without knowing anything about each other. Popups are
-    // excluded: their surface is its own root.
+    // Every buffer under the toplevel's surface tree is rounded against one box, the window's content box, so the arc
+    // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
+    // surface is its own root.
     const int radius = surfaceRadius();
     // A tiled target and an active resize animation can both lead committed geometry, so the box follows the presented
     // size in either case.
@@ -2505,10 +2502,8 @@ namespace umbriel {
     } else if (clip == nullptr) {
       wlr_scene_subsurface_tree_set_clip(&m_contentTree->node, nullptr);
     }
-    // A clip change runs wlroots' scene surface reconfigure, which resets the scene-buffer opacity (to the client
-    // alpha, 1.0 without wp_alpha_modifier). This runs in the render path after the animation tick, so re-apply our
-    // fade/rule opacity or the frame renders fully opaque (the fade then only survives on frames whose clip is
-    // unchanged, seen as transparent flashes).
+    // A clip change runs wlroots' scene surface reconfigure, which resets the scene-buffer opacity to the client alpha.
+    // This runs in the render path after the animation tick, so re-apply our fade/rule opacity.
     applyEffectiveOpacity();
   }
 
@@ -2764,19 +2759,13 @@ namespace umbriel {
     if (width <= 0 || height <= 0) {
       return;
     }
-    // Pin the edge opposite the named one, then take the same steps the fraction
-    // path does: drop a maximize, animate the change, and keep the window on
-    // screen. The origin animates to where the requested size puts it, over the
-    // same duration and curve as the size, so the opposite edge stays put for the
-    // whole resize instead of drifting while the client catches up with the
-    // configure.
+    // Pin the edge opposite the named one, then take the same steps as the fraction path: drop a maximize, animate the
+    // change, keep the window on screen. The origin animates with the size (same duration and curve), so the opposite
+    // edge stays put while the client catches up.
     //
-    // The anchor session stays open until the client answers the configure, so a
-    // client that commits a size other than the requested one (because of size
-    // hints, or because it refused the resize) still has the origin recomputed from
-    // the geometry that actually arrived. finishFloatingResize ends the session but
-    // leaves the anchor until the request settles, so that commit both re-pins the
-    // edge and retires the anchor.
+    // The anchor session stays open until the client answers the configure, so a commit at a different size still
+    // recomputes the origin from the actual geometry. finishFloatingResize ends the session but keeps the anchor until
+    // the request settles; that commit re-pins the edge and retires the anchor.
     const FloatingPoint anchoredOrigin =
         anchoredContentOrigin(anchor, edges, {.x = 0, .y = 0, .width = width, .height = height});
     m_floating.beginResize(anchor, edges);
@@ -2798,12 +2787,8 @@ namespace umbriel {
     const FloatingPoint content = anchoredContentOrigin(*m_floating.anchor(), m_floating.edges(), geo);
     const int x = content.x - geo.x;
     const int y = content.y - geo.y;
-    // A keybind resize animates the origin along with the size, so a commit whose
-    // geometry implies a different origin retargets that animation instead of
-    // snapping it, which is what re-pins the edge when the client commits a size
-    // other than the requested one. A target that already matches is left alone, so
-    // the animation is not restarted. A pointer drag places the origin directly
-    // instead, because it has to follow the cursor.
+    // A keybind resize animates the origin with the size, so a commit implying a different origin retargets that
+    // animation (a matching target is left alone). A pointer drag places the origin directly to follow the cursor.
     if ((m_posX.animating() || m_posY.animating()) && !sizeGrabActive()) {
       if (layoutTargetX() != x || layoutTargetY() != y) {
         animateTo(x, y);
@@ -3019,6 +3004,9 @@ namespace umbriel {
                 .updateRestoreLocation = true,
             }
         );
+        if (assignedScratchpad && rule.defaultFocused.value_or(false)) {
+          scratchpad->summon(*rule.defaultScratchpad, restoreOutput);
+        }
       }
     }
     if (!assignedScratchpad) {
@@ -3669,8 +3657,7 @@ namespace umbriel {
         if (!sizeAnimating()) {
           syncFloatingSurfaceClip();
         }
-        // Enable + clip through the current presentation owner (previously
-        // done per render pass).
+        // Enable + clip through the current presentation owner.
         syncOwnedPresentation();
       }
     } else {
@@ -3961,9 +3948,8 @@ namespace umbriel {
     if (!m_maximizedToEdges && !m_floatingMaximized) {
       return;
     }
-    // Deliberately not setMaximized(false)/setMaximizedToEdges(false): those
-    // replay the restore box, which would undo the size the caller is about to
-    // request and snap the window back to its pre-maximize origin.
+    // Not setMaximized(false)/setMaximizedToEdges(false): those replay the restore box and would undo the size the
+    // caller is about to request.
     cancelSizeAnimation();
     const bool wasEdges = m_maximizedToEdges;
     m_maximizedToEdges = false;
@@ -4138,9 +4124,8 @@ namespace umbriel {
     if (!floating && m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this)) {
       return;
     }
-    // A no-op request must stay a no-op: unfullscreening or cancelling the size animation here would let a redundant
-    // "make tiled" call rip a fullscreen game out of its state (the game re-requests, the compositor re-grants, and
-    // every cycle reflows the strip).
+    // A no-op request must stay a no-op: a redundant "make tiled" call must not unfullscreen or cancel the size
+    // animation.
     const bool wantTiled = !floating;
     if (m_tiled == wantTiled) {
       return;
@@ -4162,9 +4147,7 @@ namespace umbriel {
     cancelSizeAnimation();
     const bool fullscreen = m_toplevel->scheduled.fullscreen || m_toplevel->current.fullscreen;
     // Only the float direction leaves fullscreen (it owns its own scene tree). Re-tiling a fullscreen view keeps the
-    // state and re-inserts it as a fullscreen column: dropping it first configures the client to a regular column size
-    // for the instant before it re-requests fullscreen, and game engines latch that transient windowed size for their
-    // input mapping, leaving hover and clicks dead outside it (X geometry recovers, the engine's notion does not).
+    // state and re-inserts it as a fullscreen column, so the client never sees a transient column-sized configure.
     if (floating && fullscreen) {
       setFullscreen(false, FullscreenExitLayout::DeferToCaller);
       // Remember to restore on the next re-tile. Set after setFullscreen,
@@ -4494,9 +4477,9 @@ namespace umbriel {
     if (!m_mapped) {
       return;
     }
-    // Late app ID or title settlement may select opening rules, but identity
-    // hints changed after map must not select new one-shot behavior. is_alone never selects opening settings: the
-    // alone effects are applied and undone separately, on every change to the workspace's tiled set.
+    // Late app ID or title settlement may select opening rules, but identity hints changed after map must not select
+    // new one-shot behavior. is_alone never selects opening settings: alone effects are applied and undone on every
+    // change to the workspace's tiled set.
     const ResolvedWindowRule rule = resolveWindowRules(
         config(), ruleText(m_toplevel->app_id), ruleText(m_toplevel->title), m_initialRulesXdgTag,
         m_initialRulesContentType, m_initialRuleState, m_server->uptimeMs()
@@ -4621,6 +4604,7 @@ namespace umbriel {
         restoreTiled = !*rule.defaultFloating;
       }
       if (targetOutput != nullptr) {
+        const bool wasActivated = m_activated;
         assignedScratchpad = scratchpadManager->assignByWindowRule(
             this, *scratchpadTarget, targetOutput,
             ScratchpadManager::AutomaticAdmission{
@@ -4631,6 +4615,13 @@ namespace umbriel {
                 .updateRestoreLocation = !wasInScratchpad || placementChanged,
             }
         );
+        if (assignedScratchpad
+            && scratchpadChanged
+            && rule.defaultFocused.value_or(false)
+            && scratchpadManager->summon(*scratchpadTarget, targetOutput)
+            && wasActivated) {
+          m_server->focusView(this);
+        }
       }
     }
     const bool inScratchpad = wasInScratchpad || assignedScratchpad;

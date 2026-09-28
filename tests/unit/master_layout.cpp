@@ -314,7 +314,7 @@ UMBRIEL_TEST(directionalFocusWaitsForTheArrangeAfterAStructuralChange) {
 
   // consume moves stub(2) into the master column, which the boxes only reflect
   // after the next arrange. Until then the layout declines to answer so focus
-  // follows column order rather than the old geometry.
+  // follows column order rather than the stale geometry.
   CHECK(fixture.layout.consume(stub(2), -1));
   CHECK(!fixture.layout.focusHorizontalLeaf(stub(2), 1).has_value());
   CHECK(!fixture.layout.focusVerticalLeaf(stub(2), -1).has_value());

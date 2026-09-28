@@ -255,7 +255,7 @@ UMBRIEL_TEST(listSectionsAreCompared) {
   }
   {
     Config after;
-    after.scratchpads.push_back({.name = "term"});
+    after.scratchpads.push_back({.name = "term", .spawnWhenEmpty = {}});
     const ConfigChange change = ConfigChange::between(before, after);
     CHECK(change.scratchpads);
     CHECK_EQ(change.summary(), std::string("scratchpads"));

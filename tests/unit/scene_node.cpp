@@ -66,8 +66,8 @@ UMBRIEL_TEST(everyKindRoundTrips) {
 }
 
 UMBRIEL_TEST(foreignDataYieldsNullInsteadOfBeingReinterpreted) {
-  // This is the case that used to be silent undefined behavior: the pointer was
-  // cast to SceneNode* and its `kind` read regardless of what it pointed at.
+  // A non-SceneNode pointer must be rejected rather than cast to SceneNode*
+  // and its `kind` read regardless of what it points at.
   ForeignData foreign;
   CHECK(sceneNodeFrom(&foreign) == nullptr);
 }
@@ -81,9 +81,8 @@ UMBRIEL_TEST(magicIsTheFirstMemberSoTheGuardReadsIt) {
 }
 
 UMBRIEL_TEST(sceneNodeDataRoundTripsThroughAPolymorphicDerivedClass) {
-  // The regression this file previously missed. View gained a second, polymorphic base, which moved its SceneNode
-  // subobject off offset 0. Storing a raw `this` then made sceneNodeFrom read the vptr as `magic`, reject every window,
-  // and take pointer hit-testing (click to focus, drag, resize) with it.
+  // When the SceneNode subobject is not at offset 0 (a polymorphic base precedes it), storing a raw `this` would make
+  // sceneNodeFrom read the vptr as `magic` and reject the node, breaking pointer hit-testing.
   TaggedPolymorphicNode node(SceneNodeKind::View);
 
   // The premise: the object does not begin with its SceneNode subobject.

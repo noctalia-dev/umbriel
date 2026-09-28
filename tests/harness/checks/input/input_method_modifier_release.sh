@@ -65,7 +65,7 @@ wait_for_log_count() {
 
 # Map a text-input-v3 client on workspace 1. The keyboard driver starts with a
 # barrier, which creates one persistent physical keyboard before Fcitx connects
-# and keeps that same device through the complete reproduction.
+# and keeps that same device for the whole check.
 ENABLE_TEXT_INPUT=1 LOG_MODIFIERS=1 "$OBSERVER" text-input-window > "$TEXT_LOG" 2>&1 &
 wait_for_count 1
 coproc DRIVER {
@@ -103,8 +103,8 @@ wait_for_active text-input-window
 wait_for_log_count "$INPUT_METHOD_LOG" '^activated$' 2
 wait_for_log_count "$INPUT_METHOD_LOG" '^grabbed$' 2
 
-# Keep Mod held while switching back to the plain client, matching the report's
-# final Mod+1, Mod+2 sequence. Then release it only after Fcitx has torn down
+# Keep Mod held while switching back to the plain client (Mod+1, then Mod+2).
+# Then release it only after Fcitx has torn down
 # the grab while its virtual keyboard still carries the prior Mod mask.
 printf '\n' >&"$DRIVER_INPUT"
 wait_for_log_count "$DRIVER_LOG" '^final-switch$' 1

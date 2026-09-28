@@ -12,12 +12,10 @@ struct wl_event_source;
 
 namespace umbriel {
 
-  // Keeps an xwayland-satellite process alive for the lifetime of the session. Umbriel does not implement X11 itself;
-  // xwayland-satellite is a separate program that owns an X display and translates for it. All this class does is pick
-  // a display number, spawn the process, notice when it dies, and restart it, with a failure budget, so a satellite
-  // that cannot start (missing Xwayland, wrong version) stops rather than spinning forever. Death is detected through a
-  // pidfd on the event loop rather than SIGCHLD: the compositor sets SIGCHLD to SIG_IGN so it never has to reap, and a
-  // pidfd gives the same notification without a signal handler racing the main loop.
+  // Keeps an xwayland-satellite process (a separate program that owns an X display) alive for the session: picks a
+  // display number, spawns it, notices when it dies, and restarts it within a failure budget so a satellite that cannot
+  // start stops instead of spinning forever. Death is detected through a pidfd on the event loop because the
+  // compositor sets SIGCHLD to SIG_IGN and never reaps.
   class XwaylandSupervisor {
   public:
     XwaylandSupervisor(wl_event_loop* loop, std::string waylandSocket);

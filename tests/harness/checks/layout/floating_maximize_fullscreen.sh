@@ -49,7 +49,7 @@ box_of() {
 
 # All four fields at once, and only once the box has stopped moving: the
 # animated move must finish before the next toggle, or the following restore
-# box is captured mid-flight and the check measures the race, not the fix.
+# box is captured mid-flight and the check measures the race.
 assert_box() {
   local expected="$1x$2+$3+$4" actual= previous=
   for _ in $(seq 80); do

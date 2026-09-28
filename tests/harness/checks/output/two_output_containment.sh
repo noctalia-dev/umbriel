@@ -105,9 +105,9 @@ check "no bleed onto $neighbour" "$neighbour_same" same
 check "content drawn on $home" "$home_same" changed
 check "content reaches the strip edge on the home output" "$edge_state" changed
 
-# Transitions are where containment used to be re-derived per move: a workspace slide, a fullscreen enter/leave, and a
-# focus scroll all move nodes while columns hang over the neighbour. Sample the neighbour 80, 160, and 240 ms into each
-# step; it must never change, including mid-animation. A fullscreen change animates from the client's resized commit.
+# A workspace slide, a fullscreen enter/leave, and a focus scroll all move nodes while columns hang over the neighbour.
+# Sample the neighbour 80, 160, and 240 ms into each step; it must never change, including mid-animation. A fullscreen
+# change animates from the client's resized commit.
 transition_drift=0
 for action in window-toggle-fullscreen window-toggle-fullscreen workspace-next workspace-previous \
   window-focus-right window-focus-left column-move-right column-move-left; do

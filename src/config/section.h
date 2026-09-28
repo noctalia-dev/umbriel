@@ -12,12 +12,9 @@
 
 namespace umbriel {
 
-  // Reads one table of a config file, remembering which keys it was asked for. The point of remembering is the
-  // unknown-key warning. Every section used to carry a hand-written list of its own key names beside the code that
-  // reads them, so adding a setting meant editing two places and forgetting one meant either a valid key was warned
-  // about or a typo was silently accepted. Here the list *is* the set of keys the reader asked for, so it cannot drift.
-  // The warning is emitted from the destructor, so a reader that returns early still reports. Diagnostics go to a
-  // caller-supplied vector rather than to a global, which is also what lets this be tested without a compositor.
+  // Reads one table of a config file, remembering which keys it was asked for; any other key in the table produces an
+  // unknown-key warning. The warning is emitted from the destructor, so a reader that returns early still reports.
+  // Diagnostics go to a caller-supplied vector, which lets this be tested without a compositor.
   class Section {
   public:
     Section(const toml::table& table, std::string name, std::vector<ConfigDiagnostic>& diagnostics);

@@ -1,8 +1,32 @@
 #include "check.h"
+#include "input/gesture_physics.h"
 #include "overview/navigation.h"
 
+#include <cmath>
+#include <cstdint>
+
+using umbriel::GesturePhysics;
 using umbriel::NavigationSource;
 using umbriel::OverviewNavigation;
+
+namespace {
+
+  // The row a filmstrip release from row 0 lands on, the way the overview settles it at zoom 0.5: `travel` scroll units
+  // in 10 ms events at `unitsPerSec`, a release sample 10 ms after the last one, then the projection rounded onto one
+  // of six rows.
+  int landingRow(double travel, double unitsPerSec) {
+    OverviewNavigation nav;
+    const int events = static_cast<int>(std::ceil(travel * 100.0 / unitsPerSec));
+    uint32_t timeMsec = 10;
+    for (int i = 0; i < events; ++i, timeMsec += 10) {
+      nav.update(0, travel / events, timeMsec);
+    }
+    nav.update(0, 0, timeMsec);
+    const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0, OverviewNavigation::kScrollTravel.workspace);
+    return GesturePhysics::stepTarget(nav.projectedPosition() * scale, 0, 5);
+  }
+
+} // namespace
 
 UMBRIEL_TEST(diagonalInputLocksOnceAndRetainsInitialTravel) {
   OverviewNavigation nav;
@@ -29,12 +53,13 @@ UMBRIEL_TEST(releaseAfterPauseDoesNotRetainFlickVelocity) {
   CHECK_EQ(nav.projectedPosition(), 40.0);
 }
 
-UMBRIEL_TEST(workspaceSettlementIsBoundedAndAllowsMultipleRows) {
-  CHECK_EQ(OverviewNavigation::workspaceTarget(-10, 4), 0);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(2.49, 4), 2);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(2.51, 4), 3);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(10, 4), 4);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(10, 0), 0);
+UMBRIEL_TEST(filmstripReleaseLandsByDistanceAndSpeedTogether) {
+  // 0.625 of a row released gently settles on the next row, not the one after.
+  CHECK_EQ(landingRow(250, 1000), 1);
+  // The same distance flicked hard carries across several rows.
+  CHECK(landingRow(250, 3500) > 2);
+  // No release speed carries the filmstrip past its last row.
+  CHECK_EQ(landingRow(1000, 20000), 5);
 }
 
 UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
@@ -54,33 +79,6 @@ UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
       OverviewNavigation::travelFor(NavigationSource::Swipe).workspace
       != OverviewNavigation::travelFor(NavigationSource::Scroll).workspace
   );
-}
-
-UMBRIEL_TEST(releaseProjectionAvoidsExtraWorkspaceWithoutLimitingLongSwipes) {
-  const double units = OverviewNavigation::kScrollTravel.workspace;
-  const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0, units);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 1000) * scale, 5), 1);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(250, 3500) * scale, 5), 2);
-  CHECK_EQ(OverviewNavigation::workspaceTarget(OverviewNavigation::projectRelease(1000, 0) * scale, 5), 3);
-  CHECK_EQ(OverviewNavigation::projectRelease(250, -1000), 130.0);
-  CHECK_EQ(OverviewNavigation::projectRelease(250, 0), 250.0);
-}
-
-UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
-  const double limit = OverviewNavigation::kOverscroll;
-  CHECK_EQ(OverviewNavigation::rubberBandDerivative(1.5, 3, limit), 1.0);
-  CHECK(OverviewNavigation::rubberBandDerivative(-1, 3, limit) < 0.02);
-  CHECK_EQ(
-      OverviewNavigation::rubberBandDerivative(-1, 3, limit), OverviewNavigation::rubberBandDerivative(4, 3, limit)
-  );
-  CHECK_EQ(OverviewNavigation::rubberBand(1.5, 3, limit), 1.5);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) > -limit);
-  CHECK(OverviewNavigation::rubberBand(-1, 3, limit) < 0);
-  CHECK(OverviewNavigation::rubberBand(4, 3, limit) > 3);
-  CHECK(OverviewNavigation::rubberBand(1000, 3, limit) < 3 + limit);
-  CHECK_EQ(OverviewNavigation::zoomScale(1), 1.0);
-  CHECK(OverviewNavigation::zoomScale(0.5) > 1);
-  CHECK(OverviewNavigation::zoomScale(0.5) < 2);
 }
 
 int main() { return RUN_TESTS(); }

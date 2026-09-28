@@ -724,11 +724,6 @@ UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
   CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * (2.0 / 3.0))) <= 2);
 }
 
-// The scrolling-only API is no longer reachable from a DwindleLayout at all: scroll offsets, column positions, and row
-// weights moved onto ScrollingLayout, so the question a previous test asked here ("does dwindle answer 0?") cannot be
-// compiled any more. That is the point. Callers reach those through Workspace::scrollingLayout(), which is null for a
-// dwindle workspace.
-
 UMBRIEL_TEST(resizeEdgesComeFromTileThirds) {
   Fixture fixture;
   fixture.addLeaves(2);

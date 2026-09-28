@@ -511,10 +511,8 @@ namespace umbriel {
 
   void Workspace::layoutDetach(View* view, bool animate) {
     detachFromLayout(view);
-    // The column just left the strip, so the old offset can now point past the end: a survivor stays cut off at the
-    // left edge while empty space opens on the right. Clamping re-anchors the remaining columns after removal while
-    // leaving the offset alone if the strip is still longer than the viewport. Deliberately not inside arrange(): a
-    // touchpad swipe overscrolls on purpose, and it arranges on every frame of the gesture.
+    // Removing the column can leave the offset past the end of the strip; clamp it now. Not done in arrange(), since a
+    // touchpad swipe overscrolls on purpose and arranges every frame.
     clampScrollToRange();
     markArrange(animate);
   }
@@ -562,10 +560,8 @@ namespace umbriel {
   }
 
   void Workspace::markArrange(bool animate) {
-    // Last mark wins. The pairing that settles this is a touchpad scroll: every motion marks unanimated, and the
-    // release that snaps to the nearest column marks animated, often in the same frame as the last motion. Letting the
-    // unanimated mark win would teleport the strip at the end of every swipe. The opposite mistake, an animated mark
-    // landing mid-drag, costs one tween on a frame where something unrelated also changed the layout.
+    // Last mark wins, so a swipe's animated snap on release is not overridden by an unanimated motion mark in the same
+    // frame.
     m_arrangeAnimate = animate;
     m_arrangePending = true;
     if (m_group != nullptr && m_group->output() != nullptr) {
@@ -1572,10 +1568,7 @@ namespace umbriel {
     }
     View* view = m_focusedView;
     if (view->floating()) {
-      // No arrange here, for the same reason the fraction verbs do not arrange: an
-      // arrange re-clamps a float against the geometry the client has committed so
-      // far, and mid-resize that is still the size from before this action, so the
-      // opposite edge is pulled back to a bound computed for the old size.
+      // No arrange here: it would re-clamp the float against the client's pre-resize committed size.
       view->resizeFloatingEdge(edges, delta);
       return true;
     }
@@ -1746,7 +1739,7 @@ namespace umbriel {
       view->setOnActiveWorkspace(m_active);
       // Persistent resting state: an inactive workspace keeps its nodes disabled so the shared scene never renders them
       // on any output. Active (and in-transition) views are enabled + clipped to their home output by
-      // syncViewPresentation (arrange / slide), which replaces the old per-render-pass enable/disable.
+      // syncViewPresentation (arrange / slide).
       if (!m_active && !m_inSwitchTransition) {
         view->setNodeEnabled(false);
       }
@@ -2105,7 +2098,7 @@ namespace umbriel {
       workspace->rename(std::to_string(workspace->index() + 1), workspace->index(), false);
     }
 
-    // As in niri, declarations added during a live reload enter at the top of
+    // Declarations added during a live reload enter at the top of
     // the dynamic list. Preserve declaration order among names added together,
     // and keep the optional leading unnamed sentinel first.
     for (const std::string& entry : std::views::reverse(desired)) {
@@ -2443,10 +2436,17 @@ namespace umbriel {
     if (extent <= 0) {
       return false;
     }
+    // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
+    // is where it sits relative to the workspace that is now active. A gesture that starts now carries on from there
+    // rather than snapping the slide to the end of the animation first. A jump across several workspaces has a
+    // non-neighbour on screen that the gesture cannot show, so that one snaps.
+    const bool carry = m_slide.base != nullptr
+        && std::max(m_slide.base->index(), m_active->index()) - std::min(m_slide.base->index(), m_active->index()) <= 1;
+    const double start = carry ? m_slideAnim.current() - m_slideAnim.target() : 0.0;
     slideFinish();
     m_slide.base = m_active;
     m_slide.extent = extent;
-    m_slide.progress = 0;
+    m_slide.progress = start;
     const size_t idx = m_active->index();
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
@@ -2461,7 +2461,7 @@ namespace umbriel {
       m_slide.next->showSwitchViews();
       m_slide.next->arrange(false);
     }
-    slideApply(0.0);
+    slideApply(start);
     return true;
   }
 
@@ -2484,7 +2484,7 @@ namespace umbriel {
     wlr_output_schedule_frame(m_output->wlr());
   }
 
-  void WorkspaceGroup::slideSettle(int delta) {
+  void WorkspaceGroup::slideSettle(int delta, double velocity) {
     Workspace* target = nullptr;
     if (delta < 0) {
       target = m_slide.previous;
@@ -2519,12 +2519,23 @@ namespace umbriel {
       return;
     }
     m_slideAnim.snap(m_slide.progress);
-    m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
+    if (workspaces.curve.easing == Easing::Spring) {
+      // A spring carries the release speed, so the slide keeps moving the way the fingers were instead of stopping
+      // dead at the release and starting over from rest.
+      m_slideAnim.settleSpring(static_cast<double>(delta), workspaces.curve.spring, velocity);
+    } else {
+      m_slideAnim.retarget(static_cast<double>(delta), workspaces.durationMs, workspaces.curve);
+    }
     wlr_output_schedule_frame(m_output->wlr());
   }
 
   bool WorkspaceGroup::tickAnimations(uint64_t nowMsec) {
     const bool ticked = m_slideAnim.tick(nowMsec);
+    if (ticked && m_slideAnim.animating() && m_slideAnim.curve().easing == Easing::Spring) {
+      // One step is `extent` pixels, so a spring that can no longer move a pixel has already landed there: end it
+      // now rather than letting it creep at amplitudes the pixel grid rounds away.
+      static_cast<void>(m_slideAnim.finishSpringTail(m_slide.extent));
+    }
     bindAnimationEffect(&m_output->viewRoot()->node, AnimationEvent::Workspaces, m_slideAnim);
     bool active = false;
     if (ticked) {

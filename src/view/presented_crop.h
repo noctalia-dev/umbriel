@@ -14,11 +14,9 @@ namespace umbriel {
   }
 
   // Map the visible part of an animated presentation back onto the committed buffer. `content` is the box the view is
-  // being drawn at and `clip` the visible part of it (both surface coordinates); `base` is the surface's own buffer
-  // source box, which carries any viewport and scale the client set. This exists because a scene clip cannot express
-  // it: a clip crops 1:1 and caps the destination at the committed surface size, so it cannot show a buffer at a size
-  // the client has not committed. Returns an empty box when the clamp leaves nothing, meaning the buffer should be left
-  // alone.
+  // drawn at and `clip` its visible part (surface coordinates); `base` is the surface's buffer source box (client
+  // viewport and scale). A scene clip cannot do this: it crops 1:1 and caps at the committed surface size. Returns an
+  // empty box when nothing is left, meaning the buffer should be left alone.
   [[nodiscard]] constexpr wlr_fbox croppedSourceBox(
       const wlr_fbox& base, const wlr_box& geometry, const wlr_box& content, const wlr_box& clip, int surfaceWidth,
       int surfaceHeight

@@ -25,6 +25,7 @@
   nlohmann_json,
   xwayland-satellite,
   makeBinaryWrapper,
+  rev ? "unknown",
 }:
 let
   version = lib.trim (builtins.readFile ../VERSION);
@@ -68,6 +69,11 @@ stdenv.mkDerivation {
   mesonBuildType = "release";
 
   mesonFlags = [ (lib.mesonEnable "tests" false) ];
+
+  postPatch = ''
+    substituteInPlace meson.build \
+      --replace-fail "umbriel_git_revision_config.set('VCS_TAG', 'unknown')" "umbriel_git_revision_config.set('VCS_TAG', '${rev}')"
+  '';
 
   postInstall = ''
     if [ -f "$out/share/wayland-sessions/umbriel.desktop" ]; then

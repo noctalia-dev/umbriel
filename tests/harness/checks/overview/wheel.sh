@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # The overview steps workspaces from a wheel notch, and stops at the ends. While the overview is up the real window
-# trees are hidden, so switching is a discrete step down the filmstrip rather than the animated slide it is outside.
-# The wheel and middle-button drag reach Overview::selectRelativeWorkspace. This check
-# exercises the wheel path, while overview/keybind_actions covers arrow input, which navigates cards first. The
-# headless backend has no touchpad, and zwlr_virtual_pointer_v1 carries motion, buttons and axes but no gesture
-# events, so the gesture state machine is not reachable without a real device. The active workspace is observed
-# through ext-workspace-v1.
+# trees are hidden, so switching is a discrete step down the filmstrip rather than an animated slide. Gestures are not
+# reachable here: zwlr_virtual_pointer_v1 carries no gesture events. The active workspace is observed through
+# ext-workspace-v1.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -88,8 +85,8 @@ pointer move $((OUTPUT_W / 2)) $((OUTPUT_H / 2))
 expect_notch 1 2  # down the filmstrip
 expect_notch -1 1 # and back up
 
-# At the top row there is nowhere further up: the step is refused rather than wrapping or running off the end of the group. This asserts the behaviour, not the
-# bounds check that implements it: deleting that check still passes here, because workspaceAt() then returns null and select(null) is already a no-op.
+# At the top row there is nowhere further up: the step is refused rather than wrapping or running off the end of the
+# group.
 expect_inert_notch -1 notch "a notch past the first workspace was not clamped"
 
 # A successful source change with no overview-invalidating runtime effect is

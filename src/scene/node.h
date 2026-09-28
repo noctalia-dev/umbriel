@@ -23,17 +23,14 @@ namespace umbriel {
     SceneNodeKind kind;
   };
 
-  // Produces the pointer to store in wlr_scene_node::data. Always store through this rather than assigning `this`
-  // directly. A derived class that also inherits a polymorphic base does not begin with its SceneNode subobject: the
-  // vptr takes offset 0 and SceneNode moves down, so a raw `this` would not round-trip through sceneNodeFrom. Passing
-  // `this` here makes the compiler apply the offset as an ordinary argument conversion.
+  // Produces the pointer to store in wlr_scene_node::data; always store through this, never a raw `this`. A derived
+  // class with a polymorphic base does not start with its SceneNode subobject, so the implicit conversion here applies
+  // the offset that sceneNodeFrom relies on.
   [[nodiscard]] inline void* sceneNodeData(SceneNode* node) { return node; }
 
-  // Recovers a SceneNode from a wlr_scene_node::data pointer, or null when the pointer is something else. Every node
-  // the compositor tags sets the sentinel, so this catches the case that used to be silent: a wlroots or SceneFX helper
-  // stashing its own user data in a node we then walk over, previously reinterpreted as a SceneNode and dereferenced.
-  // It is a guard, not a proof. Reading `magic` through a foreign pointer is only safe because anything in that field
-  // points at a live object; the sentinel then makes the mismatch detectable rather than catastrophic.
+  // Recovers a SceneNode from a wlr_scene_node::data pointer, or null when the pointer is something else, such as user
+  // data a wlroots or SceneFX helper stored on a node we walk over. It is a guard, not a proof: reading `magic` through
+  // a foreign pointer is only safe because anything in that field points at a live object.
   [[nodiscard]] inline SceneNode* sceneNodeFrom(void* data) {
     auto* node = static_cast<SceneNode*>(data);
     if (node == nullptr || node->magic != SceneNode::kMagic) {

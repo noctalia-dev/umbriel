@@ -222,6 +222,14 @@ namespace umbriel {
     }
 
     [[nodiscard]] bool initialize() {
+      if (!initializeBackend()) {
+        return false;
+      }
+      addHeadlessBackend();
+      return true;
+    }
+
+    [[nodiscard]] bool initializeBackend() {
       const char* configuredBackends = std::getenv("WLR_BACKENDS");
       const DrmBackendEnvironment environment = resolveDrmBackendEnvironment(
           configuredBackends == nullptr ? std::nullopt : std::optional<std::string_view>(configuredBackends),
@@ -251,6 +259,35 @@ namespace umbriel {
       kLog.error("DRM policy requires wlroots DRM backend and libudev support in this build");
       return false;
 #endif
+    }
+
+    // A headless child backend with no outputs lets output-create add virtual outputs to native and nested sessions.
+    void addHeadlessBackend() {
+      if (!wlr_backend_is_multi(m_backend)) {
+        return;
+      }
+      bool present = false;
+      wlr_multi_for_each_backend(
+          m_backend,
+          [](wlr_backend* candidate, void* data) {
+            if (wlr_backend_is_headless(candidate)) {
+              *static_cast<bool*>(data) = true;
+            }
+          },
+          &present
+      );
+      if (present) {
+        return;
+      }
+      wlr_backend* headless = wlr_headless_backend_create(wl_display_get_event_loop(m_display));
+      if (headless == nullptr) {
+        kLog.warn("failed to create the headless backend; output-create is unavailable");
+        return;
+      }
+      if (!wlr_multi_backend_add(m_backend, headless)) {
+        kLog.warn("failed to add the headless backend to the multi-backend; output-create is unavailable");
+        wlr_backend_destroy(headless);
+      }
     }
 
     [[nodiscard]] wlr_backend* backend() const { return m_backend; }

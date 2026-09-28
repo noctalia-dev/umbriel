@@ -498,7 +498,7 @@ UMBRIEL_TEST(workspaceAxisSelectsTheStripDirectionPerOutput) {
   );
 }
 
-// A workspace rule can no longer restore the removed strip direction.
+// A workspace rule cannot override the resolved strip direction.
 UMBRIEL_TEST(workspaceRulesCannotOverrideTheResolvedStripDirection) {
   Config config;
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The new output, workspace, and window actions: parse + dispatch reach the handlers (an unregistered action would say "unknown action"), and the behaviors that
-# work on a single headless output are asserted by their observable transitions.
+# Output, workspace, and window actions: parse + dispatch reach the handlers (an unregistered action would say
+# "unknown action"), and the behaviors that work on a single headless output are asserted by their transitions.
 set -euo pipefail
 
 accepts() {

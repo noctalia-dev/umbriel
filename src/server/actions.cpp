@@ -1801,10 +1801,7 @@ namespace umbriel {
       return scratchpad != nullptr && scratchpad->restoreFocused(*name);
     }
 
-    // Toggles the focused window's scratchpad membership: if the focused
-    // window is currently the scratchpad's focused entry, restore it (same as
-    // actionRestoreFromScratchpad); otherwise move it into the scratchpad
-    // (same as actionMoveToScratchpad).
+    // Restores the focused window if it is the scratchpad's focused entry, otherwise moves it into the scratchpad.
     bool actionToggleScratchpad(Server& server, const Keybind& bind, std::string* error) {
       const auto name = scratchpadName(server, bind, error);
       Output* output = server.outputFromWlr(server.preferredOutput());

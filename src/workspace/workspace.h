@@ -134,8 +134,8 @@ namespace umbriel {
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
-    // in the same frame (a focus change, a config reload, a client's fullscreen commit) each used to arrange on their
-    // own. Prefer this to arrange(). Call arrange() directly only when the code immediately afterwards reads the
+    // in the same frame (a focus change, a config reload, a client's fullscreen commit) coalesce into one arrange.
+    // Prefer this to arrange(). Call arrange() directly only when the code immediately afterwards reads the
     // arranged geometry back out of the layout, or when protocol state and size must land in one configure before the
     // next frame. targetBox() is the only thing arrange() produces that is not simply applied to the scene.
     void markArrange(bool animate = true);
@@ -333,9 +333,14 @@ namespace umbriel {
     void flushArrange();
 
     [[nodiscard]] bool slideActive() const { return m_slide.base != nullptr; }
+    // Where the slide sits between its steps right now. A gesture that starts mid-settle picks the slide up here
+    // instead of snapping it to an end first.
+    [[nodiscard]] double slideProgress() const { return m_slide.base != nullptr ? m_slide.progress : 0.0; }
     bool slideBegin(bool includePrev, bool includeNext);
     void slideApply(double progress);
-    void slideSettle(int delta);
+    // Settle onto `delta` steps from the base. `velocity` is what the gesture still had when it was released, in steps
+    // per second, and starts the settle from that speed instead of from rest; callers that are not a gesture pass 0.
+    void slideSettle(int delta, double velocity = 0);
     void slideFinish();
     // Advances the workspace slide; returns true while it is still running.
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Workspaces; }

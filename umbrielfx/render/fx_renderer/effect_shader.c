@@ -12,6 +12,11 @@
 // Shared by every kind. Its names are the shared preamble contract.
 static const char kPreamble[] =
     "precision highp float;\n"
+    // Some GPUs' native sin/cos return wrong values for large angles even at
+    // highp, so each argument is reduced to one revolution. A function-like macro
+    // does not re-expand itself, so every overload and constant use still works.
+    "#define sin(x) sin(mod((x), 6.283185307179586))\n"
+    "#define cos(x) cos(mod((x), 6.283185307179586))\n"
     "varying vec2 v_texcoord;\n"
     "uniform sampler2D umbriel_texture;\n"
     "uniform mat3 umbriel_sample_matrix;\n"

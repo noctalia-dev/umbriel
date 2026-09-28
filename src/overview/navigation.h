@@ -1,8 +1,8 @@
 #pragma once
 
+#include "input/gesture_physics.h"
 #include "input/swipe_tracker.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -34,13 +34,6 @@ namespace umbriel {
       return source == NavigationSource::Scroll ? kScrollTravel : kSwipeTravel;
     }
 
-    // Travel in either direction before the gesture commits to one axis.
-    static constexpr double kAxisLock = 16.0;
-    // How far the velocity at release is projected past the release position.
-    static constexpr double kProjectionSec = 0.12;
-    // Overscroll past either end, in workspaces for the filmstrip and in viewports for the strip.
-    static constexpr double kOverscroll = 0.15;
-
     void reset() {
       m_x.reset();
       m_y.reset();
@@ -50,42 +43,20 @@ namespace umbriel {
     void update(double dx, double dy, uint32_t timeMsec) {
       m_x.push(dx, timeMsec);
       m_y.push(dy, timeMsec);
-      if (m_axis == Axis::Pending && std::hypot(m_x.pos(), m_y.pos()) >= kAxisLock) {
+      if (m_axis == Axis::Pending && std::hypot(m_x.pos(), m_y.pos()) >= GesturePhysics::kAxisLock) {
         m_axis = std::abs(m_x.pos()) > std::abs(m_y.pos()) ? Axis::Horizontal : Axis::Vertical;
       }
     }
 
     [[nodiscard]] Axis axis() const { return m_axis; }
     [[nodiscard]] double position() const { return tracker().pos(); }
-    [[nodiscard]] double projectedPosition() const { return projectRelease(position(), velocity()); }
+    // Where the travel would coast to a stop under the deceleration in SwipeTracker: the projection the release
+    // settles on, and the one the snapshot in the other direction uses.
+    [[nodiscard]] double projectedPosition() const { return tracker().projectedEndPos(); }
     [[nodiscard]] double velocity() const { return tracker().velocity(); }
 
-    [[nodiscard]] static double projectRelease(double position, double velocity) {
-      return position + velocity * kProjectionSec;
-    }
-
     [[nodiscard]] static double travelScale(double extent, double zoom, double factor, double unitsPerStep) {
-      return extent * zoomScale(zoom) * factor / unitsPerStep;
-    }
-
-    [[nodiscard]] static double rubberBandDerivative(double position, double maximum, double limit) {
-      const double excess = position - std::clamp(position, 0.0, maximum);
-      const double denominator = 1.0 + std::abs(excess) / limit;
-      return 1.0 / (denominator * denominator);
-    }
-
-    // Reduce the effect of overview zoom on touchpad travel, rather than
-    // multiplying sensitivity by the full inverse zoom.
-    [[nodiscard]] static double zoomScale(double zoom) { return 1.0 / (1.0 + (zoom - 1.0) / 2.5); }
-
-    [[nodiscard]] static double rubberBand(double position, double maximum, double limit) {
-      const double clamped = std::clamp(position, 0.0, maximum);
-      const double excess = position - clamped;
-      return clamped + std::copysign(limit * (1.0 - 1.0 / (1.0 + std::abs(excess) / limit)), excess);
-    }
-
-    [[nodiscard]] static int workspaceTarget(double projected, int last) {
-      return static_cast<int>(std::lround(std::clamp(projected, 0.0, static_cast<double>(last))));
+      return extent * GesturePhysics::zoomScale(zoom) * factor / unitsPerStep;
     }
 
   private:

@@ -174,8 +174,7 @@ fi
 
 # The override works in the other direction too: with the global switch off, a rule
 # that sets shadow = true still draws one, while a window without the rule stays
-# bare. That is the per-window shadow #230 asks for, and an implementation that
-# merely ANDs the global switch with the rule value fails here.
+# bare.
 printf '\n[appearance.shadow]\nenabled = false\n' >> "$UMBRIEL_CONFIG"
 sed -i 's/^shadow = false$/shadow = true/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null

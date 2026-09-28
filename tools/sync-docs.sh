@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # Sync docs/user/*.md into ../noctalia-docs/src/content/docs/umbriel/ as .mdx.
-# docs/design/ holds maintainer notes and is never synced. Existing .mdx files
-# keep their hand-written frontmatter (title, description); only the body is
-# refreshed from the source .md. New files get a title derived from their first
-# H1. Stale .mdx files without a source document are removed after a successful
-# sync. A leading H1 is dropped from the body.
-# Source docs use relative .md links so they render correctly on GitHub. The docs site serves pages at
-# /umbriel/<route>/, so sibling documentation links are rewritten here. The packaged configuration links directly to
-# its current repository version. A small explicit map handles source filenames whose established site route differs.
-# Design notes (docs/design) are maintainer-only and are never synced, so links
-# to them must not appear in user docs. Any .md link that survives the rewrite
-# is reported, since it would 404 on the site. After syncing, rebuild the site
-# (npm run build) before previewing: astro preview serves the prebuilt dist/
-# and does not pick up new .mdx. Usage: tools/sync-docs.sh [docs-site-root]
+# Existing .mdx files keep their hand-written frontmatter (title, description);
+# only the body is refreshed. New files get a title from their first H1, and a
+# leading H1 is dropped from the body. Stale .mdx files without a source are
+# removed after a successful sync.
+# Source docs use relative .md links so they render on GitHub; the site serves pages at /umbriel/<route>/, so sibling
+# links are rewritten here, and the packaged configuration links to its repository version. A small explicit map
+# handles filenames whose site route differs. docs/design/ is maintainer-only, never synced, and must not be linked
+# from user docs; any .md link that survives the rewrite is reported, since it would 404.
+# After syncing, rebuild the site (npm run build) before previewing: astro preview serves the prebuilt dist/.
+# Usage: tools/sync-docs.sh [docs-site-root]
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

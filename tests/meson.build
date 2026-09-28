@@ -2,6 +2,7 @@
 # needs compositor code. Either way a test never lists or recompiles a source.
 unit_tests = [
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
+  ['gesture-physics', ['unit/gesture_physics.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
   ['presented-crop', ['unit/presented_crop.cpp'], []],
   ['scene-node', ['unit/scene_node.cpp'], []],
@@ -108,6 +109,19 @@ pointer_client = executable(
     virtual_pointer_client_c,
     virtual_keyboard_client_h,
     virtual_keyboard_client_c,
+  ],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
+)
+
+pointer_modifiers_client = executable(
+  'pointer-modifiers-client',
+  [
+    'harness/clients/pointer_modifiers_client.cpp',
+    input_method_client_h, input_method_client_c,
+    ext_session_lock_client_h, ext_session_lock_client_c,
+    virtual_pointer_client_h, virtual_pointer_client_c,
+    virtual_keyboard_client_h, virtual_keyboard_client_c,
+    layer_shell_client_h, layer_shell_client_c, xdg_shell_client_c,
   ],
   dependencies: [wayland_client_dep, xkbcommon_dep],
 )
@@ -352,6 +366,7 @@ harness_client_targets = [
   pixel_probe,
   capture_client,
   pointer_client,
+  pointer_modifiers_client,
   keyboard_keymap_client,
   input_method_client,
   drag_client,

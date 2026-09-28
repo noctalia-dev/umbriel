@@ -1,15 +1,12 @@
 // Maps an xdg toplevel whose whole visible content is drawn by a desynchronized wl_subsurface covering the parent
-// surface exactly, which is how Firefox presents (all chrome and web content live in one MozContainer subsurface over a
-// mostly empty GTK parent). The parent buffer is opaque red and the child buffer opaque blue, so a screenshot tells
-// which surface a pixel came from and whether the compositor rounded the subsurface to the window corner radius. Prints
-// "mapped" once both surfaces are up, then keeps the connection alive until the harness kills it. The optional
-// "animate" mode continually damages only the child, matching Firefox's independent MozContainer commits. Setting
-// TRANSLUCENT_CONTENT gives the child premultiplied half-alpha magenta content over a transparent parent. Setting
-// OFFSET_GEOMETRY to a pixel margin places the child above and left of the parent and puts the window geometry origin
-// there, so the main surface is inset inside the window content box and its own corners are interior to the window;
-// the child then sits below the parent so both are visible.
-// Setting STALE_GEOMETRY declares the window geometry once, at the first size, and never updates it while still
-// redrawing both buffers at every configured size, which is how Electron presents after a compositor-driven resize.
+// surface exactly. The parent buffer is opaque red and the child opaque blue, so a screenshot tells which surface a
+// pixel came from and whether the compositor rounded the subsurface to the window corner radius. Prints "mapped" once
+// both surfaces are up, then stays connected until killed. The optional "animate" mode continually damages only the
+// child. TRANSLUCENT_CONTENT gives the child premultiplied half-alpha magenta over a transparent parent.
+// OFFSET_GEOMETRY=<px> places the child above and left of the parent and puts the window geometry origin there, so the
+// main surface is inset and its corners are interior to the window; the child then sits below the parent.
+// STALE_GEOMETRY declares the window geometry once, at the first size, while still redrawing both buffers at every
+// configured size.
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"

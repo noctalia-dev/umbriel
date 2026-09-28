@@ -15,13 +15,9 @@ struct wlr_surface;
 
 namespace umbriel {
 
-  // The size a view is currently *drawn* at, which is not the size its client committed. Three things pull them apart:
-  // - a layout configure the client has not acked yet (Electron in particular stays at its old width for several
-  // frames), - a resize animation interpolating between two layout sizes, - fullscreen, where an oversized or
-  // undersized client buffer is centered in the output rather than scaled (scaling would distort the aspect).
-  // Everything that depends on how large the view looks right now (borders, shadow, blur, output clipping) must ask
-  // this rather than reading the committed geometry, or it will lag a frame behind or fight the animation. Holds no
-  // reference back to its View: the scene tree and surface it operates on arrive as arguments.
+  // The size a view is currently *drawn* at, which can differ from the committed size: an unacked layout configure, a
+  // resize animation, or fullscreen (a mismatched buffer is centered, not scaled). Borders, shadow, blur and output
+  // clipping must read this, not the committed geometry. Holds no reference back to its View.
   class ViewPresentation {
   public:
     // Presented size

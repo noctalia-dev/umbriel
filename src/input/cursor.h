@@ -188,13 +188,10 @@ namespace umbriel {
     void overrideCursor(const char* name) { setCompositorCursor(name); }
     [[nodiscard]] bool compositorOwnsCursor() const { return m_compositorOwnsCursor; }
 
-    // The only ways compositor code may change pointer focus. While a client
-    // holds an implicit grab (any button down, no client drag) focus stays on
-    // the surface that received the press: wlroots drops its pressed-button
-    // bookkeeping on every focus change, and the matching release would then
-    // have nowhere to go, leaving the client with a button held forever.
-    // An already focused surface receives a motion instead, so a press never uses a position from before the surface
-    // moved under the cursor.
+    // The only ways compositor code may change pointer focus. While a client holds an implicit grab (any button down,
+    // no client drag) focus stays on the surface that received the press: wlroots drops its pressed-button bookkeeping
+    // on every focus change, which would leave the client with a button held forever. An already focused surface
+    // receives a motion instead, so a press never uses a position from before the surface moved under the cursor.
     void setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec);
     void clearPointerFocus();
     // Clear pointer focus even while a client holds a button: a session lock

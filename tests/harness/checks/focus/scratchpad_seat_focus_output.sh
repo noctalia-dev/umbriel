@@ -129,8 +129,7 @@ wait_for_field "$SCRATCH" workspace ""
 wait_for_field "$SCRATCH" active true
 
 # Return the pointer to the first output, then restore seat focus to the visible
-# scratchpad without warping. This is the split state that exposed pointer-based
-# scratchpad action routing.
+# scratchpad without warping, splitting seat focus from the pointer's output.
 "$UMBRIEL" msg output-focus-left > /dev/null
 wait_for_field "$POINTER_BACKGROUND" active true
 "$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null

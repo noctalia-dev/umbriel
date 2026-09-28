@@ -392,8 +392,7 @@ namespace umbriel::registry {
 
   // A nested table reached through `project`, which maps the parent (const or not) to it. `after` runs once the table
   // is read, when the key is present, for checks across its keys, and returns whether the rule entry holding the table
-  // stays acceptable. Projecting the parent onto itself lays a table's
-  // keys out flat in the parent's struct.
+  // stays acceptable. Projecting the parent onto itself lays a table's keys out flat in the parent's struct.
   template <typename T, typename Project>
   Field<T> table(
       std::string_view key, Project project,

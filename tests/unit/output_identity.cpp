@@ -8,6 +8,7 @@ using umbriel::OutputIdentity;
 using umbriel::OutputNameMatch;
 using umbriel::outputNameMatch;
 using umbriel::outputNamesEqual;
+using umbriel::validVirtualOutputName;
 
 namespace {
   // A display that fills in every EDID string.
@@ -58,6 +59,17 @@ UMBRIEL_TEST(outputNameEqualityUsesTheSameAsciiCaseFolding) {
   CHECK(outputNamesEqual("DP-1", "dp-1"));
   CHECK(!outputNamesEqual("DP-1", "DP-2"));
   CHECK(!outputNamesEqual("DP-1", "DP-10"));
+}
+
+UMBRIEL_TEST(virtualOutputNamesExcludeTargetSeparators) {
+  CHECK(validVirtualOutputName("sunshine"));
+  CHECK(validVirtualOutputName("Stream_2.4k-60"));
+  CHECK(!validVirtualOutputName(""));
+  CHECK(!validVirtualOutputName("a/b"));
+  CHECK(!validVirtualOutputName("x:1"));
+  CHECK(!validVirtualOutputName("my stream"));
+  CHECK(!validVirtualOutputName("\"stream\""));
+  CHECK(!validVirtualOutputName("str\u00e9am"));
 }
 
 // The guard that stops every EDID-less output answering to the same string.

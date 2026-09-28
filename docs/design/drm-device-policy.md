@@ -7,6 +7,9 @@ Without exclusions, Umbriel uses `wlr_backend_autocreate()` and
 `fx_renderer_create()`. The policy does not apply to nested Wayland, X11, or
 headless backends.
 
+Either path then adds an empty headless backend to the multi-backend, unless
+one is already there, so `output-create` can add virtual outputs to any session.
+
 ## Native path
 
 For a native session with exclusions, `BackendManager`:

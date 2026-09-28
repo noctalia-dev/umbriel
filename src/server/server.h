@@ -104,9 +104,7 @@ namespace umbriel {
 
   // Slow tick that ferries wl_surface.frame callbacks to toplevels that are mapped but not on the active workspace.
   // wlroots' scene helper only walks enabled scene nodes, so a hidden view otherwise never receives another frame_done
-  // and any client that gates its game/network loop on the frame callback stalls until it becomes visible again
-  // (Overwatch under Proton-CachyOS times out its server heartbeat within ~30 s of alt-tab). 10 Hz keeps game logic and
-  // networking alive at negligible cost.
+  // and a client that gates its game/network loop on the frame callback stalls. 10 Hz keeps such loops alive cheaply.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
 
   // The pid of the process owning a surface's Wayland connection, or -1 when the surface has no client or the kernel

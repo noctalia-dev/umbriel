@@ -152,7 +152,56 @@ namespace umbriel {
 
   void Seat::handlePointerFocusChange(void* data) {
     auto* event = static_cast<wlr_seat_pointer_focus_change_event*>(data);
+    if (event->old_surface != nullptr) {
+      wlr_seat_client* oldClient =
+          wlr_seat_client_for_wl_client(m_seat, wl_resource_get_client(event->old_surface->resource));
+      if (oldClient != m_seat->pointer_state.focused_client) {
+        sendPointerModifiers(oldClient, true);
+      }
+    }
+    notifyPointerModifiers();
     m_server->cursor()->notePointerFocusChange(event->new_surface);
+  }
+
+  void Seat::notifyPointerModifiers(bool clear) {
+    // Pointer focus includes the implicit button grab, not just the hit-tested
+    // surface. Never grant keyboard focus or deliver keys to a hovered panel.
+    if (!clear && m_server->sessionLocked()) {
+      wlr_surface* surface = m_seat->pointer_state.focused_surface;
+      if (surface == nullptr || wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
+        return;
+      }
+    }
+    sendPointerModifiers(m_seat->pointer_state.focused_client, clear);
+  }
+
+  void Seat::sendPointerModifiers(wlr_seat_client* client, bool clear) {
+    wlr_keyboard* keyboard = wlr_seat_get_keyboard(m_seat);
+    if (client == nullptr
+        || client == m_seat->keyboard_state.focused_client
+        || (!clear && (keyboard == nullptr || keyboard->keymap == nullptr))) {
+      return;
+    }
+    // wl_keyboard.modifiers explicitly permits delivery without keyboard focus
+    // to associate modifiers with pointer focus. Use the active keymap's XKB
+    // masks (not WLR_MODIFIER_*), retaining locks and layout when leaving.
+    // A reset must work after keyboard removal, and a lock-time leave must
+    // not expose lock/layout state to the old normal client.
+    wlr_keyboard_modifiers modifiers{};
+    if (keyboard != nullptr && keyboard->keymap != nullptr && !(clear && m_server->sessionLocked())) {
+      modifiers = keyboard->modifiers;
+    }
+    const uint32_t serial = wlr_seat_client_next_serial(client);
+    wl_resource* resource = nullptr;
+    wl_resource_for_each(resource, &client->keyboards) {
+      // A keyboard resource can outlive the seat's keyboard capability.
+      if (wl_resource_get_user_data(resource) != nullptr) {
+        wl_keyboard_send_modifiers(
+            resource, serial, clear ? 0 : modifiers.depressed, clear ? 0 : modifiers.latched, modifiers.locked,
+            modifiers.group
+        );
+      }
+    }
   }
 
   void Seat::handleRequestSetSelection(void* data) {

@@ -3,9 +3,10 @@
 # Boots one contained headless Umbriel per check in checks/, runs the check, kills everything it spawned, and asserts
 # that instance exited cleanly. One instance per check is what makes a failure local: a check starts from the default
 # config with no windows, no overview, and workspace 1 focused, so it asserts behaviour instead of maintaining hygiene
-# for whatever runs next. Boot plus teardown measures about 80ms, under 4% of the suite, and it buys back the
-# config-restore reloads and window-drain loops that shared-instance checks had to carry.
-# Containment matters. A stock Umbriel start runs its built-in autostarts, and `dbus-update-activation-environment --systemd` would repoint the *caller's* session-wide WAYLAND_DISPLAY and UMBRIEL_SOCKET at this throwaway instance. Unsetting DBUS_SESSION_BUS_ADDRESS makes both autostarts fail harmlessly.
+# for whatever runs next.
+# Containment matters. A stock Umbriel start runs its built-in autostarts, and
+# `dbus-update-activation-environment --systemd` would repoint the *caller's* session-wide WAYLAND_DISPLAY and
+# UMBRIEL_SOCKET at this throwaway instance. Unsetting DBUS_SESSION_BUS_ADDRESS makes both autostarts fail harmlessly.
 # Usage: check.sh <path-to-umbriel-binary> [name-fragment ...] [-j N|--jobs N] [-v|--verbose] [-l|--list]
 # A check's name is its path under checks/ without `.sh`, such as `overview/wheel`. Each name fragment selects every
 # check whose name contains it, so `overview/` selects a topic and several fragments run several checks. Without a
@@ -156,6 +157,7 @@ fi
 # recipe having to export a matching set of paths.
 CLIENT_DIR=$BINARY_DIR/tests
 export UMBRIEL_POINTER_CLIENT="$CLIENT_DIR/pointer-client"
+export UMBRIEL_POINTER_MODIFIERS_CLIENT="$CLIENT_DIR/pointer-modifiers-client"
 export UMBRIEL_KEYBOARD_KEYMAP_CLIENT="$CLIENT_DIR/keyboard-keymap-client"
 export UMBRIEL_INPUT_METHOD_CLIENT="$CLIENT_DIR/input-method-client"
 export UMBRIEL_DRAG_CLIENT="$CLIENT_DIR/drag-client"
@@ -231,10 +233,9 @@ child_pgid() {
 }
 
 # Everything a check spawns lives in the check's own process group, so one
-# signal reaches clients the check lost track of. Killing by group is what lets
-# checks stop bookkeeping pids: capturing `$!` from a shell function yields the
-# forked subshell, not the client, and that mistake used to leak mapped windows
-# into every later check.
+# signal reaches clients the check lost track of. Capturing `$!` from a shell
+# function yields the forked subshell, not the client, so checks kill by group
+# instead of tracking pids.
 kill_check_group() {
   [[ -z $CHECK_PGID ]] && return 0
   if [[ $CHECK_PGID != "$OWN_PGID" ]] && ((CHECK_PGID > 1)); then

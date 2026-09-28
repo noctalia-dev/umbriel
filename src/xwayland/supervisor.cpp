@@ -18,8 +18,7 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("xwayland");
 
-    // Displays past this are not worth scanning; a machine with 32 X servers
-    // already running has other problems.
+    // Display numbers :0 through :kMaxDisplay-1 are scanned.
     constexpr int kMaxDisplay = 32;
     // A satellite that survives this long counts as healthy, so its next crash
     // starts a fresh budget rather than counting toward a burst from hours ago.
@@ -42,10 +41,8 @@ namespace umbriel {
       return;
     }
 
-    // Claim a display number by finding one nobody has taken. This is a check-then-use race by construction: another
-    // compositor starting at the same instant can take the same slot between the test and satellite's bind. Left alone
-    // deliberately: the socket is xwayland-satellite's to create, so it owns the decision, and losing the race costs a
-    // respawn rather than corrupting anything.
+    // Claim a free display number. Another compositor can take the same slot between this check and satellite's bind;
+    // the socket is satellite's to create, so losing that race costs a respawn, not corruption.
     for (int n = 0; n < kMaxDisplay; ++n) {
       const std::string num = std::to_string(n);
       if (std::filesystem::exists("/tmp/.X11-unix/X" + num) || std::filesystem::exists("/tmp/.X" + num + "-lock")) {

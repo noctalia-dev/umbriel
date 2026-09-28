@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
 # harness: outputs=1
 # The edge-anchored resize actions move only the named edge and leave the opposite
-# one where it is, so a positive delta always grows the window from that edge. That
-# is what separates them from primary and secondary extent actions, which resize
-# around the layout's own anchor.
+# one where it is, so a positive delta always grows the window from that edge,
+# unlike the primary and secondary extent actions, which resize around the
+# layout's own anchor.
 #
-# The height coverage uses the middle window of a three-window column: with two
-# windows each sitting at one end of a fixed-span pair the two behaviours are
-# geometrically identical, so only a middle window tells them apart (the unanchored
-# action drags both neighbours along, the anchored one moves exactly one of them).
-# Dwindle's splits cover the width directions, where the edge facing the screen is
-# the one that has to stay put, and a floating window covers the guards the
-# fraction resize path applies: the fullscreen refusal, asserted on the client's
-# own presentation log because the compositor corrects the geometry either way;
-# the 0.1 size floor and the usable-extent ceiling; a dropped maximize; the height
-# directions; the presentation animating with the opposite edge holding for the
-# whole resize rather than being placed for a size the client has not committed
-# yet; and a client that answers the configure with its own size (HOLD_SIZE), where
-# that edge has to follow the committed geometry and not the requested one.
+# Height coverage uses the middle window of a three-window column: only there do
+# anchored and unanchored actions differ. Dwindle's splits cover the width
+# directions. A floating window covers the fraction resize guards: fullscreen
+# refusal (asserted on the client's presentation log, since the compositor
+# corrects geometry either way), the 0.1 floor and usable-extent ceiling, a
+# dropped maximize, the height directions, the opposite edge holding for the whole
+# animated resize, and a client that keeps its own size (HOLD_SIZE), where the
+# edge follows the committed geometry rather than the requested one.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"

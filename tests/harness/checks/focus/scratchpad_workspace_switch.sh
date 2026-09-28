@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Switching workspaces must not steal keyboard focus from a visible scratchpad.
-# Regression for #245: with the scratchpad open and focused, workspace-switch
-# used to fall back to the new workspace's window while the scratchpad stayed
-# in the foreground, so input went to a non-foreground window. refocus(Output*)
-# retains the scratchpad in that case; explicit actions use refocusExplicit().
+# refocus(Output*) retains a focused, foreground scratchpad across a workspace
+# switch; explicit actions use refocusExplicit().
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"

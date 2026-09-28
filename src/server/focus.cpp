@@ -50,8 +50,7 @@ namespace umbriel {
     }
 
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
-    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing, preserving the current behavior
-    // where cursor.cpp skipped focusView altogether.
+    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing.
     if (reason == FocusReason::PointerHover && view->tiled()) {
       if (Workspace* workspace = view->workspace()) {
         const auto& maxScroll = config().input.focus.followsMouseMaxScroll;

@@ -265,8 +265,8 @@ namespace umbriel {
          KeybindAction::WindowCycleSecondaryExtent},
         {"window-cycle-secondary-extent-back", "", "Cycle the secondary extent presets in reverse",
          KeybindAction::WindowCycleSecondaryExtentBack},
-        {"window-focus", "<window-id>", "Focus the given window", KeybindAction::WindowFocusId,
-         ActionArgKind::WindowId},
+        {"window-focus", "<window-id>", "Focus a window, revealing it from a hidden scratchpad",
+         KeybindAction::WindowFocusId, ActionArgKind::WindowId},
         {"window-focus-down", "", "Focus the next window down in the column", KeybindAction::WindowFocusDown},
         {"window-focus-last", "", "Focus the previously focused window", KeybindAction::WindowFocusLast},
         {"window-focus-left", "", "Focus the window to the left", KeybindAction::WindowFocusLeft},
@@ -288,7 +288,7 @@ namespace umbriel {
         {"window-focus-switch-floating", "", "Focus the last window of the opposite floating state",
          KeybindAction::WindowFocusSwitchFloating},
         {"window-focus-up", "", "Focus the next window up in the column", KeybindAction::WindowFocusUp},
-        {"window-focus-warp", "<window-id>", "Focus the given window and warp the cursor to it",
+        {"window-focus-warp", "<window-id>", "Focus or reveal a window and warp the cursor to it",
          KeybindAction::WindowFocusWarpId, ActionArgKind::WindowId},
         {"window-modify-height-down", "<delta>", "Resize the focused window from its bottom edge",
          KeybindAction::WindowModifyHeightDown, ActionArgKind::FractionDelta},
@@ -653,8 +653,6 @@ namespace umbriel {
   std::vector<Keybind> defaultKeybinds() {
     std::vector<Keybind> keybinds;
     keybinds.reserve(60);
-    // Built by assignment rather than aggregate initialisation: the trigger and payload fields already carry default
-    // member initialisers, and naming every one of them just to satisfy -Wmissing-field-initializers is noise.
     auto add = [&keybinds](KeybindAction action, uint32_t keysym, uint32_t modifiers = 0) -> Keybind& {
       Keybind bind;
       bind.modifiers = modifiers;

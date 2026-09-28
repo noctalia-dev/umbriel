@@ -10,10 +10,8 @@ namespace umbriel {
 
   class View;
 
-  // Public width and X vocabulary names primary-axis quantities for compatibility:
-  // X is the primary scroll axis, width is its extent, and height is the cross
-  // axis extent. Horizontal layouts map primary/cross to X/Y. Vertical layouts
-  // map them to Y/X.
+  // Public width/X names refer to the primary scroll axis and height to the cross axis. Horizontal layouts map
+  // primary/cross to X/Y, vertical layouts to Y/X.
 
   class ScrollingLayout : public Layout {
   public:

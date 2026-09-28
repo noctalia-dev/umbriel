@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# Regression for a stuck backdrop dim: restoring the last scratchpad window on an output (via
-# window-toggle-scratchpad, which calls ScratchpadManager::restoreFocused) must retarget the
-# backdrop fade to 0 and refresh the dim/blur nodes, same as ScratchpadManager::setVisible does
-# when the scratchpad is hidden through scratchpad-toggle. Before the fix, restoreFocused and
-# remove() cleared visibility without touching the backdrop fade, so the dim rect stayed at its
-# last alpha forever once every scratchpad window on that output was gone.
+# Restoring the last scratchpad window on an output (window-toggle-scratchpad) must fade the
+# backdrop dim to 0 and refresh the dim/blur nodes, as hiding it through scratchpad-toggle does.
 set -euo pipefail
 
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/scratchpad-restore-before.png"

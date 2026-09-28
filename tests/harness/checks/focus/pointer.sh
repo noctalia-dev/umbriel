@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Pointer hit-testing: a click focuses the window under the cursor. This is the check that was missing when a change to View's base classes moved its SceneNode subobject off offset zero, so Server::viewAt returned null for every window and click-to-focus, interactive move, and interactive resize all stopped working. Nothing else in the harness touches that path: every other check drives the compositor through IPC actions, which never hit-test. The headless backend has no input devices, so the cursor is driven through zwlr_virtual_pointer_v1 by tests/harness/clients/pointer_client.cpp. The compositor attaches it to its wlr_cursor like a physical mouse, so these events take the same path real input does.
+# Pointer hit-testing: a click focuses the window under the cursor. Every other check drives the compositor through
+# IPC, which never hit-tests (Server::viewAt). The headless backend has no input devices, so the cursor is driven
+# through zwlr_virtual_pointer_v1 by tests/harness/clients/pointer_client.cpp; the compositor attaches it to its
+# wlr_cursor like a physical mouse, so events take the real input path.
 set -euo pipefail
 
 readonly BTN_LEFT=272 # evdev BTN_LEFT
@@ -151,7 +154,7 @@ pointer click "$BTN_LEFT"
 wait_for_focus_at 10
 
 # Moving the focused left window to workspace 2 places it to the right of the
-# window already there. Match the reported follows-mouse setup. The cursor must
+# window already there. The cursor must
 # follow the moved window, so a focus-only detour followed by an unmoved click
 # returns focus to it.
 printf '\n[input.focus]\nfollows_mouse = true\n' >> "$UMBRIEL_CONFIG"

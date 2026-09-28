@@ -107,9 +107,7 @@ namespace umbriel {
       }
     }
 
-#ifdef UMBRIEL_TEST_IPC
     void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
-#endif
 
     std::string fourccName(uint32_t format) {
       if (format == DRM_FORMAT_INVALID) {
@@ -691,32 +689,39 @@ namespace umbriel {
 #endif
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
-      {"msg", "<action> [args...]", "send an action to the compositor", true, &IpcCommands::msg, nullptr},
-      {"windows", "", "list windows (app id and title)", false, &IpcCommands::windows, &printWindows},
-      {"workspaces", "", "list workspaces and their layouts", false, &IpcCommands::workspaces, &printWorkspaces},
-      {"submap", "", "show the active keybind submap", false, &IpcCommands::submap, &printSubmap},
-      {"layers", "", "list layer-shell surfaces", false, &IpcCommands::layers, &printLayers},
-      {"color", "", "show color-management state", false, &IpcCommands::color, &printColor},
-      {"tearing", "", "show tearing-control state", false, &IpcCommands::tearing, &printTearing},
-      {"keyboard-layouts", "", "list keyboard layouts", false, &IpcCommands::keyboardLayouts, &printKeyboardLayouts},
-#ifdef UMBRIEL_TEST_IPC
-      {"output-create", "<name>", "create a headless output (headless sessions only)", true, &IpcCommands::outputCreate,
+      {"msg", "<action> [args...]", "send an action to the compositor", IpcCommandGroup::Control, true,
+       &IpcCommands::msg, nullptr},
+      {"output-create", "<name>", "create a virtual output", IpcCommandGroup::Control, true, &IpcCommands::outputCreate,
        &printOutputName},
-      {"output-destroy", "<name>", "destroy an output (headless sessions only)", true, &IpcCommands::outputDestroy,
-       nullptr},
-      {"settle", "", "wait until no layout or animation is pending and every output has drawn a frame", false,
-       &IpcCommands::settle, nullptr, 35},
-      {"clock-freeze", "", "stop animation time", false, &IpcCommands::clockFreeze, nullptr},
-      {"clock-advance", "<ms>", "move frozen animation time forward and wait until every output has drawn it", true,
-       &IpcCommands::clockAdvance, nullptr, 35},
-      {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped", false,
-       &IpcCommands::clockResume, nullptr},
-      {"renderer-recover", "", "emit renderer loss and exercise recovery", false, &IpcCommands::rendererRecover,
-       nullptr},
+      {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
+       &IpcCommands::outputDestroy, nullptr},
+      {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
+       &printWindows},
+      {"workspaces", "", "list workspaces and their layouts", IpcCommandGroup::Inspect, false, &IpcCommands::workspaces,
+       &printWorkspaces},
+      {"submap", "", "show the active keybind submap", IpcCommandGroup::Inspect, false, &IpcCommands::submap,
+       &printSubmap},
+      {"layers", "", "list layer-shell surfaces", IpcCommandGroup::Inspect, false, &IpcCommands::layers, &printLayers},
+      {"color", "", "show color-management state", IpcCommandGroup::Inspect, false, &IpcCommands::color, &printColor},
+      {"tearing", "", "show tearing-control state", IpcCommandGroup::Inspect, false, &IpcCommands::tearing,
+       &printTearing},
+      {"keyboard-layouts", "", "list keyboard layouts", IpcCommandGroup::Inspect, false, &IpcCommands::keyboardLayouts,
+       &printKeyboardLayouts},
+#ifdef UMBRIEL_TEST_IPC
+      {"settle", "", "wait until no layout or animation is pending and every output has drawn a frame",
+       IpcCommandGroup::Harness, false, &IpcCommands::settle, nullptr, 35},
+      {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},
+      {"clock-advance", "<ms>", "move frozen animation time forward and wait until every output has drawn it",
+       IpcCommandGroup::Harness, true, &IpcCommands::clockAdvance, nullptr, 35},
+      {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped",
+       IpcCommandGroup::Harness, false, &IpcCommands::clockResume, nullptr},
+      {"renderer-recover", "", "emit renderer loss and exercise recovery", IpcCommandGroup::Harness, false,
+       &IpcCommands::rendererRecover, nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",
-       "synthesize a hardware cursor plane sample (harness only)", true, &IpcCommands::planeCursor, nullptr},
-      {"effect-frames", "", "count frames drawn for persistent effects per output", false, &IpcCommands::effectFrames,
-       nullptr},
+       "synthesize a hardware cursor plane sample (harness only)", IpcCommandGroup::Harness, true,
+       &IpcCommands::planeCursor, nullptr},
+      {"effect-frames", "", "count frames drawn for persistent effects per output", IpcCommandGroup::Harness, false,
+       &IpcCommands::effectFrames, nullptr},
 #endif
   };
 

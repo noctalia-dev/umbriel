@@ -54,8 +54,8 @@ assert_no_log_since "$mark" "output 'HEADLESS-1': applied mode=" \
 assert_no_log_since "$mark" "output 'HEADLESS-2': applied mode=" \
   "the key or modifier release that triggered DPMS immediately woke HEADLESS-2"
 
-# Restore a known state even when the assertion above is being sensitivity
-# checked against the old behavior, where both outputs are already awake.
+# Restore a known state even if the assertion above failed and both outputs are
+# already awake.
 "$UMBRIEL" msg dpms-on > /dev/null
 
 # A named action is case-insensitive, changes only the requested monitor, and

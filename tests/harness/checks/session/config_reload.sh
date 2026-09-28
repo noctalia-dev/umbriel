@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# A reload that changes nothing does nothing; one that changes something applies only that. Reload used to re-apply every subsystem unconditionally, which is visible: the view loop clears every focus ring before refocus puts one back, so a no-op reload flickers and can land focus somewhere else entirely. This asserts the two halves of the fix, that an unchanged file is inert, and that a changed one still takes effect.
+# A reload that changes nothing does nothing; one that changes something applies only that. A reapplied view loop
+# clears every focus ring before refocus puts one back, so a no-op reload would flicker and could move focus. This
+# asserts that an unchanged file is inert and that a changed one still takes effect.
 set -euo pipefail
 readonly RECOVERY_ROOT="$UMBRIEL_CONFIG.recovery-root"
 readonly RECOVERY_INCLUDE="${UMBRIEL_CONFIG%/*}/reload-recovery.toml"

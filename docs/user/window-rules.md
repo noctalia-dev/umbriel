@@ -103,8 +103,8 @@ default_scratchpad = "terminal"
 ```
 
 With no named definitions, use `"default"`. A hidden scratchpad keeps the new
-window hidden. Output, workspace, and floating rules determine where and how it
-returns when restored.
+window hidden unless `default_focused = true` is also set. Output, workspace,
+and floating rules determine where and how it returns when restored.
 
 ## Workspace placement
 

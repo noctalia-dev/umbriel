@@ -4,6 +4,7 @@
 
 struct wlr_cursor_shape_manager_v1;
 struct wlr_seat;
+struct wlr_seat_client;
 
 namespace umbriel {
 
@@ -21,6 +22,7 @@ namespace umbriel {
 
     void applyConfig();
     void updateCapabilities(bool hasKeyboard, bool hasTouch);
+    void notifyPointerModifiers(bool clear = false);
 
   private:
     static void onRequestCursor(wl_listener* listener, void* data);
@@ -40,6 +42,7 @@ namespace umbriel {
     void handleRequestStartDrag(void* data);
     void handleStartDrag(void* data);
     void handleDragDestroy();
+    void sendPointerModifiers(wlr_seat_client* client, bool clear);
 
     Server* m_server = nullptr;
     wlr_seat* m_seat = nullptr;

@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "core/log.h"
+#include "input/event_time.h"
 #include "input/gestures.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
@@ -19,7 +20,6 @@
 #include "view/xdg_size.h"
 // clang-format off
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include "wlr.h"
@@ -44,20 +44,13 @@ namespace umbriel {
       return which == ZWLR_LAYER_SHELL_V1_LAYER_TOP || which == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
     }
 
-    // Programmatic pointer events have no input event timestamp. libinput stamps events from the same clock.
-    uint32_t monotonicMsec() {
-      const auto now = std::chrono::steady_clock::now().time_since_epoch();
-      return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
-    }
-
     bool isXdgPopupSurface(wlr_surface* surface) {
       return surface != nullptr && wlr_xdg_popup_try_from_wlr_surface(wlr_surface_get_root_surface(surface)) != nullptr;
     }
 
-    // `[input.touchpad] scroll_factor` scales a touchpad's smooth scroll delta before it reaches the focused client.
-    // The `horizontal`/`vertical` table keys override it per direction. Reads the live config per event so a successful
-    // reload applies on the very next axis; non-touchpads and unset values stay
-    // at identity (1.0). Only the continuous delta is scaled, never the discrete value120 notches.
+    // `[input.touchpad] scroll_factor` (overridden per direction by `horizontal`/`vertical`) scales a touchpad's smooth
+    // scroll delta, never the discrete value120 notches. Read per event so a reload applies on the next axis;
+    // non-touchpads and unset values stay at 1.0.
     double touchpadScrollFactor(wlr_pointer* pointer, bool vertical) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
         return 1.0;
@@ -973,6 +966,7 @@ namespace umbriel {
     // A client data-device drag owns the seat grab. Its initiating release must reach wlroots even when the drag began
     // from a panel over the overview. Otherwise the drag icon and both input grabs remain active indefinitely.
     if (wlr_seat* seat = m_server->seat()->wlr(); seat->drag != nullptr) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
       if (seat->drag == nullptr) {
         // The drag grab suppressed normal pointer motion. Re-run hit testing at
@@ -996,9 +990,8 @@ namespace umbriel {
         if (button == grab->button) {
           m_server->gestures()->endPointerScroll(m_server->sessionLocked(), timeMsec);
           resetMode();
-          // The grab cleared client focus on press and consumed every motion.
-          // Re-run hit testing so hover/focus is correct without requiring the
-          // user to jiggle the mouse after release.
+          // The grab cleared client focus on press and consumed every motion; re-run hit testing so hover/focus is
+          // correct without further motion.
           processMotion(timeMsec, m_cursor->x, m_cursor->y);
         }
         return;
@@ -1025,6 +1018,7 @@ namespace umbriel {
         if (surface != nullptr) {
           setPointerFocus(surface, sx, sy, timeMsec);
         }
+        m_server->seat()->notifyPointerModifiers();
         wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
         // The popup's xdg-shell grab already owns focus. Refocusing its parent layer would end the keyboard grab, whose
         // wlroots cancel handler also ends the pointer grab before the menu receives the matching release.
@@ -1060,12 +1054,11 @@ namespace umbriel {
         resetMode();
         return;
       }
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
 
-      // After the final release, refresh pointer focus so it matches the surface actually under the cursor. The
-      // implicit-grab guard kept focus pinned while buttons were held; realign now so a subsequent press without
-      // intervening motion targets the correct surface. The overview keeps the desktop inert, so there focus goes
-      // nowhere instead.
+      // After the final release, realign pointer focus (pinned by the implicit grab) with the surface under the cursor,
+      // so a press without intervening motion targets it. The overview keeps the desktop inert, so focus goes nowhere.
       if (m_server->seat()->wlr()->pointer_state.button_count == 0) {
         const Overview* overview = m_server->overview();
         if (overview != nullptr && overview->active() && !m_server->sessionLocked()) {
@@ -1084,6 +1077,7 @@ namespace umbriel {
     if (wlr_seat* seat = m_server->seat()->wlr(); seat->drag == nullptr
         && seat->pointer_state.button_count > 0
         && seat->pointer_state.focused_surface != nullptr) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
       return;
     }
@@ -1095,6 +1089,7 @@ namespace umbriel {
     View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
 
     if (m_server->sessionLocked()) {
+      m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
       if (surface != nullptr) {
         if (wlr_session_lock_surface_v1* lockSurface = wlr_session_lock_surface_v1_try_from_wlr_surface(surface)) {
@@ -1127,6 +1122,7 @@ namespace umbriel {
       clearPointerFocus();
     }
 
+    m_server->seat()->notifyPointerModifiers();
     wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
     if (layer != nullptr) {
       if (!isXdgPopupSurface(surface)) {

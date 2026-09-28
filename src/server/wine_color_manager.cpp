@@ -84,10 +84,9 @@ namespace umbriel {
       return lowercase(basename(commandLine.substr(0, commandLine.find('\0')))).starts_with("wine");
     }
 
-    // The probe reads /proc/<pid>/maps, which is expensive for a large address space, and the global filter runs it
-    // once per color-management global per registry enumeration. Memoize it for exactly the client's lifetime by
-    // hanging the answer off a destroy listener: a pid-keyed table would grow without bound and would hand a recycled
-    // pid the previous process's answer.
+    // The probe reads /proc/<pid>/maps (expensive for a large address space) and the global filter runs it once per
+    // color-management global per registry enumeration. The answer is memoized on a client destroy listener, so it
+    // lives exactly as long as the client and a recycled pid never inherits it.
     struct WineClientProbe {
       wl_listener destroy{};
       bool needsCompatibility = false;

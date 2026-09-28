@@ -543,7 +543,9 @@ ext_workspace_client_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
-# Logic with no dependency on the compositor: string parsing and layout geometry. Built once and linked by both the compositor and the tests, so a test never recompiles a translation unit and two tests cannot drift in what they cover. Keep this list free of anything needing umbrielfx, pango, or a running server; that is what makes these tests cheap and the coverage honest.
+# Logic with no dependency on the compositor: string parsing and layout geometry. Built once and linked by both the
+# compositor and the tests, so a test never recompiles a translation unit. Keep this list free of anything needing
+# umbrielfx, pango, or a running server.
 pure_sources = files(
   'src/config/change.cpp',
   'src/config/resolve.cpp',

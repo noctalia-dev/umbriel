@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Closing a window that is off-screen to the left does not shift the visible ones. Removing a column closes the space it held, so everything to its right moves left by its width plus a gap. When that column sat off-screen to the left the user never asked to see that happen, and the window they are actually reading jumps sideways. Re-anchoring on removal prevents that shift. The geometry is pinned by unit tests in tests/unit/scrolling_layout.cpp. What this adds is that it reaches the real close path, measured in Workspace::detachFromLayout before the column goes. The setup is fussy for a reason, and the fussiness is the check. Removal is followed by ensureFocusedVisible, which clamps the scroll into the focused column's visible band; that clamp absorbs the whole shift whenever the scroll is already sitting at a band edge, and every focus-driven route leaves it exactly there. So the earlier versions of this check passed with the compensation ripped out. The scroll has to be strictly inside the band, which means putting it there by hand (layout-scroll-left, or a touchpad swipe in real use), and that is also the only situation in which a user sees the bug.
+# Closing a window that is off-screen to the left does not shift the visible ones: removal re-anchors the scroll so
+# columns to its right stay put. Unit tests in tests/unit/scrolling_layout.cpp pin the geometry; this covers the real
+# close path (Workspace::detachFromLayout). Removal is followed by ensureFocusedVisible, which clamps the scroll into
+# the focused column's visible band and absorbs the whole shift whenever the scroll sits at a band edge, as every
+# focus-driven route leaves it. The scroll therefore has to be placed strictly inside the band by hand
+# (layout-scroll-left) for the check to observe the compensation.
 set -euo pipefail
 
 declare -A CLIENT_PID=()

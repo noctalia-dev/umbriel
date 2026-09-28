@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -543,6 +544,27 @@ namespace umbriel {
                                                        : "input.mouse.sensitivity"
       );
     }
+
+    // A touchscreen is a physical panel, so with no map_to_output it follows the output the device reports, or else
+    // the only enabled built-in panel. Two built-in panels are ambiguous and leave the device on the full layout.
+    Output* defaultTouchOutput(std::span<const std::unique_ptr<Output>> outputs, const char* reported) {
+      Output* builtin = nullptr;
+      bool ambiguous = false;
+      for (const auto& output : outputs) {
+        if (!output->wlr()->enabled) {
+          continue;
+        }
+        const std::string_view name = output->wlr()->name;
+        if (reported != nullptr && name == reported) {
+          return output.get();
+        }
+        if (name.starts_with("eDP-") || name.starts_with("LVDS-") || name.starts_with("DSI-")) {
+          ambiguous = builtin != nullptr;
+          builtin = output.get();
+        }
+      }
+      return ambiguous ? nullptr : builtin;
+    }
   } // namespace
   void Server::applyConfig(const ConfigEffects& effects) {
     if (!effects.any()) {
@@ -733,10 +755,7 @@ namespace umbriel {
     }
   }
 
-  // Slow tick that keeps hidden-workspace toplevels driving their game/network loops (see kBackgroundFrameIntervalMs).
-  // wlr_scene_output_send_frame_done walks only enabled scene nodes, so a view whose workspace has been deactivated
-  // stops receiving wl_surface.frame callbacks entirely; any client that gates advance-work on the callback stalls
-  // until it is shown again.
+  // Sends frame callbacks to hidden-workspace toplevels (see kBackgroundFrameIntervalMs).
   int Server::onBackgroundFrameTimer(void* data) {
     auto* self = static_cast<Server*>(data);
     timespec now{};
@@ -769,10 +788,9 @@ namespace umbriel {
     return 0;
   }
 
-  // Fires when the underlying GL context is invalidated (GPU reset, VRAM lost after suspend, driver-detected hang).
-  // Without this, the renderer keeps issuing GL calls into a dead context: Mesa's context_lost_nop_handler no-ops each
-  // one and spams "[GLES2] GL_CONTEXT_LOST in context lost" ~40k lines/sec, and the desktop never comes back. Defer
-  // rebuilding until this signal and the failed render call have both unwound.
+  // Fires when the underlying GL context is invalidated (GPU reset, VRAM lost after suspend, driver-detected hang); the
+  // renderer must be rebuilt, since GL calls into a dead context do nothing. Defer rebuilding until this signal and the
+  // failed render call have both unwound.
   void Server::onRendererLost(wl_listener* listener, void* /*data*/) {
     Server* self;
     self = wl_container_of(listener, self, m_rendererLost);
@@ -1034,9 +1052,7 @@ namespace umbriel {
     wl_resource_add_destroy_listener(vpointer->resource, &device->destroy);
 
     // Attach to the cursor exactly like a physical pointer (see addPointer), so a virtual pointer runs the same Cursor
-    // pipeline: hover, click-to-focus, mouse binds, and interactive move and resize. Hand-wiring these signals instead
-    // only warped the cursor and forwarded buttons to the seat, so a virtual pointer could move the cursor but never
-    // focus or drag anything.
+    // pipeline: hover, click-to-focus, mouse binds, and interactive move and resize.
     self->m_cursor->attachInputDevice(&vpointer->pointer.base);
 
     self->m_virtualPointers.push_back(std::move(device));
@@ -1897,13 +1913,10 @@ namespace umbriel {
   void Server::remapTouches() {
     const Config::Input::Touch& cfg = config().input.touch;
     for (const auto& touch : m_touchDevices) {
-      wlr_output* output = nullptr;
-      if (!cfg.mapToOutput.empty()) {
-        if (Output* out = outputFromName(cfg.mapToOutput)) {
-          output = out->wlr();
-        }
-      }
-      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, output);
+      Output* target = !cfg.mapToOutput.empty()
+          ? outputFromName(cfg.mapToOutput)
+          : defaultTouchOutput(outputs(), wlr_touch_from_input_device(touch->device)->output_name);
+      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, target != nullptr ? target->wlr() : nullptr);
     }
   }
 
@@ -2731,6 +2744,9 @@ namespace umbriel {
       }
       // Detach wlroots' later destroy listener so it cannot clear the replacement.
       wlr_seat_set_keyboard(seat, replacement);
+      // Publish the replacement keymap before its masks, or neutralize the
+      // pointer-only client before removing the final keyboard capability.
+      m_seat->notifyPointerModifiers(replacement == nullptr);
     }
     if (sourceRemoved) {
       m_keyboardLayoutSource = nullptr;

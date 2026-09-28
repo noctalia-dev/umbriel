@@ -1,8 +1,6 @@
-// Drives a virtual pointer against a running compositor, for the harness. The headless backend has no input devices
-// (wlroots 0.20 dropped wlr_headless_add_input_device), so this is the only way to exercise pointer hit-testing without
-// a physical mouse: bind zwp_virtual_pointer_manager_v1, create a pointer, and feed it absolute motion and button
-// events. The compositor attaches it to its wlr_cursor like any other pointer, so these events run the same path a real
-// mouse does. Usage: pointer-client <width> <height> <command>... move <x> <y> absolute motion within the given extent
+// Drives a virtual pointer (zwp_virtual_pointer_manager_v1) against a running compositor, since the headless backend
+// has no input devices. The compositor attaches it to its wlr_cursor, so events take the same path as a real mouse.
+// Usage: pointer-client <width> <height> <command>... move <x> <y> absolute motion within the given extent
 // click <button> press and release (button is an evdev BTN_* code) press <button> release <button> notch <dir> one
 // vertical wheel notch, -1 up / 1 down notch-horizontal <dir> the same notch on the horizontal wheel axis, -1 left /
 // 1 right mod <name|none> hold one modifier (shift, control, alt, or logo) tap <key> press and release one evdev key

@@ -562,9 +562,7 @@ namespace umbriel {
     void leaveForeignOutput();
     void applyWindowRules(const ResolvedWindowRule& initiallyApplied);
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin);
-    // `resolved` lets a caller that already resolved the rules pass them in. Rule resolution runs every regex in the
-    // config, and applyDynamicRules is reached on focus changes and on every title change, so resolving twice per pass
-    // is work a terminal that retitles per command pays repeatedly.
+    // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
@@ -709,10 +707,8 @@ namespace umbriel {
     bool m_restorePinnedAfterFullscreen = false;
     // The toplevel's fullscreen state as of its last commit, so the commit that leaves fullscreen can be detected.
     bool m_committedFullscreen = false;
-    // Set when a float toggle drops fullscreen: re-tiling restores fullscreen BEFORE the layout attach, so the client
-    // never receives a transient column-sized configure (game engines latch it for input mapping and go dead outside
-    // it). Cleared whenever fullscreen is left by any other path, so a client that chose windowed mode while floating
-    // re-tiles as a regular column.
+    // Set when a float toggle drops fullscreen: re-tiling restores fullscreen before the layout attach, so the client
+    // never sees a transient column-sized configure. Cleared when fullscreen is left by any other path.
     bool m_refullscreenOnTile = false;
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.

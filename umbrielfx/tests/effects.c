@@ -74,6 +74,58 @@ static bool render_animation(struct fixture *fixture, struct fx_effect_shader *s
 	return ok;
 }
 
+// Long-running effects feed large angles into the GPU's native trigonometry.
+// On Intel these can stop following the angle or collapse a rotation entirely.
+// Check rendered values against CPU math, including every GLSL overload and
+// negative angles, without depending on a particular cursor's artwork.
+static bool test_long_running_trig(struct fixture *fixture) {
+	static const char *const sources[] = {
+		"const float zero = sin(0.0); const float one = cos(0.0);\n"
+		"vec4 animation(vec2 uv) { float a = umbriel_time * 1.8 + zero; "
+		"return vec4(0.5 + 0.5 * vec3(sin(a), cos(a), sin(-a)), one); }",
+		"vec4 animation(vec2 uv) { float a = umbriel_time * 1.8; "
+		"vec2 s = sin(vec2(a, -a)); vec2 c = cos(vec2(a, -a)); "
+		"return vec4(0.5 + 0.5 * vec3(s.x, c.y, s.y), 1.0); }",
+		"vec4 animation(vec2 uv) { float a = umbriel_time * 1.8; "
+		"vec3 s = sin(vec3(a, a + 1.0, -a)); vec3 c = cos(vec3(-a, a, a + 1.0)); "
+		"return vec4(0.5 + 0.5 * vec3(s.x, c.y, s.z), 1.0); }",
+		"vec4 animation(vec2 uv) { float a = umbriel_time * 1.8; "
+		"vec4 s = sin(vec4(a + 1.0, a, a + 2.0, -a)); vec4 c = cos(vec4(a + 1.0, -a, a, a + 2.0)); "
+		"return vec4(0.5 + 0.5 * vec3(s.y, c.z, s.w), 1.0); }",
+	};
+	static const float times[] = {0.0f, 1.0f, -1.0f, 63320.0f, 63320.125f, 63320.25f, -63320.0f, 100000.0f};
+	bool ok = true;
+	for (unsigned kind = 0; kind < sizeof(sources) / sizeof(sources[0]); kind++) {
+		struct fx_effect_shader *shader = fx_effect_shader_create(fixture->renderer, FX_EFFECT_ANIMATION,
+			sources[kind], "long-running-trig");
+		if (!check(shader != NULL, "trigonometry overload compiles")) {
+			return false;
+		}
+		struct fx_animation_parameters parameters = {0};
+		struct fx_uniform *time = fx_parameters_add_uniform(&parameters, "umbriel_time", FX_UNIFORM_FLOAT, 1);
+		for (unsigned i = 0; i < sizeof(times) / sizeof(times[0]); i++) {
+			time->floats[0] = times[i];
+			uint8_t pixel[4];
+			if (!render_animation(fixture, shader, &parameters, 0, pixel)) {
+				ok = false;
+				break;
+			}
+			const float angle = times[i] * 1.8f;
+			const float expected[] = {sinf(-angle), cosf(angle), sinf(angle)}; // B, G, R
+			for (unsigned channel = 0; channel < 3; channel++) {
+				const float encoded = 127.5f * (1.0f + expected[channel]);
+				if (fabsf(pixel[channel] - encoded) > 3.0f) {
+					fprintf(stderr, "FAIL: trig overload %u time %.3f channel %u: got %u, expected %.2f\n",
+						kind, times[i], channel, pixel[channel], encoded);
+					ok = false;
+				}
+			}
+		}
+		fx_effect_shader_unref(shader);
+	}
+	return ok;
+}
+
 static int clamp_logs;
 
 // Counts the binder's oversized-count message for `pal` on the oversized-count program.
@@ -1985,6 +2037,8 @@ int main(int argc, char *argv[]) {
 		ok = test_reads(&fixture);
 	} else if (strcmp(argv[1], "uniforms") == 0) {
 		ok = test_uniforms(&fixture);
+	} else if (strcmp(argv[1], "long-running-trig") == 0) {
+		ok = test_long_running_trig(&fixture);
 	} else if (strcmp(argv[1], "expand") == 0) {
 		ok = test_expand(&fixture);
 		ok &= test_expand_feedback(&fixture);

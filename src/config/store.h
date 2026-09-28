@@ -10,12 +10,10 @@
 
 namespace umbriel {
 
-  // One loaded configuration, with everything that was learned while loading it. The pieces belong together because a
-  // reload replaces all of them at once: a new `Config`, a new diagnostic list, a new set of files to watch (a config
-  // that stops `include`-ing a file must stop watching it), and a new answer to "is there even a config file". Keeping
-  // them as separate globals made it possible to update one and forget another. `generation()` counts successful
-  // reloads. Consumers that cache anything derived from the config compare it against the generation they cached at,
-  // which is cheaper and less error-prone than every consumer being individually re-notified from Server::applyConfig.
+  // One loaded configuration and everything learned while loading it: `Config`, diagnostics, the set of files to watch
+  // (a config that stops `include`-ing a file must stop watching it), and whether a config file exists. A reload
+  // replaces all of them at once. `generation()` counts successful reloads; consumers that cache derived state compare
+  // it against the generation they cached at.
   class ConfigStore {
   public:
     // Resolve the user, system, or packaged config and load it. Missing explicit
@@ -69,10 +67,8 @@ namespace umbriel {
     uint64_t m_generation = 0;
   };
 
-  // The process-wide store. Still a global: every consumer below Server reads appearance settings on render paths, and
-  // threading a reference through all of them buys nothing while there is exactly one configuration per process. The
-  // layout and parsing layers, which are the ones worth unit-testing, already take their settings as arguments and do
-  // not reach for this.
+  // The process-wide store, read by consumers below Server on render paths. The layout and parsing layers take their
+  // settings as arguments and do not reach for this.
   [[nodiscard]] ConfigStore& configStore();
 
 } // namespace umbriel

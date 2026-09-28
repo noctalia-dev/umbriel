@@ -223,8 +223,7 @@ UMBRIEL_TEST(parsesCommandActions) {
 }
 
 UMBRIEL_TEST(submapNoLongerSharesStorageWithSpawn) {
-  // These used to be the same string field, so a submap name was indistinguishable
-  // from a shell command.
+  // A submap name and a shell command live in separate fields.
   Keybind bind;
   CHECK(parseAction("submap:resize", bind));
   CHECK(bind.action == KeybindAction::Submap);
@@ -427,7 +426,7 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(bind.action == KeybindAction::LayoutMasterCountIncrease);
   CHECK(parseAction("layout-master-count-decrease", bind));
   CHECK(bind.action == KeybindAction::LayoutMasterCountDecrease);
-  CHECK(!parseAction("master-count-increase", bind)); // clean cutover: the old name is simply unknown
+  CHECK(!parseAction("master-count-increase", bind)); // unknown name
 
   CHECK(parseAction("window-focus-last", bind));
   CHECK(bind.action == KeybindAction::WindowFocusLast);
@@ -770,9 +769,8 @@ UMBRIEL_TEST(actionSpecNamesAreUniqueAndSorted) {
 }
 
 UMBRIEL_TEST(everyActionHasASpec) {
-  // actions.cpp guards the handler table with a consteval everyActionHasHandler.
-  // Nothing guarded the name table, so an action could ship with a handler, a
-  // cheatsheet row, and docs while staying unbindable and unreachable over IPC.
+  // actions.cpp guards the handler table with a consteval check; this guards the name table, so no action is
+  // unbindable and unreachable over IPC.
   std::array<bool, static_cast<size_t>(KeybindAction::Count)> named{};
   for (const auto& spec : umbriel::actionSpecs()) {
     named[static_cast<size_t>(spec.action)] = true;
@@ -844,10 +842,8 @@ UMBRIEL_TEST(defaultKeybindsAreUsable) {
 }
 
 // Every name `umbriel msg --help` and the keybind reader advertise must round-trip through parseAction with an
-// argument of the kind its spec declares, and the help text beside it must describe that same argument. The action
-// list is spread across the KeybindAction enum, the kActionSpecs table, and parseAction's switch, so a spec whose
-// name, argument kind, or advertised parameter stops agreeing with the others is otherwise only discovered by a user
-// typing it.
+// argument of the kind its spec declares, and its help text must describe that same argument. The enum, kActionSpecs,
+// and parseAction's switch must agree.
 UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
   const auto sampleFor = [](ActionArgKind kind) -> std::string {
     switch (kind) {

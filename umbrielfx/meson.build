@@ -257,6 +257,7 @@ if build_tests
     'kinds',
     'reads',
     'uniforms',
+    'long-running-trig',
     'expand',
     'renderer-destroy',
     'persistent-scene',

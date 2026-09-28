@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Animated operations end with every window drawn where the layout puts it. Every animated owner is driven from one
-# registry, in a fixed phase order, and an owner dropped from it stops being ticked: its windows stay drawn at the old
-# geometry while `windows --json` already reports the target. So after each operation the frozen animation clock runs
-# past every timeline, settle confirms nothing is still animating, and each window's drawn box must equal its layout
-# box. Closing a window additionally exercises the fade-out snapshot, the one owner that registers and unregisters at
-# runtime. Absolute positions are asserted only where they are determined. Mid-strip the scroll offset depends on which
-# column has focus and on the neighbour peek, so those steps assert size and spacing. Once two columns exactly fill the
-# viewport the offset has only one legal value, so the close step pins it.
+# registry in a fixed phase order; an owner missing from it is never ticked, so its windows stay drawn at their start
+# geometry while `windows --json` reports the target. After each operation the frozen clock runs past every timeline,
+# settle confirms nothing is animating, and each drawn box must equal its layout box. Closing a window also exercises
+# the fade-out snapshot, the one owner that registers at runtime. Mid-strip the scroll offset depends on focus and
+# neighbour peek, so those steps assert size and spacing; once two columns fill the viewport the offset is pinned.
 set -euo pipefail
 
 readonly EXPECT_W=624 # 0.5 fraction of the 1260 viewport, gap-aware

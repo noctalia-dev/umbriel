@@ -11,9 +11,8 @@ namespace umbriel {
   inline constexpr double kSwipeWorkspacePx = 300.0;
   inline constexpr double kSwipeViewportPx = 1200.0;
 
-  // Sliding-window swipe tracker. Accumulates deltas since the gesture start,
-  // estimates velocity over recent history only, and projects where the movement would coast to a
-  // stop under touchpad-style exponential deceleration.
+  // Sliding-window swipe tracker. Accumulates deltas since the gesture start, estimates velocity over recent history
+  // only, and projects where the movement would coast to a stop under exponential deceleration.
   class SwipeTracker {
   public:
     // Pushes a new reading into the tracker.

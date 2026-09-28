@@ -179,7 +179,7 @@ namespace umbriel {
     // detection when a config reload swaps the workspace's layout mid-grab.
     [[nodiscard]] virtual const Layout* ownerLayout() const = 0;
     // True when the layout cleared a maximized/full-width state at grab start,
-    // so Cursor should un-maximize the toplevel immediately (matches legacy).
+    // so Cursor should un-maximize the toplevel immediately.
     [[nodiscard]] virtual bool unmaximizeOnBegin() const { return false; }
   };
 

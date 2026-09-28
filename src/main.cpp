@@ -83,19 +83,38 @@ namespace {
   }
 
   void printHelp(FILE* stream) {
-    auto row = [stream](std::string_view lead, std::string_view cmd, std::string_view desc) {
-      std::println(stream, "{}umbriel {:<30} {}", lead, cmd, desc);
+    auto heading = [stream](std::string_view title) { std::println(stream, "\n{}:", title); };
+    auto row = [stream](std::string_view cmd, std::string_view desc) {
+      std::println(stream, "  {:<30} {}", cmd, desc);
     };
-    std::println(stream, "umbriel {}: a wayland compositor\n", umbriel::build_info::version());
-    row("Usage: ", "[-s <command>] [-c <config>]", "run the compositor");
-    for (const auto& spec : umbriel::ipcCommands()) {
-      std::string cmd{spec.name};
-      if (!spec.argSpec.empty()) {
-        cmd += ' ';
-        cmd += spec.argSpec;
+    auto specRows = [&row](umbriel::IpcCommandGroup group) {
+      for (const auto& spec : umbriel::ipcCommands()) {
+        if (spec.group != group) {
+          continue;
+        }
+        std::string cmd{spec.name};
+        if (!spec.argSpec.empty()) {
+          cmd += ' ';
+          cmd += spec.argSpec;
+        }
+        row(cmd, spec.description);
       }
-      row("       ", cmd, spec.description);
-    }
+    };
+
+    std::println(stream, "umbriel {}: a wayland compositor\n", umbriel::build_info::version());
+    std::println(stream, "Usage: umbriel [-s <command>] [-c <config>]   run the compositor");
+    std::println(stream, "       umbriel <command> [args...]            run a command");
+
+    heading("Compositor options");
+    row("-s <command>", "spawn <command> once the compositor starts");
+    row("-c <config>", "use <config> instead of the default config path");
+
+    heading("Control the running compositor");
+    specRows(umbriel::IpcCommandGroup::Control);
+
+    heading("Inspect the running compositor");
+    specRows(umbriel::IpcCommandGroup::Inspect);
+    row("outputs", "list outputs and modes");
     {
       std::string names;
       for (const auto& name : umbriel::Ipc::kEventNames) {
@@ -104,22 +123,26 @@ namespace {
         }
         names += name;
       }
-      row("       ", "subscribe <event>[,<event>…]", "stream events as JSON lines");
-      std::println(stream, "{:>15}{}", "", "events: " + names);
+      row("subscribe <event>[,<event>…]", "stream events as JSON lines");
+      std::println(stream, "{:>33}{}", "", "events: " + names);
     }
-    row("       ", "outputs", "list outputs and modes");
-    row("       ", "config validate [-c <config>]", "check the config file");
-    row("       ", "config schema [--json]", "count or describe every config key");
-    row("       ", "help | -h | --help", "show this help");
-    row("       ", "-v | -V | --version", "print version");
-    std::println(
-        stream,
-        "\nOptions:\n"
-        "  -s <command>   spawn <command> once the compositor starts\n"
-        "  -c <config>    use <config> instead of the default config path\n"
-        "\n"
-        "Run `umbriel msg --help` to list all available actions for `msg` and keybinds."
-    );
+
+    heading("Configuration, without a running compositor");
+    row("config validate [-c <config>]", "check the config file");
+    row("config schema [--json]", "count or describe every config key");
+
+    if (std::ranges::any_of(umbriel::ipcCommands(), [](const auto& spec) {
+          return spec.group == umbriel::IpcCommandGroup::Harness;
+        })) {
+      heading("Test harness");
+      specRows(umbriel::IpcCommandGroup::Harness);
+    }
+
+    heading("Other");
+    row("help | -h | --help", "show this help");
+    row("-v | -V | --version", "print version");
+
+    std::println(stream, "\nRun `umbriel msg --help` to list all available actions for `msg` and keybinds.");
   }
 } // namespace
 

@@ -56,10 +56,9 @@ private:
 };
 
 // Opens (or rotates) ~/.cache/umbriel/umbriel.log. Also redirects fd 1/2 to ~/.cache/umbriel/umbriel-stderr.log (or
-// /dev/null) if either points at a TTY (greetd wires them to /dev/tty1), and synchronous VT writes on the compositor
-// main thread turned a per-frame wlroots error into a hard livelock (see gpu-hang-handoff.md, Bug C). Libraries that
-// bypass wlr_log (glibc asserts, mesa, dbus) inherit the redirected fds, so the hazard is removed for the whole process
-// tree.
+// /dev/null) if either points at a TTY (greetd wires them to /dev/tty1), since synchronous VT writes on the compositor
+// main thread can turn a per-frame wlroots error into a hard livelock. Libraries that bypass wlr_log (glibc asserts,
+// mesa, dbus) inherit the redirected fds.
 void initLogFile();
 void setConsoleLogging(bool enabled);
 

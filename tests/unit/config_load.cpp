@@ -358,6 +358,33 @@ name = "music"
   CHECK(!containsDiagnostic(store, "unknown key scratchpad"));
 }
 
+UMBRIEL_TEST(scratchpadDefinitionsLoadSpawnWhenEmpty) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "sysmon"
+spawn_when_empty = "kitty --class btop btop"
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "todo"
+spawn_when_empty = 7
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{3});
+  CHECK_EQ(store.config().scratchpads[0].spawnWhenEmpty, std::string{"kitty --class btop btop"});
+  CHECK(store.config().scratchpads[1].spawnWhenEmpty.empty());
+  CHECK(store.config().scratchpads[2].spawnWhenEmpty.empty());
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[2].spawn_when_empty (expected string)"));
+}
+
 UMBRIEL_TEST(scratchpadDefinitionsRequireValidUniqueNames) {
   const TempConfig file;
   file.write("[[scratchpad]]\nname = \"kept\"\n");

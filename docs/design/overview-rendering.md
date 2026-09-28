@@ -16,10 +16,11 @@ transition.
 ## Touchpad navigation
 
 Two-finger scrolling and three-finger swipes reach the same `OverviewNavigation`
-state: deltas in content direction, one locked axis after 16 units of travel,
-rubber-banded 0.15 of a workspace or viewport past either end, and a release
-position projected 120 ms along the recent velocity. Neither stream commits a
-workspace before its release.
+state: deltas in content direction, one locked axis after 16 units of travel, and
+a release that projects the travel under the deceleration in `SwipeTracker` and
+rounds it onto the nearest row. Neither stream commits a workspace before its
+release. The physics they share with the workspace switch and the overview open
+and close is in [Touchpad gestures](touchpad-gestures.md).
 
 The two streams carry different travel distances because libinput reports
 swipes as pointer-accelerated motion and finger scrolling as raw scroll units.

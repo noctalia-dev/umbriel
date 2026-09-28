@@ -271,6 +271,35 @@ output's active 10-bit render format (XR30 or XB30) when 10-bit SDR is active.
 Unlike HDR capture, the pixels are not converted to an 8-bit SDR format first.
 Tools that do not handle 10-bit formats may produce undesired output.
 
+## Virtual outputs
+
+A virtual output is a monitor with no display behind it. It has workspaces,
+takes windows, and can be captured like any other output, which makes it a
+target for remote desktop and game streaming. See
+[Game streaming](streaming.md) for a Sunshine setup.
+
+```sh
+umbriel output-create stream
+umbriel output-destroy stream
+```
+
+The name uses ASCII letters, digits, `-`, `_`, and `.`, and must not match an
+existing output, ignoring case. `output-create` prints the new output's name. A
+virtual output starts at 1280x720; set its size with an output section or with
+an output-management tool such as `wlr-randr`:
+
+```toml
+[output.stream]
+mode = "1920x1080@60"
+```
+
+```sh
+wlr-randr --output stream --custom-mode 2560x1440@120Hz
+```
+
+`output-destroy` accepts only virtual outputs. Its windows move to another
+output, as when a monitor is unplugged.
+
 ## Disabling an output
 
 Set `enabled = false` for a persistent disabled state:

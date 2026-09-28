@@ -1,14 +1,11 @@
-// Presents its content the way a fractional-scale-aware toolkit does: it takes the compositor's preferred fractional
-// scale, renders one buffer at that exact pixel size, and publishes a logical size through wp_viewporter. The buffer
-// size is floored, which is what makes this client useful: a floored buffer is one pixel short of the physical extent
-// the compositor derives from the logical window edges, and every renderer shortcut that resolves that disagreement by
-// resizing the destination leaves an unpainted row inside the window. Columns alternate blue and green so a screenshot
-// shows both coverage (no background pixel inside the content box) and 1:1 sampling (no blended column).
+// Takes the compositor's preferred fractional scale, renders one buffer at that pixel size (floored), and publishes a
+// logical size through wp_viewporter. The floored buffer is one pixel short of the physical window extent, so a
+// renderer that resizes the destination leaves an unpainted row. Columns alternate blue and green so a screenshot shows
+// both coverage and 1:1 sampling (no blended column).
 //
-// A margin argument surrounds the window with that many logical pixels of fully transparent decoration and declares the
-// window geometry inside it, the way a client-side-decorated toolkit reserves room for its shadow. The compositor then
-// crops the surface at a boundary that falls between texels, and a renderer that snaps that crop outward samples the
-// transparent margin instead of the window: one transparent line along the cropped edge.
+// A margin argument surrounds the window with that many logical pixels of transparent decoration and declares the
+// window geometry inside it; at a fractional scale the compositor's crop then falls between texels, and a crop snapped
+// outward shows one transparent line along the cropped edge.
 //
 // Prints "mapped <window_w>x<window_h> buffer <buffer_w>x<buffer_h> surface <surface_w>x<surface_h> margin <m> scale
 // <n>/120" for every presentation, so the last line is the layout's size rather than the size the client picked to
@@ -51,9 +48,7 @@ namespace {
     int logicalWidth = 0;
     int logicalHeight = 0;
     bool configured = false;
-    // Logical pixels of transparent decoration around the window, the way a client-side-decorated toolkit reserves room
-    // for its shadow. The compositor crops the surface to the window, and at a fractional scale that crop edge falls
-    // between texels.
+    // Logical pixels of transparent decoration around the window geometry.
     int margin = 0;
   };
 
@@ -65,9 +60,8 @@ namespace {
   }
 
   // Renders one buffer and publishes one logical surface size. The window occupies `margin` logical pixels inside that
-  // surface on every side, and everything outside it is fully transparent, the way a client-side-decorated toolkit
-  // leaves room for its shadow. A texel belongs to the window only when its center falls inside the window rect, so the
-  // boundary texel of a window whose edge lands between texels is transparent, exactly as a real client's is.
+  // surface on every side; everything outside it is transparent. A texel belongs to the window only when its center
+  // falls inside the window rect, so a boundary texel straddling the window edge is transparent.
   bool present(State& state) {
     if (!state.configured || state.logicalWidth <= 0 || state.logicalHeight <= 0) {
       return true;

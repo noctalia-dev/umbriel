@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Content drawn through a wl_subsurface must follow the window corner radius. Firefox puts all of its chrome and web
-# content into one full-window desynchronized subsurface, and rounding only the toplevel's own surface left that content
-# square outside the arc. The client here paints its parent surface red and its full-window subsurface blue over a green
-# backdrop, so a pixel just outside the corner arc reports which of the three the compositor drew.
+# Content drawn through a wl_subsurface, including one full-window desynchronized subsurface, must follow the window
+# corner radius. The client paints its parent surface red and its full-window subsurface blue over a green backdrop,
+# so a pixel just outside the corner arc reports which of the three the compositor drew.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"

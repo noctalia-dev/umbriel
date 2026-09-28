@@ -138,3 +138,15 @@ umbriel subscribe workspaces |
 `umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
 `umbriel config validate` checks a configuration and `umbriel config schema`
 lists the keys it accepts, both without a running compositor.
+
+## Virtual outputs
+
+| Request | CLI |
+| --- | --- |
+| `{"cmd":"output-create","arg":"<name>"}` | `umbriel output-create <name>` |
+| `{"cmd":"output-destroy","arg":"<name>"}` | `umbriel output-destroy <name>` |
+
+`output-create` replies with the new output's name. Both commands reply with an
+error for a name that is invalid, already taken, or unknown, and
+`output-destroy` refuses outputs backed by a real display. See
+[Virtual outputs](outputs.md#virtual-outputs).
