@@ -1,5 +1,6 @@
 #include "view/effects.h"
 
+#include "config/config.h"
 #include "scene/effect_registry.h"
 
 #include <algorithm>
@@ -21,10 +22,17 @@ namespace umbriel {
     }
   }
 
-  void ViewEffects::resolve(const Effects& effects, const ResolvedWindowRule& rule) {
-    const ViewEffectNames names = resolveViewEffectNames(effects, rule);
-    m_border = names.border;
-    m_window = names.window;
+  void ViewEffects::resetSlots() {
+    m_borderSlot = {};
+    m_windowSlot = {};
+    m_border.clear();
+    m_window.clear();
+    m_overlay = false;
+  }
+
+  void ViewEffects::syncNames(const Effects& effects) {
+    m_border = m_borderSlot.effectiveName();
+    m_window = m_windowSlot.effectiveName();
     const EffectPreset* border = m_border.empty() ? nullptr : findEffectPreset(effects, m_border);
     m_overlay = border != nullptr && !border->overlay.empty();
   }
@@ -66,11 +74,12 @@ namespace umbriel {
       untrack(input.border);
     } else {
       fx_animation_parameters parameters{};
+      parameters.scale = input.scale;
       registry.fillTimeUniforms(parameters, seconds, *preset, shader);
       if (preset->light) {
         parameters.light = {
             .enabled = true,
-            .spread = static_cast<float>(preset->light->spread),
+            .spread = static_cast<float>(preset->light->spread) * input.scale,
             .intensity = preset->light->intensity,
             .threshold = preset->light->threshold,
         };
@@ -112,6 +121,7 @@ namespace umbriel {
         return;
       }
       fx_animation_parameters parameters{};
+      parameters.scale = input.scale;
       registry.fillTimeUniforms(parameters, seconds, *preset, shader);
       wlr_scene_node_set_animation(node, slot, shader, &parameters);
     };

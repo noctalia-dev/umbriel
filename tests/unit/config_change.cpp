@@ -1,5 +1,6 @@
 #include "check.h"
 #include "config/change.h"
+#include "config/resolve.h"
 
 using umbriel::AccelProfile;
 using umbriel::Config;
@@ -648,6 +649,34 @@ UMBRIEL_TEST(outputRuleNameSetChangesRefreshIdentityDependentEffects) {
   CHECK(!caseEffects.workspaceLayout);
 }
 
+UMBRIEL_TEST(descriptorRuleWithoutSelectorInvalidatesDisplacedScreenOverride) {
+  Config before;
+  before.effects.screen = "default-screen";
+  OutputRule connector;
+  connector.name = "HDMI-A-1";
+  connector.screenEffect = "connector-screen";
+  before.outputs.push_back(connector);
+  const umbriel::OutputIdentity identity{
+      .connector = "HDMI-A-1", .make = "Microstep", .model = "MSI G2712F", .serial = "CD6T084401192"
+  };
+  CHECK(umbriel::findOutputRule(before, identity)->screenEffect == "connector-screen");
+
+  Config after = before;
+  OutputRule descriptor;
+  descriptor.name = "Microstep MSI G2712F CD6T084401192";
+  after.outputs.push_back(descriptor);
+  CHECK(!umbriel::findOutputRule(after, identity)->screenEffect.has_value());
+  CHECK(ConfigEffects::between(before, after).effects);
+  CHECK(ConfigEffects::between(after, before).effects);
+
+  Config caseOnly = before;
+  caseOnly.outputs.front().name = "hdmi-a-1";
+  CHECK(!ConfigEffects::between(before, caseOnly).effects);
+  before.outputs.front().screenEffect.reset();
+  after.outputs.front().screenEffect.reset();
+  CHECK(!ConfigEffects::between(before, after).effects);
+}
+
 UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config before;
   OutputRule output;
@@ -922,6 +951,64 @@ UMBRIEL_TEST(aFailedReloadResultCarriesNoChangesOrEffects) {
   CHECK(!result.success);
   CHECK(!result.change.any());
   CHECK(!result.effects.any());
+}
+
+UMBRIEL_TEST(effectPoolDefinitionsAndMemberOrderRaiseEffectsChange) {
+  Config before;
+  before.effects.pools.push_back({.name = "borders", .kind = umbriel::EffectKind::Border, .members = {"z", "a"}});
+  Config after = before;
+  CHECK(!ConfigEffects::between(before, after).effects);
+  after.effects.pools[0].selection = umbriel::EffectSelectionPolicy::RoundRobin;
+  CHECK(ConfigEffects::between(before, after).effects);
+  after = before;
+  after.effects.pools[0].members = {"a", "z"};
+  CHECK(ConfigEffects::between(before, after).effects);
+  after = before;
+  after.effects.pools.clear();
+  CHECK(ConfigEffects::between(before, after).effects);
+}
+
+UMBRIEL_TEST(effectActionRootChangesDrivePreparation) {
+  Config before;
+  Keybind selected;
+  CHECK(umbriel::parseAction("effect-window-set:pool/window-1", selected));
+  before.keybinds = {selected};
+  Config after = before;
+  CHECK(umbriel::parseAction("effect-window-cycle:pool/window-2", after.keybinds.front()));
+  CHECK(!ConfigEffects::between(before, after).effects);
+  after.keybinds.front().cooldownMs = 100;
+  after.keybinds.front().submap = "effects";
+  CHECK(!ConfigEffects::between(before, after).effects);
+  after.hotCorners.corners[0].enabled = true;
+  after.hotCorners.corners[0].action = selected;
+  CHECK(!ConfigEffects::between(before, after).effects);
+  after.keybinds.clear();
+  CHECK(!ConfigEffects::between(before, after).effects);
+  after.hotCorners.corners[0].enabled = false;
+  CHECK(ConfigEffects::between(before, after).effects);
+  CHECK(umbriel::configuredEffectActionRoots(after).empty());
+  after = before;
+  CHECK(umbriel::parseAction("effect-window-set:other", after.keybinds.front()));
+  CHECK(ConfigEffects::between(before, after).effects);
+  after = before;
+  CHECK(umbriel::parseAction("effect-window-set:off", after.keybinds.front()));
+  CHECK(ConfigEffects::between(before, after).effects);
+  after = before;
+  CHECK(umbriel::parseAction("effect-window-cycle", after.keybinds.front()));
+  CHECK(ConfigEffects::between(before, after).effects);
+}
+
+UMBRIEL_TEST(effectActionRootsAreUniqueAcrossKeybindsAndCorners) {
+  Config config;
+  config.keybinds.clear();
+  for (const std::string action : {"effect-border-set:zebra", "effect-screen-cycle:alpha", "effect-border-set:zebra"}) {
+    Keybind bind;
+    CHECK(umbriel::parseAction(action, bind));
+    config.keybinds.push_back(bind);
+  }
+  config.hotCorners.corners[0].enabled = true;
+  config.hotCorners.corners[0].action = config.keybinds.front();
+  CHECK(umbriel::configuredEffectActionRoots(config) == std::vector<std::string>({"alpha", "zebra"}));
 }
 
 int main() { return RUN_TESTS(); }

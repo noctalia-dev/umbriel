@@ -221,6 +221,33 @@ namespace {
           return label;
         }
         return name;
+      case umbriel::ActionArgKind::WindowEffectSet:
+      case umbriel::ActionArgKind::WindowEffectCycle:
+        if (const auto* arg = umbriel::payloadIf<umbriel::EffectWindowArg>(bind)) {
+          std::string value = arg->name;
+          if (!arg->id.empty()) {
+            value += "/" + arg->id;
+          }
+          return value.empty() ? name : name + ": " + value;
+        }
+        return name;
+      case umbriel::ActionArgKind::ScreenEffectSet:
+      case umbriel::ActionArgKind::ScreenEffectCycle:
+        if (const auto* arg = umbriel::payloadIf<umbriel::EffectScreenArg>(bind)) {
+          std::string value = arg->name;
+          if (!arg->output.empty()) {
+            value += "/" + arg->output;
+          }
+          return value.empty() ? name : name + ": " + value;
+        }
+        return name;
+      case umbriel::ActionArgKind::CursorEffectSet:
+      case umbriel::ActionArgKind::CursorEffectCycle:
+        if (const auto* arg = umbriel::payloadIf<umbriel::EffectCursorArg>(bind)) {
+          std::string value = arg->name;
+          return value.empty() ? name : name + ": " + value;
+        }
+        return name;
       case umbriel::ActionArgKind::Output:
       case umbriel::ActionArgKind::OptionalOutput:
         if (const auto* output = umbriel::payloadIf<umbriel::OutputArg>(bind);

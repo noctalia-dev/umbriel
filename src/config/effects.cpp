@@ -134,6 +134,31 @@ namespace umbriel {
     return "effect";
   }
 
+  std::optional<EffectSelectionPolicy> parseEffectSelectionPolicy(std::string_view text) {
+    if (text == "unused_first") {
+      return EffectSelectionPolicy::UnusedFirst;
+    }
+    if (text == "round_robin") {
+      return EffectSelectionPolicy::RoundRobin;
+    }
+    if (text == "random") {
+      return EffectSelectionPolicy::Random;
+    }
+    return std::nullopt;
+  }
+
+  std::string_view effectSelectionPolicyName(EffectSelectionPolicy policy) {
+    switch (policy) {
+    case EffectSelectionPolicy::UnusedFirst:
+      return "unused_first";
+    case EffectSelectionPolicy::RoundRobin:
+      return "round_robin";
+    case EffectSelectionPolicy::Random:
+      return "random";
+    }
+    return "unused_first";
+  }
+
   namespace {
     // "a border preset", "an animation preset".
     std::string presetPhrase(EffectKind kind) {
@@ -147,17 +172,38 @@ namespace umbriel {
     return preset != effects.presets.end() ? &*preset : nullptr;
   }
 
-  std::optional<std::string>
-  effectReferenceError(const Effects& effects, std::string_view name, EffectKind kind, bool allowOff) {
+  const EffectPool* findEffectPool(const Effects& effects, std::string_view name) {
+    const auto pool = std::ranges::find(effects.pools, name, &EffectPool::name);
+    return pool != effects.pools.end() ? &*pool : nullptr;
+  }
+
+  std::optional<std::string> effectReferenceError(
+      const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
+      EffectReferenceConstraint constraint
+  ) {
     if (name.empty() || (allowOff && name == kEffectOff)) {
       return std::nullopt;
     }
     const EffectPreset* preset = findEffectPreset(effects, name);
     if (preset == nullptr) {
+      if (const EffectPool* pool = findEffectPool(effects, name)) {
+        if (constraint == EffectReferenceConstraint::PresetOnly) {
+          return std::format("effect '{}' is a pool; a preset is required", name);
+        }
+        if (pool->kind != kind) {
+          return std::format(
+              "effect '{}' is a {} pool, not a {} pool", name, effectKindName(pool->kind), effectKindName(kind)
+          );
+        }
+        return std::nullopt;
+      }
       return std::format("unknown effect '{}'", name);
     }
     if (preset->kind != kind) {
       return std::format("effect '{}' is {}, not {}", name, presetPhrase(preset->kind), presetPhrase(kind));
+    }
+    if (constraint == EffectReferenceConstraint::PoolRequired) {
+      return std::format("effect '{}' is a preset; a pool is required", name);
     }
     return std::nullopt;
   }

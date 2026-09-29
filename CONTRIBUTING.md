@@ -1,9 +1,9 @@
 Contributing
 ===
 
-This file collects contributor-facing details for Umbriel: design goals, stack notes, code style, source layout,
-and debugging helpers. Umbriel shares its conventions with [noctalia](https://github.com/noctalia-dev/noctalia):
-same team, same style. If in doubt, match what noctalia does.
+This file collects contributor-facing details for Umbriel: design goals, stack notes, testing, contribution rules, code
+style, source layout, commits, and debugging helpers. Umbriel shares its conventions with
+[noctalia](https://github.com/noctalia-dev/noctalia): same team, same style. If in doubt, match what noctalia does.
 
 For dependencies and normal build commands, start with [README.md](README.md). For what the project accepts and
 declines, read [SCOPE.md](SCOPE.md): it is the reference used when triaging feature requests and unsolicited pull
@@ -157,6 +157,31 @@ keys. A check about how keyboards themselves arrive opts out with `# harness: ke
 A check that stops making progress is killed after 120 seconds, so the suite reports instead of hanging. Set
 `CHECK_TIMEOUT` to change the cap, and `CHECK_VERBOSE=1` (or `-v`) to keep the full output of passing checks.
 
+### Writing regression checks
+
+- Before relying on a new or materially changed check, temporarily break the behavior it covers and confirm the check
+  fails for the intended reason.
+- Prefer assertions that observe a specific transition over end-state assertions that can pass through an unrelated
+  fallback.
+- Every file in `tests/harness/checks/` boots its own compositor in every future run. Add one only for behavior that
+  exists solely in a running compositor and that no existing check covers; otherwise extend an existing check or a
+  harness client.
+- Scratch probes, measurements, and bug reproductions stay out of `tests/harness/checks/`. Run them from a temporary
+  path and delete them once they have served their purpose.
+- A check that pins wording, an implementation detail, or incidental behavior is deleted, not re-pinned to the new
+  text.
+
+### What the harness cannot cover
+
+Rendering, layout, animation, Wayland lifecycle, and compositor integration changes also deserve a functional or visual
+check in a running Umbriel session when practical. Do not write brittle pointer-event or mock-based tests to avoid that
+check. Two known limits:
+
+- `zwlr_virtual_pointer_v1` cannot generate touchpad gesture events, so changes to gesture state or gesture feel need a
+  real input device in a running session.
+- The harness `layer-client` maps a real exclusive zone (see `layout/struts`). Extend it for layer arrangement and
+  usable-area changes; interaction with real bars and panels still needs a running session.
+
 ## Releases
 
 `VERSION` is the canonical build version and Meson reads it directly. A release remains an explicit tag push: after
@@ -169,6 +194,33 @@ git push origin "v$(<VERSION)"
 
 The release workflow runs only for `v*` tags. It rejects a tag that does not exactly match `VERSION` at its target and
 creates the GitHub release when one does not already exist. It never creates or moves tags.
+
+## Contribution Rules
+
+### One change per pull request
+
+Keep each pull request to a single feature, fix, or refactor. Unrelated changes, including drive-by cleanups and
+formatting of untouched code, go in separate pull requests so each can be reviewed and reverted on its own.
+
+### Configuration changes are clean cutovers
+
+Never add deprecated keys, migration readers, compatibility aliases, shims, or silent fallbacks to old names or forms.
+Removed configuration becomes unknown through normal validation. Alternate vocabulary is allowed only as a deliberate,
+documented first-class interface, never as compatibility behavior.
+
+### User documentation
+
+User documentation ([`docs/user/`](docs/user/) and [`examples/config.toml`](examples/config.toml)) covers what a user
+configures or invokes: config keys, actions, IPC, and the behavior a user must know to use them. Update it in the same
+change when one of those is added, removed, renamed, or changes meaning. Bug fixes that make behavior match what users
+already expect, edge cases, and internal mechanics need no user documentation. Maintainer design notes live in
+[`docs/design/`](docs/design/).
+
+### Comments and documentation
+
+Comments and documentation explain what the code currently does and any non-obvious constraint a reader needs. Do not
+narrate history, migrations, rejected alternatives, or "why we don't do X"; git holds that. This applies to Markdown,
+`meson.build`, and code comments alike. If a comment is longer than the code it describes, cut it down.
 
 ## Code Style
 
@@ -229,6 +281,14 @@ If the value goes to another library untouched, keep that library's spelling.
   `m_event{}` member.
 - Include ordering follows clang-format regrouping: project `"..."` headers first, then system `<...>` headers.
 
+### Compositor invariants
+
+- Output and layout geometry are logical coordinates. Never derive compositor geometry from physical pixel dimensions on
+  a scaled output.
+- Fixed-vocabulary TOML sections use `Section` readers (`src/config/section.h`). When direct boolean parsing is
+  required, check `is_boolean()` before calling `value<bool>()`. Claim every recognized key before semantic validation
+  can return or continue, so valid keys are never reported as unknown.
+
 ## Pull Request Template
 
 Pull request descriptions are checked automatically when they are opened, edited, reopened, or marked ready for
@@ -236,10 +296,11 @@ review. Keep the `## Summary`, `## Motivation`, `## Type of Change`, `## Testing
 Checklist wording from [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). The remaining sections
 are context only: fill them in, leave them empty, or delete them. In Type of Change, keep only the lines that apply.
 
-Draft pull requests may leave checkboxes incomplete. Before marking a pull request ready for review, select at least one
-change type and check every item in the Checklist section. A pull request that is missing required template structure
-is commented on and converted back to a draft; add the missing content and mark it ready for review to run the check
-again. The check never closes a pull request.
+Draft pull requests may leave checkboxes incomplete. Before marking a pull request ready for review, check exactly one
+change type other than Breaking change (add Breaking change alongside it when it applies), and check every item in the
+Checklist section. A pull request that is missing required template structure is commented on and converted back to a
+draft; add the missing content and mark it ready for review to run the check again. The check never closes a pull
+request.
 
 ## Project Layout
 
@@ -272,9 +333,9 @@ Conventions:
 - `src/` is the include root; headers live next to their sources.
 - Each directory owns one domain. Add new sources to the matching directory and register them in `meson.build`.
 - Vendored Wayland protocol XML lives in `protocols/` and is code-generated via `wayland-scanner` in `meson.build`.
-- User-facing configuration documentation lives in [`docs/user/`](docs/user/). Update it when adding or changing
-  config options. The reference pages are linked from [`examples/config.toml`](examples/config.toml) and the
-  [README](README.md#configuration). Maintainer design notes live in [`docs/design/`](docs/design/).
+- User-facing configuration documentation lives in [`docs/user/`](docs/user/); see
+  [User documentation](#user-documentation). The reference pages are linked from
+  [`examples/config.toml`](examples/config.toml) and the [README](README.md#configuration).
 
 ## umbrielfx
 
@@ -287,11 +348,20 @@ target and never reach the compositor's C++23 units. Public headers are `umbriel
 live in `umbrielfx/internal/` and stay off the compositor's include path. See
 [`umbrielfx/README.md`](umbrielfx/README.md).
 
-It replaces wlroots' scene graph but reuses the scene helpers it does not reimplement, such as
-`wlr_scene_xdg_surface_create` and `wlr_scene_attach_output_layout`. Those resolve to `libwlroots` and read
-umbrielfx's structs at wlroots' field offsets, so a struct in `types/wlr_scene.h` that wlroots also declares must stay
-a strict prefix extension: new fields go after every wlroots field. `umbrielfx/tests/abi.c` fails the build's test
-suite if that slips.
+It extends wlroots' scene structs, so a scene node is only valid if umbrielfx allocated it. Every scene helper that
+creates or destroys nodes therefore lives in `umbrielfx/types/scene/`, including the thin wrappers taken from wlroots
+(`surface.c`, `subsurface_tree.c`, `xdg_shell.c`, `layer_shell_v1.c`, `drag_icon.c`, `output_layout.c`). Never call a
+scene helper from `libwlroots`; `umbrielfx_scene_check_helpers()` aborts startup if one resolves there. See
+[`docs/design/scene-helper-ownership.md`](docs/design/scene-helper-ownership.md).
+
+- Every struct in `umbrielfx/include/umbrielfx/types/wlr_scene.h` that wlroots also declares stays a strict prefix
+  extension: fields Umbriel adds go after every wlroots field, never interleaved. `umbrielfx/tests/abi.c` enforces
+  this.
+- The `wlr_scene_*`, `wlr_egl_*`, `wlr_color_transform_*`, and `wlr_matrix_*` symbols umbrielfx exports intentionally
+  shadow `libwlroots`. Never rename them to an `umbrielfx_` prefix: calls under the wlroots names would then resolve to
+  `libwlroots` and allocate wlroots-sized nodes that umbrielfx reads as larger ones.
+- umbrielfx is pinned to one wlroots minor series. A wlroots bump means porting upstream `wlr_scene.c` changes by hand
+  and re-reading the `wlr_scene.h` diff for new or moved struct fields.
 
 Its regressions run in their own suite:
 
@@ -399,6 +469,7 @@ umbriel config validate [-c <config>]  # check a config file without starting
 umbriel config schema [--json]  # list every config key with its type and default
 umbriel outputs                  # list connectors and modes
 umbriel windows                  # list windows (focused *, urgent !)
+umbriel effects                  # inspect effect programs, pools, and owner selections
 umbriel workspaces               # list workspaces and their layouts
 umbriel subscribe <events>       # stream events as JSON lines until closed
 umbriel layers                   # list layer-shell surfaces
@@ -407,9 +478,14 @@ umbriel msg --help              # list actions available to `msg` and keybinds
 umbriel msg <action> [args...]   # send an action to the running compositor
 ```
 
-`windows`, `workspaces`, `layers`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for machine-readable output.
+`windows`, `effects`, `workspaces`, `layers`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for machine-readable output.
 `subscribe` is always JSON; see [docs/user/ipc.md](docs/user/ipc.md) for the families and payloads.
 
 ## Commits
 
-Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): imperative summary`.
+Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): imperative summary`, with lowercase
+types such as `feat`, `fix`, `refactor`, `chore`, `test`, or `docs` and a focused subsystem scope when it helps.
+
+Default to the summary line alone. Add a body only when it carries information a reader would otherwise miss: a
+non-obvious root cause, a constraint that forced the approach, a behavior change users will notice, or a `Fixes #N`
+reference. Do not restate the diff or list touched files.

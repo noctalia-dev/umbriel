@@ -151,7 +151,8 @@ namespace umbriel {
         warnAt(node.source(), R"(invalid {} "{}")", path, *value);
         return std::nullopt;
       }
-      if (const auto invalid = scratchpadSelectorError(loaded, bind)) {
+      if (const auto invalid =
+              scratchpadSelectorError(loaded, bind).or_else([&] { return effectActionError(loaded, bind); })) {
         warnAt(node.source(), "ignoring {} ({})", path, *invalid);
         return std::nullopt;
       }

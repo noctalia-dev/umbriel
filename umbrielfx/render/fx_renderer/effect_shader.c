@@ -79,11 +79,11 @@ static const char kBorderSection[] =
     "  vec2 q = abs(p) - half_size + r;\n"
     "  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n"
     "}\n";
-// The client hole is always cut out of the result, half a logical pixel soft.
+// The client hole is always cut out of the result with one buffer pixel of antialiasing.
 static const char kBorderSuffix[] =
     "\nvoid main() {\n"
     "  vec4 c = border(v_texcoord);\n"
-    "  gl_FragColor = c * smoothstep(-0.5, 0.5, umbriel_border_distance(v_texcoord));\n"
+    "  gl_FragColor = c * smoothstep(-0.5, 0.5, umbriel_border_distance(v_texcoord) * umbriel_scale);\n"
     "}\n";
 
 // In-place kinds write back through the rounded mask of the drawn rectangle:

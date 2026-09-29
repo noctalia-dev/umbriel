@@ -70,10 +70,10 @@ or per-output override.
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `border` | `""` | Border preset for the focused window. |
-| `window` | `""` | Window preset applied to every window. |
-| `screen` | `""` | Screen preset applied to every output. |
-| `cursor` | `""` | Cursor preset. |
+| `border` | `""` | Border preset or pool for the focused window. |
+| `window` | `""` | Window preset or pool applied to every window. |
+| `screen` | `""` | Screen preset or pool applied to every output. |
+| `cursor` | `""` | Cursor preset or pool, shared across outputs. |
 | `max_fps` | `0` | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate. |
 | `in_capture` | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear, and an export-dmabuf capture always sees the same frame as the display, regardless of this setting. |
 
@@ -110,7 +110,12 @@ surface.
 a GLSL file relative to the TOML file that names it. The file is watched and
 reloads with the configuration; a missing or unreadable file reports a
 diagnostic and leaves the preset inert until the file appears, and a preset
-without `shader` is inert as well. `off` is a reserved name.
+without `shader` is inert as well.
+
+Presets and pools share a namespace. Names must be non-empty, cannot be `off`,
+and cannot contain `/`, which separates an action selector from its target. A
+colliding pool is rejected while the preset remains valid, with diagnostics
+pointing to both declarations.
 
 | Key | Kinds | Default | Description |
 | --- | --- | --- | --- |
@@ -143,6 +148,118 @@ palette = true
 window = "tint"
 ```
 
+## Pools
+
+A pool chooses a stable preset for each owner before its first rendered frame:
+
+```toml
+[effects.pool.borders]
+kind = "border"
+choose = ["pulse", "quiet"]
+selection = "unused_first"
+
+[effects]
+border = "borders"
+```
+
+Define or include the `pulse` and `quiet` border presets separately.
+
+| Key | Required/default | Meaning |
+| --- | --- | --- |
+| `kind` | Required | `border`, `window`, `screen`, or `cursor`. |
+| `choose` | Required array | Ordered names of presets of that kind. |
+| `selection` | `unused_first` | `unused_first`, `round_robin`, or `random`. |
+
+`unused_first` chooses the least-held member, breaking ties in list order.
+`round_robin` hands out members in order and wraps. `random` makes a uniform
+random choice. Invalid or duplicate members are dropped individually, keeping
+the first valid occurrence. A missing/non-array `choose`, invalid policy, or
+animation kind rejects the pool. An empty pool is inert and can be selected,
+but cannot be cycled. Pools cannot contain pools.
+
+Pools are accepted by the four `[effects]` selectors, window rules'
+`border_effect`/`window_effect`, output `screen_effect`, and matching runtime
+actions. Animation bindings and border `overlay` remain preset-only.
+Definitions and references may be in different included files. Inspection
+keeps declaration order: included files before their including file, and source
+order within each file. Members keep `choose` order.
+
+Each mapped window owns independent border and window slots; each present
+output owns a screen slot; the session owns one cursor slot. Holdings count
+only unsuppressed owners assigned from that same pool. Hidden/scratchpad
+windows, unfocused borders, disabled outputs, and failed/inert programs still
+hold members. Plain presets, other pools, overlays, and closing snapshots do
+not count.
+
+Visibility and drawing gates do not allocate. A focus rule that changes the
+winning selector resolves that selector. An unchanged selector retains its
+member. On a pool change, a valid remembered member for the destination wins,
+then the current member if it belongs to that pool, then a new policy pick.
+Returning to a pool can therefore share a member with a newer window. Releasing
+a holding never redistributes other owners.
+
+## Runtime selection
+
+The sixteen [effect actions](actions.md) operate independently on window,
+border, screen, and cursor slots:
+
+```sh
+umbriel msg effect-window-set:scanlines
+umbriel msg effect-border-cycle:borders
+umbriel msg effect-window-toggle
+umbriel msg effect-window-reset
+umbriel msg effect-screen-set:vignette/HDMI-A-1
+umbriel msg effect-cursor-set:glow
+```
+
+Window/border actions default to the focused window; screen actions use the
+preferred output. Set and cycle accept a target after the first `/`, preserving
+any further slashes in output names. An unnamed targeted cycle is
+`effect-window-cycle:/<window-id>`. Toggle/reset take an optional target directly.
+Cursor actions have no target. Explicit screen targets can address present
+disabled outputs; their cached selection is visible when they are enabled again.
+
+`set <name>` installs a runtime override, clears suppression, and makes a fresh
+policy pick for a pool. `cycle [pool]` advances through that pool (or the
+underlying current pool), installs an override, and clears suppression. If the
+current member is absent from the requested pool, cycle uses its policy.
+One-member pools cycle successfully; empty pools report `pool is empty`.
+
+`set off` suppresses without replacing the selector or losing history; repeating
+it does nothing further. Toggle flips suppression when a member exists and can
+always unsuppress, even if a reload made the selection empty. Toggling an empty,
+unsuppressed slot succeeds without changing it. Suppression releases the holding
+and also hides a border's overlay. Rules/reloads continue updating the underlying
+selection while suppressed. `reset` clears the override, suppression, history,
+and cached assignment, then resolves configuration afresh.
+
+Runtime overrides take precedence over rules and defaults. Invalid names,
+kinds, targets, or payloads fail without changing selection or policy state.
+A valid inert or failed program remains selected and renders plainly.
+
+Unrelated reloads and renderer recovery retain assignments. Effects reloads
+prune invalid history, retain still-valid members, and drop deleted/wrong-kind
+runtime overrides with an owner-specific diagnostic, preserving suppression.
+Unmap clears the window's state after copying closing visuals; remap starts
+fresh. Output disable retains state, but disconnect/reconnect starts fresh.
+Runtime state is not written to disk.
+
+## Inspect selections
+
+`umbriel effects` prints presets with program states, pools with exact hold
+counts, the cursor selection, and window/output owners. `--json` provides the
+same data for scripts. States are `inert`, `unreferenced`, `failed`, and
+`compiled`. Only reached pools compile their members. Named keybinds and enabled
+hot corners are prepared before their first trigger; an IPC-only name compiles
+synchronously on first selection. Suppressed runtime overrides remain roots;
+inactive pool history does not.
+
+`umbriel windows --json` and `subscribe windows` include `border_effect` and
+`window_effect` with `name`, `pool`, `source` (`default`, `rule`, or `runtime`),
+and `suppressed`; borders also expose `overlay`. Inspection never picks,
+compiles, or binds. Screen assignments are in `effects`, while `outputs --json`
+keeps its existing output-management contract. See [IPC](ipc.md).
+
 ## Write a shader
 
 Sources are GLSL ES 1.00 fragment code without `#version`, `main`, or precision
@@ -164,8 +281,8 @@ Every kind sees:
 | --- | --- |
 | `umbriel_sample(vec2 uv)` | The input under the drawn rectangle: the captured window for animations, the native ring for borders, the pixels already on screen for window, screen, and cursor effects. |
 | `umbriel_sample_previous(vec2 uv)` | This effect's previous result. Using it allocates two extra buffers for each window or output it runs on. |
-| `umbriel_size` | Drawn width and height in logical pixels. |
-| `umbriel_scale` | Buffer pixels per logical pixel. |
+| `umbriel_size` | Drawn width and height in effect logical pixels, before overview zoom. |
+| `umbriel_scale` | Buffer pixels per effect logical pixel, including overview zoom. |
 | `umbriel_expand` | How far the drawn rectangle extends past the window on each side, as a fraction of its width and height. `(0, 0)` except for an animation running while drag physics deforms the window. |
 | `umbriel_time` | Seconds on the animation clock, times the border's `speed`. Held as a single-precision float that is never wrapped, so fine time-based motion loses precision after long uptimes. `sin` and `cos` reduce their argument to one revolution, so they stay correct at large angles. |
 | `umbriel_palette_count` | `4` for palette presets, `0` otherwise. |
@@ -193,7 +310,7 @@ follows the same rule.
 
 ### Reload and failures
 
-Presets compile at startup and on reload. A compile error is logged with the
+Referenced presets compile at startup, on effects reload, and during runtime action preparation. A compile error is logged with the
 preset's name and the driver's message, whose line numbers count from the top
 of the shader file; that preset renders plainly (opening and closing
 animations keep their built-in animation, `style` and `scale` included) until
@@ -205,7 +322,9 @@ trusted local GPU code; keep them small and side-effect free.
 
 ## Cost
 
-Nothing here costs anything until selected. A border effect renders the ring
+Unreferenced presets and pools add no rendering work. Named keybinds and enabled
+hot corners prepare programs before use; selections retain bookkeeping state.
+A border effect renders the ring
 through a capture and one program pass per frame on the focused window, and
 requests extra frames only while its program reads `umbriel_time` and its
 clock advances, capped by `max_fps`. Light adds a second program pass and a

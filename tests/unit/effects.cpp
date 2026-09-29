@@ -135,24 +135,6 @@ UMBRIEL_TEST(ledgerUpdatesReplaceAnOwnersPreviousState) {
   CHECK_EQ(ledger.active(), 1U);
 }
 
-UMBRIEL_TEST(viewEffectNamesFollowTheMostSpecificSelector) {
-  umbriel::Effects effects;
-  effects.border = "pulse";
-  effects.window = "lines";
-  umbriel::ResolvedWindowRule rule;
-  auto names = umbriel::resolveViewEffectNames(effects, rule);
-  CHECK_EQ(names.border, std::string("pulse"));
-  CHECK_EQ(names.window, std::string("lines"));
-  rule.borderEffect = "off";
-  rule.windowEffect = "scan";
-  names = umbriel::resolveViewEffectNames(effects, rule);
-  CHECK(names.border.empty());
-  CHECK_EQ(names.window, std::string("scan"));
-  rule.borderEffect = "";
-  names = umbriel::resolveViewEffectNames(effects, rule);
-  CHECK(names.border.empty());
-}
-
 UMBRIEL_TEST(borderEffectsApplyOnlyToFocusedDecoratedCalmWindows) {
   CHECK(umbriel::borderEffectApplies({.focused = true, .decorated = true, .urgent = false, .fullscreen = false}));
   CHECK(!umbriel::borderEffectApplies({.focused = false, .decorated = true, .urgent = false, .fullscreen = false}));
@@ -170,16 +152,47 @@ UMBRIEL_TEST(borderPaddingNeedsACompiledBorderPreset) {
   CHECK_EQ(umbriel::borderPresetPadding(&window, true), 0);
 }
 
-UMBRIEL_TEST(screenEffectNameFollowsTheOutputOverride) {
-  umbriel::Effects effects;
-  effects.screen = "vig";
-  CHECK_EQ(umbriel::resolveScreenEffectName(effects, nullptr), std::string("vig"));
-  umbriel::OutputRule rule;
-  CHECK_EQ(umbriel::resolveScreenEffectName(effects, &rule), std::string("vig"));
-  rule.screenEffect = "off";
-  CHECK(umbriel::resolveScreenEffectName(effects, &rule).empty());
-  rule.screenEffect = "crt";
-  CHECK_EQ(umbriel::resolveScreenEffectName(effects, &rule), std::string("crt"));
+UMBRIEL_TEST(effectPoolPoliciesAndReferenceConstraintsAreExplicit) {
+  using umbriel::EffectReferenceConstraint;
+  using umbriel::EffectSelectionPolicy;
+  Effects effects = twoPresets();
+  effects.pools.push_back({.name = "borders", .kind = EffectKind::Border, .members = {"pulse"}});
+  CHECK(umbriel::parseEffectSelectionPolicy("unused_first") == EffectSelectionPolicy::UnusedFirst);
+  CHECK(umbriel::parseEffectSelectionPolicy("round_robin") == EffectSelectionPolicy::RoundRobin);
+  CHECK(umbriel::parseEffectSelectionPolicy("random") == EffectSelectionPolicy::Random);
+  CHECK(!umbriel::parseEffectSelectionPolicy("Random"));
+  CHECK(!umbriel::parseEffectSelectionPolicy(""));
+  CHECK_EQ(umbriel::effectSelectionPolicyName(EffectSelectionPolicy::UnusedFirst), std::string_view("unused_first"));
+  CHECK_EQ(umbriel::effectSelectionPolicyName(EffectSelectionPolicy::RoundRobin), std::string_view("round_robin"));
+  CHECK_EQ(umbriel::effectSelectionPolicyName(EffectSelectionPolicy::Random), std::string_view("random"));
+  CHECK(umbriel::findEffectPool(effects, "borders") != nullptr);
+  CHECK(umbriel::findEffectPool(effects, "pulse") == nullptr);
+  CHECK(umbriel::effectReferenceError(effects, "borders", EffectKind::Border, false));
+  CHECK(!umbriel::effectReferenceError(
+      effects, "borders", EffectKind::Border, false, EffectReferenceConstraint::PresetOrPool
+  ));
+  CHECK(!umbriel::effectReferenceError(
+      effects, "borders", EffectKind::Border, false, EffectReferenceConstraint::PoolRequired
+  ));
+  CHECK(
+      umbriel::effectReferenceError(
+          effects, "borders", EffectKind::Window, false, EffectReferenceConstraint::PresetOrPool
+      )
+  );
+  CHECK(
+      umbriel::effectReferenceError(
+          effects, "pulse", EffectKind::Border, false, EffectReferenceConstraint::PoolRequired
+      )
+  );
+  CHECK(
+      !umbriel::effectReferenceError(effects, "", EffectKind::Border, false, EffectReferenceConstraint::PresetOrPool)
+  );
+  CHECK(
+      !umbriel::effectReferenceError(effects, "off", EffectKind::Border, true, EffectReferenceConstraint::PresetOrPool)
+  );
+  CHECK(
+      umbriel::effectReferenceError(effects, "off", EffectKind::Border, false, EffectReferenceConstraint::PresetOrPool)
+  );
 }
 
 int main() { return RUN_TESTS(); }

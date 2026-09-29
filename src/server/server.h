@@ -9,6 +9,7 @@
 #include "output/enable_overrides.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
+#include "scene/effect_selection.h"
 #include "scene/surface_shadow.h"
 #include "server/focus.h"
 #include "view/registry.h"
@@ -204,6 +205,22 @@ namespace umbriel {
     [[nodiscard]] Cursor* cursor() const { return m_cursor.get(); }
     [[nodiscard]] EffectRegistry& effects() { return m_effects; }
     [[nodiscard]] const EffectRegistry& effects() const { return m_effects; }
+    [[nodiscard]] EffectSlot& cursorEffectSlot() { return m_cursorEffectSlot; }
+    [[nodiscard]] const EffectSlot& cursorEffectSlot() const { return m_cursorEffectSlot; }
+    [[nodiscard]] EffectHoldCounts effectHoldCounts(const EffectPool& pool, const EffectSlot* excluded = nullptr) const;
+    [[nodiscard]] std::vector<std::string> runtimeEffectSelectors() const;
+    [[nodiscard]] std::vector<View*> sortedEffectViews() const;
+    void resolveEffectSlot(EffectSlot& slot, EffectKind kind, bool active = true);
+    void resolveOutputEffect(Output& output);
+    void reconcileEffectSelections();
+    [[nodiscard]] EffectSlotActionResult
+    applyEffectAction(EffectSlot& slot, EffectKind kind, EffectSlotAction action, std::string_view argument);
+    // Nested callbacks can change focus/rules while rendering. Such changes
+    // defer effect selection to the owning view's idle callback.
+    [[nodiscard]] bool handlingOutputFrame() const { return m_outputFrameDepth != 0; }
+    void beginOutputFrame() { ++m_outputFrameDepth; }
+    void endOutputFrame() { --m_outputFrameDepth; }
+
     // Central animation tick: advances every registered owner once per msec and
     // reports whether anything is still animating.
     bool tickAnimations(uint64_t nowMsec);
@@ -279,6 +296,8 @@ namespace umbriel {
     // Runs a parsed action. Shared by the keybind path and the IPC `msg` command.
     bool executeKeybindAction(const Keybind& bind, std::string* error = nullptr, bool* cooldownBlocked = nullptr);
     bool cooldownAllows(const Keybind& bind);
+    // Re-evaluates alone rules on every workspace whose arrange is still pending.
+    void refreshPendingAloneRules();
     // Record that something server-wide became stale. The work happens once, in a fixed order, at the top of the next
     // frame (see Output::flushDirty). Schedules a frame on every output, so recording is always enough.
     void markDirty(Dirty what);
@@ -610,6 +629,9 @@ namespace umbriel {
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<WineColorManager> m_wineColorManager;
     EffectRegistry m_effects;
+    EffectSelection m_effectSelection;
+    EffectSlot m_cursorEffectSlot;
+    unsigned m_outputFrameDepth = 0;
     wlr_scene_output_layout* m_sceneLayout = nullptr;
     wlr_xdg_shell* m_xdgShell = nullptr;
     wlr_xdg_toplevel_tag_manager_v1* m_xdgToplevelTagManager = nullptr;
@@ -724,6 +746,9 @@ namespace umbriel {
       std::vector<Buffer> m_buffers;
       std::vector<BorderSnapshot> m_borders;
       ShadowSnapshot m_shadow;
+      bool m_retainedPersistent = false;
+      bool m_retainedInPlace = false;
+      bool m_retainedLight = false;
       int m_shadowWidth = 0;
       int m_shadowHeight = 0;
       wlr_box m_shadowHole{};

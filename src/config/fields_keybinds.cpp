@@ -111,7 +111,8 @@ namespace umbriel {
           continue;
         }
 
-        if (const auto invalid = scratchpadSelectorError(loaded, binding)) {
+        if (const auto invalid =
+                scratchpadSelectorError(loaded, binding).or_else([&] { return effectActionError(loaded, binding); })) {
           warnAt(key.source(), "ignoring keybind '{}' ({})", chord, *invalid);
           continue;
         }

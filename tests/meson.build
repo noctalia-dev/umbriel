@@ -12,6 +12,7 @@ unit_tests = [
   ['application-scope', ['unit/application_scope.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=umbrielCloseRange']],
   ['shader-source', ['unit/shader_source.cpp'], []],
   ['effects', ['unit/effects.cpp'], []],
+  ['effect-selection', ['unit/effect_selection.cpp'], []],
   ['window-opacity-blur', ['unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
   ['value-parse', ['unit/value_parse.cpp'], []],
   ['keybind-parse', ['unit/keybind_parse.cpp'], []],

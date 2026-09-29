@@ -284,30 +284,41 @@ namespace umbriel::configmerge {
     toml::table
     loadAndExpand(const std::filesystem::path& path, std::set<std::filesystem::path>& visited, MergeResult& result);
 
-    // A preset defined in two files would merge key by key into one table. Report it, naming both files, before
-    // deepMerge can hide the second definition. Called after a file's includes are expanded, so the included files'
-    // presets claim the name first and the error names the earlier file. The Error leaves hadError unset: like a
-    // duplicate device or workspace, it rejects the configuration without refusing startup.
-    void recordPresetOrigins(const std::filesystem::path& path, const toml::table& parsed, MergeResult& result) {
+    // Preserve declarations before deepMerge loses key source regions and table ordering.
+    void recordEffectOrigins(const toml::table& parsed, MergeResult& result) {
       const auto* effects = parsed.get_as<toml::table>("effects");
       if (effects == nullptr) {
         return;
       }
-      const auto* presets = effects->get_as<toml::table>("preset");
-      if (presets == nullptr) {
-        return;
-      }
-      for (const auto& entry : *presets) {
-        const toml::key& key = entry.first;
-        const std::string name(key.str());
-        const auto [origin, inserted] = result.presetFiles.try_emplace(name, path.string());
-        if (!inserted) {
-          report(
-              result, ConfigDiagnostic::Severity::Error, &key.source(),
-              std::format("effects.preset.{} is also defined in {}", name, origin->second)
-          );
+      const auto record = [&](std::string_view type, std::vector<EffectDeclaration>& declarations) {
+        const auto* entries = effects->get_as<toml::table>(type);
+        if (entries == nullptr) {
+          return;
         }
-      }
+        std::vector<EffectDeclaration> local;
+        for (const auto& [key, value] : *entries) {
+          (void)value;
+          local.push_back({.name = std::string(key.str()), .source = key.source()});
+        }
+        std::ranges::stable_sort(local, [](const auto& left, const auto& right) {
+          return left.source.begin < right.source.begin;
+        });
+        for (auto& declaration : local) {
+          const auto earlier = std::ranges::find(declarations, declaration.name, &EffectDeclaration::name);
+          if (earlier != declarations.end()) {
+            const auto location = makeDiagnostic(ConfigDiagnostic::Severity::Error, earlier->source, "").location();
+            // Like duplicate devices/presets, reject reload but allow startup fallback.
+            report(
+                result, ConfigDiagnostic::Severity::Error, &declaration.source,
+                std::format("effects.{}.{} is also defined in {}", type, declaration.name, location)
+            );
+          } else {
+            declarations.push_back(std::move(declaration));
+          }
+        }
+      };
+      record("preset", result.presets);
+      record("pool", result.pools);
     }
 
     toml::table expandFile(
@@ -329,7 +340,7 @@ namespace umbriel::configmerge {
       parsed.erase("include");
 
       if (directive.files.empty() && directive.optionalFiles.empty()) {
-        recordPresetOrigins(path, parsed, result);
+        recordEffectOrigins(parsed, result);
         // No includes: return parsed directly, preserving toml++ source regions
         // (copies lose them; only moves keep line/column/path).
         return parsed;
@@ -371,7 +382,7 @@ namespace umbriel::configmerge {
       };
       mergeEntries(directive.files, false);
       mergeEntries(directive.optionalFiles, true);
-      recordPresetOrigins(path, parsed, result);
+      recordEffectOrigins(parsed, result);
       deepMerge(base, std::move(parsed));
       return base;
     }
@@ -446,6 +457,24 @@ namespace umbriel::configmerge {
     MergeResult result;
     std::set<std::filesystem::path> visited;
     result.merged = loadAndExpand(rootFile, visited, result);
+    for (const auto& pool : result.pools) {
+      const auto preset = std::ranges::find(result.presets, pool.name, &EffectDeclaration::name);
+      if (preset == result.presets.end()) {
+        continue;
+      }
+      report(
+          result, ConfigDiagnostic::Severity::Warning, &pool.source,
+          std::format(
+              "ignoring effects.pool.{} (preset with this name declared at {})", pool.name,
+              makeDiagnostic(ConfigDiagnostic::Severity::Warning, preset->source, "").location()
+          )
+      );
+      if (auto* effects = result.merged.get_as<toml::table>("effects")) {
+        if (auto* pools = effects->get_as<toml::table>("pool")) {
+          pools->erase(pool.name);
+        }
+      }
+    }
     return result;
   }
 

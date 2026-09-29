@@ -215,4 +215,46 @@ UMBRIEL_TEST(rejectsOutputCreateExtraArguments) {
   CHECK(!error.empty());
 }
 
+UMBRIEL_TEST(effectsCommandReportsStatesSuppressionAndDeclarationOrder) {
+  const auto* spec = umbriel::findIpcCommand("effects");
+  CHECK(spec != nullptr && spec->printHuman != nullptr && spec->handle == &umbriel::IpcCommands::effects);
+  if (spec == nullptr || spec->printHuman == nullptr) {
+    return;
+  }
+  CHECK(!spec->takesArg);
+  const nlohmann::json slot = {
+      {"name", "zebra"},
+      {"pool", "zpool"},
+      {"source", "runtime"},
+      {"suppressed", true},
+  };
+  const nlohmann::json payload = {
+      {"presets",
+       {{{"name", "zebra"}, {"kind", "border"}, {"state", "compiled"}, {"overlay", "glow"}},
+        {{"name", "alpha"}, {"kind", "window"}, {"state", "failed"}},
+        {{"name", "blank"}, {"kind", "cursor"}, {"state", "inert"}},
+        {{"name", "spare"}, {"kind", "screen"}, {"state", "unreferenced"}}}},
+      {"pools",
+       {{{"name", "zpool"},
+         {"kind", "border"},
+         {"policy", "unused_first"},
+         {"members", {{{"name", "zebra"}, {"held", 2}}, {{"name", "alpha"}, {"held", 0}}}}},
+        {{"name", "apool"}, {"kind", "window"}, {"policy", "random"}, {"members", nlohmann::json::array()}}}},
+      {"cursor", slot},
+      {"owners",
+       {{{"type", "window"}, {"id", "window-1"}, {"app_id", "terminal"}, {"slots", {{"border", slot}}}},
+        {{"type", "output"}, {"name", "vendor/panel"}, {"slots", {{"screen", slot}}}}}},
+  };
+  const std::string output = captureHumanOutput(*spec, payload);
+  CHECK(output.find("zebra\tborder\tcompiled\tglow") < output.find("alpha\twindow\tfailed"));
+  CHECK(output.contains("blank\tcursor\tinert"));
+  CHECK(output.contains("spare\tscreen\tunreferenced"));
+  CHECK(output.find("zpool\tborder\tunused_first") < output.find("apool\twindow\trandom"));
+  CHECK(output.contains("zebra (2), alpha (0)"));
+  CHECK(output.contains("cursor\tcursor\tzebra\tzpool\truntime\tyes"));
+  CHECK(output.contains("window window-1 (terminal)\tborder"));
+  CHECK(output.contains("output vendor/panel\tscreen"));
+  CHECK_EQ(captureHumanOutput(*spec, payload), output);
+}
+
 int main() { return RUN_TESTS(); }

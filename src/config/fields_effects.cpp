@@ -1,4 +1,4 @@
-// [effects] and its user-named presets, and the check of every preset reference once all tables are read.
+// [effects] presets, pools, and deferred reference validation.
 
 #include "config/fields.h"
 #include "config/store.h"
@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <format>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,18 +32,38 @@ namespace umbriel {
       return std::make_pair(std::move(value), node->source());
     }
 
+    bool validEffectName(std::string_view name, const std::string& path, const toml::source_region& source) {
+      if (name.empty()) {
+        warnAt(source, "ignoring {} (effect names must not be empty)", path);
+        return false;
+      }
+      if (name == kEffectOff) {
+        warnAt(source, "ignoring {} ('off' is reserved)", path);
+        return false;
+      }
+      if (name.contains('/')) {
+        warnAt(source, "ignoring {} ('/' is an action delimiter; rename this effect)", path);
+        return false;
+      }
+      return true;
+    }
+
     // Presets are named by the user, and which keys one takes depends on its kind.
     void readEffectPresets(Section& presets, Effects& effects, registry::ReadContext& context) {
-      for (const auto& [key, entry] : presets.table()) {
-        const std::string name(key.str());
+      for (const auto& declaration : context.presetDeclarations) {
+        const std::string& name = declaration.name;
+        const toml::node* node = presets.table().get(name);
+        if (node == nullptr) {
+          continue;
+        }
+        const toml::node& entry = *node;
         const std::string path = "effects.preset." + name;
         const auto* table = entry.as_table();
         if (table == nullptr) {
           warnAt(entry.source(), "ignoring {} (expected table)", path);
           continue;
         }
-        if (name == kEffectOff) {
-          warnAt(key.source(), "ignoring {} ('off' is reserved)", path);
+        if (!validEffectName(name, path, declaration.source)) {
           continue;
         }
         Section keys(*table, path, configStore().mutableDiagnostics());
@@ -51,7 +72,7 @@ namespace umbriel {
             kindNode != nullptr ? parseEffectKind(kindNode->value<std::string>().value_or("")) : std::nullopt;
         if (!kind) {
           warnAt(
-              kindNode != nullptr ? kindNode->source() : key.source(),
+              kindNode != nullptr ? kindNode->source() : declaration.source,
               "ignoring {} (kind must be animation|border|window|screen|cursor)", path
           );
           keys.freeform();
@@ -67,7 +88,7 @@ namespace umbriel {
         if (shader.source) {
           preset.shader = std::move(*shader.source);
         } else if (keys.node("shader") == nullptr) {
-          warnAt(key.source(), "{} has no shader; the preset is inert", path);
+          warnAt(declaration.source, "{} has no shader; the preset is inert", path);
         }
         keys.boolean("palette", preset.palette);
         // The preset moves into the vector; register the overlay reference by index after the push.
@@ -115,6 +136,86 @@ namespace umbriel {
       }
     }
 
+    void readEffectPools(Section& pools, Effects& effects, registry::ReadContext& context) {
+      for (const auto& declaration : context.poolDeclarations) {
+        const std::string& name = declaration.name;
+        const std::string path = "effects.pool." + name;
+        const toml::node* entry = pools.table().get(name);
+        if (entry == nullptr) {
+          continue;
+        } // A colliding pool was rejected before parsing.
+        if (!validEffectName(name, path, declaration.source)) {
+          continue;
+        }
+        const auto* table = entry->as_table();
+        if (table == nullptr) {
+          warnAt(entry->source(), "ignoring {} (expected table)", path);
+          continue;
+        }
+        Section keys(*table, path, configStore().mutableDiagnostics());
+        const toml::node* kindNode = keys.take("kind");
+        const auto kind = kindNode != nullptr && kindNode->is_string()
+            ? parseEffectKind(kindNode->value<std::string>().value_or(""))
+            : std::nullopt;
+        if (!kind || *kind == EffectKind::Animation) {
+          warnAt(
+              kindNode != nullptr ? kindNode->source() : declaration.source,
+              "ignoring {} (kind must be border|window|screen|cursor)", path
+          );
+          keys.freeform();
+          continue;
+        }
+        const toml::node* chooseNode = keys.take("choose");
+        const auto* choose = chooseNode != nullptr ? chooseNode->as_array() : nullptr;
+        if (choose == nullptr) {
+          warnAt(
+              chooseNode != nullptr ? chooseNode->source() : declaration.source,
+              "ignoring {} (choose is required and must be an array)", path
+          );
+          keys.freeform();
+          continue;
+        }
+        EffectPool pool{.name = name, .kind = *kind, .members = {}};
+        if (const toml::node* selection = keys.take("selection")) {
+          const auto policy = selection->is_string()
+              ? parseEffectSelectionPolicy(selection->value<std::string>().value_or(""))
+              : std::nullopt;
+          if (!policy) {
+            warnAt(selection->source(), "ignoring {} (selection must be unused_first|round_robin|random)", path);
+            keys.freeform();
+            continue;
+          }
+          pool.selection = *policy;
+        }
+        if (choose->empty()) {
+          warnAt(chooseNode->source(), "{} has no members; the pool is inert", path);
+        }
+        const size_t poolIndex = effects.pools.size();
+        effects.pools.push_back(std::move(pool));
+        std::set<std::string> seen;
+        for (const auto& member : *choose) {
+          const auto value = member.value<std::string>();
+          if (!member.is_string() || !value || value->empty() || *value == kEffectOff) {
+            warnAt(
+                member.source(), "ignoring {}.choose member (expected a non-empty preset name other than 'off')", path
+            );
+            continue;
+          }
+          if (!seen.insert(*value).second) {
+            warnAt(member.source(), "ignoring {}.choose member '{}' (duplicate member)", path, *value);
+            continue;
+          }
+          auto& members = effects.pools[poolIndex].members;
+          const size_t memberIndex = members.size();
+          members.push_back(*value);
+          addEffectReference(
+              context.effectReferences, path + ".choose", {*value, member.source()}, *kind, false,
+              [&effects, poolIndex, memberIndex] { effects.pools[poolIndex].members[memberIndex].clear(); }
+          );
+        }
+      }
+    }
+
     const registry::Fields<Effects>& effectsFields() {
       using registry::KeyDescription;
       static const registry::Fields<Effects> fields{
@@ -125,10 +226,7 @@ namespace umbriel {
           effectField("screen", &Effects::screen, EffectKind::Screen),
           effectField("cursor", &Effects::cursor, EffectKind::Cursor),
           registry::map<Effects>(
-              "preset", KeyDescription("table"),
-              [](Section& presets, Effects& effects, registry::ReadContext& context) {
-                readEffectPresets(presets, effects, context);
-              },
+              "preset", KeyDescription("table"), readEffectPresets,
               [] {
                 registry::Descriptions keys;
                 const auto add = [&keys](std::string_view key, KeyDescription description) {
@@ -150,6 +248,20 @@ namespace umbriel {
                 return keys;
               }()
           ),
+          registry::map<Effects>("pool", KeyDescription("table"), readEffectPools, [] {
+            registry::Descriptions keys;
+            auto kind = KeyDescription("enum").withValues({"border", "window", "screen", "cursor"});
+            kind.path = "kind";
+            keys.push_back(std::move(kind));
+            auto choose = KeyDescription("string_array").withFormat("effect");
+            choose.path = "choose";
+            keys.push_back(std::move(choose));
+            auto selection = KeyDescription("enum").withValues({"unused_first", "round_robin", "random"});
+            selection.path = "selection";
+            selection.defaultValue = "unused_first";
+            keys.push_back(std::move(selection));
+            return keys;
+          }()),
       };
       return fields;
     }
@@ -158,14 +270,18 @@ namespace umbriel {
 
   registry::Field<Config> effectsTable() { return registry::table("effects", &Config::effects, effectsFields()); }
 
-  // Every recorded reference is checked against the final preset table. `clear` mutates `loaded` through
-  // references captured while parsing, so this takes it non-const to say so.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references) {
     for (EffectReference& reference : references) {
-      if (const auto error = effectReferenceError(loaded.effects, reference.name, reference.kind, reference.allowOff)) {
+      if (const auto error = effectReferenceError(
+              loaded.effects, reference.name, reference.kind, reference.allowOff, reference.constraint
+          )) {
         warnAt(reference.source, "ignoring {} ({})", reference.context, *error);
         reference.clear();
       }
+    }
+    // All rejection callbacks have run: only now may member indices change.
+    for (auto& pool : loaded.effects.pools) {
+      std::erase(pool.members, std::string{});
     }
   }
 

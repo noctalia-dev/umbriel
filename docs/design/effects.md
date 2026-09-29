@@ -7,100 +7,112 @@ note records who owns effect state, where programs attach, how animation
 presets drive lifecycle and motion slots, and which rendering costs an effect
 may change.
 
-## Ownership
+## Ownership and selection
 
-### `EffectRegistry`
+[`EffectSlot`](../../src/scene/effect_selection.h) belongs to its owner:
+`ViewEffects` has border/window slots, `Output` has a screen slot, and `Server`
+has one cursor slot. Each stores its configured selector/source, optional
+runtime override, resolved preset/pool, suppression, and member history.
+`EffectSelection` owns only RNG and round-robin positions. Its pure picking
+helper takes explicit counts and a random draw for deterministic testing.
+There is no central owner table or persistent hold-count index.
 
-[`EffectRegistry`](../../src/scene/effect_registry.h) is a `Server` member and
-the only place programs are compiled
-([`effect_registry.cpp:181-257`](../../src/scene/effect_registry.cpp)).
+[`Server::effectHoldCounts`](../../src/server/effects.cpp) walks mapped views,
+present outputs (including disabled ones), or the cursor only on selection
+changes or inspection. It counts unsuppressed members of the same pool,
+excluding the target and stale members invalid under new definitions. Focus,
+visibility, shader failure, and inactive history do not influence holdings.
 
-- `prepare()` runs at startup (`server.cpp:335`), on a reload that sets the
-  `animation` or `effects` flag (`server_events.cpp:562-564`), and after
-  renderer recovery (`server_events.cpp:829`). No render callback compiles.
-- Only referenced presets compile: a top-level selector, a window rule, an
-  output's `screen_effect`, an enabled animation event's `effect`, or the
-  `overlay` of a referenced border preset (`:121-151`). Entries are keyed by
-  preset name and recompile only when the kind or source text changes;
-  unreferenced entries are dropped. A failed compile logs one error and stays
-  cached as null, so every lookup of that name renders plainly. A new renderer
-  discards every program.
-- The built-in fade compiles whenever `windows_in` or `windows_out` fades
-  through it, independently of presets, and is the only program marked
-  shape-preserving (`:204-214`). The drag deformation program compiles only
-  here, and only while animations and `windows_drag.physics` are on
-  (`:215-226`).
-- `fillTimeUniforms` (`:323-343`) adds `umbriel_time` only to a program that
-  reads it and the `[colors]` palette only to a preset with `palette = true`.
-- `EffectLedger` ([`effect_ledger.h:12-58`](../../src/scene/effect_ledger.h))
-  holds one `EffectInstanceState` per owner: the border node, the surface node
-  for its window slot and that node's `addons` member for its overlay slot
-  (`effects.cpp:151-152`), and the output and its cursor-owner member for its
-  screen and cursor slots (`output.cpp:149`, `:160`). Each records its driving
-  output,
-  whether it is visible there, whether its program reads `umbriel_time`, and
-  whether its clock advances. `eligible(output)` counts instances that are all
-  three and is 0 while suspended; `active()` counts owners. `updateInstance`
-  schedules an output's frame when its eligible count leaves zero
-  (`effect_registry.cpp:278-288`).
-- `syncLightLayer` (`:264-269`) keeps the light layer only while a compiled
-  border preset defines `light`. `cursorEffectActive()` is true only while the
-  default cursor preset compiled and the ledger is not suspended.
+`View::handleMap` starts a fresh slot lifetime before mapped rule resolution.
+[`View::applyDynamicRules`](../../src/view/view.cpp) records each configured
+winner/source and resolves only while mapped. Same-pool valid members stay;
+a changed pool restores destination history before reusing a current member
+or making a policy pick. `ViewEffects::syncNames` caches unsuppressed names
+for drawing. Unmap clears state after copying closing visuals. Outputs resolve
+before their first bind; disabling retains state, disconnect destroys it.
+The cursor resolves before startup preparation.
 
-### `ViewEffects`
+[`Server::reconcileEffectSelections`](../../src/server/effects.cpp) runs before
+registry preparation on effects reload: reconcile policy positions, prune
+history, validate/drop overrides with owner diagnostics, then resolve sorted
+outputs and the cursor. Runtime reference collection sees validated overrides
+before the existing mapped-view rule/chrome refresh. Views resolve in stable
+foreign-identifier order, with registry order for missing identifiers. Counts
+are refreshed between picks. Unrelated reloads and renderer recovery do not
+allocate members.
 
-[`ViewEffects`](../../src/view/effects.h) is a `View` member.
+Workspace membership changes refresh alone-rule state before layout drawing.
+If an animation changes an effect rule during an output frame, the view queues
+one idle callback to resolve it outside rendering; `settle` waits for that
+callback. Unchanged and empty selectors use cached state without allocation or
+an owner walk. Chrome reloads preserve focus while refreshing rule bindings.
 
-- `resolve()` takes the resolved window rule's `border_effect` and
-  `window_effect` over the `[effects]` defaults; `off` and `""` select nothing
-  ([`effects_rules.cpp:6-17`](../../src/view/effects_rules.cpp)).
-  `View::applyDynamicRules` calls it (`view.cpp:4797`), so rule and
-  configuration changes re-resolve.
-- `borderEffectApplies` (`effects_rules.cpp:23-25`) opens the border-effect
-  slot only for a focused, decorated, non-urgent, non-fullscreen window. The
-  border preset's `overlay` is bound only while that slot is, on the border's
-  clock.
-- `apply()` ([`effects.cpp:55-153`](../../src/view/effects.cpp)) binds the
-  border-effect slot on the border tree and the window and overlay slots on the
-  toplevel's surface tree node. The same window slots are bound in the view's
-  isolated capture scene when `in_capture` is on and cleared there otherwise
-  (`:122-130`).
-- `View::syncAnimationEffects` (`view.cpp:1415-1510`) is the one entry point
-  for the live view and its overview card: `Overview::syncCardEffects`
-  (`overview.cpp:567-580`) passes the card's tree, border, surface tree, focus
-  gate, and output. Its persistent block runs only when a preset
-  is selected or the ledger has owners (`view.cpp:1482`).
-- Unmap clears the window slots from both surface trees and removes the view's
-  ledger instances (`view.cpp:3258-3264`, `:3291`).
+Runtime actions validate typed payloads, targets, names/kinds, and non-empty
+cycle pools before mutation. Set/cycle install overrides; `set off` suppresses
+without changing the selector; toggle releases/restores a holding; reset clears
+history and resolves configuration afresh. Successful changes prepare programs
+before rebinding and schedule presentation, including removal of static effects.
+View changes queue the shared `windows` event.
 
-### `Output`
+### Programs and binding
 
-`Output::applyOutputEffects`
-([`output.cpp:117-169`](../../src/output/output.cpp)) sets the capture
-policy, binds the output's screen preset (its `screen_effect`, else the
-default) and the cursor preset, and records both in the ledger. It pushes the
-pointer after setting a cursor program, because a new cursor program draws
-nothing until a pointer update follows it. It binds no program while the
-ledger is suspended, and returns before any scene call when no preset is
-defined and the ledger is empty. The cursor square draws only on the output
-holding the pointer: a pointer outside the output, or hidden, leaves that
-output's cursor slot inactive (`wlr_scene.c:4199-4202`, `:4216-4218`). The
-output also owns the effect frame timer ([Frames](#frames)).
+[`EffectRegistry`](../../src/scene/effect_registry.h) owns compiled programs
+and the rendering ledger. `referencedNames` collects defaults, rules, output
+entries, enabled animation bindings, configured action roots, and live runtime
+overrides, including suppressed ones. Reached pools expand to all members,
+then reached border presets add their preset-only overlays. Inactive histories
+are not roots. Preparation prunes unreachable entries and reuses unchanged
+kind/source programs, caching failures as null. A current-source state query
+reports `inert`, `unreferenced`, `failed`, or `compiled` without compiling.
+IPC-only selectors prepare synchronously in their action handler. Recovery
+prepares the same roots for the new renderer without selection work, then
+rebinds live views and overview cards even when the animation clock is frozen.
 
-### `Cursor`
+The built-in fade and drag deformation retain their existing preparation and
+animation gates. `fillTimeUniforms` supplies time only when a linked program
+reads it and palette only for palette presets.
 
-`Cursor::forwardEffectPointer`
-([`cursor.cpp:280-284`](../../src/input/cursor.cpp)) reads
-`cursorEffectActive()` and forwards the pointer only when it is true. The
-registry pushes the position to every output and re-applies output effects when
-the output under the pointer or the pointer's visibility changes
-(`effect_registry.cpp:265-276`). A move grab calls drag physics only when
-`View::beginDragPhysics` accepted it (`MoveGrab::physics`).
+[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective
+names. The border gate still requires focus, decoration, no urgency, and no
+fullscreen; overlay follows that gate and border clock. Window/overlay slots
+also bind to the isolated capture scene only with `in_capture`. Live views and
+overview cards share `View::syncAnimationEffects`.
+
+[`Output::applyOutputEffects`](../../src/output/output.cpp) reads its cached
+screen slot and the Server's single cursor slot, applies capture policy and
+lock suspension, and pushes pointer position after binding a cursor program.
+It performs no owner walk or pool pick. `Cursor::forwardEffectPointer` reads
+cached cursor activity, which includes suppression and registry suspension.
+
+[`EffectLedger`](../../src/scene/effect_ledger.h) separately tracks scene-node
+instances and their output, visibility, linked time use, and advancing clock.
+Only eligible instances request timed frames. Slot ownership/history does not
+change rendering visibility or add a timer. The no-effect frame path adds no
+allocation, compilation, owner walk, or scene node.
+
+### Closing copies and inspection
+
+`Server::CloseSnapshot` asks `wlr_scene_node_effect_requirements` for the exact
+bound programs in its copied subtree and retains persistent/in-place/light
+requirements until destruction. Registry eligibility combines prepared programs
+with these retained requirements. Pruning the last runtime root therefore
+cannot disable capture exclusion needed by a closing window. Copies keep their
+shader versions across reload. Existing snapshot copying disables border light;
+the retained light flag describes the actual copy, not its former preset.
+Snapshots do not hold pool members or become compilation roots.
+
+[`IpcCommands::effects`](../../src/server/ipc_commands.cpp) and the shared
+windows/event slot builder read state without selection, RNG, compilation, or
+binding. Preset/pool arrays follow source declaration order carried through
+include expansion, while owners sort by stable identifier. Program state
+reports current configured source, independent of old closing copies.
+When arrangement is pending, window geometry comes from a temporary layout
+preview; inspection does not flush arrangement or apply dynamic rules.
 
 ## Attachment
 
 Every node carries up to 13 slots
-([`effect.h:18-39`](../../umbrielfx/include/umbrielfx/render/effect.h)).
+([`effect.h`](../../umbrielfx/include/umbrielfx/render/effect.h)).
 Descendant slots compose before ancestor slots; on one node, slots compose in
 index order. Slots 0-2 are persistent; the rest are transient, including drag.
 The class follows the slot, not whether its program reads time.
@@ -126,7 +138,7 @@ and surface tree, which holds every mirrored surface buffer as the view's
 surface tree holds its surfaces.
 
 `wlr_scene_node_copy_animations_for_snapshot`
-([`wlr_scene.c:1776-1795`](../../umbrielfx/types/scene/wlr_scene.c)) copies
+([`wlr_scene.c`](../../umbrielfx/types/scene/wlr_scene.c)) copies
 each populated slot with its current parameters, moves its feedback history,
 and turns light off. Slots from `windows_out` up land in `windows_in`; the rest
 keep their index. Nothing updates the copied slots' parameters, so their time
@@ -135,24 +147,24 @@ frames.
 
 | Source | Snapshot node | Slots |
 | --- | --- | --- |
-| View content tree | snapshot root (`view.cpp:2480`) | content-tree slots, then `windows_move` is cleared |
-| View surface tree node | snapshot content tree (`view.cpp:2483-2487`) | window, overlay |
-| View border tree | each copied border (`border_rect.cpp:39-41`) | border effect, border |
-| Card tree, surface tree, border | snapshot root, copied surface tree, copied border (`overview.cpp:1116-1143`) | as the live card |
-| Layer tree | snapshot root (`layer_surface.cpp:197`) | layers |
+| View content tree | snapshot root (`view.cpp`) | content-tree slots, then `windows_move` is cleared |
+| View surface tree node | snapshot content tree (`view.cpp`) | window, overlay |
+| View border tree | each copied border (`border_rect.cpp`) | border effect, border |
+| Card tree, surface tree, border | snapshot root, copied surface tree, copied border (`overview.cpp`) | as the live card |
+| Layer tree | snapshot root (`layer_surface.cpp`) | layers |
 
 Drag physics binds the built-in deformation program to the content tree's drag
 slot with `umbriel_deformation[16]` and an `expand` of the sheet's
-displacement bound plus 2 px (`view.cpp:1453-1473`, `:1137`). The sheet spans
+displacement bound plus 2 px (`view.cpp`). The sheet spans
 the content tree's drawn bounds from `wlr_scene_node_effect_bounds` and is
-refit on every tick (`view.cpp:1091-1117`); a re-grab while it settles keeps
+refit on every tick (`view.cpp`); a re-grab while it settles keeps
 the sheet and its transition. `View::animatesOn` includes every output the
-drawn box reaches (`view.cpp:1624-1628`). The program is not shape-preserving,
-so `render_animation_shadow` (`wlr_scene.c:3472-3542`) captures the content
+drawn box reaches (`view.cpp`). The program is not shape-preserving,
+so `render_animation_shadow` (`wlr_scene.c`) captures the content
 tree and the drop shadow follows the deformation within the shadow node's own
 region. A close mid-drag moves the drag slot to the snapshot root, and
 `CloseSnapshot::applyShrink` grows its tree clip by that slot's `expand`
-(`server.cpp:1134-1136`), so `popin` and `zoom` keep the frozen deformation.
+(`server.cpp`), so `popin` and `zoom` keep the frozen deformation.
 
 A dragged window sits in the unclipped drag tree
 (`View::enterDragPresentation`), so every output it reaches draws its part.
@@ -171,19 +183,18 @@ rotated, fractionally scaled output.
 
 ## Slot modes
 
-**Capture.** `render_animated_range` (`wlr_scene.c:3715-3869`) renders the
+**Capture.** `render_animated_range` (`wlr_scene.c`) renders the
 node's contiguous descendants into an offscreen buffer per capture slot, runs
 their own effects first, then composites through each program over the node
 bounds grown by the largest `expand` among the node's border-effect and drag
 slots (`fx_slot_expands`). A border-effect composite receives the border's hole
-and radii (`scene_border_geometry`, `:3547-3578`), and the preamble cuts the
+and radii (`scene_border_geometry`), and the preamble cuts the
 hole out of its result. A persistent capture slot runs only when this frame's
-damage reaches its drawn box (`:3763-3773`); otherwise nothing composites and
+damage reaches its drawn box; otherwise nothing composites and
 its history carries over.
 
-**In place.** After the subtree is drawn, `render_in_place_slots`
-(`:3632-3700`) calls `fx_render_pass_effect_in_place`
-([`fx_pass.c:1243-1283`](../../umbrielfx/render/fx_renderer/fx_pass.c)),
+**In place.** After the subtree is drawn, `render_in_place_slots` calls `fx_render_pass_effect_in_place`
+([`fx_pass.c`](../../umbrielfx/render/fx_renderer/fx_pass.c)),
 which copies the current target under the node's rectangle into the output's
 `in_place_source` offscreen buffer and runs the program with that copy as
 `umbriel_sample`. The result is written back unblended through `umbriel_mask`,
@@ -206,20 +217,20 @@ slot follows the same contract.
 ## Border light
 
 - **Layer.** `Server::setEffectLightLayer`
-  ([`server.cpp:927-938`](../../src/server/server.cpp)) creates a scene-root
+  ([`server.cpp`](../../src/server/server.cpp)) creates a scene-root
   tree directly above the drag-icon tree and below the top shell layer, and
   registers it with `wlr_scene_set_effect_light_layer`.
-- **Proxy.** `scene_light_sync` (`wlr_scene.c:1234-1295`) keeps one
+- **Proxy.** `scene_light_sync` (`wlr_scene.c`) keeps one
   input-transparent rect per lit border slot in that layer, covering the
   border's bounds grown by `ceil(2 × spread + 8)` logical px plus the slot's
   `expand`. The rect carries visibility, output membership, and damage; the
-  renderer draws the light in its place (`:3024-3039`).
+  renderer draws the light in its place.
 - **Emission.** Each display composite of the slot runs `emit_light`
-  (`fx_pass.c:984-1053`): the program again, unblended and without a history
+  (`fx_pass.c`): the program again, unblended and without a history
   write, into a full-resolution emission texture (half float when the renderer
   can filter it); a threshold pass into level 0 of a half-resolution pyramid
   with the proxy's margin; then Kawase down and up passes over 1 to 6 levels
-  chosen from the spread. `fx_render_pass_add_effect_light` (`:1055-1079`)
+  chosen from the spread. `fx_render_pass_add_effect_light`
   screen-blends level 0 over the proxy's box at `intensity`. The pyramid
   belongs to the slot and holds its latest composite; every output showing the
   proxy draws it. The helper program compiles once per renderer, on first use.
@@ -238,29 +249,29 @@ its program reads `umbriel_time`, and its clock advances (for a border or
 overlay, `animated` and a nonzero `speed`; for all, an unfrozen animation
 clock).
 
-`Output::handleFrame` (`output.cpp:1228-1252`) treats a frame as an effect
+`Output::handleFrame` (`output.cpp`) treats a frame as an effect
 frame when one was requested, or when an instance there is eligible and the
 `max_fps` interval has elapsed (`effectFrameDelayMs`,
-[`frame_schedule.h:35-44`](../../src/output/frame_schedule.h); 0 follows the
+[`frame_schedule.h`](../../src/output/frame_schedule.h); 0 follows the
 refresh rate), whatever scheduled the frame. The output's effect time,
 `Output::effectSeconds()`, is stamped from the animation clock only on effect
 frames, and while nothing on the output is eligible but a persistent preset is
-referenced or the ledger has owners (`output.cpp:1241-1242`), so it advances
+referenced or the ledger has owners (`output.cpp`), so it advances
 at most at `max_fps` and a new instance starts from the present. After the frame,
-`Output::armEffectFrame` (`:1110-1127`) requests the next frame at once or arms
+`Output::armEffectFrame` requests the next frame at once or arms
 a lazily created timer for the rest of the interval; with nothing eligible, or
-while the session is locked, the timer is disarmed (`:1462-1466`).
+while the session is locked, the timer is disarmed.
 
 Locking suspends the ledger and re-applies output effects, which unbinds
 screen and cursor slots (`Server::activateSessionLock`,
-`server_events.cpp:1402-1403`); unlocking resumes it and reschedules outputs
-with eligible instances (`:1425-1431`). Border and window slots stay bound, and
+`server_events.cpp`); unlocking resumes it and reschedules outputs
+with eligible instances. Border and window slots stay bound, and
 the lock surface carries no slot.
 
 A persistent effect never finishes, so it stays out of the animation registry.
-`Server::settled()` (`server.cpp:1391-1419`), `Server::animationsActiveFor`,
-and the render lock and tearing veto that follows it (`output.cpp:1262-1268`,
-`:1308-1309`) see only transient animations: a time-reading effect never
+`Server::settled()` (`server.cpp`), `Server::animationsActiveFor`,
+and the render lock and tearing veto that follows it (`output.cpp`) see only
+transient animations: a time-reading effect never
 blocks `settle` or holds `wlr_output_lock_attach_render`. The drag sheet ends,
 so it is an animation. The `effect-frames` IPC
 ([Harness-only IPC](README.md#harness-only-ipc)) reports each output's effect
@@ -268,110 +279,111 @@ frames and eligible count.
 
 ## Capture
 
-`Output::effectCapturePending` (`output.cpp:191-194`) is true while a capture
+`Output::effectCapturePending` (`output.cpp`) is true while a capture
 holds a render lock on the output, `in_capture` is false, and a referenced
-in-place preset (window, overlay, screen, or cursor) compiled. It is keyed on
-configuration because a close snapshot keeps window slots without a ledger
-instance. Capture locks are the external attach-render locks minus the
-animation lock and minus export-dmabuf frames on that output (`:177-189`), so
+in-place preset (window, overlay, screen, or cursor) compiled or a closing
+snapshot retains one. Snapshots keep window slots without ledger instances.
+Capture locks are the external attach-render locks minus the
+animation lock and minus export-dmabuf frames on that output, so
 an export-dmabuf client reads the displayed frame.
 
 With a capture pending and an in-place slot or output effect visible on the
-output, `wlr_scene_output_build_state` composes twice (`wlr_scene.c:5299-5328`,
-`:5643-5660`). The unfiltered composition skips in-place slots, output
+output, `wlr_scene_output_build_state` composes twice (`wlr_scene.c`). The
+unfiltered composition skips in-place slots, output
 effects, and light emission, runs capture composites (the border effect and
 every transient slot) with capture-role histories, and draws the software
-cursor; `fx_render_pass_save_effect_capture` (`fx_pass.c:2836-2870`) then
+cursor; `fx_render_pass_save_effect_capture` (`fx_pass.c`) then
 copies the target into the output buffer's effect capture. The display
 composition then starts again from the background. This pass damages the whole
 output. When the save fails, it logs once, and the unfiltered composition
 serves display and captures alike for that frame, with no output effects
-(`wlr_scene.c:5682-5685`). `fx_texture_from_dmabuf`
-([`fx_texture.c:532-554`](../../umbrielfx/render/fx_renderer/fx_texture.c))
+(`wlr_scene.c`). `fx_texture_from_dmabuf`
+([`fx_texture.c`](../../umbrielfx/render/fx_renderer/fx_texture.c))
 substitutes a valid effect capture for any import of that output buffer, which
 is how screencopy and image-copy receive the unfiltered frame.
 
 Feedback history
 ([`animation_history.h`](../../umbrielfx/internal/render/fx_renderer/animation_history.h))
 is kept per animated node's slot, per output, per renderer, and per composition
-role: 0 for display, 1 for the unfiltered capture (`wlr_scene.c:3854`). Each
+role: 0 for display, 1 for the unfiltered capture (`wlr_scene.c`). Each
 entry holds two buffers, allocated only for programs that call
 `umbriel_sample_previous`. A pass reads and promotes only its own role's entry;
 a first frame, or a missing entry, reads that pass's current input. Promotion
-waits for a successful submission (`fx_pass.c:288-298`), at most once per
+waits for a successful submission (`fx_pass.c`), at most once per
 frame; shadow captures read history but never promote it. A new transition or
 program resets every role; a renderer, output transform, or format change
 drops the affected entry's buffers. When a capture ends or the capture policy
 changes, the output's capture-role entries and effect captures are released
-(`wlr_scene.c:4075-4098`, `:5330-5334`), and
+(`wlr_scene.c`), and
 `Output::scheduleEffectCaptureRelease` draws one more frame so that happens
 promptly.
 
 Each view's isolated toplevel capture renders its own `wlr_scene`
-(`view.cpp:212-216`), so its slots, histories, and policy counts never touch
+(`view.cpp`), so its slots, histories, and policy counts never touch
 the desktop scene. Window slots are bound there only with `in_capture = true`.
 
 ## State, scanout, damage, and culling
 
-Each scene keeps a `scene_effects` addon on its root (`wlr_scene.c:151-206`)
+Each scene keeps a `scene_effects` addon on its root (`wlr_scene.c`)
 listing its `scene_animation` addons with separate counts of nodes carrying
-transient and persistent slots (`scene_animation_classify`, `:208-223`). The
+transient and persistent slots (`scene_animation_classify`). The
 addon exists while any node carries a slot or a light layer is registered, and
-is destroyed with the last of them (`:359-364`, `:1313-1350`). An
-output's `scene_output_effects` addon (`:3990-4005`) is created on first use:
+is destroyed with the last of them. An
+output's `scene_output_effects` addon is created on first use:
 a screen or cursor slot, `in_capture = true`, or an unfiltered composition.
 `wlr_scene_output_build_state` looks the scene addon up once per frame. A
 transient slot anywhere keeps the scene-wide conservative policy on every
 output; persistent slots never contribute to it.
 
-`render_data.persistent_visible` (`:5301-5318`) is true when a render-list
+`render_data.persistent_visible` is true when a render-list
 entry sits under a node with a persistent slot, or the output has a screen
 effect or a shown cursor effect.
 
 | Site | Transient slot in the scene | Persistent effect |
 | --- | --- | --- |
-| `scene_node_opaque_region` (`:684-769`) | No node is opaque. | A node at or under a node with slots contributes no opaque region; every other node keeps its own. |
-| `scene_entry_try_direct_scanout` (`:4694-4705`) | Veto on every output. | Veto only where `persistent_visible`. |
-| Animation-buffer release (`:5319-5321`) | Buffers kept. | Kept only where `persistent_visible`; released elsewhere. |
-| `calculate_visibility` | Render-list culling off (`:5260`). | Culling stays on. The update pass keeps an occluded node under a persistent effect visible, so it keeps output membership and frame callbacks (`:1097-1105`); an entry whose visible region, grown by the effect's `expand`, reaches the output is kept (`:4582-4599`); the background-color skip exempts nodes under an effect (`:4560`, `:4572`). |
-| Whole-output damage (`:5342-5344`) | Every frame. | Never from presence alone. `expand_damage_to_effects` (`:5122-5162`) grows commit (`:5382`) and render (`:5499`) damage to every effect box it touches, until nothing grows, because a program may read any texel of its box. Only the unfiltered capture pass damages the whole output (`:5337-5340`). |
-| `fx_render_pass_init_offscreen_buffers` (`:5582-5591`) | Always. | Only where `persistent_visible`. |
+| `scene_node_opaque_region` | No node is opaque. | A node at or under a node with slots contributes no opaque region; every other node keeps its own. |
+| `scene_entry_try_direct_scanout` | Veto on every output. | Veto only where `persistent_visible`. |
+| Animation-buffer release | Buffers kept. | Kept only where `persistent_visible`; released elsewhere. |
+| `calculate_visibility` | Render-list culling off. | Culling stays on. The update pass keeps an occluded node under a persistent effect visible, so it keeps output membership and frame callbacks; an entry whose visible region, grown by the effect's `expand`, reaches the output is kept; the background-color skip exempts nodes under an effect. |
+| Whole-output damage | Every frame. | Never from presence alone. `expand_damage_to_effects` grows commit and render damage to every effect box it touches, until nothing grows, because a program may read any texel of its box. Only the unfiltered capture pass damages the whole output. |
+| `fx_render_pass_init_offscreen_buffers` | Always. | Only where `persistent_visible`. |
 
 A drawn box is the node's bounds grown by its `expand`, plus the light proxy
-(`persistent_effect_box`, `:5069-5099`); a screen or cursor box is the output
+(`persistent_effect_box`); a screen or cursor box is the output
 or the cursor square. The render-list walk tests leaves against the output box
 grown by the scene's largest `expand` (`scene_effects_max_expand`), so a node
 whose drawn box reaches an output only through its margin is listed there and
 its program runs over that margin. What the program samples is still that
 output's capture, so a drag sheet shows only what that output captured
 ([Attachment](#attachment)).
-Changing a slot (`wlr_scene_node_set_animation`,
-`:1637-1734`) updates the whole scene for a transient slot. For a persistent
+Changing a slot (`wlr_scene_node_set_animation`) updates the whole scene for a
+transient slot. For a persistent
 slot it damages the drawn box before and after the change
-(`scene_effect_damage`, `:1546-1567`) and re-runs `scene_node_update` on the
+(`scene_effect_damage`) and re-runs `scene_node_update` on the
 node when a slot appears or disappears. Destroying a node damages its effects'
-margins first (`:1587-1595`). Whenever the scene has effect state,
-`scene_node_update` (`:1484-1541`) grows its update and damage regions by the
+margins first. Whenever the scene has effect state,
+`scene_node_update` grows its update and damage regions by the
 largest `expand` on the node, its ancestors, and its enabled descendants
-(`scene_node_drawn_expand`, `:1457-1463`), so moving a frame repaints a child
+(`scene_node_drawn_expand`), so moving a frame repaints a child
 slot's old margin.
 
 ## Cost
 
-With no effect selected and drag physics off:
+With no effect roots and drag physics off (unused pool declarations are not
+roots; named actions can prepare programs without adding draws or a timer):
 
 - `prepare()` compiles nothing but the built-in fade, which the lifecycle
   settings alone decide; no deformation program, light layer, output-effect
   addon, effect timer, or ledger instance exists.
 - Per view sync: `ViewEffects::configured()` and the ledger size
-  (`view.cpp:1482`). Per output frame: an eligible count over the empty ledger;
+  (`view.cpp`). Per output frame: an eligible count over the empty ledger;
   the clock is never read for effect time; `expand_damage_to_effects` returns
   at once; `Output::effectCapturePending` is false, so no second composition
-  runs. Per pointer motion: one boolean (`cursor.cpp:281`).
+  runs. Per pointer motion: one boolean (`cursor.cpp`).
 - Drag physics: `Cursor` gates every call on `MoveGrab::physics`, and
   `View::tickAnimations`, `View::hasActiveAnimations`,
-  `View::syncAnimationEffects` (`view.cpp:1453`), and `View::animatesOn`
-  (`view.cpp:1626`) read `DragPhysics::active()`/`grabbed()` per view per tick
+  `View::syncAnimationEffects` (`view.cpp`), and `View::animatesOn`
+  (`view.cpp`) read `DragPhysics::active()`/`grabbed()` per view per tick
   and sync, with no writes, scene calls, or allocations.
 - Scanout, damage, and culling take only the transient branches in the table
   above, as they do for built-in animations. Reload prepares only with the

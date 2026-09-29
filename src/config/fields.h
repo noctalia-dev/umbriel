@@ -5,6 +5,7 @@
 
 #include "config/config.h"
 #include "config/config_diag.h"
+#include "config/config_merge.h"
 #include "config/config_registry.h"
 #include "config/effects.h"
 #include "config/section.h"
@@ -28,6 +29,7 @@ namespace umbriel {
     std::string name;
     EffectKind kind;
     bool allowOff;
+    EffectReferenceConstraint constraint;
     toml::source_region source;
     std::function<void()> clear;
   };
@@ -37,6 +39,8 @@ namespace umbriel {
     // The config being loaded. Tables read earlier are already in it, such as the scratchpads an action may name.
     Config& loaded;
     std::vector<EffectReference>& effectReferences;
+    const std::vector<configmerge::EffectDeclaration>& presetDeclarations;
+    const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
   };
 
   // Record a diagnostic in the store and log it.
@@ -65,11 +69,13 @@ namespace umbriel {
   // that names one.
   [[nodiscard]] std::optional<std::string> scratchpadSelectorError(const Config& loaded, const Keybind& binding);
   [[nodiscard]] std::optional<std::string> scratchpadTargetError(const Config& loaded, std::string_view name);
+  // Why an effect action may not name its preset or pool, or nullopt when it may. Effects are read first.
+  [[nodiscard]] std::optional<std::string> effectActionError(const Config& loaded, const Keybind& binding);
 
   void addEffectReference(
       std::vector<EffectReference>& references, std::string context,
       const std::pair<std::string, toml::source_region>& selector, EffectKind kind, bool allowOff,
-      std::function<void()> clear
+      std::function<void()> clear, EffectReferenceConstraint constraint = EffectReferenceConstraint::PresetOnly
   );
 
   // Record the effect selector a rule holds under `key`, once the rule is kept.
@@ -77,7 +83,7 @@ namespace umbriel {
       registry::ReadContext& context, Section& keys, std::string_view key, EffectKind kind, std::function<void()> clear
   );
 
-  // An effect preset selector, checked against the presets once every table is read.
+  // An effect selector, validated after all definitions are loaded.
   template <typename T> registry::Field<T> effectField(std::string_view key, std::string T::* member, EffectKind kind) {
     return registry::custom<T>(
         key, registry::KeyDescription("string").withFormat("effect"),
@@ -89,16 +95,17 @@ namespace umbriel {
           }
           std::string& selected = target.*member;
           selected = *value;
-          addEffectReference(context.effectReferences, path, {*value, node.source()}, kind, false, [&selected] {
-            selected.clear();
-          });
+          addEffectReference(
+              context.effectReferences, path, {*value, node.source()}, kind, false, [&selected] { selected.clear(); },
+              kind == EffectKind::Animation ? EffectReferenceConstraint::PresetOnly
+                                            : EffectReferenceConstraint::PresetOrPool
+          );
         },
         [member](const T& defaults) { return nlohmann::ordered_json(defaults.*member); }
     );
   }
 
-  // An effect preset selector on a rule. It is recorded by the rule's accept step, once the rule's place in its array
-  // is known.
+  // Record a rule's effect selector after its position in the array is known.
   template <typename T>
   registry::Field<T> optionalEffectField(std::string_view key, std::optional<std::string> T::* member) {
     return registry::custom<T>(

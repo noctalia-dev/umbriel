@@ -54,6 +54,7 @@ To understand the values and philosophy guiding the project, read our [ethos](ht
 - Layer shell, session locking, clipboard management, screen capture, output control, and gamma control
 - X11 application support through xwayland-satellite, when xwayland-satellite is installed and on `PATH`
 - Live-reloaded TOML configuration with diagnostics and includes, plus local IPC and runtime inspection commands
+- Stable effect pools, runtime effect actions, and `umbriel effects [--json]` selection and program inspection
 - Runs as a nested Wayland compositor inside an existing Wayland or X11 desktop for development, or directly on DRM
   for daily use
 

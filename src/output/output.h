@@ -2,6 +2,7 @@
 
 #include "core/dirty.h"
 #include "output/frame_schedule.h"
+#include "scene/effect_selection.h"
 
 #include <cstdint>
 #include <memory>
@@ -70,6 +71,8 @@ namespace umbriel {
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
+    [[nodiscard]] EffectSlot& screenEffectSlot() { return m_screenEffectSlot; }
+    [[nodiscard]] const EffectSlot& screenEffectSlot() const { return m_screenEffectSlot; }
     // Captures are released only by a built frame: asks for one when the last frame kept effects out of a capture.
     void scheduleEffectCaptureRelease();
     // Drawn frames that advanced persistent effects' time.
@@ -208,6 +211,7 @@ namespace umbriel {
     uint64_t m_lastEffectFrameMsec = 0;
     bool m_effectFrameDue = false;
     bool m_effectFrameArmed = false;
+    EffectSlot m_screenEffectSlot;
     uint64_t m_effectFrames = 0;
     float m_effectSeconds = 0.0F;
     bool m_outputEffectsTimed = false; // a visible screen or cursor instance here reads umbriel_time

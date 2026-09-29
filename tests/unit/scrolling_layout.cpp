@@ -1009,6 +1009,209 @@ UMBRIEL_TEST(onOverflowMeasuresTheRightHandColumnWhenFocusMovesLeft) {
   CHECK(fixture.layout.centeredRest());
 }
 
+// A move keeps focus on the window and only changes its index, so OnOverflow needs the index the column came from.
+// Without it the move falls back to a fit and the moved column stays off center.
+UMBRIEL_TEST(onOverflowCentersAMovedColumn) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(3);
+  for (int column = 0; column < 3; ++column) {
+    CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 700));
+  }
+
+  // column-move-to-first: 700 + gap + 700 overruns the 1260 viewport, so the move centers.
+  fixture.layout.activateColumn(2, kViewport);
+  fixture.layout.moveColumn(2, 0);
+  fixture.layout.activateColumn(fixture.layout.columnOf(stub(2)), kViewport, 2);
+
+  const int centeredX = fixture.layout.columnX(0, kViewport)
+      + fixture.layout.columnWidth(0, kViewport) / 2
+      - static_cast<int>(std::lround(fixture.layout.scroll()));
+  CHECK_EQ(centeredX, kViewport / 2);
+  CHECK(fixture.layout.centeredRest());
+}
+
+// Closing the focused column leaves no side of its own, so the survivor inherits the side the dying column was on and
+// is judged against the column that took its place. The reveal focus triggers cannot do that while the dying column is
+// still in the layout, so it only fits the survivor, and the removal re-judges it on the geometry it leaves.
+UMBRIEL_TEST(onOverflowJudgesTheSurvivorOfAClosedColumnAgainstItsReplacement) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(3);
+  for (int column = 0; column < 3; ++column) {
+    CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 700));
+  }
+
+  // Focusing column 1 centers it: 700 + gap + 700 overruns the 1260 viewport.
+  fixture.layout.activateColumn(0, kViewport);
+  fixture.layout.activateColumn(1, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 432.0);
+
+  // Closing column 1: focus falls to column 0, which only gets fitted while column 1 is still in the layout.
+  fixture.layout.noteRemovalOfFocusedColumn(1);
+  fixture.layout.activateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+  CHECK(!fixture.layout.centeredRest());
+
+  // Column 2 took the removed column's place, and 700 + gap + 700 still overruns the viewport.
+  fixture.layout.removeView(stub(1));
+  fixture.layout.reevaluateAfterRemoval(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), -280.0);
+  CHECK(fixture.layout.centeredRest());
+}
+
+// When the last tiled column closes and focus passes to a floating window, no survivor is judged. A later close of an
+// unfocused column must not replay that judgment on whatever column is focused by then.
+UMBRIEL_TEST(onOverflowForgetsAClosedColumnWithNoTiledSurvivor) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.activateColumn(0, kViewport);
+  fixture.layout.noteRemovalOfFocusedColumn(0);
+  fixture.layout.removeView(stub(0));
+  fixture.layout.reevaluateAfterRemoval(-1, kViewport);
+
+  for (int column = 0; column < 4; ++column) {
+    fixture.layout.insertView(stub(column + 1), column);
+  }
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 900));
+  for (int column = 1; column < 4; ++column) {
+    CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 400));
+  }
+  // 400 + gap + 400 fits, so focusing column 1 from column 2 leaves it uncentered.
+  fixture.layout.activateColumn(2, kViewport);
+  fixture.layout.activateColumn(1, kViewport);
+  const double scroll = fixture.layout.scroll();
+  CHECK(!fixture.layout.centeredRest());
+
+  fixture.layout.removeView(stub(4));
+  fixture.layout.reevaluateAfterRemoval(fixture.layout.columnOf(stub(2)), kViewport);
+  CHECK_EQ(fixture.layout.scroll(), scroll);
+  CHECK(!fixture.layout.centeredRest());
+}
+
+// A width change has to be judged by the geometry it produced, not by the one the last focus step saw, or the focused
+// column stays uncentered until focus happens to leave and come back. Once the pair fits again the centered rest has to
+// go with it, which the fit alone would not do: the column is already fully visible.
+UMBRIEL_TEST(onOverflowFollowsTheFocusedColumnWidth) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(2);
+  // 624 + gap + 624 fills the 1260 viewport exactly, so the pair fits.
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 624));
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 624));
+  fixture.layout.activateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+
+  // 700 + gap + 624 overruns the viewport, so the focused column centers.
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 700));
+  fixture.layout.reevaluateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), -280.0);
+  CHECK(fixture.layout.centeredRest());
+
+  // Back to a pair that fits: the column belongs at the edge again.
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 624));
+  fixture.layout.reevaluateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+  CHECK(!fixture.layout.centeredRest());
+}
+
+// The last column has no column after it to stand in for a side, so the one before it is measured instead.
+UMBRIEL_TEST(onOverflowRecenterAfterTheLastFocusedColumnWidens) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 624));
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 624));
+  fixture.layout.activateColumn(1, kViewport);
+
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 700));
+  fixture.layout.reevaluateColumn(1, kViewport);
+
+  CHECK_EQ(fixture.layout.scroll(), 356.0);
+  CHECK(fixture.layout.centeredRest());
+}
+
+// A width change is judged by the pair the focus move was judged by, not by a neighbor picked at resize time: with
+// three columns in the way, the pair that overflows is the one focus came from.
+UMBRIEL_TEST(onOverflowMeasuresTheSideFocusCameFromAfterAWidthChange) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(3);
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 800));
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 400));
+  CHECK(fixture.layout.setWidthFromPixels(2, kViewport, 500));
+
+  // 800 + gap + 400 fits, so focusing column 1 from column 0 leaves it flush right.
+  fixture.layout.activateColumn(0, kViewport);
+  fixture.layout.activateColumn(1, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+
+  // 800 + gap + 500 overruns the viewport while the pair with column 2 still fits, so the focused column centers on the
+  // side focus came from.
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 500));
+  fixture.layout.reevaluateColumn(1, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 432.0);
+  CHECK(fixture.layout.centeredRest());
+
+  // The side is remembered, so the next change is judged by the same pair rather than by a new one.
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 700));
+  fixture.layout.reevaluateColumn(1, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 532.0);
+  CHECK(fixture.layout.centeredRest());
+
+  // Back to a pair that fits: the two go back side by side at the edge focus came from, where the focus move left them.
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 400));
+  fixture.layout.reevaluateColumn(1, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+  CHECK(!fixture.layout.centeredRest());
+}
+
+// A column-center is the user's own, so OnOverflow gives up only the rest it took itself: a width change that keeps the
+// pair fitting must leave a manual centering where it is.
+UMBRIEL_TEST(onOverflowKeepsAManualCenteredRestAcrossAWidthChange) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(3);
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 700));
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 300));
+  CHECK(fixture.layout.setWidthFromPixels(2, kViewport, 700));
+
+  // 700 + gap + 300 fits, so focusing column 0 from column 1 leaves it flush left.
+  fixture.layout.activateColumn(1, kViewport);
+  fixture.layout.activateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
+
+  CHECK(fixture.layout.centerColumn(0, kViewport));
+  const double centered = fixture.layout.scroll();
+  CHECK(centered < 0.0);
+
+  // 800 + gap + 300 fits too, so there is no pair to judge and no centering of the policy's to take back.
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 800));
+  fixture.layout.reevaluateColumn(0, kViewport);
+  CHECK_EQ(fixture.layout.scroll(), centered);
+  CHECK(fixture.layout.centeredRest());
+}
+
+// A rest under Never is the user's own, so a width change must not undo a column-center.
+UMBRIEL_TEST(neverKeepsACenteredRestAcrossAWidthChange) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::Never;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 624));
+  CHECK(fixture.layout.setWidthFromPixels(1, kViewport, 624));
+  fixture.layout.activateColumn(0, kViewport);
+  fixture.layout.centerColumn(0, kViewport);
+  const double centered = fixture.layout.scroll();
+  CHECK(centered < 0.0);
+
+  CHECK(fixture.layout.setWidthFromPixels(0, kViewport, 700));
+  fixture.layout.reevaluateColumn(0, kViewport);
+
+  CHECK_EQ(fixture.layout.scroll(), centered);
+  CHECK(fixture.layout.centeredRest());
+}
+
 UMBRIEL_TEST(ensureVisibleIsANoOpForAnAlreadyVisibleColumn) {
   Fixture fixture;
   fixture.addColumns(6);

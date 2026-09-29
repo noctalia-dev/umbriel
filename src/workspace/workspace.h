@@ -141,6 +141,9 @@ namespace umbriel {
     void markArrange(bool animate = true);
     void flushArrange();
     [[nodiscard]] bool arrangePending() const { return m_arrangePending; }
+    // Arranges a temporary layout for inspection without applying rules,
+    // configuring clients, or changing the live layout/presentation.
+    [[nodiscard]] std::unique_ptr<Layout> previewArrangedLayout() const;
     void refreshAloneRuleStates();
     void syncViewPresentation(View* view);
     [[nodiscard]] View* focusAdjacent(int direction) const;
@@ -180,6 +183,12 @@ namespace umbriel {
     bool toggleFocusedFloating();
     void ensureFocusedVisible();
     void activateFocusedColumn();
+    // Re-applies the centering policy after the focused column's extent changed, instead of only fitting it.
+    void reevaluateFocusedColumn();
+    void revealMovedFocusedColumn(int previousColumn);
+    // A removal hands focus to a survivor while the column focus came from is leaving, so the reveal that follows can
+    // only fit: the removal itself is what judges the pair.
+    void noteRemovalOfFocusedColumn(int columnIndex);
     void snapVisible(const View* view);
     [[nodiscard]] double scrollFractionToReveal(const View* view) const;
     void applyVisibility();

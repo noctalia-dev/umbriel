@@ -97,7 +97,12 @@ namespace umbriel {
       std::vector<EffectReference> effectReferences;
       {
         Section root(result.merged, "", store.mutableDiagnostics());
-        registry::ReadContext context{.loaded = loaded, .effectReferences = effectReferences};
+        registry::ReadContext context{
+            .loaded = loaded,
+            .effectReferences = effectReferences,
+            .presetDeclarations = result.presets,
+            .poolDeclarations = result.pools
+        };
         registry::readFields(root, configFields(), loaded, context);
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);

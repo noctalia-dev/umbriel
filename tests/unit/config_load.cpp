@@ -3613,7 +3613,7 @@ UMBRIEL_TEST(duplicateEffectPresetsInSiblingIncludesNameTheFirstSibling) {
     return;
   }
   CHECK(duplicate->severity == ConfigDiagnostic::Severity::Error);
-  CHECK(duplicate->message.ends_with("first.toml"));
+  CHECK(duplicate->message.contains(tree.path("first.toml").string() + ":1:"));
   CHECK(duplicate->file.ends_with("second.toml"));
 }
 
@@ -3638,6 +3638,304 @@ UMBRIEL_TEST(bundledEffectPresetsDefineWithoutSelecting) {
   CHECK(pulse != nullptr && pulse->kind == umbriel::EffectKind::Border && pulse->light.has_value());
   const umbriel::EffectPreset* glow = umbriel::findEffectPreset(effects, "glow");
   CHECK(glow != nullptr && glow->kind == umbriel::EffectKind::Cursor && glow->radius > 0);
+}
+
+UMBRIEL_TEST(effectPoolsPreserveDeclarationsAcrossNestedIncludesAndValidateMembersSafely) {
+  const TempConfigTree tree;
+  tree.write("nested.toml", R"(
+[effects.preset.zulu]
+kind = 'window'
+[effects.preset.alpha]
+kind = 'window'
+[effects.preset.'bad/name']
+kind = 'window'
+[effects.pool.zpool]
+kind = 'window'
+choose = ['zulu', 'missing', 'alpha', 'zulu', 2, '', 'off', 'apool', 'border', 'root']
+selection = 'round_robin'
+[effects.pool.apool]
+kind = 'window'
+choose = []
+)");
+  tree.write("middle.toml", R"(
+[include]
+files = ['nested.toml']
+[effects.preset.middle]
+kind = 'window'
+[effects.pool.middle]
+kind = 'window'
+choose = ['zulu']
+[effects.pool.mpool]
+kind = 'window'
+choose = ['root']
+selection = 'random'
+)");
+  tree.write("config.toml", R"(
+[include]
+files = ['middle.toml']
+[effects]
+window = 'zpool'
+[effects.preset.root]
+kind = 'window'
+[effects.preset.border]
+kind = 'border'
+overlay = 'zpool'
+[effects.pool.rpool]
+kind = 'window'
+choose = ['alpha']
+[[window_rule]]
+match.app_id = '^test$'
+window_effect = 'mpool'
+[animation.windows_in]
+effect = 'zpool'
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& effects = store.config().effects;
+  std::vector<std::string> presets;
+  presets.reserve(effects.presets.size());
+  for (const auto& preset : effects.presets) {
+    presets.push_back(preset.name);
+  }
+  CHECK(presets == std::vector<std::string>({"zulu", "alpha", "middle", "root", "border"}));
+  std::vector<std::string> pools;
+  pools.reserve(effects.pools.size());
+  for (const auto& pool : effects.pools) {
+    pools.push_back(pool.name);
+  }
+  CHECK(pools == std::vector<std::string>({"zpool", "apool", "mpool", "rpool"}));
+  const auto* zpool = umbriel::findEffectPool(effects, "zpool");
+  CHECK(zpool != nullptr);
+  if (zpool) {
+    CHECK(zpool->members == std::vector<std::string>({"zulu", "alpha", "root"}));
+    CHECK(zpool->selection == umbriel::EffectSelectionPolicy::RoundRobin);
+  }
+  CHECK_EQ(effects.window, std::string("zpool"));
+  CHECK(store.config().windowRules[0].windowEffect == "mpool");
+  CHECK(store.config().animation.windowsIn.effect.empty());
+  CHECK(umbriel::findEffectPreset(effects, "border")->overlay.empty());
+  CHECK(containsDiagnostic(store, "duplicate member"));
+  CHECK(containsDiagnostic(store, "a preset is required"));
+  CHECK(containsDiagnostic(store, "action delimiter; rename"));
+  CHECK(containsDiagnostic(store, "pool is inert"));
+  CHECK(std::ranges::any_of(store.diagnostics(), [&](const auto& diagnostic) {
+    return diagnostic.message.contains("ignoring effects.pool.middle")
+        && diagnostic.message.contains(tree.path("middle.toml").string())
+        && diagnostic.file == tree.path("middle.toml").string()
+        && diagnostic.line > 0;
+  }));
+}
+
+UMBRIEL_TEST(effectPoolRequiredFieldsAndNamesRejectMalformedDeclarations) {
+  const TempConfig file;
+  file.write(R"(
+[effects.pool.no_kind]
+choose = []
+[effects.pool.animation]
+kind = 'animation'
+choose = []
+[effects.pool.wrong_kind_type]
+kind = 2
+choose = []
+[effects.pool.no_choose]
+kind = 'border'
+[effects.pool.wrong_choose]
+kind = 'border'
+choose = 'ring'
+[effects.pool.wrong_choose_table]
+kind = 'border'
+choose = { member = 'ring' }
+[effects.pool.wrong_policy]
+kind = 'border'
+choose = []
+selection = 'round-robin'
+[effects.pool.wrong_policy_type]
+kind = 'border'
+choose = []
+selection = 42
+[effects.pool.off]
+kind = 'border'
+choose = []
+[effects.pool.'']
+kind = 'border'
+choose = []
+[effects.pool.'bad/name']
+kind = 'border'
+choose = []
+[effects.preset.'']
+kind = 'border'
+[effects.preset.'bad/name']
+kind = 'border'
+[effects.pool.empty]
+kind = 'border'
+choose = []
+[effects.pool.invalid_members]
+kind = 'border'
+choose = ['missing', 'off', '', false]
+[effects]
+border = 'invalid_members'
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const auto& effects = store.config().effects;
+  CHECK_EQ(effects.pools.size(), size_t{2});
+  CHECK(effects.presets.empty());
+  CHECK_EQ(effects.border, std::string("invalid_members"));
+  for (const auto& pool : effects.pools) {
+    CHECK(pool.members.empty());
+    CHECK(pool.selection == umbriel::EffectSelectionPolicy::UnusedFirst);
+  }
+  CHECK(containsDiagnostic(store, "choose is required and must be an array"));
+  CHECK(containsDiagnostic(store, "selection must be unused_first|round_robin|random"));
+  CHECK(containsDiagnostic(store, "effect names must not be empty"));
+}
+
+UMBRIEL_TEST(effectPoolSelectorsWorkForScreenCursorAndOutputRules) {
+  const TempConfig file;
+  file.write(R"(
+[effects]
+screen = 'screens'
+cursor = 'cursors'
+[effects.preset.screen]
+kind = 'screen'
+[effects.preset.cursor]
+kind = 'cursor'
+[effects.pool.screens]
+kind = 'screen'
+choose = ['screen']
+[effects.pool.cursors]
+kind = 'cursor'
+choose = ['cursor']
+[output.HEADLESS-1]
+screen_effect = 'screens'
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().effects.screen, std::string("screens"));
+  CHECK_EQ(store.config().effects.cursor, std::string("cursors"));
+  CHECK(store.config().outputs[0].screenEffect == "screens");
+}
+
+UMBRIEL_TEST(duplicateEffectPoolsRejectReloadAndNameBothLocations) {
+  const TempConfigTree tree;
+  tree.write("theme.toml", "[effects.pool.shared]\nkind = 'border'\nchoose = []\n");
+  tree.write("config.toml", "[include]\nfiles = ['theme.toml']\n");
+  auto& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto previous = store.config();
+  tree.write("config.toml", "[include]\nfiles = ['theme.toml']\n[effects.pool.shared]\nkind = 'border'\nchoose = []\n");
+  CHECK(!store.reload().success);
+  CHECK(store.config() == previous);
+  CHECK(std::ranges::any_of(store.diagnostics(), [&](const auto& diagnostic) {
+    return diagnostic.severity == ConfigDiagnostic::Severity::Error
+        && diagnostic.file == tree.path("config.toml").string()
+        && diagnostic.message.contains("effects.pool.shared is also defined in")
+        && diagnostic.message.contains(tree.path("theme.toml").string());
+  }));
+}
+
+UMBRIEL_TEST(effectPoolCollisionAcrossIncludesKeepsPresetRegardlessOfDeclarationOrder) {
+  const TempConfigTree tree;
+  for (bool poolFirst : {false, true}) {
+    const std::string preset = "[effects.preset.shared]\nkind = 'window'\n";
+    const std::string pool = "[effects.pool.shared]\nkind = 'window'\nchoose = []\n";
+    tree.write("theme.toml", poolFirst ? pool : preset);
+    tree.write(
+        "config.toml", "[include]\nfiles = ['theme.toml']\n[effects]\nwindow = 'shared'\n" + (poolFirst ? preset : pool)
+    );
+    auto& store = umbriel::configStore();
+    store.setRootPath(tree.path("config.toml"), true);
+    CHECK(store.reload().success);
+    CHECK(umbriel::findEffectPreset(store.config().effects, "shared") != nullptr);
+    CHECK(umbriel::findEffectPool(store.config().effects, "shared") == nullptr);
+    CHECK_EQ(store.config().effects.window, std::string("shared"));
+    CHECK(containsDiagnostic(store, "preset with this name declared at"));
+  }
+}
+
+UMBRIEL_TEST(effectActionReferencesValidateKindsPoolsAndDisabledCorners) {
+  TempConfig file;
+  file.write(R"(
+[effects.preset.window]
+kind = 'window'
+[effects.preset.border]
+kind = 'border'
+[effects.pool.windows]
+kind = 'window'
+choose = ['window']
+[keybinds]
+'Mod+F1' = 'effect-window-set:window'
+'Mod+F2' = 'effect-window-set:windows'
+'Mod+F3' = 'effect-window-cycle:windows'
+'Mod+F4' = 'effect-window-set:missing'
+'Mod+F5' = 'effect-window-set:border'
+'Mod+F6' = 'effect-window-cycle:window'
+'Mod+F7' = 'effect-window-set:off'
+'Mod+F8' = 'effect-window-cycle'
+'submap[effects],F9' = 'effect-window-set:missing'
+'Mod+F10' = 'effect-window-set:window'
+'Mod+f10' = 'effect-window-set:missing'
+[hot_corners.top_left]
+enabled = false
+action = 'effect-screen-set:window'
+[hot_corners.top_right]
+enabled = true
+action = 'effect-window-cycle:windows'
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "ignoring keybind 'Mod+F4'"));
+  CHECK(containsDiagnostic(store, "ignoring keybind 'Mod+F5'"));
+  CHECK(containsDiagnostic(store, "ignoring keybind 'Mod+F6'"));
+  CHECK(containsDiagnostic(store, "ignoring keybind 'submap[effects],F9'"));
+  CHECK(containsDiagnostic(store, "ignoring hot_corners.top_left.action"));
+  CHECK(!store.config().hotCorners.corners[0].action);
+  CHECK(store.config().hotCorners.corners[1].action.has_value());
+  size_t valid = 0;
+  for (const auto& bind : store.config().keybinds) {
+    if (bind.action == umbriel::KeybindAction::EffectWindowSet
+        || bind.action == umbriel::KeybindAction::EffectWindowCycle) {
+      ++valid;
+      const auto reference = umbriel::effectActionReference(bind);
+      CHECK(!reference || reference->name == "window" || reference->name == "windows");
+    }
+  }
+  // Six, not five: a rejected spelling of a chord leaves its valid spelling bound, as every other rejected bind does.
+  CHECK_EQ(valid, size_t{6});
+  CHECK(containsDiagnostic(store, "ignoring keybind 'Mod+f10'"));
+  CHECK(std::ranges::any_of(store.diagnostics(), [&](const auto& diagnostic) {
+    return diagnostic.file == file.path().string() && diagnostic.message.contains("Mod+F4");
+  }));
+}
+
+UMBRIEL_TEST(replacedEffectActionsLeaveNoReferencesOrDiagnostics) {
+  TempConfig file;
+  file.writeInclude(R"(
+[keybinds]
+'Mod+F1' = 'effect-window-set:missing'
+[hot_corners.top_left]
+action = 'effect-cursor-set:missing'
+)");
+  file.write("[include]\nfiles = ['" + file.includeName() + "']\n" + R"(
+[effects.preset.window]
+kind = 'window'
+[keybinds]
+'Mod+F1' = 'effect-window-set:window'
+[hot_corners.top_left]
+enabled = false
+action = 'effect-window-set:window'
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!containsDiagnostic(store, "missing"));
+  CHECK(store.config().hotCorners.corners[0].action.has_value());
+  CHECK(umbriel::effectActionReference(*store.config().hotCorners.corners[0].action)->name == "window");
 }
 
 int main() { return RUN_TESTS(); }

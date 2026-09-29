@@ -60,7 +60,14 @@ namespace umbriel {
     // while the lane still exists.
     [[nodiscard]] double scrollShiftForColumnRemoval(int columnIndex, int viewportPrimary) const;
     void ensureVisible(int columnIndex, int viewportPrimary);
-    void activateColumn(int columnIndex, int viewportPrimary);
+    void activateColumn(int columnIndex, int viewportPrimary, int previousIndex = -1);
+    // Notes that the focused column is the one about to leave. Call before the detach, while the closing view still
+    // names its column.
+    void noteRemovalOfFocusedColumn(int columnIndex);
+    // Re-applies the centering policy to a column whose extent just changed.
+    void reevaluateColumn(int columnIndex, int viewportPrimary);
+    // Re-applies it to the survivor of a removed focused column, against the column that took the removed one's place.
+    void reevaluateAfterRemoval(int columnIndex, int viewportPrimary);
     void snapVisible(int columnIndex, int viewportPrimary);
     [[nodiscard]] double scrollAmountToEnsureVisible(int columnIndex, int viewportPrimary) const;
     void arrange(const wlr_box& usable) override;
@@ -105,10 +112,19 @@ namespace umbriel {
     [[nodiscard]] double centeredScroll(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] double
     targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool center, bool force = false) const;
+    // Which neighbor stands in for the side focus came from. A direction rather than an index: a width change is judged
+    // long after the activation that set it, by which time the strip may have gained or lost columns.
+    enum class FocusSide { None, FromLeft, FromRight };
     [[nodiscard]] bool alwaysCentersFocus() const;
-    [[nodiscard]] bool shouldCenterFocusedColumn(int columnIndex, int viewportPrimary) const;
-    [[nodiscard]] bool shouldCenterOnOverflow(int columnIndex, int viewportPrimary) const;
-    // Shared body of ensureVisible and activateColumn: they differ only in which centering policy applies.
+    // Side a focus move from the focused column to `columnIndex` would come from.
+    [[nodiscard]] FocusSide focusSideFrom(int columnIndex) const;
+    [[nodiscard]] bool shouldCenterFocusedColumn(int columnIndex, int viewportPrimary, FocusSide side) const;
+    [[nodiscard]] bool shouldCenterOnOverflow(int columnIndex, int viewportPrimary, FocusSide side) const;
+    [[nodiscard]] int focusNeighbor(int columnIndex, FocusSide side) const;
+    // Scroll putting `columnIndex` and `neighbor` side by side at the edge `neighbor` sits on, for a pair known to fit.
+    [[nodiscard]] double pairScroll(int columnIndex, int viewportPrimary, int neighbor) const;
+    // Shared body of ensureVisible, activateColumn and reevaluateColumn: they differ only in which centering policy
+    // applies.
     void revealColumn(int columnIndex, int viewportPrimary, bool center);
     [[nodiscard]] bool vertical() const;
     void syncHeightWeights(Column& column);
@@ -120,8 +136,16 @@ namespace umbriel {
     std::vector<Target> m_targets;
     double m_scroll = 0;
     bool m_centeredRest = false;
+    // Whether that rest came from the centering policy rather than from a column-center the user asked for.
+    bool m_policyCenteredRest = false;
     // Column the last activation focused, so CenterFocusedColumn::OnOverflow knows which side focus came from.
     int m_lastFocusedColumn = -1;
+    // Side that activation came from, so a later width change judges the pair the focus move was judged by.
+    FocusSide m_focusSide = FocusSide::None;
+    // Set when the focused column itself left the strip, so the survivor is judged once the removal has settled.
+    bool m_pendingRemovalReevaluate = false;
+    // Column the pending removal took, kept to tell which side the survivor inherits.
+    int m_removedFocusedColumn = -1;
     int m_lastViewportPrimary = 0;
     const LayoutSnapshot* m_pendingViewportSnapshot = nullptr;
     View* m_pendingViewportAnchor = nullptr;

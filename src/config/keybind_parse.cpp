@@ -200,6 +200,38 @@ namespace umbriel {
          ActionArgKind::OptionalOutput},
         {"dpms-on", "[<output>]", "Power on one output, or every output when bare", KeybindAction::DpmsOn,
          ActionArgKind::OptionalOutput},
+        {"effect-border-cycle", "[<pool>][/<window-id>]", "Cycle the current or named border pool",
+         KeybindAction::EffectBorderCycle, ActionArgKind::WindowEffectCycle},
+        {"effect-border-reset", "[<window-id>]", "Clear runtime state and resolve configuration",
+         KeybindAction::EffectBorderReset, ActionArgKind::OptionalWindowId},
+        {"effect-border-set", "<name>[/<window-id>]", "Select a border preset/pool, or suppress with off",
+         KeybindAction::EffectBorderSet, ActionArgKind::WindowEffectSet},
+        {"effect-border-toggle", "[<window-id>]", "Toggle border-slot suppression", KeybindAction::EffectBorderToggle,
+         ActionArgKind::OptionalWindowId},
+        {"effect-cursor-cycle", "[<pool>]", "Cycle the current or named cursor pool", KeybindAction::EffectCursorCycle,
+         ActionArgKind::CursorEffectCycle},
+        {"effect-cursor-reset", "", "Clear runtime state and resolve configuration", KeybindAction::EffectCursorReset,
+         ActionArgKind::None},
+        {"effect-cursor-set", "<name>", "Select a cursor preset/pool, or suppress with off",
+         KeybindAction::EffectCursorSet, ActionArgKind::CursorEffectSet},
+        {"effect-cursor-toggle", "", "Toggle cursor-slot suppression", KeybindAction::EffectCursorToggle,
+         ActionArgKind::None},
+        {"effect-screen-cycle", "[<pool>][/<output>]", "Cycle the current or named screen pool",
+         KeybindAction::EffectScreenCycle, ActionArgKind::ScreenEffectCycle},
+        {"effect-screen-reset", "[<output>]", "Clear runtime state and resolve configuration",
+         KeybindAction::EffectScreenReset, ActionArgKind::OptionalOutput},
+        {"effect-screen-set", "<name>[/<output>]", "Select a screen preset/pool, or suppress with off",
+         KeybindAction::EffectScreenSet, ActionArgKind::ScreenEffectSet},
+        {"effect-screen-toggle", "[<output>]", "Toggle screen-slot suppression", KeybindAction::EffectScreenToggle,
+         ActionArgKind::OptionalOutput},
+        {"effect-window-cycle", "[<pool>][/<window-id>]", "Cycle the current or named window pool",
+         KeybindAction::EffectWindowCycle, ActionArgKind::WindowEffectCycle},
+        {"effect-window-reset", "[<window-id>]", "Clear runtime state and resolve configuration",
+         KeybindAction::EffectWindowReset, ActionArgKind::OptionalWindowId},
+        {"effect-window-set", "<name>[/<window-id>]", "Select a window preset/pool, or suppress with off",
+         KeybindAction::EffectWindowSet, ActionArgKind::WindowEffectSet},
+        {"effect-window-toggle", "[<window-id>]", "Toggle window-slot suppression", KeybindAction::EffectWindowToggle,
+         ActionArgKind::OptionalWindowId},
         {"keyboard-layout-next", "", "Switch one keyboard to its next configured layout",
          KeybindAction::KeyboardLayoutNext},
         {"layout-master-count-decrease", "", "Demote the last master window to the stack",
@@ -559,6 +591,38 @@ namespace umbriel {
         output.payload = std::move(workspace);
         return true;
       }
+      case ActionArgKind::WindowEffectSet:
+      case ActionArgKind::WindowEffectCycle:
+      case ActionArgKind::ScreenEffectSet:
+      case ActionArgKind::ScreenEffectCycle:
+      case ActionArgKind::CursorEffectSet:
+      case ActionArgKind::CursorEffectCycle: {
+        const bool cycle = spec.argKind == ActionArgKind::WindowEffectCycle
+            || spec.argKind == ActionArgKind::ScreenEffectCycle
+            || spec.argKind == ActionArgKind::CursorEffectCycle;
+        const bool cursor =
+            spec.argKind == ActionArgKind::CursorEffectSet || spec.argKind == ActionArgKind::CursorEffectCycle;
+        if (!(cycle && value == spec.name) && !takeActionArg(value, spec, arg)) {
+          break;
+        }
+        const size_t slash = arg.find('/');
+        const std::string_view name = arg.substr(0, slash);
+        const std::string_view target = slash == std::string_view::npos ? std::string_view{} : arg.substr(slash + 1);
+        if ((!cycle && name.empty())
+            || (cycle && name == kEffectOff)
+            || (slash != std::string_view::npos && (cursor || target.empty()))) {
+          break;
+        }
+        output.action = spec.action;
+        if (cursor) {
+          output.payload = EffectCursorArg{.name = std::string(name)};
+        } else if (spec.argKind == ActionArgKind::ScreenEffectSet || spec.argKind == ActionArgKind::ScreenEffectCycle) {
+          output.payload = EffectScreenArg{.name = std::string(name), .output = std::string(target)};
+        } else {
+          output.payload = EffectWindowArg{.name = std::string(name), .id = std::string(target)};
+        }
+        return true;
+      }
       case ActionArgKind::Output:
         if (takeActionArg(value, spec, arg)) {
           output.action = spec.action;
@@ -648,6 +712,52 @@ namespace umbriel {
       }
     }
     return false;
+  }
+
+  std::optional<EffectActionReference> effectActionReference(const Keybind& bind) {
+    std::string_view name;
+    EffectKind kind = EffectKind::Window;
+    bool poolRequired = false;
+    switch (bind.action) {
+    case KeybindAction::EffectWindowSet:
+    case KeybindAction::EffectWindowCycle:
+      if (const auto* arg = payloadIf<EffectWindowArg>(bind)) {
+        name = arg->name;
+      }
+      kind = EffectKind::Window;
+      poolRequired = bind.action == KeybindAction::EffectWindowCycle;
+      break;
+    case KeybindAction::EffectBorderSet:
+    case KeybindAction::EffectBorderCycle:
+      if (const auto* arg = payloadIf<EffectWindowArg>(bind)) {
+        name = arg->name;
+      }
+      kind = EffectKind::Border;
+      poolRequired = bind.action == KeybindAction::EffectBorderCycle;
+      break;
+    case KeybindAction::EffectScreenSet:
+    case KeybindAction::EffectScreenCycle:
+      if (const auto* arg = payloadIf<EffectScreenArg>(bind)) {
+        name = arg->name;
+      }
+      kind = EffectKind::Screen;
+      poolRequired = bind.action == KeybindAction::EffectScreenCycle;
+      break;
+    case KeybindAction::EffectCursorSet:
+    case KeybindAction::EffectCursorCycle:
+      if (const auto* arg = payloadIf<EffectCursorArg>(bind)) {
+        name = arg->name;
+      }
+      kind = EffectKind::Cursor;
+      poolRequired = bind.action == KeybindAction::EffectCursorCycle;
+      break;
+    default:
+      return std::nullopt;
+    }
+    if (name.empty() || name == kEffectOff) {
+      return std::nullopt;
+    }
+    return EffectActionReference{.name = name, .kind = kind, .poolRequired = poolRequired};
   }
 
   std::vector<Keybind> defaultKeybinds() {

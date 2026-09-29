@@ -70,6 +70,7 @@ if [[ $recovered_again != true ]]; then
   exit 1
 fi
 
+"$UMBRIEL" settle > /dev/null
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/recovery.png"
 "$UMBRIEL" clock-freeze
 "$UMBRIEL_UNMAP_CLIENT" recovery-fade 600 400 > "$UMBRIEL_RUNTIME_DIR/recovery-fade.log" 2>&1 &
@@ -111,3 +112,108 @@ if [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "GPU context lost, recreat
 fi
 
 echo "renderer loss unwound, recreated the renderer, drew another frame, and rebound effects"
+
+# recovery-runtime: suppressed IPC-only preset/pool roots (including the
+# border overlay) survive renderer replacement without changing a cached pick.
+cat > "$UMBRIEL_RUNTIME_DIR/recovery-border.glsl" <<'GLSL'
+vec4 border(vec2 uv) { return vec4(0.0, 1.0, 0.0, 1.0); }
+GLSL
+cat > "$UMBRIEL_RUNTIME_DIR/recovery-overlay.glsl" <<'GLSL'
+vec4 window(vec2 uv) { return vec4(1.0, 0.0, 0.0, 1.0); }
+GLSL
+cat > "$UMBRIEL_RUNTIME_DIR/recovery-screen.glsl" <<'GLSL'
+vec4 screen(vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
+GLSL
+cat >> "$UMBRIEL_CONFIG" <<'EOF_CONFIG'
+[effects]
+in_capture = true
+[effects.preset.recovery_border_z]
+kind = "border"
+shader = "recovery-border.glsl"
+overlay = "recovery_overlay"
+[effects.preset.recovery_border_a]
+kind = "border"
+shader = "recovery-border.glsl"
+[effects.preset.recovery_overlay]
+kind = "window"
+shader = "recovery-overlay.glsl"
+[effects.preset.recovery_screen]
+kind = "screen"
+shader = "recovery-screen.glsl"
+[effects.pool.recovery_pool]
+kind = "border"
+choose = ["recovery_border_z", "recovery_border_a"]
+selection = "round_robin"
+EOF_CONFIG
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg "effect-border-set:recovery_pool/$id" > /dev/null
+"$UMBRIEL" msg "effect-border-toggle:$id" > /dev/null
+"$UMBRIEL" msg effect-screen-set:recovery_screen > /dev/null
+"$UMBRIEL" msg effect-screen-toggle > /dev/null
+recovery_slot=$("$UMBRIEL" windows --json | jq -c --arg id "$id" '.[] | select(.id == $id) | .border_effect')
+"$UMBRIEL" renderer-recover > /dev/null
+for _ in $(seq 100); do
+  [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "renderer recreated") -ge 3 ]] && break
+  sleep 0.02
+done
+"$UMBRIEL" settle > /dev/null
+if [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "renderer recreated") -ne 3 ]]; then
+  echo "recovery-runtime: third recovery did not finish"
+  exit 1
+fi
+recovered_slot=$("$UMBRIEL" windows --json | jq -c --arg id "$id" '.[] | select(.id == $id) | .border_effect')
+if [[ $recovery_slot != "$recovered_slot" ]] || ! jq -e '.name == "recovery_border_z" and .pool == "recovery_pool" and .source == "runtime" and .suppressed' <<< "$recovered_slot" > /dev/null; then
+  echo "recovery-runtime-slot: recovery changed a suppressed selection: $recovery_slot -> $recovered_slot"
+  exit 1
+fi
+"$UMBRIEL" effects --json | jq -e '[.presets[] | select(.name | startswith("recovery_")) | .state] == ["compiled", "compiled", "compiled", "compiled"]' > /dev/null || { echo "recovery-runtime-prepared"; exit 1; }
+"$UMBRIEL" msg "effect-border-toggle:$id" > /dev/null
+"$UMBRIEL" settle > /dev/null
+recovery_window=$("$UMBRIEL" windows --json | jq -c --arg id "$id" '.[] | select(.id == $id)')
+x=$(jq -r '.x + (.w / 2 | floor)' <<< "$recovery_window")
+y=$(jq -r '.y + (.h / 2 | floor)' <<< "$recovery_window")
+grim "$IMAGE"
+read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$x" "$y")
+if (( r < 240 || g > 15 || b > 15 )); then
+  echo "recovery-overlay-pixel: unsuppressed overlay did not render after recovery: $r $g $b"
+  exit 1
+fi
+"$UMBRIEL" msg effect-screen-toggle > /dev/null
+"$UMBRIEL" settle > /dev/null
+grim "$IMAGE"
+read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel 20 20)
+if (( b < 240 || r > 15 || g > 15 )); then
+  echo "recovery-screen-pixel: unsuppressed IPC preset did not render after recovery: $r $g $b"
+  exit 1
+fi
+"$UMBRIEL" windows --json | jq -e --arg id "$id" '.[] | select(.id == $id) | .border_effect | .name == "recovery_border_z" and (.suppressed | not)' > /dev/null || { echo "recovery-runtime-no-pick"; exit 1; }
+
+# Active bindings must also recover while animation time is frozen. No action
+# after recovery may be needed to repair either the border overlay or window slot.
+"$UMBRIEL" msg effect-screen-reset > /dev/null
+"$UMBRIEL" renderer-recover > /dev/null
+for _ in $(seq 100); do
+  [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "renderer recreated") -ge 4 ]] && break
+  sleep 0.02
+done
+"$UMBRIEL" settle > /dev/null
+grim "$IMAGE"
+read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$x" "$y")
+if (( r < 240 || g > 15 || b > 15 )); then
+  echo "recovery-active-border: active cached overlay did not rebind with frozen time: $r $g $b"
+  exit 1
+fi
+"$UMBRIEL" msg "effect-border-reset:$id" > /dev/null
+"$UMBRIEL" msg "effect-window-set:recovery_overlay/$id" > /dev/null
+"$UMBRIEL" renderer-recover > /dev/null
+for _ in $(seq 100); do
+  [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "renderer recreated") -ge 5 ]] && break
+  sleep 0.02
+done
+"$UMBRIEL" settle > /dev/null
+grim "$IMAGE"
+read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$x" "$y")
+if (( r < 240 || g > 15 || b > 15 )); then
+  echo "recovery-active-window: active cached window effect did not rebind with frozen time: $r $g $b"
+  exit 1
+fi

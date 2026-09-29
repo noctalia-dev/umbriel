@@ -15,6 +15,11 @@ namespace umbriel {
   class Section;
 
   enum class EffectKind : std::uint8_t { Animation, Border, Window, Screen, Cursor };
+  enum class EffectSelectionPolicy : std::uint8_t { UnusedFirst, RoundRobin, Random };
+  enum class EffectReferenceConstraint : std::uint8_t { PresetOnly, PresetOrPool, PoolRequired };
+
+  [[nodiscard]] std::optional<EffectSelectionPolicy> parseEffectSelectionPolicy(std::string_view text);
+  [[nodiscard]] std::string_view effectSelectionPolicyName(EffectSelectionPolicy policy);
 
   // Stable inner-to-outer composition order for effects sharing a target. Values equal the FX_SLOT_* indices.
   enum class AnimationEvent : unsigned {
@@ -84,8 +89,17 @@ namespace umbriel {
     bool operator==(const EffectPreset&) const = default;
   };
 
+  struct EffectPool {
+    std::string name;
+    EffectKind kind = EffectKind::Border;
+    std::vector<std::string> members;
+    EffectSelectionPolicy selection = EffectSelectionPolicy::UnusedFirst;
+    bool operator==(const EffectPool&) const = default;
+  };
+
   struct Effects {
     std::vector<EffectPreset> presets;
+    std::vector<EffectPool> pools;
     std::string border; // "" = off
     std::string window;
     std::string screen;
@@ -96,9 +110,12 @@ namespace umbriel {
   };
 
   [[nodiscard]] const EffectPreset* findEffectPreset(const Effects& effects, std::string_view name);
-  // "" and, when allowOff, "off" are valid; otherwise the preset must exist with
-  // `kind`. Returns the diagnostic text on failure.
-  [[nodiscard]] std::optional<std::string>
-  effectReferenceError(const Effects& effects, std::string_view name, EffectKind kind, bool allowOff);
+  [[nodiscard]] const EffectPool* findEffectPool(const Effects& effects, std::string_view name);
+  // Empty and, when allowOff, "off" are valid; other references must satisfy kind and constraint.
+  // Returns the diagnostic text on failure.
+  [[nodiscard]] std::optional<std::string> effectReferenceError(
+      const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
+      EffectReferenceConstraint constraint = EffectReferenceConstraint::PresetOnly
+  );
 
 } // namespace umbriel

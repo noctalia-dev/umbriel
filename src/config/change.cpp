@@ -67,6 +67,12 @@ namespace umbriel {
       return lhs.screenEffect == rhs.screenEffect;
     }
 
+    bool selectsScreenEffect(const Config& settings) {
+      return std::ranges::any_of(settings.outputs, [](const OutputRule& rule) {
+        return rule.screenEffect.has_value();
+      });
+    }
+
     bool sameAnimationEffects(const Config::Animation& before, const Config::Animation& after) {
       // Overview is the last event.
       for (unsigned slot = 0; slot <= static_cast<unsigned>(AnimationEvent::Overview); ++slot) {
@@ -166,6 +172,26 @@ namespace umbriel {
 
   } // namespace
 
+  std::vector<std::string> configuredEffectActionRoots(const Config& config) {
+    std::vector<std::string> roots;
+    const auto add = [&roots](const Keybind& bind) {
+      if (const auto reference = effectActionReference(bind)) {
+        roots.emplace_back(reference->name);
+      }
+    };
+    for (const auto& bind : config.keybinds) {
+      add(bind);
+    }
+    for (const auto& corner : config.hotCorners.corners) {
+      if (corner.enabled && corner.action) {
+        add(*corner.action);
+      }
+    }
+    std::ranges::sort(roots);
+    roots.erase(std::ranges::unique(roots).begin(), roots.end());
+    return roots;
+  }
+
   ConfigEffects ConfigEffects::between(const Config& before, const Config& after) {
     // A new descriptor rule can override an existing connector rule for a live
     // output. Without runtime identities here, a name-set change must
@@ -187,6 +213,8 @@ namespace umbriel {
     const bool focusDim = before.animation.enabled != after.animation.enabled
         || before.animation.dimUnfocused != after.animation.dimUnfocused;
     const bool effectsChanged = before.effects != after.effects
+        || configuredEffectActionRoots(before) != configuredEffectActionRoots(after)
+        || (outputNamesChanged && (selectsScreenEffect(before) || selectsScreenEffect(after)))
         || outputProjectionChanged(before, after, sameOutputScreenEffect)
         || !sameAnimationEffects(before.animation, after.animation)
         || (before.windowRules != after.windowRules

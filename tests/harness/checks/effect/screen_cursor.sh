@@ -191,3 +191,150 @@ before=$(frames HEADLESS-1)
 sleep 0.3 # real time: the display keeps requesting effect-only frames while captures go plain
 (( $(frames HEADLESS-1) > before )) || { echo "with in_capture = false the display stopped requesting effect-only frames"; exit 1; }
 echo "screen and cursor effects, the per-output override, radius bound, pointer tracking, frame gating, static eligibility, lock detachment, and capture policy verified"
+
+# Configured pools resolve before binding: two screen owners share allocations,
+# while cursor state and its holding remain singular across both outputs.
+cat > "$UMBRIEL_RUNTIME_DIR/screen-red.glsl" <<'GLSL'
+vec4 screen(vec2 uv) { return vec4(1.0, 0.0, 0.0, 1.0); }
+GLSL
+cat > "$UMBRIEL_RUNTIME_DIR/cursor-blue.glsl" <<'GLSL'
+vec4 cursor(vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
+GLSL
+sed -i 's/^screen = "invert"$/screen = "screens"/; s/^cursor = "glow"$/cursor = "cursors"/; s/^screen_effect = "off"$/screen_effect = "screens"/; s/^in_capture = false$/in_capture = true/' "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'TOML'
+[effects.preset.screen-red]
+kind = "screen"
+shader = "screen-red.glsl"
+[effects.preset.cursor-blue]
+kind = "cursor"
+shader = "cursor-blue.glsl"
+radius = 40
+[effects.pool.screens]
+kind = "screen"
+choose = ["invert", "screen-red"]
+[effects.pool.cursors]
+kind = "cursor"
+choose = ["glow", "cursor-blue"]
+TOML
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" clock-freeze > /dev/null
+python3 - <<'PY'
+import json
+import os
+import subprocess
+
+umbriel = os.environ["UMBRIEL"]
+image = os.path.join(os.environ["UMBRIEL_RUNTIME_DIR"], "screen-cursor-pools.png")
+
+def run(*args):
+    return subprocess.check_output([umbriel, *args], text=True, timeout=10)
+
+def action(name, argument=None):
+    run("msg", name if argument is None else f"{name}:{argument}")
+
+def state():
+    return json.loads(run("effects", "--json"))
+
+def screen(name):
+    return next(owner["slots"]["screen"] for owner in state()["owners"] if owner.get("name") == name)
+
+def expect(label, actual, expected):
+    if actual != expected:
+        raise SystemExit(f"{label}: got {actual!r}, expected {expected!r}")
+
+def selected(label, actual, name, pool, source="runtime", suppressed=False):
+    expect(label, actual, dict(name=name, pool=pool, source=source, suppressed=suppressed))
+
+def holds(label, name, expected):
+    pool = next(pool for pool in state()["pools"] if pool["name"] == name)
+    expect(label, [member["held"] for member in pool["members"]], expected)
+
+def pixel(label, output, color, x=900, y=600):
+    run("settle")
+    subprocess.run(["grim", "-s", "1", "-o", output, image], check=True, timeout=10)
+    values = subprocess.check_output([os.environ["UMBRIEL_PIXEL_PROBE"], image, "pixel", str(x), str(y)], text=True)
+    rgb = tuple(map(int, values.split()))
+    target = {"red": (255, 0, 0), "green": (0, 255, 0), "blue": (0, 0, 255),
+              "white": (255, 255, 255), "black": (0, 0, 0)}[color]
+    if any(abs(value - wanted) > 20 for value, wanted in zip(rgb, target)):
+        raise SystemExit(f"{label}: pixel {rgb}, expected {color}")
+
+def move(x, y):
+    subprocess.run([os.environ["UMBRIEL_POINTER_CLIENT"], "2560", "720", "move", str(x), str(y)],
+                   check=True, stdout=subprocess.DEVNULL, timeout=10)
+    run("settle")
+
+selected("configured-screen-one", screen("HEADLESS-1"), "invert", "screens", "default")
+selected("configured-screen-two", screen("HEADLESS-2"), "screen-red", "screens", "rule")
+holds("configured-screen-holdings", "screens", [1, 1])
+selected("configured-cursor-pool", state()["cursor"], "glow", "cursors", "default")
+holds("single-cursor-holding", "cursors", [1, 0])
+pixel("configured-screen-one-pixels", "HEADLESS-1", "white")
+pixel("configured-screen-two-pixels", "HEADLESS-2", "red")
+move(1500, 300)
+pixel("shared-cursor-second-output", "HEADLESS-2", "green", 220, 300)
+holds("cursor-motion-retains-one-holding", "cursors", [1, 0])
+
+# Static changes and removal must repaint even though no effect clock advances.
+action("effect-screen-cycle", "/HEADLESS-1")
+selected("screen-cycle", screen("HEADLESS-1"), "screen-red", "screens")
+pixel("static-screen-cycle-pixels", "HEADLESS-1", "red")
+action("effect-screen-set", "off/HEADLESS-1")
+selected("screen-off-preserves-assignment", screen("HEADLESS-1"), "screen-red", "screens", suppressed=True)
+pixel("static-screen-off-pixels", "HEADLESS-1", "black")
+holds("screen-off-releases-holding", "screens", [0, 1])
+action("effect-screen-toggle", "HEADLESS-1")
+pixel("static-screen-toggle-pixels", "HEADLESS-1", "red")
+action("effect-screen-reset", "HEADLESS-1")
+selected("screen-reset", screen("HEADLESS-1"), "invert", "screens", "default")
+pixel("static-screen-reset-pixels", "HEADLESS-1", "white")
+action("effect-screen-set", "invert/HEADLESS-2")
+selected("explicit-screen-target", screen("HEADLESS-2"), "invert", "")
+pixel("explicit-screen-target-pixels", "HEADLESS-2", "white")
+# A disabled present output retains its runtime assignment and holds its pool.
+action("effect-screen-cycle", "screens/HEADLESS-2")
+action("output-disable", "HEADLESS-2")
+selected("disabled-output-retains-assignment", screen("HEADLESS-2"), "screen-red", "screens")
+holds("disabled-output-holds", "screens", [1, 1])
+action("effect-screen-set", "invert/HEADLESS-2")
+selected("disabled-output-target-set", screen("HEADLESS-2"), "invert", "")
+action("effect-screen-toggle", "HEADLESS-2")
+selected("disabled-output-target-toggle", screen("HEADLESS-2"), "invert", "", suppressed=True)
+action("effect-screen-reset", "HEADLESS-2")
+selected("disabled-output-target-reset", screen("HEADLESS-2"), "screen-red", "screens", "rule")
+holds("disabled-output-reset-holds", "screens", [1, 1])
+action("output-enable", "HEADLESS-2")
+pixel("reenabled-output-pixels", "HEADLESS-2", "red")
+
+action("effect-cursor-cycle")
+selected("cursor-cycle", state()["cursor"], "cursor-blue", "cursors")
+holds("cursor-cycle-single-holding", "cursors", [0, 1])
+move(1500, 300)
+pixel("cursor-cycle-second-output-pixels", "HEADLESS-2", "blue", 220, 300)
+move(300, 300)
+pixel("cursor-cycle-first-output-pixels", "HEADLESS-1", "blue", 300, 300)
+action("effect-cursor-set", "off")
+selected("cursor-off-preserves-assignment", state()["cursor"], "cursor-blue", "cursors", suppressed=True)
+holds("cursor-off-releases-holding", "cursors", [0, 0])
+pixel("static-cursor-off-pixels", "HEADLESS-1", "white", 300, 300)
+action("effect-cursor-toggle")
+pixel("static-cursor-toggle-pixels", "HEADLESS-1", "blue", 300, 300)
+action("effect-cursor-reset")
+selected("cursor-reset", state()["cursor"], "glow", "cursors", "default")
+pixel("cursor-reset-pixels", "HEADLESS-1", "green", 300, 300)
+action("effect-cursor-set", "cursor-blue")
+selected("plain-cursor-runtime", state()["cursor"], "cursor-blue", "")
+holds("plain-cursor-no-pool-holding", "cursors", [0, 0])
+pixel("plain-cursor-pixels", "HEADLESS-1", "blue", 300, 300)
+
+# Inspecting owners never changes assignments, and a failed explicit target is
+# rejected before altering the shared cursor or any screen state.
+before = state()
+expect("screen-cursor-inspection-purity", state(), before)
+result = subprocess.run([umbriel, "msg", "effect-screen-set:invert/unknown-output"],
+                        capture_output=True, text=True, timeout=10)
+if result.returncode == 0 or "unknown output" not in result.stderr:
+    raise SystemExit(f"invalid-screen-target: {result.returncode}, {result.stderr}")
+expect("invalid-screen-target-atomic", state(), before)
+print("configured screen pools, one cursor owner, targeted actions, static repaint and disabled-output holdings verified")
+PY

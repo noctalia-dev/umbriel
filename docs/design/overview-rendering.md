@@ -103,6 +103,12 @@ windows. These values scale with the card. Every surface of a card rounds
 against the card's content box, the rule live windows use, so a client that
 draws its corners from a subsurface keeps them rounded in the thumbnail.
 
+Persistent border and window shaders, including inner border overlays, receive
+dimensions and corner radii before overview zoom. Their pixel-sized details and
+border light spread therefore shrink with the card. `umbriel_scale` includes
+both output scale and overview zoom, keeping rounded masks one buffer pixel
+soft. Close snapshots retain the card's effect scale.
+
 Each output's overview tree carries a `wlr_scene_tree_set_clip` of that output's
 logical bounds, the same primitive windows use. It is the only clip a card is
 subject to: previews step along the output's workspace axis and a strip pushes
@@ -196,6 +202,9 @@ The relevant checks are:
 - [`tests/harness/checks/overview/focus_marker.sh`](../../tests/harness/checks/overview/focus_marker.sh)
   for one live marker across two outputs, following both an output-changing
   keybind and plain pointer motion.
+- [`tests/harness/checks/overview/effect_scale.sh`](../../tests/harness/checks/overview/effect_scale.sh)
+  for border details and inner overlays shrinking with the zoom, including
+  animated zoom, rotated fractional output scale, and close snapshots.
 - [`tests/harness/checks/overview/horizontal_overflow.sh`](../../tests/harness/checks/overview/horizontal_overflow.sh)
   for cards extending past the scaled workspace preview on either axis while
   staying inside the output.

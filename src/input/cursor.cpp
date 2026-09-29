@@ -1043,7 +1043,7 @@ namespace umbriel {
       if (auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
         if (grab->workspace != nullptr) {
           if (grab->workspace->focusedView() == grab->view) {
-            grab->workspace->ensureFocusedVisible();
+            grab->workspace->reevaluateFocusedColumn();
           }
           grab->workspace->markArrange(true);
         }

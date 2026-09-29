@@ -1828,6 +1828,90 @@ namespace umbriel {
       return scratchpad != nullptr && scratchpad->focusNext(*name);
     }
 
+    template <EffectKind Kind, EffectSlotAction Action>
+    bool actionEffect(Server& server, const Keybind& bind, std::string* error) {
+      std::string_view name;
+      std::string_view target;
+      if constexpr (Action == EffectSlotAction::Set || Action == EffectSlotAction::Cycle) {
+        if constexpr (Kind == EffectKind::Window || Kind == EffectKind::Border) {
+          const auto* arg = payloadIf<EffectWindowArg>(bind);
+          if (arg == nullptr) {
+            return reject(error, "action carries no window effect selector");
+          }
+          name = arg->name;
+          target = arg->id;
+        } else if constexpr (Kind == EffectKind::Screen) {
+          const auto* arg = payloadIf<EffectScreenArg>(bind);
+          if (arg == nullptr) {
+            return reject(error, "action carries no screen effect selector");
+          }
+          name = arg->name;
+          target = arg->output;
+        } else {
+          const auto* arg = payloadIf<EffectCursorArg>(bind);
+          if (arg == nullptr) {
+            return reject(error, "action carries no cursor effect selector");
+          }
+          name = arg->name;
+        }
+      } else if constexpr (Kind == EffectKind::Window || Kind == EffectKind::Border) {
+        const auto* arg = payloadIf<WindowIdArg>(bind);
+        if (arg == nullptr) {
+          return reject(error, "action carries no window target");
+        }
+        target = arg->id;
+      } else if constexpr (Kind == EffectKind::Screen) {
+        const auto* arg = payloadIf<OutputArg>(bind);
+        if (arg == nullptr) {
+          return reject(error, "action carries no output target");
+        }
+        target = arg->output;
+      } else if (!std::holds_alternative<std::monostate>(bind.payload)) {
+        return reject(error, "cursor action does not accept a target");
+      }
+      EffectSlot* slot = nullptr;
+      View* view = nullptr;
+      Output* output = nullptr;
+      if constexpr (Kind == EffectKind::Window || Kind == EffectKind::Border) {
+        view = target.empty() ? focusedWindow(server) : viewByForeignIdentifier(server, target);
+        if (view == nullptr || !view->mapped()) {
+          return reject(error, target.empty() ? "no focused window" : "unknown window: " + std::string(target));
+        }
+        slot = &view->effectSlot(Kind);
+      } else if constexpr (Kind == EffectKind::Screen) {
+        if (target.empty()) {
+          output = server.outputFromWlr(server.preferredOutput());
+        } else {
+          // Explicit effect targets include disabled outputs, which retain their slots.
+          for (const auto& candidate : server.outputs()) {
+            if (outputNameMatch(candidate->identity(), target) != OutputNameMatch::None) {
+              output = candidate.get();
+              break;
+            }
+          }
+        }
+        if (output == nullptr) {
+          return reject(error, target.empty() ? "no focused output" : "unknown output: " + std::string(target));
+        }
+        slot = &output->screenEffectSlot();
+      } else {
+        slot = &server.cursorEffectSlot();
+      }
+      const EffectSlotActionResult result = server.applyEffectAction(*slot, Kind, Action, name);
+      if (result.error) {
+        return reject(error, *result.error);
+      }
+      if (!result.changed) {
+        return true;
+      }
+      // Preparation rebinds and schedules outputs, including static-effect removal.
+      server.effects().prepare(server.renderer());
+      if (view != nullptr) {
+        view->refreshEffectSelection();
+      }
+      return true;
+    }
+
     constexpr std::array<ActionHandlerFn, static_cast<size_t>(KeybindAction::Count)> kActionHandlers = {
         nullptr,
         &actionSpawn,
@@ -1963,6 +2047,22 @@ namespace umbriel {
         &actionCycleHeight<-1>,
         &actionWindowFocusLast,
         &actionWorkspaceFocusLast,
+        &actionEffect<EffectKind::Window, EffectSlotAction::Set>,
+        &actionEffect<EffectKind::Window, EffectSlotAction::Cycle>,
+        &actionEffect<EffectKind::Window, EffectSlotAction::Toggle>,
+        &actionEffect<EffectKind::Window, EffectSlotAction::Reset>,
+        &actionEffect<EffectKind::Border, EffectSlotAction::Set>,
+        &actionEffect<EffectKind::Border, EffectSlotAction::Cycle>,
+        &actionEffect<EffectKind::Border, EffectSlotAction::Toggle>,
+        &actionEffect<EffectKind::Border, EffectSlotAction::Reset>,
+        &actionEffect<EffectKind::Screen, EffectSlotAction::Set>,
+        &actionEffect<EffectKind::Screen, EffectSlotAction::Cycle>,
+        &actionEffect<EffectKind::Screen, EffectSlotAction::Toggle>,
+        &actionEffect<EffectKind::Screen, EffectSlotAction::Reset>,
+        &actionEffect<EffectKind::Cursor, EffectSlotAction::Set>,
+        &actionEffect<EffectKind::Cursor, EffectSlotAction::Cycle>,
+        &actionEffect<EffectKind::Cursor, EffectSlotAction::Toggle>,
+        &actionEffect<EffectKind::Cursor, EffectSlotAction::Reset>,
     };
 
     consteval bool everyActionHasHandler() {

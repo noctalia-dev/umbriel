@@ -474,6 +474,8 @@ namespace umbriel {
       throw std::runtime_error("renderer or allocator opened an excluded GPU");
     }
 
+    m_cursorEffectSlot.configuredSelector = config().effects.cursor;
+    resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
     m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
     wlr_subcompositor_create(m_display);
@@ -770,6 +772,31 @@ namespace umbriel {
     m_layerSurfaces.clear();
     m_registry.clear();
     m_keyboards.clear();
+    // The backend destroys physical input devices below, after the seat and cursor; detach their watchers first.
+    for (const auto& pointer : m_pointers) {
+      wl_list_remove(&pointer->destroy.link);
+    }
+    m_pointers.clear();
+    for (const auto& touch : m_touchDevices) {
+      wl_list_remove(&touch->destroy.link);
+    }
+    m_touchDevices.clear();
+    for (const auto& pad : m_tabletPads) {
+      wl_list_remove(&pad->destroy.link);
+      wl_list_remove(&pad->button.link);
+      wl_list_remove(&pad->ring.link);
+      wl_list_remove(&pad->strip.link);
+    }
+    m_tabletPads.clear();
+    for (const auto& tablet : m_tabletDevices) {
+      wl_list_remove(&tablet->destroy.link);
+    }
+    m_tabletDevices.clear();
+    for (const auto& entry : m_switchDevices) {
+      wl_list_remove(&entry->destroy.link);
+      wl_list_remove(&entry->toggle.link);
+    }
+    m_switchDevices.clear();
     m_outputs.clear();
     m_inputMethodRelay.reset();
     m_seat.reset();
@@ -1205,6 +1232,11 @@ namespace umbriel {
         m_captured(box), m_canvasX(tree->node.x), m_canvasY(tree->node.y), m_borders(std::move(borders)),
         m_shadow(shadow) {
     m_event = event;
+    const fx_effect_requirements requirements = wlr_scene_node_effect_requirements(&tree->node);
+    m_retainedPersistent = requirements.persistent;
+    m_retainedInPlace = requirements.in_place;
+    m_retainedLight = requirements.light;
+    server.effects().retainRequirements(requirements);
     if (m_shadow.node != nullptr) {
       m_shadowWidth = m_shadow.node->width;
       m_shadowHeight = m_shadow.node->height;
@@ -1264,6 +1296,11 @@ namespace umbriel {
     }
     if (m_tree != nullptr) {
       wlr_scene_node_destroy(&m_tree->node);
+    }
+    if (m_server != nullptr) {
+      m_server->effects().releaseRequirements(
+          {.persistent = m_retainedPersistent, .in_place = m_retainedInPlace, .light = m_retainedLight}
+      );
     }
   }
 
@@ -1547,6 +1584,9 @@ namespace umbriel {
     // A window whose latest configure is still queued, or not yet acknowledged and committed, has not drawn the state
     // the compositor asked for.
     for (const auto& view : m_registry.all()) {
+      if (view->effectSelectionPending()) {
+        return false;
+      }
       if (!view->mapped() || view->xwayland() || view->toplevel() == nullptr) {
         continue;
       }

@@ -384,4 +384,21 @@ UMBRIEL_TEST(degenerateInputsAreSafe) {
   CHECK_EQ(umbriel::balancedColumnHeight(blocks, -3), 10);
 }
 
+UMBRIEL_TEST(effectActionLabelsPreserveSelectorsAndTargets) {
+  for (const auto& [action, label] : std::vector<std::pair<std::string, std::string>>{
+           {"effect-window-cycle:/window-1", "effect-window-cycle: /window-1"},
+           {"effect-border-set:border/window-1", "effect-border-set: border/window…"},
+           {"effect-screen-set:cinema/vendor/panel", "effect-screen-set: cinema/vendor…"},
+           {"effect-cursor-set:halo", "effect-cursor-set: halo"},
+           {"effect-cursor-cycle", "effect-cursor-cycle"}
+       }) {
+    Keybind binding;
+    CHECK(umbriel::parseChord("Mod+e", binding));
+    CHECK(umbriel::parseAction(action, binding));
+    const auto rows = buildCheatsheetRows(std::vector{binding});
+    CHECK_EQ(rows.size(), size_t{1});
+    CHECK_EQ(rows.front().action, label);
+  }
+}
+
 int main() { return RUN_TESTS(); }

@@ -1,5 +1,6 @@
 #include "scene/effect_registry.h"
 
+#include "config/change.h"
 #include "config/config.h"
 #include "core/log.h"
 #include "output/output.h"
@@ -131,7 +132,8 @@ vec4 animation(vec2 uv) {
   }
 
   void EffectRegistry::updateCursorActive() {
-    m_cursorActive = preset(config().effects.cursor, EffectKind::Cursor) != nullptr && !m_ledger.suspended();
+    m_cursorActive =
+        preset(m_server->cursorEffectSlot().effectiveName(), EffectKind::Cursor) != nullptr && !m_ledger.suspended();
   }
 
   void EffectRegistry::setSuspended(bool suspended) {
@@ -168,6 +170,19 @@ vec4 animation(vec2 uv) {
       const auto binding = settings.animation.eventEffect(static_cast<AnimationEvent>(slot));
       if (binding.effect != nullptr && settings.animation.enabled && binding.enabled) {
         add(*binding.effect);
+      }
+    }
+    for (const std::string& name : configuredEffectActionRoots(settings)) {
+      add(name);
+    }
+    for (const std::string& name : m_server->runtimeEffectSelectors()) {
+      add(name);
+    }
+    for (const EffectPool& pool : settings.effects.pools) {
+      if (std::ranges::find(names, pool.name) != names.end()) {
+        for (const std::string& member : pool.members) {
+          add(member);
+        }
       }
     }
     // A referenced border preset pulls its overlay in. Overlays name window presets, which carry none of their own.
@@ -254,6 +269,9 @@ vec4 animation(vec2 uv) {
     }
     syncLightLayer();
     applyOutputEffects();
+    for (const auto& output : m_server->outputs()) {
+      wlr_output_schedule_frame(output->wlr());
+    }
   }
 
   void EffectRegistry::applyOutputEffects() {
@@ -289,16 +307,48 @@ vec4 animation(vec2 uv) {
 
   void EffectRegistry::removeInstance(const void* owner) { m_ledger.remove(owner); }
 
+  void EffectRegistry::retainRequirements(const fx_effect_requirements& requirements) {
+    m_retainedPersistent += requirements.persistent ? 1U : 0U;
+    m_retainedInPlace += requirements.in_place ? 1U : 0U;
+    m_retainedLight += requirements.light ? 1U : 0U;
+    if (requirements.light) {
+      syncLightLayer();
+    }
+  }
+
+  void EffectRegistry::releaseRequirements(const fx_effect_requirements& requirements) {
+    m_retainedPersistent -= requirements.persistent ? 1U : 0U;
+    m_retainedInPlace -= requirements.in_place ? 1U : 0U;
+    m_retainedLight -= requirements.light ? 1U : 0U;
+    if (requirements.light) {
+      syncLightLayer();
+    }
+  }
+
   void EffectRegistry::syncLightLayer() {
     const bool lit = std::ranges::any_of(config().effects.presets, [this](const EffectPreset& entry) {
       return entry.light && preset(entry.name, EffectKind::Border) != nullptr;
     });
-    m_server->setEffectLightLayer(lit);
+    m_server->setEffectLightLayer(lit || m_retainedLight > 0);
   }
 
   fx_effect_shader* EffectRegistry::preset(std::string_view name, EffectKind kind) const {
     const auto entry = m_programs.find(name);
     return entry != m_programs.end() && entry->second.kind == kind ? entry->second.shader.get() : nullptr;
+  }
+
+  std::string_view EffectRegistry::programState(std::string_view name) const {
+    const EffectPreset* configured = presetConfig(name);
+    if (configured == nullptr || configured->inert()) {
+      return "inert";
+    }
+    const auto entry = m_programs.find(name);
+    if (entry == m_programs.end()
+        || entry->second.kind != configured->kind
+        || entry->second.code != configured->shader.code) {
+      return "unreferenced";
+    }
+    return entry->second.shader != nullptr ? "compiled" : "failed";
   }
 
   const EffectPreset* EffectRegistry::presetConfig(std::string_view name) const {

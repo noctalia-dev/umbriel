@@ -13,6 +13,7 @@ namespace umbriel {
 
   struct IpcCommands {
     static nlohmann::json keyboardLayouts(Server& server, std::string_view arg);
+    static nlohmann::json effects(Server& server, std::string_view arg);
     static nlohmann::json windows(Server& server, std::string_view arg);
     static nlohmann::json workspaces(Server& server, std::string_view arg);
     static nlohmann::json submap(Server& server, std::string_view arg);

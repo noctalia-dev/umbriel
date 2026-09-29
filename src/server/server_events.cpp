@@ -582,6 +582,9 @@ namespace umbriel {
         }
       }
     }
+    if (effects.effects) {
+      reconcileEffectSelections();
+    }
     if (effects.animation || effects.effects) {
       effectRegistry().prepare(m_renderer);
     }
@@ -691,13 +694,9 @@ namespace umbriel {
       m_cursor->cancelStaleTiledResize();
     }
     if (effects.viewChrome) {
-      for (const auto& view : m_registry.all()) {
-        if (view->mapped()) {
-          view->refreshConfigChrome();
-        }
+      for (View* view : sortedEffectViews()) {
+        view->refreshConfigChrome();
       }
-      // The view refresh cleared every focus ring; put the active one back.
-      refocus();
       // Screen and cursor presets take their palette from [colors] too.
       m_effects.applyOutputEffects();
       markDirty(Dirty::Backdrop);
@@ -706,10 +705,8 @@ namespace umbriel {
       }
     }
     if (effects.effects && !effects.viewChrome) {
-      for (const auto& view : m_registry.all()) {
-        if (view->mapped()) {
-          view->applyDynamicRules();
-        }
+      for (View* view : sortedEffectViews()) {
+        view->applyDynamicRules();
       }
     }
     if (effects.animation && m_scratchpadManager != nullptr) {
@@ -853,6 +850,16 @@ namespace umbriel {
     m_renderer = newRenderer;
     m_allocator = newAllocator;
     effectRegistry().prepare(m_renderer);
+    // Rebind existing caches before the old renderer invalidates its programs.
+    // A frozen clock may deduplicate every subsequent animation tick.
+    for (const auto& view : m_registry.all()) {
+      if (view->mapped()) {
+        view->syncAnimationEffects();
+      }
+    }
+    if (m_overview != nullptr) {
+      m_overview->refreshEffectBindings();
+    }
 
     // Point the compositor at the new renderer so clients' shm/dma-buf textures get
     // re-imported on next attach.
@@ -2084,6 +2091,7 @@ namespace umbriel {
   }
 
   void Server::removeOutput(Output* output) {
+    const bool hadRuntimeEffect = output->screenEffectSlot().runtimeSelector.has_value();
     m_overview->onOutputRemoved(output);
     m_gestures->cancelForOutput(output);
     if (!m_cursor->isPassthrough()) {
@@ -2135,6 +2143,9 @@ namespace umbriel {
       m_sessionLock->forgetOutput(output->wlr());
     }
     std::erase_if(m_outputs, [output](const std::unique_ptr<Output>& entry) { return entry.get() == output; });
+    if (hadRuntimeEffect && !m_stopping) {
+      m_effects.prepare(m_renderer);
+    }
     markDirty(Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
     if (m_sessionLocked) {
       updateLockBlank();

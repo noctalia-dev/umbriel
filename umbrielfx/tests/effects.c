@@ -419,6 +419,9 @@ static bool test_persistent_scene(struct fixture *fixture) {
 	bool ok = check(green != NULL, "window program compiles");
 	struct fx_animation_parameters parameters = { .progress = 1, .linear_progress = 1, .direction = 1 };
 	wlr_scene_node_set_animation(&effect->node, FX_SLOT_WINDOW, green, &parameters);
+	struct fx_effect_requirements requirements = wlr_scene_node_effect_requirements(&scene->tree.node);
+	ok &= check(requirements.persistent && requirements.in_place && !requirements.light,
+		"subtree requirements include the bound window program");
 	// Only the effect's own subtree stops culling: the bystander still hides
 	// the background beneath it.
 	ok &= check(pixman_region32_contains_point(&background->node.visible, 3, 3, NULL),
@@ -451,6 +454,9 @@ static bool test_persistent_scene(struct fixture *fixture) {
 	// render must not re-add offscreen buffers (a second render succeeds and the
 	// output's fx_offscreen_buffers hold no effect buffers).
 	wlr_scene_node_set_animation(&effect->node, FX_SLOT_WINDOW, NULL, NULL);
+	requirements = wlr_scene_node_effect_requirements(&scene->tree.node);
+	ok &= check(!requirements.persistent && !requirements.in_place && !requirements.light,
+		"removing the final bound program clears subtree requirements");
 	struct wlr_output_state again;
 	struct wlr_buffer *plain = fixture_render_scene(fixture, scene_output, &again);
 	ok &= check(plain != NULL, "scene renders after the slot is removed");
@@ -1155,6 +1161,12 @@ static bool test_border_light_lifecycle(struct fixture *fixture) {
 	struct wlr_scene_border *snapshot = wlr_scene_border_create(window, white, white);
 	wlr_scene_border_set_geometry(snapshot, 8, 8, 2, 0, hole, (struct fx_corner_radii){0}, (struct fx_corner_radii){0});
 	wlr_scene_node_copy_animations_for_snapshot(&snapshot->node, &frame->node);
+	const struct fx_effect_requirements live_requirements = wlr_scene_node_effect_requirements(&frame->node);
+	const struct fx_effect_requirements copied_requirements = wlr_scene_node_effect_requirements(&snapshot->node);
+	ok &= check(live_requirements.persistent && live_requirements.light && !live_requirements.in_place,
+		"live border requirements retain light");
+	ok &= check(copied_requirements.persistent && !copied_requirements.light && !copied_requirements.in_place,
+		"snapshot requirements describe the frozen copy without adding light");
 	ok &= check(light_proxy(layer) != NULL, "a snapshot adds no light");
 	wlr_scene_node_destroy(&snapshot->node);
 

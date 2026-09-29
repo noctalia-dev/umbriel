@@ -89,6 +89,8 @@ namespace umbriel {
     void onWorkspaceArranged(Workspace* workspace);
     void onWorkspaceInventoryChanged(WorkspaceGroup* group);
     void onFocusChanged();
+    // Rebind cached selections after renderer replacement without advancing policy.
+    void refreshEffectBindings();
     // Coalesce card geometry refreshes from view resize animation ticks. Views
     // advance before overlays, so the overview consumes the latest presented
     // size once per frame regardless of how many views resized together.

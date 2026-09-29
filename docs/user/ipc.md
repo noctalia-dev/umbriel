@@ -19,6 +19,7 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 
 | Request | CLI |
 | --- | --- |
+| `{"cmd":"effects"}` | `umbriel effects --json` |
 | `{"cmd":"windows"}` | `umbriel windows --json` |
 | `{"cmd":"workspaces"}` | `umbriel workspaces --json` |
 | `{"cmd":"submap"}` | `umbriel submap --json` |
@@ -33,6 +34,35 @@ Workspace entries include a stable ID, display name, index, output, layout,
 occupancy, and active and focused states. Use the `named` boolean instead of
 guessing from the display name; an explicitly named workspace may still be
 called `"2"`.
+
+## Effect inspection
+
+`umbriel effects` prints tables; `--json` exposes `presets`, `pools`, `cursor`,
+and `owners`. Presets and pools keep their configuration declaration order,
+including includes. Each preset has `name`, `kind`, and current-source `state`:
+`inert` means missing or empty source, `unreferenced` means no registry entry,
+`failed` means compilation failed, and `compiled` means a usable program.
+Border presets also report their configured `overlay`.
+
+Pools have `name`, `kind`, `policy`, and ordered `members`, each with `name`
+and `held`. Holds count unsuppressed mapped windows, present outputs (including
+disabled outputs), and the session cursor, independently of visibility or focus.
+Owners list mapped windows, sorted by stable `id`, followed by present outputs,
+sorted by `name`. Window owners have `type`, `id`, `app_id`, and `slots` with
+`border` and `window`; output owners have `type`, `name`, and `slots.screen`.
+The single cursor appears separately in `cursor`.
+
+Each slot reports `name` (the underlying selected preset), `pool` (empty for a
+plain preset), `source` (`default`, `rule`, or `runtime`), and `suppressed`.
+Border slots also have `overlay`. An empty pool retains its pool name with an
+empty selected name. Suppressed and failed selections retain their names.
+`windows --json` and `subscribe windows` expose these same slot shapes as
+`border_effect` and `window_effect`; the window text table is unchanged.
+
+Inspection never picks, compiles, or binds an effect. `outputs --json` remains
+the Wayland output-management query; use `effects` for screen selections.
+See [Effects](effects.md) and [Actions](actions.md) for configuration and runtime
+changes.
 
 ## Event stream
 
@@ -54,7 +84,7 @@ snapshot whenever that family changes:
 | `theme` | Colors and corner radius |
 | `overview` | Overview opened, or started closing |
 | `keyboard_layout` | Active keyboard layout |
-| `windows` | Window identity, geometry, focus, state, workspace, or scratchpad |
+| `windows` | Window identity, geometry, focus, state, workspace, scratchpad, or effect selection |
 | `workspaces` | Inventory, layout, activity, occupancy, output, or focus |
 | `submap` | Active keybind submap |
 | `screencast` | Manual target and focus-following screencast commands |

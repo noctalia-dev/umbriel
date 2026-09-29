@@ -6,6 +6,9 @@
 
 namespace umbriel {
 
+  // Sorted, unique names reached by retained keybinds and enabled hot corners.
+  [[nodiscard]] std::vector<std::string> configuredEffectActionRoots(const Config& config);
+
   // Which source sections a reload altered. Runtime effects are derived
   // separately because one section can invalidate several subsystems.
   struct ConfigChange {

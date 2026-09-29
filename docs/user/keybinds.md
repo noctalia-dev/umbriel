@@ -148,6 +148,14 @@ Available sections are `top_left`, `top_right`, `bottom_left`, and
 | `delay_ms` | `500` | Delay from 0 to 10000 milliseconds. |
 | `action` | unset | Any action accepted by a keybind. |
 
+Named effect `set` and `cycle` arguments are checked against preset/pool kind
+when configuration loads, including submap bindings and disabled hot corners.
+Invalid references reject the binding or clear the corner action with a source
+diagnostic. Only the final retained action is checked after replacements.
+Keybinds and enabled corners prepare all reached pool members and border
+overlays before a trigger; disabled corners contribute no compilation roots.
+See [Effect actions](actions.md) and [Effects](effects.md#runtime-selection).
+
 Hot corners are inactive while the output's focused window is fullscreen.
 
 ## Cheatsheet

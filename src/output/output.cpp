@@ -21,7 +21,6 @@
 #include "server/ipc.h"
 #include "server/server.h"
 #include "server/wine_color_manager.h"
-#include "view/effects.h"
 #include "view/view.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
@@ -42,6 +41,12 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("output");
     constexpr int kFrameRetryDelayMs = 16;
+
+    struct OutputFrameScope {
+      explicit OutputFrameScope(Server& owner) : server(owner) { server.beginOutputFrame(); }
+      ~OutputFrameScope() { server.endOutputFrame(); }
+      Server& server;
+    };
 
   } // namespace
 
@@ -91,7 +96,7 @@ namespace umbriel {
       wlr_output_layout_output* layoutOutput = addToLayout();
       wlr_scene_output_layout_add_output(m_server->sceneLayout(), layoutOutput, m_sceneOutput);
     }
-    // After the layout binding: the cursor slot needs this output's layout position.
+    m_server->resolveOutputEffect(*this);
     applyOutputEffects();
 
     for (uint32_t layer = 0; layer < kLayerCount; ++layer) {
@@ -123,16 +128,17 @@ namespace umbriel {
     const Effects& settings = config().effects;
     // Nothing configured: touch nothing (no addon, no scene calls). The registry's counts are zero too; a bound
     // screen or cursor slot keeps a ledger instance, so it is still detached below.
-    if (settings.presets.empty() && !registry.active()) {
+    if (settings.presets.empty() && !registry.active() && !registry.persistentReferenced()) {
       return;
     }
     wlr_scene_output_set_effect_capture_policy(m_sceneOutput, settings.inCapture);
-    const std::string screenName = resolveScreenEffectName(settings, findOutputRule(config(), identity()));
+    const std::string_view screenName = m_screenEffectSlot.effectiveName();
+    const std::string_view cursorName = m_server->cursorEffectSlot().effectiveName();
     const bool suspended = registry.ledger().suspended();
     fx_effect_shader* screen = suspended ? nullptr : registry.preset(screenName, EffectKind::Screen);
     const EffectPreset* screenPreset = screen != nullptr ? registry.presetConfig(screenName) : nullptr;
-    fx_effect_shader* cursor = suspended ? nullptr : registry.preset(settings.cursor, EffectKind::Cursor);
-    const EffectPreset* cursorPreset = cursor != nullptr ? registry.presetConfig(settings.cursor) : nullptr;
+    fx_effect_shader* cursor = suspended ? nullptr : registry.preset(cursorName, EffectKind::Cursor);
+    const EffectPreset* cursorPreset = cursor != nullptr ? registry.presetConfig(cursorName) : nullptr;
     bool advancing = true;
 #ifdef UMBRIEL_TEST_IPC
     advancing = !m_server->animationClockFrozen();
@@ -1214,6 +1220,7 @@ namespace umbriel {
     if (!outputFrameAllowed(m_server->stopping(), m_server->session())) {
       return;
     }
+    const OutputFrameScope frameScope(*m_server);
     if (m_frameRetryTimer != nullptr) {
       wl_event_source_timer_update(m_frameRetryTimer, 0);
     }

@@ -731,7 +731,8 @@ static void draw_animation_texture(
   glUniform1f(shader->progress, parameters->progress);
   glUniform1f(shader->linear_progress, parameters->linear_progress);
   glUniform1f(shader->direction, parameters->direction);
-  glUniform2f(shader->size, logical_box->width, logical_box->height);
+  const float effect_scale = parameters->scale > 0.0f ? parameters->scale : 1.0f;
+  glUniform2f(shader->size, logical_box->width / effect_scale, logical_box->height / effect_scale);
   glUniform2f(
       shader->expand, logical_box->width > 0 ? (float)expand / logical_box->width : 0.0f,
       logical_box->height > 0 ? (float)expand / logical_box->height : 0.0f
@@ -747,13 +748,17 @@ static void draw_animation_texture(
     hole.floats[3] = logical_box->height > 0 ? (float)border->hole.height / logical_box->height : 0;
     fx_effect_shader_bind_uniform(shader, &hole);
     struct fx_uniform radius = {.name = "umbriel_border_radius", .type = FX_UNIFORM_VEC4, .count = 1};
-    memcpy(radius.floats, border->radius, sizeof(border->radius));
+    for (unsigned i = 0; i < 4; i++) {
+      radius.floats[i] = border->radius[i] / effect_scale;
+    }
     fx_effect_shader_bind_uniform(shader, &radius);
   }
   if (shader->kind == FX_EFFECT_WINDOW || shader->kind == FX_EFFECT_CURSOR) {
     struct fx_uniform corners = {.name = "umbriel_corner_radius", .type = FX_UNIFORM_VEC4, .count = 1};
     if (corner_radius != NULL) {
-      memcpy(corners.floats, corner_radius, 4 * sizeof(*corner_radius));
+      for (unsigned i = 0; i < 4; i++) {
+        corners.floats[i] = corner_radius[i] / effect_scale;
+      }
     }
     fx_effect_shader_bind_uniform(shader, &corners);
   }
@@ -764,7 +769,7 @@ static void draw_animation_texture(
     }
     fx_effect_shader_bind_uniform(shader, &at);
   }
-  glUniform1f(shader->scale, animation_box_scale(box, logical_box));
+  glUniform1f(shader->scale, animation_box_scale(box, logical_box) * effect_scale);
   glUniform4fv(shader->random_seed, 1, parameters->random_seed);
   const struct wlr_fbox unit = {.width = 1, .height = 1};
   float uv_matrix[9], inverse[9], sample_matrix[9];

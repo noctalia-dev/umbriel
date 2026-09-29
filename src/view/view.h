@@ -65,9 +65,13 @@ namespace umbriel {
     // `border`, and `surface`, gated by `gate` and driven by `cardOutput`.
     void syncAnimationEffects(
         wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr, wlr_scene_node* surface = nullptr,
-        const BorderEffectGate* gate = nullptr, Output* cardOutput = nullptr
+        const BorderEffectGate* gate = nullptr, Output* cardOutput = nullptr, float scale = 1.0F
     );
     [[nodiscard]] ViewEffects& effects() { return m_effects; }
+    [[nodiscard]] EffectSlot& effectSlot(EffectKind kind) { return m_effects.slot(kind); }
+    [[nodiscard]] const EffectSlot& effectSlot(EffectKind kind) const { return m_effects.slot(kind); }
+    [[nodiscard]] bool effectSelectionPending() const { return m_effectSelectionIdle != nullptr; }
+    void refreshEffectSelection();
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
@@ -362,6 +366,7 @@ namespace umbriel {
     static void onRequestResize(wl_listener* listener, void* data);
     static void onRequestMaximize(wl_listener* listener, void* data);
     static void onAcceptClientMaximizeRequests(void* data);
+    static void onEffectSelectionIdle(void* data);
     static void onRequestFullscreen(wl_listener* listener, void* data);
     static void onSetParent(wl_listener* listener, void* data);
     static void onSetTitle(wl_listener* listener, void* data);
@@ -674,6 +679,7 @@ namespace umbriel {
     // only through the first root commit after the opening gate.
     bool m_consumeRestoredMaximizeRequest = false;
     wl_event_source* m_acceptClientMaximizeIdle = nullptr;
+    wl_event_source* m_effectSelectionIdle = nullptr;
     // Configure serial whose acknowledgement opens the gate when one was outstanding after the map dispatch.
     std::optional<uint32_t> m_acceptClientMaximizeSerial;
     bool m_xwayland = false;

@@ -685,8 +685,9 @@ namespace umbriel {
 
     View* focused = workspace->focusedView();
     if (focused != nullptr && scrolling->columnOf(focused) == best) {
-      // Snap back / settle: target column already focused.
-      workspace->ensureFocusedVisible();
+      // Settle on the column already focused: no side to derive, since focus lands where it started. The pair of the
+      // last focus move is the one to judge, and a pair that fits keeps the snap.
+      workspace->reevaluateFocusedColumn();
       workspace->markArrange(true);
     } else if (!scrolling->columns()[static_cast<size_t>(best)].views.empty()) {
       View* target = scrolling->columns()[static_cast<size_t>(best)].views.front();

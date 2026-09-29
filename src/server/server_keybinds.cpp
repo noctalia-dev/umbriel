@@ -102,6 +102,22 @@ namespace umbriel {
     return true;
   }
 
+  // An action's reply and the inspection after it see alone rules for its final layout, before the arrange that a
+  // sleeping output may not run for a while. Running once per action keeps intermediate layouts out of the rules.
+  void Server::refreshPendingAloneRules() {
+    for (const auto& output : m_outputs) {
+      WorkspaceGroup* group = output->workspaceGroup();
+      if (group == nullptr) {
+        continue;
+      }
+      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+        if (Workspace* workspace = group->workspaceAt(index); workspace != nullptr && workspace->arrangePending()) {
+          workspace->refreshAloneRuleStates();
+        }
+      }
+    }
+  }
+
   bool Server::executeKeybindAction(const Keybind& bind, std::string* error, bool* cooldownBlocked) {
     if (error != nullptr) {
       error->clear();
@@ -133,6 +149,7 @@ namespace umbriel {
     if (!handled) {
       handled = handler(*this, bind, error);
     }
+    refreshPendingAloneRules();
     if (!submapAfter.has_value()) {
       return handled;
     }

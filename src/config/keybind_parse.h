@@ -3,6 +3,7 @@
 // Keybind vocabulary and the pure text-to-struct parsers over it. Split out of
 // config.h so the parsing can be exercised without loading a config file.
 
+#include "config/effects.h"
 #include "layout/layout.h"
 
 #include <cstddef>
@@ -161,6 +162,22 @@ namespace umbriel {
     WindowCycleSecondaryExtentBack,
     WindowFocusLast,
     WorkspaceFocusLast,
+    EffectWindowSet,
+    EffectWindowCycle,
+    EffectWindowToggle,
+    EffectWindowReset,
+    EffectBorderSet,
+    EffectBorderCycle,
+    EffectBorderToggle,
+    EffectBorderReset,
+    EffectScreenSet,
+    EffectScreenCycle,
+    EffectScreenToggle,
+    EffectScreenReset,
+    EffectCursorSet,
+    EffectCursorCycle,
+    EffectCursorToggle,
+    EffectCursorReset,
     Count,
   };
 
@@ -217,9 +234,24 @@ namespace umbriel {
     bool operator==(const QuitArg&) const = default;
   };
 
+  struct EffectWindowArg {
+    std::string name; // empty = cycle the underlying pool
+    std::string id;   // empty = the focused owner
+    bool operator==(const EffectWindowArg&) const = default;
+  };
+  struct EffectScreenArg {
+    std::string name;   // empty = cycle the underlying pool
+    std::string output; // empty = the preferred output
+    bool operator==(const EffectScreenArg&) const = default;
+  };
+  struct EffectCursorArg {
+    std::string name; // empty = cycle the underlying pool
+    bool operator==(const EffectCursorArg&) const = default;
+  };
+
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
-      LayoutModeArg, QuitArg>;
+      LayoutModeArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -278,7 +310,13 @@ namespace umbriel {
     OptionalWindowId,
     FractionDelta,
     LayoutMode,
-    SkipConfirmation
+    SkipConfirmation,
+    WindowEffectSet,
+    WindowEffectCycle,
+    ScreenEffectSet,
+    ScreenEffectCycle,
+    CursorEffectSet,
+    CursorEffectCycle,
   };
 
   struct ActionSpec {
@@ -308,6 +346,14 @@ namespace umbriel {
   // Numeric workspace selectors are positions; surround a name with double quotes when the name itself contains only
   // digits.
   bool parseAction(std::string_view value, Keybind& output);
+
+  // Named action roots only; suppression and current-pool cycle have no named reference.
+  struct EffectActionReference {
+    std::string_view name;
+    EffectKind kind;
+    bool poolRequired;
+  };
+  [[nodiscard]] std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
 
   std::span<const ActionSpec> actionSpecs();
 

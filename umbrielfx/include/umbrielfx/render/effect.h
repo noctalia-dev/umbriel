@@ -102,6 +102,9 @@ struct fx_animation_parameters {
   // Logical pixels the drawn rectangle grows past the node bounds. Honoured
   // by FX_SLOT_BORDER_EFFECT and FX_SLOT_DRAG only.
   int expand;
+  // Scene logical pixels per effect logical pixel; zero means 1.
+  // Scales shader coordinates, leaving raster and sampling bounds unchanged.
+  float scale;
   unsigned uniform_count;
   struct fx_uniform uniforms[FX_UNIFORMS_MAX];
   // Emission settings for FX_SLOT_BORDER_EFFECT.
@@ -160,6 +163,15 @@ bool wlr_scene_node_set_animation_output_clip(struct wlr_scene_node* node, const
 // Persistent slots copy as they are with their time uniforms frozen; light
 // never copies.
 void wlr_scene_node_copy_animations_for_snapshot(struct wlr_scene_node* destination, struct wlr_scene_node* source);
+
+// Requirements of the exact programs currently bound in a subtree. Read-only;
+// use when retaining a scene copy beyond the registry entries that created it.
+struct fx_effect_requirements {
+  bool persistent;
+  bool in_place;
+  bool light;
+};
+struct fx_effect_requirements wlr_scene_node_effect_requirements(struct wlr_scene_node* node);
 
 // The extents of the enabled leaves under `node` in node-local coordinates: the box a slot on `node` draws over
 // before its expand. False, with an empty box, when nothing under it is drawn.

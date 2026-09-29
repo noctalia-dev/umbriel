@@ -655,6 +655,14 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::Workspace:
       input += ":1";
       break;
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+    case ActionArgKind::CursorEffectSet:
+    case ActionArgKind::CursorEffectCycle:
+      input += ":sample";
+      break;
     case ActionArgKind::Output:
       input += ":DP-1";
       break;
@@ -683,6 +691,18 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::Workspace:
       CHECK(umbriel::payloadIf<umbriel::WorkspaceArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+      CHECK(umbriel::payloadIf<umbriel::EffectWindowArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+      CHECK(umbriel::payloadIf<umbriel::EffectScreenArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::CursorEffectSet:
+    case ActionArgKind::CursorEffectCycle:
+      CHECK(umbriel::payloadIf<umbriel::EffectCursorArg>(bind) != nullptr);
       break;
     case ActionArgKind::Output:
     case ActionArgKind::OptionalOutput:
@@ -743,6 +763,14 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::Workspace:
       input += ":1";
+      break;
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+    case ActionArgKind::CursorEffectSet:
+    case ActionArgKind::CursorEffectCycle:
+      input += ":sample";
       break;
     case ActionArgKind::Output:
       input += ":DP-1";
@@ -855,6 +883,13 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return ":0.5";
     case ActionArgKind::Workspace:
       return ":1";
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+    case ActionArgKind::CursorEffectSet:
+    case ActionArgKind::CursorEffectCycle:
+      return ":sample";
     case ActionArgKind::Output:
       return ":DP-1";
     case ActionArgKind::OptionalOutput:
@@ -884,6 +919,18 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<fraction>";
     case ActionArgKind::Workspace:
       return "<workspace>[/<output>]";
+    case ActionArgKind::WindowEffectSet:
+      return "<name>[/<window-id>]";
+    case ActionArgKind::WindowEffectCycle:
+      return "[<pool>][/<window-id>]";
+    case ActionArgKind::ScreenEffectSet:
+      return "<name>[/<output>]";
+    case ActionArgKind::ScreenEffectCycle:
+      return "[<pool>][/<output>]";
+    case ActionArgKind::CursorEffectSet:
+      return "<name>";
+    case ActionArgKind::CursorEffectCycle:
+      return "[<pool>]";
     case ActionArgKind::Output:
       return "<output>";
     case ActionArgKind::OptionalOutput:
@@ -927,6 +974,93 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     ++swept;
   }
   CHECK(swept > 100);
+}
+
+UMBRIEL_TEST(effectActionsParseTypedTargetsAndFirstSlash) {
+  Keybind bind;
+  for (const std::string kind : {"window", "border"}) {
+    CHECK(parseAction("effect-" + kind + "-set:scanlines/window-1", bind));
+    const auto* selected = umbriel::payloadIf<umbriel::EffectWindowArg>(bind);
+    CHECK(selected != nullptr);
+    CHECK_EQ(selected->name, std::string{"scanlines"});
+    CHECK_EQ(selected->id, std::string{"window-1"});
+    CHECK(parseAction("effect-" + kind + "-cycle:/window-1", bind));
+    selected = umbriel::payloadIf<umbriel::EffectWindowArg>(bind);
+    CHECK(selected->name.empty());
+    CHECK_EQ(selected->id, std::string{"window-1"});
+    CHECK(parseAction("effect-" + kind + "-cycle", bind));
+    CHECK(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name.empty());
+    CHECK(parseAction("effect-" + kind + "-set:off", bind));
+    CHECK_EQ(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name, std::string{"off"});
+    for (const std::string op : {"toggle", "reset"}) {
+      CHECK(parseAction("effect-" + kind + "-" + op + ":window-1", bind));
+      CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"window-1"});
+      CHECK(parseAction("effect-" + kind + "-" + op, bind));
+    }
+  }
+  CHECK(parseAction("effect-screen-set:cinema/vendor/panel", bind));
+  const auto* screen = umbriel::payloadIf<umbriel::EffectScreenArg>(bind);
+  CHECK_EQ(screen->name, std::string{"cinema"});
+  CHECK_EQ(screen->output, std::string{"vendor/panel"});
+  CHECK(parseAction("effect-screen-cycle:/vendor/panel", bind));
+  screen = umbriel::payloadIf<umbriel::EffectScreenArg>(bind);
+  CHECK(screen->name.empty());
+  CHECK_EQ(screen->output, std::string{"vendor/panel"});
+  CHECK(parseAction("effect-screen-toggle:vendor/panel", bind));
+  CHECK_EQ(umbriel::payloadIf<umbriel::OutputArg>(bind)->output, std::string{"vendor/panel"});
+  CHECK(parseAction("effect-screen-reset:vendor/panel", bind));
+  CHECK_EQ(umbriel::payloadIf<umbriel::OutputArg>(bind)->output, std::string{"vendor/panel"});
+  CHECK(parseAction("effect-cursor-set:halo", bind));
+  CHECK_EQ(umbriel::payloadIf<umbriel::EffectCursorArg>(bind)->name, std::string{"halo"});
+  CHECK(parseAction("effect-cursor-cycle", bind));
+  CHECK(umbriel::payloadIf<umbriel::EffectCursorArg>(bind)->name.empty());
+  CHECK(parseAction("effect-cursor-toggle", bind));
+  CHECK(std::holds_alternative<std::monostate>(bind.payload));
+  CHECK(parseAction("effect-cursor-reset", bind));
+  CHECK(std::holds_alternative<std::monostate>(bind.payload));
+}
+
+UMBRIEL_TEST(effectActionsRejectMalformedNamesAndTargets) {
+  Keybind bind;
+  for (const std::string kind : {"window", "border", "screen", "cursor"}) {
+    for (const std::string arg : {"", ":", ":/target", ":name/", ":/"}) {
+      CHECK(!parseAction("effect-" + kind + "-set" + arg, bind));
+    }
+    for (const std::string arg : {":", ":off", ":off/target", ":name/", ":/"}) {
+      CHECK(!parseAction("effect-" + kind + "-cycle" + arg, bind));
+    }
+    CHECK(!parseAction("effect-" + kind + "-toggle:", bind));
+    CHECK(!parseAction("effect-" + kind + "-reset:", bind));
+  }
+  for (const std::string op : {"set", "cycle", "toggle", "reset"}) {
+    CHECK(!parseAction("effect-cursor-" + op + ":name/target", bind));
+    CHECK(!parseAction("effect-cursor-" + op + ":/target", bind));
+  }
+  CHECK(!parseAction("effect-cursor-toggle:name", bind));
+  CHECK(!parseAction("effect-cursor-reset:name", bind));
+}
+
+UMBRIEL_TEST(effectActionReferencesDescribeOnlyNamedRoots) {
+  Keybind bind;
+  for (const auto& [name, kind] : std::array{
+           std::pair{"window", umbriel::EffectKind::Window}, std::pair{"border", umbriel::EffectKind::Border},
+           std::pair{"screen", umbriel::EffectKind::Screen}, std::pair{"cursor", umbriel::EffectKind::Cursor}
+       }) {
+    for (const std::string op : {"set", "cycle"}) {
+      CHECK(parseAction("effect-" + std::string(name) + "-" + op + ":selected", bind));
+      const auto reference = umbriel::effectActionReference(bind);
+      CHECK(reference.has_value());
+      CHECK_EQ(reference->name, std::string_view{"selected"});
+      CHECK(reference->kind == kind);
+      CHECK(reference->poolRequired == (op == "cycle"));
+    }
+    for (const std::string suffix : {"set:off", "cycle", "toggle", "reset"}) {
+      CHECK(parseAction("effect-" + std::string(name) + "-" + suffix, bind));
+      CHECK(!umbriel::effectActionReference(bind));
+    }
+  }
+  CHECK(parseAction("spawn:hello", bind));
+  CHECK(!umbriel::effectActionReference(bind));
 }
 
 int main() { return RUN_TESTS(); }

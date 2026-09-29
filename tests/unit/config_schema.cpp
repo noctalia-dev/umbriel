@@ -224,6 +224,29 @@ UMBRIEL_TEST(listedValuesAreAccepted) {
   CHECK(tried > 50);
 }
 
+UMBRIEL_TEST(effectPoolSchemaReportsMembersPoliciesAndRequiredKind) {
+  const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
+  bool kind = false;
+  bool choose = false;
+  bool selection = false;
+  for (const auto& key : descriptions) {
+    if (key.path == "effects.pool.<name>.kind") {
+      kind = true;
+      CHECK(key.values == std::vector<std::string_view>({"border", "window", "screen", "cursor"}));
+      CHECK(key.defaultValue.is_null());
+    } else if (key.path == "effects.pool.<name>.choose") {
+      choose = true;
+      CHECK_EQ(key.type, std::string_view("string_array"));
+      CHECK(key.defaultValue.is_null());
+    } else if (key.path == "effects.pool.<name>.selection") {
+      selection = true;
+      CHECK(key.values == std::vector<std::string_view>({"unused_first", "round_robin", "random"}));
+      CHECK(key.defaultValue == "unused_first");
+    }
+  }
+  CHECK(kind && choose && selection);
+}
+
 int main() {
   // The documents are partial configs; their unrelated complaints are filtered, not worth printing.
   setConsoleLogging(false);

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "config/config.h"
 #include "config/effects.h"
+#include "scene/effect_selection.h"
 
 #include <string>
 #include <vector>
@@ -13,15 +13,6 @@ extern "C" {
 struct wlr_scene_node;
 
 namespace umbriel {
-
-  // Preset names selected for one window; empty when the selector is off.
-  struct ViewEffectNames {
-    std::string border;
-    std::string window;
-  };
-  [[nodiscard]] ViewEffectNames resolveViewEffectNames(const Effects& effects, const ResolvedWindowRule& rule);
-  // The screen preset for an output: its `screen_effect` replaces the default; empty when off.
-  [[nodiscard]] std::string resolveScreenEffectName(const Effects& effects, const OutputRule* rule);
 
   struct BorderEffectGate {
     bool focused = false;
@@ -39,7 +30,12 @@ namespace umbriel {
   // window and its overview card track visibility and output separately.
   class ViewEffects {
   public:
-    void resolve(const Effects& effects, const ResolvedWindowRule& rule);
+    void syncNames(const Effects& effects);
+    void resetSlots();
+    [[nodiscard]] EffectSlot& slot(EffectKind kind) { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
+    [[nodiscard]] const EffectSlot& slot(EffectKind kind) const {
+      return kind == EffectKind::Border ? m_borderSlot : m_windowSlot;
+    }
     [[nodiscard]] const std::string& borderName() const { return m_border; }
     [[nodiscard]] const std::string& windowName() const { return m_window; }
     // Preset padding, 0 when no border preset with a compiled program is selected.
@@ -49,6 +45,7 @@ namespace umbriel {
       wlr_scene_node* border = nullptr;
       wlr_scene_node* captureSurface = nullptr; // the isolated capture scene's surface tree node
       BorderEffectGate gate;
+      float scale = 1.0F;
       float seconds = 0.0F; // the output's effect time; only read when an effect is configured
       bool clockAdvancing = true;
       const void* output = nullptr; // the output driving this instance's frames
@@ -70,6 +67,8 @@ namespace umbriel {
     void untrack(const void* owner); // remove from the ledger and forget it; null is a no-op
     void
     applyWindowSlots(const ApplyInput& input, const EffectPreset* border, float borderSeconds, bool borderAdvancing);
+    EffectSlot m_borderSlot;
+    EffectSlot m_windowSlot;
     std::string m_border;
     std::string m_window;
     bool m_overlay = false;            // the border preset names an overlay

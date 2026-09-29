@@ -4,11 +4,15 @@
 #include "core/toml.h"
 
 #include <filesystem>
-#include <map>
 #include <string>
 #include <vector>
 
 namespace umbriel::configmerge {
+
+  struct EffectDeclaration {
+    std::string name;
+    toml::source_region source;
+  };
 
   struct MergeResult {
     toml::table merged;
@@ -17,8 +21,9 @@ namespace umbriel::configmerge {
     bool hadError = false;
     bool missingIncludes = false;
     bool missingOptionalIncludes = false;
-    // Defining file of every effects.preset.<name> table, for duplicate detection across files.
-    std::map<std::string, std::string> presetFiles;
+    // Source order within a file, include expansion order across files. Captured before merging tables.
+    std::vector<EffectDeclaration> presets;
+    std::vector<EffectDeclaration> pools;
   };
 
   [[nodiscard]] MergeResult mergeWithIncludes(const std::filesystem::path& rootFile);

@@ -54,7 +54,7 @@ and positions when the output becomes available again.
 | `cyclic_workspaces` | bool | `false` | Wrap a workspace step around the ends of the inventory. |
 | `workspace_axis` | string | `"vertical"` | Workspace arrangement axis. |
 | `layout.scrolling.default_extent_fraction` | float | inherited | Initial scrolling-column extent on this output. |
-| `screen_effect` | string | inherited | Replace `effects.screen` by name, or `"off"` to disable it on this output. |
+| `screen_effect` | string | inherited | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output. |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply
 the configured mode, it uses the preferred advertised mode and logs a warning.
@@ -119,7 +119,7 @@ columns only; existing columns keep their current width. See
 screen_effect = "off"
 ```
 
-`screen_effect` names an `[effects.preset.<name>]` of kind `screen`, or `"off"`
+`screen_effect` names an `[effects.preset.<name>]` or `[effects.pool.<name>]` of kind `screen`, or `"off"`
 to disable `effects.screen` on this output. See
 [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
@@ -398,3 +398,8 @@ files = [
   "machines/monolith.toml",
 ]
 ```
+
+Each output keeps its screen pool assignment while disabled. Disconnecting
+releases it; reconnecting starts from configuration. Inspect assignments with
+`umbriel effects --json`; `outputs --json` remains output-management data.
+The cursor has one session-wide selection shared by all outputs.

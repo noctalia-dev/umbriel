@@ -159,8 +159,8 @@ and sets its extent.
 | `outer_border_width` | Override `appearance.outer_border_width`, 0 to 100. |
 | `corner_radius` | Override `appearance.corner_radius`, 0 to 100. |
 | `shadow` | Override `appearance.shadow.enabled`. |
-| `border_effect` | Replace `effects.border` by name, or `"off"` to disable it. |
-| `window_effect` | Replace `effects.window` by name, or `"off"` to disable it. |
+| `border_effect` | Replace `effects.border` with a border preset or pool, or `"off"` to disable it. |
+| `window_effect` | Replace `effects.window` with a window preset or pool, or `"off"` to disable it. |
 
 These values refresh when matching identity or state changes. Fullscreen
 bypasses rule opacity unless
@@ -207,7 +207,7 @@ border_effect = "off"
 window_effect = "scanlines"
 ```
 
-Names refer to `[effects.preset.<name>]` tables of the matching kind. See
+Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind. See
 [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
 ## The only window in the workspace
@@ -269,3 +269,8 @@ opacity = 0.85
 match.is_focused = true
 opacity = 1.0
 ```
+
+Effect pool choices stay with the mapped window across focus/title rule changes.
+Returning to a previously used pool restores its valid remembered member.
+Runtime effect overrides take precedence over rules; suppression preserves the
+underlying selection. See [Effects](effects.md#pools).

@@ -3,14 +3,18 @@
 #include "config/config.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
+#include "scene/effect_registry.h"
+#include "scene/effect_selection.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
+#include <algorithm>
 #include <cctype>
 #include <drm_fourcc.h>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <print>
 #include <string>
@@ -63,6 +67,60 @@ namespace umbriel {
             entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix, contentTypeSuffix,
             scratchpadSuffix
         );
+      }
+    }
+
+    nlohmann::json effectSlotJson(const EffectSlot& slot, bool border = false) {
+      nlohmann::json result{
+          {"name", slot.name},
+          {"pool", slot.pool},
+          {"source", effectSelectorSourceName(slot.source())},
+          {"suppressed", slot.suppressed},
+      };
+      if (border) {
+        const EffectPreset* preset = findEffectPreset(config().effects, slot.name);
+        result["overlay"] = preset != nullptr ? preset->overlay : "";
+      }
+      return result;
+    }
+
+    void printEffects(const nlohmann::json& ok) {
+      std::println("Presets\nNAME\tKIND\tSTATE\tOVERLAY");
+      for (const auto& preset : ok.at("presets")) {
+        std::println(
+            "{}\t{}\t{}\t{}", preset.value("name", ""), preset.value("kind", ""), preset.value("state", ""),
+            preset.value("overlay", "")
+        );
+      }
+      std::println("\nPools\nNAME\tKIND\tPOLICY\tMEMBERS (held)");
+      for (const auto& pool : ok.at("pools")) {
+        std::string members;
+        for (const auto& member : pool.at("members")) {
+          if (!members.empty()) {
+            members += ", ";
+          }
+          members += std::format("{} ({})", member.value("name", ""), member.value("held", size_t{0}));
+        }
+        std::println(
+            "{}\t{}\t{}\t{}", pool.value("name", ""), pool.value("kind", ""), pool.value("policy", ""), members
+        );
+      }
+      const auto printSlot = [](std::string_view owner, std::string_view kind, const nlohmann::json& slot) {
+        std::println(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}", owner, kind, slot.value("name", ""), slot.value("pool", ""),
+            slot.value("source", ""), slot.value("suppressed", false) ? "yes" : "no", slot.value("overlay", "")
+        );
+      };
+      std::println("\nCursor\nOWNER\tSLOT\tNAME\tPOOL\tSOURCE\tSUPPRESSED\tOVERLAY");
+      printSlot("cursor", "cursor", ok.at("cursor"));
+      std::println("\nOwners\nOWNER\tSLOT\tNAME\tPOOL\tSOURCE\tSUPPRESSED\tOVERLAY");
+      for (const auto& owner : ok.at("owners")) {
+        const std::string label = owner.value("type", "") == "window"
+            ? "window " + owner.value("id", "") + " (" + owner.value("app_id", "") + ")"
+            : "output " + owner.value("name", "");
+        for (const auto& [kind, slot] : owner.at("slots").items()) {
+          printSlot(label, kind, slot);
+        }
       }
     }
 
@@ -359,6 +417,7 @@ namespace umbriel {
 
   nlohmann::json IpcCommands::windows(Server& server, std::string_view /*arg*/) {
     nlohmann::json windows = nlohmann::json::array();
+    std::map<const Workspace*, std::unique_ptr<Layout>> pendingLayouts;
     for (const auto& v : server.views()) {
       if (!v->mapped()) {
         continue;
@@ -374,6 +433,8 @@ namespace umbriel {
       entry["xdg_tag"] = v->xdgTag().value_or("");
       entry["content_type"] = contentTypeName(v->contentType());
       entry["floating"] = v->floating();
+      entry["border_effect"] = effectSlotJson(v->effectSlot(EffectKind::Border), true);
+      entry["window_effect"] = effectSlotJson(v->effectSlot(EffectKind::Window));
       // Workspace-local remembered focus. Seat-global activation is reported
       // separately by `active`; scratchpad windows have no workspace focus.
       entry["focused"] = v->workspace() != nullptr && v->workspace()->focusedView() == v.get();
@@ -385,9 +446,18 @@ namespace umbriel {
       // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
       // (dwindle) regardless of visibility or in-flight animations.
       if (Workspace* workspace = v->workspace(); workspace != nullptr && workspace->layout().columnOf(v.get()) >= 0) {
-        // A window that mapped in this dispatch has its arrange still pending, so its slot is missing or stale.
-        workspace->flushArrange();
-        const wlr_box box = workspace->layout().targetBox(v.get());
+        // Preview stale targets without applying client configures, rules, or bindings.
+        const Layout* layout = &workspace->layout();
+        if (workspace->arrangePending()) {
+          auto [entry, inserted] = pendingLayouts.try_emplace(workspace);
+          if (inserted) {
+            entry->second = workspace->previewArrangedLayout();
+          }
+          if (entry->second != nullptr) {
+            layout = entry->second.get();
+          }
+        }
+        const wlr_box box = layout->targetBox(v.get());
         entry["x"] = box.x;
         entry["y"] = box.y;
       } else {
@@ -402,6 +472,66 @@ namespace umbriel {
       windows.push_back(std::move(entry));
     }
     return nlohmann::json{{"ok", windows}};
+  }
+
+  nlohmann::json IpcCommands::effects(Server& server, std::string_view /*arg*/) {
+    nlohmann::json presets = nlohmann::json::array();
+    for (const auto& preset : config().effects.presets) {
+      nlohmann::json entry{
+          {"name", preset.name},
+          {"kind", effectKindName(preset.kind)},
+          {"state", server.effects().programState(preset.name)},
+      };
+      if (preset.kind == EffectKind::Border) {
+        entry["overlay"] = preset.overlay;
+      }
+      presets.push_back(std::move(entry));
+    }
+    nlohmann::json pools = nlohmann::json::array();
+    for (const auto& pool : config().effects.pools) {
+      const auto counts = server.effectHoldCounts(pool);
+      nlohmann::json members = nlohmann::json::array();
+      for (size_t index = 0; index < pool.members.size(); ++index) {
+        members.push_back({{"name", pool.members[index]}, {"held", counts[index]}});
+      }
+      pools.push_back(
+          {{"name", pool.name},
+           {"kind", effectKindName(pool.kind)},
+           {"policy", effectSelectionPolicyName(pool.selection)},
+           {"members", std::move(members)}}
+      );
+    }
+    nlohmann::json owners = nlohmann::json::array();
+    for (const View* view : server.sortedEffectViews()) {
+      const char* id = view->extForeignIdentifier();
+      owners.push_back({
+          {"type", "window"},
+          {"id", id != nullptr ? id : ""},
+          {"app_id", view->toplevel()->app_id != nullptr ? view->toplevel()->app_id : ""},
+          {"slots",
+           {{"border", effectSlotJson(view->effectSlot(EffectKind::Border), true)},
+            {"window", effectSlotJson(view->effectSlot(EffectKind::Window))}}},
+      });
+    }
+    std::vector<const Output*> outputs;
+    for (const auto& output : server.outputs()) {
+      outputs.push_back(output.get());
+    }
+    std::ranges::sort(outputs, {}, [](const Output* output) { return std::string_view(output->wlr()->name); });
+    for (const Output* output : outputs) {
+      owners.push_back(
+          {{"type", "output"},
+           {"name", output->wlr()->name},
+           {"slots", {{"screen", effectSlotJson(output->screenEffectSlot())}}}}
+      );
+    }
+    return nlohmann::json{
+        {"ok",
+         {{"presets", std::move(presets)},
+          {"pools", std::move(pools)},
+          {"cursor", effectSlotJson(server.cursorEffectSlot())},
+          {"owners", std::move(owners)}}}
+    };
   }
 
   nlohmann::json IpcCommands::workspaces(Server& server, std::string_view /*arg*/) {
@@ -724,6 +854,8 @@ namespace umbriel {
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
        &IpcCommands::outputDestroy, nullptr},
+      {"effects", "", "inspect effect presets, pools, and owner selections", IpcCommandGroup::Inspect, false,
+       &IpcCommands::effects, &printEffects},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
        &printWindows},
       {"workspaces", "", "list workspaces and their layouts", IpcCommandGroup::Inspect, false, &IpcCommands::workspaces,

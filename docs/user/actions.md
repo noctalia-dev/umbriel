@@ -27,6 +27,19 @@ are required, `[bracket]` forms are optional.
 | `<scrolling\|dwindle\|master\|toggle>` | Layout mode for `workspace-set-layout`; `toggle` cycles scrolling, dwindle, master |
 | `[skip-confirmation]` | `session-quit` only: quit without the on-screen confirmation |
 
+Effect `set` and `cycle` split at the first `/`; everything after it is the
+window id or output name. For example, `effect-screen-set:cinema/vendor/panel`
+selects `cinema` on output `vendor/panel`, and `effect-window-cycle:/window-id`
+cycles that window's current pool. Omit the target for the focused window or
+preferred output. Cursor actions take no target. A trailing colon or slash is
+invalid. `off` is accepted only by `set`.
+
+Named `set` and successful `cycle` create a runtime override and clear
+suppression. `set:off` and `toggle` suppress without forgetting the selected
+member; `reset` clears the override, suppression, and history, then resolves
+configuration. An unnamed cycle needs an underlying pool; an empty pool cannot
+cycle. See [Effects](effects.md) for selection and owner lifetimes.
+
 ## Apps
 
 | Action | Effect |
@@ -220,6 +233,22 @@ are described in [Overview](workspaces-overview.md).
 | `config-reload` | Reload the configuration file |
 | `dpms-off:[<output>]` | Power off one output, or every output when bare |
 | `dpms-on:[<output>]` | Power on one output, or every output when bare |
+| `effect-border-cycle:[<pool>][/<window-id>]` | Cycle the current or named border pool |
+| `effect-border-reset:[<window-id>]` | Clear runtime state and resolve configuration |
+| `effect-border-set:<name>[/<window-id>]` | Select a border preset/pool, or suppress with off |
+| `effect-border-toggle:[<window-id>]` | Toggle border-slot suppression |
+| `effect-cursor-cycle:[<pool>]` | Cycle the current or named cursor pool |
+| `effect-cursor-reset` | Clear runtime state and resolve configuration |
+| `effect-cursor-set:<name>` | Select a cursor preset/pool, or suppress with off |
+| `effect-cursor-toggle` | Toggle cursor-slot suppression |
+| `effect-screen-cycle:[<pool>][/<output>]` | Cycle the current or named screen pool |
+| `effect-screen-reset:[<output>]` | Clear runtime state and resolve configuration |
+| `effect-screen-set:<name>[/<output>]` | Select a screen preset/pool, or suppress with off |
+| `effect-screen-toggle:[<output>]` | Toggle screen-slot suppression |
+| `effect-window-cycle:[<pool>][/<window-id>]` | Cycle the current or named window pool |
+| `effect-window-reset:[<window-id>]` | Clear runtime state and resolve configuration |
+| `effect-window-set:<name>[/<window-id>]` | Select a window preset/pool, or suppress with off |
+| `effect-window-toggle:[<window-id>]` | Toggle window-slot suppression |
 | `keyboard-layout-next` | Switch one keyboard to its next configured layout |
 | `output-disable:<output>` | Remove an output from the desktop |
 | `output-enable:<output>` | Add an output to the desktop |
