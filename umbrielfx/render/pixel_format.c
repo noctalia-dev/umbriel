@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <drm_fourcc.h>
+#include <umbrielfx/render/pixel_format.h>
 #include <wlr/util/log.h>
 #include "render/pixel_format.h"
 
@@ -372,3 +373,12 @@ bool pixel_format_is_ycbcr(uint32_t format) {
 	}
 	return false;
 }
+
+int32_t fx_pixel_format_min_stride(uint32_t drm_format, int32_t width) {
+	const struct wlr_pixel_format_info *info = drm_get_pixel_format_info(drm_format);
+	if (info == NULL) {
+		return 0;
+	}
+	return pixel_format_info_min_stride(info, width);
+}
+

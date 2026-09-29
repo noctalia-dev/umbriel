@@ -17,6 +17,7 @@
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
 #include "scene/quit_confirm.h"
+#include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/ipc.h"
 #include "server/server.h"
@@ -867,7 +868,7 @@ namespace umbriel {
       stop();
       return;
     }
-    wlr_allocator* newAllocator = wlr_allocator_autocreate(m_backend, newRenderer);
+    wlr_allocator* newAllocator = createAllocator(m_backend, newRenderer);
     if (newAllocator == nullptr) {
       kLog.error("could not recreate allocator after GPU reset, terminating");
       wlr_renderer_destroy(newRenderer);

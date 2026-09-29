@@ -24,6 +24,7 @@
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
 #include "scene/quit_confirm.h"
+#include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/ipc.h"
 #include "server/wine_color_manager.h"
@@ -462,7 +463,7 @@ namespace umbriel {
       kLog.info("explicit synchronization enabled");
     }
 
-    m_allocator = wlr_allocator_autocreate(m_backend, m_renderer);
+    m_allocator = createAllocator(m_backend, m_renderer);
     if (m_allocator == nullptr) {
       throw std::runtime_error("failed to create wlr_allocator");
     }
