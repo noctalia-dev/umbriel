@@ -279,7 +279,6 @@ target for remote desktop and game streaming. See
 [Game streaming](streaming.md) for a Sunshine setup.
 
 ```sh
-umbriel output-create stream
 umbriel output-create stream 2560x1440@120
 umbriel output-destroy stream
 ```
