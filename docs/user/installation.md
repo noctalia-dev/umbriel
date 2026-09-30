@@ -73,8 +73,15 @@ sudo wget -O /etc/apt/sources.list.d/noctalia-resolute.sources \
 
 ### Install Umbriel
 
+Choose the command matching your distribution:
+
 ```sh
 sudo apt update
+
+# Debian Trixie
+sudo apt install -t trixie-backports umbriel
+
+# Debian Sid and Ubuntu 26.04
 sudo apt install umbriel
 ```
 
