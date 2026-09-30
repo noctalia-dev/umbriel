@@ -906,7 +906,7 @@ namespace umbriel {
     if (view == nullptr || entry == nullptr || scratchpad == nullptr || scratchpad->output == nullptr) {
       return;
     }
-    view->setSceneParent(m_root);
+    view->setSceneParent(view->homeTree());
     view->setOnActiveWorkspace(scratchpad->visible);
     view->enterForeignOutput(scratchpad->output);
     view->setNodeEnabled(scratchpad->visible);

@@ -920,6 +920,9 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       return fs ? m_workspace->fullscreenTree() : m_workspace->viewLayer(m_tiled);
     }
+    if (m_inScratchpad) {
+      return fs ? m_server->fullscreenTree() : m_server->scratchpadTree();
+    }
     return fs ? m_server->fullscreenTree() : m_server->xdgTree();
   }
 
