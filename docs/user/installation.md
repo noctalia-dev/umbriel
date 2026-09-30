@@ -71,10 +71,23 @@ sudo wget -O /etc/apt/sources.list.d/noctalia-resolute.sources \
   https://pkg.noctalia.dev/deb/noctalia-resolute.sources
 ```
 
+#### Enable Trixie backports
+
+On Debian Trixie, installation fails unless `trixie-backports` is enabled.
+Follow the [Debian Backports instructions](https://backports.debian.org/Instructions/)
+to enable it.
+
 ### Install Umbriel
+
+Choose the command matching your distribution:
 
 ```sh
 sudo apt update
+
+# Debian Trixie
+sudo apt install -t trixie-backports umbriel
+
+# Debian Sid and Ubuntu 26.04
 sudo apt install umbriel
 ```
 
