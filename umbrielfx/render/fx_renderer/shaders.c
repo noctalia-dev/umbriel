@@ -43,8 +43,8 @@ GLuint compile_shader(GLuint type, const GLchar *src) {
 	return shader;
 }
 
-GLuint link_program(const GLchar *frag_src) {
-	GLuint vert = compile_shader(GL_VERTEX_SHADER, common_vert_src);
+GLuint link_program_sources(const GLchar *vert_src, const GLchar *frag_src, const char *attribute) {
+	GLuint vert = compile_shader(GL_VERTEX_SHADER, vert_src);
 	if (!vert) {
 		goto error;
 	}
@@ -58,6 +58,7 @@ GLuint link_program(const GLchar *frag_src) {
 	GLuint prog = glCreateProgram();
 	glAttachShader(prog, vert);
 	glAttachShader(prog, frag);
+	glBindAttribLocation(prog, 0, attribute);
 	glLinkProgram(prog);
 
 	glDetachShader(prog, vert);
@@ -79,6 +80,10 @@ GLuint link_program(const GLchar *frag_src) {
 
 error:
 	return 0;
+}
+
+GLuint link_program(const GLchar *frag_src) {
+	return link_program_sources(common_vert_src, frag_src, "pos");
 }
 
 bool check_gl_ext(const char *exts, const char *ext) {

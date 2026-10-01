@@ -137,6 +137,7 @@ struct wlr_scene {
 		bool direct_scanout;
 		bool calculate_visibility;
 		bool highlight_transparent_region;
+		unsigned source_replacement_count_for_test;
 
 		struct blur_data blur_data;
 
@@ -376,6 +377,10 @@ struct wlr_scene_output {
 		bool direct_scanout_enabled;
 		// A screen or cursor effect is set on this output.
 		bool output_effects_configured;
+		// Private render-list coverage exists only for backdrop sampling.
+		bool render_list_has_sample_coverage;
+		// Internal C0 presentation probe; allocated only while the probe owns it.
+		struct fx_scene_replacement_for_test *source_replacement_for_test;
 	} WLR_PRIVATE;
 };
 

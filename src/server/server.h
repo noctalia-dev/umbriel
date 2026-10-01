@@ -10,6 +10,7 @@
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
+#include "scene/presentation.h"
 #include "scene/surface_shadow.h"
 #include "server/focus.h"
 #include "view/registry.h"
@@ -240,6 +241,7 @@ namespace umbriel {
     // Milliseconds on the clock every animation ticks from. It follows the monotonic clock unless a test build froze
     // it.
     [[nodiscard]] uint64_t animationClockMsec() const;
+    void cancelScenePresentations(PresentationFallback reason);
 #ifdef UMBRIEL_TEST_IPC
     void freezeAnimationClock();
     // Moves a frozen clock forward and schedules a frame on every output. False when the clock is not frozen.

@@ -18,6 +18,7 @@ extern "C" {
 #include "view/view_internal.h"
 // clang-format off
 #include <ranges>
+#include <cassert>
 #include <utility>
 #include <variant>
 #include "wlr.h"
@@ -353,6 +354,8 @@ namespace umbriel {
     }
     Output* previousOutput =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : nullptr;
+    if (m_mapped && previousOutput && origin != LayoutAttachOrigin::OpeningView)
+      previousOutput->notePresentationViewUnmapping(*this);
     if (m_workspace != nullptr) {
       Workspace* previous = m_workspace;
       const bool sameGroup = workspace != nullptr && workspace->group() == previous->group();
@@ -435,6 +438,8 @@ namespace umbriel {
         output->updateHdr();
       }
     }
+    if (m_mapped && m_workspace && m_workspace->group())
+      m_workspace->group()->output()->notePresentationViewMapped(*this);
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onViewWorkspaceChanged(this);
     }

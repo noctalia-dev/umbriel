@@ -1,6 +1,7 @@
 #pragma once
 
-#include "config/config_diag.h"
+#include "config/scene_effects.h"
+#include "config/shader_source.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -41,27 +42,6 @@ namespace umbriel {
   [[nodiscard]] std::optional<EffectKind> parseEffectKind(std::string_view text);
   [[nodiscard]] std::string_view effectKindName(EffectKind kind);
 
-  // Keep source text in the resolved configuration. File edits then participate
-  // in config equality, and render paths never perform filesystem I/O.
-  struct ShaderSource {
-    std::string code;
-    std::filesystem::path file = {};
-    bool operator==(const ShaderSource&) const = default;
-  };
-
-  struct ShaderReadResult {
-    std::optional<ShaderSource> source;
-    // Includes missing files so creating one can trigger another config load.
-    std::vector<std::filesystem::path> watchPaths;
-  };
-
-  inline constexpr std::size_t kShaderSourceLimit = 256 * 1024;
-
-  // Reads the shader file path under `key`. Relative file paths belong to the
-  // TOML value's source file, including when tables were merged.
-  [[nodiscard]] ShaderReadResult
-  readShaderSource(Section& section, std::string_view key, std::vector<ConfigDiagnostic>& diagnostics);
-
   // The reserved selector value that disables a default per window or output.
   inline constexpr std::string_view kEffectOff = "off";
 
@@ -78,6 +58,7 @@ namespace umbriel {
     // Empty code means the file was missing or unreadable: the preset exists so
     // references resolve, but it renders plainly.
     ShaderSource shader = {};
+    std::optional<scene_experiment::Preset> scene = std::nullopt;
     bool palette = false;
     int padding = 0;          // border: 0-1024 logical px
     float speed = 1.0F;       // border: 0-10
@@ -85,7 +66,7 @@ namespace umbriel {
     std::string overlay = {}; // NOLINT(readability-redundant-member-init) border: names a window preset
     std::optional<BorderLight> light = std::nullopt; // border
     int radius = 0;                                  // cursor: 0-4096, 0 = whole output
-    [[nodiscard]] bool inert() const { return shader.code.empty(); }
+    [[nodiscard]] bool inert() const { return scene ? !scene->sources.complete() : shader.code.empty(); }
     bool operator==(const EffectPreset&) const = default;
   };
 

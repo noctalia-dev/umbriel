@@ -24,6 +24,9 @@ struct fx_gles_render_pass {
 	// A client reads the target right after submit (capture destinations).
 	bool implicit_sync_target;
 	bool has_color_transform;
+	// Internal source target contains linear working-space pixels and performs
+	// no final output encoding. Unlike has_color_transform, it owns no blend hop.
+	bool working_space;
 	struct wlr_color_transform *color_transform;
 	struct fx_offscreen_buffers *output_buffers;
 	float output_matrix[9];
@@ -54,9 +57,14 @@ struct fx_gles_render_pass {
 	unsigned group_depth;
 	bool group_used;
 	struct wl_list animation_history_updates;
+	// Optional source-session staging; NULL retains ordinary submit semantics.
+	struct wl_list *deferred_history_updates;
 	// The target's unfiltered composition was copied into the output buffer's
 	// effect capture; it becomes readable once the pass submits.
 	bool effect_capture_saved;
+	// A requested intermediate operation failed even if native fallback can
+	// still submit. Source capture must never retain that incomplete image.
+	bool incomplete;
 };
 
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass *pass);

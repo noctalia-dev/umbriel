@@ -66,7 +66,7 @@ namespace umbriel {
     fx_effect_shader* shader = gateOpen ? registry.preset(m_border, EffectKind::Border) : nullptr;
     const EffectPreset* preset = shader != nullptr ? registry.presetConfig(m_border) : nullptr;
     const bool advancing = preset != nullptr && preset->animated && preset->speed > 0.0F;
-    const float seconds = advancing ? input.seconds * preset->speed : 0.0F;
+    const float seconds = advancing ? registry.compositionSeconds(input.border, input.seconds) * preset->speed : 0.0F;
     if (preset == nullptr) {
       if (input.border != nullptr) {
         wlr_scene_node_set_animation(input.border, FX_SLOT_BORDER_EFFECT, nullptr, nullptr);
@@ -84,7 +84,7 @@ namespace umbriel {
             .threshold = preset->light->threshold,
         };
       }
-      wlr_scene_node_set_animation(input.border, FX_SLOT_BORDER_EFFECT, shader, &parameters);
+      registry.setAnimationParameters(input.border, FX_SLOT_BORDER_EFFECT, shader, parameters, preset);
       track(input.border);
       registry.updateInstance(
           input.border,
@@ -93,7 +93,8 @@ namespace umbriel {
               .visible = wlr_scene_node_visible_in_box(input.border, &input.outputBox),
               .readsTime = fx_effect_shader_reads(shader, "umbriel_time"),
               .advancing = advancing && input.clockAdvancing,
-          }
+          },
+          input.border
       );
     }
     applyWindowSlots(input, preset, seconds, advancing);
@@ -123,10 +124,10 @@ namespace umbriel {
       fx_animation_parameters parameters{};
       parameters.scale = input.scale;
       registry.fillTimeUniforms(parameters, seconds, *preset, shader);
-      wlr_scene_node_set_animation(node, slot, shader, &parameters);
+      registry.setAnimationParameters(node, slot, shader, parameters, preset);
     };
     const auto bind = [&](wlr_scene_node* node) {
-      bindSlot(node, FX_SLOT_WINDOW, windowPreset, windowShader, input.seconds);
+      bindSlot(node, FX_SLOT_WINDOW, windowPreset, windowShader, registry.compositionSeconds(node, input.seconds));
       bindSlot(node, FX_SLOT_OVERLAY, overlayPreset, overlayShader, borderSeconds);
     };
     bind(input.surface);
@@ -155,7 +156,8 @@ namespace umbriel {
               .visible = visible,
               .readsTime = fx_effect_shader_reads(program, "umbriel_time"),
               .advancing = advancing && input.clockAdvancing,
-          }
+          },
+          input.surface
       );
     };
     instance(input.surface, windowShader, true);

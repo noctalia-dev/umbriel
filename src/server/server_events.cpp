@@ -854,6 +854,7 @@ namespace umbriel {
   }
 
   void Server::recreateRenderer() {
+    cancelScenePresentations(PresentationFallback::RendererLost);
     kLog.warn("GPU context lost, recreating renderer");
 
     wlr_renderer* oldRenderer = m_renderer;
@@ -1586,6 +1587,7 @@ namespace umbriel {
       }
 
       m_sessionLocked = true;
+      cancelScenePresentations(PresentationFallback::Locked);
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
       cancelModifierTap();

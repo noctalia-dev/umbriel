@@ -3,10 +3,12 @@
 #include "config/effects.h"
 #include "core/animation.h"
 #include "scene/effect_ledger.h"
+#include "scene/scene_program.h"
 
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +24,7 @@ namespace umbriel {
 
   class Output;
   class Server;
+  class View;
 
   // One compiled program per referenced preset for the current renderer, plus
   // the built-in lifecycle fade. Prepares at startup, on reload with the
@@ -62,6 +65,27 @@ namespace umbriel {
         fx_animation_parameters& parameters, float seconds, const EffectPreset& preset, const fx_effect_shader* shader
     ) const;
 
+    [[nodiscard]] std::shared_ptr<const scene_experiment::ProgramBundle>
+    scenePreset(std::string_view name, scene_experiment::Scope scope) const;
+    [[nodiscard]] std::shared_ptr<const scene_experiment::ProgramBundle>
+    sceneAnimationEffect(AnimationEvent event) const;
+    [[nodiscard]] scene_experiment::ProgramState sceneProgramState(std::string_view name) const;
+    void
+    updateSceneTime(const void* owner, Output* output, const scene_experiment::ProgramBundle* bundle, bool eligible);
+    void clearSceneTime(const void* owner);
+    void fillScenePalette(fx_scene_frame& frame, const scene_experiment::ProgramBundle& bundle) const;
+    [[nodiscard]] float compositionSeconds(wlr_scene_node* node, float fallback) const;
+    void setAnimationParameters(
+        wlr_scene_node* node, unsigned slot, fx_effect_shader* shader, const fx_animation_parameters& parameters,
+        const EffectPreset* preset
+    ) const;
+    void beginCompositionFrame(const Output* output, bool advance);
+    void finishCompositionFrame(const Output* output, bool success);
+    void setSourceOccurrences(
+        const void* session, Output* output, std::span<View* const> views, bool replacesNativeViews = false
+    );
+    void clearSourceOccurrences(const void* session);
+    void bindSourceTime(const void* session);
     [[nodiscard]] bool active() const { return m_ledger.active() > 0; }
     // Prepared programs and retained snapshots both keep rendering requirements alive.
     [[nodiscard]] bool persistentReferenced() const { return m_persistentReferenced || m_retainedPersistent > 0; }
@@ -71,7 +95,7 @@ namespace umbriel {
     [[nodiscard]] EffectLedger& ledger() { return m_ledger; }
     void setSuspended(bool suspended);
     // Records an instance; schedules its output's effect frame when that output gains its first eligible instance.
-    void updateInstance(const void* owner, const EffectInstanceState& state);
+    void updateInstance(const void* owner, const EffectInstanceState& state, wlr_scene_node* node = nullptr);
     void removeInstance(const void* owner);
     void removeOutput(const Output* output);
     // Keep the light layer while prepared programs or snapshots require it.
@@ -97,6 +121,31 @@ namespace umbriel {
     // Forgets the deformation program so the next prepare() that needs it compiles afresh.
     void dropDeformation();
 
+    bool compositionNodeVisible(wlr_scene_node* node, const Output* output) const;
+    bool sourceNodeVisible(wlr_scene_node* node, const Output* output) const;
+    std::vector<const void*> compositionOutputs(wlr_scene_node* node) const;
+    void updateTimeOccurrence(const void* owner, const EffectInstanceState& state, wlr_scene_node* node);
+    void refreshTimeOccurrences();
+    scene_experiment::ScenePrograms m_scenePrograms;
+    const Output* m_compositionOutput = nullptr;
+    bool m_compositionAdvance = false;
+    std::map<const Output*, float> m_submittedEffectTimes;
+    struct SourceOccurrence {
+      Output* output = nullptr;
+      std::vector<std::string> views;
+      bool replacesNativeViews = false;
+    };
+    struct TimeInstance {
+      wlr_scene_node* node = nullptr;
+      EffectInstanceState state;
+    };
+    struct SceneTimeOwner {
+      Output* output = nullptr;
+      bool readsTime = false;
+    };
+    std::map<const void*, TimeInstance> m_timeInstances;
+    std::map<const void*, SourceOccurrence> m_sourceOccurrences;
+    std::map<const void*, std::unique_ptr<SceneTimeOwner>> m_sceneTime;
     Server* m_server = nullptr;
     wlr_renderer* m_renderer = nullptr;
     std::map<std::string, Entry, std::less<>> m_programs;

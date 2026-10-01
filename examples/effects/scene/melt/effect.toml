@@ -1,0 +1,9 @@
+# Include this file to define the preset; selectors below are examples only.
+[effects.preset.melt]
+kind = "animation"
+interface = "scene-v1"
+scope = "workspace_pair"
+shader = "shader.glsl"
+
+# [animation.workspaces]
+# effect = "melt"

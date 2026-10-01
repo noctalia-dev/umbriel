@@ -1,4 +1,5 @@
 #ifdef TRACY_ENABLE
+#include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <assert.h>
 #include <stdatomic.h>
@@ -27,6 +28,7 @@ static atomic_int id_counter = 0;
 
 struct tracy_data {
 	struct fx_renderer *renderer;
+	PFNGLGETQUERYOBJECTUIVEXTPROC get_query_available;
 
 	uint8_t context_id;
 
@@ -50,7 +52,11 @@ static inline unsigned int get_next_query_index(struct tracy_data *tracy_data) {
 
 void tracy_gpu_zone_begin(struct tracy_data *tracy_data, struct tracy_gpu_zone_context *out_ctx,
 		const int line, const char *source, const char *func, const char *name) {
-	if (out_ctx == NULL || tracy_data == NULL) {
+	if (out_ctx == NULL) {
+		return;
+	}
+	*out_ctx = (struct tracy_gpu_zone_context){0};
+	if (tracy_data == NULL) {
 		return;
 	}
 
@@ -124,8 +130,10 @@ void tracy_gpu_context_collect(struct tracy_data *tracy_data) {
 #endif
 
 	while (tracy_data->queue.tail != tracy_data->queue.head) {
-		GLint available;
-		tracy_data->renderer->procs.glGetQueryObjectivEXT(
+		// The signed EXT getter can be a no-op GLES driver stub. The
+		// extension's unsigned availability query is the portable path.
+		GLuint available = 0;
+		tracy_data->get_query_available(
 				tracy_data->queue.queries[tracy_data->queue.tail],
 				GL_QUERY_RESULT_AVAILABLE_EXT, &available);
 		if (!available) {
@@ -152,10 +160,10 @@ done:
 }
 
 void tracy_gpu_context_destroy(struct tracy_data *tracy_data) {
-	id_counter--;
 	if (tracy_data == NULL) {
 		return;
 	}
+	id_counter--;
 
 	tracy_data->renderer->procs.glDeleteQueriesEXT(QUERY_QUEUE_LEN, tracy_data->queue.queries);
 	free(tracy_data);
@@ -171,6 +179,13 @@ struct tracy_data *tracy_gpu_context_new(struct fx_renderer *renderer) {
 	}
 
 	tracy_data->renderer = renderer;
+	tracy_data->get_query_available =
+		(PFNGLGETQUERYOBJECTUIVEXTPROC)eglGetProcAddress("glGetQueryObjectuivEXT");
+	if (tracy_data->get_query_available == NULL) {
+		wlr_log(WLR_ERROR, "Tracy requires GL_EXT_disjoint_timer_query availability queries");
+		free(tracy_data);
+		return NULL;
+	}
 	tracy_data->context_id = ++id_counter;
 	tracy_data->queue.head = 0;
 	tracy_data->queue.tail = 0;
@@ -178,9 +193,15 @@ struct tracy_data *tracy_gpu_context_new(struct fx_renderer *renderer) {
 	// Create the query objects
 	renderer->procs.glGenQueriesEXT(QUERY_QUEUE_LEN, tracy_data->queue.queries);
 
-	// Get the current GL time
-	GLint64 gl_gpu_time;
-	renderer->procs.glGetInteger64vEXT(GL_TIMESTAMP_EXT, &gl_gpu_time);
+	// Calibrate against a completed timestamp query. Some GLES drivers expose
+	// glGetInteger64vEXT but leave its destination untouched for GL_TIMESTAMP_EXT
+	// without reporting an error. Reading a completed query uses the same clock
+	// as subsequent GPU zones. This wait happens only at context creation; the
+	// completed slot is safe to reuse when the empty query queue starts.
+	GLuint64 gl_gpu_time = 0;
+	renderer->procs.glQueryCounterEXT(tracy_data->queue.queries[0], GL_TIMESTAMP_EXT);
+	renderer->procs.glGetQueryObjectui64vEXT(
+		tracy_data->queue.queries[0], GL_QUERY_RESULT_EXT, &gl_gpu_time);
 
 	// Create the query objects
 	GLint bits;

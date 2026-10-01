@@ -132,9 +132,11 @@ namespace umbriel {
     // One animation event: its effect, whether it runs, `extra` keys of its own, and its timeline. duration_ms and
     // curve resolve together, because a spring derives its own length: a duration configured beside one reaches
     // nothing and has to say so rather than look honoured.
-    template <typename E> registry::Fields<E> eventFields(registry::Fields<E> extra) {
+    template <typename E>
+    registry::Fields<E>
+    eventFields(registry::Fields<E> extra, scene_experiment::Binding sceneBinding = scene_experiment::Binding::Other) {
       registry::Fields<E> fields{
-          effectField("effect", &E::effect, EffectKind::Animation),
+          effectField("effect", &E::effect, EffectKind::Animation, sceneBinding),
           registry::boolean("enabled", &E::enabled),
       };
       std::ranges::move(extra, std::back_inserter(fields));
@@ -174,16 +176,23 @@ namespace umbriel {
       using registry::real;
       using registry::table;
       using A = Config::Animation;
-      static const registry::Fields<A::WindowsIn> windowsIn = eventFields<A::WindowsIn>({
-          real("scale", 0.1, 1.0, &A::WindowsIn::scale),
-          styleField<A::WindowsIn>({"popin", "zoom", "slide", "fade", "none"}),
-      });
-      static const registry::Fields<A::WindowsOut> windowsOut = eventFields<A::WindowsOut>({
-          real("scale", 0.1, 1.0, &A::WindowsOut::scale),
-          styleField<A::WindowsOut>({"fade", "slide", "popin", "zoom"}),
-      });
+      static const registry::Fields<A::WindowsIn> windowsIn = eventFields<A::WindowsIn>(
+          {
+              real("scale", 0.1, 1.0, &A::WindowsIn::scale),
+              styleField<A::WindowsIn>({"popin", "zoom", "slide", "fade", "none"}),
+          },
+          scene_experiment::Binding::Other
+      );
+      static const registry::Fields<A::WindowsOut> windowsOut = eventFields<A::WindowsOut>(
+          {
+              real("scale", 0.1, 1.0, &A::WindowsOut::scale),
+              styleField<A::WindowsOut>({"fade", "slide", "popin", "zoom"}),
+          },
+          scene_experiment::Binding::Other
+      );
       static const registry::Fields<A::WindowsMove> windowsMove = eventFields<A::WindowsMove>({});
-      static const registry::Fields<A::Workspaces> workspaces = eventFields<A::Workspaces>({});
+      static const registry::Fields<A::Workspaces> workspaces =
+          eventFields<A::Workspaces>({}, scene_experiment::Binding::WorkspaceSwitch);
       static const registry::Fields<A::Overview> overview = [] {
         auto fields = eventFields<A::Overview>({});
         fields.push_back(curveField("workspace_curve", &A::Overview::workspaceCurve));

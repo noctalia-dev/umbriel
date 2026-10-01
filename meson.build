@@ -536,6 +536,7 @@ pure_sources = files(
   'src/config/value_parse.cpp',
   'src/config/section.cpp',
   'src/config/effects.cpp',
+  'src/config/scene_effects.cpp',
   'src/input/lid_state.cpp',
   'src/input/modifier_tap.cpp',
   'src/input/swipe_tracker.cpp',
@@ -591,6 +592,10 @@ core_sources = files(
   'src/core/animation.cpp',
   'src/core/application_scope.cpp',
   'src/scene/effect_registry.cpp',
+  'src/scene/scene_program.cpp',
+  'src/scene/composition.cpp',
+  'src/scene/workspace_sources.cpp',
+  'src/scene/workspace_transition.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',
   'src/config/config.cpp',
@@ -785,5 +790,14 @@ foreach effect : ['animation/reveal', 'animation/squash', 'border/pulse', 'windo
     'examples/effects' / effect / 'shader.glsl',
     'examples/effects' / effect / 'effect.toml',
     install_dir: get_option('datadir') / 'umbriel' / 'effects' / effect,
+  )
+endforeach
+
+# Workspace-pair presets define transitions without selecting them.
+foreach effect : ['wipe', 'melt', 'iris']
+  install_data(
+    'examples/effects/scene' / effect / 'effect.toml',
+    'examples/effects/scene' / effect / 'shader.glsl',
+    install_dir: get_option('datadir') / 'umbriel' / 'effects' / 'scene' / effect,
   )
 endforeach

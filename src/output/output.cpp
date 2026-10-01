@@ -18,6 +18,7 @@
 #include "scene/config_banner.h"
 #include "scene/node.h"
 #include "scene/quit_confirm.h"
+#include "scene/workspace_transition.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "server/wine_color_manager.h"
@@ -184,7 +185,11 @@ namespace umbriel {
     }
   }
 
-  int Output::externalRenderLocks() const { return m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0); }
+  int Output::externalRenderLocks() const {
+    return m_output->attach_render_locks
+        - (m_animationRenderLocked ? 1 : 0)
+        - (m_activeWorkspaceSources && m_activeWorkspaceSources->renderLocked() ? 1 : 0);
+  }
 
   int Output::captureRenderLocks(int externalLocks) const {
     if (wlr_export_dmabuf_manager_v1* manager = m_server->exportDmabufManager()) {
@@ -866,6 +871,9 @@ namespace umbriel {
   }
 
   Output::~Output() {
+    m_workspaceTransition.reset();
+    if (m_activeWorkspaceSources)
+      m_activeWorkspaceSources->cancel(PresentationFallback::OutputRemoved);
     if (m_frameRetryTimer != nullptr) {
       wl_event_source_remove(m_frameRetryTimer);
       m_frameRetryTimer = nullptr;
@@ -1247,7 +1255,7 @@ namespace umbriel {
     // Effect time moves only on effect frames, which caps them at max_fps. It follows the clock while nothing here
     // needs frames of its own, so a new instance starts from now, and while the clock is frozen, so the first frozen
     // frame draws the frozen instant.
-    const EffectRegistry& effects = m_server->effects();
+    EffectRegistry& effects = m_server->effects();
     bool stampEffectTime =
         effectFrame || (effectEligible() == 0 && (effects.persistentReferenced() || effects.active()));
 #ifdef UMBRIEL_TEST_IPC
@@ -1256,6 +1264,7 @@ namespace umbriel {
     if (stampEffectTime) {
       m_effectSeconds = effects.clockSeconds();
     }
+    effects.beginCompositionFrame(this, effectFrame);
     m_server->tickAnimations(m_server->animationClockMsec());
     if (stampEffectTime && m_outputEffectsTimed) {
       applyOutputEffects();
@@ -1264,6 +1273,8 @@ namespace umbriel {
     // Surface commits reset scene-buffer opacity to the protocol alpha. Repair
     // pending rule opacity after every commit listener and before composition.
     m_server->flushPendingViewOpacities();
+    if (m_workspaceTransition)
+      m_workspaceTransition->prepareFrame(effectFrame || m_server->animationsActiveFor(this));
 
     // A direct-scanned fullscreen client may stop submitting as soon as it loses focus. On VRR outputs that can leave
     // the first workspace-switch frame waiting on the old client, so the compositor never gets a vblank to advance the
@@ -1271,7 +1282,6 @@ namespace umbriel {
     const bool animationsActive = m_server->animationsActiveFor(this);
     // Persistent effects reading time keep an output drawing on their own timer, never through the animation
     // registry: settle, tearing, and the render lock keep their meanings.
-    const bool effectsEligible = !m_server->sessionLocked() && effectEligible() > 0;
     if (animationsActive != m_animationRenderLocked) {
       wlr_output_lock_attach_render(m_output, animationsActive);
       m_animationRenderLocked = animationsActive;
@@ -1339,6 +1349,7 @@ namespace umbriel {
     // video players) block on wl_surface.frame before submitting their next buffer. If we skip frame_done on the
     // "nothing to render" path, they never commit again, damage stays clean, and the output stops producing frames.
     bool commitFailed = false;
+    bool sceneSubmitted = false;
     const bool sceneChanged = wlr_scene_output_needs_frame(m_sceneOutput);
     if (sceneChanged) {
       // Scene motion under a stationary cursor must reach the client before its next press.
@@ -1401,6 +1412,7 @@ namespace umbriel {
         }
 
         commitOk = wlr_output_commit_state(m_output, &state);
+        sceneSubmitted = commitOk && hasBuffer;
         if (hasBuffer) {
           m_tearingRecovery.recordCommit(commitTearing, commitOk);
         }
@@ -1435,6 +1447,10 @@ namespace umbriel {
       commitFailed = !commitOk;
     }
 
+    if (m_workspaceTransition)
+      m_workspaceTransition->frameSubmitted(sceneSubmitted);
+    effects.finishCompositionFrame(this, sceneSubmitted);
+
     // Screencopy drops its lock inside the commit; image-copy sessions ask for the release frame when they end.
     if (m_effectCaptureBuilt && !effectCapturePending(captureRenderLocks(externalRenderLocks()))) {
       scheduleEffectCaptureRelease();
@@ -1468,7 +1484,7 @@ namespace umbriel {
       break;
     }
 
-    if (effectsEligible && !commitFailed) {
+    if (!m_server->sessionLocked() && effectEligible() > 0 && !commitFailed) {
       armEffectFrame(nowMsec);
     } else {
       disarmEffectFrame();
@@ -1481,6 +1497,8 @@ namespace umbriel {
 
     // Unconditional: see comment above. Never gate this on commit success.
     wlr_scene_output_send_frame_done(m_sceneOutput, &now);
+    if (m_workspaceTransition)
+      m_workspaceTransition->sendFrameDone(now);
   }
 
   void Output::handleRequestState(void* data) {

@@ -8,6 +8,7 @@
 #include "render/egl.h"
 #include "render/fx_renderer/fx_renderer.h"
 #include "render/fx_renderer/shaders.h"
+#include "render/fx_renderer/glsl_common.h"
 
 // Shared by every kind. Its names are the shared preamble contract.
 static const char kPreamble[] =
@@ -15,8 +16,7 @@ static const char kPreamble[] =
     // Some GPUs' native sin/cos return wrong values for large angles even at
     // highp, so each argument is reduced to one revolution. A function-like macro
     // does not re-expand itself, so every overload and constant use still works.
-    "#define sin(x) sin(mod((x), 6.283185307179586))\n"
-    "#define cos(x) cos(mod((x), 6.283185307179586))\n"
+    FX_GLSL_TRIG
     "varying vec2 v_texcoord;\n"
     "uniform sampler2D umbriel_texture;\n"
     "uniform mat3 umbriel_sample_matrix;\n"
@@ -41,28 +41,10 @@ static const char kPreamble[] =
     "  return texture2D(umbriel_previous_texture, p);\n"
     "}\n"
     // GLSL ES 1.00 indexes uniform arrays by constant expressions only, so the loop counter is the index.
-    "vec4 umbriel_palette_at(float t) {\n"
-    "  if (umbriel_palette_count <= 0) return vec4(0.0);\n"
-    "  float span = float(umbriel_palette_count);\n"
-    "  float scaled = fract(t) * span;\n"
-    "  float index = floor(scaled);\n"
-    "  float next = mod(index + 1.0, span);\n"
-    "  vec4 from = umbriel_palette[0];\n"
-    "  vec4 to = umbriel_palette[0];\n"
-    "  for (int i = 0; i < 4; i++) {\n"
-    "    if (i >= umbriel_palette_count) break;\n"
-    "    if (float(i) == index) from = umbriel_palette[i];\n"
-    "    if (float(i) == next) to = umbriel_palette[i];\n"
-    "  }\n"
-    "  return mix(from, to, scaled - index);\n"
-    "}\n";
+    FX_GLSL_PALETTE;
 
 static const char kAnimationSection[] =
-    "uniform float umbriel_progress;\n"
-    "uniform float umbriel_linear_progress;\n"
-    "uniform float umbriel_direction;\n"
-    "uniform vec4 umbriel_random_seed;\n"
-    "#define umbriel_clamped_progress clamp(umbriel_progress, 0.0, 1.0)\n";
+    FX_GLSL_ANIMATION;
 static const char kAnimationSuffix[] = "\nvoid main() { gl_FragColor = animation(v_texcoord); }\n";
 
 // Hole and radii describe the client rectangle inside the drawn rectangle. The

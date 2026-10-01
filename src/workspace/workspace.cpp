@@ -12,6 +12,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
+#include "scene/workspace_transition.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/registry.h"
@@ -2532,6 +2533,8 @@ namespace umbriel {
   }
 
   void WorkspaceGroup::slideFinish() {
+    if (auto* effect = m_output->workspaceTransition())
+      effect->finish();
     m_slideAnim.snap(0.0);
     if (m_slide.base != nullptr) {
       m_slide.base->endSwitchTransition();
@@ -2589,6 +2592,14 @@ namespace umbriel {
 
   void WorkspaceGroup::slideApply(double progress) {
     m_slide.progress = progress;
+    // Supply resting workspace images to the effect before applying the native
+    // slide offsets. The native lifecycle remains authoritative for all controls.
+    Workspace* destination = progress < 0 ? m_slide.previous : m_slide.next;
+    if (destination == nullptr)
+      destination = m_slide.previous != nullptr ? m_slide.previous : m_slide.next;
+    if (destination != nullptr && m_server->effects().sceneAnimationEffect(AnimationEvent::Workspaces)) {
+      m_output->updateWorkspaceTransition(*m_slide.base, *destination, progress, m_slideAnim);
+    }
     const double extent = m_slide.extent;
     // Increasing workspace index moves outgoing content toward negative coordinates
     // on the group's axis; the other coordinate stays at rest.

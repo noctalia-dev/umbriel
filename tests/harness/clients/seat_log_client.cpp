@@ -63,6 +63,8 @@ namespace {
     // A configure asked for a size the current buffer does not have.
     bool resizePending = true;
     bool holdResize = false;
+    bool sourceUpdates = false;
+    uint32_t color = 0xFF3388CC;
     bool mapped = false;
     std::optional<uint32_t> heldSerial;
     PressAction pressAction = PressAction::None;
@@ -272,7 +274,7 @@ namespace {
       close(fd);
       return false;
     }
-    std::fill_n(static_cast<uint32_t*>(pixels), size / sizeof(uint32_t), 0xFF3388CC);
+    std::fill_n(static_cast<uint32_t*>(pixels), size / sizeof(uint32_t), state.color);
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(size));
     wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, state.width, state.height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
@@ -417,6 +419,7 @@ int main(int argc, char** argv) {
     zwp_text_input_v3_add_listener(state.textInput, &kTextInputListener, &state);
   }
 
+  state.sourceUpdates = std::getenv("SOURCE_UPDATES") != nullptr;
   state.surface = wl_compositor_create_surface(state.compositor);
   state.xdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.surface);
   xdg_surface_add_listener(state.xdgSurface, &kXdgListener, &state);
@@ -449,7 +452,7 @@ int main(int argc, char** argv) {
     wl_display_flush(state.display);
     pollfd sources[2] = {
         {.fd = displayFd, .events = POLLIN, .revents = 0},
-        {.fd = state.holdResize ? STDIN_FILENO : -1, .events = POLLIN, .revents = 0},
+        {.fd = (state.holdResize || state.sourceUpdates) ? STDIN_FILENO : -1, .events = POLLIN, .revents = 0},
     };
     if (poll(sources, 2, -1) < 0) {
       if (errno == EINTR) {
@@ -466,6 +469,18 @@ int main(int argc, char** argv) {
     if ((sources[1].revents & (POLLIN | POLLHUP)) != 0) {
       char command = 0;
       [[maybe_unused]] const ssize_t bytes = read(STDIN_FILENO, &command, 1);
+      if (state.sourceUpdates && bytes > 0 && command == 'n') {
+        state.color = 0xFF00CC33;
+        if (!createBuffer(state)) {
+          return EXIT_FAILURE;
+        }
+        wl_surface_attach(state.surface, state.buffer, 0, 0);
+        wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+        wl_surface_commit(state.surface);
+      }
+      if (bytes <= 0) {
+        state.sourceUpdates = false;
+      }
       state.holdResize = false;
       if (state.heldSerial) {
         answerConfigure(state, *state.heldSerial);

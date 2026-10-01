@@ -465,6 +465,7 @@ namespace umbriel {
     }
     m_server->updateIdleInhibit();
     if (Output* output = currentOutput()) {
+      output->notePresentationViewMapped(*this);
       output->updateHdr();
     }
     if (m_displacedHome) {
@@ -478,6 +479,8 @@ namespace umbriel {
   }
 
   void View::handleUnmap() {
+    if (auto* output = currentOutput())
+      output->notePresentationViewUnmapping(*this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
       m_effectSelectionIdle = nullptr;

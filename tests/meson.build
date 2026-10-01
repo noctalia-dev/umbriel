@@ -1,6 +1,17 @@
 # Unit tests. Each entry is [name, test sources, extra dependencies]. Every test gets umbriel_pure_dep; add umbriel_core_dep to the third field for a test that
 # needs compositor code. Either way a test never lists or recompiles a source.
 unit_tests = [
+  ['scene-program-cache', ['unit/scene_program.cpp'], [umbriel_core_dep], [], [
+    '-Wl,--wrap=fx_scene_program_get_limits', '-Wl,--wrap=fx_scene_program_create',
+    '-Wl,--wrap=fx_scene_program_unref', '-Wl,--wrap=fx_scene_program_reads_time', '-Wl,--wrap=fx_scene_program_reads_role',
+  ]],
+  ['scene-composition', ['unit/scene_composition.cpp'], [umbriel_core_dep], [], [
+    '-Wl,--wrap=fx_scene_program_get_limits', '-Wl,--wrap=fx_scene_buffer_create',
+    '-Wl,--wrap=wlr_buffer_drop', '-Wl,--wrap=fx_scene_target_create_with_color',
+    '-Wl,--wrap=fx_scene_target_destroy', '-Wl,--wrap=wlr_texture_from_buffer',
+    '-Wl,--wrap=wlr_texture_destroy', '-Wl,--wrap=fx_scene_program_render',
+  ]],
+  ['scene-effects', ['unit/scene_effects.cpp'], [umbriel_core_dep]],
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],

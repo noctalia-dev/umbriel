@@ -4,6 +4,7 @@
 #include <GLES2/gl2.h>
 #include <pixman.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <umbrielfx/render/effect.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -13,6 +14,8 @@ struct fx_animation_history;
 struct fx_gles_render_pass;
 struct fx_renderer;
 struct wlr_output;
+struct wlr_buffer;
+struct wlr_texture;
 
 #define FX_EFFECT_UNIFORM_CACHE 48
 
@@ -40,6 +43,10 @@ struct fx_effect_shader {
   struct fx_effect_uniform uniforms[FX_EFFECT_UNIFORM_CACHE];
 };
 
+// Compile shared mask-shadow kernels during scene admission, before any draw.
+// Legacy animation rendering may still prepare them lazily through its existing path.
+bool fx_effect_prepare_shadow(struct fx_renderer* renderer);
+
 const struct fx_effect_uniform* fx_effect_shader_uniform(const struct fx_effect_shader* shader, const char* name);
 // The program must be in use. A name the program lacks is ignored; a type
 // mismatch or a count past the entry's storage is ignored. A count above the
@@ -62,16 +69,47 @@ struct fx_effect_geometry {
 struct fx_effect_light_cache {
   struct fx_renderer* renderer;
   struct wl_listener renderer_destroy;
+  // Weak provenance of the last emission evaluation. This is not a guarantee
+  // that its enclosing native output submission succeeded.
+  struct wlr_output* output;
+  struct wl_listener output_destroy;
+  struct wl_listener output_commit;
+  struct wlr_buffer* pending_buffer;
+  struct wl_listener pending_buffer_destroy;
+  uint32_t commit_seq;
+  bool committed;
+  enum wl_output_transform transform;
+  struct wlr_box logical_box; // Expanded emission box relative to producing output viewport.
+  struct fx_effect_light recipe;
+  bool working_space;
   GLuint emission_texture, emission_framebuffer;
+  GLenum emission_type;
   int emission_width, emission_height;
   GLuint textures[FX_LIGHT_LEVELS + 1], framebuffers[FX_LIGHT_LEVELS + 1];
+  GLenum types[FX_LIGHT_LEVELS + 1];
   int widths[FX_LIGHT_LEVELS + 1], heights[FX_LIGHT_LEVELS + 1], levels;
   int margin; // buffer px around the emission
   bool valid, failed;
+  bool scene_prepared;
+  float scene_spread_px;
 };
 
 struct fx_effect_light_cache* fx_effect_light_cache_create(struct fx_renderer* renderer);
 void fx_effect_light_cache_destroy(struct fx_effect_light_cache* cache);
+// Exact retained image storage plus cache metadata; zero means unavailable.
+// These inspect/clone completed pixels, never execute an effect or advance history.
+uint64_t fx_effect_light_cache_bytes(const struct fx_effect_light_cache* cache);
+struct fx_effect_light_cache* fx_effect_light_cache_clone(const struct fx_effect_light_cache* source);
+// Associate a completed emission with its final native output submission.
+// NULL leaves it source-local/uncommitted. Buffer identity is weak until success.
+void fx_effect_light_cache_await_commit(struct fx_effect_light_cache* cache, struct wlr_buffer* buffer);
+// Scene admission allocates a fixed padded emission canvas and pyramid.
+// Padding is already in the source; add_effect_light uses the same full box.
+// Prepared storage is chargeable but is not a completed/freezeable emission.
+bool fx_effect_prepare_light(struct fx_renderer* renderer);
+bool fx_effect_light_cache_prepare_scene(struct fx_effect_light_cache* cache,
+    int width, int height, float spread_px);
+uint64_t fx_effect_light_cache_storage_bytes(const struct fx_effect_light_cache* cache);
 // Screen-blends the blurred emission over `box` (the proxy's buffer box), clipped.
 void fx_render_pass_add_effect_light(
     struct fx_gles_render_pass* pass, struct fx_effect_light_cache* cache, const struct fx_effect_light* light,
@@ -89,7 +127,9 @@ struct fx_effect_composite {
   const pixman_region32_t* output_clip;
   struct fx_animation_history* history;
   struct wlr_output* output;
+  struct wlr_buffer* presentation_buffer; // final native buffer shared by both roles; NULL for source-only draws
   bool update_history;
+  bool replay_history; // frozen source uses the already-rendered stage result
   const struct fx_effect_geometry* geometry; // NULL unless a border slot composites a border node
   struct fx_effect_light_cache* light;       // NULL unless this composite emits light
   bool replace;                              // write without blending; set by the in-place path

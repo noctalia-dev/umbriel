@@ -74,11 +74,15 @@ namespace umbriel {
     }
 
     bool sameAnimationEffects(const Config::Animation& before, const Config::Animation& after) {
+      if (before.enabled != after.enabled) {
+        return false;
+      }
       // Overview is the last event.
       for (unsigned slot = 0; slot <= static_cast<unsigned>(AnimationEvent::Overview); ++slot) {
         const auto event = static_cast<AnimationEvent>(slot);
-        const std::string* lhs = before.eventEffect(event).effect;
-        if (lhs != nullptr && *lhs != *after.eventEffect(event).effect) {
+        const auto lhs = before.eventEffect(event);
+        const auto rhs = after.eventEffect(event);
+        if (lhs.effect != nullptr && (*lhs.effect != *rhs.effect || lhs.enabled != rhs.enabled)) {
           return false;
         }
       }

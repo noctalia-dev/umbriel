@@ -34,6 +34,8 @@ umbrielfx_sources = files(
   'render/fx_renderer/fx_renderer.c',
   'render/fx_renderer/fx_texture.c',
   'render/fx_renderer/effect_shader.c',
+  'render/fx_renderer/scene_program.c',
+  'render/fx_renderer/scene_resources.c',
   'render/fx_renderer/pixel_format.c',
   'render/fx_renderer/shaders.c',
   'render/fx_renderer/tracy.c',
@@ -191,6 +193,60 @@ umbrielfx_dep = declare_dependency(
 )
 
 if build_tests
+  umbrielfx_scene_resources_test = executable(
+    'umbrielfx-scene-resources-test',
+    'tests/scene_resources.c',
+    'render/fx_renderer/scene_resources.c',
+    dependencies: umbrielfx_math_dep,
+    include_directories: umbrielfx_internal_inc,
+    build_by_default: false,
+  )
+  test('scene-resources', umbrielfx_scene_resources_test, suite: 'umbrielfx')
+
+  umbrielfx_scene_source_test = executable(
+    'umbrielfx-scene-source-test',
+    'tests/scene_source.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  test('scene-source', umbrielfx_scene_source_test, suite: 'umbrielfx', timeout: 120)
+
+  umbrielfx_scene_view_test = executable(
+    'umbrielfx-scene-view-test',
+    'tests/scene_view.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  test('scene-view', umbrielfx_scene_view_test, suite: 'umbrielfx', timeout: 120)
+
+  umbrielfx_scene_pair_test = executable(
+    'umbrielfx-scene-pair-test',
+    'tests/scene_pair.c',
+    c_args: umbrielfx_c_args + ['-DSCENE_PAIR_FIXTURE_DIR="' + meson.project_source_root() / 'examples/effects/scene' + '"'],
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  test('scene-pair', umbrielfx_scene_pair_test, suite: 'umbrielfx', timeout: 120)
+
+  umbrielfx_light_cache_test = executable(
+    'umbrielfx-light-cache-test',
+    'tests/light_cache.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+  test('light-cache', umbrielfx_light_cache_test, suite: 'umbrielfx', timeout: 120)
+
   umbrielfx_color_test = executable(
     'umbrielfx-color-test',
     'tests/color.c',

@@ -97,6 +97,12 @@ radius = 3
 # [effects]
 # border = "pulse"
 
+# Blend whole workspaces with a scene-v1 shader. Add the bundled preset to
+# your existing [include].files, then select it for workspace animations:
+# "/usr/share/umbriel/effects/scene/melt/effect.toml"
+# [animation.workspaces]
+# effect = "melt"
+
 # ==============================================================================
 # Input
 # Enable NumLock when a physical keyboard connects.

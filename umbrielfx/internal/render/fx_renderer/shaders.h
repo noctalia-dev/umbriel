@@ -14,6 +14,7 @@ struct fx_renderer;
 GLuint compile_shader(GLuint type, const GLchar *src);
 
 GLuint link_program(const GLchar *frag_src);
+GLuint link_program_sources(const GLchar *vert_src, const GLchar *frag_src, const char *attribute);
 
 bool check_gl_ext(const char *exts, const char *ext);
 

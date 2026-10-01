@@ -22,6 +22,7 @@ extern "C" {
 #include "scene/color.h"
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
+#include "scene/presentation.h"
 #include "scene/text_buffer.h"
 #include "server/server.h"
 #include "server/wine_color_manager.h"
@@ -1551,6 +1552,7 @@ namespace umbriel {
       kLog.debug("overview open ignored during active client drag");
       return false;
     }
+    m_server->cancelScenePresentations(PresentationFallback::UnsupportedCapability);
     m_server->cursor()->resetMode();
     // An in-flight three-finger switch settles on the filmstrip instead of the hidden desktop slide.
     const Gestures::SwitchPick switchPick = m_server->gestures()->pickSwitchForOverview();

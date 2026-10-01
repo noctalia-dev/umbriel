@@ -351,6 +351,9 @@ namespace umbriel {
   }
 
   void LayerSurface::handleMap() {
+    if (Output* out = output()) {
+      out->notePresentationSourceContent();
+    }
     m_mapped = true;
     m_server->updateIdleInhibit();
     if (Output* out = output()) {
@@ -384,6 +387,9 @@ namespace umbriel {
   }
 
   void LayerSurface::handleUnmap() {
+    if (Output* out = output()) {
+      out->notePresentationSourceContent();
+    }
     // Snapshot before any other unmap bookkeeping runs: the live buffer is still valid here.
     beginCloseAnimation();
     wlr_scene_node_clear_animations(&m_scene->tree->node);
@@ -418,6 +424,9 @@ namespace umbriel {
   }
 
   void LayerSurface::handleCommit() {
+    if (Output* out = output()) {
+      out->notePresentationSourceContent();
+    }
     updateBlur();
     if (Output* out = output(); out != nullptr
         && (m_layerSurface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND

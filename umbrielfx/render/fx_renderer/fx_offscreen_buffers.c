@@ -37,6 +37,10 @@ static void clear_effect_buffers(struct fx_offscreen_buffers *fbos) {
 	drop_framebuffer(&fbos->blur_saved_pixels_buffer);
 }
 
+void fx_offscreen_buffers_finish_local(struct fx_offscreen_buffers *buffers) {
+	clear_effect_buffers(buffers);
+}
+
 static void addon_handle_destroy(struct wlr_addon *addon) {
 	struct fx_offscreen_buffers *fbos = wl_container_of(addon, fbos, addon);
 

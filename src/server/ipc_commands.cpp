@@ -5,6 +5,7 @@
 #include "output/output.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
+#include "scene/workspace_transition.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -522,6 +523,9 @@ namespace umbriel {
       owners.push_back(
           {{"type", "output"},
            {"name", output->wlr()->name},
+           {"workspace_transition",
+            output->workspaceTransition() ? output->workspaceTransition()->status()
+                                          : nlohmann::json{{"active", false}, {"memory_bytes", 0}}},
            {"slots", {{"screen", effectSlotJson(output->screenEffectSlot())}}}}
       );
     }
@@ -779,6 +783,7 @@ namespace umbriel {
 
   nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, std::string_view /*arg*/) {
 #ifdef UMBRIEL_TEST_IPC
+
     server.freezeAnimationClock();
 #endif
     return nlohmann::json{{"ok", nullptr}};

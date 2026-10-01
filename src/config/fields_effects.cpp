@@ -81,14 +81,56 @@ namespace umbriel {
         EffectPreset preset;
         preset.name = name;
         preset.kind = *kind;
-        auto shader = readShaderSource(keys, "shader", configStore().mutableDiagnostics());
-        for (auto& watched : shader.watchPaths) {
-          configStore().addWatchPath(std::move(watched));
+        const auto* interfaceNode = keys.take("interface");
+        if (interfaceNode != nullptr && interfaceNode->value<std::string>().value_or("") != "scene-v1") {
+          warnAt(interfaceNode->source(), "ignoring {} (interface must be scene-v1; omit it for legacy shaders)", path);
+          keys.freeform();
+          continue;
         }
-        if (shader.source) {
-          preset.shader = std::move(*shader.source);
-        } else if (keys.node("shader") == nullptr) {
-          warnAt(declaration.source, "{} has no shader; the preset is inert", path);
+        if (interfaceNode != nullptr) {
+          const auto* scopeNode = keys.take("scope");
+          const auto scope = scopeNode != nullptr
+              ? scene_experiment::parseScope(scopeNode->value<std::string>().value_or(""))
+              : std::nullopt;
+          if (*kind != EffectKind::Animation || !scope) {
+            warnAt(
+                scopeNode != nullptr ? scopeNode->source() : declaration.source,
+                "ignoring {} (scene-v1 requires kind animation and scope workspace_pair)", path
+            );
+            keys.freeform();
+            continue;
+          }
+          auto sources = scene_experiment::readSources(keys, *scope, configStore().mutableDiagnostics());
+          for (auto& watched : sources.watchPaths) {
+            configStore().addWatchPath(std::move(watched));
+          }
+          auto parameters = scene_experiment::readParameters(keys);
+          preset.scene = scene_experiment::Preset{.sources = {.scope = *scope, .stages = {}}, .parameters = {}};
+          if (sources.sources && parameters) {
+            preset.scene->sources = std::move(*sources.sources);
+            preset.scene->parameters = std::move(*parameters);
+          }
+        } else {
+          bool sceneKey = false;
+          for (const auto key : {"scope", "common_shader", "vertex_shader", "composite_shader", "parameters"}) {
+            if (const auto* value = keys.take(key)) {
+              warnAt(value->source(), "ignoring {} ({} requires interface = scene-v1)", path, key);
+              sceneKey = true;
+            }
+          }
+          if (sceneKey) {
+            keys.freeform();
+            continue;
+          }
+          auto shader = readShaderSource(keys, "shader", configStore().mutableDiagnostics());
+          for (auto& watched : shader.watchPaths) {
+            configStore().addWatchPath(std::move(watched));
+          }
+          if (shader.source) {
+            preset.shader = std::move(*shader.source);
+          } else if (keys.node("shader") == nullptr) {
+            warnAt(declaration.source, "{} has no shader; the preset is inert", path);
+          }
         }
         keys.boolean("palette", preset.palette);
         // The preset moves into the vector; register the overlay reference by index after the push.
@@ -125,7 +167,12 @@ namespace umbriel {
         case EffectKind::Screen:
           break;
         }
+        if (preset.scene && !keys.allKeysKnown()) {
+          warnAt(declaration.source, "ignoring {} (unknown or legacy-only scene preset keys)", path);
+          continue;
+        }
         effects.presets.push_back(std::move(preset));
+
         if (overlay) {
           const size_t index = effects.presets.size() - 1;
           addEffectReference(
@@ -234,6 +281,10 @@ namespace umbriel {
                   keys.push_back(std::move(description));
                 };
                 add("kind", KeyDescription("enum").withValues({"animation", "border", "window", "screen", "cursor"}));
+                add("interface", KeyDescription("enum").withValues({"scene-v1"}));
+                add("scope", KeyDescription("enum").withValues({"workspace_pair"}));
+                add("common_shader", KeyDescription("string").withFormat("path"));
+                add("parameters", KeyDescription("table"));
                 add("shader", KeyDescription("string").withFormat("path"));
                 add("palette", KeyDescription("bool"));
                 add("padding", KeyDescription("int").withRange(0, 1024));
@@ -272,9 +323,21 @@ namespace umbriel {
 
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references) {
     for (EffectReference& reference : references) {
-      if (const auto error = effectReferenceError(
-              loaded.effects, reference.name, reference.kind, reference.allowOff, reference.constraint
-          )) {
+      auto error = effectReferenceError(
+          loaded.effects, reference.name, reference.kind, reference.allowOff, reference.constraint
+      );
+      if (!error) {
+        const auto* preset = findEffectPreset(loaded.effects, reference.name);
+        if (preset != nullptr
+            && preset->scene
+            && !scene_experiment::acceptsBinding(preset->scene->sources.scope, reference.sceneBinding)) {
+          error = std::format(
+              "scene scope {} is incompatible with this binding",
+              scene_experiment::scopeName(preset->scene->sources.scope)
+          );
+        }
+      }
+      if (error) {
         warnAt(reference.source, "ignoring {} ({})", reference.context, *error);
         reference.clear();
       }
