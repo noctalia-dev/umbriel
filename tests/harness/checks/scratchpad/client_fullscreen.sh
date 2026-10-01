@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Verifies that client-requested fullscreen entry and exit on a scratchpad window
-# (such as fullscreening a video in Discord/Equibop and closing it) keeps the window
-# properly parented in the scratchpad scene tree above the backdrop dim rectangle,
-# rather than leaving the window dimmed under the scratchpad backdrop.
+# A scratchpad window that leaves client-requested fullscreen (a video player closing its fullscreen view) returns to
+# the scratchpad tree, above the scratchpad's backdrop dim, instead of dropping beneath it.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -11,20 +9,35 @@ readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/scratch-fullscreen.log"
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/scratch-fullscreen-before.png"
 readonly AFTER="$UMBRIEL_RUNTIME_DIR/scratch-fullscreen-after.png"
 
-sample_window_center() {
-  # Window is 400x300 centered on 1280x720: (640, 360)
-  magick "$1" -crop 20x20+630+350 -format '%[fx:round(255*mean.r)]' info:
+# The 400x300 window is centered on the 1280x720 output.
+window_center_red() {
+  local red
+  read -r red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$1" pixel 640 360)
+  echo "$red"
 }
 
-sample_corner() {
-  # Top-left corner of output outside the scratchpad window: (20, 20)
-  magick "$1" -crop 20x20+20+20 -format '%[fx:round(255*mean.r)]' info:
+wait_for_count() {
+  local want=$1
+  for _ in $(seq 60); do
+    [[ $("$UMBRIEL" windows --json | jq 'length') -eq $want ]] && return 0
+    sleep 0.05
+  done
+  echo "expected $want windows, got: $("$UMBRIEL" windows --json)"
+  return 1
+}
+
+wait_for_configured_state() {
+  local want=$1 configured=
+  for _ in $(seq 60); do
+    configured=$(grep '^configured-state=' "$CLIENT_LOG" | tail -1 || true)
+    [[ $configured == *" $want" ]] && return 0
+    sleep 0.05
+  done
+  echo "expected latest client configure to be $want, got '${configured:-none}': $(cat "$CLIENT_LOG")"
+  return 1
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
-
-[colors]
-backdrop = "#FFFFFFFF"
 
 [appearance]
 border_width = 0
@@ -52,46 +65,32 @@ EOF
 
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
-
-FILL_COLOR=0xFFFF0000 FULLSCREEN_ON_STDIN=1 "$CLIENT" scratch-video 400 300 \
+FILL_COLOR=0xFFFF0000 FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 "$CLIENT" scratch-video 400 300 \
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
-
-wait_for_count() {
-  local want=$1
-  for _ in $(seq 60); do
-    [[ $("$UMBRIEL" windows --json | jq 'length') -eq $want ]] && return 0
-    sleep 0.05
-  done
-  echo "expected $want windows, got: $("$UMBRIEL" windows --json)"
-  return 1
-}
 
 wait_for_count 1
 "$UMBRIEL" msg "scratchpad-toggle:test" > /dev/null
 "$UMBRIEL" settle
 
 grim "$BEFORE"
-initial_red=$(sample_window_center "$BEFORE")
-initial_corner=$(sample_corner "$BEFORE")
+initial_red=$(window_center_red "$BEFORE")
+if (( initial_red < 200 )); then
+  echo "shown scratchpad window was dimmed before fullscreen: red=$initial_red"
+  exit 1
+fi
 
-# Request fullscreen via client protocol
 printf f >&"$control_fd"
-sleep 0.1
-"$UMBRIEL" settle
-
-# Request unfullscreen (simulating closing the fullscreen video in Discord)
+wait_for_configured_state fullscreen
 printf u >&"$control_fd"
-sleep 0.1
+wait_for_configured_state windowed
 "$UMBRIEL" settle
 
 grim "$AFTER"
-after_red=$(sample_window_center "$AFTER")
-after_corner=$(sample_corner "$AFTER")
-
-# If the window dropped below the scratchpad dim rect, its red dropped from ~255 to ~102.
+after_red=$(window_center_red "$AFTER")
+# Beneath the 0.6 dim, the red window reads about 102.
 if (( after_red < 200 )); then
   echo "window remained dimmed after exiting fullscreen in scratchpad: red dropped from $initial_red to $after_red"
   exit 1
 fi
 
-echo "window remained bright in scratchpad after client fullscreen toggle: initial=$initial_red after=$after_red"
+echo "scratchpad window stays above its backdrop dim after a client fullscreen round trip"
