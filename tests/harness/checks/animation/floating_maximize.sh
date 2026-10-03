@@ -97,7 +97,7 @@ fi
 "$UMBRIEL" clock-advance 2000
 "$UMBRIEL" settle
 read -r maximized_x maximized_y maximized_w maximized_h < <(capture_box maximized)
-assert_exact_box maximized "$maximized_x" "$maximized_y" "$maximized_w" "$maximized_h" 0 0 1280 720
+assert_exact_box maximized "$maximized_x" "$maximized_y" "$maximized_w" "$maximized_h" 8 8 1264 704
 
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 "$UMBRIEL" clock-advance 150

@@ -78,6 +78,8 @@ namespace umbriel {
     // layout or usable area changes.
     void refreshOutputGeometry(Output* output);
     void applyConfig();
+    // Refit the maximized windows of visible scratchpads to the margin their settings give them now.
+    void refitMaximized();
     // Reconcile runtime scratchpads after a successful [[scratchpad]] reload.
     // Windows belonging to removed definitions return to their saved workspaces.
     void reconcileConfig();

@@ -58,7 +58,7 @@ window_id=$("$UMBRIEL" windows --json | jq -r --arg title "$TITLE" '.[] | select
 wait_for_box 480x300+493+289
 
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-wait_for_box 1280x720+0+0
+wait_for_box 1264x704+8+8
 
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_box 480x300+493+289

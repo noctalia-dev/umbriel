@@ -121,10 +121,10 @@ fi
 
 "$UMBRIEL" clock-advance 2000
 "$UMBRIEL" settle
-wait_for_box 1280x720+0+0
+wait_for_box 1264x704+8+8
 read -r max_after_x max_after_y max_after_w max_after_h < <(capture_box maximize-after)
-if ((max_after_x != 0 || max_after_y != 0 || max_after_w != 1280 || max_after_h != 720)); then
-  echo "scratchpad maximize settled at ${max_after_w}x${max_after_h}+${max_after_x}+${max_after_y}, expected 1280x720+0+0"
+if ((max_after_x != 8 || max_after_y != 8 || max_after_w != 1264 || max_after_h != 704)); then
+  echo "scratchpad maximize settled at ${max_after_w}x${max_after_h}+${max_after_x}+${max_after_y}, expected 1264x704+8+8"
   exit 1
 fi
 

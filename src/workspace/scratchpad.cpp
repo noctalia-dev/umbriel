@@ -724,6 +724,16 @@ namespace umbriel {
     }
   }
 
+  void ScratchpadManager::refitMaximized() {
+    for (const Entry& entry : m_entries) {
+      const Scratchpad* scratchpad = entry.view != nullptr ? findScratchpad(entry.scratchpad) : nullptr;
+      // A hidden pad is refit when it is shown.
+      if (scratchpad != nullptr && scratchpad->visible && entry.view->m_floatingMaximized) {
+        syncViewPresentation(entry.view, true);
+      }
+    }
+  }
+
   void ScratchpadManager::applyConfig() {
     const auto& animation = config().animation;
     const bool animate = animation.enabled && animation.scratchpad.enabled;
@@ -930,7 +940,7 @@ namespace umbriel {
         && scratchpad != nullptr
         && scratchpad->output != nullptr
         && (view->maximizedToEdges() || view->m_floatingMaximized)) {
-      const wlr_box area = usableArea(*m_server, scratchpad->output);
+      const wlr_box area = view->floatingMaximizedBox(usableArea(*m_server, scratchpad->output));
       if (area.width > 0 && area.height > 0) {
         view->cancelPositionAnimation();
         view->setPosition(area.x, area.y);

@@ -238,8 +238,9 @@ wait_for_straddled_scratch() {
 
 assert_direct_toggle() {
   local action=$1
+  shift
   accepts "$action"
-  wait_for_scratch_box 1280 0 1600 900
+  wait_for_scratch_box "$@"
   if [[ $(background_signature) != "$baseline_background" ]]; then
     echo "'$action' changed the background instead of only the scratchpad: $(windows)"
     return 1
@@ -337,16 +338,16 @@ baseline_scratch=$(scratch_signature)
 # Direct state actions use the scratchpad's assigned HEADLESS-2 output, not the
 # output containing its top-left corner. They must restore the exact straddled
 # box afterward without changing the background.
-assert_direct_toggle window-toggle-maximize
-assert_direct_toggle window-toggle-maximize-to-edges
-assert_direct_toggle window-toggle-fullscreen
+assert_direct_toggle window-toggle-maximize 1290 10 1580 880
+assert_direct_toggle window-toggle-maximize-to-edges 1280 0 1600 900
+assert_direct_toggle window-toggle-fullscreen 1280 0 1600 900
 
 # Switching from maximize-to-edges to ordinary maximize must keep a coherent
 # maximized state. The next ordinary toggle then restores the original box.
 accepts window-toggle-maximize-to-edges
 wait_for_scratch_box 1280 0 1600 900
 accepts window-toggle-maximize
-wait_for_scratch_box 1280 0 1600 900
+wait_for_scratch_box 1290 10 1580 880
 accepts window-toggle-maximize
 wait_for_scratch_restore
 if [[ $(background_signature) != "$baseline_background" ]]; then

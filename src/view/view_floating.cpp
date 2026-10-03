@@ -35,6 +35,22 @@ namespace umbriel {
     return m_server->usableAreaAt(m_sceneTree->node.x, m_sceneTree->node.y);
   }
 
+  wlr_box View::floatingMaximizedBox(const wlr_box& usable) const {
+    if (m_maximizedToEdges || usable.width <= 0 || usable.height <= 0) {
+      return usable;
+    }
+    const LayoutStruts& struts = m_workspace != nullptr ? m_workspace->layoutConfig().struts : config().layout.struts;
+    const int pad = m_workspace != nullptr ? m_workspace->layoutConfig().edgePad : config().layoutEdgePad();
+    const wlr_box inside = applyLayoutStruts(usable, struts);
+    const wlr_box box{
+        .x = inside.x + pad,
+        .y = inside.y + pad,
+        .width = inside.width - (2 * pad),
+        .height = inside.height - (2 * pad),
+    };
+    return box.width > 0 && box.height > 0 ? box : usable;
+  }
+
   wlr_box View::openingUsableArea(Output* targetOutput) const {
     const wlr_cursor* cursor = m_server->cursor()->wlr();
     if (targetOutput == nullptr) {

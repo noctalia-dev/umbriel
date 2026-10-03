@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# window-toggle-maximize fills a focused float's usable area, at the usable
-# origin, and restores the box it had before, instead of no-opping through the
+# window-toggle-maximize fills a focused float's usable area, inside the gap and
+# border, and restores the box it had before, instead of no-opping through the
 # layout column a float never has. The default 1280x720 output keeps the
 # expected pixels exact; a post-boot mode reload races the first client commit's
 # usable-area snapshot, so no custom mode here.
@@ -54,9 +54,9 @@ assert_box 640 360 320 180
 "$UMBRIEL" msg "window-focus-warp:$(field_of float-maximize id)" > /dev/null
 
 # The verb reaches the float instead of bailing on the missing column, and the
-# window moves to the usable origin rather than growing in place off the edge.
+# window keeps the gap and border margin rather than growing in place off the edge.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-assert_box 1280 720 0 0
+assert_box 1260 700 10 10
 
 # Restoring returns the exact pre-maximize box, not merely something smaller.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
@@ -65,15 +65,15 @@ assert_box 640 360 320 180
 # Resizing a maximized float drops maximization and keeps the new size, so the
 # next toggle has to maximize. If the state survived, this would restore 640.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1280
+wait_for_field float-maximize w 1260
 "$UMBRIEL" msg window-modify-primary-extent:-0.2 > /dev/null
-wait_for_field float-maximize w 1024
+wait_for_field float-maximize w 1004
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1280
+wait_for_field float-maximize w 1260
 
-# That maximize captured the resized box, so restoring lands on 1024, not 640.
+# That maximize captured the resized box, so restoring lands on 1004, not 640.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
-wait_for_field float-maximize w 1024
-wait_for_field float-maximize h 720
+wait_for_field float-maximize w 1004
+wait_for_field float-maximize h 700
 
 echo "window-toggle-maximize fills and restores a floating window's usable area"

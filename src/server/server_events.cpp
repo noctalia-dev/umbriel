@@ -752,6 +752,11 @@ namespace umbriel {
     if (effects.animation && m_scratchpadManager != nullptr) {
       m_scratchpadManager->applyConfig();
     }
+    // A maximized scratchpad window follows the gap, border, and struts it is sized with; no workspace arrange reaches
+    // it.
+    if ((effects.workspaceLayout || effects.viewChrome) && m_scratchpadManager != nullptr) {
+      m_scratchpadManager->refitMaximized();
+    }
     if (effects.layerEffects) {
       for (const auto& layer : m_layerSurfaces) {
         if (layer->mapped()) {

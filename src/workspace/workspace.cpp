@@ -699,6 +699,13 @@ namespace umbriel {
     // Tab visibility follows the layout on hidden workspaces too, so a workspace always comes back showing the right
     // tabs.
     m_tabs.sync();
+    // A maximized float keeps the margin a maximized tile keeps, so it follows every change an arrange follows: gap,
+    // border, struts, and the usable area.
+    for (View* view : m_views) {
+      if (view != nullptr && !view->tiled()) {
+        view->refitFloatingMaximized();
+      }
+    }
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
     // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
     m_group->server()->scheduleIpcWindowsEvent();
