@@ -11,6 +11,7 @@ using umbriel::Keybind;
 using umbriel::LayerRule;
 using umbriel::ModifierKey;
 using umbriel::OutputRule;
+using umbriel::RegexPatterns;
 using umbriel::SecurityContextRule;
 using umbriel::WindowRule;
 using umbriel::WorkspaceConfig;
@@ -264,20 +265,16 @@ UMBRIEL_TEST(listSectionsAreCompared) {
 }
 
 UMBRIEL_TEST(ruleEqualityIgnoresTheCompiledRegex) {
-  // Two rules built from the same pattern are the same rule, even though their
+  // Two rules built from the same patterns are the same rule, even though their
   // std::regex members are distinct objects that cannot be compared at all.
   Config before;
   Config after;
   WindowRule first;
-  first.appIdPattern = "kitty";
-  first.appIdRegex = std::regex(first.appIdPattern);
-  first.xdgTagPattern = "^main-window$";
-  first.xdgTagRegex = std::regex(first.xdgTagPattern);
+  first.appIdPatterns.add("kitty");
+  first.xdgTagPatterns.add("^main-window$");
   WindowRule second;
-  second.appIdPattern = "kitty";
-  second.appIdRegex = std::regex(second.appIdPattern);
-  second.xdgTagPattern = "^main-window$";
-  second.xdgTagRegex = std::regex(second.xdgTagPattern);
+  second.appIdPatterns.add("kitty");
+  second.xdgTagPatterns.add("^main-window$");
   before.windowRules.push_back(std::move(first));
   after.windowRules.push_back(std::move(second));
 
@@ -288,11 +285,11 @@ UMBRIEL_TEST(ruleEqualityStillSeesAnXdgTagChange) {
   Config before;
   Config after;
   WindowRule first;
-  first.appIdPattern = "game";
-  first.xdgTagPattern = "^game-launcher$";
+  first.appIdPatterns.add("game");
+  first.xdgTagPatterns.add("^game-launcher$");
   WindowRule second;
-  second.appIdPattern = "game";
-  second.xdgTagPattern = "^game-running$";
+  second.appIdPatterns.add("game");
+  second.xdgTagPatterns.add("^game-running$");
   before.windowRules.push_back(std::move(first));
   after.windowRules.push_back(std::move(second));
 
@@ -303,10 +300,10 @@ UMBRIEL_TEST(ruleEqualityStillSeesAContentTypeChange) {
   Config before;
   Config after;
   WindowRule first;
-  first.appIdPattern = "kitty";
+  first.appIdPatterns.add("kitty");
   first.matchContentType = ContentType::Game;
   WindowRule second;
-  second.appIdPattern = "kitty";
+  second.appIdPatterns.add("kitty");
   second.matchContentType = ContentType::Video;
   before.windowRules.push_back(std::move(first));
   after.windowRules.push_back(std::move(second));
@@ -318,9 +315,9 @@ UMBRIEL_TEST(ruleEqualitySeesAnOptionChangeUnderTheSamePattern) {
   Config before;
   Config after;
   WindowRule first;
-  first.appIdPattern = "kitty";
+  first.appIdPatterns.add("kitty");
   WindowRule second;
-  second.appIdPattern = "kitty";
+  second.appIdPatterns.add("kitty");
   second.opacity = 0.9;
   before.windowRules.push_back(std::move(first));
   after.windowRules.push_back(std::move(second));
@@ -695,9 +692,8 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
 
   Config forcedByRule = before;
   WindowRule game;
-  game.appIdPattern = "^game$";
-  game.xdgTagPattern = "^game-running$";
-  game.xdgTagRegex = std::regex(game.xdgTagPattern);
+  game.appIdPatterns.add("^game$");
+  game.xdgTagPatterns.add("^game-running$");
   game.matchContentType = ContentType::Game;
   game.allowTearing = true;
   forcedByRule.windowRules.push_back(game);
@@ -733,13 +729,12 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   CHECK(ConfigEffects::between(forcedByRule, changedAloneMatcher).tearingPolicy);
 
   Config changedTagMatcher = forcedByRule;
-  changedTagMatcher.windowRules[0].xdgTagPattern = "^game-launcher$";
-  changedTagMatcher.windowRules[0].xdgTagRegex = std::regex(changedTagMatcher.windowRules[0].xdgTagPattern);
+  changedTagMatcher.windowRules[0].xdgTagPatterns = RegexPatterns{}.add("^game-launcher$");
   CHECK(ConfigEffects::between(forcedByRule, changedTagMatcher).tearingPolicy);
 
   Config unrelatedRule = before;
   WindowRule translucent;
-  translucent.appIdPattern = "^terminal$";
+  translucent.appIdPatterns.add("^terminal$");
   translucent.matchContentType = ContentType::Photo;
   translucent.opacity = 0.9;
   unrelatedRule.windowRules.push_back(translucent);
@@ -764,7 +759,7 @@ UMBRIEL_TEST(animationEventEffectsRaiseEffects) {
 UMBRIEL_TEST(windowRulesRaiseEffectsOnlyWhenARuleSelectsAnEffect) {
   Config before;
   WindowRule translucent;
-  translucent.appIdPattern = "^foot$";
+  translucent.appIdPatterns.add("^foot$");
   translucent.opacity = 0.9;
   before.windowRules.push_back(translucent);
   Config opacityOnly = before;
@@ -775,11 +770,11 @@ UMBRIEL_TEST(windowRulesRaiseEffectsOnlyWhenARuleSelectsAnEffect) {
 
   Config selecting;
   WindowRule lines;
-  lines.appIdPattern = "^foot$";
+  lines.appIdPatterns.add("^foot$");
   lines.windowEffect = "lines";
   selecting.windowRules.push_back(lines);
   Config rematched = selecting;
-  rematched.windowRules[0].appIdPattern = "^kitty$";
+  rematched.windowRules[0].appIdPatterns = RegexPatterns{}.add("^kitty$");
   CHECK(ConfigEffects::between(selecting, rematched).effects);
 }
 

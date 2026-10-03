@@ -74,7 +74,8 @@ contributes its values.
 
 Selectors are optional. A rule without selectors applies to every restricted
 client, so avoid broad grants. Patterns match the complete value rather than a
-substring.
+substring. Either selector takes one pattern or an array of them, and any one of
+them matching is enough.
 
 Rules are additive and cannot remove the base protocol set.
 `wp_security_context_manager_v1` remains blocked even if listed. Changes apply

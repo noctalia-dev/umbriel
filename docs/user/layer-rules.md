@@ -18,7 +18,8 @@ blur_popups = true
 | `match.namespace` | regex | Match the layer surface namespace. |
 
 Regular expressions match any part of a namespace. Use `^` and `$` for an
-exact match.
+exact match. The selector takes either one pattern or an array of them, and any
+one of them matching is enough.
 
 ## Effects
 

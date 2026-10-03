@@ -6,6 +6,7 @@
 #include "core/animation.h"
 #include "layout/layout.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <filesystem>
@@ -359,13 +360,29 @@ namespace umbriel {
     [[nodiscard]] bool operator==(const WindowRuleState& other) const = default;
   };
 
+  // The alternatives of one selector, written as a single string or as an array of them; a value matches when any one
+  // of them matches it. The regexes are derived, so equality is decided by the patterns alone.
+  struct RegexPatterns {
+    std::vector<std::string> patterns;
+    std::vector<std::regex> regexes;
+
+    // Throws `std::regex_error` on a pattern that does not compile, for the caller to report.
+    RegexPatterns& add(std::string pattern) {
+      regexes.emplace_back(pattern);
+      patterns.push_back(std::move(pattern));
+      return *this;
+    }
+    // A list with no pattern, or only an empty one, places no constraint.
+    [[nodiscard]] bool constrains() const {
+      return std::ranges::any_of(patterns, [](const std::string& pattern) { return !pattern.empty(); });
+    }
+    [[nodiscard]] bool operator==(const RegexPatterns& other) const { return patterns == other.patterns; }
+  };
+
   struct WindowRule {
-    std::string appIdPattern;
-    std::string titlePattern;
-    std::string xdgTagPattern;
-    std::regex appIdRegex;
-    std::regex titleRegex;
-    std::regex xdgTagRegex;
+    RegexPatterns appIdPatterns;
+    RegexPatterns titlePatterns;
+    RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
@@ -417,12 +434,11 @@ namespace umbriel {
     std::optional<std::string> borderEffect;
     std::optional<std::string> windowEffect;
 
-    // The compiled regexes are derived from the app ID, title, and XDG tag patterns and
-    // are not comparable, so equality is decided by the patterns themselves.
+    // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
     [[nodiscard]] bool operator==(const WindowRule& other) const {
-      return appIdPattern == other.appIdPattern
-          && titlePattern == other.titlePattern
-          && xdgTagPattern == other.xdgTagPattern
+      return appIdPatterns == other.appIdPatterns
+          && titlePatterns == other.titlePatterns
+          && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
@@ -513,16 +529,15 @@ namespace umbriel {
   };
 
   struct LayerRule {
-    std::string namespacePattern;
-    std::regex namespaceRegex;
+    RegexPatterns namespacePatterns;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
 
-    // See WindowRule: the regex is derived from the pattern.
+    // See WindowRule: the regexes are derived from the patterns.
     [[nodiscard]] bool operator==(const LayerRule& other) const {
-      return namespacePattern == other.namespacePattern
+      return namespacePatterns == other.namespacePatterns
           && blur == other.blur
           && blurPopups == other.blurPopups
           && ignoreAlpha == other.ignoreAlpha
@@ -541,16 +556,14 @@ namespace umbriel {
   // Grants extra globals to security-context clients whose metadata matches.
   // Additive only: the base allowed set cannot be narrowed from configuration.
   struct SecurityContextRule {
-    std::string sandboxEnginePattern;
-    std::string appIdPattern;
-    std::regex sandboxEngineRegex;
-    std::regex appIdRegex;
+    RegexPatterns sandboxEnginePatterns;
+    RegexPatterns appIdPatterns;
     std::vector<std::string> allowGlobals;
 
     // See WindowRule: the regexes are derived from the patterns.
     [[nodiscard]] bool operator==(const SecurityContextRule& other) const {
-      return sandboxEnginePattern == other.sandboxEnginePattern
-          && appIdPattern == other.appIdPattern
+      return sandboxEnginePatterns == other.sandboxEnginePatterns
+          && appIdPatterns == other.appIdPatterns
           && allowGlobals == other.allowGlobals;
     }
   };

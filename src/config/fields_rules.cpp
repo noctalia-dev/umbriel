@@ -63,25 +63,42 @@ namespace umbriel {
       return true;
     }
 
-    // A regex pattern a rule matches with. One that does not compile rejects the rule.
-    template <typename T>
-    registry::Field<T> regexField(std::string_view key, std::string T::* pattern, std::regex T::* regex) {
+    // One pattern that does not compile rejects the whole rule, so a selector never matches less than it says.
+    bool readRegexPatterns(const toml::node& node, const std::string& path, RegexPatterns& target) {
+      std::vector<std::string> patterns;
+      if (const auto* array = node.as_array()) {
+        for (const toml::node& entry : *array) {
+          const auto value = entry.value<std::string>();
+          if (!value) {
+            warnAt(entry.source(), "ignoring {} (expected array of strings)", path);
+            return false;
+          }
+          patterns.push_back(*value);
+        }
+      } else if (const auto value = node.value<std::string>()) {
+        patterns.push_back(*value);
+      } else {
+        warnAt(node.source(), "ignoring {} (expected string or array of strings)", path);
+        return false;
+      }
+      RegexPatterns compiled;
+      for (std::string& pattern : patterns) {
+        try {
+          compiled.add(std::move(pattern));
+        } catch (const std::regex_error& error) {
+          warnAt(node.source(), "invalid regex in {}: {}", path, error.what());
+          return false;
+        }
+      }
+      target = std::move(compiled);
+      return true;
+    }
+
+    template <typename T> registry::Field<T> regexField(std::string_view key, RegexPatterns T::* patterns) {
       return registry::checked<T>(
-          key, registry::KeyDescription("string").withFormat("regex"),
-          [pattern, regex](const toml::node& node, const std::string& path, T& target, registry::ReadContext&) {
-            const auto value = node.value<std::string>();
-            if (!value) {
-              warnAt(node.source(), "ignoring {} (expected string)", path);
-              return true;
-            }
-            target.*pattern = *value;
-            try {
-              target.*regex = std::regex(*value);
-            } catch (const std::regex_error& error) {
-              warnAt(node.source(), "invalid regex in {}: {}", path, error.what());
-              return false;
-            }
-            return true;
+          key, registry::KeyDescription("string_or_string_array").withFormat("regex"),
+          [patterns](const toml::node& node, const std::string& path, T& target, registry::ReadContext&) {
+            return readRegexPatterns(node, path, target.*patterns);
           }
       );
     }
@@ -153,9 +170,9 @@ namespace umbriel {
       const auto self = [](auto& rule) -> auto& { return rule; };
       // Any mistake in the match rejects the rule: one that selects less than it says would restyle other windows.
       static const registry::Fields<W> match{
-          strict(regexField("app_id", &W::appIdPattern, &W::appIdRegex)),
-          strict(regexField("title", &W::titlePattern, &W::titleRegex)),
-          strict(regexField("xdg_tag", &W::xdgTagPattern, &W::xdgTagRegex)),
+          strict(regexField("app_id", &W::appIdPatterns)),
+          strict(regexField("title", &W::titlePatterns)),
+          strict(regexField("xdg_tag", &W::xdgTagPatterns)),
           strict(registry::choice("content_type", &W::matchContentType, contentTypes())),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
@@ -284,7 +301,7 @@ namespace umbriel {
     const registry::Fields<LayerRule>& layerRuleFields() {
       using L = LayerRule;
       static const registry::Fields<L> match{
-          regexField("namespace", &L::namespacePattern, &L::namespaceRegex),
+          regexField("namespace", &L::namespacePatterns),
       };
       static const registry::Fields<L> fields{
           registry::table<L>(
@@ -298,25 +315,20 @@ namespace umbriel {
       return fields;
     }
 
-    // A security-context selector: a non-empty pattern that compiles, or the rule is dropped.
-    registry::Field<SecurityContextRule> securityPattern(
-        std::string_view key, std::string SecurityContextRule::* pattern, std::regex SecurityContextRule::* regex
-    ) {
+    // A selector that constrains nothing would grant the global to every restricted client.
+    registry::Field<SecurityContextRule>
+    securityPattern(std::string_view key, RegexPatterns SecurityContextRule::* member) {
       return registry::checked<SecurityContextRule>(
-          key, registry::KeyDescription("string").withFormat("regex"),
-          [pattern, regex](
+          key, registry::KeyDescription("string_or_string_array").withFormat("regex"),
+          [member](
               const toml::node& node, const std::string& path, SecurityContextRule& target, registry::ReadContext&
           ) {
-            const auto value = node.value<std::string>();
-            if (!value || value->empty()) {
-              warnAt(node.source(), "ignoring {} (expected non-empty string)", path);
+            RegexPatterns& parsed = target.*member;
+            if (!readRegexPatterns(node, path, parsed)) {
               return false;
             }
-            target.*pattern = *value;
-            try {
-              target.*regex = std::regex(*value);
-            } catch (const std::regex_error& error) {
-              warnAt(node.source(), "invalid regex in {}: {}", path, error.what());
+            if (!parsed.constrains()) {
+              warnAt(node.source(), "ignoring {} (expected non-empty string or array of strings)", path);
               return false;
             }
             return true;
@@ -328,8 +340,8 @@ namespace umbriel {
     const registry::Fields<SecurityContextRule>& securityContextRuleFields() {
       using S = SecurityContextRule;
       static const registry::Fields<S> match{
-          securityPattern("sandbox_engine", &S::sandboxEnginePattern, &S::sandboxEngineRegex),
-          securityPattern("app_id", &S::appIdPattern, &S::appIdRegex),
+          securityPattern("sandbox_engine", &S::sandboxEnginePatterns),
+          securityPattern("app_id", &S::appIdPatterns),
       };
       static const registry::Fields<S> fields{
           registry::table<S>(

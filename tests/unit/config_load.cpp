@@ -9,6 +9,7 @@
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <optional>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -1681,8 +1682,13 @@ UMBRIEL_TEST(securityContextRulesLoadAndKeepTheManagerBlocked) {
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().securityContextRules.size(), size_t{1});
-  CHECK(store.config().securityContextRules[0].sandboxEnginePattern == "^org\\.flatpak$");
-  CHECK(store.config().securityContextRules[0].appIdPattern == "^org\\.example\\.Bar$");
+  CHECK(
+      store.config().securityContextRules[0].sandboxEnginePatterns.patterns
+      == std::vector<std::string>{"^org\\.flatpak$"}
+  );
+  CHECK(
+      store.config().securityContextRules[0].appIdPatterns.patterns == std::vector<std::string>{"^org\\.example\\.Bar$"}
+  );
   CHECK_EQ(store.config().securityContextRules[0].allowGlobals.size(), size_t{1});
 
   file.write("[[security_context_rule]]\nmatch.app_id = '['\nallow_globals = [\"zwlr_layer_shell_v1\"]\n");
@@ -1822,16 +1828,33 @@ UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
   file.write("[[window_rule]]\nmatch.xdg_tag = \"^(game-launcher|game-running)$\"\nopacity = 0.9\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
-  CHECK_EQ(store.config().windowRules[0].xdgTagPattern, std::string("^(game-launcher|game-running)$"));
-  CHECK(std::regex_search("game-launcher", store.config().windowRules[0].xdgTagRegex));
-  CHECK(std::regex_search("game-running", store.config().windowRules[0].xdgTagRegex));
-  CHECK(!std::regex_search("game-settings", store.config().windowRules[0].xdgTagRegex));
+  const umbriel::RegexPatterns& tag = store.config().windowRules[0].xdgTagPatterns;
+  CHECK(tag.patterns == std::vector<std::string>{"^(game-launcher|game-running)$"});
+  CHECK(std::regex_search("game-launcher", tag.regexes[0]));
+  CHECK(std::regex_search("game-running", tag.regexes[0]));
+  CHECK(!std::regex_search("game-settings", tag.regexes[0]));
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.xdg_tag"));
+
+  // An array of patterns is the same selector: any one of them matching is enough.
+  file.write("[[window_rule]]\nmatch.xdg_tag = [\"^game-launcher$\", \"^game-running$\"]\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK_EQ(
+      store.config().windowRules[0].xdgTagPatterns.patterns,
+      (std::vector<std::string>{"^game-launcher$", "^game-running$"})
+  );
+  CHECK(std::regex_search("game-running", store.config().windowRules[0].xdgTagPatterns.regexes[1]));
+
+  // An empty array places no constraint, like leaving the key out.
+  file.write("[[window_rule]]\nmatch.app_id = []\nopacity = 0.9\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].appIdPatterns.patterns.empty());
 
   file.write("[[window_rule]]\nopacity = 0.9\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
-  CHECK(store.config().windowRules[0].xdgTagPattern.empty());
+  CHECK(store.config().windowRules[0].xdgTagPatterns.patterns.empty());
 
   file.write("[[window_rule]]\nmatch.xdg_tag = 42\nmatch.is_focused = true\nopacity = 0.5\n");
   CHECK(store.reload().success);
@@ -1843,6 +1866,18 @@ UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
   CHECK(store.reload().success);
   CHECK(store.config().windowRules.empty());
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+
+  // One pattern that does not compile drops the whole rule rather than the rest of the array.
+  file.write("[[window_rule]]\nmatch.app_id = [\"^foot$\", \"[\"]\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
+
+  // An element that is not a string rejects the rule just as a bad regex does.
+  file.write("[[window_rule]]\nmatch.app_id = [\"^foot$\", 42]\nopacity = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(containsDiagnostic(store, "ignoring window_rule[0].match.app_id (expected array of strings)"));
 }
 
 UMBRIEL_TEST(windowTearingOverrideLoadsAsAnOptionalBoolean) {
@@ -2243,11 +2278,15 @@ UMBRIEL_TEST(ruleCollectionsAccumulateAcrossIncludesWhilePlainArraysReplace) {
 
   std::vector<std::string> patterns;
   for (const umbriel::WindowRule& rule : store.config().windowRules) {
-    patterns.push_back(rule.appIdPattern);
+    for (const std::string& pattern : rule.appIdPatterns.patterns) {
+      patterns.push_back(pattern);
+    }
   }
   std::vector<std::string> namespaces;
   for (const umbriel::LayerRule& rule : store.config().layerRules) {
-    namespaces.push_back(rule.namespacePattern);
+    for (const std::string& pattern : rule.namespacePatterns.patterns) {
+      namespaces.push_back(pattern);
+    }
   }
   const std::vector<std::string> expectedPatterns{"^from-include$", "^from-root$"};
   const std::vector<std::string> expectedNamespaces{"^bar$"};

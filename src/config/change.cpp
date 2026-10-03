@@ -123,9 +123,9 @@ namespace umbriel {
 
         const WindowRule& lhs = before.windowRules[beforeIndex++];
         const WindowRule& rhs = after.windowRules[afterIndex++];
-        if (lhs.appIdPattern != rhs.appIdPattern
-            || lhs.titlePattern != rhs.titlePattern
-            || lhs.xdgTagPattern != rhs.xdgTagPattern
+        if (lhs.appIdPatterns != rhs.appIdPatterns
+            || lhs.titlePatterns != rhs.titlePatterns
+            || lhs.xdgTagPatterns != rhs.xdgTagPatterns
             || lhs.matchContentType != rhs.matchContentType
             || lhs.matchFocused != rhs.matchFocused
             || lhs.matchFloating != rhs.matchFloating

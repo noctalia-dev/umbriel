@@ -27,6 +27,16 @@ default_workspace = 2
 Selectors are optional. A rule with none matches every window. Regular
 expressions match any part of a value, so use `^` and `$` for an exact match.
 
+The `app_id`, `title`, and `xdg_tag` selectors take either one pattern or an
+array of them. Any one of them matching is enough, and an empty array places no
+constraint:
+
+```toml
+[[window_rule]]
+match.app_id = ["^mpv$", "^celluloid$"]
+window_effect = "scanlines"
+```
+
 Run `umbriel windows` to inspect current application IDs, titles, tags, and
 content types. Prefer `app_id` for placement because titles often change.
 
