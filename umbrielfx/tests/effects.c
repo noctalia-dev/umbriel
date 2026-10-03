@@ -307,6 +307,26 @@ static bool test_uniforms(struct fixture *fixture) {
 	too_many_floats.uniforms[1].floats[0] = 0.0f; too_many_floats.uniforms[1].floats[1] = 1.0f; // green
 	ok &= render_animation(fixture, bounded, &too_many_floats, 0, pixel)
 		&& check(pixel[2] > 250 && pixel[1] < 5, "a float entry past FX_UNIFORM_FLOATS_MAX is rejected");
+	// Dedicated arrays share the same checks without enlarging every fx_uniform.
+	struct wlr_egl_context previous;
+	struct fx_renderer *renderer = fx_get_renderer(fixture->renderer);
+	if (check(wlr_egl_make_current(renderer->egl, &previous), "external uniform context")) {
+		float values[9][4] = {{0.0f, 1.0f, 0.0f, 1.0f}};
+		float actual[4] = {0};
+		glUseProgram(bounded->program);
+		fx_effect_shader_bind_uniform_data(bounded, "tints", FX_UNIFORM_VEC4, 9, values, sizeof(values));
+		glGetUniformfv(bounded->program, glGetUniformLocation(bounded->program, "tints[0]"), actual);
+		ok &= check(actual[1] == 1.0f && actual[0] == 0.0f, "external array larger than inline storage binds and clamps to active size");
+		values[0][0] = 1.0f; values[0][1] = 0.0f;
+		fx_effect_shader_bind_uniform_data(bounded, "tints", FX_UNIFORM_VEC4, 9, values, sizeof(values)-sizeof(values[0]));
+		fx_effect_shader_bind_uniform_data(bounded, "tints", FX_UNIFORM_VEC4, 1, NULL, sizeof(values));
+		fx_effect_shader_bind_uniform_data(bounded, "tints", FX_UNIFORM_VEC3, 1, values, sizeof(values));
+		glGetUniformfv(bounded->program, glGetUniformLocation(bounded->program, "tints[0]"), actual);
+		ok &= check(actual[1] == 1.0f && actual[0] == 0.0f, "short storage, null data and wrong external types preserve the previous binding");
+		wlr_egl_restore_context(&previous);
+	} else {
+		ok = false;
+	}
 	fx_effect_shader_unref(bounded);
 	return ok;
 }
@@ -2125,6 +2145,75 @@ static bool test_output_effects(struct fixture *fixture) {
 			wlr_buffer_unlock(rendered);
 		}
 	}
+	// Motion samples use the same logical coordinate system under scale/rotation.
+	struct fx_effect_shader *trail = fx_effect_shader_create(fixture->renderer, FX_EFFECT_CURSOR,
+		"vec4 cursor(vec2 uv) { for (int i = 0; i < 8; ++i) {"
+		" if (i < umbriel_pointer_count && length((uv - umbriel_pointer_history[i].xy) * umbriel_size) < 0.6)"
+		" return vec4(0.0, 1.0 - umbriel_pointer_history[i].z, 0.0, 1.0); } return umbriel_sample(uv); }", "trail-probe");
+	ok &= check(trail != NULL, "motion history shader compiles");
+	wlr_scene_output_set_cursor_effect(scene_output, trail, NULL, 1);
+	wlr_scene_output_set_effect_time(scene_output, 1000);
+	wlr_scene_output_set_effect_pointer(scene_output, 1.25, 2.25, true);
+	wlr_scene_output_set_effect_time(scene_output, 1100);
+	wlr_scene_output_set_effect_pointer(scene_output, 6.25, 2.25, true);
+	ok &= check(wlr_scene_output_cursor_motion_active(scene_output), "motion requests fade frames");
+	for (int rotated = 0; rotated < 2; ++rotated) {
+		const enum wl_output_transform transform = rotated ? WL_OUTPUT_TRANSFORM_90 : WL_OUTPUT_TRANSFORM_NORMAL;
+		rendered = render_transformed(fixture, scene_output, 2, transform);
+		ok &= check(rendered != NULL, "motion frame renders");
+		if (rendered != NULL) {
+			uint8_t pixel[4];
+			ok &= read_logical(fixture, rendered, transform, 1.25f, 2.25f, pixel)
+				&& check(pixel[1] > 220 && pixel[1] < 240 && pixel[0] < 5, "old position outside current radius receives its age");
+			ok &= read_logical(fixture, rendered, transform, 6.25f, 2.25f, pixel)
+				&& is_colour(pixel, 0, 255, 0, "newest sample remains bright");
+			wlr_buffer_unlock(rendered);
+		}
+	}
+	wlr_scene_output_set_effect_time(scene_output, 1400);
+	ok &= check(!wlr_scene_output_cursor_motion_active(scene_output), "expired history stops requesting frames");
+	rendered = render_transformed(fixture, scene_output, 2, WL_OUTPUT_TRANSFORM_NORMAL);
+	if (rendered != NULL) {
+		uint8_t pixel[4];
+		ok &= read_logical(fixture, rendered, WL_OUTPUT_TRANSFORM_NORMAL, 1.25f, 2.25f, pixel)
+			&& is_colour(pixel, 0, 0, 255, "expired tail restores backdrop");
+		wlr_buffer_unlock(rendered);
+	} else {
+		ok &= check(false, "cleanup frame renders");
+	}
+	wlr_scene_output_set_effect_pointer(scene_output, 3, 3, true);
+	wlr_scene_output_set_effect_pointer(scene_output, 3, 3, false);
+	ok &= check(!wlr_scene_output_cursor_motion_active(scene_output), "hide clears history");
+	wlr_scene_output_set_effect_pointer(scene_output, 3, 3, true);
+	wlr_scene_output_set_effect_pointer(scene_output, -1, 3, true);
+	ok &= check(!wlr_scene_output_cursor_motion_active(scene_output), "leaving output clears history");
+	wlr_scene_output_set_effect_pointer(scene_output, 3, 3, true);
+	wlr_scene_output_set_cursor_effect(scene_output, marker, NULL, 1);
+	ok &= check(!wlr_scene_output_cursor_motion_active(scene_output), "program change clears history");
+	fx_effect_shader_unref(trail);
+	struct fx_effect_shader *long_tail = fx_effect_shader_create(fixture->renderer, FX_EFFECT_CURSOR,
+		"vec4 cursor(vec2 uv) { for (int i=0;i<64;++i) { if (i<umbriel_pointer_count &&"
+		" length((uv-umbriel_pointer_path[i].xy)*umbriel_size)<0.6) return vec4(0.0,1.0,0.0,1.0); }"
+		" return umbriel_sample(uv); }", "long-tail");
+	ok &= check(long_tail != NULL, "long path compiles");
+	wlr_scene_output_set_cursor_effect(scene_output, long_tail, NULL, 1);
+	for (unsigned i=0;i<40;++i) {
+		wlr_scene_output_set_effect_time(scene_output, 2000+i*32);
+		wlr_scene_output_set_effect_pointer(scene_output, i==0 ? 1.25 : 5.25+(i%2), 2.25, true);
+	}
+	ok &= check(wlr_scene_output_cursor_motion_active(scene_output), "long tail survives beyond 300 ms");
+	rendered = render_transformed(fixture, scene_output, 2, WL_OUTPUT_TRANSFORM_NORMAL);
+	ok &= check(rendered != NULL, "long path renders");
+	if (rendered != NULL) {
+		uint8_t pixel[4];
+		ok &= read_logical(fixture, rendered, WL_OUTPUT_TRANSFORM_NORMAL, 1.25f, 2.25f, pixel)
+			&& is_colour(pixel, 0, 255, 0, "old path survives forty motion samples");
+		wlr_buffer_unlock(rendered);
+	}
+	wlr_scene_output_set_effect_time(scene_output, 5248);
+	ok &= check(!wlr_scene_output_cursor_motion_active(scene_output), "long path expires after two seconds");
+	wlr_scene_output_set_cursor_effect(scene_output, NULL, NULL, 0);
+	fx_effect_shader_unref(long_tail);
 	// NULL parameters are zeroed, also when the same program is set again.
 	wlr_scene_output_set_screen_effect(scene_output, screen, NULL);
 	wlr_scene_output_set_screen_effect(scene_output, screen, NULL);

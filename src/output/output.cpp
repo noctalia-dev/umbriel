@@ -144,20 +144,23 @@ namespace umbriel {
 #ifdef UMBRIEL_TEST_IPC
     advancing = !m_server->animationClockFrozen();
 #endif
+    wlr_scene_output_set_effect_time(m_sceneOutput, m_server->animationClockMsec());
     m_outputEffectsTimed = false;
-    // Registers the slot's instance and returns its parameters at this output's effect time.
-    const auto bind = [&](const void* owner, const EffectPreset& preset, fx_effect_shader* shader, bool visible) {
-      fx_animation_parameters parameters{};
-      registry.fillTimeUniforms(parameters, m_effectSeconds, preset, shader);
-      const bool readsTime = fx_effect_shader_reads(shader, "umbriel_time");
+    // Register demand after the cursor program and motion history have been updated.
+    const auto bind = [&](const void* owner, fx_effect_shader* shader, bool visible) {
+      const bool motion = fx_effect_shader_reads(shader, "umbriel_pointer_history")
+          || fx_effect_shader_reads(shader, "umbriel_pointer_path");
+      const bool readsTime = fx_effect_shader_reads(shader, "umbriel_time")
+          || (motion && wlr_scene_output_cursor_motion_active(m_sceneOutput));
       m_outputEffectsTimed = m_outputEffectsTimed || (readsTime && visible);
       registry.updateInstance(
           owner, {.output = this, .visible = visible, .readsTime = readsTime, .advancing = advancing}
       );
-      return parameters;
     };
     if (screenPreset != nullptr) {
-      const fx_animation_parameters parameters = bind(this, *screenPreset, screen, m_output->enabled);
+      fx_animation_parameters parameters{};
+      registry.fillTimeUniforms(parameters, m_effectSeconds, *screenPreset, screen);
+      bind(this, screen, m_output->enabled);
       wlr_scene_output_set_screen_effect(m_sceneOutput, screen, &parameters);
     } else {
       wlr_scene_output_set_screen_effect(m_sceneOutput, nullptr, nullptr);
@@ -168,11 +171,13 @@ namespace umbriel {
       const double lx = pointer->wlr()->x;
       const double ly = pointer->wlr()->y;
       const bool here = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly) == m_output;
-      const fx_animation_parameters parameters =
-          bind(&m_cursorEffectOwner, *cursorPreset, cursor, m_output->enabled && here && pointer->visible());
+      fx_animation_parameters parameters{};
+      registry.fillTimeUniforms(parameters, m_effectSeconds, *cursorPreset, cursor);
       wlr_scene_output_set_cursor_effect(m_sceneOutput, cursor, &parameters, cursorPreset->radius);
       // A newly set cursor program draws nothing until the pointer is pushed after it.
+      wlr_scene_output_set_effect_time(m_sceneOutput, m_server->animationClockMsec());
       wlr_scene_output_set_effect_pointer(m_sceneOutput, lx, ly, pointer->visible());
+      bind(&m_cursorEffectOwner, cursor, m_output->enabled && here && pointer->visible());
     } else {
       wlr_scene_output_set_cursor_effect(m_sceneOutput, nullptr, nullptr, 0);
       registry.removeInstance(&m_cursorEffectOwner);

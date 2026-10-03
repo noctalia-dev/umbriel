@@ -40,6 +40,7 @@ Bundled presets:
 | `scanlines` | window | `[effects] window = "scanlines"` |
 | `vignette` | screen | `[effects] screen = "vignette"` |
 | `glow` | cursor | `[effects] cursor = "glow"` |
+| `trail` | cursor | Noctalia-inspired purple, lavender and moon-yellow motion tail; include `cursor/trail/effect.toml`, then set `[effects] cursor = "trail"`. |
 
 ## Turn a default off for one window or output
 
@@ -99,7 +100,8 @@ Where each kind draws:
   before the software cursor is drawn and never shades the cursor image, and
   never affects a hardware cursor. It hides when the compositor hides the
   pointer; a client that hides its own cursor image does not by itself turn
-  the effect off.
+  the effect off. Motion-history shaders expand the rectangle to cover the
+  retained path, with `radius` padding.
 
 The session lock detaches screen and cursor effects and never shades the lock
 surface.
@@ -129,7 +131,7 @@ pointing to both declarations.
 | `light.spread` | border | `80` | How far light from the ring spills, 1 to 256 logical pixels. Defining `[effects.preset.<name>.light]` enables light. |
 | `light.intensity` | border | `1.0` | Light gain, 0 to 4. |
 | `light.threshold` | border | `0.5` | Brightness a ring pixel needs before it emits, 0 to 1. |
-| `radius` | cursor | `0` | Half-size of the square around the pointer, 0 to 4096; `0` covers the output. |
+| `radius` | cursor | `0` | Padding around the pointer (or retained motion path), 0 to 4096; `0` covers the output. |
 
 Border light is built from the ring in buffer pixels, so the same preset's
 brightness differs across output scales. The light itself stacks below panels
@@ -295,7 +297,27 @@ Animations add `umbriel_progress`, `umbriel_clamped_progress`,
 logical pixels), and `umbriel_border_distance(vec2 uv)`, the signed distance
 in logical pixels to the client rectangle, negative inside it; the client hole
 is always cut out of a border's result. Cursor effects add `umbriel_pointer`,
-the pointer position in `uv`.
+the pointer position in `uv`. Motion-aware cursor shaders can read
+`umbriel_pointer_count` (0–8) and `umbriel_pointer_history[8]`, oldest first.
+Each `vec4` contains position in the same `uv` coordinates, age in seconds,
+and a reserved component. Samples expire after 300 ms; older samples are
+spaced approximately 32 ms apart while the newest tracks each motion event.
+The drawn rectangle encloses the samples plus `radius` padding, so use
+`umbriel_size` to calculate distances in logical pixels. History resets on
+hide, output crossing, lock and program changes. Reading motion history
+requests frames only while samples remain; reading `umbriel_time` still
+requests continuous frames. No history buffers are allocated for this input.
+
+For a longer tail, read `umbriel_pointer_path[64]` instead of
+`umbriel_pointer_history`. This opts into a two-second history with up to 64
+samples at the same approximate 32 ms spacing. `umbriel_pointer_count` reports
+the active path length. The fourth component is a stable birth phase in
+seconds (wrapping every 60 seconds), useful for retaining a sample's colour
+and particle seed. Positions and ages have the same units as short history.
+Long paths follow the same expiry, damage, frame gating and reset rules.
+
+The bundled `trail` uses a fixed Noctalia-inspired palette, independent of the
+desktop theme. Its colours can be edited in `cursor/trail/shader.glsl`.
 
 ### What a window effect sees
 

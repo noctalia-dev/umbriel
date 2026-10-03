@@ -1,0 +1,6 @@
+# Include this file, then select [effects] cursor = "trail".
+# Noctalia-inspired purple, lavender and moon-yellow tail; fades in 300 ms.
+[effects.preset.trail]
+kind = "cursor"
+shader = "shader.glsl"
+radius = 12

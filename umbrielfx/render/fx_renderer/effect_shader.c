@@ -105,7 +105,11 @@ static const char kWindowSuffix[] =
     "\nvoid main() { gl_FragColor = mix(umbriel_sample(v_texcoord), window(v_texcoord), umbriel_mask(v_texcoord)); }\n";
 static const char kScreenSuffix[] = "\nvoid main() { gl_FragColor = screen(v_texcoord); }\n";
 // The cursor kind is in place too, so it needs the mask helper before its own uniform.
-static const char kCursorSection[] = "uniform vec2 umbriel_pointer;\n";
+static const char kCursorSection[] =
+    "uniform vec2 umbriel_pointer;\n"
+    "uniform int umbriel_pointer_count;\n"
+    "uniform vec4 umbriel_pointer_history[8];\n"
+    "uniform vec4 umbriel_pointer_path[64];\n";
 static const char kCursorSuffix[] =
     "\nvoid main() { gl_FragColor = mix(umbriel_sample(v_texcoord), cursor(v_texcoord), umbriel_mask(v_texcoord)); }\n";
 
@@ -268,55 +272,66 @@ static GLenum gl_type(enum fx_uniform_type type) {
   return 0;
 }
 
-void fx_effect_shader_bind_uniform(struct fx_effect_shader* shader, const struct fx_uniform* uniform) {
-  struct fx_effect_uniform* cached = (struct fx_effect_uniform*)fx_effect_shader_uniform(shader, uniform->name);
+void fx_effect_shader_bind_uniform_data(
+    struct fx_effect_shader* shader, const char* name, enum fx_uniform_type type,
+    unsigned element_count, const void* data, size_t data_bytes
+) {
+  struct fx_effect_uniform* cached = (struct fx_effect_uniform*)fx_effect_shader_uniform(shader, name);
   if (cached == NULL) {
     return;
   }
-  const bool integer = uniform->type == FX_UNIFORM_INT || uniform->type == FX_UNIFORM_BOOL;
-  // count is bounded by the entry's own arrays.
-  const unsigned capacity = integer ? sizeof(uniform->ints) / sizeof(uniform->ints[0])
-                                    : FX_UNIFORM_FLOATS_MAX / fx_uniform_components(uniform->type);
-  if (cached->type != gl_type(uniform->type) || uniform->count == 0 || uniform->count > capacity) {
+  const unsigned components = fx_uniform_components(type);
+  const size_t component_bytes = type == FX_UNIFORM_INT || type == FX_UNIFORM_BOOL ? sizeof(int32_t) : sizeof(float);
+  const size_t capacity = data_bytes / component_bytes / components;
+  if (cached->type != gl_type(type) || element_count == 0 || element_count > capacity || data == NULL) {
     if (!cached->warned) {
       cached->warned = true;
       wlr_log(
           WLR_ERROR, "Effect uniform '%s' does not match the program's declaration or its own storage; ignoring it",
-          uniform->name
+          name
       );
     }
     return;
   }
   // Drivers drop array elements a program cannot reach, so the active size may be below the declared one.
-  GLsizei count = (GLsizei)uniform->count;
-  if (count > cached->size) {
+  const unsigned active_count = (unsigned)cached->size;
+  const GLsizei count = (GLsizei)(element_count < active_count ? element_count : active_count);
+  if (element_count > active_count) {
     if (!cached->warned) {
       cached->warned = true;
       wlr_log(
           WLR_INFO, "Effect shader '%s': uniform '%s' supplies %u elements, the program reads %d; binding %d",
-          shader->label, uniform->name, uniform->count, (int)cached->size, (int)cached->size
+          shader->label, name, element_count, (int)cached->size, (int)cached->size
       );
     }
-    count = cached->size;
   }
-  switch (uniform->type) {
+  switch (type) {
   case FX_UNIFORM_FLOAT:
-    glUniform1fv(cached->location, count, uniform->floats);
+    glUniform1fv(cached->location, count, data);
     break;
   case FX_UNIFORM_VEC2:
-    glUniform2fv(cached->location, count, uniform->floats);
+    glUniform2fv(cached->location, count, data);
     break;
   case FX_UNIFORM_VEC3:
-    glUniform3fv(cached->location, count, uniform->floats);
+    glUniform3fv(cached->location, count, data);
     break;
   case FX_UNIFORM_VEC4:
-    glUniform4fv(cached->location, count, uniform->floats);
+    glUniform4fv(cached->location, count, data);
     break;
   case FX_UNIFORM_INT:
   case FX_UNIFORM_BOOL:
-    glUniform1iv(cached->location, count, uniform->ints);
+    glUniform1iv(cached->location, count, data);
     break;
   }
+}
+
+void fx_effect_shader_bind_uniform(struct fx_effect_shader* shader, const struct fx_uniform* uniform) {
+  const bool integer = uniform->type == FX_UNIFORM_INT || uniform->type == FX_UNIFORM_BOOL;
+  fx_effect_shader_bind_uniform_data(
+      shader, uniform->name, uniform->type, uniform->count,
+      integer ? (const void*)uniform->ints : (const void*)uniform->floats,
+      integer ? sizeof(uniform->ints) : sizeof(uniform->floats)
+  );
 }
 
 // Uniform state persists on a program between draws. Optional inputs a caller

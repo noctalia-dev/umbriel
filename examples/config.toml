@@ -82,6 +82,8 @@ radius = 3
 # https://docs.noctalia.dev/umbriel/effects/
 # [include]
 # files = ["/usr/share/umbriel/effects/border/pulse/effect.toml"]
+# For a cursor tail, include /usr/share/umbriel/effects/cursor/trail/effect.toml
+# and set cursor = "trail" in [effects].
 # Pools accept matching presets defined/included separately. This one-member
 # example uses the bundled pulse preset; add other border names to choose.
 # [effects.pool.borders]

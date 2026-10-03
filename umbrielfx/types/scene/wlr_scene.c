@@ -4064,6 +4064,9 @@ struct scene_output_effects {
   struct fx_animation_parameters cursor_parameters;
   struct fx_animation_history cursor_history;
   int cursor_radius;
+  uint64_t motion_time;
+  unsigned motion_count;
+  struct { double x, y; uint64_t time; } motion[64];
   double pointer_x, pointer_y; // layout coordinates
   bool pointer_visible;        // shown and inside the output
 };
@@ -4169,12 +4172,23 @@ static struct wlr_box output_effects_cursor_box(const struct scene_output_effect
     return (struct wlr_box){.width = width, .height = height};
   }
   const int r = effects->cursor_radius;
-  return (struct wlr_box){
+  struct wlr_box box = {
       .x = (int)floor(effects->pointer_x - output->x) - r,
       .y = (int)floor(effects->pointer_y - output->y) - r,
       .width = 2 * r + 1,
       .height = 2 * r + 1,
   };
+  for (unsigned i = 0; i < effects->motion_count; ++i) {
+    const int x = (int)floor(effects->motion[i].x - output->x) - r;
+    const int y = (int)floor(effects->motion[i].y - output->y) - r;
+    const int right = fmax(box.x + box.width, x + 2 * r + 1);
+    const int bottom = fmax(box.y + box.height, y + 2 * r + 1);
+    box.x = fmin(box.x, x);
+    box.y = fmin(box.y, y);
+    box.width = right - box.x;
+    box.height = bottom - box.y;
+  }
+  return box;
 }
 
 static void output_effects_damage_cursor(struct scene_output_effects* effects) {
@@ -4191,6 +4205,29 @@ static void output_effects_damage_cursor(struct scene_output_effects* effects) {
   output_to_buffer_coords(&damage, output->output);
   scene_output_damage(output, &damage);
   pixman_region32_fini(&damage);
+}
+
+bool wlr_scene_output_cursor_motion_active(struct wlr_scene_output* output) {
+  struct scene_output_effects* effects = scene_output_effects_get(output, false);
+  return effects != NULL && effects->pointer_visible && effects->motion_count > 0;
+}
+
+void wlr_scene_output_set_effect_time(struct wlr_scene_output* output, uint64_t msec) {
+  struct scene_output_effects* effects = scene_output_effects_get(output, false);
+  if (effects == NULL || effects->motion_time == msec) {
+    return;
+  }
+  if (effects->motion_count > 0) {
+    output_effects_damage_cursor(effects);
+  }
+  unsigned expired = 0;
+  while (expired < effects->motion_count
+      && (msec < effects->motion[expired].time || msec - effects->motion[expired].time >= (fx_effect_shader_reads(effects->cursor, "umbriel_pointer_path") ? 2000u : 300u))) {
+    ++expired;
+  }
+  effects->motion_count -= expired;
+  memmove(effects->motion, effects->motion + expired, effects->motion_count * sizeof(effects->motion[0]));
+  effects->motion_time = msec;
 }
 
 static void output_effects_update_configured(struct scene_output_effects* effects) {
@@ -4243,6 +4280,7 @@ void wlr_scene_output_set_cursor_effect(
   if (effects->cursor != shader) {
     fx_animation_history_reset(&effects->cursor_history);
     effects->pointer_visible = false;
+    effects->motion_count = 0;
   }
   fx_effect_shader_unref(effects->cursor);
   effects->cursor = fx_effect_shader_ref(shader);
@@ -4271,6 +4309,26 @@ void wlr_scene_output_set_effect_pointer(struct wlr_scene_output* output, double
   if (effects->pointer_visible && !shown) {
     fx_animation_history_reset(&effects->cursor_history);
   }
+  if (!shown) {
+    effects->motion_count = 0;
+  } else if ((fx_effect_shader_reads(effects->cursor, "umbriel_pointer_history")
+      || fx_effect_shader_reads(effects->cursor, "umbriel_pointer_path"))
+      && (!effects->pointer_visible || effects->pointer_x != lx || effects->pointer_y != ly)) {
+    // Keep the newest event while spacing older samples by about one 30 Hz frame.
+    unsigned count = effects->motion_count;
+    if (count >= 2 && effects->motion_time - effects->motion[count - 2].time < 32) {
+      --count;
+    }
+    const unsigned capacity = fx_effect_shader_reads(effects->cursor, "umbriel_pointer_path") ? 64 : 8;
+    if (count == capacity) {
+      memmove(effects->motion, effects->motion + 1, (capacity - 1) * sizeof(effects->motion[0]));
+      --count;
+    }
+    effects->motion[count].x = lx;
+    effects->motion[count].y = ly;
+    effects->motion[count].time = effects->motion_time;
+    effects->motion_count = count + 1;
+  }
   effects->pointer_x = lx;
   effects->pointer_y = ly;
   effects->pointer_visible = shown;
@@ -4286,6 +4344,7 @@ static bool output_effects_active(const struct scene_output_effects* effects) {
 static void render_output_effect(
     struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters,
     struct fx_animation_history* history, const struct wlr_box* logical_box, const float* pointer,
+    const struct fx_cursor_path* pointer_path,
     const struct render_data* data
 ) {
   struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
@@ -4310,6 +4369,7 @@ static void render_output_effect(
       .update_history = true,
       .role = 0,
       .pointer = pointer,
+      .pointer_path = pointer_path,
   };
   fx_render_pass_effect_in_place(pass, &composite);
 }
@@ -4320,7 +4380,7 @@ static void render_output_effects(struct scene_output_effects* effects, const st
     return;
   }
   const struct wlr_box whole = {.width = data->logical.width, .height = data->logical.height};
-  render_output_effect(effects->screen, &effects->screen_parameters, &effects->screen_history, &whole, NULL, data);
+  render_output_effect(effects->screen, &effects->screen_parameters, &effects->screen_history, &whole, NULL, NULL, data);
   if (effects->cursor == NULL || !effects->pointer_visible) {
     return;
   }
@@ -4329,7 +4389,23 @@ static void render_output_effects(struct scene_output_effects* effects, const st
       box.width > 0 ? (float)((effects->pointer_x - effects->output->x - box.x) / box.width) : 0,
       box.height > 0 ? (float)((effects->pointer_y - effects->output->y - box.y) / box.height) : 0,
   };
-  render_output_effect(effects->cursor, &effects->cursor_parameters, &effects->cursor_history, &box, pointer, data);
+  struct fx_animation_parameters parameters = effects->cursor_parameters;
+  struct fx_uniform* count = fx_parameters_add_uniform(&parameters, "umbriel_pointer_count", FX_UNIFORM_INT, 1);
+  struct fx_uniform* history = fx_parameters_add_uniform(&parameters, "umbriel_pointer_history", FX_UNIFORM_VEC4, 8);
+  struct fx_cursor_path path = {.count = effects->motion_count};
+  if (count != NULL && history != NULL) {
+    count->ints[0] = effects->motion_count;
+    for (unsigned i = 0; i < effects->motion_count; ++i) {
+      path.points[i][0] = (effects->motion[i].x - effects->output->x - box.x) / box.width;
+      path.points[i][1] = (effects->motion[i].y - effects->output->y - box.y) / box.height;
+      path.points[i][2] = (effects->motion_time - effects->motion[i].time) / 1000.0f;
+      path.points[i][3] = (effects->motion[i].time % 60000) / 1000.0f;
+      if (i < 8) {
+        memcpy(history->floats + 4 * i, path.points[i], 4 * sizeof(float));
+      }
+    }
+  }
+  render_output_effect(effects->cursor, &parameters, &effects->cursor_history, &box, pointer, &path, data);
 }
 
 void wlr_scene_output_damage_whole_for_test(struct wlr_scene_output* scene_output) {

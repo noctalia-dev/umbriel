@@ -282,11 +282,16 @@ vec4 animation(vec2 uv) {
 
   void EffectRegistry::pointerMoved(double lx, double ly, bool visible) {
     for (const auto& output : m_server->outputs()) {
+      wlr_scene_output_set_effect_time(output->sceneOutput(), m_server->animationClockMsec());
       wlr_scene_output_set_effect_pointer(output->sceneOutput(), lx, ly, visible);
     }
     // The cursor instance's visibility follows the output under the pointer.
     const wlr_output* under = wlr_output_layout_output_at(m_server->outputLayout(), lx, ly);
-    if (under != m_pointerWlrOutput || visible != m_pointerVisible) {
+    const auto* cursor = preset(m_server->cursorEffectSlot().effectiveName(), EffectKind::Cursor);
+    if (under != m_pointerWlrOutput
+        || visible != m_pointerVisible
+        || fx_effect_shader_reads(cursor, "umbriel_pointer_history")
+        || fx_effect_shader_reads(cursor, "umbriel_pointer_path")) {
       m_pointerWlrOutput = under;
       m_pointerVisible = visible;
       applyOutputEffects();

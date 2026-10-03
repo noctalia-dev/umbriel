@@ -202,8 +202,8 @@ void wlr_scene_output_set_effect_capture_policy(struct wlr_scene_output* output,
 
 // Output effects shade the output in place after the scene, the screen slot
 // over the whole output, then the cursor slot over the square `radius` logical
-// px around the pointer (0: the whole output); software cursors draw above
-// both. A NULL shader removes the slot; NULL parameters are zeroed. Changing
+// px around the pointer (0: the whole output). Motion-history programs extend
+// that rectangle around retained samples. Software cursors draw above both. A NULL shader removes the slot; NULL parameters are zeroed. Changing
 // the program resets its feedback history. A cursor program draws nothing
 // until wlr_scene_output_set_effect_pointer runs after it is set: pointer
 // updates while no cursor program is set are dropped.
@@ -214,6 +214,13 @@ void wlr_scene_output_set_cursor_effect(
     struct wlr_scene_output* output, struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters,
     int radius
 );
+// Advance the cursor motion clock before pointer updates and composition. Uses
+// the compositor animation clock in milliseconds; frozen clocks freeze tails.
+// History holds eight positions for 300 ms, or 64 for 2000 ms when the shader
+// reads umbriel_pointer_path. Advancing damages fading/expired
+// positions, including the final cleanup frame.
+void wlr_scene_output_set_effect_time(struct wlr_scene_output* output, uint64_t msec);
+bool wlr_scene_output_cursor_motion_active(struct wlr_scene_output* output);
 // Layout coordinates. A hidden pointer, or one outside the output, draws no
 // cursor effect and resets its history.
 void wlr_scene_output_set_effect_pointer(struct wlr_scene_output* output, double lx, double ly, bool visible);
