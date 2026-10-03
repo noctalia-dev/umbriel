@@ -1314,7 +1314,7 @@ namespace umbriel {
         // exact requested entry below without briefly focusing its remembered
         // window first.
         if (Output* output = server.outputFromWlr(server.preferredOutput()); output != nullptr) {
-          scratchpad->summon(scratchpad->nameFor(view), output);
+          scratchpad->summon(scratchpad->nameFor(view), output, view);
         }
       }
       server.focusView(view, FocusReason::ForeignActivation);
@@ -1890,6 +1890,16 @@ namespace umbriel {
       return scratchpad != nullptr && scratchpad->toggle(*name, output);
     }
 
+    template <int Direction> bool actionScratchpadShowStep(Server& server, const Keybind& bind, std::string* error) {
+      const auto name = scratchpadName(server, bind, error);
+      Output* output = server.outputFromWlr(server.preferredOutput());
+      if (!name || output == nullptr) {
+        return false;
+      }
+      ScratchpadManager* scratchpad = server.scratchpadManager();
+      return scratchpad != nullptr && scratchpad->showStep(*name, Direction, output);
+    }
+
     bool actionRestoreFromScratchpad(Server& server, const Keybind& bind, std::string* error) {
       const auto name = scratchpadName(server, bind, error);
       if (!name) {
@@ -2177,6 +2187,8 @@ namespace umbriel {
         &actionColumnTabBar<-1>,
         &actionColumnTabBar<1>,
         &actionColumnTabBar<0>,
+        &actionScratchpadShowStep<1>,
+        &actionScratchpadShowStep<-1>,
     };
 
     consteval bool everyActionHasHandler() {

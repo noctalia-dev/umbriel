@@ -27,6 +27,30 @@ A typical workflow:
 3. Press `Mod+Tab` to cycle through visible members.
 4. Press `Mod+Ctrl+Space` to return the focused member to its workspace.
 
+## One window at a time
+
+`scratchpad-toggle` shows every stored window together. To see them one at a
+time instead, bind `scratchpad-show-next` and `scratchpad-show-previous`:
+
+```toml
+[keybinds]
+"Mod+Alt+Space" = "scratchpad-show-next"
+"Mod+Alt+Shift+Space" = "scratchpad-show-previous"
+```
+
+- On a hidden scratchpad, either action shows only its most recently focused
+  window.
+- Pressing again hides that window and shows the next or previous one,
+  wrapping at the ends.
+- When `scratchpad-toggle` is showing every window, either action keeps only
+  the window after or before the focused one.
+- `scratchpad-toggle` hides the scratchpad whichever way it was shown.
+- A window moved into the scratchpad while it shows one window becomes the one
+  on show. Closing or restoring the window on show hides the scratchpad.
+
+Both styles work on the same scratchpad, so each binding can pick the one it
+wants.
+
 ## Named scratchpads
 
 Define names when you want several independent scratchpads:
@@ -113,6 +137,8 @@ The implicit `default` scratchpad has no definition and therefore no
 | `window-restore-from-scratchpad:[<scratchpad>]` | Restore one remembered window. |
 | `window-toggle-scratchpad:[<scratchpad>]` | Store the focused window or restore it when already selected. |
 | `scratchpad-focus-next:[<scratchpad>]` | Focus the next visible member. |
+| `scratchpad-show-next:[<scratchpad>]` | Show only the next member, hiding the one on show. |
+| `scratchpad-show-previous:[<scratchpad>]` | Show only the previous member, hiding the one on show. |
 
 The argument is optional only for the implicit `default` scratchpad. Restore
 and focus-next require the scratchpad to be visible.
