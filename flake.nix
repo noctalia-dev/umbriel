@@ -44,6 +44,8 @@
 
       packages = forEachSystem (pkgs: {
         default = pkgs.callPackage ./nix/package.nix { inherit rev; };
+        xdg-desktop-portal-umbriel =
+          xdg-desktop-portal-umbriel.packages.${pkgs.stdenv.hostPlatform.system}.default;
       });
 
       devShells = forEachSystem (pkgs: {
