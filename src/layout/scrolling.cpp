@@ -629,6 +629,48 @@ namespace umbriel {
     return true;
   }
 
+  bool ScrollingLayout::consumeFrom(View* view, int direction) {
+    int destinationColumn = columnOf(view);
+    const int sourceColumn = destinationColumn + direction;
+    if ((direction != -1 && direction != 1)
+        || destinationColumn < 0
+        || sourceColumn < 0
+        || sourceColumn >= static_cast<int>(m_columns.size())) {
+      return false;
+    }
+    Column& source = m_columns[static_cast<size_t>(sourceColumn)];
+    View* pulled = columnEntry(source);
+    const int row = pulled != nullptr ? rowOf(pulled) : -1;
+    if (row < 0) {
+      return false;
+    }
+    // The row keeps the extent it was pulled from, so a later expel restores the column it came out of.
+    const double rememberedExtent = source.savedWidthFrac > 0 ? source.savedWidthFrac : source.widthFrac;
+    const ErasedRow erased = eraseRow(source, static_cast<size_t>(row));
+    if (source.views.empty()) {
+      m_columns.erase(m_columns.begin() + sourceColumn);
+      if (sourceColumn < destinationColumn) {
+        --destinationColumn;
+      }
+    }
+    Column& destination = m_columns[static_cast<size_t>(destinationColumn)];
+    // The focused row's place in the stack is the anchor: a tab takes the pulled window beside it as another tab, and
+    // any other row takes it as the row directly below. Focus stays where it was either way.
+    const int focusRow = rowOf(view);
+    if (const std::optional<size_t> group = destination.tabs.groupIndexAt(static_cast<size_t>(focusRow))) {
+      const TabGroup& tabs = destination.tabs.groups()[*group];
+      const bool afterActive = m_config->tabs.newTabPosition == NewTabPosition::AfterActive;
+      insertRow(
+          destination, afterActive ? tabs.active + 1 : tabs.end(), pulled, erased.heightWeight, rememberedExtent, group
+      );
+      return true;
+    }
+    const auto landing = static_cast<size_t>(focusRow + 1);
+    const double insertedWeight = claimInsertWeight(destination, static_cast<int>(landing), erased.heightWeight);
+    insertRow(destination, landing, pulled, insertedWeight, rememberedExtent);
+    return true;
+  }
+
   bool ScrollingLayout::expel(View* view, int direction) {
     const int sourceColumn = columnOf(view);
     if ((direction != -1 && direction != 1) || sourceColumn < 0) {

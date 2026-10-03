@@ -242,6 +242,10 @@ namespace umbriel {
     virtual void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) = 0;
     virtual bool consume(View* view, int direction) = 0;
     virtual bool expel(View* view, int direction) = 0;
+    // The mirror of consume: pull the window the container `direction` away shows into the one holding `view`, without
+    // moving focus. The pulled window lands directly below `view`, or in its tab group when `view` is a tab. False when
+    // there is no container on that side, or the layout has no container to pull from.
+    virtual bool consumeFrom(View* view, int direction) = 0;
     virtual bool moveViewVertical(View* view, int direction) = 0;
     virtual bool swapViews(View* a, View* b) = 0;
     virtual void removeView(View* view) = 0;

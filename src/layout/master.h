@@ -34,6 +34,7 @@ namespace umbriel {
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
     bool consume(View* view, int direction) override;
     bool expel(View* view, int direction) override;
+    bool consumeFrom(View* view, int direction) override;
     bool moveViewVertical(View* view, int direction) override;
     bool swapViews(View* a, View* b) override;
     bool promoteFromStack();
@@ -77,6 +78,8 @@ namespace umbriel {
     double eraseRow(Area& area, size_t row);
     // The row a window joining `area` by consume lands on.
     [[nodiscard]] size_t joinRow(const Area& area) const;
+    // The window focus entering `area` from outside lands on: its shown tab when it is tabbed, else its first row.
+    [[nodiscard]] View* areaEntry(const Area& area) const;
     // Targets other than hidden tabs, which share the box of the tab on show and would otherwise tie with it.
     [[nodiscard]] std::vector<LayoutTarget> visibleTargets() const;
     // The size a window joining `area`, `width` wide, gets, matching what arrange will assign.

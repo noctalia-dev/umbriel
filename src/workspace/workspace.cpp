@@ -1453,6 +1453,15 @@ namespace umbriel {
     return true;
   }
 
+  bool Workspace::consumeFromFocused(int direction) {
+    if (!m_layout->consumeFrom(m_focusedView, direction)) {
+      return false;
+    }
+    ensureFocusedVisible();
+    markArrange();
+    return true;
+  }
+
   bool Workspace::expelFocused(int direction) {
     if (!m_layout->expel(m_focusedView, direction)) {
       return false;

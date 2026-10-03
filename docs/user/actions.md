@@ -126,6 +126,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `layout-scroll-right` | Scroll the strip toward its end |
 | `layout-scroll-up` | Scroll the strip toward its start |
 | `window-center` | Center the focused floating window on its output |
+| `window-consume-from-left` | Pull the left column's window into the focused column |
+| `window-consume-from-right` | Pull the right column's window into the focused column |
 | `window-consume-left` | Stack the focused window into the column left |
 | `window-consume-or-expel-left` | Split the window out, or stack it into the column left |
 | `window-consume-or-expel-right` | Split the window out, or stack it into the column right |

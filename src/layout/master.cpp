@@ -192,6 +192,16 @@ namespace umbriel {
     return area.views.size();
   }
 
+  View* MasterStackLayout::areaEntry(const Area& area) const {
+    if (area.views.empty()) {
+      return nullptr;
+    }
+    if (area.tabs.tabbed() && area.tabs.active() < area.views.size()) {
+      return area.views[area.tabs.active()];
+    }
+    return area.views.front();
+  }
+
   std::vector<LayoutTarget> MasterStackLayout::visibleTargets() const {
     std::vector<LayoutTarget> visible;
     visible.reserve(m_targets.size());
@@ -505,6 +515,42 @@ namespace umbriel {
   }
 
   bool MasterStackLayout::expel(View* view, int direction) { return consume(view, direction); }
+
+  bool MasterStackLayout::consumeFrom(View* view, int direction) {
+    if (direction != -1 && direction != 1) {
+      return false;
+    }
+    const std::array<Area*, 3> ordered = orderedAreas();
+    int index = -1;
+    for (int position = 0; position < static_cast<int>(ordered.size()); ++position) {
+      if (ordered[position] != nullptr && rowInArea(*ordered[position], view) >= 0) {
+        index = position;
+        break;
+      }
+    }
+    const int sourceIndex = index + direction;
+    if (index < 0
+        || sourceIndex < 0
+        || sourceIndex >= static_cast<int>(ordered.size())
+        || ordered[sourceIndex] == nullptr) {
+      return false;
+    }
+    Area* source = ordered[sourceIndex];
+    Area* destination = ordered[index];
+    View* pulled = areaEntry(*source);
+    const int sourceRow = pulled != nullptr ? rowInArea(*source, pulled) : -1;
+    if (sourceRow < 0) {
+      return false;
+    }
+    const double weight = eraseRow(*source, static_cast<size_t>(sourceRow));
+    // The pulled window lands beside the focused row: among its area's tabs when the area is tabbed, otherwise
+    // directly below it. Focus stays where it was either way.
+    const size_t landing =
+        destination->tabs.tabbed() ? joinRow(*destination) : static_cast<size_t>(rowInArea(*destination, view) + 1);
+    insertRow(*destination, landing, pulled, weight);
+    rebuildColumns();
+    return true;
+  }
 
   bool MasterStackLayout::moveViewVertical(View* view, int direction) {
     // Tabs share one box, so the neighbour is the adjacent tab rather than whatever lies above or below.

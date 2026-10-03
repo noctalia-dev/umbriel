@@ -134,6 +134,21 @@ UMBRIEL_TEST(horizontalConsumeSwapsWithTheVisualNeighbor) {
   CHECK_EQ(fixture.layout.targetBox(stub(0)).y, bottomRightSlot.y);
 }
 
+UMBRIEL_TEST(consumeFromLeavesDwindleAlone) {
+  Fixture fixture;
+  fixture.addLeaves(2);
+  fixture.layout.arrange(kUsable);
+  const wlr_box first = fixture.layout.targetBox(stub(0));
+  const wlr_box second = fixture.layout.targetBox(stub(1));
+  // A dwindle leaf holds one window, so there is no container to pull a window out of.
+  CHECK(!fixture.layout.consumeFrom(stub(0), 1));
+  CHECK(!fixture.layout.consumeFrom(stub(1), -1));
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).x, first.x);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).width, first.width);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).x, second.x);
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).width, second.width);
+}
+
 UMBRIEL_TEST(horizontalExpelDoesNotSwapWithAVerticalNeighbor) {
   Fixture fixture;
   fixture.addLeaves(3);

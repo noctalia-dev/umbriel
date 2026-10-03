@@ -264,7 +264,7 @@ becomes the active tab.
 | To | Do |
 | --- | --- |
 | Switch tabs | Click a slot, scroll over the bar, use `column-focus-tab-next` and `column-focus-tab-previous`, or jump with `column-focus-tab:<index>` |
-| Add a tab | Move a window into the group with `window-move-up` or `window-move-down`, consume it into a column whose last row is a group, or drop it on the group's bar or middle |
+| Add a tab | Move a window into the group with `window-move-up` or `window-move-down`, consume it into a column whose last row is a group, pull the neighboring column's window in with `window-consume-from-left` or `window-consume-from-right` while a tab is focused, or drop it on the group's bar or middle |
 | Put a window above or below a group | Move a tab out with `window-move-up` or `window-move-down`, or drop a window near the group's top or bottom edge |
 | Remove a tab | Move it out, drag its slot out of the bar, expel it, float it, or move it away |
 | Reorder tabs | Use `column-move-tab-next` and `column-move-tab-previous`, or drop a window between two slots |
@@ -311,7 +311,7 @@ middle_click_closes = false
 | Key | Default | Description |
 | --- | --- | --- |
 | `default_display` | `"normal"` | How new columns and master areas show their windows: `"normal"`, or `"tabbed"` to start each as a tab group. |
-| `new_tab_position` | `"end"` | Where a consumed or dropped window joins a tab group: `"end"`, or `"after_active"` beside the active tab. |
+| `new_tab_position` | `"end"` | Where a consumed, pulled, or dropped window joins a tab group: `"end"`, or `"after_active"` beside the active tab. |
 | `wrap_focus` | `true` | Wrap `column-focus-tab-next` and `column-focus-tab-previous` at the ends. |
 | `scroll_switches_tabs` | `true` | Step through tabs with the wheel over the bar. |
 | `middle_click_closes` | `false` | Close a tab with a middle click on its slot. |

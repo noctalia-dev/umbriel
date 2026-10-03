@@ -1051,6 +1051,14 @@ namespace umbriel {
       return true;
     }
 
+    // The mirror of actionConsume: pulls the neighboring column's window in, leaving focus where it was.
+    template <int Direction> bool actionConsumeFrom(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (Workspace* workspace = windowActionWorkspace(server)) {
+        workspace->consumeFromFocused(Direction);
+      }
+      return true;
+    }
+
     template <int Direction> bool actionCycleWidth(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (View* view = focusedScratchpadWindow(server)) {
         cycleScratchpadSize<Direction>(*view, true);
@@ -2045,6 +2053,8 @@ namespace umbriel {
         &actionConsumeOrExpel<-1>,
         &actionConsume<1>,
         &actionConsumeOrExpel<1>,
+        &actionConsumeFrom<-1>,
+        &actionConsumeFrom<1>,
         &actionCycleWidth<1>,
         &actionCycleWidth<-1>,
         &actionSetWidth,

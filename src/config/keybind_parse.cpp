@@ -299,6 +299,10 @@ namespace umbriel {
         {"window-center", "", "Center the focused floating window on its output", KeybindAction::WindowCenter},
         {"window-close", "[<window-id>]", "Close the focused window, or the given window", KeybindAction::WindowClose,
          ActionArgKind::OptionalWindowId},
+        {"window-consume-from-left", "", "Pull the left column's window into the focused column",
+         KeybindAction::WindowConsumeFromLeft},
+        {"window-consume-from-right", "", "Pull the right column's window into the focused column",
+         KeybindAction::WindowConsumeFromRight},
         {"window-consume-left", "", "Stack the focused window into the column left", KeybindAction::WindowConsumeLeft},
         {"window-consume-or-expel-left", "", "Split the window out, or stack it into the column left",
          KeybindAction::WindowConsumeOrExpelLeft},
@@ -840,6 +844,8 @@ namespace umbriel {
 
     add(KeybindAction::WindowConsumeLeft, XKB_KEY_comma);
     add(KeybindAction::WindowConsumeRight, XKB_KEY_period);
+    add(KeybindAction::WindowConsumeFromLeft, XKB_KEY_comma, WLR_MODIFIER_CTRL);
+    add(KeybindAction::WindowConsumeFromRight, XKB_KEY_period, WLR_MODIFIER_CTRL);
     add(KeybindAction::WindowCyclePrimaryExtent, XKB_KEY_r);
     add(KeybindAction::WindowCyclePrimaryExtentBack, XKB_KEY_r, WLR_MODIFIER_SHIFT);
     add(KeybindAction::ToggleFullscreen, XKB_KEY_f);

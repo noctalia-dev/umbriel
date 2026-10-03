@@ -501,6 +501,119 @@ UMBRIEL_TEST(consumeBelowAStandaloneRowStandsAlone) {
   CHECK_EQ(fixture.column().tabs.unitCount(fixture.column().views.size()), size_t{3});
 }
 
+// consume-from: the neighboring column's window joins the focused row, and focus stays where it was
+UMBRIEL_TEST(consumeFromPullsTheNextColumnBelowTheFocusedRow) {
+  ScrollingFixture fixture;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.insertView(stub(1), 1);
+  fixture.layout.insertView(stub(2), 2);
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 1);
+  // A second pull anchors on the focused window again, landing between it and the row pulled before.
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 2);
+  // Nothing lies beyond either end.
+  CHECK(!fixture.layout.consumeFrom(stub(0), 1));
+  CHECK(!fixture.layout.consumeFrom(stub(0), -1));
+}
+
+UMBRIEL_TEST(consumeFromTheLeftPullsTheColumnInFront) {
+  ScrollingFixture fixture;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.insertView(stub(1), 1);
+  fixture.layout.insertView(stub(2), 2);
+  CHECK(fixture.layout.consumeFrom(stub(2), -1));
+  // The source column held one window and is gone, so the focused column ends up last.
+  CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 1);
+  CHECK_EQ(fixture.layout.columnOf(stub(0)), 0);
+}
+
+UMBRIEL_TEST(consumeFromLeavesTheSourceColumnStandingWhileItKeepsRows) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  fixture.layout.insertView(stub(2), 1);
+  CHECK(fixture.layout.consumeFrom(stub(2), -1));
+  // The source keeps its remaining row where it was, and the pulled one lands below the focused window.
+  CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+  CHECK_EQ(fixture.layout.columns()[0].views.size(), size_t{1});
+  CHECK_EQ(fixture.layout.columns()[0].views.front(), stub(1));
+  CHECK_EQ(fixture.layout.columns()[1].views.front(), stub(2));
+  CHECK_EQ(fixture.layout.columns()[1].views.back(), stub(0));
+}
+
+UMBRIEL_TEST(consumeFromPullsTheShownTabOfATabbedColumn) {
+  ScrollingFixture fixture;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.insertView(stub(1), 1);
+  fixture.layout.insertView(stub(2), 2);
+  CHECK(fixture.layout.consume(stub(2), -1));
+  CHECK(fixture.layout.setTabbed(stub(2), true));
+  // The source column shows its second tab, so that is the window that comes over; the hidden one stays.
+  CHECK_EQ(umbriel::columnEntry(fixture.layout.columns()[1]), stub(2));
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK_EQ(fixture.layout.columnOf(stub(2)), 0);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.columnOf(stub(1)), 1);
+  CHECK(tabbed(fixture.layout.columns()[1]));
+  CHECK_EQ(shownTab(fixture.layout.columns()[1]), stub(1));
+}
+
+UMBRIEL_TEST(consumeFromAddsATabToTheFocusedGroup) {
+  ScrollingFixture fixture;
+  fixture.config.tabs.newTabPosition = NewTabPosition::AfterActive;
+  fixture.stack(2);
+  fixture.layout.insertView(stub(2), 1);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK(tabbed(fixture.column()));
+  CHECK_EQ(fixture.column().tabs.groups().front().count, size_t{3});
+  // Beside the active tab, per new_tab_position, and the focused window keeps showing.
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 1);
+  CHECK_EQ(fixture.layout.rowOf(stub(1)), 2);
+  CHECK_EQ(shownTab(fixture.column()), stub(0));
+}
+
+UMBRIEL_TEST(consumeFromAppendsATabAtTheGroupsEndByDefault) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  fixture.layout.insertView(stub(2), 1);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  // The pulled window is one more tab of the focused group, last, and the focused window keeps showing.
+  CHECK(umbriel::tabGroupOf(fixture.column(), stub(2)) != nullptr);
+  CHECK_EQ(fixture.column().tabs.groups().front().count, size_t{3});
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 2);
+  CHECK_EQ(shownTab(fixture.column()), stub(0));
+}
+
+UMBRIEL_TEST(consumeFromBelowAStandaloneRowStandsBeforeTheGroup) {
+  ScrollingFixture fixture;
+  fixture.stack(3);
+  CHECK(fixture.layout.setTabbed(stub(1), true));
+  // The last tab steps out ahead of the group and stands alone at the top.
+  CHECK(fixture.layout.moveViewVertical(stub(2), -1));
+  CHECK(umbriel::tabGroupOf(fixture.column(), stub(2)) == nullptr);
+  CHECK_EQ(fixture.layout.rowOf(stub(2)), 0);
+  fixture.layout.insertView(stub(3), 1);
+  CHECK(fixture.layout.consumeFrom(stub(2), 1));
+  // The pulled window takes the row below it and stays out of the group it meets.
+  CHECK(umbriel::tabGroupOf(fixture.column(), stub(3)) == nullptr);
+  CHECK_EQ(fixture.layout.rowOf(stub(3)), 1);
+  CHECK_EQ(fixture.column().tabs.unitCount(fixture.column().views.size()), size_t{3});
+  CHECK_EQ(shownTab(fixture.column()), stub(0));
+}
+
 UMBRIEL_TEST(movingATabStepsOutOfItsGroup) {
   ScrollingFixture fixture;
   fixture.stack(3);
@@ -756,6 +869,52 @@ UMBRIEL_TEST(movingWithinATabbedAreaReordersTabs) {
   CHECK_EQ(shownTab(fixture.layout.columns()[1]), stack[0]);
   CHECK(fixture.layout.moveTab(stack[0], -1));
   CHECK_EQ(fixture.layout.columns()[1].views[0], stack[0]);
+}
+
+UMBRIEL_TEST(consumeFromPullsTheStackEntryBelowTheFocusedMasterRow) {
+  MasterFixture fixture;
+  // Rows in creation order, so the stack reads 1 then 2 below the master.
+  fixture.config.master.newOnTop = false;
+  fixture.addViews(3);
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK_EQ(fixture.layout.columns().size(), size_t{2});
+  CHECK_EQ(fixture.layout.columns()[0].views.size(), size_t{2});
+  CHECK_EQ(fixture.layout.columns()[0].views[0], stub(0));
+  CHECK_EQ(fixture.layout.columns()[0].views[1], stub(1));
+  CHECK_EQ(fixture.layout.columns()[1].views.front(), stub(2));
+}
+
+UMBRIEL_TEST(consumeFromTheLeftEmptiesTheAreaItPullsFrom) {
+  MasterFixture fixture;
+  fixture.config.master.newOnTop = false;
+  fixture.addViews(3);
+  CHECK(fixture.layout.consumeFrom(stub(2), -1));
+  // The master area gave up its only window, so only the stack it joined is left.
+  CHECK_EQ(fixture.layout.columns().size(), size_t{1});
+  CHECK_EQ(fixture.layout.columns()[0].views.size(), size_t{3});
+  CHECK_EQ(fixture.layout.columns()[0].views[2], stub(0));
+}
+
+UMBRIEL_TEST(consumeFromAddsTheNeighboringAreaEntryAsATab) {
+  MasterFixture fixture;
+  fixture.config.master.newOnTop = false;
+  fixture.config.tabs.newTabPosition = NewTabPosition::AfterActive;
+  fixture.addViews(3);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.consumeFrom(stub(0), 1));
+  CHECK(tabbed(fixture.layout.columns()[0]));
+  CHECK_EQ(fixture.layout.columns()[0].views.size(), size_t{2});
+  CHECK_EQ(fixture.layout.columns()[0].views[1], stub(1));
+  CHECK_EQ(shownTab(fixture.layout.columns()[0]), stub(0));
+  CHECK_EQ(fixture.layout.columns()[1].views.front(), stub(2));
+}
+
+UMBRIEL_TEST(consumeFromDoesNothingWithoutThatNeighbor) {
+  MasterFixture fixture;
+  fixture.addViews(2);
+  CHECK(!fixture.layout.consumeFrom(stub(0), -1));
+  CHECK(!fixture.layout.consumeFrom(fixture.layout.columns()[1].views.front(), 1));
+  CHECK(!fixture.layout.consumeFrom(stub(0), 2));
 }
 
 UMBRIEL_TEST(anEmptiedAreaTakesTheConfiguredDisplayAgain) {

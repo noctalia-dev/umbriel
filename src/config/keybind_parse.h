@@ -62,6 +62,8 @@ namespace umbriel {
     WindowConsumeOrExpelLeft,
     WindowConsumeRight,
     WindowConsumeOrExpelRight,
+    WindowConsumeFromLeft,
+    WindowConsumeFromRight,
     WindowCyclePrimaryExtent,
     WindowCyclePrimaryExtentBack,
     WindowSetPrimaryExtent,
