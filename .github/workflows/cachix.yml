@@ -1,0 +1,49 @@
+name: cachix
+
+on:
+  push:
+    branches:
+      - main
+  workflow_run:
+    workflows: ["Update Portal Input"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cache:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    if: ${{ github.repository == 'noctalia-dev/umbriel' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: "${{ vars.CACHIX_CACHE_NAME }}"
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - run: nix build .#default .#xdg-desktop-portal-umbriel --fallback
+
+  push:
+    needs: cache
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'noctalia-dev/umbriel' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: push to cachix branch
+        run: |
+          git fetch origin main origin/cachix 2>/dev/null || true
+          git merge-base --is-ancestor "${{ github.sha }}" origin/main || exit 0
+          git merge-base --is-ancestor "${{ github.sha }}" origin/cachix 2>/dev/null && exit 0
+          git push origin "${{ github.sha }}":refs/heads/cachix --force
