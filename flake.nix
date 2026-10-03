@@ -22,7 +22,7 @@
         "aarch64-linux"
       ];
 
-      rev = self.shortRev or self.dirtyShortRev;
+      rev = self.shortRev or self.dirtyShortRev or "unknown";
 
       forEachSystem =
         perSystem: nixpkgs.lib.genAttrs systems (system: perSystem nixpkgs.legacyPackages.${system});
@@ -40,10 +40,14 @@
 
       overlays.default = final: _: {
         umbriel = final.callPackage ./nix/package.nix { inherit rev; };
+        xdg-desktop-portal-umbriel =
+          xdg-desktop-portal-umbriel.packages.${final.stdenv.hostPlatform.system}.default;
       };
 
       packages = forEachSystem (pkgs: {
         default = pkgs.callPackage ./nix/package.nix { inherit rev; };
+        xdg-desktop-portal-umbriel =
+          xdg-desktop-portal-umbriel.packages.${pkgs.stdenv.hostPlatform.system}.default;
       });
 
       devShells = forEachSystem (pkgs: {
