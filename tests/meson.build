@@ -57,6 +57,7 @@ unit_tests = [
       '-DUMBRIEL_SOURCE_ROOT="' + meson.project_source_root() + '"',
     ],
   ],
+  ['allocator-policy', ['unit/allocator_policy.cpp'], []],
   ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [umbriel_core_dep]],
