@@ -31,7 +31,6 @@ namespace umbriel {
       wlr_buffer base;
       wlr_dmabuf_attributes dmabuf;
       wlr_shm_attributes shm;
-      size_t size;
     };
 
     AlignedUdmabufBuffer* fromBuffer(wlr_buffer* wlr_buffer) {
@@ -132,7 +131,6 @@ namespace umbriel {
         return nullptr;
       }
 
-      buffer->size = size;
       buffer->shm = {};
       buffer->shm.fd = memfd;
       buffer->shm.format = format->format;

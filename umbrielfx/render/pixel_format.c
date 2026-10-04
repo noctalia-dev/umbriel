@@ -381,4 +381,3 @@ int32_t fx_pixel_format_min_stride(uint32_t drm_format, int32_t width) {
 	}
 	return pixel_format_info_min_stride(info, width);
 }
-
