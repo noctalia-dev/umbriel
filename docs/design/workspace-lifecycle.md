@@ -167,17 +167,21 @@ focus is suspended while the drag owns pointer motion, and keyboard enters are
 suppressed until the drag finishes. When the initiating button release destroys
 the grab, Umbriel reruns pointer processing at the unchanged cursor position.
 
-An active data-device drag held near a scrolling workspace edge starts a
-delayed event-loop timer. Each tick resolves the output, active workspace, drag
-state, and scrolling range again before changing the strip offset. The timer
-stops at the range boundary, when the pointer leaves the edge, or when the drag,
-workspace, overview, or session state no longer permits scrolling.
+An active data-device drag or compositor window move held near a scrolling
+workspace edge starts a delayed event-loop timer. A window move qualifies once
+it has crossed the drag threshold and detached from the strip. Each tick
+resolves the output, active workspace, drag state, and scrolling range again
+before changing the strip offset. The timer stops at the range boundary, when
+the pointer leaves the edge, or when the drag, workspace, overview, or session
+state no longer permits scrolling.
 
 Layout movement can place a new drop target beneath a pointer that has not
 moved. The output's post-arrange scene refresh therefore sends pointer enter,
 motion, or clear through wlroots' notify APIs while the data-device grab is
 active. This updates the grab's drop focus instead of only changing base pointer
-focus. Drag-icon buffers are excluded from scene hit testing, including buffers
+focus. During a compositor window move it recomputes the drop target and insert
+hint instead; client pointer focus stays suspended.
+Drag-icon buffers are excluded from scene hit testing, including buffers
 created later for nested subsurfaces, so the icon cannot hide the client below
 it from this refresh.
 

@@ -57,10 +57,14 @@ While the grab remains active, holding the pointer near a scrolling strip edge
 moves the layout on a delayed timer. Scene refreshes route enter and motion
 through the grab as each frame settles, allowing a newly revealed client to
 become the drop target without physical pointer motion.
+A compositor window move drives the same timer; the post-arrange refresh then
+recomputes its drop target instead of replaying client pointer focus.
 
 The short-drag cursor refresh is covered by
 [`drag/external_drag.sh`](../../tests/harness/checks/drag/external_drag.sh), and
 cross-window focus is covered by
 [`drag/data_drag_hover_focus.sh`](../../tests/harness/checks/drag/data_drag_hover_focus.sh).
 Edge scrolling and stationary drop-target retargeting are covered by
-[`drag/data_drag_edge_scroll.sh`](../../tests/harness/checks/drag/data_drag_edge_scroll.sh).
+[`drag/data_drag_edge_scroll.sh`](../../tests/harness/checks/drag/data_drag_edge_scroll.sh),
+and the same behavior for compositor window moves by
+[`drag/move_drag_edge_scroll.sh`](../../tests/harness/checks/drag/move_drag_edge_scroll.sh).

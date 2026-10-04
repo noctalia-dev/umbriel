@@ -135,7 +135,8 @@ strip moves faster as the pointer approaches the edge, and stops when the
 pointer moves away or the drag ends. A window revealed beneath a stationary
 pointer becomes the active drop target, so the file or other payload can be
 dropped without extra pointer motion.
-
+Rearranging a tiled window by dragging it (Mod+left-click or its tab) pans the
+strip the same way, reaching columns beyond the current scroll extent.
 With `center_focused = "on_overflow"`, a column is centered when it and the
 neighbor focus came from cannot share the viewport, and a width change that
 makes them fit puts the pair back side by side at the edge focus came from.

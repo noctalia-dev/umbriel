@@ -303,6 +303,7 @@ namespace umbriel {
     void cancelHotCorner();
     [[nodiscard]] const Keybind* hotCornerAction(size_t* index = nullptr) const;
     static int onHotCornerTimer(void* data);
+    [[nodiscard]] bool tiledMoveDragActive() const;
     [[nodiscard]] Workspace* dataDragEdgeScrollTarget(double* speed) const;
     void updateDataDragEdgeScroll();
     void cancelDataDragEdgeScroll();
