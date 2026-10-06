@@ -1,0 +1,23 @@
+# Fixed spectrum bars and contours driven exclusively by live audio bands.
+[effects.audio.sources.music_playback]
+provider = "pipewire"
+mode = "playback"
+follow_default = true
+
+[effects.preset."border.music-lines"]
+kind = "border"
+shader = "shader.glsl"
+audio = "music_playback"
+animated = false
+padding = 48
+overlay = "border.music-lines-overlay"
+
+[effects.preset."border.music-lines".light]
+spread = 18
+intensity = 0.35
+threshold = 0.65
+
+[effects.preset."border.music-lines-overlay"]
+kind = "window"
+shader = "overlay.glsl"
+audio = "music_playback"

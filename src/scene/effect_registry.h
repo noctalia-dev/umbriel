@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/bindings.h"
 #include "config/effects.h"
 #include "core/animation.h"
 #include "scene/effect_ledger.h"
@@ -7,9 +8,11 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <wayland-server-core.h>
 
 struct fx_effect_shader;
 struct fx_effect_requirements;
@@ -22,6 +25,7 @@ namespace umbriel {
 
   class Output;
   class Server;
+  class View;
 
   // One compiled program per referenced preset for the current renderer, plus
   // the built-in lifecycle fade. Prepares at startup, on reload with the
@@ -58,8 +62,16 @@ namespace umbriel {
     // integer range without the returned value losing precision.
     [[nodiscard]] float clockSeconds() const;
     // Adds `umbriel_time` when `shader` reads it, and the `[colors]` palette for palette presets.
+    [[nodiscard]] float compositionSeconds(wlr_scene_node* node, float fallback) const;
     void fillTimeUniforms(
-        fx_animation_parameters& parameters, float seconds, const EffectPreset& preset, const fx_effect_shader* shader
+        fx_animation_parameters& parameters, float seconds, const EffectPreset& preset, const fx_effect_shader* shader,
+        const void* output = nullptr, wlr_scene_node* node = nullptr
+    ) const;
+    // Uniform-only composition rebinding must not invalidate another output's
+    // occurrence. Program/lifecycle/geometry changes use normal scene damage.
+    void setAnimationParameters(
+        wlr_scene_node* node, unsigned slot, fx_effect_shader* shader, const fx_animation_parameters& parameters,
+        const EffectPreset* preset
     ) const;
 
     [[nodiscard]] bool active() const { return m_ledger.active() > 0; }
@@ -71,7 +83,33 @@ namespace umbriel {
     [[nodiscard]] EffectLedger& ledger() { return m_ledger; }
     void setSuspended(bool suspended);
     // Records an instance; schedules its output's effect frame when that output gains its first eligible instance.
-    void updateInstance(const void* owner, const EffectInstanceState& state);
+    void updateInstance(
+        const void* owner, const EffectInstanceState& state, std::string_view audioSource = {},
+        wlr_scene_node* node = nullptr
+    );
+    [[nodiscard]] static std::string_view audioSource(const EffectPreset& preset, const fx_effect_shader* shader);
+    // Finite animation slots retain a demand occurrence only while the node/slot
+    // exists and the authored program uses audio. Returns its visible output.
+    [[nodiscard]] const void* updateAnimationAudio(
+        wlr_scene_node* node, unsigned slot, const EffectPreset* preset, const fx_effect_shader* shader
+    );
+    [[nodiscard]] uint64_t audioInputRevision(const void* output) const;
+    [[nodiscard]] bool audioActive(const void* output) const;
+    [[nodiscard]] bool audioDirty(const void* output) const;
+    void beginAudioFrame(const Output* output, bool advance);
+    void finishAudioFrame(const Output* output, bool success);
+    void registerAudioCapture(const void* capture, std::function<void()> schedule);
+    void removeAudioCapture(const void* capture);
+    void updateCaptureAudio(const void* owner, const void* capture, std::string_view source, bool eligible);
+    void beginAudioCapture(const void* capture, bool advance);
+    void finishAudioCapture(const void* capture, bool success);
+    void resumeAudioClock();
+    [[nodiscard]] bool injectAudio(std::string_view source, const audio::Features& features);
+    [[nodiscard]] std::string_view audioState(std::string_view source) const;
+    [[nodiscard]] const audio::Receiver* inspectAudio(std::string_view source) const;
+    [[nodiscard]] size_t audioDemandedSources() const;
+    [[nodiscard]] const audio::InputLatch* inspectAudioLatch(const void* output, std::string_view source) const;
+
     void removeInstance(const void* owner);
     void removeOutput(const Output* output);
     // Keep the light layer while prepared programs or snapshots require it.
@@ -94,6 +132,11 @@ namespace umbriel {
     void compile(const EffectPreset& preset);
     void referencedNames(std::vector<std::string>& names) const;
     void updateCursorActive();
+    [[nodiscard]] bool audioNodeVisible(wlr_scene_node* node, const Output* output) const;
+    [[nodiscard]] std::vector<const void*> audioOutputs(wlr_scene_node* node) const;
+    void refreshAudioOccurrences();
+    void updateTimeOccurrence(const void* owner, const EffectInstanceState& state, wlr_scene_node* node);
+    void refreshTimeOccurrences();
     // Forgets the deformation program so the next prepare() that needs it compiles afresh.
     void dropDeformation();
 
@@ -112,6 +155,31 @@ namespace umbriel {
     const wlr_output* m_pointerWlrOutput = nullptr; // under the pointer at the last forward
     bool m_pointerVisible = false;
     EffectLedger m_ledger;
+    std::unique_ptr<audio::Bindings> m_audio;
+    const void* m_audioOutput = nullptr;
+    bool m_audioAdvance = false;
+    std::map<const Output*, float> m_submittedEffectTimes;
+    bool m_audioWasFrozen = false;
+    struct TimeInstance {
+      wlr_scene_node* node = nullptr;
+      EffectInstanceState state;
+    };
+    std::map<const void*, TimeInstance> m_timeInstances;
+    struct AudioInstance {
+      wlr_scene_node* node = nullptr;
+      std::string source;
+    };
+    std::map<const void*, AudioInstance> m_audioInstances;
+    std::map<const void*, std::function<void()>> m_audioCaptures;
+    wl_listener m_audioSessionActive{};
+    struct AnimationAudio {
+      EffectRegistry* registry = nullptr;
+      wlr_scene_node* node = nullptr;
+      unsigned slot = 0;
+      std::string source;
+      wl_listener destroy{};
+    };
+    std::map<std::pair<wlr_scene_node*, unsigned>, std::unique_ptr<AnimationAudio>> m_animationAudio;
     mutable uint64_t m_clockEpochMsec = 0;
     mutable bool m_clockEpochSet = false;
   };

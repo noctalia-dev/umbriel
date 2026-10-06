@@ -258,6 +258,7 @@ if build_tests
     'kinds',
     'reads',
     'uniforms',
+    'audio-inputs',
     'long-running-trig',
     'expand',
     'renderer-destroy',

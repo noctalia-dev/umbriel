@@ -1,0 +1,11 @@
+# Select [effects] window = "window.music-smoke".
+# Playback analysis is shared with cursor.music-radiance.
+[effects.audio.sources.music_playback]
+provider = "pipewire"
+mode = "playback"
+follow_default = true
+
+[effects.preset."window.music-smoke"]
+kind = "window"
+shader = "shader.glsl"
+audio = "music_playback"

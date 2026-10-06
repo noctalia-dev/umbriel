@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <drm_fourcc.h>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -499,6 +500,7 @@ namespace umbriel {
           {"name", preset.name},
           {"kind", effectKindName(preset.kind)},
           {"state", server.effects().programState(preset.name)},
+          {"audio", preset.audio},
       };
       if (preset.kind == EffectKind::Border) {
         entry["overlay"] = preset.overlay;
@@ -543,9 +545,34 @@ namespace umbriel {
            {"slots", {{"screen", effectSlotJson(output->screenEffectSlot())}}}}
       );
     }
+    nlohmann::json audio = nlohmann::json::array();
+    const uint64_t nowNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    for (const auto& source : config().effects.audioSources) {
+      const auto* receiver = server.effects().inspectAudio(source.name);
+      audio.push_back(
+          {{"name", source.name},
+           {"state", server.effects().audioState(source.name)},
+           {"mode", source.mode == AudioMode::Playback ? "playback" : "microphone"},
+           {"demanded", receiver != nullptr && receiver->epoch() != 0},
+           {"ready", receiver != nullptr && receiver->ready()},
+           {"available", receiver != nullptr && receiver->input().available},
+           {"epoch", receiver != nullptr ? receiver->epoch() : 0},
+           {"generation", receiver != nullptr ? receiver->generation() : 0},
+           {"sequence", receiver != nullptr ? receiver->sequence() : 0},
+           {"observation_ns", receiver != nullptr ? receiver->observationNs() : 0},
+           {"age_ns",
+            receiver != nullptr && receiver->observationNs() != 0 && nowNs >= receiver->observationNs()
+                ? nlohmann::json(nowNs - receiver->observationNs())
+                : nlohmann::json(nullptr)}}
+      );
+    }
     return nlohmann::json{
         {"ok",
-         {{"presets", std::move(presets)},
+         {{"audio", std::move(audio)},
+          {"audio_demanded_sources", server.effects().audioDemandedSources()},
+          {"presets", std::move(presets)},
           {"pools", std::move(pools)},
           {"cursor", effectSlotJson(server.cursorEffectSlot())},
           {"owners", std::move(owners)}}}
@@ -809,6 +836,7 @@ namespace umbriel {
   nlohmann::json IpcCommands::clockResume([[maybe_unused]] Server& server, std::string_view /*arg*/) {
 #ifdef UMBRIEL_TEST_IPC
     server.resumeAnimationClock();
+    server.effects().resumeAudioClock();
 #endif
     return nlohmann::json{{"ok", nullptr}};
   }
@@ -828,12 +856,58 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::audioInject(Server& server, std::string_view arg) {
+    const auto value = nlohmann::json::parse(arg, nullptr, false);
+    if (value.is_discarded() || !value.is_object() || !value.contains("source") || !value["source"].is_string()) {
+      return {{"err", "expected JSON with source, rms, peak, envelope and sixteen bands"}};
+    }
+    audio::Features features;
+    for (const char* field : {"rms", "peak", "envelope"}) {
+      if (!value.contains(field) || !value[field].is_number()) {
+        return {{"err", "audio amplitudes must be numbers in [0,1]"}};
+      }
+    }
+    if (!value.contains("bands") || !value["bands"].is_array() || value["bands"].size() != 16) {
+      return {{"err", "expected sixteen audio bands"}};
+    }
+    features.rms = value["rms"].get<float>();
+    features.peak = value["peak"].get<float>();
+    features.envelope = value["envelope"].get<float>();
+    for (size_t i = 0; i < features.bands.size(); ++i) {
+      if (!value["bands"][i].is_number()) {
+        return {{"err", "audio bands must be numbers in [0,1]"}};
+      }
+      features.bands[i] = value["bands"][i].get<float>();
+    }
+    if (!server.effects().injectAudio(value["source"].get<std::string>(), features)) {
+      return {{"err", "invalid audio source or amplitude"}};
+    }
+    return {{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::effectFrames(Server& server, std::string_view /*arg*/) {
     nlohmann::json outputs = nlohmann::json::array();
     for (const auto& output : server.outputs()) {
+      nlohmann::json audio = nlohmann::json::array();
+      for (const auto& source : config().effects.audioSources) {
+        if (const auto* latch = server.effects().inspectAudioLatch(output.get(), source.name)) {
+          audio.push_back({
+              {"source", source.name},
+              {"latched_rms", latch->input().features.rms},
+              {"presented_rms", latch->presented().features.rms},
+              {"pending", latch->pending()},
+              {"revision", latch->revision()},
+              {"consumed_revision", latch->consumedRevision()},
+          });
+        }
+      }
       outputs.push_back({
           {"name", output->wlr()->name},
           {"effect_frames", output->effectFrames()},
+          {"buffer_commits", output->successfulBufferCommits()},
+          {"rejected_buffer_commits", output->rejectedBufferCommits()},
+          {"commit_held", output->testCommitHeld()},
+          {"audio", std::move(audio)},
           {"eligible", output->effectEligible()},
       });
     }
@@ -860,6 +934,21 @@ namespace umbriel {
             {"image", std::move(image)},
         },
     }};
+  }
+
+  nlohmann::json IpcCommands::outputCommitHold(Server& server, std::string_view arg) {
+    const auto separator = arg.find(' ');
+    if (separator == std::string_view::npos
+        || (arg.substr(separator + 1) != "on" && arg.substr(separator + 1) != "off")) {
+      return {{"err", "expected output name followed by on or off"}};
+    }
+    for (const auto& output : server.outputs()) {
+      if (arg.substr(0, separator) == output->wlr()->name) {
+        output->setTestCommitHold(arg.substr(separator + 1) == "on");
+        return {{"ok", nullptr}};
+      }
+    }
+    return {{"err", "unknown output"}};
   }
 #endif
 
@@ -929,6 +1018,10 @@ namespace umbriel {
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",
        "synthesize a hardware cursor plane sample (harness only)", IpcCommandGroup::Harness, true,
        &IpcCommands::planeCursor, nullptr},
+      {"audio-inject", "<json>", "inject a deterministic audio snapshot", IpcCommandGroup::Harness, true,
+       &IpcCommands::audioInject, nullptr},
+      {"output-commit-hold", "<output> <on|off>", "hold buffer commits to exercise retry paths",
+       IpcCommandGroup::Harness, true, &IpcCommands::outputCommitHold, nullptr},
       {"effect-frames", "", "count frames drawn for persistent effects per output", IpcCommandGroup::Harness, false,
        &IpcCommands::effectFrames, nullptr},
       {"cursor-state", "", "inspect the current client cursor source (harness only)", IpcCommandGroup::Harness, false,

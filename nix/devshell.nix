@@ -5,6 +5,10 @@
 pkgs.mkShell {
   inputsFrom = [ umbriel ];
 
+  # Keep the packaged helper optional while making its protocol/reconnect tests
+  # available to developers through -Daudio_helper=enabled.
+  buildInputs = [ pkgs.pipewire ];
+
   # glibc rejects _FORTIFY_SOURCE at the debug profile's -O0, and werror
   # promotes that diagnostic to a build failure.
   hardeningDisable = [

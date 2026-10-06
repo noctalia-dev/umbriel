@@ -1,0 +1,12 @@
+# Select [effects] cursor = "cursor.music-radiance".
+# Both music presets share this playback source when included together.
+[effects.audio.sources.music_playback]
+provider = "pipewire"
+mode = "playback"
+follow_default = true
+
+[effects.preset."cursor.music-radiance"]
+kind = "cursor"
+shader = "shader.glsl"
+audio = "music_playback"
+radius = 160

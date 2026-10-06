@@ -3,6 +3,7 @@
 // returns 77 without an FP16-capable render node.
 #include "render_fixture.h"
 #include "render/fx_renderer/effect.h"
+#include "render/fx_renderer/audio_inputs.h"
 #include "umbrielfx/render/effect.h"
 #include "umbrielfx/render/pass.h"
 #include <stdarg.h>
@@ -150,6 +151,63 @@ static void count_failure_logs(enum wlr_log_importance importance, const char *f
 	if (strstr(message, failure_log_needle) != NULL) {
 		failure_logs++;
 	}
+}
+
+static bool test_audio_inputs(struct fixture *fixture) {
+	_Static_assert(FX_UNIFORMS_MAX == 8 && FX_ANIMATION_SLOTS == 13,
+		"audio must fit the existing legacy table and slots");
+	const char *source =
+		"vec4 animation(vec2 uv) { return vec4(umbriel_audio_band(umbriel_time), "
+		"umbriel_audio_rms(), umbriel_audio_peak(), 1.0) * umbriel_audio_available() "
+		"* umbriel_audio_level() * umbriel_palette_at(0.0); }";
+	struct fx_effect_shader *shader = fx_effect_shader_create(fixture->renderer,
+		FX_EFFECT_ANIMATION, source, "audio-packed-inputs-experiment");
+	if (!check(shader != NULL, "audio constant-index helper compiles under legacy GLSL")) {
+		return false;
+	}
+	bool ok = check(fx_effect_shader_reads(shader, "umbriel_audio_levels") &&
+		fx_effect_shader_reads(shader, "umbriel_audio_bands"), "both packed audio entries reflect");
+	struct fx_animation_parameters parameters = {0};
+	struct fx_uniform *time = fx_parameters_add_uniform(&parameters, "umbriel_time", FX_UNIFORM_FLOAT, 1);
+	struct fx_uniform *palette = fx_parameters_add_uniform(&parameters, "umbriel_palette", FX_UNIFORM_VEC4, 4);
+	struct fx_uniform *count = fx_parameters_add_uniform(&parameters, "umbriel_palette_count", FX_UNIFORM_INT, 1);
+	for (unsigned i = 0; i < 16; ++i) palette->floats[i] = 1;
+	count->ints[0] = 4;
+	const float levels[4] = {1, 0.25f, 0.75f, 1};
+	float bands[16];
+	for (unsigned i = 0; i < 16; ++i) bands[i] = (float)i / 15;
+	ok &= check(fx_parameters_add_audio(&parameters, levels, bands) && parameters.uniform_count == 5,
+		"time, palette/count and both audio entries fit without dropping bindings");
+	for (int i = -1; i <= 31; ++i) {
+		time->floats[0] = (float)i / 30;
+		const int expected = (int)lroundf(fminf(1, fmaxf(0, time->floats[0])) * 255);
+		uint8_t pixel[4];
+		ok &= render_animation(fixture, shader, &parameters, 0, pixel)
+			&& check(abs((int)pixel[2] - expected) <= 2 && abs((int)pixel[1] - 64) <= 2 &&
+				abs((int)pixel[0] - 191) <= 2 && pixel[3] >= 253,
+				"sixteen bands interpolate and clamp with time/palette/level bindings intact");
+	}
+	struct fx_animation_parameters full = parameters;
+	full.uniform_count = FX_UNIFORMS_MAX - 1;
+	struct fx_animation_parameters before = full;
+	ok &= check(!fx_parameters_add_audio(&full, levels, bands) && memcmp(&before, &full, sizeof(full)) == 0,
+		"insufficient legacy table space rejects both entries atomically");
+	fx_effect_shader_unref(shader);
+
+	shader = fx_effect_shader_create(fixture->renderer, FX_EFFECT_ANIMATION,
+		"vec4 animation(vec2 uv) { return vec4(umbriel_audio_rms(), 0.0, 0.0, 1.0); }",
+		"audio-without-time-experiment");
+	if (!check(shader != NULL, "audio-only shader compiles")) return false;
+	ok &= check(!fx_effect_shader_reads(shader, "umbriel_time"), "audio does not imply a shader clock");
+	uint8_t pixel[4];
+	ok &= render_animation(fixture, shader, &parameters, 0, pixel)
+		&& check(abs((int)pixel[2] - 64) <= 2, "audio-only shader reads supplied RMS");
+	// Negative control: same shader and clock, only the packed input changes.
+	parameters.uniforms[3].floats[1] = 0;
+	ok &= render_animation(fixture, shader, &parameters, 0, pixel)
+		&& check(pixel[2] <= 2, "zero audio removes the response without time advancing");
+	fx_effect_shader_unref(shader);
+	return ok;
 }
 
 static bool test_uniforms(struct fixture *fixture) {
@@ -2245,6 +2303,8 @@ int main(int argc, char *argv[]) {
 		ok = test_reads(&fixture);
 	} else if (strcmp(argv[1], "uniforms") == 0) {
 		ok = test_uniforms(&fixture);
+	} else if (strcmp(argv[1], "audio-inputs") == 0) {
+		ok = test_audio_inputs(&fixture);
 	} else if (strcmp(argv[1], "long-running-trig") == 0) {
 		ok = test_long_running_trig(&fixture);
 	} else if (strcmp(argv[1], "expand") == 0) {

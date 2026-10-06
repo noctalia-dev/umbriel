@@ -1,0 +1,20 @@
+# Include this file, then select [effects] border = "spectrum".
+# Selection starts playback analysis through the optional umbriel-audio helper.
+# To use a different source, override this preset's audio field in your config.
+[effects.audio.sources.spectrum_playback]
+provider = "pipewire"
+mode = "playback"
+follow_default = true
+
+[effects.preset.spectrum]
+kind = "border"
+shader = "shader.glsl"
+audio = "spectrum_playback"
+palette = true
+animated = false
+padding = 24
+
+[effects.preset.spectrum.light]
+spread = 48
+intensity = 1.0
+threshold = 0.35

@@ -58,6 +58,7 @@ struct wlr_scene_buffer;
 struct wlr_scene_output_layout;
 struct wlr_scene_rect;
 struct wlr_scene_tree;
+struct wlr_ext_image_capture_source_v1;
 struct wlr_security_context_manager_v1;
 struct wlr_security_context_v1_state;
 struct wlr_session;
@@ -611,6 +612,9 @@ namespace umbriel {
       wlr_ext_image_copy_capture_session_v1* session = nullptr;
       // Identity only; never dereferenced, so output teardown order cannot dangle.
       wlr_output* output = nullptr;
+      // Identity only; matched against a view's capture source, never dereferenced.
+      wlr_ext_image_capture_source_v1* source = nullptr;
+      bool isolated = false;
       wl_listener destroy{};
     };
     struct PointerDevice {

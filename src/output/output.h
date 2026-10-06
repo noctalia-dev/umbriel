@@ -69,6 +69,13 @@ namespace umbriel {
     void markDirty(Dirty what);
     // Asks for a frame on behalf of persistent effects.
     void scheduleEffectFrame();
+    void scheduleAudioFrame();
+#ifdef UMBRIEL_TEST_IPC
+    [[nodiscard]] uint64_t successfulBufferCommits() const { return m_successfulBufferCommits; }
+    [[nodiscard]] uint64_t rejectedBufferCommits() const { return m_rejectedBufferCommits; }
+    [[nodiscard]] bool testCommitHeld() const { return m_testCommitHeld; }
+    void setTestCommitHold(bool held);
+#endif
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
@@ -195,6 +202,11 @@ namespace umbriel {
     wlr_output* m_output = nullptr;
     float m_defaultScale = 1.0F;
     wlr_scene_output* m_sceneOutput = nullptr;
+#ifdef UMBRIEL_TEST_IPC
+    uint64_t m_successfulBufferCommits = 0;
+    uint64_t m_rejectedBufferCommits = 0;
+    bool m_testCommitHeld = false;
+#endif
     wlr_scene_tree* m_layerTrees[kLayerCount]{};
     wlr_scene_tree* m_popupTree = nullptr;
     wlr_scene_tree* m_viewRoot = nullptr;

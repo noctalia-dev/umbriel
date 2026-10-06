@@ -44,6 +44,8 @@ namespace umbriel {
       wlr_scene_node* surface = nullptr;
       wlr_scene_node* border = nullptr;
       wlr_scene_node* captureSurface = nullptr; // the isolated capture scene's surface tree node
+      const void* captureOutput = nullptr;
+      bool captureActive = false;
       BorderEffectGate gate;
       float scale = 1.0F;
       float seconds = 0.0F; // the output's effect time; only read when an effect is configured

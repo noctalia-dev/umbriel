@@ -66,7 +66,7 @@ namespace umbriel {
     fx_effect_shader* shader = gateOpen ? registry.preset(m_border, EffectKind::Border) : nullptr;
     const EffectPreset* preset = shader != nullptr ? registry.presetConfig(m_border) : nullptr;
     const bool advancing = preset != nullptr && preset->animated && preset->speed > 0.0F;
-    const float seconds = advancing ? input.seconds * preset->speed : 0.0F;
+    const float seconds = advancing ? registry.compositionSeconds(input.border, input.seconds) * preset->speed : 0.0F;
     if (preset == nullptr) {
       if (input.border != nullptr) {
         wlr_scene_node_set_animation(input.border, FX_SLOT_BORDER_EFFECT, nullptr, nullptr);
@@ -75,7 +75,7 @@ namespace umbriel {
     } else {
       fx_animation_parameters parameters{};
       parameters.scale = input.scale;
-      registry.fillTimeUniforms(parameters, seconds, *preset, shader);
+      registry.fillTimeUniforms(parameters, seconds, *preset, shader, input.output, input.border);
       if (preset->light) {
         parameters.light = {
             .enabled = true,
@@ -84,7 +84,7 @@ namespace umbriel {
             .threshold = preset->light->threshold,
         };
       }
-      wlr_scene_node_set_animation(input.border, FX_SLOT_BORDER_EFFECT, shader, &parameters);
+      registry.setAnimationParameters(input.border, FX_SLOT_BORDER_EFFECT, shader, parameters, preset);
       track(input.border);
       registry.updateInstance(
           input.border,
@@ -93,7 +93,8 @@ namespace umbriel {
               .visible = wlr_scene_node_visible_in_box(input.border, &input.outputBox),
               .readsTime = fx_effect_shader_reads(shader, "umbriel_time"),
               .advancing = advancing && input.clockAdvancing,
-          }
+          },
+          registry.audioSource(*preset, shader), input.border
       );
     }
     applyWindowSlots(input, preset, seconds, advancing);
@@ -115,25 +116,30 @@ namespace umbriel {
     fx_effect_shader* overlayShader =
         overlayPreset != nullptr ? registry.preset(border->overlay, EffectKind::Window) : nullptr;
     const auto bindSlot = [&](wlr_scene_node* node, unsigned slot, const EffectPreset* preset, fx_effect_shader* shader,
-                              float seconds) {
+                              float seconds, const void* output, bool capture) {
       if (shader == nullptr) {
         wlr_scene_node_set_animation(node, slot, nullptr, nullptr);
         return;
       }
       fx_animation_parameters parameters{};
       parameters.scale = input.scale;
-      registry.fillTimeUniforms(parameters, seconds, *preset, shader);
-      wlr_scene_node_set_animation(node, slot, shader, &parameters);
+      registry.fillTimeUniforms(parameters, seconds, *preset, shader, output, capture ? nullptr : node);
+      if (capture) {
+        wlr_scene_node_set_animation(node, slot, shader, &parameters);
+      } else {
+        registry.setAnimationParameters(node, slot, shader, parameters, preset);
+      }
     };
-    const auto bind = [&](wlr_scene_node* node) {
-      bindSlot(node, FX_SLOT_WINDOW, windowPreset, windowShader, input.seconds);
-      bindSlot(node, FX_SLOT_OVERLAY, overlayPreset, overlayShader, borderSeconds);
+    const auto bind = [&](wlr_scene_node* node, const void* output, bool capture) {
+      const float seconds = capture ? input.seconds : registry.compositionSeconds(node, input.seconds);
+      bindSlot(node, FX_SLOT_WINDOW, windowPreset, windowShader, seconds, output, capture);
+      bindSlot(node, FX_SLOT_OVERLAY, overlayPreset, overlayShader, borderSeconds, output, capture);
     };
-    bind(input.surface);
+    bind(input.surface, input.output, false);
     // The isolated toplevel capture shows window effects only when effects are included in captures.
     if (config().effects.inCapture) {
       if (input.captureSurface != nullptr) {
-        bind(input.captureSurface);
+        bind(input.captureSurface, input.captureOutput, true);
       }
     } else {
       clearWindowEffectSlots(input.captureSurface);
@@ -142,7 +148,8 @@ namespace umbriel {
     // window slot follows the output's clock, the overlay advances only while the border's clock does.
     const bool visible = (windowShader != nullptr || overlayShader != nullptr)
         && wlr_scene_node_visible_in_box(input.surface, &input.outputBox);
-    const auto instance = [&](const void* owner, const fx_effect_shader* program, bool advancing) {
+    const auto instance = [&](const void* owner, const EffectPreset* preset, const fx_effect_shader* program,
+                              bool advancing) {
       if (program == nullptr) {
         untrack(owner);
         return;
@@ -155,11 +162,25 @@ namespace umbriel {
               .visible = visible,
               .readsTime = fx_effect_shader_reads(program, "umbriel_time"),
               .advancing = advancing && input.clockAdvancing,
-          }
+          },
+          preset != nullptr ? registry.audioSource(*preset, program) : std::string_view{}, input.surface
       );
     };
-    instance(input.surface, windowShader, true);
-    instance(&input.surface->addons, overlayShader, borderAdvancing);
+    instance(input.surface, windowPreset, windowShader, true);
+    instance(&input.surface->addons, overlayPreset, overlayShader, borderAdvancing);
+    if (input.captureSurface != nullptr) {
+      const auto captureInstance = [&](const void* owner, const EffectPreset* preset, const fx_effect_shader* program) {
+        const auto source = preset != nullptr ? registry.audioSource(*preset, program) : std::string_view{};
+        if (source.empty() || !config().effects.inCapture || !input.captureActive) {
+          untrack(owner);
+          return;
+        }
+        track(owner);
+        registry.updateCaptureAudio(owner, input.captureOutput, source, true);
+      };
+      captureInstance(input.captureSurface, windowPreset, windowShader);
+      captureInstance(&input.captureSurface->addons, overlayPreset, overlayShader);
+    }
   }
 
   void ViewEffects::detach() {

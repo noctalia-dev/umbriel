@@ -1,6 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <sys/types.h>
+
+struct wl_event_loop;
+struct wl_event_source;
 
 namespace umbriel {
 
@@ -18,6 +23,16 @@ namespace umbriel {
   // hands control to systemd-run. Returns false when a complete close cannot
   // be guaranteed.
   [[nodiscard]] bool closeChildFileDescriptors();
+
+  // Shared Linux exit observation. SIGCHLD may be SIG_IGN: no waitable exit
+  // status is required. On watch allocation failure, pidfd remains owned by the
+  // caller so it can signal safely before closeChildExitWatch().
+  [[nodiscard]] bool watchChildExit(
+      wl_event_loop* loop, pid_t pid, int (*callback)(int, uint32_t, void*), void* data, int& pidfd,
+      wl_event_source*& source
+  );
+  void closeChildExitWatch(int& pidfd, wl_event_source*& source);
+  void signalChild(int pidfd, int signal);
 
   // Resolve a bare executable against PATH, or validate an explicit path. An
   // empty result means no executable was found.

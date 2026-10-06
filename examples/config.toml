@@ -99,6 +99,17 @@ radius = 3
 # [effects]
 # border = "pulse"
 
+# Audio-responsive example (optional umbriel-audio helper required): add
+# /usr/share/umbriel/effects/border/spectrum/effect.toml to [include].files and
+# select border = "spectrum" in [effects]. It follows system playback; a
+# microphone is a separate source mode.
+# A custom shader binds a named source with audio = "desktop":
+# [effects.audio.sources.desktop]
+# provider = "pipewire"
+# mode = "playback"
+# follow_default = true
+# See docs/user/audio-effects.md for the complete setup and shader inputs.
+
 # ==============================================================================
 # Input
 # Enable NumLock when a physical keyboard connects.

@@ -1,4 +1,5 @@
 #include "render/fx_renderer/effect.h"
+#include "render/fx_renderer/audio_inputs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,7 @@ static const char kPreamble[] =
     "uniform vec2 umbriel_expand;\n"
     "uniform vec4 umbriel_palette[4];\n"
     "uniform int umbriel_palette_count;\n"
+    FX_AUDIO_INPUT_SOURCE
     "vec4 umbriel_sample(vec2 uv) {\n"
     "  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);\n"
     "  vec2 p = (vec3(uv, 1.0) * umbriel_sample_matrix).xy;\n"

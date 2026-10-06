@@ -795,6 +795,8 @@ namespace umbriel {
           .surface = surface,
           .border = border,
           .captureSurface = captureSurface,
+          .captureOutput = m_captureSource,
+          .captureActive = m_captureSessions > 0,
           .gate = gate != nullptr ? *gate : ownGate,
           .scale = scale,
           .seconds = m_effects.configured() && output != nullptr ? output->effectSeconds() : 0.0F,

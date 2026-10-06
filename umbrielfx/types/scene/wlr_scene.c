@@ -1643,6 +1643,41 @@ static bool parameters_equal(const struct fx_animation_parameters* a, const stru
       && uniforms_equal(a, b);
 }
 
+bool wlr_scene_node_set_animation_uniforms_for_output(struct wlr_scene_node* node, unsigned slot,
+    struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters,
+    struct wlr_scene_output* output, bool damage) {
+  if (node == NULL || output == NULL || shader == NULL || parameters == NULL || slot >= FX_ANIMATION_SLOTS
+      || parameters->uniform_count > FX_UNIFORMS_MAX || scene_node_get_root(node) != output->scene) {
+    return false;
+  }
+  struct scene_animation* animation = scene_animation_get(node);
+  if (animation == NULL || animation->shaders[slot] != shader) {
+    return false;
+  }
+  const struct fx_animation_parameters* old = &animation->parameters[slot];
+  if (old->progress != parameters->progress || old->linear_progress != parameters->linear_progress
+      || old->direction != parameters->direction || old->transition_id != parameters->transition_id
+      || memcmp(old->random_seed, parameters->random_seed, sizeof(old->random_seed)) != 0
+      || old->expand != parameters->expand || old->scale != parameters->scale
+      || old->light.enabled != parameters->light.enabled
+      || old->light.spread != parameters->light.spread || old->light.intensity != parameters->light.intensity
+      || old->light.threshold != parameters->light.threshold) {
+    return false;
+  }
+  if (!parameters_equal(old, parameters)) {
+    animation->parameters[slot] = *parameters;
+  }
+  if (damage) {
+    // A synchronous frame bind never schedules another frame. A different
+    // output's prior binding alone is not evidence this output needs damage;
+    // the caller knows whether its own coherent input latch is pending.
+    wlr_damage_ring_add_whole(&output->damage_ring);
+    pixman_region32_union_rect(&output->pending_commit_damage, &output->pending_commit_damage,
+        0, 0, output->output->width, output->output->height);
+  }
+  return true;
+}
+
 void wlr_scene_node_set_animation(
     struct wlr_scene_node* node, unsigned slot, struct fx_effect_shader* shader,
     const struct fx_animation_parameters* parameters

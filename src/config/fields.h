@@ -41,7 +41,14 @@ namespace umbriel {
     std::vector<EffectReference>& effectReferences;
     const std::vector<configmerge::EffectDeclaration>& presetDeclarations;
     const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
+    struct AudioReference {
+      std::size_t preset;
+      toml::source_region source;
+    };
+    std::vector<AudioReference> audioReferences = {}; // NOLINT(readability-redundant-member-init)
   };
+
+  void validateAudioReferences(Config& loaded, const registry::ReadContext& context);
 
   // Record a diagnostic in the store and log it.
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg);

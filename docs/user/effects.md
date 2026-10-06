@@ -37,11 +37,19 @@ Bundled presets:
 | `reveal` | animation | `[animation.windows_in] effect = "reveal"` (also `windows_out`) |
 | `squash` | animation | `[animation.windows_move] effect = "squash"` |
 | `pulse` | border | `[effects] border = "pulse"` |
+| `spectrum` | border | `[effects] border = "spectrum"`; requires the optional audio helper |
+| `border.music-lines` | border + overlay | Fixed cyan/blue/magenta spectrum bars and mirrored contours whose heights follow the live audio bands; include `border/music-lines/effect.toml` |
 | `scanlines` | window | `[effects] window = "scanlines"` |
 | `vignette` | screen | `[effects] screen = "vignette"` |
 | `glow` | cursor | `[effects] cursor = "glow"` |
 | `trail` | cursor | Noctalia-inspired purple, lavender and moon-yellow motion tail; include `cursor/trail/effect.toml`, then set `[effects] cursor = "trail"`. |
 | `trail-path` | cursor | Two-second curved tail coloured along its length; include `cursor/trail-path/effect.toml`, then set `[effects] cursor = "trail-path"`. |
+| `cursor.music-radiance` | cursor | Expanding rainbow rings driven by playback; include `cursor/music-radiance/effect.toml` |
+| `window.music-smoke` | window | Translucent rising smoke driven by playback; include `window/music-smoke/effect.toml` |
+
+The `spectrum` preset explicitly follows system playback and responds without a
+shader clock. Including its file does not start acquisition; selecting it does.
+See [audio inputs](audio-effects.md) for source selection and helper setup.
 
 ## Turn a default off for one window or output
 

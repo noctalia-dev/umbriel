@@ -4073,4 +4073,164 @@ action = 'effect-window-set:window'
   CHECK(umbriel::effectActionReference(*store.config().hotCorners.corners[0].action)->name == "window");
 }
 
+UMBRIEL_TEST(audioSourcesRequireExplicitModeAndExclusiveTargetSelection) {
+  const TempConfig file;
+  file.write(R"(
+[effects.audio.sources.desktop]
+provider = 'pipewire'
+mode = 'playback'
+follow_default = true
+[effects.audio.sources.voice]
+provider = 'pipewire'
+mode = 'microphone'
+target = 'exact microphone node'
+follow_default = false
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const auto& sources = store.config().effects.audioSources;
+  CHECK_EQ(sources.size(), size_t{2});
+  if (sources.size() != 2) {
+    return;
+  }
+  CHECK(sources[0].provider == umbriel::AudioProvider::Pipewire);
+  CHECK(sources[0].mode == umbriel::AudioMode::Playback);
+  CHECK(sources[0].target.empty());
+  CHECK(sources[0].followDefault);
+  CHECK(sources[1].mode == umbriel::AudioMode::Microphone);
+  CHECK_EQ(sources[1].target, std::string("exact microphone node"));
+  CHECK(!sources[1].followDefault);
+  CHECK(store.config().effects.presets.empty());
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(audioExternalExecutableResolvesBesideItsDeclaringIncludeAndPreservesArgv) {
+  const TempConfigTree tree;
+  tree.write("config.toml", "[include]\nfiles = ['theme/audio.toml']\n");
+  tree.write("theme/audio.toml", R"(
+[effects.audio.sources.external]
+provider = 'external'
+mode = 'playback'
+target = 'literal target'
+executable = '../helpers/audio helper'
+args = ['', 'a b', '$(touch should-not-exist)', '; echo text', '$HOME', '*.wav']
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& sources = store.config().effects.audioSources;
+  CHECK_EQ(sources.size(), size_t{1});
+  if (sources.size() != 1) {
+    return;
+  }
+  const auto& source = sources[0];
+  CHECK(source.provider == umbriel::AudioProvider::External);
+  CHECK_EQ(source.executable, tree.path("helpers/audio helper").string());
+  CHECK(
+      source.args == std::vector<std::string>({"", "a b", "$(touch should-not-exist)", "; echo text", "$HOME", "*.wav"})
+  );
+  CHECK(store.diagnostics().empty());
+  // Loading metadata does not require opening or executing the helper.
+  CHECK(!std::filesystem::exists(source.executable));
+}
+
+UMBRIEL_TEST(audioInvalidSourceDeclarationsNeverFallBackToAnImplicitDevice) {
+  const TempConfig file;
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const std::array<std::string_view, 22> invalid = {
+      "mode = 'playback'\nfollow_default = true\n",
+      "provider = 'pipewire'\nfollow_default = true\n",
+      "provider = 'shell'\nmode = 'playback'\nfollow_default = true\n",
+      "provider = 'pipewire'\nmode = 'capture'\nfollow_default = true\n",
+      "provider = 'pipewire'\nmode = 'playback'\n",
+      "provider = 'pipewire'\nmode = 'playback'\nfollow_default = false\n",
+      "provider = 'pipewire'\nmode = 'playback'\ntarget = ''\n",
+      "provider = 'pipewire'\nmode = 'playback'\ntarget = ''\nfollow_default = true\n",
+      "provider = 'pipewire'\nmode = 'playback'\ntarget = 'fixed'\nfollow_default = true\n",
+      "provider = 'pipewire'\nmode = 'playback'\ntarget = 1\n",
+      "provider = 'pipewire'\nmode = 'playback'\nfollow_default = 'true'\n",
+      "provider = 'pipewire'\nmode = 'playback'\nfollow_default = true\ntypo = 1\n",
+      "provider = 'pipewire'\nmode = 'playback'\nfollow_default = true\nexecutable = '/bin/false'\n",
+      "provider = 'pipewire'\nmode = 'playback'\nfollow_default = true\nargs = []\n",
+      "provider = 'external'\nmode = 'microphone'\ntarget = 'fixed'\n",
+      "provider = 'external'\nmode = 'microphone'\ntarget = 'fixed'\nexecutable = ''\n",
+      "provider = 'external'\nmode = 'microphone'\ntarget = 'fixed'\nexecutable = 1\n",
+      "provider = 'external'\nmode = 'microphone'\ntarget = 'fixed'\nexecutable = 'helper'\nargs = 'shell command'\n",
+      "provider = 'external'\nmode = 'microphone'\ntarget = 'fixed'\nexecutable = 'helper'\nargs = [1]\n",
+      "provider = 1\nmode = 'playback'\nfollow_default = true\n",
+      "provider = 'pipewire'\nmode = true\nfollow_default = true\n",
+      "provider = 'external'\nmode = 'playback'\nfollow_default = true\nexecutable = 'helper'\nshell = true\n",
+  };
+  for (const auto declaration : invalid) {
+    file.write("[effects.audio.sources.invalid]\n" + std::string(declaration));
+    CHECK(store.reload().success);
+    CHECK(store.config().effects.audioSources.empty());
+    CHECK(containsDiagnostic(store, "ignoring effects.audio.sources.invalid"));
+  }
+}
+
+UMBRIEL_TEST(audioReferencesResolveAcrossForwardIncludesForEveryExistingPresetKind) {
+  const TempConfigTree tree;
+  tree.write("sources.toml", R"(
+[effects.audio.sources.desktop]
+provider = 'pipewire'
+mode = 'playback'
+follow_default = true
+)");
+  std::string document = "[include]\nfiles = ['sources.toml']\n";
+  for (const auto kind : {"animation", "border", "window", "screen", "cursor"}) {
+    document += "[effects.preset." + std::string(kind) + "]\nkind = '" + kind + "'\naudio = 'desktop'\n";
+  }
+  document += "[effects.preset.unbound]\nkind = 'window'\n";
+  document += "[effects.preset.unknown]\nkind = 'window'\naudio = 'missing'\n";
+  document += "[effects.preset.wrong_type]\nkind = 'window'\naudio = true\n";
+  tree.write("config.toml", document);
+  auto& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  for (const auto kind : {"animation", "border", "window", "screen", "cursor"}) {
+    const auto* preset = umbriel::findEffectPreset(store.config().effects, kind);
+    CHECK(preset != nullptr && preset->audio == "desktop");
+  }
+  for (const auto name : {"unbound", "unknown", "wrong_type"}) {
+    const auto* preset = umbriel::findEffectPreset(store.config().effects, name);
+    CHECK(preset != nullptr && preset->audio.empty());
+  }
+  CHECK(containsDiagnostic(store, "ignoring effects.preset.unknown.audio (unknown audio source 'missing')"));
+  CHECK(containsDiagnostic(store, "effects.preset.wrong_type.audio (expected string)"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  CHECK(std::ranges::any_of(store.diagnostics(), [&](const auto& diagnostic) {
+    return diagnostic.file == tree.path("config.toml").string()
+        && diagnostic.message.contains("unknown audio source 'missing'");
+  }));
+  // Definitions and bindings leave global consumers disabled; runtime demand is tested separately.
+  CHECK(store.config().effects.border.empty());
+  CHECK(store.config().effects.window.empty());
+  CHECK(store.config().effects.screen.empty());
+  CHECK(store.config().effects.cursor.empty());
+}
+
+UMBRIEL_TEST(audioDefinitionAndBindingChangesInvalidateEffectsAndResetOnReload) {
+  const TempConfig file;
+  const std::string source = "[effects.audio.sources.desktop]\nprovider = 'pipewire'\nmode = 'playback'\n";
+  file.write(source + "target = 'first'\n[effects.preset.a]\nkind = 'window'\naudio = 'desktop'\n");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.reload().effects.any());
+  file.write(source + "target = 'second'\n[effects.preset.a]\nkind = 'window'\naudio = 'desktop'\n");
+  const auto changed = store.reload();
+  CHECK(changed.success);
+  CHECK(changed.effects.effects);
+  file.write(source + "target = 'second'\n[effects.preset.a]\nkind = 'window'\n");
+  const auto unbound = store.reload();
+  CHECK(unbound.success);
+  CHECK(unbound.effects.effects);
+  file.write("");
+  CHECK(store.reload().success);
+  CHECK(store.config().effects.audioSources.empty());
+}
+
 int main() { return RUN_TESTS(); }

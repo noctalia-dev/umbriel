@@ -91,6 +91,10 @@ namespace umbriel {
           warnAt(declaration.source, "{} has no shader; the preset is inert", path);
         }
         keys.boolean("palette", preset.palette);
+        const auto audio = takeEffectSelector(keys, "audio");
+        if (audio) {
+          preset.audio = audio->first;
+        }
         // The preset moves into the vector; register the overlay reference by index after the push.
         std::optional<std::pair<std::string, toml::source_region>> overlay;
         switch (*kind) {
@@ -126,6 +130,9 @@ namespace umbriel {
           break;
         }
         effects.presets.push_back(std::move(preset));
+        if (audio) {
+          context.audioReferences.push_back({effects.presets.size() - 1, audio->second});
+        }
         if (overlay) {
           const size_t index = effects.presets.size() - 1;
           addEffectReference(
@@ -216,11 +223,133 @@ namespace umbriel {
       }
     }
 
+    void readAudioSources(Section& audio, Effects& effects, registry::ReadContext& /*context*/) {
+      audio.sub("sources", [&](Section& sources) {
+        sources.freeform();
+        for (const auto& [key, node] : sources.table()) {
+          const std::string name(key.str());
+          const std::string path = "effects.audio.sources." + name;
+          const auto* table = node.as_table();
+          if (!validEffectName(name, path, node.source()) || table == nullptr) {
+            if (table == nullptr) {
+              warnAt(node.source(), "ignoring {} (expected table)", path);
+            }
+            continue;
+          }
+          Section keys(*table, path, configStore().mutableDiagnostics());
+          AudioSource source;
+          source.name = name;
+          std::string provider;
+          std::string mode;
+          keys.text("provider", provider)
+              .text("mode", mode)
+              .text("target", source.target)
+              .boolean("follow_default", source.followDefault)
+              .text("executable", source.executable);
+          const auto reject = [&](std::string_view reason) { warnAt(node.source(), "ignoring {} ({})", path, reason); };
+          bool typesValid = true;
+          for (const auto field : {"provider", "mode", "target", "executable"}) {
+            const auto* value = keys.node(field);
+            typesValid = typesValid && (value == nullptr || value->is_string());
+          }
+          if (const auto* value = keys.node("follow_default")) {
+            typesValid = typesValid && value->is_boolean();
+          }
+          if (const auto* value = keys.take("args")) {
+            const auto* args = value->as_array();
+            typesValid = typesValid && args != nullptr;
+            if (args != nullptr) {
+              for (const auto& arg : *args) {
+                const auto text = arg.value<std::string>();
+                if (!text || text->contains('\0')) {
+                  typesValid = false;
+                } else {
+                  source.args.push_back(*text);
+                }
+              }
+            }
+          }
+          if (!typesValid || !keys.allKeysKnown()) {
+            reject("invalid audio source keys or value types");
+            continue;
+          }
+          if (provider != "pipewire" && provider != "external") {
+            reject("provider must be pipewire|external");
+            continue;
+          }
+          source.provider = provider == "pipewire" ? AudioProvider::Pipewire : AudioProvider::External;
+          if (mode != "playback" && mode != "microphone") {
+            reject("mode must explicitly select playback|microphone");
+            continue;
+          }
+          source.mode = mode == "playback" ? AudioMode::Playback : AudioMode::Microphone;
+          if (source.target.contains('\0')
+              || source.target.size() > 1024
+              || (source.target.empty() == !source.followDefault)
+              || (keys.node("target") != nullptr && source.target.empty())) {
+            reject("select exactly one nonempty target (at most 1024 bytes) or follow_default = true");
+            continue;
+          }
+          if (source.provider == AudioProvider::Pipewire) {
+            if (keys.node("executable") != nullptr || keys.node("args") != nullptr) {
+              reject("executable and args require provider = external");
+              continue;
+            }
+          } else {
+            if (source.executable.empty() || source.executable.contains('\0') || source.args.size() > 64) {
+              reject("external provider requires an executable path and at most 64 arguments");
+              continue;
+            }
+            auto executable = std::filesystem::path(source.executable);
+            if (executable.is_relative()) {
+              const auto& origin = keys.node("executable")->source();
+              if (!origin.path || origin.path->empty()) {
+                reject("relative executable requires a config source path");
+                continue;
+              }
+              executable = std::filesystem::path(*origin.path).parent_path() / executable;
+            }
+            source.executable = executable.lexically_normal().string();
+          }
+          effects.audioSources.push_back(std::move(source));
+        }
+      });
+    }
+
     const registry::Fields<Effects>& effectsFields() {
       using registry::KeyDescription;
       static const registry::Fields<Effects> fields{
           registry::integer("max_fps", 0, 240, &Effects::maxFps),
           registry::boolean("in_capture", &Effects::inCapture),
+          registry::custom<Effects>(
+              "audio", KeyDescription("table"),
+              [](const toml::node& node, const std::string& path, Effects& effects, registry::ReadContext& context) {
+                const auto* table = node.as_table();
+                if (table == nullptr) {
+                  warnAt(node.source(), "ignoring {} (expected table)", path);
+                  return;
+                }
+                Section audio(*table, path, configStore().mutableDiagnostics());
+                readAudioSources(audio, effects, context);
+              },
+              nullptr,
+              [] {
+                registry::Descriptions keys;
+                const auto add = [&keys](std::string_view path, KeyDescription description) {
+                  description.path = path;
+                  keys.push_back(std::move(description));
+                };
+                add("sources", KeyDescription("map"));
+                add("sources.<name>", KeyDescription("table"));
+                add("sources.<name>.provider", KeyDescription("enum").withValues({"pipewire", "external"}));
+                add("sources.<name>.mode", KeyDescription("enum").withValues({"playback", "microphone"}));
+                add("sources.<name>.target", KeyDescription("string"));
+                add("sources.<name>.follow_default", KeyDescription("bool"));
+                add("sources.<name>.executable", KeyDescription("string").withFormat("path"));
+                add("sources.<name>.args", KeyDescription("string_array"));
+                return keys;
+              }()
+          ),
           effectField("border", &Effects::border, EffectKind::Border),
           effectField("window", &Effects::window, EffectKind::Window),
           effectField("screen", &Effects::screen, EffectKind::Screen),
@@ -236,6 +365,7 @@ namespace umbriel {
                 add("kind", KeyDescription("enum").withValues({"animation", "border", "window", "screen", "cursor"}));
                 add("shader", KeyDescription("string").withFormat("path"));
                 add("palette", KeyDescription("bool"));
+                add("audio", KeyDescription("string"));
                 add("padding", KeyDescription("int").withRange(0, 1024));
                 add("speed", KeyDescription("float").withRange(0.0, 10.0));
                 add("animated", KeyDescription("bool"));
@@ -269,6 +399,20 @@ namespace umbriel {
   } // namespace
 
   registry::Field<Config> effectsTable() { return registry::table("effects", &Config::effects, effectsFields()); }
+
+  void validateAudioReferences(Config& loaded, const registry::ReadContext& context) {
+    for (const auto& reference : context.audioReferences) {
+      auto& preset = loaded.effects.presets[reference.preset];
+      if (preset.audio.empty() || std::ranges::none_of(loaded.effects.audioSources, [&](const AudioSource& source) {
+            return source.name == preset.audio;
+          })) {
+        warnAt(
+            reference.source, "ignoring effects.preset.{}.audio (unknown audio source '{}')", preset.name, preset.audio
+        );
+        preset.audio.clear();
+      }
+    }
+  }
 
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references) {
     for (EffectReference& reference : references) {

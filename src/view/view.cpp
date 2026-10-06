@@ -312,6 +312,7 @@ namespace umbriel {
       m_extForeign = nullptr;
     }
     if (m_captureSource != nullptr) {
+      detachCaptureAudio();
       wl_list_remove(&m_captureSourceDestroy.link);
       m_captureSource = nullptr;
     }

@@ -1165,8 +1165,16 @@ namespace umbriel {
     watch->server = self;
     watch->session = session;
     watch->output = wlr_output_try_from_ext_image_capture_source_v1(session->source);
+    watch->source = session->source;
     watch->destroy.notify = onImageCopySessionDestroy;
     wl_signal_add(&session->events.destroy, &watch->destroy);
+    for (const auto& view : self->views()) {
+      if (view->m_captureSource == session->source) {
+        watch->isolated = true;
+        view->changeCaptureSessions(1);
+        break;
+      }
+    }
     self->m_imageCopySessions.push_back(std::move(watch));
   }
 
@@ -1175,10 +1183,20 @@ namespace umbriel {
     ImageCopySessionWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    const bool isolated = watch->isolated;
+    for (const auto& view : server->views()) {
+      if (view->m_captureSource == watch->source) {
+        view->changeCaptureSessions(-1);
+        break;
+      }
+    }
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
     });
+    if (isolated) {
+      return;
+    }
     for (const auto& output : server->m_outputs) {
       output->scheduleEffectCaptureRelease();
     }
@@ -3481,6 +3499,7 @@ namespace umbriel {
       }
       view->m_captureSourceDestroy.notify = View::onCaptureSourceDestroy;
       wl_signal_add(&view->m_captureSource->events.destroy, &view->m_captureSourceDestroy);
+      view->attachCaptureAudio();
     }
 
     wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, view->m_captureSource);

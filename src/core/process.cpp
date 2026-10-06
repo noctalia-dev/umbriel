@@ -7,8 +7,10 @@
 #include <cstring>
 #include <string>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <wayland-server-core.h>
 
 extern "C" int umbrielCloseRange(unsigned int first, unsigned int last, int flags);
 
@@ -66,6 +68,35 @@ namespace umbriel {
       close(static_cast<int>(fd));
     }
     return true;
+  }
+
+  bool watchChildExit(
+      wl_event_loop* loop, pid_t pid, int (*callback)(int, uint32_t, void*), void* data, int& pidfd,
+      wl_event_source*& source
+  ) {
+    pidfd = static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
+    if (pidfd < 0) {
+      return false;
+    }
+    source = wl_event_loop_add_fd(loop, pidfd, WL_EVENT_READABLE, callback, data);
+    return source != nullptr;
+  }
+
+  void closeChildExitWatch(int& pidfd, wl_event_source*& source) {
+    if (source != nullptr) {
+      wl_event_source_remove(source);
+      source = nullptr;
+    }
+    if (pidfd >= 0) {
+      close(pidfd);
+      pidfd = -1;
+    }
+  }
+
+  void signalChild(int pidfd, int signal) {
+    if (pidfd >= 0) {
+      syscall(SYS_pidfd_send_signal, pidfd, signal, nullptr, 0);
+    }
   }
 
   std::string resolveExecutable(const char* name) {

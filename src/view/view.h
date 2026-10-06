@@ -486,6 +486,10 @@ namespace umbriel {
     static void onViewSurfaceDestroy(wl_listener* listener, void* data);
 
     static void onCaptureSourceDestroy(wl_listener* listener, void* data);
+    static void onCaptureAudioFrame(wl_listener* listener, void* data);
+    static void onCaptureAudioAfterFrame(wl_listener* listener, void* data);
+    static void onCaptureAudioCommit(wl_listener* listener, void* data);
+    static int onCaptureAudioTimer(void* data);
     void handleMap();
     void handleUnmap();
     void handleCommit(bool reconfigureOpeningState = false);
@@ -509,6 +513,10 @@ namespace umbriel {
     void handleForeignDestroy();
     void handleExtForeignDestroy();
     void handleCaptureSourceDestroy();
+    void attachCaptureAudio();
+    void detachCaptureAudio();
+    void scheduleCaptureAudio();
+    void changeCaptureSessions(int delta);
     void updateBorderGeometry();
     void updateBorderGeometry(int contentWidth, int contentHeight);
     // Lay the chrome attachment out around content of that size, which is remembered for later relayouts.
@@ -809,6 +817,11 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
+    wlr_output* m_captureOutput = nullptr;
+    wl_event_source* m_captureAudioTimer = nullptr;
+    unsigned m_captureSessions = 0;
+    uint64_t m_captureAudioLastMsec = 0;
+    bool m_captureAudioSubmitted = false;
     Workspace* m_workspace = nullptr;
     std::optional<DisplacedHome> m_displacedHome;
 
@@ -935,6 +948,9 @@ namespace umbriel {
     wl_listener m_xRequestConfigure{};
     wl_listener m_xRequestActivate{};
     wl_listener m_xSetHints{};
+    wl_listener m_captureAudioFrame{};
+    wl_listener m_captureAudioAfterFrame{};
+    wl_listener m_captureAudioCommit{};
   };
 
 } // namespace umbriel
