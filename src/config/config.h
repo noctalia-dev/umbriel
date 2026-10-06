@@ -410,6 +410,7 @@ namespace umbriel {
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
+    std::optional<bool> confinePointer;
     std::optional<VrrMode> vrr;
     // Overrides the client's tearing-control hint. Omitted follows the hint,
     // true forces async preference, and false vetoes it.
@@ -466,6 +467,7 @@ namespace umbriel {
           && defaultFocused == other.defaultFocused
           && defaultPinned == other.defaultPinned
           && focusOnActivate == other.focusOnActivate
+          && confinePointer == other.confinePointer
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
@@ -508,6 +510,7 @@ namespace umbriel {
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
+    std::optional<bool> confinePointer;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;

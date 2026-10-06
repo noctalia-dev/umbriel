@@ -471,6 +471,23 @@ idle_inhibit_client_c = custom_target(
   output: 'idle-inhibit-unstable-v1-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
+constraint_client_protocols = []
+foreach protocol : ['pointer-constraints', 'relative-pointer']
+  protocol_xml = wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable' / protocol / (protocol + '-unstable-v1.xml')
+  constraint_client_protocols += custom_target(
+    protocol + '-unstable-v1-client-protocol.h',
+    input: protocol_xml,
+    output: protocol + '-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  constraint_client_protocols += custom_target(
+    protocol + '-unstable-v1-protocol.c',
+    input: protocol_xml,
+    output: protocol + '-unstable-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+endforeach
+
 keyboard_shortcuts_inhibit_client_h = custom_target(
   'keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml',

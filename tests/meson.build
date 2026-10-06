@@ -340,6 +340,7 @@ seat_log_client = executable(
   'seat-log-client',
   [
     'harness/clients/seat_log_client.cpp',
+    constraint_client_protocols,
     xdg_shell_client_h,
     xdg_shell_client_c,
     xdg_foreign_client_h,

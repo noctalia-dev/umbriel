@@ -5,9 +5,12 @@
 // prints the handle, so another client can parent a dialog to it. With
 // HOLD_RESIZE set it leaves any configure that resizes the mapped window
 // unanswered until a byte arrives on stdin, so the window keeps its size while
-// the resize stays pending.
+// the resize stays pending. POINTER_CONSTRAINT_CONTROL accepts l/c/u to lock/confine/unconstrain
+// and p to report pointer position; it also logs relative motion during client locks.
 
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+#include "pointer-constraints-unstable-v1-client-protocol.h"
+#include "relative-pointer-unstable-v1-client-protocol.h"
 #include "text-input-unstable-v3-client-protocol.h"
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -48,6 +51,12 @@ namespace {
     zwp_keyboard_shortcuts_inhibitor_v1* shortcutsInhibitor = nullptr;
     zwp_text_input_manager_v3* textInputManager = nullptr;
     zwp_text_input_v3* textInput = nullptr;
+    bool constraintControl = false;
+    zwp_pointer_constraints_v1* constraints = nullptr;
+    zwp_relative_pointer_manager_v1* relativeManager = nullptr;
+    zwp_relative_pointer_v1* relative = nullptr;
+    zwp_locked_pointer_v1* locked = nullptr;
+    zwp_confined_pointer_v1* confined = nullptr;
     wl_pointer* pointer = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_surface* surface = nullptr;
@@ -163,6 +172,57 @@ namespace {
       .inactive = shortcutsInhibitorInactive,
   };
 
+  constexpr zwp_locked_pointer_v1_listener kLockedListener = {
+      .locked = [](void*, zwp_locked_pointer_v1*) { std::println("pointer-locked"); },
+      .unlocked = [](void*, zwp_locked_pointer_v1*) { std::println("pointer-unlocked"); },
+  };
+  constexpr zwp_confined_pointer_v1_listener kConfinedListener = {
+      .confined = [](void*, zwp_confined_pointer_v1*) { std::println("pointer-confined"); },
+      .unconfined = [](void*, zwp_confined_pointer_v1*) { std::println("pointer-unconfined"); },
+  };
+  constexpr zwp_relative_pointer_v1_listener kRelativeListener = {
+      .relative_motion = [](void*, zwp_relative_pointer_v1*, uint32_t, uint32_t, wl_fixed_t dx, wl_fixed_t dy,
+                            wl_fixed_t, wl_fixed_t) {
+        std::println("relative-motion x={:.0f} y={:.0f}", wl_fixed_to_double(dx), wl_fixed_to_double(dy));
+      },
+  };
+
+  void constraintCommand(State& state, char command) {
+    if (command == 'p') {
+      wl_display_roundtrip(state.display);
+      std::println("pointer-position x={:.0f} y={:.0f}", state.pointerX, state.pointerY);
+      return;
+    }
+    if (command != 'l' && command != 'c' && command != 'u') {
+      return;
+    }
+    if (state.locked != nullptr) {
+      zwp_locked_pointer_v1_destroy(state.locked);
+      state.locked = nullptr;
+    }
+    if (state.confined != nullptr) {
+      zwp_confined_pointer_v1_destroy(state.confined);
+      state.confined = nullptr;
+    }
+    if (command == 'l') {
+      state.locked = zwp_pointer_constraints_v1_lock_pointer(
+          state.constraints, state.surface, state.pointer, nullptr, ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT
+      );
+      zwp_locked_pointer_v1_add_listener(state.locked, &kLockedListener, nullptr);
+    } else if (command == 'c') {
+      wl_region* region = wl_compositor_create_region(state.compositor);
+      wl_region_add(region, 0, 0, state.width / 2, state.height);
+      state.confined = zwp_pointer_constraints_v1_confine_pointer(
+          state.constraints, state.surface, state.pointer, region, ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT
+      );
+      wl_region_destroy(region);
+      zwp_confined_pointer_v1_add_listener(state.confined, &kConfinedListener, nullptr);
+    }
+    wl_surface_commit(state.surface);
+    wl_display_roundtrip(state.display);
+    std::println("constraint-command {}", command);
+  }
+
   void pointerEnter(void* data, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t sx, wl_fixed_t sy) {
     auto& state = *static_cast<State*>(data);
     state.pointerX = wl_fixed_to_double(sx);
@@ -237,7 +297,15 @@ namespace {
     if (hasPointer && state.pointer == nullptr) {
       state.pointer = wl_seat_get_pointer(seat);
       wl_pointer_add_listener(state.pointer, &kPointerListener, &state);
+      if (state.constraintControl) {
+        state.relative = zwp_relative_pointer_manager_v1_get_relative_pointer(state.relativeManager, state.pointer);
+        zwp_relative_pointer_v1_add_listener(state.relative, &kRelativeListener, nullptr);
+      }
     } else if (!hasPointer && state.pointer != nullptr) {
+      if (state.relative != nullptr) {
+        zwp_relative_pointer_v1_destroy(state.relative);
+        state.relative = nullptr;
+      }
       wl_pointer_release(state.pointer);
       state.pointer = nullptr;
     }
@@ -361,6 +429,14 @@ namespace {
       state.shortcutsInhibitManager = static_cast<zwp_keyboard_shortcuts_inhibit_manager_v1*>(
           wl_registry_bind(registry, name, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, std::min(version, 1U))
       );
+    } else if (state.constraintControl && std::strcmp(interface, zwp_pointer_constraints_v1_interface.name) == 0) {
+      state.constraints = static_cast<zwp_pointer_constraints_v1*>(
+          wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1)
+      );
+    } else if (state.constraintControl && std::strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
+      state.relativeManager = static_cast<zwp_relative_pointer_manager_v1*>(
+          wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1)
+      );
     } else if (state.useTextInput && std::strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
       state.textInputManager = static_cast<zwp_text_input_manager_v3*>(
           wl_registry_bind(registry, name, &zwp_text_input_manager_v3_interface, std::min(version, 1U))
@@ -388,6 +464,7 @@ int main(int argc, char** argv) {
   }
 
   State state;
+  state.constraintControl = std::getenv("POINTER_CONSTRAINT_CONTROL") != nullptr;
   state.holdResize = std::getenv("HOLD_RESIZE") != nullptr;
   state.useTextInput = std::getenv("ENABLE_TEXT_INPUT") != nullptr;
   state.logModifiers = std::getenv("LOG_MODIFIERS") != nullptr;
@@ -449,7 +526,7 @@ int main(int argc, char** argv) {
     wl_display_flush(state.display);
     pollfd sources[2] = {
         {.fd = displayFd, .events = POLLIN, .revents = 0},
-        {.fd = state.holdResize ? STDIN_FILENO : -1, .events = POLLIN, .revents = 0},
+        {.fd = (state.holdResize || state.constraintControl) ? STDIN_FILENO : -1, .events = POLLIN, .revents = 0},
     };
     if (poll(sources, 2, -1) < 0) {
       if (errno == EINTR) {
@@ -466,6 +543,13 @@ int main(int argc, char** argv) {
     if ((sources[1].revents & (POLLIN | POLLHUP)) != 0) {
       char command = 0;
       [[maybe_unused]] const ssize_t bytes = read(STDIN_FILENO, &command, 1);
+      if (state.constraintControl && bytes > 0) {
+        constraintCommand(state, command);
+        continue;
+      }
+      if (bytes <= 0) {
+        state.constraintControl = false;
+      }
       state.holdResize = false;
       if (state.heldSerial) {
         answerConfigure(state, *state.heldSerial);

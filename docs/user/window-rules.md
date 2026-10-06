@@ -169,6 +169,7 @@ the windows stacked beside it in the column it joins or creates.
 | `blur_popups` | Apply blur to descendant XDG popups. |
 | `blur_ignore_alpha` | Skip blur below an alpha threshold. |
 | `blur_optimized` | Override the global optimized-blur choice. |
+| `confine_pointer` | Keep the pointer inside this window while it has keyboard focus (default `false`). |
 | `focus_on_activate` | Override activation focus for this window. |
 | `vrr` | Override the focused output's VRR policy. |
 | `tearing` | Request or veto asynchronous presentation. |
@@ -295,3 +296,25 @@ Effect pool choices stay with the mapped window across focus/title rule changes.
 Returning to a previously used pool restores its valid remembered member.
 Runtime effect overrides take precedence over rules; suppression preserves the
 underlying selection. See [Effects](effects.md#pools).
+
+### Pointer confinement
+
+Use `confine_pointer` for games that release their pointer lock in menus:
+
+```toml
+[[window_rule]]
+match.app_id = "^steam_app_.*$"
+confine_pointer = true
+```
+
+The rule applies to floating, tiled and fullscreen windows. It takes effect when
+that window has keyboard focus and the pointer is inside its visible content.
+Client-requested pointer locks still work; confinement resumes when the client
+releases its lock. Reloading the configuration updates existing windows, and a
+later matching rule can disable confinement with `confine_pointer = false`.
+
+Use a focus or workspace keybind to escape. With focus-follows-mouse enabled,
+small movements over the window you just left do not refocus it; leaving and
+re-entering it, clicking it, or explicitly focusing it allows confinement again.
+Compositor cursor warps remain available. Confinement is suspended during
+session lock, overview, compositor move/resize and client drag operations.

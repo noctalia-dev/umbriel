@@ -252,3 +252,16 @@ int main() {
   setConsoleLogging(false);
   return RUN_TESTS();
 }
+
+UMBRIEL_TEST(pointerConfinementBooleanParsesAndReloads) {
+  const auto enabled = load(toml::parse("[[window_rule]]\nconfine_pointer = true\n"));
+  CHECK(enabled.messages.empty());
+  CHECK(enabled.config.windowRules.at(0).confinePointer.value_or(false));
+  const auto disabled = load(toml::parse("[[window_rule]]\nconfine_pointer = false\n"));
+  CHECK(disabled.messages.empty());
+  CHECK(disabled.config.windowRules != enabled.config.windowRules);
+  CHECK(disabled.config.windowRules.at(0).confinePointer.has_value());
+  CHECK(!*disabled.config.windowRules.at(0).confinePointer);
+  const auto invalid = load(toml::parse("[[window_rule]]\nconfine_pointer = \"yes\"\n"));
+  CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) { return message.contains("confine_pointer"); }));
+}

@@ -129,6 +129,7 @@ namespace umbriel {
     [[nodiscard]] Output* currentOutput() const;
     // Effective optional window-rule override used by tearing diagnostics.
     [[nodiscard]] std::optional<bool> tearingRuleOverride();
+    [[nodiscard]] bool confinePointer();
     [[nodiscard]] bool onActiveWorkspace() const { return m_onActiveWorkspace; }
     [[nodiscard]] bool tiled() const { return m_tiled; }
     [[nodiscard]] bool floating() const { return !m_tiled; }

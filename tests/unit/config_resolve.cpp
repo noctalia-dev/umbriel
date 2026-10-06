@@ -1196,4 +1196,28 @@ UMBRIEL_TEST(securityContextRulesGrantGlobalsByMetadata) {
   CHECK_EQ(umbriel::securityContextRuleGlobals(config, "org.flatpak", "org.example.Bar").size(), size_t{2});
 }
 
+UMBRIEL_TEST(pointerConfinementLastMatchingRuleWins) {
+  Config config;
+  const auto resolve = [&](bool focused) {
+    return umbriel::resolveWindowRules(
+        config, "game", "menu", std::nullopt, ContentType::None, {.focused = focused}, 0
+    );
+  };
+  CHECK(!resolve(true).confinePointer.has_value());
+  WindowRule enabled;
+  enabled.confinePointer = true;
+  config.windowRules.push_back(enabled);
+  CHECK(resolve(true).confinePointer.value_or(false));
+  WindowRule disabled;
+  disabled.matchFocused = true;
+  disabled.confinePointer = false;
+  config.windowRules.push_back(disabled);
+  CHECK(resolve(true).confinePointer.has_value());
+  CHECK(!*resolve(true).confinePointer);
+  CHECK(resolve(false).confinePointer.value_or(false));
+  config.windowRules.emplace_back();
+  CHECK(!resolve(true).confinePointer.value_or(true));
+  CHECK(resolve(false).confinePointer.value_or(false));
+}
+
 int main() { return RUN_TESTS(); }

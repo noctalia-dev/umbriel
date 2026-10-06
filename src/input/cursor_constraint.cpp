@@ -1,5 +1,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "output/output.h"
+#include "overview/overview.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -10,7 +12,7 @@ namespace umbriel {
   void Cursor::handleNewConstraint(wlr_pointer_constraint_v1* constraint) {
     wlr_surface* focused = m_server->seat()->wlr()->pointer_state.focused_surface;
     if (focused != nullptr && focused == constraint->surface) {
-      setActiveConstraint(constraint);
+      updateConstraintForSurface(focused);
     }
   }
 
@@ -54,6 +56,11 @@ namespace umbriel {
       return;
     }
 
+    if (View* view = View::fromSurface(wlr_surface_get_root_surface(constraint->surface));
+        view != nullptr && view->confinePointer()) {
+      const char* id = view->extForeignIdentifier();
+      m_ruleConfinementView = id != nullptr ? id : "";
+    }
     m_constraintDestroy.notify = onConstraintDestroy;
     wl_signal_add(&constraint->events.destroy, &m_constraintDestroy);
     wlr_pointer_constraint_v1_send_activated(constraint);
@@ -63,12 +70,11 @@ namespace umbriel {
     if (m_activeConstraint == nullptr || m_activeConstraint->surface == nullptr) {
       return false;
     }
-    // The view owning the constrained surface, whichever shell role it has.
-    const View* view = View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface));
-    if (view == nullptr) {
-      return false;
-    }
-    return view->mapped() && view->onActiveWorkspace();
+    View* view = View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface));
+    return view != nullptr
+        && view->mapped()
+        && view->onActiveWorkspace()
+        && (!ruleConstraintApplies(*view) || ruleConstraintEligible(*view));
   }
 
   void Cursor::updateConstraintForSurface(wlr_surface* surface) {
@@ -82,8 +88,77 @@ namespace umbriel {
       constraint = wlr_pointer_constraints_v1_constraint_for_surface(
           m_server->pointerConstraints(), surface, m_server->seat()->wlr()
       );
+      if (View* view = View::fromSurface(wlr_surface_get_root_surface(surface));
+          view != nullptr && ruleConstraintApplies(*view) && !ruleConstraintEligible(*view)) {
+        constraint = nullptr;
+      }
     }
     setActiveConstraint(constraint);
+  }
+
+  void Cursor::releaseRuleConfinement(View& view) {
+    m_hoverFocusInvalidated = false;
+    const char* id = view.extForeignIdentifier();
+    m_ruleConfinementView = id != nullptr ? id : "";
+    if (m_activeConstraint != nullptr
+        && View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface)) == &view) {
+      clearConstraint();
+    }
+  }
+
+  bool Cursor::ruleConstraintApplies(View& view) const {
+    const char* id = view.extForeignIdentifier();
+    return view.confinePointer() || (id != nullptr && m_ruleConfinementView == id);
+  }
+
+  bool Cursor::ruleConstraintEligible(View& view) const {
+    return view.mapped()
+        && view.onActiveWorkspace()
+        && !m_server->sessionLocked()
+        && isPassthrough()
+        && !m_server->overview()->active()
+        && m_server->seat()->wlr()->drag == nullptr
+        && View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == &view;
+  }
+
+  void Cursor::confineRuleDelta(double* dx, double* dy) {
+    View* view = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+    if (view == nullptr || !view->confinePointer() || !ruleConstraintEligible(*view)) {
+      return;
+    }
+    Output* output = view->currentOutput();
+    if (output == nullptr) {
+      return;
+    }
+    // Scene coordinates include workspace movement; presented size excludes decorations and shadows.
+    // Match the output's scene-root clipping at shared monitor edges.
+    wlr_box bounds = view->presentedBox();
+    if (!wlr_scene_node_coords(&view->sceneTree()->node, &bounds.x, &bounds.y)) {
+      return;
+    }
+    const wlr_box outputBox = output->layoutBox();
+    if (!wlr_box_intersection(&bounds, &bounds, &outputBox)
+        || !wlr_box_contains_point(&bounds, m_cursor->x, m_cursor->y)) {
+      return;
+    }
+    // An obscured window must not capture input belonging to a layer surface or another window.
+    wlr_surface* surface = nullptr;
+    double sx = 0;
+    double sy = 0;
+    if (m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy) != view) {
+      return;
+    }
+    const char* id = view->extForeignIdentifier();
+    m_ruleConfinementView = id != nullptr ? id : "";
+    pixman_region32_t region{};
+    pixman_region32_init_rect(&region, bounds.x, bounds.y, bounds.width, bounds.height);
+    double x = 0;
+    double y = 0;
+    if (wlr_region_confine(&region, m_cursor->x, m_cursor->y, m_cursor->x + *dx, m_cursor->y + *dy, &x, &y)) {
+      *dx = x - m_cursor->x;
+      *dy = y - m_cursor->y;
+    }
+    pixman_region32_fini(&region);
   }
 
   void Cursor::warpToConstraintHint(wlr_pointer_constraint_v1* constraint) {

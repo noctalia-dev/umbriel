@@ -1,6 +1,7 @@
 // Drives a virtual pointer (zwp_virtual_pointer_manager_v1) against a running compositor, since the headless backend
 // has no input devices. The compositor attaches it to its wlr_cursor, so events take the same path as a real mouse.
 // Usage: pointer-client <width> <height> <command>... move <x> <y> absolute motion within the given extent
+// relative <dx> <dy> sends relative motion
 // click <button> press and release (button is an evdev BTN_* code) press <button> release <button> notch <dir> one
 // vertical wheel notch, -1 up / 1 down notch-horizontal <dir> the same notch on the horizontal wheel axis, -1 left /
 // 1 right mod <name|none> hold one modifier (shift, control, alt, or logo) tap <key> press and release one evdev key
@@ -224,6 +225,7 @@ int main(int argc, char** argv) {
 
     if (pointer == nullptr
         && (command == "move"
+            || command == "relative"
             || command == "press"
             || command == "release"
             || command == "click"
@@ -235,7 +237,13 @@ int main(int argc, char** argv) {
       return EXIT_FAILURE;
     }
 
-    if (command == "move") {
+    if (command == "relative") {
+      needs(2);
+      const double dx = std::atof(args[i + 1].c_str());
+      const double dy = std::atof(args[i + 2].c_str());
+      i += 2;
+      zwlr_virtual_pointer_v1_motion(pointer, nextTime(), wl_fixed_from_double(dx), wl_fixed_from_double(dy));
+    } else if (command == "move") {
       needs(2);
       const auto x = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
       const auto y = static_cast<uint32_t>(std::atoi(args[i + 2].c_str()));

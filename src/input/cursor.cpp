@@ -1281,14 +1281,11 @@ namespace umbriel {
         event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
     );
 
+    if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
+      clearConstraint();
+    }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
-      // Workspace switch (etc.) can hide the locking surface without pointer motion.
-      // Drop the lock so the cursor can move and become visible again.
-      if (!constraintSurfaceActive()) {
-        clearConstraint();
-      } else {
-        return;
-      }
+      return;
     }
 
     double dx = event->delta_x;
@@ -1299,6 +1296,7 @@ namespace umbriel {
       }
     }
 
+    confineRuleDelta(&dx, &dy);
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
@@ -1309,12 +1307,11 @@ namespace umbriel {
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
     m_server->notifyInputActivity();
+    if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
+      clearConstraint();
+    }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
-      if (!constraintSurfaceActive()) {
-        clearConstraint();
-      } else {
-        return;
-      }
+      return;
     }
 
     double lx = 0;
@@ -1323,16 +1320,15 @@ namespace umbriel {
 
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
-    if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED) {
-      double dx = lx - m_cursor->x;
-      double dy = ly - m_cursor->y;
-      if (!confineDelta(&dx, &dy)) {
-        return;
-      }
-      wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
-    } else {
-      wlr_cursor_warp_absolute(m_cursor, &event->pointer->base, event->x, event->y);
+    double dx = lx - m_cursor->x;
+    double dy = ly - m_cursor->y;
+    if (m_activeConstraint != nullptr
+        && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED
+        && !confineDelta(&dx, &dy)) {
+      return;
     }
+    confineRuleDelta(&dx, &dy);
+    wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
     processMotion(event->time_msec, oldX, oldY);
   }
 
@@ -2068,7 +2064,9 @@ namespace umbriel {
     double oldSx = 0;
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
-    const bool entered = refocus || view != oldView;
+    // Keyboard focus is an escape from rule confinement. While the pointer remains inside that window, an
+    // invalidated hover must not immediately focus it again. A real re-entry (or a click) can still focus it.
+    const bool entered = view != oldView || (refocus && !ruleConstraintApplies(*view));
     // Workspace focus is remembered independently from the seat. A pinned window from another workspace can own the
     // seat while this view remains its active workspace's remembered focus, so only seat-global activation makes this
     // handoff redundant.

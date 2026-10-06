@@ -191,6 +191,8 @@ namespace umbriel {
     // A logical focus change can leave the pointer over a different window without crossing a scene boundary. Let the
     // next eligible pointer or tablet hover re-evaluate focus once.
     void invalidateHoverFocus() { m_hoverFocusInvalidated = true; }
+    // A keyboard escape from confinement must wait for an actual pointer re-entry before hover can refocus it.
+    void releaseRuleConfinement(View& view);
     // Compositor-owned cursor override for grabs the Cursor does not track
     // (overview drag). nullptr restores the client cursor.
     void overrideCursor(const char* name) { setCompositorCursor(name); }
@@ -337,6 +339,9 @@ namespace umbriel {
     [[nodiscard]] bool confineDelta(double* dx, double* dy) const;
     // Surface-local units per layout unit in `surface`: above 1 for an X11 window drawn at native resolution.
     [[nodiscard]] double surfaceScale(wlr_surface* surface) const;
+    [[nodiscard]] bool ruleConstraintApplies(View& view) const;
+    [[nodiscard]] bool ruleConstraintEligible(View& view) const;
+    void confineRuleDelta(double* dx, double* dy);
     TabletToolState* toolState(wlr_tablet_tool* tool);
     void setToolEmulating(TabletToolState* state, bool emulating);
     void processTabletMotion(uint32_t timeMsec, double oldX, double oldY, TabletToolState* state, wlr_tablet* tablet);
@@ -349,6 +354,9 @@ namespace umbriel {
     std::string m_activeXcursorName;
     int m_xcursorSize = 0;
     wlr_pointer_constraint_v1* m_activeConstraint = nullptr;
+    // A stable map ID preserves keyboard escape when a focus-sensitive rule stops matching. Never retain a View
+    // pointer across unmap; native constraints on this map must also respect the keyboard-focus escape.
+    std::string m_ruleConfinementView;
 
     GrabState m_grab;
     // Physical button that owns the current interactive pointer operation.
