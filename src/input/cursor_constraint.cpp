@@ -1,6 +1,7 @@
 #include "config/store.h"
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "server/server.h"
@@ -66,7 +67,11 @@ namespace umbriel {
     if (m_activeConstraint == nullptr || m_activeConstraint->surface == nullptr) {
       return false;
     }
-    View* view = View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface));
+    wlr_surface* root = wlr_surface_get_root_surface(m_activeConstraint->surface);
+    if (const LayerSurface* layer = LayerSurface::fromSurface(root)) {
+      return layer->mapped();
+    }
+    View* view = View::fromSurface(root);
     return view != nullptr
         && view->mapped()
         && view->onActiveWorkspace()
