@@ -195,21 +195,31 @@ namespace {
         return name;
       case umbriel::ActionArgKind::LayoutMode:
         if (const auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind)) {
-          if (arg->mode.has_value()) {
-            const auto modeName = [](umbriel::LayoutMode mode) {
-              switch (mode) {
-              case umbriel::LayoutMode::Scrolling:
-                return "scrolling";
-              case umbriel::LayoutMode::Dwindle:
-                return "dwindle";
-              case umbriel::LayoutMode::Master:
-                return "master";
-              }
+          const auto modeName = [](umbriel::LayoutMode mode) {
+            switch (mode) {
+            case umbriel::LayoutMode::Scrolling:
               return "scrolling";
-            };
+            case umbriel::LayoutMode::Dwindle:
+              return "dwindle";
+            case umbriel::LayoutMode::Master:
+              return "master";
+            }
+            return "scrolling";
+          };
+          if (arg->mode.has_value()) {
             return name + ": " + modeName(*arg->mode);
           }
-          return name + ": toggle";
+          if (arg->toggleSequence.empty()) {
+            return name + ": toggle";
+          }
+          std::string label = name + ": toggle";
+          bool first = true;
+          for (const auto mode : arg->toggleSequence) {
+            label += first ? ':' : ',';
+            label += modeName(mode);
+            first = false;
+          }
+          return label;
         }
         return name;
       case umbriel::ActionArgKind::ColumnDisplay:

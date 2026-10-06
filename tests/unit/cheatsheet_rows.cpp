@@ -58,7 +58,7 @@ namespace {
 
   Keybind layoutBind(uint32_t keysym, umbriel::LayoutMode mode) {
     Keybind result = bind(KeybindAction::WorkspaceSetLayout, keysym);
-    result.payload = umbriel::LayoutModeArg{.mode = mode};
+    result.payload = umbriel::LayoutModeArg{.mode = mode, .toggleSequence = {}};
     return result;
   }
 

@@ -1502,7 +1502,18 @@ namespace umbriel {
         }
         return LayoutMode::Scrolling;
       };
-      const LayoutMode desired = arg->mode.value_or(nextMode(workspace->layoutMode()));
+      const auto nextInSequence = [](LayoutMode mode, const std::vector<LayoutMode>& sequence) {
+        const auto it = std::find(sequence.begin(), sequence.end(), mode);
+        if (it == sequence.end()) {
+          return sequence.front();
+        }
+        const auto next = std::next(it);
+        return next == sequence.end() ? sequence.front() : *next;
+      };
+      const LayoutMode desired = arg->mode.value_or(
+          arg->toggleSequence.empty() ? nextMode(workspace->layoutMode())
+                                      : nextInSequence(workspace->layoutMode(), arg->toggleSequence)
+      );
       if (desired == workspace->layoutMode()) {
         return true;
       }

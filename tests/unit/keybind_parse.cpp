@@ -359,14 +359,34 @@ UMBRIEL_TEST(parsesLayoutModeActions) {
   CHECK(parseAction("workspace-set-layout:toggle", bind));
   const auto* toggle = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(toggle != nullptr && !toggle->mode.has_value());
+  CHECK(toggle != nullptr && toggle->toggleSequence.empty());
+
+  CHECK(parseAction("workspace-set-layout:toggle:scrolling,master", bind));
+  const auto* twoMode = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
+  CHECK(twoMode != nullptr && !twoMode->mode.has_value());
+  CHECK(twoMode != nullptr && twoMode->toggleSequence.size() == 2);
+  CHECK(twoMode != nullptr && twoMode->toggleSequence[0] == umbriel::LayoutMode::Scrolling);
+  CHECK(twoMode != nullptr && twoMode->toggleSequence[1] == umbriel::LayoutMode::Master);
+
+  CHECK(parseAction("workspace-set-layout:toggle:master,scrolling,dwindle", bind));
+  const auto* threeMode = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
+  CHECK(threeMode != nullptr && threeMode->toggleSequence.size() == 3);
+  CHECK(threeMode != nullptr && threeMode->toggleSequence[0] == umbriel::LayoutMode::Master);
+  CHECK(threeMode != nullptr && threeMode->toggleSequence[1] == umbriel::LayoutMode::Scrolling);
+  CHECK(threeMode != nullptr && threeMode->toggleSequence[2] == umbriel::LayoutMode::Dwindle);
 }
 
 UMBRIEL_TEST(rejectsInvalidLayoutModeActions) {
   Keybind bind;
-  CHECK(!parseAction("workspace-set-layout:spiral", bind));    // not a known mode
-  CHECK(!parseAction("workspace-set-layout:", bind));          // empty arg
-  CHECK(!parseAction("workspace-set-layout", bind));           // requires an argument
-  CHECK(!parseAction("workspace-set-layout:Scrolling", bind)); // exact lowercase only
+  CHECK(!parseAction("workspace-set-layout:spiral", bind));                  // not a known mode
+  CHECK(!parseAction("workspace-set-layout:", bind));                        // empty arg
+  CHECK(!parseAction("workspace-set-layout", bind));                         // requires an argument
+  CHECK(!parseAction("workspace-set-layout:Scrolling", bind));               // exact lowercase only
+  CHECK(!parseAction("workspace-set-layout:toggle:", bind));                 // toggle with empty sequence
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling", bind));        // single mode not enough
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,", bind));       // trailing comma
+  CHECK(!parseAction("workspace-set-layout:toggle:,master", bind));          // leading comma
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,spiral", bind)); // unknown in sequence
 }
 
 UMBRIEL_TEST(parsesArgumentFreeNewActions) {
@@ -987,7 +1007,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::FractionDelta:
       return "<delta>";
     case ActionArgKind::LayoutMode:
-      return "<scrolling|dwindle|master|toggle>";
+      return "<scrolling|dwindle|master|toggle[:mode1,mode2,...]>";
     case ActionArgKind::ColumnDisplay:
       return "<normal|tabbed>";
     case ActionArgKind::TabIndex:

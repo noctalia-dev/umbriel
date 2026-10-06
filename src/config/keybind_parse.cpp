@@ -434,8 +434,8 @@ namespace umbriel {
         {"workspace-move-up", "", "Move the focused workspace up the list", KeybindAction::WorkspaceMoveUp},
         {"workspace-next", "", "Switch to the next workspace on this output", KeybindAction::WorkspaceNext},
         {"workspace-previous", "", "Switch to the previous workspace on this output", KeybindAction::WorkspacePrevious},
-        {"workspace-set-layout", "<scrolling|dwindle|master|toggle>", "Set the active workspace's layout mode",
-         KeybindAction::WorkspaceSetLayout, ActionArgKind::LayoutMode},
+        {"workspace-set-layout", "<scrolling|dwindle|master|toggle[:mode1,mode2,...]>",
+         "Set the active workspace's layout mode", KeybindAction::WorkspaceSetLayout, ActionArgKind::LayoutMode},
         {"workspace-swap-active-output-down", "", "Swap active workspace windows with the output below",
          KeybindAction::WorkspaceSwapActiveOutputDown},
         {"workspace-swap-active-output-left", "", "Swap active workspace windows with the output left",
@@ -736,22 +736,60 @@ namespace umbriel {
         if (takeActionArg(value, spec, arg)) {
           if (arg == "scrolling") {
             output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Scrolling};
+            output.payload = LayoutModeArg{.mode = LayoutMode::Scrolling, .toggleSequence = {}};
             return true;
           }
           if (arg == "dwindle") {
             output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Dwindle};
+            output.payload = LayoutModeArg{.mode = LayoutMode::Dwindle, .toggleSequence = {}};
             return true;
           }
           if (arg == "master") {
             output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Master};
+            output.payload = LayoutModeArg{.mode = LayoutMode::Master, .toggleSequence = {}};
             return true;
           }
           if (arg == "toggle") {
             output.action = spec.action;
             output.payload = LayoutModeArg{};
+            return true;
+          }
+          if (arg.starts_with("toggle:")) {
+            const auto parseModeName = [](std::string_view name) -> std::optional<LayoutMode> {
+              if (name == "scrolling") {
+                return LayoutMode::Scrolling;
+              }
+              if (name == "dwindle") {
+                return LayoutMode::Dwindle;
+              }
+              if (name == "master") {
+                return LayoutMode::Master;
+              }
+              return std::nullopt;
+            };
+            std::string_view rest = arg.substr(7);
+            if (rest.empty()) {
+              return false;
+            }
+            std::vector<LayoutMode> sequence;
+            while (!rest.empty()) {
+              const size_t comma = rest.find(',');
+              const std::string_view token = comma == std::string_view::npos ? rest : rest.substr(0, comma);
+              if (token.empty()) {
+                return false;
+              }
+              const auto mode = parseModeName(token);
+              if (!mode) {
+                return false;
+              }
+              sequence.push_back(*mode);
+              rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+            }
+            if (sequence.size() < 2) {
+              return false;
+            }
+            output.action = spec.action;
+            output.payload = LayoutModeArg{.mode = std::nullopt, .toggleSequence = std::move(sequence)};
             return true;
           }
         }

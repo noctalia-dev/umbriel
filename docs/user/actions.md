@@ -24,7 +24,7 @@ are required, `[bracket]` forms are optional.
 | `[<scratchpad>]` | Scratchpad name. The bare form selects the implicit `default` scratchpad, which exists only when no named scratchpads are configured |
 | `<fraction>` | `0.1` to `1.0` of the column extent, or of the usable area for a floating window |
 | `<delta>` | Signed `-0.9` to `0.9`; the result clamps to `0.1` to `1.0` |
-| `<scrolling\|dwindle\|master\|toggle>` | Layout mode for `workspace-set-layout`; `toggle` cycles scrolling, dwindle, master |
+| `<scrolling\|dwindle\|master\|toggle[:mode1,mode2,...]>` | Layout mode for `workspace-set-layout`; `toggle` cycles scrolling, dwindle, master; `toggle:scrolling,master` restricts the cycle to those modes |
 | `<normal\|tabbed>` | How `column-set-display` shows the rows around the focused window: stacked, or as a tab group |
 | `<index>` | Tab position for `column-focus-tab`, counted from `1` within the focused tab group; negative counts back from the last tab, `-1` |
 | `[skip-confirmation]` | `session-quit` only: quit without the on-screen confirmation |
@@ -223,7 +223,7 @@ described in [Workspace selectors](workspaces.md#workspace-selectors).
 | `workspace-move-up` | Move the focused workspace up the list |
 | `workspace-next` | Switch to the next workspace on this output |
 | `workspace-previous` | Switch to the previous workspace on this output |
-| `workspace-set-layout:<scrolling\|dwindle\|master\|toggle>` | Set the active workspace's layout mode |
+| `workspace-set-layout:<scrolling\|dwindle\|master\|toggle[:mode1,mode2,...]>` | Set the active workspace's layout mode |
 | `workspace-swap-active-output-down` | Swap active workspace windows with the output below |
 | `workspace-swap-active-output-left` | Swap active workspace windows with the output left |
 | `workspace-swap-active-output-next` | Swap active workspace windows with the next output |
