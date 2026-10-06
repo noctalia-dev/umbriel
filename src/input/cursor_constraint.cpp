@@ -1,3 +1,4 @@
+#include "config/store.h"
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "output/output.h"
@@ -56,11 +57,6 @@ namespace umbriel {
       return;
     }
 
-    if (View* view = View::fromSurface(wlr_surface_get_root_surface(constraint->surface));
-        view != nullptr && view->confinePointer()) {
-      const char* id = view->extForeignIdentifier();
-      m_ruleConfinementView = id != nullptr ? id : "";
-    }
     m_constraintDestroy.notify = onConstraintDestroy;
     wl_signal_add(&constraint->events.destroy, &m_constraintDestroy);
     wlr_pointer_constraint_v1_send_activated(constraint);
@@ -100,6 +96,7 @@ namespace umbriel {
     m_hoverFocusInvalidated = false;
     const char* id = view.extForeignIdentifier();
     m_ruleConfinementView = id != nullptr ? id : "";
+    m_ruleConfinementGeneration = configStore().generation();
     if (m_activeConstraint != nullptr
         && View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface)) == &view) {
       clearConstraint();
@@ -108,7 +105,8 @@ namespace umbriel {
 
   bool Cursor::ruleConstraintApplies(View& view) const {
     const char* id = view.extForeignIdentifier();
-    return view.confinePointer() || (id != nullptr && m_ruleConfinementView == id);
+    return view.confinePointer()
+        || (id != nullptr && m_ruleConfinementView == id && m_ruleConfinementGeneration == configStore().generation());
   }
 
   bool Cursor::ruleConstraintEligible(View& view) const {
@@ -148,8 +146,6 @@ namespace umbriel {
     if (m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy) != view) {
       return;
     }
-    const char* id = view->extForeignIdentifier();
-    m_ruleConfinementView = id != nullptr ? id : "";
     pixman_region32_t region{};
     pixman_region32_init_rect(&region, bounds.x, bounds.y, bounds.width, bounds.height);
     double x = 0;

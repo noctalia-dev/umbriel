@@ -145,7 +145,11 @@ await_events "$LOG" pointer-unlocked 1
 move move "$ox" "$oy"
 control u
 
-# Reload reaches an already mapped window; last matching false releases it.
+# Reload must retire keyboard escape while the pointer stays inside the game.
+"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg "window-focus:$other" > /dev/null
+move relative 1 0
+assert_focus "$other"
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 
 [[window_rule]]
@@ -153,7 +157,17 @@ match.title = "^confined$"
 confine_pointer = false
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+# A native lock may activate independently of keyboard focus once the rule is disabled.
+locked=$(events "$LOG" pointer-locked)
+control l
+await_events "$LOG" pointer-locked "$((locked + 1))"
+assert_focus "$other"
+control u
+# Ordinary keyboard focus invalidation must now allow hover refocus without re-entry.
+"$UMBRIEL" msg "window-focus:$game" > /dev/null
+"$UMBRIEL" msg "window-focus:$other" > /dev/null
+move relative 1 0
+assert_focus "$game"
 move move "$ox" "$oy"
 assert_focus "$other"
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'

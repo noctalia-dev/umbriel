@@ -354,9 +354,10 @@ namespace umbriel {
     std::string m_activeXcursorName;
     int m_xcursorSize = 0;
     wlr_pointer_constraint_v1* m_activeConstraint = nullptr;
-    // A stable map ID preserves keyboard escape when a focus-sensitive rule stops matching. Never retain a View
-    // pointer across unmap; native constraints on this map must also respect the keyboard-focus escape.
+    // A stable map ID preserves keyboard escape when a focus-sensitive rule stops matching, without retaining a
+    // View pointer across unmap. Reloading config retires the escape so disabled rules cannot affect native input.
     std::string m_ruleConfinementView;
+    uint64_t m_ruleConfinementGeneration = 0;
 
     GrabState m_grab;
     // Physical button that owns the current interactive pointer operation.
