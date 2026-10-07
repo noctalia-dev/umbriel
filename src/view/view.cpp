@@ -767,9 +767,9 @@ namespace umbriel {
     if (const Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       return;
     }
-    for (const auto& view : m_server->registry().all()) {
-      if (view->attachedParent() == this) {
-        view->syncOwnedPresentation();
+    for (View* dialog : m_server->registry().modalDialogs()) {
+      if (dialog->attachedParent() == this) {
+        dialog->syncOwnedPresentation();
       }
     }
   }
