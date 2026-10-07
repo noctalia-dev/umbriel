@@ -115,15 +115,15 @@ fi
 "$UMBRIEL" msg scratchpad-window-show-next > /dev/null
 expect_active focus-parent "showing a scratchpad whose focused dialog closed while it was hidden"
 
-# Restoring with a dialog of the window on show focused takes out the dialog and keeps its parent stored.
+# Restoring with a dialog of the window on show focused takes out the dialog and its parent together.
 TRANSIENT_FOREIGN_HANDLE="$handle" "$CLIENT" focus-dialog 200 150 > "$UMBRIEL_RUNTIME_DIR/focus-dialog-2.log" 2>&1 &
 wait_for_window focus-dialog
 focus_dialog
 "$UMBRIEL" msg window-restore-from-scratchpad > /dev/null
 restored_dialog=$(window_of focus-dialog | jq -r .scratchpad)
 stored_parent=$(window_of focus-parent | jq -r .scratchpad)
-if [[ -n $restored_dialog || $stored_parent != default ]]; then
-  echo "restore took out [parent: '$stored_parent', dialog: '$restored_dialog'] instead of the focused dialog: $(windows)"
+if [[ -n $restored_dialog || -n $stored_parent ]]; then
+  echo "restore left [parent: '$stored_parent', dialog: '$restored_dialog'] instead of taking out both: $(windows)"
   exit 1
 fi
 

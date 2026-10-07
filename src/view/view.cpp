@@ -617,12 +617,14 @@ namespace umbriel {
     m_server->updateIdleInhibit();
   }
 
-  void View::raiseToTop() {
+  void View::raiseToTop() { transientRoot()->raiseTransientTree(); }
+
+  View* View::transientRoot() {
     View* root = this;
     while (View* parent = root->transientParent()) {
       root = parent;
     }
-    root->raiseTransientTree();
+    return root;
   }
 
   View* View::shellParent() const {
@@ -853,7 +855,10 @@ namespace umbriel {
   }
 
   void View::syncTransientSceneParent() {
-    if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
+    if (!m_mapped
+        || (m_workspace == nullptr && !m_inScratchpad)
+        || m_pinned
+        || m_server->cursor()->isDraggingView(this)) {
       return;
     }
 
@@ -862,7 +867,8 @@ namespace umbriel {
       wlr_scene_tree* parentTree = parent->m_sceneTree->node.parent;
       Output* output = currentOutput();
       const bool parentElevated = parentTree == m_server->dragTree()
-          || parentTree == m_workspace->fullscreenTree()
+          || (m_workspace != nullptr && parentTree == m_workspace->fullscreenTree())
+          || (m_inScratchpad && parentTree == m_server->fullscreenTree())
           || (output != nullptr && parentTree == output->pinnedRoot());
       if (parentElevated) {
         target = parentTree;

@@ -123,6 +123,8 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] View* transientParent() const;
+    // The top of this window's transient chain: itself when it is no dialog.
+    [[nodiscard]] View* transientRoot();
     // A modal dialog takes its parent's input while it is open: one marked so through xdg-dialog-v1 (GTK 4, Qt 6),
     // or one parented across processes, which is a portal dialog whose toolkit may predate the protocol.
     [[nodiscard]] bool modalDialog() const;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A modal dialog shades its parent while it is open over it. A dialog that turns modal after it mapped takes its parent's
-# focus and shades it, and one that turns back, drops its xdg-dialog-v1 object, closes, or goes to a scratchpad or
-# another workspace frees the parent again.
+# focus and shades it, and one that turns back, drops its xdg-dialog-v1 object, closes, or goes to another workspace
+# frees the parent again. Sent to a scratchpad, it takes the parent along and keeps it shaded.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -150,16 +150,17 @@ wait_for_window_count 3
 wait_for_field transient-child focused true
 expect_shaded "with a dialog modal from the start"
 
-# Sending the dialog away detaches it from its parent, and bringing it back attaches it again.
+# A scratchpad round trip takes the parent along, so it comes back still shaded under its dialog. Another workspace
+# detaches the dialog, and bringing it back attaches it again.
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 wait_for_field transient-child scratchpad default
-wait_for_field transient-parent focused true
-expect_unshaded "after the dialog moved to a scratchpad"
+wait_for_field transient-parent scratchpad default
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 "$UMBRIEL" msg window-restore-from-scratchpad > /dev/null
 wait_for_field transient-child scratchpad ""
+wait_for_field transient-parent scratchpad ""
 wait_for_field transient-child focused true
-expect_shaded "after the dialog came back from the scratchpad"
+expect_shaded "after the family came back from the scratchpad"
 "$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
 "$UMBRIEL" msg workspace-switch:1 > /dev/null
 wait_for_field transient-parent focused true
