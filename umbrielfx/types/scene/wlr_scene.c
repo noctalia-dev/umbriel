@@ -1405,7 +1405,7 @@ scene_node_cleanup_when_disabled(struct wlr_scene_node* node, bool xwayland_rest
 #if WLR_HAS_XWAYLAND
   if (xwayland_restack) {
     struct wlr_xwayland_surface* xwayland_surface = scene_node_try_get_managed_xwayland_surface(node);
-    if (!xwayland_surface) {
+    if (!xwayland_surface || !xwayland_surface->surface->mapped) {
       return;
     }
 
