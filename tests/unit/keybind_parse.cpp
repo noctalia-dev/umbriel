@@ -378,15 +378,17 @@ UMBRIEL_TEST(parsesLayoutModeActions) {
 
 UMBRIEL_TEST(rejectsInvalidLayoutModeActions) {
   Keybind bind;
-  CHECK(!parseAction("workspace-set-layout:spiral", bind));                  // not a known mode
-  CHECK(!parseAction("workspace-set-layout:", bind));                        // empty arg
-  CHECK(!parseAction("workspace-set-layout", bind));                         // requires an argument
-  CHECK(!parseAction("workspace-set-layout:Scrolling", bind));               // exact lowercase only
-  CHECK(!parseAction("workspace-set-layout:toggle:", bind));                 // toggle with empty sequence
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling", bind));        // single mode not enough
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,", bind));       // trailing comma
-  CHECK(!parseAction("workspace-set-layout:toggle:,master", bind));          // leading comma
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,spiral", bind)); // unknown in sequence
+  CHECK(!parseAction("workspace-set-layout:spiral", bind));                       // not a known mode
+  CHECK(!parseAction("workspace-set-layout:", bind));                             // empty arg
+  CHECK(!parseAction("workspace-set-layout", bind));                              // requires an argument
+  CHECK(!parseAction("workspace-set-layout:Scrolling", bind));                    // exact lowercase only
+  CHECK(!parseAction("workspace-set-layout:toggle:", bind));                      // toggle with empty sequence
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling", bind));             // single mode not enough
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,master,", bind));     // trailing comma
+  CHECK(!parseAction("workspace-set-layout:toggle:,master", bind));               // leading comma
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,spiral", bind));      // unknown in sequence
+  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,scrolling", bind));   // repeated mode
+  CHECK(!parseAction("workspace-set-layout:toggle:master,dwindle,master", bind)); // repeated mode
 }
 
 UMBRIEL_TEST(parsesArgumentFreeNewActions) {

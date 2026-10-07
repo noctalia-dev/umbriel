@@ -16,6 +16,7 @@ extern "C" {
 #include <cctype>
 #include <charconv>
 #include <cstddef>
+#include <ranges>
 #include <system_error>
 #include <utility>
 
@@ -126,6 +127,19 @@ namespace umbriel {
       }
       arg = value.substr(spec.name.size() + 1);
       return true;
+    }
+
+    std::optional<LayoutMode> layoutModeNamed(std::string_view name) {
+      if (name == "scrolling") {
+        return LayoutMode::Scrolling;
+      }
+      if (name == "dwindle") {
+        return LayoutMode::Dwindle;
+      }
+      if (name == "master") {
+        return LayoutMode::Master;
+      }
+      return std::nullopt;
     }
 
     bool parseWorkspaceArg(std::string_view arg, WorkspaceArg& workspace) {
@@ -732,68 +746,39 @@ namespace umbriel {
           return true;
         }
         break;
-      case ActionArgKind::LayoutMode:
-        if (takeActionArg(value, spec, arg)) {
-          if (arg == "scrolling") {
-            output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Scrolling, .toggleSequence = {}};
-            return true;
-          }
-          if (arg == "dwindle") {
-            output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Dwindle, .toggleSequence = {}};
-            return true;
-          }
-          if (arg == "master") {
-            output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = LayoutMode::Master, .toggleSequence = {}};
-            return true;
-          }
-          if (arg == "toggle") {
-            output.action = spec.action;
-            output.payload = LayoutModeArg{};
-            return true;
-          }
-          if (arg.starts_with("toggle:")) {
-            const auto parseModeName = [](std::string_view name) -> std::optional<LayoutMode> {
-              if (name == "scrolling") {
-                return LayoutMode::Scrolling;
-              }
-              if (name == "dwindle") {
-                return LayoutMode::Dwindle;
-              }
-              if (name == "master") {
-                return LayoutMode::Master;
-              }
-              return std::nullopt;
-            };
-            std::string_view rest = arg.substr(7);
-            if (rest.empty()) {
-              return false;
-            }
-            std::vector<LayoutMode> sequence;
-            while (!rest.empty()) {
-              const size_t comma = rest.find(',');
-              const std::string_view token = comma == std::string_view::npos ? rest : rest.substr(0, comma);
-              if (token.empty()) {
-                return false;
-              }
-              const auto mode = parseModeName(token);
-              if (!mode) {
-                return false;
-              }
-              sequence.push_back(*mode);
-              rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-            }
-            if (sequence.size() < 2) {
-              return false;
-            }
-            output.action = spec.action;
-            output.payload = LayoutModeArg{.mode = std::nullopt, .toggleSequence = std::move(sequence)};
-            return true;
-          }
+      case ActionArgKind::LayoutMode: {
+        if (!takeActionArg(value, spec, arg)) {
+          break;
         }
-        break;
+        if (const auto mode = layoutModeNamed(arg)) {
+          output.action = spec.action;
+          output.payload = LayoutModeArg{.mode = mode, .toggleSequence = {}};
+          return true;
+        }
+        if (arg == "toggle") {
+          output.action = spec.action;
+          output.payload = LayoutModeArg{};
+          return true;
+        }
+        constexpr std::string_view kTogglePrefix = "toggle:";
+        if (!arg.starts_with(kTogglePrefix)) {
+          break;
+        }
+        std::vector<LayoutMode> sequence;
+        for (const auto token : arg.substr(kTogglePrefix.size()) | std::views::split(',')) {
+          const auto mode = layoutModeNamed(std::string_view(token.begin(), token.end()));
+          if (!mode || std::ranges::contains(sequence, *mode)) {
+            return false;
+          }
+          sequence.push_back(*mode);
+        }
+        if (sequence.size() < 2) {
+          break;
+        }
+        output.action = spec.action;
+        output.payload = LayoutModeArg{.mode = std::nullopt, .toggleSequence = std::move(sequence)};
+        return true;
+      }
       }
     }
     return false;
