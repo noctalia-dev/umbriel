@@ -29,7 +29,7 @@ await_lines "$UMBRIEL_RUNTIME_DIR/client.log" 'mapped' 1
 "$UMBRIEL" clock-resume
 "$UMBRIEL" settle
 grim "$UMBRIEL_RUNTIME_DIR/late-map.png"
-blue=$(magick "$UMBRIEL_RUNTIME_DIR/late-map.png" -format '%[fx:round(255*mean.b)]' info:)
+read -r _ _ blue < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/late-map.png" mean)
 if ((blue != 0)); then
   echo "inactive late-mapped window remains visible: mean blue=$blue"
   exit 1
