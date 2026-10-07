@@ -209,15 +209,12 @@ namespace {
           if (arg->mode.has_value()) {
             return name + ": " + modeName(*arg->mode);
           }
-          if (arg->toggleSequence.empty()) {
-            return name + ": toggle";
-          }
           std::string label = name + ": toggle";
-          bool first = true;
+          char separator = ':';
           for (const auto mode : arg->toggleSequence) {
-            label += first ? ':' : ',';
+            label += separator;
             label += modeName(mode);
-            first = false;
+            separator = ',';
           }
           return label;
         }

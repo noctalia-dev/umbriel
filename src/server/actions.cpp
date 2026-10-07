@@ -21,6 +21,7 @@
 #include <array>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -1491,29 +1492,14 @@ namespace umbriel {
       if (arg == nullptr) {
         return true;
       }
-      const auto nextMode = [](LayoutMode mode) {
-        switch (mode) {
-        case LayoutMode::Scrolling:
-          return LayoutMode::Dwindle;
-        case LayoutMode::Dwindle:
-          return LayoutMode::Master;
-        case LayoutMode::Master:
-          return LayoutMode::Scrolling;
-        }
-        return LayoutMode::Scrolling;
-      };
-      const auto nextInSequence = [](LayoutMode mode, const std::vector<LayoutMode>& sequence) {
-        const auto it = std::find(sequence.begin(), sequence.end(), mode);
-        if (it == sequence.end()) {
-          return sequence.front();
-        }
-        const auto next = std::next(it);
-        return next == sequence.end() ? sequence.front() : *next;
-      };
-      const LayoutMode desired = arg->mode.value_or(
-          arg->toggleSequence.empty() ? nextMode(workspace->layoutMode())
-                                      : nextInSequence(workspace->layoutMode(), arg->toggleSequence)
-      );
+      static constexpr std::array kFullCycle{LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master};
+      const std::span<const LayoutMode> cycle = arg->toggleSequence.empty()
+          ? std::span<const LayoutMode>(kFullCycle)
+          : std::span<const LayoutMode>(arg->toggleSequence);
+      // A mode outside the cycle, or its last mode, toggles to the first.
+      const auto current = std::ranges::find(cycle, workspace->layoutMode());
+      const bool wrap = current == cycle.end() || std::next(current) == cycle.end();
+      const LayoutMode desired = arg->mode.value_or(wrap ? cycle.front() : *std::next(current));
       if (desired == workspace->layoutMode()) {
         return true;
       }
