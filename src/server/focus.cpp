@@ -54,11 +54,12 @@ namespace umbriel {
     }
 
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
-    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing.
-    if (reason == FocusReason::PointerHover && view->tiled()) {
-      if (Workspace* workspace = view->workspace()) {
+    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing. A modal dialog reveals the tile
+    // it is attached to, so that tile is what the gate measures.
+    if (View* tile = view->attachedRoot(); reason == FocusReason::PointerHover && tile->tiled()) {
+      if (Workspace* workspace = tile->workspace()) {
         const auto& maxScroll = config().input.focus.followsMouseMaxScroll;
-        if (maxScroll && workspace->scrollFractionToReveal(view) > *maxScroll) {
+        if (maxScroll && workspace->scrollFractionToReveal(tile) > *maxScroll) {
           return;
         }
       }
