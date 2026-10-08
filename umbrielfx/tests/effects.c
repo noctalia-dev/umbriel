@@ -1840,6 +1840,54 @@ static bool test_capture_composition(struct fixture *fixture) {
 		wlr_buffer_unlock(buffer);
 	}
 	wlr_output_state_finish(&state);
+	// An open but idle consumer must keep its allocation without publishing old
+	// clean pixels as a fresh capture. Exercise swapchain reuse between requests.
+	struct wlr_scene_output_state_options options = { .swapchain = swapchain, .effect_capture_active = true };
+	bool reused_idle_capture = false;
+	for (int frame = 0; ok && frame < 8; frame++) {
+		wlr_scene_output_damage_whole_for_test(scene_output);
+		wlr_output_state_init(&state);
+		ok &= check(wlr_scene_output_build_state(scene_output, &state, &options) && state.buffer != NULL,
+			"idle capture session renders the display");
+		struct fx_framebuffer *fb;
+		wl_list_for_each(fb, &fx_get_renderer(fixture->renderer)->buffers, link) {
+			if (fb->buffer == state.buffer) {
+				ok &= check(!fb->effect_capture_valid, "idle frame cannot publish stale clean pixels");
+				reused_idle_capture |= fb->effect_capture_buffer != NULL;
+			}
+		}
+		ok &= check(capture_saved(fixture), "idle session retains capture allocation");
+		wlr_scene_output_acknowledge_damage_for_test(scene_output, &state);
+		wlr_output_state_finish(&state);
+	}
+	ok &= check(reused_idle_capture, "an idle render reused a buffer holding capture storage");
+	const float blue[4] = { 0, 0, 1, 1 };
+	wlr_scene_rect_set_color(elsewhere, blue);
+	options.effect_capture_pending = true;
+	wlr_output_state_init(&state);
+	ok &= check(wlr_scene_output_build_state(scene_output, &state, &options) && state.buffer != NULL,
+		"a new request after idle draws a fresh clean composition");
+	bool fresh_capture = false;
+	struct fx_framebuffer *fb;
+	wl_list_for_each(fb, &fx_get_renderer(fixture->renderer)->buffers, link) {
+		if (fb->buffer == state.buffer) {
+			fresh_capture = fb->effect_capture_valid && fb->effect_capture_buffer != NULL;
+		}
+	}
+	ok &= check(fresh_capture, "resumed request publishes a valid fresh capture");
+	if (state.buffer != NULL) {
+		uint8_t pixel[4];
+		ok &= fixture_read_pixel(fixture, state.buffer, 12, 12, pixel)
+			&& check(pixel[0] > 250 && pixel[1] < 5 && pixel[2] < 5, "resumed capture contains the new blue pixels");
+	}
+	wlr_output_state_finish(&state);
+	options.effect_capture_active = false;
+	options.effect_capture_pending = false;
+	wlr_scene_output_damage_whole_for_test(scene_output);
+	wlr_output_state_init(&state);
+	ok &= check(wlr_scene_output_build_state(scene_output, &state, &options), "capture session ends");
+	ok &= check(!capture_saved(fixture), "ending the session releases all capture allocations");
+	wlr_output_state_finish(&state);
 	fx_effect_shader_unref(border);
 	fx_effect_shader_unref(window_program);
 	wlr_scene_node_destroy(&scene->tree.node);
@@ -2227,6 +2275,8 @@ static bool test_output_effects(struct fixture *fixture) {
 	return ok;
 }
 
+#include "workspace_reveal.h"
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -2239,7 +2289,9 @@ int main(int argc, char *argv[]) {
 		return 77;
 	}
 	bool ok;
-	if (strcmp(argv[1], "kinds") == 0) {
+	if (strcmp(argv[1], "workspace-reveal") == 0) {
+		ok = test_workspace_reveal(&fixture);
+	} else if (strcmp(argv[1], "kinds") == 0) {
 		ok = test_kinds(&fixture);
 	} else if (strcmp(argv[1], "reads") == 0) {
 		ok = test_reads(&fixture);

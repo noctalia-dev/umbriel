@@ -34,11 +34,6 @@ namespace umbriel {
     constexpr int kSpringMinDurationMs = 1;
     constexpr int kSpringMaxDurationMs = 10000;
 
-    struct AnimationTransition {
-      uint64_t id;
-      std::array<float, 4> seed;
-    };
-
     [[nodiscard]] uint64_t mixRandom(uint64_t value) {
       value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
       value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
@@ -53,17 +48,6 @@ namespace umbriel {
             ^ reinterpret_cast<uintptr_t>(&salt);
       }
       return mixRandom(salt);
-    }
-
-    [[nodiscard]] AnimationTransition beginAnimationTransition() {
-      static const uint64_t salt = animationRandomSalt();
-      const uint64_t id = nextAnimationTransitionId();
-      AnimationTransition transition{.id = id, .seed = {}};
-      for (std::size_t channel = 0; channel < transition.seed.size(); ++channel) {
-        const uint64_t value = mixRandom(salt ^ mixRandom(id + UINT64_C(0x9e3779b97f4a7c15) * (channel + 1)));
-        transition.seed[channel] = static_cast<float>(value >> 40) * (1.0F / 16777216.0F);
-      }
-      return transition;
     }
 
     [[nodiscard]] std::string normalizeName(std::string_view name) {
@@ -273,6 +257,17 @@ namespace umbriel {
       return impl;
     }
   } // namespace
+
+  [[nodiscard]] AnimationTransition beginAnimationTransition() {
+    static const uint64_t salt = animationRandomSalt();
+    const uint64_t id = nextAnimationTransitionId();
+    AnimationTransition transition{.id = id, .seed = {}};
+    for (std::size_t channel = 0; channel < transition.seed.size(); ++channel) {
+      const uint64_t value = mixRandom(salt ^ mixRandom(id + UINT64_C(0x9e3779b97f4a7c15) * (channel + 1)));
+      transition.seed[channel] = static_cast<float>(value >> 40) * (1.0F / 16777216.0F);
+    }
+    return transition;
+  }
 
   double solveCubicBezier(double x1, double y1, double x2, double y2, double x) {
     if (x <= 0.0) {

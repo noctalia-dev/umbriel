@@ -281,6 +281,7 @@ if build_tests
     'capture-policy',
     'capture-policy-encoding',
     'capture-feedback',
+    'workspace-reveal',
     'in-place-feedback',
     'capture-composition',
     'in-place-shape',

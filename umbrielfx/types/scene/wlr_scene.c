@@ -138,6 +138,9 @@ struct scene_animation {
   struct fx_effect_shader* shaders[FX_ANIMATION_SLOTS];
   struct fx_animation_parameters parameters[FX_ANIMATION_SLOTS];
   struct fx_animation_history histories[FX_ANIMATION_SLOTS];
+  // Opaque identity shared by roots whose native backdrop belongs together.
+  const void* isolation_group;
+  unsigned isolation_slot;
   bool output_clip_enabled;
   struct wlr_box output_clip;
   // Populated-slot classes. Transient slots keep the scene-wide conservative
@@ -823,6 +826,8 @@ struct render_data {
   bool effect_capture;
   // An earlier composition this frame emitted output_sample.
   bool sampled_earlier;
+  // Replay native lower layers for blur without sampling or advancing feedback.
+  const void* backdrop_group;
   // The scene's effect state for this frame, NULL when it has none. Nothing may
   // add or remove slots while entries render: output_sample listeners run then.
   struct scene_effects* effects;
@@ -1643,6 +1648,20 @@ static bool parameters_equal(const struct fx_animation_parameters* a, const stru
       && uniforms_equal(a, b);
 }
 
+bool wlr_scene_node_set_animation_isolation(struct wlr_scene_node* node, unsigned slot, const void* group) {
+  assert(slot < FX_ANIMATION_SLOTS);
+  struct scene_animation* animation = scene_animation_get(node);
+  if (animation == NULL || animation->shaders[slot] == NULL) {
+    return false;
+  }
+  if (animation->isolation_group != group || animation->isolation_slot != slot) {
+    animation->isolation_group = group;
+    animation->isolation_slot = slot;
+    scene_node_update(&animation->scene->tree.node, NULL);
+  }
+  return true;
+}
+
 void wlr_scene_node_set_animation(
     struct wlr_scene_node* node, unsigned slot, struct fx_effect_shader* shader,
     const struct fx_animation_parameters* parameters
@@ -1670,6 +1689,9 @@ void wlr_scene_node_set_animation(
     }
     wlr_addon_init(&animation->addon, &node->addons, &scene_animation_impl, &scene_animation_impl);
     wl_list_insert(&effects->animations, &animation->link);
+  }
+  if (shader == NULL && animation->isolation_slot == slot) {
+    animation->isolation_group = NULL;
   }
   struct fx_effect_shader* previous = animation->shaders[slot];
   const bool same_transition = previous != NULL
@@ -3186,6 +3208,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
     struct wlr_texture* texture = scene_buffer_get_texture(scene_buffer, data->output->output->renderer);
     if (texture == NULL) {
+      fx_pass->animation_failed = true;
       scene_output_damage(data->output, &render_region);
       break;
     }
@@ -3339,7 +3362,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .release_timeline = data->output->in_timeline,
         .release_point = data->output->in_point,
     };
-    if (!data->shadow_capture && !data->sampled_earlier) {
+    if (!data->shadow_capture && !data->sampled_earlier && data->backdrop_group == NULL) {
       wl_signal_emit_mutable(&scene_buffer->events.output_sample, &sample_event);
     }
 
@@ -3721,7 +3744,7 @@ static void render_in_place_slots(
         .output_clip = clip,
         .history = &animation->histories[slot],
         .output = data->output->output,
-        .update_history = !data->shadow_capture,
+        .update_history = !data->shadow_capture && data->backdrop_group == NULL,
         .role = 0,
         .corner_radius = corner_radius,
     };
@@ -3742,11 +3765,33 @@ static bool persistent_effect_damaged(
       && region_touches_box(&data->damage, &box);
 }
 
+static void render_background(
+    struct wlr_render_pass* render_pass, const struct wlr_scene* scene, const struct wlr_buffer* buffer,
+    const pixman_region32_t* clip, enum wlr_render_blend_mode blend_mode
+);
+
+static bool excluded_from_backdrop(struct wlr_scene_node* node, const void* group) {
+  if (group == NULL) {
+    return false;
+  }
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    struct scene_animation* animation = scene_animation_get(node);
+    if (animation != NULL && animation->isolation_group != NULL && animation->isolation_group != group) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void render_animated_range(
     struct render_list_entry* entries, int high, int low, struct wlr_scene_node* stop, const struct render_data* data
 ) {
   struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
   for (int i = high; i >= low;) {
+    if (excluded_from_backdrop(entries[i].node, data->backdrop_group)) {
+      i--;
+      continue;
+    }
     struct scene_animation* animation = outer_animation(entries[i].node, stop, pass->buffer->renderer);
     if (animation == NULL) {
       if (entries[i].node->type != WLR_SCENE_NODE_SHADOW || !render_animation_shadow(&entries[i], data)) {
@@ -3827,11 +3872,33 @@ static void render_animated_range(
     // A persistent slot this frame's damage misses would composite nothing and blank its history.
     const bool persistent_damaged =
         animation->persistent && persistent_effect_damaged(animation, data, has_clip ? &ancestor_clip : NULL);
+    bool isolated = false;
+    if (animation->isolation_group != NULL && data->backdrop_group == NULL && !data->shadow_capture && pass->has_blur) {
+      isolated = fx_render_pass_begin_isolation(pass);
+      if (isolated) {
+        TRACY_ZONE_START_N("workspace isolation replay");
+        struct render_data backdrop = *data;
+        backdrop.backdrop_group = animation->isolation_group;
+        pixman_region32_init_rect(&backdrop.damage, 0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height);
+        render_background(
+            data->render_pass, animation->scene, pass->buffer->buffer, &backdrop.damage, WLR_RENDER_BLEND_MODE_NONE
+        );
+        render_animated_range(entries, data->entry_count - 1, i + 1, NULL, &backdrop);
+        pixman_region32_fini(&backdrop.damage);
+        pass->isolation_content = true;
+        TRACY_ZONE_END_QUIET;
+      }
+    }
     bool captured[FX_ANIMATION_SLOTS] = {0};
     bool captured_any = false;
     for (int slot = FX_ANIMATION_SLOTS - 1; slot >= 0; slot--) {
       struct fx_effect_shader* shader = animation->shaders[slot];
       if (shader != NULL
+          && !(
+              data->backdrop_group != NULL
+              && animation->isolation_group != NULL
+              && slot == (int)animation->isolation_slot
+          )
           && shader->renderer == pass->buffer->renderer
           && !fx_slot_in_place(slot)
           && (persistent_damaged || !fx_slot_persistent(slot))) {
@@ -3909,16 +3976,23 @@ static void render_animated_range(
             .output_clip = composite_clip,
             .history = &animation->histories[slot],
             .output = data->output->output,
-            .update_history = !data->shadow_capture,
+            .update_history = !data->shadow_capture && data->backdrop_group == NULL,
             .geometry = has_geometry ? &geometry : NULL,
-            .light = slot == FX_SLOT_BORDER_EFFECT && animation->light != NULL && animation->light->rect->node.enabled
-                    && !data->shadow_capture && !data->effect_capture
+            .light = slot == FX_SLOT_BORDER_EFFECT
+                    && animation->light != NULL
+                    && animation->light->rect->node.enabled
+                    && !data->shadow_capture
+                    && !data->effect_capture
+                    && data->backdrop_group == NULL
                 ? animation->light->cache
                 : NULL,
             .role = data->effect_capture ? 1 : 0,
         };
         fx_render_pass_end_effect(pass, &composite);
       }
+    }
+    if (isolated && !captured_any) {
+      fx_render_pass_cancel_isolation(pass);
     }
     pixman_region32_fini(&bounds);
     if (has_output_clip) {
@@ -4056,7 +4130,7 @@ struct scene_output_effects {
   struct wlr_scene_output* output;
   struct wl_listener destroy;
   bool in_capture;
-  bool capture_was_pending;
+  bool capture_was_active;
   struct fx_effect_shader* screen;
   struct fx_animation_parameters screen_parameters;
   struct fx_animation_history screen_history;
@@ -5444,11 +5518,12 @@ bool wlr_scene_output_build_state(
   render_data.entries = list_data;
   render_data.entry_count = list_len;
 
-  // Looked up only with scene effects, output slots, or a pending capture; otherwise
+  // Looked up only with scene effects, output slots, or an active capture; otherwise
   // there is nothing to draw, save, or release.
   const bool capture_pending = options->effect_capture_pending;
+  const bool capture_active = capture_pending || options->effect_capture_active;
   struct scene_output_effects* output_effects =
-      effects != NULL || capture_pending || scene_output->output_effects_configured
+      effects != NULL || capture_active || scene_output->output_effects_configured
       ? scene_output_effects_get(scene_output, false)
       : NULL;
 
@@ -5463,7 +5538,7 @@ bool wlr_scene_output_build_state(
       }
       render_data.persistent_visible = true;
       in_place_visible = animation->in_place;
-      if (in_place_visible || !capture_pending) {
+      if (in_place_visible || !capture_active) {
         break;
       }
     }
@@ -5483,12 +5558,12 @@ bool wlr_scene_output_build_state(
     unfiltered_pass = output_effects != NULL;
   }
   if (output_effects != NULL) {
-    if (output_effects->capture_was_pending && !capture_pending) {
+    if (output_effects->capture_was_active && !capture_active) {
       // The capture ended: its histories and buffers go with it.
       scene_reset_capture_histories(scene_output->scene, output);
       output_effects_release_capture(scene_output);
     }
-    output_effects->capture_was_pending = capture_pending;
+    output_effects->capture_was_active = capture_active;
   }
   if (unfiltered_pass) {
     // The display composition redraws everything the unfiltered one drew.
@@ -5655,6 +5730,14 @@ bool wlr_scene_output_build_state(
   expand_damage_to_effects(scene_output, effects, output_effects, &render_data, &render_data.damage, false);
 
   struct fx_gles_render_pass* fx_pass = fx_get_render_pass(render_pass);
+  fx_pass->retain_effect_capture =
+      capture_active && in_place_visible && (output_effects == NULL || !output_effects->in_capture);
+  fx_pass->require_animation_success = options->require_animation_success;
+  if (fx_pass->require_animation_success) {
+    // Discard errors predating this composition; only this frame may reject it.
+    while (glGetError() != GL_NO_ERROR) {
+    }
+  }
   if (fx_pass->needs_full_damage) {
     pixman_region32_t full_damage;
     pixman_region32_init_rect(&full_damage, 0, 0, buffer->width, buffer->height);
@@ -5741,6 +5824,7 @@ bool wlr_scene_output_build_state(
     const bool initialized = fx_render_pass_init_offscreen_buffers(render_pass, output);
     TRACY_ZONE_END_QUIET;
     if (!initialized) {
+      fx_pass->animation_failed = true;
       fx_pass->has_blur = false;
       should_compensate_blur = false;
     }

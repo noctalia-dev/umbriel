@@ -1,0 +1,5 @@
+# In-place hard wipe; both workspaces remain live.
+# Include this file, then set [animation.workspaces] style = "reveal", effect = "workspace_wipe".
+[effects.preset.workspace_wipe]
+kind = "animation"
+shader = "shader.glsl"

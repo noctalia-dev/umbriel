@@ -11,6 +11,8 @@ boundaries, or regression-sensitive behavior.
 - [Configuration reload](configuration-reload.md)
 - [Effects](effects.md)
 - [Workspace lifecycle](workspace-lifecycle.md)
+- [Live workspace reveal](workspace-reveal-prototype.md)
+- [Workspace reveal validation](workspace-reveal-acceptance.md)
 - [Overview rendering](overview-rendering.md)
 - [Touchpad gestures](touchpad-gestures.md)
 - [Border rendering](border-rendering.md)
@@ -23,7 +25,7 @@ boundaries, or regression-sensitive behavior.
 ## Harness-only IPC
 
 `settle`, `clock-freeze`, `clock-advance`, `clock-resume`, `renderer-recover`,
-and `effect-frames` exist for `tests/harness` and are compiled only with the
+`animation-capture-fail`, `swipe-test`, and `effect-frames` exist for `tests/harness` and are compiled only with the
 `test_ipc` option (auto: debug builds). The harness also drives hotplug through
 `output-create` and `output-destroy`, which every build ships for
 [virtual outputs](../user/outputs.md#virtual-outputs). `settle` replies once no

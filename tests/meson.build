@@ -1,6 +1,7 @@
 # Unit tests. Each entry is [name, test sources, extra dependencies]. Every test gets umbriel_pure_dep; add umbriel_core_dep to the third field for a test that
 # needs compositor code. Either way a test never lists or recompiles a source.
 unit_tests = [
+  ['output-capture-demand', ['unit/output_capture_demand.cpp'], []],
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
@@ -292,7 +293,7 @@ syncobj_client = executable(
     linux_drm_syncobj_client_h,
     linux_drm_syncobj_client_c,
   ],
-  dependencies: [wayland_client_dep, libdrm_dep, dependency('gbm')],
+  dependencies: [wayland_client_dep, libdrm_dep, umbrielfx_gbm_dep],
 )
 
 # Harness helper that keeps an idle inhibitor attached to a mapped toplevel and
@@ -408,8 +409,10 @@ capture_client = executable(
     ext_image_copy_capture_client_h,
     ext_image_copy_capture_client_c,
     ext_foreign_toplevel_list_client_c,
+    linux_dmabuf_client_h,
+    linux_dmabuf_client_c,
   ],
-  dependencies: [wayland_client_dep],
+  dependencies: [wayland_client_dep, libdrm_dep, umbrielfx_gbm_dep],
 )
 
 harness_client_targets = [

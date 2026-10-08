@@ -21,6 +21,7 @@
 // TRANSIENT_FOREIGN_PARENT_ON_STDIN delays that parent request until `p` is read
 // from stdin, after the child has mapped.
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
+// REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
@@ -107,6 +108,8 @@ namespace {
     int width = 64;
     int height = 64;
     bool mapped = false;
+    wl_callback* repaintFrame = nullptr;
+    uint32_t repaintColor = 0;
     bool closed = false;
     bool redrawOnClose = false;
     bool redrawOnceOnClose = false;
@@ -300,6 +303,29 @@ namespace {
     close(fd);
     return buffer;
   }
+
+  void destroyBuffer(Buffer& buffer);
+
+  void repaintFrameDone(void* data, wl_callback* callback, uint32_t /*time*/) {
+    auto& state = *static_cast<State*>(data);
+    wl_callback_destroy(callback);
+    state.repaintFrame = nullptr;
+    state.fillColor = state.repaintColor;
+    Buffer next = createBuffer(state, state.width, state.height);
+    if (next.resource == nullptr) {
+      std::exit(EXIT_FAILURE);
+    }
+    wl_surface_attach(state.surface, next.resource, 0, 0);
+    wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    wl_surface_commit(state.surface);
+    destroyBuffer(state.buffer);
+    state.buffer = next;
+    wl_display_flush(state.display);
+    std::println("repainted {}", state.fillColor);
+    std::fflush(stdout);
+  }
+
+  constexpr wl_callback_listener kRepaintListener = {.done = repaintFrameDone};
 
   void auxiliaryXdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& window = *static_cast<AuxiliaryToplevel*>(data);
@@ -801,7 +827,9 @@ int main(int argc, char** argv) {
   const bool skipTitle = std::getenv("NO_TITLE") != nullptr;
   const bool maximizeOnStdin = std::getenv("MAXIMIZE_ON_STDIN") != nullptr;
   const bool fullscreenOnStdin = std::getenv("FULLSCREEN_ON_STDIN") != nullptr;
-  const bool updateOnStdin = updatedContentType != nullptr
+  const bool repaintOnStdin = std::getenv("REPAINT_ON_STDIN") != nullptr;
+  const bool updateOnStdin = repaintOnStdin
+      || updatedContentType != nullptr
       || updatedXdgTag != nullptr
       || updatedTitle != nullptr
       || maximizeOnStdin
@@ -1132,7 +1160,14 @@ int main(int argc, char** argv) {
       if ((sources[1].revents & POLLIN) != 0) {
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
-          if (command == 'a') {
+          if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
+            state.repaintColor = command == 'R' ? 0xFFFF0000 : command == 'G' ? 0xFF00FF00 : 0xFF0000FF;
+            if (state.repaintFrame == nullptr) {
+              state.repaintFrame = wl_surface_frame(state.surface);
+              wl_callback_add_listener(state.repaintFrame, &kRepaintListener, &state);
+              wl_surface_commit(state.surface);
+            }
+          } else if (command == 'a') {
             if (!activateFromFile(state, state.activationTokenFile)) {
               return EXIT_FAILURE;
             }

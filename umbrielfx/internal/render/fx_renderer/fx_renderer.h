@@ -263,6 +263,7 @@ struct fx_renderer {
 	// Set only through fx_renderer_fail_target_copies_for_test and fx_renderer_fail_effect_capture_for_test.
 	bool fail_target_copies_for_test;
 	bool fail_effect_capture_for_test;
+	bool fail_animation_capture_for_test;
 	struct fx_effect_shader *animation_shadow_horizontal;
 	struct fx_effect_shader *animation_shadow_vertical;
 

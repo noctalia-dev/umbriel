@@ -146,6 +146,12 @@ enum fx_effect_kind fx_effect_shader_kind(const struct fx_effect_shader* shader)
 
 // Slots compose in ascending order, then through effect-bearing ancestors.
 // A NULL shader removes a slot. Nodes hold their own reference to the program.
+// Isolate this animated root's backdrop from roots with a different non-NULL
+// group. Group identities are compared, never dereferenced. Clear the binding
+// before the owner dies. Removing the selected slot clears isolation as well.
+// Returns false if the animation binding was not created.
+bool wlr_scene_node_set_animation_isolation(struct wlr_scene_node* node, unsigned slot, const void* group);
+
 void wlr_scene_node_set_animation(
     struct wlr_scene_node* node, unsigned slot, struct fx_effect_shader* shader,
     const struct fx_animation_parameters* parameters
@@ -236,5 +242,6 @@ void wlr_scene_output_acknowledge_damage_for_test(
 void fx_renderer_fail_target_copies_for_test(struct wlr_renderer* renderer, bool fail);
 // Exists for tests/effects.c: makes saving an unfiltered effect capture fail.
 void fx_renderer_fail_effect_capture_for_test(struct wlr_renderer* renderer, bool fail);
+void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, bool fail);
 
 #endif

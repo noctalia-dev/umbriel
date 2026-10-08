@@ -36,6 +36,9 @@ struct fx_gles_render_pass {
 	// Set while an add_* call renders into an offscreen buffer instead of the
 	// pass target, so it must not extend updated_region.
 	bool suppress_updated;
+	// Reject the frame instead of displaying a partially applied animation.
+	bool require_animation_success;
+	bool animation_failed;
 
 	// The region where there's blur
 	pixman_region32_t blur_padding_region;
@@ -45,6 +48,9 @@ struct fx_gles_render_pass {
 	// Call `fx_render_pass_init_offscreen_buffers` to use advanced effects.
 	struct fx_offscreen_buffers *fx_offscreen_buffers;
 	unsigned animation_depth;
+	// A scratch backdrop beneath an isolated subtree, excluded from composition.
+	unsigned isolation_depth;
+	bool isolation_content;
 	struct fx_framebuffer *animation_parents[FX_ANIMATION_DEPTH];
 	struct wlr_texture *animation_textures[FX_ANIMATION_DEPTH];
 	bool animation_suppress[FX_ANIMATION_DEPTH];
@@ -57,9 +63,12 @@ struct fx_gles_render_pass {
 	// The target's unfiltered composition was copied into the output buffer's
 	// effect capture; it becomes readable once the pass submits.
 	bool effect_capture_saved;
+	bool retain_effect_capture; // allocation only; validity still requires a fresh save
 };
 
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass *pass);
+bool fx_render_pass_begin_isolation(struct fx_gles_render_pass *pass);
+void fx_render_pass_cancel_isolation(struct fx_gles_render_pass *pass);
 // Opens the pass's single group capture. box is in parent pixels; translate
 // draws into the capture before end_capture.
 bool fx_render_pass_begin_capture(struct fx_gles_render_pass *pass, const struct wlr_box *box);

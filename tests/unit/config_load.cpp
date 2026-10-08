@@ -1173,6 +1173,23 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
+UMBRIEL_TEST(workspaceRevealStyleLoadsThroughTheEventReader) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[animation.workspaces]\nstyle = \"reveal\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().animation.workspaces.style, "reveal");
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  file.write("[animation.workspaces]\nstyle = \"invalid\"\n");
+  static_cast<void>(store.reload());
+  CHECK(containsDiagnostic(store, "animation.workspaces.style"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  file.write("[animation.workspaces]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().animation.workspaces.style, "slide");
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

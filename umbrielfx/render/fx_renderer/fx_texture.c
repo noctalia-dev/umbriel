@@ -12,6 +12,7 @@
 #include "render/pass.h"
 #include "render/pixel_format.h"
 #include "render/egl.h"
+#include "render/tracy.h"
 
 static const struct wlr_texture_impl texture_impl;
 
@@ -211,12 +212,17 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 	}
 
 	// Make sure any pending drawing is finished before we try to read it
-	glFinish();
+	{
+		TRACY_ZONE_START_N("capture readback GPU wait");
+		glFinish();
+		TRACY_ZONE_END_QUIET;
+	}
 
 	glGetError(); // Clear the error flag
 
 	unsigned char *p = wlr_texture_read_pixel_options_get_data(options);
 
+	TRACY_ZONE_START_N("capture read pixels");
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	uint32_t pack_stride = pixel_format_info_min_stride(drm_fmt, src.width);
 	if (pack_stride == options->stride && options->dst_x == 0) {
@@ -234,6 +240,7 @@ static bool fx_texture_read_pixels(struct wlr_texture *wlr_texture,
 		}
 	}
 
+	TRACY_ZONE_END_QUIET;
 	ok = glGetError() == GL_NO_ERROR;
 out:
 	pop_fx_debug(texture->fx_renderer);

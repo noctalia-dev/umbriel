@@ -183,7 +183,8 @@ namespace umbriel {
           styleField<A::WindowsOut>({"fade", "slide", "popin", "zoom"}),
       });
       static const registry::Fields<A::WindowsMove> windowsMove = eventFields<A::WindowsMove>({});
-      static const registry::Fields<A::Workspaces> workspaces = eventFields<A::Workspaces>({});
+      static const registry::Fields<A::Workspaces> workspaces =
+          eventFields<A::Workspaces>({styleField<A::Workspaces>({"slide", "reveal"})});
       static const registry::Fields<A::Overview> overview = [] {
         auto fields = eventFields<A::Overview>({});
         fields.push_back(curveField("workspace_curve", &A::Overview::workspaceCurve));

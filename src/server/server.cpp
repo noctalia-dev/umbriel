@@ -16,6 +16,7 @@
 #include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "lock/session_lock.h"
+#include "output/capture_demand.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
@@ -757,6 +758,19 @@ namespace umbriel {
       return WL_ITERATOR_CONTINUE;
     }
   } // namespace
+
+  bool Server::needsEffectCaptureFor(const wlr_output* output, int captureLocks) const {
+    return outputCaptureRequested(
+        captureLocks, m_imageCopySessions.begin(), m_imageCopySessions.end(),
+        [output](const auto& watch) -> OutputCaptureConsumer {
+          if (output == nullptr || watch->output != output || watch->session == nullptr) {
+            return {};
+          }
+          const auto* session = watch->session;
+          return {.source = session->source, .pending = session->frame != nullptr && session->frame->capturing};
+        }
+    );
+  }
 
   bool Server::hasCopyCaptureFor(const wlr_output* output) const {
     if (output == nullptr) {

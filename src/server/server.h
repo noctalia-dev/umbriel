@@ -177,6 +177,7 @@ namespace umbriel {
     [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
     // True while a live cursor session is attached to a capture source of this output.
     [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
+    [[nodiscard]] bool needsEffectCaptureFor(const wlr_output* output, int captureLocks) const;
     [[nodiscard]] wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     [[nodiscard]] WineColorManager* wineColorManager() const { return m_wineColorManager.get(); }
     [[nodiscard]] const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;

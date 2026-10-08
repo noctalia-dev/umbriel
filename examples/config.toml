@@ -297,3 +297,11 @@ blur_optimized = false
 enabled = true
 delay_ms = 500
 action = "overview-open"
+
+# Optional live workspace reveal (see docs/user/animation.md).
+# Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
+# [animation.workspaces]
+# style = "reveal"          # Default: "slide"
+# effect = "workspace_wipe"
+# duration_ms = 300
+# curve = "easeout"

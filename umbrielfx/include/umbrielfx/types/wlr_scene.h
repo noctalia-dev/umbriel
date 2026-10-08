@@ -1023,6 +1023,13 @@ struct wlr_scene_output_state_options {
 	 * frame for it.
 	 */
 	bool effect_capture_pending;
+
+	// Keep capture storage/history for an idle session without drawing a clean
+	// composition. A pending request also implies active for existing callers.
+	bool effect_capture_active;
+
+	// Failed animation capture/composition must reject the whole output state.
+	bool require_animation_success;
 };
 
 /**

@@ -14,11 +14,17 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <drm_fourcc.h>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <print>
+#include <sstream>
 #include <string>
+
+extern "C" {
+#include <umbrielfx/render/effect.h>
+}
 
 namespace umbriel {
 
@@ -814,6 +820,55 @@ namespace umbriel {
   }
 
 #ifdef UMBRIEL_TEST_IPC
+  nlohmann::json IpcCommands::swipeForTest(Server& server, std::string_view arg) {
+    std::istringstream input{std::string(arg)};
+    std::string phase;
+    uint32_t time = 0;
+    double dx = 0, dy = 0;
+    int cancelled = 0;
+    input >> phase >> time;
+    if (phase == "update") {
+      input >> dx >> dy;
+    } else if (phase == "end") {
+      input >> cancelled;
+    }
+    std::string extra;
+    if (input.fail()
+        || (input >> extra)
+        || !std::isfinite(dx)
+        || !std::isfinite(dy)
+        || (phase != "begin" && phase != "update" && phase != "end")
+        || (cancelled != 0 && cancelled != 1)) {
+      return nlohmann::json{{"err", "expected begin <ms>, update <ms> <dx> <dy>, or end <ms> <cancelled:0|1>"}};
+    }
+    wlr_cursor* cursor = server.cursor()->wlr();
+    if (phase == "begin") {
+      wlr_pointer_swipe_begin_event event{.pointer = nullptr, .time_msec = time, .fingers = 3};
+      wl_signal_emit_mutable(&cursor->events.swipe_begin, &event);
+    } else if (phase == "update") {
+      wlr_pointer_swipe_update_event event{.pointer = nullptr, .time_msec = time, .fingers = 3, .dx = dx, .dy = dy};
+      wl_signal_emit_mutable(&cursor->events.swipe_update, &event);
+    } else {
+      wlr_pointer_swipe_end_event event{.pointer = nullptr, .time_msec = time, .cancelled = cancelled != 0};
+      wl_signal_emit_mutable(&cursor->events.swipe_end, &event);
+    }
+    Output* output = server.outputFromWlr(server.preferredOutput());
+    WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
+    return nlohmann::json{
+        {"ok",
+         {{"progress", group != nullptr ? group->slideProgress() : 0.0},
+          {"reveal", group != nullptr && group->revealActive()}}}
+    };
+  }
+
+  nlohmann::json IpcCommands::animationCaptureFail(Server& server, std::string_view arg) {
+    if (arg != "on" && arg != "off") {
+      return nlohmann::json{{"err", "expected on or off"}};
+    }
+    fx_renderer_fail_animation_capture_for_test(server.renderer(), arg == "on");
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::rendererRecover(Server& server, std::string_view /*arg*/) {
     server.emitRendererLostForTest();
     server.emitRendererLostForTest();
@@ -924,6 +979,10 @@ namespace umbriel {
        IpcCommandGroup::Harness, true, &IpcCommands::clockAdvance, nullptr, 35},
       {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped",
        IpcCommandGroup::Harness, false, &IpcCommands::clockResume, nullptr},
+      {"swipe-test", "<begin|update|end> <ms> [dx dy|cancelled]", "inject three-finger swipe events (harness only)",
+       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr},
+      {"animation-capture-fail", "<on|off>", "inject animation capture failure (harness only)",
+       IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", IpcCommandGroup::Harness, false,
        &IpcCommands::rendererRecover, nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",

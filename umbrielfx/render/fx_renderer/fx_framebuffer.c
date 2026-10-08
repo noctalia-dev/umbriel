@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <drm_fourcc.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -7,6 +8,7 @@
 
 #include "render/egl.h"
 #include "render/fx_renderer/fx_renderer.h"
+#include "render/tracy.h"
 
 static void handle_buffer_destroy(struct wlr_addon *addon) {
 	struct fx_framebuffer *buffer =
@@ -115,6 +117,8 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 		*fx_framebuffer = NULL;
 	}
 
+	TRACY_ZONE_START_N("effect framebuffer allocation");
+	TRACY_ZONE_TEXT_f("%dx%d format=%u", width, height, format);
 	// Get the best supported DRM format (DMABUF if supported)
 	const struct wlr_drm_format_set *texture_formats =
 		wlr_renderer_get_texture_formats(&renderer->wlr_renderer,
@@ -127,6 +131,7 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 	if (drm_format == NULL) {
 		wlr_log(WLR_ERROR, "Failed to get a supported format while allocating buffer");
 		*failed = true;
+		TRACY_ZONE_END_QUIET;
 		return;
 	}
 
@@ -135,6 +140,7 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 	if (wlr_buffer == NULL) {
 		wlr_log(WLR_ERROR, "Failed to allocate wlr_buffer");
 		*failed = true;
+		TRACY_ZONE_END_QUIET;
 		return;
 	}
 
@@ -143,6 +149,7 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 		wlr_log(WLR_ERROR, "Failed to allocate fx_buffer");
 		wlr_buffer_drop(wlr_buffer);
 		*failed = true;
+		TRACY_ZONE_END_QUIET;
 		return;
 	}
 	(*fx_framebuffer)->owned = true;
@@ -151,6 +158,7 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 		wlr_buffer_drop(wlr_buffer);
 		*fx_framebuffer = NULL;
 		*failed = true;
+		TRACY_ZONE_END_QUIET;
 		return;
 	}
 
@@ -168,6 +176,7 @@ void fx_framebuffer_get_or_create_custom(struct fx_renderer *renderer,
 	if (scissor_enabled) {
 		glEnable(GL_SCISSOR_TEST);
 	}
+	TRACY_ZONE_END_QUIET;
 }
 
 struct fx_framebuffer *fx_framebuffer_get_or_create(struct fx_renderer *renderer,
