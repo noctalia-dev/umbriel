@@ -4,31 +4,7 @@ set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 readonly BASE="$UMBRIEL_RUNTIME_DIR/base.toml"
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/geometry.png"
-cp "$UMBRIEL_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$UMBRIEL_RUNTIME_DIR/wipe.glsl"
-cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
-[animation]
-enabled = true
-[animation.windows_in]
-enabled = false
-[animation.windows_out]
-enabled = false
-[animation.windows_move]
-enabled = false
-[animation.workspaces]
-style = "reveal"
-effect = "wipe"
-duration_ms = 1000
-curve = "linear"
-[effects.preset.wipe]
-kind = "animation"
-shader = "wipe.glsl"
-[appearance]
-border_width = 0
-outer_border_width = 0
-corner_radius = 0
-[appearance.shadow]
-enabled = false
-CONFIG
+workspace_reveal_config
 cp "$UMBRIEL_CONFIG" "$BASE"
 "$UMBRIEL" msg config-reload > /dev/null
 FILL_COLOR=0xFFFF0000 RESIZE_FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" geometry-a 1280 720 > "$UMBRIEL_RUNTIME_DIR/a.log" 2>&1 &

@@ -3,31 +3,9 @@
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 readonly SHOT="$UMBRIEL_RUNTIME_DIR/reveal.png"
-cp "$UMBRIEL_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$UMBRIEL_RUNTIME_DIR/wipe.glsl"
+workspace_reveal_config
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 
-[animation]
-enabled = true
-[animation.windows_in]
-enabled = false
-[animation.windows_out]
-enabled = false
-[animation.windows_move]
-enabled = false
-[animation.workspaces]
-style = "reveal"
-effect = "wipe"
-duration_ms = 1000
-curve = "linear"
-[effects.preset.wipe]
-kind = "animation"
-shader = "wipe.glsl"
-[appearance]
-border_width = 0
-outer_border_width = 0
-corner_radius = 0
-[appearance.shadow]
-enabled = false
 [[window_rule]]
 match.title = "^reveal-"
 default_floating = true

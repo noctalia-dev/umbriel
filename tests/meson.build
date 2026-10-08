@@ -293,7 +293,7 @@ syncobj_client = executable(
     linux_drm_syncobj_client_h,
     linux_drm_syncobj_client_c,
   ],
-  dependencies: [wayland_client_dep, libdrm_dep, umbrielfx_gbm_dep],
+  dependencies: [wayland_client_dep, libdrm_dep, dependency('gbm')],
 )
 
 # Harness helper that keeps an idle inhibitor attached to a mapped toplevel and
@@ -409,10 +409,8 @@ capture_client = executable(
     ext_image_copy_capture_client_h,
     ext_image_copy_capture_client_c,
     ext_foreign_toplevel_list_client_c,
-    linux_dmabuf_client_h,
-    linux_dmabuf_client_c,
   ],
-  dependencies: [wayland_client_dep, libdrm_dep, umbrielfx_gbm_dep],
+  dependencies: [wayland_client_dep],
 )
 
 harness_client_targets = [

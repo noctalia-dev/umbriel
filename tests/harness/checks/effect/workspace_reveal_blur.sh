@@ -3,40 +3,18 @@
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/reveal-blur.png"
-cp "$UMBRIEL_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$UMBRIEL_RUNTIME_DIR/wipe.glsl"
+workspace_reveal_config
 cat > "$UMBRIEL_RUNTIME_DIR/blue.glsl" <<'GLSL'
 vec4 window(vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
 GLSL
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [colors]
 backdrop = "#00FF00FF"
-[animation]
-enabled = true
-[animation.windows_in]
-enabled = false
-[animation.windows_out]
-enabled = false
-[animation.windows_move]
-enabled = false
-[animation.workspaces]
-style = "reveal"
-effect = "wipe"
-duration_ms = 1000
-curve = "linear"
 [effects]
 in_capture = false
-[effects.preset.wipe]
-kind = "animation"
-shader = "wipe.glsl"
 [effects.preset.blue]
 kind = "window"
 shader = "blue.glsl"
-[appearance]
-border_width = 0
-outer_border_width = 0
-corner_radius = 0
-[appearance.shadow]
-enabled = false
 [appearance.blur]
 enabled = true
 optimized = false
