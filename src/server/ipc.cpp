@@ -30,6 +30,8 @@ namespace umbriel {
     // A subscriber that stops reading must not grow the compositor's heap without bound.
     constexpr size_t kMaxOutboundBacklog = 256 * 1024;
     constexpr int kConnectionTimeoutMs = 1000;
+    constexpr size_t kMaxAudioRequestSize = 256;
+    constexpr int kAudioFreshnessMs = 250;
     // Long enough for any configured animation to finish; a compositor that never settles still answers.
     constexpr int kFrameWaitTimeoutMs = 30000;
 
@@ -211,6 +213,11 @@ namespace umbriel {
     return 0;
   }
 
+  void Ipc::dropAudioOwner() {
+    m_audio = nullptr;
+    m_server->effects().setAudio({});
+  }
+
   void Ipc::acceptConnections() {
     while (true) {
       const int clientFd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
@@ -293,6 +300,9 @@ namespace umbriel {
       const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
       if (size > 0) {
         connection.input.append(chunk, static_cast<size_t>(size));
+        if (&connection == m_audio && connection.input.size() > kMaxAudioRequestSize) {
+          return false;
+        }
         if (connection.input.size() > kMaxRequestSize) {
           prepareResponse(connection, R"({"err":"request too long"})");
           return true;
@@ -341,7 +351,7 @@ namespace umbriel {
       }
       return false;
     }
-    if (connection.subscribedEvents != 0) {
+    if (connection.subscribedEvents != 0 || &connection == m_audio) {
       connection.output.clear();
       connection.writeOffset = 0;
       connection.responding = false;
@@ -437,6 +447,9 @@ namespace umbriel {
     if (entry == m_connections.end()) {
       return;
     }
+    if (connection == m_audio) {
+      dropAudioOwner();
+    }
     closeConnection(**entry);
     m_connections.erase(entry);
     refreshScreenCastActive();
@@ -465,6 +478,38 @@ namespace umbriel {
 
   std::optional<std::string> Ipc::handleRequest(Connection& connection, std::string_view line) {
     auto req = nlohmann::json::parse(line, nullptr, false);
+    if (&connection == m_audio || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-audio")) {
+      const auto level = IpcCommands::parseAudioLevel(req);
+      const char* error = nullptr;
+      if (!level) {
+        error = R"({"err":"malformed audio request"})";
+      } else if (line.size() + 1 > kMaxAudioRequestSize) {
+        error = R"({"err":"audio request too long"})";
+      } else if (!connection.input.empty()) {
+        error = R"({"err":"audio request sent before the previous reply"})";
+      } else if (connection.subscribedEvents != 0 || connection.screenCastActive) {
+        error = R"({"err":"audio not allowed on this connection"})";
+      } else if (m_server->sessionLocked() || !outputFrameAllowed(m_server->stopping(), m_server->session())) {
+        error = R"({"err":"audio unavailable while the session is locked or inactive"})";
+      }
+      if (error != nullptr) {
+        if (&connection == m_audio) {
+          // writeResponse keeps only the owner open, so dropping ownership closes this connection after the reply.
+          dropAudioOwner();
+        }
+        return error;
+      }
+      if (m_audio != nullptr && m_audio != &connection) {
+        return R"({"err":"audio producer already connected"})";
+      }
+      m_audio = &connection;
+      m_server->effects().setAudio({*level, 1.0F});
+      if (wl_event_source_timer_update(connection.deadline, kAudioFreshnessMs) < 0) {
+        dropAudioOwner();
+        return R"({"err":"audio feed could not start"})";
+      }
+      return R"({"ok":true})";
+    }
     if (req.is_discarded() || !req.is_object() || !req.contains("cmd") || !req["cmd"].is_string()) {
       return R"({"err":"malformed request"})";
     }

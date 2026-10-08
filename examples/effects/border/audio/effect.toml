@@ -1,0 +1,5 @@
+# Include this file, then select [effects] border = "audio".
+[effects.preset.audio]
+kind = "border"
+shader = "shader.glsl"
+animated = false

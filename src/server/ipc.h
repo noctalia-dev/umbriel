@@ -92,9 +92,11 @@ namespace umbriel {
     void finishFrameWait(Connection& connection, std::string response);
     void broadcastEvent(uint8_t event, const nlohmann::json& payload);
     void refreshScreenCastActive();
+    void dropAudioOwner();
 
     Server* m_server;
     std::string m_socketPath;
+    Connection* m_audio = nullptr;
     int m_listenFd = -1;
     wl_event_source* m_eventSource = nullptr;
     std::vector<std::unique_ptr<Connection>> m_connections;

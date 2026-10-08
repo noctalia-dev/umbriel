@@ -136,6 +136,16 @@ vec4 animation(vec2 uv) {
         preset(m_server->cursorEffectSlot().effectiveName(), EffectKind::Cursor) != nullptr && !m_ledger.suspended();
   }
 
+  void EffectRegistry::setAudio(std::array<float, 2> audio) {
+    if (m_audio == audio) {
+      return;
+    }
+    m_audio = audio;
+    for (const auto& output : m_server->outputs()) {
+      output->scheduleAudioFrame();
+    }
+  }
+
   void EffectRegistry::setSuspended(bool suspended) {
     m_ledger.setSuspended(suspended);
     updateCursorActive();

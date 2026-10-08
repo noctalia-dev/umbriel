@@ -2004,6 +2004,97 @@ static bool test_in_place_shape(struct fixture *fixture) {
 	return ok;
 }
 
+static bool test_audio_inputs(struct fixture *fixture) {
+	struct wlr_output *second = wlr_headless_add_output(fixture->backend, TEST_WIDTH, TEST_HEIGHT);
+	if (!check(second != NULL, "second audio output")) {
+		return false;
+	}
+	if (!check(wlr_output_init_render(second, fixture->allocator, fixture->renderer), "second audio renderer")) {
+		wlr_output_destroy(second);
+		return false;
+	}
+	struct wlr_scene *scene = wlr_scene_create();
+	struct wlr_scene_output *outputs[2] = {
+		wlr_scene_output_create(scene, fixture->output), wlr_scene_output_create(scene, second),
+	};
+	const float white[4] = {1, 1, 1, 1};
+	struct wlr_scene_rect *live = wlr_scene_rect_create(&scene->tree, 8, 16, white);
+	struct wlr_scene_rect *copy = wlr_scene_rect_create(&scene->tree, 8, 16, white);
+	wlr_scene_node_set_position(&copy->node, 8, 0);
+	struct fx_effect_shader *shader = fx_effect_shader_create(fixture->renderer, FX_EFFECT_WINDOW,
+		"vec4 window(vec2 uv) { return vec4(umbriel_audio_level(), umbriel_audio_available(), 0.0, 1.0); }", "audio");
+	bool ok = check(shader != NULL, "audio helpers compile");
+	wlr_scene_node_set_animation(&live->node, FX_SLOT_WINDOW, shader, NULL);
+	const float levels[2][2] = {{0.25f, 1}, {0.75f, 1}};
+	for (unsigned i = 0; i < 2; ++i) {
+		wlr_scene_output_set_effect_audio(outputs[i], levels[i]);
+	}
+	// The same scene node draws with each output's latched input, including after the other output drew.
+	for (unsigned i = 0; i < 3; ++i) {
+		unsigned index = i % 2;
+		struct wlr_buffer *buffer = render_transformed(fixture, outputs[index], 1, WL_OUTPUT_TRANSFORM_NORMAL);
+		ok &= check(buffer != NULL, "audio output draws");
+		if (buffer != NULL) {
+			uint8_t pixel[4];
+			ok &= fixture_read_pixel(fixture, buffer, 4, 4, pixel)
+				&& check(abs(pixel[2] - (index == 0 ? 64 : 191)) < 3 && pixel[1] > 250,
+					"shared node uses this output's audio");
+			wlr_buffer_unlock(buffer);
+		}
+	}
+	wlr_scene_node_copy_animations_for_snapshot(&copy->node, &live->node);
+	const float changed[2] = {1, 1};
+	wlr_scene_output_set_effect_audio(outputs[0], changed);
+	struct wlr_buffer *buffer = render_transformed(fixture, outputs[0], 1, WL_OUTPUT_TRANSFORM_NORMAL);
+	ok &= check(buffer != NULL, "audio snapshot draws");
+	if (buffer != NULL) {
+		uint8_t pixel[4];
+		ok &= fixture_read_pixel(fixture, buffer, 4, 4, pixel)
+			&& check(pixel[2] > 250 && pixel[1] > 250, "live input changes");
+		ok &= fixture_read_pixel(fixture, buffer, 12, 4, pixel)
+			&& check(abs(pixel[2] - 64) < 3 && pixel[1] > 250, "snapshot retains its copied audio");
+		wlr_buffer_unlock(buffer);
+	}
+	wlr_scene_output_set_effect_audio(outputs[0], (float[2]){0, 0});
+	buffer = render_transformed(fixture, outputs[0], 1, WL_OUTPUT_TRANSFORM_NORMAL);
+	ok &= check(buffer != NULL, "unavailable audio draws");
+	if (buffer != NULL) {
+		uint8_t pixel[4];
+		ok &= fixture_read_pixel(fixture, buffer, 4, 4, pixel)
+			&& check(pixel[2] < 3 && pixel[1] < 3, "GPU input clears after availability loss");
+		wlr_buffer_unlock(buffer);
+	}
+	struct wlr_output_state power;
+	wlr_output_state_init(&power);
+	wlr_output_state_set_enabled(&power, true);
+	ok &= check(wlr_output_commit_state(second, &power), "second output enables");
+	// Only a visible reader on an enabled output asks for audio frames.
+	ok &= check(wlr_scene_output_audio_active(outputs[1]), "a visible reader requests audio frames");
+	wlr_scene_node_set_enabled(&live->node, false);
+	ok &= check(!wlr_scene_output_audio_active(outputs[1]), "a hidden reader and a snapshot copy do not");
+	wlr_scene_node_set_enabled(&live->node, true);
+	wlr_scene_node_set_position(&live->node, 10 * TEST_WIDTH, 0);
+	ok &= check(!wlr_scene_output_audio_active(outputs[1]), "a reader outside the output does not");
+	struct fx_effect_shader *reader = fx_effect_shader_create(fixture->renderer, FX_EFFECT_CURSOR,
+		"vec4 cursor(vec2 uv) { return vec4(umbriel_audio_level(), 0.0, 0.0, 1.0); }", "audio-cursor");
+	wlr_scene_output_set_cursor_effect(outputs[1], reader, NULL, 2);
+	wlr_scene_output_set_effect_pointer(outputs[1], 12, 12, false);
+	ok &= check(!wlr_scene_output_audio_active(outputs[1]), "a hidden pointer does not");
+	wlr_scene_output_set_effect_pointer(outputs[1], 12, 12, true);
+	ok &= check(wlr_scene_output_audio_active(outputs[1]), "a shown pointer does");
+	wlr_scene_output_set_cursor_effect(outputs[1], NULL, NULL, 0);
+	wlr_scene_node_set_position(&live->node, 0, 0);
+	wlr_output_state_set_enabled(&power, false);
+	ok &= check(wlr_output_commit_state(second, &power), "second output disables");
+	wlr_output_state_finish(&power);
+	ok &= check(!wlr_scene_output_audio_active(outputs[1]), "a disabled output does not");
+	fx_effect_shader_unref(reader);
+	fx_effect_shader_unref(shader);
+	wlr_scene_node_destroy(&scene->tree.node);
+	wlr_output_destroy(second);
+	return ok;
+}
+
 // A screen program shades the whole output after the scene and a cursor program
 // the square around the pointer after it. A hidden pointer drops the cursor
 // effect, captures exclude both, motion damages only the two squares, and a
@@ -2300,6 +2391,7 @@ int main(int argc, char *argv[]) {
 		ok = test_in_place_shape(&fixture);
 	} else if (strcmp(argv[1], "output-effects") == 0) {
 		ok = test_output_effects(&fixture);
+		ok &= test_audio_inputs(&fixture);
 	} else {
 		fprintf(stderr, "unknown case: %s\n", argv[1]);
 		ok = false;

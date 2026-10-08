@@ -7,6 +7,7 @@
 #include "output/hdr_transition.h"
 #include "scene/effect_selection.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -76,6 +77,7 @@ namespace umbriel {
     void markDirty(Dirty what);
     // Asks for a frame on behalf of persistent effects.
     void scheduleEffectFrame();
+    void scheduleAudioFrame();
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
@@ -160,6 +162,7 @@ namespace umbriel {
     static void notifySurfaceScaleIter(wlr_surface* surface, int sx, int sy, void* data);
 
   private:
+    [[nodiscard]] bool audioPending() const;
     // Flushed at the top of handleFrame, in Dirty declaration order: layer arrange defines the usable area, which the
     // layout depends on, which the chrome over it depends on.
     void flushDirty();
@@ -240,6 +243,7 @@ namespace umbriel {
     bool m_effectFrameDue = false;
     bool m_effectFrameArmed = false;
     EffectSlot m_screenEffectSlot;
+    std::array<float, 2> m_effectAudio{}; // level and availability latched at the last effect frame
     uint64_t m_effectFrames = 0;
     float m_effectSeconds = 0.0F;
     bool m_outputEffectsTimed = false; // a visible screen or cursor instance here reads umbriel_time

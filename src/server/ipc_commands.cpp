@@ -22,6 +22,25 @@
 
 namespace umbriel {
 
+  std::optional<float> IpcCommands::parseAudioLevel(const nlohmann::json& request) {
+    if (!request.is_object()
+        || request.size() != 3
+        || !request.contains("cmd")
+        || request["cmd"] != "effect-audio"
+        || !request.contains("version")
+        || !request["version"].is_number_integer()
+        || request["version"] != 1
+        || !request.contains("level")
+        || !request["level"].is_number()) {
+      return std::nullopt;
+    }
+    const double level = request["level"].get<double>();
+    if (!(level >= 0.0 && level <= 1.0)) {
+      return std::nullopt;
+    }
+    return static_cast<float>(level);
+  }
+
   namespace {
     const char* layerName(uint32_t layer) {
       switch (layer) {

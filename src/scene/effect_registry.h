@@ -4,6 +4,7 @@
 #include "core/animation.h"
 #include "scene/effect_ledger.h"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -70,6 +71,8 @@ namespace umbriel {
     [[nodiscard]] bool cursorEffectActive() const { return m_cursorActive; }
     [[nodiscard]] EffectLedger& ledger() { return m_ledger; }
     void setSuspended(bool suspended);
+    void setAudio(std::array<float, 2> audio);
+    [[nodiscard]] const std::array<float, 2>& audio() const { return m_audio; }
     // Records an instance; schedules its output's effect frame when that output gains its first eligible instance.
     void updateInstance(const void* owner, const EffectInstanceState& state);
     void removeInstance(const void* owner);
@@ -112,6 +115,7 @@ namespace umbriel {
     const wlr_output* m_pointerWlrOutput = nullptr; // under the pointer at the last forward
     bool m_pointerVisible = false;
     EffectLedger m_ledger;
+    std::array<float, 2> m_audio{}; // level and availability
     mutable uint64_t m_clockEpochMsec = 0;
     mutable bool m_clockEpochSet = false;
   };

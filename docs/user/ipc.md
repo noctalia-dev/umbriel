@@ -15,6 +15,33 @@ printf '{"cmd":"workspaces"}\n' | socat -t 5 STDIO "$UMBRIEL_SOCKET"
 
 Replies use `{"ok": ...}` or `{"err": "..."}`.
 
+## Audio input
+
+An external analyser can supply one shared level to [effect shaders](effects.md#audio-input).
+Keep a dedicated connection open and send complete measurements:
+
+```json
+{"cmd":"effect-audio","version":1,"level":0.65}
+```
+
+`version` must be integer `1`; `level` must be a finite number from 0 to 1.
+No other fields are accepted. Each request, including its newline, is limited
+to 256 bytes. The first accepted measurement claims the feed; another producer
+receives an error while that connection owns it. Audio connections accept only
+`effect-audio` requests.
+
+Wait for `{"ok":true}` before sending another measurement. Send at most 60 per
+second and replace unsent measurements with the latest value. An acknowledgment
+means accepted, not displayed. Keep sending fresh measurements during silence;
+zero means silent and available. Gain, smoothing, and source selection belong
+to the analyser. Umbriel does not start it or capture audio.
+
+Disconnect, malformed or oversized input, or 250 ms without a measurement closes
+the feed and clears the shader input. Lock and inactive sessions also disconnect
+the producer and reject audio until active and unlocked. Reconnect with a fresh
+measurement to resume. Use a dedicated socket client; `umbriel msg` does not
+provide this streaming interface.
+
 ## Queries
 
 | Request | CLI |
