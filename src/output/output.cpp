@@ -204,7 +204,7 @@ namespace umbriel {
     return externalLocks;
   }
 
-  bool Output::effectCaptureActive(int captureLocks) const {
+  bool Output::effectCapturePending(int captureLocks) const {
     // Keyed on configuration, not instances: a close snapshot keeps its window slots after its instances leave.
     return captureLocks > 0 && !config().effects.inCapture && m_server->effects().inPlaceReferenced();
   }
@@ -1452,7 +1452,7 @@ namespace umbriel {
       const int captureLocks = captureRenderLocks(externalLocks);
       wlr_scene_output_state_options sceneOptions{};
       sceneOptions.capture_sdr = hdrActive() && captureLocks > 0;
-      sceneOptions.effect_capture_active = effectCaptureActive(captureLocks);
+      sceneOptions.effect_capture_active = effectCapturePending(captureLocks);
       sceneOptions.effect_capture_pending =
           sceneOptions.effect_capture_active && m_server->needsEffectCaptureFor(m_output, captureLocks);
       m_effectCaptureBuilt = sceneOptions.effect_capture_active;
@@ -1543,7 +1543,7 @@ namespace umbriel {
     }
 
     // Screencopy drops its lock inside the commit; image-copy sessions ask for the release frame when they end.
-    if (m_effectCaptureBuilt && !effectCaptureActive(captureRenderLocks(externalRenderLocks()))) {
+    if (m_effectCaptureBuilt && !effectCapturePending(captureRenderLocks(externalRenderLocks()))) {
       scheduleEffectCaptureRelease();
     }
 
