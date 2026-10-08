@@ -287,7 +287,13 @@ Capture locks are the external attach-render locks minus the
 animation lock and minus export-dmabuf frames on that output, so
 an export-dmabuf client reads the displayed frame.
 
-With a capture pending and an in-place slot or output effect visible on the
+The helper describes an active capture session, not necessarily a pending frame
+request. Normal output rendering uses `Server::needsEffectCaptureFor` to inspect
+image-copy requests. Idle sessions are discounted once per distinct source;
+unknown capture locks retain conservative composition. Active sessions retain
+capture storage between requests, but idle frames invalidate the saved pixels.
+
+With a frame request pending and an in-place slot or output effect visible on the
 output, `wlr_scene_output_build_state` composes twice (`wlr_scene.c`). The
 unfiltered composition skips in-place slots, output
 effects, and light emission, runs capture composites (the border effect and
