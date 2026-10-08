@@ -1,7 +1,8 @@
 # Workspace reveal validation
 
-The implementation is ready for draft review, with release-performance acceptance
-still open. Normal and Tracy builds passed. Five capture-demand unit cases, four
+The implementation is ready for review. CI formatting, lint, and glibc/musl
+builds and tests passed on `eb72de7c`. Normal and Tracy builds passed.
+Five capture-demand unit cases, four
 renderer capture cases and four reveal integration checks passed. Sparse/shared
 capture pixel checks passed once and in four concurrent stress repetitions.
 
@@ -41,6 +42,5 @@ zone tails remained higher. The diagnostic instrumentation is not retained.
 
 An agreed compositor workload budget, physical presentation, NVIDIA coverage and
 a real recorder with a buffer ring are not established. The refresh interval is
-not a compositor-work budget. Existing Tracy format warnings remain; project-wide
-lint/test acceptance is not claimed. The bounded comparison supports retaining the
-optimization for draft review, not unconditional release acceptance.
+not a compositor-work budget. These limits describe the scope of the performance
+measurements; the PR quality checks and native manual validation are complete.
