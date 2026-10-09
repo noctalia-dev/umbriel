@@ -1173,6 +1173,39 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
+UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
+  const TempConfigTree tree;
+  tree.write("wipe.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  const std::string preset = "[effects.preset.wipe]\nkind = \"animation\"\nshader = \"wipe.glsl\"\n";
+  tree.write("config.toml", preset + "[animation.workspaces]\nstyle = \"reveal\"\neffect = \"wipe\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().animation.workspaces.style, "reveal");
+  CHECK(!containsDiagnostic(store, "animation.workspaces"));
+
+  for (const std::string& config : std::array<std::string, 4>{
+           std::string("[animation.workspaces]\nstyle = \"reveal\"\n"),
+           "[animation.workspaces]\nstyle = \"reveal\"\neffect = \"missing\"\n",
+           "[effects.preset.wipe]\nkind = \"border\"\nshader = \"wipe.glsl\"\n"
+           "[animation.workspaces]\nstyle = \"reveal\"\neffect = \"wipe\"\n",
+           "[effects.preset.wipe]\nkind = \"animation\"\n"
+           "[animation.workspaces]\nstyle = \"reveal\"\neffect = \"wipe\"\n",
+       }) {
+    tree.write("config.toml", config);
+    static_cast<void>(store.reload());
+    CHECK(containsDiagnostic(store, "reveal requires an animation preset with a shader"));
+    CHECK_EQ(store.config().animation.workspaces.style, "slide");
+  }
+  tree.write("config.toml", "[animation.workspaces]\nstyle = \"invalid\"\n");
+  static_cast<void>(store.reload());
+  CHECK(containsDiagnostic(store, "animation.workspaces.style"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  tree.write("config.toml", "[animation.workspaces]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().animation.workspaces.style, "slide");
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

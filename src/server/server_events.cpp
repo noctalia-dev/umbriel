@@ -903,6 +903,11 @@ namespace umbriel {
     wl_list_remove(&m_rendererLost.link);
     wl_signal_add(&newRenderer->events.lost, &m_rendererLost);
 
+    for (const auto& output : m_outputs) {
+      if (auto* group = output->workspaceGroup()) {
+        group->cancelReveal();
+      }
+    }
     m_renderer = newRenderer;
     m_allocator = newAllocator;
     effectRegistry().prepare(m_renderer);

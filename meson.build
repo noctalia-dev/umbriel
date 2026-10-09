@@ -889,7 +889,7 @@ install_data(
 # Bundled effect presets: each directory holds the preset's shader and an
 # effect.toml that defines it without selecting it. Users include the TOML and
 # select the name.
-foreach effect : ['animation/reveal', 'animation/squash', 'border/pulse', 'border/audio', 'window/scanlines', 'screen/vignette', 'cursor/glow', 'cursor/trail', 'cursor/trail-path']
+foreach effect : ['animation/reveal', 'animation/squash', 'animation/workspace_wipe', 'border/pulse', 'border/audio', 'window/scanlines', 'screen/vignette', 'cursor/glow', 'cursor/trail', 'cursor/trail-path']
   install_data(
     'examples/effects' / effect / 'shader.glsl',
     'examples/effects' / effect / 'effect.toml',

@@ -26,6 +26,7 @@ enabled = true
 curve = "spring:1,900"
 
 [animation.workspaces]
+style = "slide"
 enabled = true
 curve = "spring:1,800"
 
@@ -74,7 +75,7 @@ effect on that event.
 | `[animation.windows_in]` | `style`, `scale` | Window opening |
 | `[animation.windows_out]` | `style`, `scale` | Window closing |
 | `[animation.windows_move]` | none | Move, resize, reflow, maximize, and restore |
-| `[animation.workspaces]` | none | Workspace switching |
+| `[animation.workspaces]` | `style = "slide"` (`"slide"` or `"reveal"`) | Workspace switching |
 | `[animation.overview]` | `workspace_curve` | Overview opening, closing, and filmstrip movement |
 | `[animation.scratchpad]` | `dim`, `blur`, `scale`, `maximize`, `fullscreen` | Scratchpad windows and backdrop |
 | `[animation.border]` | none | Focus-border color |
@@ -200,3 +201,31 @@ settles continues its motion. Under the default `popin` style, or under
 `zoom`, the closing snapshot's clip grows by the deformation margin, so a
 client-side decoration extending past the window's geometry can remain
 visible within that margin while the snapshot fades.
+
+## Workspace reveal
+
+`animation.workspaces.style` accepts `"slide"` (the default) or `"reveal"`.
+Reveal keeps both workspaces at their resting positions while an animation shader
+reveals the incoming workspace. Application content stays live, including during
+workspace swipes. Native navigation still controls focus, direction and settling.
+
+Include the bundled preset alongside your existing includes, then select it:
+
+```toml
+[include]
+files = ["/usr/share/umbriel/effects/animation/workspace_wipe/effect.toml"]
+
+[animation.workspaces]
+style = "reveal"
+effect = "workspace_wipe"
+enabled = true
+duration_ms = 300
+curve = "easeout"
+```
+
+Use your installation prefix in the include path. Reveal requires an animation
+preset with a shader; a missing or invalid selection produces a configuration
+diagnostic and uses slide. Shader compilation failures are reported by the effect
+registry. If reveal composition fails, navigation resumes native slide at the
+current progress. Disabling workspace animation ends the transition. `effects.in_capture` continues to control persistent
+window/screen effects in captures; the workspace transition itself remains visible.

@@ -2318,6 +2318,8 @@ static bool test_output_effects(struct fixture *fixture) {
 	return ok;
 }
 
+#include "workspace_reveal.h"
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -2330,7 +2332,9 @@ int main(int argc, char *argv[]) {
 		return 77;
 	}
 	bool ok;
-	if (strcmp(argv[1], "kinds") == 0) {
+	if (strcmp(argv[1], "workspace-reveal") == 0) {
+		ok = test_workspace_reveal(&fixture);
+	} else if (strcmp(argv[1], "kinds") == 0) {
 		ok = test_kinds(&fixture);
 	} else if (strcmp(argv[1], "reads") == 0) {
 		ok = test_reads(&fixture);

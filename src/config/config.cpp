@@ -106,6 +106,17 @@ namespace umbriel {
         registry::readFields(root, configFields(), loaded, context);
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);
+        auto& workspaces = loaded.animation.workspaces;
+        if (workspaces.style == "reveal") {
+          const auto* preset = findEffectPreset(loaded.effects, workspaces.effect);
+          if (preset == nullptr || preset->inert()) {
+            warnAt(
+                result.merged.at_path("animation.workspaces.style").node()->source(),
+                "ignoring animation.workspaces.style (reveal requires an animation preset with a shader)"
+            );
+            workspaces.style = "slide";
+          }
+        }
       }
 
       // Reject config if any error-level diagnostics were emitted.

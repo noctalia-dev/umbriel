@@ -15,6 +15,13 @@ namespace umbriel {
   // for the process lifetime. Shared by every transition source, including drag physics.
   [[nodiscard]] uint64_t nextAnimationTransitionId();
 
+  struct AnimationTransition {
+    uint64_t id;
+    std::array<float, 4> seed;
+  };
+  // Identity and random seed for native transitions, including directly controlled gestures.
+  [[nodiscard]] AnimationTransition beginAnimationTransition();
+
   enum class Easing : uint8_t {
     Linear,
     EaseInSine,

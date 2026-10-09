@@ -74,3 +74,32 @@ await_lines() {
   echo "timed out waiting for $expected '$pattern' in $file: $(tr '\n' '|' < "$file")"
   return 1
 }
+
+# Shared fixture for live workspace reveal checks.
+workspace_reveal_config() {
+  cp "$UMBRIEL_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$UMBRIEL_RUNTIME_DIR/wipe.glsl"
+  cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+[animation]
+enabled = true
+[animation.windows_in]
+enabled = false
+[animation.windows_out]
+enabled = false
+[animation.windows_move]
+enabled = false
+[animation.workspaces]
+style = "reveal"
+effect = "wipe"
+duration_ms = 1000
+curve = "linear"
+[effects.preset.wipe]
+kind = "animation"
+shader = "wipe.glsl"
+[appearance]
+border_width = 0
+outer_border_width = 0
+corner_radius = 0
+[appearance.shadow]
+enabled = false
+CONFIG
+}

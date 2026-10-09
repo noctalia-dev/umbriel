@@ -1023,6 +1023,9 @@ struct wlr_scene_output_state_options {
 	 * frame for it.
 	 */
 	bool effect_capture_pending;
+
+	// Failed animation capture/composition must reject the whole output state.
+	bool require_animation_success;
 };
 
 /**

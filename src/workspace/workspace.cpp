@@ -29,6 +29,10 @@
 #include "wlr.h"
 // clang-format on
 
+extern "C" {
+#include <umbrielfx/render/effect.h>
+}
+
 namespace umbriel {
 
   namespace {
@@ -2674,7 +2678,107 @@ namespace umbriel {
     return nullptr;
   }
 
+  void WorkspaceGroup::beginReveal() {
+    if (config().animation.workspaces.style != "reveal") {
+      return;
+    }
+    auto& registry = effectRegistry();
+    if (auto* shader = registry.lifecycleEffect(AnimationEvent::Workspaces)) {
+      m_slide.reveal = fx_effect_shader_ref(shader);
+      m_slide.transition = beginAnimationTransition();
+      if (const auto* preset = registry.animationPreset(AnimationEvent::Workspaces)) {
+        m_slide.revealPreset = *preset;
+      }
+    }
+  }
+
+  void WorkspaceGroup::refreshReveal() {
+    if (m_slide.reveal == nullptr) {
+      return;
+    }
+    const auto& animation = config().animation;
+    if (!animation.enabled || !animation.workspaces.enabled || animation.workspaces.style != "reveal") {
+      slideFinish();
+      return;
+    }
+    wlr_box output{};
+    wlr_output_layout_get_box(m_server->outputLayout(), m_output->wlr(), &output);
+    if (output.width <= 0 || output.height <= 0) {
+      return;
+    }
+    const double progress = m_slide.progress;
+    Workspace* incoming = progress < 0 ? m_slide.previous : m_slide.next;
+    if (progress == 0 && incoming == nullptr) {
+      incoming = m_slide.previous;
+    }
+    const float axis = incoming == m_slide.previous ? -1.0F : 1.0F;
+    for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
+      if (workspace == nullptr) {
+        continue;
+      }
+      const bool participating = workspace == m_slide.base || workspace == incoming;
+      for (auto* tree : {workspace->tileShadowLayer()->node.parent, workspace->fullscreenTree()}) {
+        if (!participating) {
+          wlr_scene_node_set_animation(&tree->node, FX_SLOT_WORKSPACES, nullptr, nullptr);
+          continue;
+        }
+        fx_animation_parameters parameters{};
+        parameters.progress = static_cast<float>(std::clamp(std::abs(progress), 0.0, 1.0));
+        parameters.linear_progress = parameters.progress;
+        parameters.direction = workspace == m_slide.base ? -1.0F : 1.0F;
+        parameters.transition_id = m_slide.transition.id;
+        std::ranges::copy(m_slide.transition.seed, parameters.random_seed);
+        if (m_slide.revealPreset) {
+          auto& registry = effectRegistry();
+          registry.fillTimeUniforms(parameters, registry.clockSeconds(), *m_slide.revealPreset, m_slide.reveal);
+        }
+        wlr_box bounds{};
+        wlr_scene_node_effect_bounds(&tree->node, &bounds);
+        int x = 0;
+        int y = 0;
+        wlr_scene_node_coords(&tree->node, &x, &y);
+        auto* rect = fx_parameters_add_uniform(&parameters, "umbriel_workspace_rect", FX_UNIFORM_VEC4, 1);
+        rect->floats[0] = static_cast<float>(bounds.x + x - output.x) / output.width;
+        rect->floats[1] = static_cast<float>(bounds.y + y - output.y) / output.height;
+        rect->floats[2] = static_cast<float>(bounds.width) / output.width;
+        rect->floats[3] = static_cast<float>(bounds.height) / output.height;
+        auto* direction = fx_parameters_add_uniform(&parameters, "umbriel_workspace_axis", FX_UNIFORM_VEC2, 1);
+        direction->floats[0] = m_workspaceAxis == WorkspaceAxis::Horizontal ? axis : 0.0F;
+        direction->floats[1] = m_workspaceAxis == WorkspaceAxis::Vertical ? axis : 0.0F;
+        wlr_scene_node_set_animation(&tree->node, FX_SLOT_WORKSPACES, m_slide.reveal, &parameters);
+        if (!wlr_scene_node_set_animation_isolation(&tree->node, FX_SLOT_WORKSPACES, workspace)) {
+          abandonReveal();
+          return;
+        }
+      }
+    }
+  }
+
+  void WorkspaceGroup::cancelReveal() {
+    if (m_slide.reveal != nullptr) {
+      slideFinish();
+    }
+  }
+
+  void WorkspaceGroup::abandonReveal() {
+    if (m_slide.reveal != nullptr) {
+      for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
+        if (workspace != nullptr) {
+          wlr_scene_node_set_animation(
+              &workspace->tileShadowLayer()->node.parent->node, FX_SLOT_WORKSPACES, nullptr, nullptr
+          );
+          wlr_scene_node_set_animation(&workspace->fullscreenTree()->node, FX_SLOT_WORKSPACES, nullptr, nullptr);
+        }
+      }
+      fx_effect_shader_unref(m_slide.reveal);
+      m_slide.reveal = nullptr;
+      m_slide.revealPreset.reset();
+      slideApply(m_slide.progress);
+    }
+  }
+
   void WorkspaceGroup::slideFinish() {
+    abandonReveal();
     m_slideAnim.snap(0.0);
     if (m_slide.base != nullptr) {
       m_slide.base->endSwitchTransition();
@@ -2710,6 +2814,7 @@ namespace umbriel {
     const double start = carry ? m_slideAnim.current() - m_slideAnim.target() : 0.0;
     slideFinish();
     m_slide.base = m_active;
+    beginReveal();
     m_slide.extent = extent;
     m_slide.progress = start;
     const size_t idx = m_active->index();
@@ -2737,6 +2842,11 @@ namespace umbriel {
     // on the group's axis; the other coordinate stays at rest.
     const bool horizontal = m_workspaceAxis == WorkspaceAxis::Horizontal;
     const auto offset = [&](Workspace* workspace, double displacement) {
+      const bool incoming = workspace == (progress < 0 ? m_slide.previous : m_slide.next)
+          || (progress == 0 && m_slide.next == nullptr && workspace == m_slide.previous);
+      if (m_slide.reveal != nullptr && (workspace == m_slide.base || incoming)) {
+        displacement = 0.0;
+      }
       workspace->setSlideOffset(horizontal ? displacement : 0.0, horizontal ? 0.0 : displacement);
     };
     offset(m_slide.base, -progress * extent);
@@ -2801,7 +2911,11 @@ namespace umbriel {
       // now rather than letting it creep at amplitudes the pixel grid rounds away.
       static_cast<void>(m_slideAnim.finishSpringTail(m_slide.extent));
     }
-    bindAnimationEffect(&m_output->viewRoot()->node, AnimationEvent::Workspaces, m_slideAnim);
+    if (config().animation.workspaces.style == "slide") {
+      bindAnimationEffect(&m_output->viewRoot()->node, AnimationEvent::Workspaces, m_slideAnim);
+    } else {
+      wlr_scene_node_set_animation(&m_output->viewRoot()->node, FX_SLOT_WORKSPACES, nullptr, nullptr);
+    }
     bool active = false;
     if (ticked) {
       slideApply(m_slideAnim.current());
@@ -2869,6 +2983,7 @@ namespace umbriel {
     }
     const int sign = workspace->index() > m_active->index() ? 1 : -1;
     m_slide.base = m_active;
+    beginReveal();
     m_slide.extent = extent;
     m_slide.progress = 0;
     if (sign > 0) {

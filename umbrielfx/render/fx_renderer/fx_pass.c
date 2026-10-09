@@ -103,6 +103,7 @@ static struct fx_framebuffer* ensure_offscreen_buffer_size(
 ) {
   struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
   if (fbos == NULL) {
+    pass->animation_failed = true;
     return NULL;
   }
   const uint32_t format = offscreen_buffer_format(pass, alpha);
@@ -110,6 +111,7 @@ static struct fx_framebuffer* ensure_offscreen_buffer_size(
   fx_framebuffer_get_or_create_custom(pass->buffer->renderer, fbos->allocator, width, height, format, slot, &failed);
   fx_framebuffer_bind(pass->buffer);
   if (failed) {
+    pass->animation_failed = true;
     wlr_log(WLR_ERROR, "Failed to create effect framebuffer");
     return NULL;
   }
@@ -436,6 +438,9 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
 
   TRACY_BOTH_ZONES_START(pass->buffer->renderer);
   push_fx_debug(renderer);
+  if (pass->require_animation_success && (pass->animation_failed || glGetError() != GL_NO_ERROR)) {
+    goto out;
+  }
   if (pass->output_buffers != NULL && pass->needs_full_damage) {
     const pixman_box32_t output_box = {
         .x1 = 0,
@@ -684,7 +689,9 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans, const stru
 static bool push_capture(struct fx_gles_render_pass* pass, const struct wlr_box* box, bool group) {
   if (pass->fx_offscreen_buffers == NULL
       || pass->animation_depth == FX_ANIMATION_DEPTH
-      || (group && pass->group_depth != 0)) {
+      || (group && pass->group_depth != 0)
+      || pass->buffer->renderer->fail_animation_capture_for_test) {
+    pass->animation_failed = true;
     return false;
   }
   struct fx_target_buffers* buffers = group ? &pass->fx_offscreen_buffers->group : target_buffers(pass);
@@ -700,6 +707,7 @@ static bool push_capture(struct fx_gles_render_pass* pass, const struct wlr_box*
       wlr_texture_destroy(texture);
     }
     fx_framebuffer_bind(pass->buffer);
+    pass->animation_failed = true;
     wlr_log(WLR_ERROR, "Cannot sample animation target; using normal presentation");
     return false;
   }
@@ -730,6 +738,15 @@ bool fx_render_pass_begin_capture(struct fx_gles_render_pass* pass, const struct
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass* pass) {
   const struct wlr_box box = {.width = pass->buffer->buffer->width, .height = pass->buffer->buffer->height};
   return push_capture(pass, &box, false);
+}
+
+bool fx_render_pass_begin_isolation(struct fx_gles_render_pass* pass) {
+  if (pass->isolation_depth != 0 || !fx_render_pass_begin_animation(pass)) {
+    pass->animation_failed = true;
+    return false;
+  }
+  pass->isolation_depth = pass->animation_depth;
+  return true;
 }
 
 // Buffer pixels per logical pixel. Summing both sides keeps the ratio when a
@@ -904,6 +921,13 @@ static struct wlr_texture* pop_animation_capture(struct fx_gles_render_pass* pas
   matrix_projection(pass->projection_matrix, width, height, WL_OUTPUT_TRANSFORM_FLIPPED_180);
   glViewport(0, 0, width, height);
   return pass->animation_textures[pass->animation_depth];
+}
+
+void fx_render_pass_cancel_isolation(struct fx_gles_render_pass* pass) {
+  assert(pass->isolation_depth == pass->animation_depth);
+  wlr_texture_destroy(pop_animation_capture(pass));
+  pass->isolation_depth = 0;
+  pass->isolation_content = false;
 }
 
 void fx_render_pass_end_capture(
@@ -1271,6 +1295,7 @@ static void effect_composite(
         !failed && result != NULL ? fx_texture_from_buffer(&renderer->wlr_renderer, result->buffer) : NULL;
     if (result_texture != NULL && fx_get_texture(result_texture)->target == GL_TEXTURE_2D) {
       if (!animation_history_queue_update(pass, output_history, write)) {
+        pass->animation_failed = true;
         wlr_texture_destroy(result_texture);
         goto fallback;
       }
@@ -1330,6 +1355,7 @@ static void effect_composite(
     if (result_texture != NULL) {
       wlr_texture_destroy(result_texture);
     }
+    pass->animation_failed = true;
     if (!failed) {
       output_history->allocation_failed = true;
     }
@@ -1355,6 +1381,9 @@ void fx_render_pass_end_effect(struct fx_gles_render_pass* pass, const struct fx
   struct fx_effect_composite drawn = *composite;
   expand_animation_boxes(&drawn.box, &drawn.logical_box, composite->expand);
   struct wlr_texture* texture = pop_animation_capture(pass);
+  if (pass->isolation_content && pass->animation_depth == pass->isolation_depth) {
+    fx_render_pass_cancel_isolation(pass);
+  }
   effect_composite(pass, &drawn, texture, &drawn.box);
   wlr_texture_destroy(texture);
 }
@@ -1389,6 +1418,7 @@ void fx_render_pass_effect_in_place(struct fx_gles_render_pass* pass, const stru
     if (texture != NULL) {
       wlr_texture_destroy(texture);
     }
+    pass->animation_failed = true;
     fx_framebuffer_bind(pass->buffer);
     struct fx_renderer* renderer = pass->buffer->renderer;
     if (!renderer->in_place_copy_failure_logged) {
@@ -2009,7 +2039,7 @@ static struct fx_framebuffer* animation_backdrop(struct fx_gles_render_pass* pas
   glDisable(GL_SCISSOR_TEST);
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
-  for (unsigned i = 0; i <= pass->animation_depth; i++) {
+  for (unsigned i = pass->isolation_depth; i <= pass->animation_depth; i++) {
     struct fx_framebuffer* layer = i == pass->animation_depth ? saved : pass->animation_parents[i];
     struct wlr_box layer_box = {.width = layer->buffer->width, .height = layer->buffer->height};
     for (unsigned j = i; j < pass->animation_depth; j++) {
@@ -2018,6 +2048,7 @@ static struct fx_framebuffer* animation_backdrop(struct fx_gles_render_pass* pas
     }
     struct wlr_texture* texture = fx_texture_from_buffer(&target->renderer->wlr_renderer, layer->buffer);
     if (texture == NULL) {
+      pass->animation_failed = true;
       continue;
     }
     fx_framebuffer_bind(target);
@@ -2770,9 +2801,14 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   }
   TRACY_ZONE_TEXT_f("Optimized Blur Successfully Used: %d", buffer && use_optimized);
   if (!buffer) {
+    pass->animation_failed = true;
     goto finish;
   }
   struct wlr_texture* wlr_texture = fx_texture_from_buffer(&renderer->wlr_renderer, buffer->buffer);
+  if (wlr_texture == NULL) {
+    pass->animation_failed = true;
+    goto finish;
+  }
   struct fx_texture* blur_texture = fx_get_texture(wlr_texture);
 
   // Get a stencil of the window ignoring transparent regions
@@ -2955,6 +2991,7 @@ bool fx_render_pass_read_to_buffer(
   copied = true;
 
 done:
+  pass->animation_failed |= !copied;
   TRACY_BOTH_ZONES_END;
 
   pixman_region32_fini(&region);
@@ -2999,6 +3036,10 @@ bool fx_render_pass_save_effect_capture(struct fx_gles_render_pass* pass) {
 
 void fx_renderer_fail_target_copies_for_test(struct wlr_renderer* renderer, bool fail) {
   fx_get_renderer(renderer)->fail_target_copies_for_test = fail;
+}
+
+void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, bool fail) {
+  fx_get_renderer(renderer)->fail_animation_capture_for_test = fail;
 }
 
 void fx_renderer_fail_effect_capture_for_test(struct wlr_renderer* renderer, bool fail) {

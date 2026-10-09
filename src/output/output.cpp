@@ -1514,6 +1514,9 @@ namespace umbriel {
     // Surface commits reset scene-buffer opacity to the protocol alpha. Repair
     // pending rule opacity after every commit listener and before composition.
     m_server->flushPendingViewOpacities();
+    if (m_workspaceGroup != nullptr) {
+      m_workspaceGroup->refreshReveal();
+    }
 
     // A direct-scanned fullscreen client may stop submitting as soon as it loses focus. On VRR outputs that can leave
     // the first workspace-switch frame waiting on the old client, so the compositor never gets a vblank to advance the
@@ -1634,7 +1637,13 @@ namespace umbriel {
       sceneOptions.capture_sdr = hdrActive() && captureLocks > 0;
       sceneOptions.effect_capture_pending = effectCapturePending(captureLocks);
       m_effectCaptureBuilt = sceneOptions.effect_capture_pending;
-      if (wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions)) {
+      sceneOptions.require_animation_success = m_workspaceGroup != nullptr && m_workspaceGroup->revealActive();
+      const bool built = wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions);
+      if (!built && sceneOptions.require_animation_success) {
+        // Reject the incomplete frame and resume native slide at the same progress.
+        m_workspaceGroup->abandonReveal();
+      }
+      if (built) {
         // Hardware gamma only (DRM). Nested Wayland has no gamma LUT; leave that alone.
         // Apply only when dirty: uploading the LUT every frame stalls the compositor.
         bool gammaPending = false;

@@ -740,6 +740,7 @@ namespace umbriel {
       } windowsMove;
 
       struct Workspaces {
+        std::string style = "slide";
         std::string effect;
         bool enabled = true;
         int durationMs = 250;

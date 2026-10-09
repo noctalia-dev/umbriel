@@ -19,6 +19,7 @@ struct wlr_ext_workspace_group_handle_v1;
 struct wlr_ext_workspace_handle_v1;
 struct wlr_ext_workspace_manager_v1;
 struct wlr_scene_tree;
+struct fx_effect_shader;
 
 namespace umbriel {
 
@@ -391,6 +392,11 @@ namespace umbriel {
     // per second, and starts the settle from that speed instead of from rest; callers that are not a gesture pass 0.
     void slideSettle(int delta, double velocity = 0);
     void slideFinish();
+    // Refresh output-relative bounds even when progress is held and clients resize.
+    void refreshReveal();
+    [[nodiscard]] bool revealActive() const { return m_slide.reveal != nullptr; }
+    void abandonReveal();
+    void cancelReveal();
     // Advances the workspace slide; returns true while it is still running.
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Workspaces; }
     bool tickAnimations(uint64_t nowMsec) override;
@@ -405,12 +411,17 @@ namespace umbriel {
     void reconcileDynamicNames(const std::vector<ResolvedWorkspace>& resolved);
     void refreshDynamicWorkspaceMetadata();
 
+    void beginReveal();
+
     struct Slide {
       Workspace* base = nullptr;
       Workspace* previous = nullptr;
       Workspace* next = nullptr;
       double extent = 0;
       double progress = 0;
+      fx_effect_shader* reveal = nullptr;
+      std::optional<EffectPreset> revealPreset;
+      AnimationTransition transition{};
     };
 
     Server* m_server = nullptr;
