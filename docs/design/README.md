@@ -27,8 +27,8 @@ boundaries, or regression-sensitive behavior.
 `settle`, `clock-freeze`, `clock-advance`, `clock-resume`, `renderer-recover`,
 `animation-capture-fail`, `swipe-test`, and `effect-frames` exist for
 `tests/harness` and are compiled only with the `test_ipc` option (auto: debug
-builds). The harness also drives hotplug through
-`output-create` and `output-destroy`, which every build ships for
+builds). The harness also drives hotplug through `output-create` and
+`output-destroy`, which every build ships for
 [virtual outputs](../user/outputs.md#virtual-outputs). `settle` replies once no
 animation is running, no workspace has an arrange pending, every mapped window
 has acknowledged and committed its latest configure, and every output has drawn

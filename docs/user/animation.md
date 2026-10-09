@@ -75,7 +75,7 @@ effect on that event.
 | `[animation.windows_in]` | `style`, `scale` | Window opening |
 | `[animation.windows_out]` | `style`, `scale` | Window closing |
 | `[animation.windows_move]` | none | Move, resize, reflow, maximize, and restore |
-| `[animation.workspaces]` | `style = "slide"` (`"slide"` or `"reveal"`) | Workspace switching |
+| `[animation.workspaces]` | `style` | Workspace switching |
 | `[animation.overview]` | `workspace_curve` | Overview opening, closing, and filmstrip movement |
 | `[animation.scratchpad]` | `dim`, `blur`, `scale`, `maximize`, `fullscreen` | Scratchpad windows and backdrop |
 | `[animation.border]` | none | Focus-border color |
@@ -84,9 +84,10 @@ effect on that event.
 | `[animation.windows_drag]` | `physics` (default `false`), its only key | Drag physics |
 
 `windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`.
-`windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `scale` applies to
-`popin`: an opening window grows from it to full size, and a closing window
-shrinks toward it, while both fade.
+`windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts
+`slide` or `reveal` (see [Workspace reveal](#workspace-reveal)). `scale`
+applies to `popin`: an opening window grows from it to full size, and a closing
+window shrinks toward it, while both fade.
 
 `animation.overview.workspace_curve` controls filmstrip movement after wheel,
 keyboard, and touchpad navigation. A released touchpad gesture keeps the speed
@@ -205,9 +206,10 @@ visible within that margin while the snapshot fades.
 ## Workspace reveal
 
 `animation.workspaces.style` accepts `"slide"` (the default) or `"reveal"`.
-Reveal keeps both workspaces at their resting positions while an animation shader
-reveals the incoming workspace. Application content stays live, including during
-workspace swipes. Native navigation still controls focus, direction and settling.
+Reveal keeps both workspaces at their resting positions while an animation
+shader reveals the incoming workspace. Application content stays live,
+including during workspace swipes. Native navigation still controls focus,
+direction and settling.
 
 Include the bundled preset alongside your existing includes, then select it:
 
@@ -225,7 +227,8 @@ curve = "easeout"
 
 Use your installation prefix in the include path. Reveal requires an animation
 preset with a shader; a missing or invalid selection produces a configuration
-diagnostic and uses slide. Shader compilation failures are reported by the effect
-registry. If reveal composition fails, navigation resumes native slide at the
-current progress. Disabling workspace animation ends the transition. `effects.in_capture` continues to control persistent
-window/screen effects in captures; the workspace transition itself remains visible.
+diagnostic and uses slide. Shader compilation failures are reported by the
+effect registry. If reveal composition fails, navigation resumes native slide
+at the current progress. Disabling workspace animation ends the transition.
+`effects.in_capture` continues to control persistent window/screen effects in
+captures; the workspace transition itself remains visible.
