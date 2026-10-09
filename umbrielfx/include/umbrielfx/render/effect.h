@@ -245,6 +245,7 @@ void wlr_scene_output_acknowledge_damage_for_test(
 void fx_renderer_fail_target_copies_for_test(struct wlr_renderer* renderer, bool fail);
 // Exists for tests/effects.c: makes saving an unfiltered effect capture fail.
 void fx_renderer_fail_effect_capture_for_test(struct wlr_renderer* renderer, bool fail);
+// Exists for tests/effects.c and the animation-capture-fail harness IPC: makes every animation capture fail.
 void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, bool fail);
 
 #endif

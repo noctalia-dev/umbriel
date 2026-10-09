@@ -412,6 +412,8 @@ namespace umbriel {
     void refreshDynamicWorkspaceMetadata();
 
     void beginReveal();
+    // The workspace a reveal at `progress` shows coming in; the previous one when progress is held at the base.
+    [[nodiscard]] Workspace* revealIncoming(double progress) const;
 
     struct Slide {
       Workspace* base = nullptr;

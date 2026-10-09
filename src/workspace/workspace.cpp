@@ -2692,6 +2692,11 @@ namespace umbriel {
     }
   }
 
+  Workspace* WorkspaceGroup::revealIncoming(double progress) const {
+    Workspace* incoming = progress < 0 ? m_slide.previous : m_slide.next;
+    return progress == 0 && incoming == nullptr ? m_slide.previous : incoming;
+  }
+
   void WorkspaceGroup::refreshReveal() {
     if (m_slide.reveal == nullptr) {
       return;
@@ -2707,10 +2712,7 @@ namespace umbriel {
       return;
     }
     const double progress = m_slide.progress;
-    Workspace* incoming = progress < 0 ? m_slide.previous : m_slide.next;
-    if (progress == 0 && incoming == nullptr) {
-      incoming = m_slide.previous;
-    }
+    Workspace* incoming = revealIncoming(progress);
     const float axis = incoming == m_slide.previous ? -1.0F : 1.0F;
     for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
       if (workspace == nullptr) {
@@ -2737,14 +2739,16 @@ namespace umbriel {
         int x = 0;
         int y = 0;
         wlr_scene_node_coords(&tree->node, &x, &y);
-        auto* rect = fx_parameters_add_uniform(&parameters, "umbriel_workspace_rect", FX_UNIFORM_VEC4, 1);
-        rect->floats[0] = static_cast<float>(bounds.x + x - output.x) / output.width;
-        rect->floats[1] = static_cast<float>(bounds.y + y - output.y) / output.height;
-        rect->floats[2] = static_cast<float>(bounds.width) / output.width;
-        rect->floats[3] = static_cast<float>(bounds.height) / output.height;
-        auto* direction = fx_parameters_add_uniform(&parameters, "umbriel_workspace_axis", FX_UNIFORM_VEC2, 1);
-        direction->floats[0] = m_workspaceAxis == WorkspaceAxis::Horizontal ? axis : 0.0F;
-        direction->floats[1] = m_workspaceAxis == WorkspaceAxis::Vertical ? axis : 0.0F;
+        if (auto* rect = fx_parameters_add_uniform(&parameters, "umbriel_workspace_rect", FX_UNIFORM_VEC4, 1)) {
+          rect->floats[0] = static_cast<float>(bounds.x + x - output.x) / output.width;
+          rect->floats[1] = static_cast<float>(bounds.y + y - output.y) / output.height;
+          rect->floats[2] = static_cast<float>(bounds.width) / output.width;
+          rect->floats[3] = static_cast<float>(bounds.height) / output.height;
+        }
+        if (auto* direction = fx_parameters_add_uniform(&parameters, "umbriel_workspace_axis", FX_UNIFORM_VEC2, 1)) {
+          direction->floats[0] = m_workspaceAxis == WorkspaceAxis::Horizontal ? axis : 0.0F;
+          direction->floats[1] = m_workspaceAxis == WorkspaceAxis::Vertical ? axis : 0.0F;
+        }
         wlr_scene_node_set_animation(&tree->node, FX_SLOT_WORKSPACES, m_slide.reveal, &parameters);
         if (!wlr_scene_node_set_animation_isolation(&tree->node, FX_SLOT_WORKSPACES, workspace)) {
           abandonReveal();
@@ -2841,10 +2845,9 @@ namespace umbriel {
     // Increasing workspace index moves outgoing content toward negative coordinates
     // on the group's axis; the other coordinate stays at rest.
     const bool horizontal = m_workspaceAxis == WorkspaceAxis::Horizontal;
+    const Workspace* incoming = m_slide.reveal != nullptr ? revealIncoming(progress) : nullptr;
     const auto offset = [&](Workspace* workspace, double displacement) {
-      const bool incoming = workspace == (progress < 0 ? m_slide.previous : m_slide.next)
-          || (progress == 0 && m_slide.next == nullptr && workspace == m_slide.previous);
-      if (m_slide.reveal != nullptr && (workspace == m_slide.base || incoming)) {
+      if (m_slide.reveal != nullptr && (workspace == m_slide.base || workspace == incoming)) {
         displacement = 0.0;
       }
       workspace->setSlideOffset(horizontal ? displacement : 0.0, horizontal ? 0.0 : displacement);

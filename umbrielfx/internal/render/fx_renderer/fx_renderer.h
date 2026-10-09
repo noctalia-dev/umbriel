@@ -260,7 +260,7 @@ struct fx_renderer {
 	// Each effect copy failure is logged once per renderer.
 	bool in_place_copy_failure_logged;
 	bool effect_capture_failure_logged;
-	// Set only through fx_renderer_fail_target_copies_for_test and fx_renderer_fail_effect_capture_for_test.
+	// Set only through the matching fx_renderer_fail_*_for_test functions.
 	bool fail_target_copies_for_test;
 	bool fail_effect_capture_for_test;
 	bool fail_animation_capture_for_test;
