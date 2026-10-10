@@ -206,12 +206,8 @@ struct blur_shader {
 bool link_blur1_program(struct blur_shader* shader);
 bool link_blur2_program(struct blur_shader* shader);
 
-struct blur_effects_shader {
-  GLuint program;
-  GLint proj;
-  GLint tex_proj;
-  GLint tex;
-  GLint pos_attrib;
+struct blur2_effects_shader {
+  struct blur_shader base;
   GLint linear;
   GLfloat noise;
   GLfloat brightness;
@@ -219,6 +215,6 @@ struct blur_effects_shader {
   GLfloat saturation;
 };
 
-bool link_blur_effects_program(struct blur_effects_shader* shader);
+bool link_blur2_with_effects_program(struct blur2_effects_shader* shader);
 
 #endif

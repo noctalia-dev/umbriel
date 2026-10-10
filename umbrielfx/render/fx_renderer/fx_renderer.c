@@ -106,7 +106,7 @@ static inline void free_shaders(struct fx_renderer* renderer) {
   glDeleteProgram(renderer->shaders.box_shadow.program);
   glDeleteProgram(renderer->shaders.blur1.program);
   glDeleteProgram(renderer->shaders.blur2.program);
-  glDeleteProgram(renderer->shaders.blur_effects.program);
+  glDeleteProgram(renderer->shaders.blur2_with_effects.base.program);
   glDeleteProgram(renderer->effect_light_program);
   pop_fx_debug(renderer);
 }
@@ -529,8 +529,8 @@ static bool link_shaders(struct fx_renderer* renderer) {
     wlr_log(WLR_ERROR, "Could not link blur2 shader");
     goto error;
   }
-  if (!link_blur_effects_program(&renderer->shaders.blur_effects)) {
-    wlr_log(WLR_ERROR, "Could not link blur_effects shader");
+  if (!link_blur2_with_effects_program(&renderer->shaders.blur2_with_effects)) {
+    wlr_log(WLR_ERROR, "Could not link blur2_with_effects shader");
     goto error;
   }
 
