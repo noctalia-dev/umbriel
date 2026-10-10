@@ -34,6 +34,7 @@ Direct project dependencies. Transitive dependencies are owned by their providin
 | Graphics | `pixman`, `libdrm`, OpenGL via wlroots |
 | Text | `cairo`, `pangocairo` |
 | Memory allocation | `jemalloc` (optional, glibc) |
+| Audio analysis | `libpipewire-0.3` (optional, for the `umbriel-audio` helper) |
 | Config | `tomlplusplus` |
 | JSON (IPC) | `nlohmann/json` |
 | Xwayland | wlroots' Xwayland server (`Xwayland` spawned on demand), `xcb`, `xcb-icccm`, `xcb-ewmh`, and test-only `xcb-render` |
@@ -349,6 +350,7 @@ src/
   config/     TOML parsing, resolution, reloads, and diagnostics
   core/       animation, logging, process, and resource helpers
   cli/        runtime inspection and command-line entry points
+  audio/      umbriel-audio, a separate PipeWire playback analyser
 umbrielfx/    in-tree scene graph and GLES2 renderer (C, hard fork of SceneFX)
 protocols/    vendored Wayland protocol XML
 data/         session desktop entry

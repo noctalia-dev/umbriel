@@ -331,10 +331,31 @@ starting point for longer tails.
 ### Audio input
 
 Every effect kind can read `umbriel_audio_level()` and
-`umbriel_audio_available()`. An [external analyser](ipc.md#audio-input) supplies
-one shared level from 0 to 1. Availability is 1 while measurements are fresh;
-both values are zero without a feed. Levels represent visual intensity, not
-calibrated loudness. The analyser chooses the audio source and smoothing.
+`umbriel_audio_available()`. Selecting a visible effect that reads these inputs
+automatically starts the bundled `umbriel-audio` helper. It monitors desktop
+playback through PipeWire; no shell integration, source binding, or autostart
+command is needed. It captures what plays on the default output, not a
+microphone. PipeWire and a session manager such as WirePlumber must be running.
+
+Capture stops when no visible effect reads audio, the session locks or becomes
+inactive, or the outputs are powered off. It resumes when needed, and a helper
+that exits while an audio effect is visible is started again after 2 s. The
+helper follows the session manager's default playback routing. Levels use
+channel-averaged RMS through a 6x gain and a square root, clamped to [0,1], with
+a 10 ms attack and 150 ms release, published at 50 Hz. A gap between PipeWire
+buffers keeps the last level; 150 ms without data counts as silence. This is one
+visual intensity, not a spectrum or beat detector.
+
+Nix packages include the helper. Other builds detect `libpipewire-0.3`;
+use `-Daudio_helper=enabled` to require it or `disabled` to omit it. Install
+`umbriel-audio` on the compositor's PATH. A missing helper is reported once in
+the compositor log and is not searched for again until Umbriel restarts, so
+automatic input stays unavailable. `just run` puts its build directory on PATH.
+
+An [external analyser](ipc.md#audio-input) can still supply the shared level.
+It takes precedence over automatic playback; automatic acquisition resumes after
+it disconnects if an audio effect is visible. Availability is 1 while the producer
+sends fresh levels; both values are zero without a feed.
 
 Audio works without `umbriel_time`; `animated` and `speed` only affect time.
 Changed input redraws visible consumers at `max_fps`. Identical input
@@ -343,7 +364,7 @@ and all passes of a composition use that value. Closing copies retain their
 copied input. Existing `in_capture` behavior applies.
 
 Include `border/audio/effect.toml` from the installed effect directory and select
-`border = "audio"` for a simple example. It remains dim without a feed.
+`border = "audio"` for a simple example. With the helper installed, it responds to desktop playback automatically.
 
 ### What a window effect sees
 

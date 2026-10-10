@@ -22,6 +22,7 @@
   libxcb-wm,
   lcms2,
   jemalloc,
+  pipewire,
   tomlplusplus,
   nlohmann_json,
   xwayland,
@@ -64,13 +65,17 @@ stdenv.mkDerivation {
     libxcb-wm
     lcms2
     jemalloc
+    pipewire
     cairo
     pango
   ];
 
   mesonBuildType = "release";
 
-  mesonFlags = [ (lib.mesonEnable "tests" false) ];
+  mesonFlags = [
+    (lib.mesonEnable "tests" false)
+    (lib.mesonEnable "audio_helper" true)
+  ];
 
   postPatch = ''
     substituteInPlace meson.build \
@@ -83,6 +88,7 @@ stdenv.mkDerivation {
         --replace-fail 'Exec=start-umbriel' "Exec=$out/bin/start-umbriel"
     fi
     wrapProgram $out/bin/umbriel \
+      --prefix PATH : "$out/bin" \
       --prefix PATH : ${lib.makeBinPath [ xwayland ]} \
   '';
 

@@ -46,7 +46,7 @@ the installed files to another prefix.
 
 The `tests` feature option defaults to `auto`, which defines unit tests, harness
 clients, and umbrielfx checks only for unsanitized debug builds, so the release
-build above compiles nothing but the compositor and its installed data. Pass
+build above compiles nothing but the compositor, `umbriel-audio` when PipeWire is found, and its installed data. Pass
 `-Dtests=disabled` to state that intent explicitly, or `-Dtests=enabled` to get
 the suite in a release build:
 
@@ -58,6 +58,10 @@ meson test -C build
 
 `jemalloc` is optional and recommended on glibc. The `jemalloc` Meson feature
 defaults to `auto`. It is skipped on non-glibc systems.
+
+`umbriel-audio`, a PipeWire playback analyser, is optional. The `audio_helper`
+Meson feature defaults to `auto` and builds it when `libpipewire-0.3` is found;
+`-Daudio_helper=disabled` omits it.
 
 ## umbrielfx
 
@@ -90,9 +94,11 @@ distribution-provided LTO and archive member pruning.
 - nlohmann-json
 - xcb, xcb-icccm, and xcb-ewmh
 - xcb-render and xcb-xfixes when the `tests` feature is enabled
+- the `pipewire` and `wireplumber` daemons, `pw-cat`, `pw-dump`, `dbus-run-session`, and python3 when the `tests` feature is enabled and `umbriel-audio` is built; the `audio-playback` test is skipped without them
 - EGL, GLES2, and GBM
 - lcms2, optional; without it `umbrielfx` rejects client ICC profiles and keeps only its parametric color transforms
 - jemalloc on glibc, optional
+- PipeWire (`libpipewire-0.3`), optional; without it `umbriel-audio` is not built
 
 The canonical dependency declarations are in [`meson.build`](meson.build).
 Distribution package names vary.
@@ -105,9 +111,14 @@ Distribution package names vary.
 | `xdg-desktop-portal-umbriel`               | Screencast and Screenshot portal interfaces for portal-based screen capture |
 | A usable font stack                        | Internal overlays and configuration diagnostics            |
 | A Wayland-capable graphics and input stack | DRM or nested compositor operation through wlroots         |
+| PipeWire and a session manager such as WirePlumber | Playback capture for the optional `umbriel-audio`   |
 
 `Xwayland` must be discoverable on `PATH`. It may be omitted when a package or
 installation deliberately disables Xwayland in the configuration.
+
+`umbriel-audio` must be discoverable on the compositor's `PATH`: Umbriel starts
+it by name while a visible effect reads audio. A package without PipeWire omits
+it, and audio effects then draw without a feed.
 
 For a native launch with a working systemd user manager, `start-umbriel` runs
 the compositor as `umbriel.service`. Umbriel uses `systemd-run` from that
@@ -126,6 +137,7 @@ the compositor package.
 ```text
 <prefix>/bin/umbriel
 <prefix>/bin/start-umbriel
+<prefix>/bin/umbriel-audio
 <prefix>/share/umbriel/config.toml
 <prefix>/share/wayland-sessions/umbriel.desktop
 <prefix>/lib/systemd/user/umbriel.service
@@ -133,6 +145,8 @@ the compositor package.
 <prefix>/lib/systemd/user/umbriel-shutdown.target
 <prefix>/share/umbriel/effects/<kind>/<name>/{shader.glsl,effect.toml}
 ```
+
+`bin/umbriel-audio` is installed only when the audio helper is built.
 
 `share/umbriel/config.toml` is required. It is installed directly from
 [`examples/config.toml`](examples/config.toml) and serves as the default when

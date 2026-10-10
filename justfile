@@ -80,7 +80,7 @@ _enable-tests m=mode ipc="no":
     fi
 
 build m=mode: (_ensure-configured m)
-    meson compile -C build-{{m}} umbriel
+    meson compile -C build-{{m}} umbriel-binaries
 
 debug: (build "debug")
 
@@ -106,6 +106,7 @@ run m=mode startup="": (build m)
     if [[ -n "${2:-}" ]]; then
         args=(-s "$2")
     fi
+    export PATH="$PWD/build-{{m}}:$PATH"
     exec ./build-{{m}}/umbriel "${args[@]}"
 
 test m=mode: (_ensure-configured m) (_enable-tests m)
