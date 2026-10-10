@@ -363,6 +363,8 @@ namespace umbriel {
     // Same coalescing for the workspace list: layout mode, activation, names and membership all land in one payload,
     // so a switch that renames, reindexes and reactivates emits once.
     void scheduleIpcWorkspacesEvent();
+    // Same coalescing for the layer-shell surface list.
+    void scheduleIpcLayersEvent();
 
     // Focus lives in FocusManager; these forward so call sites that already
     // hold a Server do not need a second reference.
@@ -521,6 +523,8 @@ namespace umbriel {
     static int onTerminateSignal(int signal, void* data);
     static void onIpcWindowsIdle(void* data);
     static void onIpcWorkspacesIdle(void* data);
+    static void onIpcLayersIdle(void* data);
+    static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
 
     void spawnCommand(const char* command, const char* description, bool withActivationToken, SpawnClass spawnClass);
@@ -840,6 +844,7 @@ namespace umbriel {
     // removes itself when it runs, so a non-null pointer means "already queued".
     wl_event_source* m_ipcWindowsIdle = nullptr;
     wl_event_source* m_ipcWorkspacesIdle = nullptr;
+    wl_event_source* m_ipcLayersIdle = nullptr;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     // Coalesces renderer-loss notifications until their signal dispatch and
@@ -888,6 +893,8 @@ namespace umbriel {
     wl_listener m_toplevelCaptureRequest{};
     wl_listener m_rendererLost{};
     wl_listener m_padKeyboardFocusChange{};
+    // The IPC layer listing reports which layer surface holds the keyboard.
+    wl_listener m_layerKeyboardFocusChange{};
 
     std::vector<std::unique_ptr<Output>> m_outputs;
     std::vector<std::unique_ptr<Keyboard>> m_keyboards;

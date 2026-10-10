@@ -106,6 +106,10 @@ namespace umbriel {
       return nlohmann::json{{"event", "submap"}, {"data", IpcCommands::submap(server, {}).at("ok")}};
     }
 
+    nlohmann::json layersEvent(Server& server) {
+      return nlohmann::json{{"event", "layers"}, {"data", IpcCommands::layers(server, {}).at("ok")}};
+    }
+
     nlohmann::json screenCastEvent(Server& server) {
       const ScreenCastCommand& command = server.screenCastCommand();
       nlohmann::json data{{"serial", command.serial}};
@@ -582,6 +586,9 @@ namespace umbriel {
       if ((requested & Ipc::kEventScreenCast) != 0) {
         append(screenCastEvent(*m_server));
       }
+      if ((requested & Ipc::kEventLayers) != 0) {
+        append(layersEvent(*m_server));
+      }
       return response;
     }
 #ifdef UMBRIEL_TEST_IPC
@@ -674,5 +681,7 @@ namespace umbriel {
   void Ipc::notifySubmapChanged() { broadcastEvent(kEventSubmap, submapEvent(*m_server)); }
 
   void Ipc::notifyScreenCastChanged() { broadcastEvent(kEventScreenCast, screenCastEvent(*m_server)); }
+
+  void Ipc::notifyLayersChanged() { broadcastEvent(kEventLayers, layersEvent(*m_server)); }
 
 } // namespace umbriel

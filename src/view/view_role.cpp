@@ -73,6 +73,8 @@ namespace umbriel {
   }
 
   void View::setFullscreenState(bool fullscreen) {
+    // The IPC window listing reports the scheduled state.
+    m_server->scheduleIpcWindowsEvent();
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_fullscreen(m_toplevel, fullscreen);
       return;
@@ -83,6 +85,7 @@ namespace umbriel {
   }
 
   void View::setMaximizedState(bool maximized) {
+    m_server->scheduleIpcWindowsEvent();
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_maximized(m_toplevel, maximized);
       return;

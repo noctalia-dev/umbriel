@@ -223,11 +223,15 @@ namespace umbriel {
   void Workspace::updateUrgent() {
     const bool urgent = std::ranges::any_of(m_views, [](const View* view) { return view->urgent(); });
     wlr_ext_workspace_handle_v1_set_urgent(m_handle, urgent);
+    m_group->server()->scheduleIpcWorkspacesEvent();
   }
 
   void Workspace::setFocusedView(View* view) {
     if (view == nullptr || view->workspace() == this) {
-      m_focusedView = view;
+      if (m_focusedView != view) {
+        m_focusedView = view;
+        m_group->server()->scheduleIpcWorkspacesEvent();
+      }
       if (view != nullptr && view->floating()) {
         std::erase(m_floatingStack, view);
         m_floatingStack.push_back(view);
@@ -265,11 +269,9 @@ namespace umbriel {
       return;
     }
     m_views.push_back(view);
-    if (m_views.size() == 1) {
-      // Occupancy is part of the IPC workspace listing, so the empty-to-occupied edge has to push an event even on a
-      // static output, where reconciliation never adds or removes a workspace.
-      m_group->server()->scheduleIpcWorkspacesEvent();
-    }
+    // Occupancy and the window count are part of the IPC workspace listing, so every membership change pushes an event,
+    // even on a static output, where reconciliation never adds or removes a workspace.
+    m_group->server()->scheduleIpcWorkspacesEvent();
     updateUrgent();
     const bool fs = view->currentFullscreen() || view->scheduledFullscreen();
     if (view->pinned()) {
@@ -302,9 +304,10 @@ namespace umbriel {
       // detachFromLayout() judges the survivor once the column is gone, so the note and the new focus land first.
       noteRemovalOfFocusedColumn(m_layout->columnOf(view));
       m_focusedView = replacement;
+      m_group->server()->scheduleIpcWorkspacesEvent();
     }
     detachFromLayout(view);
-    if (std::erase(m_views, view) > 0 && m_views.empty()) {
+    if (std::erase(m_views, view) > 0) {
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
     if (view == m_lastAloneSoleView) {

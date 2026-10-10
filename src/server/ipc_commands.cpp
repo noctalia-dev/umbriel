@@ -22,6 +22,7 @@
 #include <print>
 #include <sstream>
 #include <string>
+#include <utility>
 
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -63,6 +64,26 @@ namespace umbriel {
         return "unknown";
       }
     }
+
+    const char* keyboardInteractivityName(uint32_t interactivity) {
+      switch (interactivity) {
+      case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE:
+        return "none";
+      case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE:
+        return "exclusive";
+      case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND:
+        return "on_demand";
+      default:
+        return "unknown";
+      }
+    }
+
+    constexpr std::pair<uint32_t, const char*> kLayerAnchors[] = {
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP, "top"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM, "bottom"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT, "left"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT, "right"},
+    };
 
     const char* layoutModeName(LayoutMode mode) {
       switch (mode) {
@@ -475,17 +496,37 @@ namespace umbriel {
       entry["xdg_tag"] = v->xdgTag().value_or("");
       entry["content_type"] = contentTypeName(v->contentType());
       entry["floating"] = v->floating();
+      entry["fullscreen"] = v->scheduledFullscreen();
+      entry["maximized"] = v->scheduledMaximized();
+      entry["maximized_to_edges"] = v->maximizedToEdges();
+      entry["pinned"] = v->pinned();
+      // Pinned windows show on every workspace of their output.
+      entry["visible"] = v->pinned() || (v->onActiveWorkspace() && !v->tabHidden());
+      const Output* output = v->currentOutput();
+      entry["output"] = output != nullptr ? output->wlr()->name : "";
+      const View* parent = v->shellParent();
+      entry["parent"] =
+          parent != nullptr && parent->extForeignIdentifier() != nullptr ? parent->extForeignIdentifier() : "";
       // Membership of a tab group, the tab's place among its tabs, and whether the group shows another tab.
       int tabIndex = -1;
+      int column = -1;
+      int row = -1;
       if (const Workspace* home = v->workspace()) {
         const Layout& layout = home->layout();
-        const int column = layout.columnOf(v.get());
+        const int layoutColumn = layout.columnOf(v.get());
         const TabGroup* group =
-            column >= 0 ? tabGroupOf(layout.columns()[static_cast<size_t>(column)], v.get()) : nullptr;
+            layoutColumn >= 0 ? tabGroupOf(layout.columns()[static_cast<size_t>(layoutColumn)], v.get()) : nullptr;
         if (group != nullptr) {
           tabIndex = layout.rowOf(v.get()) - static_cast<int>(group->first);
         }
+        // Only the scrolling strip has an order of columns and rows that holds still for clients.
+        if (layoutColumn >= 0 && home->scrollingLayout() != nullptr) {
+          column = layoutColumn;
+          row = layout.rowOf(v.get());
+        }
       }
+      entry["column"] = column;
+      entry["row"] = row;
       entry["tabbed"] = tabIndex >= 0;
       entry["tab_index"] = tabIndex;
       entry["tab_hidden"] = v->tabHidden();
@@ -603,6 +644,10 @@ namespace umbriel {
         if (workspace == nullptr) {
           continue;
         }
+        const auto& views = workspace->allViews();
+        const View* focusedView = workspace->focusedView();
+        const char* focusedId =
+            focusedView != nullptr && focusedView->mapped() ? focusedView->extForeignIdentifier() : nullptr;
         workspaces.push_back({
             {"id", workspace->id()},
             {"name", workspace->name()},
@@ -612,7 +657,11 @@ namespace umbriel {
             {"active", workspace->active()},
             {"focused", output.get() == preferred && workspace->active()},
             {"occupied", workspace->hasViews()},
+            {"window_count", std::ranges::count_if(views, [](const View* view) { return view->mapped(); })},
+            {"focused_window", focusedId != nullptr ? focusedId : ""},
+            {"urgent", std::ranges::any_of(views, [](const View* view) { return view->urgent(); })},
             {"layout", layoutModeName(workspace->layoutMode())},
+            {"layout_override", workspace->layoutModeOverride().has_value()},
         });
       }
     }
@@ -635,10 +684,38 @@ namespace umbriel {
         continue;
       }
       nlohmann::json entry;
-      entry["layer"] = layerName(s->current.layer);
+      const wlr_layer_surface_v1_state& state = s->current;
+      entry["layer"] = layerName(state.layer);
       entry["namespace"] = s->namespace_ != nullptr ? s->namespace_ : "";
       entry["output"] = s->output != nullptr ? s->output->name : "";
       entry["mapped"] = l->mapped();
+      entry["pid"] = surfaceClientPid(s->surface);
+      entry["keyboard_interactivity"] = keyboardInteractivityName(state.keyboard_interactive);
+      entry["focused"] = l->hasKeyboardFocus();
+      entry["exclusive_zone"] = state.exclusive_zone;
+      nlohmann::json anchor = nlohmann::json::array();
+      for (const auto& [edge, name] : kLayerAnchors) {
+        if ((state.anchor & edge) != 0) {
+          anchor.push_back(name);
+        }
+      }
+      entry["anchor"] = std::move(anchor);
+      entry["margin"] = {
+          {"top", state.margin.top},
+          {"right", state.margin.right},
+          {"bottom", state.margin.bottom},
+          {"left", state.margin.left},
+      };
+      // Layout coordinates of the arranged surface; zero until its first arrange.
+      int x = 0;
+      int y = 0;
+      if (l->scene() != nullptr) {
+        wlr_scene_node_coords(&l->scene()->tree->node, &x, &y);
+      }
+      entry["x"] = x;
+      entry["y"] = y;
+      entry["w"] = state.actual_width;
+      entry["h"] = state.actual_height;
       layers.push_back(std::move(entry));
     }
     return nlohmann::json{{"ok", layers}};

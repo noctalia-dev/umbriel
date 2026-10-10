@@ -232,6 +232,8 @@ namespace umbriel {
       m_acceptClientMaximizeRequests = true;
     }
     m_server->scheduleIpcWindowsEvent();
+    // The workspace listing counts mapped windows.
+    m_server->scheduleIpcWorkspacesEvent();
     m_tiled = looksTiled();
     const wlr_box& mapGeo = geometryBox();
     m_presentation.setSize(mapGeo.width, mapGeo.height);
@@ -610,6 +612,7 @@ namespace umbriel {
       output->updateHdr();
     }
     m_server->scheduleIpcWindowsEvent();
+    m_server->scheduleIpcWorkspacesEvent();
     m_positioned = false;
     m_presentedTiledBox = {};
     if (m_workspace != nullptr) {

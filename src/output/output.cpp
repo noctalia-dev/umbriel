@@ -1257,6 +1257,8 @@ namespace umbriel {
       scratchpad->refreshOutputGeometry(this);
     }
 
+    // Layer geometry and the usable area settle here.
+    m_server->scheduleIpcLayersEvent();
     const wlr_box layoutUsableArea = this->usableArea();
     kLog.debug(
         "{} usable={}x{}+{}+{}", m_output->name, layoutUsableArea.width, layoutUsableArea.height, layoutUsableArea.x,

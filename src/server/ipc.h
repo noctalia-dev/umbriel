@@ -29,13 +29,14 @@ namespace umbriel {
       kEventWorkspaces = 1 << 4,
       kEventSubmap = 1 << 5,
       kEventScreenCast = 1 << 6,
+      kEventLayers = 1 << 7,
     };
     // Number of bits above; sizes the last-broadcast cache.
-    static constexpr size_t kEventCount = 7;
+    static constexpr size_t kEventCount = 8;
     // Subscribable names in bit order: the subscribe handler matches against this table and `umbriel subscribe`
     // lists it, so a new family cannot be accepted by one and unknown to the other.
     static constexpr std::array<std::string_view, kEventCount> kEventNames = {
-        "theme", "overview", "keyboard_layout", "windows", "workspaces", "submap", "screencast"
+        "theme", "overview", "keyboard_layout", "windows", "workspaces", "submap", "screencast", "layers"
     };
 
     Ipc(Server& server, const std::string& waylandSocketName);
@@ -51,6 +52,7 @@ namespace umbriel {
     void notifyWorkspacesChanged();
     void notifySubmapChanged();
     void notifyScreenCastChanged();
+    void notifyLayersChanged();
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
 

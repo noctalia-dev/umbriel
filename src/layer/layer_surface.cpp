@@ -398,6 +398,7 @@ namespace umbriel {
 
   void LayerSurface::handleMap() {
     m_mapped = true;
+    m_server->scheduleIpcLayersEvent();
     m_server->updateIdleInhibit();
     if (Output* out = output()) {
       out->markDirty(Dirty::LayerArrange);
@@ -435,6 +436,7 @@ namespace umbriel {
     wlr_scene_node_clear_animations(&m_scene->tree->node);
     const bool hadFocus = hasKeyboardFocus();
     m_mapped = false;
+    m_server->scheduleIpcLayersEvent();
     m_server->updateIdleInhibit();
     m_blur.hide();
     m_fade.snap(1.0);

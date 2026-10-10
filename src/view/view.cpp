@@ -556,6 +556,8 @@ namespace umbriel {
     if (!m_mapped) {
       return;
     }
+    // The IPC window listing reports visibility.
+    m_server->scheduleIpcWindowsEvent();
     if (active) {
       enterForeignOutput();
     } else {

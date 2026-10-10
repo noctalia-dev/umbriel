@@ -27,17 +27,41 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 | `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>` |
 
 Window entries include IDs, application identity, process ID, geometry,
-workspace, and scratchpad membership. X11 windows report the process ID they
-publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a
+output, workspace, and scratchpad membership. X11 windows report the process ID
+they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a
 [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's
 tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its
 group shows another tab; the plain listing marks it `tab` instead of
 `tile`.
 
+Window state follows what Umbriel has decided, ahead of the client's redraw, the
+same way geometry reports layout targets:
+
+| Field | Meaning |
+| --- | --- |
+| `floating` | Outside the tiled layout |
+| `fullscreen` | Fullscreen |
+| `maximized` | Maximized by `window-toggle-maximize` (a full-width column for a tiled window) or by maximize-to-edges |
+| `maximized_to_edges` | Maximized without gaps, struts, or borders |
+| `pinned` | Pinned above other windows on every workspace of its output |
+| `visible` | On its output's active workspace (or pinned), not a hidden tab, and not in a hidden scratchpad; it may still be scrolled out of view |
+| `parent` | ID of the window the client named as its parent, or `""` |
+| `column`, `row` | Place in a scrolling strip, from 0; `-1` for floating windows and other layouts |
+
 Workspace entries include a stable ID, display name, index, output, layout,
 occupancy, and active and focused states. Use the `named` boolean instead of
 guessing from the display name; an explicitly named workspace may still be
-called `"2"`.
+called `"2"`. `window_count` counts its mapped windows, `focused_window` is the
+ID of the window it last focused (`""` when none), `urgent` is set while any of
+its windows is urgent, and `layout_override` is set while a runtime
+`workspace-set-layout` replaces the configured layout.
+
+Layer entries describe layer-shell surfaces such as panels, launchers, and
+wallpapers: `layer`, `namespace`, `output`, `mapped`, `pid`,
+`keyboard_interactivity` (`none`, `exclusive`, or `on_demand`), `focused` while
+the surface holds the keyboard, `exclusive_zone`, `anchor` (the anchored edges),
+`margin`, and the arranged geometry `x`, `y`, `w`, and `h` in layout
+coordinates.
 
 ## Effect inspection
 
@@ -88,10 +112,11 @@ snapshot whenever that family changes:
 | `theme` | Colors and corner radius |
 | `overview` | Overview opened, or started closing |
 | `keyboard_layout` | Active keyboard layout |
-| `windows` | Window identity, geometry, focus, state, workspace, scratchpad, or effect selection |
-| `workspaces` | Inventory, layout, activity, occupancy, output, or focus |
+| `windows` | Window identity, geometry, focus, state, visibility, parent, workspace, scratchpad, or effect selection |
+| `workspaces` | Inventory, layout, activity, occupancy, window count, focused window, urgency, output, or focus |
 | `submap` | Active keybind submap |
 | `screencast` | Manual target and focus-following screencast commands |
+| `layers` | Layer-shell surfaces appearing, mapping, closing, moving, resizing, or taking and losing the keyboard |
 
 Payloads are full snapshots rather than deltas. Replace local state with the
 newest event instead of trying to merge increments. Identical consecutive

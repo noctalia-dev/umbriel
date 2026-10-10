@@ -376,6 +376,8 @@ namespace umbriel {
       }
       raiseToTop();
     }
+    // The IPC window listing reports the parent.
+    m_server->scheduleIpcWindowsEvent();
   }
 
   void View::recordOpeningParentRequest(bool parentRequested) {
@@ -421,6 +423,7 @@ namespace umbriel {
 
   void View::applyPinnedState() {
     m_pinned = true;
+    m_server->scheduleIpcWindowsEvent();
     restorePinnedSceneParent();
     if (m_workspace != nullptr) {
       m_workspace->syncViewPresentation(this);
@@ -462,6 +465,7 @@ namespace umbriel {
     const bool restoreTiled = m_restoreTiledAfterUnpin;
     m_restoreTiledAfterUnpin = false;
     m_pinned = false;
+    m_server->scheduleIpcWindowsEvent();
     if (restoreTiled) {
       setFloating(false, focus);
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {

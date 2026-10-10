@@ -711,6 +711,8 @@ namespace umbriel {
     m_seat = std::make_unique<Seat>(*this);
     m_padKeyboardFocusChange.notify = onPadKeyboardFocusChange;
     wl_signal_add(&m_seat->wlr()->keyboard_state.events.focus_change, &m_padKeyboardFocusChange);
+    m_layerKeyboardFocusChange.notify = onLayerKeyboardFocusChange;
+    wl_signal_add(&m_seat->wlr()->keyboard_state.events.focus_change, &m_layerKeyboardFocusChange);
     m_inputMethodRelay = std::make_unique<InputMethodRelay>(*this);
     m_gestures = std::make_unique<Gestures>(*this);
     m_overview = std::make_unique<Overview>(*this);
@@ -827,6 +829,7 @@ namespace umbriel {
     wl_list_remove(&m_rendererLost.link);
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
+    wl_list_remove(&m_layerKeyboardFocusChange.link);
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();

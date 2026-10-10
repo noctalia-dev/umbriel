@@ -1055,6 +1055,7 @@ namespace umbriel {
       return;
     }
     self->m_layerSurfaces.push_back(std::move(surface));
+    self->scheduleIpcLayersEvent();
   }
 
   void Server::onNewSessionLock(wl_listener* listener, void* data) {
@@ -1882,6 +1883,30 @@ namespace umbriel {
     if (server->m_ipc != nullptr) {
       server->m_ipc->notifyWorkspacesChanged();
     }
+  }
+
+  void Server::scheduleIpcLayersEvent() {
+    if (m_ipc == nullptr || m_ipcLayersIdle != nullptr) {
+      return;
+    }
+    m_ipcLayersIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcLayersIdle, this);
+    if (m_ipcLayersIdle == nullptr) {
+      kLog.error("failed to register IPC layers idle source");
+    }
+  }
+
+  void Server::onIpcLayersIdle(void* data) {
+    auto* server = static_cast<Server*>(data);
+    server->m_ipcLayersIdle = nullptr;
+    if (server->m_ipc != nullptr) {
+      server->m_ipc->notifyLayersChanged();
+    }
+  }
+
+  void Server::onLayerKeyboardFocusChange(wl_listener* listener, void* /*data*/) {
+    Server* self;
+    self = wl_container_of(listener, self, m_layerKeyboardFocusChange);
+    self->scheduleIpcLayersEvent();
   }
 
   void Server::addPointer(wlr_input_device* device) {
@@ -3112,6 +3137,7 @@ namespace umbriel {
       return entry.get() == layerSurface;
     });
     arrangeLayers(output);
+    scheduleIpcLayersEvent();
   }
 
   void Server::onOutputManagerApply(wl_listener* listener, void* data) {

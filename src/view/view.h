@@ -147,6 +147,8 @@ namespace umbriel {
     // Fullscreen for layout purposes follows the state already scheduled for the next configure.
     [[nodiscard]] bool layoutFullscreen() const;
     [[nodiscard]] bool urgent() const { return m_urgent; }
+    // The mapped window the client named as this one's parent (xdg parent or X11 WM_TRANSIENT_FOR), or null.
+    [[nodiscard]] View* shellParent() const;
     // The window id the ext-foreign-toplevel protocol hands to clients, which the IPC surface reuses verbatim for its
     // own window identity. Null only while no ext handle exists (the handle lives for the whole map lifetime).
     [[nodiscard]] const char* extForeignIdentifier() const {
@@ -665,7 +667,6 @@ namespace umbriel {
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
     void setPinned(bool pinned, bool focus);
-    [[nodiscard]] View* shellParent() const;
     [[nodiscard]] View* transientParent() const;
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
