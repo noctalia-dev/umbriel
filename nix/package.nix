@@ -88,6 +88,7 @@ stdenv.mkDerivation {
         --replace-fail 'Exec=start-umbriel' "Exec=$out/bin/start-umbriel"
     fi
     wrapProgram $out/bin/umbriel \
+      --prefix PATH : "$out/bin" \
       --prefix PATH : ${lib.makeBinPath [ xwayland ]} \
   '';
 

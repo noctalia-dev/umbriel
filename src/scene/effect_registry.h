@@ -73,6 +73,7 @@ namespace umbriel {
     void setSuspended(bool suspended);
     void setAudio(std::array<float, 2> audio);
     [[nodiscard]] const std::array<float, 2>& audio() const { return m_audio; }
+    [[nodiscard]] bool audioReferenced() const { return m_audioReferenced; }
     // Records an instance; schedules its output's effect frame when that output gains its first eligible instance.
     void updateInstance(const void* owner, const EffectInstanceState& state);
     void removeInstance(const void* owner);
@@ -116,6 +117,7 @@ namespace umbriel {
     bool m_pointerVisible = false;
     EffectLedger m_ledger;
     std::array<float, 2> m_audio{}; // level and availability
+    bool m_audioReferenced = false;
     mutable uint64_t m_clockEpochMsec = 0;
     mutable bool m_clockEpochSet = false;
   };

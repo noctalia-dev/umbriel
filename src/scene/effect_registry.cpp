@@ -4,6 +4,7 @@
 #include "config/config.h"
 #include "core/log.h"
 #include "output/output.h"
+#include "server/ipc.h"
 #include "server/server.h"
 #include "wlr.h"
 
@@ -129,6 +130,7 @@ vec4 animation(vec2 uv) {
     m_inPlaceReferenced = false;
     m_cursorActive = false;
     m_renderer = nullptr;
+    m_audioReferenced = false;
   }
 
   void EffectRegistry::updateCursorActive() {
@@ -149,10 +151,16 @@ vec4 animation(vec2 uv) {
   void EffectRegistry::setSuspended(bool suspended) {
     m_ledger.setSuspended(suspended);
     updateCursorActive();
+    if (m_server->ipc() != nullptr) {
+      m_server->ipc()->refreshAudioHelper();
+    }
   }
 
   void EffectRegistry::removeOutput(const Output* output) {
     m_ledger.removeOutput(output);
+    if (m_server->ipc() != nullptr) {
+      m_server->ipc()->refreshAudioHelper();
+    }
     if (m_pointerWlrOutput == output->wlr()) {
       m_pointerWlrOutput = nullptr;
     }
@@ -247,6 +255,9 @@ vec4 animation(vec2 uv) {
     }
     m_persistentReferenced = std::ranges::any_of(m_programs, [](const auto& item) {
       return item.second.kind != EffectKind::Animation && item.second.shader != nullptr;
+    });
+    m_audioReferenced = std::ranges::any_of(m_programs, [](const auto& item) {
+      return fx_effect_shader_reads(item.second.shader.get(), "umbriel_audio");
     });
     m_inPlaceReferenced = std::ranges::any_of(m_programs, [](const auto& item) {
       const EffectKind kind = item.second.kind;

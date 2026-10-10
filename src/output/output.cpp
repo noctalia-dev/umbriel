@@ -180,6 +180,9 @@ namespace umbriel {
   }
 
   void Output::applyOutputEffects() {
+    if (m_server->ipc() != nullptr) {
+      m_server->ipc()->refreshAudioHelper();
+    }
     EffectRegistry& registry = m_server->effects();
     const Effects& settings = config().effects;
     // Nothing configured: touch nothing (no addon, no scene calls). The registry's counts are zero too; a bound

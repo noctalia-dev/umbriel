@@ -86,6 +86,7 @@ radius = 3
 # and set cursor = "trail" in [effects].
 # For audio-reactive borders, include /usr/share/umbriel/effects/border/audio/effect.toml
 # and set border = "audio" in [effects].
+# The bundled umbriel-audio helper starts automatically and monitors PipeWire playback.
 # Pools accept matching presets defined/included separately. This one-member
 # example uses the bundled pulse preset; add other border names to choose.
 # [effects.pool.borders]

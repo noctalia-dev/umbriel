@@ -1,7 +1,10 @@
 #include "server/ipc.h"
 
 #include "config/config.h"
+#include "core/fdlimit.h"
 #include "core/log.h"
+#include "core/process.h"
+#include "core/tracy.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/color.h"
@@ -21,6 +24,10 @@
 #include <unistd.h>
 #include <utility>
 #include <wayland-server-core.h>
+
+extern "C" {
+#include <umbrielfx/render/effect.h>
+}
 
 namespace umbriel {
 
@@ -196,9 +203,13 @@ namespace umbriel {
     }
 
     kLog.info("IPC listening on {}", m_socketPath);
+    m_audioHelperTimer = wl_event_loop_add_timer(wl_display_get_event_loop(server.display()), onAudioHelperTimer, this);
   }
 
   Ipc::~Ipc() {
+    if (m_audioHelperTimer != nullptr) {
+      wl_event_source_remove(m_audioHelperTimer);
+    }
     if (m_eventSource != nullptr) {
       wl_event_source_remove(m_eventSource);
       m_eventSource = nullptr;
@@ -226,6 +237,73 @@ namespace umbriel {
     m_server->effects().setAudio({});
   }
 
+  void Ipc::refreshAudioHelper() {
+    if (!m_server->effects().audioReferenced() && m_audioHelper == nullptr) {
+      return;
+    }
+    // A live helper must stop promptly on lock/deselection even during its startup retry window.
+    if (m_audioHelper != nullptr && m_audioHelperPending) {
+      wl_event_source_timer_update(m_audioHelperTimer, 1);
+    }
+    if (!m_audioHelperPending && m_audioHelperTimer != nullptr && !m_audioHelperMissing) {
+      m_audioHelperPending = wl_event_source_timer_update(m_audioHelperTimer, 1) == 0;
+    }
+  }
+
+  int Ipc::onAudioHelperTimer(void* data) {
+    UMBRIEL_ZONE("audio.helper_demand");
+    auto& self = *static_cast<Ipc*>(data);
+    self.m_audioHelperPending = false;
+    const bool wanted = !self.m_server->effects().ledger().suspended()
+        && outputFrameAllowed(self.m_server->stopping(), self.m_server->session())
+        && self.m_server->effects().audioReferenced()
+        && std::ranges::any_of(self.m_server->outputs(), [](const auto& output) {
+             return !output->dpmsOff()
+                 && output->sceneOutput() != nullptr
+                 && wlr_scene_output_audio_active(output->sceneOutput());
+           });
+    if (!wanted) {
+      if (self.m_audioHelper != nullptr) {
+        self.removeConnection(self.m_audioHelper); // EOF stops capture and releases PipeWire.
+      }
+      wl_event_source_timer_update(self.m_audioHelperTimer, 0);
+      self.m_audioHelperPending = false;
+      return 0;
+    }
+    if (self.m_audioHelper != nullptr || self.m_audio != nullptr) {
+      return 0;
+    }
+    const auto executable = resolveExecutable("umbriel-audio");
+    if (executable.empty()) {
+      kLog.warn("audio effect selected but umbriel-audio is not installed; playback input unavailable");
+      self.m_audioHelperMissing = true;
+      return 0;
+    }
+    // Retry failures at a bounded rate, including when a static effect produces no further frames.
+    self.m_audioHelperPending = wl_event_source_timer_update(self.m_audioHelperTimer, 2000) == 0;
+    int sockets[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, sockets) < 0) {
+      return 0;
+    }
+    const pid_t child = fork();
+    if (child == 0) {
+      resetChildSignalState();
+      if (dup2(sockets[1], STDIN_FILENO) < 0 || !closeChildFileDescriptors()) {
+        _exit(127);
+      }
+      restoreFileDescriptorLimit();
+      execl(executable.c_str(), executable.c_str(), nullptr);
+      _exit(127);
+    }
+    close(sockets[1]);
+    if (child < 0) {
+      close(sockets[0]);
+    } else {
+      self.m_audioHelper = self.addConnection(sockets[0]);
+    }
+    return 0;
+  }
+
   void Ipc::acceptConnections() {
     while (true) {
       const int clientFd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
@@ -243,7 +321,7 @@ namespace umbriel {
     }
   }
 
-  void Ipc::addConnection(int clientFd) {
+  Ipc::Connection* Ipc::addConnection(int clientFd) {
     auto connection = std::make_unique<Connection>();
     connection->owner = this;
     connection->fd = clientFd;
@@ -256,9 +334,10 @@ namespace umbriel {
         || wl_event_source_timer_update(connection->deadline, kConnectionTimeoutMs) < 0) {
       kLog.warn("failed to register IPC connection");
       closeConnection(*connection);
-      return;
+      return nullptr;
     }
     m_connections.push_back(std::move(connection));
+    return m_connections.back().get();
   }
 
   int Ipc::onConnectionEvent(int /*fd*/, uint32_t mask, void* data) {
@@ -413,6 +492,9 @@ namespace umbriel {
   }
 
   void Ipc::notifyOutputFrame(const Output& output) {
+    if (m_server->effects().audioReferenced() || m_audioHelper != nullptr) {
+      refreshAudioHelper();
+    }
     std::vector<Connection*> ready;
     std::vector<Connection*> stuck;
     for (const auto& connection : m_connections) {
@@ -457,6 +539,14 @@ namespace umbriel {
     }
     if (connection == m_audio) {
       dropAudioOwner();
+    }
+    if (connection == m_audioHelper) {
+      m_audioHelper = nullptr;
+      if (m_audioHelperTimer != nullptr) {
+        m_audioHelperPending = wl_event_source_timer_update(m_audioHelperTimer, 2000) == 0;
+      }
+    } else {
+      refreshAudioHelper();
     }
     closeConnection(**entry);
     m_connections.erase(entry);
@@ -508,7 +598,12 @@ namespace umbriel {
         return error;
       }
       if (m_audio != nullptr && m_audio != &connection) {
-        return R"({"err":"audio producer already connected"})";
+        // Explicit producers retain the existing API and take precedence over automatic playback.
+        if (m_audio == m_audioHelper) {
+          removeConnection(m_audioHelper);
+        } else {
+          return R"({"err":"audio producer already connected"})";
+        }
       }
       m_audio = &connection;
       m_server->effects().setAudio({*level, 1.0F});

@@ -206,7 +206,9 @@ umbriel subscribe workspaces |
 
 ## Audio input
 
-An external analyser can supply one shared level to [effect shaders](effects.md#audio-input).
+The bundled PipeWire helper starts automatically for visible audio effects (see
+[Audio input](effects.md#audio-input)). An external analyser can override it and
+supply one shared level to [effect shaders](effects.md#audio-input).
 Keep a dedicated connection open and send complete measurements:
 
 ```json
@@ -215,15 +217,17 @@ Keep a dedicated connection open and send complete measurements:
 
 `version` must be integer `1`; `level` must be a finite number from 0 to 1.
 No other fields are accepted. Each request, including its newline, is limited
-to 256 bytes. The first accepted measurement claims the feed; another producer
-receives an error while that connection owns it. Audio connections accept only
+to 256 bytes. The first external measurement replaces the automatic helper and
+claims the feed; another external producer receives an error while that
+connection owns it. Audio connections accept only
 `effect-audio` requests.
 
 Wait for `{"ok":true}` before sending another measurement. Send at most 60 per
 second and replace unsent measurements with the latest value. An acknowledgment
 means accepted, not displayed. Keep sending fresh measurements during silence;
 zero means silent and available. Gain, smoothing, and source selection belong
-to the analyser. Umbriel does not start it or capture audio.
+to the analyser. Umbriel does not start custom producers; its automatic helper
+runs separately.
 
 Disconnect, malformed or oversized input, or 250 ms without a measurement closes
 the feed and clears the shader input. Lock and inactive sessions also disconnect
@@ -231,10 +235,9 @@ the producer and reject audio until active and unlocked. Reconnect with a fresh
 measurement to resume. Use a dedicated socket client; `umbriel msg` does not
 provide this streaming interface.
 
-The bundled `umbriel-audio` is a ready-made analyser of desktop playback, built
-when PipeWire is found. Start it from the session. It connects
-through `$UMBRIEL_SOCKET` and exits when Umbriel drops the connection, for
-example on lock.
+The bundled `umbriel-audio` is built when PipeWire is found.
+Started by hand it connects through `$UMBRIEL_SOCKET` and exits when Umbriel
+drops the connection, for example on lock.
 
 ## Inspection commands
 

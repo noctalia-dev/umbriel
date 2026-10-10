@@ -57,6 +57,8 @@ namespace umbriel {
     void notifyOutputsChanged();
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
+    // Coalesce demand checks after scene changes; acquisition stays outside the frame callback.
+    void refreshAudioHelper();
 
   private:
     enum class FrameWait : uint8_t { None, Drawn, Settled };
@@ -84,7 +86,7 @@ namespace umbriel {
     static int onConnectionTimeout(void* data);
 
     void acceptConnections();
-    void addConnection(int clientFd);
+    Connection* addConnection(int clientFd);
     bool readRequest(Connection& connection);
     bool writeResponse(Connection& connection);
     void prepareResponse(Connection& connection, std::string response);
@@ -97,10 +99,15 @@ namespace umbriel {
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);
     void refreshScreenCastActive();
     void dropAudioOwner();
+    static int onAudioHelperTimer(void* data);
 
     Server* m_server;
     std::string m_socketPath;
     Connection* m_audio = nullptr;
+    Connection* m_audioHelper = nullptr;
+    wl_event_source* m_audioHelperTimer = nullptr;
+    bool m_audioHelperPending = false;
+    bool m_audioHelperMissing = false;
     int m_listenFd = -1;
     wl_event_source* m_eventSource = nullptr;
     std::vector<std::unique_ptr<Connection>> m_connections;

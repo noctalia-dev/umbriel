@@ -116,6 +116,10 @@ Distribution package names vary.
 `Xwayland` must be discoverable on `PATH`. It may be omitted when a package or
 installation deliberately disables Xwayland in the configuration.
 
+`umbriel-audio` must be discoverable on the compositor's `PATH`: Umbriel starts
+it by name while a visible effect reads audio. A package without PipeWire omits
+it, and audio effects then draw without a feed.
+
 For a native launch with a working systemd user manager, `start-umbriel` runs
 the compositor as `umbriel.service`. Umbriel uses `systemd-run` from that
 existing systemd installation to place application commands in transient
