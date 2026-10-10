@@ -33,11 +33,6 @@ namespace umbriel {
     // Distance the built-in windows_in "slide" style starts an opener below its resting position.
     constexpr int kOpenSlidePx = 60;
 
-    uint64_t nextMapSerial() {
-      static uint64_t serial = 0;
-      return ++serial;
-    }
-
     constexpr int contentTypePriority(ContentType type) {
       switch (type) {
       case ContentType::Game:
@@ -219,11 +214,9 @@ namespace umbriel {
       handleCommit(true);
     }
     m_mapped = true;
-    syncModalDialogEntry();
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
     m_presentedTiledBox = {};
-    m_mapSerial = nextMapSerial();
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
     // it cannot override alone/default opening policy; later maximize requests stay valid.
@@ -483,13 +476,9 @@ namespace umbriel {
     // Opening rules resolve before default_floating and default_pinned move the window, so the state selectors may
     // pick a different set of dynamic effects than the ones applied above.
     applyDynamicRules();
-    if (attachedParent() != nullptr) {
-      retargetModalShades();
-    }
   }
 
   void View::handleUnmap() {
-    m_server->registry().setModalDialog(this, false);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
       m_effectSelectionIdle = nullptr;
@@ -531,9 +520,6 @@ namespace umbriel {
     const double closePointerY = cursor != nullptr ? cursor->wlr()->y : 0.0;
 
     setUrgent(false);
-    if (attachedParent() != nullptr) {
-      retargetModalShades();
-    }
     m_floatingMaximized = false;
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
@@ -796,9 +782,6 @@ namespace umbriel {
               || rule.defaultScratchpad.has_value());
       Workspace* launchWorkspace = m_launchWorkspace != nullptr ? m_launchWorkspace->workspace : nullptr;
       Workspace* target = launchRuleOverride ? nullptr : (m_workspace != nullptr ? m_workspace : launchWorkspace);
-      if (target == nullptr) {
-        target = parentWorkspace(rule);
-      }
       Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
       WorkspaceGroup* targetGroup = target != nullptr
           ? target->group()
@@ -1054,7 +1037,6 @@ namespace umbriel {
     }
 
     clearViewSurfaceWatches();
-    releaseDialog();
 
     for (wl_listener* listener :
          {&m_map, &m_unmap, &m_commit, &m_clientCommit, &m_destroy, &m_requestMove, &m_requestResize,

@@ -37,7 +37,6 @@ struct wlr_subsurface;
 struct wlr_surface;
 struct wlr_xdg_popup;
 struct wlr_xdg_toplevel;
-struct wlr_xdg_dialog_v1;
 struct wlr_xwayland_surface;
 struct wlr_xwayland_surface_configure_event;
 
@@ -122,20 +121,6 @@ namespace umbriel {
     void refreshEffectSelection();
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
-    [[nodiscard]] View* transientParent() const;
-    // A modal dialog takes its parent's input while it is open: one marked so through xdg-dialog-v1 (GTK 4, Qt 6),
-    // or one parented across processes, which is a portal dialog whose toolkit may predate the protocol.
-    [[nodiscard]] bool modalDialog() const;
-    // The toplevel's xdg-dialog-v1 object. Its modality can change or go away while the window is mapped.
-    void setDialog(wlr_xdg_dialog_v1* dialog);
-    // The mapped modal dialog that blocks this window, or null: one attached to it, the application's own newer one
-    // attached to another of its windows on the workspace, or a portal's dialog attached to an ancestor of this one.
-    [[nodiscard]] View* blockingDialog() const;
-    // The window this modal dialog is attached to, or null.
-    [[nodiscard]] View* attachedParent() const;
-    // The window at the bottom of this modal dialog's chain, which is where moves and layout changes aimed at the
-    // dialog belong. Itself for anything else.
-    [[nodiscard]] View* attachedRoot();
     // The pid of the application process, or -1 when it is unknown (an X11 client that sets no _NET_WM_PID).
     [[nodiscard]] pid_t pid() const;
     [[nodiscard]] Workspace* workspace() const { return m_workspace; }
@@ -492,8 +477,6 @@ namespace umbriel {
     static void onEffectSelectionIdle(void* data);
     static void onRequestFullscreen(wl_listener* listener, void* data);
     static void onSetParent(wl_listener* listener, void* data);
-    static void onDialogSetModal(wl_listener* listener, void* data);
-    static void onDialogDestroy(wl_listener* listener, void* data);
     static void onSetTitle(wl_listener* listener, void* data);
     static void onSetAppId(wl_listener* listener, void* data);
     static void onForeignActivate(wl_listener* listener, void* data);
@@ -681,23 +664,9 @@ namespace umbriel {
     void placeInUsableArea(const std::optional<WindowPosition>& position = std::nullopt);
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
-    // Whether `dialog`, an open modal dialog, takes this window's input.
-    [[nodiscard]] bool blockedBy(const View& dialog) const;
-    // Modal dialogs stay centered over their parent as it moves and resizes.
-    void centerModalDialogs();
-    // The parent of an open modal dialog is shaded; the shade fades on the dim_unfocused timeline.
-    void retargetModalShade(bool animate);
-    // A modal dialog opening or closing can block or free windows across its application.
-    void retargetModalShades();
-    // A window entering or leaving a workspace or scratchpad can attach a modal dialog to its parent or detach it.
-    void retargetModalShadesAfterMove();
-    void syncModalShade();
-    // A mapped dialog turning modal attaches to its parent and takes its focus; one turning back frees it.
-    void handleDialogModal();
-    void syncModalDialogEntry();
-    void releaseDialog();
     void setPinned(bool pinned, bool focus);
     [[nodiscard]] View* shellParent() const;
+    [[nodiscard]] View* transientParent() const;
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
     void raiseTransientTree();
@@ -712,8 +681,6 @@ namespace umbriel {
     bool cancelLaunchOrigin(std::string_view token);
     void clearLaunchPlacement(bool reconcile, bool clearToken);
     void applyWindowRules();
-    // The workspace a dialog opens on: its parent's, unless a rule sends it elsewhere. Null for anything else.
-    [[nodiscard]] Workspace* parentWorkspace(const ResolvedWindowRule& rule) const;
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin);
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
@@ -845,7 +812,6 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
-    wlr_xdg_dialog_v1* m_dialog = nullptr;
     Workspace* m_workspace = nullptr;
     std::optional<DisplacedHome> m_displacedHome;
 
@@ -922,10 +888,6 @@ namespace umbriel {
     bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
     AnimatedValue m_focusDim{1.0};
-    AnimatedValue m_modalShade{0.0};
-    wlr_scene_rect* m_modalShadeRect = nullptr;
-    // Map order, so a newer modal dialog blocks the application's older windows and not the other way round.
-    uint64_t m_mapSerial = 0;
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
     bool m_focusDimInitialized = false;
@@ -976,8 +938,6 @@ namespace umbriel {
     wl_listener m_xRequestConfigure{};
     wl_listener m_xRequestActivate{};
     wl_listener m_xSetHints{};
-    wl_listener m_dialogSetModal{};
-    wl_listener m_dialogDestroy{};
   };
 
 } // namespace umbriel

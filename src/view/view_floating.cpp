@@ -407,13 +407,6 @@ namespace umbriel {
       return;
     }
     const wlr_box& geo = geometryBox();
-    // An attached dialog grows around its center, from the same committed size the presentation centers it with, so
-    // the pointer motion and the client's commits agree on where it sits.
-    if (const View* parent = attachedParent()) {
-      const FloatingPoint origin = centeredOrigin(parent->m_presentedBox, geo.width, geo.height);
-      setPosition(origin.x, origin.y);
-      return;
-    }
     const FloatingPoint content = anchoredContentOrigin(*m_floating.anchor(), m_floating.edges(), geo);
     const int x = content.x - geo.x;
     const int y = content.y - geo.y;

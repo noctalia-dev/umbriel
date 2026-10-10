@@ -30,13 +30,8 @@ namespace umbriel {
     // Move `view` to the front. No-op when it is absent or already there.
     void promote(View* view);
 
-    // The mapped modal dialogs, so finding what blocks a window does not scan every view.
-    void setModalDialog(View* view, bool modal);
-    [[nodiscard]] std::span<View* const> modalDialogs() const { return m_modalDialogs; }
-
   private:
     std::vector<std::unique_ptr<View>> m_views;
-    std::vector<View*> m_modalDialogs;
   };
 
 } // namespace umbriel

@@ -48,18 +48,13 @@ namespace umbriel {
     if (view == nullptr || m_server.sessionLocked()) {
       return;
     }
-    // Clients ignore input to a window while its modal dialog is open, so the dialog takes the focus instead.
-    while (View* dialog = view->blockingDialog()) {
-      view = dialog;
-    }
 
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
-    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing. A modal dialog reveals the tile
-    // it is attached to, so that tile is what the gate measures.
-    if (View* tile = view->attachedRoot(); reason == FocusReason::PointerHover && tile->tiled()) {
-      if (Workspace* workspace = tile->workspace()) {
+    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing.
+    if (reason == FocusReason::PointerHover && view->tiled()) {
+      if (Workspace* workspace = view->workspace()) {
         const auto& maxScroll = config().input.focus.followsMouseMaxScroll;
-        if (maxScroll && workspace->scrollFractionToReveal(tile) > *maxScroll) {
+        if (maxScroll && workspace->scrollFractionToReveal(view) > *maxScroll) {
           return;
         }
       }
@@ -130,8 +125,8 @@ namespace umbriel {
       }
     }
 
-    // Derive reveal policy from the focus reason. A modal dialog reveals the tile it is attached to.
-    if (workspace == nullptr || !view->attachedRoot()->tiled()) {
+    // Derive reveal policy from the focus reason.
+    if (workspace == nullptr || !view->tiled()) {
       return;
     }
     switch (reason) {
@@ -421,11 +416,6 @@ namespace umbriel {
     if (!view->pinned() && !view->onActiveWorkspace()) {
       *surface = nullptr;
       return nullptr;
-    }
-    // A window with an open modal dialog gets no pointer, the way it gets no keyboard. The view is still reported so a
-    // click on it focuses the dialog.
-    if (view->blockingDialog() != nullptr) {
-      *surface = nullptr;
     }
     return view;
   }

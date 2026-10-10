@@ -159,8 +159,7 @@ namespace umbriel {
     void handleDataDragEnded();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY, wl_client* owner);
     void setXcursor(const char* name);
-    // A deferred move starts as a click and becomes a drag once the pointer travels, the way a tiled move does.
-    bool beginMove(View* view, uint32_t button, bool deferred = false);
+    bool beginMove(View* view, uint32_t button);
     bool beginResize(View* view, uint32_t edges, uint32_t button);
     // A null seat client is an X11 move/resize request, which carries no serial.
     void beginClientMove(View* view, wlr_seat_client* seatClient, uint32_t serial);

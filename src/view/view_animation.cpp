@@ -899,10 +899,6 @@ namespace umbriel {
     if (m_resizeCrossfade.tick(nowMsec)) {
       active = true;
     }
-    if (m_modalShade.tick(nowMsec)) {
-      syncModalShade();
-      active = active || m_modalShade.animating();
-    }
 
     if (m_borderColorAnim.tick(nowMsec)) {
       m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
@@ -947,7 +943,6 @@ namespace umbriel {
         || m_borderColorAnim.animating()
         || m_focusDim.animating()
         || m_resizeCrossfade.active()
-        || m_modalShade.animating()
         || m_dragPhysics.active();
   }
 
@@ -1133,25 +1128,14 @@ namespace umbriel {
   }
 
   void View::applyPresentation(const wlr_box& target) {
-    wlr_box box = target;
-    // An attached dialog is presented centered on its parent at whatever size it has, so growing keeps its center. It
-    // is centered on the parent itself, not on what shows of it: a strip scrolling the parent away takes it along.
-    if (const View* parent = !m_tiled && !currentFullscreen() ? attachedParent() : nullptr; parent != nullptr) {
-      const FloatingPoint origin = centeredOrigin(parent->m_presentedBox, presentedWidth(box), presentedHeight(box));
-      if (origin.x != box.x || origin.y != box.y) {
-        setPosition(origin.x, origin.y);
-        box.x = origin.x;
-        box.y = origin.y;
-      }
-    }
-    updateFullscreenPresentation(box.width, box.height);
+    updateFullscreenPresentation(target.width, target.height);
     const wlr_box& geometry = geometryBox();
     // Stay inside the tile while geometry lags configure (Electron often stays wide).
     const wlr_box content{
-        .x = box.x,
-        .y = box.y,
-        .width = presentedWidth(box),
-        .height = presentedHeight(box),
+        .x = target.x,
+        .y = target.y,
+        .width = presentedWidth(target),
+        .height = presentedHeight(target),
     };
     if (currentFullscreen()) {
       // The backdrop is the window's own letterbox, so it follows the presented box rather than the tile: a window
@@ -1182,7 +1166,5 @@ namespace umbriel {
     updateBorderGeometry(content.width, content.height);
     updateShadow();
     updateBlur(content.width, content.height);
-    syncModalShade();
-    centerModalDialogs();
   }
 } // namespace umbriel

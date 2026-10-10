@@ -375,9 +375,6 @@ namespace umbriel {
         }
       }
       raiseToTop();
-      syncModalDialogEntry();
-      // A dialog whose parent closed is handed to the grandparent, and what the old parent's dialog blocked is free.
-      retargetModalShades();
     }
   }
 
