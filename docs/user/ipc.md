@@ -231,6 +231,11 @@ the producer and reject audio until active and unlocked. Reconnect with a fresh
 measurement to resume. Use a dedicated socket client; `umbriel msg` does not
 provide this streaming interface.
 
+The bundled `umbriel-audio` is a ready-made analyser of desktop playback, built
+when PipeWire is found. Start it from the session. It connects
+through `$UMBRIEL_SOCKET` and exits when Umbriel drops the connection, for
+example on lock.
+
 ## Inspection commands
 
 `umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and

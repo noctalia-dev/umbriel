@@ -80,7 +80,7 @@ _enable-tests m=mode ipc="no":
     fi
 
 build m=mode: (_ensure-configured m)
-    meson compile -C build-{{m}} umbriel
+    meson compile -C build-{{m}} umbriel-binaries
 
 debug: (build "debug")
 

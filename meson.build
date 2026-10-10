@@ -118,6 +118,7 @@ libinput_dep = dependency('libinput', version: '>=1.23')
 pixman_dep = dependency('pixman-1', version: '>=0.43.0')
 tomlplusplus_dep = dependency('tomlplusplus')
 nlohmann_json_dep = dependency('nlohmann_json')
+pipewire_dep = dependency('libpipewire-0.3', required: get_option('audio_helper'))
 cairo_dep = dependency('cairo')
 pangocairo_dep = dependency('pangocairo')
 libdrm_dep = dependency('libdrm', version: '>=2.4.129')
@@ -812,6 +813,13 @@ umbriel = executable(
   dependencies: [umbriel_core_dep] + jemalloc_deps,
   install: true,
 )
+
+audio_helpers = []
+if pipewire_dep.found()
+  audio_helper = executable('umbriel-audio', 'src/audio/main.cpp', dependencies: [pipewire_dep, nlohmann_json_dep], install: true)
+  audio_helpers += audio_helper
+endif
+alias_target('umbriel-binaries', [umbriel] + audio_helpers)
 
 # Unit tests and the harness clients check.sh drives.
 if build_tests
