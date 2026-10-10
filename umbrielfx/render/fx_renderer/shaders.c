@@ -18,7 +18,6 @@
 #include "box_shadow_frag_src.h"
 #include "common_vert_src.h"
 #include "corner_alpha_frag_src.h"
-#include "effect_light_frag_src.h"
 #include "gradient_frag_src.h"
 #include "output_frag_src.h"
 #include "quad_frag_src.h"
@@ -399,7 +398,7 @@ bool link_blur2_program(struct blur_shader* shader) {
   return true;
 }
 
-bool link_blur2_with_effects_program(struct blur2_effects_shader* shader) {
+bool link_blur2_with_effects_program(struct blur2_with_effects_shader* shader) {
   GLuint prog;
   shader->base.program = prog = link_program(blur2_with_effects_frag_src);
   if (!shader->base.program) {

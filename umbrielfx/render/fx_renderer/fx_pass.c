@@ -2492,10 +2492,11 @@ void fx_render_pass_add_box_shadow(
   TRACY_BOTH_ZONES_END;
 }
 
-// Renders the blur for each damaged rect and swaps the buffer
+// Renders the blur for each damaged rect and swaps the buffer. A non-NULL
+// blur_with_effects_shader also applies the blur effects when they are enabled.
 static void render_blur_segments(
     struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options, struct blur_shader* blur_shader,
-    struct blur2_effects_shader* blur_with_effects_shader, int sample_divisor
+    struct blur2_with_effects_shader* blur_with_effects_shader, int sample_divisor
 ) {
   struct fx_render_texture_options* tex_options = &fx_options->tex_options;
   struct wlr_render_texture_options* options = &tex_options->base;
@@ -2693,7 +2694,7 @@ get_main_buffer_blur(struct fx_gles_render_pass* pass, struct fx_render_blur_pas
 
   // Upscale
   for (int i = blur_data.num_passes - 1; i >= 0; --i) {
-    // when upsampling we make the region twice as big
+    // when upsampling we make the region twice as big; the final pass also applies the blur effects
     wlr_region_scale(&scaled_damage, &damage, 1.0f / (1 << i));
     render_blur_segments(
         pass, fx_options, &renderer->shaders.blur2, i == 0 ? &renderer->shaders.blur2_with_effects : NULL, 1 << (i + 1)

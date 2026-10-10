@@ -206,15 +206,15 @@ struct blur_shader {
 bool link_blur1_program(struct blur_shader* shader);
 bool link_blur2_program(struct blur_shader* shader);
 
-struct blur2_effects_shader {
+struct blur2_with_effects_shader {
   struct blur_shader base;
   GLint linear;
-  GLfloat noise;
-  GLfloat brightness;
-  GLfloat contrast;
-  GLfloat saturation;
+  GLint noise;
+  GLint brightness;
+  GLint contrast;
+  GLint saturation;
 };
 
-bool link_blur2_with_effects_program(struct blur2_effects_shader* shader);
+bool link_blur2_with_effects_program(struct blur2_with_effects_shader* shader);
 
 #endif

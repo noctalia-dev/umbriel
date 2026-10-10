@@ -32,20 +32,20 @@ vec3 linear_color_to_srgb(vec3 color) {
 mat4 brightnessMatrix() {
   float b = brightness - 1.0;
   // clang-format off
-    return mat4(1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        b, b, b, 1);
+  return mat4(1, 0, 0, 0,
+              0, 1, 0, 0,
+              0, 0, 1, 0,
+              b, b, b, 1);
   // clang-format on
 }
 
 mat4 contrastMatrix() {
   float t = (1.0 - contrast) / 2.0;
   // clang-format off
-    return mat4(contrast, 0, 0, 0,
-        0, contrast, 0, 0,
-        0, 0, contrast, 0,
-        t, t, t, 1);
+  return mat4(contrast, 0, 0, 0,
+              0, contrast, 0, 0,
+              0, 0, contrast, 0,
+              t, t, t, 1);
   // clang-format on
 }
 
@@ -58,10 +58,10 @@ mat4 saturationMatrix() {
   vec3 blue = vec3(luminance.z);
   blue.z += saturation;
   // clang-format off
-    return mat4(red, 0,
-        green, 0,
-        blue, 0,
-        0, 0, 0, 1);
+  return mat4(red, 0,
+              green, 0,
+              blue, 0,
+              0, 0, 0, 1);
   // clang-format on
 }
 
