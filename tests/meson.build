@@ -1,5 +1,15 @@
 # Unit tests. Each entry is [name, test sources, extra dependencies]. Every test gets umbriel_pure_dep; add umbriel_core_dep to the third field for a test that
 # needs compositor code. Either way a test never lists or recompiles a source.
+if pipewire_dep.found()
+  playback_test_tools = true
+  foreach tool : ['python3', 'pipewire', 'wireplumber', 'pw-cat', 'pw-dump', 'dbus-run-session']
+    playback_test_tools = find_program(tool, required: false).found() and playback_test_tools
+  endforeach
+  if playback_test_tools
+    test('audio-playback', find_program('python3'), args: [files('audio_playback.py'), audio_helper], timeout: 30)
+  endif
+endif
+
 unit_tests = [
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],

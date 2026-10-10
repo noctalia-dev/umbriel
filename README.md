@@ -90,7 +90,7 @@ part of Umbriel rather than rebased onto upstream SceneFX; no separate SceneFX p
 Install a C++23 compiler, Meson, Ninja, Just, pkg-config, wayland-scanner, and development packages for wlroots 0.20
 (0.20.1 or newer, built with Xwayland support), Wayland, wayland-protocols, xkbcommon, libinput, pixman, libdrm,
 libdisplay-info, EGL, GLES2, GBM, Cairo, Pango, tomlplusplus, nlohmann-json, xcb, xcb-icccm, and xcb-ewmh.
-Native `[drm]` GPU exclusions also require libudev. lcms2 is optional. See [PACKAGING.md](PACKAGING.md#dependencies)
+Native `[drm]` GPU exclusions also require libudev. lcms2 and PipeWire (for the `umbriel-audio` helper) are optional. See [PACKAGING.md](PACKAGING.md#dependencies)
 for dependency version requirements and test-only dependencies. Then build Umbriel:
 
 ```sh

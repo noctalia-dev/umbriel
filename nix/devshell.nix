@@ -32,6 +32,8 @@ pkgs.mkShell {
     imagemagick
     procps
     xwayland
+    wireplumber
+    dbus
   ];
 
   shellHook = ''

@@ -12,6 +12,7 @@ option(
     + ' (auto: on for debug builds)',
 )
 option('jemalloc', type: 'feature', value: 'auto', description: 'Use jemalloc on glibc builds')
+option('audio_helper', type: 'feature', value: 'auto', description: 'Build the PipeWire playback analyser')
 option(
   'tracy',
   type: 'feature',
