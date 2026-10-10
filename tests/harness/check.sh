@@ -635,9 +635,9 @@ stop_instance() {
 # background job.
 # The body runs pointed at its own instance, not at the session that started the
 # suite. This is not a convenience: only IPC subcommands honour UMBRIEL_SOCKET,
-# while `umbriel outputs` and every helper client are Wayland clients that
-# resolve XDG_RUNTIME_DIR and WAYLAND_DISPLAY, so an inherited session
-# environment silently points them at the developer's live compositor.
+# while every helper client is a Wayland client that resolves XDG_RUNTIME_DIR
+# and WAYLAND_DISPLAY, so an inherited session environment silently points it
+# at the developer's live compositor.
 run_check_body() {
   local name=$1 output_file=$2
   local pgid_file=$RUNTIME_DIR/check.pgid

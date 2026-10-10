@@ -1868,6 +1868,8 @@ namespace umbriel {
   }
 
   void Server::scheduleIpcWorkspacesEvent() {
+    // Outputs report their active workspace and focus, which move with the workspace list.
+    scheduleIpcOutputsEvent();
     if (m_ipc == nullptr || m_ipcWorkspacesIdle != nullptr) {
       return;
     }
@@ -1900,6 +1902,24 @@ namespace umbriel {
     server->m_ipcLayersIdle = nullptr;
     if (server->m_ipc != nullptr) {
       server->m_ipc->notifyLayersChanged();
+    }
+  }
+
+  void Server::scheduleIpcOutputsEvent() {
+    if (m_ipc == nullptr || m_ipcOutputsIdle != nullptr) {
+      return;
+    }
+    m_ipcOutputsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcOutputsIdle, this);
+    if (m_ipcOutputsIdle == nullptr) {
+      kLog.error("failed to register IPC outputs idle source");
+    }
+  }
+
+  void Server::onIpcOutputsIdle(void* data) {
+    auto* server = static_cast<Server*>(data);
+    server->m_ipcOutputsIdle = nullptr;
+    if (server->m_ipc != nullptr) {
+      server->m_ipc->notifyOutputsChanged();
     }
   }
 
@@ -3171,6 +3191,8 @@ namespace umbriel {
   }
 
   void Server::updateOutputManagerConfig() {
+    // Every output state change that output management publishes also changes the IPC output listing.
+    scheduleIpcOutputsEvent();
     if (m_outputManager == nullptr || m_deferOutputManagerConfig) {
       return;
     }

@@ -425,5 +425,5 @@ files = [
 
 Each output keeps its screen pool assignment while disabled. Disconnecting
 releases it; reconnecting starts from configuration. Inspect assignments with
-`umbriel effects --json`; `outputs --json` remains output-management data.
+`umbriel effects --json`.
 The cursor has one session-wide selection shared by all outputs.

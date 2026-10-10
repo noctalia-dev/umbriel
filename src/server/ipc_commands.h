@@ -19,6 +19,7 @@ namespace umbriel {
     static nlohmann::json workspaces(Server& server, std::string_view arg);
     static nlohmann::json submap(Server& server, std::string_view arg);
     static nlohmann::json layers(Server& server, std::string_view arg);
+    static nlohmann::json outputs(Server& server, std::string_view arg);
     static nlohmann::json color(Server& server, std::string_view arg);
     static nlohmann::json tearing(Server& server, std::string_view arg);
     static nlohmann::json msg(Server& server, std::string_view arg);

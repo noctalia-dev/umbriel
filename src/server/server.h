@@ -365,6 +365,8 @@ namespace umbriel {
     void scheduleIpcWorkspacesEvent();
     // Same coalescing for the layer-shell surface list.
     void scheduleIpcLayersEvent();
+    // Same coalescing for the output list.
+    void scheduleIpcOutputsEvent();
 
     // Focus lives in FocusManager; these forward so call sites that already
     // hold a Server do not need a second reference.
@@ -524,6 +526,7 @@ namespace umbriel {
     static void onIpcWindowsIdle(void* data);
     static void onIpcWorkspacesIdle(void* data);
     static void onIpcLayersIdle(void* data);
+    static void onIpcOutputsIdle(void* data);
     static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
 
@@ -845,6 +848,7 @@ namespace umbriel {
     wl_event_source* m_ipcWindowsIdle = nullptr;
     wl_event_source* m_ipcWorkspacesIdle = nullptr;
     wl_event_source* m_ipcLayersIdle = nullptr;
+    wl_event_source* m_ipcOutputsIdle = nullptr;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     // Coalesces renderer-loss notifications until their signal dispatch and

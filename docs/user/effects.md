@@ -261,8 +261,8 @@ inactive pool history does not.
 `umbriel windows --json` and `subscribe windows` include `border_effect` and
 `window_effect` with `name`, `pool`, `source` (`default`, `rule`, or `runtime`),
 and `suppressed`; borders also expose `overlay`. Inspection never picks,
-compiles, or binds. Screen assignments are in `effects`, while `outputs --json`
-keeps its existing output-management contract. See [IPC](ipc.md).
+compiles, or binds. Screen assignments are in `effects`, not `outputs`. See
+[IPC](ipc.md).
 
 ## Write a shader
 

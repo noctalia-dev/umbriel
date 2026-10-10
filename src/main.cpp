@@ -1,5 +1,4 @@
 #include "cli/ipc_client.h"
-#include "cli/outputs.h"
 #include "config/config.h"
 #include "config/config_diag.h"
 #include "config/schema.h"
@@ -115,7 +114,6 @@ namespace {
 
     heading("Inspect the running compositor");
     specRows(umbriel::IpcCommandGroup::Inspect);
-    row("outputs", "list outputs and modes");
     {
       std::string names;
       for (const auto& name : umbriel::Ipc::kEventNames) {
@@ -190,22 +188,6 @@ int main(int argc, char** argv) {
       const bool help = argc >= 3 && isHelpFlag(argv[2]);
       printHelp(help ? stdout : stderr);
       return help ? EXIT_SUCCESS : EXIT_FAILURE;
-    }
-    if (std::strcmp(argv[1], "outputs") == 0) {
-      bool json = false;
-      for (int i = 2; i < argc; ++i) {
-        if (isHelpFlag(argv[i])) {
-          printHelp(stdout);
-          return EXIT_SUCCESS;
-        }
-        if (isJsonFlag(argv[i])) {
-          json = true;
-        } else {
-          printHelp(stderr);
-          return EXIT_FAILURE;
-        }
-      }
-      return umbriel::runOutputsCommand(json);
     }
     if (std::strcmp(argv[1], "help") == 0 || std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0) {
       printHelp(stdout);

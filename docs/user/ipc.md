@@ -24,6 +24,7 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 | `{"cmd":"workspaces"}` | `umbriel workspaces --json` |
 | `{"cmd":"submap"}` | `umbriel submap --json` |
 | `{"cmd":"layers"}` | `umbriel layers --json` |
+| `{"cmd":"outputs"}` | `umbriel outputs --json` |
 | `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>` |
 
 Window entries include IDs, application identity, process ID, geometry,
@@ -63,6 +64,17 @@ the surface holds the keyboard, `exclusive_zone`, `anchor` (the anchored edges),
 `margin`, and the arranged geometry `x`, `y`, `w`, and `h` in layout
 coordinates.
 
+Output entries list every connected output, including disabled ones: `name`,
+`description`, `make`, `model`, `serial`, `config_name` (the
+[monitor identity](outputs.md), or `null` when the display reports none),
+`physical_size`, `enabled` (part of the desktop), `powered` (enabled and not
+switched off by DPMS), `focused`, `active_workspace` (its ID), `position`,
+`logical_size`, `usable_area` (the part layer-shell exclusive zones leave, in
+layout coordinates), `transform`, `scale`, `adaptive_sync` (`null` when the
+output cannot use variable refresh), `hdr_active`, and `modes`, each with
+`width`, `height`, `refresh_mhz`, `preferred`, and `current`. A disabled output
+reports a zero `logical_size` and `usable_area`.
+
 ## Effect inspection
 
 `umbriel effects` prints tables; `--json` exposes `presets`, `pools`, `cursor`,
@@ -87,8 +99,8 @@ empty selected name. Suppressed and failed selections retain their names.
 `windows --json` and `subscribe windows` expose these same slot shapes as
 `border_effect` and `window_effect`; the window text table is unchanged.
 
-Inspection never picks, compiles, or binds an effect. `outputs --json` remains
-the Wayland output-management query; use `effects` for screen selections.
+Inspection never picks, compiles, or binds an effect. Use `effects`, not
+`outputs`, for screen selections.
 See [Effects](effects.md) and [Actions](actions.md) for configuration and runtime
 changes.
 
@@ -117,6 +129,7 @@ snapshot whenever that family changes:
 | `submap` | Active keybind submap |
 | `screencast` | Manual target and focus-following screencast commands |
 | `layers` | Layer-shell surfaces appearing, mapping, closing, moving, resizing, or taking and losing the keyboard |
+| `outputs` | Outputs appearing or leaving, enablement, power, mode, position, scale, transform, variable refresh, HDR, usable area, focus, or active workspace |
 
 Payloads are full snapshots rather than deltas. Replace local state with the
 newest event instead of trying to merge increments. Identical consecutive

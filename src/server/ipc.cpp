@@ -110,6 +110,10 @@ namespace umbriel {
       return nlohmann::json{{"event", "layers"}, {"data", IpcCommands::layers(server, {}).at("ok")}};
     }
 
+    nlohmann::json outputsEvent(Server& server) {
+      return nlohmann::json{{"event", "outputs"}, {"data", IpcCommands::outputs(server, {}).at("ok")}};
+    }
+
     nlohmann::json screenCastEvent(Server& server) {
       const ScreenCastCommand& command = server.screenCastCommand();
       nlohmann::json data{{"serial", command.serial}};
@@ -531,7 +535,7 @@ namespace umbriel {
       if (!req.contains("events") || !req["events"].is_array() || req["events"].empty()) {
         return R"({"err":"malformed request"})";
       }
-      uint8_t requested = 0;
+      uint16_t requested = 0;
       for (const auto& event : req["events"]) {
         if (!event.is_string()) {
           return R"({"err":"malformed request"})";
@@ -540,7 +544,7 @@ namespace umbriel {
         bool matched = false;
         for (size_t bit = 0; bit < Ipc::kEventCount; ++bit) {
           if (name == Ipc::kEventNames[bit]) {
-            requested |= static_cast<uint8_t>(1U << bit);
+            requested |= static_cast<uint16_t>(1U << bit);
             matched = true;
             break;
           }
@@ -589,6 +593,9 @@ namespace umbriel {
       if ((requested & Ipc::kEventLayers) != 0) {
         append(layersEvent(*m_server));
       }
+      if ((requested & Ipc::kEventOutputs) != 0) {
+        append(outputsEvent(*m_server));
+      }
       return response;
     }
 #ifdef UMBRIEL_TEST_IPC
@@ -628,7 +635,7 @@ namespace umbriel {
     return spec->handle(*m_server, arg).dump();
   }
 
-  void Ipc::broadcastEvent(uint8_t event, const nlohmann::json& payload) {
+  void Ipc::broadcastEvent(uint16_t event, const nlohmann::json& payload) {
     std::string update = payload.dump() + '\n';
     // Coalescing bounds how often a family is rebuilt; this bounds what leaves the compositor. An arrange that ends
     // where it started, or a window field the payload does not carry, produces the same bytes as last time and is
@@ -683,5 +690,7 @@ namespace umbriel {
   void Ipc::notifyScreenCastChanged() { broadcastEvent(kEventScreenCast, screenCastEvent(*m_server)); }
 
   void Ipc::notifyLayersChanged() { broadcastEvent(kEventLayers, layersEvent(*m_server)); }
+
+  void Ipc::notifyOutputsChanged() { broadcastEvent(kEventOutputs, outputsEvent(*m_server)); }
 
 } // namespace umbriel

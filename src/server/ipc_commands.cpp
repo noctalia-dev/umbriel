@@ -4,6 +4,7 @@
 #include "config/config.h"
 #include "input/cursor.h"
 #include "layer/layer_surface.h"
+#include "output/identity.h"
 #include "output/output.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
@@ -217,6 +218,99 @@ namespace umbriel {
     }
 
     void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
+
+    const char* transformName(wl_output_transform transform) {
+      switch (transform) {
+      case WL_OUTPUT_TRANSFORM_NORMAL:
+        return "normal";
+      case WL_OUTPUT_TRANSFORM_90:
+        return "90";
+      case WL_OUTPUT_TRANSFORM_180:
+        return "180";
+      case WL_OUTPUT_TRANSFORM_270:
+        return "270";
+      case WL_OUTPUT_TRANSFORM_FLIPPED:
+        return "flipped";
+      case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+        return "flipped-90";
+      case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+        return "flipped-180";
+      case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+        return "flipped-270";
+      }
+      return "unknown";
+    }
+
+    void printOutputs(const nlohmann::json& ok) {
+      bool first = true;
+      for (const auto& output : ok) {
+        if (!first) {
+          std::println("");
+        }
+        first = false;
+        std::println("{} \"{}\"", output.value("name", ""), output.value("description", ""));
+        std::println("  Enabled: {}", output.value("enabled", false) ? "yes" : "no");
+        std::println("  Power: {}", output.value("powered", false) ? "on" : "off");
+        std::println("  Focused: {}", output.value("focused", false) ? "yes" : "no");
+        const std::string workspace = output.value("active_workspace", "");
+        std::println("  Active workspace: {}", workspace.empty() ? "-" : workspace);
+        if (output.at("config_name").is_string()) {
+          std::println("  Config name: \"{}\"", output.at("config_name").get<std::string>());
+          std::string identity;
+          for (const auto& [label, key] : {std::pair{"Make", "make"}, {"Model", "model"}, {"Serial", "serial"}}) {
+            const std::string value = output.value(key, "");
+            if (value.empty()) {
+              continue;
+            }
+            if (!identity.empty()) {
+              identity += "  ";
+            }
+            identity += std::format("{}: {}", label, value);
+          }
+          std::println("  {}", identity);
+        }
+        const auto& physical = output.at("physical_size");
+        const int widthMm = physical.value("width_mm", 0);
+        const int heightMm = physical.value("height_mm", 0);
+        if (widthMm > 0 || heightMm > 0) {
+          std::println("  Physical size: {}x{} mm", widthMm, heightMm);
+        }
+        const auto& position = output.at("position");
+        std::println("  Position: {},{}", position.value("x", 0), position.value("y", 0));
+        std::println("  Transform: {}", output.value("transform", "normal"));
+        std::println("  Scale: {:f}", output.value("scale", 1.0));
+        const auto& usable = output.at("usable_area");
+        std::println(
+            "  Usable area: {}x{}{:+}{:+}", usable.value("width", 0), usable.value("height", 0), usable.value("x", 0),
+            usable.value("y", 0)
+        );
+        if (output.at("adaptive_sync").is_boolean()) {
+          std::println("  Adaptive sync: {}", output.at("adaptive_sync").get<bool>() ? "enabled" : "disabled");
+        }
+        std::println("  HDR: {}", output.value("hdr_active", false) ? "on" : "off");
+        const auto& modes = output.at("modes");
+        if (modes.empty()) {
+          continue;
+        }
+        std::println("  Modes:");
+        for (const auto& mode : modes) {
+          const bool preferred = mode.value("preferred", false);
+          const bool current = mode.value("current", false);
+          std::print(
+              "    {}x{} @ {:.3f} Hz", mode.value("width", 0), mode.value("height", 0),
+              mode.value("refresh_mhz", 0) / 1000.0
+          );
+          if (preferred && current) {
+            std::print(" (preferred, current)");
+          } else if (preferred) {
+            std::print(" (preferred)");
+          } else if (current) {
+            std::print(" (current)");
+          }
+          std::println("");
+        }
+      }
+    }
 
     std::string fourccName(uint32_t format) {
       if (format == DRM_FORMAT_INVALID) {
@@ -721,6 +815,71 @@ namespace umbriel {
     return nlohmann::json{{"ok", layers}};
   }
 
+  nlohmann::json IpcCommands::outputs(Server& server, std::string_view /*arg*/) {
+    nlohmann::json outputs = nlohmann::json::array();
+    const Output* preferred = server.outputFromWlr(server.preferredOutput());
+    for (const auto& output : server.outputs()) {
+      wlr_output* wlrOutput = output->wlr();
+      nlohmann::json modes = nlohmann::json::array();
+      wlr_output_mode* mode = nullptr;
+      wl_list_for_each(mode, &wlrOutput->modes, link) {
+        modes.push_back({
+            {"width", mode->width},
+            {"height", mode->height},
+            {"refresh_mhz", mode->refresh},
+            {"preferred", mode->preferred},
+            {"current", mode == wlrOutput->current_mode},
+        });
+      }
+      // A custom mode (virtual outputs, `output-create` sizes) is listed as the current one.
+      if (wlrOutput->current_mode == nullptr && wlrOutput->width > 0 && wlrOutput->height > 0) {
+        modes.push_back({
+            {"width", wlrOutput->width},
+            {"height", wlrOutput->height},
+            {"refresh_mhz", wlrOutput->refresh},
+            {"preferred", false},
+            {"current", true},
+        });
+      }
+      // Unknown when the output can neither change nor report variable refresh.
+      nlohmann::json adaptiveSync = nullptr;
+      const bool adaptiveSyncEnabled = wlrOutput->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+      if (wlrOutput->adaptive_sync_supported || adaptiveSyncEnabled) {
+        adaptiveSync = adaptiveSyncEnabled;
+      }
+      const OutputIdentity identity = output->identity();
+      const bool hasIdentity = !identity.make.empty() || !identity.model.empty() || !identity.serial.empty();
+      const bool desktopEnabled = output->desktopEnabled();
+      const wlr_box layoutBox = output->layoutBox();
+      const wlr_box usable = desktopEnabled ? output->usableArea() : wlr_box{};
+      const WorkspaceGroup* group = output->workspaceGroup();
+      const Workspace* activeWorkspace = group != nullptr ? group->active() : nullptr;
+      outputs.push_back({
+          {"name", wlrOutput->name},
+          {"description", wlrOutput->description != nullptr ? wlrOutput->description : ""},
+          {"make", identity.make},
+          {"model", identity.model},
+          {"serial", identity.serial},
+          {"config_name", hasIdentity ? nlohmann::json(outputDescriptor(identity)) : nlohmann::json(nullptr)},
+          {"physical_size", {{"width_mm", wlrOutput->phys_width}, {"height_mm", wlrOutput->phys_height}}},
+          {"enabled", desktopEnabled},
+          {"powered", desktopEnabled && !output->dpmsOff()},
+          {"focused", output.get() == preferred},
+          {"active_workspace", activeWorkspace != nullptr ? activeWorkspace->id() : ""},
+          {"position", {{"x", layoutBox.x}, {"y", layoutBox.y}}},
+          {"logical_size",
+           {{"width", desktopEnabled ? layoutBox.width : 0}, {"height", desktopEnabled ? layoutBox.height : 0}}},
+          {"usable_area", {{"x", usable.x}, {"y", usable.y}, {"width", usable.width}, {"height", usable.height}}},
+          {"transform", transformName(wlrOutput->transform)},
+          {"scale", wlrOutput->scale},
+          {"adaptive_sync", std::move(adaptiveSync)},
+          {"hdr_active", output->hdrActive()},
+          {"modes", std::move(modes)},
+      });
+    }
+    return nlohmann::json{{"ok", outputs}};
+  }
+
   nlohmann::json IpcCommands::color(Server& server, std::string_view /*arg*/) {
     nlohmann::json outputs = nlohmann::json::array();
     for (const auto& output : server.outputs()) {
@@ -1122,6 +1281,7 @@ namespace umbriel {
       {"submap", "", "show the active keybind submap", IpcCommandGroup::Inspect, false, &IpcCommands::submap,
        &printSubmap},
       {"layers", "", "list layer-shell surfaces", IpcCommandGroup::Inspect, false, &IpcCommands::layers, &printLayers},
+      {"outputs", "", "list outputs and modes", IpcCommandGroup::Inspect, false, &IpcCommands::outputs, &printOutputs},
       {"color", "", "show color-management state", IpcCommandGroup::Inspect, false, &IpcCommands::color, &printColor},
       {"tearing", "", "show tearing-control state", IpcCommandGroup::Inspect, false, &IpcCommands::tearing,
        &printTearing},

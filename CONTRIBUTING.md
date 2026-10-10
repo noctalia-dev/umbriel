@@ -117,8 +117,8 @@ follow:
   down itself, as `session/quit` does.
 - Never re-apply `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, or `-u DBUS_SESSION_BUS_ADDRESS` per command. The harness
   already put the body in that environment. This is containment, not convenience: only IPC subcommands honour
-  `UMBRIEL_SOCKET`, while `umbriel outputs` and every helper client are Wayland clients resolving `XDG_RUNTIME_DIR`
-  and `WAYLAND_DISPLAY`, so a missing prefix used to query the developer's live session instead of the instance.
+  `UMBRIEL_SOCKET`, while every helper client is a Wayland client resolving `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`,
+  so a missing prefix used to query the developer's live session instead of the instance.
 - Never retain `$!` from a backgrounded shell *function*. Bash forks a subshell, so the captured pid is the wrapper and
   a signal to it leaves the client running. Background the client binary directly when a pid must be kept.
 - Never time a check with the wall clock. Wait for an end state with `umbriel settle`: it replies once no animation
@@ -505,7 +505,8 @@ umbriel msg --help              # list actions available to `msg` and keybinds
 umbriel msg <action> [args...]   # send an action to the running compositor
 ```
 
-`windows`, `effects`, `workspaces`, `layers`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for machine-readable output.
+`windows`, `effects`, `workspaces`, `layers`, `outputs`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for
+machine-readable output.
 `subscribe` is always JSON; see [docs/user/ipc.md](docs/user/ipc.md) for the families and payloads.
 
 ## Commits

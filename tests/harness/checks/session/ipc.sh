@@ -422,8 +422,8 @@ if ! jq -e 'type == "array"' <<< "$layers" > /dev/null; then
   exit 1
 fi
 
-# Output management is a Wayland-client query rather than IPC, but it follows
-# the same JSON flag convention as the inspection commands.
+# The output listing keeps the field shapes scripts already parse, and follows the
+# same JSON flag convention as the other inspection commands.
 outputs=$("$UMBRIEL" outputs --json)
 if ! jq -e '
   type == "array" and length == 1

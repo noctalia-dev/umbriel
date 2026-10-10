@@ -753,7 +753,6 @@ core_sources = files(
   'src/workspace/workspace.cpp',
   'src/workspace/tab_presenter.cpp',
   'src/workspace/scratchpad.cpp',
-  'src/cli/outputs.cpp',
   'src/cli/ipc_client.cpp',
   'src/server/ipc.cpp',
   'src/server/ipc_commands.cpp',
@@ -784,8 +783,6 @@ umbriel_core_deps = [
 umbriel_core = static_library(
   'umbriel-core',
   core_sources + [
-    output_mgmt_client_h,
-    output_mgmt_client_c,
     color_management_server_h,
     color_management_server_c,
     xdg_output_server_h,

@@ -1259,6 +1259,7 @@ namespace umbriel {
 
     // Layer geometry and the usable area settle here.
     m_server->scheduleIpcLayersEvent();
+    m_server->scheduleIpcOutputsEvent();
     const wlr_box layoutUsableArea = this->usableArea();
     kLog.debug(
         "{} usable={}x{}+{}+{}", m_output->name, layoutUsableArea.width, layoutUsableArea.height, layoutUsableArea.x,
