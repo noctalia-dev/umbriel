@@ -48,6 +48,7 @@ struct fx_gles_render_pass {
   // Call `fx_render_pass_init_offscreen_buffers` to use advanced effects.
   struct fx_offscreen_buffers* fx_offscreen_buffers;
   unsigned animation_depth;
+  struct wlr_texture* workspace_incoming; // bound only while compositing a workspace pair
   // A scratch backdrop beneath an isolated subtree, excluded from composition.
   unsigned isolation_depth;
   bool isolation_content;

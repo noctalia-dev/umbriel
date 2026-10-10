@@ -799,6 +799,15 @@ static void draw_animation_texture(
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
   glUniform1i(shader->tex, 0);
+  if (shader->incoming_tex >= 0) {
+    struct wlr_texture* incoming = pass->workspace_incoming != NULL ? pass->workspace_incoming : wlr_texture;
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, fx_get_texture(incoming)->tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+    glUniform1i(shader->incoming_tex, 2);
+    glActiveTexture(GL_TEXTURE0);
+  }
   glUniform1f(shader->progress, parameters->progress);
   glUniform1f(shader->linear_progress, parameters->linear_progress);
   glUniform1f(shader->direction, parameters->direction);
@@ -898,6 +907,11 @@ static void draw_animation_texture(
     render_pass_mark_updated(pass, box, clip);
   }
   render(box, clip, shader->position);
+  if (shader->incoming_tex >= 0) {
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+  }
   glBindTexture(GL_TEXTURE_2D, 0);
   if (shader->previous_tex >= 0) {
     glActiveTexture(GL_TEXTURE1);
@@ -1374,6 +1388,16 @@ fallback:
   if (previous_texture != NULL) {
     wlr_texture_destroy(previous_texture);
   }
+}
+
+void fx_render_pass_end_workspace(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite) {
+  struct wlr_texture* incoming = pop_animation_capture(pass);
+  struct wlr_texture* outgoing = pop_animation_capture(pass);
+  pass->workspace_incoming = incoming;
+  effect_composite(pass, composite, outgoing, &composite->box);
+  pass->workspace_incoming = NULL;
+  wlr_texture_destroy(outgoing);
+  wlr_texture_destroy(incoming);
 }
 
 void fx_render_pass_end_effect(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite) {

@@ -34,6 +34,7 @@ struct fx_effect_shader {
   GLuint program;
   GLint proj, tex_proj, position, tex, sample_matrix;
   GLint previous_tex, previous_sample_matrix;
+  GLint incoming_tex;
   GLint progress, linear_progress, direction, random_seed;
   GLint size, scale, expand;
   bool shape_preserving;
@@ -116,6 +117,8 @@ struct fx_effect_composite {
 // Pops the capture begun by fx_render_pass_begin_animation and draws it
 // through the composite's program.
 void fx_render_pass_end_effect(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite);
+// Pop two full-output captures and replace the parent with their transition.
+void fx_render_pass_end_workspace(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite);
 // Renders `composite->shader` over the current target's pixels under `box`,
 // writing back with blending off through the rounded mask. The subtree must
 // already be drawn. Reads and promotes history like a capture composite.

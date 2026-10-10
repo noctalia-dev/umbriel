@@ -3268,6 +3268,10 @@ namespace umbriel {
           }
           configuredFrameMasks.emplace_back(mask);
         }
+        // This frame is built without the reveal pair, so resume native slide first.
+        if (WorkspaceGroup* group = output->workspaceGroup()) {
+          group->abandonReveal();
+        }
         wlr_scene_output_state_options options{};
         options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
         if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {

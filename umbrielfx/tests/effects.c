@@ -2610,6 +2610,7 @@ int main(int argc, char* argv[]) {
   bool ok;
   if (strcmp(argv[1], "workspace-reveal") == 0) {
     ok = test_workspace_reveal(&fixture);
+    ok &= test_workspace_pair(&fixture);
   } else if (strcmp(argv[1], "kinds") == 0) {
     ok = test_kinds(&fixture);
   } else if (strcmp(argv[1], "reads") == 0) {

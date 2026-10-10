@@ -140,3 +140,78 @@ static bool test_workspace_reveal(struct fixture* fixture) {
   fx_effect_shader_unref(wipe);
   return ok;
 }
+
+// A tint makes unchanged shared layers observable: drawing them above or below
+// the transition would leave them at full intensity instead of half intensity.
+static bool test_workspace_pair(struct fixture* fixture) {
+  const float green[4] = {0, 1, 0, 1}, red[4] = {1, 0, 0, 1};
+  const float blue[4] = {0, 0, 1, 1}, white[4] = {1, 1, 1, 1};
+  struct fx_effect_shader* shader = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION,
+      "vec4 animation(vec2 uv) { return mix(umbriel_sample(uv),"
+      "umbriel_sample_incoming(uv), umbriel_progress) * vec4(0.5, 0.5, 0.5, 1.0); }",
+      "workspace-pair"
+  );
+  if (!check(shader != NULL, "pair shader compiles"))
+    return false;
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_rect_create(&scene->tree, 16, 16, green);
+  struct wlr_scene_tree* from = wlr_scene_tree_create(&scene->tree);
+  struct wlr_scene_tree* to = wlr_scene_tree_create(&scene->tree);
+  struct wlr_scene_rect* outgoing = wlr_scene_rect_create(from, 10, 10, red);
+  struct wlr_scene_rect* incoming = wlr_scene_rect_create(to, 10, 10, blue);
+  wlr_scene_node_set_position(&outgoing->node, 3, 3);
+  wlr_scene_node_set_position(&incoming->node, 3, 3);
+  wlr_scene_rect_create(&scene->tree, 2, 16, white); // shared shell surface above both roots
+  struct fx_animation_parameters parameters = {.progress = .5, .transition_id = 1};
+  wlr_scene_node_set_animation(&from->node, FX_SLOT_WORKSPACES, shader, &parameters);
+  wlr_scene_node_set_animation(&to->node, FX_SLOT_WORKSPACES, shader, &parameters);
+  wlr_scene_node_set_animation_isolation(&from->node, FX_SLOT_WORKSPACES, from);
+  wlr_scene_node_set_animation_isolation(&to->node, FX_SLOT_WORKSPACES, to);
+  const struct wlr_drm_format* format = get_render_format(fixture, DRM_FORMAT_ARGB8888);
+  struct wlr_swapchain* swapchain = format != NULL ? wlr_swapchain_create(fixture->allocator, 16, 16, format) : NULL;
+  bool ok = check(swapchain != NULL, "pair swapchain");
+  if (swapchain != NULL) {
+    const struct wlr_scene_output_state_options options = {
+        .swapchain = swapchain,
+        .require_animation_success = true,
+        .workspace_from = &from->node,
+        .workspace_to = &to->node,
+    };
+    const int expected[3][3] = {{64, 0, 64}, {0, 64, 64}, {64, 64, 0}};
+    for (unsigned update = 0; update < 3; update++) {
+      if (update == 1)
+        wlr_scene_rect_set_color(outgoing, green);
+      if (update == 2)
+        wlr_scene_rect_set_color(incoming, red);
+      struct wlr_output_state state;
+      wlr_output_state_init(&state);
+      bool built = wlr_scene_output_build_state(output, &state, &options);
+      ok &= check(built && state.buffer != NULL, "live pair renders at held progress");
+      if (built && state.buffer != NULL) {
+        const int xs[] = {8, 15, 0};
+        const int colors[3][3] = {
+            {expected[update][0], expected[update][1], expected[update][2]}, {0, 128, 0}, {128, 128, 128}
+        };
+        for (unsigned sample = 0; sample < 3; sample++) {
+          uint8_t pixel[4];
+          bool read = fixture_read_pixel(fixture, state.buffer, xs[sample], 8, pixel);
+          ok &= check(read, "pair pixel readable");
+          if (read)
+            ok &= check(
+                abs(pixel[2] - colors[sample][0]) <= 3
+                    && abs(pixel[1] - colors[sample][1]) <= 3
+                    && abs(pixel[0] - colors[sample][2]) <= 3,
+                "one shader transforms live windows, wallpaper and shell surface"
+            );
+        }
+      }
+      wlr_output_state_finish(&state);
+    }
+    wlr_swapchain_destroy(swapchain);
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  fx_effect_shader_unref(shader);
+  return ok;
+}

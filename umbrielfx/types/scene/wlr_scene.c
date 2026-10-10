@@ -829,6 +829,8 @@ struct render_data {
   bool sampled_earlier;
   // Replay native lower layers for blur without sampling or advancing feedback.
   const void* backdrop_group;
+  const void* workspace_group;
+  bool workspace_second, workspace_same;
   // The scene's effect state for this frame, NULL when it has none. Nothing may
   // add or remove slots while entries render: output_sample listeners run then.
   struct scene_effects* effects;
@@ -3031,6 +3033,28 @@ get_luminance_multiplier(const struct wlr_color_luminances* src_lum, const struc
   return (dst_lum->reference / src_lum->reference) * (src_lum->max / dst_lum->max);
 }
 
+static const void* workspace_group(struct wlr_scene_node* node) {
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    struct scene_animation* animation = scene_animation_get(node);
+    if (animation != NULL && animation->isolation_group != NULL) {
+      return animation->isolation_group;
+    }
+  }
+  return NULL;
+}
+
+static bool workspace_repeated(struct wlr_scene_node* node, const struct render_data* data) {
+  return data->workspace_second && (data->workspace_same || workspace_group(node) == NULL);
+}
+
+static bool excluded_from_backdrop(struct wlr_scene_node* node, const void* group) {
+  if (group == NULL) {
+    return false;
+  }
+  const void* owner = workspace_group(node);
+  return owner != NULL && owner != group;
+}
+
 static void scene_entry_render(struct render_list_entry* entry, const struct render_data* data) {
   struct wlr_scene_node* node = entry->node;
   // Backdrop effects are not part of a window's shadow caster. Shadows are
@@ -3362,7 +3386,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .release_timeline = data->output->in_timeline,
         .release_point = data->output->in_point,
     };
-    if (!data->shadow_capture && !data->sampled_earlier && data->backdrop_group == NULL) {
+    if (!data->shadow_capture
+        && !data->sampled_earlier
+        && data->backdrop_group == NULL
+        && !workspace_repeated(entry->node, data)) {
       wl_signal_emit_mutable(&scene_buffer->events.output_sample, &sample_event);
     }
 
@@ -3753,7 +3780,8 @@ static void render_in_place_slots(
         .output_clip = clip,
         .history = &animation->histories[slot],
         .output = data->output->output,
-        .update_history = !data->shadow_capture && data->backdrop_group == NULL,
+        .update_history =
+            !data->shadow_capture && data->backdrop_group == NULL && !workspace_repeated(animation->node, data),
         .role = 0,
         .corner_radius = corner_radius,
     };
@@ -3779,25 +3807,13 @@ static void render_background(
     const pixman_region32_t* clip, enum wlr_render_blend_mode blend_mode
 );
 
-static bool excluded_from_backdrop(struct wlr_scene_node* node, const void* group) {
-  if (group == NULL) {
-    return false;
-  }
-  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
-    struct scene_animation* animation = scene_animation_get(node);
-    if (animation != NULL && animation->isolation_group != NULL && animation->isolation_group != group) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static void render_animated_range(
     struct render_list_entry* entries, int high, int low, struct wlr_scene_node* stop, const struct render_data* data
 ) {
   struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
   for (int i = high; i >= low;) {
-    if (excluded_from_backdrop(entries[i].node, data->backdrop_group)) {
+    if (excluded_from_backdrop(entries[i].node, data->backdrop_group)
+        || excluded_from_backdrop(entries[i].node, data->workspace_group)) {
       i--;
       continue;
     }
@@ -3882,7 +3898,11 @@ static void render_animated_range(
     const bool persistent_damaged =
         animation->persistent && persistent_effect_damaged(animation, data, has_clip ? &ancestor_clip : NULL);
     bool isolated = false;
-    if (animation->isolation_group != NULL && data->backdrop_group == NULL && !data->shadow_capture && pass->has_blur) {
+    if (animation->isolation_group != NULL
+        && data->backdrop_group == NULL
+        && data->workspace_group == NULL
+        && !data->shadow_capture
+        && pass->has_blur) {
       isolated = fx_render_pass_begin_isolation(pass);
       if (isolated) {
         struct render_data backdrop = *data;
@@ -3902,7 +3922,7 @@ static void render_animated_range(
       struct fx_effect_shader* shader = animation->shaders[slot];
       if (shader != NULL
           && !(
-              data->backdrop_group != NULL
+              (data->backdrop_group != NULL || data->workspace_group != NULL)
               && animation->isolation_group != NULL
               && slot == (int)animation->isolation_slot
           )
@@ -3984,7 +4004,8 @@ static void render_animated_range(
             .output_clip = composite_clip,
             .history = &animation->histories[slot],
             .output = data->output->output,
-            .update_history = !data->shadow_capture && data->backdrop_group == NULL,
+            .update_history =
+                !data->shadow_capture && data->backdrop_group == NULL && !workspace_repeated(animation->node, data),
             .geometry = has_geometry ? &geometry : NULL,
             .light = slot == FX_SLOT_BORDER_EFFECT
                     && animation->light != NULL
@@ -4131,6 +4152,59 @@ scene_output_acknowledge_damage(struct wlr_scene_output* scene_output, const str
     pixman_region32_fini(&scene_output->pending_commit_damage);
     pixman_region32_init(&scene_output->pending_commit_damage);
   }
+}
+
+static void
+render_workspace_scene(const struct wlr_scene_output_state_options* options, const struct render_data* data) {
+  if (options->workspace_from == NULL) {
+    render_animated_range(data->entries, data->entry_count - 1, 0, NULL, data);
+    return;
+  }
+  struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
+  struct scene_animation* from = scene_animation_get(options->workspace_from);
+  struct scene_animation* to = options->workspace_to != NULL ? scene_animation_get(options->workspace_to) : from;
+  if (from == NULL || to == NULL || from->isolation_group == NULL || to->isolation_group == NULL) {
+    pass->animation_failed = true;
+    return;
+  }
+  const unsigned slot = from->isolation_slot;
+  if (from->shaders[slot] == NULL || from->shaders[slot]->renderer != pass->buffer->renderer) {
+    pass->animation_failed = true;
+    return;
+  }
+  const struct fx_effect_composite composite = {
+      .shader = from->shaders[slot],
+      .parameters = &from->parameters[slot],
+      .audio = data->audio,
+      .box = {.width = pass->buffer->buffer->width, .height = pass->buffer->buffer->height},
+      .logical_box = {.width = data->logical.width, .height = data->logical.height},
+      .transform = data->transform,
+      .capture_clip = &data->damage,
+      .output_clip = &data->damage,
+      .history = &from->histories[slot],
+      .output = data->output->output,
+      .update_history = true,
+      .replace = true,
+      .role = data->effect_capture ? 1 : 0,
+  };
+  for (unsigned face = 0; face < 2; face++) {
+    if (!fx_render_pass_begin_animation(pass)) {
+      if (face != 0) {
+        // Unwind the first capture; strict submission rejects this frame.
+        fx_render_pass_end_capture(pass, &composite.box, &data->damage);
+      }
+      return;
+    }
+    struct render_data source = *data;
+    source.workspace_group = face == 0 ? from->isolation_group : to->isolation_group;
+    source.workspace_second = face != 0;
+    source.workspace_same = from->isolation_group == to->isolation_group;
+    render_background(
+        data->render_pass, data->output->scene, pass->buffer->buffer, &data->damage, WLR_RENDER_BLEND_MODE_NONE
+    );
+    render_animated_range(data->entries, data->entry_count - 1, 0, NULL, &source);
+  }
+  fx_render_pass_end_workspace(pass, &composite);
 }
 
 struct scene_output_effects {
@@ -5786,7 +5860,7 @@ bool wlr_scene_output_build_state(
   expand_damage_to_effects(scene_output, effects, output_effects, &render_data, &render_data.damage, false);
 
   struct fx_gles_render_pass* fx_pass = fx_get_render_pass(render_pass);
-  fx_pass->require_animation_success = options->require_animation_success;
+  fx_pass->require_animation_success = options->require_animation_success || options->workspace_from != NULL;
   if (fx_pass->require_animation_success) {
     // Discard errors predating this composition; only this frame may reject it.
     while (glGetError() != GL_NO_ERROR) {
@@ -5937,20 +6011,20 @@ bool wlr_scene_output_build_state(
   if (unfiltered_pass) {
     struct render_data clean = render_data;
     clean.effect_capture = true;
-    render_animated_range(list_data, list_len - 1, 0, NULL, &clean);
+    render_workspace_scene(options, &clean);
     wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
     if (fx_render_pass_save_effect_capture(fx_pass)) {
       fx_pass->output_buffer->effect_capture_owner = scene_output;
       // Start the display composition from the background again.
       render_background(render_pass, scene_output->scene, buffer, &render_data.damage, WLR_RENDER_BLEND_MODE_NONE);
       render_data.sampled_earlier = true;
-      render_animated_range(list_data, list_len - 1, 0, NULL, &render_data);
+      render_workspace_scene(options, &render_data);
     } else {
       // Without its capture the frame is shown unfiltered.
       cursors_drawn = true;
     }
   } else {
-    render_animated_range(list_data, list_len - 1, 0, NULL, &render_data);
+    render_workspace_scene(options, &render_data);
   }
   for (int i = list_len - 1; i >= 0; i--) {
     struct render_list_entry* entry = &list_data[i];

@@ -993,6 +993,9 @@ struct wlr_scene_output_state_options {
 
   // Failed animation capture/composition must reject the whole output state.
   bool require_animation_success;
+  // Participating roots supply the workspace isolation identities and transition slot.
+  // Render each complete output scene, then composite the pair once.
+  struct wlr_scene_node *workspace_from, *workspace_to;
 };
 
 /**

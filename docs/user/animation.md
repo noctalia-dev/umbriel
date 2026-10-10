@@ -207,7 +207,8 @@ visible within that margin while the snapshot fades.
 
 `animation.workspaces.style` accepts `"slide"` (the default) or `"reveal"`.
 Reveal keeps both workspaces at their resting positions while an animation
-shader reveals the incoming workspace. Application content stays live,
+shader combines two full-output scenes, including wallpaper, windows, decorations
+and shell surfaces. Application content stays live,
 including during workspace swipes. Native navigation still controls focus,
 direction and settling.
 
@@ -232,3 +233,10 @@ effect registry. If reveal composition fails, navigation resumes native slide
 at the current progress. Disabling workspace animation ends the transition.
 `effects.in_capture` continues to control persistent window/screen effects in
 captures; the workspace transition itself remains visible.
+
+Reveal shaders use `umbriel_sample(uv)` for the outgoing scene and
+`umbriel_sample_incoming(uv)` for the incoming scene, with output-wide UVs.
+The shader returns the final scene pixel; for example,
+`mix(umbriel_sample(uv), umbriel_sample_incoming(uv), umbriel_clamped_progress)`
+produces a crossfade. A shader that reads only `umbriel_sample` shows only the
+outgoing scene. `umbriel_sample_previous` reads this effect's previous result.

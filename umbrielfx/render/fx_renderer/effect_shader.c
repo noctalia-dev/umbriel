@@ -18,6 +18,7 @@ static const char kPreamble[] =
     "#define cos(x) cos(mod((x), 6.283185307179586))\n"
     "varying vec2 v_texcoord;\n"
     "uniform sampler2D umbriel_texture;\n"
+    "uniform sampler2D umbriel_incoming_texture;\n"
     "uniform mat3 umbriel_sample_matrix;\n"
     "uniform sampler2D umbriel_previous_texture;\n"
     "uniform mat3 umbriel_previous_sample_matrix;\n"
@@ -35,6 +36,12 @@ static const char kPreamble[] =
     "  vec2 p = (vec3(uv, 1.0) * umbriel_sample_matrix).xy;\n"
     "  if (any(lessThan(p, vec2(0.0))) || any(greaterThan(p, vec2(1.0)))) return vec4(0.0);\n"
     "  return texture2D(umbriel_texture, p);\n"
+    "}\n"
+    "vec4 umbriel_sample_incoming(vec2 uv) {\n"
+    "  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);\n"
+    "  vec2 p = (vec3(uv, 1.0) * umbriel_sample_matrix).xy;\n"
+    "  if (any(lessThan(p, vec2(0.0))) || any(greaterThan(p, vec2(1.0)))) return vec4(0.0);\n"
+    "  return texture2D(umbriel_incoming_texture, p);\n"
     "}\n"
     "vec4 umbriel_sample_previous(vec2 uv) {\n"
     "  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);\n"
@@ -403,6 +410,7 @@ struct fx_effect_shader* fx_effect_shader_create(
   shader->position = glGetAttribLocation(shader->program, "pos");
   shader->tex = glGetUniformLocation(shader->program, "umbriel_texture");
   shader->sample_matrix = glGetUniformLocation(shader->program, "umbriel_sample_matrix");
+  shader->incoming_tex = glGetUniformLocation(shader->program, "umbriel_incoming_texture");
   shader->previous_tex = glGetUniformLocation(shader->program, "umbriel_previous_texture");
   shader->previous_sample_matrix = glGetUniformLocation(shader->program, "umbriel_previous_sample_matrix");
   shader->progress = glGetUniformLocation(shader->program, "umbriel_progress");

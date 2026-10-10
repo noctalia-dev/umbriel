@@ -19,6 +19,7 @@ struct wlr_ext_workspace_group_handle_v1;
 struct wlr_ext_workspace_handle_v1;
 struct wlr_ext_workspace_manager_v1;
 struct wlr_scene_tree;
+struct wlr_scene_node;
 struct fx_effect_shader;
 
 namespace umbriel {
@@ -392,8 +393,9 @@ namespace umbriel {
     // per second, and starts the settle from that speed instead of from rest; callers that are not a gesture pass 0.
     void slideSettle(int delta, double velocity = 0);
     void slideFinish();
-    // Refresh output-relative bounds even when progress is held and clients resize.
+    // Refresh the native pair bindings and shader inputs before output composition.
     void refreshReveal();
+    [[nodiscard]] wlr_scene_node* revealRoot(bool incoming) const;
     [[nodiscard]] bool revealActive() const { return m_slide.reveal != nullptr; }
     void abandonReveal();
     void cancelReveal();

@@ -296,7 +296,9 @@ Every kind sees:
 
 Animations add `umbriel_progress`, `umbriel_clamped_progress`,
 `umbriel_linear_progress`, `umbriel_direction`, and `umbriel_random_seed`
-([Animation](animation.md#custom-effects)). Borders add `umbriel_border_hole`
+([Animation](animation.md#custom-effects)); workspace reveal shaders also read
+the incoming scene with `umbriel_sample_incoming(vec2 uv)`
+([Workspace reveal](animation.md#workspace-reveal)). Borders add `umbriel_border_hole`
 (the client rectangle in `uv`), `umbriel_border_radius` (its corner radii in
 logical pixels), and `umbriel_border_distance(vec2 uv)`, the signed distance
 in logical pixels to the client rectangle, negative inside it; the client hole

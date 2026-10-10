@@ -437,6 +437,9 @@ namespace umbriel {
   }
 
   bool Output::applyConfiguredState(bool stageGeometry) {
+    if (m_workspaceGroup != nullptr) {
+      m_workspaceGroup->abandonReveal();
+    }
     const OutputRule* rule = findOutputRule(config(), identity());
     const std::optional<double> configuredScale = rule != nullptr ? rule->scale : std::nullopt;
     const bool enabled = desktopEnabled() && !m_dpmsOff;
@@ -1638,6 +1641,10 @@ namespace umbriel {
       sceneOptions.effect_capture_pending = effectCapturePending(captureLocks);
       m_effectCaptureBuilt = sceneOptions.effect_capture_pending;
       sceneOptions.require_animation_success = m_workspaceGroup != nullptr && m_workspaceGroup->revealActive();
+      if (sceneOptions.require_animation_success) {
+        sceneOptions.workspace_from = m_workspaceGroup->revealRoot(false);
+        sceneOptions.workspace_to = m_workspaceGroup->revealRoot(true);
+      }
       const bool built = wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions);
       if (!built && sceneOptions.require_animation_success) {
         // Reject the incomplete frame and resume native slide at the same progress.
