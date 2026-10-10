@@ -1158,6 +1158,8 @@ int main(int argc, char** argv) {
         break;
       }
       if ((sources[1].revents & POLLIN) != 0) {
+        // A stdin handler's roundtrip can drain this POLLIN's events; dispatching stale readiness blocks forever.
+        sources[0].revents = 0;
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
           if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
@@ -1202,6 +1204,12 @@ int main(int argc, char** argv) {
             wl_surface_commit(state.surface);
             wl_display_flush(state.display);
             std::println("maximize-requested");
+            std::fflush(stdout);
+          } else if (state.mapped && maximizeOnStdin && command == 'M') {
+            xdg_toplevel_unset_maximized(state.toplevel);
+            wl_surface_commit(state.surface);
+            wl_display_flush(state.display);
+            std::println("unmaximize-requested");
             std::fflush(stdout);
           } else if (state.mapped && fullscreenOnStdin && command == 'f') {
             xdg_toplevel_set_fullscreen(state.toplevel, nullptr);

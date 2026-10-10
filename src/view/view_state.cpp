@@ -238,7 +238,7 @@ namespace umbriel {
     }
     m_consumeRestoredMaximizeRequest = false;
     if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(m_maximizedToEdges)) {
+      if (maximizeRequestTargetsEdges(requestedMaximized(), m_maximizedToEdges, config().layout.maximizeToEdges)) {
         setMaximizedToEdges(requestedMaximized());
         return;
       }

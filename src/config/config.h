@@ -884,6 +884,8 @@ namespace umbriel {
       LayoutStruts struts;
       std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
       FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
+      // A client's own maximize request fills the usable-area edges, not the full column width.
+      bool maximizeToEdges = false;
       struct Scrolling {
         std::optional<double> defaultExtentFraction;
         bool centerUnderfullStrip = true;

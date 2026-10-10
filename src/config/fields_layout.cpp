@@ -404,7 +404,12 @@ namespace umbriel {
   }
 
   registry::Field<Config> layoutTable() {
-    return registry::table("layout", &Config::layout, layoutFields<Config::Layout>());
+    static const registry::Fields<Config::Layout> fields = [] {
+      registry::Fields<Config::Layout> parsed = layoutFields<Config::Layout>();
+      parsed.push_back(registry::boolean("maximize_to_edges", &Config::Layout::maximizeToEdges));
+      return parsed;
+    }();
+    return registry::table("layout", &Config::layout, fields);
   }
 
   registry::Field<Config> workspaceRulesTable() {

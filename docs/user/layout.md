@@ -27,6 +27,7 @@ Change the current workspace at runtime with
 gap = 8
 extent_presets = [0.333, 0.5, 0.667]
 new_exits_fullscreen = []  # "tiled", "floating", "pinned", "all", or an array such as ["tiled", "floating"]
+maximize_to_edges = false
 ```
 
 | Key | Default | Description |
@@ -34,6 +35,7 @@ new_exits_fullscreen = []  # "tiled", "floating", "pinned", "all", or an array s
 | `gap` | `8` | Gap between windows in logical pixels. |
 | `extent_presets` | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions. |
 | `new_exits_fullscreen` | `[]` | Kinds of arriving window that make a fullscreen window on the workspace leave fullscreen. See [Leaving fullscreen](#leaving-fullscreen). |
+| `maximize_to_edge` | `false` | Route a tiled window's own miximize requests to to usable area without gaps or border. See [Maximize and Fullscreen](#maximize-and-fullscreen). |
 
 ### Leaving fullscreen
 
@@ -371,3 +373,10 @@ follow it when the gap, borders, struts, or usable area change.
 
 `window-toggle-maximize-to-edges` removes layout struts, gaps, and borders while
 leaving panel exclusive zones visible.
+
+With `maximize_to_edges` on, a tiled window's own maximize button behaves like
+`window-toggle-maximize-to-edges` instead of `window-toggle-maximize`,
+floating windows keep the default behavior. Unmaximizing runs that toggle in
+reverse: the edges are left first, and a window whose column is also at full
+width leaves the column on the next unmaximize. A restored maximize honored at
+open lands in the edges mode as well; `default_maximize` rules are unaffected.
