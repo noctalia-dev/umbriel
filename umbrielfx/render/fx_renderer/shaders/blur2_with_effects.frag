@@ -4,8 +4,12 @@ precision highp float;
 precision mediump float;
 #endif
 
-varying vec2 v_texcoord;
+varying highp vec2 v_texcoord;
 uniform sampler2D tex;
+
+uniform float radius;
+uniform vec2 halfpixel;
+uniform vec4 sample_bounds;
 
 uniform float brightness;
 uniform float contrast;
@@ -68,8 +72,23 @@ float noiseAmount(vec2 p) {
   return (mod(hash, 1.0) - 0.5) * noise;
 }
 
+vec4 sample_texel(vec2 uv) { return texture2D(tex, clamp(uv, sample_bounds.xy, sample_bounds.zw)); }
+
 void main() {
-  vec4 color = texture2D(tex, v_texcoord);
+  vec2 uv = v_texcoord / 2.0;
+
+  vec4 sum = sample_texel(uv + vec2(-halfpixel.x * 2.0, 0.0) * radius);
+
+  sum += sample_texel(uv + vec2(-halfpixel.x, halfpixel.y) * radius) * 2.0;
+  sum += sample_texel(uv + vec2(0.0, halfpixel.y * 2.0) * radius);
+  sum += sample_texel(uv + vec2(halfpixel.x, halfpixel.y) * radius) * 2.0;
+  sum += sample_texel(uv + vec2(halfpixel.x * 2.0, 0.0) * radius);
+  sum += sample_texel(uv + vec2(halfpixel.x, -halfpixel.y) * radius) * 2.0;
+  sum += sample_texel(uv + vec2(0.0, -halfpixel.y * 2.0) * radius);
+  sum += sample_texel(uv + vec2(-halfpixel.x, -halfpixel.y) * radius) * 2.0;
+
+  vec4 color = sum / 12.0;
+
   float alpha = color.a;
   // Blur controls are defined for gamma-encoded content. Convert FP16 linear
   // work-buffer samples so HDR rendering preserves the SDR blur appearance.
@@ -82,5 +101,6 @@ void main() {
   if (linear != 0 && alpha != 0.0) {
     color.rgb = srgb_color_to_linear(color.rgb / alpha) * alpha;
   }
+
   gl_FragColor = color;
 }

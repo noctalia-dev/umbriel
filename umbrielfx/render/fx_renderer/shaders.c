@@ -13,7 +13,7 @@
 #include "GLES2/gl2.h"
 #include "blur1_frag_src.h"
 #include "blur2_frag_src.h"
-#include "blur_effects_frag_src.h"
+#include "blur2_with_effects_frag_src.h"
 #include "border_frag_src.h"
 #include "box_shadow_frag_src.h"
 #include "common_vert_src.h"
@@ -398,16 +398,21 @@ bool link_blur2_program(struct blur_shader* shader) {
   return true;
 }
 
-bool link_blur_effects_program(struct blur_effects_shader* shader) {
+bool link_blur2_with_effects_program(struct blur2_with_effects_shader* shader) {
   GLuint prog;
-  shader->program = prog = link_program(blur_effects_frag_src);
-  if (!shader->program) {
+  shader->base.program = prog = link_program(blur2_with_effects_frag_src);
+  if (!shader->base.program) {
     return false;
   }
-  shader->proj = glGetUniformLocation(prog, "proj");
-  shader->tex = glGetUniformLocation(prog, "tex");
-  shader->pos_attrib = glGetAttribLocation(prog, "pos");
-  shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
+
+  shader->base.proj = glGetUniformLocation(prog, "proj");
+  shader->base.tex = glGetUniformLocation(prog, "tex");
+  shader->base.pos_attrib = glGetAttribLocation(prog, "pos");
+  shader->base.tex_proj = glGetUniformLocation(prog, "tex_proj");
+  shader->base.radius = glGetUniformLocation(prog, "radius");
+  shader->base.halfpixel = glGetUniformLocation(prog, "halfpixel");
+  shader->base.sample_bounds = glGetUniformLocation(prog, "sample_bounds");
+
   shader->linear = glGetUniformLocation(prog, "linear");
   shader->noise = glGetUniformLocation(prog, "noise");
   shader->brightness = glGetUniformLocation(prog, "brightness");

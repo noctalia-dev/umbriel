@@ -250,7 +250,7 @@ struct fx_renderer {
     struct box_shadow_shader box_shadow;
     struct blur_shader blur1;
     struct blur_shader blur2;
-    struct blur_effects_shader blur_effects;
+    struct blur2_with_effects_shader blur2_with_effects;
   } shaders;
 
   bool animation_shadow_attempted;

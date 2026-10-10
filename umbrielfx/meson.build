@@ -140,7 +140,7 @@ umbrielfx_shader_embed = find_program(
 foreach shader : [
   'blur1.frag',
   'blur2.frag',
-  'blur_effects.frag',
+  'blur2_with_effects.frag',
   'border.frag',
   'box_shadow.frag',
   'common.vert',
