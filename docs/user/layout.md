@@ -373,4 +373,7 @@ With `maximize_to_edges` on, a tiled window's own maximize button behaves like
 floating windows keep the default behavior. Unmaximizing runs that toggle in
 reverse: the edges are left first, and a window whose column is also at full
 width leaves the column on the next unmaximize. A restored maximize honored at
-open lands in the edges mode as well; `default_maximize` rules are unaffected.
+open lands in the edges mode as well, including on a `default_maximize` window,
+and one whose client re-asserts after map keeps the rule's full-width column
+under the edges, so its unmaximize runs in two steps. A `default_maximize`
+window that never sees a client request still opens the column.

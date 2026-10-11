@@ -15,7 +15,6 @@
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
-#include "view/maximize.h"
 #include "view/size_hints.h"
 #include "view/view_internal.h"
 // clang-format off
@@ -372,15 +371,11 @@ namespace umbriel {
     // Opening state is compositor-owned. Clients may restore a saved maximized
     // flag during this transition; only an explicit window rule overrides the
     // layout's initial size.
-    // An honored restore follows the configured maximize policy like a later
-    // client request; default_maximize rules keep owning their outcome.
+    // An honored restore follows the configured policy; a rule alone keeps owning the outcome.
     const bool ruleMaximized = !openingParented() && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = config().general.honorRestoredMaximize && requestedMaximized();
     if (!assignedScratchpad && (ruleMaximized || restoredMaximized)) {
-      if (!ruleMaximized
-          && m_tiled
-          && m_workspace != nullptr
-          && maximizeRequestTargetsEdges(requestedMaximized(), m_maximizedToEdges, config().layout.maximizeToEdges)) {
+      if (restoredMaximized && m_tiled && m_workspace != nullptr && config().layout.maximizeToEdges) {
         setMaximizedToEdges(true);
       } else {
         setMaximized(true);

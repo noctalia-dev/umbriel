@@ -9,6 +9,8 @@ readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly COLUMN_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-column.log"
 readonly RESTORED_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-restored.log"
 readonly FIRST_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-restored-first.log"
+readonly RULED_FIRST_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-ruled-first.log"
+readonly RULED_AFTER_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-ruled-after.log"
 
 field_of() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
@@ -77,6 +79,12 @@ corner_radius = 0
 
 [layout.scrolling]
 default_extent_fraction = 0.5
+
+# The ruled cases below match this rule; every other case in this check must not.
+[[window_rule]]
+match.title = "^client-maximize-ruled-"
+default_maximize = true
+
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -156,4 +164,28 @@ send_command M "$FIRST_LOG" 'unmaximize-requested$'
 wait_for_field client-maximize-restored-first w 628
 stop_client
 
-echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map and restored requests and unmaximize restores the tile (628x704)"
+# A default_maximize rule whose client restores maximize follows the policy and ends in the edges state.
+env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 REQUEST_MAXIMIZED=1 RESIZE_FILL_COLOR=0xFF5577AA \
+  "$CLIENT" client-maximize-ruled-first 640 480 <&"$control_fd" > "$RULED_FIRST_LOG" 2>&1 &
+CLIENT_PID=$!
+await_lines "$RULED_FIRST_LOG" mapped 1
+wait_for_field client-maximize-ruled-first w 1280
+wait_for_field client-maximize-ruled-first h 720
+send_command M "$RULED_FIRST_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-ruled-first w 628
+stop_client
+
+# The after-map re-assert converges on the same state; its full-width column stacks, so unmaximize is two-step.
+env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 REQUEST_MAXIMIZED_AFTER_MAP=1 RESIZE_FILL_COLOR=0xFF5577AA \
+  "$CLIENT" client-maximize-ruled-after 640 480 <&"$control_fd" > "$RULED_AFTER_LOG" 2>&1 &
+CLIENT_PID=$!
+await_lines "$RULED_AFTER_LOG" mapped 1
+wait_for_field client-maximize-ruled-after w 1280
+wait_for_field client-maximize-ruled-after h 720
+send_command M "$RULED_AFTER_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-ruled-after w 1264
+send_command M "$RULED_AFTER_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-ruled-after w 628
+stop_client
+
+echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map, restored, and default_maximize-ruled requests; unmaximize restores the tile (628x704)"
