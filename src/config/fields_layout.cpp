@@ -135,6 +135,7 @@ namespace umbriel {
         }
         parsed.push_back(used);
       }
+      std::ranges::sort(parsed);
       return parsed;
     }
 

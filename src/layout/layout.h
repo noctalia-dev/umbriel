@@ -183,7 +183,8 @@ namespace umbriel {
   // The next preset from `current` in `direction` (negative shrinks), wrapping
   // at the ends. Every layout's width and height cycle shares this rule, and so
   // does the floating cycle. `current` must be an exact fraction: a basis
-  // recovered from pixels goes through `presetSnappedFraction` first.
+  // recovered from pixels goes through `presetSnappedFraction` first. `presets`
+  // must be ascending, as config parsing leaves them.
   [[nodiscard]] inline double nextFractionPreset(const std::vector<double>& presets, double current, int direction) {
     if (presets.empty()) {
       return current;

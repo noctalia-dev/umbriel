@@ -32,7 +32,7 @@ new_exits_fullscreen = []  # "tiled", "floating", "pinned", "all", or an array s
 | Key | Default | Description |
 | --- | --- | --- |
 | `gap` | `8` | Gap between windows in logical pixels. |
-| `extent_presets` | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions. |
+| `extent_presets` | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions, in any order; cycling steps by size. |
 | `new_exits_fullscreen` | `[]` | Kinds of arriving window that make a fullscreen window on the workspace leave fullscreen. See [Leaving fullscreen](#leaving-fullscreen). |
 
 ### Leaving fullscreen

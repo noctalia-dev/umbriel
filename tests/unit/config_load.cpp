@@ -334,6 +334,30 @@ UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
   CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
+UMBRIEL_TEST(extentPresetsLoadInAscendingOrder) {
+  const TempConfig file;
+  file.write(R"(
+[layout]
+extent_presets = [1.0, 0.5, 0.8]
+
+[[workspace]]
+name = "dev"
+
+[workspace.layout]
+extent_presets = [0.75, 0.25]
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layout.extentPresets, (std::vector<double>{0.5, 0.8, 1.0}));
+  CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
+  CHECK_EQ(
+      store.config().workspaceRules[0].layout.extentPresets.value_or(std::vector<double>{}),
+      (std::vector<double>{0.25, 0.75})
+  );
+}
+
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
   const umbriel::Config config;
   CHECK_EQ(config.colors.background[3], 1.0F);
