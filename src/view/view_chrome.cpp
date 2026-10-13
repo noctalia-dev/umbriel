@@ -56,9 +56,17 @@ namespace umbriel {
 
     // A window without a drawn border has nothing to fade, and an invisible transition would still keep frames coming.
     const auto& border = animation.border;
-    if (m_mapped && focusChanged && animation.enabled && border.enabled && borderInset() > 0) {
+    const bool borderAnimates = m_mapped && animation.enabled && border.enabled && borderInset() > 0;
+    if (borderAnimates && focusChanged) {
       m_borderColorAnim.retarget(targetBase, border.durationMs, border.curve);
       scheduleFrame();
+    } else if (borderAnimates && m_borderColorAnim.animating()) {
+      // A repeated request for the same focus state, such as the pointer crossing outputs before an output-focus action
+      // refocuses, keeps the running transition; only a new color target redirects it.
+      if (m_borderColorAnim.target() != targetBase) {
+        m_borderColorAnim.retarget(targetBase, border.durationMs, border.curve);
+        scheduleFrame();
+      }
     } else {
       m_borderColorAnim.snap(targetBase);
       m_decoration.setBorderColor(focused, effectiveOpacity());
