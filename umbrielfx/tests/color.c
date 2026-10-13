@@ -1,3 +1,4 @@
+#include "render/fx_renderer/effect.h"
 #include "render_fixture.h"
 
 static bool submit_solid_frame(struct wlr_render_pass* pass, int width, int height, float red) {
@@ -12,6 +13,11 @@ static bool submit_solid_frame(struct wlr_render_pass* pass, int width, int heig
   return wlr_render_pass_submit(pass);
 }
 
+static float linear_to_pq(float value);
+static uint8_t to_u8(float value);
+
+// A scene buffer with unset primaries renders, and the scene's PQ output
+// transform reaches the renderer as PQ.
 static bool test_scene_unset_primaries(struct fixture* fixture) {
   bool ok = true;
   struct wlr_scene* scene = NULL;
@@ -68,6 +74,36 @@ static bool test_scene_unset_primaries(struct fixture* fixture) {
        )
       && ok;
   wlr_output_state_finish(&render_state);
+
+  // On a PQ output, the transform the scene builds from the image description
+  // must reach the renderer as PQ, so a 16/255 rect decodes with gamma 2.2.
+  // The opaque rect covers the buffer; it checks the transform, not the buffer.
+  const float grey[4] = {16.0f / 255.0f, 16.0f / 255.0f, 16.0f / 255.0f, 1.0f};
+  if (!check(wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, grey) != NULL, "create PQ scene rect")) {
+    ok = false;
+    goto out;
+  }
+  wlr_scene_output_set_sdr_white_level(scene_output, 203.0f);
+  wlr_output_state_init(&render_state);
+  wlr_output_state_set_image_description(
+      &render_state,
+      &(struct wlr_output_image_description){
+          .primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020,
+          .transfer_function = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ,
+      }
+  );
+  uint8_t shown[4] = {0};
+  built = wlr_scene_output_build_state(scene_output, &render_state, NULL)
+      && render_state.buffer != NULL
+      && fixture_read_display_pixel(fixture, render_state.buffer, TEST_WIDTH / 2, TEST_HEIGHT / 2, shown);
+  wlr_output_state_finish(&render_state);
+  const int expected = to_u8(linear_to_pq(powf(16.0f / 255.0f, 2.2f) * 203.0f / 10000.0f));
+  if (!check(built, "render scene on a PQ output")) {
+    ok = false;
+  } else if (abs((int)shown[2] - expected) > 1) {
+    fprintf(stderr, "scene rect on PQ: shows %u, gamma 2.2 expects %d\n", shown[2], expected);
+    ok = false;
+  }
 
 out:
   if (scene != NULL) {
@@ -268,6 +304,140 @@ static bool codes_close(const uint8_t actual[static 4], const uint8_t expected[s
   return true;
 }
 
+// Renders an SDR texture tagged `texture_tf` (0 for untagged) over the left
+// half and a rect of the same color over the right half of an output pass
+// encoding `tf` (PQ in BT.2020 at 203 cd/m² SDR white, otherwise sRGB
+// primaries), with an SDR capture pending.
+static bool render_sdr_on(
+    struct fixture* fixture, struct wlr_buffer* target, struct wlr_texture* fill, const struct wlr_render_color* color,
+    enum wlr_color_transfer_function texture_tf, enum wlr_color_transfer_function tf, bool effect_capture
+) {
+  const bool pq = tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+  struct wlr_color_transform* transform = create_output_transform(
+      pq ? WLR_COLOR_NAMED_PRIMARIES_BT2020 : WLR_COLOR_NAMED_PRIMARIES_SRGB, tf, pq ? 203.0f / 10000.0f : 1.0f
+  );
+  if (transform == NULL) {
+    return false;
+  }
+  struct wlr_render_pass* pass = fx_renderer_begin_output_buffer_pass(
+      fixture->output, target, &(struct wlr_buffer_pass_options){.color_transform = transform}
+  );
+  wlr_color_transform_unref(transform);
+  if (pass == NULL) {
+    return false;
+  }
+  struct fx_gles_render_pass* fx_pass = fx_get_render_pass(pass);
+  fx_pass->output_buffer->capture_sdr = true;
+  wlr_render_pass_add_texture(
+      pass,
+      &(struct wlr_render_texture_options){
+          .texture = fill,
+          .dst_box = {.width = TEST_WIDTH / 2, .height = TEST_HEIGHT},
+          .filter_mode = WLR_SCALE_FILTER_NEAREST,
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+          .transfer_function = texture_tf,
+      }
+  );
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = {.x = TEST_WIDTH / 2, .width = TEST_WIDTH - TEST_WIDTH / 2, .height = TEST_HEIGHT},
+          .color = *color,
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  bool saved = !effect_capture || fx_render_pass_save_effect_capture(fx_pass);
+  return wlr_render_pass_submit(pass) && saved;
+}
+
+// SDR content on a PQ or gamma 2.2 output decodes with one curve whether a
+// client drew it, untagged or tagged sRGB, or the compositor did, and both SDR
+// capture paths encode with that curve, so a capture returns the original
+// value. On a gamma 2.2 output the content also shows unchanged.
+static bool test_sdr_curve_consistency(struct fixture* fixture) {
+  bool ok = true;
+  const uint8_t level = 16;
+  const uint8_t grey[4] = {level, level, level, 255};
+  const struct wlr_render_color color = {.r = level / 255.0f, .g = level / 255.0f, .b = level / 255.0f, .a = 1.0f};
+  struct wlr_texture* fill = wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, 4, 1, 1, grey);
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(fill != NULL && target != NULL, "allocate SDR curve target")) {
+    ok = false;
+    goto out;
+  }
+
+  const int pq_shown = to_u8(linear_to_pq(powf(level / 255.0f, 2.2f) * 203.0f / 10000.0f));
+  const int pq_piecewise = to_u8(linear_to_pq(srgb_to_linear(level / 255.0f) * 203.0f / 10000.0f));
+  ok = check(pq_piecewise - pq_shown >= 3, "test level separates gamma 2.2 from piecewise sRGB on PQ") && ok;
+  const enum wlr_color_transfer_function pq = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+  const struct {
+    const char* name;
+    enum wlr_color_transfer_function texture_tf, output_tf;
+    bool effect_capture;
+  } cases[] = {
+      {"SDR capture on PQ", 0, pq, false},
+      {"effect capture on PQ", 0, pq, true},
+      {"SDR capture of sRGB-tagged content on PQ", WLR_COLOR_TRANSFER_FUNCTION_SRGB, pq, false},
+      {"effect capture of sRGB-tagged content on PQ", WLR_COLOR_TRANSFER_FUNCTION_SRGB, pq, true},
+      {"SDR capture on gamma 2.2", 0, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22, false},
+  };
+  const char* sides[] = {"texture", "rect"};
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    char message[128];
+    snprintf(message, sizeof(message), "render SDR for %s", cases[i].name);
+    if (!check(
+            render_sdr_on(
+                fixture, target, fill, &color, cases[i].texture_tf, cases[i].output_tf, cases[i].effect_capture
+            ),
+            message
+        )) {
+      ok = false;
+      continue;
+    }
+    // A capture read falls back to the SDR view when no effect capture is
+    // valid, which encodes the same way, so make sure the intended one is read.
+    struct fx_framebuffer* framebuffer = fx_framebuffer_get_or_create(fx_get_renderer(fixture->renderer), target);
+    snprintf(message, sizeof(message), "%s reads the intended capture", cases[i].name);
+    if (!check(framebuffer != NULL && framebuffer->effect_capture_valid == cases[i].effect_capture, message)) {
+      ok = false;
+      continue;
+    }
+    uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
+    snprintf(message, sizeof(message), "read %s", cases[i].name);
+    if (!check(read_buffer(fixture, target, DRM_FORMAT_ABGR8888, TEST_WIDTH * 4, pixels), message)) {
+      ok = false;
+      continue;
+    }
+    for (size_t side = 0; side < 2; side++) {
+      const int x = side == 0 ? TEST_WIDTH / 4 : TEST_WIDTH * 3 / 4, y = TEST_HEIGHT / 2;
+      uint8_t shown[4];
+      if (!fixture_read_display_pixel(fixture, target, x, y, shown)) {
+        ok = false;
+        continue;
+      }
+      const int expected = cases[i].output_tf == pq ? pq_shown : level;
+      if (abs((int)shown[2] - expected) > 1) {
+        fprintf(stderr, "%s for %s: shows %u, expected %d\n", sides[side], cases[i].name, shown[2], expected);
+        ok = false;
+      }
+      const uint8_t captured = pixels[(y * TEST_WIDTH + x) * 4];
+      if (abs((int)captured - level) > 1) {
+        fprintf(stderr, "%s for %s: captured %u, expected %u\n", sides[side], cases[i].name, captured, level);
+        ok = false;
+      }
+    }
+  }
+
+out:
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  if (fill != NULL) {
+    wlr_texture_destroy(fill);
+  }
+  return ok;
+}
+
 static bool test_implicit_srgb_target(struct fixture* fixture) {
   const uint8_t input[4] = {17, 17, 45, 255};
   uint8_t implicit_output[4] = {0};
@@ -451,9 +621,11 @@ static bool test_fp16_blur_effects(struct fixture* fixture) {
     return false;
   }
 
-  float encoded = linear_to_srgb(input_linear);
+  // Blur controls act on values encoded with the pass SDR curve, gamma 2.2 on
+  // a PQ target, so they look the same as over the SDR content on SDR.
+  float encoded = powf(input_linear, 1.0f / 2.2f);
   encoded = (encoded * 0.9f + 0.05f) - 0.1f;
-  float expected_linear = srgb_to_linear(encoded);
+  float expected_linear = powf(encoded, 2.2f);
   int expected = lroundf(linear_to_pq(expected_linear * 203.0f / 10000.0f) * 1023.0f);
   uint32_t pixel = output[(TEST_HEIGHT / 2) * TEST_WIDTH + TEST_WIDTH / 2];
   int actual = pixel & 0x3FF;
@@ -1238,6 +1410,245 @@ static uint32_t prime_optimized_blur_cache(struct fixture* fixture, float backdr
   return ok ? cache_format : DRM_FORMAT_INVALID;
 }
 
+// Renders one output frame of a 16/255 grey backdrop under a full-output blur
+// that requests the optimized cache. With `render_cache` the frame first
+// renders the optimized blur, as an optimized-blur node does. A zero `tf`
+// renders without a color transform. `stale` reports whether the cache was
+// stale for this pass before that.
+static bool render_cached_blur_frame(
+    struct fixture* fixture, struct wlr_buffer* target, enum wlr_color_transfer_function tf, bool render_cache,
+    bool* stale
+) {
+  const bool pq = tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+  struct wlr_color_transform* transform = NULL;
+  if (tf != 0) {
+    transform = create_output_transform(
+        pq ? WLR_COLOR_NAMED_PRIMARIES_BT2020 : WLR_COLOR_NAMED_PRIMARIES_SRGB, tf, pq ? 203.0f / 10000.0f : 1.0f
+    );
+    if (transform == NULL) {
+      return false;
+    }
+  }
+  struct wlr_render_pass* pass = fx_renderer_begin_output_buffer_pass(
+      fixture->output, target, &(struct wlr_buffer_pass_options){.color_transform = transform}
+  );
+  wlr_color_transform_unref(transform);
+  if (pass == NULL) {
+    return false;
+  }
+  struct fx_gles_render_pass* fx_pass = fx_get_render_pass(pass);
+  struct wlr_box box = {.width = target->width, .height = target->height};
+  const float grey = 16.0f / 255.0f;
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = box,
+          .color = {.r = grey, .g = grey, .b = grey, .a = 1.0f},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  bool ok = fx_render_pass_init_offscreen_buffers(pass, fixture->output);
+  *stale = ok && fx_render_pass_optimized_blur_stale(fx_pass);
+  struct blur_data blur_data = {
+      .num_passes = 1,
+      .radius = 1.0f,
+      .brightness = 1.0f,
+      .contrast = 1.0f,
+      .saturation = 1.0f,
+  };
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 0, 0, target->width, target->height);
+  const float opacity = 1.0f;
+  struct fx_render_blur_pass_options blur_options = {
+      .tex_options =
+          {
+              .base =
+                  {
+                      .dst_box = box,
+                      .clip = &region,
+                      .transform = WL_OUTPUT_TRANSFORM_NORMAL,
+                      .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                      .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+                      .alpha = &opacity,
+                  },
+              .clip_box = &box,
+          },
+      .blur_data = &blur_data,
+      .blur_strength = 1.0f,
+  };
+  if (ok && render_cache) {
+    ok = fx_render_pass_add_optimized_blur(fx_pass, &blur_options);
+  }
+  if (ok) {
+    blur_options.use_optimized_blur = true;
+    fx_render_pass_add_blur(fx_pass, &blur_options);
+  }
+  pixman_region32_fini(&region);
+  return wlr_render_pass_submit(pass) && ok;
+}
+
+// The optimized blur holds linear light decoded with the SDR curve of the pass
+// that rendered it. After an output switches from an sRGB transform to PQ,
+// both keep FP16 caches, so only the curve tells the old cache apart: a blur
+// must not sample it until fx_render_pass_add_optimized_blur, which an
+// optimized-blur node calls, renders it again.
+static bool test_optimized_blur_sdr_curve(struct fixture* fixture) {
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(target != NULL, "allocate optimized-blur target")) {
+    return false;
+  }
+  bool stale = false;
+  bool ok = check(
+      render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale),
+      "render optimized blur on an sRGB transform"
+  );
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(fixture->output);
+  ok = check(
+           fbos != NULL
+               && fbos->optimized_blur_buffer != NULL
+               && fbos->optimized_blur_buffer->drm_format == DRM_FORMAT_ABGR16161616F
+               && fbos->optimized_no_blur_buffer != NULL
+               && fbos->optimized_no_blur_buffer->drm_format == DRM_FORMAT_ABGR16161616F,
+           "sRGB transform caches FP16 optimized blur"
+       )
+      && ok;
+
+  const int gamma22 = to_u8(linear_to_pq(powf(16.0f / 255.0f, 2.2f) * 203.0f / 10000.0f));
+  const int piecewise = to_u8(linear_to_pq(srgb_to_linear(16.0f / 255.0f) * 203.0f / 10000.0f));
+  const char* frames[] = {"stale cache on PQ", "re-rendered cache on PQ"};
+  for (size_t frame = 0; frame < 2 && ok; frame++) {
+    ok = check(
+        render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ, frame == 1, &stale),
+        "render blur on PQ"
+    );
+    ok = check(stale, "sRGB-curve cache is stale on PQ until rendered again") && ok;
+    uint8_t shown[4];
+    if (ok && !fixture_read_display_pixel(fixture, target, TEST_WIDTH / 2, TEST_HEIGHT / 2, shown)) {
+      ok = false;
+    } else if (ok && abs((int)shown[2] - gamma22) > 1) {
+      fprintf(
+          stderr, "%s: blur shows %u, gamma 2.2 expects %d, the sRGB-curve cache gives %d\n", frames[frame], shown[2],
+          gamma22, piecewise
+      );
+      ok = false;
+    }
+  }
+  ok = check(
+           fbos != NULL && fbos->optimized_blur_sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22,
+           "re-rendered cache records the PQ curve"
+       )
+      && ok;
+  wlr_buffer_drop(target);
+  return ok;
+}
+
+// A 10-bit SDR output without a color transform keeps its optimized blur in
+// FP16 too, but holding encoded values. A linear-light pass with the same
+// sRGB curve and format must render it again rather than read encoded values
+// as linear light.
+static bool test_optimized_blur_encoded_cache(struct fixture* fixture) {
+  // An opaque 10-bit target, as a 10-bit SDR output scans out.
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_XBGR2101010, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(target != NULL, "allocate 10-bit optimized-blur target")) {
+    return false;
+  }
+  bool stale = false;
+  bool ok = check(
+      render_cached_blur_frame(fixture, target, 0, true, &stale), "render optimized blur without a color transform"
+  );
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(fixture->output);
+  ok = check(fbos != NULL && fbos->optimized_blur_buffer != NULL, "encoded optimized-blur cache exists") && ok;
+  if (!ok || fbos->optimized_blur_buffer->drm_format != DRM_FORMAT_ABGR16161616F) {
+    if (ok) {
+      // Without half-float linear filtering the cache is 8-bit and its format
+      // alone keeps it from a linear-light pass.
+      fprintf(stderr, "SKIP: a 10-bit SDR output keeps an 8-bit optimized-blur cache here\n");
+    }
+    wlr_buffer_drop(target);
+    return ok;
+  }
+
+  ok = check(
+      render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, false, &stale),
+      "render blur on an sRGB transform"
+  );
+  ok = check(stale, "encoded blur cache is stale for a linear-light pass") && ok;
+  uint8_t shown[4];
+  if (ok && !fixture_read_display_pixel(fixture, target, TEST_WIDTH / 2, TEST_HEIGHT / 2, shown)) {
+    ok = false;
+  } else if (ok && abs((int)shown[2] - 16) > 1) {
+    fprintf(stderr, "blur over an encoded cache shows %u, expected 16\n", shown[2]);
+    ok = false;
+  }
+  wlr_buffer_drop(target);
+  return ok;
+}
+
+// An optimized blur from a pass of another pixel size, as after a scale change
+// at the same logical size, is stale until rendered again at the new size.
+static bool test_optimized_blur_size_change(struct fixture* fixture) {
+  struct wlr_buffer* full = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_buffer* half = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH / 2, TEST_HEIGHT / 2);
+  bool ok = check(full != NULL && half != NULL, "allocate optimized-blur targets");
+  bool stale = false;
+  ok = ok
+      && check(
+           render_cached_blur_frame(fixture, full, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale),
+           "render optimized blur at full size"
+      );
+  // `stale` is sampled before this frame renders the cache again.
+  ok = ok
+      && check(
+           render_cached_blur_frame(fixture, half, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale),
+           "render optimized blur at half size"
+      );
+  ok = ok && check(stale, "full-size blur cache is stale for a half-size pass");
+  ok = ok
+      && check(
+           render_cached_blur_frame(fixture, half, WLR_COLOR_TRANSFER_FUNCTION_SRGB, false, &stale),
+           "blur again at half size"
+      );
+  ok = ok && check(!stale, "re-rendered blur cache fits the half-size pass");
+  if (full != NULL) {
+    wlr_buffer_drop(full);
+  }
+  if (half != NULL) {
+    wlr_buffer_drop(half);
+  }
+  return ok;
+}
+
+// A failed copy into the optimized blur leaves it stale instead of half
+// written and valid, and the next successful render makes it current again.
+static bool test_optimized_blur_copy_failure(struct fixture* fixture) {
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(target != NULL, "allocate optimized-blur target")) {
+    return false;
+  }
+  bool stale = false;
+  bool ok = check(
+      render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale), "render optimized blur"
+  );
+  fx_renderer_fail_target_copies_for_test(fixture->renderer, true);
+  bool rendered = render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale);
+  fx_renderer_fail_target_copies_for_test(fixture->renderer, false);
+  ok = check(!rendered, "optimized blur reports failed copies") && ok;
+  ok = check(
+           render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, true, &stale),
+           "render optimized blur again"
+       )
+      && ok;
+  ok = check(stale, "failed copies leave the blur cache stale") && ok;
+  ok = check(
+           render_cached_blur_frame(fixture, target, WLR_COLOR_TRANSFER_FUNCTION_SRGB, false, &stale),
+           "blur from the re-rendered cache"
+       )
+      && ok;
+  ok = check(!stale, "re-rendered blur cache is current") && ok;
+  wlr_buffer_drop(target);
+  return ok;
+}
+
 // A stale-format optimized-blur cache must not be reused after the output's
 // render format changes. The offscreen effect buffers are output-local, so a
 // cache primed while the output was 8-bit SDR can survive into a 10-bit pass
@@ -1377,6 +1788,16 @@ int main(int argc, char* argv[]) {
     ok = test_implicit_srgb_target(&fixture);
   } else if (strcmp(argv[1], "scene-unset-primaries") == 0) {
     ok = test_scene_unset_primaries(&fixture);
+  } else if (strcmp(argv[1], "sdr-curve-consistency") == 0) {
+    ok = test_sdr_curve_consistency(&fixture);
+  } else if (strcmp(argv[1], "optimized-blur-sdr-curve") == 0) {
+    ok = test_optimized_blur_sdr_curve(&fixture);
+  } else if (strcmp(argv[1], "optimized-blur-encoded-cache") == 0) {
+    ok = test_optimized_blur_encoded_cache(&fixture);
+  } else if (strcmp(argv[1], "optimized-blur-size-change") == 0) {
+    ok = test_optimized_blur_size_change(&fixture);
+  } else if (strcmp(argv[1], "optimized-blur-copy-failure") == 0) {
+    ok = test_optimized_blur_copy_failure(&fixture);
   } else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
     ok = test_gamma22_to_srgb(&fixture);
   } else if (strcmp(argv[1], "pq-roundtrip") == 0) {

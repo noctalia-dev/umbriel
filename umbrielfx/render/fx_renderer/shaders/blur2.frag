@@ -24,6 +24,10 @@ uniform float brightness;
 uniform float contrast;
 uniform float saturation;
 uniform float noise;
+// wlr_color_transfer_function of SDR values in a linear work buffer, or 0 when
+// it is already encoded
+#define TRANSFER_FUNCTION_SRGB 1
+#define TRANSFER_FUNCTION_GAMMA22 8
 uniform int linear;
 
 float srgb_channel_to_linear(float x) { return x > 0.04045 ? pow((x + 0.055) / 1.055, 2.4) : x / 12.92; }
@@ -132,13 +136,17 @@ void main() {
   float color_alpha = color.a;
   // Blur controls are defined for gamma-encoded content. Convert FP16 linear
   // work-buffer samples so HDR rendering preserves the SDR blur appearance.
-  if (linear != 0 && color_alpha != 0.0) {
+  if (linear == TRANSFER_FUNCTION_GAMMA22 && color_alpha != 0.0) {
+    color.rgb = pow(max(color.rgb / color_alpha, vec3(0.0)), vec3(1.0 / 2.2)) * color_alpha;
+  } else if (linear == TRANSFER_FUNCTION_SRGB && color_alpha != 0.0) {
     color.rgb = linear_color_to_srgb(max(color.rgb / color_alpha, vec3(0.0))) * color_alpha;
   }
   // Do *not* transpose the combined matrix when multiplying
   color = brightnessMatrix() * contrastMatrix() * saturationMatrix() * color;
   color.xyz += noiseAmount(v_texcoord);
-  if (linear != 0 && color_alpha != 0.0) {
+  if (linear == TRANSFER_FUNCTION_GAMMA22 && color_alpha != 0.0) {
+    color.rgb = pow(max(color.rgb / color_alpha, vec3(0.0)), vec3(2.2)) * color_alpha;
+  } else if (linear == TRANSFER_FUNCTION_SRGB && color_alpha != 0.0) {
     color.rgb = srgb_color_to_linear(color.rgb / color_alpha) * color_alpha;
   }
 #endif

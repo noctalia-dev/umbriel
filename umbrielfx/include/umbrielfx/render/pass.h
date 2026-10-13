@@ -29,6 +29,11 @@ struct fx_gles_render_pass {
   struct fx_offscreen_buffers* output_buffers;
   float output_matrix[9];
   enum wlr_color_transfer_function output_tf;
+  // Curve of SDR content (untagged or sRGB-tagged buffers, compositor colors)
+  // in this pass. A PQ or gamma 2.2 target decodes it with gamma 2.2, the curve
+  // SDR content is authored for; any other target keeps sRGB. Without a color
+  // transform it is also the target encoding.
+  enum wlr_color_transfer_function sdr_tf;
   GLuint output_lut;
   float output_lut_dim;
   pixman_region32_t updated_region;
@@ -245,11 +250,20 @@ void fx_render_pass_add_box_shadow(
 void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options);
 
 /**
- * Render optimized blur.
+ * Render optimized blur. False when the blur or its copies fail, which leaves
+ * the cache stale.
  */
 bool fx_render_pass_add_optimized_blur(
     struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options
 );
+
+/**
+ * Whether the optimized blur must be rendered again before it is drawn: its
+ * last render did not complete, or has another size or format than the pass,
+ * or used another SDR curve, or encoded values where the pass works in linear
+ * light or the other way round.
+ */
+bool fx_render_pass_optimized_blur_stale(const struct fx_gles_render_pass* pass);
 
 /**
  * Render from one buffer to another. False when the source cannot be sampled.

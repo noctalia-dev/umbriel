@@ -62,6 +62,8 @@ struct fx_framebuffer {
   struct fx_framebuffer* sdr_capture_parent;
   bool capture_sdr;
   bool sdr_capture_valid;
+  // Encoding of the SDR capture: the sdr_tf of the pass that rendered this buffer
+  enum wlr_color_transfer_function sdr_capture_tf;
   // Unfiltered composition of this swapchain buffer while a capture is pending
   // with effects excluded from captures. dmabuf imports read it instead.
   struct fx_framebuffer* effect_capture_buffer;
@@ -101,9 +103,13 @@ void fx_framebuffer_destroy(struct fx_framebuffer* buffer);
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);
 
 // Draws all of `source` over `target` in a pass of its own, decoding `source`
-// with `transfer_function`. Leaves no framebuffer bound.
+// with `transfer_function` and encoding `target` with `target_tf`. Leaves no
+// framebuffer bound. The pass takes `target_tf` as its sdr_tf, so an sRGB
+// `transfer_function` decodes with `target_tf` too: an sRGB source copies
+// unconverted onto any target.
 bool fx_framebuffer_copy(
-    struct fx_framebuffer* target, struct fx_framebuffer* source, enum wlr_color_transfer_function transfer_function
+    struct fx_framebuffer* target, struct fx_framebuffer* source, enum wlr_color_transfer_function transfer_function,
+    enum wlr_color_transfer_function target_tf
 );
 
 ///

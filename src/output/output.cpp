@@ -613,6 +613,8 @@ namespace umbriel {
         const bool targetHdr = state.image_description != nullptr;
         wlr_scene_output_set_sdr_white_level(m_sceneOutput, targetHdr ? configuredSdrWhite() : 0.0F);
         wlr_damage_ring_add_whole(&m_sceneOutput->damage_ring);
+        // The cache may need a new size, format or SDR curve; re-render it in this frame.
+        markBlurBackgroundDirty();
 
         wlr_output_state frameState{};
         wlr_output_state_init(&frameState);
@@ -755,6 +757,7 @@ namespace umbriel {
       // A failed candidate may have prepared the scene for the requested
       // transfer function. Keep the renderer aligned with the live output.
       updateSceneSdrWhite();
+      markBlurBackgroundDirty();
       kLog.error("output '{}': failed to commit configured state", m_output->name);
       return false;
     }

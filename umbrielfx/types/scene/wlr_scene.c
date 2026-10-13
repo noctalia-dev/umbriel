@@ -3440,7 +3440,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
   case WLR_SCENE_NODE_OPTIMIZED_BLUR:;
     struct wlr_scene_optimized_blur* scene_blur = wlr_scene_optimized_blur_from_node(node);
     // Re-render the optimized blur buffer when needed. Retry rendering
-    // until there's a visible blur_node.
+    // until there's a visible blur_node. A stale cache waits for a dirty mark.
     if (fx_pass->has_blur && is_scene_blur_enabled(&scene->blur_data) && scene_blur->dirty) {
       const float opacity = 1.0f;
       enum wl_output_transform transform = wlr_output_transform_invert(data->transform);

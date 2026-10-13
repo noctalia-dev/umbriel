@@ -35,12 +35,19 @@ struct fx_offscreen_buffers {
   struct fx_framebuffer* blend_buffer;
   bool blend_valid;
   uint64_t blend_generation;
-  // Gamma 2.2 view shared by SDR capture of an HDR output
+  // sdr_tf the blend buffer was last composited with
+  enum wlr_color_transfer_function blend_sdr_tf;
+  // SDR view shared by capture of an HDR output, encoded with the pass sdr_tf
   struct fx_framebuffer* sdr_capture_buffer;
   uint64_t sdr_capture_generation;
 
   // Contains the blurred background for tiled windows
   struct fx_framebuffer* optimized_blur_buffer;
+  // Whether the optimized blur buffers hold a completed render
+  bool optimized_blur_valid;
+  // sdr_tf the optimized blur buffers were rendered in linear light with, or 0
+  // when they hold encoded values
+  enum wlr_color_transfer_function optimized_blur_sdr_tf;
   // Contains the non-blurred background for tiled windows. Used for blurring
   // optimized surfaces with an alpha. Just as inefficient as the regular blur.
   struct fx_framebuffer* optimized_no_blur_buffer;

@@ -203,6 +203,11 @@ if build_tests
   foreach case_name : [
     'implicit-srgb-target',
     'scene-unset-primaries',
+    'sdr-curve-consistency',
+    'optimized-blur-sdr-curve',
+    'optimized-blur-encoded-cache',
+    'optimized-blur-size-change',
+    'optimized-blur-copy-failure',
     'gamma22-to-srgb',
     'pq-roundtrip',
     'bt2020-to-srgb',

@@ -429,7 +429,8 @@ static struct wlr_texture* fx_texture_from_framebuffer(
 }
 
 bool fx_framebuffer_copy(
-    struct fx_framebuffer* target, struct fx_framebuffer* source, enum wlr_color_transfer_function transfer_function
+    struct fx_framebuffer* target, struct fx_framebuffer* source, enum wlr_color_transfer_function transfer_function,
+    enum wlr_color_transfer_function target_tf
 ) {
   struct fx_renderer* renderer = target->renderer;
   struct wlr_texture* texture = fx_texture_from_framebuffer(renderer, source, source->buffer);
@@ -444,6 +445,7 @@ bool fx_framebuffer_copy(
   }
   // The target is ours and only this context reads it.
   fx_get_render_pass(pass)->implicit_sync_target = false;
+  fx_get_render_pass(pass)->sdr_tf = target_tf;
 
   struct wlr_box box = {
       .width = target->buffer->width,
@@ -518,7 +520,9 @@ static bool update_sdr_capture_buffer(struct fx_framebuffer* output_buffer) {
     (*capture_buffer)->sdr_capture_parent = output_buffer;
   }
 
-  bool valid = fx_framebuffer_copy(*capture_buffer, blend_buffer, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR);
+  bool valid = fx_framebuffer_copy(
+      *capture_buffer, blend_buffer, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR, output_buffer->sdr_capture_tf
+  );
   if (output_buffers != NULL) {
     output_buffers->sdr_capture_generation = valid ? output_buffer->output_generation : 0;
   } else {

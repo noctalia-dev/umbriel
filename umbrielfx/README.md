@@ -50,8 +50,9 @@ is destroyed.
   Both rules exist for the same reason, and the reason is not obvious. See
   [scene helper ownership](../docs/design/scene-helper-ownership.md).
 - Unprofiled SDR outputs, implicit surfaces, and compositor-defined colors use
-  the sRGB transfer curve. Color-managed SDR clients are offered gamma 2.2 and
-  their tagged buffers are converted through the linear FP16 path.
+  the sRGB transfer curve. On PQ and gamma 2.2 outputs, implicit surfaces and
+  compositor-defined colors use gamma 2.2. Color-managed SDR clients are offered
+  gamma 2.2 and their tagged buffers are converted through the linear FP16 path.
 - A window's desktop and capture scenes share its `wlr_surface`, so
   `types/scene/surface.c` updates only its own scene's output memberships and
   skips suspended outputs when picking the frame-pacing output. Otherwise
