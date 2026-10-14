@@ -756,6 +756,12 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::WindowId:
       input += ":abc";
       break;
+    case ActionArgKind::WindowMoveTo:
+      input += ":center/1/1";
+      break;
+    case ActionArgKind::WindowMoveBy:
+      input += ":1/1";
+      break;
     }
     CHECK(parseAction(input, bind));
 
@@ -813,6 +819,12 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::SdrWhite:
       CHECK(umbriel::payloadIf<umbriel::SdrWhiteArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WindowMoveTo:
+      CHECK(umbriel::payloadIf<umbriel::WindowMoveToArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WindowMoveBy:
+      CHECK(umbriel::payloadIf<umbriel::WindowMoveByArg>(bind) != nullptr);
       break;
     }
   }
@@ -882,6 +894,12 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::WindowId:
       input += ":abc";
+      break;
+    case ActionArgKind::WindowMoveTo:
+      input += ":center/1/1";
+      break;
+    case ActionArgKind::WindowMoveBy:
+      input += ":1/1";
       break;
     }
     if (!parseAction(input, bind)) {
@@ -1030,6 +1048,10 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return ":skip-confirmation";
     case ActionArgKind::SdrWhite:
       return ":200/DP-1";
+    case ActionArgKind::WindowMoveTo:
+      return ":center/1/1";
+    case ActionArgKind::WindowMoveBy:
+      return ":1/1";
     }
     return {};
   };
@@ -1078,6 +1100,10 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<nits>[/<output>]";
     case ActionArgKind::SkipConfirmation:
       return "[skip-confirmation]";
+    case ActionArgKind::WindowMoveTo:
+      return "<anchor>/<x>/<y>[/<window-id>]";
+    case ActionArgKind::WindowMoveBy:
+      return "<delta-x>/<delta-y>[/<window-id>]";
     }
     return "";
   };
@@ -1192,6 +1218,60 @@ UMBRIEL_TEST(effectActionReferencesDescribeOnlyNamedRoots) {
   }
   CHECK(parseAction("spawn:hello", bind));
   CHECK(!umbriel::effectActionReference(bind));
+}
+
+UMBRIEL_TEST(windowMoveToActionParseArgs) {
+  Keybind bind;
+  for (const std::string kind :
+       {"center", "top_left", "top_right", "bottom_left", "bottom_right", "top", "bottom", "left", "right"}) {
+    CHECK(parseAction("window-move-to:" + kind + "/10/10/abc", bind));
+  }
+  CHECK(parseAction("window-move-to:center/10/10", bind));
+  CHECK(parseAction("window-move-to:center/+10/+10", bind));
+  CHECK(parseAction("window-move-to:center/-10/-10", bind));
+  CHECK(parseAction("window-move-to:center/10/10/abc", bind));
+}
+
+UMBRIEL_TEST(windowMoveToActionRejectMalformedArgs) {
+  Keybind bind;
+  CHECK(!parseAction("window-move-to", bind));
+  CHECK(!parseAction("window-move-to:bottom_left", bind));
+  CHECK(!parseAction("window-move-to:anchor/0/0", bind));
+  CHECK(!parseAction("window-move-to://", bind));
+  CHECK(!parseAction("window-move-to:center//", bind));
+  CHECK(!parseAction("window-move-to:center///", bind));
+  CHECK(!parseAction("window-move-to:center/0", bind));
+  CHECK(!parseAction("window-move-to:center/a/10", bind));
+  CHECK(!parseAction("window-move-to:center/10/a", bind));
+  CHECK(!parseAction("window-move-to:top_left/0/0/0/0", bind));
+  CHECK(!parseAction("window-move-to:top_left/3.9/0", bind));
+  CHECK(!parseAction("window-move-to:top_left/0/3.9", bind));
+}
+
+UMBRIEL_TEST(windowMoveByActionParseArgs) {
+  Keybind bind;
+  CHECK(parseAction("window-move-by:10/10", bind));
+  CHECK(parseAction("window-move-by:10/10/abc", bind));
+  CHECK(parseAction("window-move-by:+10/10", bind));
+  CHECK(parseAction("window-move-by:+10/+10", bind));
+  CHECK(parseAction("window-move-by:-10/10", bind));
+  CHECK(parseAction("window-move-by:-10/-10", bind));
+  CHECK(parseAction("window-move-by:10/+10", bind));
+  CHECK(parseAction("window-move-by:10/-10", bind));
+}
+
+UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
+  Keybind bind;
+  CHECK(!parseAction("window-move-by", bind));
+  CHECK(!parseAction("window-move-by:10", bind));
+  CHECK(!parseAction("window-move-by:/", bind));
+  CHECK(!parseAction("window-move-by://", bind));
+  CHECK(!parseAction("window-move-by:abc", bind));
+  CHECK(!parseAction("window-move-by:abc/0", bind));
+  CHECK(!parseAction("window-move-by:0/abc", bind));
+  CHECK(!parseAction("window-move-by:3.4/0", bind));
+  CHECK(!parseAction("window-move-by:0/3.4", bind));
+  CHECK(!parseAction("window-move-by:0/0/abc/abc", bind));
 }
 
 int main() { return RUN_TESTS(); }

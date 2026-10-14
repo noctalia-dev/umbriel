@@ -29,6 +29,8 @@ are required, `[bracket]` forms are optional.
 | `<normal\|tabbed>` | How `column-set-display` shows the rows around the focused window: stacked, or as a tab group |
 | `<index>` | Tab position for `column-focus-tab`, counted from `1` within the focused tab group; negative counts back from the last tab, `-1` |
 | `[skip-confirmation]` | `session-quit` only: quit without the on-screen confirmation |
+| `<anchor>/<x>/<y>[/<window-id>]` | `window-move-to` only. Accepted anchors are `center`, `top_left`, `top_right`, `bottom_left`, `bottom_right`, `top`, `bottom`, `left`, and `right`. Right and bottom anchors measure inward from those edges |
+| `<delta-x>/<delta-y>[/<window-id>]` | `window-move-by` only. `delta-x`/`delta-y` define delta from the current window position |
 
 Effect `set` and `cycle` split at the first `/`; everything after it is the
 window id or output name. For example, `effect-screen-set:cinema/vendor/panel`
@@ -128,6 +130,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `layout-scroll-up` | Scroll the strip toward its start |
 | `layout-toggle-split` | Toggle the focused tile's dwindle split direction |
 | `window-center` | Center the focused floating window on its output |
+| `window-move-to:<anchor>/<x>/<y>[/<window-id>]` | Move the floating window to the specified position |
+| `window-move-by:<delta-x>/<delta-y>[/<window-id>]` | Move the floating window by specified logical pixels |
 | `window-consume-from-left` | Pull the left column's window into the focused column |
 | `window-consume-from-right` | Pull the right column's window into the focused column |
 | `window-consume-left` | Stack the focused window into the column left |

@@ -3,6 +3,7 @@
 #include "config/effects.h"
 #include "config/keybind_parse.h"
 #include "config/value_parse.h"
+#include "config/window_position.h"
 #include "core/animation.h"
 #include "layout/layout.h"
 
@@ -320,25 +321,6 @@ namespace umbriel {
       bool operator==(const Layout&) const = default;
     } layout;
     bool operator==(const OutputRule&) const = default;
-  };
-
-  enum class WindowPositionAnchor {
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
-    Top,
-    Bottom,
-    Left,
-    Right,
-    Center,
-  };
-
-  struct WindowPosition {
-    int x = 0;
-    int y = 0;
-    WindowPositionAnchor anchor = WindowPositionAnchor::Center;
-    bool operator==(const WindowPosition&) const = default;
   };
 
   enum class ContentType {

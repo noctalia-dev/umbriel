@@ -184,6 +184,114 @@ namespace umbriel {
       return true;
     }
 
+    bool parseWindowMoveToArg(std::string_view arg, WindowMoveToArg& output) {
+      std::vector<std::string_view> tokens;
+      for (const auto token : arg | std::views::split('/')) {
+        tokens.emplace_back(token.begin(), token.end());
+      }
+      // At least 3 tokens are required: anchor, x, y
+      if (tokens.size() < 3 || tokens.size() > 4) {
+        return false;
+      }
+
+      WindowPosition position;
+      std::string windowId;
+
+      if (tokens[0] == "left") {
+        position.anchor = WindowPositionAnchor::Left;
+      } else if (tokens[0] == "right") {
+        position.anchor = WindowPositionAnchor::Right;
+      } else if (tokens[0] == "top") {
+        position.anchor = WindowPositionAnchor::Top;
+      } else if (tokens[0] == "bottom") {
+        position.anchor = WindowPositionAnchor::Bottom;
+      } else if (tokens[0] == "center") {
+        position.anchor = WindowPositionAnchor::Center;
+      } else if (tokens[0] == "top_left") {
+        position.anchor = WindowPositionAnchor::TopLeft;
+      } else if (tokens[0] == "top_right") {
+        position.anchor = WindowPositionAnchor::TopRight;
+      } else if (tokens[0] == "bottom_left") {
+        position.anchor = WindowPositionAnchor::BottomLeft;
+      } else if (tokens[0] == "bottom_right") {
+        position.anchor = WindowPositionAnchor::BottomRight;
+      } else {
+        return false;
+      }
+
+      // std::from_chars rejects a leading '+', but the delta is signed.
+      if (!tokens[1].empty() && tokens[1].front() == '+') {
+        tokens[1].remove_prefix(1);
+      }
+
+      const auto [xPtr, xError] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), position.x);
+      if (xError != std::errc{} || xPtr != tokens[1].data() + tokens[1].size()) {
+        return false;
+      }
+
+      // std::from_chars rejects a leading '+', but the delta is signed.
+      if (!tokens[2].empty() && tokens[2].front() == '+') {
+        tokens[2].remove_prefix(1);
+      }
+
+      const auto [yPtr, yError] = std::from_chars(tokens[2].data(), tokens[2].data() + tokens[2].size(), position.y);
+      if (yError != std::errc{} || yPtr != tokens[2].data() + tokens[2].size()) {
+        return false;
+      }
+
+      if (tokens.size() > 3) {
+        windowId = std::string(tokens[3]);
+      }
+
+      output.id = std::move(windowId);
+      output.position = position;
+      return true;
+    }
+
+    bool parseWindowMoveByArg(std::string_view arg, WindowMoveByArg& output) {
+      std::vector<std::string_view> tokens;
+      for (const auto token : arg | std::views::split('/')) {
+        tokens.emplace_back(token.begin(), token.end());
+      }
+      // At least 2 tokens are required: dx, dy; the third token is optional window ID
+      if (tokens.size() < 2 || tokens.size() > 3) {
+        return false;
+      }
+
+      std::string windowId;
+      int dx = 0;
+      int dy = 0;
+
+      // std::from_chars rejects a leading '+', but the delta is signed.
+      if (!tokens[0].empty() && tokens[0].front() == '+') {
+        tokens[0].remove_prefix(1);
+      }
+
+      const auto [xPtr, xError] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), dx);
+      if (xError != std::errc{} || xPtr != tokens[0].data() + tokens[0].size()) {
+        return false;
+      }
+
+      // std::from_chars rejects a leading '+', but the delta is signed.
+      if (!tokens[1].empty() && tokens[1].front() == '+') {
+        tokens[1].remove_prefix(1);
+      }
+
+      const auto [yPtr, yError] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), dy);
+      if (yError != std::errc{} || yPtr != tokens[1].data() + tokens[1].size()) {
+        return false;
+      }
+
+      if (tokens.size() > 2) {
+        windowId = std::string(tokens[2]);
+      }
+
+      output.id = std::move(windowId);
+      output.deltaX = dx;
+      output.deltaY = dy;
+      return true;
+    }
+
     constexpr ActionSpec kActionSpecs[] = {
         {"cheatsheet-close", "", "Hide the keybind cheatsheet", KeybindAction::CheatsheetClose},
         {"cheatsheet-open", "", "Show the keybind cheatsheet", KeybindAction::CheatsheetOpen},
@@ -379,6 +487,8 @@ namespace umbriel {
          KeybindAction::WindowModifyWidthLeft, ActionArgKind::FractionDelta},
         {"window-modify-width-right", "<delta>", "Resize the focused column from its right edge",
          KeybindAction::WindowModifyWidthRight, ActionArgKind::FractionDelta},
+        {"window-move-by", "<delta-x>/<delta-y>[/<window-id>]", "Move the floating window by specified logical pixels",
+         KeybindAction::WindowMoveBy, ActionArgKind::WindowMoveBy},
         {"window-move-down", "", "Move the focused window down in its column", KeybindAction::WindowMoveDown},
         {"window-move-left", "", "Move the focused window left", KeybindAction::WindowMoveLeft},
         {"window-move-or-output-down", "", "Move down, or the column to the output below",
@@ -394,6 +504,8 @@ namespace umbriel {
         {"window-move-or-workspace-up", "", "Move up, or to the previous workspace at the edge",
          KeybindAction::WindowMoveOrWorkspaceUp},
         {"window-move-right", "", "Move the focused window right", KeybindAction::WindowMoveRight},
+        {"window-move-to", "<anchor>/<x>/<y>[/<window-id>]", "Move the floating window to the specified position",
+         KeybindAction::WindowMoveTo, ActionArgKind::WindowMoveTo},
         {"window-move-to-output-down", "", "Move the focused window to the output below",
          KeybindAction::WindowMoveToOutputDown},
         {"window-move-to-output-left", "", "Move the focused window to the output left",
@@ -821,6 +933,30 @@ namespace umbriel {
         }
         output.action = spec.action;
         output.payload = LayoutModeArg{.mode = std::nullopt, .toggleSequence = std::move(sequence)};
+        return true;
+      }
+      case ActionArgKind::WindowMoveTo: {
+        if (!takeActionArg(value, spec, arg)) {
+          break;
+        }
+        WindowMoveToArg payload;
+        if (!parseWindowMoveToArg(arg, payload)) {
+          break;
+        }
+        output.action = spec.action;
+        output.payload = std::move(payload);
+        return true;
+      }
+      case ActionArgKind::WindowMoveBy: {
+        if (!takeActionArg(value, spec, arg)) {
+          break;
+        }
+        WindowMoveByArg payload;
+        if (!parseWindowMoveByArg(arg, payload)) {
+          break;
+        }
+        output.action = spec.action;
+        output.payload = std::move(payload);
         return true;
       }
       }

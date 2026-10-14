@@ -4,6 +4,7 @@
 // config.h so the parsing can be exercised without loading a config file.
 
 #include "config/effects.h"
+#include "config/window_position.h"
 #include "layout/layout.h"
 
 #include <cstddef>
@@ -139,6 +140,8 @@ namespace umbriel {
     WorkspaceSwapActiveOutputPrevious,
     WindowModifyPrimaryExtent,
     WindowCenter,
+    WindowMoveTo,
+    WindowMoveBy,
     WorkspaceSetLayout,
     DpmsOff,
     DpmsOn,
@@ -286,11 +289,22 @@ namespace umbriel {
     std::string name; // empty = cycle the underlying pool
     bool operator==(const EffectCursorArg&) const = default;
   };
+  struct WindowMoveToArg {
+    std::string id; // empty = the focused window
+    WindowPosition position;
+    bool operator==(const WindowMoveToArg&) const = default;
+  };
+  struct WindowMoveByArg {
+    std::string id; // empty = the focused window
+    int deltaX = 0;
+    int deltaY = 0;
+    bool operator==(const WindowMoveByArg&) const = default;
+  };
 
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
       LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
-      SdrWhiteArg>;
+      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -359,6 +373,8 @@ namespace umbriel {
     CursorEffectSet,
     CursorEffectCycle,
     SdrWhite,
+    WindowMoveTo,
+    WindowMoveBy,
   };
 
   struct ActionSpec {

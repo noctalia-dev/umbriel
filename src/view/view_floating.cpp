@@ -159,6 +159,38 @@ namespace umbriel {
     return true;
   }
 
+  bool View::moveFloatingTo(const WindowPosition& position) {
+    if (!m_mapped || m_tiled || scheduledFullscreen() || currentFullscreen()) {
+      return false;
+    }
+
+    const wlr_box usable = floatingUsableArea();
+
+    const auto floatingPosition = getFloatingPosition(usable, position, std::nullopt);
+    if (!floatingPosition) {
+      return false;
+    }
+    animateTo(floatingPosition->x, floatingPosition->y);
+    m_floating.rememberPositionFraction(*floatingPosition, usable);
+    return true;
+  }
+
+  bool View::moveFloatingBy(int deltaX, int deltaY) {
+    if (!m_mapped || m_tiled || scheduledFullscreen() || currentFullscreen()) {
+      return false;
+    }
+    const wlr_box& geo = geometryBox();
+    const wlr_box usable = floatingUsableArea();
+    if (usable.width <= 0 || usable.height <= 0 || geo.width <= 0 || geo.height <= 0) {
+      return false;
+    }
+    FloatingPoint origin = {.x = layoutTargetX() + deltaX, .y = layoutTargetY() + deltaY};
+    origin = clampFloatingOrigin(origin, geo, usable);
+    animateTo(origin.x, origin.y);
+    m_floating.rememberPositionFraction(origin, usable);
+    return true;
+  }
+
   std::optional<FloatingPoint> View::getFloatingPosition(
       const wlr_box usable, const std::optional<WindowPosition>& position, const std::optional<std::array<int, 2>> size
   ) {
