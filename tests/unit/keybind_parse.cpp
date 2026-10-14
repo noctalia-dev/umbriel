@@ -704,6 +704,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::WindowId:
       input += ":abc";
       break;
+    case ActionArgKind::WindowMoveTo:
+      input += ":abs/0/abs/0";
+      break;
     }
     CHECK(parseAction(input, bind));
 
@@ -758,6 +761,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::SkipConfirmation:
       CHECK(umbriel::payloadIf<umbriel::QuitArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WindowMoveTo:
+      CHECK(umbriel::payloadIf<umbriel::WindowMoveToArg>(bind) != nullptr);
       break;
     }
   }
@@ -824,6 +830,9 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::WindowId:
       input += ":abc";
+      break;
+    case ActionArgKind::WindowMoveTo:
+      input += ":abs/0/abs/0";
       break;
     }
     if (!parseAction(input, bind)) {
@@ -970,6 +979,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return ":-1";
     case ActionArgKind::SkipConfirmation:
       return ":skip-confirmation";
+    case ActionArgKind::WindowMoveTo:
+      return ":abs/0/abs/0";
     }
     return {};
   };
@@ -1016,6 +1027,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<index>";
     case ActionArgKind::SkipConfirmation:
       return "[skip-confirmation]";
+    case ActionArgKind::WindowMoveTo:
+      return "<anchor-x>/<x>/<anchor-y>/<y>[/<window-id>]";
     }
     return "";
   };

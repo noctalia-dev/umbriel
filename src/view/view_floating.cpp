@@ -8,6 +8,7 @@
 #include "scene/effect_registry.h"
 #include "scene/surface_blur.h"
 #include "server/server.h"
+#include "view/floating.h"
 #include "view/view.h"
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -154,6 +155,60 @@ namespace umbriel {
       return false;
     }
     const FloatingPoint origin = centeredOrigin(usable, geo.width, geo.height);
+    animateTo(origin.x, origin.y);
+    m_floating.rememberPositionFraction(origin, usable);
+    return true;
+  }
+
+  bool View::moveFloatingTo(MoveFloatingToXAnchor anchor_x, int x, MoveFloatingToYAnchor anchor_y, int y) {
+    if (!m_mapped || m_tiled || scheduledFullscreen() || currentFullscreen()) {
+      return false;
+    }
+    const wlr_box& geo = geometryBox();
+    const wlr_box usable = floatingUsableArea();
+    if (usable.width <= 0 || usable.height <= 0 || geo.width <= 0 || geo.height <= 0) {
+      return false;
+    }
+
+    FloatingPoint origin;
+    switch (anchor_x) {
+    case MoveFloatingToXAnchor::Left:
+      origin.x = usable.x + x;
+      break;
+    case MoveFloatingToXAnchor::Right:
+      origin.x = usable.x + usable.width - geo.width - x;
+      break;
+    case MoveFloatingToXAnchor::Center:
+      origin.x = usable.x + usable.width / 2 - geo.width / 2 + x;
+      break;
+    case MoveFloatingToXAnchor::Rel:
+      origin.x = static_cast<int>(std::lround(m_posX.target())) + x;
+      break;
+    case MoveFloatingToXAnchor::Abs:
+      origin.x = usable.x + x;
+      break;
+    }
+
+    switch (anchor_y) {
+    case MoveFloatingToYAnchor::Top:
+      origin.y = usable.y + y;
+      break;
+    case MoveFloatingToYAnchor::Bottom:
+      origin.y = usable.y + usable.height - geo.height - y;
+      break;
+    case MoveFloatingToYAnchor::Center:
+      origin.y = usable.y + usable.height / 2 - geo.height / 2 + y;
+      break;
+    case MoveFloatingToYAnchor::Rel:
+      origin.y = static_cast<int>(std::lround(m_posY.target())) + y;
+      break;
+    case MoveFloatingToYAnchor::Abs:
+      origin.y = usable.y + y;
+      break;
+    }
+
+    origin = clampFloatingOrigin(origin, geo, usable);
+
     animateTo(origin.x, origin.y);
     m_floating.rememberPositionFraction(origin, usable);
     return true;
