@@ -79,7 +79,7 @@ namespace umbriel {
           && cooldown.modifierOnly == bind.modifierOnly
           && cooldown.keysym == bind.keysym
           && cooldown.wheel == bind.wheel
-          && cooldown.mouseButton == bind.mouseButton;
+          && cooldown.mouseButtons == bind.mouseButtons;
     });
     if (it != m_bindCooldowns.end()) {
       const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->lastTriggered).count();
@@ -96,7 +96,7 @@ namespace umbriel {
         .modifierOnly = bind.modifierOnly,
         .keysym = bind.keysym,
         .wheel = bind.wheel,
-        .mouseButton = bind.mouseButton,
+        .mouseButtons = bind.mouseButtons,
         .lastTriggered = now,
     });
     return true;
@@ -269,7 +269,7 @@ namespace umbriel {
       if (bind.modifierOnly) {
         continue;
       }
-      if (bind.wheel != WheelDirection::None || bind.mouseButton != 0) {
+      if (bind.wheel != WheelDirection::None || !bind.mouseButtons.empty()) {
         continue;
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
@@ -347,8 +347,8 @@ namespace umbriel {
       if (m_sessionLocked && !bind.allowWhenLocked) {
         continue;
       }
-      // Non-mouse binds carry 0 here, which never equals a BTN_* code.
-      if (bind.mouseButton != button) {
+      // Non-mouse binds carry no codes here, so they never match.
+      if (!std::ranges::contains(bind.mouseButtons, button)) {
         continue;
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);

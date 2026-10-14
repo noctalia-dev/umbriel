@@ -775,7 +775,7 @@ namespace umbriel {
     }
 
     bool actionLayoutScrollDrag(Server& /*server*/, const Keybind& bind, std::string* error) {
-      if (bind.mouseButton == 0) {
+      if (bind.mouseButtons.empty()) {
         if (error != nullptr) {
           *error = "layout-scroll-drag requires a mouse-button binding";
         }

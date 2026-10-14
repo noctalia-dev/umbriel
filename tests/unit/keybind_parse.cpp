@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <string>
 #include <variant>
+#include <vector>
 
 using umbriel::ActionArgKind;
 using umbriel::ActionSpec;
@@ -144,11 +145,11 @@ UMBRIEL_TEST(parsesWheelDirections) {
 }
 
 UMBRIEL_TEST(parsesMouseButtons) {
-  CHECK_EQ(chord("Mod+MouseLeft").mouseButton, uint32_t{BTN_LEFT});
-  CHECK_EQ(chord("Mod+MouseRight").mouseButton, uint32_t{BTN_RIGHT});
-  CHECK_EQ(chord("Mod+MouseMiddle").mouseButton, uint32_t{BTN_MIDDLE});
-  CHECK_EQ(chord("Mod+MouseBack").mouseButton, uint32_t{BTN_SIDE});
-  CHECK_EQ(chord("Mod+MouseForward").mouseButton, uint32_t{BTN_EXTRA});
+  CHECK_EQ(chord("Mod+MouseLeft").mouseButtons, (std::vector<uint32_t>{BTN_LEFT}));
+  CHECK_EQ(chord("Mod+MouseRight").mouseButtons, (std::vector<uint32_t>{BTN_RIGHT}));
+  CHECK_EQ(chord("Mod+MouseMiddle").mouseButtons, (std::vector<uint32_t>{BTN_MIDDLE}));
+  CHECK_EQ(chord("Mod+MouseBack").mouseButtons, (std::vector<uint32_t>{BTN_SIDE, BTN_BACK}));
+  CHECK_EQ(chord("Mod+MouseForward").mouseButtons, (std::vector<uint32_t>{BTN_EXTRA, BTN_FORWARD}));
 }
 
 UMBRIEL_TEST(parsesLayoutScrollDragAction) {

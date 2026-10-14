@@ -476,24 +476,24 @@ namespace umbriel {
 
   std::span<const ActionSpec> actionSpecs() { return kActionSpecs; }
 
-  uint32_t mouseButtonFromName(std::string_view name) {
+  std::vector<uint32_t> mouseButtonFromName(std::string_view name) {
     const std::string lowered = toLower(name);
     if (lowered == "mouseleft") {
-      return BTN_LEFT;
+      return {BTN_LEFT};
     }
     if (lowered == "mouseright") {
-      return BTN_RIGHT;
+      return {BTN_RIGHT};
     }
     if (lowered == "mousemiddle") {
-      return BTN_MIDDLE;
+      return {BTN_MIDDLE};
     }
     if (lowered == "mouseback") {
-      return BTN_SIDE;
+      return {BTN_SIDE, BTN_BACK};
     }
     if (lowered == "mouseforward") {
-      return BTN_EXTRA;
+      return {BTN_EXTRA, BTN_FORWARD};
     }
-    return 0;
+    return {};
   }
 
   const char* mouseButtonName(uint32_t button) {
@@ -532,9 +532,9 @@ namespace umbriel {
 
     const std::string lastLower = toLower(tokens.back());
     const WheelDirection wheelDir = wheelFromName(lastLower);
-    const uint32_t mouseButton = mouseButtonFromName(lastLower);
+    std::vector<uint32_t> mouseButtons = mouseButtonFromName(lastLower);
 
-    if (wheelDir != WheelDirection::None || mouseButton != 0) {
+    if (wheelDir != WheelDirection::None || !mouseButtons.empty()) {
       // A bare wheel or mouse-button bind would hijack all client input.
       if (tokens.size() < 2) {
         return false;
@@ -543,7 +543,7 @@ namespace umbriel {
         return false;
       }
       output.wheel = wheelDir;
-      output.mouseButton = mouseButton;
+      output.mouseButtons = std::move(mouseButtons);
       return true;
     }
 

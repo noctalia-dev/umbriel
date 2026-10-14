@@ -291,7 +291,7 @@ namespace umbriel {
     bool modifierOnly = false;
     uint32_t keysym = 0;
     WheelDirection wheel = WheelDirection::None;
-    uint32_t mouseButton = 0; // evdev BTN_* code, 0 = not a mouse bind
+    std::vector<uint32_t> mouseButtons; // evdev BTN_* codes a press may report, empty = not a mouse bind
     bool repeat = true;
     bool allowWhenLocked = false;
     bool allowWhenInhibited = false;
@@ -361,9 +361,10 @@ namespace umbriel {
     ActionArgKind argKind = ActionArgKind::None;
   };
 
-  // Evdev BTN_* code for a canonical mouse button name such as "MouseBack", or 0 when the name is not one. Matching is
-  // case-insensitive.
-  [[nodiscard]] uint32_t mouseButtonFromName(std::string_view name);
+  // Evdev BTN_* codes for a canonical mouse button name such as "MouseBack", or empty when the name is not one. Mice
+  // report their thumb buttons as either BTN_SIDE/BTN_EXTRA or BTN_BACK/BTN_FORWARD, so MouseBack and MouseForward
+  // cover both. Matching is case-insensitive.
+  [[nodiscard]] std::vector<uint32_t> mouseButtonFromName(std::string_view name);
 
   // Canonical name for an evdev BTN_* code, or nullptr for a button Umbriel does not name.
   [[nodiscard]] const char* mouseButtonName(uint32_t button);

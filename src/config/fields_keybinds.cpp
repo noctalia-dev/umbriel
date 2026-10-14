@@ -58,7 +58,7 @@ namespace umbriel {
             && left.modifierOnly == right.modifierOnly
             && left.keysym == right.keysym
             && left.wheel == right.wheel
-            && left.mouseButton == right.mouseButton;
+            && left.mouseButtons == right.mouseButtons;
       };
       for (const auto& [key, entry] : section.table()) {
         const std::string chord(key.str());
@@ -146,7 +146,9 @@ namespace umbriel {
       if (!button) {
         return;
       }
-      if (std::ranges::none_of(loaded.keybinds, [&](const Keybind& bind) { return bind.mouseButton == *button; })) {
+      if (std::ranges::none_of(loaded.keybinds, [&](const Keybind& bind) {
+            return std::ranges::contains(bind.mouseButtons, *button);
+          })) {
         return;
       }
       const char* name = mouseButtonName(*button);

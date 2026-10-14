@@ -106,8 +106,8 @@ namespace {
     if (bind.wheel != umbriel::WheelDirection::None) {
       const char* name = wheelName(bind.wheel);
       result += name != nullptr ? name : "Wheel?";
-    } else if (bind.mouseButton != 0) {
-      const char* name = umbriel::mouseButtonName(bind.mouseButton);
+    } else if (!bind.mouseButtons.empty()) {
+      const char* name = umbriel::mouseButtonName(bind.mouseButtons.front());
       result += name != nullptr ? name : "Mouse?";
     } else {
       char buf[64];

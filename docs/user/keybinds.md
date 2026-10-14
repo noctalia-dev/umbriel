@@ -39,6 +39,10 @@ not cancel them.
 - Wheel: `WheelUp`, `WheelDown`, `WheelLeft`, `WheelRight`
 - Mouse: `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseBack`, `MouseForward`
 
+Mice report their thumb buttons under one of two evdev pairs. `MouseBack`
+matches `BTN_SIDE` and `BTN_BACK`; `MouseForward` matches `BTN_EXTRA` and
+`BTN_FORWARD`.
+
 Mouse and wheel binds require at least one modifier:
 
 ```toml

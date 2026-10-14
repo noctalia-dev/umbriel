@@ -728,7 +728,7 @@ namespace umbriel {
       bool modifierOnly = false;
       uint32_t keysym = 0;
       WheelDirection wheel{};
-      uint32_t mouseButton = 0;
+      std::vector<uint32_t> mouseButtons;
       std::chrono::steady_clock::time_point lastTriggered;
     };
     std::vector<BindCooldown> m_bindCooldowns;
