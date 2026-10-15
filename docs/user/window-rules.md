@@ -60,8 +60,10 @@ identity signal cannot replay it over a later compositor action.
 Later identity changes refresh only the settings that update while a window is
 open.
 
-This rule decides *that* a window opens maximized [`maximize_to_edges`](layout.md#maximize-and-fullscreen)
-decides *whether* that is the column or the edges.
+A `default_maximize` rule opens the window at the full column width.
+[`maximize_to_edges`](layout.md#maximize-and-fullscreen) governs the client's own or restored 
+maximize request instead, deciding whether that request lands in the edges. A rule that never
+sees a client request stays on the column unless `default_maximize_to_edges` is set.
 
 Dialogs float by default. Use `default_floating = false` in a matching rule to
 force one into the layout.
