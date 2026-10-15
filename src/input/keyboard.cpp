@@ -316,7 +316,7 @@ namespace umbriel {
           }
           if (confirmed) {
             if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-              m_server->stop();
+              m_server->requestSessionExit();
             } else {
               m_server->confirmScreenCastDynamic();
             }

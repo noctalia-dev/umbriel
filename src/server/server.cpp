@@ -960,6 +960,8 @@ namespace umbriel {
     m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     if (m_applicationScopesRequired) {
       m_systemdRunExecutable = resolveExecutable("systemd-run");
+      m_systemctlExecutable = resolveExecutable("systemctl");
+      m_systemdControlEnvironment = captureSystemdControlEnvironment();
       const std::string ownerUnit = currentSystemdUnit();
       if (m_systemdRunExecutable.empty()) {
         kLog.warn("application scope isolation unavailable: systemd-run was not found on PATH");
@@ -968,7 +970,6 @@ namespace umbriel {
       } else {
         m_applicationScopePartOfProperty = "--property=PartOf=umbriel-session.target";
         m_applicationScopeBindsToProperty = "--property=BindsTo=" + ownerUnit;
-        m_systemdControlEnvironment = captureSystemdControlEnvironment();
         m_applicationScopeEnvironmentArguments = applicationScopeEnvironmentArguments(config().environment.variables);
         kLog.info("application processes will use transient scopes under app.slice");
       }
@@ -1113,6 +1114,20 @@ namespace umbriel {
     wl_display_terminate(m_display);
   }
 
+  void Server::requestSessionExit() {
+    if (!m_applicationScopesRequired) {
+      stop();
+      return;
+    }
+    if (m_systemctlExecutable.empty()) {
+      kLog.error("cannot stop the session: systemctl was not found on PATH at startup");
+      return;
+    }
+    const std::string command = shellQuote(m_systemctlExecutable)
+        + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target";
+    spawnCommand(command.c_str(), "session shutdown", false, SpawnClass::SessionControl);
+  }
+
   uint32_t Server::modKey() const {
     if (!config().general.modKey) {
       return m_nested ? WLR_MODIFIER_ALT : WLR_MODIFIER_LOGO;
@@ -1227,7 +1242,7 @@ namespace umbriel {
     if (pid == 0) {
       resetChildSignalState();
       restoreFileDescriptorLimit();
-      if (scopeRequired) {
+      if (scopeRequired || spawnClass == SpawnClass::SessionControl) {
         if (!closeChildFileDescriptors() || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
           _exit(1);
         }

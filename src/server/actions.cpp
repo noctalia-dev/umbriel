@@ -522,7 +522,7 @@ namespace umbriel {
         confirm->show(QuitConfirm::Kind::SessionQuit);
         return true;
       }
-      server.stop();
+      server.requestSessionExit();
       return true;
     }
 

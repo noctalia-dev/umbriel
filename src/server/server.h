@@ -159,6 +159,7 @@ namespace umbriel {
     bool start(const char* startupCmd = nullptr);
     void run();
     void stop();
+    void requestSessionExit();
     [[nodiscard]] bool stopping() const { return m_stopping; }
 
     [[nodiscard]] wl_display* display() const { return m_display; }
@@ -472,7 +473,7 @@ namespace umbriel {
   private:
     friend class Output;
 
-    enum class SpawnClass { Application, SessionHelper };
+    enum class SpawnClass { Application, SessionHelper, SessionControl };
 
     bool requestScreenCastCommand(ScreenCastCommandKind kind, std::string value, std::string* error);
 
@@ -832,6 +833,7 @@ namespace umbriel {
     bool m_applicationScopesRequired = false;
     std::string m_socketName;
     std::string m_systemdRunExecutable;
+    std::string m_systemctlExecutable;
     std::string m_applicationScopePartOfProperty;
     std::string m_applicationScopeBindsToProperty;
     SystemdControlEnvironment m_systemdControlEnvironment;

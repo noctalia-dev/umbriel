@@ -4,7 +4,7 @@ Documentation=https://github.com/noctalia-dev/umbriel
 Wants=graphical-session-pre.target
 After=graphical-session-pre.target
 PartOf=umbriel-session.target
-Before=umbriel-session.target
+Before=umbriel-session.target graphical-session.target
 
 [Service]
 Type=simple
