@@ -331,6 +331,9 @@ namespace {
             break;
           }
           val += "/" + std::to_string(moveTo->y);
+          if (!moveTo->id.empty()) {
+            val += "/" + moveTo->id;
+          }
           return name + ": " + val;
         }
         return name;

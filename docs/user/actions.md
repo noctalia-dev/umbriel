@@ -28,7 +28,7 @@ are required, `[bracket]` forms are optional.
 | `<normal\|tabbed>` | How `column-set-display` shows the rows around the focused window: stacked, or as a tab group |
 | `<index>` | Tab position for `column-focus-tab`, counted from `1` within the focused tab group; negative counts back from the last tab, `-1` |
 | `[skip-confirmation]` | `session-quit` only: quit without the on-screen confirmation |
-| `<anchor-x>/<x>/<anchor-y>/<y>[/<window-id>]` | `window-move-to` only. `anchor-x` accepts `abs`, `rel`, `left`, `center` and `right`. `anchor-y` accepts `abs`, `rel`, `shift`, `top`, `center` and `bottom`. If the axis anchor is `abs` the axis values (`x` or `y`) are used as absolute window position. `rel` anchor defined as relative shift from current window position |
+| `<anchor-x>/<x>/<anchor-y>/<y>[/<window-id>]` | `window-move-to` only. `anchor-x` accepts `abs`, `rel`, `left`, `center` and `right`. `anchor-y` accepts `abs`, `rel`, `top`, `center` and `bottom`. If the axis anchor is `abs` the axis values (`x` or `y`) are used as absolute window position. `rel` anchor defined as relative shift from current window position |
 
 Effect `set` and `cycle` split at the first `/`; everything after it is the
 window id or output name. For example, `effect-screen-set:cinema/vendor/panel`
