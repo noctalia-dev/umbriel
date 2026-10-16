@@ -19,6 +19,9 @@ namespace umbriel {
 
   inline constexpr size_t kMaxWorkspaces = 64;
 
+  enum class MoveFloatingToXAnchor;
+  enum class MoveFloatingToYAnchor;
+
   enum class WheelDirection {
     None,
     Up,
@@ -138,6 +141,7 @@ namespace umbriel {
     WorkspaceSwapActiveOutputPrevious,
     WindowModifyPrimaryExtent,
     WindowCenter,
+    WindowMoveTo,
     WorkspaceSetLayout,
     DpmsOff,
     DpmsOn,
@@ -278,10 +282,19 @@ namespace umbriel {
     std::string name; // empty = cycle the underlying pool
     bool operator==(const EffectCursorArg&) const = default;
   };
+  struct WindowMoveToArg {
+    std::string id; // empty = the focused window
+    int x = 0;
+    MoveFloatingToXAnchor anchor_x;
+    int y = 0;
+    MoveFloatingToYAnchor anchor_y;
+    bool operator==(const WindowMoveToArg&) const = default;
+  };
 
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
-      LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg>;
+      LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
+      WindowMoveToArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -349,6 +362,7 @@ namespace umbriel {
     ScreenEffectCycle,
     CursorEffectSet,
     CursorEffectCycle,
+    WindowMoveTo,
   };
 
   struct ActionSpec {

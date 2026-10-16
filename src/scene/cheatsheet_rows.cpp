@@ -1,5 +1,7 @@
 #include "scene/cheatsheet_rows.h"
 
+#include "view/view.h"
+
 // clang-format off
 // See keybind_parse.cpp: <cmath> must precede the wayland chain.
 #include <cmath>
@@ -290,6 +292,51 @@ namespace {
           return name + ": skip-confirmation";
         }
         return name;
+      case umbriel::ActionArgKind::WindowMoveTo:
+        if (const auto* moveTo = umbriel::payloadIf<umbriel::WindowMoveToArg>(bind); moveTo != nullptr) {
+          std::string val;
+          switch (moveTo->anchor_x) {
+          case umbriel::MoveFloatingToXAnchor::Left:
+            val += "left";
+            break;
+          case umbriel::MoveFloatingToXAnchor::Right:
+            val += "right";
+            break;
+          case umbriel::MoveFloatingToXAnchor::Center:
+            val += "center";
+            break;
+          case umbriel::MoveFloatingToXAnchor::Abs:
+            val += "abs";
+            break;
+          case umbriel::MoveFloatingToXAnchor::Rel:
+            val += "rel";
+            break;
+          }
+          val += "/" + std::to_string(moveTo->x);
+          switch (moveTo->anchor_y) {
+          case umbriel::MoveFloatingToYAnchor::Top:
+            val += "/top";
+            break;
+          case umbriel::MoveFloatingToYAnchor::Bottom:
+            val += "/bottom";
+            break;
+          case umbriel::MoveFloatingToYAnchor::Center:
+            val += "/center";
+            break;
+          case umbriel::MoveFloatingToYAnchor::Abs:
+            val += "/abs";
+            break;
+          case umbriel::MoveFloatingToYAnchor::Rel:
+            val += "/rel";
+            break;
+          }
+          val += "/" + std::to_string(moveTo->y);
+          if (!moveTo->id.empty()) {
+            val += "/" + moveTo->id;
+          }
+          return name + ": " + val;
+        }
+        return name;
       }
       return name;
     }
@@ -391,6 +438,7 @@ namespace {
     case A::WindowCycleSecondaryExtent:
     case A::WindowCycleSecondaryExtentBack:
     case A::WindowCenter:
+    case A::WindowMoveTo:
     case A::LayoutScrollLeft:
     case A::LayoutScrollRight:
     case A::LayoutScrollUp:

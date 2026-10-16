@@ -1250,6 +1250,31 @@ namespace umbriel {
       return true;
     }
 
+    bool actionWindowMoveTo(Server& server, const Keybind& bind, std::string* error) {
+      if (const auto* arg = payloadIf<WindowMoveToArg>(bind); arg != nullptr) {
+        View* view = nullptr;
+        if (arg->id.empty()) {
+          view = focusedWindow(server);
+          if (view == nullptr) {
+            if (error != nullptr) {
+              *error = "no focused window";
+            }
+            return false;
+          }
+        } else {
+          view = viewByForeignIdentifier(server, arg->id);
+          if (view == nullptr) {
+            if (error != nullptr) {
+              *error = "unknown window: " + arg->id;
+            }
+            return false;
+          }
+        }
+        view->moveFloatingTo(arg->anchor_x, arg->x, arg->anchor_y, arg->y);
+      }
+      return true;
+    }
+
     bool actionColumnCenter(Server& server, const Keybind& /*bind*/, std::string* error) {
       if (scratchpadHoldsFocus(server)) {
         return true;
@@ -2147,6 +2172,7 @@ namespace umbriel {
         &actionWorkspaceSwapActiveOutputCycle<-1>,
         &actionModifyWidth,
         &actionWindowCenter,
+        &actionWindowMoveTo,
         &actionWorkspaceSetLayout,
         &actionDpms<false>,
         &actionDpms<true>,

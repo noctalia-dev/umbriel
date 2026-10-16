@@ -1,5 +1,7 @@
 #include "config/keybind_parse.h"
 
+#include "view/view.h"
+
 // <cmath> must precede the Wayland headers to avoid a libstdc++ 16 include-order failure.
 // clang-format off
 #include <cmath>
@@ -181,6 +183,75 @@ namespace umbriel {
       }
 
       workspace.reference = WorkspaceName{std::string(selector)};
+      return true;
+    }
+
+    bool parseWindowMoveToArg(std::string_view arg, WindowMoveToArg& output) {
+      std::vector<std::string_view> tokens;
+      for (const auto token : arg | std::views::split('/')) {
+        tokens.emplace_back(token.begin(), token.end());
+      }
+      // At least 4 tokens are required: anchor_x, x, anchor_y and y
+      if (tokens.size() < 4) {
+        return false;
+      }
+      MoveFloatingToXAnchor anchor_x = MoveFloatingToXAnchor::Abs;
+      MoveFloatingToYAnchor anchor_y = MoveFloatingToYAnchor::Abs;
+      int x = 0;
+      int y = 0;
+      std::string window_id;
+
+      // Anchor for the x-axis (abs, rel, left, right, center)
+      if (tokens[0] == "left") {
+        anchor_x = MoveFloatingToXAnchor::Left;
+      } else if (tokens[0] == "right") {
+        anchor_x = MoveFloatingToXAnchor::Right;
+      } else if (tokens[0] == "center") {
+        anchor_x = MoveFloatingToXAnchor::Center;
+      } else if (tokens[0] == "rel") {
+        anchor_x = MoveFloatingToXAnchor::Rel;
+      } else if (tokens[0] == "abs") {
+        anchor_x = MoveFloatingToXAnchor::Abs;
+      } else {
+        return false;
+      }
+
+      // x-coordinate/x-delta
+      const auto [xPtr, xError] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), x);
+      if (xError != std::errc{} || xPtr != tokens[1].data() + tokens[1].size()) {
+        return false;
+      }
+
+      // Anchor for the y-axis (top, bottom, center)
+      if (tokens[2] == "top") {
+        anchor_y = MoveFloatingToYAnchor::Top;
+      } else if (tokens[2] == "bottom") {
+        anchor_y = MoveFloatingToYAnchor::Bottom;
+      } else if (tokens[2] == "center") {
+        anchor_y = MoveFloatingToYAnchor::Center;
+      } else if (tokens[2] == "rel") {
+        anchor_y = MoveFloatingToYAnchor::Rel;
+      } else if (tokens[2] == "abs") {
+        anchor_y = MoveFloatingToYAnchor::Abs;
+      } else {
+        return false;
+      }
+
+      // y-coordinate/y-delta
+      const auto [yPtr, yError] = std::from_chars(tokens[3].data(), tokens[3].data() + tokens[3].size(), y);
+      if (yError != std::errc{} || yPtr != tokens[3].data() + tokens[3].size()) {
+        return false;
+      }
+
+      if (tokens.size() > 4) {
+        window_id = std::string(tokens[4]);
+      }
+
+      output.id = std::move(window_id);
+      output.x = x;
+      output.anchor_x = anchor_x;
+      output.y = y;
+      output.anchor_y = anchor_y;
       return true;
     }
 
@@ -390,6 +461,9 @@ namespace umbriel {
         {"window-move-or-workspace-up", "", "Move up, or to the previous workspace at the edge",
          KeybindAction::WindowMoveOrWorkspaceUp},
         {"window-move-right", "", "Move the focused window right", KeybindAction::WindowMoveRight},
+        {"window-move-to", "<anchor-x>/<x>/<anchor-y>/<y>[/<window-id>]",
+         "Move the floating window to the specified position", KeybindAction::WindowMoveTo,
+         ActionArgKind::WindowMoveTo},
         {"window-move-to-output-down", "", "Move the focused window to the output below",
          KeybindAction::WindowMoveToOutputDown},
         {"window-move-to-output-left", "", "Move the focused window to the output left",
@@ -783,6 +857,18 @@ namespace umbriel {
         }
         output.action = spec.action;
         output.payload = LayoutModeArg{.mode = std::nullopt, .toggleSequence = std::move(sequence)};
+        return true;
+      }
+      case ActionArgKind::WindowMoveTo: {
+        if (!takeActionArg(value, spec, arg)) {
+          break;
+        }
+        WindowMoveToArg payload;
+        if (!parseWindowMoveToArg(arg, payload)) {
+          break;
+        }
+        output.action = spec.action;
+        output.payload = std::move(payload);
         return true;
       }
       }

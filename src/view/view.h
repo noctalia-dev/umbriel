@@ -52,6 +52,22 @@ namespace umbriel {
   struct SizeHints;
   struct XwaylandRegion;
 
+  enum class MoveFloatingToXAnchor {
+    Abs,    // absolute position
+    Rel,    // relative position
+    Left,   // anchor to the left edge
+    Right,  // anchor to the right edge
+    Center, // anchor to the center
+  };
+
+  enum class MoveFloatingToYAnchor {
+    Abs,    // absolute position
+    Rel,    // relative position
+    Top,    // anchor to the top edge
+    Bottom, // anchor to the bottom edge
+    Center, // anchor to the center
+  };
+
   class View : public SceneNode, public Animatable {
   public:
     View(Server& server, wlr_xdg_toplevel* toplevel);
@@ -337,6 +353,8 @@ namespace umbriel {
     void restoreFloatingPosition(bool rememberRestored = true);
     // Center the floating window on its output's usable area. False when not floating.
     bool centerFloating();
+    // Move the floating window to a new position.
+    bool moveFloatingTo(MoveFloatingToXAnchor anchor_x, int x, MoveFloatingToYAnchor anchor_y, int y);
     // Animate the presented size toward a layout-assigned size. Called by Workspace::arrange when it configures the
     // client, so the animation owns the presented size before the clip can report the final size.
     void beginResizeAnimation(int width, int height, bool allowFullscreen = false);
