@@ -1115,12 +1115,8 @@ namespace umbriel {
   }
 
   void Server::requestSessionExit() {
-    if (!m_applicationScopesRequired) {
+    if (!m_applicationScopesRequired || m_systemctlExecutable.empty() || currentSystemdUnit() != "umbriel.service") {
       stop();
-      return;
-    }
-    if (m_systemctlExecutable.empty()) {
-      kLog.error("cannot stop the session: systemctl was not found on PATH at startup");
       return;
     }
     const std::string command = shellQuote(m_systemctlExecutable)
