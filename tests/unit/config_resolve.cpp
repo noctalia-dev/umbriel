@@ -63,6 +63,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   config.layout.master.defaultWidthFraction = 0.58;
   config.layout.master.newOnTop = false;
   config.layout.dwindle.preserveSplit = true;
+  config.layout.clientMaximize = umbriel::ClientMaximize::Edges;
 
   WorkspaceConfig global;
   global.name = "dev";
@@ -85,6 +86,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   dpOne.layout.master.defaultWidthFraction = 0.7;
   dpOne.layout.master.newOnTop = false;
   dpOne.layout.dwindle.preserveSplit = true;
+  dpOne.layout.clientMaximize = umbriel::ClientMaximize::Column;
   config.workspaceRules.push_back(std::move(dpOne));
 
   WorkspaceConfig dpTwo;
@@ -108,6 +110,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   CHECK_EQ(onDpOne.master.defaultWidthFraction, 0.7);
   CHECK(!onDpOne.master.newOnTop);
   CHECK(onDpOne.dwindle.preserveSplit);
+  CHECK(onDpOne.clientMaximize == umbriel::ClientMaximize::Column);
 
   const auto onDpTwo = umbriel::resolveWorkspaceLayout(config, identity("DP-2"), "dev", 0);
   CHECK(onDpTwo.mode == LayoutMode::Scrolling);
@@ -122,6 +125,7 @@ UMBRIEL_TEST(workspaceOverridesApplyGlobalThenOutputSpecificRules) {
   CHECK_EQ(onDpTwo.master.defaultWidthFraction, 0.6);
   CHECK(onDpTwo.master.newOnTop);
   CHECK(!onDpTwo.dwindle.preserveSplit);
+  CHECK(onDpTwo.clientMaximize == umbriel::ClientMaximize::Edges);
 
   const auto elsewhere = umbriel::resolveWorkspaceLayout(config, identity("HDMI-A-1"), "dev", 0);
   CHECK_EQ(elsewhere.gap, 12);

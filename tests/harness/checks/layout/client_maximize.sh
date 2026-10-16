@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Client-requested maximize and unmaximize around [layout] maximize_to_edges: a client's maximize
+# Client-requested maximize and unmaximize around [layout] client_maximize: a client's maximize
 # fills the column by default and the usable-area edges when configured, while an unmaximize
 # request exits whichever mode is active instead of following the configured policy.
 set -euo pipefail
@@ -11,6 +11,7 @@ readonly RESTORED_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-restored.log"
 readonly FIRST_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-restored-first.log"
 readonly RULED_FIRST_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-ruled-first.log"
 readonly RULED_AFTER_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-ruled-after.log"
+readonly OVERRIDE_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-override.log"
 
 field_of() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
@@ -100,7 +101,7 @@ wait_for_field client-maximize-column y 8
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [layout]
-maximize_to_edges = true
+client_maximize = "edges"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -164,7 +165,8 @@ send_command M "$FIRST_LOG" 'unmaximize-requested$'
 wait_for_field client-maximize-restored-first w 628
 stop_client
 
-# A default_maximize rule whose client restores maximize follows the policy and ends in the edges state.
+# A default_maximize rule whose client restores maximize before map opens in the edges above the rule's full-width
+# column, so unmaximize is two-step.
 env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 REQUEST_MAXIMIZED=1 RESIZE_FILL_COLOR=0xFF5577AA \
   "$CLIENT" client-maximize-ruled-first 640 480 <&"$control_fd" > "$RULED_FIRST_LOG" 2>&1 &
 CLIENT_PID=$!
@@ -172,10 +174,12 @@ await_lines "$RULED_FIRST_LOG" mapped 1
 wait_for_field client-maximize-ruled-first w 1280
 wait_for_field client-maximize-ruled-first h 720
 send_command M "$RULED_FIRST_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-ruled-first w 1264
+send_command M "$RULED_FIRST_LOG" 'unmaximize-requested$'
 wait_for_field client-maximize-ruled-first w 628
 stop_client
 
-# The after-map re-assert converges on the same state; its full-width column stacks, so unmaximize is two-step.
+# The after-map re-assert converges on the same stacked state.
 env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 REQUEST_MAXIMIZED_AFTER_MAP=1 RESIZE_FILL_COLOR=0xFF5577AA \
   "$CLIENT" client-maximize-ruled-after 640 480 <&"$control_fd" > "$RULED_AFTER_LOG" 2>&1 &
 CLIENT_PID=$!
@@ -188,4 +192,17 @@ send_command M "$RULED_AFTER_LOG" 'unmaximize-requested$'
 wait_for_field client-maximize-ruled-after w 628
 stop_client
 
-echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map, restored, and default_maximize-ruled requests; unmaximize restores the tile (628x704)"
+# A workspace override sets "column" for that workspace: the client's maximize fills the column again.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[[workspace]]
+index = 1
+layout.client_maximize = "column"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+request_maximize client-maximize-override "$OVERRIDE_LOG"
+wait_for_field client-maximize-override w 1264
+wait_for_field client-maximize-override h 704
+stop_client
+
+echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map, restored, and default_maximize-ruled requests, column under a workspace override; unmaximize restores the tile (628x704)"

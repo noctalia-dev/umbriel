@@ -196,9 +196,10 @@ numlock_toggle = true
 [layout]
 extent_presets = [0.333, 0.5, 0.667]
 
-# A tiled window's own maximize request fills the usable area without struts,
-# gaps, or borders.
-# maximize_to_edges = false
+# What a tiled window's own maximize button does: "column" fills the column,
+# "edges" fills the usable area without struts, gaps, or borders. The
+# window-toggle-maximize action is unaffected.
+# client_maximize = "column"
 
 [layout.scrolling]
 default_extent_fraction = 0.5

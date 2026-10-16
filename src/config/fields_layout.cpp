@@ -47,6 +47,14 @@ namespace umbriel {
       return choices;
     }
 
+    const registry::Choices<ClientMaximize>& clientMaximizeModes() {
+      static const registry::Choices<ClientMaximize> choices{
+          {.name = "column", .value = ClientMaximize::Column},
+          {.name = "edges", .value = ClientMaximize::Edges},
+      };
+      return choices;
+    }
+
     const registry::Choices<NewTabPosition>& newTabPositions() {
       static const registry::Choices<NewTabPosition> choices{
           {.name = "end", .value = NewTabPosition::End},
@@ -210,6 +218,7 @@ namespace umbriel {
                 }
               }
           ),
+          choice("client_maximize", &L::clientMaximize, clientMaximizeModes()),
           table("scrolling", &L::scrolling, scrolling),
           table("dwindle", &L::dwindle, dwindle),
           table("master", &L::master, master),
@@ -404,12 +413,7 @@ namespace umbriel {
   }
 
   registry::Field<Config> layoutTable() {
-    static const registry::Fields<Config::Layout> fields = [] {
-      registry::Fields<Config::Layout> parsed = layoutFields<Config::Layout>();
-      parsed.push_back(registry::boolean("maximize_to_edges", &Config::Layout::maximizeToEdges));
-      return parsed;
-    }();
-    return registry::table("layout", &Config::layout, fields);
+    return registry::table("layout", &Config::layout, layoutFields<Config::Layout>());
   }
 
   registry::Field<Config> workspaceRulesTable() {

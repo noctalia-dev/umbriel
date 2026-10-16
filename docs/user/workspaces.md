@@ -176,6 +176,7 @@ rule can override only `layout.struts.top`.
 | `layout.struts.{left,right,top,bottom}` | Reserve signed logical pixels at each edge. |
 | `layout.extent_presets` | Set extent-cycle fractions. |
 | `layout.new_exits_fullscreen` | Choose which arriving windows exit fullscreen; see [Leaving fullscreen](layout.md#leaving-fullscreen). |
+| `layout.client_maximize` | Choose `"column"` or `"edges"` for a tiled window's own maximize request; see [Maximize and fullscreen](layout.md#maximize-and-fullscreen). |
 | `layout.scrolling.default_extent_fraction` | Set the initial scrolling-column extent. |
 | `layout.scrolling.center_underfull_strip` | Center or start-align an underfull strip. |
 | `layout.scrolling.center_focused` | Control when focus changes center a column. |

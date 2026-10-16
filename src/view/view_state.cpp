@@ -211,7 +211,10 @@ namespace umbriel {
     }
     m_consumeRestoredMaximizeRequest = false;
     if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(requestedMaximized(), m_maximizedToEdges, config().layout.maximizeToEdges)) {
+      if (maximizeRequestTargetsEdges(
+              requestedMaximized(), m_maximizedToEdges,
+              m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
+          )) {
         setMaximizedToEdges(requestedMaximized());
         return;
       }

@@ -135,6 +135,9 @@ namespace umbriel {
       if (overrides.newExitsFullscreen) {
         resolved.newExitsFullscreen = *overrides.newExitsFullscreen;
       }
+      if (overrides.clientMaximize) {
+        resolved.clientMaximize = *overrides.clientMaximize;
+      }
       if (overrides.tabs.defaultDisplay) {
         resolved.tabs.defaultDisplay = *overrides.tabs.defaultDisplay;
       }
@@ -426,6 +429,7 @@ namespace umbriel {
     resolved.struts = config.layout.struts;
     resolved.extentPresets = config.layout.extentPresets;
     resolved.newExitsFullscreen = config.layout.newExitsFullscreen;
+    resolved.clientMaximize = config.layout.clientMaximize;
     resolved.scrolling.defaultExtentFraction = config.layout.scrolling.defaultExtentFraction;
     resolved.scrolling.centerUnderfullStrip = config.layout.scrolling.centerUnderfullStrip;
     resolved.scrolling.centerFocused = config.layout.scrolling.centerFocused;

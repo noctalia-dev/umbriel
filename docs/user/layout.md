@@ -27,7 +27,7 @@ Change the current workspace at runtime with
 gap = 8
 extent_presets = [0.333, 0.5, 0.667]
 new_exits_fullscreen = []  # "tiled", "floating", "pinned", "all", or an array such as ["tiled", "floating"]
-maximize_to_edges = false
+client_maximize = "column"  # or "edges"
 ```
 
 | Key | Default | Description |
@@ -35,7 +35,7 @@ maximize_to_edges = false
 | `gap` | `8` | Gap between windows in logical pixels. |
 | `extent_presets` | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions. |
 | `new_exits_fullscreen` | `[]` | Kinds of arriving window that make a fullscreen window on the workspace leave fullscreen. See [Leaving fullscreen](#leaving-fullscreen). |
-| `maximize_to_edges` | `false` | Make a tiled window's own maximize request fill the usable area without struts, gaps, or borders. See [Maximize and fullscreen](#maximize-and-fullscreen). |
+| `client_maximize` | `"column"` | What a tiled window's own maximize button does: `"column"` fills the column like `window-toggle-maximize`, `"edges"` fills the usable area without struts, gaps, or borders like `window-toggle-maximize-to-edges`. See [Maximize and fullscreen](#maximize-and-fullscreen). |
 
 ### Leaving fullscreen
 
@@ -368,12 +368,15 @@ gaps; floating windows fill the output's usable area.
 `window-toggle-maximize-to-edges` removes layout struts, gaps, and borders while
 leaving panel exclusive zones visible.
 
-With `maximize_to_edges` on, a tiled window's own maximize button behaves like
-`window-toggle-maximize-to-edges` instead of `window-toggle-maximize`;
-floating windows keep the default behavior. Unmaximizing runs that toggle in
+With `client_maximize = "edges"`, a tiled window's own maximize button (or
+titlebar double-click) behaves like `window-toggle-maximize-to-edges` instead of
+`window-toggle-maximize`; floating windows keep the default behavior. The key
+affects only requests from the application: the `window-toggle-maximize` action
+still fills the column, so bind `window-toggle-maximize-to-edges` to get the
+edges from a keybind. Windows without their own maximize control, such as most
+terminals, never send that request. Unmaximizing runs that toggle in
 reverse: the edges are left first, and a window whose column is also at full
-width leaves the column on the next unmaximize. A restored maximize honored at
-open lands in the edges mode as well, including on a `default_maximize` window,
-and one whose client re-asserts after map keeps the rule's full-width column
-under the edges, so its unmaximize runs in two steps. A `default_maximize`
-window that never sees a client request still opens the column.
+width leaves the column on the next unmaximize. A maximize restored at open
+under `honor_restored_maximize` lands in the edges too. On a `default_maximize`
+window the edges sit above the rule's full-width column, so unmaximizing it
+takes two steps; without a client request the rule opens the column only.

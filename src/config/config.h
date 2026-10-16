@@ -46,6 +46,12 @@ namespace umbriel {
     All = Tiled | Floating | Pinned,
   };
 
+  // Which maximize state a tiled window's own maximize request enters (client_maximize).
+  enum class ClientMaximize : uint8_t {
+    Column,
+    Edges,
+  };
+
   // What a tab bar draws in each slot.
   enum class TabBarLook : uint8_t {
     Titles,
@@ -84,6 +90,7 @@ namespace umbriel {
     LayoutStrutOverrides struts;
     std::optional<std::vector<double>> extentPresets;
     std::optional<FullscreenExitScope> newExitsFullscreen;
+    std::optional<ClientMaximize> clientMaximize;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       std::optional<bool> centerUnderfullStrip;
@@ -139,6 +146,7 @@ namespace umbriel {
     LayoutStruts struts;
     std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
     FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
+    ClientMaximize clientMaximize = ClientMaximize::Column;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       bool centerUnderfullStrip = true;
@@ -850,8 +858,7 @@ namespace umbriel {
       LayoutStruts struts;
       std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
       FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
-      // A client's own maximize request fills the usable-area edges, not the full column width.
-      bool maximizeToEdges = false;
+      ClientMaximize clientMaximize = ClientMaximize::Column;
       struct Scrolling {
         std::optional<double> defaultExtentFraction;
         bool centerUnderfullStrip = true;
