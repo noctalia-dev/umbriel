@@ -44,7 +44,7 @@ namespace umbriel {
   // Failure is closed: this function exits without executing the application.
   [[noreturn]] void execApplicationInScope(
       const char* systemdRun, const char* unitArgument, const char* partOfProperty, const char* bindsToProperty,
-      const ApplicationScopeEnvironmentArguments& environmentArguments, const char* command
+      const char* afterProperty, const ApplicationScopeEnvironmentArguments& environmentArguments, const char* command
   );
 
 } // namespace umbriel

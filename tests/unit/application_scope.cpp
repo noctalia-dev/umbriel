@@ -411,7 +411,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     close(outputPipe[1]);
     execApplicationInScope(
         "/proc/self/exe", "--unit=app-umbriel-arguments.scope", "--property=PartOf=umbriel-session.target",
-        "--property=BindsTo=umbriel.service", environmentArguments, command
+        "--property=BindsTo=umbriel.service", "--property=After=umbriel.service", environmentArguments, command
     );
   }
   close(outputPipe[1]);
@@ -421,7 +421,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 19);
+  const std::string output = readLinesWithTimeout(outputPipe[0], 20);
   close(outputPipe[0]);
   int status = 0;
   if (!waitForExit(child, &status)) {
@@ -448,6 +448,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
           + "--unit=app-umbriel-arguments.scope\n"
           + "--property=PartOf=umbriel-session.target\n"
           + "--property=BindsTo=umbriel.service\n"
+          + "--property=After=umbriel.service\n"
           + "--setenv=XDG_RUNTIME_DIR=/tmp/application runtime\n"
           + "--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/application-$bus\n"
           + "--setenv=SYSTEMD_BUS_ADDRESS=unix:path=/tmp/application=systemd\n"
@@ -477,8 +478,8 @@ UMBRIEL_TEST(missingSystemdRunFailsClosed) {
     const ApplicationScopeEnvironmentArguments environmentArguments{};
     execApplicationInScope(
         "/nonexistent/umbriel-systemd-run", "--unit=app-umbriel-missing.scope",
-        "--property=PartOf=umbriel-session.target", "--property=BindsTo=umbriel.service", environmentArguments,
-        "printf launched"
+        "--property=PartOf=umbriel-session.target", "--property=BindsTo=umbriel.service",
+        "--property=After=umbriel.service", environmentArguments, "printf launched"
     );
   }
   close(outputPipe[1]);
@@ -526,6 +527,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
   const std::string unitArgument = "--unit=" + unit;
   const std::string partOfProperty = "--property=PartOf=umbriel-session.target";
   const std::string bindsToProperty = "--property=BindsTo=" + ownerUnit;
+  const std::string afterProperty = "--property=After=" + ownerUnit;
   const ApplicationScopeEnvironmentArguments environmentArguments{
       "--setenv=XDG_RUNTIME_DIR=/tmp/umbriel application $runtime",
       "--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/umbriel-application-dbus",
@@ -555,7 +557,8 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
       _exit(2);
     }
     execApplicationInScope(
-        systemdRun.c_str(), unitArgument.c_str(), partOfProperty.c_str(), bindsToProperty.c_str(), environmentArguments,
+        systemdRun.c_str(), unitArgument.c_str(), partOfProperty.c_str(), bindsToProperty.c_str(),
+        afterProperty.c_str(), environmentArguments,
         "printf '%s\\n' '$HOME ${USER} $$' \"$XDG_RUNTIME_DIR\" \"$DBUS_SESSION_BUS_ADDRESS\" "
         "\"$SYSTEMD_BUS_ADDRESS\"; cat /proc/self/cgroup; read ignored || :"
     );
@@ -595,6 +598,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
   CHECK(containsWord(partOf, "umbriel-session.target"));
   const std::string bindsTo = systemctlProperty(systemctl, unit, "BindsTo");
   CHECK(containsWord(bindsTo, ownerUnit));
+  CHECK(containsWord(systemctlProperty(systemctl, unit, "After"), ownerUnit));
 
   close(inputPipe[1]);
   inputPipe[1] = -1;

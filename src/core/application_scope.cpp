@@ -105,9 +105,9 @@ namespace umbriel {
 
   void execApplicationInScope(
       const char* systemdRun, const char* unitArgument, const char* partOfProperty, const char* bindsToProperty,
-      const ApplicationScopeEnvironmentArguments& environmentArguments, const char* command
+      const char* afterProperty, const ApplicationScopeEnvironmentArguments& environmentArguments, const char* command
   ) {
-    std::array<char*, 20> arguments{};
+    std::array<char*, 21> arguments{};
     size_t argumentCount = 0;
     const auto append = [&arguments, &argumentCount](const char* argument) {
       arguments[argumentCount++] = const_cast<char*>(argument);
@@ -124,6 +124,7 @@ namespace umbriel {
     append(unitArgument);
     append(partOfProperty);
     append(bindsToProperty);
+    append(afterProperty);
     for (const std::string& argument : environmentArguments) {
       if (!argument.empty()) {
         append(argument.c_str());

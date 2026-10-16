@@ -970,6 +970,7 @@ namespace umbriel {
       } else {
         m_applicationScopePartOfProperty = "--property=PartOf=umbriel-session.target";
         m_applicationScopeBindsToProperty = "--property=BindsTo=" + ownerUnit;
+        m_applicationScopeAfterProperty = "--property=After=" + ownerUnit;
         m_applicationScopeEnvironmentArguments = applicationScopeEnvironmentArguments(config().environment.variables);
         kLog.info("application processes will use transient scopes under app.slice");
       }
@@ -1206,7 +1207,8 @@ namespace umbriel {
     if (scopeRequired
         && (m_systemdRunExecutable.empty()
             || m_applicationScopePartOfProperty.empty()
-            || m_applicationScopeBindsToProperty.empty())) {
+            || m_applicationScopeBindsToProperty.empty()
+            || m_applicationScopeAfterProperty.empty())) {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
       return;
     }
@@ -1263,7 +1265,8 @@ namespace umbriel {
       if (scopeRequired) {
         execApplicationInScope(
             m_systemdRunExecutable.c_str(), scopeUnitArgument.c_str(), m_applicationScopePartOfProperty.c_str(),
-            m_applicationScopeBindsToProperty.c_str(), m_applicationScopeEnvironmentArguments, command
+            m_applicationScopeBindsToProperty.c_str(), m_applicationScopeAfterProperty.c_str(),
+            m_applicationScopeEnvironmentArguments, command
         );
       }
       execl("/bin/sh", "/bin/sh", "-c", command, nullptr);

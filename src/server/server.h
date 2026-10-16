@@ -836,6 +836,7 @@ namespace umbriel {
     std::string m_systemctlExecutable;
     std::string m_applicationScopePartOfProperty;
     std::string m_applicationScopeBindsToProperty;
+    std::string m_applicationScopeAfterProperty;
     SystemdControlEnvironment m_systemdControlEnvironment;
     ApplicationScopeEnvironmentArguments m_applicationScopeEnvironmentArguments;
     uint64_t m_nextApplicationScopeId = 1;
