@@ -473,7 +473,7 @@ namespace umbriel {
   private:
     friend class Output;
 
-    enum class SpawnClass { Application, SessionHelper, SessionControl };
+    enum class SpawnClass { Application, SessionHelper };
 
     bool requestScreenCastCommand(ScreenCastCommandKind kind, std::string value, std::string* error);
 
@@ -831,6 +831,10 @@ namespace umbriel {
     bool m_nested = false;
     bool m_stopping = false;
     bool m_applicationScopesRequired = false;
+    bool m_sessionShutdownAvailable = false;
+    bool m_sessionExitRequested = false;
+    int m_sessionExitResultFd = -1;
+    wl_event_source* m_sessionExitResultSource = nullptr;
     std::string m_socketName;
     std::string m_systemdRunExecutable;
     std::string m_systemctlExecutable;

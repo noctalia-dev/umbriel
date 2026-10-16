@@ -216,14 +216,19 @@ assignments to the systemd user manager, then starts
 `umbriel-session.target`. The imported login-environment values are also copied
 to traditional D-Bus activation. Arbitrary configured values are not copied
 there. Imported login-environment and configured values remain in the user
-manager for its lifetime. The launcher activates `umbriel-shutdown.target` and
-removes the graphical variables after Umbriel exits.
+manager for its lifetime. User quits in the packaged `umbriel.service` activate
+`umbriel-shutdown.target` before the compositor exits. The service is ordered
+before `graphical-session.target`, so session services stop first. If shutdown
+control is unavailable or the request fails, the compositor terminates directly.
+The launcher also activates the shutdown target and removes the graphical
+variables after Umbriel exits.
 
 In a managed native session, Umbriel creates a separate transient scope under
 `app.slice` for the `-s` startup command and every autostart, event hook, and
 `spawn:` command. Each scope is part of `umbriel-session.target` and bound to
-the systemd unit that owns the compositor, normally `umbriel.service`. Stopping
-either one, or an unexpected compositor exit, cleans up the scope, including
+the systemd unit that owns the compositor, normally `umbriel.service`. Each scope
+is ordered after its owner so the application stops before the compositor.
+Stopping either one, or an unexpected compositor exit, cleans up the scope, including
 when session-target activation fails.
 An application failure or OOM kill does not propagate in the other direction,
 so it cannot stop `umbriel.service`. `systemd-run` waits for scope creation
