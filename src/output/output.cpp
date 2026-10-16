@@ -326,6 +326,20 @@ namespace umbriel {
     return rule != nullptr ? rule->sdrWhite : 203.0F;
   }
 
+  float Output::sdrWhite() const { return m_runtimeSdrWhite.value_or(configuredSdrWhite()); }
+
+  void Output::setRuntimeSdrWhite(float nits) {
+    if (m_runtimeSdrWhite && *m_runtimeSdrWhite == nits) {
+      return;
+    }
+    m_runtimeSdrWhite = nits;
+    kLog.info("output '{}': live SDR white {} cd/m2", m_output->name, nits);
+    updateSceneSdrWhite();
+    markBlurBackgroundDirty();
+    m_server->updateColorPreferences();
+    wlr_output_schedule_frame(m_output);
+  }
+
   int Output::configuredBitDepth() const {
     const OutputRule* rule = findOutputRule(config(), identity());
     return rule != nullptr ? rule->bitDepth : 8;
@@ -427,8 +441,8 @@ namespace umbriel {
     if (m_sceneOutput == nullptr) {
       return;
     }
-    const float sdrWhite = hdrActive() ? configuredSdrWhite() : 0.0F;
-    wlr_scene_output_set_sdr_white_level(m_sceneOutput, sdrWhite);
+    const float level = hdrActive() ? sdrWhite() : 0.0F;
+    wlr_scene_output_set_sdr_white_level(m_sceneOutput, level);
     updateSceneHdrWhitePoint(wlr_gamma_control_manager_v1_get_control(m_server->gammaManager(), m_output));
   }
 
@@ -622,7 +636,7 @@ namespace umbriel {
 
       const auto commitStagedState = [&]() -> FormatCommitResult {
         const bool targetHdr = state.image_description != nullptr;
-        wlr_scene_output_set_sdr_white_level(m_sceneOutput, targetHdr ? configuredSdrWhite() : 0.0F);
+        wlr_scene_output_set_sdr_white_level(m_sceneOutput, targetHdr ? sdrWhite() : 0.0F);
         wlr_damage_ring_add_whole(&m_sceneOutput->damage_ring);
         // The cache may need a new size, format or SDR curve; re-render it in this frame.
         markBlurBackgroundDirty();
@@ -929,6 +943,7 @@ namespace umbriel {
   }
 
   bool Output::applyOutputState() {
+    m_runtimeSdrWhite.reset();
     const bool previousDesktopEnabled = m_desktopEnabled;
     const bool previousDpmsOff = m_dpmsOff;
     m_desktopEnabled = configuredEnabled();

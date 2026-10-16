@@ -286,6 +286,8 @@ namespace umbriel {
         {"output-focus-previous", "", "Focus the previous output, wrapping around", KeybindAction::OutputFocusPrevious},
         {"output-focus-right", "", "Focus the output to the right", KeybindAction::OutputFocusRight},
         {"output-focus-up", "", "Focus the output above", KeybindAction::OutputFocusUp},
+        {"output-sdr-white", "<nits>[/<output>]", "Set an output's live SDR reference white in cd/m2",
+         KeybindAction::OutputSdrWhite, ActionArgKind::SdrWhite},
         {"output-toggle", "<output>", "Add or remove an output from the desktop", KeybindAction::OutputToggle,
          ActionArgKind::Output},
         {"overview-close", "", "Close the workspace overview", KeybindAction::OverviewClose},
@@ -763,6 +765,29 @@ namespace umbriel {
           return true;
         }
         break;
+      case ActionArgKind::SdrWhite: {
+        if (!takeActionArg(value, spec, arg)) {
+          break;
+        }
+        // Split at the first '/', so an output name may itself contain one, as effect targets do.
+        const size_t slash = arg.find('/');
+        const std::string_view nitsText = arg.substr(0, slash);
+        const std::string_view target = slash == std::string_view::npos ? std::string_view{} : arg.substr(slash + 1);
+        double nits = 0.0;
+        const auto [nitsPtr, nitsError] = std::from_chars(nitsText.data(), nitsText.data() + nitsText.size(), nits);
+        // The same span the config's `output.<name>.sdr_white` accepts.
+        if (nitsError != std::errc{}
+            || nitsPtr != nitsText.data() + nitsText.size()
+            || !std::isfinite(nits)
+            || nits < 80.0
+            || nits > 1000.0
+            || (slash != std::string_view::npos && target.empty())) {
+          break;
+        }
+        output.action = spec.action;
+        output.payload = SdrWhiteArg{.nits = nits, .output = std::string(target)};
+        return true;
+      }
       case ActionArgKind::LayoutMode: {
         if (!takeActionArg(value, spec, arg)) {
           break;

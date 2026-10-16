@@ -24,6 +24,7 @@ are required, `[bracket]` forms are optional.
 | `[<scratchpad>]` | Scratchpad name. The bare form selects the implicit `default` scratchpad, which exists only when no named scratchpads are configured |
 | `<fraction>` | `0.1` to `1.0` of the column extent, or of the usable area for a floating window |
 | `<delta>` | Signed `-0.9` to `0.9`; the result clamps to `0.1` to `1.0` |
+| `<nits>[/<output>]` | SDR reference white in cd/m2, `80` to `1000`; append `/output` to select one output, otherwise the preferred output |
 | `<scrolling\|dwindle\|master\|toggle[:mode1,mode2,...]>` | Layout mode for `workspace-set-layout`; `toggle` cycles scrolling, dwindle, master; `toggle:mode1,mode2,...` cycles only the listed modes (two or more, each once) in order, switching to the first from an unlisted mode, as in `toggle:scrolling,master` |
 | `<normal\|tabbed>` | How `column-set-display` shows the rows around the focused window: stacked, or as a tab group |
 | `<index>` | Tab position for `column-focus-tab`, counted from `1` within the focused tab group; negative counts back from the last tab, `-1` |
@@ -279,6 +280,7 @@ are described in [Overview](workspaces-overview.md).
 | `keyboard-layout-next` | Switch one keyboard to its next configured layout |
 | `output-disable:<output>` | Remove an output from the desktop |
 | `output-enable:<output>` | Add an output to the desktop |
+| `output-sdr-white:<nits>[/<output>]` | Set an output's live SDR reference white in cd/m2 |
 | `output-toggle:<output>` | Add or remove an output from the desktop |
 | `session-quit:[skip-confirmation]` | Quit the session, confirming first unless told to skip |
 | `shortcuts-inhibit-toggle` | Toggle shortcuts inhibition for the focused surface |

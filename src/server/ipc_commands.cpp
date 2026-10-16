@@ -906,7 +906,7 @@ namespace umbriel {
           {"render_format", fourccName(wlrOutput->render_format)},
           {"transfer_function", description != nullptr ? transferFunctionName(description->transfer_function) : "none"},
           {"primaries", description != nullptr ? primariesName(description->primaries) : "none"},
-          {"sdr_white", output->configuredSdrWhite()},
+          {"sdr_white", output->sdrWhite()},
           {"bit_depth", output->configuredBitDepth()},
           {"bit_depth_active", output->bitDepthActive()},
           {"bit_depth_fallback_reason", output->bitDepthFallbackReason()},

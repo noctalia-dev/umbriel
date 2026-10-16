@@ -917,7 +917,7 @@ namespace umbriel {
 
     ColorDescription descriptionForOutput(wlr_output* output) const {
       const Output* managedOutput = server.outputFromWlr(output);
-      const float sdrWhite = managedOutput != nullptr ? managedOutput->configuredSdrWhite() : kDefaultSdrWhite;
+      const float sdrWhite = managedOutput != nullptr ? managedOutput->sdrWhite() : kDefaultSdrWhite;
       return outputColorDescription(output->image_description, sdrWhite);
     }
 

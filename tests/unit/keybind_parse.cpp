@@ -591,6 +591,48 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   CHECK(!parseAction("output-toggle", bind));
 }
 
+UMBRIEL_TEST(parsesOutputSdrWhiteAction) {
+  const auto sdrWhiteOf = [](const Keybind& bind) {
+    const auto* arg = umbriel::payloadIf<umbriel::SdrWhiteArg>(bind);
+    return arg != nullptr ? arg->nits : -1.0;
+  };
+  const auto outputOf = [](const Keybind& bind) {
+    const auto* arg = umbriel::payloadIf<umbriel::SdrWhiteArg>(bind);
+    return arg != nullptr ? arg->output : std::string{};
+  };
+
+  Keybind bind;
+  CHECK(parseAction("output-sdr-white:203", bind));
+  CHECK(bind.action == KeybindAction::OutputSdrWhite);
+  CHECK(std::fabs(sdrWhiteOf(bind) - 203.0) < 1e-9);
+  CHECK(outputOf(bind).empty());
+
+  CHECK(parseAction("output-sdr-white:120/DP-1", bind));
+  CHECK(std::fabs(sdrWhiteOf(bind) - 120.0) < 1e-9);
+  CHECK_EQ(outputOf(bind), std::string{"DP-1"});
+
+  // Everything after the first slash is the output name, as for effect targets.
+  CHECK(parseAction("output-sdr-white:120.5/vendor/panel", bind));
+  CHECK(std::fabs(sdrWhiteOf(bind) - 120.5) < 1e-9);
+  CHECK_EQ(outputOf(bind), std::string{"vendor/panel"});
+
+  CHECK(parseAction("output-sdr-white:80", bind));
+  CHECK(parseAction("output-sdr-white:1000", bind));
+}
+
+UMBRIEL_TEST(rejectsMalformedOutputSdrWhiteArguments) {
+  Keybind bind;
+  CHECK(!parseAction("output-sdr-white", bind));      // no level
+  CHECK(!parseAction("output-sdr-white:", bind));     // no level
+  CHECK(!parseAction("output-sdr-white:200/", bind)); // empty output
+  CHECK(!parseAction("output-sdr-white:79", bind));   // below the configured floor
+  CHECK(!parseAction("output-sdr-white:1001", bind)); // above the configured ceiling
+  CHECK(!parseAction("output-sdr-white:abc", bind));
+  CHECK(!parseAction("output-sdr-white:nan", bind));
+  CHECK(!parseAction("output-sdr-white:inf", bind));
+  CHECK(!parseAction("output-sdr-white:-203", bind));
+}
+
 UMBRIEL_TEST(parsesOptionalScratchpadActions) {
   const auto scratchpadOf = [](const Keybind& bind) {
     const auto* arg = umbriel::payloadIf<umbriel::ScratchpadArg>(bind);
@@ -701,6 +743,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::Output:
       input += ":DP-1";
       break;
+    case ActionArgKind::SdrWhite:
+      input += ":200/DP-1";
+      break;
     case ActionArgKind::WindowId:
       input += ":abc";
       break;
@@ -758,6 +803,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::SkipConfirmation:
       CHECK(umbriel::payloadIf<umbriel::QuitArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::SdrWhite:
+      CHECK(umbriel::payloadIf<umbriel::SdrWhiteArg>(bind) != nullptr);
       break;
     }
   }
@@ -821,6 +869,9 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::Output:
       input += ":DP-1";
+      break;
+    case ActionArgKind::SdrWhite:
+      input += ":200/DP-1";
       break;
     case ActionArgKind::WindowId:
       input += ":abc";
@@ -970,6 +1021,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return ":-1";
     case ActionArgKind::SkipConfirmation:
       return ":skip-confirmation";
+    case ActionArgKind::SdrWhite:
+      return ":200/DP-1";
     }
     return {};
   };
@@ -1014,6 +1067,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<normal|tabbed>";
     case ActionArgKind::TabIndex:
       return "<index>";
+    case ActionArgKind::SdrWhite:
+      return "<nits>[/<output>]";
     case ActionArgKind::SkipConfirmation:
       return "[skip-confirmation]";
     }

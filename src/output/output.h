@@ -113,6 +113,8 @@ namespace umbriel {
     [[nodiscard]] bool bitDepthActive() const;
     [[nodiscard]] const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
     [[nodiscard]] float configuredSdrWhite() const;
+    [[nodiscard]] float sdrWhite() const;
+    void setRuntimeSdrWhite(float nits);
     [[nodiscard]] int configuredBitDepth() const;
     [[nodiscard]] const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
     [[nodiscard]] bool configuredDirectScanoutEnabled() const;
@@ -208,6 +210,7 @@ namespace umbriel {
     wlr_output* m_output = nullptr;
     float m_defaultScale = 1.0F;
     std::optional<HdrStaticMetadata> m_hdrStaticMetadata;
+    std::optional<float> m_runtimeSdrWhite;
     wlr_scene_output* m_sceneOutput = nullptr;
     wlr_scene_tree* m_layerTrees[kLayerCount]{};
     wlr_scene_tree* m_popupTree = nullptr;

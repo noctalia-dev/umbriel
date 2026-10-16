@@ -290,6 +290,15 @@ namespace {
           return name + ": skip-confirmation";
         }
         return name;
+      case umbriel::ActionArgKind::SdrWhite:
+        if (const auto* arg = umbriel::payloadIf<umbriel::SdrWhiteArg>(bind)) {
+          std::string value = std::format("{:g}", arg->nits);
+          if (!arg->output.empty()) {
+            value += "/" + arg->output;
+          }
+          return name + ": " + value;
+        }
+        return name;
       }
       return name;
     }
@@ -481,6 +490,7 @@ namespace {
     case A::OutputDisable:
     case A::OutputEnable:
     case A::OutputToggle:
+    case A::OutputSdrWhite:
     case A::SessionQuit:
     case A::Submap:
     case A::CheatsheetToggle:

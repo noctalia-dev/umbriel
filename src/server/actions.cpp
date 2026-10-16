@@ -608,6 +608,30 @@ namespace umbriel {
       return true;
     }
 
+    bool actionOutputSdrWhite(Server& server, const Keybind& bind, std::string* error) {
+      const auto* arg = payloadIf<SdrWhiteArg>(bind);
+      if (arg == nullptr) {
+        return reject(error, "action carries no sdr white level");
+      }
+
+      Output* output = nullptr;
+      if (arg->output.empty()) {
+        output = server.outputFromWlr(server.preferredOutput());
+      } else {
+        for (const auto& candidate : server.outputs()) {
+          if (outputNameMatch(candidate->identity(), arg->output) != OutputNameMatch::None) {
+            output = candidate.get();
+            break;
+          }
+        }
+      }
+      if (output == nullptr) {
+        return reject(error, arg->output.empty() ? "no focused output" : "unknown output: " + arg->output);
+      }
+      output->setRuntimeSdrWhite(static_cast<float>(arg->nits));
+      return true;
+    }
+
     bool actionKeyboardLayoutNext(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       return server.cycleKeyboardLayout();
     }
@@ -2208,6 +2232,7 @@ namespace umbriel {
         &actionScratchpadWindowShowStep<1>,
         &actionScratchpadWindowShowStep<-1>,
         &actionLayoutToggleSplit,
+        &actionOutputSdrWhite,
     };
 
     consteval bool everyActionHasHandler() {

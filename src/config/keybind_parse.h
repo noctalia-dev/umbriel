@@ -199,6 +199,7 @@ namespace umbriel {
     ScratchpadWindowShowNext,
     ScratchpadWindowShowPrevious,
     LayoutToggleSplit,
+    OutputSdrWhite,
     Count,
   };
 
@@ -263,6 +264,12 @@ namespace umbriel {
     bool skipConfirmation = false;
     bool operator==(const QuitArg&) const = default;
   };
+  struct SdrWhiteArg {
+    // SDR reference white in cd/m², in the same range the config's `sdr_white` accepts.
+    double nits = 0.0;
+    std::string output; // empty = the preferred output
+    bool operator==(const SdrWhiteArg&) const = default;
+  };
 
   struct EffectWindowArg {
     std::string name; // empty = cycle the underlying pool
@@ -281,7 +288,8 @@ namespace umbriel {
 
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
-      LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg>;
+      LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
+      SdrWhiteArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -349,6 +357,7 @@ namespace umbriel {
     ScreenEffectCycle,
     CursorEffectSet,
     CursorEffectCycle,
+    SdrWhite,
   };
 
   struct ActionSpec {
