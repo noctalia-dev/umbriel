@@ -84,6 +84,26 @@ if ! grep -F "fallback: display does not advertise PQ" <<< "$color_human" > /dev
   exit 1
 fi
 
+# A live SDR white selection targets the preferred or named output and lasts until a reload changes output state.
+sdr_white() { "$UMBRIEL" color --json | jq '.outputs[0].sdr_white'; }
+sdr_white_is() { "$UMBRIEL" color --json | jq -e --argjson nits "$1" '.outputs[0].sdr_white == $nits' > /dev/null; }
+"$UMBRIEL" msg output-sdr-white:150 > /dev/null
+if ! sdr_white_is 150; then
+  echo "preferred-output SDR white was not selected: $(sdr_white)"
+  exit 1
+fi
+"$UMBRIEL" msg output-sdr-white:120/HEADLESS-1 > /dev/null
+if "$UMBRIEL" msg output-sdr-white:300/missing-output > /dev/null 2>&1 || ! sdr_white_is 120; then
+  echo "named-output SDR white was not selected exactly once: $(sdr_white)"
+  exit 1
+fi
+printf '%s\n\n[output.HEADLESS-1]\nhdr = "on"\nsdr_white = 250\n' "$BASELINE" > "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+if ! sdr_white_is 250; then
+  echo "output-state reload did not restore the configured SDR white: $(sdr_white)"
+  exit 1
+fi
+
 kill -TERM "$CLIENT_PID"
 wait "$CLIENT_PID" 2>/dev/null || true
 CLIENT_PID=
