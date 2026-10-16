@@ -212,17 +212,17 @@ output descriptions and surface color preferences. Reloading the setting
 updates those descriptions and notifies applications. In SDR mode, the
 advertised reference white remains the nominal 80 cd/m².
 
-The same value can be selected for one running output without an edit:
+The same value can be selected for one running output without editing the
+configuration:
 
 ```sh
 umbriel msg output-sdr-white:203
 umbriel msg output-sdr-white:120/DP-1
 ```
 
-The value is selected for the preferred output, or for the named one, and stays
-in effect for the rest of the compositor session. A configuration reload that
-changes output state hands the value back to the file. `umbriel color` always
-reports the reference white in effect.
+The preferred output, or the named one, keeps the value until it disconnects or
+a configuration reload changes output state, which restores the configured
+`sdr_white`. `umbriel color` reports the selected value.
 
 Automatic HDR depends on metadata supplied by the application. Untagged
 XWayland content cannot be detected; use a native Wayland HDR path or
