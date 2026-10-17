@@ -45,7 +45,9 @@ namespace umbriel {
   } // namespace
 
   void FocusManager::focusView(View* view, FocusReason reason) {
-    if (view == nullptr || m_server.sessionLocked()) {
+    if (view == nullptr
+        || m_server.sessionLocked()
+        || (reason == FocusReason::PointerHover && wlr_seat_keyboard_has_grab(m_server.seat()->wlr()))) {
       return;
     }
 
@@ -100,7 +102,11 @@ namespace umbriel {
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();
     } else {
-      view->applySeatFocus(!overviewActive);
+      const bool raise = !config().input.focus.followsMouse
+          || (config().input.focus.followsMouse
+              && reason != FocusReason::PointerHover
+              && reason != FocusReason::Startup);
+      view->applySeatFocus(!overviewActive, raise);
     }
     Workspace* workspace = view->workspace();
     if (workspace != nullptr && (!view->pinned() || workspace->active())) {

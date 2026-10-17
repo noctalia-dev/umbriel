@@ -232,7 +232,7 @@ namespace umbriel {
         m_focusedView = view;
         m_group->server()->scheduleIpcWorkspacesEvent();
       }
-      if (view != nullptr && view->floating()) {
+      if (view != nullptr && view->floating() && !config().input.focus.followsMouse) {
         std::erase(m_floatingStack, view);
         m_floatingStack.push_back(view);
         restackFloatingViews();

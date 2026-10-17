@@ -203,7 +203,7 @@ namespace umbriel {
     // Mechanism only: applies seat keyboard, activation chrome, and raise. Policy lives in Server::focusView; do not
     // call from input/event code. `withKeyboard` is false while overview owns the seat: chrome and activation still
     // update, the keyboard enter is deferred to the close.
-    void applySeatFocus(bool withKeyboard = true);
+    void applySeatFocus(bool withKeyboard = true, bool raise_view = true);
     void setForeignActivated(bool activated);
     // The X screen moved relative to the layout: send an X11 window its geometry again.
     void resyncXwaylandGeometry();
