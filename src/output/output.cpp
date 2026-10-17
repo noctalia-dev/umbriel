@@ -83,6 +83,15 @@ namespace umbriel {
       return {.x = sceneOutput.x, .y = sceneOutput.y, .width = width, .height = height};
     }
 
+    // Staging any mode, even the live one, makes wlroots request ALLOW_MODESET, which makes the display resync.
+    void stageModeUnlessLive(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
+      if (!output.enabled || output.current_mode != mode) {
+        wlr_output_state_set_mode(&state, mode);
+        return;
+      }
+      kLog.info("output '{}': keeping live mode {}x{}@{}mHz", output.name, mode->width, mode->height, mode->refresh);
+    }
+
 #ifdef TRACY_ENABLE
     // Tracy keeps a plot's name pointer and reads it while a capture runs, so
     // the per-output names live for the rest of the process.
@@ -501,7 +510,7 @@ namespace umbriel {
     const bool enabled = desktopEnabled() && !m_dpmsOff;
     wlr_output_state state{};
     wlr_output_state_init(&state);
-    if (stageGeometry) {
+    if (stageGeometry && !(enabled && m_output->enabled)) {
       wlr_output_state_set_enabled(&state, enabled);
     }
 
@@ -520,14 +529,14 @@ namespace umbriel {
           configuredModeSpec = &*rule->mode;
           stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
-            wlr_output_state_set_mode(&state, stagedMode);
+            stageModeUnlessLive(state, *m_output, stagedMode);
           } else {
             wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }
       } else if (!wlr_output_is_wl(m_output)) {
         if (wlr_output_mode* mode = wlr_output_preferred_mode(m_output)) {
-          wlr_output_state_set_mode(&state, mode);
+          stageModeUnlessLive(state, *m_output, mode);
         }
       }
 
