@@ -58,4 +58,8 @@ namespace umbriel {
 
   bool outputEnableNeedsStaging(const wlr_output& output, bool enabled) { return !(enabled && output.enabled); }
 
+  bool colorChangeNeedsModeset(const wlr_output& output, uint32_t renderFormat, bool hdr) {
+    return output.render_format != renderFormat || (output.image_description != nullptr) != hdr;
+  }
+
 } // namespace umbriel

@@ -3,6 +3,7 @@
 
 // Pulls the C++ math headers in before `static` is defined away below.
 #include <cmath> // IWYU pragma: keep
+#include <drm_fourcc.h>
 
 extern "C" {
 // wlroots uses C99 array parameter syntax in headers included by wlr_output.h.
@@ -11,6 +12,7 @@ extern "C" {
 #undef static
 }
 
+using umbriel::colorChangeNeedsModeset;
 using umbriel::liveModeMatches;
 using umbriel::outputCanAutoEnable;
 using umbriel::outputEnableNeedsStaging;
@@ -230,6 +232,47 @@ UMBRIEL_TEST(litOutputIsDisabled) {
   output.enabled = true;
 
   CHECK(outputEnableNeedsStaging(output, false));
+}
+
+UMBRIEL_TEST(tenBitFormatOnAnEightBitOutputNeedsAModeset) {
+  wlr_output output{};
+  output.render_format = DRM_FORMAT_XRGB8888;
+
+  CHECK(colorChangeNeedsModeset(output, DRM_FORMAT_XRGB2101010, false));
+}
+
+UMBRIEL_TEST(enablingHdrAtTheSameFormatNeedsAModeset) {
+  wlr_output output{};
+  output.render_format = DRM_FORMAT_XBGR2101010;
+  output.image_description = nullptr;
+
+  CHECK(colorChangeNeedsModeset(output, DRM_FORMAT_XBGR2101010, true));
+}
+
+UMBRIEL_TEST(leavingHdrAtTheSameFormatNeedsAModeset) {
+  wlr_output output{};
+  wlr_output_image_description hdr{};
+  output.render_format = DRM_FORMAT_XBGR2101010;
+  output.image_description = &hdr;
+
+  CHECK(colorChangeNeedsModeset(output, DRM_FORMAT_XBGR2101010, false));
+}
+
+UMBRIEL_TEST(sdrOutputKeepingItsFormatNeedsNoModeset) {
+  wlr_output output{};
+  output.render_format = DRM_FORMAT_XRGB8888;
+  output.image_description = nullptr;
+
+  CHECK(!colorChangeNeedsModeset(output, DRM_FORMAT_XRGB8888, false));
+}
+
+UMBRIEL_TEST(hdrOutputKeepingHdrAndItsFormatNeedsNoModeset) {
+  wlr_output output{};
+  wlr_output_image_description hdr{};
+  output.render_format = DRM_FORMAT_XBGR2101010;
+  output.image_description = &hdr;
+
+  CHECK(!colorChangeNeedsModeset(output, DRM_FORMAT_XBGR2101010, true));
 }
 
 int main() { return RUN_TESTS(); }

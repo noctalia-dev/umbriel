@@ -619,6 +619,13 @@ namespace umbriel {
             },
     };
 
+    // wlroots writes max bpc, colorspace and HDR metadata only in commits that allow a modeset.
+    const auto allowModesetForColorChange = [&](uint32_t fmt, bool hdr) {
+      if (colorChangeNeedsModeset(*m_output, fmt, hdr)) {
+        state.allow_reconfiguration = true;
+      }
+    };
+
     const auto stageHdr = [&](uint32_t fmt, bool vrr) -> bool {
       if (!isPrimaryFormat(fmt)) {
         return false;
@@ -627,6 +634,7 @@ namespace umbriel {
       (void)stageGammaForOutputMode(GammaOutputMode::Hdr, gammaOps);
       wlr_output_state_set_image_description(&state, &hdrDescription);
       wlr_output_state_set_render_format(&state, fmt);
+      allowModesetForColorChange(fmt, true);
       return true;
     };
 
@@ -637,6 +645,7 @@ namespace umbriel {
       stageVrr(vrr);
       (void)stageGammaForOutputMode(GammaOutputMode::Sdr, gammaOps);
       wlr_output_state_set_render_format(&state, fmt);
+      allowModesetForColorChange(fmt, false);
       return true;
     };
 

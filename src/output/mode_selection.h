@@ -2,6 +2,8 @@
 
 #include "config/value_parse.h"
 
+#include <cstdint>
+
 struct wlr_output;
 struct wlr_output_mode;
 
@@ -23,5 +25,7 @@ namespace umbriel {
   [[nodiscard]] bool liveModeMatches(const wlr_output& output, const wlr_output_mode* mode);
 
   [[nodiscard]] bool outputEnableNeedsStaging(const wlr_output& output, bool enabled);
+
+  [[nodiscard]] bool colorChangeNeedsModeset(const wlr_output& output, uint32_t renderFormat, bool hdr);
 
 } // namespace umbriel
