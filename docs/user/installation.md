@@ -145,31 +145,6 @@ Pre-built `x86_64-linux` and `aarch64-linux` packages for Umbriel and its portal
 are available from [Cachix](https://app.cachix.org/cache/umbriel). Add the cache
 to the NixOS configuration to avoid compiling them locally:
 
-### Using bundled effects
-
-The module links the bundled effect presets into the system profile, so they are available at a path that stays the same across rebuilds and updates:
-
-```
-/run/current-system/sw/share/umbriel/effects
-```
-
-Use it in place of `/usr/share/umbriel/effects` when including a preset:
-
-```toml
-[include]
-files = [
-  "/run/current-system/sw/share/umbriel/effects/border/pulse/effect.toml",
-]
-```
-
-Only the `effects` directory is linked. The example `config.toml` is not, since it is of little use for a declarative setup; it is still available in the package under `share/umbriel`.
-
-If you generate the config from Nix, you can reference the package directly instead, which doesn't depend on the module's link:
-
-```nix
-"${config.programs.umbriel.package}/share/umbriel/effects/border/pulse/effect.toml"
-```
-
 ```nix
 {
   nix.settings = {
@@ -193,6 +168,31 @@ avoid selecting a commit whose binaries are not available yet:
 {
   inputs.umbriel.url = "github:noctalia-dev/umbriel/cachix";
 }
+```
+
+### Using bundled effects
+
+The module links the bundled effect presets into the system profile, so they are available at a path that stays the same across rebuilds and updates:
+
+```
+/run/current-system/sw/share/umbriel/effects
+```
+
+Use it in place of `/usr/share/umbriel/effects` when including a preset:
+
+```toml
+[include]
+files = [
+  "/run/current-system/sw/share/umbriel/effects/border/pulse/effect.toml",
+]
+```
+
+Only the `effects` directory is linked. The example `config.toml` is not, since it is of little use for a declarative setup; it is still available in the package under `share/umbriel`.
+
+If you generate the config from Nix, you can reference the package directly instead, which doesn't depend on the module's link:
+
+```nix
+"${config.programs.umbriel.package}/share/umbriel/effects/border/pulse/effect.toml"
 ```
 
 ## Manual build
