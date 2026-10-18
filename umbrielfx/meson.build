@@ -205,6 +205,7 @@ if build_tests
     'scene-unset-primaries',
     'hdr-white-point-math',
     'hdr-white-point',
+    'sdr-white-point-blend',
     'sdr-curve-consistency',
     'sdr-transfer-policy',
     'optimized-blur-sdr-curve',

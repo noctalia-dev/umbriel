@@ -141,8 +141,11 @@ to SDR white; individual channel brightness changes with the requested warmth.
 The full LUT curvature is never applied to PQ values. Umbriel retains the
 client's latest full table, which is applied again on return to SDR.
 
-Changing the white point invalidates the output transform, damages the whole
-output, and schedules a frame. A non-neutral adjustment on a PQ output disables
+Changing the white point damages the whole output and schedules a frame. It
+invalidates the output transform only while the output is PQ; an SDR output
+keeps its transform, since rebuilding it would move composition onto the
+linear blend path, and a pending PQ description rebuilds it with the stored
+white point. A non-neutral adjustment on a PQ output disables
 direct scanout and locks software cursors so the cursor receives the same
 display transform. State building sets the cursor policy from the pending
 output description before collecting cursors, then restores the live policy

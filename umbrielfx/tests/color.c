@@ -626,6 +626,70 @@ create_output_transform(enum wlr_color_named_primaries primaries, enum wlr_color
   return pipeline;
 }
 
+// A gamma ramp's white point only applies on PQ outputs. On an SDR output it
+// must not route composition through the linear work buffer, which would blend
+// translucent content in linear light instead of its encoded values.
+static bool test_sdr_white_point_blend(struct fixture* fixture) {
+  struct wlr_output_state enable;
+  wlr_output_state_init(&enable);
+  wlr_output_state_set_enabled(&enable, true);
+  wlr_output_state_set_custom_mode(&enable, TEST_WIDTH, TEST_HEIGHT, 0);
+  const bool enabled = wlr_output_commit_state(fixture->output, &enable);
+  wlr_output_state_finish(&enable);
+  if (!check(enabled, "enable SDR blend scene output")) {
+    return false;
+  }
+
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = scene != NULL ? wlr_scene_output_create(scene, fixture->output) : NULL;
+  const float white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+  const float half_black[4] = {0.0f, 0.0f, 0.0f, 0.5f};
+  struct wlr_scene_rect* backdrop =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, white) : NULL;
+  struct wlr_scene_rect* overlay =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, half_black) : NULL;
+  bool ok = check(scene_output != NULL && backdrop != NULL && overlay != NULL, "create SDR blend scene");
+  if (ok) {
+    wlr_scene_output_set_direct_scanout_enabled(scene_output, false);
+  }
+
+  // Half black over white blends to mid grey in encoded space; a linear blend
+  // would encode to about 188.
+  const uint8_t encoded_blend = 128;
+  const float warm[3] = {1.0f, 0.9965f, 0.9805f};
+  const float neutral[3] = {1.0f, 1.0f, 1.0f};
+  const char* steps[] = {"neutral", "warm", "reset"};
+  for (size_t step = 0; ok && step < 3; step++) {
+    if (step == 1) {
+      wlr_scene_output_set_hdr_white_point(scene_output, warm);
+    } else if (step == 2) {
+      wlr_scene_output_set_hdr_white_point(scene_output, neutral);
+    }
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    uint8_t shown[4] = {0};
+    ok = check(wlr_scene_output_build_state(scene_output, &state, NULL), "render SDR blend scene")
+        && check(state.buffer != NULL, "SDR blend render produces a buffer")
+        && fixture_read_display_pixel(fixture, state.buffer, TEST_WIDTH / 2, TEST_HEIGHT / 2, shown);
+    ok = ok && check(wlr_output_commit_state(fixture->output, &state), "present SDR blend buffer");
+    wlr_output_state_finish(&state);
+    for (size_t channel = 0; ok && channel < 3; channel++) {
+      if (abs((int)shown[channel] - encoded_blend) > 2) {
+        fprintf(
+            stderr, "FAIL: SDR blend with %s white point shows %u %u %u, expected %u\n", steps[step], shown[0],
+            shown[1], shown[2], encoded_blend
+        );
+        ok = false;
+      }
+    }
+  }
+
+  if (scene != NULL) {
+    wlr_scene_node_destroy(&scene->tree.node);
+  }
+  return ok;
+}
+
 static bool codes_close(const uint8_t actual[static 4], const uint8_t expected[static 4], int tolerance) {
   for (size_t i = 0; i < 4; i++) {
     if (abs((int)actual[i] - expected[i]) > tolerance) {
@@ -2428,6 +2492,8 @@ int main(int argc, char* argv[]) {
     ok = test_scene_unset_primaries(&fixture);
   } else if (strcmp(argv[1], "hdr-white-point") == 0) {
     ok = test_hdr_white_point(&fixture);
+  } else if (strcmp(argv[1], "sdr-white-point-blend") == 0) {
+    ok = test_sdr_white_point_blend(&fixture);
   } else if (strcmp(argv[1], "sdr-curve-consistency") == 0) {
     ok = test_sdr_curve_consistency(&fixture);
   } else if (strcmp(argv[1], "sdr-transfer-policy") == 0) {

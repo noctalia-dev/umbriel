@@ -5023,12 +5023,17 @@ void wlr_scene_output_set_hdr_white_point(struct wlr_scene_output* scene_output,
     return;
   }
 
+  const struct wlr_output_image_description* description = scene_output->output->image_description;
+  const bool was_applied = scene_output_hdr_white_point_active(scene_output, description);
   memcpy(scene_output->hdr_white_point, srgb_white, sizeof(scene_output->hdr_white_point));
   scene_output->hdr_white_point_active = active;
-  scene_output->color_transform_dirty = true;
-  scene_output_update_hdr_white_point_cursor(
-      scene_output, scene_output->output->image_description, scene_output->output->enabled
-  );
+  // An SDR output composes without the white point, and rebuilding its
+  // transform would move it onto the linear blend path. A pending PQ
+  // description rebuilds the transform with the stored white point.
+  if (was_applied || scene_output_hdr_white_point_active(scene_output, description)) {
+    scene_output->color_transform_dirty = true;
+  }
+  scene_output_update_hdr_white_point_cursor(scene_output, description, scene_output->output->enabled);
   scene_output_damage_whole(scene_output);
 }
 
