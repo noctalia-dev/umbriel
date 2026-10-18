@@ -130,6 +130,7 @@ namespace umbriel {
   class InputMethodRelay;
   class Gestures;
   class ColorManager;
+  class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
   class HintRect;
   class Keyboard;
@@ -683,6 +684,7 @@ namespace umbriel {
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<ColorManager> m_colorManager;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
+    std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
     EffectRegistry m_effects;
     EffectSelection m_effectSelection;
     EffectSlot m_cursorEffectSlot;

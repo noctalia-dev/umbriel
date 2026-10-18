@@ -706,6 +706,7 @@ core_sources = files(
   'src/server/server_events.cpp',
   'src/server/server_keybinds.cpp',
   'src/server/server_outputs.cpp',
+  'src/server/syncobj_superseded_release.cpp',
   'src/server/syncobj_unmap_release.cpp',
   'src/server/actions.cpp',
   'src/server/effects.cpp',

@@ -1,10 +1,14 @@
-// Harness helper that maps a toplevel with one explicitly synchronized dmabuf, unmaps it, and waits for the
-// compositor to signal that buffer's linux-drm-syncobj release point.
-// Usage: syncobj-client role-destroy|unmap
-//   role-destroy  destroys the xdg role before attaching NULL, the way Chromium hides a window for a tab drag
-//   unmap         attaches NULL and keeps the role
-// Prints "mapped" once the buffer has been shown and "released" once the release point signals; exits 1 if the point
-// is still pending after five seconds.
+// Harness helper that maps a toplevel with one explicitly synchronized dmabuf, then waits for the compositor to signal
+// a linux-drm-syncobj release point.
+// Usage: syncobj-client role-destroy|unmap|superseded
+//   role-destroy  destroys the xdg role before attaching NULL, the way Chromium hides a window for a tab drag, then
+//                 waits for the toplevel buffer's release
+//   unmap         attaches NULL and keeps the role, and waits for the toplevel buffer's release
+//   superseded    commits two buffers to a new synchronized subsurface without committing the toplevel again, the way
+//                 Firefox renders a prompt panel before its main thread commits the parent, and waits for the first
+//                 buffer's release
+// Prints "mapped" once the toplevel buffer has been shown and "released" once the release point signals; exits 1 if
+// the point is still pending after five seconds.
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -32,6 +36,7 @@ namespace {
 
   struct State {
     wl_compositor* compositor = nullptr;
+    wl_subcompositor* subcompositor = nullptr;
     xdg_wm_base* wmBase = nullptr;
     zwp_linux_dmabuf_v1* dmabuf = nullptr;
     wp_linux_drm_syncobj_manager_v1* syncobj = nullptr;
@@ -47,6 +52,9 @@ namespace {
     const std::string_view advertised = interface;
     if (advertised == wl_compositor_interface.name) {
       state->compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, 4));
+    } else if (advertised == wl_subcompositor_interface.name) {
+      state->subcompositor =
+          static_cast<wl_subcompositor*>(wl_registry_bind(registry, name, &wl_subcompositor_interface, 1));
     } else if (advertised == xdg_wm_base_interface.name) {
       state->wmBase = static_cast<xdg_wm_base*>(wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
     } else if (advertised == zwp_linux_dmabuf_v1_interface.name && version >= 4) {
@@ -145,6 +153,23 @@ namespace {
     return fd;
   }
 
+  wl_buffer* createBuffer(State& state, gbm_device* gbm) {
+    gbm_bo* bo = gbm_bo_create(gbm, kSize, kSize, GBM_FORMAT_XRGB8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
+    if (bo == nullptr) {
+      return nullptr;
+    }
+    const uint64_t modifier = gbm_bo_get_modifier(bo);
+    const int boFd = gbm_bo_get_fd(bo);
+    zwp_linux_buffer_params_v1* params = zwp_linux_dmabuf_v1_create_params(state.dmabuf);
+    zwp_linux_buffer_params_v1_add(
+        params, boFd, 0, gbm_bo_get_offset(bo, 0), gbm_bo_get_stride(bo), static_cast<uint32_t>(modifier >> 32),
+        static_cast<uint32_t>(modifier & 0xFFFFFFFFU)
+    );
+    wl_buffer* buffer = zwp_linux_buffer_params_v1_create_immed(params, kSize, kSize, GBM_FORMAT_XRGB8888, 0);
+    close(boFd);
+    return buffer;
+  }
+
   bool dispatchUntil(wl_display* display, const bool& done) {
     while (!done) {
       if (wl_display_dispatch(display) < 0) {
@@ -158,8 +183,8 @@ namespace {
 
 int main(int argc, char** argv) {
   const std::string_view mode = argc == 2 ? argv[1] : "";
-  if (mode != "role-destroy" && mode != "unmap") {
-    std::println(stderr, "usage: syncobj-client role-destroy|unmap");
+  if (mode != "role-destroy" && mode != "unmap" && mode != "superseded") {
+    std::println(stderr, "usage: syncobj-client role-destroy|unmap|superseded");
     return 2;
   }
 
@@ -172,7 +197,11 @@ int main(int argc, char** argv) {
   wl_registry* registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &kRegistryListener, &state);
   wl_display_roundtrip(display);
-  if (state.compositor == nullptr || state.wmBase == nullptr || state.dmabuf == nullptr || state.syncobj == nullptr) {
+  if (state.compositor == nullptr
+      || state.subcompositor == nullptr
+      || state.wmBase == nullptr
+      || state.dmabuf == nullptr
+      || state.syncobj == nullptr) {
     std::println(stderr, "syncobj-client: the compositor does not advertise linux-dmabuf v4 and linux-drm-syncobj");
     return 1;
   }
@@ -190,22 +219,11 @@ int main(int argc, char** argv) {
   }
 
   gbm_device* gbm = gbm_create_device(drmFd);
-  gbm_bo* bo = gbm != nullptr
-      ? gbm_bo_create(gbm, kSize, kSize, GBM_FORMAT_XRGB8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING)
-      : nullptr;
-  if (bo == nullptr) {
+  wl_buffer* buffer = gbm != nullptr ? createBuffer(state, gbm) : nullptr;
+  if (buffer == nullptr) {
     std::println(stderr, "syncobj-client: cannot allocate a dmabuf");
     return 1;
   }
-  const uint64_t modifier = gbm_bo_get_modifier(bo);
-  const int boFd = gbm_bo_get_fd(bo);
-  zwp_linux_buffer_params_v1* params = zwp_linux_dmabuf_v1_create_params(state.dmabuf);
-  zwp_linux_buffer_params_v1_add(
-      params, boFd, 0, gbm_bo_get_offset(bo, 0), gbm_bo_get_stride(bo), static_cast<uint32_t>(modifier >> 32),
-      static_cast<uint32_t>(modifier & 0xFFFFFFFFU)
-  );
-  wl_buffer* buffer = zwp_linux_buffer_params_v1_create_immed(params, kSize, kSize, GBM_FORMAT_XRGB8888, 0);
-  close(boFd);
 
   uint32_t acquire = 0;
   uint32_t release = 0;
@@ -247,8 +265,56 @@ int main(int argc, char** argv) {
   std::println("mapped");
   std::fflush(stdout);
 
+  uint32_t watched = release;
+  if (mode == "superseded") {
+    // The toplevel never commits again, so wlroots keeps both child commits cached. The first buffer is replaced
+    // before it can be shown; the second stays cached until the parent commits.
+    wl_buffer* first = createBuffer(state, gbm);
+    wl_buffer* second = createBuffer(state, gbm);
+    uint32_t childAcquire = 0;
+    uint32_t firstRelease = 0;
+    uint32_t secondRelease = 0;
+    const std::array<uint64_t, 2> acquirePoints{1, 2};
+    if (first == nullptr
+        || second == nullptr
+        || drmSyncobjCreate(drmFd, 0, &childAcquire) != 0
+        || drmSyncobjCreate(drmFd, 0, &firstRelease) != 0
+        || drmSyncobjCreate(drmFd, 0, &secondRelease) != 0) {
+      std::println(stderr, "syncobj-client: cannot create the subsurface buffers");
+      return 1;
+    }
+    for (const uint64_t acquirePoint : acquirePoints) {
+      uint64_t signalled = acquirePoint;
+      if (drmSyncobjTimelineSignal(drmFd, &childAcquire, &signalled, 1) != 0) {
+        std::println(stderr, "syncobj-client: cannot signal the subsurface acquire points");
+        return 1;
+      }
+    }
+    wp_linux_drm_syncobj_timeline_v1* childAcquireTimeline = importTimeline(state, drmFd, childAcquire);
+    wp_linux_drm_syncobj_timeline_v1* firstReleaseTimeline = importTimeline(state, drmFd, firstRelease);
+    wp_linux_drm_syncobj_timeline_v1* secondReleaseTimeline = importTimeline(state, drmFd, secondRelease);
+    if (childAcquireTimeline == nullptr || firstReleaseTimeline == nullptr || secondReleaseTimeline == nullptr) {
+      std::println(stderr, "syncobj-client: cannot export the subsurface timelines");
+      return 1;
+    }
+    wl_surface* child = wl_compositor_create_surface(state.compositor);
+    wp_linux_drm_syncobj_surface_v1* childSync = wp_linux_drm_syncobj_manager_v1_get_surface(state.syncobj, child);
+    wl_subcompositor_get_subsurface(state.subcompositor, child, surface);
+    wp_linux_drm_syncobj_surface_v1_set_acquire_point(childSync, childAcquireTimeline, 0, 1);
+    wp_linux_drm_syncobj_surface_v1_set_release_point(childSync, firstReleaseTimeline, 0, 1);
+    wl_surface_attach(child, first, 0, 0);
+    wl_surface_damage_buffer(child, 0, 0, kSize, kSize);
+    wl_surface_commit(child);
+    wp_linux_drm_syncobj_surface_v1_set_acquire_point(childSync, childAcquireTimeline, 0, 2);
+    wp_linux_drm_syncobj_surface_v1_set_release_point(childSync, secondReleaseTimeline, 0, 1);
+    wl_surface_attach(child, second, 0, 0);
+    wl_surface_damage_buffer(child, 0, 0, kSize, kSize);
+    wl_surface_commit(child);
+    watched = firstRelease;
+  }
+
   const int releaseFd = eventfd(0, EFD_CLOEXEC);
-  if (releaseFd < 0 || drmSyncobjEventfd(drmFd, release, 1, releaseFd, 0) != 0) {
+  if (releaseFd < 0 || drmSyncobjEventfd(drmFd, watched, 1, releaseFd, 0) != 0) {
     std::println(stderr, "syncobj-client: cannot watch the release point: {}", std::strerror(errno));
     return 1;
   }
@@ -256,8 +322,10 @@ int main(int argc, char** argv) {
     xdg_toplevel_destroy(toplevel);
     xdg_surface_destroy(xdgSurface);
   }
-  wl_surface_attach(surface, nullptr, 0, 0);
-  wl_surface_commit(surface);
+  if (mode != "superseded") {
+    wl_surface_attach(surface, nullptr, 0, 0);
+    wl_surface_commit(surface);
+  }
 
   const auto deadline = std::chrono::steady_clock::now() + kReleaseTimeout;
   while (true) {
@@ -267,7 +335,8 @@ int main(int argc, char** argv) {
         std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
     if (remaining <= 0) {
       std::println(
-          stderr, "syncobj-client: release point still pending {}s after the NULL commit", kReleaseTimeout.count()
+          stderr, "syncobj-client: release point still pending {}s after the {} commit", kReleaseTimeout.count(),
+          mode == "superseded" ? "replacing" : "NULL"
       );
       return 1;
     }
