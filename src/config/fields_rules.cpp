@@ -115,17 +115,13 @@ namespace umbriel {
         warnAt(node.source(), "ignoring {} (expected table)", path);
         return;
       }
-      static const registry::Choices<WindowPositionAnchor> anchors{
-          {.name = "top_left", .value = WindowPositionAnchor::TopLeft},
-          {.name = "top_right", .value = WindowPositionAnchor::TopRight},
-          {.name = "bottom_left", .value = WindowPositionAnchor::BottomLeft},
-          {.name = "bottom_right", .value = WindowPositionAnchor::BottomRight},
-          {.name = "top", .value = WindowPositionAnchor::Top},
-          {.name = "bottom", .value = WindowPositionAnchor::Bottom},
-          {.name = "left", .value = WindowPositionAnchor::Left},
-          {.name = "right", .value = WindowPositionAnchor::Right},
-          {.name = "center", .value = WindowPositionAnchor::Center},
-      };
+      static const registry::Choices<WindowPositionAnchor> anchors = [] {
+        registry::Choices<WindowPositionAnchor> choices;
+        for (const auto& [name, anchor] : kWindowPositionAnchorNames) {
+          choices.push_back({.name = name, .value = anchor});
+        }
+        return choices;
+      }();
       Section position(*table, path, configStore().mutableDiagnostics());
       std::optional<int> x;
       std::optional<int> y;

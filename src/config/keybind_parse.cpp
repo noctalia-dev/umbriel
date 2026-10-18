@@ -184,111 +184,63 @@ namespace umbriel {
       return true;
     }
 
-    bool parseWindowMoveToArg(std::string_view arg, WindowMoveToArg& output) {
+    // A signed pixel count; std::from_chars rejects a leading '+', so it is stripped first.
+    bool parseSignedPixels(std::string_view text, int& output) {
+      if (!text.empty() && text.front() == '+') {
+        text.remove_prefix(1);
+      }
+      const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), output);
+      return error == std::errc{} && end == text.data() + text.size();
+    }
+
+    // Splits `<first>/<second>/.../[/<window-id>]` into `required` leading parts and an optional non-empty window id.
+    std::optional<std::vector<std::string_view>>
+    splitWithOptionalWindowId(std::string_view arg, std::size_t required, std::string& windowId) {
       std::vector<std::string_view> tokens;
       for (const auto token : arg | std::views::split('/')) {
         tokens.emplace_back(token.begin(), token.end());
       }
-      // At least 3 tokens are required: anchor, x, y
-      if (tokens.size() < 3 || tokens.size() > 4) {
-        return false;
+      if (tokens.size() < required || tokens.size() > required + 1) {
+        return std::nullopt;
       }
+      if (tokens.size() > required) {
+        // A trailing slash names no window; it must not fall back to the focused one.
+        if (tokens.back().empty()) {
+          return std::nullopt;
+        }
+        windowId = std::string(tokens.back());
+      }
+      return tokens;
+    }
 
-      WindowPosition position;
+    bool parseWindowMoveToArg(std::string_view arg, WindowMoveToArg& output) {
       std::string windowId;
-
-      if (tokens[0] == "left") {
-        position.anchor = WindowPositionAnchor::Left;
-      } else if (tokens[0] == "right") {
-        position.anchor = WindowPositionAnchor::Right;
-      } else if (tokens[0] == "top") {
-        position.anchor = WindowPositionAnchor::Top;
-      } else if (tokens[0] == "bottom") {
-        position.anchor = WindowPositionAnchor::Bottom;
-      } else if (tokens[0] == "center") {
-        position.anchor = WindowPositionAnchor::Center;
-      } else if (tokens[0] == "top_left") {
-        position.anchor = WindowPositionAnchor::TopLeft;
-      } else if (tokens[0] == "top_right") {
-        position.anchor = WindowPositionAnchor::TopRight;
-      } else if (tokens[0] == "bottom_left") {
-        position.anchor = WindowPositionAnchor::BottomLeft;
-      } else if (tokens[0] == "bottom_right") {
-        position.anchor = WindowPositionAnchor::BottomRight;
-      } else {
+      const auto tokens = splitWithOptionalWindowId(arg, 3, windowId);
+      if (!tokens) {
         return false;
       }
-
-      // std::from_chars rejects a leading '+', but the delta is signed.
-      if (!tokens[1].empty() && tokens[1].front() == '+') {
-        tokens[1].remove_prefix(1);
-      }
-
-      const auto [xPtr, xError] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), position.x);
-      if (xError != std::errc{} || xPtr != tokens[1].data() + tokens[1].size()) {
+      const std::optional<WindowPositionAnchor> anchor = windowPositionAnchorFromName((*tokens)[0]);
+      WindowPosition position;
+      if (!anchor || !parseSignedPixels((*tokens)[1], position.x) || !parseSignedPixels((*tokens)[2], position.y)) {
         return false;
       }
-
-      // std::from_chars rejects a leading '+', but the delta is signed.
-      if (!tokens[2].empty() && tokens[2].front() == '+') {
-        tokens[2].remove_prefix(1);
-      }
-
-      const auto [yPtr, yError] = std::from_chars(tokens[2].data(), tokens[2].data() + tokens[2].size(), position.y);
-      if (yError != std::errc{} || yPtr != tokens[2].data() + tokens[2].size()) {
-        return false;
-      }
-
-      if (tokens.size() > 3) {
-        windowId = std::string(tokens[3]);
-      }
-
+      position.anchor = *anchor;
       output.id = std::move(windowId);
       output.position = position;
       return true;
     }
 
     bool parseWindowMoveByArg(std::string_view arg, WindowMoveByArg& output) {
-      std::vector<std::string_view> tokens;
-      for (const auto token : arg | std::views::split('/')) {
-        tokens.emplace_back(token.begin(), token.end());
-      }
-      // At least 2 tokens are required: dx, dy; the third token is optional window ID
-      if (tokens.size() < 2 || tokens.size() > 3) {
-        return false;
-      }
-
       std::string windowId;
-      int dx = 0;
-      int dy = 0;
-
-      // std::from_chars rejects a leading '+', but the delta is signed.
-      if (!tokens[0].empty() && tokens[0].front() == '+') {
-        tokens[0].remove_prefix(1);
-      }
-
-      const auto [xPtr, xError] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), dx);
-      if (xError != std::errc{} || xPtr != tokens[0].data() + tokens[0].size()) {
+      const auto tokens = splitWithOptionalWindowId(arg, 2, windowId);
+      int deltaX = 0;
+      int deltaY = 0;
+      if (!tokens || !parseSignedPixels((*tokens)[0], deltaX) || !parseSignedPixels((*tokens)[1], deltaY)) {
         return false;
       }
-
-      // std::from_chars rejects a leading '+', but the delta is signed.
-      if (!tokens[1].empty() && tokens[1].front() == '+') {
-        tokens[1].remove_prefix(1);
-      }
-
-      const auto [yPtr, yError] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), dy);
-      if (yError != std::errc{} || yPtr != tokens[1].data() + tokens[1].size()) {
-        return false;
-      }
-
-      if (tokens.size() > 2) {
-        windowId = std::string(tokens[2]);
-      }
-
       output.id = std::move(windowId);
-      output.deltaX = dx;
-      output.deltaY = dy;
+      output.deltaX = deltaX;
+      output.deltaY = deltaY;
       return true;
     }
 
@@ -487,7 +439,7 @@ namespace umbriel {
          KeybindAction::WindowModifyWidthLeft, ActionArgKind::FractionDelta},
         {"window-modify-width-right", "<delta>", "Resize the focused column from its right edge",
          KeybindAction::WindowModifyWidthRight, ActionArgKind::FractionDelta},
-        {"window-move-by", "<delta-x>/<delta-y>[/<window-id>]", "Move the floating window by specified logical pixels",
+        {"window-move-by", "<delta-x>/<delta-y>[/<window-id>]", "Move the floating window by logical pixels",
          KeybindAction::WindowMoveBy, ActionArgKind::WindowMoveBy},
         {"window-move-down", "", "Move the focused window down in its column", KeybindAction::WindowMoveDown},
         {"window-move-left", "", "Move the focused window left", KeybindAction::WindowMoveLeft},
@@ -504,7 +456,7 @@ namespace umbriel {
         {"window-move-or-workspace-up", "", "Move up, or to the previous workspace at the edge",
          KeybindAction::WindowMoveOrWorkspaceUp},
         {"window-move-right", "", "Move the focused window right", KeybindAction::WindowMoveRight},
-        {"window-move-to", "<anchor>/<x>/<y>[/<window-id>]", "Move the floating window to the specified position",
+        {"window-move-to", "<anchor>/<x>/<y>[/<window-id>]", "Move the floating window to an anchored position",
          KeybindAction::WindowMoveTo, ActionArgKind::WindowMoveTo},
         {"window-move-to-output-down", "", "Move the focused window to the output below",
          KeybindAction::WindowMoveToOutputDown},

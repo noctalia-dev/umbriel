@@ -351,9 +351,9 @@ namespace umbriel {
     void restoreFloatingPosition(bool rememberRestored = true);
     // Center the floating window on its output's usable area. False when not floating.
     bool centerFloating();
-    // Move the floating window to a new position.
+    // Place the floating window at an anchored position in its output's usable area. False when not floating.
     bool moveFloatingTo(const WindowPosition& position);
-    // Move the floating window by specified deltas.
+    // Shift the floating window by logical pixels, clamped to its output's usable area. False when not floating.
     bool moveFloatingBy(int deltaX, int deltaY);
     // Animate the presented size toward a layout-assigned size. Called by Workspace::arrange when it configures the
     // client, so the animation owns the presented size before the clip can report the final size.

@@ -303,36 +303,7 @@ namespace {
         return name;
       case umbriel::ActionArgKind::WindowMoveTo:
         if (const auto* moveTo = umbriel::payloadIf<umbriel::WindowMoveToArg>(bind); moveTo != nullptr) {
-          std::string val;
-          switch (moveTo->position.anchor) {
-          case umbriel::WindowPositionAnchor::Left:
-            val += "left";
-            break;
-          case umbriel::WindowPositionAnchor::Right:
-            val += "right";
-            break;
-          case umbriel::WindowPositionAnchor::Center:
-            val += "center";
-            break;
-          case umbriel::WindowPositionAnchor::Top:
-            val += "top";
-            break;
-          case umbriel::WindowPositionAnchor::Bottom:
-            val += "bottom";
-            break;
-          case umbriel::WindowPositionAnchor::TopLeft:
-            val += "top_left";
-            break;
-          case umbriel::WindowPositionAnchor::TopRight:
-            val += "top_right";
-            break;
-          case umbriel::WindowPositionAnchor::BottomLeft:
-            val += "bottom_left";
-            break;
-          case umbriel::WindowPositionAnchor::BottomRight:
-            val += "bottom_right";
-            break;
-          }
+          std::string val(umbriel::windowPositionAnchorName(moveTo->position.anchor));
           val += "/" + std::to_string(moveTo->position.x);
           val += "/" + std::to_string(moveTo->position.y);
           if (!moveTo->id.empty()) {

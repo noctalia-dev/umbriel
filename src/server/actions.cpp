@@ -1302,40 +1302,29 @@ namespace umbriel {
       return true;
     }
 
+    // The window a move action names, or the focused one when it names none.
+    View* moveTarget(Server& server, const std::string& id, std::string* error) {
+      View* view = id.empty() ? focusedWindow(server) : viewByForeignIdentifier(server, id);
+      if (view == nullptr) {
+        reject(error, id.empty() ? "no focused window" : "unknown window: " + id);
+      }
+      return view;
+    }
+
     bool actionWindowMoveTo(Server& server, const Keybind& bind, std::string* error) {
       if (const auto* arg = payloadIf<WindowMoveToArg>(bind); arg != nullptr) {
-        View* view = nullptr;
-        if (arg->id.empty()) {
-          view = focusedWindow(server);
-          if (view == nullptr) {
-            return reject(error, "no focused window");
-          }
-        } else {
-          view = viewByForeignIdentifier(server, arg->id);
-          if (view == nullptr) {
-            return reject(error, "unknown window: " + arg->id);
-          }
+        if (View* view = moveTarget(server, arg->id, error)) {
+          view->moveFloatingTo(arg->position);
         }
-        view->moveFloatingTo(arg->position);
       }
       return true;
     }
 
     bool actionWindowMoveBy(Server& server, const Keybind& bind, std::string* error) {
       if (const auto* arg = payloadIf<WindowMoveByArg>(bind); arg != nullptr) {
-        View* view = nullptr;
-        if (arg->id.empty()) {
-          view = focusedWindow(server);
-          if (view == nullptr) {
-            return reject(error, "no focused window");
-          }
-        } else {
-          view = viewByForeignIdentifier(server, arg->id);
-          if (view == nullptr) {
-            return reject(error, "unknown window: " + arg->id);
-          }
+        if (View* view = moveTarget(server, arg->id, error)) {
+          view->moveFloatingBy(arg->deltaX, arg->deltaY);
         }
-        view->moveFloatingBy(arg->deltaX, arg->deltaY);
       }
       return true;
     }

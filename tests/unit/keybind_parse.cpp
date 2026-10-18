@@ -1221,15 +1221,30 @@ UMBRIEL_TEST(effectActionReferencesDescribeOnlyNamedRoots) {
 }
 
 UMBRIEL_TEST(windowMoveToActionParseArgs) {
+  using umbriel::WindowMoveToArg;
+  using umbriel::WindowPositionAnchor;
   Keybind bind;
-  for (const std::string kind :
-       {"center", "top_left", "top_right", "bottom_left", "bottom_right", "top", "bottom", "left", "right"}) {
-    CHECK(parseAction("window-move-to:" + kind + "/10/10/abc", bind));
+  for (const auto& [name, anchor] : umbriel::kWindowPositionAnchorNames) {
+    CHECK(parseAction("window-move-to:" + std::string(name) + "/10/20/abc", bind));
+    const auto* arg = umbriel::payloadIf<WindowMoveToArg>(bind);
+    CHECK((arg != nullptr && *arg == WindowMoveToArg{.id = "abc", .position = {.x = 10, .y = 20, .anchor = anchor}}));
   }
-  CHECK(parseAction("window-move-to:center/10/10", bind));
-  CHECK(parseAction("window-move-to:center/+10/+10", bind));
-  CHECK(parseAction("window-move-to:center/-10/-10", bind));
-  CHECK(parseAction("window-move-to:center/10/10/abc", bind));
+  const auto parsed = [&](std::string_view input) {
+    const auto* arg = parseAction(input, bind) ? umbriel::payloadIf<WindowMoveToArg>(bind) : nullptr;
+    return arg != nullptr ? std::optional(*arg) : std::nullopt;
+  };
+  CHECK(
+      (parsed("window-move-to:center/10/20")
+       == WindowMoveToArg{.id = "", .position = {.x = 10, .y = 20, .anchor = WindowPositionAnchor::Center}})
+  );
+  CHECK(
+      (parsed("window-move-to:right/+10/+20")
+       == WindowMoveToArg{.id = "", .position = {.x = 10, .y = 20, .anchor = WindowPositionAnchor::Right}})
+  );
+  CHECK(
+      (parsed("window-move-to:bottom/-10/-20")
+       == WindowMoveToArg{.id = "", .position = {.x = -10, .y = -20, .anchor = WindowPositionAnchor::Bottom}})
+  );
 }
 
 UMBRIEL_TEST(windowMoveToActionRejectMalformedArgs) {
@@ -1246,18 +1261,21 @@ UMBRIEL_TEST(windowMoveToActionRejectMalformedArgs) {
   CHECK(!parseAction("window-move-to:top_left/0/0/0/0", bind));
   CHECK(!parseAction("window-move-to:top_left/3.9/0", bind));
   CHECK(!parseAction("window-move-to:top_left/0/3.9", bind));
+  CHECK(!parseAction("window-move-to:center/10/10/", bind));
 }
 
 UMBRIEL_TEST(windowMoveByActionParseArgs) {
+  using umbriel::WindowMoveByArg;
   Keybind bind;
-  CHECK(parseAction("window-move-by:10/10", bind));
-  CHECK(parseAction("window-move-by:10/10/abc", bind));
-  CHECK(parseAction("window-move-by:+10/10", bind));
-  CHECK(parseAction("window-move-by:+10/+10", bind));
-  CHECK(parseAction("window-move-by:-10/10", bind));
-  CHECK(parseAction("window-move-by:-10/-10", bind));
-  CHECK(parseAction("window-move-by:10/+10", bind));
-  CHECK(parseAction("window-move-by:10/-10", bind));
+  const auto parsed = [&](std::string_view input) {
+    const auto* arg = parseAction(input, bind) ? umbriel::payloadIf<WindowMoveByArg>(bind) : nullptr;
+    return arg != nullptr ? std::optional(*arg) : std::nullopt;
+  };
+  CHECK((parsed("window-move-by:10/20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by:10/20/abc") == WindowMoveByArg{.id = "abc", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by:+10/+20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by:-10/20") == WindowMoveByArg{.id = "", .deltaX = -10, .deltaY = 20}));
+  CHECK((parsed("window-move-by:10/-20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = -20}));
 }
 
 UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
@@ -1272,6 +1290,7 @@ UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
   CHECK(!parseAction("window-move-by:3.4/0", bind));
   CHECK(!parseAction("window-move-by:0/3.4", bind));
   CHECK(!parseAction("window-move-by:0/0/abc/abc", bind));
+  CHECK(!parseAction("window-move-by:10/10/", bind));
 }
 
 int main() { return RUN_TESTS(); }
