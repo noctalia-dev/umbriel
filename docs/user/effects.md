@@ -30,7 +30,7 @@ selectors are what turn it on. If your configuration already has an
 to your existing `[effects]` and `[animation.windows_in]` tables rather than
 repeating the tables.
 
-On NixOS, see [Using bundled effects](install.md#using-bundled-effects) for the path to use instead of `/usr/share`.
+On NixOS, see [Using bundled effects](installation.md#using-bundled-effects) for the path to use instead of `/usr/share`.
 
 Bundled presets:
 
