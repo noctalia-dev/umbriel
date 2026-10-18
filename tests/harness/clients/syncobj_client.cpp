@@ -1,14 +1,19 @@
 // Harness helper that maps a toplevel with one explicitly synchronized dmabuf, then waits for the compositor to signal
 // a linux-drm-syncobj release point.
-// Usage: syncobj-client role-destroy|unmap|superseded
+// Usage: syncobj-client role-destroy|unmap|superseded|superseded-displayed|superseded-shared-timeline|superseded-locked
 //   role-destroy  destroys the xdg role before attaching NULL, the way Chromium hides a window for a tab drag, then
 //                 waits for the toplevel buffer's release
 //   unmap         attaches NULL and keeps the role, and waits for the toplevel buffer's release
-//   superseded    commits two buffers to a new synchronized subsurface without committing the toplevel again, the way
-//                 Firefox renders a prompt panel before its main thread commits the parent, and waits for the first
-//                 buffer's release
-// Prints "mapped" once the toplevel buffer has been shown and "released" once the release point signals; exits 1 if
-// the point is still pending after five seconds.
+// The superseded modes commit to a synchronized subsurface whose parent does not commit again, the way Firefox renders
+// a prompt panel before its main thread commits the parent, so wlroots keeps those commits cached:
+//   superseded                  queues A then B: A is released, B is not
+//   superseded-displayed        shows A, then queues A again on a new timeline and B: neither is released
+//   superseded-shared-timeline  shows A at point 1, then queues C at point 2 of that timeline and B: point 1 stays
+//                               pending and B is not released
+//   superseded-locked           queues A then B before B's acquire fence exists: A is released only once it does,
+//                               and B is not released
+// Prints "mapped" once the toplevel buffer has been shown. The NULL modes then print "released" once the release point
+// signals; the superseded modes print "ok" once every expectation holds. Exits 1 on the first one that does not.
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -33,6 +38,8 @@ namespace {
 
   constexpr int kSize = 64;
   constexpr auto kReleaseTimeout = std::chrono::seconds(5);
+  // How long a point must stay pending to count as held.
+  constexpr auto kHoldTime = std::chrono::milliseconds(500);
 
   struct State {
     wl_compositor* compositor = nullptr;
@@ -179,12 +186,186 @@ namespace {
     return true;
   }
 
+  struct Timeline {
+    uint32_t handle = 0;
+    wp_linux_drm_syncobj_timeline_v1* object = nullptr;
+  };
+
+  bool createTimeline(State& state, int drmFd, Timeline& timeline) {
+    if (drmSyncobjCreate(drmFd, 0, &timeline.handle) != 0) {
+      return false;
+    }
+    timeline.object = importTimeline(state, drmFd, timeline.handle);
+    return timeline.object != nullptr;
+  }
+
+  enum class Wait { Signalled, TimedOut, Failed };
+
+  // Dispatches Wayland events until the timeline point signals or the timeout passes.
+  Wait
+  waitForPoint(wl_display* display, int drmFd, uint32_t handle, uint64_t point, std::chrono::milliseconds timeout) {
+    const int fd = eventfd(0, EFD_CLOEXEC);
+    if (fd < 0 || drmSyncobjEventfd(drmFd, handle, point, fd, 0) != 0) {
+      std::println(stderr, "syncobj-client: cannot watch a release point: {}", std::strerror(errno));
+      if (fd >= 0) {
+        close(fd);
+      }
+      return Wait::Failed;
+    }
+    Wait result = Wait::TimedOut;
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      wl_display_dispatch_pending(display);
+      wl_display_flush(display);
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+      if (remaining <= 0) {
+        break;
+      }
+      std::array<pollfd, 2> fds{{
+          {.fd = fd, .events = POLLIN, .revents = 0},
+          {.fd = wl_display_get_fd(display), .events = POLLIN, .revents = 0},
+      }};
+      if (poll(fds.data(), fds.size(), static_cast<int>(remaining)) < 0 && errno != EINTR) {
+        result = Wait::Failed;
+        break;
+      }
+      if ((fds[0].revents & POLLIN) != 0) {
+        result = Wait::Signalled;
+        break;
+      }
+      if ((fds[1].revents & POLLIN) != 0 && wl_display_dispatch(display) < 0) {
+        result = Wait::Failed;
+        break;
+      }
+    }
+    close(fd);
+    return result;
+  }
+
+  bool expectReleased(wl_display* display, int drmFd, const Timeline& timeline, uint64_t point, std::string_view what) {
+    if (waitForPoint(display, drmFd, timeline.handle, point, kReleaseTimeout) == Wait::Signalled) {
+      return true;
+    }
+    std::println(stderr, "syncobj-client: {} was not released within {}s", what, kReleaseTimeout.count());
+    return false;
+  }
+
+  bool expectHeld(wl_display* display, int drmFd, const Timeline& timeline, uint64_t point, std::string_view what) {
+    const Wait wait = waitForPoint(display, drmFd, timeline.handle, point, kHoldTime);
+    if (wait == Wait::TimedOut) {
+      return true;
+    }
+    if (wait == Wait::Signalled) {
+      std::println(stderr, "syncobj-client: {} was released while the compositor could still use it", what);
+    }
+    return false;
+  }
+
+  int runSuperseded(
+      std::string_view mode, wl_display* display, State& state, int drmFd, gbm_device* gbm, wl_surface* parent
+  ) {
+    wl_buffer* a = createBuffer(state, gbm);
+    wl_buffer* b = createBuffer(state, gbm);
+    wl_buffer* c = createBuffer(state, gbm);
+    Timeline acquire;
+    Timeline shown;
+    Timeline first;
+    Timeline last;
+    if (a == nullptr
+        || b == nullptr
+        || c == nullptr
+        || !createTimeline(state, drmFd, acquire)
+        || !createTimeline(state, drmFd, shown)
+        || !createTimeline(state, drmFd, first)
+        || !createTimeline(state, drmFd, last)) {
+      std::println(stderr, "syncobj-client: cannot create the subsurface buffers and timelines");
+      return 1;
+    }
+
+    wl_surface* child = wl_compositor_create_surface(state.compositor);
+    wp_linux_drm_syncobj_surface_v1* childSync = wp_linux_drm_syncobj_manager_v1_get_surface(state.syncobj, child);
+    wl_subcompositor_get_subsurface(state.subcompositor, child, parent);
+    uint64_t acquirePoint = 0;
+    // Commits a buffer to the child at the next acquire point, which is signalled first unless the fence should only
+    // arrive later.
+    auto commit = [&](wl_buffer* buffer, const Timeline& release, uint64_t releasePoint, bool signalAcquire) {
+      ++acquirePoint;
+      uint64_t signalled = acquirePoint;
+      if (signalAcquire && drmSyncobjTimelineSignal(drmFd, &acquire.handle, &signalled, 1) != 0) {
+        return false;
+      }
+      wp_linux_drm_syncobj_surface_v1_set_acquire_point(childSync, acquire.object, 0, acquirePoint);
+      wp_linux_drm_syncobj_surface_v1_set_release_point(childSync, release.object, 0, releasePoint);
+      wl_surface_attach(child, buffer, 0, 0);
+      wl_surface_damage_buffer(child, 0, 0, kSize, kSize);
+      wl_surface_commit(child);
+      return true;
+    };
+
+    if (mode == "superseded-displayed" || mode == "superseded-shared-timeline") {
+      // Show A first: one toplevel commit applies the child's cached state.
+      state.frameDone = false;
+      wl_callback_add_listener(wl_surface_frame(child), &kFrameListener, &state);
+      if (!commit(a, shown, 1, true)) {
+        return 1;
+      }
+      wl_surface_commit(parent);
+      if (!dispatchUntil(display, state.frameDone)) {
+        return 1;
+      }
+    }
+
+    // From here on the toplevel never commits again, so every child commit stays cached.
+    bool ok = true;
+    if (mode == "superseded") {
+      ok = commit(a, first, 1, true)
+          && commit(b, last, 1, true)
+          && expectReleased(display, drmFd, first, 1, "the replaced cached buffer")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    } else if (mode == "superseded-displayed") {
+      ok = commit(a, first, 1, true)
+          && commit(b, last, 1, true)
+          && expectHeld(display, drmFd, first, 1, "the cached commit of the buffer on screen")
+          && expectHeld(display, drmFd, shown, 1, "the buffer on screen")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    } else if (mode == "superseded-shared-timeline") {
+      ok = commit(c, shown, 2, true)
+          && commit(b, last, 1, true)
+          && expectHeld(display, drmFd, shown, 1, "the buffer on screen, sharing a timeline with a replaced commit")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    } else {
+      // B's acquire fence does not exist yet, so wlroots locks B and A could still be shown on its own.
+      ok = commit(a, first, 1, true)
+          && commit(b, last, 1, false)
+          && expectHeld(display, drmFd, first, 1, "the cached buffer before a locked replacement");
+      uint64_t signalled = acquirePoint;
+      ok = ok
+          && drmSyncobjTimelineSignal(drmFd, &acquire.handle, &signalled, 1) == 0
+          && expectReleased(display, drmFd, first, 1, "the replaced cached buffer once the replacement unlocked")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    }
+    if (!ok) {
+      return 1;
+    }
+    std::println("ok");
+    return 0;
+  }
+
 } // namespace
 
 int main(int argc, char** argv) {
   const std::string_view mode = argc == 2 ? argv[1] : "";
-  if (mode != "role-destroy" && mode != "unmap" && mode != "superseded") {
-    std::println(stderr, "usage: syncobj-client role-destroy|unmap|superseded");
+  const bool superseded = mode == "superseded"
+      || mode == "superseded-displayed"
+      || mode == "superseded-shared-timeline"
+      || mode == "superseded-locked";
+  if (mode != "role-destroy" && mode != "unmap" && !superseded) {
+    std::println(
+        stderr,
+        "usage: syncobj-client "
+        "role-destroy|unmap|superseded|superseded-displayed|superseded-shared-timeline|superseded-locked"
+    );
     return 2;
   }
 
@@ -265,67 +446,21 @@ int main(int argc, char** argv) {
   std::println("mapped");
   std::fflush(stdout);
 
-  uint32_t watched = release;
-  if (mode == "superseded") {
-    // The toplevel never commits again, so wlroots keeps both child commits cached. The first buffer is replaced
-    // before it can be shown; the second stays cached until the parent commits.
-    wl_buffer* first = createBuffer(state, gbm);
-    wl_buffer* second = createBuffer(state, gbm);
-    uint32_t childAcquire = 0;
-    uint32_t firstRelease = 0;
-    uint32_t secondRelease = 0;
-    const std::array<uint64_t, 2> acquirePoints{1, 2};
-    if (first == nullptr
-        || second == nullptr
-        || drmSyncobjCreate(drmFd, 0, &childAcquire) != 0
-        || drmSyncobjCreate(drmFd, 0, &firstRelease) != 0
-        || drmSyncobjCreate(drmFd, 0, &secondRelease) != 0) {
-      std::println(stderr, "syncobj-client: cannot create the subsurface buffers");
-      return 1;
-    }
-    for (const uint64_t acquirePoint : acquirePoints) {
-      uint64_t signalled = acquirePoint;
-      if (drmSyncobjTimelineSignal(drmFd, &childAcquire, &signalled, 1) != 0) {
-        std::println(stderr, "syncobj-client: cannot signal the subsurface acquire points");
-        return 1;
-      }
-    }
-    wp_linux_drm_syncobj_timeline_v1* childAcquireTimeline = importTimeline(state, drmFd, childAcquire);
-    wp_linux_drm_syncobj_timeline_v1* firstReleaseTimeline = importTimeline(state, drmFd, firstRelease);
-    wp_linux_drm_syncobj_timeline_v1* secondReleaseTimeline = importTimeline(state, drmFd, secondRelease);
-    if (childAcquireTimeline == nullptr || firstReleaseTimeline == nullptr || secondReleaseTimeline == nullptr) {
-      std::println(stderr, "syncobj-client: cannot export the subsurface timelines");
-      return 1;
-    }
-    wl_surface* child = wl_compositor_create_surface(state.compositor);
-    wp_linux_drm_syncobj_surface_v1* childSync = wp_linux_drm_syncobj_manager_v1_get_surface(state.syncobj, child);
-    wl_subcompositor_get_subsurface(state.subcompositor, child, surface);
-    wp_linux_drm_syncobj_surface_v1_set_acquire_point(childSync, childAcquireTimeline, 0, 1);
-    wp_linux_drm_syncobj_surface_v1_set_release_point(childSync, firstReleaseTimeline, 0, 1);
-    wl_surface_attach(child, first, 0, 0);
-    wl_surface_damage_buffer(child, 0, 0, kSize, kSize);
-    wl_surface_commit(child);
-    wp_linux_drm_syncobj_surface_v1_set_acquire_point(childSync, childAcquireTimeline, 0, 2);
-    wp_linux_drm_syncobj_surface_v1_set_release_point(childSync, secondReleaseTimeline, 0, 1);
-    wl_surface_attach(child, second, 0, 0);
-    wl_surface_damage_buffer(child, 0, 0, kSize, kSize);
-    wl_surface_commit(child);
-    watched = firstRelease;
+  if (superseded) {
+    return runSuperseded(mode, display, state, drmFd, gbm, surface);
   }
 
-  const int releaseFd = eventfd(0, EFD_CLOEXEC);
-  if (releaseFd < 0 || drmSyncobjEventfd(drmFd, watched, 1, releaseFd, 0) != 0) {
-    std::println(stderr, "syncobj-client: cannot watch the release point: {}", std::strerror(errno));
-    return 1;
-  }
   if (mode == "role-destroy") {
     xdg_toplevel_destroy(toplevel);
     xdg_surface_destroy(xdgSurface);
   }
-  if (mode != "superseded") {
-    wl_surface_attach(surface, nullptr, 0, 0);
-    wl_surface_commit(surface);
+  const int releaseFd = eventfd(0, EFD_CLOEXEC);
+  if (releaseFd < 0 || drmSyncobjEventfd(drmFd, release, 1, releaseFd, 0) != 0) {
+    std::println(stderr, "syncobj-client: cannot watch the release point: {}", std::strerror(errno));
+    return 1;
   }
+  wl_surface_attach(surface, nullptr, 0, 0);
+  wl_surface_commit(surface);
 
   const auto deadline = std::chrono::steady_clock::now() + kReleaseTimeout;
   while (true) {
@@ -335,8 +470,7 @@ int main(int argc, char** argv) {
         std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
     if (remaining <= 0) {
       std::println(
-          stderr, "syncobj-client: release point still pending {}s after the {} commit", kReleaseTimeout.count(),
-          mode == "superseded" ? "replacing" : "NULL"
+          stderr, "syncobj-client: release point still pending {}s after the NULL commit", kReleaseTimeout.count()
       );
       return 1;
     }

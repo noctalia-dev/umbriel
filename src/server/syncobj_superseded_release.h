@@ -11,7 +11,9 @@ namespace umbriel {
   // release points pending. A client that renders a new surface tree with a few swapchain buffers before its main
   // thread commits the parent (Firefox opening a prompt panel) blocks on those points and never commits the parent.
   // A cached buffer that a later cached commit replaces is never shown once nothing between them holds a lock, because
-  // wlroots then applies both in one pass. This signals such a buffer's release point while it waits.
+  // wlroots then applies both in one pass. This signals such a buffer's release point while it waits, unless the buffer
+  // is still on screen or an earlier point on the same timeline is still pending. A lock held for an acquire fence is
+  // waited out before the queue is inspected again.
   class SyncobjSupersededRelease {
   public:
     explicit SyncobjSupersededRelease(wlr_compositor* compositor);
