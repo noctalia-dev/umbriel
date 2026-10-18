@@ -755,7 +755,7 @@ namespace umbriel {
     }
   }
 
-  void View::applySeatFocus(bool withKeyboard) {
+  void View::applySeatFocus(bool withKeyboard, bool raise_view) {
     // Mechanism only. Policy lives in Server::focusView; do not call directly
     // from input/event code.
     if (!m_onActiveWorkspace && !m_pinned) {
@@ -768,7 +768,10 @@ namespace umbriel {
     // deactivating only that surface can leave another window's focus border on.
     m_server->deactivateViews(this);
 
-    raiseToTop();
+    if (raise_view) {
+      raiseToTop();
+    }
+
     if (!scheduledActivated()) {
       setActivatedState(true);
     } else {
