@@ -100,13 +100,20 @@ namespace umbriel {
       if (timeline == nullptr) {
         return;
       }
-      if (auto it = watch.committedPoints.find(timeline); it != watch.committedPoints.end()
+      auto it = watch.committedPoints.find(timeline);
+      if (it != watch.committedPoints.end()
           && std::ranges::any_of(it->second, [point](uint64_t pending) { return pending < point; })) {
         // An earlier commit on this timeline, possibly the one on screen, has not been released yet.
         return;
       }
-      wlr_drm_syncobj_timeline_signal(timeline, point);
+      if (!wlr_drm_syncobj_timeline_signal(timeline, point)) {
+        return;
+      }
       watch.signalled.push_back(state->seq);
+      // The point is complete now, so it must not hold back a later point on its timeline in this same inspection.
+      if (it != watch.committedPoints.end()) {
+        std::erase_if(it->second, [point](uint64_t pending) { return pending <= point; });
+      }
     }
 
     void onAcquireReady(wlr_drm_syncobj_timeline_waiter* waiter) {
@@ -178,7 +185,9 @@ namespace umbriel {
         if ((state->committed & WLR_SURFACE_STATE_BUFFER) == 0) {
           continue;
         }
-        if (superseded != nullptr && superseded->buffer != state->buffer) {
+        // A buffer reattached unmodified still replaces the earlier commit: the later commit holds its own release
+        // point for the same buffer.
+        if (superseded != nullptr) {
           signalRelease(*watch, superseded);
         }
         superseded = state->buffer != nullptr && state->buffer != displayed ? state : nullptr;

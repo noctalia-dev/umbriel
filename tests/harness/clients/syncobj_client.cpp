@@ -1,6 +1,6 @@
 // Harness helper that maps a toplevel with one explicitly synchronized dmabuf, then waits for the compositor to signal
 // a linux-drm-syncobj release point.
-// Usage: syncobj-client role-destroy|unmap|superseded|superseded-displayed|superseded-shared-timeline|superseded-locked
+// Usage: syncobj-client role-destroy|unmap|superseded[-displayed|-shared-timeline|-locked|-reattached|-interleaved]
 //   role-destroy  destroys the xdg role before attaching NULL, the way Chromium hides a window for a tab drag, then
 //                 waits for the toplevel buffer's release
 //   unmap         attaches NULL and keeps the role, and waits for the toplevel buffer's release
@@ -12,6 +12,10 @@
 //                               pending and B is not released
 //   superseded-locked           queues A then B before B's acquire fence exists: A is released only once it does,
 //                               and B is not released
+//   superseded-reattached       queues A at points 1 and 2 of A's timeline, then B: both A points are released, B is
+//                               not
+//   superseded-interleaved      queues A at point 1, B, A again at point 2, then C, one timeline per buffer: both A
+//                               points and B are released, C is not
 // Prints "mapped" once the toplevel buffer has been shown. The NULL modes then print "released" once the release point
 // signals; the superseded modes print "ok" once every expectation holds. Exits 1 on the first one that does not.
 #include "linux-dmabuf-v1-client-protocol.h"
@@ -271,6 +275,7 @@ namespace {
     Timeline acquire;
     Timeline shown;
     Timeline first;
+    Timeline middle;
     Timeline last;
     if (a == nullptr
         || b == nullptr
@@ -278,6 +283,7 @@ namespace {
         || !createTimeline(state, drmFd, acquire)
         || !createTimeline(state, drmFd, shown)
         || !createTimeline(state, drmFd, first)
+        || !createTimeline(state, drmFd, middle)
         || !createTimeline(state, drmFd, last)) {
       std::println(stderr, "syncobj-client: cannot create the subsurface buffers and timelines");
       return 1;
@@ -334,6 +340,23 @@ namespace {
           && commit(b, last, 1, true)
           && expectHeld(display, drmFd, shown, 1, "the buffer on screen, sharing a timeline with a replaced commit")
           && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    } else if (mode == "superseded-reattached") {
+      // A is reattached unmodified, so the first A commit is replaced before it can be shown on its own.
+      ok = commit(a, first, 1, true)
+          && commit(a, first, 2, true)
+          && commit(b, last, 1, true)
+          && expectReleased(display, drmFd, first, 1, "the first commit of a reattached buffer")
+          && expectReleased(display, drmFd, first, 2, "the second commit of a reattached buffer")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
+    } else if (mode == "superseded-interleaved") {
+      ok = commit(a, first, 1, true)
+          && commit(b, middle, 1, true)
+          && commit(a, first, 2, true)
+          && commit(c, last, 1, true)
+          && expectReleased(display, drmFd, first, 1, "the first commit of A")
+          && expectReleased(display, drmFd, middle, 1, "the replaced commit of B")
+          && expectReleased(display, drmFd, first, 2, "the second commit of A")
+          && expectHeld(display, drmFd, last, 1, "the final cached buffer");
     } else {
       // B's acquire fence does not exist yet, so wlroots locks B and A could still be shown on its own.
       ok = commit(a, first, 1, true)
@@ -359,12 +382,14 @@ int main(int argc, char** argv) {
   const bool superseded = mode == "superseded"
       || mode == "superseded-displayed"
       || mode == "superseded-shared-timeline"
-      || mode == "superseded-locked";
+      || mode == "superseded-locked"
+      || mode == "superseded-reattached"
+      || mode == "superseded-interleaved";
   if (mode != "role-destroy" && mode != "unmap" && !superseded) {
     std::println(
         stderr,
         "usage: syncobj-client "
-        "role-destroy|unmap|superseded|superseded-displayed|superseded-shared-timeline|superseded-locked"
+        "role-destroy|unmap|superseded[-displayed|-shared-timeline|-locked|-reattached|-interleaved]"
     );
     return 2;
   }
