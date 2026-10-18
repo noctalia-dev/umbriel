@@ -11,7 +11,9 @@ extern "C" {
 #undef static
 }
 
+using umbriel::liveModeMatches;
 using umbriel::outputCanAutoEnable;
+using umbriel::outputEnableNeedsStaging;
 using umbriel::OutputMode;
 using umbriel::preferredFallbackMode;
 using umbriel::selectOutputMode;
@@ -169,6 +171,65 @@ UMBRIEL_TEST(outputWithoutAdvertisedModesHasNoFallback) {
   wl_list_init(&output.modes);
 
   CHECK(preferredFallbackMode(&output, nullptr) == nullptr);
+}
+
+UMBRIEL_TEST(litOutputKeepsTheLiveModeItWouldStageAgain) {
+  wlr_output output{};
+  wlr_output_mode live = outputMode(2560, 1440, 143987, true);
+  output.enabled = true;
+  output.current_mode = &live;
+
+  CHECK(liveModeMatches(output, &live));
+}
+
+UMBRIEL_TEST(litOutputModesetsToAnotherResolution) {
+  wlr_output output{};
+  wlr_output_mode live = outputMode(1920, 1080, 60000);
+  wlr_output_mode wanted = outputMode(2560, 1440, 60000, true);
+  output.enabled = true;
+  output.current_mode = &live;
+
+  CHECK(!liveModeMatches(output, &wanted));
+}
+
+UMBRIEL_TEST(litOutputModesetsToAnotherRefreshAtTheSameResolution) {
+  wlr_output output{};
+  wlr_output_mode live = outputMode(2560, 1440, 59951);
+  wlr_output_mode wanted = outputMode(2560, 1440, 143987, true);
+  output.enabled = true;
+  output.current_mode = &live;
+
+  CHECK(!liveModeMatches(output, &wanted));
+}
+
+UMBRIEL_TEST(unlitOutputModesetsEvenToItsLastMode) {
+  wlr_output output{};
+  wlr_output_mode last = outputMode(2560, 1440, 143987, true);
+  output.enabled = false;
+  output.current_mode = &last;
+
+  CHECK(!liveModeMatches(output, &last));
+}
+
+UMBRIEL_TEST(litOutputThatStaysEnabledIsNotEnabledAgain) {
+  wlr_output output{};
+  output.enabled = true;
+
+  CHECK(!outputEnableNeedsStaging(output, true));
+}
+
+UMBRIEL_TEST(unlitOutputIsEnabled) {
+  wlr_output output{};
+  output.enabled = false;
+
+  CHECK(outputEnableNeedsStaging(output, true));
+}
+
+UMBRIEL_TEST(litOutputIsDisabled) {
+  wlr_output output{};
+  output.enabled = true;
+
+  CHECK(outputEnableNeedsStaging(output, false));
 }
 
 int main() { return RUN_TESTS(); }
