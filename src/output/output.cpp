@@ -85,7 +85,7 @@ namespace umbriel {
 
     // Staging any mode, even the live one, makes wlroots request ALLOW_MODESET, which makes the display resync.
     void stageModeUnlessLive(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
-      if (!output.enabled || output.current_mode != mode) {
+      if (!liveModeMatches(output, mode)) {
         wlr_output_state_set_mode(&state, mode);
         return;
       }
@@ -510,7 +510,7 @@ namespace umbriel {
     const bool enabled = desktopEnabled() && !m_dpmsOff;
     wlr_output_state state{};
     wlr_output_state_init(&state);
-    if (stageGeometry && !(enabled && m_output->enabled)) {
+    if (stageGeometry && outputEnableNeedsStaging(*m_output, enabled)) {
       wlr_output_state_set_enabled(&state, enabled);
     }
 

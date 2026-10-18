@@ -20,4 +20,8 @@ namespace umbriel {
   // is null for a custom mode, which the preferred advertised mode still replaces.
   [[nodiscard]] wlr_output_mode* preferredFallbackMode(wlr_output* output, const wlr_output_mode* staged);
 
+  [[nodiscard]] bool liveModeMatches(const wlr_output& output, const wlr_output_mode* mode);
+
+  [[nodiscard]] bool outputEnableNeedsStaging(const wlr_output& output, bool enabled);
+
 } // namespace umbriel

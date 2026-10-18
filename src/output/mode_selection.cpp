@@ -52,4 +52,10 @@ namespace umbriel {
     return preferred == staged ? nullptr : preferred;
   }
 
+  bool liveModeMatches(const wlr_output& output, const wlr_output_mode* mode) {
+    return output.enabled && output.current_mode == mode;
+  }
+
+  bool outputEnableNeedsStaging(const wlr_output& output, bool enabled) { return !(enabled && output.enabled); }
+
 } // namespace umbriel
