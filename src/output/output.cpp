@@ -84,7 +84,7 @@ namespace umbriel {
     }
 
     // Staging any mode, even the live one, makes wlroots request ALLOW_MODESET, which makes the display resync.
-    wlr_output_mode* stageModeUnlessLive(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
+    wlr_output_mode* keepLiveModeOrStage(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
       if (!liveModeMatches(output, mode)) {
         wlr_output_state_set_mode(&state, mode);
         return nullptr;
@@ -531,14 +531,14 @@ namespace umbriel {
           configuredModeSpec = &*rule->mode;
           stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
-            keptLiveMode = stageModeUnlessLive(state, *m_output, stagedMode);
+            keptLiveMode = keepLiveModeOrStage(state, *m_output, stagedMode);
           } else {
             wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }
       } else if (!wlr_output_is_wl(m_output)) {
         if (wlr_output_mode* mode = wlr_output_preferred_mode(m_output)) {
-          keptLiveMode = stageModeUnlessLive(state, *m_output, mode);
+          keptLiveMode = keepLiveModeOrStage(state, *m_output, mode);
         }
       }
 
