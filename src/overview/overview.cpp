@@ -1759,6 +1759,9 @@ namespace umbriel {
       // reveal. Begin it before the closing zoom so both animations receive their first tick together. finishAnimation
       // repeats the focus after teardown to deliver keyboard focus once the real trees own input again.
       m_server->focusView(focus, FocusReason::PointerPress);
+      if (config().overview.centerOnSelect && focus->workspace() != nullptr) {
+        focus->workspace()->centerFocusedColumn();
+      }
     }
     beginClose(focus);
   }

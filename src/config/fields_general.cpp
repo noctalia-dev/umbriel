@@ -180,6 +180,7 @@ namespace umbriel {
           boolean("background_blur", &O::backgroundBlur),
           boolean("workspace_wallpaper", &O::workspaceWallpaper),
           boolean("shortcuts", &O::shortcuts),
+          boolean("center_on_select", &O::centerOnSelect),
           registry::custom<O>(
               "shortcut_keys", registry::KeyDescription("string"),
               [](const toml::node& node, const std::string& path, O& target, registry::ReadContext&) {

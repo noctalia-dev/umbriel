@@ -346,6 +346,10 @@ enabled = true
 delay_ms = 500
 action = "overview-open"
 
+# Center the window picked in the overview, as column-center would.
+# [overview]
+# center_on_select = true
+
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
 # [animation.workspaces]

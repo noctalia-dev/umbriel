@@ -870,6 +870,8 @@ namespace umbriel {
       bool shortcuts = true;
       // Favorite badge keys in preference order, one ASCII character each.
       std::string shortcutKeys = "1234567890";
+      // Center the chosen window's column on close, like column-center, whatever layout.scrolling.center_focused says.
+      bool centerOnSelect = false;
       bool operator==(const Overview&) const = default;
     } overview;
 

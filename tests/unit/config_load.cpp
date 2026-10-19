@@ -1221,6 +1221,21 @@ UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   CHECK(!store.config().overview.workspaceWallpaper);
 }
 
+// Off by default so selecting from the overview keeps honoring layout.scrolling.center_focused.
+UMBRIEL_TEST(overviewCenterOnSelectLoads) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[overview]\nzoom = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().overview.centerOnSelect);
+
+  file.write("[overview]\ncenter_on_select = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().overview.centerOnSelect);
+}
+
 UMBRIEL_TEST(overviewShortcutConfigurationLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
