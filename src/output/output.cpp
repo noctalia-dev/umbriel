@@ -757,7 +757,15 @@ namespace umbriel {
       const FormatSequenceOps seqOps{
           .stageSdr = stageSdr,
           .stageHdr = stageHdr,
-          .test = [&] { return wlr_output_test_state(m_output, &state); },
+          .test =
+              [&] {
+                // A kept live mode leaves wlroots nothing to change, so it skips the KMS test unless a buffer is sent.
+                if (keptLiveMode != nullptr
+                    && !wlr_output_configure_primary_swapchain(m_output, &state, &m_output->swapchain)) {
+                  return false;
+                }
+                return wlr_output_test_state(m_output, &state);
+              },
           .commit = commitStagedState,
           .clearImageDescription = [&] { wlr_output_state_set_image_description(&state, nullptr); },
           .stageMode = [&](wlr_output_mode* mode) { wlr_output_state_set_mode(&state, mode); },
