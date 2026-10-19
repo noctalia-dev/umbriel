@@ -31,6 +31,7 @@ namespace umbriel {
     bool tryVrrOn;
     const OutputMode* configuredModeSpec; // nullptr = No mode configured
     wlr_output_mode* preferredMode;       // nullptr = No fallback available
+    wlr_output_mode* keptLiveMode;        // nullptr = No live mode was kept
     bool modeFallbackAlreadyWarned;
     std::optional<FormatTier> vrrDroppedTier;
     std::string_view earlyHdrFail;
@@ -49,6 +50,7 @@ namespace umbriel {
 
   struct FormatSequenceResult {
     bool committed = false;
+    bool usedLiveModeRetry = false;
     bool usedModeFallback = false;
     bool modeFallbackWarnedNow = false;
     bool retry = false;

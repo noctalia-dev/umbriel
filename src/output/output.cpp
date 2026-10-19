@@ -84,12 +84,13 @@ namespace umbriel {
     }
 
     // Staging any mode, even the live one, makes wlroots request ALLOW_MODESET, which makes the display resync.
-    void stageModeUnlessLive(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
+    wlr_output_mode* stageModeUnlessLive(wlr_output_state& state, const wlr_output& output, wlr_output_mode* mode) {
       if (!liveModeMatches(output, mode)) {
         wlr_output_state_set_mode(&state, mode);
-        return;
+        return nullptr;
       }
       kLog.info("output '{}': keeping live mode {}x{}@{}mHz", output.name, mode->width, mode->height, mode->refresh);
+      return mode;
     }
 
 #ifdef TRACY_ENABLE
@@ -521,6 +522,7 @@ namespace umbriel {
     bool scaleStaged = false;
     const OutputMode* configuredModeSpec = nullptr;
     wlr_output_mode* stagedMode = nullptr;
+    wlr_output_mode* keptLiveMode = nullptr;
     if (enabled && stageGeometry) {
       if (rule != nullptr && rule->mode) {
         if (wlr_output_is_wl(m_output)) {
@@ -529,14 +531,14 @@ namespace umbriel {
           configuredModeSpec = &*rule->mode;
           stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
-            stageModeUnlessLive(state, *m_output, stagedMode);
+            keptLiveMode = stageModeUnlessLive(state, *m_output, stagedMode);
           } else {
             wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }
       } else if (!wlr_output_is_wl(m_output)) {
         if (wlr_output_mode* mode = wlr_output_preferred_mode(m_output)) {
-          stageModeUnlessLive(state, *m_output, mode);
+          keptLiveMode = stageModeUnlessLive(state, *m_output, mode);
         }
       }
 
@@ -619,7 +621,8 @@ namespace umbriel {
             },
     };
 
-    // wlroots writes max bpc, colorspace and HDR metadata only in commits that allow a modeset.
+    // wlroots writes max bpc only in commits that allow a modeset, and the kernel may require one to change
+    // colorspace or to switch HDR on or off.
     const auto allowModesetForColorChange = [&](uint32_t fmt, bool hdr) {
       if (colorChangeNeedsModeset(*m_output, fmt, hdr)) {
         state.allow_reconfiguration = true;
@@ -665,6 +668,7 @@ namespace umbriel {
           .tryVrrOn = tryVrrOn,
           .configuredModeSpec = stageGeometry ? configuredModeSpec : nullptr,
           .preferredMode = stageGeometry ? preferredFallbackMode(m_output, stagedMode) : nullptr,
+          .keptLiveMode = keptLiveMode,
           .modeFallbackAlreadyWarned = m_modeFallbackWarned,
           .vrrDroppedTier = m_vrrDroppedTier,
           .earlyHdrFail = earlyHdrFail,
@@ -787,6 +791,12 @@ namespace umbriel {
       const FormatSequenceResult seq = runFormatSequence(seqParams, seqOps);
       anyCommitted = seq.committed;
       usedModeFallback = seq.usedModeFallback;
+      if (seq.usedLiveModeRetry) {
+        kLog.info(
+            "output '{}': backend rejected keeping live mode {}x{}@{}mHz, retried with a modeset", m_output->name,
+            keptLiveMode->width, keptLiveMode->height, keptLiveMode->refresh
+        );
+      }
       if (seq.modeFallbackWarnedNow) {
         m_modeFallbackWarned = true;
       }

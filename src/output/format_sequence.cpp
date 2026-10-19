@@ -150,6 +150,15 @@ namespace umbriel {
 
     result.committed = runSequenceForCurrentMode(params, ops, result, hdrFail, sdr10Fail);
 
+    if (!result.committed && !result.retry && params.keptLiveMode != nullptr) {
+      result.usedLiveModeRetry = true;
+      ops.stageMode(params.keptLiveMode);
+
+      hdrFail = params.earlyHdrFail;
+      sdr10Fail = {};
+      result.committed = runSequenceForCurrentMode(params, ops, result, hdrFail, sdr10Fail);
+    }
+
     if (!result.committed && !result.retry && params.configuredModeSpec != nullptr && params.preferredMode != nullptr) {
       result.usedModeFallback = true;
       if (!params.modeFallbackAlreadyWarned) {

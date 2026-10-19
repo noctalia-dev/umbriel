@@ -36,6 +36,7 @@ namespace {
         .tryVrrOn = false,
         .configuredModeSpec = nullptr,
         .preferredMode = nullptr,
+        .keptLiveMode = nullptr,
         .modeFallbackAlreadyWarned = false,
         .vrrDroppedTier = std::nullopt,
         .earlyHdrFail = {},
@@ -843,6 +844,71 @@ UMBRIEL_TEST(modeFallbackClearsSdr10ReasonOnPreferredCommit) {
   CHECK_EQ(r.committedFormat, uint32_t{DRM_FORMAT_XRGB2101010});
   CHECK_EQ(m.count(Kind::StageHdr), size_t{0});
   CHECK_EQ(m.count(Kind::Commit), size_t{2});
+}
+
+// A kernel may refuse to change connector properties without a modeset, so a
+// rejected sequence on a kept live mode stages that mode and runs once more.
+UMBRIEL_TEST(rejectedKeptLiveModeRetriesWithTheModeStaged) {
+  static wlr_output_mode live{};
+  static wlr_output_mode preferred{};
+  static const umbriel::OutputMode spec{1280, 720, 60000};
+
+  MockOps m;
+  m.testResults = {false, true};
+
+  FormatSequenceParams p = sdr8Params();
+  p.configuredModeSpec = &spec;
+  p.preferredMode = &preferred;
+  p.keptLiveMode = &live;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(r.committed);
+  CHECK(r.usedLiveModeRetry);
+  CHECK(m.stagedMode == &live);
+  CHECK(!r.usedModeFallback);
+  CHECK(!m.modeFallbackWarned);
+}
+
+UMBRIEL_TEST(rejectedRetryOnKeptLiveModeFallsBackToPreferredMode) {
+  static wlr_output_mode live{};
+  static wlr_output_mode preferred{};
+  static const umbriel::OutputMode spec{1280, 720, 60000};
+
+  MockOps m;
+  m.testResults = {false, false, true};
+
+  FormatSequenceParams p = sdr8Params();
+  p.configuredModeSpec = &spec;
+  p.preferredMode = &preferred;
+  p.keptLiveMode = &live;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(r.committed);
+  CHECK(m.stagedMode == &preferred);
+  CHECK(r.usedModeFallback);
+  CHECK_EQ(m.count(Kind::Test), size_t{3});
+}
+
+// A retryable scene failure is not a backend rejection, so it keeps the live
+// mode instead of forcing a modeset.
+UMBRIEL_TEST(retryableSceneFailureOnKeptLiveModeDoesNotStageIt) {
+  wlr_output_mode live{};
+  MockOps m;
+  m.testResults = {true};
+  m.retryCommitIndices = {0};
+
+  FormatSequenceParams p = sdr8Params();
+  p.keptLiveMode = &live;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(!r.committed);
+  CHECK(r.retry);
+  CHECK(!r.usedLiveModeRetry);
+  CHECK(m.stagedMode == nullptr);
+  CHECK_EQ(m.count(Kind::Commit), size_t{1});
 }
 
 // No preferred mode (headless): Nothing commits, no fallback, uncommitted.
