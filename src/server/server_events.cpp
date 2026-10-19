@@ -477,6 +477,33 @@ namespace umbriel {
               override != nullptr && override->tap ? "input.device.tap" : "input.touchpad.tap", deviceName(device)
           );
         }
+        const bool hasTapDragOverride = override != nullptr && override->tapAndDrag.has_value();
+        const std::optional<bool>& tapAndDrag = hasTapDragOverride ? override->tapAndDrag : input.touchpad.tapAndDrag;
+        const auto tapDragState =
+            tapAndDrag.value_or(
+                libinput_device_config_tap_get_default_drag_enabled(libinputDevice) == LIBINPUT_CONFIG_DRAG_ENABLED
+            )
+            ? LIBINPUT_CONFIG_DRAG_ENABLED
+            : LIBINPUT_CONFIG_DRAG_DISABLED;
+        if (libinput_device_config_tap_set_drag_enabled(libinputDevice, tapDragState)
+            != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+          kLog.warn(
+              "input: failed to apply {} to '{}'",
+              hasTapDragOverride ? "input.device.tap_and_drag" : "input.touchpad.tap_and_drag", deviceName(device)
+          );
+        }
+        const bool hasDragLockOverride = override != nullptr && override->dragLock.has_value();
+        const std::optional<bool>& dragLock = hasDragLockOverride ? override->dragLock : input.touchpad.dragLock;
+        const auto dragLockState = dragLock
+            ? (*dragLock ? LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_TIMEOUT : LIBINPUT_CONFIG_DRAG_LOCK_DISABLED)
+            : libinput_device_config_tap_get_default_drag_lock_enabled(libinputDevice);
+        if (libinput_device_config_tap_set_drag_lock_enabled(libinputDevice, dragLockState)
+            != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+          kLog.warn(
+              "input: failed to apply {} to '{}'",
+              hasDragLockOverride ? "input.device.drag_lock" : "input.touchpad.drag_lock", deviceName(device)
+          );
+        }
         if ((libinput_device_config_send_events_get_modes(libinputDevice)
              & LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE)
             != 0) {

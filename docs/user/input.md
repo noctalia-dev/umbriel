@@ -113,6 +113,8 @@ surface layouts.
 ```toml
 [input.touchpad]
 tap = true
+# tap_and_drag = false
+# drag_lock = false
 natural_scroll = true
 left_handed = false
 # accel_profile = "adaptive"
@@ -130,6 +132,8 @@ settings are reported in the log.
 | Key | Description |
 | --- | --- |
 | `tap` | Enable tap-to-click. |
+| `tap_and_drag` | Keep dragging after a tap when the finger stays down and moves. |
+| `drag_lock` | Keep dragging after the finger lifts during a tap-and-drag, so it can be put back down. |
 | `natural_scroll` | Reverse scrolling and three-finger gesture direction. |
 | `left_handed` | Swap the primary and secondary buttons. |
 | `accel_profile` | Use `"flat"`, `"adaptive"`, or a custom acceleration curve. |

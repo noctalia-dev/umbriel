@@ -2613,6 +2613,8 @@ repeat_rate = 25
 
 [input.touchpad]
 tap = true
+tap_and_drag = true
+drag_lock = true
 natural_scroll = true
 left_handed = true
 accel_profile = "adaptive"
@@ -2640,6 +2642,8 @@ repeat_delay = 250
 [[input.device]]
 name = "Acme Precision Touchpad"
 tap = false
+tap_and_drag = false
+drag_lock = false
 natural_scroll = false
 left_handed = false
 accel_profile = "flat"
@@ -2680,6 +2684,8 @@ scroll_button_lock = false
   CHECK(input.touchpad.scrollFactor->vertical == std::optional<double>(0.6));
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK(input.touchpad.disableOnExternalMouse == std::optional<bool>(true));
+  CHECK(input.touchpad.tapAndDrag == std::optional<bool>(true));
+  CHECK(input.touchpad.dragLock == std::optional<bool>(true));
   CHECK(input.touchpad.clickMethod == std::optional(umbriel::ClickMethod::ButtonAreas));
   CHECK(input.touchpad.tapButtonMap == std::optional(umbriel::TapButtonMap::LeftMiddleRight));
   CHECK(input.touchpad.leftHanded == std::optional<bool>(true));
@@ -2698,6 +2704,8 @@ scroll_button_lock = false
   CHECK(touchpad != nullptr);
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
+    CHECK(touchpad->tapAndDrag == std::optional<bool>(false));
+    CHECK(touchpad->dragLock == std::optional<bool>(false));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
     CHECK(touchpad->leftHanded == std::optional<bool>(false));
     CHECK(touchpad->accelProfile.has_value());
