@@ -248,6 +248,11 @@ namespace umbriel {
           {.name = "left_right_middle", .value = TapButtonMap::LeftRightMiddle},
           {.name = "left_middle_right", .value = TapButtonMap::LeftMiddleRight},
       };
+      static const std::vector<Choice<DragLock>> dragLocks{
+          {.name = "off", .value = DragLock::Off},
+          {.name = "timeout", .value = DragLock::Timeout},
+          {.name = "sticky", .value = DragLock::Sticky},
+      };
       static const std::vector<Choice<uint32_t>> scrollButtons{
           {.name = "MouseLeft", .value = BTN_LEFT},     {.name = "MouseRight", .value = BTN_RIGHT},
           {.name = "MouseMiddle", .value = BTN_MIDDLE}, {.name = "MouseBack", .value = BTN_SIDE},
@@ -270,7 +275,7 @@ namespace umbriel {
       static const Fields<In::Touchpad> touchpad{
           boolean("tap", &In::Touchpad::tap),
           boolean("tap_and_drag", &In::Touchpad::tapAndDrag),
-          boolean("drag_lock", &In::Touchpad::dragLock),
+          choice("drag_lock", &In::Touchpad::dragLock, dragLocks, Case::Fold),
           boolean("natural_scroll", &In::Touchpad::naturalScroll),
           boolean("left_handed", &In::Touchpad::leftHanded),
           real("sensitivity", -1.0, 1.0, &In::Touchpad::sensitivity),
@@ -363,7 +368,7 @@ namespace umbriel {
           integer("repeat_delay", 0, 10000, &In::Device::repeatDelay),
           boolean("tap", &In::Device::tap),
           boolean("tap_and_drag", &In::Device::tapAndDrag),
-          boolean("drag_lock", &In::Device::dragLock),
+          choice("drag_lock", &In::Device::dragLock, dragLocks, Case::Fold),
           boolean("natural_scroll", &In::Device::naturalScroll),
           boolean("left_handed", &In::Device::leftHanded),
           real("sensitivity", -1.0, 1.0, &In::Device::sensitivity),

@@ -493,10 +493,22 @@ namespace umbriel {
           );
         }
         const bool hasDragLockOverride = override != nullptr && override->dragLock.has_value();
-        const std::optional<bool>& dragLock = hasDragLockOverride ? override->dragLock : input.touchpad.dragLock;
-        const auto dragLockState = dragLock
-            ? (*dragLock ? LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_TIMEOUT : LIBINPUT_CONFIG_DRAG_LOCK_DISABLED)
-            : libinput_device_config_tap_get_default_drag_lock_enabled(libinputDevice);
+        const std::optional<DragLock>& dragLock = hasDragLockOverride ? override->dragLock : input.touchpad.dragLock;
+        enum libinput_config_drag_lock_state dragLockState =
+            libinput_device_config_tap_get_default_drag_lock_enabled(libinputDevice);
+        if (dragLock) {
+          switch (*dragLock) {
+          case DragLock::Off:
+            dragLockState = LIBINPUT_CONFIG_DRAG_LOCK_DISABLED;
+            break;
+          case DragLock::Timeout:
+            dragLockState = LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_TIMEOUT;
+            break;
+          case DragLock::Sticky:
+            dragLockState = LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY;
+            break;
+          }
+        }
         if (libinput_device_config_tap_set_drag_lock_enabled(libinputDevice, dragLockState)
             != LIBINPUT_CONFIG_STATUS_SUCCESS) {
           kLog.warn(
