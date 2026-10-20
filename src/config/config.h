@@ -242,6 +242,13 @@ namespace umbriel {
     Pinned,
   };
 
+  // What a second Mod+right-click on the same window does; "none" disables the
+  // gesture and keeps the button a pure resize drag.
+  enum class ModRightDoubleClick : uint8_t {
+    None,
+    Maximize,
+  };
+
   enum class HdrMode {
     Off,
     On,
@@ -1016,6 +1023,10 @@ namespace umbriel {
       // Retarget an interactive window drag with the free mouse button: float
       // it, pin it, or leave the drag alone.
       WindowDragToggle windowDragToggle = WindowDragToggle::None;
+      // What a second Mod+right-click on the same window within the
+      // double-click window does. "none" keeps Mod+right-click a pure resize
+      // drag.
+      ModRightDoubleClick modRightDoubleClick = ModRightDoubleClick::None;
 
       struct Keyboard {
         // Comma-separated XKB layout list ("us,de"); the first entry is active at startup. `options` carries XKB option

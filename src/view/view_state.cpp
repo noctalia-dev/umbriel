@@ -241,18 +241,7 @@ namespace umbriel {
       return;
     }
     m_consumeRestoredMaximizeRequest = false;
-    if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(
-              requestedMaximized(), m_maximizedToEdges,
-              m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
-          )) {
-        setMaximizedToEdges(requestedMaximized());
-        return;
-      }
-      setMaximized(requestedMaximized());
-      return;
-    }
-    setMaximized(requestedMaximized());
+    setMaximizedLikeClientRequest(requestedMaximized());
   }
 
   void View::setMaximizedToEdges(bool maximized, bool animate) {
@@ -298,6 +287,23 @@ namespace umbriel {
   void View::toggleMaximizedToEdges() { setMaximizedToEdges(!m_maximizedToEdges); }
 
   void View::toggleMaximized() { setMaximized(m_tiled ? !scheduledMaximized() : !m_floatingMaximized); }
+
+  void View::setMaximizedLikeClientRequest(bool maximized) {
+    // The one implementation of the client-request target policy, shared by
+    // handleRequestMaximize and the pointer gesture: a tiled window honors the
+    // workspace's client_maximize, a floating window keeps the default behavior
+    // whatever it says. The gesture passes the direction explicitly because it
+    // computes the opposite of the current state at its second press.
+    if (m_tiled && m_workspace != nullptr) {
+      if (maximizeRequestTargetsEdges(
+              maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
+          )) {
+        setMaximizedToEdges(maximized);
+        return;
+      }
+    }
+    setMaximized(maximized);
+  }
 
   void View::restoreMaximizedForMove() {
     // Fullscreen temporarily covers an underlying floating-maximized state.

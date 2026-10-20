@@ -22,6 +22,7 @@ using umbriel::ContentType;
 using umbriel::HdrMode;
 using umbriel::LayoutMode;
 using umbriel::ModifierKey;
+using umbriel::ModRightDoubleClick;
 using umbriel::SdrTransfer;
 using umbriel::TrackLayout;
 using umbriel::VrrMode;
@@ -1412,6 +1413,30 @@ UMBRIEL_TEST(windowDragToggleReadsItsVocabularyAndDefaultsOff) {
   CHECK(store.reload().success);
   CHECK(store.config().input.windowDragToggle == WindowDragToggle::None);
   CHECK(containsDiagnostic(store, "ignoring input.window_drag_toggle"));
+}
+
+UMBRIEL_TEST(modRightDoubleClickReadsItsVocabularyAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[input]\nmod_right_double_click = \"maximize\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.modRightDoubleClick == ModRightDoubleClick::Maximize);
+  CHECK(!containsDiagnostic(store, "unknown key input.mod_right_double_click"));
+
+  file.write("[input]\nmod_right_double_click = \"none\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.modRightDoubleClick == ModRightDoubleClick::None);
+
+  file.write("[input]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.modRightDoubleClick == ModRightDoubleClick::None);
+
+  file.write("[input]\nmod_right_double_click = \"toggle\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.modRightDoubleClick == ModRightDoubleClick::None);
+  CHECK(containsDiagnostic(store, "ignoring input.mod_right_double_click"));
 }
 
 UMBRIEL_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {

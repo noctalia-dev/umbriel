@@ -388,6 +388,11 @@ namespace umbriel {
                {.name = "floating", .value = WindowDragToggle::Floating},
                {.name = "pinned", .value = WindowDragToggle::Pinned}}
           ),
+          choice(
+              "mod_right_double_click", &In::modRightDoubleClick,
+              {{.name = "none", .value = ModRightDoubleClick::None},
+               {.name = "maximize", .value = ModRightDoubleClick::Maximize}}
+          ),
           table(
               "keyboard", &In::keyboard, keyboard,
               [](const toml::node& node, In::Keyboard& target, registry::ReadContext&) {

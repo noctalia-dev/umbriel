@@ -10,6 +10,7 @@ Configure keyboard, pointer, touchpad, tablet, cursor, and focus behavior under
 middle_click_paste = false
 client_window_drag = true
 window_drag_toggle = "none"
+mod_right_double_click = "none"
 ```
 
 `middle_click_paste = false` disables primary-selection paste, including
@@ -22,6 +23,20 @@ dragging a client-side title bar or the empty tab strip of Chromium, Firefox,
 or Electron apps. Ordinary window moves then use Mod+drag or keybinds.
 Resizing from client-side borders and tab tear-off operations using
 `xdg-toplevel-drag-v1` are unaffected.
+
+Mod+right-click drags a window's resize edge. `mod_right_double_click` gives a
+second Mod+right-click on the same window a job beyond resizing:
+
+| Value | Behavior |
+| --- | --- |
+| `"none"` | (default) Mod+right-click only drags a resize edge. |
+| `"maximize"` | A second Mod+right-click on the same window within 300 ms and 8 px of the first toggles maximize, with the same target a client's titlebar double-click picks: `client_maximize` decides between the column and the edges for a tiled window, and a floating window fills the usable area. |
+
+With `"maximize"`, the first click's resize is deferred until the pointer moves
+more than 8 px from the press, so a click pair runs no grab in between; a drag
+past that threshold resizes with the edge the press proposed, wherever the
+pointer then sits. A `Mod+MouseRight` keybind overrides the built-in button
+entirely.
 
 `window_drag_toggle` controls what pressing the other main mouse button does
 during a window drag:

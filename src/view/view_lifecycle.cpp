@@ -672,6 +672,9 @@ namespace umbriel {
     }
     leaveForeignOutput();
     setForeignActivated(false);
+    // The click pair outlives the grab machinery, so drop it here; the grab
+    // reset below covers any deferred or promoted press.
+    m_server->cursor()->forgetView(this);
     // Detaching a browser's last tab can unmap the origin while a different
     // toplevel is being carried by that same data drag.
     const View* carried = m_server->cursor()->toplevelDragView();

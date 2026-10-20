@@ -41,6 +41,11 @@ namespace umbriel {
     constexpr double kHotCornerExtent = 8.0;
     constexpr int kDataDragEdgeScrollTickMs = 16;
     constexpr uint32_t kDataDragEdgeScrollMaxElapsedMs = 50;
+    // Mod+right-click pairing and the motion threshold that promotes its
+    // deferred resize grab share one boundary: inside it a press may still
+    // pair up, so no grab may run and drop the layout's maximize bookkeeping.
+    constexpr uint32_t kModRightDoubleClickMsec = 300;
+    constexpr double kModRightDoubleClickSlop = 8.0;
 
     // Panels (top/overlay) keep working inside the overview. Background- and bottom-layer surfaces are part of the
     // inert backdrop behind the filmstrip, so their clicks belong to the overview instead.
@@ -930,6 +935,9 @@ namespace umbriel {
     if (const auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
       return grab->view;
     }
+    if (const auto* grab = std::get_if<PendingResizeGrab>(&m_grab)) {
+      return grab->view;
+    }
     return nullptr;
   }
 
@@ -1062,12 +1070,7 @@ namespace umbriel {
       if (edges != 0) {
         resolvedEdges = layout.resolveResizeEdges(view, edges, m_cursor->x, m_cursor->y);
       } else {
-        const wlr_box presented = workspace->presentedTiledBox(view);
-        const wlr_box visible = workspace->usableArea();
-        wlr_box reachable{};
-        if (wlr_box_intersection(&reachable, &presented, &visible)) {
-          resolvedEdges = layout.sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, m_cursor->x, m_cursor->y));
-        }
+        resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
       }
       if (resolvedEdges == 0) {
         if (workspace->focusedView() == view) {
@@ -1265,6 +1268,17 @@ namespace umbriel {
   }
 
   void Cursor::cancelStaleTiledResize() {
+    if (const auto* pending = std::get_if<PendingResizeGrab>(&m_grab); pending != nullptr) {
+      // The deferred press carries press-time edges; a layout swap since then
+      // makes them mean something else.
+      if (pending->view == nullptr
+          || (pending->layout != nullptr
+              && (pending->view->workspace() != pending->workspace
+                  || &pending->workspace->layout() != pending->layout))) {
+        resetMode();
+      }
+      return;
+    }
     const auto* grab = std::get_if<TiledResizeGrab>(&m_grab);
     if (grab != nullptr
         && (grab->workspace == nullptr
@@ -1277,7 +1291,10 @@ namespace umbriel {
   void Cursor::cancelLayoutInteraction() {
     // An axis change keeps the same layout object, so cancelStaleTiledResize()
     // cannot see it; the session's edges would still mean the old orientation.
-    if (std::holds_alternative<ScrollDragGrab>(m_grab) || std::holds_alternative<TiledResizeGrab>(m_grab)) {
+    // A deferred resize press stores the same kind of press-time edges.
+    if (std::holds_alternative<ScrollDragGrab>(m_grab)
+        || std::holds_alternative<TiledResizeGrab>(m_grab)
+        || std::holds_alternative<PendingResizeGrab>(m_grab)) {
       resetMode();
     }
   }
@@ -1338,6 +1355,7 @@ namespace umbriel {
     }
 
     confineRuleDelta(&dx, &dy);
+    promotePendingModRightResize(m_cursor->x + dx, m_cursor->y + dy);
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
@@ -1369,6 +1387,7 @@ namespace umbriel {
       return;
     }
     confineRuleDelta(&dx, &dy);
+    promotePendingModRightResize(m_cursor->x + dx, m_cursor->y + dy);
     wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
     processMotion(event->time_msec, oldX, oldY);
   }
@@ -1376,6 +1395,32 @@ namespace umbriel {
   void Cursor::handleButton(void* data) {
     auto* event = static_cast<wlr_pointer_button_event*>(data);
     processButton(event->time_msec, event->button, event->state);
+  }
+
+  bool Cursor::isModRightDoubleClick(uint32_t timeMsec, const View* view) const {
+    return m_lastModRightClick.view == view
+        && timeMsec - m_lastModRightClick.timeMsec <= kModRightDoubleClickMsec
+        && std::abs(m_cursor->x - m_lastModRightClick.x) <= kModRightDoubleClickSlop
+        && std::abs(m_cursor->y - m_lastModRightClick.y) <= kModRightDoubleClickSlop;
+  }
+
+  void Cursor::recordModRightClick(uint32_t timeMsec, View* view) {
+    m_lastModRightClick = ModRightClick{timeMsec, m_cursor->x, m_cursor->y, view};
+  }
+
+  void Cursor::promotePendingModRightResize(double nextX, double nextY) {
+    const auto* pending = std::get_if<PendingResizeGrab>(&m_grab);
+    if (pending == nullptr) {
+      return;
+    }
+    if (std::abs(nextX - pending->startX) <= kModRightDoubleClickSlop
+        && std::abs(nextY - pending->startY) <= kModRightDoubleClickSlop) {
+      return;
+    }
+    const PendingResizeGrab grab = *pending;
+    // A drag is not a double-click's first press.
+    m_lastModRightClick = ModRightClick{};
+    beginResize(grab.view, grab.edges, grab.button);
   }
 
   void Cursor::processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
@@ -1527,6 +1572,14 @@ namespace umbriel {
         resetMode();
         return;
       }
+      if (std::holds_alternative<PendingResizeGrab>(m_grab)) {
+        // A deferred Mod+right resize that never left the click's slop ends as
+        // a plain click. Its press reached no client, so swallow the release
+        // too rather than deliver an unmatched one; the click pair stays
+        // recorded for the double-click.
+        resetMode();
+        return;
+      }
       m_server->seat()->notifyPointerModifiers();
       wlr_seat_pointer_notify_button(m_server->seat()->wlr(), timeMsec, button, state);
 
@@ -1603,7 +1656,47 @@ namespace umbriel {
     }
     if (button == BTN_RIGHT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
-      beginResize(view, view->tiled() ? 0 : floatResizeEdges(view), button);
+      if (config().input.modRightDoubleClick == ModRightDoubleClick::None) {
+        beginResize(view, view->tiled() ? 0 : floatResizeEdges(view), button);
+        return;
+      }
+      // A second Mod+right-click on the same window within the double-click
+      // window applies the opposite maximize state with a titlebar
+      // double-click's semantics. The direction is read at this press: the
+      // first press only holds a deferred grab (below), so no grab has
+      // perturbed the maximize state in between.
+      if (isModRightDoubleClick(timeMsec, view)) {
+        // Completing a pair clears the record so a third rapid click starts a
+        // fresh window. No grab owns this press, so its release would reach the
+        // client unmatched; swallow both like the tab-bar path does.
+        m_lastModRightClick = ModRightClick{};
+        m_swallowedButtons.push_back(button);
+        const bool wasMaximized = view->maximizedToEdges() || view->scheduledMaximized() || view->floatingMaximized();
+        view->setMaximizedLikeClientRequest(!wasMaximized);
+        return;
+      }
+      recordModRightClick(timeMsec, view);
+      // Snapshot the resize edges at the press point and defer the grab until
+      // the pointer commits to a drag: the click may still be the first half of
+      // a double-click, beginResize would drop the maximize bookkeeping the
+      // toggle needs (see the pending grab in cursor.h), and re-deriving the
+      // edges at the moved cursor flips them at a thirds boundary. A press that
+      // proposes no edges is a plain click, like the centre case beginResize
+      // declines.
+      const uint32_t edges = view->tiled() ? tiledResizeEdges(view, m_cursor->x, m_cursor->y) : floatResizeEdges(view);
+      if (edges != 0) {
+        m_grab = PendingResizeGrab{
+            .view = view,
+            .button = button,
+            .startX = m_cursor->x,
+            .startY = m_cursor->y,
+            .edges = edges,
+            .workspace = view->tiled() ? view->workspace() : nullptr,
+            .layout = view->tiled() && view->workspace() != nullptr ? &view->workspace()->layout() : nullptr,
+        };
+        m_grabButton = button;
+        updateInteractiveCursor(view);
+      }
       return;
     }
 
@@ -2722,6 +2815,28 @@ namespace umbriel {
     grab->view->resizeFloating(newRight - newLeft, newBottom - newTop);
   }
 
+  uint32_t Cursor::tiledResizeEdges(View* view, double x, double y) const {
+    Workspace* workspace = view->workspace();
+    if (workspace == nullptr || workspace->group() == nullptr || workspace->group()->output() == nullptr) {
+      return 0;
+    }
+    const wlr_box presented = workspace->presentedTiledBox(view);
+    const wlr_box visible = workspace->usableArea();
+    wlr_box reachable{};
+    if (!wlr_box_intersection(&reachable, &presented, &visible)) {
+      return 0;
+    }
+    return workspace->layout().sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, x, y));
+  }
+
+  void Cursor::forgetView(const View* view) {
+    // Only the click pair sits outside the grab machinery: the deferred press
+    // is a grab and handleUnmap's resetMode() drops it.
+    if (m_lastModRightClick.view == view) {
+      m_lastModRightClick = ModRightClick{};
+    }
+  }
+
   uint32_t Cursor::floatResizeEdges(View* view) const {
     if (view == nullptr || view->sceneTree() == nullptr) {
       return WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
@@ -2970,6 +3085,8 @@ namespace umbriel {
     if (const auto* grab = std::get_if<FloatingResizeGrab>(&m_grab)) {
       resizeEdges = grab->edges;
     } else if (const auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
+      resizeEdges = grab->edges;
+    } else if (const auto* grab = std::get_if<PendingResizeGrab>(&m_grab)) {
       resizeEdges = grab->edges;
     }
     if (resizeEdges != 0) {

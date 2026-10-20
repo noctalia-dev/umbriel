@@ -3521,6 +3521,7 @@ namespace umbriel {
       view->detachWorkspace();
     }
     const bool restoreAfterRemoval = view->displacedHome().has_value();
+    m_cursor->forgetView(view);
     m_registry.remove(view);
     if (restoreAfterRemoval) {
       scheduleDisplacedViewRestore();

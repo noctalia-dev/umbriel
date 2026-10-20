@@ -164,6 +164,7 @@ namespace umbriel {
     // that is where it was pinned from.
     [[nodiscard]] bool restoresTiledOnUnpin() const { return m_restoreTiledAfterUnpin; }
     [[nodiscard]] bool maximizedToEdges() const { return m_maximizedToEdges; }
+    [[nodiscard]] bool floatingMaximized() const { return m_floatingMaximized; }
     // Fullscreen for layout purposes follows the state already scheduled for the next configure.
     [[nodiscard]] bool layoutFullscreen() const;
     [[nodiscard]] bool urgent() const { return m_urgent; }
@@ -414,6 +415,14 @@ namespace umbriel {
     // output's usable area and restores to the box it had before; tiled windows
     // toggle their column's full-width state.
     void toggleMaximized();
+    // Apply the maximize state a client request would carry (what a titlebar
+    // double-click produces): a tiled window honors the workspace's
+    // client_maximize, and a floating window keeps the default behavior
+    // whatever it says. handleRequestMaximize ends here too, so the gesture and
+    // a client request pick the same target. The direction is explicit because
+    // the gesture computes the opposite of the current state at its second
+    // press.
+    void setMaximizedLikeClientRequest(bool maximized);
     // Restore a floating maximized window to its saved box before a pointer
     // move takes ownership of its position.
     void restoreMaximizedForMove();
