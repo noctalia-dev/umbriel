@@ -85,7 +85,7 @@ distribution-provided LTO and archive member pruning.
 - wayland-server 1.24 or newer, plus the Wayland client library
 - wayland-protocols 1.47 or newer
 - xkbcommon
-- libinput 1.23 or newer
+- libinput 1.27 or newer
 - libudev, required for native `[drm]` GPU exclusion support
 - libsystemd 243 or newer, required to read the systemd-localed keymap for keyboards with no XKB configuration
 - pixman 0.43 or newer
