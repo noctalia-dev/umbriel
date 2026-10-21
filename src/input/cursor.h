@@ -339,6 +339,9 @@ namespace umbriel {
     // layout cannot resize. Shared with beginResize so a deferred grab and a
     // live one cannot drift apart.
     [[nodiscard]] uint32_t tiledResizeEdges(View* view, double x, double y) const;
+    // A Mod+right click that resized nothing still reveals the focused tile,
+    // since a grab focus skips the reveal.
+    void revealClickedTile(View* view);
     void updateInteractiveCursor(View* under);
     void setCompositorCursor(const char* name);
     void restoreClientCursor();

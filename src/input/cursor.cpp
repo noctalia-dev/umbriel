@@ -1073,10 +1073,7 @@ namespace umbriel {
         resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
       }
       if (resolvedEdges == 0) {
-        if (workspace->focusedView() == view) {
-          workspace->ensureFocusedVisible();
-          workspace->markArrange(true);
-        }
+        revealClickedTile(view);
         refreshInteractiveCursor();
         return false;
       }
@@ -1576,7 +1573,8 @@ namespace umbriel {
         resetMode();
         return;
       }
-      if (std::holds_alternative<PendingResizeGrab>(m_grab)) {
+      if (const auto* pending = std::get_if<PendingResizeGrab>(&m_grab)) {
+        revealClickedTile(pending->view);
         // A deferred Mod+right resize that never left the click's slop ends as
         // a plain click. Its press reached no client, so swallow the release
         // too rather than deliver an unmatched one; the click pair stays
@@ -1700,6 +1698,8 @@ namespace umbriel {
         };
         m_grabButton = button;
         updateInteractiveCursor(view);
+      } else if (view->tiled()) {
+        revealClickedTile(view);
       }
       return;
     }
@@ -2825,6 +2825,14 @@ namespace umbriel {
     }
 
     grab->view->resizeFloating(newRight - newLeft, newBottom - newTop);
+  }
+
+  void Cursor::revealClickedTile(View* view) {
+    Workspace* workspace = view->workspace();
+    if (view->tiled() && workspace != nullptr && workspace->focusedView() == view) {
+      workspace->ensureFocusedVisible();
+      workspace->markArrange(true);
+    }
   }
 
   uint32_t Cursor::tiledResizeEdges(View* view, double x, double y) const {
