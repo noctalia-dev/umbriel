@@ -1413,6 +1413,10 @@ namespace umbriel {
     if (pending == nullptr) {
       return;
     }
+    if (m_server->sessionLocked()) {
+      resetMode();
+      return;
+    }
     if (std::abs(nextX - pending->startX) <= kModRightDoubleClickSlop
         && std::abs(nextY - pending->startY) <= kModRightDoubleClickSlop) {
       return;
@@ -2111,6 +2115,14 @@ namespace umbriel {
         processResizeTile();
         return;
       }
+    }
+    if (std::holds_alternative<PendingResizeGrab>(m_grab)) {
+      // Motion inside the slop belongs to the deferred press, not to clients
+      // or focus-follows-mouse.
+      if (!m_server->sessionLocked()) {
+        return;
+      }
+      resetMode();
     }
 
     wlr_seat* seat = m_server->seat()->wlr();
