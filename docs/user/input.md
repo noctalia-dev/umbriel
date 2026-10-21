@@ -32,11 +32,9 @@ second Mod+right-click on the same window a job beyond resizing:
 | `"none"` | (default) Mod+right-click only drags a resize edge. |
 | `"maximize"` | A second Mod+right-click on the same window within 300 ms and 8 px of the first toggles maximize, with the same target a client's titlebar double-click picks: `client_maximize` decides between the column and the edges for a tiled window, and a floating window fills the usable area. |
 
-With `"maximize"`, the first click's resize is deferred until the pointer moves
-more than 8 px from the press, so a click pair runs no grab in between; a drag
-past that threshold resizes with the edge the press proposed, wherever the
-pointer then sits. A `Mod+MouseRight` keybind overrides the built-in button
-entirely.
+With `"maximize"`, the first click starts resizing only once the pointer moves
+more than 8 px from the press, and then resizes the edge under the press.
+A `Mod+MouseRight` keybind overrides the built-in button entirely.
 
 `window_drag_toggle` controls what pressing the other main mouse button does
 during a window drag:

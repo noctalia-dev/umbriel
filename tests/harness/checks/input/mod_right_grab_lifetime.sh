@@ -3,7 +3,7 @@
 # button, so a second button cannot start a competing operation, every release
 # path ends it, and nothing stale promotes once all buttons are up. The
 # sequence under test: Mod+right press on an edge zone, Mod+left press, release
-# right, drag with left past the slop, release left — then motion with no
+# right, drag with left past the slop, release left; then motion with no
 # buttons held must not resize the window.
 set -euo pipefail
 

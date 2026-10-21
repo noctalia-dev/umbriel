@@ -1678,13 +1678,9 @@ namespace umbriel {
         return;
       }
       recordModRightClick(timeMsec, view);
-      // Snapshot the resize edges at the press point and defer the grab until
-      // the pointer commits to a drag: the click may still be the first half of
-      // a double-click, beginResize would drop the maximize bookkeeping the
-      // toggle needs (see the pending grab in cursor.h), and re-deriving the
-      // edges at the moved cursor flips them at a thirds boundary. A press that
-      // proposes no edges is a plain click, like the centre case beginResize
-      // declines.
+      // Defer the grab until the pointer leaves the slop: a grab would drop the
+      // maximize state the second click reads. Edges are snapshotted at the
+      // press point; a press proposing none is a plain click.
       const uint32_t edges = view->tiled() ? tiledResizeEdges(view, m_cursor->x, m_cursor->y) : floatResizeEdges(view);
       if (edges != 0) {
         m_grab = PendingResizeGrab{

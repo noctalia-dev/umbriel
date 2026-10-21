@@ -26,11 +26,11 @@ struct wlr_xcursor_manager;
 namespace umbriel {
 
   class LayerSurface;
+  class Layout;
   class Output;
   class Server;
   class View;
   class Workspace;
-  class Layout;
   struct Keybind;
   struct ResizeGrab;
 
@@ -94,8 +94,8 @@ namespace umbriel {
     // real grab would drop the maximize bookkeeping the double-click toggle
     // restores from (scrolling clears the saved width fraction at grab start);
     // as a grab state the press still sits behind the release, swallow,
-    // isPassthrough() and reset paths. The edges are the press point's — the
-    // thirds zones make them position-sensitive.
+    // isPassthrough() and reset paths. The edges are the press point's, since
+    // the thirds zones make them position-sensitive.
     struct PendingResizeGrab {
       View* view = nullptr;
       uint32_t button = 0;

@@ -48,11 +48,8 @@ mod_right_double_click = "maximize"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-# A window we close while the press is held. The press lands in the left third
-# so it proposes a resize edge and the deferred grab exists. The window's
-# lifetime is an IPC close plus a poll, never a wall-clock timer: under load a
-# timer can expire before the press and the check would pass without testing
-# anything.
+# A window we close through IPC while the press is held. The press lands in the
+# left third so it proposes a resize edge and the deferred grab exists.
 foot sh -c 'sleep 120' > /dev/null 2>&1 &
 await_count 1
 
