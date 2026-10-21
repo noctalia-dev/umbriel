@@ -795,6 +795,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   changedOnlyWindowMatcher.windowRules[0].matchOnlyWindow = true;
   CHECK(ConfigEffects::between(forcedByRule, changedOnlyWindowMatcher).tearingPolicy);
 
+  Config changedCastTargetMatcher = forcedByRule;
+  changedCastTargetMatcher.windowRules[0].matchCastTarget = true;
+  CHECK(ConfigEffects::between(forcedByRule, changedCastTargetMatcher).tearingPolicy);
+
   Config changedTagMatcher = forcedByRule;
   changedTagMatcher.windowRules[0].xdgTagPatterns = RegexPatterns{}.add("^game-launcher$");
   CHECK(ConfigEffects::between(forcedByRule, changedTagMatcher).tearingPolicy);

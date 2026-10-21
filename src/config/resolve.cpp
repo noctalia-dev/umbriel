@@ -273,6 +273,9 @@ namespace umbriel {
       if (rule.matchDialog && *rule.matchDialog != state.dialog) {
         continue;
       }
+      if (rule.matchCastTarget && *rule.matchCastTarget != state.castTarget) {
+        continue;
+      }
       if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < kStartupRuleDurationMs)) {
         continue;
       }

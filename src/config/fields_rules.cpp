@@ -177,6 +177,7 @@ namespace umbriel {
           strict(boolean("is_alone", &W::matchAlone)),
           strict(boolean("is_only_window", &W::matchOnlyWindow)),
           strict(boolean("is_dialog", &W::matchDialog)),
+          strict(boolean("is_cast_target", &W::matchCastTarget)),
           strict(boolean("at_startup", &W::matchAtStartup)),
       };
       static const registry::Fields<W> floatingSize{

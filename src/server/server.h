@@ -42,6 +42,7 @@ struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
 struct wlr_export_dmabuf_manager_v1;
 struct wlr_ext_image_copy_capture_session_v1;
+struct wlr_ext_image_capture_source_v1;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_idle_inhibit_manager_v1;
 struct wlr_idle_notifier_v1;
@@ -345,6 +346,8 @@ namespace umbriel {
     // True while `view`'s client must keep drawing although its frame is hidden: an overview card or a toplevel capture
     // draws its content off the shared scene, or a `background_render` rule asks for it.
     [[nodiscard]] bool viewRenderedOffscreen(const View& view) const;
+    // True while a live image-copy session reads `view`'s toplevel capture source.
+    [[nodiscard]] bool viewCaptured(const View& view) const;
     // Lock the next group on one physical keyboard, then synchronize matching
     // named layouts across the remaining keyboards.
     bool cycleKeyboardLayout();
@@ -530,6 +533,7 @@ namespace umbriel {
     static void onShortcutsInhibitorDestroy(wl_listener* listener, void* data);
     static void onNewImageCopySession(wl_listener* listener, void* data);
     static void onImageCopySessionDestroy(wl_listener* listener, void* data);
+    void refreshCaptureRuleEffects(const wlr_ext_image_capture_source_v1* source);
     static void onNewActivationToken(wl_listener* listener, void* data);
     static void onActivationTokenDestroy(wl_listener* listener, void* data);
     static void onRequestActivate(wl_listener* listener, void* data);

@@ -582,6 +582,7 @@ namespace umbriel {
         .alone = isAloneInLayout(),
         .onlyWindow = isOnlyWindowOnWorkspace(),
         .dialog = shellParent() != nullptr,
+        .castTarget = m_server->viewCaptured(*this),
     };
   }
 

@@ -334,6 +334,12 @@ default_pinned = true
 # border_color_focused = "#E5C07BFF"
 # border_color_unfocused = "#5C4A2AFF"
 
+# Frame the window being screencast; viewers never see the frame.
+# [[window_rule]]
+# match.is_cast_target = true
+# border_color_focused = "#40C057FF"
+# border_color_unfocused = "#40C057FF"
+
 # Leave an application that draws its own corners and shadow undecorated.
 # [[window_rule]]
 # match.app_id = "^org[.]gnome[.]TextEditor$"

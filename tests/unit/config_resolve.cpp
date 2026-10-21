@@ -1144,6 +1144,28 @@ UMBRIEL_TEST(windowRulesMatchIsDialog) {
   CHECK(!toplevel.attachToParent);
 }
 
+UMBRIEL_TEST(windowRulesMatchIsCastTarget) {
+  Config config;
+
+  // The point of the selector: mark the window someone is watching, and only that one.
+  WindowRule castRule;
+  castRule.matchCastTarget = true;
+  castRule.borderWidth = 5;
+  castRule.borderColorFocused = std::array<float, 4>{0.25F, 0.75F, 0.25F, 1.0F};
+  config.windowRules.push_back(std::move(castRule));
+
+  const auto cast = umbriel::resolveWindowRules(
+      config, "browser", std::nullopt, std::nullopt, ContentType::None, {.castTarget = true}, 0
+  );
+  CHECK(cast.borderWidth && *cast.borderWidth == 5);
+  CHECK(cast.borderColorFocused.has_value());
+
+  const auto notCast =
+      umbriel::resolveWindowRules(config, "browser", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(!notCast.borderWidth);
+  CHECK(!notCast.borderColorFocused);
+}
+
 UMBRIEL_TEST(windowVrrRuleOverridesTheOutputPolicy) {
   CHECK(umbriel::effectiveVrrEnabled(VrrMode::Disabled, false, VrrMode::Always, false));
   CHECK(!umbriel::effectiveVrrEnabled(VrrMode::Always, false, VrrMode::Disabled, false));

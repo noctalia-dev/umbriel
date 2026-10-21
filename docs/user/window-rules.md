@@ -24,6 +24,7 @@ default_workspace = 2
 | `match.is_alone` | Match whether this is the only tiled window. |
 | `match.is_only_window` | Match whether this is the only window on its workspace, floating ones included. |
 | `match.is_dialog` | Match whether the application named a parent window for it. |
+| `match.is_cast_target` | Match while a screencast or screenshot is capturing this window. |
 | `match.at_startup` | Match during or after the first 60 seconds. |
 
 Selectors are optional. A rule with none matches every window. Regular
@@ -347,6 +348,23 @@ A pinned window floats above the workspace rather than on it, and a scratchpad
 window has left it, so neither one takes the match away. The rule follows the
 window as company comes and goes. It does not drive the fullscreen, maximize,
 and extent effects above; those keep following `match.is_alone`.
+
+## The window being shared
+
+`match.is_cast_target` holds while a client captures the window itself, as a
+portal window share does, and lets go when the capture ends. Sharing a whole
+output does not match it. A frame that shows what is on air:
+
+```toml
+[[window_rule]]
+match.is_cast_target = true
+border_width = 5
+border_color_focused = "#40C057FF"
+border_color_unfocused = "#40C057FF"
+```
+
+The frame is not part of the captured image, so viewers never see it. A window
+screenshot captures the window too, so the rule also flashes on for one.
 
 ## Examples
 

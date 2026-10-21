@@ -1096,6 +1096,10 @@ namespace umbriel {
     if (view.backgroundRender() || (m_overview != nullptr && m_overview->presentsLive(&view))) {
       return true;
     }
+    return viewCaptured(view);
+  }
+
+  bool Server::viewCaptured(const View& view) const {
     return view.m_captureSource != nullptr
         && std::ranges::any_of(m_imageCopySessions, [&view](const std::unique_ptr<ImageCopySessionWatch>& watch) {
              return watch->session != nullptr && watch->session->source == view.m_captureSource;
@@ -1471,6 +1475,7 @@ namespace umbriel {
     wl_signal_add(&session->events.destroy, &watch->destroy);
     self->m_imageCopySessions.push_back(std::move(watch));
     self->scheduleSuspensionSync();
+    self->refreshCaptureRuleEffects(session->source);
   }
 
   // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
@@ -1478,6 +1483,7 @@ namespace umbriel {
     ImageCopySessionWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    wlr_ext_image_capture_source_v1* source = watch->session->source;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
@@ -1486,6 +1492,16 @@ namespace umbriel {
       output->scheduleEffectCaptureRelease();
     }
     server->scheduleSuspensionSync();
+    server->refreshCaptureRuleEffects(source);
+  }
+
+  // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.
+  void Server::refreshCaptureRuleEffects(const wlr_ext_image_capture_source_v1* source) {
+    for (const auto& view : m_registry.all()) {
+      if (view->m_captureSource == source) {
+        view->refreshStateRuleEffects();
+      }
+    }
   }
 
   void Server::onNewShortcutsInhibitor(wl_listener* listener, void* data) {
