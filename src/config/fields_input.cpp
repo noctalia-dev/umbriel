@@ -240,6 +240,11 @@ namespace umbriel {
       using registry::text;
       using In = Config::Input;
 
+      static const std::vector<Choice<ScrollMethod>> scrollMethods{
+          {.name = "two_finger", .value = ScrollMethod::TwoFinger},
+          {.name = "edge", .value = ScrollMethod::Edge},
+          {.name = "none", .value = ScrollMethod::None},
+      };
       static const std::vector<Choice<ClickMethod>> clickMethods{
           {.name = "button_areas", .value = ClickMethod::ButtonAreas},
           {.name = "clickfinger", .value = ClickMethod::ClickFinger},
@@ -297,6 +302,7 @@ namespace umbriel {
               }()
           ),
           accelProfileField(&In::Touchpad::accelProfile),
+          choice("scroll_method", &In::Touchpad::scrollMethod, scrollMethods, Case::Fold),
           choice("click_method", &In::Touchpad::clickMethod, clickMethods, Case::Fold),
           choice("tap_button_map", &In::Touchpad::tapButtonMap, tapButtonMaps, Case::Fold),
       };
@@ -375,6 +381,7 @@ namespace umbriel {
           boolean("disable_while_typing", &In::Device::disableWhileTyping),
           boolean("scroll_button_lock", &In::Device::scrollButtonLock),
           accelProfileField(&In::Device::accelProfile),
+          choice("scroll_method", &In::Device::scrollMethod, scrollMethods, Case::Fold),
           choice("click_method", &In::Device::clickMethod, clickMethods, Case::Fold),
           choice("tap_button_map", &In::Device::tapButtonMap, tapButtonMaps, Case::Fold),
           choice("scroll_button", &In::Device::scrollButton, scrollButtons, Case::Fold),

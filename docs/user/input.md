@@ -171,6 +171,7 @@ left_handed = false
 # scroll_factor = 1.5
 # disable_while_typing = true
 # disable_on_external_mouse = true
+# scroll_method = "edge"
 # click_method = "clickfinger"
 # tap_button_map = "left_middle_right"
 ```
@@ -190,8 +191,15 @@ settings are reported in the log.
 | `scroll_factor` | Application scroll multiplier from 0.1 to 10.0. |
 | `disable_while_typing` | Disable the touchpad during keyboard input. |
 | `disable_on_external_mouse` | Disable the touchpad while an external mouse is connected. |
+| `scroll_method` | Scroll gesture for application content: `"two_finger"`, `"edge"`, or `"none"` to disable. |
 | `click_method` | Use `"button_areas"` or `"clickfinger"`. |
 | `tap_button_map` | Buttons for one-, two-, and three-finger taps: `"left_right_middle"` or `"left_middle_right"`. |
+
+`scroll_method` selects the gesture a touchpad-style device uses to scroll
+applications. Devices support a subset (`libinput list-devices` reports them);
+an unsupported value is logged and ignored. An `input.device` rule that sets
+`scroll_method` replaces that device's `scroll_button` scrolling, including its
+lock. No other device class inherits it.
 
 `scroll_factor` also accepts per-axis values:
 
@@ -254,6 +262,7 @@ name = "Acme Precision Touchpad"
 tap = true
 natural_scroll = false
 left_handed = false
+scroll_method = "edge"
 click_method = "clickfinger"
 
 [[input.device]]

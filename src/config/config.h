@@ -220,6 +220,14 @@ namespace umbriel {
     Window,
   };
 
+  // How a touchpad device turns motion into scroll events: two fingers anywhere on the surface, or along
+  // its edges. `none` disables scrolling. Device support varies; unset keeps the device's libinput default.
+  enum class ScrollMethod : uint8_t {
+    TwoFinger,
+    Edge,
+    None,
+  };
+
   // How a touchpad turns a physical press into a button: soft button areas along
   // the bottom edge, or the finger count at press time.
   enum class ClickMethod : uint8_t {
@@ -1089,6 +1097,7 @@ namespace umbriel {
         std::optional<ScrollFactor> scrollFactor;
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
+        std::optional<ScrollMethod> scrollMethod;
         std::optional<ClickMethod> clickMethod;
         std::optional<TapButtonMap> tapButtonMap;
         bool operator==(const Touchpad&) const = default;
@@ -1170,6 +1179,7 @@ namespace umbriel {
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
         std::optional<bool> disableWhileTyping;
+        std::optional<ScrollMethod> scrollMethod;
         std::optional<ClickMethod> clickMethod;
         std::optional<TapButtonMap> tapButtonMap;
         std::optional<uint32_t> scrollButton;
