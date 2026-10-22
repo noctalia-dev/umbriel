@@ -185,6 +185,12 @@ UMBRIEL_TEST(rejectsMalformedSubmapPrefix) {
 // parseAction
 UMBRIEL_TEST(parsesSimpleActions) {
   Keybind bind;
+  CHECK(parseAction("cursor-hide", bind));
+  CHECK(bind.action == KeybindAction::CursorHide);
+
+  CHECK(parseAction("cursor-show", bind));
+  CHECK(bind.action == KeybindAction::CursorShow);
+
   CHECK(parseAction("window-close", bind));
   CHECK(bind.action == KeybindAction::WindowClose);
 

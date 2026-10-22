@@ -195,6 +195,8 @@ namespace umbriel {
     void handleDataDragEnded();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY, wl_client* owner);
     void setXcursor(const char* name);
+    void noteActivity();
+    void hideCursor();
     bool beginMove(View* view, uint32_t button, bool deferUntilThreshold = false);
     bool beginResize(View* view, uint32_t edges, uint32_t button);
     // A null seat client is an X11 move/resize request, which carries no serial.
@@ -378,9 +380,7 @@ namespace umbriel {
     static void onClientCursorDestroy(wl_listener* listener, void* data);
     static void onClientCursorClientCommit(wl_listener* listener, void* data);
     static void onClientCursorCommit(wl_listener* listener, void* data);
-    void noteActivity();
     void updateHideTimer();
-    void hideCursor();
     // Sends the pointer and its visibility to the cursor effect, only while one is active.
     void forwardEffectPointer() const;
     static int onHideTimer(void* data);

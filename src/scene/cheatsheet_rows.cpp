@@ -521,6 +521,8 @@ namespace {
     case A::OverviewClose:
       return Group::Overview;
     case A::ConfigReload:
+    case A::CursorHide:
+    case A::CursorShow:
     case A::DpmsOff:
     case A::DpmsOn:
     case A::OutputDisable:

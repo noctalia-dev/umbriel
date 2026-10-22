@@ -290,6 +290,8 @@ namespace umbriel {
         {"column-toggle-tabbed", "", "Tab the rows around the focused window, or stack its tabs",
          KeybindAction::ColumnToggleTabbed},
         {"config-reload", "", "Reload the configuration file", KeybindAction::ConfigReload},
+        {"cursor-hide", "", "Hide the cursor until pointer activity", KeybindAction::CursorHide},
+        {"cursor-show", "", "Show the cursor and restart its inactivity timeout", KeybindAction::CursorShow},
         {"dpms-off", "[<output>]", "Power off one output, or every output when bare", KeybindAction::DpmsOff,
          ActionArgKind::OptionalOutput},
         {"dpms-on", "[<output>]", "Power on one output, or every output when bare", KeybindAction::DpmsOn,

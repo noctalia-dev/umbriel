@@ -574,6 +574,16 @@ namespace umbriel {
       return true;
     }
 
+    bool actionCursorHide(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      server.cursor()->hideCursor();
+      return true;
+    }
+
+    bool actionCursorShow(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      server.cursor()->noteActivity();
+      return true;
+    }
+
     template <bool Powered> bool actionDpms(Server& server, const Keybind& bind, std::string* error) {
       const auto* arg = payloadIf<OutputArg>(bind);
       const std::string requested = arg != nullptr ? arg->output : std::string{};
@@ -2212,6 +2222,8 @@ namespace umbriel {
         &actionWindowMoveToWorkspaceAdjacent<1, true>,
         &actionWindowMoveToWorkspaceAdjacent<-1, true>,
         &actionConfigReload,
+        &actionCursorHide,
+        &actionCursorShow,
         &actionScreenCastClear,
         &actionScreenCastSetOutput,
         &actionScreenCastSetWindow,

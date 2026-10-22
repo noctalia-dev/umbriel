@@ -84,6 +84,8 @@ namespace umbriel {
     WindowMoveToWorkspaceNext,
     WindowMoveToWorkspacePrevious,
     ConfigReload,
+    CursorHide,
+    CursorShow,
     ScreenCastClear,
     ScreenCastSetOutput,
     ScreenCastSetWindow,

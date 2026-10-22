@@ -290,6 +290,8 @@ are described in [Overview](workspaces-overview.md).
 | `cheatsheet-open` | Show the keybind cheatsheet |
 | `cheatsheet-toggle` | Show or hide the keybind cheatsheet |
 | `config-reload` | Reload the configuration file |
+| `cursor-hide` | Hide the cursor until pointer activity |
+| `cursor-show` | Show the cursor and restart its inactivity timeout |
 | `dpms-off:[<output>]` | Power off one output, or every output when bare |
 | `dpms-on:[<output>]` | Power on one output, or every output when bare |
 | `effect-border-cycle:[<pool>][/<window-id>]` | Cycle the current or named border pool |
