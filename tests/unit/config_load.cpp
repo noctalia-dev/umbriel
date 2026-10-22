@@ -2810,6 +2810,30 @@ UMBRIEL_TEST(touchpadScrollMethodDefaultsToUnset) {
   CHECK(!defaults.input.touchpad.scrollMethod.has_value());
 }
 
+UMBRIEL_TEST(scrollMethodVariantsLoadWithCaseFolding) {
+  const TempConfig file;
+  file.write(R"(
+[input.touchpad]
+scroll_method = "Two_Finger"
+
+[[input.device]]
+name = "Acme Precision Touchpad"
+scroll_method = "None"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+  CHECK(result.success);
+  const auto& input = store.config().input;
+  CHECK(input.touchpad.scrollMethod == std::optional(umbriel::ScrollMethod::TwoFinger));
+  const auto* device = input.findDevice("Acme Precision Touchpad");
+  CHECK(device != nullptr);
+  if (device != nullptr) {
+    CHECK(device->scrollMethod == std::optional(umbriel::ScrollMethod::None));
+  }
+}
+
 UMBRIEL_TEST(touchpadScrollFactorDefaultsToUnset) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.touchpad.scrollFactor.has_value());

@@ -199,7 +199,8 @@ settings are reported in the log.
 applications. Devices support a subset (`libinput list-devices` reports them);
 an unsupported value is logged and ignored. An `input.device` rule that sets
 `scroll_method` replaces that device's `scroll_button` scrolling, including its
-lock. No other device class inherits it.
+lock, and a rule that sets `scroll_button` takes the device's scrolling away
+from the `[input.touchpad]` gesture. No other device class inherits it.
 
 `scroll_factor` also accepts per-axis values:
 

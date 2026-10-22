@@ -698,7 +698,9 @@ namespace umbriel {
       );
 
       const bool hasMethodOverride = override != nullptr && override->scrollMethod.has_value();
+      const bool ruleOwnsScrollButton = override != nullptr && override->scrollButton.has_value();
       const std::optional<ScrollMethod> scrollMethod = hasMethodOverride ? override->scrollMethod
+          : ruleOwnsScrollButton                                         ? std::nullopt
           : isTouchpad                                                   ? input.touchpad.scrollMethod
                                                                          : std::nullopt;
       applyScrollMethod(
