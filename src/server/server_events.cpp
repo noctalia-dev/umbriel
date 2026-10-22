@@ -300,6 +300,11 @@ namespace umbriel {
         }
         return;
       }
+      // applyScrollButton() runs first and owns on-button-down scrolling, restoring the default here would undo it.
+      if (!configured
+          && libinput_device_config_scroll_get_method(libinputDevice) == LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN) {
+        return;
+      }
       enum libinput_config_scroll_method method = libinput_device_config_scroll_get_default_method(libinputDevice);
       if (configured) {
         enum libinput_config_scroll_method requested = LIBINPUT_CONFIG_SCROLL_2FG;
@@ -317,7 +322,7 @@ namespace umbriel {
           break;
         }
         if (requested != LIBINPUT_CONFIG_SCROLL_NO_SCROLL && (methods & requested) == 0) {
-          kLog.warn("input: '{} does not support the {} scroll method", deviceName(device), requestedName);
+          kLog.warn("input: '{}' does not support the {} scroll method", deviceName(device), requestedName);
           return;
         }
         method = requested;
