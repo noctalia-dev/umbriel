@@ -300,7 +300,7 @@ namespace umbriel {
         }
         return;
       }
-      // applyScrollButton() runs first and owns on-button-down scrolling, restoring the default here would undo it.
+      // applyScrollButton() runs first and owns on-button-down scrolling; restoring the default here would undo it.
       if (!configured
           && libinput_device_config_scroll_get_method(libinputDevice) == LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN) {
         return;
