@@ -8,6 +8,7 @@ source "$UMBRIEL_HARNESS_LIB"
 
 readonly SCREENSHOT="$UMBRIEL_RUNTIME_DIR/rule-cast-target.png"
 readonly CAPTURE_LOG="$UMBRIEL_RUNTIME_DIR/rule-cast-target-capture.log"
+readonly CLOSE_CAPTURE_LOG="$UMBRIEL_RUNTIME_DIR/rule-cast-target-close-capture.log"
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -64,6 +65,7 @@ wait_mapped() {
 start_client() {
   foot --config=/dev/null --app-id="$1" --override=colors.background=000000 sh -c 'sleep 120' \
     > /dev/null 2>&1 &
+  client_pid=$!
   wait_mapped "$1"
 }
 
@@ -102,4 +104,29 @@ kill "$capture_pid"
 wait "$capture_pid" 2> /dev/null || true
 expect_frames "after the cast" FF0000 FF0000
 
-echo "is_cast_target follows the window cast: red -> green -> red, the other window stays red"
+# Closing a cast window ends its session inside ~View. A third window keeps the dying
+# view mid-registry, where the erase leaves its slot null: the live crash.
+start_client cast-c
+cast_c_pid=$client_pid
+cast_c_id=$(window_of cast-c | jq -r '.id')
+"$UMBRIEL_CAPTURE_CLIENT" --window "$cast_c_id" > "$CLOSE_CAPTURE_LOG" 2>&1 &
+capture_pid=$!
+await_lines "$CLOSE_CAPTURE_LOG" 'frame window:' 1
+kill "$cast_c_pid"
+closed=false
+for _ in $(seq 80); do
+  [[ -z $(window_of cast-c) ]] && closed=true && break
+  sleep 0.1
+done
+kill "$capture_pid" 2> /dev/null || true
+wait "$capture_pid" 2> /dev/null || true
+if ! "$UMBRIEL" settle > /dev/null 2>&1; then
+  echo "compositor died closing a window under a cast"
+  exit 1
+fi
+if [[ $closed != true ]]; then
+  echo "cast-c never closed"
+  exit 1
+fi
+
+echo "is_cast_target follows the window cast: red -> green -> red, the other window stays red; closing a cast window holds"
