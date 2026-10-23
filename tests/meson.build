@@ -449,7 +449,7 @@ pixel_probe = executable(
 )
 
 # Harness helper that captures one output through ext-image-copy-capture and reports every delivered frame;
-# --cursor also asks for cursor metadata, which is what the compositor gates capture pacing on. --toplevel captures
+# --cursor also asks for cursor metadata, which is what the compositor gates capture pacing on. --window ID captures
 # a window instead, the way a portal window cast does.
 capture_client = executable(
   'capture-client',
