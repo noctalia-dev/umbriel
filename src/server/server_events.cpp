@@ -1496,9 +1496,10 @@ namespace umbriel {
   }
 
   // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.
+  // Closing a cast window ends its session from inside ~View, while the registry holds the dying entry as null.
   void Server::refreshCaptureRuleEffects(const wlr_ext_image_capture_source_v1* source) {
     for (const auto& view : m_registry.all()) {
-      if (view->m_captureSource == source) {
+      if (view != nullptr && view->m_captureSource == source) {
         view->refreshStateRuleEffects();
       }
     }
