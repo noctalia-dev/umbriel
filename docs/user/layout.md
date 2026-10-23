@@ -89,6 +89,7 @@ horizontal strip; horizontal workspaces use a vertical strip.
 default_extent_fraction = 0.5
 center_underfull_strip = true
 center_focused = "never"
+center_on_overview_select = false
 ```
 
 | Key | Default | Description |
@@ -96,6 +97,7 @@ center_focused = "never"
 | `default_extent_fraction` | unset | Initial column extent from 0.1 to 1.0. The packaged config uses `0.5`. |
 | `center_underfull_strip` | `true` | Center a strip narrower than the viewport. |
 | `center_focused` | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering. |
+| `center_on_overview_select` | `false` | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says. |
 
 ### Horizontal and vertical scrolling
 

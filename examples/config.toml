@@ -234,6 +234,8 @@ extent_presets = [0.333, 0.5, 0.667]
 
 [layout.scrolling]
 default_extent_fraction = 0.5
+# Center the window picked in the overview, as column-center would.
+# center_on_overview_select = true
 
 # A tab group shows one window at a time below a bar of titles, and stacks and
 # resizes like any row of its column. Mod+W tabs the focused window with the
@@ -345,10 +347,6 @@ blur_optimized = false
 enabled = true
 delay_ms = 500
 action = "overview-open"
-
-# Center the window picked in the overview, as column-center would.
-# [overview]
-# center_on_select = true
 
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.

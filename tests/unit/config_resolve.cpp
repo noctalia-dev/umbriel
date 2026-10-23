@@ -521,6 +521,20 @@ UMBRIEL_TEST(workspaceRulesCannotOverrideTheResolvedStripDirection) {
   CHECK(resolved.scrolling.direction == umbriel::ScrollingDirection::Vertical);
 }
 
+// The overview reads it from the picked window's workspace, so one workspace can opt out of a global default.
+UMBRIEL_TEST(workspaceRuleOverridesCenterOnOverviewSelect) {
+  Config config;
+  config.layout.scrolling.centerOnOverviewSelect = true;
+
+  WorkspaceConfig rule;
+  rule.name = "dev";
+  rule.layout.scrolling.centerOnOverviewSelect = false;
+  config.workspaceRules.push_back(std::move(rule));
+
+  CHECK(!umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "dev", 0).scrolling.centerOnOverviewSelect);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "other", 1).scrolling.centerOnOverviewSelect);
+}
+
 UMBRIEL_TEST(fixedWorkspaceTargetSelectsItsUniqueOutput) {
   Config config;
 

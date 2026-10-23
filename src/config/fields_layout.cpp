@@ -174,6 +174,7 @@ namespace umbriel {
           real("default_extent_fraction", 0.1, 1.0, &Scrolling::defaultExtentFraction),
           boolean("center_underfull_strip", &Scrolling::centerUnderfullStrip),
           choice("center_focused", &Scrolling::centerFocused, centerFocusedModes()),
+          boolean("center_on_overview_select", &Scrolling::centerOnOverviewSelect),
       };
       static const Fields<Dwindle> dwindle{
           boolean("preserve_split", &Dwindle::preserveSplit),

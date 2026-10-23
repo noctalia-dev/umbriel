@@ -14,7 +14,6 @@ background_blur = true
 workspace_wallpaper = true
 shortcuts = true
 shortcut_keys = "1234567890"
-center_on_select = false
 ```
 
 | Key | Default | Description |
@@ -26,7 +25,6 @@ center_on_select = false
 | `workspace_wallpaper` | `true` | Show each output's background inside its workspace previews. |
 | `shortcuts` | `true` | Show and accept keyboard shortcut badges. |
 | `shortcut_keys` | `"1234567890"` | Preferred keys for shortcut badges. |
-| `center_on_select` | `false` | Center the chosen window's column on close, like `column-center`. |
 
 Background blur uses `[appearance.blur]`. Preview backgrounds use
 `colors.overview.workspace_background` when wallpaper mirroring is disabled or
