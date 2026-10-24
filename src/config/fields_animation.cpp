@@ -213,6 +213,15 @@ namespace umbriel {
       static const registry::Fields<A::Layers> layers = eventFields<A::Layers>({});
       static const registry::Fields<A::WindowsDrag> windowsDrag{
           boolean("physics", &A::WindowsDrag::physics),
+          // Positive stiffness and damping floors bound how long a released
+          // wobble can ring; the settle floor sits above any plausible frame
+          // interval so no in-range value can settle on ordinary frames.
+          real("stiffness", 1.0, 10000.0, &A::WindowsDrag::stiffness),
+          real("damping", 1.0, 100.0, &A::WindowsDrag::damping),
+          real("coupling", 0.0, 10000.0, &A::WindowsDrag::coupling),
+          real("pointer_response", 0.0, 10.0, &A::WindowsDrag::pointerResponse),
+          real("max_displacement_px", 1.0, 4000.0, &A::WindowsDrag::maxDisplacementPx),
+          real("settle_after_pause_s", 0.1, 5.0, &A::WindowsDrag::settleAfterPauseS),
       };
       static const registry::Fields<A> fields{
           boolean("enabled", &A::enabled),

@@ -88,7 +88,7 @@ effect on that event.
 | `[animation.border]` | none | Focus-border color |
 | `[animation.dim_unfocused]` | `dim` | Unfocused-window opacity |
 | `[animation.layers]` | none | Layer-shell map and unmap |
-| `[animation.windows_drag]` | `physics` (default `false`), its only key | Drag physics |
+| `[animation.windows_drag]` | `physics` (default `false`) plus the drag-physics tuning keys below | Drag physics |
 
 `windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`.
 `windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts
@@ -206,6 +206,12 @@ of inner effects. Effects composite descendants before ancestors.
 ```toml
 [animation.windows_drag]
 physics = true
+stiffness = 36.0
+damping = 6.5
+coupling = 100.0
+pointer_response = 2.0
+max_displacement_px = 200.0
+settle_after_pause_s = 0.25
 ```
 
 With drag physics on, a window dragged with the pointer bends like an elastic
@@ -213,6 +219,18 @@ sheet pinned under the pointer, trails its motion, and settles when released
 or held still. It needs the animation master switch. Border, window, and
 overlay effects keep rendering on the deformed window. A window closed
 mid-drag keeps its shape while it fades.
+
+The tuning keys shape the sheet; out-of-range values are clamped to their
+range with a logged diagnostic, and they apply from the next drag on.
+
+| Key | Default | Range | Effect |
+| --- | --- | --- | --- |
+| `stiffness` | 36.0 | 1.0 to 10000.0 | How strongly each point of the sheet returns to rest. |
+| `damping` | 6.5 | 1.0 to 100.0 | How fast the wobble decays; low values keep the sheet springy. |
+| `coupling` | 100.0 | 0.0 to 10000.0 | Rigidity between neighbouring points; low values make the sheet jelly-like. |
+| `pointer_response` | 2.0 | 0.0 to 10.0 | How far a pointer motion loads the sheet; 0 keeps the window rigid. |
+| `max_displacement_px` | 200.0 | 1.0 to 4000.0 | Excursion cap in logical pixels. |
+| `settle_after_pause_s` | 0.25 | 0.1 to 5.0 | Rendering pause after which the sheet snaps back to rest. It is a frame-stall guard: a pause must also dwarf the output's own refresh interval, so ordinary frames never trigger it, at any refresh rate. The interval that wakes a sheet is a partial frame and never stands in for that cadence. |
 
 Only the window's own content deforms; its drop shadow follows that
 deformation within the window's shadow bounds. Re-grabbing a window while it
