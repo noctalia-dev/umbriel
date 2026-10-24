@@ -310,9 +310,12 @@ Speed rises from zero at the inner edge of the trigger zone to `max_speed` at th
 [input.focus]
 follows_mouse = false
 follows_mouse_max_scroll = 0.5
+hover_raises = true
 ```
 
 `follows_mouse = true` focuses the window that the pointer enters through real pointer motion. Scrolling or dragging a layout beneath a stationary pointer does not change focus. After explicit layout scrolling settles, the next real pointer motion can focus the window beneath it without a border crossing. Pointer motion during scrolling does not change focus. Consume and expel commands also let the next pointer motion refresh focus after rearranging windows. This follows the actual seat focus across tiled, floating, and pinned windows, including pinned windows whose owning workspace is inactive.
+
+`hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters with `follows_mouse = true`, and defaults to `true`.
 
 While a client holds a pointer or keyboard grab, such as an open tray menu, hovering a window or crossing outputs preserves that grab and its keyboard focus. An outside click or explicit focus action can still dismiss the menu.
 

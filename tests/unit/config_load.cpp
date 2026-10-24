@@ -1467,6 +1467,25 @@ UMBRIEL_TEST(modRightDoubleClickReadsItsVocabularyAndDefaultsOff) {
   CHECK(containsDiagnostic(store, "ignoring input.mod_right_double_click"));
 }
 
+UMBRIEL_TEST(hoverRaisesLoadsAndDefaultsEnabled) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[input.focus]\nhover_raises = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().input.focus.hoverRaises);
+  CHECK(!containsDiagnostic(store, "unknown key input.focus.hover_raises"));
+
+  file.write("[input.focus]\nhover_raises = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.focus.hoverRaises);
+
+  file.write("[input.focus]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.focus.hoverRaises);
+}
+
 UMBRIEL_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {
   const TempConfig file;
   file.write(R"(
