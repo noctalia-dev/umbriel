@@ -352,6 +352,14 @@ if [[ $(background_signature) != "$baseline_background" ]]; then
   exit 1
 fi
 
+# Centering also uses the assigned HEADLESS-2 output rather than the straddled corner's output.
+accepts window-center
+wait_for_scratch_box 1870 320 420 260
+if [[ $(background_signature) != "$baseline_background" ]]; then
+  echo "window-center changed the background instead of only the scratchpad: $(windows)"
+  exit 1
+fi
+
 # Bare close follows actual seat focus. It must close the scratchpad, not the
 # remembered workspace window. The fractional client intentionally ignores
 # close, so replace it with the harness client that unmaps on close.
