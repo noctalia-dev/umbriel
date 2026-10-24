@@ -5,6 +5,7 @@
 #include "input/event_time.h"
 #include "input/gestures.h"
 #include "input/seat.h"
+#include "input/toplevel_drag.h"
 #include "input/xcursor_matcher.h"
 #include "layer/layer_surface.h"
 #include "layout/drop_target.h"
@@ -1556,6 +1557,9 @@ namespace umbriel {
     // from a panel over the overview. Otherwise the drag icon and both input grabs remain active indefinitely.
     if (wlr_seat* seat = m_server->seat()->wlr(); seat->drag != nullptr) {
       m_server->seat()->notifyPointerModifiers();
+      if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        m_server->seat()->toplevelDrags().dropWithoutTarget(button);
+      }
       wlr_seat_pointer_notify_button(seat, timeMsec, button, state);
       if (seat->drag == nullptr) {
         // The drag grab suppressed normal pointer motion. Re-run hit testing at
