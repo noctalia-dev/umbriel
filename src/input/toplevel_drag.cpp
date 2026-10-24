@@ -205,6 +205,36 @@ namespace umbriel {
     m_active = nullptr;
   }
 
+  bool ToplevelDragManager::dropWithoutTarget(uint32_t button) {
+    wlr_seat* seat = m_server.seat()->wlr();
+    wlr_drag* dataDrag = seat->drag;
+    if (m_active == nullptr
+        || m_active->source == nullptr
+        || m_active->toplevel == nullptr
+        || dataDrag == nullptr
+        || dataDrag->source == nullptr
+        || dataDrag->dropped
+        || seat->pointer_state.grab_button != button
+        || m_server.sessionLocked()
+        || wl_resource_get_version(m_active->source) < WL_DATA_SOURCE_DND_FINISHED_SINCE_VERSION) {
+      return false;
+    }
+    // Mirrors wlroots' drop condition in drag_handle_pointer_button.
+    if (dataDrag->focus_client != nullptr && dataDrag->source->current_dnd_action != 0 && dataDrag->source->accepted) {
+      return false;
+    }
+    // wlroots cancels a drop nobody accepted, and the protocol tells clients to
+    // revert a cancelled drag. Releasing a carried window over empty space is a
+    // tear-off, so complete the drag instead.
+    dataDrag->dropped = true;
+    wlr_data_source_dnd_drop(dataDrag->source);
+    wlr_data_source_dnd_finish(dataDrag->source);
+    // Ending the grab destroys the drag without destroying its source; the
+    // destroy handler places the window through finish().
+    wlr_seat_pointer_end_grab(seat);
+    return true;
+  }
+
   bool ToplevelDragManager::rejectSelection(wlr_data_source* source) {
     for (const Drag* drag : m_drags) {
       if (drag->source != nullptr && dataSource(drag->source) == source) {
