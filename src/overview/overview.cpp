@@ -35,6 +35,7 @@ extern "C" {
 #include <linux/input-event-codes.h>
 #include <format>
 #include <ranges>
+#include <tuple>
 #include <xkbcommon/xkbcommon.h>
 #include "wlr.h"
 // clang-format on
@@ -1983,6 +1984,17 @@ namespace umbriel {
     }
     View* focus = m_pendingFocus;
     m_pendingFocus = nullptr;
+    // A workspace switch during the close scrolls the row, which teardown would cut short at the zoom's landing. The
+    // close still ends here, so binds keep their timing; the real slide carries on from where the row got to.
+    // beginClose retargets every row to where it already is, so only a row actually travelling is carried.
+    std::vector<std::tuple<WorkspaceGroup*, double, double>> carried;
+    for (const auto& state : m_outputs) {
+      const AnimatedValue& row = state->rowScroll;
+      WorkspaceGroup* group = state->output->workspaceGroup();
+      if (group != nullptr && row.animating() && row.from() != row.target()) {
+        carried.emplace_back(group, std::clamp(row.current() - row.target(), -1.0, 1.0), row.velocity());
+      }
+    }
     teardown();
     // Real trees are visible again: settle each active workspace so window
     // positions match where the cards landed.
@@ -1991,6 +2003,12 @@ namespace umbriel {
         if (Workspace* workspace = group->active()) {
           workspace->markArrange(false);
         }
+      }
+    }
+    for (const auto& [group, offset, velocity] : carried) {
+      if (group->slideBegin(offset < 0, offset > 0)) {
+        group->slideApply(offset);
+        group->slideSettle(0, velocity);
       }
     }
     restoreFocus(focus);
