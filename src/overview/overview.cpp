@@ -397,7 +397,14 @@ namespace umbriel {
     bool blurUpdated = false;
     for (const auto& entry : card.surfaces) {
       wlr_surface* surface = entry->surface;
-      if (entry->buffer == nullptr || surface->current.width <= 0 || surface->current.height <= 0) {
+      if (entry->buffer == nullptr) {
+        continue;
+      }
+      // A client retires a subsurface with a null buffer, or by destroying its subsurface role. Either drops the
+      // surface out of the commit walk; skipping its mirror would leave the last frame at the zoom it was laid out at.
+      // A destroyed role emits no commit, so `mapped` catches it before the next walk does.
+      if (!entry->inTree || !surface->mapped || surface->current.width <= 0 || surface->current.height <= 0) {
+        wlr_scene_node_set_enabled(&entry->buffer->node, false);
         continue;
       }
       const float surfaceOpacity =
@@ -1084,6 +1091,12 @@ namespace umbriel {
     const auto* walk = static_cast<const CardWalk*>(data);
     for (const auto& entry : walk->card->surfaces) {
       if (entry->surface == surface) {
+        // A surface given a new subsurface role has a new scene node; the old one went with the old role.
+        entry->sourceBuffer = sourceBufferForSurface(&walk->view->sceneTree()->node, surface);
+        if (entry->sourceBuffer == nullptr) {
+          return;
+        }
+        entry->inTree = true;
         entry->sx = sx + walk->dx;
         entry->sy = sy + walk->dy;
         syncCardBuffer(*entry);
@@ -1091,6 +1104,13 @@ namespace umbriel {
       }
     }
     addCardSurface(surface, sx, sy, data);
+  }
+
+  void Overview::syncCardSurfaces(Card* card) {
+    for (const auto& entry : card->surfaces) {
+      entry->inTree = false;
+    }
+    forEachCardSurface(card, syncCardSurface);
   }
 
   void Overview::onCardSurfaceCommit(wl_listener* listener, void* /*data*/) {
@@ -1103,7 +1123,7 @@ namespace umbriel {
     }
     // The source scene surface reconfigures on every commit. Refresh the
     // passive buffer mirrors, then re-derive their overview crop and scale.
-    forEachCardSurface(card, syncCardSurface);
+    syncCardSurfaces(card);
     PreviewMetrics metrics{};
     if (previewMetrics(*card->owner, *self->m_server, self->zoom(), metrics)) {
       self->layoutCard(*card, metrics, card->owner->rowScroll.current(), self->liveTargetView());
@@ -2122,7 +2142,7 @@ namespace umbriel {
       }
       return true;
     });
-    forEachCardSurface(card, syncCardSurface);
+    syncCardSurfaces(card);
     layoutOutput(*card->owner);
     wlr_output_schedule_frame(card->owner->output->wlr());
   }

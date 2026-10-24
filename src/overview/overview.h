@@ -168,6 +168,9 @@ namespace umbriel {
       int sx = 0;
       int sy = 0;
       bool isRoot = false;
+      // Whether the latest walk of the card's surfaces reached `surface`. A surface that left the tree keeps its entry
+      // until destroyed, and `sourceBuffer` may already be freed with its subsurface role.
+      bool inTree = true;
       wl_listener commit{};
       wl_listener destroy{};
       wl_listener outputSample{};
@@ -293,6 +296,7 @@ namespace umbriel {
     static void forEachCardSurface(Card* card, void (*visit)(wlr_surface*, int, int, void*));
     static void addCardSurface(wlr_surface* surface, int sx, int sy, void* data);
     static void syncCardSurface(wlr_surface* surface, int sx, int sy, void* data);
+    static void syncCardSurfaces(Card* card);
     static void onDesktopSurfaceCommit(wl_listener* listener, void* data);
     static void onDesktopSurfaceDestroy(wl_listener* listener, void* data);
     static void onDesktopMirrorOutputSample(wl_listener* listener, void* data);

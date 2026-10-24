@@ -8,7 +8,10 @@
 // main surface is inset and its corners are interior to the window; the child then sits below the parent.
 // STALE_GEOMETRY declares the window geometry once, at the first size, while still redrawing both buffers at every
 // configured size. FIXED_SIZE pins the toplevel's minimum and maximum size to the fallback dimensions, like the size
-// hints Wine gives an X11 game window.
+// hints Wine gives an X11 game window. CHILD_ON_STDIN reads commands: `h` attaches a null buffer to the child, `d` also
+// destroys its subsurface role while the surface lives on, and `s` maps it again, as a subsurface of the parent once
+// more after `d`. `p` maps an empty green popup of the window, and after `d`, `m` makes the child a subsurface of that
+// popup instead. Each prints child-hidden, child-detached, child-shown, popup-mapped or child-moved once applied.
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"
@@ -17,6 +20,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <poll.h>
 #include <print>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -65,6 +69,10 @@ namespace {
     int geometryWidth = 0;
     int geometryHeight = 0;
     bool reportedFirstConfigure = false;
+    bool childHidden = false;
+    wl_surface* popup = nullptr;
+    Buffer popupBuffer;
+    bool popupConfigured = false;
   };
 
   void requestChildFrame(State& state);
@@ -73,7 +81,7 @@ namespace {
     auto& state = *static_cast<State*>(data);
     wl_callback_destroy(callback);
     state.childFrame = nullptr;
-    if (!state.animateChild || state.child == nullptr) {
+    if (!state.animateChild || state.child == nullptr || state.childHidden) {
       return;
     }
     requestChildFrame(state);
@@ -158,12 +166,14 @@ namespace {
       return false;
     }
 
-    wl_surface_attach(state.child, child.resource, 0, 0);
-    wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
-    if (state.animateChild) {
-      requestChildFrame(state);
+    if (!state.childHidden) {
+      wl_surface_attach(state.child, child.resource, 0, 0);
+      wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
+      if (state.animateChild) {
+        requestChildFrame(state);
+      }
+      wl_surface_commit(state.child);
     }
-    wl_surface_commit(state.child);
 
     if (state.staleGeometry) {
       if (!state.geometryDeclared) {
@@ -215,6 +225,55 @@ namespace {
   constexpr xdg_surface_listener kXdgSurfaceListener = {
       .configure = xdgSurfaceConfigure,
   };
+
+  void popupSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
+    xdg_surface_ack_configure(xdgSurface, serial);
+    static_cast<State*>(data)->popupConfigured = true;
+  }
+
+  constexpr xdg_surface_listener kPopupSurfaceListener = {
+      .configure = popupSurfaceConfigure,
+  };
+
+  void popupConfigure(void*, xdg_popup*, int32_t, int32_t, int32_t, int32_t) {}
+  void popupDone(void*, xdg_popup*) {}
+
+  constexpr xdg_popup_listener kPopupListener = {
+      .configure = popupConfigure,
+      .popup_done = popupDone,
+      .repositioned = nullptr,
+  };
+
+  // Maps an empty green popup of the window, a parent outside the window's own surface tree.
+  void mapPopup(State& state) {
+    const int width = std::max(1, state.width / 2);
+    const int height = std::max(1, state.height / 2);
+    state.popup = wl_compositor_create_surface(state.compositor);
+    xdg_surface* popupXdg = xdg_wm_base_get_xdg_surface(state.wmBase, state.popup);
+    xdg_surface_add_listener(popupXdg, &kPopupSurfaceListener, &state);
+    xdg_positioner* positioner = xdg_wm_base_create_positioner(state.wmBase);
+    xdg_positioner_set_size(positioner, width, height);
+    xdg_positioner_set_anchor_rect(positioner, 0, 0, state.width, state.height);
+    xdg_popup* popup = xdg_surface_get_popup(popupXdg, state.xdgSurface, positioner);
+    xdg_popup_add_listener(popup, &kPopupListener, &state);
+    xdg_positioner_destroy(positioner);
+    wl_surface_commit(state.popup);
+    while (!state.popupConfigured && wl_display_roundtrip(state.display) >= 0) {
+    }
+    state.popupBuffer = createBuffer(state, width, height, 0xFF00FF00);
+    wl_surface_attach(state.popup, state.popupBuffer.resource, 0, 0);
+    wl_surface_damage_buffer(state.popup, 0, 0, width, height);
+    wl_surface_commit(state.popup);
+  }
+
+  void moveChildToPopup(State& state) {
+    state.subsurface = wl_subcompositor_get_subsurface(state.subcompositor, state.child, state.popup);
+    wl_subsurface_set_desync(state.subsurface);
+    wl_surface_attach(state.child, state.childBuffer.resource, 0, 0);
+    wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
+    wl_surface_commit(state.child);
+    wl_surface_commit(state.popup);
+  }
 
   void toplevelConfigure(void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
     auto& state = *static_cast<State*>(data);
@@ -346,7 +405,77 @@ int main(int argc, char** argv) {
   }
   wl_surface_commit(state.surface);
 
-  while (wl_display_dispatch(state.display) >= 0) {
+  const bool controlled = std::getenv("CHILD_ON_STDIN") != nullptr;
+  while (true) {
+    if (!controlled) {
+      if (wl_display_dispatch(state.display) < 0) {
+        break;
+      }
+      continue;
+    }
+    if (wl_display_dispatch_pending(state.display) < 0 || wl_display_flush(state.display) < 0) {
+      break;
+    }
+    pollfd fds[] = {{wl_display_get_fd(state.display), POLLIN, 0}, {STDIN_FILENO, POLLIN, 0}};
+    if (poll(fds, 2, -1) < 0) {
+      break;
+    }
+    if ((fds[0].revents & (POLLIN | POLLHUP | POLLERR)) != 0 && wl_display_dispatch(state.display) < 0) {
+      break;
+    }
+    if ((fds[1].revents & POLLIN) == 0) {
+      if ((fds[1].revents & POLLHUP) != 0) {
+        break;
+      }
+      continue;
+    }
+    char command = 0;
+    if (read(STDIN_FILENO, &command, 1) != 1) {
+      break;
+    }
+    const char* reply = nullptr;
+    if (command == 'h' || command == 'd') {
+      state.childHidden = true;
+      wl_surface_attach(state.child, nullptr, 0, 0);
+      wl_surface_commit(state.child);
+      if (command == 'd') {
+        // The surface outlives its subsurface role.
+        wl_subsurface_destroy(state.subsurface);
+        state.subsurface = nullptr;
+      }
+      reply = command == 'h' ? "child-hidden" : "child-detached";
+    } else if (command == 's') {
+      state.childHidden = false;
+      const bool reattach = state.subsurface == nullptr;
+      if (reattach) {
+        state.subsurface = wl_subcompositor_get_subsurface(state.subcompositor, state.child, state.surface);
+        wl_subsurface_set_position(state.subsurface, -state.offset, -state.offset);
+        wl_subsurface_set_desync(state.subsurface);
+      }
+      wl_surface_attach(state.child, state.childBuffer.resource, 0, 0);
+      wl_surface_damage_buffer(state.child, 0, 0, state.width, state.height);
+      if (state.animateChild) {
+        requestChildFrame(state);
+      }
+      wl_surface_commit(state.child);
+      if (reattach) {
+        // A new subsurface joins its parent's stack on the parent's next commit.
+        wl_surface_commit(state.surface);
+      }
+      reply = "child-shown";
+    } else if (command == 'p' && state.popup == nullptr) {
+      mapPopup(state);
+      reply = "popup-mapped";
+    } else if (command == 'm' && state.subsurface == nullptr && state.popup != nullptr) {
+      state.childHidden = false;
+      moveChildToPopup(state);
+      reply = "child-moved";
+    } else {
+      continue;
+    }
+    wl_display_roundtrip(state.display);
+    std::println("{}", reply);
+    std::fflush(stdout);
   }
 
   if (state.childFrame != nullptr) {
@@ -369,6 +498,7 @@ int main(int argc, char** argv) {
   }
   destroyBuffer(state.childBuffer);
   destroyBuffer(state.parentBuffer);
+  destroyBuffer(state.popupBuffer);
   wl_display_disconnect(state.display);
   return EXIT_SUCCESS;
 }
