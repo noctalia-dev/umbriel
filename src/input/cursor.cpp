@@ -2330,7 +2330,9 @@ namespace umbriel {
   View* Cursor::hoverFocus(
       View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
   ) {
+    // Focusing a view ends any popup grab, and hover alone must not dismiss a menu; a click still does.
     if (m_server->seat()->wlr()->drag != nullptr
+        || wlr_seat_keyboard_has_grab(m_server->seat()->wlr())
         || m_server->sessionLocked()
         || *layer != nullptr
         || view == nullptr
