@@ -1387,6 +1387,10 @@ namespace umbriel {
     }
 
     bool actionWindowCenter(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr)) {
+        view->centerFloating();
+        return true;
+      }
       if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
         view->centerFloating();
       }

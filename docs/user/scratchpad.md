@@ -232,7 +232,7 @@ border_color_unfocused = "#5C4A2AFF"
 Show and hide transitions and backdrop dimming and blur are configured under
 [`animation.scratchpad`](animation.md#animation).
 
-Normal window size, fullscreen, maximize, and close actions work on a focused
+Normal window size, centering, fullscreen, maximize, and close actions work on a focused
 scratchpad window. Layout-relative actions require restoring it to a workspace
 first.
 
