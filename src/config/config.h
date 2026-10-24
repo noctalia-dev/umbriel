@@ -1165,6 +1165,9 @@ namespace umbriel {
       struct Focus {
         bool followsMouse = false;
         std::optional<double> followsMouseMaxScroll;
+        // false narrows hover to focus alone: raising is left to clicks, keybinds, and activation, so sweeping the
+        // pointer across a larger window underneath cannot bury the window above it.
+        bool hoverRaises = true;
         bool operator==(const Focus&) const = default;
       } focus;
 

@@ -246,7 +246,7 @@ namespace umbriel {
     m_group->server()->scheduleIpcWorkspacesEvent();
   }
 
-  void Workspace::setFocusedView(View* view, bool raise) {
+  void Workspace::setFocusedView(View* view, bool raise, bool settleLayers) {
     if (view == nullptr || view->workspace() == this) {
       if (m_focusedView != view) {
         m_focusedView = view;
@@ -257,15 +257,22 @@ namespace umbriel {
       } else if (!view->pinned()) {
         if (view->floating() && !view->scheduledFullscreen()) {
           m_floatingLayerActive = true;
-        } else if (raise) {
+        } else if (settleLayers) {
           m_floatingLayerActive = false;
         }
       }
-      if (view != nullptr && view->floating()) {
+      if (view != nullptr && view->floating() && raise) {
         std::erase(m_floatingStack, view);
         m_floatingStack.push_back(view);
       }
-      restackFloatingViews();
+      if (raise) {
+        restackFloatingViews();
+      } else {
+        // Focus without raise must not reorder the scene, but the floating layer still follows the layer state
+        // above, or a hover would hide floats a fullscreen window is sitting under.
+        syncFloatingLayer();
+        raiseFloatingLayer();
+      }
       // Whatever focused a tab, a click on its bar, a keybind, activation, or IPC, puts that tab on show.
       m_tabs.focusChanged(view);
     }

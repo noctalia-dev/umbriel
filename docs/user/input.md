@@ -409,6 +409,7 @@ zone. `enabled = false` turns the behavior off entirely.
 [input.focus]
 follows_mouse = false
 follows_mouse_max_scroll = 0.5
+hover_raises = true
 ```
 
 `follows_mouse = true` focuses the window that the pointer enters through real
@@ -419,6 +420,12 @@ Pointer motion during scrolling does not change focus. Consume and expel
 commands also let the next pointer motion refresh focus after rearranging windows.
 This follows the actual seat focus across tiled, floating, and pinned windows,
 including pinned windows whose owning workspace is inactive.
+
+`hover_raises = false` narrows hovering to focus alone: the entered window does
+not move above its neighbors, so sweeping the pointer across a larger window
+underneath cannot bury the window above it. Clicks, keybinds, and activation
+still raise. The key only matters with `follows_mouse = true`, and defaults to
+`true`.
 
 `follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal
 that window, measured in viewport widths. `0.0` allows only fully visible

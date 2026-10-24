@@ -137,6 +137,7 @@ numlock_toggle = true
 #
 # [input.focus]
 # follows_mouse = true
+# hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
 # Confine touch input to one display.
 #

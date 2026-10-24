@@ -89,6 +89,9 @@ namespace umbriel {
     void refocusFallback(Output* preferred);
 
     Server& m_server;
+    // The last raise decision focusView made. retainCurrentKeyboardFocus replays it, so a focus kept through a
+    // popup grab or a seat handoff restacks exactly as the transition that selected the view did.
+    bool m_lastRaise = true;
   };
 
 } // namespace umbriel
