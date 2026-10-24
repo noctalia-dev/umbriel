@@ -1292,6 +1292,13 @@ namespace umbriel {
     m_grabButton = 0;
     if (restoreDragPresentation && view != nullptr) {
       view->restoreHomePresentation();
+      // A drag abandoned outside its drop path (session lock mid-drag, the
+      // toplevel-drag detach endings) never runs finishFloatMove. Settle here
+      // exactly like a drop: nothing else re-clamps where the drag parked the
+      // window, and the margin must hold without waiting for a usable change.
+      if (view->floating()) {
+        static_cast<void>(view->settleFloatingDrop(view->layoutX(), view->layoutY()));
+      }
     }
     // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
     // an unchanged clip otherwise keeps the scaled source/destination until the client commits again.
@@ -2976,23 +2983,25 @@ namespace umbriel {
       }
     }
     // Commit the final position after any workspace transfer, including drags whose target was deferred until
-    // release, so later restores use the dropped origin.
-    const FloatingPoint reachable = keepTitleBarReachable({x, y}, view->titleBarHeight(), view->floatingUsableArea());
-    view->setPosition(reachable.x, reachable.y);
-    view->rememberFloatingPosition();
+    // release, so later restores use the dropped origin. A free drop settles into the grabbable margin here —
+    // animated, exactly at release — since the drag itself may have parked the window mostly out of frame.
+    const wlr_box usable = view->floatingUsableArea();
+    const FloatingPoint settled = view->settleFloatingDrop(x, y);
 
     resetMode();
     if (snap && snapOutput == output && view->canSnap()) {
       FloatingGeometry normalPosition;
       normalPosition.rememberPositionFraction({preDragX, preDragY}, preDragArea);
-      const auto restore =
-          normalPosition.restoredOrigin(view->floatingUsableArea()).value_or(FloatingPoint{preDragX, preDragY});
+      // The restore is a placement too: the remembered fraction can resolve outside the margin on a smaller output.
+      const FloatingPoint restore = view->grabbableOrigin(
+          normalPosition.restoredOrigin(usable).value_or(FloatingPoint{preDragX, preDragY}), usable
+      );
       if (!floatingLayout) {
         view->setPosition(restore.x, restore.y);
       }
       if (!view->snapTo(*snap, floatingLayout ? std::optional{restore} : std::nullopt)) {
         // Client constraints can change after the preview was drawn. Keep the free drop when it no longer fits.
-        view->setPosition(reachable.x, reachable.y);
+        view->setPosition(settled.x, settled.y);
       }
     }
     m_server->focusView(view, FocusReason::DragDrop);

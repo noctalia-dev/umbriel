@@ -990,6 +990,15 @@ namespace umbriel {
     if (usable.width <= 0 || usable.height <= 0) {
       usable = outputBox;
     }
+    // Floating windows are clamped to the grabbable margin only when the area
+    // that bounds them changed: an arrange driven by anything else (a focus
+    // reveal putting the strip on show, a window opening) must never
+    // reposition them.
+    const bool usableChanged = usable.x != m_lastArrangeUsable.x
+        || usable.y != m_lastArrangeUsable.y
+        || usable.width != m_lastArrangeUsable.width
+        || usable.height != m_lastArrangeUsable.height;
+    m_lastArrangeUsable = usable;
 
     // Fullscreen and floating views position themselves. Established tiled members share windows_move below, while an
     // opening tiled lifecycle view is presented directly at its final slot.
@@ -1016,7 +1025,9 @@ namespace umbriel {
 
       if (m_layout->columnOf(view) < 0) {
         // Floating (non-fullscreen): clip + enable against the home output.
-        view->clampFloatingPosition();
+        if (usableChanged) {
+          view->clampFloatingPosition();
+        }
         syncViewPresentation(view);
       }
     }

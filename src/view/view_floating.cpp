@@ -86,6 +86,22 @@ namespace umbriel {
     return usable;
   }
 
+  FloatingPoint View::grabbableOrigin(FloatingPoint origin, const wlr_box& usable) const {
+    return keepTitleBarReachable(clampFloatingOrigin(origin, geometryBox(), usable), titleBarHeight(), usable);
+  }
+
+  FloatingPoint View::settleFloatingDrop(int x, int y) {
+    const wlr_box usable = floatingUsableArea();
+    const FloatingPoint settled = grabbableOrigin({x, y}, usable);
+    if (settled.x != x || settled.y != y) {
+      animateTo(settled.x, settled.y);
+    } else {
+      setPosition(x, y);
+    }
+    rememberFloatingPosition();
+    return settled;
+  }
+
   std::optional<FloatingPoint> View::floatingClampTarget(FloatingPoint origin, int width, int height, bool resize) {
     if (m_tiled || !m_mapped || attached() || scheduledFullscreen() || scheduledMaximized() || sizeGrabActive()) {
       return std::nullopt;
@@ -110,13 +126,20 @@ namespace umbriel {
   }
 
   void View::clampFloatingPosition() {
-    if (m_posX.animating() || m_posY.animating()) {
-      return;
-    }
+    // Mid-tween the clamp applies to where the tween is headed and retargets it. Skipping instead would spend the
+    // usable-change check on a target that settles out of the margin, and the change is never re-checked.
+    const bool animating = m_posX.animating() || m_posY.animating();
     const wlr_box& geo = geometryBox();
-    const FloatingPoint origin{.x = layoutX(), .y = layoutY()};
+    const FloatingPoint origin{
+        .x = animating ? layoutTargetX() : layoutX(),
+        .y = animating ? layoutTargetY() : layoutY(),
+    };
     if (const auto clamped = floatingClampTarget(origin, geo.width, geo.height, false)) {
-      setPosition(clamped->x, clamped->y);
+      if (animating) {
+        animateTo(clamped->x, clamped->y);
+      } else {
+        setPosition(clamped->x, clamped->y);
+      }
     }
   }
 
@@ -139,11 +162,15 @@ namespace umbriel {
       return;
     }
     const wlr_box usable = floatingUsableArea();
-    if (const std::optional<FloatingPoint> origin = m_floating.restoredOrigin(usable)) {
-      animateTo(origin->x, origin->y);
+    if (const std::optional<FloatingPoint> restored = m_floating.restoredOrigin(usable)) {
+      // The remembered fraction is proportional, so on a smaller output it can resolve outside the grabbable margin
+      // (a scale jump can leave the window fully off). Placements land inside it, and the clamped origin — where the
+      // window actually is — is what gets re-anchored.
+      const FloatingPoint origin = grabbableOrigin(*restored, usable);
+      animateTo(origin.x, origin.y);
       if (rememberRestored) {
         // Re-anchor on the new usable area so a second deliberate cross-output move lands proportionally again.
-        m_floating.rememberPositionFraction(*origin, usable);
+        m_floating.rememberPositionFraction(origin, usable);
       }
       return;
     }

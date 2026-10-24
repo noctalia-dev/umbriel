@@ -357,6 +357,13 @@ namespace umbriel {
     void setDragPosition(int x, int y, bool updateTarget);
     // Keep at least clamp(size / 4, 10, 75) pixels per axis on-screen.
     void clampFloatingPosition();
+    // keepTitleBarReachable of clampFloatingOrigin for this frame: the origin a floating placement must land at so
+    // the window stays grabbable inside `usable`. Restores computed from remembered fractions go through here.
+    [[nodiscard]] FloatingPoint grabbableOrigin(FloatingPoint origin, const wlr_box& usable) const;
+    // The settle every drag ending runs, released or abandoned: clamp the last
+    // position into the grabbable margin, animate there, remember it. Returns
+    // where the window landed.
+    FloatingPoint settleFloatingDrop(int x, int y);
     // clampFloatingPosition for a requested but uncommitted size, snapping an axis the size fills to the usable edge.
     // Animates, settling with the presented size.
     void clampFloatingPositionForSize(int width, int height);

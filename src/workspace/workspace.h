@@ -328,6 +328,10 @@ namespace umbriel {
     bool m_inSwitchTransition = false;
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
+    // The usable area the last applyPositions pass clamped floating windows
+    // against. An arrange whose area is unchanged — a focus reveal — must not
+    // reposition them.
+    wlr_box m_lastArrangeUsable{};
     bool m_scrollHoverFocusDeferred = false;
     // Remembers the last state each occupancy question was answered in, so the answers are only recomputed when they
     // changed.

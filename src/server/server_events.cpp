@@ -3375,10 +3375,14 @@ namespace umbriel {
           const wlr_box outputBox = target->layoutBox();
           if (outputBox.width > 0 && outputBox.height > 0) {
             view->cancelPositionAnimation();
-            view->setPosition(
-                outputBox.x + static_cast<int>(std::lround((*home.floatingOutputPosition)[0] * outputBox.width)),
-                outputBox.y + static_cast<int>(std::lround((*home.floatingOutputPosition)[1] * outputBox.height))
-            );
+            // The fractions are proportional to the output box; on a smaller output the result can resolve outside
+            // the grabbable margin, so the placement is clamped like any other restore.
+            const FloatingPoint restored{
+                .x = outputBox.x + static_cast<int>(std::lround((*home.floatingOutputPosition)[0] * outputBox.width)),
+                .y = outputBox.y + static_cast<int>(std::lround((*home.floatingOutputPosition)[1] * outputBox.height)),
+            };
+            const FloatingPoint origin = view->grabbableOrigin(restored, view->floatingUsableArea());
+            view->setPosition(origin.x, origin.y);
           }
         } else if (floating && moved) {
           view->restoreFloatingPosition(true);
