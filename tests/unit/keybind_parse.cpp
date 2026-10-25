@@ -269,13 +269,18 @@ UMBRIEL_TEST(parsesPrimaryExtentFractions) {
 
   CHECK(parseAction("window-set-primary-extent:1.0", bind));
   CHECK(parseAction("window-set-primary-extent:0.1", bind));
+  // Scrolling columns may span several viewports; the parser cannot know the layout, so wider values parse and the
+  // layout clamps what it realizes.
+  CHECK(parseAction("window-set-primary-extent:1.5", bind));
+  CHECK(parseAction("window-set-primary-extent:4.0", bind));
 }
 
 UMBRIEL_TEST(rejectsOutOfRangePrimaryExtentFractions) {
   Keybind bind;
   CHECK(!parseAction("window-set-primary-extent:0", bind)); // below the 0.1 floor
   CHECK(!parseAction("window-set-primary-extent:0.09", bind));
-  CHECK(!parseAction("window-set-primary-extent:1.5", bind)); // above 1.0
+  CHECK(!parseAction("window-set-primary-extent:4.5", bind)); // above the 4.0 wide ceiling
+  CHECK(!parseAction("window-set-primary-extent:10", bind));
   CHECK(!parseAction("window-set-primary-extent:-0.5", bind));
   CHECK(!parseAction("window-set-primary-extent:abc", bind));
   CHECK(!parseAction("window-set-primary-extent:0.5x", bind)); // trailing garbage

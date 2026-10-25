@@ -74,7 +74,9 @@ namespace umbriel {
       using registry::KeyDescription;
       using O = OutputRule;
       static const registry::Fields<O::Layout::Scrolling> scrolling{
-          registry::real("default_extent_fraction", 0.1, 1.0, &O::Layout::Scrolling::defaultExtentFraction),
+          registry::real(
+              "default_extent_fraction", 0.1, kMaxWideFraction, &O::Layout::Scrolling::defaultExtentFraction
+          ),
       };
       static const registry::Fields<O::Layout> layout{
           registry::table("scrolling", &O::Layout::scrolling, scrolling),

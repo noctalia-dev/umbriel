@@ -846,6 +846,28 @@ UMBRIEL_TEST(cycleWidthWrapsWhenTheNextPresetIsOutOfReach) {
   CHECK(std::abs(fixture.layout.widthFraction(0) - 0.5) < 1e-9);
 }
 
+UMBRIEL_TEST(widePresetsWrapInsteadOfStallingASplitShare) {
+  // A preset beyond the split ceiling reaches as far as the layout realizes, then wraps; it never parks.
+  Fixture fixture;
+  fixture.config.extentPresets = {0.5, 1.5};
+  fixture.addLeaves(2);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setWidthFraction(0, 0.5));
+  CHECK(fixture.layout.cycleWidth(0, 1));
+  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.9) < 1e-9);
+  CHECK(fixture.layout.cycleWidth(0, 1));
+  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.5) < 1e-9);
+}
+
+UMBRIEL_TEST(wideFractionsLandAtTheSingleViewportCeiling) {
+  Fixture fixture;
+  fixture.addLeaves(2);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setWidthFraction(0, 1.5));
+  CHECK(fixture.layout.widthFraction(0) <= 1.0);
+  CHECK(fixture.layout.maxExtentFraction() == 1.0);
+}
+
 UMBRIEL_TEST(resizeEdgesComeFromTileThirds) {
   Fixture fixture;
   fixture.addLeaves(2);

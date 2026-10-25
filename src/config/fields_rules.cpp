@@ -259,7 +259,7 @@ namespace umbriel {
               }()
           ),
           integer("default_scrolling_extent_px", 1, 100000, &W::defaultScrollingExtentPx),
-          real("default_scrolling_extent", 0.1, 1.0, &W::defaultScrollingExtent),
+          real("default_scrolling_extent", 0.1, kMaxWideFraction, &W::defaultScrollingExtent),
           custom<W>(
               "default_workspace", KeyDescription("int_or_string").withRange(1, kMaxWorkspaces),
               [](const toml::node& node, const std::string& path, W& target, registry::ReadContext&) {

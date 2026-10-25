@@ -181,6 +181,24 @@ namespace umbriel {
   // basis accumulates, tighter than any preset difference a user can perceive.
   constexpr double kFractionEpsilon = 0.0001;
 
+  // Widest a scrolling column may span, in viewports. A constant rather than unbounded so one column cannot ask a
+  // client for an unreasonably huge buffer. Config and keybinds accept up to this; each layout clamps to what it
+  // realizes through Layout::maxExtentFraction, so shared presets stay usable in every layout.
+  constexpr double kMaxWideFraction = 4.0;
+
+  // Presets a layout capped at `max` can realize. Dropping the rest keeps a cycling step from stalling on a preset
+  // the layout would clamp away; the 100 % preset stays reachable.
+  [[nodiscard]] inline std::vector<double> boundedPresets(const std::vector<double>& presets, double max) {
+    std::vector<double> out;
+    out.reserve(presets.size());
+    for (const double preset : presets) {
+      if (preset <= max + kFractionEpsilon) {
+        out.push_back(preset);
+      }
+    }
+    return out;
+  }
+
   // The next preset from `current` in `direction` (negative shrinks), wrapping
   // at the ends. Every layout's width and height cycle shares this rule, and so
   // does the floating cycle. `current` must be an exact fraction: a basis
@@ -306,6 +324,10 @@ namespace umbriel {
 
     virtual bool cycleWidth(int columnIndex, int direction) = 0;
     virtual bool toggleFullWidth(int columnIndex) = 0;
+    // Widest extent fraction this layout realizes. Scrolling columns span up to kMaxWideFraction viewports; splitting
+    // and floating extents stay within one.
+    [[nodiscard]] virtual double maxExtentFraction() const { return 1.0; }
+
     virtual bool setWidthFraction(int columnIndex, double fraction) = 0;
     virtual void clearFullWidthState(int columnIndex) = 0;
     [[nodiscard]] virtual double widthFraction(int columnIndex) const = 0;

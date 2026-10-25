@@ -695,7 +695,7 @@ namespace umbriel {
             || fractionPtr != arg.data() + arg.size()
             || !std::isfinite(fraction)
             || fraction < 0.1
-            || fraction > 1.0) {
+            || fraction > kMaxWideFraction) {
           break;
         }
         output.action = spec.action;

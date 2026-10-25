@@ -78,13 +78,13 @@ attach_to_parent = false
 
 ## Size and Position Rules
 
-| Key                           | Applies to | Description                                                  |
-| ----------------------------- | ---------- | ------------------------------------------------------------ |
-| `default_floating_size_px`    | Floating   | Logical-pixel size, such as `{ width = 800, height = 600 }`. |
-| `default_floating_size`       | Floating   | Fraction of the output usable area.                          |
-| `default_scrolling_extent_px` | Scrolling  | Initial logical-pixel extent along the strip.                |
-| `default_scrolling_extent`    | Scrolling  | Initial fractional extent along the strip.                   |
-| `default_position`            | Floating   | Position from a named anchor.                                |
+| Key                           | Applies to | Description                                                      |
+| ----------------------------- | ---------- | ---------------------------------------------------------------- |
+| `default_floating_size_px`    | Floating   | Logical-pixel size, such as `{ width = 800, height = 600 }`.     |
+| `default_floating_size`       | Floating   | Fraction of the output usable area.                              |
+| `default_scrolling_extent_px` | Scrolling  | Initial logical-pixel extent along the strip, up to 4 viewports. |
+| `default_scrolling_extent`    | Scrolling  | Initial fractional extent along the strip, 0.1 to 4.0.           |
+| `default_position`            | Floating   | Position from a named anchor.                                    |
 
 Pixel values take precedence over fractions. Each axis is optional. A tiled window remembers floating size and position rules until it first floats, and a floating window remembers its scrolling extent until it first tiles.
 

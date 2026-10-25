@@ -307,7 +307,8 @@ preserve_split = false
   CHECK_EQ(store.config().layout.extentPresets.size(), size_t{3});
   CHECK_EQ(store.config().layout.extentPresets[0], 0.1);
   CHECK_EQ(store.config().layout.extentPresets[1], 0.5);
-  CHECK_EQ(store.config().layout.extentPresets[2], 1.0);
+  // Above 1.0 loads unclamped (scrolling columns may span several viewports); only the 0.1 floor clamps here.
+  CHECK_EQ(store.config().layout.extentPresets[2], 2.0);
   CHECK(!store.config().layout.scrolling.centerUnderfullStrip);
   CHECK(store.config().layout.dwindle.preserveSplit);
   CHECK(store.config().appearance.preferNoCsd);
@@ -4876,6 +4877,36 @@ UMBRIEL_TEST(windowSnappingDefaultsOnAndRejectsNonBooleans) {
   CHECK(store.reload().success);
   CHECK(store.config().input.windowSnapping);
   CHECK(containsDiagnostic(store, "input.window_snapping"));
+}
+
+UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  // Presets above 1.0 load unclamped: scrolling columns may span several viewports.
+  file.write("[layout]\nextent_presets = [0.5, 2.0]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layout.extentPresets.size(), size_t{2});
+  CHECK(store.config().layout.extentPresets[1] == 2.0);
+
+  // Beyond the wide ceiling clamps with the usual diagnostic.
+  file.write("[layout]\nextent_presets = [0.5, 9.0]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().layout.extentPresets[1] == 4.0);
+  CHECK(containsDiagnostic(store, "layout.extent_presets"));
+
+  file.write("[layout.scrolling]\ndefault_extent_fraction = 2.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().layout.scrolling.defaultExtentFraction.value_or(0.0) == 2.0);
+
+  file.write("[output.DP-1.layout.scrolling]\ndefault_extent_fraction = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().outputs[0].layout.scrolling.defaultExtentFraction.value_or(0.0) == 1.5);
+
+  file.write("[[window_rule]]\nmatch.app_id = \"^wide$\"\ndefault_scrolling_extent = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].defaultScrollingExtent.value_or(0.0) == 1.5);
 }
 
 int main() { return RUN_TESTS(); }

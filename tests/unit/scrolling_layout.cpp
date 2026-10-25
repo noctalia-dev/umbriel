@@ -527,7 +527,7 @@ UMBRIEL_TEST(widthFractionsAreClamped) {
   Fixture fixture;
   fixture.addColumns(1);
   CHECK(fixture.layout.setWidthFraction(0, 5.0));
-  CHECK(fixture.layout.widthFraction(0) <= 1.0);
+  CHECK(fixture.layout.widthFraction(0) == 4.0);
   CHECK(fixture.layout.setWidthFraction(0, -1.0));
   CHECK(fixture.layout.widthFraction(0) > 0.0);
   // Out-of-range column indices are rejected, not clamped into a neighbour.
@@ -615,11 +615,19 @@ UMBRIEL_TEST(clientMaxWidthNarrowsAColumn) {
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 300);
 }
 
-UMBRIEL_TEST(constraintsNeverExceedTheViewport) {
+UMBRIEL_TEST(constraintsNeverExceedTheWideCeiling) {
   Fixture fixture;
   fixture.addColumns(1);
   fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minWidth = 99999}; });
-  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 5076);
+}
+
+UMBRIEL_TEST(clientMaxHintCapsAWideColumn) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.maxWidth = 2000}; });
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 2000);
 }
 
 UMBRIEL_TEST(fullscreenColumnFillsTheUsableAreaIgnoringFractions) {
@@ -1987,6 +1995,160 @@ UMBRIEL_TEST(snapshotUsesMemberIdsInsteadOfCapturedViewPointers) {
   CHECK_EQ(restored.layout.columns()[0].views[0], stub(10));
   CHECK_EQ(restored.layout.columns()[1].views[0], stub(11));
   CHECK_EQ(restored.layout.columns()[1].views[1], stub(12));
+}
+
+// wide columns: a scrolling column may span more than one viewport, panned through with scroll actions.
+UMBRIEL_TEST(wideFractionSpansMultipleViewports) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  // Slot arithmetic: round(fraction * (viewport + totalGap)) - totalGap.
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  CHECK(fixture.layout.widthFraction(0) == 2.0);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 2532);
+
+  // The wide ceiling is 4.0; the floor stays 0.1.
+  CHECK(fixture.layout.setWidthFraction(0, 5.0));
+  CHECK(fixture.layout.widthFraction(0) == 4.0);
+  CHECK(fixture.layout.setWidthFraction(0, 0.0));
+  CHECK(fixture.layout.widthFraction(0) == 0.1);
+}
+
+UMBRIEL_TEST(wideLoneColumnScrollsAndSnapsAtBothEnds) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  const int width = fixture.layout.columnWidth(0, kViewport);
+  CHECK_EQ(width, 2532);
+  CHECK_EQ(fixture.layout.maxScroll(kViewport), width - kViewport);
+
+  // A wide column has two real rest points: flush with each viewport edge.
+  const auto snap = fixture.layout.snapScrolls(0, kViewport);
+  CHECK(snap[0] != snap[1]);
+  CHECK(snap[0] == fixture.layout.columnX(0, kViewport));
+  CHECK(snap[1] == fixture.layout.columnX(0, kViewport) + width - kViewport);
+
+  // A viewport-wide column still rests at the single covering offset.
+  Fixture full;
+  full.addColumns(1);
+  CHECK(full.layout.setWidthFraction(0, 1.0));
+  const auto cover = full.layout.snapScrolls(0, kViewport);
+  CHECK(cover[0] == cover[1]);
+}
+
+UMBRIEL_TEST(ensureVisibleKeepsAPannedWideColumn) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  const int width = fixture.layout.columnWidth(0, kViewport);
+  const int x = fixture.layout.columnX(0, kViewport);
+
+  // Already inside the pan range: refocusing must not yank the strip away from where the user panned.
+  fixture.layout.setScroll(x + 600.0);
+  fixture.layout.ensureVisible(0, kViewport);
+  CHECK(fixture.layout.scroll() == x + 600.0);
+
+  // Past the trailing edge: clamped to right-flush.
+  fixture.layout.setScroll(x + width);
+  fixture.layout.ensureVisible(0, kViewport);
+  CHECK(fixture.layout.scroll() == x + width - kViewport);
+}
+
+UMBRIEL_TEST(activateColumnPansAwideColumnFromTheEntrySide) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  CHECK(fixture.layout.setWidthFraction(1, 2.0));
+  const int x = fixture.layout.columnX(1, kViewport);
+  const int width = fixture.layout.columnWidth(1, kViewport);
+
+  // Focus arriving from the right neighbor lands the trailing edge...
+  fixture.layout.setScroll(0.0);
+  fixture.layout.activateColumn(1, kViewport, 2);
+  CHECK(fixture.layout.scroll() == x + width - kViewport);
+
+  // ...and from the left neighbor, the leading edge. Parked past the trailing edge first, where the clamp fallback
+  // would give trailing: only the entry-side rule lands leading here.
+  fixture.layout.setScroll(x + width);
+  fixture.layout.activateColumn(1, kViewport, 0);
+  CHECK(fixture.layout.scroll() == x);
+}
+
+UMBRIEL_TEST(alwaysPolicyDoesNotRecenterAPannableColumn) {
+  // A column wider than the viewport pans, so Always centering must not yank the strip to its midpoint on refocus.
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::Always;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  const int x = fixture.layout.columnX(0, kViewport);
+
+  fixture.layout.setScroll(x + 600.0);
+  fixture.layout.ensureVisible(0, kViewport);
+  CHECK(fixture.layout.scroll() == x + 600.0);
+}
+
+UMBRIEL_TEST(snapVisibleKeepsAnEntrySideLanding) {
+  // A forced snap (a fullscreen or maximize-to-edges extent change) must not overwrite the edge the focus move landed:
+  // the pan rule owns the strip even when the snap forces.
+  Fixture fixture;
+  fixture.addColumns(3);
+  CHECK(fixture.layout.setWidthFraction(1, 2.0));
+  const int x = fixture.layout.columnX(1, kViewport);
+  const int width = fixture.layout.columnWidth(1, kViewport);
+
+  fixture.layout.setScroll(0.0);
+  fixture.layout.activateColumn(1, kViewport, 2);
+  CHECK(fixture.layout.scroll() == x + width - kViewport);
+
+  fixture.layout.snapVisible(1, kViewport);
+  CHECK(fixture.layout.scroll() == x + width - kViewport);
+}
+
+UMBRIEL_TEST(widthGrowthKeepsTheLeadingEdge) {
+  // Never policy: growing a focused column past the viewport anchors its leading edge instead of recentring.
+  Fixture fixture;
+  fixture.addColumns(3);
+  CHECK(fixture.layout.setWidthFraction(1, 1.0));
+  fixture.layout.activateColumn(1, kViewport, 0);
+  const auto x = static_cast<double>(fixture.layout.columnX(1, kViewport));
+  CHECK(fixture.layout.scroll() == x);
+  CHECK(fixture.layout.setWidthFraction(1, 2.0));
+  fixture.layout.reevaluateColumn(1, kViewport);
+  CHECK(fixture.layout.scroll() == x);
+}
+
+UMBRIEL_TEST(wideningAPolicyCenteredColumnFollowsThePanRule) {
+  // OnOverflow centered this column because its pair overflowed. Widening it past the viewport must not "undo" that
+  // centering to the neighbor's edge: the pan rule owns the strip and lands the nearest edge of the pan range.
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 0.9));
+  CHECK(fixture.layout.setWidthFraction(1, 0.9));
+  fixture.layout.activateColumn(1, kViewport, 0);
+  CHECK(fixture.layout.setWidthFraction(1, 2.0));
+  fixture.layout.reevaluateColumn(1, kViewport);
+  const auto leading = static_cast<double>(fixture.layout.columnX(1, kViewport));
+  CHECK(fixture.layout.scroll() == leading);
+}
+
+UMBRIEL_TEST(justOverTheViewportStillPans) {
+  // Between one viewport and the fullscreen overhang lies a band of user-set fractions; those columns pan too.
+  Fixture fixture;
+  fixture.addColumns(1);
+  CHECK(fixture.layout.setWidthFraction(0, 1.01));
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 1273);
+  const auto snap = fixture.layout.snapScrolls(0, kViewport);
+  CHECK(snap[0] != snap[1]);
+}
+
+UMBRIEL_TEST(snapshotRoundTripKeepsWideFractions) {
+  Fixture source;
+  source.addColumns(1);
+  CHECK(source.layout.setWidthFraction(0, 1.5));
+  const auto capture = source.layout.captureState();
+
+  Fixture restored;
+  CHECK(restored.layout.restoreState(*capture.snapshot, capture.members));
+  CHECK(restored.layout.widthFraction(0) == 1.5);
 }
 
 int main() { return RUN_TESTS(); }

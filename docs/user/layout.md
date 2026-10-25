@@ -47,7 +47,7 @@ client_maximize = "column"  # or "edges"
 | Key                    | Default               | Description                                                                                                                                                                                                                                                                  |
 | ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gap`                  | `8`                   | Gap between windows in logical pixels.                                                                                                                                                                                                                                       |
-| `extent_presets`       | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions, in any order; cycling steps by size.                                                                                                                                                                           |
+| `extent_presets`       | `[0.333, 0.5, 0.667]` | Fractions used by primary and secondary extent cycle actions, in any order; cycling steps by size. Values run `0.1` to `4.0`; above `1.0` they apply only to scrolling columns (see [Wide columns](#wide-columns)).                                                          |
 | `new_exits_fullscreen` | `[]`                  | Kinds of arriving window that make a fullscreen window on the workspace leave fullscreen. See [Leaving fullscreen](#leaving-fullscreen).                                                                                                                                     |
 | `client_maximize`      | `"column"`            | What a tiled window's own maximize button does: `"column"` fills the column like `window-toggle-maximize`, `"edges"` fills the usable area without struts, gaps, or borders like `window-toggle-maximize-to-edges`. See [Maximize and fullscreen](#maximize-and-fullscreen). |
 
@@ -94,12 +94,12 @@ center_focused = "never"
 center_on_overview_select = false
 ```
 
-| Key                         | Default   | Description                                                                                              |
-| --------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `default_extent_fraction`   | unset     | Initial column extent from 0.1 to 1.0. The packaged config uses `0.5`.                                   |
-| `center_underfull_strip`    | `true`    | Center a strip narrower than the viewport.                                                               |
-| `center_focused`            | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                |
-| `center_on_overview_select` | `false`   | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says. |
+| Key                         | Default   | Description                                                                                                                                    |
+| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default_extent_fraction`   | unset     | Initial column extent from 0.1 to 4.0 (above 1.0 spans several viewports — see [Wide columns](#wide-columns)). The packaged config uses `0.5`. |
+| `center_underfull_strip`    | `true`    | Center a strip narrower than the viewport.                                                                                                     |
+| `center_focused`            | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                                                      |
+| `center_on_overview_select` | `false`   | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says.                                       |
 
 ### Horizontal and vertical scrolling
 
@@ -257,6 +257,12 @@ Primary and secondary extent actions use `layout.extent_presets`:
 - Floating: primary changes width; secondary changes height.
 
 The `window-set-*` actions assign an exact fraction. `window-modify-*` changes it by a signed amount, and `window-cycle-*` walks the configured presets.
+
+### Wide columns
+
+A scrolling column may span more than one output: extent fractions up to `4.0` fill `fraction × (viewport + gap) - gap` pixels, so `2.0` covers two viewports with the gap between them. Values above `1.0` apply only to the scrolling layout — the other layouts clamp to one viewport, and floating extent cycles skip presets they cannot realize. `window-set-*` accepts the wider range and the layout clamps what it cannot show.
+
+A wide column scrolls like a strip longer than the output: `layout-scroll-left`, `layout-scroll-right`, and `layout-scroll-drag` pan through it, a strip swipe rests at either of its edges, and refocusing the column keeps the pan in place instead of snapping back. Focus arriving from a neighbor shows that side's edge. Interactive resizing grows a column up to the same `4.0` ceiling, but the pointer cannot leave the output, so growth stops when the cursor reaches its edge — use the extent actions, or drag, scroll, then drag again to grow further. A client-chosen first width still fits one viewport; wider extents come from the keys above, window rules, and resize.
 
 ### Client minimum sizes
 
