@@ -1,11 +1,8 @@
 # IPC
 
-Umbriel exposes a local UNIX socket for queries, actions, and event
-subscriptions. Most users should use the `umbriel` command rather than connect
-to the socket directly.
+Umbriel exposes a local UNIX socket for queries, actions, and event subscriptions. Most users should use the `umbriel` command rather than connect to the socket directly.
 
-`UMBRIEL_SOCKET` contains the socket path. Without it, use
-`$XDG_RUNTIME_DIR/umbriel-$WAYLAND_DISPLAY.sock`.
+`UMBRIEL_SOCKET` contains the socket path. Without it, use `$XDG_RUNTIME_DIR/umbriel-$WAYLAND_DISPLAY.sock`.
 
 Each request and reply is one JSON object per line:
 
@@ -17,104 +14,52 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 
 ## Queries
 
-| Request | CLI |
-| --- | --- |
-| `{"cmd":"effects"}` | `umbriel effects --json` |
-| `{"cmd":"windows"}` | `umbriel windows --json` |
-| `{"cmd":"workspaces"}` | `umbriel workspaces --json` |
-| `{"cmd":"submap"}` | `umbriel submap --json` |
-| `{"cmd":"layers"}` | `umbriel layers --json` |
-| `{"cmd":"outputs"}` | `umbriel outputs --json` |
-| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>` |
+| Request                          | CLI                         |
+| -------------------------------- | --------------------------- |
+| `{"cmd":"effects"}`              | `umbriel effects --json`    |
+| `{"cmd":"windows"}`              | `umbriel windows --json`    |
+| `{"cmd":"workspaces"}`           | `umbriel workspaces --json` |
+| `{"cmd":"submap"}`               | `umbriel submap --json`     |
+| `{"cmd":"layers"}`               | `umbriel layers --json`     |
+| `{"cmd":"outputs"}`              | `umbriel outputs --json`    |
+| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>`      |
 
-Window entries include IDs, application identity, process ID, geometry,
-output, workspace, and scratchpad membership. X11 windows report the process ID
-they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a
-[tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's
-tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its
-group shows another tab; the plain listing marks it `tab` instead of
-`tile`.
+Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
 
-Window state follows what Umbriel has decided, ahead of the client's redraw, the
-same way geometry reports layout targets:
+Window state follows what Umbriel has decided, ahead of the client's redraw, the same way geometry reports layout targets:
 
-| Field | Meaning |
-| --- | --- |
-| `floating` | Outside the tiled layout |
-| `snap` | Snapped region (`left`, `right`, `top`, `bottom`, `top_left`, `top_right`, `bottom_left`, `bottom_right`), or `null`; retained under maximize and fullscreen |
-| `title_bar` | Umbriel's server-side title bar is enabled for this window in its current state |
-| `fullscreen` | Fullscreen |
-| `maximized` | Maximized by `window-toggle-maximize` (a full-width column for a tiled window) or by maximize-to-edges |
-| `maximized_to_edges` | Maximized without gaps, struts, or borders |
-| `pinned` | Pinned above other windows on every workspace of its output |
-| `minimized` | Hidden by `window-minimize`, the application, or a taskbar; see [Minimize](layout.md#minimize) |
-| `visible` | On its output's active workspace (or pinned), not a hidden tab, not minimized, and not in a hidden scratchpad; it may still be scrolled out of view |
-| `parent` | ID of the window the client named as its parent, or `""` |
-| `column`, `row` | Place in a scrolling strip, from 0; `-1` for floating windows and other layouts |
+| Field                | Meaning                                                                                                                                                                                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `floating`           | Outside the tiled layout                                                                                                                                                                                                                                                     |
+| `snap`               | Snapped region (`left`, `right`, `top`, `bottom`, `top_left`, `top_right`, `bottom_left`, `bottom_right`), or `null`; retained under maximize and fullscreen                                                                                                                 |
+| `title_bar`          | Umbriel's server-side title bar is enabled for this window in its current state                                                                                                                                                                                              |
+| `fullscreen`         | Fullscreen                                                                                                                                                                                                                                                                   |
+| `maximized`          | Maximized by `window-toggle-maximize` (a full-width column for a tiled window) or by maximize-to-edges                                                                                                                                                                       |
+| `maximized_to_edges` | Maximized without gaps, struts, or borders                                                                                                                                                                                                                                   |
+| `pinned`             | Pinned above other windows on every workspace of its output                                                                                                                                                                                                                  |
+| `minimizable`        | Supports minimize in its current placement: a mapped, unattached floating window on a workspace, outside a scratchpad and not pinned. Matches the minimize capability offered to the application; fullscreen or an active move or resize can still reject a minimize request |
+| `minimized`          | Hidden by `window-minimize`, the application, or a taskbar; see [Minimize](layout.md#minimize)                                                                                                                                                                               |
+| `visible`            | On its output's active workspace (or pinned), not a hidden tab, not minimized, and not in a hidden scratchpad; it may still be scrolled out of view                                                                                                                          |
+| `parent`             | ID of the window the client named as its parent, or `""`                                                                                                                                                                                                                     |
+| `column`, `row`      | Place in a scrolling strip, from 0; `-1` for floating windows and other layouts                                                                                                                                                                                              |
 
-Workspace entries include a stable ID, display name, index, output, layout,
-occupancy, and active and focused states. The `layout` field is `"scrolling"`,
-`"dwindle"`, `"master"`, or `"floating"`. Use the `named` boolean instead of
-guessing from the display name; an explicitly named workspace may still be
-called `"2"`. `window_count` counts its mapped windows, `focused_window` is the
-ID of the window it last focused (`""` when none), `urgent` is set while any of
-its windows is urgent, and `layout_override` is set while a runtime
-`workspace-set-layout` replaces the configured layout.
+Workspace entries include a stable ID, display name, index, output, layout, occupancy, and active and focused states. The `layout` field is `"scrolling"`, `"dwindle"`, `"master"`, or `"floating"`. Use the `named` boolean instead of guessing from the display name; an explicitly named workspace may still be called `"2"`. `window_count` counts its mapped windows, `focused_window` is the ID of the window it last focused (`""` when none), `urgent` is set while any of its windows is urgent, and `layout_override` is set while a runtime `workspace-set-layout` replaces the configured layout.
 
-Layer entries describe layer-shell surfaces such as panels, launchers, and
-wallpapers: `layer`, `namespace`, `output`, `mapped`, `pid`,
-`keyboard_interactivity` (`none`, `exclusive`, or `on_demand`), `focused` while
-the surface holds the keyboard, `exclusive_zone`, `anchor` (the anchored edges),
-`margin`, and the arranged geometry `x`, `y`, `w`, and `h` in layout
-coordinates.
+Layer entries describe layer-shell surfaces such as panels, launchers, and wallpapers: `layer`, `namespace`, `output`, `mapped`, `pid`, `keyboard_interactivity` (`none`, `exclusive`, or `on_demand`), `focused` while the surface holds the keyboard, `exclusive_zone`, `anchor` (the anchored edges), `margin`, and the arranged geometry `x`, `y`, `w`, and `h` in layout coordinates.
 
-Output entries list every connected output, including disabled ones: `name`,
-`description`, `make`, `model`, `serial`, `config_name` (the
-[monitor identity](outputs.md), or `null` when the display reports none),
-`physical_size`, `enabled` (part of the desktop), `powered` (enabled and not
-switched off by DPMS), `focused`, `active_workspace` (its ID), `position`,
-`logical_size`, `usable_area` (the part layer-shell exclusive zones leave, in
-layout coordinates), `transform`, `scale`, `adaptive_sync` (`null` when the
-output cannot use variable refresh), `hdr_active`, `direct_scanout`, and
-`modes`, each with `width`, `height`, `refresh_mhz`, `preferred`, and
-`current`. A disabled output reports a zero `logical_size` and `usable_area`.
+Output entries list every connected output, including disabled ones: `name`, `description`, `make`, `model`, `serial`, `config_name` (the [monitor identity](outputs.md), or `null` when the display reports none), `physical_size`, `enabled` (part of the desktop), `powered` (enabled and not switched off by DPMS), `focused`, `active_workspace` (its ID), `position`, `logical_size`, `usable_area` (the part layer-shell exclusive zones leave, in layout coordinates), `transform`, `scale`, `adaptive_sync` (`null` when the output cannot use variable refresh), `hdr_active`, `direct_scanout`, and `modes`, each with `width`, `height`, `refresh_mhz`, `preferred`, and `current`. A disabled output reports a zero `logical_size` and `usable_area`.
 
-`direct_scanout` is `null` while the output is disabled or powered off.
-Otherwise it holds `active`, `reason` (why the output composites, or `null`
-while active), and `window` (the scanned-out window's `id`, `app_id`, and
-`title`, or `null`). It reports a state only once it has held for half a
-second, so a cursor or notification passing over a fullscreen window does not
-flood subscribers. See [direct scanout](outputs.md#direct-scanout) for the
-reasons.
+`direct_scanout` is `null` while the output is disabled or powered off. Otherwise it holds `active`, `reason` (why the output composites, or `null` while active), and `window` (the scanned-out window's `id`, `app_id`, and `title`, or `null`). It reports a state only once it has held for half a second, so a cursor or notification passing over a fullscreen window does not flood subscribers. See [direct scanout](outputs.md#direct-scanout) for the reasons.
 
 ## Effect inspection
 
-`umbriel effects` prints tables; `--json` exposes `presets`, `pools`, `cursor`,
-and `owners`. Presets and pools keep their configuration declaration order,
-including includes. Each preset has `name`, `kind`, and current-source `state`:
-`inert` means missing or empty source, `unreferenced` means no registry entry,
-`failed` means compilation failed, and `compiled` means a usable program.
-Border presets also report their configured `overlay`.
+`umbriel effects` prints tables; `--json` exposes `presets`, `pools`, `cursor`, and `owners`. Presets and pools keep their configuration declaration order, including includes. Each preset has `name`, `kind`, and current-source `state`: `inert` means missing or empty source, `unreferenced` means no registry entry, `failed` means compilation failed, and `compiled` means a usable program. Border presets also report their configured `overlay`.
 
-Pools have `name`, `kind`, `policy`, and ordered `members`, each with `name`
-and `held`. Holds count unsuppressed mapped windows, present outputs (including
-disabled outputs), and the session cursor, independently of visibility or focus.
-Owners list mapped windows, sorted by stable `id`, followed by present outputs,
-sorted by `name`. Window owners have `type`, `id`, `app_id`, and `slots` with
-`border` and `window`; output owners have `type`, `name`, and `slots.screen`.
-The single cursor appears separately in `cursor`.
+Pools have `name`, `kind`, `policy`, and ordered `members`, each with `name` and `held`. Holds count unsuppressed mapped windows, present outputs (including disabled outputs), and the session cursor, independently of visibility or focus. Owners list mapped windows, sorted by stable `id`, followed by present outputs, sorted by `name`. Window owners have `type`, `id`, `app_id`, and `slots` with `border` and `window`; output owners have `type`, `name`, and `slots.screen`. The single cursor appears separately in `cursor`.
 
-Each slot reports `name` (the underlying selected preset), `pool` (empty for a
-plain preset), `source` (`default`, `rule`, or `runtime`), and `suppressed`.
-Border slots also have `overlay`. An empty pool retains its pool name with an
-empty selected name. Suppressed and failed selections retain their names.
-`windows --json` and `subscribe windows` expose these same slot shapes as
-`border_effect` and `window_effect`; the window text table is unchanged.
+Each slot reports `name` (the underlying selected preset), `pool` (empty for a plain preset), `source` (`default`, `rule`, or `runtime`), and `suppressed`. Border slots also have `overlay`. An empty pool retains its pool name with an empty selected name. Suppressed and failed selections retain their names. `windows --json` and `subscribe windows` expose these same slot shapes as `border_effect` and `window_effect`; the window text table is unchanged.
 
-Inspection never picks, compiles, or binds an effect. Use `effects`, not
-`outputs`, for screen selections.
-See [Effects](effects.md) and [Actions](actions.md) for configuration and runtime
-changes.
+Inspection never picks, compiles, or binds an effect. Use `effects`, not `outputs`, for screen selections. See [Effects](effects.md) and [Actions](actions.md) for configuration and runtime changes.
 
 ## Event stream
 
@@ -124,34 +69,27 @@ Subscribe with:
 {"cmd":"subscribe","events":["workspaces","windows"]}
 ```
 
-The connection first receives the current state of each family, then a new
-snapshot whenever that family changes:
+The connection first receives the current state of each family, then a new snapshot whenever that family changes:
 
 ```json
 {"event":"workspaces","data":[]}
 ```
 
-| Family | Changes reported |
-| --- | --- |
-| `theme` | Colors and corner radius |
-| `overview` | Overview opened, or started closing |
-| `keyboard_layout` | Active keyboard layout |
-| `windows` | Window identity, geometry, focus, state, visibility, parent, workspace, scratchpad, or effect selection |
-| `workspaces` | Inventory, layout, activity, occupancy, window count, focused window, urgency, output, or focus |
-| `submap` | Active keybind submap |
-| `screencast` | Manual target and focus-following screencast commands |
-| `layers` | Layer-shell surfaces appearing, mapping, closing, moving, resizing, or taking and losing the keyboard |
-| `outputs` | Outputs appearing or leaving, enablement, power, mode, position, scale, transform, variable refresh, HDR, usable area, focus, or active workspace |
+| Family            | Changes reported                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme`           | Colors and corner radius                                                                                                                          |
+| `overview`        | Overview opened, or started closing                                                                                                               |
+| `keyboard_layout` | Active keyboard layout                                                                                                                            |
+| `windows`         | Window identity, geometry, focus, state, visibility, parent, workspace, scratchpad, or effect selection                                           |
+| `workspaces`      | Inventory, layout, activity, occupancy, window count, focused window, urgency, output, or focus                                                   |
+| `submap`          | Active keybind submap                                                                                                                             |
+| `screencast`      | Manual target and focus-following screencast commands                                                                                             |
+| `layers`          | Layer-shell surfaces appearing, mapping, closing, moving, resizing, or taking and losing the keyboard                                             |
+| `outputs`         | Outputs appearing or leaving, enablement, power, mode, position, scale, transform, variable refresh, HDR, usable area, focus, or active workspace |
 
-Payloads are full snapshots rather than deltas. Replace local state with the
-newest event instead of trying to merge increments. Identical consecutive
-payloads are omitted.
+Payloads are full snapshots rather than deltas. Replace local state with the newest event instead of trying to merge increments. Identical consecutive payloads are omitted.
 
-Floating-window moves and windows carried by `xdg-toplevel-drag-v1` are reported
-while the drag is still held; `x` and `y` follow the drag position, including
-when a carried window normally belongs to the tiled layout. Outside a drag,
-positions report layout targets rather than animation progress. Size updates
-follow committed client geometry, including mouse and keyboard resizes.
+Floating-window moves and windows carried by `xdg-toplevel-drag-v1` are reported while the drag is still held; `x` and `y` follow the drag position, including when a carried window normally belongs to the tiled layout. Outside a drag, positions report layout targets rather than animation progress. Size updates follow committed client geometry, including mouse and keyboard resizes.
 
 An unknown family returns an error and closes the subscription.
 
@@ -168,13 +106,11 @@ The `screencast` event carries a monotonically increasing serial and one of six 
 {"event":"screencast","data":{"serial":17,"kind":"clear"}}
 ```
 
-Every command advances the serial, even when it selects the same source or mode again. Portal backends use that edge
-so a newly authorized manual stream stays empty until the user performs another target action.
+Every command advances the serial, even when it selects the same source or mode again. Portal backends use that edge so a newly authorized manual stream stays empty until the user performs another target action.
 
 ### Theme payload
 
-The `theme` event mirrors `[colors]`, `[colors.border]`,
-`[colors.overview]`, and `appearance.corner_radius`:
+The `theme` event mirrors `[colors]`, `[colors.border]`, `[colors.overview]`, and `appearance.corner_radius`:
 
 ```json
 {"event":"theme","data":{
@@ -224,67 +160,39 @@ umbriel subscribe workspaces |
 
 ## Audio input
 
-An external analyser, such as Noctalia, can supply a shared 64-band spectrum to
-[effect shaders](effects.md#audio-input). Keep a dedicated Unix socket connection
-to `$UMBRIEL_SOCKET` open and send complete newline-delimited JSON snapshots.
-For example, a silent snapshot is:
+An external analyser, such as Noctalia, can supply a shared 64-band spectrum to [effect shaders](effects.md#audio-input). Keep a dedicated Unix socket connection to `$UMBRIEL_SOCKET` open and send complete newline-delimited JSON snapshots. For example, a silent snapshot is:
 
 ```json
 {"cmd":"effect-audio","version":2,"bands":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
 ```
 
-`version` must be integer `2`; `bands` must contain exactly 64 finite numbers
-from 0 to 1, ordered low to high. This is a normalized spectrum coordinate,
-not a promise of exact frequency centers or edges. Noctalia's existing 64-band
-subscriber output passes through unchanged. Only version 2 is accepted, with
-exactly the `cmd`, `version`, and `bands` fields.
+`version` must be integer `2`; `bands` must contain exactly 64 finite numbers from 0 to 1, ordered low to high. This is a normalized spectrum coordinate, not a promise of exact frequency centers or edges. Noctalia's existing 64-band subscriber output passes through unchanged. Only version 2 is accepted, with exactly the `cmd`, `version`, and `bands` fields.
 
-Each request, including its newline, is limited to 4,096 bytes. The first
-accepted snapshot claims the feed; another producer receives an error while
-that connection owns it. Audio connections accept only `effect-audio` requests.
+Each request, including its newline, is limited to 4,096 bytes. The first accepted snapshot claims the feed; another producer receives an error while that connection owns it. Audio connections accept only `effect-audio` requests.
 
-Wait for `{"ok":true}` before sending another snapshot. Send at most 60 per
-second and replace unsent snapshots with the latest values. An acknowledgment
-means accepted, not displayed.
+Wait for `{"ok":true}` before sending another snapshot. Send at most 60 per second and replace unsent snapshots with the latest values. An acknowledgment means accepted, not displayed.
 
-Send the analyser's current values on changes and a heartbeat every 100 ms while
-unchanged. Values should decay or clear to zero when capture stops, and old values
-must be cleared when switching sources. Zero-valued snapshots keep the feed
-available, so an idle analyser can keep the connection open.
+Send the analyser's current values on changes and a heartbeat every 100 ms while unchanged. Values should decay or clear to zero when capture stops, and old values must be cleared when switching sources. Zero-valued snapshots keep the feed available, so an idle analyser can keep the connection open.
 
-Availability reports feed freshness. Gain, smoothing, and source selection belong
-to the analyser. Umbriel does not start or supervise it or capture audio.
+Availability reports feed freshness. Gain, smoothing, and source selection belong to the analyser. Umbriel does not start or supervise it or capture audio.
 
-Disconnect, malformed or oversized input, or 250 ms without a snapshot closes
-the feed and clears all bands and availability. Lock and inactive sessions also
-disconnect the producer and reject audio until active and unlocked. Reconnect
-with a fresh snapshot to resume. Use a dedicated socket client; `umbriel msg`
-does not provide this streaming interface.
+Disconnect, malformed or oversized input, or 250 ms without a snapshot closes the feed and clears all bands and availability. Lock and inactive sessions also disconnect the producer and reject audio until active and unlocked. Reconnect with a fresh snapshot to resume. Use a dedicated socket client; `umbriel msg` does not provide this streaming interface.
 
 ## Inspection commands
 
-`umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and
-`umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
+`umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and `umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
 
 ## Config commands
 
-`umbriel config validate` checks a configuration and `umbriel config schema`
-lists the keys it accepts, both without a running compositor.
+`umbriel config validate` checks a configuration and `umbriel config schema` lists the keys it accepts, both without a running compositor.
 
-`umbriel config-replace <path>` loads and watches a different configuration file
-in the running compositor. The path must be absolute. On success, the new file
-and its includes replace the previous watch set, and later reloads use the new
-file. A missing, unreadable, or invalid file returns an error and leaves the
-active configuration and watch set unchanged. Warnings do not reject a replacement.
+`umbriel config-replace <path>` loads and watches a different configuration file in the running compositor. The path must be absolute. On success, the new file and its includes replace the previous watch set, and later reloads use the new file. A missing, unreadable, or invalid file returns an error and leaves the active configuration and watch set unchanged. Warnings do not reject a replacement.
 
 ## Virtual outputs
 
-| Request | CLI |
-| --- | --- |
+| Request                                         | CLI                                   |
+| ----------------------------------------------- | ------------------------------------- |
 | `{"cmd":"output-create","arg":"<name> [mode]"}` | `umbriel output-create <name> [mode]` |
-| `{"cmd":"output-destroy","arg":"<name>"}` | `umbriel output-destroy <name>` |
+| `{"cmd":"output-destroy","arg":"<name>"}`       | `umbriel output-destroy <name>`       |
 
-`output-create` replies with the new output's name. Its optional mode is in the
-`WIDTHxHEIGHT[@HZ]` form. Both commands reply with an error for a name that is
-invalid, already taken, or unknown, and `output-destroy` refuses outputs backed
-by a real display. See [Virtual outputs](outputs.md#virtual-outputs).
+`output-create` replies with the new output's name. Its optional mode is in the `WIDTHxHEIGHT[@HZ]` form. Both commands reply with an error for a name that is invalid, already taken, or unknown, and `output-destroy` refuses outputs backed by a real display. See [Virtual outputs](outputs.md#virtual-outputs).

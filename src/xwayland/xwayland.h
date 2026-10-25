@@ -5,6 +5,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <sys/types.h>
 #include <vector>
 #include <wayland-server-core.h>
 
@@ -39,6 +42,8 @@ namespace umbriel {
     [[nodiscard]] bool available() const { return m_wlr != nullptr; }
     // The value children get as DISPLAY.
     [[nodiscard]] const char* displayName() const;
+    [[nodiscard]] bool setInputSocket(int fd);
+    [[nodiscard]] bool authenticateInputPeer(pid_t peer) const;
     // The cursor X clients see over their windows until they set their own. The buffer belongs to `manager`, so this
     // must run again before a replaced manager is destroyed. Also republishes the cursor theme in XSETTINGS.
     void applyCursor(wlr_xcursor_manager* manager);
@@ -79,6 +84,10 @@ namespace umbriel {
     wlr_xwayland* m_wlr = nullptr;
     bool m_nativeResolution = false;
     bool m_xsettingsEnabled = true;
+    std::optional<std::string> m_inheritedEiSocket;
+    bool m_ownsEiSocketEnvironment = false;
+    uint64_t m_inputSocketDevice = 0;
+    uint64_t m_inputSocketInode = 0;
     std::unique_ptr<XwaylandOutputs> m_outputs;
     std::vector<std::unique_ptr<XwaylandWindow>> m_windows;
     uint32_t m_netActiveWindow = 0;

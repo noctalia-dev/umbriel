@@ -2061,7 +2061,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   }
   const enum wlr_color_transfer_function target_tf =
       pass->has_color_transform ? WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR : pass->sdr_tf;
-  const bool color_passthrough = source_tf == target_tf && primaries_passthrough && lum_multiplier == 1.0f;
+  const bool color_passthrough =
+      source_tf == target_tf && primaries_passthrough && lum_multiplier == 1.0f && !fx_options->map_hdr_to_sdr;
 
   float primaries_matrix[9];
   if (primaries_passthrough) {
@@ -2079,6 +2080,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
       fx_options->luminances != NULL ? fx_options->luminances->max : 100.0f
   );
   glUniform1i(shader->target_tf, color_passthrough ? 0 : target_tf);
+  glUniform1i(shader->map_hdr_to_sdr, fx_options->map_hdr_to_sdr);
 
   glUniform1f(shader->discard_transparent, fx_options->discard_transparent);
   if (use_clamp) {

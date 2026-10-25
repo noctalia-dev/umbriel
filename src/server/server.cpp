@@ -10,6 +10,7 @@
 #include "core/process.h"
 #include "core/tracy.h"
 #include "input/cursor.h"
+#include "input/eis.h"
 #include "input/gestures.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -360,12 +361,70 @@ namespace umbriel {
   }
 
   void Server::dismissConfirmation() {
+    if (m_pendingInputId != 0) {
+      const auto id = std::exchange(m_pendingInputId, 0);
+      m_deniedInputNames.insert(m_pendingInputName);
+      kLog.info("input permission denied id={} app='{}'", id, m_pendingInputName);
+      m_pendingInputName.clear();
+      if (m_eisInput != nullptr) {
+        m_eisInput->authorizeClient(id, false);
+      }
+    }
     if (m_quitConfirm != nullptr
         && m_quitConfirm->visible()
         && m_quitConfirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
       m_pendingScreenCastCommand.reset();
     }
     if (m_quitConfirm != nullptr) {
+      m_quitConfirm->hide();
+    }
+  }
+
+  void Server::requestInputEmulation(uint64_t id, std::string_view name) {
+    const std::string application(name);
+    if (m_allowedInputNames.contains(application) && !sessionLocked()) {
+      m_eisInput->authorizeClient(id, true);
+      return;
+    }
+    if (application.empty()
+        || application.size() > 256
+        || sessionLocked()
+        || m_deniedInputNames.contains(application)
+        || m_quitConfirm == nullptr
+        || m_quitConfirm->visible()) {
+      m_eisInput->authorizeClient(id, false);
+      return;
+    }
+    m_pendingInputId = id;
+    m_pendingInputName = application;
+    std::string displayName;
+    for (const unsigned char character : application) {
+      displayName += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
+    }
+    kLog.info("input permission requested id={} app='{}'", id, displayName);
+    m_quitConfirm->showInputEmulation(displayName);
+  }
+
+  void Server::confirmInputEmulation() {
+    if (m_pendingInputId == 0 || m_eisInput == nullptr || sessionLocked()) {
+      dismissConfirmation();
+      return;
+    }
+    const auto id = std::exchange(m_pendingInputId, 0);
+    m_allowedInputNames.insert(m_pendingInputName);
+    kLog.info("input permission granted id={} app='{}'", id, m_pendingInputName);
+    m_pendingInputName.clear();
+    m_quitConfirm->hide();
+    m_eisInput->authorizeClient(id, true);
+  }
+
+  void Server::cancelInputEmulation(uint64_t id) {
+    if (id != m_pendingInputId) {
+      return;
+    }
+    m_pendingInputId = 0;
+    m_pendingInputName.clear();
+    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::InputEmulation) {
       m_quitConfirm->hide();
     }
   }
@@ -847,6 +906,7 @@ namespace umbriel {
     // After the views, which hold listeners on X11 surfaces, and before the seat, which unmanaged X11 windows release
     // keyboard focus through. The Xwayland client itself goes with the other Wayland clients below.
     m_xwayland.reset();
+    m_eisInput.reset();
     m_keyboards.clear();
     m_manualShortcutsInhibit.clear();
     // The backend destroys physical input devices below, after the seat and cursor; detach their watchers first.
@@ -947,10 +1007,8 @@ namespace umbriel {
           if (description == nullptr) {
             return;
           }
-          const bool pqBt2020 = description->tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
-              && description->primaries_named == WP_COLOR_MANAGER_V1_PRIMARIES_BT2020;
           const ColorManager* colorManager = context->server->colorManager();
-          if (pqBt2020 || (colorManager != nullptr && colorManager->surfaceRequiresHdrOutput(candidate))) {
+          if (colorManager != nullptr && colorManager->surfaceRequiresHdrOutput(candidate)) {
             context->description = description;
           }
         },
@@ -1063,11 +1121,18 @@ namespace umbriel {
     // applications can connect. It starts lazily: the X display socket exists
     // now, and Xwayland itself spawns when the first X client connects.
     if (config().general.xwayland) {
+      m_eisInput = std::make_unique<EisInput>(*this);
+      m_eisInput->setAuthenticate([this](pid_t peer) {
+        return m_xwayland != nullptr && m_xwayland->authenticateInputPeer(peer);
+      });
+      m_eisInput->setAuthorize([this](uint64_t id, std::string_view name) { requestInputEmulation(id, name); });
+      m_eisInput->setAuthorizationCancelled([this](uint64_t id) { cancelInputEmulation(id); });
       m_xwayland = std::make_unique<Xwayland>(*this);
-      if (m_xwayland->available()) {
+      if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
         m_xwayland.reset();
+        m_eisInput.reset();
       }
     }
 
@@ -1363,6 +1428,7 @@ namespace umbriel {
       }
       setenv("WAYLAND_DISPLAY", m_socketName.c_str(), 1);
       unsetenv("WAYLAND_SOCKET");
+      unsetenv("LIBEI_SOCKET");
       if (m_xwayland != nullptr) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {

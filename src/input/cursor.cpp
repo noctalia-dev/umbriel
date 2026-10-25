@@ -2325,8 +2325,11 @@ namespace umbriel {
       // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
       // it even when no workspace activates: a switch to a workspace already active elsewhere only warps the cursor.
       m_server->scheduleIpcWorkspacesEvent();
+      wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
           && config().input.focus.followsMouse
+          && !wlr_seat_pointer_has_grab(seat)
+          && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
         m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
@@ -2337,7 +2340,12 @@ namespace umbriel {
   View* Cursor::hoverFocus(
       View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
   ) {
-    if (m_server->seat()->wlr()->drag != nullptr
+    wlr_seat* seat = m_server->seat()->wlr();
+    // Hover must preserve a popup's seat grabs. Transferring keyboard focus would cancel the grab and dismiss it.
+    // Leave explicit focus actions and outside clicks free to transfer focus through their normal paths.
+    if (seat->drag != nullptr
+        || wlr_seat_pointer_has_grab(seat)
+        || wlr_seat_keyboard_has_grab(seat)
         || m_server->sessionLocked()
         || *layer != nullptr
         || view == nullptr

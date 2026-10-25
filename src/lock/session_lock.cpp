@@ -200,9 +200,9 @@ namespace umbriel {
     }
   }
 
-  bool SessionLock::presenting() const { return m_phase == Phase::Presenting; }
+  bool SessionLock::presenting() const { return !m_unlocked && m_phase == Phase::Presenting; }
 
-  bool SessionLock::locked() const { return m_phase == Phase::Locked; }
+  bool SessionLock::locked() const { return !m_unlocked && m_phase == Phase::Locked; }
 
   void SessionLock::start() {
     if (surfacesReady()) {
@@ -437,6 +437,10 @@ namespace umbriel {
   }
 
   void SessionLock::focusMappedSurface() {
+    // Surface destruction can arrive after unlock restored desktop focus.
+    if (m_unlocked) {
+      return;
+    }
     const auto surface = std::ranges::find_if(m_surfaces, [this](const std::unique_ptr<LockSurface>& entry) {
       Output* output = m_server->outputFromWlr(entry->output());
       return entry->mapped() && output != nullptr && outputActive(*output);

@@ -30,6 +30,7 @@ uniform mat3 primaries_matrix;
 uniform float lum_multiplier;
 uniform vec2 source_luminances;
 uniform int target_tf;
+uniform bool map_hdr_to_sdr;
 
 #define TRANSFER_FUNCTION_PASSTHROUGH 0
 #define TRANSFER_FUNCTION_SRGB 1
@@ -116,6 +117,20 @@ vec3 linear_color_to_srgb(vec3 color) {
 
 vec3 linear_color_to_gamma22(vec3 color) { return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)); }
 
+vec3 hdr_to_sdr(vec3 color) {
+  // Retain shadows and midtones, then roll highlights toward SDR peak with a
+  // continuous Reinhard shoulder. Scaling the triplet retains channel ratios
+  // instead of turning distinct bright colors into independently clipped ones.
+  const float knee = 0.8;
+  float peak = max(max(color.r, color.g), color.b);
+  if (peak <= knee) {
+    return color;
+  }
+  float excess = peak - knee;
+  float mapped_peak = knee + excess / (1.0 + excess / (1.0 - knee));
+  return color * (mapped_peak / peak);
+}
+
 vec4 convert_color(vec4 color) {
   if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
     return color;
@@ -141,6 +156,9 @@ vec4 convert_color(vec4 color) {
 
   rgb *= lum_multiplier;
   rgb = primaries_matrix * rgb;
+  if (map_hdr_to_sdr) {
+    rgb = hdr_to_sdr(rgb);
+  }
   if (target_tf == TRANSFER_FUNCTION_SRGB) {
     rgb = linear_color_to_srgb(max(rgb, vec3(0.0)));
   } else if (target_tf == TRANSFER_FUNCTION_GAMMA22) {

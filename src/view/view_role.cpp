@@ -44,6 +44,10 @@ namespace umbriel {
     return m_toplevel != nullptr ? m_toplevel->scheduled.activated : m_xState.activated;
   }
 
+  bool View::acceptsKeyboardFocus() const {
+    return m_xsurface == nullptr || wlr_xwayland_surface_icccm_input_model(m_xsurface) != WLR_ICCCM_INPUT_MODEL_NONE;
+  }
+
   void View::setActivatedState(bool activated) {
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_activated(m_toplevel, activated);
@@ -469,6 +473,7 @@ namespace umbriel {
   }
 
   void View::handleXwaylandSetHints() {
+    m_server->xwaylandHintsChanged(this);
     if (m_activated) {
       return;
     }

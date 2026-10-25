@@ -59,6 +59,7 @@ namespace umbriel {
     if (pid == 0) {
       resetChildSignalState();
       restoreFileDescriptorLimit();
+      unsetenv("LIBEI_SOCKET");
       close(completion[0]);
       if (dup2(completion[1], STDOUT_FILENO) < 0 || !closeChildFileDescriptors()) {
         _exit(1);

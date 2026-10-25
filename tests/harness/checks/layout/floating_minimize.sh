@@ -8,6 +8,7 @@ readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly FOREIGN_TOPLEVEL="${UMBRIEL_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/tests/foreign-toplevel-client}"
 readonly A_LOG="$UMBRIEL_RUNTIME_DIR/minimize-a.log"
 readonly B_LOG="$UMBRIEL_RUNTIME_DIR/minimize-b.log"
+readonly EVENTS="$UMBRIEL_RUNTIME_DIR/minimize-events.jsonl"
 
 field_of() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
@@ -31,6 +32,23 @@ expect_field() {
     echo "expected '$title' field '$field' to be '$expected', got '$actual': $("$UMBRIEL" windows --json)"
     exit 1
   fi
+}
+
+# Capability changes must reach both queries and the latest subscriber snapshot.
+wait_for_minimizable() {
+  local title=$1 expected=$2
+  wait_for_field "$title" minimizable "$expected"
+  for _ in $(seq 80); do
+    if jq -e -s --arg title "$title" --argjson expected "$expected" '
+      [.[] | select(.event == "windows")] | last | .data
+      | any(.[]; .title == $title and .minimizable == $expected)
+    ' "$EVENTS" > /dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "expected subscriber to report '$title' minimizable=$expected: $(tail -n 1 "$EVENTS")"
+  exit 1
 }
 
 msg() { "$UMBRIEL" msg "$@" > /dev/null; }
@@ -66,6 +84,9 @@ wait_for_field minimize-b floating true
 A=$(field_of minimize-a id)
 B=$(field_of minimize-b id)
 OUTPUT=$(field_of minimize-a output)
+"$UMBRIEL" subscribe windows > "$EVENTS" &
+wait_for_minimizable minimize-a true
+wait_for_minimizable minimize-b true
 
 # The action hides the focused window, hands focus on, and taskbars see the state.
 msg "window-focus:$A"
@@ -75,6 +96,7 @@ wait_for_field minimize-a minimized true
 expect_field minimize-a visible false
 wait_for_field minimize-b active true
 foreign state minimized=1
+wait_for_minimizable minimize-a true
 
 # Focus cycling skips it.
 msg window-focus-next
@@ -121,6 +143,7 @@ msg "window-minimize:$A"
 wait_for_field minimize-a minimized true
 msg workspace-set-layout:scrolling
 wait_for_field minimize-a floating false
+wait_for_minimizable minimize-a false
 expect_field minimize-a minimized false
 expect_field minimize-a visible true
 msg "window-focus:$A"
@@ -142,6 +165,8 @@ expect_field minimize-a minimized false
 msg workspace-set-layout:floating
 wait_for_field minimize-a floating true
 wait_for_field minimize-b floating true
+wait_for_minimizable minimize-a true
+wait_for_minimizable minimize-b true
 msg "window-focus:$B"
 msg window-minimize
 wait_for_field minimize-b minimized true
@@ -191,4 +216,14 @@ msg workspace-toggle-show-desktop
 wait_for_field minimize-a minimized false
 wait_for_field minimize-b minimized false
 
-echo "floating windows minimize by action, client, and taskbar, return through every explicit focus path, and show desktop restores every minimized window"
+# Pinning changes eligibility without changing the window's floating placement.
+msg "window-focus:$A"
+msg window-toggle-pinned
+wait_for_field minimize-a pinned true
+expect_field minimize-a floating true
+wait_for_minimizable minimize-a false
+msg window-toggle-pinned
+wait_for_field minimize-a pinned false
+wait_for_minimizable minimize-a true
+
+echo "floating windows report minimize eligibility, minimize by action, client, and taskbar, return through every explicit focus path, and show desktop restores every minimized window"

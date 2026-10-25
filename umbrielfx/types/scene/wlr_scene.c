@@ -3547,6 +3547,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .clipped_region = {0},
         .sample_box = sample_box,
         .luminances = scene_buffer->luminances.reference > 0.0f ? &scene_buffer->luminances : NULL,
+        .map_hdr_to_sdr = !data->hdr
+            && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
+                || scene_buffer->absolute_luminance
+                || src_lum.max > src_lum.reference),
     };
 
     // TODO: Use the base wlr_render_pass_add_texture as a fast-path in the future

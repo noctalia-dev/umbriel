@@ -12,6 +12,7 @@
 #include "output/format_sequence.h"
 #include "output/frame_schedule.h"
 #include "output/gamma_transition.h"
+#include "output/hdr_format.h"
 #include "output/hdr_metadata.h"
 #include "output/identity.h"
 #include "output/mode_selection.h"
@@ -378,6 +379,70 @@ namespace umbriel {
 
   bool Output::hdrActive() const { return m_output->image_description != nullptr; }
 
+  bool Output::automaticHdrAvailable() const {
+    if (!m_output->enabled || !m_desktopEnabled || !m_hdrAvailable) {
+      return false;
+    }
+    HdrMode mode = hdrMode();
+    if (wlr_surface* surface = m_server->seat()->wlr()->keyboard_state.focused_surface) {
+      if (View* view = View::fromSurface(surface); view != nullptr && view->mapped() && view->currentOutput() == this) {
+        mode = view->resolvedRules().hdr.value_or(mode);
+      }
+    }
+    return mode == HdrMode::Auto;
+  }
+
+  void Output::updateHdrAvailability(bool activationRejected) {
+    m_hdrAvailable = false;
+    if (!m_output->enabled
+        || !m_desktopEnabled
+        || (m_output->supported_transfer_functions & WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ) == 0
+        || (m_output->supported_primaries & WLR_COLOR_NAMED_PRIMARIES_BT2020) == 0
+        || !m_server->renderer()->features.output_color_transform) {
+      return;
+    }
+    if (hdrActive()) {
+      m_hdrAvailable = true;
+      return;
+    }
+    // A successful SDR fallback after a rejected HDR request is not evidence
+    // that HDR became available. A later configuration retry can probe again.
+    if (activationRejected) {
+      return;
+    }
+    const wlr_drm_format_set* formats = wlr_output_get_primary_formats(m_output, m_server->allocator()->buffer_caps);
+    wlr_output_state state{};
+    wlr_output_state_init(&state);
+    state.allow_reconfiguration = true;
+    wlr_output_state_set_color_transform(&state, nullptr);
+    const auto description = makeHdrOutputDescription(m_output->default_primaries, m_hdrStaticMetadata);
+    if (wlr_output_state_set_image_description(&state, &description)) {
+      m_hdrAvailable = selectHdrRenderFormat(m_output->render_format, [&](uint32_t format) {
+                         if (formats != nullptr && wlr_drm_format_set_get(formats, format) == nullptr) {
+                           return false;
+                         }
+                         wlr_output_state_set_render_format(&state, format);
+                         if (wlr_output_test_state(m_output, &state)) {
+                           return true;
+                         }
+                         // The real activation path can drop VRR when HDR needs it disabled.
+                         if (m_output->adaptive_sync_supported
+                             && m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+                           wlr_output_state_set_adaptive_sync_enabled(&state, false);
+                           return wlr_output_test_state(m_output, &state);
+                         }
+                         return false;
+                       }).has_value();
+    }
+    wlr_output_state_finish(&state);
+    if (m_hdrAvailable && hdrRequested()) {
+      // A mode change can make a previously rejected request usable. Retry at
+      // the frame boundary instead of treating its old SDR fallback as final.
+      m_hdrTransition.recordCommit(true, false, true);
+      scheduleFullFrame();
+    }
+  }
+
   bool Output::bitDepthActive() const {
     return deriveTenBitSdrActive(m_output->enabled, hdrActive(), m_output->render_format);
   }
@@ -701,6 +766,7 @@ namespace umbriel {
     bool usedModeFallback = false;
     std::string_view pendingHdrFail = earlyHdrFail;
     std::string_view pendingSdr10Fail;
+    bool hdrRejected = !earlyHdrFail.empty();
 
     if (enabled) {
       const FormatSequenceParams seqParams{
@@ -866,6 +932,7 @@ namespace umbriel {
       }
       pendingHdrFail = seq.hdrFail;
       pendingSdr10Fail = seq.sdr10Fail;
+      hdrRejected = hdrRequested && !seq.retry && !seq.hdrFail.empty();
     } else {
       if (!hdrRequested && hdrWasActive) {
         wlr_output_state_set_image_description(&state, nullptr);
@@ -876,11 +943,15 @@ namespace umbriel {
 
     wlr_output_state_finish(&state);
     m_hdrTransition.recordCommit(enabled, hdrRequested, anyCommitted);
+    if (hdrRejected) {
+      m_hdrAvailable = false;
+    }
     if (!anyCommitted) {
       // A failed candidate may have prepared the scene for the requested
       // transfer function. Keep the renderer aligned with the live output.
       updateSceneSdrWhite();
       markBlurBackgroundDirty();
+      m_server->updateColorPreferences();
       kLog.error("output '{}': failed to commit configured state", m_output->name);
       return false;
     }
@@ -897,11 +968,15 @@ namespace umbriel {
     }
     const bool hdrIsActive = hdrActive();
     if (hdrIsActive) {
+      m_hdrAvailable = true;
       setHdrFallbackReason({});
     } else {
       if (!hdrRequested) {
         setHdrFallbackReason({});
       } else if (enabled) {
+        if (!pendingHdrFail.empty()) {
+          m_hdrAvailable = false;
+        }
         setHdrFallbackReason(pendingHdrFail);
       }
     }
@@ -929,6 +1004,9 @@ namespace umbriel {
       }
     } else {
       kLog.info("output '{}': powered off", m_output->name);
+    }
+    if (stageGeometry) {
+      updateHdrAvailability(hdrRejected);
     }
     m_server->updateColorPreferences();
     return true;
@@ -1239,6 +1317,8 @@ namespace umbriel {
   void Output::handleExternalConfigChange() {
     // Mode changes can drop the DRM gamma LUT; re-apply on the next frame.
     m_gammaDirty = true;
+    updateHdrAvailability();
+    m_server->updateColorPreferences();
     markDirty(Dirty::LayerArrange);
     wlr_output_schedule_frame(m_output);
   }
@@ -1631,6 +1711,8 @@ namespace umbriel {
     } else {
       // Mode changes can drop the DRM gamma LUT; re-apply on the next frame.
       m_gammaDirty = true;
+      updateHdrAvailability();
+      m_server->updateColorPreferences();
     }
     wlr_output_state_finish(&state);
     markDirty(Dirty::LayerArrange | Dirty::Banner | Dirty::Backdrop);
@@ -2029,6 +2111,8 @@ namespace umbriel {
     if ((event->state->committed & (WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_ENABLED)) != 0) {
       markDirty(Dirty::LayerArrange | Dirty::Banner | Dirty::Backdrop);
       m_gammaDirty = true;
+      updateHdrAvailability();
+      m_server->updateColorPreferences();
       if (SessionLock* lock = m_server->sessionLock()) {
         lock->handleOutputStateChanged(*this);
       }

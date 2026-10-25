@@ -265,7 +265,14 @@ namespace umbriel {
     void moveViewToWorkspace(Server& server, View& view, Workspace& target, bool follow = true) {
       Workspace* source = view.workspace();
       const bool workspaceChanged = source != &target;
-      Output* sourceOutput = source != nullptr && source->group() != nullptr ? source->group()->output() : nullptr;
+      ScratchpadManager* scratchpad = server.scratchpadManager();
+      const bool fromScratchpad = scratchpad != nullptr && scratchpad->contains(&view);
+      Output* sourceOutput = fromScratchpad                 ? scratchpad->outputFor(&view)
+          : source != nullptr && source->group() != nullptr ? source->group()->output()
+                                                            : nullptr;
+      if (fromScratchpad && !scratchpad->restoreToWorkspace(&view, &target)) {
+        return;
+      }
       const bool floating = view.floating();
       std::optional<double> widthFrac;
       bool fullWidth = false;
@@ -284,7 +291,9 @@ namespace umbriel {
       if (floating) {
         view.rememberFloatingPosition();
       }
-      view.moveToWorkspace(&target, true, LayoutAttachOrigin::MovedView); // layoutAttach self-guards on tiled()
+      if (!fromScratchpad) {
+        view.moveToWorkspace(&target, true, LayoutAttachOrigin::MovedView); // layoutAttach self-guards on tiled()
+      }
       if (workspaceChanged && !view.tiled()) {
         // layoutAttach only handles tiled arrivals.
         target.exitFullscreenForIncomingView(&view);
@@ -1387,6 +1396,10 @@ namespace umbriel {
     }
 
     bool actionWindowCenter(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      if (View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr)) {
+        view->centerFloating();
+        return true;
+      }
       if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
         view->centerFloating();
       }
@@ -1591,11 +1604,15 @@ namespace umbriel {
       };
       if (bind.action == KeybindAction::WindowMoveToWorkspace
           || bind.action == KeybindAction::WindowMoveToWorkspaceSilent) {
-        if (scratchpadHoldsFocus(server)) {
+        View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr);
+        if (view == nullptr && scratchpadHoldsFocus(server)) {
           return true;
         }
         const bool follow = bind.action == KeybindAction::WindowMoveToWorkspace;
-        if (View* view = placementTarget(server, {}, FocusSource::Recent).value_or(nullptr)) {
+        if (view == nullptr) {
+          view = placementTarget(server, {}, FocusSource::Recent).value_or(nullptr);
+        }
+        if (view != nullptr) {
           moveViewToWorkspace(server, *view, **target, follow);
           return true;
         }
@@ -1633,7 +1650,12 @@ namespace umbriel {
 
     template <int Direction, bool Follow>
     bool actionWindowMoveToWorkspaceAdjacent(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      Workspace* workspace = windowActionWorkspace(server);
+      View* scratchpadView = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr);
+      Output* scratchpadOutput =
+          scratchpadView != nullptr ? server.scratchpadManager()->outputFor(scratchpadView) : nullptr;
+      Workspace* workspace = scratchpadOutput != nullptr && scratchpadOutput->workspaceGroup() != nullptr
+          ? scratchpadOutput->workspaceGroup()->active()
+          : windowActionWorkspace(server);
       if (workspace == nullptr || workspace->group() == nullptr) {
         return true;
       }
@@ -1641,7 +1663,9 @@ namespace umbriel {
       if (target == nullptr || target == workspace) {
         return true;
       }
-      if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
+      View* view = scratchpadView != nullptr ? scratchpadView
+                                             : placementTarget(server, {}, FocusSource::Layout).value_or(nullptr);
+      if (view != nullptr) {
         moveViewToWorkspace(server, *view, *target, Follow);
       }
       return true;

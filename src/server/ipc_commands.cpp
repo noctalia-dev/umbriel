@@ -654,6 +654,7 @@ namespace umbriel {
       entry["tabbed"] = tabIndex >= 0;
       entry["tab_index"] = tabIndex;
       entry["tab_hidden"] = v->tabHidden();
+      entry["minimizable"] = v->minimizable();
       entry["minimized"] = v->minimized();
       entry["snap"] = v->snapRegion() ? nlohmann::json(snapRegionName(*v->snapRegion())) : nlohmann::json(nullptr);
       entry["border_effect"] = effectSlotJson(v->effectSlot(EffectKind::Border), true);

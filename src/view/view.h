@@ -82,6 +82,7 @@ namespace umbriel {
     [[nodiscard]] bool scheduledMaximized() const;
     [[nodiscard]] bool currentMaximized() const;
     [[nodiscard]] bool scheduledActivated() const;
+    [[nodiscard]] bool acceptsKeyboardFocus() const;
     void setActivatedState(bool activated);
     // Take X input focus back for an X11 window that stayed activated while one of its menus held it; a no-op for xdg
     // toplevels.

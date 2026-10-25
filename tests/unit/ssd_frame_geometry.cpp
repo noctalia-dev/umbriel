@@ -74,7 +74,23 @@ UMBRIEL_TEST(resizeBandOnlyWhenResizable) {
       ssdFramePointAt(480, 300, 28, 2, true, TitleBarButtonSide::Right, kAll, -3, 100).edges, uint32_t{WLR_EDGE_LEFT}
   );
   CHECK_EQ(ssdFramePointAt(480, 300, 28, 2, true, TitleBarButtonSide::Right, kAll, -8.1, 100).part, SsdFramePart::None);
-  CHECK_EQ(ssdFramePointAt(480, 300, 0, 2, true, TitleBarButtonSide::Right, kAll, -3, 100).part, SsdFramePart::None);
+}
+
+UMBRIEL_TEST(resizeBandWithoutTitleBar) {
+  const auto at = [](bool resizable, double x, double y) {
+    return ssdFramePointAt(480, 300, 0, 2, resizable, TitleBarButtonSide::Right, kAll, x, y);
+  };
+  CHECK_EQ(at(true, -3, 100).part, SsdFramePart::Resize);
+  CHECK_EQ(at(true, -3, 100).edges, uint32_t{WLR_EDGE_LEFT});
+  CHECK_EQ(at(true, 483, 100).edges, uint32_t{WLR_EDGE_RIGHT});
+  CHECK_EQ(at(true, 200, -3).edges, uint32_t{WLR_EDGE_TOP});
+  CHECK_EQ(at(true, 200, 303).edges, uint32_t{WLR_EDGE_BOTTOM});
+  CHECK_EQ(at(true, -3, -3).edges, uint32_t{WLR_EDGE_LEFT | WLR_EDGE_TOP});
+  CHECK_EQ(at(true, 483, 303).edges, uint32_t{WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM});
+  CHECK_EQ(at(false, -3, 100).part, SsdFramePart::None);
+  CHECK_EQ(at(true, 200, 100).part, SsdFramePart::None);
+  CHECK_EQ(at(true, 466, 0).part, SsdFramePart::None);
+  CHECK_EQ(at(true, -8.1, 100).part, SsdFramePart::None);
 }
 
 UMBRIEL_TEST(cornerExtensionAddsBothEdges) {

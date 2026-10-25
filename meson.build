@@ -118,6 +118,7 @@ endif
 
 xkbcommon_dep = dependency('xkbcommon')
 libinput_dep = dependency('libinput', version: '>=1.27')
+libeis_dep = dependency('libeis-1.0', version: '>=1.3')
 pixman_dep = dependency('pixman-1', version: '>=0.43.0')
 tomlplusplus_dep = dependency('tomlplusplus')
 nlohmann_json_dep = dependency('nlohmann_json')
@@ -790,6 +791,8 @@ core_sources = files(
   'src/view/registry.cpp',
   'src/server/focus.cpp',
   'src/xwayland/xwayland.cpp',
+  'src/input/eis.cpp',
+  'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
   'src/xwayland/unmanaged.cpp',
   'src/xwayland/outputs.cpp',
@@ -830,6 +833,7 @@ core_sources = files(
 )
 
 umbriel_core_deps = [
+  libeis_dep,
   umbrielfx_dep,
   wlroots_dep,
   wayland_server_dep,

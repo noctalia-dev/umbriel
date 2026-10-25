@@ -35,7 +35,7 @@ jobs:
             /bin/sh -eu -c '
               apk add --no-cache \
                 bash build-base just meson pkgconf samurai su-exec \
-                cairo-dev libdisplay-info-dev nlohmann-json pango-dev tomlplusplus-dev \
+                cairo-dev libdisplay-info-dev libei-dev nlohmann-json pango-dev tomlplusplus-dev \
                 wayland-dev wayland-protocols wlroots0.20-dev
               mkdir -p /tmp/umbriel-ci-home
               chown "$CI_UID:$CI_GID" /tmp/umbriel-ci-home

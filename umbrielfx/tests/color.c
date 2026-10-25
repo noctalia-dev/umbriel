@@ -513,11 +513,11 @@ static bool test_hdr_white_point(struct fixture* fixture) {
   wlr_scene_output_set_sdr_white_level(scene_output, 203.0f);
   wlr_scene_buffer_set_transfer_function(content, WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ);
   wlr_scene_buffer_set_primaries(content, WLR_COLOR_NAMED_PRIMARIES_BT2020);
-  uint8_t baseline[2][4], baseline_capture[2][4], shown[2][4], captured[2][4];
+  uint8_t baseline[2][4], baseline_capture[2][4], shown[2][4], captured[2][4], initial_sdr[2][4];
   const float neutral[3] = {1.0f, 1.0f, 1.0f};
   // Allocate the headless output's swapchain in its supported SDR mode before
   // rendering pending HDR descriptions through that same swapchain.
-  if (!render_white_point_scene(fixture, scene_output, false, shown, captured)) {
+  if (!render_white_point_scene(fixture, scene_output, false, initial_sdr, captured)) {
     ok = false;
     goto out;
   }
@@ -581,11 +581,17 @@ static bool test_hdr_white_point(struct fixture* fixture) {
     ok = false;
     goto out;
   }
-  const uint8_t sdr_white[4] = {255, 255, 255, 255};
   for (size_t sample = 0; sample < 2; sample++) {
     ok = check(
-             codes_close(baseline[sample], sdr_white, 1),
-             "returning from HDR repaints reference white and highlights as SDR white"
+             codes_close(baseline[sample], initial_sdr[sample], 1),
+             "returning from HDR restores the original SDR highlight mapping"
+         )
+        && ok;
+  }
+  for (size_t channel = 0; channel < 3; channel++) {
+    ok = check(
+             baseline[0][channel] < baseline[1][channel] && baseline[1][channel] < 255,
+             "returning from HDR preserves distinct SDR highlights without clipping"
          )
         && ok;
   }
@@ -1238,6 +1244,134 @@ out:
   }
   if (source != NULL) {
     wlr_buffer_drop(source);
+  }
+  return ok;
+}
+
+static bool test_scene_hdr_sdr_fallback(struct fixture* fixture) {
+  if (!enable_color_scene_output(fixture)) {
+    return false;
+  }
+  const float scrgb_pixels[2][4] = {{4.0f, 4.0f, 4.0f, 1.0f}, {16.0f, 16.0f, 16.0f, 1.0f}};
+  const float sdr_pixels[2][4] = {{1.0f, 1.0f, 1.0f, 1.0f}, {0.5f, 0.5f, 0.5f, 1.0f}};
+  const float pq_pixels[2][4] = {
+      {linear_to_pq(320.0f / 10000.0f), linear_to_pq(320.0f / 10000.0f), linear_to_pq(320.0f / 10000.0f), 1.0f},
+      {linear_to_pq(1280.0f / 10000.0f), linear_to_pq(1280.0f / 10000.0f), linear_to_pq(1280.0f / 10000.0f), 1.0f},
+  };
+  const float alpha_pixels[2][4] = {{2.0f, 1.0f, 0.5f, 0.5f}, {4.0f, 2.0f, 1.0f, 1.0f}};
+  struct wlr_buffer* sources[] = {
+      create_linear_buffer(scrgb_pixels),
+      create_linear_buffer(sdr_pixels),
+      create_linear_buffer(pq_pixels),
+      create_linear_buffer(alpha_pixels),
+  };
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = scene != NULL ? wlr_scene_output_create(scene, fixture->output) : NULL;
+  const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  struct wlr_scene_rect* background =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, black) : NULL;
+  struct wlr_scene_buffer* content =
+      scene != NULL && sources[0] != NULL ? wlr_scene_buffer_create(&scene->tree, sources[0]) : NULL;
+  bool ok = check(
+      output != NULL
+          && background != NULL
+          && content != NULL
+          && sources[1] != NULL
+          && sources[2] != NULL
+          && sources[3] != NULL,
+      "create HDR to SDR fallback scene"
+  );
+  if (!ok) {
+    goto out;
+  }
+  wlr_scene_output_set_direct_scanout_enabled(output, false);
+  wlr_scene_output_set_sdr_white_level(output, 203.0f);
+  wlr_scene_buffer_set_dest_size(content, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_buffer_set_filter_mode(content, WLR_SCALE_FILTER_NEAREST);
+  wlr_scene_buffer_set_transfer_function(content, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR);
+  wlr_scene_buffer_set_primaries(content, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+  wlr_scene_buffer_set_luminance_multiplier(content, 80.0f / 203.0f);
+  wlr_scene_buffer_set_luminances(content, NULL, true);
+
+  uint8_t fallback[2][4] = {0};
+  ok = render_metadata_scene(fixture, output, false, fallback) && ok;
+  for (size_t channel = 0; channel < 3; channel++) {
+    ok = check(
+             fallback[0][channel] >= 220 && fallback[0][channel] < fallback[1][channel] && fallback[1][channel] < 255,
+             "SDR fallback retains distinct scRGB highlights instead of clipping both to white"
+         )
+        && ok;
+  }
+
+  // A pending HDR output state must bypass the SDR shoulder immediately, then
+  // returning to SDR must restore the same mapping without a source repaint.
+  uint8_t shown[2][4] = {0};
+  ok = render_metadata_scene(fixture, output, true, shown) && ok;
+  const float moderate[3] = {320.0f, 320.0f, 320.0f};
+  const float brighter[3] = {1280.0f, 1280.0f, 1280.0f};
+  ok = check_pq_scene_pixel(shown[0], moderate, "scRGB SDR to HDR transition retains absolute brightness") && ok;
+  ok = check_pq_scene_pixel(shown[1], brighter, "HDR highlights bypass SDR compression") && ok;
+  ok = render_metadata_scene(fixture, output, false, shown) && ok;
+  ok = check(
+           codes_close(shown[0], fallback[0], 1) && codes_close(shown[1], fallback[1], 1),
+           "returning from HDR restores SDR highlight mapping"
+       )
+      && ok;
+
+  // Explicit linear SDR remains unchanged, including peak white. Ordinary SDR
+  // is not passed through an HDR shoulder merely because it uses linear data.
+  wlr_scene_buffer_set_buffer(content, sources[1]);
+  wlr_scene_buffer_set_luminance_multiplier(content, 1.0f);
+  wlr_scene_buffer_set_luminances(content, NULL, false);
+  ok = render_metadata_scene(fixture, output, false, shown) && ok;
+  const uint8_t white[4] = {255, 255, 255, 255};
+  const uint8_t grey[4] = {188, 188, 188, 255};
+  ok = check(
+           codes_close(shown[0], white, 1) && codes_close(shown[1], grey, 1),
+           "linear SDR peak white and midtones are unchanged"
+       )
+      && ok;
+
+  const struct wlr_color_luminances hdr_gamma = {.min = 0.0f, .max = 160.0f, .reference = 80.0f};
+  wlr_scene_buffer_set_transfer_function(content, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+  wlr_scene_buffer_set_luminances(content, &hdr_gamma, false);
+  ok = render_metadata_scene(fixture, output, false, shown) && ok;
+  ok = check(
+           shown[0][0] > 235 && shown[0][0] < 255 && abs((int)shown[1][0] - 177) <= 1,
+           "custom gamma HDR compresses highlights while preserving midtones below the knee"
+       )
+      && ok;
+
+  wlr_scene_buffer_set_buffer(content, sources[2]);
+  wlr_scene_buffer_set_transfer_function(content, WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ);
+  wlr_scene_buffer_set_luminances(content, NULL, false);
+  ok = render_metadata_scene(fixture, output, false, shown) && ok;
+  ok = check(
+           codes_close(shown[0], fallback[0], 1) && codes_close(shown[1], fallback[1], 1),
+           "equivalent PQ and scRGB light receives the same SDR mapping"
+       )
+      && ok;
+
+  wlr_scene_buffer_set_buffer(content, sources[3]);
+  wlr_scene_buffer_set_transfer_function(content, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR);
+  wlr_scene_buffer_set_luminance_multiplier(content, 80.0f / 203.0f);
+  wlr_scene_buffer_set_luminances(content, NULL, true);
+  ok = render_metadata_scene(fixture, output, false, shown) && ok;
+  for (size_t channel = 0; channel < 3; channel++) {
+    ok = check(
+             abs(2 * (int)shown[0][channel] - (int)shown[1][channel]) <= 3,
+             "HDR mapping unpremultiplies before compression and restores alpha before blending"
+         )
+        && ok;
+  }
+out:
+  if (scene != NULL) {
+    wlr_scene_node_destroy(&scene->tree.node);
+  }
+  for (size_t i = 0; i < sizeof(sources) / sizeof(sources[0]); i++) {
+    if (sources[i] != NULL) {
+      wlr_buffer_drop(sources[i]);
+    }
   }
   return ok;
 }
@@ -2917,6 +3051,125 @@ static bool test_optimized_blur_format_cache(struct fixture* fixture) {
   return check(abs(actual - expected) <= 24, "format-mismatched optimized-blur cache is not reused");
 }
 
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC image_target_texture;
+static size_t image_target_texture_calls;
+
+static void GL_APIENTRY count_image_target_texture(GLenum target, GLeglImageOES image) {
+  image_target_texture_calls++;
+  image_target_texture(target, image);
+}
+
+static bool sample_framebuffer_view(
+    struct fixture* fixture, struct fx_framebuffer* source, struct wlr_buffer* target, float red,
+    size_t expected_bindings, const char* binding_label
+) {
+  struct wlr_render_pass* paint = wlr_renderer_begin_buffer_pass(fixture->renderer, source->buffer, NULL);
+  if (!check(paint != NULL, "begin framebuffer view update")
+      || !check(
+          submit_solid_frame(paint, source->buffer->width, source->buffer->height, red), "update framebuffer pixels"
+      )) {
+    return false;
+  }
+
+  struct wlr_texture* texture = fx_texture_from_buffer(fixture->renderer, source->buffer);
+  if (!check(texture != NULL, "import framebuffer view")) {
+    return false;
+  }
+  if (image_target_texture_calls != expected_bindings) {
+    fprintf(
+        stderr, "%s: got %zu image bindings, expected %zu after rendering red %.1f\n", binding_label,
+        image_target_texture_calls, expected_bindings, red
+    );
+  }
+  bool ok = check(image_target_texture_calls == expected_bindings, binding_label);
+  struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL);
+  if (!check(pass != NULL, "begin framebuffer view sampling")) {
+    wlr_texture_destroy(texture);
+    return false;
+  }
+  wlr_render_pass_add_texture(
+      pass,
+      &(struct wlr_render_texture_options){
+          .texture = texture,
+          .dst_box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
+          .filter_mode = WLR_SCALE_FILTER_NEAREST,
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  ok = check(wlr_render_pass_submit(pass), "sample framebuffer view") && ok;
+  wlr_texture_destroy(texture);
+
+  uint8_t pixel[4] = {0};
+  const uint8_t expected[4] = {to_u8(0.5f), to_u8(0.25f), to_u8(red), 255};
+  ok = fixture_read_display_pixel(fixture, target, TEST_WIDTH / 2, TEST_HEIGHT / 2, pixel) && ok;
+  return check(codes_close(pixel, expected, 1), "framebuffer view samples the latest rendered pixels") && ok;
+}
+
+// Count real EGLImage attachment calls while sampling pixels, including a
+// renderbuffer update after the internal texture view has been established.
+static bool test_framebuffer_texture_binding(struct fixture* fixture) {
+  struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
+  struct wlr_egl_context previous;
+  if (!check(wlr_egl_make_current(renderer->egl, &previous), "activate framebuffer view context")) {
+    return false;
+  }
+  image_target_texture = renderer->procs.glEGLImageTargetTexture2DOES;
+  image_target_texture_calls = 0;
+  renderer->procs.glEGLImageTargetTexture2DOES = count_image_target_texture;
+
+  bool ok = true;
+  bool failed = false;
+  struct fx_framebuffer* owned = NULL;
+  struct wlr_buffer* external = NULL;
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+  fx_framebuffer_get_or_create_custom(
+      renderer, fixture->allocator, TEST_WIDTH, TEST_HEIGHT, DRM_FORMAT_ABGR16161616F, &owned, &failed
+  );
+  if (!check(target != NULL && !failed && owned != NULL && owned->owned, "create internal framebuffer view")) {
+    ok = false;
+    goto out;
+  }
+  ok = sample_framebuffer_view(fixture, owned, target, 0.2f, 1, "first owned import attaches one EGLImage") && ok;
+  ok = sample_framebuffer_view(fixture, owned, target, 0.8f, 1, "owned framebuffer update reuses its EGLImage binding")
+      && ok;
+
+  fx_framebuffer_get_or_create_custom(
+      renderer, fixture->allocator, TEST_WIDTH / 2, TEST_HEIGHT, DRM_FORMAT_ABGR8888, &owned, &failed
+  );
+  if (!check(
+          !failed && owned != NULL && owned->buffer->width == TEST_WIDTH / 2, "replace internal framebuffer storage"
+      )) {
+    ok = false;
+    goto out;
+  }
+  ok = sample_framebuffer_view(fixture, owned, target, 0.4f, 2, "replaced storage attaches a new EGLImage") && ok;
+  ok = sample_framebuffer_view(fixture, owned, target, 0.6f, 2, "replacement update reuses its EGLImage binding") && ok;
+
+  external = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  struct fx_framebuffer* imported = external != NULL ? fx_framebuffer_get_or_create(renderer, external) : NULL;
+  if (!check(imported != NULL && !imported->owned && !imported->external_only, "create external framebuffer view")) {
+    ok = false;
+    goto out;
+  }
+  ok = sample_framebuffer_view(fixture, imported, target, 0.3f, 3, "first external import attaches its EGLImage") && ok;
+  ok = sample_framebuffer_view(fixture, imported, target, 0.7f, 4, "external update reattaches its EGLImage") && ok;
+
+out:
+  renderer->procs.glEGLImageTargetTexture2DOES = image_target_texture;
+  image_target_texture = NULL;
+  if (external != NULL) {
+    wlr_buffer_drop(external);
+  }
+  if (owned != NULL) {
+    wlr_buffer_drop(owned->buffer);
+  }
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  wlr_egl_restore_context(&previous);
+  return ok;
+}
+
 int main(int argc, char* argv[]) {
   if (argc != 2) {
     fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -2947,6 +3200,8 @@ int main(int argc, char* argv[]) {
     ok = test_scene_custom_bt1886(&fixture);
   } else if (strcmp(argv[1], "scene-scrgb-absolute-luminance") == 0) {
     ok = test_scene_scrgb_absolute_luminance(&fixture);
+  } else if (strcmp(argv[1], "scene-hdr-sdr-fallback") == 0) {
+    ok = test_scene_hdr_sdr_fallback(&fixture);
   } else if (strcmp(argv[1], "hdr-white-point") == 0) {
     ok = test_hdr_white_point(&fixture);
   } else if (strcmp(argv[1], "sdr-white-point-alpha") == 0) {
@@ -2997,6 +3252,8 @@ int main(int argc, char* argv[]) {
     ok = test_shared_sdr_capture_storage_change(&fixture);
   } else if (strcmp(argv[1], "capture-read-format") == 0) {
     ok = test_capture_read_format(&fixture);
+  } else if (strcmp(argv[1], "framebuffer-texture-binding") == 0) {
+    ok = test_framebuffer_texture_binding(&fixture);
   } else {
     fprintf(stderr, "unknown case: %s\n", argv[1]);
     ok = false;

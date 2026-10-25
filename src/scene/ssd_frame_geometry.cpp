@@ -41,7 +41,7 @@ namespace umbriel {
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       double x, double y
   ) {
-    if (cw <= 0 || ch <= 0 || h <= 0)
+    if (cw <= 0 || ch <= 0 || h < 0)
       return {};
     if (x >= 0 && x < cw && y >= -h && y < 0) {
       const TitleBarLayout layout = titleBarLayout(cw, h, side, shown);

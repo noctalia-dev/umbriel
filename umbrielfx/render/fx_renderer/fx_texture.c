@@ -408,8 +408,10 @@ static struct wlr_texture* fx_texture_from_framebuffer(
     glGenTextures(1, &buffer->tex);
     invalid = true;
   } else {
-    // External changes are immediately made visible by the GL implementation
-    invalid = !buffer->external_only;
+    // External textures observe producer updates automatically. Other client
+    // buffers need refreshing, but owned EGLImage siblings share this context's
+    // rendering updates without reattaching their storage.
+    invalid = !buffer->external_only && !buffer->owned;
   }
 
   if (invalid) {

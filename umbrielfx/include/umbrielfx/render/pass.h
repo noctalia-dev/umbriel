@@ -129,6 +129,9 @@ struct fx_render_texture_options {
   // Optional primary luminances, used by transfer functions whose shape
   // depends on the display black and white levels (BT.1886).
   const struct wlr_color_luminances* luminances;
+  // Compress HDR highlights into the SDR range before blending this content.
+  // Intermediate textures leave this unset so a scene is not mapped twice.
+  bool map_hdr_to_sdr;
 };
 
 struct fx_render_rect_options {

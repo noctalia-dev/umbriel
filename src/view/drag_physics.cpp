@@ -5,18 +5,22 @@
 
 namespace umbriel {
   namespace {
-    // Spring sheet tuning: stiffness pulls each mass home, coupling ties it to its neighbours, damping
-    // bleeds energy, pointer response scales how far a motion loads the sheet.
-    constexpr float kStiffness = 36.0F;
-    constexpr float kCoupling = 100.0F;
-    constexpr float kDamping = 6.5F;
-    constexpr float kPointerResponse = 2.0F;
+    // The sheet's spring model is tuned through DragPhysics::Tuning
+    // ([animation.windows_drag]); only the integration and stability
+    // constants live here.
     constexpr double kStep = 1.0 / 240.0;
-    constexpr double kSettleAfterPause = 0.25;
-    constexpr float kMaxDisplacementPx = 200.0F;
     // Below these the sheet reads as at rest, and settling ends the frame stream.
     constexpr float kSettledDisplacement = 0.25F;
     constexpr float kSettledVelocity = 2.5F;
+    // A stall must also exceed this many output frame periods, so ordinary frames never settle at any refresh rate.
+    constexpr double kStallCadenceMargin = 2.0;
+    // A released sheet whose motion stays drained below the settle velocity is
+    // snapped to rest after this quiet window, so degenerate tuning cannot
+    // schedule frames forever on a static offset or a slow creep.
+    constexpr double kReleasedQuietS = 0.25;
+    // The most one tick integrates, in seconds, so a pause tolerated by a large settle threshold does not run its
+    // whole gap at 240 Hz on the compositor thread.
+    constexpr double kMaxCatchUpS = 1.0;
     // A pointer delta beyond this cannot come from real input; `move()` clamps to it so a single huge,
     // finite delta cannot overflow to inf before `constrain()` gets a chance to bound the result.
     constexpr float kMaxDelta = 1.0e6F;
@@ -36,17 +40,19 @@ namespace umbriel {
     }
   } // namespace
 
-  void DragPhysics::begin(float width, float height, float grabX, float grabY, uint64_t transitionId) {
+  void DragPhysics::begin(float width, float height, float grabX, float grabY, uint64_t transitionId, Tuning tuning) {
     // Non-finite input leaves the sheet untouched; a 0x0 window is valid (floored to 1x1).
     if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(grabX) || !std::isfinite(grabY)) {
       return;
     }
     if (m_active) {
+      m_tuning = tuning;
       m_grabbed = true;
       resize(width, height, grabX, grabY);
       return;
     }
     *this = DragPhysics{};
+    m_tuning = tuning;
     m_width = std::max(width, 1.0F);
     m_height = std::max(height, 1.0F);
     m_transitionId = transitionId;
@@ -139,7 +145,7 @@ namespace umbriel {
         }
       }
       ratio[axis] = std::max(ratio[axis], 3 * (horizontal + vertical) / (extent * kContraction));
-      const float maxDisplacement = std::min(kMaxDisplacementPx, extent / 5);
+      const float maxDisplacement = std::min(m_tuning.maxDisplacementPx, extent / 5);
       for (int i = 0; i < kPoints; ++i) {
         ratio[axis] = std::max(ratio[axis], std::abs(m_displacement[i][axis]) / maxDisplacement);
         ratio[axis] = std::max(ratio[axis], std::abs(m_velocity[i][axis]) / kMaxVelocity);
@@ -164,27 +170,35 @@ namespace umbriel {
     dx = std::clamp(dx, -kMaxDelta, kMaxDelta);
     dy = std::clamp(dy, -kMaxDelta, kMaxDelta);
     for (int i = 0; i < kPoints; ++i) {
-      m_displacement[i][0] -= kPointerResponse * dx * m_drag[i];
-      m_displacement[i][1] -= kPointerResponse * dy * m_drag[i];
+      m_displacement[i][0] -= m_tuning.pointerResponse * dx * m_drag[i];
+      m_displacement[i][1] -= m_tuning.pointerResponse * dy * m_drag[i];
     }
     constrain();
     m_active = true;
   }
 
-  void DragPhysics::release() { m_grabbed = false; }
+  void DragPhysics::release() {
+    m_grabbed = false;
+    m_slowS = 0;
+  }
 
-  bool DragPhysics::tick(double seconds) {
+  bool DragPhysics::tick(double seconds, double cadenceS) {
     if (!m_active || !std::isfinite(seconds) || seconds <= 0) {
       return m_active;
     }
-    if (seconds > kSettleAfterPause) {
+    // Frame-stall guard. `cadenceS` is the output's refresh period, not the previous tick's interval: the tick that
+    // wakes a sheet covers a partial frame. Without a cadence (0) the tuned pause alone decides.
+    const bool stalled =
+        seconds > m_tuning.settleAfterPauseS && (cadenceS <= 0 || seconds > kStallCadenceMargin * cadenceS);
+    if (stalled) {
       m_displacement = {};
       m_velocity = {};
       m_remainder = 0;
       m_active = false;
+      m_slowS = 0;
       return false;
     }
-    m_remainder += seconds;
+    m_remainder += std::min(seconds, kMaxCatchUpS);
     while (m_remainder + 1e-12 >= kStep) {
       m_remainder -= kStep;
       Sheet acceleration{};
@@ -193,10 +207,11 @@ namespace umbriel {
             i % 4 > 0 ? i - 1 : -1, i % 4 < 3 ? i + 1 : -1, i >= 4 ? i - 4 : -1, i < 12 ? i + 4 : -1
         };
         for (int axis = 0; axis < 2; ++axis) {
-          acceleration[i][axis] = -kStiffness * m_displacement[i][axis] - kDamping * m_velocity[i][axis];
+          acceleration[i][axis] =
+              -m_tuning.stiffness * m_displacement[i][axis] - m_tuning.damping * m_velocity[i][axis];
           for (const int n : neighbours) {
             if (n >= 0) {
-              acceleration[i][axis] += kCoupling * (m_displacement[n][axis] - m_displacement[i][axis]);
+              acceleration[i][axis] += m_tuning.coupling * (m_displacement[n][axis] - m_displacement[i][axis]);
             }
           }
         }
@@ -208,6 +223,13 @@ namespace umbriel {
         }
       }
       constrain();
+      // Released-sheet quiet time counts per step, from the velocity actually
+      // carried through the motion. Sampling only the end of a tick would let
+      // a long frame that ends slow mid-ring credit its whole gap as quiet and
+      // clear the deformation early.
+      if (!m_grabbed) {
+        m_slowS = maxVelocity() < kSettledVelocity ? m_slowS + kStep : 0.0;
+      }
     }
     m_active = false;
     for (int i = 0; i < kPoints; ++i) {
@@ -220,6 +242,18 @@ namespace umbriel {
       m_displacement = {};
       m_velocity = {};
       m_remainder = 0;
+      m_slowS = 0;
+    } else if (m_grabbed) {
+      m_slowS = 0;
+    } else if (m_slowS > kReleasedQuietS) {
+      // A released sheet must end: after a whole quiet window below the settle velocity, snap the remaining
+      // deformation away so degenerate tuning cannot keep scheduling frames. Only quiet steps accumulate, so a
+      // ringing wobble's brief turning points do not trigger it.
+      m_displacement = {};
+      m_velocity = {};
+      m_remainder = 0;
+      m_active = false;
+      m_slowS = 0;
     }
     return m_active;
   }
@@ -245,7 +279,9 @@ namespace umbriel {
     return displacement;
   }
 
-  float DragPhysics::displacementBound() const { return std::min(kMaxDisplacementPx, std::max(m_width, m_height) / 5); }
+  float DragPhysics::displacementBound() const {
+    return std::min(m_tuning.maxDisplacementPx, std::max(m_width, m_height) / 5);
+  }
 
   float DragPhysics::maxDisplacement() const { return largestComponent(m_displacement); }
 

@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/eis.h"
 #include "input/keyboard_layout.h"
 #include "input/seat.h"
 #include "input/shortcut_keysym.h"
@@ -24,7 +25,10 @@ namespace umbriel {
 
   Keyboard::Keyboard(Server& server, wlr_input_device* device)
       : m_server(&server), m_keyboard(wlr_keyboard_from_input_device(device)),
-        m_virtual(wlr_input_device_get_virtual_keyboard(device) != nullptr),
+        m_virtual(
+            wlr_input_device_get_virtual_keyboard(device) != nullptr
+            || (server.eisInput() != nullptr && server.eisInput()->ownsDevice(device))
+        ),
         m_deviceName(device->name != nullptr ? device->name : "") {
     if (m_virtual) {
       m_server->inputMethodRelay()->canonicalizeOwnedKeyboardKeymap(m_keyboard);
@@ -226,6 +230,9 @@ namespace umbriel {
   }
 
   void Keyboard::handleModifiers() {
+    if (!m_virtual && m_server->eisInput() != nullptr) {
+      m_server->eisInput()->updateModifiers(m_keyboard->modifiers);
+    }
     wlr_seat* seat = m_server->seat()->wlr();
     if (m_syncingLayout) {
       m_server->refreshKeyboardLeds();
@@ -325,7 +332,7 @@ namespace umbriel {
             }
             if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
               confirmed = matched->action == KeybindAction::SessionQuit;
-            } else {
+            } else if (confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
               confirmed = matched->action == KeybindAction::ScreenCastSetOutput
                   || matched->action == KeybindAction::ScreenCastSetWindow
                   || matched->action == KeybindAction::ScreenCastFollowWindow
@@ -335,6 +342,8 @@ namespace umbriel {
           if (confirmed) {
             if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
               m_server->requestSessionExit();
+            } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
+              m_server->confirmInputEmulation();
             } else {
               m_server->confirmScreenCastDynamic();
             }

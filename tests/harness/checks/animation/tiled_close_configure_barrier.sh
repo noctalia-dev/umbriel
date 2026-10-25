@@ -50,8 +50,13 @@ effect = "windows_out_configure_close"
 enabled = true
 duration_ms = $MOVE_MS
 curve = "linear"
+
+[animation.windows_resize]
+enabled = true
+duration_ms = $MOVE_MS
+curve = "linear"
 EOF
-"$UMBRIEL" msg workspace-set-layout:master > /dev/null
+"$UMBRIEL" msg config-reload > /dev/null
 # Animation time only moves by clock-advance. Clients still map, acknowledge, and commit in real time, so each sample
 # waits for the client first.
 "$UMBRIEL" clock-freeze

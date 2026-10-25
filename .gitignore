@@ -25,3 +25,6 @@ result-*
 /TODO.md
 /pr-*.md
 /.github/workflows/scripts/__pycache__
+
+# Docs formatter dependencies
+/tools/remark/node_modules/
