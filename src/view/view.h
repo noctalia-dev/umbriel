@@ -765,6 +765,12 @@ namespace umbriel {
     // True while the physics sheet is displaced from its resting box: grabbed,
     // or still settling after the release.
     [[nodiscard]] bool dragSheetDisplaced() const;
+    // The release's say over where the view rests: the window closes when the
+    // release handler ends, flush lands the wait immediately.
+    void closeReleaseRehomeWindow();
+    void flushReleaseRehome();
+    // Re-points transient children at the trees this view now lives under.
+    void syncTransientChildren();
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
     struct DragFit {
@@ -1006,8 +1012,8 @@ namespace umbriel {
     // The resting re-home requested while the released sheet was still
     // displaced (setSceneParent defers it); applied when the spring settles.
     wlr_scene_tree* m_pendingHomeParent = nullptr;
-    // One release, one deferral: armed by endDragPhysics and consumed by the
-    // first resting re-home, so mid-settle state changes reparent immediately.
+    // Armed for one release flow: setSceneParent absorbs the reparents the
+    // release issues until closeReleaseRehomeWindow() ends the flow.
     bool m_releaseRehomeArmed = false;
     // The frame-local grab and the content tree's drawn bounds the sheet was last fitted to.
     double m_dragGrabX = 0;

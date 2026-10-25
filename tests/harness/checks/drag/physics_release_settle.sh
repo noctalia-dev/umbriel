@@ -125,8 +125,8 @@ if ((hnheld < 100)); then
   echo "scenario never engaged: no ring on the neighbour while held ($hnheld)"
   exit 1
 fi
-if ((gr16 < 1000)); then
-  echo "unmeasurable: the home sample is empty at r16 (green=$gr16), a cut would pass silently"
+if ((gr16 < 10000)) || ((gr64 < 10000)); then
+  echo "unmeasurable: home samples too small (gr16=$gr16 gr64=$gr64), a cut would pass silently"
   exit 1
 fi
 
@@ -177,12 +177,20 @@ if ((bheld < 100)); then
   echo "transfer scenario never engaged: no ring on the home side while held ($bheld)"
   exit 1
 fi
+if ((bg16 < 10000)) || ((bg64 < 10000)); then
+  echo "unmeasurable: transfer displacement samples too small (bg16=$bg16 bg64=$bg64)"
+  exit 1
+fi
 if ((bg16 > 10000)) && ((b16 < 100)); then
   echo "the transfer cut the deformed sheet at the shared edge (home red: held=$bheld r16=$b16 r64=$b64)"
   exit 1
 fi
 if ((bg64 > 10000)) && ((b64 < 100)); then
   echo "the transfer cut the deformed sheet mid-settle (home red: r64=$b64)"
+  exit 1
+fi
+if ((bsettled >= 100)); then
+  echo "the destination clip never applied after the transfer settle (home red: $bsettled)"
   exit 1
 fi
 echo "a transferred sheet keeps drawing across the shared edge until the deform settles"
