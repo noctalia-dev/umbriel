@@ -512,8 +512,7 @@ namespace umbriel {
 
   void View::endDragPhysics() {
     m_dragPhysics.release();
-    // The spring keeps displacing the sheet past the release; arm the resting
-    // re-home's deferral (consumed in setSceneParent).
+    // The resting re-home's wait covers the reparents the release issues.
     m_releaseRehomeArmed = true;
   }
 
@@ -527,7 +526,6 @@ namespace umbriel {
       m_ssdFrame->setBlurLive(false);
     }
     setFadeAlpha(m_fadeAlpha);
-    wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     if (m_pinned) {
       restorePinnedSceneParent();
       if (m_workspace != nullptr) {
@@ -1045,17 +1043,18 @@ namespace umbriel {
     }
     // The deferred resting re-home lands in the same tick the spring settles —
     // a later tick may never come — or earlier while an overview is open and
-    // its cards need the home tree. The first tick also closes the release
-    // flow's deferral window: from here on, state changes reparent immediately.
-    // The wait is cleared BEFORE the call so the guard cannot absorb its own
-    // apply while the sheet is still displaced.
+    // its cards need the home tree. This tick is also the backstop that closes
+    // the release's say over where the view rests.
     m_releaseRehomeArmed = false;
     if (m_pendingHomeParent != nullptr
         && (!dragSheetDisplaced() || (m_server->overview() != nullptr && m_server->overview()->active()))) {
-      wlr_scene_tree* target = m_pendingHomeParent;
-      m_pendingHomeParent = nullptr;
-      m_releaseRehomeArmed = false;
-      setSceneParent(target);
+      flushReleaseRehome();
+      if (m_workspace != nullptr && !m_pinned) {
+        m_workspace->restackFloatingViews();
+        if (m_mapped) {
+          m_workspace->syncViewPresentation(this);
+        }
+      }
     }
     syncAnimationEffects();
     if (!active && m_mapped && m_xsurface != nullptr) {
