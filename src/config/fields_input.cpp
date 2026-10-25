@@ -357,6 +357,12 @@ namespace umbriel {
           real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, &In::Focus::followsMouseMaxScroll),
           boolean("hover_raises", &In::Focus::hoverRaises),
       };
+      // Bounds are a sanity frame around upstream's travel, not a tuning range: the values scale the movement a
+      // swipe produces per axis, so they stay positive and finite.
+      static const Fields<In::Gesture> gesture{
+          real("travel_scale_horizontal", 0.1, 10.0, &In::Gesture::travelScaleHorizontal),
+          real("travel_scale_vertical", 0.1, 10.0, &In::Gesture::travelScaleVertical),
+      };
       static const Fields<In::Device> device{
           custom<In::Device>(
               "name", registry::KeyDescription("string"),
@@ -423,6 +429,7 @@ namespace umbriel {
           table("cursor", &In::cursor, cursor),
           table("drag_edge_scroll", &In::dragEdgeScroll, dragEdgeScroll),
           table("focus", &In::focus, focus),
+          table("gesture", &In::gesture, gesture),
           registry::rules("device", &In::devices, device, registry::Shape::Error, acceptDevice),
       };
       return fields;

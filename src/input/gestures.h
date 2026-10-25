@@ -115,6 +115,9 @@ namespace umbriel {
     // Where the slide was, in steps from its base, when the gesture took it over: nonzero only when the gesture started
     // while a settle was still running.
     double m_switchStart = 0;
+    // Finger travel for one workspace step, latched per gesture from the workspace axis's travel scale, so the
+    // live slide and its settle divide by the same number.
+    double m_switchTravelPx = kSwipeWorkspacePx;
     bool m_hasPrev = false;
     bool m_hasNext = false;
 

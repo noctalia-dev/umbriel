@@ -1486,6 +1486,31 @@ UMBRIEL_TEST(hoverRaisesLoadsAndDefaultsEnabled) {
   CHECK(store.config().input.focus.hoverRaises);
 }
 
+UMBRIEL_TEST(travelScalesLoadPerAxisAndDefaultToUpstream) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[input.gesture]\ntravel_scale_horizontal = 0.7\ntravel_scale_vertical = 2.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.gesture.travelScaleHorizontal == 0.7);
+  CHECK(store.config().input.gesture.travelScaleVertical == 2.0);
+  CHECK(!containsDiagnostic(store, "unknown key input.gesture.travel_scale_horizontal"));
+  CHECK(!containsDiagnostic(store, "unknown key input.gesture.travel_scale_vertical"));
+
+  file.write("[input.gesture]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.gesture.travelScaleHorizontal == 1.0);
+  CHECK(store.config().input.gesture.travelScaleVertical == 1.0);
+
+  file.write("[input.gesture]\ntravel_scale_horizontal = 0.0\ntravel_scale_vertical = 11.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.gesture.travelScaleHorizontal == 0.1);
+  CHECK(store.config().input.gesture.travelScaleVertical == 10.0);
+  CHECK(containsDiagnostic(store, "input.gesture.travel_scale_horizontal"));
+  CHECK(containsDiagnostic(store, "input.gesture.travel_scale_vertical"));
+}
+
 UMBRIEL_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {
   const TempConfig file;
   file.write(R"(

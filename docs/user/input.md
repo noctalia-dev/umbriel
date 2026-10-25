@@ -323,6 +323,16 @@ X11 windows that declare `Input=False` without `WM_TAKE_FOCUS`, including Steam'
 
 `follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal that window, measured in viewport widths. `0.0` allows only fully visible windows. Omit the key for no limit.
 
+### Gestures
+
+```toml
+[input.gesture]
+travel_scale_horizontal = 1.0
+travel_scale_vertical = 1.0
+```
+
+`travel_scale_horizontal` and `travel_scale_vertical` scale how far a three-finger swipe moves content along each axis: panning the scrolling strip, switching workspaces, and the same two movements inside the overview. Three-finger travel arrives pointer-accelerated, so the same physical swipe covers more distance when the fingers move fast; a value below `1.0` makes swipes along that axis cover less ground without changing pointer speed, window drag, or window resize. The value scales the finger travel one step needs: `0.7` takes about 1.4 times the travel per strip pan or workspace step, `2.0` half. Accepted values are `0.1` to `10.0`; `1.0` keeps the built-in distances. The same axis value governs the desktop and the overview, so one swipe step reads the same distance on either side; which physical axis moves workspaces follows the output's `workspace_axis`. Two-finger scrolling arrives unaccelerated and is not affected, nor are the four-finger overview gesture or gestures forwarded to applications.
+
 ### Controller desktop input
 
 Steam's desktop controller mappings can control native Wayland windows through Umbriel's X11 input emulation. Umbriel asks for permission on the first request and remembers the decision for the current session. See [X11 desktop input](security.md#x11-desktop-input) for consent and lock-screen behavior.

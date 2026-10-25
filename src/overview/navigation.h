@@ -30,8 +30,24 @@ namespace umbriel {
     static constexpr Travel kScrollTravel{.workspace = 500.0, .viewport = 500.0};
     static constexpr Travel kSwipeTravel{.workspace = kSwipeWorkspacePx, .viewport = kSwipeViewportPx};
 
-    [[nodiscard]] static constexpr Travel travelFor(NavigationSource source) {
-      return source == NavigationSource::Scroll ? kScrollTravel : kSwipeTravel;
+    // Workspaces move along the workspace axis and the strip pan across it, so each role reads its own axis's
+    // travel scale — the same selection `axisTravelScale` gives the desktop conversions.
+    [[nodiscard]] static constexpr Travel travelFor(
+        NavigationSource source, bool horizontalWorkspaces = true, double horizontalScale = 1.0,
+        double verticalScale = 1.0
+    ) {
+      if (source == NavigationSource::Scroll) {
+        // The scroll stream arrives unaccelerated; only swipe travel is scaled.
+        return kScrollTravel;
+      }
+      return Travel{
+          .workspace = swipeTravelPx(
+              kSwipeTravel.workspace, axisTravelScale(!horizontalWorkspaces, horizontalScale, verticalScale)
+          ),
+          .viewport = swipeTravelPx(
+              kSwipeTravel.viewport, axisTravelScale(horizontalWorkspaces, horizontalScale, verticalScale)
+          ),
+      };
     }
 
     void reset() {

@@ -1,5 +1,6 @@
 #include "input/gestures.h"
 
+#include "config/config.h"
 #include "input/cursor.h"
 #include "input/event_time.h"
 #include "input/gesture_physics.h"
@@ -249,7 +250,7 @@ namespace umbriel {
     const double lo = m_hasPrev ? -1.0 : 0.0;
     const double hi = m_hasNext ? 1.0 : 0.0;
     const double position = GesturePhysics::rubberBand(
-        m_switchStart + m_switchTracker.pos() / kSwipeWorkspacePx, lo, hi, GesturePhysics::kOverscrollLimit
+        m_switchStart + m_switchTracker.pos() / m_switchTravelPx, lo, hi, GesturePhysics::kOverscrollLimit
     );
     m_switchGroup->slideApply(position);
   }
@@ -259,7 +260,7 @@ namespace umbriel {
     // reading the tracker. The strip scroll does the same for the same reason.
     m_switchTracker.push(0.0, timeMsec);
     return GesturePhysics::release(
-        m_switchTracker, kSwipeWorkspacePx, m_switchStart, m_hasPrev ? -1.0 : 0.0, m_hasNext ? 1.0 : 0.0
+        m_switchTracker, m_switchTravelPx, m_switchStart, m_hasPrev ? -1.0 : 0.0, m_hasNext ? 1.0 : 0.0
     );
   }
 
@@ -437,8 +438,12 @@ namespace umbriel {
           m_state = State::Idle;
           return;
         }
-        const double scale =
-            static_cast<double>(ws->scrollViewportExtent()) / kSwipeViewportPx * m_naturalScrollDirection;
+        const auto& scales = config().input.gesture;
+        const double travelScale =
+            axisTravelScale(ws->scrollingVertical(), scales.travelScaleHorizontal, scales.travelScaleVertical);
+        const double scale = static_cast<double>(ws->scrollViewportExtent())
+            / swipeTravelPx(kSwipeViewportPx, travelScale)
+            * m_naturalScrollDirection;
         if (!beginScroll(ws, scale, ScrollSource::Swipe)) {
           m_state = State::Idle;
         }
@@ -455,6 +460,13 @@ namespace umbriel {
         m_switchGroup = group;
         m_switchTracker.reset();
         m_switchStart = group->slideProgress();
+        // One workspace of finger travel scales with the workspace axis, the same scale the strip pan and the
+        // overview's between-workspace navigation read, so one gesture step stays one gesture step everywhere.
+        const auto& scales = config().input.gesture;
+        const double travelScale = axisTravelScale(
+            m_workspaceAxis == WorkspaceAxis::Vertical, scales.travelScaleHorizontal, scales.travelScaleVertical
+        );
+        m_switchTravelPx = swipeTravelPx(kSwipeWorkspacePx, travelScale);
         m_state = State::Switch;
         // The travel that decided the axis is this gesture's first reading, so the slide moves with the fingers from
         // the frame the lock happens instead of after it.

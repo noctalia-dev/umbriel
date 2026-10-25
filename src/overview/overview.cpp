@@ -2915,7 +2915,13 @@ namespace umbriel {
     const auto& overview = config().overview;
     const double factor =
         axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical;
-    const auto travel = OverviewNavigation::travelFor(m_navigationSource);
+    // The workspace travel scales with the workspace axis and the viewport pan with the strip axis — the same
+    // per-axis pair the desktop workspace switch and strip scroll use, so the hand reads one step on either side.
+    const bool horizontalWorkspaces = m_navigationHorizontalWorkspaces;
+    const auto& scales = config().input.gesture;
+    const auto travel = OverviewNavigation::travelFor(
+        m_navigationSource, horizontalWorkspaces, scales.travelScaleHorizontal, scales.travelScaleVertical
+    );
     if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
       if (!m_navigationStarted) {
         m_navigationStart = state->rowScroll.current();

@@ -1179,6 +1179,16 @@ namespace umbriel {
         bool operator==(const Focus&) const = default;
       } focus;
 
+      // Three-finger travel arrives pointer-accelerated, so the same physical swipe covers more distance when the
+      // fingers move fast. Each axis scales the swipe travel that moves content along it — strip pans and
+      // workspace switching, on the desktop and in the overview alike — without touching pointer speed, window
+      // drag, or window resize.
+      struct Gesture {
+        double travelScaleHorizontal = 1.0;
+        double travelScaleVertical = 1.0;
+        bool operator==(const Gesture&) const = default;
+      } gesture;
+
       struct Tablet {
         // false silences the tablet and its pads via libinput
         bool enabled = true;

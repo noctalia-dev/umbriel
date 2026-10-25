@@ -11,6 +11,18 @@ namespace umbriel {
   inline constexpr double kSwipeWorkspacePx = 300.0;
   inline constexpr double kSwipeViewportPx = 1200.0;
 
+  // The finger travel one viewport pan or workspace step needs, after the input.gesture.travel_scale_* value for
+  // its axis. Below 1.0 the same movement takes more finger travel, so a swipe covers less ground; 1.0 keeps the
+  // upstream distances. Travel is divided rather than the deltas multiplied so every conversion sees one
+  // convention.
+  [[nodiscard]] constexpr double swipeTravelPx(double travelPx, double travelScale) { return travelPx / travelScale; }
+
+  // Which axis's travel scale a movement along `vertical` reads. Shared by every swipe conversion (strip pan,
+  // workspace step, overview roles) so their picks cannot drift apart or swap arguments silently.
+  [[nodiscard]] constexpr double axisTravelScale(bool vertical, double horizontalScale, double verticalScale) {
+    return vertical ? verticalScale : horizontalScale;
+  }
+
   // Sliding-window swipe tracker. Accumulates deltas since the gesture start, estimates velocity over recent history
   // only, and projects where the movement would coast to a stop under exponential deceleration.
   class SwipeTracker {

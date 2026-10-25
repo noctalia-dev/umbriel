@@ -139,6 +139,12 @@ numlock_toggle = true
 # follows_mouse = true
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
+# Three-finger swipe travel per axis: strip pans and workspace switches, desktop and overview alike.
+#
+# [input.gesture]
+# travel_scale_horizontal = 0.7 # Below 1.0 covers less ground along that axis; 1.0 keeps the built-in distance.
+# travel_scale_vertical = 0.7
+
 # Confine touch input to one display.
 #
 # [input.touch]

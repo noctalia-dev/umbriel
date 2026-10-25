@@ -2,9 +2,14 @@
 
 #include "check.h"
 #include "input/swipe_tracker.h"
+#include "overview/navigation.h"
 
+using umbriel::axisTravelScale;
 using umbriel::GesturePhysics;
+using umbriel::NavigationSource;
+using umbriel::OverviewNavigation;
 using umbriel::SwipeTracker;
+using umbriel::swipeTravelPx;
 
 namespace {
 
@@ -128,6 +133,33 @@ UMBRIEL_TEST(theOverviewSettlesOnTheSideTheProjectionPointsTo) {
   CHECK(pastEnd.position > 1.0);
   CHECK(pastEnd.position < 1.0 + GesturePhysics::kOverscrollLimit);
   CHECK_EQ(pastEnd.target, 1);
+}
+
+UMBRIEL_TEST(travelScalesApplyPerAxisAcrossRoles) {
+  // 1.0 keeps the upstream distances: one viewport pan per kSwipeViewportPx, one step per kSwipeWorkspacePx.
+  CHECK(swipeTravelPx(1200.0, 1.0) == 1200.0);
+  const auto upstream = OverviewNavigation::travelFor(NavigationSource::Swipe);
+  CHECK(upstream.workspace == 300.0);
+  CHECK(upstream.viewport == 1200.0);
+
+  // A movement along an axis reads that axis's scale — the same selection the desktop strip pan and workspace
+  // step conversions use, so the four call sites cannot drift apart or swap arguments silently.
+  CHECK(axisTravelScale(false, 0.7, 2.0) == 0.7);
+  CHECK(axisTravelScale(true, 0.7, 2.0) == 2.0);
+
+  // Horizontal workspaces: workspaces move along the horizontal scale, the strip pan along the vertical one.
+  const auto horizontalWorkspaces = OverviewNavigation::travelFor(NavigationSource::Swipe, true, 0.7, 2.0);
+  CHECK(horizontalWorkspaces.workspace == 300.0 / 0.7);
+  CHECK(horizontalWorkspaces.viewport == 1200.0 / 2.0);
+  // Vertical workspaces: the two roles swap scales.
+  const auto verticalWorkspaces = OverviewNavigation::travelFor(NavigationSource::Swipe, false, 0.7, 2.0);
+  CHECK(verticalWorkspaces.workspace == 300.0 / 2.0);
+  CHECK(verticalWorkspaces.viewport == 1200.0 / 0.7);
+
+  // The scroll stream arrives unaccelerated and keeps its own distances at any scale.
+  const auto scroll = OverviewNavigation::travelFor(NavigationSource::Scroll, true, 0.7, 0.7);
+  CHECK(scroll.workspace == 500.0);
+  CHECK(scroll.viewport == 500.0);
 }
 
 int main() { return RUN_TESTS(); }
