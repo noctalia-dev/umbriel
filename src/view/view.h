@@ -771,6 +771,8 @@ namespace umbriel {
     void flushReleaseRehome();
     // Re-points transient children at the trees this view now lives under.
     void syncTransientChildren();
+    // True while another view still rests under the drag tree.
+    [[nodiscard]] bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
     struct DragFit {
