@@ -828,7 +828,30 @@ namespace umbriel {
     refreshStateRuleEffects();
   }
 
+  bool View::dragSheetDisplaced() const { return m_dragPhysics.active() || m_dragPhysics.grabbed(); }
+
   void View::setSceneParent(wlr_scene_tree* parent) {
+    // A released sheet can still be displaced outside a home tree's output clip
+    // (the release spring runs on). Re-homing there cuts the displaced pixels
+    // off at the edge; the invisible part is only correct once the deform
+    // settles, so the release's resting re-homes wait for it. The window spans
+    // the whole release flow — endDragPhysics arms it and the first animation
+    // tick closes it — so a drop that chains reparents (a cross-workspace
+    // transfer parks, then re-homes) still lands in the wait, while a later
+    // state change (fullscreen, pin, scratchpad) applies immediately and drops
+    // the wait. A repeated request for the tree already waiting is absorbed.
+    const bool waitingForThisTree = m_pendingHomeParent != nullptr && m_pendingHomeParent == parent;
+    const bool displacedInDragTree =
+        parent != m_server->dragTree() && m_sceneTree->node.parent == m_server->dragTree() && dragSheetDisplaced();
+    if (displacedInDragTree && (m_releaseRehomeArmed || waitingForThisTree)) {
+      if (m_releaseRehomeArmed) {
+        m_pendingHomeParent = parent;
+      }
+      return;
+    }
+    m_pendingHomeParent = nullptr;
+    m_releaseRehomeArmed = false;
+
     wlr_scene_node_reparent(&m_sceneTree->node, parent);
     syncShadowPool();
     // Another parent can put the window elsewhere in layout coordinates.
