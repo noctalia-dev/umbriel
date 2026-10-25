@@ -1297,7 +1297,7 @@ namespace umbriel {
       // exactly like a drop: nothing else re-clamps where the drag parked the
       // window, and the margin must hold without waiting for a usable change.
       if (view->floating()) {
-        static_cast<void>(view->settleFloatingDrop(view->layoutX(), view->layoutY()));
+        view->settleFloatingDrop(view->layoutX(), view->layoutY());
       }
     }
     // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
@@ -2991,8 +2991,8 @@ namespace umbriel {
       }
     }
     // Commit the final position after any workspace transfer, including drags whose target was deferred until
-    // release, so later restores use the dropped origin. A free drop settles into the grabbable margin here —
-    // animated, exactly at release — since the drag itself may have parked the window mostly out of frame.
+    // release, so later restores use the dropped origin. A free drop settles into the grabbable margin here (animated,
+    // exactly at release), since the drag itself may have parked the window mostly out of frame.
     const wlr_box usable = view->floatingUsableArea();
     const FloatingPoint settled = view->settleFloatingDrop(x, y);
 

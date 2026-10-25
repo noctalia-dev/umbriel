@@ -329,7 +329,7 @@ namespace umbriel {
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
     // The usable area the last applyPositions pass clamped floating windows
-    // against. An arrange whose area is unchanged — a focus reveal — must not
+    // against. An arrange whose area is unchanged, such as a focus reveal, must not
     // reposition them.
     wlr_box m_lastArrangeUsable{};
     bool m_scrollHoverFocusDeferred = false;

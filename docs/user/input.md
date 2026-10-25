@@ -27,7 +27,7 @@ Title bar presses keep the normal cursor until the pointer crosses a threshold o
 
 In tiled layouts, pressing a client-side or Umbriel title bar focuses and reveals the window while keeping it in the layout. It detaches only after the pointer crosses the drag threshold. Holding or releasing a stationary press preserves the spacing between windows, including while applications repaint.
 
-Dropping a floating window settles it into the usable area with the move animation: however far out of frame it was dragged, at release it glides back until at least a quarter of the window (10 to 75 logical pixels) is visible. Nothing else moves a floating window that is already inside that margin — focus changes included.
+Dropping a floating window settles it into the usable area with the move animation: however far out of frame it was dragged, at release it glides back until at least a quarter of the window (10 to 75 logical pixels) is visible. Nothing else moves a floating window that is already inside that margin, including focus changes.
 
 Mod+right-click drags a window's resize edge. `mod_right_double_click` gives a second Mod+right-click on the same window a job beyond resizing:
 

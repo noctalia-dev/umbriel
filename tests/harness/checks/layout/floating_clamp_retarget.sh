@@ -56,7 +56,7 @@ done
 "$UMBRIEL" msg window-move-by:-9999/-9999 > /dev/null
 
 # Map a 40px exclusive top panel mid-flight. The usable area's top edge moves to y=40, and the old target leaves only
-# 35px of the window's height inside — the margin asks for 75px, so the tween must be re-aimed at y=-185.
+# 35px of the window's height inside; the margin asks for 75px, so the tween must be re-aimed at y=-185.
 "$LAYER_CLIENT" HEADLESS-1 40 > "$PANEL_LOG" 2>&1 &
 panel=$!
 wait_for_ready "$PANEL_LOG"

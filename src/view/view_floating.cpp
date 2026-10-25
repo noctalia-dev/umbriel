@@ -164,8 +164,8 @@ namespace umbriel {
     const wlr_box usable = floatingUsableArea();
     if (const std::optional<FloatingPoint> restored = m_floating.restoredOrigin(usable)) {
       // The remembered fraction is proportional, so on a smaller output it can resolve outside the grabbable margin
-      // (a scale jump can leave the window fully off). Placements land inside it, and the clamped origin — where the
-      // window actually is — is what gets re-anchored.
+      // (a scale jump can leave the window fully off). Placements land inside it, and the clamped origin (where the
+      // window actually is) is what gets re-anchored.
       const FloatingPoint origin = grabbableOrigin(*restored, usable);
       animateTo(origin.x, origin.y);
       if (rememberRestored) {

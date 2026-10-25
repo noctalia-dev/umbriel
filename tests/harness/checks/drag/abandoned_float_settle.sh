@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# A floating drag abandoned outside its drop path — the session locks mid-drag
-# and the next motion resets the grab (the same resetMode ending the toplevel
-# detach and session-lock branches take) — must still settle the window into
-# the grabbable margin, exactly like a drop. The drop settle is the only
-# correction for where a drag parked a window, so losing it leaves the window
-# stranded mostly out of frame with nothing to re-clamp it.
+# A floating drag abandoned outside its drop path must still settle the window
+# into the grabbable margin, exactly like a drop. Here the session locks
+# mid-drag and the next motion resets the grab: the same resetMode ending the
+# toplevel-drag detach and session-lock branches take.
+# The drop settle is the only correction for where a drag parked a window, so
+# losing it leaves the window stranded mostly out of frame with nothing to
+# re-clamp it.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -53,7 +54,7 @@ done
 
 # Grab the title bar at the window's right edge and shove the window left until
 # only a few pixels stay on screen: the margin (75px of the 400px window) wants
-# x >= -325. The button stays held — a released drag runs the drop settle.
+# x >= -325. The button stays held: a released drag runs the drop settle.
 read -r wx wy ww wh < <(ipc_box)
 gx=$((wx + ww - 5))
 gy=$((wy + 20))

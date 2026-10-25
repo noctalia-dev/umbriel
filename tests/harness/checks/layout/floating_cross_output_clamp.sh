@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # harness: outputs=2
 # A cross-output move restores a floating window proportionally to the destination's usable area. The proportional
-# origin can resolve outside the grabbable margin on a smaller output — a scale jump can leave only a sliver on
-# screen — so the restored origin is clamped: floatingKeepVisible (a quarter of the window, 10..75px) stays inside
+# origin can resolve outside the grabbable margin on a smaller output (a scale jump can leave only a sliver on
+# screen), so the restored origin is clamped: floatingKeepVisible (a quarter of the window, 10..75px) stays inside
 # the usable area per axis, the same margin a free drop settles into.
 set -euo pipefail
 
@@ -71,7 +71,7 @@ if ((sx != 1205 || sy != 645)); then
 fi
 
 # The same fractions on the scaled output land at x=603, y=323 of its 640x360 usable area, where only 37px and 37px
-# of the 400x300 window stay visible — the margin asks for 75px per axis.
+# of the 400x300 window stay visible; the margin asks for 75px per axis.
 "$UMBRIEL" msg window-move-to-output-right > /dev/null
 "$UMBRIEL" settle
 

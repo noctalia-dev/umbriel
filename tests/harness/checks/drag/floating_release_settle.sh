@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=1
 # A floating window dragged mostly out of frame settles into the grabbable
-# margin at release — animated — and later focus changes never move it. The
+# margin at release, animated, and later focus changes never move it. The
 # margin is floatingKeepVisible: a quarter of the window, at least 10px and at
 # most 75px, stays inside the usable area per axis.
 set -euo pipefail
@@ -85,7 +85,7 @@ pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
 # The settle runs at release: freeze the animation clock first, so the samples
 # land at 250ms and 1250ms of the 2000ms linear timeline. The visible sliver
 # must grow from the drop's 11px to the margin's 75px through intermediate
-# widths — a flash jumps straight to 75.
+# widths; a flash jumps straight to 75.
 "$UMBRIEL" clock-freeze
 pointer_release
 w0=$(capture_width drop)
