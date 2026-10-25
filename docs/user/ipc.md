@@ -14,17 +14,20 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 
 ## Queries
 
-| Request                          | CLI                         |
-| -------------------------------- | --------------------------- |
-| `{"cmd":"effects"}`              | `umbriel effects --json`    |
-| `{"cmd":"windows"}`              | `umbriel windows --json`    |
-| `{"cmd":"workspaces"}`           | `umbriel workspaces --json` |
-| `{"cmd":"submap"}`               | `umbriel submap --json`     |
-| `{"cmd":"layers"}`               | `umbriel layers --json`     |
-| `{"cmd":"outputs"}`              | `umbriel outputs --json`    |
-| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>`      |
+| Request                          | CLI                               |
+| -------------------------------- | --------------------------------- |
+| `{"cmd":"effects"}`              | `umbriel effects --json`          |
+| `{"cmd":"windows"}`              | `umbriel windows --json`          |
+| `{"cmd":"focused-window"}`       | `umbriel focused-window [--json]` |
+| `{"cmd":"workspaces"}`           | `umbriel workspaces --json`       |
+| `{"cmd":"submap"}`               | `umbriel submap --json`           |
+| `{"cmd":"layers"}`               | `umbriel layers --json`           |
+| `{"cmd":"outputs"}`              | `umbriel outputs --json`          |
+| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>`            |
 
 Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
+
+`{"cmd":"focused-window"}` answers with the focused window's listing entry — the window the window actions act on. The seat's focused window wins (for a modal dialog, the dialog itself; for a visible scratchpad window holding the keyboard, that window); while a layer surface or the overview holds the keyboard, the answer falls back to the pointer output's active workspace's remembered focus; and the reply is `{"err": "no focused window"}` while a scratchpad owns the seat with no window focused, or when nothing is focused. The entry is exactly a `windows` entry for that window; its `focused` member stays the workspace-local remembered focus and does not select which window the query answers about.
 
 Window state follows what Umbriel has decided, ahead of the client's redraw, the same way geometry reports layout targets:
 

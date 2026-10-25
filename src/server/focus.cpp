@@ -510,4 +510,43 @@ namespace umbriel {
     return view;
   }
 
+  Workspace* activeWorkspace(Server& server) {
+    Output* output = server.outputFromWlr(server.preferredOutput());
+    if (output == nullptr || output->workspaceGroup() == nullptr) {
+      return nullptr;
+    }
+    return output->workspaceGroup()->active();
+  }
+
+  View* seatFocusedWindow(Server& server) {
+    return View::fromSurface(server.seat()->wlr()->keyboard_state.focused_surface);
+  }
+
+  View* focusedScratchpadWindow(Server& server) {
+    View* view = seatFocusedWindow(server);
+    ScratchpadManager* scratchpad = server.scratchpadManager();
+    return view != nullptr && scratchpad != nullptr && scratchpad->contains(view) ? view : nullptr;
+  }
+
+  bool scratchpadHoldsFocus(Server& server) {
+    if (focusedScratchpadWindow(server) != nullptr) {
+      return true;
+    }
+    ScratchpadManager* scratchpad = server.scratchpadManager();
+    return seatFocusedWindow(server) == nullptr
+        && scratchpad != nullptr
+        && !scratchpad->activeOn(server.outputFromWlr(server.preferredOutput())).empty();
+  }
+
+  View* focusedWindow(Server& server) {
+    if (View* view = seatFocusedWindow(server)) {
+      return view;
+    }
+    if (scratchpadHoldsFocus(server)) {
+      return nullptr;
+    }
+    Workspace* workspace = activeWorkspace(server);
+    return workspace != nullptr ? workspace->focusedView() : nullptr;
+  }
+
 } // namespace umbriel

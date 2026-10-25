@@ -8,6 +8,7 @@
 #include "output/output.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
+#include "server/focus.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -110,28 +111,32 @@ namespace umbriel {
       return "unknown";
     }
 
+    // One human row per window entry; `msg focused-window` prints the same row for its reply.
+    void printWindowRow(const nlohmann::json& entry) {
+      const std::string appId = entry.value("app_id", "");
+      const std::string title = entry.value("title", "");
+      const std::string xdgTag = entry.value("xdg_tag", "");
+      const std::string xdgTagSuffix = xdgTag.empty() ? "" : " [xdg_tag=" + xdgTag + "]";
+      const std::string contentType = entry.value("content_type", "none");
+      const std::string contentTypeSuffix = contentType == "none" ? "" : " [content_type=" + contentType + "]";
+      const std::string scratchpad = entry.value("scratchpad", "");
+      const std::string scratchpadSuffix = scratchpad.empty() ? "" : " [scratchpad=" + scratchpad + "]";
+      const std::string_view minimizedSuffix = entry.value("minimized", false) ? " [minimized]" : "";
+      std::println(
+          "{}{}{}\t{}\t[{} {}x{}{:+}{:+}]{}{}{}{}",
+          entry.value("focused", false) ? "*" : (entry.value("urgent", false) ? "!" : " "),
+          entry.value("xwayland", false) ? "[Xwayland] " : "", appId.empty() ? "-" : appId, title.empty() ? "-" : title,
+          entry.value("floating", false)     ? "float"
+              : entry.value("tabbed", false) ? "tab"
+                                             : "tile",
+          entry.value("w", 0), entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix,
+          contentTypeSuffix, scratchpadSuffix, minimizedSuffix
+      );
+    }
+
     void printWindows(const nlohmann::json& ok) {
       for (const auto& entry : ok) {
-        const std::string appId = entry.value("app_id", "");
-        const std::string title = entry.value("title", "");
-        const std::string xdgTag = entry.value("xdg_tag", "");
-        const std::string xdgTagSuffix = xdgTag.empty() ? "" : " [xdg_tag=" + xdgTag + "]";
-        const std::string contentType = entry.value("content_type", "none");
-        const std::string contentTypeSuffix = contentType == "none" ? "" : " [content_type=" + contentType + "]";
-        const std::string scratchpad = entry.value("scratchpad", "");
-        const std::string scratchpadSuffix = scratchpad.empty() ? "" : " [scratchpad=" + scratchpad + "]";
-        const std::string_view minimizedSuffix = entry.value("minimized", false) ? " [minimized]" : "";
-        std::println(
-            "{}{}{}\t{}\t[{} {}x{}{:+}{:+}]{}{}{}{}",
-            entry.value("focused", false) ? "*" : (entry.value("urgent", false) ? "!" : " "),
-            entry.value("xwayland", false) ? "[Xwayland] " : "", appId.empty() ? "-" : appId,
-            title.empty() ? "-" : title,
-            entry.value("floating", false)     ? "float"
-                : entry.value("tabbed", false) ? "tab"
-                                               : "tile",
-            entry.value("w", 0), entry.value("h", 0), entry.value("x", 0), entry.value("y", 0), xdgTagSuffix,
-            contentTypeSuffix, scratchpadSuffix, minimizedSuffix
-        );
+        printWindowRow(entry);
       }
     }
 
@@ -599,77 +604,73 @@ namespace umbriel {
       }
     }
 
-  } // namespace
+    using PendingLayouts = std::map<const Workspace*, std::unique_ptr<Layout>>;
 
-  nlohmann::json IpcCommands::windows(Server& server, std::string_view /*arg*/) {
-    nlohmann::json windows = nlohmann::json::array();
-    std::map<const Workspace*, std::unique_ptr<Layout>> pendingLayouts;
-    for (const auto& v : server.views()) {
-      if (!v->mapped()) {
-        continue;
-      }
+    // One `windows` listing entry for `view`. `msg focused-window` shares this builder so its reply is
+    // byte-identical to the entry the listing prints for the same window.
+    nlohmann::json windowEntry(Server& server, View& view, PendingLayouts& pendingLayouts) {
       nlohmann::json entry;
-      entry["id"] = v->extForeignIdentifier() != nullptr ? v->extForeignIdentifier() : "";
-      entry["workspace"] = v->workspace() != nullptr ? v->workspace()->id() : "";
+      entry["id"] = view.extForeignIdentifier() != nullptr ? view.extForeignIdentifier() : "";
+      entry["workspace"] = view.workspace() != nullptr ? view.workspace()->id() : "";
       const ScratchpadManager* scratchpads = server.scratchpadManager();
-      entry["scratchpad"] = scratchpads != nullptr ? std::string(scratchpads->nameFor(v.get())) : std::string{};
-      entry["active"] = v->activated();
-      entry["app_id"] = v->appId() != nullptr ? v->appId() : "";
-      entry["title"] = v->title() != nullptr ? v->title() : "";
-      entry["xdg_tag"] = v->xdgTag().value_or("");
-      entry["content_type"] = contentTypeName(v->contentType());
-      entry["floating"] = v->floating();
-      entry["title_bar"] = v->titleBarHeight() > 0;
-      entry["fullscreen"] = v->scheduledFullscreen();
-      entry["maximized"] = v->scheduledMaximized();
-      entry["maximized_to_edges"] = v->maximizedToEdges();
-      entry["pinned"] = v->pinned();
+      entry["scratchpad"] = scratchpads != nullptr ? std::string(scratchpads->nameFor(&view)) : std::string{};
+      entry["active"] = view.activated();
+      entry["app_id"] = view.appId() != nullptr ? view.appId() : "";
+      entry["title"] = view.title() != nullptr ? view.title() : "";
+      entry["xdg_tag"] = view.xdgTag().value_or("");
+      entry["content_type"] = contentTypeName(view.contentType());
+      entry["floating"] = view.floating();
+      entry["title_bar"] = view.titleBarHeight() > 0;
+      entry["fullscreen"] = view.scheduledFullscreen();
+      entry["maximized"] = view.scheduledMaximized();
+      entry["maximized_to_edges"] = view.maximizedToEdges();
+      entry["pinned"] = view.pinned();
       // Pinned windows show on every workspace of their output.
-      entry["visible"] = v->pinned() || (v->onActiveWorkspace() && !v->tabHidden() && !v->minimized());
-      const Output* output = v->currentOutput();
+      entry["visible"] = view.pinned() || (view.onActiveWorkspace() && !view.tabHidden() && !view.minimized());
+      const Output* output = view.currentOutput();
       entry["output"] = output != nullptr ? output->wlr()->name : "";
-      const View* parent = v->shellParent();
+      const View* parent = view.shellParent();
       entry["parent"] =
           parent != nullptr && parent->extForeignIdentifier() != nullptr ? parent->extForeignIdentifier() : "";
       // Membership of a tab group, the tab's place among its tabs, and whether the group shows another tab.
       int tabIndex = -1;
       int column = -1;
       int row = -1;
-      if (const Workspace* home = v->workspace()) {
+      if (const Workspace* home = view.workspace()) {
         const Layout& layout = home->layout();
-        const int layoutColumn = layout.columnOf(v.get());
+        const int layoutColumn = layout.columnOf(&view);
         const TabGroup* group =
-            layoutColumn >= 0 ? tabGroupOf(layout.columns()[static_cast<size_t>(layoutColumn)], v.get()) : nullptr;
+            layoutColumn >= 0 ? tabGroupOf(layout.columns()[static_cast<size_t>(layoutColumn)], &view) : nullptr;
         if (group != nullptr) {
-          tabIndex = layout.rowOf(v.get()) - static_cast<int>(group->first);
+          tabIndex = layout.rowOf(&view) - static_cast<int>(group->first);
         }
         // Only the scrolling strip has an order of columns and rows that holds still for clients.
         if (layoutColumn >= 0 && home->scrollingLayout() != nullptr) {
           column = layoutColumn;
-          row = layout.rowOf(v.get());
+          row = layout.rowOf(&view);
         }
       }
       entry["column"] = column;
       entry["row"] = row;
       entry["tabbed"] = tabIndex >= 0;
       entry["tab_index"] = tabIndex;
-      entry["tab_hidden"] = v->tabHidden();
-      entry["minimizable"] = v->minimizable();
-      entry["minimized"] = v->minimized();
-      entry["snap"] = v->snapRegion() ? nlohmann::json(snapRegionName(*v->snapRegion())) : nlohmann::json(nullptr);
-      entry["border_effect"] = effectSlotJson(v->effectSlot(EffectKind::Border), true);
-      entry["window_effect"] = effectSlotJson(v->effectSlot(EffectKind::Window));
+      entry["tab_hidden"] = view.tabHidden();
+      entry["minimizable"] = view.minimizable();
+      entry["minimized"] = view.minimized();
+      entry["snap"] = view.snapRegion() ? nlohmann::json(snapRegionName(*view.snapRegion())) : nlohmann::json(nullptr);
+      entry["border_effect"] = effectSlotJson(view.effectSlot(EffectKind::Border), true);
+      entry["window_effect"] = effectSlotJson(view.effectSlot(EffectKind::Window));
       // Workspace-local remembered focus. Seat-global activation is reported
       // separately by `active`; scratchpad windows have no workspace focus.
-      entry["focused"] = v->workspace() != nullptr && v->workspace()->focusedView() == v.get();
-      entry["urgent"] = v->urgent();
-      entry["xwayland"] = v->xwayland();
+      entry["focused"] = view.workspace() != nullptr && view.workspace()->focusedView() == &view;
+      entry["urgent"] = view.urgent();
+      entry["xwayland"] = view.xwayland();
       // -1 whenever the owning process is unknown: an X11 client that publishes no _NET_WM_PID.
-      entry["pid"] = v->pid();
+      entry["pid"] = view.pid();
       // Tiled windows report their layout slot, which the layout computes even for hidden workspaces; floats report
       // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
       // (dwindle) regardless of visibility or in-flight animations.
-      if (Workspace* workspace = v->workspace(); workspace != nullptr && workspace->layout().columnOf(v.get()) >= 0) {
+      if (Workspace* workspace = view.workspace(); workspace != nullptr && workspace->layout().columnOf(&view) >= 0) {
         // Preview stale targets without applying client configures, rules, or bindings.
         const Layout* layout = &workspace->layout();
         if (workspace->arrangePending()) {
@@ -681,28 +682,51 @@ namespace umbriel {
             layout = entry->second.get();
           }
         }
-        const wlr_box box = workspace->presentedTiledBox(v.get(), layout);
+        const wlr_box box = workspace->presentedTiledBox(&view, layout);
         entry["x"] = box.x;
         entry["y"] = box.y;
       } else if (
-          (v->floating() && server.cursor()->isDraggingView(v.get())) || server.cursor()->toplevelDragView() == v.get()
+          (view.floating() && server.cursor()->isDraggingView(&view)) || server.cursor()->toplevelDragView() == &view
       ) {
         // Floating and data-device toplevel drags move the scene node before
         // committing the saved target.
-        entry["x"] = v->layoutX();
-        entry["y"] = v->layoutY();
+        entry["x"] = view.layoutX();
+        entry["y"] = view.layoutY();
       } else {
-        entry["x"] = v->layoutTargetX();
-        entry["y"] = v->layoutTargetY();
+        entry["x"] = view.layoutTargetX();
+        entry["y"] = view.layoutTargetY();
       }
       // The size the window covers, which is its committed window geometry unless the client left that box behind a
       // configure it already redrew for. Reporting the stale box would disagree with what is on screen.
-      const wlr_box content = v->committedContentBox();
+      const wlr_box content = view.committedContentBox();
       entry["w"] = content.width;
       entry["h"] = content.height;
-      windows.push_back(std::move(entry));
+      return entry;
+    }
+
+  } // namespace
+
+  nlohmann::json IpcCommands::windows(Server& server, std::string_view /*arg*/) {
+    nlohmann::json windows = nlohmann::json::array();
+    PendingLayouts pendingLayouts;
+    for (const auto& v : server.views()) {
+      if (!v->mapped()) {
+        continue;
+      }
+      windows.push_back(windowEntry(server, *v, pendingLayouts));
     }
     return nlohmann::json{{"ok", windows}};
+  }
+
+  // The view the window actions target. The qualified call keeps the shared
+  // focus policy distinct from this command's own name.
+  nlohmann::json IpcCommands::focusedWindow(Server& server, std::string_view /*arg*/) {
+    View* view = umbriel::focusedWindow(server);
+    if (view == nullptr) {
+      return nlohmann::json{{"err", "no focused window"}};
+    }
+    PendingLayouts pendingLayouts;
+    return nlohmann::json{{"ok", windowEntry(server, *view, pendingLayouts)}};
   }
 
   nlohmann::json IpcCommands::effects(Server& server, std::string_view /*arg*/) {
@@ -1346,6 +1370,8 @@ namespace umbriel {
        &IpcCommands::effects, &printEffects},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
        &printWindows},
+      {"focused-window", "", "print the focused window (app id and title)", IpcCommandGroup::Inspect, false,
+       &IpcCommands::focusedWindow, &printWindowRow},
       {"workspaces", "", "list workspaces and their layouts", IpcCommandGroup::Inspect, false, &IpcCommands::workspaces,
        &printWorkspaces},
       {"submap", "", "show the active keybind submap", IpcCommandGroup::Inspect, false, &IpcCommands::submap,

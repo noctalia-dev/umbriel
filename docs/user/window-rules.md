@@ -37,7 +37,7 @@ match.app_id = ["^mpv$", "^celluloid$"]
 window_effect = "scanlines"
 ```
 
-Run `umbriel windows` to inspect current application IDs, titles, tags, and content types. Prefer `app_id` for placement because titles often change.
+Run `umbriel windows` to inspect current application IDs, titles, tags, and content types, or `umbriel focused-window` for the focused window only. Prefer `app_id` for placement because titles often change.
 
 State selectors update while the window is open. Opening settings are resolved before a rule's own state changes take effect, so a rule cannot select on the floating or pinned state that it creates.
 
