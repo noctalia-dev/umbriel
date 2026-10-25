@@ -107,14 +107,14 @@ namespace umbriel {
       view->applyDeferredUnfullscreen();
     }
 
+    // Raise is decided once: only a hover under follows_mouse may focus without lifting the window. Every other
+    // reason (clicks, keybinds, activation, workspace switches, mapping) raises.
+    const bool raise = !(reason == FocusReason::PointerHover && !config().input.focus.hoverRaises);
+    m_lastRaise = raise;
     // Keep workspace focus while exclusive layer-shell holds the seat; refocus applies it later. focus() also returns
     // the seat to a layer that was uncovered by a fullscreen window leaving, and clears the previous window's
     // activation chrome. Overview owns the seat the same way, but keeps the chrome so card borders track the focused
     // window; the keyboard enter replays when it closes.
-    // Raise is decided once: only a hover under follows_mouse may focus without lifting the window. Every other
-    // reason (clicks, keybinds, activation, workspace switches, mapping) raises as before.
-    const bool raise = !(reason == FocusReason::PointerHover && !config().input.focus.hoverRaises);
-    m_lastRaise = raise;
     const bool overviewActive = m_server.overview() != nullptr && m_server.overview()->active();
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();

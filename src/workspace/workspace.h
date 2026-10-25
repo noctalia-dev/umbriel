@@ -123,10 +123,9 @@ namespace umbriel {
 
     void setActive(bool active);
     void updateUrgent();
-    // Hover and maintenance focus preserve the floating layer when focus enters the tiled layout.
     // `raise` moves the view to the top of the floating stack and restacks it; a hover that only focuses passes
     // false and leaves the visual order alone. `settleLayers` decides whether focusing a tiled window settles the
-    // floating layer back below fullscreen; hover keeps it where the pointer is working.
+    // floating layer back below fullscreen; hover and maintenance focus pass false to preserve it.
     void setFocusedView(View* view, bool raise = true, bool settleLayers = true);
     void syncFloatingStack(View* view);
     void restackFloatingViews();
