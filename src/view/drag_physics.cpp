@@ -12,19 +12,14 @@ namespace umbriel {
     // Below these the sheet reads as at rest, and settling ends the frame stream.
     constexpr float kSettledDisplacement = 0.25F;
     constexpr float kSettledVelocity = 2.5F;
-    // The stall guard is cadence-aware: a gap must dwarf the output's own
-    // frame cadence as well as the tuned pause, so ordinary frames never
-    // settle at any refresh rate.
+    // A stall must also exceed this many output frame periods, so ordinary frames never settle at any refresh rate.
     constexpr double kStallCadenceMargin = 2.0;
     // A released sheet whose motion stays drained below the settle velocity is
     // snapped to rest after this quiet window, so degenerate tuning cannot
     // schedule frames forever on a static offset or a slow creep.
     constexpr double kReleasedQuietS = 0.25;
-    // The most one tick may integrate, in seconds. A tolerated pause (the
-    // tuned threshold can reach 5 s) must not integrate its whole gap at
-    // 240 Hz on the compositor thread; the sheet continues from this bounded
-    // prefix and anything longer is a pause, not simulated motion. It still
-    // covers an ordinary frame at any real output cadence down to 1 Hz.
+    // The most one tick integrates, in seconds, so a pause tolerated by a large settle threshold does not run its
+    // whole gap at 240 Hz on the compositor thread.
     constexpr double kMaxCatchUpS = 1.0;
     // A pointer delta beyond this cannot come from real input; `move()` clamps to it so a single huge,
     // finite delta cannot overflow to inf before `constrain()` gets a chance to bound the result.
@@ -191,14 +186,8 @@ namespace umbriel {
     if (!m_active || !std::isfinite(seconds) || seconds <= 0) {
       return m_active;
     }
-    // A frame-stall guard: the gap must dwarf the output's frame cadence as
-    // well as the tuned pause, so no in-range pause value can settle on
-    // ordinary frames at any refresh rate. The cadence is the output's refresh
-    // period, never the previous tick's interval: the interval that wakes the
-    // sheet is a partial frame (the motion that initiates a sheet sits outside
-    // the frame pacing), so treating it as the pace would make the ordinary
-    // next frame read as a stall and clear the deformation. Without a cadence
-    // the tuned pause alone decides, and it applies from the very first tick.
+    // Frame-stall guard. `cadenceS` is the output's refresh period, not the previous tick's interval: the tick that
+    // wakes a sheet covers a partial frame. Without a cadence (0) the tuned pause alone decides.
     const bool stalled =
         seconds > m_tuning.settleAfterPauseS && (cadenceS <= 0 || seconds > kStallCadenceMargin * cadenceS);
     if (stalled) {
@@ -257,12 +246,9 @@ namespace umbriel {
     } else if (m_grabbed) {
       m_slowS = 0;
     } else if (m_slowS > kReleasedQuietS) {
-      // A released sheet must end: once its motion has stayed drained below
-      // the settle velocity for a whole quiet window, snap the rest of the
-      // deformation away, so degenerate tuning cannot schedule frames forever
-      // on a static offset or a creep. The window keeps a ringing wobble's
-      // turning points — where the velocity dips briefly — from being cut
-      // short, because only genuinely quiet steps accumulate.
+      // A released sheet must end: after a whole quiet window below the settle velocity, snap the remaining
+      // deformation away so degenerate tuning cannot keep scheduling frames. Only quiet steps accumulate, so a
+      // ringing wobble's brief turning points do not trigger it.
       m_displacement = {};
       m_velocity = {};
       m_remainder = 0;

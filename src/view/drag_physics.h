@@ -18,15 +18,9 @@ namespace umbriel {
     // step. The shader's inverse lookup is a contraction with this factor.
     static constexpr float kContraction = 0.7F;
     using Sheet = std::array<std::array<float, 2>, kPoints>;
-    // Spring sheet tuning, read from `[animation.windows_drag]`; the defaults
-    // are the values the simulation shipped with. Stiffness pulls each mass
-    // home, damping bleeds energy (wobble decay), coupling ties neighbouring
-    // masses (sheet rigidity), pointer response scales how far a motion loads
-    // the sheet, max displacement caps its excursion, and settle-after-pause
-    // snaps the sheet to rest when rendering pauses that long (a frame-stall
-    // guard, never triggered by ordinary frames). kPoints, kContraction,
-    // the 240 Hz step and the settled thresholds stay fixed: the shader and
-    // the frame pacing own them.
+    // Spring sheet tuning from `[animation.windows_drag]`; the defaults are the shipped values. Stiffness pulls each
+    // mass home, damping bleeds energy, coupling ties neighbouring masses, pointer response scales how far a motion
+    // loads the sheet, max displacement caps its excursion, and settle-after-pause is the frame-stall threshold.
     struct Tuning {
       float stiffness = 36.0F;
       float damping = 6.5F;
@@ -56,11 +50,9 @@ namespace umbriel {
     // Pointer delta in logical pixels since the previous call.
     void move(float dx, float dy);
     void release();
-    // Advances by `seconds` at a fixed 240 Hz step. A rendering pause over the
-    // tuned settle threshold (and well beyond the output's frame cadence)
-    // settles immediately. Returns active().
+    // Advances by `seconds` at a fixed 240 Hz step. A gap over the tuned settle threshold, and over twice the output
+    // frame period `cadenceS` when it is known (> 0), settles immediately. Returns active().
     bool tick(double seconds, double cadenceS);
-    // Cadence unknown (no output to read): the tuned pause alone decides.
     bool tick(double seconds) { return tick(seconds, 0.0); }
     [[nodiscard]] bool active() const { return m_active; }
     [[nodiscard]] bool grabbed() const { return m_grabbed; }

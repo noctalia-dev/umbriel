@@ -298,8 +298,8 @@ UMBRIEL_TEST(aReleasedSheetWithDegenerateTuningAlwaysTerminates) {
 }
 
 UMBRIEL_TEST(theStallGuardIgnoresOrdinaryFramesAtAnyRefreshRate) {
-  // A 5 Hz output ticks every 200 ms; a documented 100 ms pause must not
-  // settle on those ordinary frames — only a rendering stall may.
+  // A 5 Hz output ticks every 200 ms; a 100 ms pause must not settle on
+  // those ordinary frames, only on a rendering stall.
   DragPhysics::Tuning tuning{};
   tuning.settleAfterPauseS = 0.1;
   DragPhysics physics;
@@ -318,9 +318,7 @@ UMBRIEL_TEST(theStallGuardIgnoresOrdinaryFramesAtAnyRefreshRate) {
 
 UMBRIEL_TEST(aStallBeforeTheFirstTickSettles) {
   // The gap that opens an episode is a stall candidate too: the guard applies
-  // from the very first tick, measured against the output's cadence. Before
-  // this, m_tickGapS starting at zero exempted the first tick and a 300 ms
-  // stall integrated at 240 Hz, leaving the sheet parked mid-deformation.
+  // from the very first tick, measured against the output's cadence.
   DragPhysics physics;
   physics.begin(400, 300, 0.5F, 0.5F, 1);
   physics.move(60, 20);
@@ -340,9 +338,8 @@ UMBRIEL_TEST(aStallBeforeTheFirstTickSettles) {
 
 UMBRIEL_TEST(aWakeIntervalNeverStandsInForTheCadence) {
   // The interval that wakes the sheet is a partial frame: the motion that
-  // initiates it can land 1 ms before a vblank even on a 5 Hz output. Using
-  // that interval as the pace made the ordinary 200 ms frame that follows
-  // dwarf it — a false stall that cleared the deformation.
+  // initiates it can land 1 ms before a vblank even on a 5 Hz output, and the
+  // ordinary 200 ms frame that follows must not read as a stall.
   DragPhysics::Tuning tuning{};
   tuning.settleAfterPauseS = 0.1;
   DragPhysics physics;
@@ -375,10 +372,8 @@ UMBRIEL_TEST(aLongCatchUpWhileTheCadenceIsUnknownStaysBounded) {
 UMBRIEL_TEST(theQuietWindowDoesNotCreditMovingTimeAsQuiet) {
   // A released sheet rings slowly (light damping) from a ~0.6 px deformation.
   // At a turning point an end-of-tick sample reads slow (v ≈ 2 px/s), but the
-  // gap was spent at up to 7 px/s — well over the settle velocity. Quiet time
-  // is what the motion actually spent slow, so the deformation must survive;
-  // crediting the whole gap because its end sample was slow snapped it away
-  // mid-ring (premature clearance).
+  // gap was spent at up to 7 px/s, well over the settle velocity. Quiet time
+  // is what the motion actually spent slow, so the deformation must survive.
   DragPhysics::Tuning tuning{};
   tuning.damping = 0.8F;
   tuning.pointerResponse = 0.005F;

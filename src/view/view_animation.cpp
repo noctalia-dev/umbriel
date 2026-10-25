@@ -922,12 +922,10 @@ namespace umbriel {
         // The vblank a frame ticks from can precede the instant the sheet woke, so a step never runs backwards.
         const double elapsed = std::max(0.0, nowMsec - m_dragPhysicsMsec);
         m_dragPhysicsMsec = std::max(m_dragPhysicsMsec, nowMsec);
-        // The stall guard measures against the output's refresh period, never
-        // against the wake-to-first-frame interval: that partial frame sits
-        // outside the output's pacing and must not stand in for it.
+        // The stall guard compares against the output's refresh period; 0 when the output reports none.
         const Output* output = currentOutput();
         const int refreshMhz = output != nullptr ? output->wlr()->refresh : 0;
-        const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 1.0 / 60.0;
+        const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 0.0;
         active = m_dragPhysics.tick(elapsed / 1000.0, cadenceS) || active;
       }
     }

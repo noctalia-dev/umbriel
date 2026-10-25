@@ -223,7 +223,7 @@ range with a logged diagnostic, and they apply from the next drag on.
 | `coupling` | 100.0 | 0.0 to 10000.0 | Rigidity between neighbouring points; low values make the sheet jelly-like. |
 | `pointer_response` | 2.0 | 0.0 to 10.0 | How far a pointer motion loads the sheet; 0 keeps the window rigid. |
 | `max_displacement_px` | 200.0 | 1.0 to 4000.0 | Excursion cap in logical pixels. |
-| `settle_after_pause_s` | 0.25 | 0.1 to 5.0 | Rendering pause after which the sheet snaps back to rest. It is a frame-stall guard: a pause must also dwarf the output's own refresh interval, so ordinary frames never trigger it, at any refresh rate. The interval that wakes a sheet is a partial frame and never stands in for that cadence. |
+| `settle_after_pause_s` | 0.25 | 0.1 to 5.0 | Rendering pause after which the sheet snaps back to rest. Ordinary frames never trigger it at any refresh rate. |
 
 Only the window's own content deforms; its drop shadow follows that
 deformation within the window's shadow bounds. Re-grabbing a window while it

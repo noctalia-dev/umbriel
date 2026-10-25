@@ -809,7 +809,7 @@ namespace umbriel {
       struct WindowsDrag {
         // Deform the window like an elastic sheet while it is dragged by the pointer.
         bool physics = false;
-        // Spring sheet tuning (see view/drag_physics.cpp); the defaults are the
+        // Spring sheet tuning (see view/drag_physics.h); the defaults are the
         // values the simulation shipped with.
         double stiffness = 36.0;
         double damping = 6.5;
