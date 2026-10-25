@@ -23,6 +23,7 @@ unit_tests = [
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
   ['keyboard-leds', ['unit/keyboard_leds.cpp'], [wayland_server_dep]],
+  ['eis-socket', ['unit/eis_socket.cpp'], [umbriel_core_dep, wayland_server_dep]],
   ['surface-layouts', ['unit/surface_layouts.cpp'], []],
   ['shortcuts-inhibit', ['unit/shortcuts_inhibit.cpp'], []],
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
@@ -398,6 +399,18 @@ xwayland_focus_client = executable(
   dependencies: [xcb_dep],
 )
 
+xwayland_input_client = executable(
+  'xwayland-input-client',
+  ['harness/clients/xwayland_input_client.cpp'],
+  dependencies: [xcb_dep, dependency('xcb-xtest')],
+)
+
+ei_peer_client = executable(
+  'ei-peer-client',
+  ['harness/clients/ei_peer_client.cpp'],
+  dependencies: [dependency('libei-1.0', version: '>=1.3')],
+)
+
 # Eager X11 selection reader and owner for clipboard focus transitions.
 xwayland_selection_client = executable(
   'xwayland-selection-client',
@@ -490,6 +503,8 @@ harness_client_targets = [
   security_context_client,
   seat_log_client,
   xwayland_focus_client,
+  xwayland_input_client,
+  ei_peer_client,
   xwayland_selection_client,
   xwayland_cursor_client,
   xsettings_client,

@@ -15,6 +15,8 @@
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
+#include <algorithm>
+
 namespace umbriel {
 
   namespace {
@@ -54,6 +56,9 @@ namespace umbriel {
     view = view->placementRoot();
     View* seatTarget = view->inputDelegate();
 
+    if (!seatTarget->acceptsKeyboardFocus()) {
+      return;
+    }
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
     // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing.
     if (reason == FocusReason::PointerHover && view->tiled()) {
@@ -64,6 +69,7 @@ namespace umbriel {
         }
       }
     }
+
     // Focusing a window shows it.
     if (view->minimized()) {
       view->setMinimized(false);
@@ -160,6 +166,16 @@ namespace umbriel {
     }
   }
 
+  void FocusManager::xwaylandHintsChanged(View* view) {
+    if (view->mapped()
+        && !view->acceptsKeyboardFocus()
+        && view->rootSurface() != nullptr
+        && m_server.seat()->wlr()->keyboard_state.focused_surface == view->rootSurface()) {
+      clearKeyboardFocus();
+      refocus();
+    }
+  }
+
   void FocusManager::restoreActivatedViewKeyboardFocus() {
     if (m_server.sessionLocked() || exclusiveKeyboardLayer() != nullptr) {
       return;
@@ -207,6 +223,7 @@ namespace umbriel {
     if (View* view = View::fromSurface(focusedSurface)) {
       // A window with a dialog attached hands the keyboard to the dialog instead of keeping it.
       if (!view->mapped()
+          || !view->acceptsKeyboardFocus()
           || view->blocked()
           || view->placementRoot()->minimized()
           || (!view->onActiveWorkspace() && !view->pinned())) {
@@ -328,13 +345,19 @@ namespace umbriel {
         return false;
       }
       if (View* focused = workspace->focusedView()) {
-        if (focused->mapped() && focused->onActiveWorkspace() && !focused->minimized()) {
+        if (focused->mapped()
+            && focused->onActiveWorkspace()
+            && !focused->minimized()
+            && focused->inputDelegate()->acceptsKeyboardFocus()) {
           focusView(focused);
           return true;
         }
       }
       for (const auto& entry : m_server.registry().placementRoots()) {
-        if (entry->mapped() && !entry->minimized() && entry->workspace() == workspace) {
+        if (entry->mapped()
+            && !entry->minimized()
+            && entry->workspace() == workspace
+            && entry->inputDelegate()->acceptsKeyboardFocus()) {
           focusView(entry.get());
           return true;
         }

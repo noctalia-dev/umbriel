@@ -1,264 +1,96 @@
 # Workspace lifecycle
 
-This note records the workspace state transitions behind the shorter user guide
-in [`outputs.md`](../user/outputs.md).
+This note records the workspace state transitions behind the shorter user guide in [`outputs.md`](../user/outputs.md).
 
 ## Dynamic inventory
 
-A dynamic output contains anonymous positional workspaces and may also contain
-persistent named workspaces declared by `[[workspace]]`. Both use the same
-runtime workspace object and stable identity. Its `named` flag controls whether
-its label is explicit or generated from its current position.
+A dynamic output contains anonymous positional workspaces and may also contain persistent named workspaces declared by `[[workspace]]`. Both use the same runtime workspace object and stable identity. Its `named` flag controls whether its label is explicit or generated from its current position.
 
 The inventory maintains these invariants:
 
-- Below the 64-workspace limit, it has a trailing empty anonymous workspace. A
-  named empty workspace cannot serve as this sentinel.
-- With `workspaces.empty_above` enabled, it also has a distinct leading empty
-  anonymous workspace while capacity permits, including before the first view
-  maps.
-- Outside a workspace slide, an occupied sentinel causes Umbriel to add a new
-  empty workspace at that edge when capacity remains. At the limit, the
-  occupied edge persists until another slot becomes available.
-- Other empty inactive anonymous workspaces are removed, except that the count
-  never drops below the output's `min_workspaces`. Pruning runs from the end, so
-  the surviving anonymous empties are the lowest-positioned ones.
-- An anonymous workspace recorded by a pending `spawn:` activation token is
-  neither removed nor repurposed. The hold ends when its first map is placed,
-  the token deadline passes, or the output leaves the desktop.
+- Below the 64-workspace limit, it has a trailing empty anonymous workspace. A named empty workspace cannot serve as this sentinel.
+- With `workspaces.empty_above` enabled, it also has a distinct leading empty anonymous workspace while capacity permits, including before the first view maps.
+- Outside a workspace slide, an occupied sentinel causes Umbriel to add a new empty workspace at that edge when capacity remains. At the limit, the occupied edge persists until another slot becomes available.
+- Other empty inactive anonymous workspaces are removed, except that the count never drops below the output's `min_workspaces`. Pruning runs from the end, so the surviving anonymous empties are the lowest-positioned ones.
+- An anonymous workspace recorded by a pending `spawn:` activation token is neither removed nor repurposed. The hold ends when its first map is placed, the token deadline passes, or the output leaves the desktop.
 - Named workspaces remain even when empty.
-- Anonymous workspaces are renamed and all workspaces are reindexed from `1` in
-  their current order. Named workspaces keep their explicit names.
+- Anonymous workspaces are renamed and all workspaces are reindexed from `1` in their current order. Named workspaces keep their explicit names.
 - Workspace layout rules are resolved again after renumbering.
 
-Dynamic reconciliation waits while a workspace slide is active. During the
-overview it proceeds immediately and notifies the overview so its inventory can
-be rebuilt.
+Dynamic reconciliation waits while a workspace slide is active. During the overview it proceeds immediately and notifies the overview so its inventory can be rebuilt.
 
 ### Launch placement
 
-An activation token created for `spawn:` records the preferred output and its
-active workspace. A trusted client-created token records the workspace of its
-input source. Pinned sources record the active workspace on the output where
-they are presented. A launch from an active scratchpad, including an empty one,
-also records its name. A trusted token from a scratchpad window records that
-window's pad; a layer-shell launcher records the active pad on its output.
-The workspace remains the return destination for a scratchpad launch.
-Umbriel associates that origin with a new native toplevel through XDG
-activation, or through a private inherited token for applications that do not
-use the protocol.
+An activation token created for `spawn:` records the preferred output and its active workspace. A trusted client-created token records the workspace of its input source. Pinned sources record the active workspace on the output where they are presented. A launch from an active scratchpad, including an empty one, also records its name. A trusted token from a scratchpad window records that window's pad; a layer-shell launcher records the active pad on its output. The workspace remains the return destination for a scratchpad launch. Umbriel associates that origin with a new native toplevel through XDG activation, or through a private inherited token for applications that do not use the protocol.
 
-Launch placement is applied at most once, and only before the toplevel's first
-map. Explicit output, workspace, and scratchpad window rules are resolved
-instead when present. If the pointer-preferred workspace has changed, the
-captured workspace receives the new window without changing focus or switching
-the user back, including when the pointer moved to another output.
-Scratchpad admission uses the captured name even after the pad is hidden or
-replaced. The arriving window takes focus only when that pad is still the
-active launch destination on the preferred output. An enabled pinning rule
-also overrides scratchpad launch placement. Removing the named pad before map
-leaves normal workspace placement available.
-One exception applies to a pointer gesture that creates another toplevel in the
-same Wayland client. If the pointer gesture ends on another output and the
-client redeems its activation token there, the new toplevel opens on the active
-workspace of the drop output. This lets browser tab tear-offs follow their drop
-without changing ordinary application launch placement. A captured scratchpad
-destination stays authoritative across such pointer movement.
-`focus_on_activate` controls the activation decision and does not select the
-recorded launch destination. Redeeming the token against an existing or
-remapping toplevel consumes it without relocation.
+Launch placement is applied at most once, and only before the toplevel's first map. Explicit output, workspace, and scratchpad window rules are resolved instead when present. If the pointer-preferred workspace has changed, the captured workspace receives the new window without changing focus or switching the user back, including when the pointer moved to another output. Scratchpad admission uses the captured name even after the pad is hidden or replaced. The arriving window takes focus only when that pad is still the active launch destination on the preferred output. An enabled pinning rule also overrides scratchpad launch placement. Removing the named pad before map leaves normal workspace placement available. One exception applies to a pointer gesture that creates another toplevel in the same Wayland client. If the pointer gesture ends on another output and the client redeems its activation token there, the new toplevel opens on the active workspace of the drop output. This lets browser tab tear-offs follow their drop without changing ordinary application launch placement. A captured scratchpad destination stays authoritative across such pointer movement. `focus_on_activate` controls the activation decision and does not select the recorded launch destination. Redeeming the token against an existing or remapping toplevel consumes it without relocation.
 
-Scratchpad visibility and launch context are independent of membership.
-An empty toggle shows the existing backdrop and clears window keyboard focus.
-Closing the last member preserves this state; restoring the last member or
-closing a solo member hides the pad. Explicit workspace focus relinquishes
-launch context on that output without hiding the pad. Admission suppresses the
-floating transition's normal focus step until membership and visibility have
-been established, so a hidden arrival cannot focus its temporary workspace.
-Window-relative actions also recognize an active empty pad and do not fall
-back to its underlying workspace's remembered focus.
+Scratchpad visibility and launch context are independent of membership. An empty toggle shows the existing backdrop and clears window keyboard focus. Closing the last member preserves this state; restoring the last member or closing a solo member hides the pad. Explicit workspace focus relinquishes launch context on that output without hiding the pad. Admission suppresses the floating transition's normal focus step until membership and visibility have been established, so a hidden arrival cannot focus its temporary workspace. Window-relative actions also recognize an active empty pad and do not fall back to its underlying workspace's remembered focus.
 
-The scratchpad launch checks retain restored and pinned windows through
-compositor shutdown. Floating restacking can then scan the registry while its
-views are being destroyed; transient-tree scans skip entries already cleared
-by that destruction.
+The scratchpad launch checks retain restored and pinned windows through compositor shutdown. Floating restacking can then scan the registry while its views are being destroyed; transient-tree scans skip entries already cleared by that destruction.
 
 ### Reconciling configured names
 
-For each dynamic output, the desired named members are the unscoped
-`[[workspace]]` name entries plus entries whose `output` matches it. Workspace
-names are case-sensitive and output-local. Output selectors retain their
-ordinary case-insensitive identity matching. An unscoped name therefore
-produces an independent workspace on every dynamic output.
+For each dynamic output, the desired named members are the unscoped `[[workspace]]` name entries plus entries whose `output` matches it. Workspace names are case-sensitive and output-local. Output selectors retain their ordinary case-insensitive identity matching. An unscoped name therefore produces an independent workspace on every dynamic output.
 
-On initial construction, named members follow declaration order near the top,
-after the optional leading sentinel. On reload, Umbriel first preserves every
-existing desired member by exact name. Below the output limit, newly added names
-enter in declaration order at the same top insertion point. At the limit, a
-name can instead claim an eligible empty anonymous workspace in place.
-Reordering declarations alone does not move existing workspaces.
+On initial construction, named members follow declaration order near the top, after the optional leading sentinel. On reload, Umbriel first preserves every existing desired member by exact name. Below the output limit, newly added names enter in declaration order at the same top insertion point. At the limit, a name can instead claim an eligible empty anonymous workspace in place. Reordering declarations alone does not move existing workspaces.
 
-When a name is no longer desired on an output, Umbriel clears its `named` flag
-and assigns the anonymous label for its current position. The workspace keeps
-its identity and windows, then participates in normal dynamic reconciliation.
-It survives while populated or active and may be pruned once empty and
-inactive.
+When a name is no longer desired on an output, Umbriel clears its `named` flag and assigns the anonymous label for its current position. The workspace keeps its identity and windows, then participates in normal dynamic reconciliation. It survives while populated or active and may be pruned once empty and inactive.
 
-At the 64-workspace runtime limit, a missing configured name reuses an empty
-anonymous workspace only when that workspace is not a leading or trailing
-sentinel. Otherwise the declaration remains pending and reconciliation retries
-after later workspace activity frees an ordinary anonymous entry.
+At the 64-workspace runtime limit, a missing configured name reuses an empty anonymous workspace only when that workspace is not a leading or trailing sentinel. Otherwise the declaration remains pending and reconciliation retries after later workspace activity frees an ordinary anonymous entry.
 
 ## Switching interaction
 
-A workspace slide keeps the outgoing workspace's scene enabled until the
-animation finishes. Those views are render-only once their workspace becomes
-inactive: pointer hit-testing must ignore them even though their buffers remain
-visible. Otherwise a click during the slide can focus an outgoing window,
-reactivate the workspace the user just left, and return keyboard or text-input
-focus to that client.
+A workspace slide keeps the outgoing workspace's scene enabled until the animation finishes. Those views are render-only once their workspace becomes inactive: pointer hit-testing must ignore them even though their buffers remain visible. Otherwise a click during the slide can focus an outgoing window, reactivate the workspace the user just left, and return keyboard or text-input focus to that client.
 
-The incoming active workspace remains interactive throughout the transition.
-Pinned windows and scratchpad windows do not inherit this inactive-workspace
-restriction.
+The incoming active workspace remains interactive throughout the transition. Pinned windows and scratchpad windows do not inherit this inactive-workspace restriction.
 
 ## Cyclic switching
 
-`cyclic_workspaces` wraps a workspace step around the ends of the inventory. It
-is read from the owning output's rule when the action runs, so a reload applies
-it and nothing else holds state derived from it. The adjacent switch and move
-actions resolve their target through `stepWorkspace()` in
-`src/server/actions.cpp`, so they cannot disagree at the ends.
+`cyclic_workspaces` wraps a workspace step around the ends of the inventory. It is read from the owning output's rule when the action runs, so a reload applies it and nothing else holds state derived from it. The adjacent switch and move actions resolve their target through `stepWorkspace()` in `src/server/actions.cpp`, so they cannot disagree at the ends.
 
-The wrap applies only where a step leaves the inventory. On a dynamic output,
-the trailing empty sentinel is the last member: stepping forward from the last
-populated workspace enters it, and the forward wrap happens from the sentinel
-itself, or at the workspace limit where no sentinel can be appended. Stepping
-back from the first workspace wraps to that sentinel. A static inventory has no
-sentinel, so both ends wrap directly. Without the key, a step past either end is
-a silent no-op.
+The wrap applies only where a step leaves the inventory. On a dynamic output, the trailing empty sentinel is the last member: stepping forward from the last populated workspace enters it, and the forward wrap happens from the sentinel itself, or at the workspace limit where no sentinel can be appended. Stepping back from the first workspace wraps to that sentinel. A static inventory has no sentinel, so both ends wrap directly. Without the key, a step past either end is a silent no-op.
 
 ## Pointer focus after scene changes
 
-Mapping a window, activating a workspace, or running a layout command can
-replace the scene under a stationary pointer without crossing a window border.
+Mapping a window, activating a workspace, or running a layout command can replace the scene under a stationary pointer without crossing a window border.
 
-Clients learn the pointer position only from `wl_pointer.enter` and `motion`,
-and a button event carries no coordinates. Umbriel therefore hit-tests again
-before delivering every press and sends a motion when the surface under the
-cursor has moved. It also re-resolves the pointer after any output frame whose
-scene changed, once animations, gestures, and the overview on that output have
-settled, so hover state follows content that moved under a still cursor. That
-refresh never changes keyboard focus, and it pauses while a button is held so an
-implicit grab keeps the coordinate space of its press.
+Clients learn the pointer position only from `wl_pointer.enter` and `motion`, and a button event carries no coordinates. Umbriel therefore hit-tests again before delivering every press and sends a motion when the surface under the cursor has moved. It also re-resolves the pointer after any output frame whose scene changed, once animations, gestures, and the overview on that output have settled, so hover state follows content that moved under a still cursor. That refresh never changes keyboard focus, and it pauses while a button is held so an implicit grab keeps the coordinate space of its press.
 
-With `follows_mouse` enabled, Umbriel does not override the established focus
-immediately. The focus transition or successful command instead invalidates the
-previous hover decision once. The next eligible pointer motion can therefore
-select a newly revealed view even when both the old and new pointer coordinates
-fall inside it. After that one refresh, hover returns to geometric
-border-crossing detection so scrolling animations cannot cascade focus through
-windows moving beneath the pointer. Explicit layout scrolling stores a separate
-deferred refresh on the workspace. It survives repeated scroll commands and
-motion during pending arrangement or layout animation. After the final motion
-settles, the first eligible real pointer motion consumes that refresh; a
-zero-distance synthetic motion leaves it pending. Hover-triggered reveals never
-arm it. A scroll gesture retains its own focus choice through release.
+With `follows_mouse` enabled, Umbriel does not override the established focus immediately. The focus transition or successful command instead invalidates the previous hover decision once. The next eligible pointer motion can therefore select a newly revealed view even when both the old and new pointer coordinates fall inside it. After that one refresh, hover returns to geometric border-crossing detection so scrolling animations cannot cascade focus through windows moving beneath the pointer. Explicit layout scrolling stores a separate deferred refresh on the workspace. It survives repeated scroll commands and motion during pending arrangement or layout animation. After the final motion settles, the first eligible real pointer motion consumes that refresh; a zero-distance synthetic motion leaves it pending. Hover-triggered reveals never arm it. A scroll gesture retains its own focus choice through release.
 
-The hover decision compares against seat-global activation, not a workspace's
-remembered focus. A pinned window can retain seat focus while following the
-output away from its owning workspace; leaving it must still activate the view
-under the pointer even when the active workspace already remembers that view.
+The hover decision compares against seat-global activation, not a workspace's remembered focus. A pinned window can retain seat focus while following the output away from its owning workspace; leaving it must still activate the view under the pointer even when the active workspace already remembers that view.
 
-This distinction matters when a second window maps away from the cursor and
-when returning to a workspace whose remembered focused window is elsewhere. It
-also covers explicit strip scrolling, column resizing or reordering, and leaving
-fullscreen when it reveals a different window. Fullscreen exits behave the same
-whether Umbriel runs a configured action or a client such as a browser or media
-player leaves video fullscreen through XDG shell. In each case, a small motion
-inside the window under the pointer is sufficient; the pointer does not need to
-leave and re-enter its border.
+This distinction matters when a second window maps away from the cursor and when returning to a workspace whose remembered focused window is elsewhere. It also covers explicit strip scrolling, column resizing or reordering, and leaving fullscreen when it reveals a different window. Fullscreen exits behave the same whether Umbriel runs a configured action or a client such as a browser or media player leaves video fullscreen through XDG shell. In each case, a small motion inside the window under the pointer is sufficient; the pointer does not need to leave and re-enter its border.
 
-Normal tiled close replacement preserves geometric proximity between columns.
-When it must cross into a surviving column with several rows, it resolves those
-rows through the global focus history. Visual row order describes placement,
-not which member the user focused before opening the window that just closed.
+Normal tiled close replacement preserves geometric proximity between columns. When it must cross into a surviving column with several rows, it resolves those rows through the global focus history. Visual row order describes placement, not which member the user focused before opening the window that just closed.
 
-Closing a focused tiled window is a bounded exception. Umbriel records the
-pointer position only when the closing view owns keyboard focus, is visibly
-beneath the pointer, and the position lies inside its current presented box. It
-chooses the normal layout replacement before detaching the view, then flushes the
-new layout and checks its final tiled target boxes once. A survivor that inherits
-the recorded position receives pointer-hover focus; otherwise the normal
-replacement remains focused. Scene hit-testing instead of cached seat pointer
-focus keeps consecutive closes correct without pointer motion. Reading final
-layout geometry avoids treating every view that moves through the pointer during
-an animation as another hover transition, including a moving scrolling strip.
+Closing a focused tiled window is a bounded exception. Umbriel records the pointer position only when the closing view owns keyboard focus, is visibly beneath the pointer, and the position lies inside its current presented box. It chooses the normal layout replacement before detaching the view, then flushes the new layout and checks its final tiled target boxes once. A survivor that inherits the recorded position receives pointer-hover focus; otherwise the normal replacement remains focused. Scene hit-testing instead of cached seat pointer focus keeps consecutive closes correct without pointer motion. Reading final layout geometry avoids treating every view that moves through the pointer during an animation as another hover transition, including a moving scrolling strip.
 
 ## Data-device drag focus
 
-Wayland data-device drags install pointer and keyboard grabs. Normal hover
-focus is suspended while the drag owns pointer motion, and keyboard enters are
-suppressed until the drag finishes. When the initiating button release destroys
-the grab, Umbriel reruns pointer processing at the unchanged cursor position.
+Wayland data-device drags install pointer and keyboard grabs. Normal hover focus is suspended while the drag owns pointer motion, and keyboard enters are suppressed until the drag finishes. When the initiating button release destroys the grab, Umbriel reruns pointer processing at the unchanged cursor position.
 
-An active data-device drag or compositor window move held near a scrolling
-workspace edge starts a delayed event-loop timer. A window move qualifies once
-it has crossed the drag threshold and detached from the strip. Each tick
-resolves the output, active workspace, drag state, and scrolling range again
-before changing the strip offset. The timer stops at the range boundary, when
-the pointer leaves the edge, or when the drag, workspace, overview, or session
-state no longer permits scrolling.
+An active data-device drag or compositor window move held near a scrolling workspace edge starts a delayed event-loop timer. A window move qualifies once it has crossed the drag threshold and detached from the strip. Each tick resolves the output, active workspace, drag state, and scrolling range again before changing the strip offset. The timer stops at the range boundary, when the pointer leaves the edge, or when the drag, workspace, overview, or session state no longer permits scrolling.
 
-Layout movement can place a new drop target beneath a pointer that has not
-moved. The output's post-arrange scene refresh therefore sends pointer enter,
-motion, or clear through wlroots' notify APIs while the data-device grab is
-active. This updates the grab's drop focus instead of only changing base pointer
-focus. During a compositor window move it recomputes the drop target and insert
-hint instead; client pointer focus stays suspended.
-Drag-icon buffers are excluded from scene hit testing, including buffers
-created later for nested subsurfaces, so the icon cannot hide the client below
-it from this refresh.
+Layout movement can place a new drop target beneath a pointer that has not moved. The output's post-arrange scene refresh therefore sends pointer enter, motion, or clear through wlroots' notify APIs while the data-device grab is active. This updates the grab's drop focus instead of only changing base pointer focus. During a compositor window move it recomputes the drop target and insert hint instead; client pointer focus stays suspended. Drag-icon buffers are excluded from scene hit testing, including buffers created later for nested subsurfaces, so the icon cannot hide the client below it from this refresh.
 
-With `follows_mouse` enabled, that refresh selects the window under the pointer
-when it is not already focused. Activation, border state, and keyboard focus
-then follow the drag target without requiring another border crossing. With
-`follows_mouse` disabled, the refresh restores normal pointer delivery and the
-client cursor while retaining the existing window focus.
+With `follows_mouse` enabled, that refresh selects the window under the pointer when it is not already focused. Activation, border state, and keyboard focus then follow the drag target without requiring another border crossing. With `follows_mouse` disabled, the refresh restores normal pointer delivery and the client cursor while retaining the existing window focus.
 
 ## Static inventory
 
-A number defines exact anonymous positions. An ordered string list defines an
-exact named inventory. During a configuration reload, Umbriel preserves
-workspace identity in two passes:
+A number defines exact anonymous positions. An ordered string list defines an exact named inventory. During a configuration reload, Umbriel preserves workspace identity in two passes:
 
 1. Match named entries in the new inventory by name.
 2. Match any remaining entries by position.
 
-Umbriel creates entries that have no match. When an old workspace is removed,
-its windows move to the surviving workspace at the same position, or to the
-last workspace when that position no longer exists. If the active workspace is
-removed, that destination becomes active.
+Umbriel creates entries that have no match. When an old workspace is removed, its windows move to the surviving workspace at the same position, or to the last workspace when that position no longer exists. If the active workspace is removed, that destination becomes active.
 
-Empty static workspaces remain in the inventory. Members from a count are
-anonymous and use their one-based position as a generated label. Members from
-a string list are named. A `[[workspace]]` name entry changes a static member
-only where its name and optional output scope match; it does not extend the
-configured inventory. An unscoped rule may therefore affect matching named
-static outputs while also materializing its name on dynamic outputs.
+Empty static workspaces remain in the inventory. Members from a count are anonymous and use their one-based position as a generated label. Members from a string list are named. A `[[workspace]]` name entry changes a static member only where its name and optional output scope match; it does not extend the configured inventory. An unscoped rule may therefore affect matching named static outputs while also materializing its name on dynamic outputs.
 
 ## Switching inventory type
 
-Switching from a static inventory to dynamic workspaces keeps every populated
-workspace and the active workspace. Entries whose explicit names remain
-declared for the dynamic output keep those names; other members are anonymous.
-Other empty anonymous workspaces are removed. The survivors are renumbered,
-matching named entries are materialized, and Umbriel appends empty anonymous
-workspaces until the count reaches `min_workspaces` and, while capacity permits,
-the inventory ends in an empty sentinel. The optional leading empty workspace
-is restored when another slot remains. At 64 occupied survivors, missing edge
-sentinels wait until a slot becomes available. Switching to a static name list
-uses name-first, position-second matching; switching to a count uses positions.
+Switching from a static inventory to dynamic workspaces keeps every populated workspace and the active workspace. Entries whose explicit names remain declared for the dynamic output keep those names; other members are anonymous. Other empty anonymous workspaces are removed. The survivors are renumbered, matching named entries are materialized, and Umbriel appends empty anonymous workspaces until the count reaches `min_workspaces` and, while capacity permits, the inventory ends in an empty sentinel. The optional leading empty workspace is restored when another slot remains. At 64 occupied survivors, missing edge sentinels wait until a slot becomes available. Switching to a static name list uses name-first, position-second matching; switching to a count uses positions.
 
 ## Workspace layout rules
 
@@ -269,164 +101,26 @@ Layout settings resolve in this order:
 3. A matching global `[[workspace]]` rule.
 4. A matching output-specific `[[workspace]]` rule.
 
-A name rule materializes its persistent member on a matching dynamic output and
-then follows that identity. An index rule never creates a workspace and is
-resolved against the current position after every inventory change. In TOML,
-`name = "2"` is an explicit numeric-looking name and remains distinct from
-`index = 2`.
+A name rule materializes its persistent member on a matching dynamic output and then follows that identity. An index rule never creates a workspace and is resolved against the current position after every inventory change. In TOML, `name = "2"` is an explicit numeric-looking name and remains distinct from `index = 2`.
 
-Workspace action parsing preserves the same distinction as a typed reference.
-Bare digits produce a position, ordinary text produces a name, and double
-quotes force a name for numeric-looking values. Resolution never retries one
-type as the other.
+Workspace action parsing preserves the same distinction as a typed reference. Bare digits produce a position, ordinary text produces a name, and double quotes force a name for numeric-looking values. Resolution never retries one type as the other.
 
 ## Output evacuation
 
-Output removal, configuration disable, and output-management disable share
-`Server::reassignOutputViews()`. It records each native workspace's original
-output identity, selector, layout snapshot, floating positions, and active
-selection before moving any views. Source reservation anchors keep dynamic
-reconciliation from deleting workspace batches during that transfer.
+Output removal, configuration disable, and output-management disable share `Server::reassignOutputViews()`. It records each native workspace's original output identity, selector, layout snapshot, floating positions, and active selection before moving any views. Source reservation anchors keep dynamic reconciliation from deleting workspace batches during that transfer.
 
-Each populated source workspace receives a temporary member on a live output.
-Explicit source names and their `named` flag are preserved; anonymous sources
-use their receiving positions as labels. `DisplacedWorkspace` owns the source
-identity strings, so its layout rules can still resolve against the original
-monitor and workspace after the physical `Output` is destroyed. Indices
-describe the receiving output; the saved home remains independent of those positions.
-Duplicate named workspaces on different outputs therefore remain separate.
-The destination layout receives the captured topology and viewport before its
-members are moved. Pinned windows and scratchpads retain their separate
-output-level evacuation paths.
+Each populated source workspace receives a temporary member on a live output. Explicit source names and their `named` flag are preserved; anonymous sources use their receiving positions as labels. `DisplacedWorkspace` owns the source identity strings, so its layout rules can still resolve against the original monitor and workspace after the physical `Output` is destroyed. Indices describe the receiving output; the saved home remains independent of those positions. Duplicate named workspaces on different outputs therefore remain separate. The destination layout receives the captured topology and viewport before its members are moved. Pinned windows and scratchpads retain their separate output-level evacuation paths.
 
-Temporary members also appear on fixed inventories. Fixed reconciliation
-matches configured native members first, then appends surviving temporary
-members. Dynamic name reconciliation cannot claim a temporary member as a
-configured name. Both inventory types prune empty unreserved temporary members
-and repair active and previous workspace pointers. A pending launch can keep
-an empty temporary member alive. A new window entering that member inherits
-its original home and schedules restoration, including when the home returned
-before the delayed window mapped. Explicit movement into a native workspace
-clears that window's return record.
+Temporary members also appear on fixed inventories. Fixed reconciliation matches configured native members first, then appends surviving temporary members. Dynamic name reconciliation cannot claim a temporary member as a configured name. Both inventory types prune empty unreserved temporary members and repair active and previous workspace pointers. A pending launch can keep an empty temporary member alive. A new window entering that member inherits its original home and schedules restoration, including when the home returned before the delayed window mapped. Explicit movement into a native workspace clears that window's return record.
 
-`Server::resolveNamedWorkspace()` serves actions and window rules. It excludes
-disabled outputs, prefers a native name over displaced names within one group,
-and treats multiple displaced matches as ambiguity. A qualifier naming an
-unavailable output searches the original identities of displaced members on
-enabled outputs. Numeric selectors remain positions on a live output.
-Dynamic declaration reconciliation skips displaced members, including when a
-native declaration with the same name is added or removed during reload.
+`Server::resolveNamedWorkspace()` serves actions and window rules. It excludes disabled outputs, prefers a native name over displaced names within one group, and treats multiple displaced matches as ambiguity. A qualifier naming an unavailable output searches the original identities of displaced members on enabled outputs. Numeric selectors remain positions on a live output. Dynamic declaration reconciliation skips displaced members, including when a native declaration with the same name is added or removed during reload.
 
-Scratchpad returns from temporary workspaces retain a weak workspace anchor
-and the displaced origin. A surviving anchor selects the exact temporary
-member despite a name collision. An expired anchor allows the empty member to
-be pruned and recreated on return; if the original output has returned, the
-window rejoins its native home instead. This does not reserve an empty temporary
-workspace for the duration of a scratchpad stay.
+Scratchpad returns from temporary workspaces retain a weak workspace anchor and the displaced origin. A surviving anchor selects the exact temporary member despite a name collision. An expired anchor allows the empty member to be pruned and recreated on return; if the original output has returned, the window rejoins its native home instead. This does not reserve an empty temporary workspace for the duration of a scratchpad stay.
 
-Allocation remains bounded at 64 workspaces per output. Evacuation tries the
-chosen live output, then the other enabled outputs. If none has room, it uses a
-native workspace without overwriting a foreign temporary layout. Fixed
-inventory growth can likewise displace excess temporary members into native
-workspaces while preserving the windows' original return records.
+Allocation remains bounded at 64 workspaces per output. Evacuation tries the chosen live output, then the other enabled outputs. If none has room, it uses a native workspace without overwriting a foreign temporary layout. Fixed inventory growth can likewise displace excess temporary members into native workspaces while preserving the windows' original return records.
 
-`restoreDisplacedViews()` restores available homes first. If every output was
-lost, saved homes whose outputs are still missing acquire separate temporary
-members on the first available output through the same allocation policy.
-Before further evacuation or restoration, live temporary workspaces refresh
-their mapped tiled members' snapshots, including column edits, widths, tabs,
-and runtime layout overrides. The original selector stays unchanged. If a
-surviving peer is unmapped and still needs a saved snapshot slot, the origin
-retains that complete snapshot until the delayed member can be restored.
-Returning native anonymous positions cannot resolve to foreign temporary
-members. A temporary active selection is never recorded as a native selection
-for its refuge output. Empty source layouts are flushed after evacuation,
-because a disabled output has no frame on which to finish their pending work.
+`restoreDisplacedViews()` restores available homes first. If every output was lost, saved homes whose outputs are still missing acquire separate temporary members on the first available output through the same allocation policy. Before further evacuation or restoration, live temporary workspaces refresh their mapped tiled members' snapshots, including column edits, widths, tabs, and runtime layout overrides. The original selector stays unchanged. If a surviving peer is unmapped and still needs a saved snapshot slot, the origin retains that complete snapshot until the delayed member can be restored. Returning native anonymous positions cannot resolve to foreign temporary members. A temporary active selection is never recorded as a native selection for its refuge output. Empty source layouts are flushed after evacuation, because a disabled output has no frame on which to finish their pending work.
 
 ## Verification
 
-Configuration resolution and change classification are covered by
-[`tests/unit/config_resolve.cpp`](../../tests/unit/config_resolve.cpp) and
-[`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp). Live
-workspace selection is exercised by
-[`tests/harness/checks/workspace/selectors.sh`](../../tests/harness/checks/workspace/selectors.sh),
-including a bare position on the pointer-preferred output versus an exact
-numeric name selected with quotes.
-Preserved names, original-output qualification, dynamic name collisions,
-disabled-output rule routing, and scratchpad returns are covered by
-[`tests/harness/checks/output/evacuated_names.sh`](../../tests/harness/checks/output/evacuated_names.sh)
-and
-[`tests/harness/checks/output/evacuated_name_collisions.sh`](../../tests/harness/checks/output/evacuated_name_collisions.sh).
-Output removal, disable, reload, complete output loss, separate temporary
-membership, layout preservation, and cleanup are covered by
-[`tests/harness/checks/output/workspace_evacuation.sh`](../../tests/harness/checks/output/workspace_evacuation.sh).
-New windows following a temporary workspace home, explicit moves adopting
-their destination, and pending launches retaining an emptied temporary member
-until a late client maps are covered by
-[`tests/harness/checks/output/evacuated_arrivals.sh`](../../tests/harness/checks/output/evacuated_arrivals.sh).
-Tiling edits and runtime layout switches made while the home output is absent
-are covered by
-[`tests/harness/checks/output/evacuated_layout_edits.sh`](../../tests/harness/checks/output/evacuated_layout_edits.sh).
-Native fallback at the limit of 64 workspaces, including an already occupied
-temporary workspace being active when another output disappears, is covered by
-[`tests/harness/checks/output/evacuation_capacity.sh`](../../tests/harness/checks/output/evacuation_capacity.sh).
-Exact scrolling, dwindle, and master restoration with an unmapped member is
-covered by
-[`tests/harness/checks/output/layout_restore.sh`](../../tests/harness/checks/output/layout_restore.sh).
-Leading and trailing dynamic sentinels, including renumbering after workspace
-movement, are covered by
-[`tests/harness/checks/workspace/empty_above.sh`](../../tests/harness/checks/workspace/empty_above.sh).
-The per-output dynamic floor is covered by
-[`tests/harness/checks/workspace/min_workspaces.sh`](../../tests/harness/checks/workspace/min_workspaces.sh).
-Persistent names mixed with dynamic anonymous workspaces, including reload
-addition, removal, ordering, sentinels, and numeric-looking names, are covered
-by
-[`tests/harness/checks/workspace/dynamic_named.sh`](../../tests/harness/checks/workspace/dynamic_named.sh).
-Pending name materialization and sentinel preservation at the runtime limit are
-covered by
-[`tests/harness/checks/workspace/dynamic_named_capacity.sh`](../../tests/harness/checks/workspace/dynamic_named_capacity.sh).
-Launch workspace reservation, silent delayed mapping, and first-map-only
-consumption are covered by
-[`tests/harness/checks/session/spawn_workspace.sh`](../../tests/harness/checks/session/spawn_workspace.sh).
-Explicit launch placement rule precedence is covered by
-[`tests/harness/checks/session/spawn_workspace_rule.sh`](../../tests/harness/checks/session/spawn_workspace_rule.sh).
-Pointer isolation during a wheel-triggered workspace transition is covered by
-[`tests/harness/checks/focus/workspace_transition.sh`](../../tests/harness/checks/focus/workspace_transition.sh).
-Hover focus after a window maps under the pointer and after returning to a
-workspace is covered by
-[`tests/harness/checks/focus/spawn_hover.sh`](../../tests/harness/checks/focus/spawn_hover.sh)
-and
-[`tests/harness/checks/focus/workspace_return_hover.sh`](../../tests/harness/checks/focus/workspace_return_hover.sh).
-The handoff from a pinned window owned by another workspace is covered by
-[`tests/harness/checks/focus/pinned_workspace_hover.sh`](../../tests/harness/checks/focus/pinned_workspace_hover.sh).
-Scrolling close restoration within a stacked neighboring column is covered by
-[`tests/harness/checks/focus/scrolling_close_focus_memory.sh`](../../tests/harness/checks/focus/scrolling_close_focus_memory.sh).
-Scrolling reveal animations are kept from cascading hover focus by
-[`tests/harness/checks/focus/scrolling_hover_focus_stability.sh`](../../tests/harness/checks/focus/scrolling_hover_focus_stability.sh).
-Command-driven strip scrolling, resizing, column movement, and fullscreen exit
-are covered by the `focus/*_hover.sh` checks. `focus/layout_scroll_hover` checks
-mid-animation motion, rapid retargets, no-op scrolls at the strip's end,
-zero-distance motion, the first real motion after settling, and preservation
-of hover-reveal cascade protection. `focus/consume_hover` checks stationary
-focus preservation and first-motion refresh for consume, consume-from, and
-both consume-or-expel paths.
-Client-requested XDG fullscreen exit is covered by
-[`tests/harness/checks/focus/client_fullscreen_exit_hover.sh`](../../tests/harness/checks/focus/client_fullscreen_exit_hover.sh).
-Modifier-wheel switching and the resulting keyboard-focus handoff through an
-input-method keyboard grab are covered by
-[`tests/harness/checks/input/input_method_wheel.sh`](../../tests/harness/checks/input/input_method_wheel.sh).
-Modifier release across text-input activation changes, including Fcitx's
-persistent virtual-keyboard mode, is covered by
-[`tests/harness/checks/input/input_method_modifier_release.sh`](../../tests/harness/checks/input/input_method_modifier_release.sh).
-Restoring the active keyboard after a transient IME keyboard disappears while
-another connected keyboard is idle is covered by
-[`tests/harness/checks/input/input_method_keyboard_restore.sh`](../../tests/harness/checks/input/input_method_keyboard_restore.sh).
-Client-cursor refresh after a short data-device drag is covered by
-[`tests/harness/checks/drag/external_drag.sh`](../../tests/harness/checks/drag/external_drag.sh).
-Keyboard-focus replay after a logical focus change during a drag is covered by
-[`tests/harness/checks/drag/data_drag_focus.sh`](../../tests/harness/checks/drag/data_drag_focus.sh).
-Drop-target hover focus and the subsequent keyboard-focus handoff are covered by
-[`tests/harness/checks/drag/data_drag_hover_focus.sh`](../../tests/harness/checks/drag/data_drag_hover_focus.sh).
-Stationary drop-target retargeting and edge scrolling to an offscreen window are
-covered by
-[`tests/harness/checks/drag/data_drag_edge_scroll.sh`](../../tests/harness/checks/drag/data_drag_edge_scroll.sh).
+Configuration resolution and change classification are covered by [`tests/unit/config_resolve.cpp`](../../tests/unit/config_resolve.cpp) and [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp). Live workspace selection is exercised by [`tests/harness/checks/workspace/selectors.sh`](../../tests/harness/checks/workspace/selectors.sh), including a bare position on the pointer-preferred output versus an exact numeric name selected with quotes. Preserved names, original-output qualification, dynamic name collisions, disabled-output rule routing, and scratchpad returns are covered by [`tests/harness/checks/output/evacuated_names.sh`](../../tests/harness/checks/output/evacuated_names.sh) and [`tests/harness/checks/output/evacuated_name_collisions.sh`](../../tests/harness/checks/output/evacuated_name_collisions.sh). Output removal, disable, reload, complete output loss, separate temporary membership, layout preservation, and cleanup are covered by [`tests/harness/checks/output/workspace_evacuation.sh`](../../tests/harness/checks/output/workspace_evacuation.sh). New windows following a temporary workspace home, explicit moves adopting their destination, and pending launches retaining an emptied temporary member until a late client maps are covered by [`tests/harness/checks/output/evacuated_arrivals.sh`](../../tests/harness/checks/output/evacuated_arrivals.sh). Tiling edits and runtime layout switches made while the home output is absent are covered by [`tests/harness/checks/output/evacuated_layout_edits.sh`](../../tests/harness/checks/output/evacuated_layout_edits.sh). Native fallback at the limit of 64 workspaces, including an already occupied temporary workspace being active when another output disappears, is covered by [`tests/harness/checks/output/evacuation_capacity.sh`](../../tests/harness/checks/output/evacuation_capacity.sh). Exact scrolling, dwindle, and master restoration with an unmapped member is covered by [`tests/harness/checks/output/layout_restore.sh`](../../tests/harness/checks/output/layout_restore.sh). Leading and trailing dynamic sentinels, including renumbering after workspace movement, are covered by [`tests/harness/checks/workspace/empty_above.sh`](../../tests/harness/checks/workspace/empty_above.sh). The per-output dynamic floor is covered by [`tests/harness/checks/workspace/min_workspaces.sh`](../../tests/harness/checks/workspace/min_workspaces.sh). Persistent names mixed with dynamic anonymous workspaces, including reload addition, removal, ordering, sentinels, and numeric-looking names, are covered by [`tests/harness/checks/workspace/dynamic_named.sh`](../../tests/harness/checks/workspace/dynamic_named.sh). Pending name materialization and sentinel preservation at the runtime limit are covered by [`tests/harness/checks/workspace/dynamic_named_capacity.sh`](../../tests/harness/checks/workspace/dynamic_named_capacity.sh). Launch workspace reservation, silent delayed mapping, and first-map-only consumption are covered by [`tests/harness/checks/session/spawn_workspace.sh`](../../tests/harness/checks/session/spawn_workspace.sh). Explicit launch placement rule precedence is covered by [`tests/harness/checks/session/spawn_workspace_rule.sh`](../../tests/harness/checks/session/spawn_workspace_rule.sh). Pointer isolation during a wheel-triggered workspace transition is covered by [`tests/harness/checks/focus/workspace_transition.sh`](../../tests/harness/checks/focus/workspace_transition.sh). Hover focus after a window maps under the pointer and after returning to a workspace is covered by [`tests/harness/checks/focus/spawn_hover.sh`](../../tests/harness/checks/focus/spawn_hover.sh) and [`tests/harness/checks/focus/workspace_return_hover.sh`](../../tests/harness/checks/focus/workspace_return_hover.sh). The handoff from a pinned window owned by another workspace is covered by [`tests/harness/checks/focus/pinned_workspace_hover.sh`](../../tests/harness/checks/focus/pinned_workspace_hover.sh). Scrolling close restoration within a stacked neighboring column is covered by [`tests/harness/checks/focus/scrolling_close_focus_memory.sh`](../../tests/harness/checks/focus/scrolling_close_focus_memory.sh). Scrolling reveal animations are kept from cascading hover focus by [`tests/harness/checks/focus/scrolling_hover_focus_stability.sh`](../../tests/harness/checks/focus/scrolling_hover_focus_stability.sh). Command-driven strip scrolling, resizing, column movement, and fullscreen exit are covered by the `focus/*_hover.sh` checks. `focus/layout_scroll_hover` checks mid-animation motion, rapid retargets, no-op scrolls at the strip's end, zero-distance motion, the first real motion after settling, and preservation of hover-reveal cascade protection. `focus/consume_hover` checks stationary focus preservation and first-motion refresh for consume, consume-from, and both consume-or-expel paths. Client-requested XDG fullscreen exit is covered by [`tests/harness/checks/focus/client_fullscreen_exit_hover.sh`](../../tests/harness/checks/focus/client_fullscreen_exit_hover.sh). Modifier-wheel switching and the resulting keyboard-focus handoff through an input-method keyboard grab are covered by [`tests/harness/checks/input/input_method_wheel.sh`](../../tests/harness/checks/input/input_method_wheel.sh). Modifier release across text-input activation changes, including Fcitx's persistent virtual-keyboard mode, is covered by [`tests/harness/checks/input/input_method_modifier_release.sh`](../../tests/harness/checks/input/input_method_modifier_release.sh). Restoring the active keyboard after a transient IME keyboard disappears while another connected keyboard is idle is covered by [`tests/harness/checks/input/input_method_keyboard_restore.sh`](../../tests/harness/checks/input/input_method_keyboard_restore.sh). Client-cursor refresh after a short data-device drag is covered by [`tests/harness/checks/drag/external_drag.sh`](../../tests/harness/checks/drag/external_drag.sh). Keyboard-focus replay after a logical focus change during a drag is covered by [`tests/harness/checks/drag/data_drag_focus.sh`](../../tests/harness/checks/drag/data_drag_focus.sh). Drop-target hover focus and the subsequent keyboard-focus handoff are covered by [`tests/harness/checks/drag/data_drag_hover_focus.sh`](../../tests/harness/checks/drag/data_drag_hover_focus.sh). Stationary drop-target retargeting and edge scrolling to an offscreen window are covered by [`tests/harness/checks/drag/data_drag_edge_scroll.sh`](../../tests/harness/checks/drag/data_drag_edge_scroll.sh).

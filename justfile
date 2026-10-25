@@ -179,10 +179,27 @@ check-stress name n="32": (_ensure-configured mode) (_enable-tests mode "yes")
 check-names:
     @bash tests/harness/check.sh ./build-{{mode}}/umbriel --list
 
+# Code and docs formatting.
+format: format-code format-docs
+
 # C++ and C sources plus GLSL shaders, all under the root .clang-format.
-format:
+format-code:
     find src tests umbrielfx examples/effects \( -name '*.cpp' -o -name '*.c' -o -name '*.h' -o -name '*.frag' -o -name '*.vert' -o -name '*.glsl' \) -print0 | xargs -0 clang-format -i
     find src tests umbrielfx examples/effects \( -name '*.cpp' -o -name '*.c' -o -name '*.h' -o -name '*.frag' -o -name '*.vert' -o -name '*.glsl' \) -print0 | xargs -0 grep -ZlP '\s+$' | xargs -0 -r sed -i 's/[[:space:]]*$//'
+
+_docs_formatter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! tools/remark/node_modules/.package-lock.json -nt tools/remark/package-lock.json ]]; then
+        npm ci --prefix tools/remark --no-audit --no-fund --loglevel=error
+    fi
+
+# Tracked Markdown and MDX files, parsed with the docs site's remark plugins.
+format-docs: _docs_formatter
+    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node tools/remark/format.mjs
+
+format-docs-check: _docs_formatter
+    git ls-files -z '*.md' '*.mdx' | xargs -0 -r node tools/remark/format.mjs --check
 
 # clang-tidy over src and tests, or only the given files: `just lint`, `just lint src/core/animation.cpp`. Headers are
 # checked through the sources that include them. Another build directory is `mode=`, as in `just mode=asan lint`.

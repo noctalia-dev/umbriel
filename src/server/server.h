@@ -27,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <sys/types.h>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <wayland-server-core.h>
@@ -127,6 +128,7 @@ namespace umbriel {
   struct Keybind;
 
   class Cursor;
+  class EisInput;
   class BackendManager;
   class FocusManager;
   class Xwayland;
@@ -176,6 +178,7 @@ namespace umbriel {
     [[nodiscard]] wlr_compositor* compositor() const { return m_compositor; }
     // Null when general.xwayland is off or the Xwayland server could not be created.
     [[nodiscard]] Xwayland* xwayland() const { return m_xwayland.get(); }
+    [[nodiscard]] EisInput* eisInput() const { return m_eisInput.get(); }
     [[nodiscard]] wlr_backend* backend() const { return m_backend; }
     [[nodiscard]] wlr_session* session() const { return m_session; }
     [[nodiscard]] wlr_renderer* renderer() const { return m_renderer; }
@@ -277,6 +280,7 @@ namespace umbriel {
     bool followScreenCastOutput(std::string* error = nullptr);
     void stopFollowingScreenCast();
     void confirmScreenCastDynamic();
+    void confirmInputEmulation();
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
     // never re-state which owners exist or in what order they run.
@@ -393,6 +397,7 @@ namespace umbriel {
     // Focus lives in FocusManager; these forward so call sites that already
     // hold a Server do not need a second reference.
     void focusView(View* view, FocusReason reason = FocusReason::Startup) { m_focus.focusView(view, reason); }
+    void xwaylandHintsChanged(View* view) { m_focus.xwaylandHintsChanged(view); }
     void restoreActivatedViewKeyboardFocus() { m_focus.restoreActivatedViewKeyboardFocus(); }
     View* viewAt(double lx, double ly, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer = nullptr) {
       return m_focus.viewAt(lx, ly, surface, sx, sy, layer);
@@ -507,6 +512,9 @@ namespace umbriel {
     [[nodiscard]] bool closeSnapshotAlive(CloseSnapshotId id) const;
 
   private:
+    friend class EisInput;
+    void requestInputEmulation(uint64_t id, std::string_view name);
+    void cancelInputEmulation(uint64_t id);
     friend class Output;
 
     bool requestScreenCastCommand(ScreenCastCommandKind kind, std::string value, std::string* error);
@@ -909,6 +917,11 @@ namespace umbriel {
     uint64_t m_nextApplicationScopeId = 1;
 
     std::unique_ptr<Xwayland> m_xwayland;
+    std::unique_ptr<EisInput> m_eisInput;
+    uint64_t m_pendingInputId = 0;
+    std::string m_pendingInputName;
+    std::unordered_set<std::string> m_allowedInputNames;
+    std::unordered_set<std::string> m_deniedInputNames;
     wl_event_source* m_backgroundFrameTimer = nullptr;
     // Paces hidden `background_render` windows at their output's refresh rate; disarmed while none is hidden.
     wl_event_source* m_backgroundRenderTimer = nullptr;

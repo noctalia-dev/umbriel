@@ -825,7 +825,7 @@ namespace umbriel {
   void View::applySeatFocus(bool withKeyboard) {
     // Mechanism only. Policy lives in Server::focusView; do not call directly
     // from input/event code.
-    if (!m_onActiveWorkspace && !m_pinned) {
+    if ((!m_onActiveWorkspace && !m_pinned) || !acceptsKeyboardFocus()) {
       return;
     }
 

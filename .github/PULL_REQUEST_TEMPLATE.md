@@ -65,7 +65,7 @@
 - [ ] This PR is ready for review, or it is marked as Draft.
 - [ ] This change fits `SCOPE.md`, or its scope was agreed in an issue or on Discord first.
 - [ ] I read and followed the relevant guidance in `CONTRIBUTING.md`.
-- [ ] I ran `just format`, or this PR has no C++ changes.
+- [ ] I ran `just format`, or this PR has no C++, shader, or Markdown changes.
 - [ ] I ran the relevant build, test, lint, or verification commands, or explained why they were not run.
 - [ ] I functionally verified compositor behavior where automated checks are insufficient.
 - [ ] I self-reviewed the changes.

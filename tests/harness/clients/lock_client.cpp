@@ -4,6 +4,7 @@
 // compare focus before and after a real lock cycle. The deferred mode accepts
 // explicit "commit" and "unlock" commands. "finished" means the compositor
 // refused or dropped the lock.
+// LOG_LOCK_INPUT also logs keyboard input received by the real lock surfaces.
 
 #include "ext-session-lock-v1-client-protocol.h"
 
@@ -38,6 +39,8 @@ namespace {
     wl_display* display = nullptr;
     wl_compositor* compositor = nullptr;
     wl_shm* shm = nullptr;
+    wl_seat* seat = nullptr;
+    wl_keyboard* keyboard = nullptr;
     ext_session_lock_manager_v1* manager = nullptr;
     ext_session_lock_v1* lock = nullptr;
     std::vector<LockOutput> outputs;
@@ -123,12 +126,40 @@ namespace {
   }
   constexpr ext_session_lock_v1_listener kLockListener = {.locked = lockLocked, .finished = lockFinished};
 
+  constexpr wl_keyboard_listener kKeyboardListener = {
+      .keymap = [](void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) { close(fd); },
+      .enter = [](void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) { std::println("keyboard-enter"); },
+      .leave = [](void*, wl_keyboard*, uint32_t, wl_surface*) { std::println("keyboard-leave"); },
+      .key =
+          [](void*, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t pressed) {
+            std::println("keyboard-key code={} state={}", key, pressed != 0 ? "pressed" : "released");
+            std::fflush(stdout);
+          },
+      .modifiers = [](void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {},
+      .repeat_info = [](void*, wl_keyboard*, int32_t, int32_t) {},
+  };
+
+  constexpr wl_seat_listener kSeatListener = {
+      .capabilities =
+          [](void* data, wl_seat* seat, uint32_t capabilities) {
+            auto& state = *static_cast<State*>(data);
+            if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0 && state.keyboard == nullptr) {
+              state.keyboard = wl_seat_get_keyboard(seat);
+              wl_keyboard_add_listener(state.keyboard, &kKeyboardListener, &state);
+            }
+          },
+      .name = [](void*, wl_seat*, const char*) {},
+  };
+
   void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
     auto& state = *static_cast<State*>(data);
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
       state.compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, 4));
     } else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
       state.shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+    } else if (std::strcmp(interface, wl_seat_interface.name) == 0 && std::getenv("LOG_LOCK_INPUT") != nullptr) {
+      state.seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 5U)));
+      wl_seat_add_listener(state.seat, &kSeatListener, &state);
     } else if (std::strcmp(interface, ext_session_lock_manager_v1_interface.name) == 0) {
       state.manager = static_cast<ext_session_lock_manager_v1*>(
           wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1)

@@ -24,6 +24,9 @@ namespace {
     xcb_atom_t netWmStateFullscreen = XCB_ATOM_NONE;
     xcb_atom_t wmProtocols = XCB_ATOM_NONE;
     xcb_atom_t wmDeleteWindow = XCB_ATOM_NONE;
+    xcb_atom_t netWmPing = XCB_ATOM_NONE;
+    xcb_atom_t netWmWindowType = XCB_ATOM_NONE;
+    xcb_atom_t netWmWindowTypeUtility = XCB_ATOM_NONE;
   };
 
   struct State {
@@ -34,6 +37,7 @@ namespace {
     std::array<std::string, 1> names;
     std::string commands;
     bool running = true;
+    std::string inputModel = "passive";
   };
 
   xcb_atom_t internAtom(xcb_connection_t* connection, std::string_view name) {
@@ -56,13 +60,19 @@ namespace {
     state.atoms.netWmStateFullscreen = internAtom(state.connection, "_NET_WM_STATE_FULLSCREEN");
     state.atoms.wmProtocols = internAtom(state.connection, "WM_PROTOCOLS");
     state.atoms.wmDeleteWindow = internAtom(state.connection, "WM_DELETE_WINDOW");
+    state.atoms.netWmPing = internAtom(state.connection, "_NET_WM_PING");
+    state.atoms.netWmWindowType = internAtom(state.connection, "_NET_WM_WINDOW_TYPE");
+    state.atoms.netWmWindowTypeUtility = internAtom(state.connection, "_NET_WM_WINDOW_TYPE_UTILITY");
     return state.atoms.utf8String != XCB_ATOM_NONE
         && state.atoms.netWmName != XCB_ATOM_NONE
         && state.atoms.netActiveWindow != XCB_ATOM_NONE
         && state.atoms.netWmState != XCB_ATOM_NONE
         && state.atoms.netWmStateFullscreen != XCB_ATOM_NONE
         && state.atoms.wmProtocols != XCB_ATOM_NONE
-        && state.atoms.wmDeleteWindow != XCB_ATOM_NONE;
+        && state.atoms.wmDeleteWindow != XCB_ATOM_NONE
+        && state.atoms.netWmPing != XCB_ATOM_NONE
+        && state.atoms.netWmWindowType != XCB_ATOM_NONE
+        && state.atoms.netWmWindowTypeUtility != XCB_ATOM_NONE;
   }
 
   void requestFullscreen(State& state, bool fullscreen) {
@@ -129,6 +139,15 @@ namespace {
     );
   }
 
+  void setInputHint(State& state, bool input) {
+    const std::array<uint32_t, 9> hints{1, input ? 1U : 0U, 0, 0, 0, 0, 0, 0, 0};
+    xcb_change_property(
+        state.connection, XCB_PROP_MODE_REPLACE, state.windows[0], XCB_ATOM_WM_HINTS, XCB_ATOM_WM_HINTS, 32,
+        hints.size(), hints.data()
+    );
+    xcb_flush(state.connection);
+  }
+
   void handleCommand(State& state, std::string_view command) {
     constexpr std::string_view prefix = "state ";
     if (command.starts_with(prefix) && command.size() > prefix.size()) {
@@ -137,6 +156,17 @@ namespace {
       requestFullscreen(state, true);
     } else if (command == "fullscreen false") {
       requestFullscreen(state, false);
+    } else if (command == "input true" || command == "input false") {
+      setInputHint(state, command == "input true");
+      std::println("input-requested={}", command == "input true");
+    } else if (command == "unmap" || command == "map") {
+      if (command == "unmap") {
+        xcb_unmap_window(state.connection, state.windows[0]);
+      } else {
+        xcb_map_window(state.connection, state.windows[0]);
+      }
+      xcb_flush(state.connection);
+      std::println("{}-requested", command);
     } else if (command.starts_with("decorations ")) {
       const xcb_atom_t motif = internAtom(state.connection, "_MOTIF_WM_HINTS");
       const uint32_t hints[]{2, 0, command == "decorations on" ? 1U : 0U, 0, 0};
@@ -188,6 +218,14 @@ namespace {
       );
       return;
     }
+    if (type == XCB_BUTTON_PRESS || type == XCB_BUTTON_RELEASE) {
+      const auto& button = reinterpret_cast<const xcb_button_press_event_t&>(event);
+      std::println(
+          "button window={} code={} state={}", windowName(state, button.event), button.detail,
+          type == XCB_BUTTON_PRESS ? "pressed" : "released"
+      );
+      return;
+    }
     if (type == XCB_CLIENT_MESSAGE) {
       const auto& message = reinterpret_cast<const xcb_client_message_event_t&>(event);
       if (message.type == state.atoms.wmProtocols && message.data.data32[0] == state.atoms.wmDeleteWindow) {
@@ -202,7 +240,9 @@ namespace {
     constexpr uint32_t eventMask = XCB_EVENT_MASK_STRUCTURE_NOTIFY
         | XCB_EVENT_MASK_FOCUS_CHANGE
         | XCB_EVENT_MASK_KEY_PRESS
-        | XCB_EVENT_MASK_KEY_RELEASE;
+        | XCB_EVENT_MASK_KEY_RELEASE
+        | XCB_EVENT_MASK_BUTTON_PRESS
+        | XCB_EVENT_MASK_BUTTON_RELEASE;
     const uint32_t values[] = {state.screen->black_pixel, eventMask};
     xcb_create_window(
         state.connection, XCB_COPY_FROM_PARENT, window, state.screen->root, x, 80, 480, 360, 0,
@@ -223,24 +263,39 @@ namespace {
         state.connection, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8,
         static_cast<uint32_t>(wmClass.size()), wmClass.data()
     );
+    setInputHint(state, state.inputModel == "passive");
+    const std::array<xcb_atom_t, 2> protocols{state.atoms.wmDeleteWindow, state.atoms.netWmPing};
     xcb_change_property(
-        state.connection, XCB_PROP_MODE_REPLACE, window, state.atoms.wmProtocols, XCB_ATOM_ATOM, 32, 1,
-        &state.atoms.wmDeleteWindow
+        state.connection, XCB_PROP_MODE_REPLACE, window, state.atoms.wmProtocols, XCB_ATOM_ATOM, 32,
+        state.inputModel == "none" ? 2 : 1, protocols.data()
     );
+    if (state.inputModel == "none") {
+      xcb_change_property(
+          state.connection, XCB_PROP_MODE_REPLACE, window, state.atoms.netWmWindowType, XCB_ATOM_ATOM, 32, 1,
+          &state.atoms.netWmWindowTypeUtility
+      );
+    }
     xcb_map_window(state.connection, window);
     return xcb_connection_has_error(state.connection) == 0;
   }
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::println(stderr, "usage: xwayland-focus-client TITLE");
+  if (argc < 2 || argc > 3) {
+    std::println(stderr, "usage: xwayland-focus-client TITLE [passive|none]");
     return 2;
   }
   setvbuf(stdout, nullptr, _IOLBF, 0);
 
   int screenNumber = 0;
   State state;
+  if (argc == 3) {
+    state.inputModel = argv[2];
+    if (state.inputModel != "passive" && state.inputModel != "none") {
+      std::println(stderr, "xwayland-focus-client: unknown input model '{}'", state.inputModel);
+      return 2;
+    }
+  }
   state.connection = xcb_connect(nullptr, &screenNumber);
   state.names = {argv[1]};
   if (state.connection == nullptr || xcb_connection_has_error(state.connection) != 0) {

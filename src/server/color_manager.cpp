@@ -974,7 +974,8 @@ namespace umbriel {
     ColorDescription descriptionForOutput(wlr_output* output) const {
       const Output* managedOutput = server.outputFromWlr(output);
       const float sdrWhite = managedOutput != nullptr ? managedOutput->sdrWhite() : kDefaultSdrWhite;
-      return outputColorDescription(output->image_description, sdrWhite);
+      const bool automaticHdr = managedOutput != nullptr && managedOutput->automaticHdrAvailable();
+      return outputColorDescription(output->image_description, sdrWhite, automaticHdr);
     }
 
     ColorDescription preferredDescription(wlr_surface* surface) const {
@@ -990,9 +991,10 @@ namespace umbriel {
       wlr_surface_output* membership;
       wl_list_for_each(membership, &surface->current_outputs, link) {
         wlr_output* candidate = membership->output;
+        const bool candidateHdr = descriptionForOutput(candidate).requiresHdrOutput;
         if (selected == nullptr
-            || (selected->image_description == nullptr && candidate->image_description != nullptr)
-            || (candidate == preferred && candidate->image_description != nullptr)) {
+            || (!descriptionForOutput(selected).requiresHdrOutput && candidateHdr)
+            || (candidate == preferred && candidateHdr)) {
           selected = candidate;
         }
       }
@@ -1141,7 +1143,7 @@ namespace umbriel {
     const auto found = m_impl->surfaces.find(surface);
     return found != m_impl->surfaces.end()
         && found->second->current.set
-        && found->second->current.description.requiresHdrOutput;
+        && colorDescriptionRequestsHdrOutput(found->second->current.description);
   }
 
   bool ColorManager::registerScene(wlr_scene* scene) { return m_impl->registerScene(scene); }

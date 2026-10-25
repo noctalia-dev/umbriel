@@ -113,6 +113,7 @@ namespace umbriel {
     [[nodiscard]] HdrMode hdrMode() const;
     [[nodiscard]] bool hdrRequested() const;
     [[nodiscard]] bool hdrActive() const;
+    [[nodiscard]] bool automaticHdrAvailable() const;
     [[nodiscard]] bool bitDepthActive() const;
     [[nodiscard]] const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
     [[nodiscard]] float configuredSdrWhite() const;
@@ -216,6 +217,7 @@ namespace umbriel {
     wlr_output_layout_output* addToLayout();
     void arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
     void updateOptimizedBlur(const wlr_box& fullArea);
+    void updateHdrAvailability(bool activationRejected = false);
 
     Server* m_server = nullptr;
     wlr_output* m_output = nullptr;
@@ -251,6 +253,9 @@ namespace umbriel {
     std::optional<FormatTier> m_vrrDroppedTier;
     bool m_fullscreenHdrRequested = false;
     HdrTransition m_hdrTransition;
+    // Retain an activation rejection until an explicit output reconfiguration
+    // probes support again. Ordinary SDR frames must not re-advertise it.
+    bool m_hdrAvailable = false;
     bool m_lastCommitTearing = false;
     bool m_trackingPresentation = false;
     // Cadence of the last presented frame, which places this output's animation samples on its vblanks. 0 while

@@ -3547,6 +3547,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .clipped_region = {0},
         .sample_box = sample_box,
         .luminances = scene_buffer->luminances.reference > 0.0f ? &scene_buffer->luminances : NULL,
+        .map_hdr_to_sdr = !data->hdr
+            && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
+                || scene_buffer->absolute_luminance
+                || src_lum.max > src_lum.reference),
     };
 
     // TODO: Use the base wlr_render_pass_add_texture as a fast-path in the future
@@ -5884,7 +5888,11 @@ static bool scene_output_build_state(
   }
 
   struct wlr_color_transform* gamma_lut = NULL;
-  if (wlr_output_get_gamma_size(output) == 0 && output->renderer->features.output_color_transform) {
+  // The DRM gamma capability query takes modeset locks. Only query when a
+  // shader gamma transform could actually be applied.
+  if (scene_output->gamma_lut_color_transform != NULL
+      && output->renderer->features.output_color_transform
+      && wlr_output_get_gamma_size(output) == 0) {
     gamma_lut = scene_output->gamma_lut_color_transform;
   }
   const bool render_gamma_lut = gamma_lut != NULL;

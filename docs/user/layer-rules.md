@@ -1,7 +1,6 @@
 # Layer Rules
 
-Layer rules apply visual effects to layer-shell surfaces such as bars,
-launchers, and notifications. Run `umbriel layers` to list active namespaces.
+Layer rules apply visual effects to layer-shell surfaces such as bars, launchers, and notifications. Run `umbriel layers` to list active namespaces.
 
 ```toml
 [[layer_rule]]
@@ -19,12 +18,9 @@ blur_popups = true
 | `match.layer`      | enum  | Match `"background"`, `"bottom"`, `"top"`, or `"overlay"`. |
 | `match.at_startup` | bool  | Match during or after the first 60 seconds.                |
 
-Regular expressions match any part of a namespace. Use `^` and `$` for an
-exact match. The selector takes either one pattern or an array of them, and any
-one of them matching is enough.
+Regular expressions match any part of a namespace. Use `^` and `$` for an exact match. The selector takes either one pattern or an array of them, and any one of them matching is enough.
 
-Selectors are optional: a rule without them matches every layer surface, and
-every matching rule contributes its values.
+Selectors are optional: a rule without them matches every layer surface, and every matching rule contributes its values.
 
 ## Effects
 
@@ -35,20 +31,13 @@ every matching rule contributes its values.
 | `blur_ignore_alpha` | float | Skip blur below an alpha threshold.            |
 | `blur_optimized`    | bool  | Override the global optimized-blur choice.     |
 
-Layer-shell blur is off by default. Every matching rule contributes its
-settings, and later values take precedence.
+Layer-shell blur is off by default. Every matching rule contributes its settings, and later values take precedence.
 
-Optimized blur samples the cached wallpaper blur, so a surface that opens over
-windows shows the wallpaper through it instead of the windows. Set
-`blur_optimized = false` on such surfaces (panels, docks, notifications) to blur
-the live content behind them; it costs GPU time on every frame they are visible
-and something behind them changes. Surfaces that only cover the wallpaper, such
-as a bar, keep the cheaper optimized blur.
+Optimized blur samples the cached wallpaper blur, so a surface that opens over windows shows the wallpaper through it instead of the windows. Set `blur_optimized = false` on such surfaces (panels, docks, notifications) to blur the live content behind them; it costs GPU time on every frame they are visible and something behind them changes. Surfaces that only cover the wallpaper, such as a bar, keep the cheaper optimized blur.
 
 ## Keyboard focus
 
-A layer surface declares its own keyboard interactivity through the layer-shell
-protocol; no rule overrides it.
+A layer surface declares its own keyboard interactivity through the layer-shell protocol; no rule overrides it.
 
 | Interactivity | Behavior                                                                             |
 | ------------- | ------------------------------------------------------------------------------------ |
@@ -58,8 +47,4 @@ protocol; no rule overrides it.
 
 Launchers and panels with search fields commonly use `on_demand`.
 
-While a fullscreen window is showing on an output, top-layer surfaces on that
-output remain underneath it and cannot receive keyboard focus, including with
-`exclusive` interactivity. Overlay-layer surfaces can still take focus. Once the
-fullscreen window leaves, an `exclusive` top-layer surface takes keyboard focus
-back; an `on_demand` one waits to be clicked.
+While a fullscreen window is showing on an output, top-layer surfaces on that output remain underneath it and cannot receive keyboard focus, including with `exclusive` interactivity. Overlay-layer surfaces can still take focus. Once the fullscreen window leaves, an `exclusive` top-layer surface takes keyboard focus back; an `on_demand` one waits to be clicked.

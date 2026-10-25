@@ -66,6 +66,7 @@ namespace umbriel {
     bool toggle(std::string_view name, Output* invokingOutput);
     void hideAll();
     bool restoreFocused(std::string_view name);
+    bool restoreToWorkspace(View* view, Workspace* workspace);
     bool focusNext(std::string_view name);
     // Show one window of the scratchpad at a time: the one after (`direction` > 0) or before the window on show,
     // wrapping at the ends. A hidden pad shows its most recently focused window.
@@ -159,7 +160,7 @@ namespace umbriel {
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true
     );
     void remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea);
-    bool restoreView(View* view, Output* fallback, bool focus);
+    bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
     wlr_scene_rect* dimRectFor(Output* output);

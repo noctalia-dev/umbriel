@@ -34,6 +34,11 @@ namespace umbriel {
     render();
   }
 
+  void QuitConfirm::showInputEmulation(std::string_view application) {
+    m_application = application;
+    show(Kind::InputEmulation);
+  }
+
   void QuitConfirm::hide() {
     if (m_tree != nullptr) {
       m_shadow.reset();
@@ -80,15 +85,21 @@ namespace umbriel {
     const std::string headingColor = rgbaHex(accent);
     const std::string textColor = rgbaHex(colors.textPrimary);
 
-    // Static strings, no user input, so no escaping needed. Transparent background: the panel rect behind provides the
-    // surface. The title is sized like the cheatsheet's heading.
-    const std::string_view heading = m_kind == Kind::SessionQuit ? "Quit Umbriel?" : "Allow screencast target changes?";
-    const std::string_view detail = m_kind == Kind::SessionQuit
+    const std::string_view heading = m_kind == Kind::InputEmulation ? "Allow desktop control?"
+        : m_kind == Kind::SessionQuit                               ? "Quit Umbriel?"
+                                                                    : "Allow screencast target changes?";
+    const std::string detail = m_kind == Kind::InputEmulation
+        ? std::format(
+              "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n"
+              "Enter allows it for this Umbriel session; any other key or click denies it.",
+              m_application
+          )
+        : m_kind == Kind::SessionQuit
         ? "Enter confirms; any other key or click cancels"
         : "This can reveal another window or screen. Enter confirms; any other key or click cancels";
     std::string markup =
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
-    markup += std::format("\n<span foreground='{}'>{}</span>", textColor, detail);
+    markup += std::format("\n<span foreground='{}'>{}</span>", textColor, escapeMarkup(detail));
     TextBufferResult rendered = renderTextBuffer({
         .markup = std::move(markup),
         .font = "monospace 11",

@@ -2,6 +2,9 @@
 
 #include "scene/surface_shadow.h"
 
+#include <string>
+#include <string_view>
+
 struct wlr_scene_tree;
 
 namespace umbriel {
@@ -14,6 +17,7 @@ namespace umbriel {
     enum class Kind {
       SessionQuit,
       ScreenCastDynamic,
+      InputEmulation,
     };
 
     QuitConfirm(Server& server, wlr_scene_tree* parent);
@@ -23,6 +27,7 @@ namespace umbriel {
     QuitConfirm& operator=(const QuitConfirm&) = delete;
 
     void show(Kind kind);
+    void showInputEmulation(std::string_view application);
     void hide();
     [[nodiscard]] bool visible() const { return m_tree != nullptr; }
     [[nodiscard]] Kind kind() const { return m_kind; }
@@ -35,6 +40,7 @@ namespace umbriel {
     wlr_scene_tree* m_parent;
     wlr_scene_tree* m_tree = nullptr;
     Kind m_kind = Kind::SessionQuit;
+    std::string m_application;
     SurfaceShadow m_shadow;
   };
 

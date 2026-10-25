@@ -1,143 +1,67 @@
 # Configuration reload
 
-This note records the reload guarantees that maintainers must preserve. The
-user-facing configuration guide describes only the outcomes needed while
-editing a configuration.
+This note records the reload guarantees that maintainers must preserve. The user-facing configuration guide describes only the outcomes needed while editing a configuration.
 
 ## Core contract
 
-A reload is transactional. Umbriel commits a new configuration only after the
-complete file set parses and validates successfully.
+A reload is transactional. Umbriel commits a new configuration only after the complete file set parses and validates successfully.
 
 If a reload fails:
 
 - The last valid configuration remains active.
 - The live compositor state remains unchanged.
 - Diagnostics describe the failed attempt.
-- Watches follow the attempted include graph. Fixing a broken included file can
-  therefore trigger recovery without another edit to the main file.
+- Watches follow the attempted include graph. Fixing a broken included file can therefore trigger recovery without another edit to the main file.
 
-A successful reload applies only the runtime effects caused by changed
-sections. Saving identical content is inert: it must not reset output state,
-move focus, close overlays, or otherwise disturb the session.
+A successful reload applies only the runtime effects caused by changed sections. Saving identical content is inert: it must not reset output state, move focus, close overlays, or otherwise disturb the session.
 
 ## Implicit source discovery
 
-Without `-c`, Umbriel captures the lookup candidates from its startup
-environment before applying configured environment variables. The order is the
-user path, every `$XDG_CONFIG_DIRS` path in order, then the packaged path. Each
-automatic or manual reload selects the first regular file from that fixed list.
+Without `-c`, Umbriel captures the lookup candidates from its startup environment before applying configured environment variables. The order is the user path, every `$XDG_CONFIG_DIRS` path in order, then the packaged path. Each automatic or manual reload selects the first regular file from that fixed list.
 
-All candidates remain watched, including paths whose parent directories do not
-exist yet. The watcher follows the nearest existing ancestor and rearms as path
-components appear. Creating a higher-priority file can therefore promote it
-without a restart. Removing the current file selects the next existing
-candidate. When no candidate exists, built-in defaults, including the built-in
-keybinds, are a successful implicit selection.
+All candidates remain watched, including paths whose parent directories do not exist yet. The watcher follows the nearest existing ancestor and rearms as path components appear. Creating a higher-priority file can therefore promote it without a restart. Removing the current file selects the next existing candidate. When no candidate exists, built-in defaults, including the built-in keybinds, are a successful implicit selection.
 
-Selection is not a parse fallback. If the first existing candidate fails to
-parse or validate, the last committed root and configuration remain active;
-lower-priority candidates are not loaded. Watches still cover every lookup
-candidate and the attempted include graph, so correcting or removing the file
-can recover automatically.
+Selection is not a parse fallback. If the first existing candidate fails to parse or validate, the last committed root and configuration remain active; lower-priority candidates are not loaded. Watches still cover every lookup candidate and the attempted include graph, so correcting or removing the file can recover automatically.
 
-An explicit `-c` path stays fixed. A missing or invalid explicit file keeps the
-last valid configuration and never enters the implicit lookup chain.
+An explicit `-c` path stays fixed. A missing or invalid explicit file keeps the last valid configuration and never enters the implicit lookup chain.
 
 ## Selective runtime effects
 
 Output state and workspace inventory are independent effects.
 
 - Changing mode, scale, transform, or position reapplies output state.
-- Changing an output's `sdr_transfer` reapplies output state and redraws with
-  the selected SDR curve while HDR is active. Removing the key restores gamma
-  2.2. Saving an unchanged choice has no output-state effect.
-- Reapplying output state clears session-scoped output-management enablement,
-  including state retained for a disconnected monitor, before the file is
-  applied. An identical reload keeps that runtime state because it has no
-  output-state effect.
-- Focus reconciliation after runtime effects preserves the exact focused
-  surface when its mapped view or keyboard-interactive layer remains usable on
-  an enabled output. This includes popup grabs. Explicit focus actions still
-  select their requested output or workspace.
-- Changing an output's `workspaces` value reconciles its workspace inventory
-  and refreshes workspace layout.
-- Changing only layout settings refreshes workspace geometry without
-  reconciling the inventory or reapplying output state.
-- Changing an output's `layout.scrolling.default_extent_fraction` refreshes only
-  resolved workspace layout configuration. Existing scrolling columns retain
-  their stored widths; columns created after the reload use the new default.
-- Changing total border width refreshes window decoration and workspace layout
-  because borders contribute to resolved tile spacing.
-- Changing a window rule's decoration keys (`border_width`, `corner_radius`,
-  `shadow`) refreshes only the windows that rule matches. The layout is not
-  consulted: tile spacing and edge padding keep using the global border width,
-  so a decoration rule never rearranges the workspace.
-- Changing an output or window-rule tearing policy re-evaluates eligibility,
-  clears async recovery state, and schedules a frame. It does not reapply
-  output state or invalidate the overview.
-- Changing an output's direct scanout policy damages and schedules only outputs
-  whose resolved policy changed. It does not reapply output state or invalidate
-  the overview.
-- Changing `[effects]`, any `[effects.preset.*]` table or its shader file, an
-  output's `screen_effect`, an animation event's `effect`,
-  `[animation.windows_drag]`, or any window rule while a rule sets
-  `border_effect` or `window_effect` sets the `effects` flag. The registry
-  re-prepares, compiling only presets whose kind or source changed; every mapped
-  window re-resolves its effects; outputs reapply screen and cursor effects,
-  and each output with an eligible instance schedules an effect frame. The flag
-  refreshes nothing else.
-- A `[colors]` change reaches palette uniforms without recompiling any program:
-  `viewChrome` rebinds border and window slots and reapplies every output's
-  screen and cursor effects, and animation slots take it at their next update.
+- Changing an output's `sdr_transfer` reapplies output state and redraws with the selected SDR curve while HDR is active. Removing the key restores gamma 2.2. Saving an unchanged choice has no output-state effect.
+- Reapplying output state clears session-scoped output-management enablement, including state retained for a disconnected monitor, before the file is applied. An identical reload keeps that runtime state because it has no output-state effect.
+- Focus reconciliation after runtime effects preserves the exact focused surface when its mapped view or keyboard-interactive layer remains usable on an enabled output. This includes popup grabs. Explicit focus actions still select their requested output or workspace.
+- Changing an output's `workspaces` value reconciles its workspace inventory and refreshes workspace layout.
+- Changing only layout settings refreshes workspace geometry without reconciling the inventory or reapplying output state.
+- Changing an output's `layout.scrolling.default_extent_fraction` refreshes only resolved workspace layout configuration. Existing scrolling columns retain their stored widths; columns created after the reload use the new default.
+- Changing total border width refreshes window decoration and workspace layout because borders contribute to resolved tile spacing.
+- Changing a window rule's decoration keys (`border_width`, `corner_radius`, `shadow`) refreshes only the windows that rule matches. The layout is not consulted: tile spacing and edge padding keep using the global border width, so a decoration rule never rearranges the workspace.
+- Changing an output or window-rule tearing policy re-evaluates eligibility, clears async recovery state, and schedules a frame. It does not reapply output state or invalidate the overview.
+- Changing an output's direct scanout policy damages and schedules only outputs whose resolved policy changed. It does not reapply output state or invalidate the overview.
+- Changing `[effects]`, any `[effects.preset.*]` table or its shader file, an output's `screen_effect`, an animation event's `effect`, `[animation.windows_drag]`, or any window rule while a rule sets `border_effect` or `window_effect` sets the `effects` flag. The registry re-prepares, compiling only presets whose kind or source changed; every mapped window re-resolves its effects; outputs reapply screen and cursor effects, and each output with an eligible instance schedules an effect frame. The flag refreshes nothing else.
+- A `[colors]` change reaches palette uniforms without recompiling any program: `viewChrome` rebinds border and window slots and reapplies every output's screen and cursor effects, and animation slots take it at their next update.
 - `general.autostart` commands run only during startup, never during reload.
 - `general.xwayland` changes require a compositor restart.
 - `[drm]` changes require a restart because GPU selection happens before backend creation.
-- `[environment]` values are applied and synchronized to the systemd user
-  manager only during startup. A reload does not mutate the compositor, user
-  manager, or existing process environments. Traditional D-Bus activation sees
-  only the graphical connection variables. Removing a key does not unset a
-  value already held by the user manager.
+- `[environment]` values are applied and synchronized to the systemd user manager only during startup. A reload does not mutate the compositor, user manager, or existing process environments. Traditional D-Bus activation sees only the graphical connection variables. Removing a key does not unset a value already held by the user manager.
 
-A section can affect more than one runtime consumer. Keep those dependencies
-explicit when adding configuration fields, rather than falling back to a full
-session refresh.
+A section can affect more than one runtime consumer. Keep those dependencies explicit when adding configuration fields, rather than falling back to a full session refresh.
 
 ## Verification
 
 The relevant regression coverage is in:
 
-- [`tests/unit/config_load.cpp`](../../tests/unit/config_load.cpp), which checks
-  implicit promotion and fallback, failed-candidate recovery, launch-time path
-  capture, and explicit-path pinning.
-- [`tests/unit/config_watcher.cpp`](../../tests/unit/config_watcher.cpp), which
-  checks automatic promotion when the user config directory does not exist at
-  startup.
-- [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks
-  change classification and runtime effects.
-- [`tests/unit/output_enable_overrides.cpp`](../../tests/unit/output_enable_overrides.cpp),
-  which checks connector and display-identity matching for session-scoped
-  output enablement.
-- [`tests/harness/checks/session/config_reload.sh`](../../tests/harness/checks/session/config_reload.sh),
-  which checks inert reloads, selective layout updates, border dependencies,
-  and recovery after an included file fails to parse.
-- [`tests/harness/checks/rule/decoration.sh`](../../tests/harness/checks/rule/decoration.sh),
-  which checks that a window rule's decoration keys reach the window on reload
-  without moving it.
-- [`tests/harness/checks/effect/reload.sh`](../../tests/harness/checks/effect/reload.sh),
-  which checks effect recovery after a missing shader appears, reference
-  diagnostics, palette updates without recompilation, and light layer reloads.
-- [`tests/harness/checks/layout/output_scrolling_width.sh`](../../tests/harness/checks/layout/output_scrolling_width.sh),
-  which checks per-output initial scrolling widths and preserves existing
-  column widths when that default changes on reload.
-- [`tests/harness/checks/focus/scratchpad_seat_focus_output.sh`](../../tests/harness/checks/focus/scratchpad_seat_focus_output.sh),
-  which checks that an output scale reload preserves keyboard focus when the
-  pointer and focused scratchpad are on different outputs.
-- [`tests/harness/checks/output/scratchpad_reposition.sh`](../../tests/harness/checks/output/scratchpad_reposition.sh),
-  which checks scratchpad geometry, backdrop, and focus across live output
-  changes.
-- [`tests/harness/checks/output/enable_actions.sh`](../../tests/harness/checks/output/enable_actions.sh),
-  which checks config override boundaries, output object recreation, and
-  restoration after no output objects remain.
-- [`tests/harness/checks/session/environment.sh`](../../tests/harness/checks/session/environment.sh),
-  which checks that environment changes remain unapplied until restart.
+- [`tests/unit/config_load.cpp`](../../tests/unit/config_load.cpp), which checks implicit promotion and fallback, failed-candidate recovery, launch-time path capture, and explicit-path pinning.
+- [`tests/unit/config_watcher.cpp`](../../tests/unit/config_watcher.cpp), which checks automatic promotion when the user config directory does not exist at startup.
+- [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks change classification and runtime effects.
+- [`tests/unit/output_enable_overrides.cpp`](../../tests/unit/output_enable_overrides.cpp), which checks connector and display-identity matching for session-scoped output enablement.
+- [`tests/harness/checks/session/config_reload.sh`](../../tests/harness/checks/session/config_reload.sh), which checks inert reloads, selective layout updates, border dependencies, and recovery after an included file fails to parse.
+- [`tests/harness/checks/rule/decoration.sh`](../../tests/harness/checks/rule/decoration.sh), which checks that a window rule's decoration keys reach the window on reload without moving it.
+- [`tests/harness/checks/effect/reload.sh`](../../tests/harness/checks/effect/reload.sh), which checks effect recovery after a missing shader appears, reference diagnostics, palette updates without recompilation, and light layer reloads.
+- [`tests/harness/checks/layout/output_scrolling_width.sh`](../../tests/harness/checks/layout/output_scrolling_width.sh), which checks per-output initial scrolling widths and preserves existing column widths when that default changes on reload.
+- [`tests/harness/checks/focus/scratchpad_seat_focus_output.sh`](../../tests/harness/checks/focus/scratchpad_seat_focus_output.sh), which checks that an output scale reload preserves keyboard focus when the pointer and focused scratchpad are on different outputs.
+- [`tests/harness/checks/output/scratchpad_reposition.sh`](../../tests/harness/checks/output/scratchpad_reposition.sh), which checks scratchpad geometry, backdrop, and focus across live output changes.
+- [`tests/harness/checks/output/enable_actions.sh`](../../tests/harness/checks/output/enable_actions.sh), which checks config override boundaries, output object recreation, and restoration after no output objects remain.
+- [`tests/harness/checks/session/environment.sh`](../../tests/harness/checks/session/environment.sh), which checks that environment changes remain unapplied until restart.

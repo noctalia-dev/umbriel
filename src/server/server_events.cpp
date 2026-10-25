@@ -4,6 +4,7 @@
 #include "config/store.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/eis.h"
 #include "input/gestures.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -931,6 +932,9 @@ namespace umbriel {
     m_surfaceLayouts.clear();
     for (const auto& keyboard : m_keyboards) {
       keyboard->applyConfig();
+    }
+    if (m_eisInput != nullptr) {
+      m_eisInput->applyConfig();
     }
     if (m_keyboardLayoutSource != nullptr) {
       syncKeyboardLayout(m_keyboardLayoutSource);
@@ -1967,6 +1971,10 @@ namespace umbriel {
         }
       }
 
+      dismissConfirmation();
+      if (m_eisInput != nullptr) {
+        m_eisInput->setSessionLocked(true);
+      }
       m_sessionLocked = true;
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
@@ -1991,6 +1999,9 @@ namespace umbriel {
 
   void Server::unlockSession() {
     m_sessionLocked = false;
+    if (m_eisInput != nullptr) {
+      m_eisInput->setSessionLocked(false);
+    }
     m_effects.setSuspended(false);
     m_effects.applyOutputEffects();
     for (const auto& output : m_outputs) {
@@ -3742,6 +3753,9 @@ namespace umbriel {
     self->m_cursor->handleOutputLayoutChange();
     if (self->m_xwayland != nullptr) {
       self->m_xwayland->handleOutputLayoutChange();
+    }
+    if (self->m_eisInput != nullptr) {
+      self->m_eisInput->updateOutputs();
     }
   }
 

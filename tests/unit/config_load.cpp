@@ -3354,6 +3354,7 @@ _PRIVATE = "kept"
 "HAS-HYPHEN" = "ignored"
 NOT_A_STRING = 1
 WAYLAND_DISPLAY = "wrong"
+LIBEI_SOCKET = "/nonexistent/umbriel-test-eis"
 WLR_DRM_DEVICES = "/dev/dri/card0"
 WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
 )");
@@ -3389,6 +3390,7 @@ WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
   CHECK(containsDiagnostic(store, R"(ignoring environment key "HAS-HYPHEN" (expected [A-Za-z_][A-Za-z0-9_]*))"));
   CHECK(containsDiagnostic(store, "ignoring environment.NOT_A_STRING (expected string)"));
   CHECK(containsDiagnostic(store, "ignoring environment.WAYLAND_DISPLAY (reserved by Umbriel)"));
+  CHECK(containsDiagnostic(store, "ignoring environment.LIBEI_SOCKET (reserved by Umbriel)"));
   CHECK(!containsDiagnostic(store, "unknown key environment.DXVK_HDR"));
   CHECK(!containsDiagnostic(store, "unknown key environment._PRIVATE"));
 }
@@ -3771,7 +3773,8 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
       "[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_effect = \"off\"\nwindow_effect = \"lines\"\n"
       "[output.\"HEADLESS-1\"]\nscreen_effect = \"off\"\n"
       "[animation.windows_in]\neffect = \"open\"\n"
-      "[animation.windows_drag]\nphysics = true\n"
+      "[animation.windows_drag]\nphysics = true\nstiffness = 48.0\ndamping = 4.5\ncoupling = 120.0\n"
+      "pointer_response = 1.5\nmax_displacement_px = 120.0\nsettle_after_pause_s = 0.4\n"
   );
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(tree.path("config.toml"), true);
@@ -3788,9 +3791,68 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(config.outputs[0].screenEffect == "off");
   CHECK_EQ(config.animation.windowsIn.effect, std::string("open"));
   CHECK(config.animation.windowsDrag.physics);
+  CHECK_EQ(config.animation.windowsDrag.stiffness, 48.0);
+  CHECK_EQ(config.animation.windowsDrag.damping, 4.5);
+  CHECK_EQ(config.animation.windowsDrag.coupling, 120.0);
+  CHECK_EQ(config.animation.windowsDrag.pointerResponse, 1.5);
+  CHECK_EQ(config.animation.windowsDrag.maxDisplacementPx, 120.0);
+  CHECK_EQ(config.animation.windowsDrag.settleAfterPauseS, 0.4);
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
+  {
+    const TempConfigTree tree;
+    tree.write("config.toml", "[animation.windows_drag]\nphysics = true\n");
+    ConfigStore& store = umbriel::configStore();
+    store.setRootPath(tree.path("config.toml"), true);
+    CHECK(store.reload().success);
+    // The simulation's shipped values.
+    CHECK_EQ(store.config().animation.windowsDrag.stiffness, 36.0);
+    CHECK_EQ(store.config().animation.windowsDrag.damping, 6.5);
+    CHECK_EQ(store.config().animation.windowsDrag.coupling, 100.0);
+    CHECK_EQ(store.config().animation.windowsDrag.pointerResponse, 2.0);
+    CHECK_EQ(store.config().animation.windowsDrag.maxDisplacementPx, 200.0);
+    CHECK_EQ(store.config().animation.windowsDrag.settleAfterPauseS, 0.25);
+    CHECK(!containsDiagnostic(store, "unknown key"));
+  }
+  {
+    const TempConfigTree tree;
+    tree.write(
+        "config.toml",
+        "[animation.windows_drag]\nstiffness = 20000.0\ndamping = -1.0\ncoupling = 20000.0\n"
+        "pointer_response = 50.0\nmax_displacement_px = 0.0\nsettle_after_pause_s = 60.0\n"
+    );
+    ConfigStore& store = umbriel::configStore();
+    store.setRootPath(tree.path("config.toml"), true);
+    CHECK(store.reload().success);
+    const auto& drag = store.config().animation.windowsDrag;
+    CHECK_EQ(drag.stiffness, 10000.0);
+    CHECK_EQ(drag.damping, 1.0);
+    CHECK_EQ(drag.coupling, 10000.0);
+    CHECK_EQ(drag.pointerResponse, 10.0);
+    CHECK_EQ(drag.maxDisplacementPx, 1.0);
+    CHECK_EQ(drag.settleAfterPauseS, 5.0);
+    CHECK(containsDiagnostic(store, "out of range, clamped"));
+  }
+  {
+    // The floors keep a released drag terminating: zero stiffness or damping
+    // never settles, and a sub-frame settle pause disables the physics.
+    const TempConfigTree tree;
+    tree.write(
+        "config.toml", "[animation.windows_drag]\nstiffness = 0.0\ndamping = 0.0\nsettle_after_pause_s = 0.01\n"
+    );
+    ConfigStore& store = umbriel::configStore();
+    store.setRootPath(tree.path("config.toml"), true);
+    CHECK(store.reload().success);
+    const auto& drag = store.config().animation.windowsDrag;
+    CHECK_EQ(drag.stiffness, 1.0);
+    CHECK_EQ(drag.damping, 1.0);
+    CHECK_EQ(drag.settleAfterPauseS, 0.1);
+    CHECK(containsDiagnostic(store, "out of range, clamped"));
+  }
 }
 
 UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {

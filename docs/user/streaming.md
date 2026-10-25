@@ -1,17 +1,12 @@
 # Game streaming
 
-[Sunshine](https://github.com/LizardByte/Sunshine) streams a desktop to
-[Moonlight](https://moonlight-stream.org) clients. Pointed at a
-[virtual output](outputs.md#virtual-outputs), it streams a monitor that exists
-only for the session, at the client's resolution and frame rate, while the
-physical monitors keep their layout.
+[Sunshine](https://github.com/LizardByte/Sunshine) streams a desktop to [Moonlight](https://moonlight-stream.org) clients. Pointed at a [virtual output](outputs.md#virtual-outputs), it streams a monitor that exists only for the session, at the client's resolution and frame rate, while the physical monitors keep their layout.
 
 This setup needs Sunshine and `jq`.
 
 ## Session script
 
-Sunshine runs a command before a stream starts and another after it ends.
-Save this as `~/.config/sunshine/umbriel-output.sh` and make it executable:
+Sunshine runs a command before a stream starts and another after it ends. Save this as `~/.config/sunshine/umbriel-output.sh` and make it executable:
 
 ```sh
 #!/bin/sh
@@ -52,17 +47,11 @@ case "$1" in
 esac
 ```
 
-Destroying an output moves its windows to another output, as when a monitor is
-unplugged, and Umbriel remembers the output as their home: when an output with
-the same name appears again, they move back to it. That is right for a monitor
-that returns after suspend, but it would pull a terminal that once opened on the
-stream onto every later stream. An explicit move, like the one above, drops that
-memory.
+Destroying an output moves its windows to another output, as when a monitor is unplugged, and Umbriel remembers the output as their home: when an output with the same name appears again, they move back to it. That is right for a monitor that returns after suspend, but it would pull a terminal that once opened on the stream onto every later stream. An explicit move, like the one above, drops that memory.
 
 ## Sunshine configuration
 
-In `~/.config/sunshine/sunshine.conf`, capture through wlr-screencopy, select
-the output by name, and run the script around every session:
+In `~/.config/sunshine/sunshine.conf`, capture through wlr-screencopy, select the output by name, and run the script around every session:
 
 ```ini
 capture = wlr
@@ -70,14 +59,11 @@ output_name = sunshine
 global_prep_cmd = [{"do":"/home/user/.config/sunshine/umbriel-output.sh create","undo":"/home/user/.config/sunshine/umbriel-output.sh remove"}]
 ```
 
-Replace `/home/user` with your home directory. Restart Sunshine after editing
-`sunshine.conf` or `apps.json`; it reads both only at startup.
+Replace `/home/user` with your home directory. Restart Sunshine after editing `sunshine.conf` or `apps.json`; it reads both only at startup.
 
 ## Opening applications on the stream
 
-New windows open on the output under the pointer, which is usually a physical
-monitor. Use a [window rule](window-rules.md) to send an application to the
-stream instead. For Steam Big Picture:
+New windows open on the output under the pointer, which is usually a physical monitor. Use a [window rule](window-rules.md) to send an application to the stream instead. For Steam Big Picture:
 
 ```toml
 [[window_rule]]
@@ -87,15 +73,9 @@ default_output = "sunshine"
 default_fullscreen = true
 ```
 
-When the output does not exist, `default_output` is ignored and the window
-opens as usual. Rules also apply when a title arrives after the window maps, so
-Big Picture lands on the stream even when Steam switches an existing window
-into it. `default_fullscreen` covers the case where Steam, already running,
-opens Big Picture without asking for fullscreen.
+When the output does not exist, `default_output` is ignored and the window opens as usual. Rules also apply when a title arrives after the window maps, so Big Picture lands on the stream even when Steam switches an existing window into it. `default_fullscreen` covers the case where Steam, already running, opens Big Picture without asking for fullscreen.
 
-In Sunshine's `apps.json`, launch Big Picture and close it when the session
-ends. Sunshine runs an app's undo command before the global one, so the script
-waits for Big Picture to close before it destroys the output:
+In Sunshine's `apps.json`, launch Big Picture and close it when the session ends. Sunshine runs an app's undo command before the global one, so the script waits for Big Picture to close before it destroys the output:
 
 ```json
 {
@@ -106,16 +86,11 @@ waits for Big Picture to close before it destroys the output:
 }
 ```
 
-Closing Big Picture makes Steam map its main window again. A new window takes
-focus by default, and Steam's may switch a physical monitor to its workspace.
-To keep focus where it was, give that window `default_focused = false` only for
-the length of a session: include a file that the script fills in `create` and
-empties in `remove`, then reload with `umbriel msg config-reload`.
+Closing Big Picture makes Steam map its main window again. A new window takes focus by default, and Steam's may switch a physical monitor to its workspace. To keep focus where it was, give that window `default_focused = false` only for the length of a session: include a file that the script fills in `create` and empties in `remove`, then reload with `umbriel msg config-reload`.
 
 ## Games
 
-Games launched from Big Picture need a rule of their own. Proton games report
-an application ID of `steam_app_<id>`:
+Games launched from Big Picture need a rule of their own. Proton games report an application ID of `steam_app_<id>`:
 
 ```toml
 [[window_rule]]
@@ -123,11 +98,7 @@ match.app_id = "^steam_app_"
 default_output = "sunshine"
 ```
 
-Proton through Wine's Wayland driver (`PROTON_USE_WAYLAND=1`) picks its primary
-monitor by itself and sizes fullscreen games for it. When that is a physical
-monitor, the game renders at that monitor's size and the stream shows only the
-top-left part of it. Name the stream's output instead, in the game's launch
-options:
+Proton through Wine's Wayland driver (`PROTON_USE_WAYLAND=1`) picks its primary monitor by itself and sizes fullscreen games for it. When that is a physical monitor, the game renders at that monitor's size and the stream shows only the top-left part of it. Name the stream's output instead, in the game's launch options:
 
 ```sh
 WAYLANDDRV_PRIMARY_MONITOR=sunshine %command%

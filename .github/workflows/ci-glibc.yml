@@ -39,6 +39,24 @@ jobs:
             exit 1
           fi
 
+  format-docs:
+    name: Docs format
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git just nodejs npm
+
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check formatting
+        run: just format-docs-check
+
   build-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -50,7 +68,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libinput libxkbcommon mesa pango pixman \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxkbcommon mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository
@@ -81,7 +99,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libinput libxkbcommon mesa pango pixman \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxkbcommon mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository

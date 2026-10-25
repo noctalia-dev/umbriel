@@ -65,12 +65,42 @@ namespace umbriel {
         && left.requiresHdrOutput == right.requiresHdrOutput;
   }
 
-  ColorDescription
-  outputColorDescription(const wlr_output_image_description* outputDescription, float effectiveSdrWhite) {
+  bool colorDescriptionRequestsHdrOutput(const ColorDescription& description) {
+    // Clients can compose SDR into PQ using the advertised preferred encoding.
+    // A declared SDR content peak must not trigger HDR just because of that
+    // encoding. Keep HDR mastering metadata and unknown peaks eligible.
+    return description.requiresHdrOutput
+        && (description.data.max_cll == 0
+            || static_cast<float>(description.data.max_cll) > description.luminances.reference
+            || (description.data.has_mastering_luminance
+                && description.data.mastering_luminance.max > description.luminances.reference));
+  }
+
+  ColorDescription outputColorDescription(
+      const wlr_output_image_description* outputDescription, float effectiveSdrWhite, bool automaticHdrAvailable
+  ) {
     ColorDescription description;
     description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
     description.data.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB;
     if (outputDescription == nullptr) {
+      if (automaticHdrAvailable) {
+        // The compositor accepts HDR content while the display is still SDR.
+        // Keep its current SDR destination separate from the logical PQ range
+        // so clients can request HDR without waiting for an HDR scanout first.
+        description.data.has_mastering_display_primaries = true;
+        wlr_color_primaries_from_named(&description.data.mastering_display_primaries, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+        description.data.has_mastering_luminance = true;
+        description.data.mastering_luminance = {
+            .min = description.luminances.min,
+            .max = description.luminances.max,
+        };
+        description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ;
+        description.data.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_BT2020;
+        description.luminances = defaultColorLuminances(description.data.tf_named);
+        description.luminances.reference = effectiveSdrWhite;
+        description.customLuminances = true;
+        description.requiresHdrOutput = true;
+      }
       return description;
     }
 
@@ -79,6 +109,8 @@ namespace umbriel {
     description.luminances = defaultColorLuminances(description.data.tf_named);
     if (description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
       description.luminances.reference = effectiveSdrWhite;
+      description.customLuminances = true;
+      description.requiresHdrOutput = true;
     }
     if (primariesSet(outputDescription->mastering_display_primaries)) {
       description.data.has_mastering_display_primaries = true;

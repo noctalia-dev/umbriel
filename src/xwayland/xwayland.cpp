@@ -12,6 +12,11 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
+#include <fcntl.h>
+#include <format>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace umbriel {
@@ -90,6 +95,13 @@ namespace umbriel {
   }
 
   Xwayland::~Xwayland() {
+    if (m_ownsEiSocketEnvironment) {
+      if (m_inheritedEiSocket) {
+        setenv("LIBEI_SOCKET", m_inheritedEiSocket->c_str(), 1);
+      } else {
+        unsetenv("LIBEI_SOCKET");
+      }
+    }
     if (m_wlr == nullptr) {
       return;
     }
@@ -109,6 +121,47 @@ namespace umbriel {
   }
 
   const char* Xwayland::displayName() const { return m_wlr != nullptr ? m_wlr->display_name : nullptr; }
+
+  bool Xwayland::setInputSocket(int fd) {
+    if (m_ownsEiSocketEnvironment) {
+      return true;
+    }
+    if (const char* inherited = std::getenv("LIBEI_SOCKET")) {
+      m_inheritedEiSocket = inherited;
+    }
+    // Xwayland inherits this endpoint. The unlinked socket stays pinned by a CLOEXEC descriptor in the compositor;
+    // unrelated applications do not inherit that descriptor or receive authority to connect.
+    const auto path = fd >= 0 ? std::format("/proc/{}/fd/{}", getpid(), fd) : std::string("/proc/self/fd/-1");
+    m_ownsEiSocketEnvironment = setenv("LIBEI_SOCKET", path.c_str(), 1) == 0;
+    return m_ownsEiSocketEnvironment;
+  }
+
+  bool Xwayland::authenticateInputPeer(pid_t peer) const {
+    if (peer <= 0 || peer == getpid() || m_inputSocketInode == 0) {
+      return false;
+    }
+    const auto path = std::format("/proc/{}/fd", peer);
+    DIR* directory = opendir(path.c_str());
+    if (directory == nullptr) {
+      return false;
+    }
+    bool authenticated = false;
+    while (const dirent* entry = readdir(directory)) {
+      if (entry->d_name[0] == '.') {
+        continue;
+      }
+      struct stat info{};
+      if (fstatat(dirfd(directory), entry->d_name, &info, 0) == 0
+          && S_ISSOCK(info.st_mode)
+          && info.st_dev == m_inputSocketDevice
+          && info.st_ino == m_inputSocketInode) {
+        authenticated = true;
+        break;
+      }
+    }
+    closedir(directory);
+    return authenticated;
+  }
 
   void Xwayland::applyCursor(wlr_xcursor_manager* manager) {
     if (m_wlr == nullptr || manager == nullptr || !wlr_xcursor_manager_load(manager, 1.0F)) {
@@ -175,6 +228,14 @@ namespace umbriel {
 
   void Xwayland::onServerStart(wl_listener* listener, void* /*data*/) {
     Xwayland* self = wl_container_of(listener, self, m_serverStart); // NOLINT(modernize-use-auto)
+    // wlroots double-forks Xwayland, so its server PID is not the final peer PID. Authenticate the EIS connection
+    // against possession of Xwayland's private Wayland socket, which only that launched process inherits.
+    struct stat info{};
+    self->m_inputSocketDevice = self->m_inputSocketInode = 0;
+    if (fstat(self->m_wlr->server->wl_fd[1], &info) == 0) {
+      self->m_inputSocketDevice = info.st_dev;
+      self->m_inputSocketInode = info.st_ino;
+    }
     wlr_xwayland_set_seat(self->m_wlr, self->m_server.seat()->wlr());
   }
 

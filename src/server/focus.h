@@ -47,6 +47,7 @@ namespace umbriel {
     explicit FocusManager(Server& server) : m_server(server) {}
 
     void focusView(View* view, FocusReason reason = FocusReason::Startup);
+    void xwaylandHintsChanged(View* view);
 
     // A data-device drag suppresses seat keyboard enters while its grab is
     // active. Replay the view whose activation chrome already won once that

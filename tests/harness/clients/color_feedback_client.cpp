@@ -72,7 +72,9 @@ namespace {
     bool tagged = true;
     bool compound = false;
     bool custom = false;
+    bool contentLight = false;
     std::array<wp_image_description_v1*, 5> customDescriptions{};
+    std::array<wp_image_description_v1*, 4> contentLightDescriptions{};
     uint32_t fillColor = 0xFF777777U;
     std::deque<Description> descriptions;
   };
@@ -398,6 +400,8 @@ int main(int argc, char** argv) {
     if (std::strcmp(argv[i], "custom") == 0) {
       state.custom = true;
       state.fillColor = 0xFF807060U;
+    } else if (std::strcmp(argv[i], "content-light") == 0) {
+      state.contentLight = true;
     } else if (std::strcmp(argv[i], "v1") == 0) {
       state.requestedVersion = 1;
     } else if (std::strcmp(argv[i], "v3") == 0) {
@@ -601,6 +605,27 @@ int main(int argc, char** argv) {
     state.surfaceDescription = state.customDescriptions[0];
     state.selectedDescription = state.surfaceDescription;
   }
+  if (state.contentLight) {
+    constexpr std::array<uint32_t, 4> peaks{203, 1000, 0, 203};
+    for (size_t i = 0; i < peaks.size(); ++i) {
+      params = wp_color_manager_v1_create_parametric_creator(state.manager);
+      wp_image_description_creator_params_v1_set_tf_named(params, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ);
+      wp_image_description_creator_params_v1_set_primaries_named(params, WP_COLOR_MANAGER_V1_PRIMARIES_BT2020);
+      wp_image_description_creator_params_v1_set_luminances(params, 0, 10000, 203);
+      if (i == 3) {
+        wp_image_description_creator_params_v1_set_mastering_luminance(params, 0, 1000);
+      }
+      wp_image_description_creator_params_v1_set_max_cll(params, peaks[i]);
+      wp_image_description_creator_params_v1_set_max_fall(params, 203);
+      state.contentLightDescriptions[i] = wp_image_description_creator_params_v1_create(params);
+      if (!awaitSurfaceDescription(state, state.contentLightDescriptions[i])) {
+        return 1;
+      }
+    }
+    wp_image_description_v1_destroy(state.surfaceDescription);
+    state.surfaceDescription = state.contentLightDescriptions[0];
+    state.selectedDescription = state.surfaceDescription;
+  }
   if (state.requestedVersion == 1) {
     observeDescription(state, wp_color_management_surface_feedback_v1_get_preferred(state.feedback), "preferred", 0);
     observeDescription(
@@ -655,6 +680,29 @@ int main(int argc, char** argv) {
           state.frame = wl_surface_frame(state.colorTarget);
           wl_callback_add_listener(state.frame, &kFrameListener, &state);
         }
+        wl_surface_commit(state.colorTarget);
+        if (state.colorSubsurface != nullptr && !state.desynchronized) {
+          wl_surface_commit(state.surface);
+        }
+      } else if (std::strcmp(label, "windowed") == 0 || std::strcmp(label, "fullscreen") == 0) {
+        if (std::strcmp(label, "fullscreen") == 0) {
+          xdg_toplevel_set_fullscreen(state.toplevel, state.output);
+        } else {
+          xdg_toplevel_unset_fullscreen(state.toplevel);
+        }
+        wl_surface_commit(state.surface);
+      } else if (state.contentLight && std::strncmp(label, "content ", 8) == 0) {
+        unsigned index = 0;
+        char trailing = '\0';
+        if (std::sscanf(label + 8, "%u%c", &index, &trailing) != 1 || index >= state.contentLightDescriptions.size()) {
+          std::println(stderr, "color-feedback-client: invalid content description: {}", label);
+          return 1;
+        }
+        state.tagged = true;
+        state.selectedDescription = state.contentLightDescriptions[index];
+        wp_color_management_surface_v1_set_image_description(
+            state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
+        );
         wl_surface_commit(state.colorTarget);
         if (state.colorSubsurface != nullptr && !state.desynchronized) {
           wl_surface_commit(state.surface);

@@ -369,9 +369,18 @@ namespace umbriel {
       return false;
     }
     m_dragBounds = fit->bounds;
+    const auto& drag = config().animation.windowsDrag;
     m_dragPhysics.begin(
         static_cast<float>(fit->bounds.width), static_cast<float>(fit->bounds.height), fit->grab[0], fit->grab[1],
-        m_dragPhysics.active() ? m_dragPhysics.transitionId() : nextAnimationTransitionId()
+        m_dragPhysics.active() ? m_dragPhysics.transitionId() : nextAnimationTransitionId(),
+        DragPhysics::Tuning{
+            .stiffness = static_cast<float>(drag.stiffness),
+            .damping = static_cast<float>(drag.damping),
+            .coupling = static_cast<float>(drag.coupling),
+            .pointerResponse = static_cast<float>(drag.pointerResponse),
+            .maxDisplacementPx = static_cast<float>(drag.maxDisplacementPx),
+            .settleAfterPauseS = drag.settleAfterPauseS,
+        }
     );
     return true;
   }
@@ -940,7 +949,11 @@ namespace umbriel {
         // The vblank a frame ticks from can precede the instant the sheet woke, so a step never runs backwards.
         const double elapsed = std::max(0.0, nowMsec - m_dragPhysicsMsec);
         m_dragPhysicsMsec = std::max(m_dragPhysicsMsec, nowMsec);
-        active = m_dragPhysics.tick(elapsed / 1000.0) || active;
+        // The stall guard compares against the output's refresh period; 0 when the output reports none.
+        const Output* output = currentOutput();
+        const int refreshMhz = output != nullptr ? output->wlr()->refresh : 0;
+        const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 0.0;
+        active = m_dragPhysics.tick(elapsed / 1000.0, cadenceS) || active;
       }
     }
     syncAnimationEffects();

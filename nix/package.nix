@@ -10,6 +10,7 @@
   wlroots_0_20,
   libxkbcommon,
   libinput,
+  libei,
   systemd,
   pixman,
   cairo,
@@ -51,6 +52,7 @@ stdenv.mkDerivation {
     wlroots_0_20
     libxkbcommon
     libinput
+    libei
     # Supplies libudev for the optional native DRM policy support and sd-bus for the systemd-localed keymap.
     systemd
     pixman

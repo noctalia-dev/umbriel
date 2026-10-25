@@ -1,7 +1,6 @@
 # Animation
 
-Animation settings live under `[animation]`. The top-level values provide
-defaults, and each event can override them.
+Animation settings live under `[animation]`. The top-level values provide defaults, and each event can override them.
 
 ```toml
 [animation]
@@ -63,64 +62,44 @@ enabled = false
 
 ## Defaults
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `enabled` | `true` | Master switch for every transition. |
-| `duration_ms` | `250` | Default duration for non-spring curves. |
-| `curve` | `"easeout"` | Default easing curve. |
+| Key           | Default     | Description                             |
+| ------------- | ----------- | --------------------------------------- |
+| `enabled`     | `true`      | Master switch for every transition.     |
+| `duration_ms` | `250`       | Default duration for non-spring curves. |
+| `curve`       | `"easeout"` | Default easing curve.                   |
 
-Each event other than `windows_drag` also accepts `enabled`, `duration_ms`,
-and `curve`. A spring curve chooses its own duration, so `duration_ms` has no
-effect on that event.
+Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and `curve`. A spring curve chooses its own duration, so `duration_ms` has no effect on that event.
 
 ## Event tables
 
-| Table | Additional fields | Transition |
-| --- | --- | --- |
-| `[animation.windows_in]` | `style`, `scale` | Window opening |
-| `[animation.windows_out]` | `style`, `scale` | Window closing |
-| `[animation.windows_move]` | none | Position during moves, reflow, maximize, and restore |
-| `[animation.windows_resize]` | none, and no `effect` | Size during the same changes |
-| `[animation.workspaces]` | `style` | Workspace switching |
-| `[animation.overview]` | `workspace_curve` | Overview opening, closing, and filmstrip movement |
-| `[animation.scratchpad]` | `dim`, `blur` | Scratchpad show and hide, and its backdrop |
-| `[animation.dialogs]` | `dim`, and no `effect` | Shade over a window while a modal dialog is attached to it |
-| `[animation.border]` | none | Focus-border color |
-| `[animation.dim_unfocused]` | `dim` | Unfocused-window opacity |
-| `[animation.layers]` | none | Layer-shell map and unmap |
-| `[animation.windows_drag]` | `physics` (default `false`), its only key | Drag physics |
+| Table                        | Additional fields                                                   | Transition                                                 |
+| ---------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `[animation.windows_in]`     | `style`, `scale`                                                    | Window opening                                             |
+| `[animation.windows_out]`    | `style`, `scale`                                                    | Window closing                                             |
+| `[animation.windows_move]`   | none                                                                | Position during moves, reflow, maximize, and restore       |
+| `[animation.windows_resize]` | none, and no `effect`                                               | Size during the same changes                               |
+| `[animation.workspaces]`     | `style`                                                             | Workspace switching                                        |
+| `[animation.overview]`       | `workspace_curve`                                                   | Overview opening, closing, and filmstrip movement          |
+| `[animation.scratchpad]`     | `dim`, `blur`                                                       | Scratchpad show and hide, and its backdrop                 |
+| `[animation.dialogs]`        | `dim`, and no `effect`                                              | Shade over a window while a modal dialog is attached to it |
+| `[animation.border]`         | none                                                                | Focus-border color                                         |
+| `[animation.dim_unfocused]`  | `dim`                                                               | Unfocused-window opacity                                   |
+| `[animation.layers]`         | none                                                                | Layer-shell map and unmap                                  |
+| `[animation.windows_drag]`   | `physics` (default `false`) plus the drag-physics tuning keys below | Drag physics                                               |
 
-`windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`.
-`windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts
-`slide` or `reveal` (see [Workspace reveal](#workspace-reveal)). `scale`
-applies to `popin`: an opening window grows from it to full size, and a closing
-window shrinks toward it, while both fade.
+`windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`. `windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts `slide` or `reveal` (see [Workspace reveal](#workspace-reveal)). `scale` applies to `popin`: an opening window grows from it to full size, and a closing window shrinks toward it, while both fade.
 
-`windows_move` moves a window while `windows_resize` changes its size, so a
-slow move can still resize quickly. While the size animates, the window's
-latest frame is stretched to fit. With `windows_resize` disabled, the size
-changes at once while the window still moves. When the two timelines differ, a
-window can briefly overlap its neighbours during a reflow.
+`windows_move` moves a window while `windows_resize` changes its size, so a slow move can still resize quickly. While the size animates, the window's latest frame is stretched to fit. With `windows_resize` disabled, the size changes at once while the window still moves. When the two timelines differ, a window can briefly overlap its neighbours during a reflow.
 
-`animation.overview.workspace_curve` controls filmstrip movement after wheel,
-keyboard, and touchpad navigation. A released touchpad gesture keeps the speed
-the fingers had when its curve is a spring: `[animation.workspaces]` for the
-three-finger switch, `[animation.overview]` for the four-finger open and close,
-and `workspace_curve` for the filmstrip. Any other curve starts from rest.
+`animation.overview.workspace_curve` controls filmstrip movement after wheel, keyboard, and touchpad navigation. A released touchpad gesture keeps the speed the fingers had when its curve is a spring: `[animation.workspaces]` for the three-finger switch, `[animation.overview]` for the four-finger open and close, and `workspace_curve` for the filmstrip. Any other curve starts from rest.
 
-Scratchpad `dim` and `blur` remain active without a fade when animation is
-disabled. `dim` is the opacity of the black layer over the output behind a
-visible scratchpad; `blur` blurs it when `[appearance.blur]` is enabled.
+Scratchpad `dim` and `blur` remain active without a fade when animation is disabled. `dim` is the opacity of the black layer over the output behind a visible scratchpad; `blur` blurs it when `[appearance.blur]` is enabled.
 
-Dialogs `dim` works the same way: it is the opacity, 0.0 to 1.0 and `0.3` by
-default, of the black shade over a window while a modal dialog is attached to it
-(see [Dialogs](layout.md#dialogs)). The shade fades in when the dialog attaches
-and out when it leaves, and stays without a fade when animation is disabled.
+Dialogs `dim` works the same way: it is the opacity, 0.0 to 1.0 and `0.3` by default, of the black shade over a window while a modal dialog is attached to it (see [Dialogs](layout.md#dialogs)). The shade fades in when the dialog attaches and out when it leaves, and stays without a fade when animation is disabled.
 
 ## Curves
 
-Use a built-in curve such as `linear`, `ease`, `easeout`, `snappy`, `bounce`, or
-`elastic`; a cubic Bézier string; or a spring:
+Use a built-in curve such as `linear`, `ease`, `easeout`, `snappy`, `bounce`, or `elastic`; a cubic Bézier string; or a spring:
 
 ```toml
 curve = "0.05,0.9,0.1,1.0"
@@ -128,8 +107,7 @@ curve = "0.05,0.9,0.1,1.0"
 # curve = "spring:1,1000"
 ```
 
-For Bézier curves, x coordinates must be between 0 and 1. Spring syntax is
-`spring:<damping>,<stiffness>`:
+For Bézier curves, x coordinates must be between 0 and 1. Spring syntax is `spring:<damping>,<stiffness>`:
 
 - Damping below 1 overshoots.
 - Damping 1 reaches the target without overshoot.
@@ -150,10 +128,7 @@ Then set `curve = "myBezier"` or `curve = "myBounce"`.
 
 ## Custom effects
 
-Every animation event other than `windows_drag` can run a custom program.
-Define an `animation` preset and select it with `effect`; the event's enabled
-state, duration, and curve still control its timeline. Umbriel ships `reveal`
-and `squash`:
+Every animation event other than `windows_drag` can run a custom program. Define an `animation` preset and select it with `effect`; the event's enabled state, duration, and curve still control its timeline. Umbriel ships `reveal` and `squash`:
 
 ```toml
 [include]
@@ -176,59 +151,53 @@ effect = "reveal"
 effect = "squash"
 ```
 
-Adjust `/usr` for the package prefix. Defining your own preset, the shader
-interface, and reload behavior are in [Effects](effects.md). `windows_in` and
-`windows_out` without an effect keep their built-in fade and `style`; with an
-effect selected, `style` and `scale` are ignored. A running event keeps its
-program; a reload affects the next event.
+Adjust `/usr` for the package prefix. Defining your own preset, the shader interface, and reload behavior are in [Effects](effects.md). `windows_in` and `windows_out` without an effect keep their built-in fade and `style`; with an effect selected, `style` and `scale` are ignored. A running event keeps its program; a reload affects the next event.
 
 ### Animation uniforms
 
-| Name | Meaning |
-| --- | --- |
-| `umbriel_progress` | Eased progress, including overshoot |
-| `umbriel_clamped_progress` | Eased progress clamped to 0 through 1 |
-| `umbriel_linear_progress` | Progress before easing |
-| `umbriel_direction` | `1` for entering and `-1` for leaving |
-| `umbriel_random_seed` | Four stable random values for this transition |
+| Name                       | Meaning                                       |
+| -------------------------- | --------------------------------------------- |
+| `umbriel_progress`         | Eased progress, including overshoot           |
+| `umbriel_clamped_progress` | Eased progress clamped to 0 through 1         |
+| `umbriel_linear_progress`  | Progress before easing                        |
+| `umbriel_direction`        | `1` for entering and `-1` for leaving         |
+| `umbriel_random_seed`      | Four stable random values for this transition |
 
 ### Targets
 
-`windows_in`, `windows_out`, `windows_move`, and `dim_unfocused` process the
-window and its subsurfaces as one target; `border` processes the ring alone.
-`scratchpad` covers the window's show and hide fade and the dim and blur
-backdrops. `layers` covers a layer-shell surface's own tree. `workspaces` and
-`overview` process whole workspace or overview trees, so they see the results
-of inner effects. Effects composite descendants before ancestors.
+`windows_in`, `windows_out`, `windows_move`, and `dim_unfocused` process the window and its subsurfaces as one target; `border` processes the ring alone. `scratchpad` covers the window's show and hide fade and the dim and blur backdrops. `layers` covers a layer-shell surface's own tree. `workspaces` and `overview` process whole workspace or overview trees, so they see the results of inner effects. Effects composite descendants before ancestors.
 
 ## Drag physics
 
 ```toml
 [animation.windows_drag]
 physics = true
+stiffness = 36.0
+damping = 6.5
+coupling = 100.0
+pointer_response = 2.0
+max_displacement_px = 200.0
+settle_after_pause_s = 0.25
 ```
 
-With drag physics on, a window dragged with the pointer bends like an elastic
-sheet pinned under the pointer, trails its motion, and settles when released
-or held still. It needs the animation master switch. Border, window, and
-overlay effects keep rendering on the deformed window. A window closed
-mid-drag keeps its shape while it fades.
+With drag physics on, a window dragged with the pointer bends like an elastic sheet pinned under the pointer, trails its motion, and settles when released or held still. It needs the animation master switch. Border, window, and overlay effects keep rendering on the deformed window. A window closed mid-drag keeps its shape while it fades.
 
-Only the window's own content deforms; its drop shadow follows that
-deformation within the window's shadow bounds. Re-grabbing a window while it
-settles continues its motion. Under the default `popin` style, or under
-`zoom`, the closing snapshot's clip grows by the deformation margin, so a
-client-side decoration extending past the window's geometry can remain
-visible within that margin while the snapshot fades.
+The tuning keys shape the sheet; out-of-range values are clamped to their range with a logged diagnostic, and they apply from the next drag on.
+
+| Key                    | Default | Range          | Effect                                                                                                          |
+| ---------------------- | ------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `stiffness`            | 36.0    | 1.0 to 10000.0 | How strongly each point of the sheet returns to rest.                                                           |
+| `damping`              | 6.5     | 1.0 to 100.0   | How fast the wobble decays; low values keep the sheet springy.                                                  |
+| `coupling`             | 100.0   | 0.0 to 10000.0 | Rigidity between neighbouring points; low values make the sheet jelly-like.                                     |
+| `pointer_response`     | 2.0     | 0.0 to 10.0    | How far a pointer motion loads the sheet; 0 keeps the window rigid.                                             |
+| `max_displacement_px`  | 200.0   | 1.0 to 4000.0  | Excursion cap in logical pixels.                                                                                |
+| `settle_after_pause_s` | 0.25    | 0.1 to 5.0     | Rendering pause after which the sheet snaps back to rest. Ordinary frames never trigger it at any refresh rate. |
+
+Only the window's own content deforms; its drop shadow follows that deformation within the window's shadow bounds. Re-grabbing a window while it settles continues its motion. Under the default `popin` style, or under `zoom`, the closing snapshot's clip grows by the deformation margin, so a client-side decoration extending past the window's geometry can remain visible within that margin while the snapshot fades.
 
 ## Workspace reveal
 
-`animation.workspaces.style` accepts `"slide"` (the default) or `"reveal"`.
-Reveal keeps both workspaces at their resting positions while an animation
-shader combines two full-output scenes, including wallpaper, windows, decorations
-and shell surfaces. Application content stays live,
-including during workspace swipes. Native navigation still controls focus,
-direction and settling.
+`animation.workspaces.style` accepts `"slide"` (the default) or `"reveal"`. Reveal keeps both workspaces at their resting positions while an animation shader combines two full-output scenes, including wallpaper, windows, decorations and shell surfaces. Application content stays live, including during workspace swipes. Native navigation still controls focus, direction and settling.
 
 Include the bundled preset alongside your existing includes, then select it:
 
@@ -244,17 +213,6 @@ duration_ms = 300
 curve = "easeout"
 ```
 
-Use your installation prefix in the include path. Reveal requires an animation
-preset with a shader; a missing or invalid selection produces a configuration
-diagnostic and uses slide. Shader compilation failures are reported by the
-effect registry. If reveal composition fails, navigation resumes native slide
-at the current progress. Disabling workspace animation ends the transition.
-`effects.in_capture` continues to control persistent window/screen effects in
-captures; the workspace transition itself remains visible.
+Use your installation prefix in the include path. Reveal requires an animation preset with a shader; a missing or invalid selection produces a configuration diagnostic and uses slide. Shader compilation failures are reported by the effect registry. If reveal composition fails, navigation resumes native slide at the current progress. Disabling workspace animation ends the transition. `effects.in_capture` continues to control persistent window/screen effects in captures; the workspace transition itself remains visible.
 
-Reveal shaders use `umbriel_sample(uv)` for the outgoing scene and
-`umbriel_sample_incoming(uv)` for the incoming scene, with output-wide UVs.
-The shader returns the final scene pixel; for example,
-`mix(umbriel_sample(uv), umbriel_sample_incoming(uv), umbriel_clamped_progress)`
-produces a crossfade. A shader that reads only `umbriel_sample` shows only the
-outgoing scene. `umbriel_sample_previous` reads this effect's previous result.
+Reveal shaders use `umbriel_sample(uv)` for the outgoing scene and `umbriel_sample_incoming(uv)` for the incoming scene, with output-wide UVs. The shader returns the final scene pixel; for example, `mix(umbriel_sample(uv), umbriel_sample_incoming(uv), umbriel_clamped_progress)` produces a crossfade. A shader that reads only `umbriel_sample` shows only the outgoing scene. `umbriel_sample_previous` reads this effect's previous result.

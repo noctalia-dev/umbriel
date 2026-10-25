@@ -301,14 +301,13 @@ baseline_scratch=$(scratch_signature)
 # pointer-selected left output it must reach, and reject from, its output fallback.
 rejects_without_focus_escape window-focus-or-output-left "no output"
 
-# Focus, column order, row order, workspace transfer, and membership are
+# Focus, column order, row order, column transfer, and membership are
 # separate handler families. None may use the workspace focus behind the
 # scratchpad. The floating toggle is an explicitly inert scratchpad action.
 assert_isolated window-focus-left
 assert_isolated column-move-left
 assert_isolated window-move-down
 assert_isolated window-swap-next
-assert_isolated window-move-to-workspace-next
 assert_isolated column-move-to-workspace-next
 assert_isolated window-toggle-floating
 
@@ -349,6 +348,14 @@ accepts window-toggle-maximize
 wait_for_scratch_restore
 if [[ $(background_signature) != "$baseline_background" ]]; then
   echo "switching scratchpad maximize modes changed the background: $(windows)"
+  exit 1
+fi
+
+# Centering also uses the assigned HEADLESS-2 output rather than the straddled corner's output.
+accepts window-center
+wait_for_scratch_box 1870 320 420 260
+if [[ $(background_signature) != "$baseline_background" ]]; then
+  echo "window-center changed the background instead of only the scratchpad: $(windows)"
   exit 1
 fi
 

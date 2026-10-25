@@ -913,6 +913,9 @@ namespace umbriel {
       return true;
     }
     if (View* view = focused(name)) {
+      if (!view->inputDelegate()->acceptsKeyboardFocus()) {
+        return false;
+      }
       m_server->focusView(view);
     } else if (m_server->exclusiveKeyboardLayer() != nullptr) {
       m_server->refocus();
@@ -971,6 +974,7 @@ namespace umbriel {
     if (output == nullptr
         || m_focusedView == nullptr
         || !m_focusedView->mapped()
+        || !m_focusedView->inputDelegate()->acceptsKeyboardFocus()
         || !m_focusedView->onActiveWorkspace()) {
       return nullptr;
     }
@@ -1073,6 +1077,7 @@ namespace umbriel {
       if (entry.scratchpad == name
           && entry.view != nullptr
           && entry.view->mapped()
+          && entry.view->inputDelegate()->acceptsKeyboardFocus()
           && presents(*scratchpad, entry.view)) {
         views.push_back(entry.view);
       }
@@ -1137,7 +1142,7 @@ namespace umbriel {
     return true;
   }
 
-  bool ScratchpadManager::restoreView(View* view, Output* fallback, bool focus) {
+  bool ScratchpadManager::restoreView(View* view, Output* fallback, bool focus, Workspace* target) {
     const auto iterator =
         std::ranges::find_if(m_entries, [view](const Entry& candidate) { return candidate.view == view; });
     if (iterator == m_entries.end()) {
@@ -1157,12 +1162,13 @@ namespace umbriel {
     std::erase(m_hidingViews, view);
 
     view->setInScratchpad(false);
-    Output* restoreOutput = m_server->outputFromName(entry.returnOutput);
+    Output* restoreOutput =
+        target != nullptr ? target->group()->output() : m_server->outputFromName(entry.returnOutput);
     if (restoreOutput == nullptr) {
       restoreOutput = scratchpadOutput;
     }
-    Workspace* workspace = nullptr;
-    const auto& origin = entry.returnDisplacedWorkspace;
+    Workspace* workspace = target;
+    const auto origin = target == nullptr ? entry.returnDisplacedWorkspace : nullptr;
     bool homeAvailable = false;
     if (origin) {
       Output* homeOutput = m_server->outputFromName(origin->outputName);
@@ -1213,7 +1219,7 @@ namespace umbriel {
         restoreOutput = workspace->group()->output();
       }
     }
-    if (restoreOutput != nullptr && restoreOutput->workspaceGroup() != nullptr) {
+    if (target == nullptr && restoreOutput != nullptr && restoreOutput->workspaceGroup() != nullptr) {
       WorkspaceGroup* group = restoreOutput->workspaceGroup();
       if (!origin && !entry.returnWorkspace.empty()) {
         workspace = entry.returnWorkspaceNamed ? group->workspaceNamed(entry.returnWorkspace)
@@ -1240,9 +1246,9 @@ namespace umbriel {
       m_server->scheduleDisplacedViewRestore();
     }
     if (entry.returnTiled) {
-      view->setFloating(false);
+      view->setFloating(false, false);
     } else {
-      view->setFloating(true);
+      view->setFloating(true, false);
       if (restoreOutput != nullptr && restoreOutput != scratchpadOutput) {
         const wlr_box area = restoreOutput->usableArea();
         if (area.width > 0 && area.height > 0) {
@@ -1281,6 +1287,10 @@ namespace umbriel {
     }
     const Scratchpad* scratchpad = findScratchpad(name);
     return restoreView(view, scratchpad != nullptr ? scratchpad->output : nullptr, true);
+  }
+
+  bool ScratchpadManager::restoreToWorkspace(View* view, Workspace* workspace) {
+    return workspace != nullptr && restoreView(view, outputFor(view), false, workspace);
   }
 
   void ScratchpadManager::remove(View* view) {

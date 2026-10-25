@@ -75,7 +75,7 @@ namespace umbriel {
   void View::handleSetDecorations() { refreshTitleBar(); }
 
   SsdFramePoint View::ssdFramePointAt(double lx, double ly) const {
-    if (m_ssdFrame == nullptr || titleBarHeight() == 0)
+    if (m_ssdFrame == nullptr)
       return {};
     int x = 0;
     int y = 0;
@@ -93,7 +93,7 @@ namespace umbriel {
         m_workspace->markArrange();
       m_server->scheduleIpcWindowsEvent();
     }
-    if (titleBarHeight() > 0 && m_ssdFrame == nullptr) {
+    if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
       m_ssdFrame = std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree);
     }
     if (m_ssdFrame == nullptr)

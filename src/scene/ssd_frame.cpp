@@ -18,6 +18,10 @@ namespace umbriel {
   SsdFrame::SsdFrame(wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent)
       : m_tree(wlr_scene_tree_create(parent)),
         m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_labels(std::move(labels)) {
+    if (inputParent != nullptr && parent->node.parent == inputParent) {
+      // Client surfaces and popups keep input priority over invisible resize grips.
+      wlr_scene_node_place_below(&m_gripTree->node, &parent->node);
+    }
     const float clear[4]{};
     m_background = wlr_scene_rect_create(m_tree, 1, 1, clear);
     m_close = wlr_scene_rect_create(m_tree, 1, 1, clear);
@@ -175,10 +179,11 @@ namespace umbriel {
   void SsdFrame::redraw() {
     const auto& g = m_geometry;
     const int h = g.titleBarHeight;
-    const bool shown = !g.suppressed && h > 0 && g.contentWidth > 0 && g.contentHeight > 0;
+    const bool available = !g.suppressed && g.contentWidth > 0 && g.contentHeight > 0;
+    const bool shown = available && h > 0;
     wlr_scene_node_set_enabled(&m_tree->node, shown);
-    wlr_scene_node_set_enabled(&m_gripTree->node, shown && m_resizable && !m_preview);
-    if (!shown) {
+    wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
+    if (!available) {
       updateBlur();
       return;
     }
@@ -192,6 +197,21 @@ namespace umbriel {
       );
       rect->accepts_input = !m_preview;
     };
+    const int band = g.borderInset + kSsdResizeBand;
+    const std::array<wlr_box, 4> grips{{
+        {-band, -h - band, g.contentWidth + 2 * band, band},
+        {-band, g.contentHeight, g.contentWidth + 2 * band, band},
+        {-band, -h, band, g.contentHeight + h},
+        {g.contentWidth, -h, band, g.contentHeight + h},
+    }};
+    for (size_t i = 0; i < m_grips.size(); ++i) {
+      place(m_grips[i], grips[i]);
+      wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
+    }
+    if (!shown) {
+      updateBlur();
+      return;
+    }
     place(m_background, {0, -h, g.contentWidth, h});
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     wlr_scene_rect_set_corner_radii(m_background, corner_radii_new(zoomed(radius), zoomed(radius), 0, 0));
@@ -212,17 +232,6 @@ namespace umbriel {
     drawButton(m_close, parts.button(TitleBarButton::Close));
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
-    const int band = g.borderInset + kSsdResizeBand;
-    const std::array<wlr_box, 4> grips{{
-        {-band, -h - band, g.contentWidth + 2 * band, band},
-        {-band, g.contentHeight, g.contentWidth + 2 * band, band},
-        {-band, -h, band, g.contentHeight + h},
-        {g.contentWidth, -h, band, g.contentHeight + h},
-    }};
-    for (size_t i = 0; i < m_grips.size(); ++i) {
-      place(m_grips[i], grips[i]);
-      wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
-    }
     const auto& colors = config().colors.titleBar;
     const TabLabel* label = m_labels->label({
         .text = m_title,
@@ -259,7 +268,7 @@ namespace umbriel {
     return false;
   }
   SsdFramePoint SsdFrame::pointAt(double x, double y) const {
-    if (m_preview || m_geometry.suppressed || !m_tree->node.enabled)
+    if (m_preview || m_geometry.suppressed || (!m_tree->node.enabled && !m_gripTree->node.enabled))
       return {};
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,

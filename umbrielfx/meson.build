@@ -208,6 +208,7 @@ if build_tests
     'scene-custom-white',
     'scene-custom-bt1886',
     'scene-scrgb-absolute-luminance',
+    'scene-hdr-sdr-fallback',
     'hdr-white-point-math',
     'hdr-white-point',
     'sdr-white-point-alpha',
@@ -234,6 +235,7 @@ if build_tests
     'shared-sdr-capture-lock',
     'shared-sdr-capture-storage-change',
     'capture-read-format',
+    'framebuffer-texture-binding',
   ]
     test(
       'color-' + case_name,

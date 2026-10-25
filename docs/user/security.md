@@ -2,34 +2,31 @@
 
 ## Session locking
 
-Umbriel keeps the current desktop visible while an `ext-session-lock-v1` client
-prepares a mapped lock surface for every active output. The client has up to
-three seconds to provide those surfaces. Umbriel then switches every output to
-the lock scene and reports the session as locked only after each active output
-has presented a secure frame.
+Umbriel keeps the current desktop visible while an `ext-session-lock-v1` client prepares a mapped lock surface for every active output. The client has up to three seconds to provide those surfaces. Umbriel then switches every output to the lock scene and reports the session as locked only after each active output has presented a secure frame.
 
-If a client stalls or omits an output, the handoff continues after the deadline
-with an opaque compositor-owned blank. Its RGB color comes from
-`[colors].backdrop`; its alpha is always fully opaque. A client that exits after
-the secure handoff leaves this blank in place, so the desktop cannot be exposed
-by a crashed locker.
+If a client stalls or omits an output, the handoff continues after the deadline with an opaque compositor-owned blank. Its RGB color comes from `[colors].backdrop`; its alpha is always fully opaque. A client that exits after the secure handoff leaves this blank in place, so the desktop cannot be exposed by a crashed locker.
+
+## X11 desktop input
+
+X11 applications can request control of the pointer and keyboard through XTest. Steam uses this for its desktop controller mappings. Umbriel receives these requests through its native EIS backend and asks for permission before allowing desktop input.
+
+Press Enter to allow the requesting application for the current Umbriel session. Any other non-modifier key or pointer click denies it. Allow and deny decisions last until Umbriel restarts. Input received through this XTest emulation path cannot approve another permission prompt.
+
+The prompt says that an application is *claiming* its name: X11 application names are not verified sandbox identities. This permission is separate from `security_context_rule`, which controls Wayland protocol visibility.
+
+While the session is locked, Umbriel releases held emulated keys and buttons and discards further emulated input. That input is not replayed after unlock. Physical input devices continue to work on the lock screen.
+
+This requires Xwayland built with libei support. No Steam preload library, device permission change, or RemoteDesktop portal implementation is required for this XTest input path.
 
 ## Sandboxed Wayland clients
 
-Umbriel supports version 1 of the
-[Wayland security-context protocol](https://wayland.app/protocols/security-context-v1).
-It is always enabled.
+Umbriel supports version 1 of the [Wayland security-context protocol](https://wayland.app/protocols/security-context-v1). It is always enabled.
 
-A sandbox engine can create a restricted Wayland connection and label it with
-the sandbox engine, application, and instance. Umbriel then limits the
-protocols available through that connection. This does not create the sandbox
-or display permission prompts.
+A sandbox engine can create a restricted Wayland connection and label it with the sandbox engine, application, and instance. Umbriel then limits the protocols available through that connection. This does not create the sandbox or display permission prompts.
 
 ### Restricted capabilities
 
-Restricted clients retain the protocols needed for ordinary windows, rendering,
-focused input, clipboard use, output discovery, idle inhibition, and activation.
-Umbriel withholds compositor-wide authority, including:
+Restricted clients retain the protocols needed for ordinary windows, rendering, focused input, clipboard use, output discovery, idle inhibition, and activation. Umbriel withholds compositor-wide authority, including:
 
 - Screen and window capture
 - Virtual input and input-method ownership
@@ -39,16 +36,13 @@ Umbriel withholds compositor-wide authority, including:
 - Global workspace and window control
 - Creation of nested security contexts
 
-Trusted host services such as xdg-desktop-portal can mediate privileged
-operations for a sandboxed application.
+Trusted host services such as xdg-desktop-portal can mediate privileged operations for a sandboxed application.
 
-New protocols remain hidden from restricted clients until they receive a
-security review.
+New protocols remain hidden from restricted clients until they receive a security review.
 
 ### Per-application grants
 
-Use `[[security_context_rule]]` when a sandboxed application genuinely needs a
-protocol without a portal equivalent:
+Use `[[security_context_rule]]` when a sandboxed application genuinely needs a protocol without a portal equivalent:
 
 ```toml
 [[security_context_rule]]
@@ -60,45 +54,32 @@ allow_globals = [
 ]
 ```
 
-Umbriel supports both data-control variants. Existing clipboard managers often
-use the `zwlr_` variant, so grant both unless the application is known to use
-only `ext_`.
+Umbriel supports both data-control variants. Existing clipboard managers often use the `zwlr_` variant, so grant both unless the application is known to use only `ext_`.
 
-| Selector | Description |
-| --- | --- |
+| Selector               | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
 | `match.sandbox_engine` | Exact regular-expression match against the sandbox engine. |
-| `match.app_id` | Exact regular-expression match against the application ID. |
+| `match.app_id`         | Exact regular-expression match against the application ID. |
 
-`allow_globals` lists additional Wayland globals to expose. Every matching rule
-contributes its values.
+`allow_globals` lists additional Wayland globals to expose. Every matching rule contributes its values.
 
-Selectors are optional. A rule without selectors applies to every restricted
-client, so avoid broad grants. Patterns match the complete value rather than a
-substring. Either selector takes one pattern or an array of them, and any one of
-them matching is enough.
+Selectors are optional. A rule without selectors applies to every restricted client, so avoid broad grants. Patterns match the complete value rather than a substring. Either selector takes one pattern or an array of them, and any one of them matching is enough.
 
-Rules are additive and cannot remove the base protocol set.
-`wp_security_context_manager_v1` remains blocked even if listed. Changes apply
-only to new connections, so restart an application after changing its grants.
+Rules are additive and cannot remove the base protocol set. `wp_security_context_manager_v1` remains blocked even if listed. Changes apply only to new connections, so restart an application after changing its grants.
 
 Invalid entries are ignored with a configuration warning.
 
 ### Security boundary
 
-The protocol restricts one Wayland connection. It does not restrict files,
-processes, devices, networking, D-Bus, X11, or other host interfaces.
+The protocol restricts one Wayland connection. It does not restrict files, processes, devices, networking, D-Bus, X11, or other host interfaces.
 
-For the restriction to matter, the sandbox must expose only its restricted
-Wayland socket. It must also control access to:
+For the restriction to matter, the sandbox must expose only its restricted Wayland socket. It must also control access to:
 
 - Umbriel IPC through `$UMBRIEL_SOCKET`
 - Host D-Bus services
 - X11 through `$DISPLAY`
 - Devices and other host resources
 
-The sandbox engine supplies the application metadata, so a grant is only as
-trustworthy as that engine. Clients connected through the ordinary Wayland
-socket remain unrestricted.
+The sandbox engine supplies the application metadata, so a grant is only as trustworthy as that engine. Clients connected through the ordinary Wayland socket remain unrestricted.
 
-Treat security contexts as one part of a sandbox boundary, not as complete
-application isolation.
+Treat security contexts as one part of a sandbox boundary, not as complete application isolation.

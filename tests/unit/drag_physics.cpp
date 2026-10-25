@@ -277,4 +277,121 @@ UMBRIEL_TEST(aBorderedWindowKeepsTheGrabbedCornerUnderThePointer) {
   CHECK(contracts(physics, 648, 448));
 }
 
+UMBRIEL_TEST(aReleasedSheetWithDegenerateTuningAlwaysTerminates) {
+  // Near-zero stiffness cannot pull the sheet home: the released sheet keeps a
+  // static offset whose velocity drains away, so without a termination
+  // backstop it stays active (and keeps scheduling frames) forever.
+  DragPhysics::Tuning tuning{};
+  tuning.stiffness = 0.01F;
+  tuning.damping = 6.5F;
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1, tuning);
+  physics.move(80, 40);
+  physics.tick(1.0 / 240);
+  CHECK(physics.active());
+  physics.release();
+  for (int i = 0; i < 240 * 10 && physics.active(); ++i) {
+    physics.tick(1.0 / 240);
+  }
+  CHECK(!physics.active());
+  CHECK(physics.maxDisplacement() == 0.0F);
+}
+
+UMBRIEL_TEST(theStallGuardIgnoresOrdinaryFramesAtAnyRefreshRate) {
+  // A 5 Hz output ticks every 200 ms; a 100 ms pause must not settle on
+  // those ordinary frames, only on a rendering stall.
+  DragPhysics::Tuning tuning{};
+  tuning.settleAfterPauseS = 0.1;
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1, tuning);
+  for (int i = 0; i < 5; ++i) {
+    physics.move(4, 0);
+    physics.tick(0.2, 0.2);
+  }
+  CHECK(physics.active());
+  CHECK(physics.maxDisplacement() > 0.5F);
+  // A real stall at that cadence (three frames) snaps the sheet to rest.
+  CHECK(!physics.tick(0.6, 0.2));
+  CHECK(!physics.active());
+  CHECK(physics.maxDisplacement() == 0.0F);
+}
+
+UMBRIEL_TEST(aStallBeforeTheFirstTickSettles) {
+  // The gap that opens an episode is a stall candidate too: the guard applies
+  // from the very first tick, measured against the output's cadence.
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1);
+  physics.move(60, 20);
+  CHECK(physics.active());
+  CHECK(!physics.tick(0.3, 1.0 / 60));
+  CHECK(!physics.active());
+  CHECK(physics.maxDisplacement() == 0.0F);
+
+  // No output to read a cadence from: the tuned pause alone decides, on the
+  // first tick just the same.
+  DragPhysics blind;
+  blind.begin(400, 300, 0.5F, 0.5F, 2);
+  blind.move(60, 20);
+  CHECK(!blind.tick(0.3, 0.0));
+  CHECK(!blind.active());
+}
+
+UMBRIEL_TEST(aWakeIntervalNeverStandsInForTheCadence) {
+  // The interval that wakes the sheet is a partial frame: the motion that
+  // initiates it can land 1 ms before a vblank even on a 5 Hz output, and the
+  // ordinary 200 ms frame that follows must not read as a stall.
+  DragPhysics::Tuning tuning{};
+  tuning.settleAfterPauseS = 0.1;
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1, tuning);
+  physics.move(4, 0);
+  CHECK(physics.tick(0.001, 0.2));
+  physics.move(4, 0);
+  CHECK(physics.tick(0.2, 0.2));
+  CHECK(physics.active());
+  CHECK(physics.maxDisplacement() > 0.5F);
+  // A real stall at that cadence (three frames) still snaps to rest.
+  CHECK(!physics.tick(0.6, 0.2));
+  CHECK(physics.maxDisplacement() == 0.0F);
+}
+
+UMBRIEL_TEST(aLongCatchUpWhileTheCadenceIsUnknownStaysBounded) {
+  // A tolerated pause (the tuned threshold reaches 5 s) must not integrate
+  // its whole gap at 240 Hz on one frame: the catch-up is bounded, and the
+  // sheet keeps what the bounded prefix of that pause leaves it with.
+  DragPhysics::Tuning tuning{};
+  tuning.settleAfterPauseS = 5.0;
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1, tuning);
+  physics.move(60, 20);
+  CHECK(physics.tick(4.5, 0.0));
+  CHECK(physics.active());
+  CHECK(physics.maxDisplacement() > 0.25F);
+}
+
+UMBRIEL_TEST(theQuietWindowDoesNotCreditMovingTimeAsQuiet) {
+  // A released sheet rings slowly (light damping) from a ~0.6 px deformation.
+  // At a turning point an end-of-tick sample reads slow (v ≈ 2 px/s), but the
+  // gap was spent at up to 7 px/s, well over the settle velocity. Quiet time
+  // is what the motion actually spent slow, so the deformation must survive.
+  DragPhysics::Tuning tuning{};
+  tuning.damping = 0.8F;
+  tuning.pointerResponse = 0.005F;
+  tuning.settleAfterPauseS = 5.0;
+  DragPhysics physics;
+  physics.begin(400, 300, 0.5F, 0.5F, 1, tuning);
+  physics.move(200, 0);
+  physics.release();
+  CHECK(physics.active());
+  CHECK(physics.tick(0.4, 0.0));
+  CHECK(physics.active());
+  CHECK(physics.maxDisplacement() > 0.25F);
+  // Once the ring really decays, the quiet window still ends the sheet.
+  for (int i = 0; i < 400 && physics.active(); ++i) {
+    physics.tick(0.05, 0.05);
+  }
+  CHECK(!physics.active());
+  CHECK(physics.maxDisplacement() == 0.0F);
+}
+
 int main() { return RUN_TESTS(); }
