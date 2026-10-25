@@ -13,65 +13,27 @@ window_drag_toggle = "none"
 mod_right_double_click = "none"
 ```
 
-`middle_click_paste = false` disables primary-selection paste, including
-Shift+Insert. The regular Ctrl+C and Ctrl+V clipboard is unaffected.
-Applications started while primary selection is disabled must be restarted
-after it is re-enabled.
+`middle_click_paste = false` disables primary-selection paste, including Shift+Insert. The regular Ctrl+C and Ctrl+V clipboard is unaffected. Applications started while primary selection is disabled must be restarted after it is re-enabled.
 
-`window_snapping = true` enables edge and corner drop zones for floating windows
-in any layout, using title bar, client move, or Mod+drag. A preview shows the
-placement before release. Left, right, top, and bottom edges snap to the
-corresponding half of the screen. All four corners snap to quarters. Maximize
-remains available through the title bar button, double-click, or an action.
-The targets respect panels, layout struts, gaps, borders, title bars, and client
-size limits, all in logical coordinates.
+`window_snapping = true` enables edge and corner drop zones for floating windows in any layout, using title bar, client move, or Mod+drag. A preview shows the placement before release. Left, right, top, and bottom edges snap to the corresponding half of the screen. All four corners snap to quarters. Maximize remains available through the title bar button, double-click, or an action. The targets respect panels, layout struts, gaps, borders, title bars, and client size limits, all in logical coordinates.
 
-Dragging a snapped or maximized window away restores its normal size under the
-pointer, keeping the title bar and content aligned while the application redraws.
-Snapping on another monitor maps the normal restore position to that monitor.
-Shared monitor edges require a 150 ms dwell before offering a zone, so
-dragging straight across monitors remains possible. Tiled, pinned, scratchpad,
-overview, data-device, and toplevel-transfer drags do not use these zones.
-Keyboard actions `window-snap:<region>` and `window-unsnap` work independently
-of the pointer setting. See [Actions](actions.md).
+Dragging a snapped or maximized window away restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Snapping on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a zone, so dragging straight across monitors remains possible. Tiled, pinned, scratchpad, overview, data-device, and toplevel-transfer drags do not use these zones. Keyboard actions `window-snap:<region>` and `window-unsnap` work independently of the pointer setting. See [Actions](actions.md).
 
-`client_window_drag = false` ignores move requests from applications, such as
-dragging a client-side title bar or the empty tab strip of Chromium, Firefox,
-or Electron apps. Ordinary window moves then use Mod+drag, keybinds, or an
-enabled [Umbriel title bar](appearance.md#title-bar).
-Resizing from client-side borders and tab tear-off operations using
-`xdg-toplevel-drag-v1` are unaffected.
+`client_window_drag = false` ignores move requests from applications, such as dragging a client-side title bar or the empty tab strip of Chromium, Firefox, or Electron apps. Ordinary window moves then use Mod+drag, keybinds, or an enabled [Umbriel title bar](appearance.md#title-bar). Resizing from client-side borders and tab tear-off operations using `xdg-toplevel-drag-v1` are unaffected.
 
-When the title bar is shown by `[appearance.title_bar] mode` or a window rule, dragging empty server-side title
-bar space moves a window without a modifier. Double-click it to maximize or
-restore. Floating windows also resize by dragging the frame's edges or corners
-without a modifier. These compositor-owned interactions work with
-`client_window_drag = false`.
+When the title bar is shown by `[appearance.title_bar] mode` or a window rule, dragging empty server-side title bar space moves a window without a modifier. Double-click it to maximize or restore. Floating windows resize by dragging the frame's edges or corners with the left button without a modifier, whether or not the Umbriel title bar is shown. This also works for individually floated windows in tiling layouts. Tiled windows use Mod+right-drag for compositor resizing. Application content and client-side resize controls keep their normal pointer behavior. These compositor-owned interactions work with `client_window_drag = false`.
 
-Title bar presses keep the normal cursor until the pointer crosses a threshold
-of 10 logical pixels from its position at the original button press. Umbriel then
-starts dragging and switches to the grabbing cursor. Movement before an
-application's move request counts toward that threshold. If the pointer has
-already crossed it, dragging starts immediately without requiring another motion
-event or another threshold.
+Title bar presses keep the normal cursor until the pointer crosses a threshold of 10 logical pixels from its position at the original button press. Umbriel then starts dragging and switches to the grabbing cursor. Movement before an application's move request counts toward that threshold. If the pointer has already crossed it, dragging starts immediately without requiring another motion event or another threshold.
 
-In tiled layouts, pressing a client-side or Umbriel title bar focuses and reveals
-the window while keeping it in the layout. It detaches only after the pointer
-crosses the drag threshold. Holding or releasing a stationary press preserves
-the spacing between windows, including while applications repaint.
+In tiled layouts, pressing a client-side or Umbriel title bar focuses and reveals the window while keeping it in the layout. It detaches only after the pointer crosses the drag threshold. Holding or releasing a stationary press preserves the spacing between windows, including while applications repaint.
 
-Dropping a floating window settles it into the usable area with the move
-animation: however far out of frame it was dragged, at release it glides back
-until at least a quarter of the window (10 to 75 logical pixels) is visible.
-Nothing else moves a floating window that is already inside that margin —
-focus changes included.
+Dropping a floating window settles it into the usable area with the move animation: however far out of frame it was dragged, at release it glides back until at least a quarter of the window (10 to 75 logical pixels) is visible. Nothing else moves a floating window that is already inside that margin — focus changes included.
 
-Mod+right-click drags a window's resize edge. `mod_right_double_click` gives a
-second Mod+right-click on the same window a job beyond resizing:
+Mod+right-click drags a window's resize edge. `mod_right_double_click` gives a second Mod+right-click on the same window a job beyond resizing:
 
-| Value | Behavior |
-| --- | --- |
-| `"none"` | (default) Mod+right-click only drags a resize edge. |
+| Value        | Behavior                                                                                                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `"none"`     | (default) Mod+right-click only drags a resize edge.                                                                                                                                                                                                                                        |
 | `"maximize"` | A second Mod+right-click on the same window within 300 ms and 8 px of the first toggles maximize, with the same target a client's titlebar double-click picks: `client_maximize` decides between the column and the edges for a tiled window, and a floating window fills the usable area. |
 
 With `"maximize"`, the first click starts resizing only once the pointer moves more than 8 px from the press, and then resizes the edge under the press. A `Mod+MouseRight` keybind overrides the built-in button entirely.
