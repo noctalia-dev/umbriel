@@ -1984,9 +1984,9 @@ namespace umbriel {
     }
     View* focus = m_pendingFocus;
     m_pendingFocus = nullptr;
-    // A workspace switch during the close scrolls the row, which teardown would cut short at the zoom's landing. The
-    // close still ends here, so binds keep their timing; the real slide carries on from where the row got to.
-    // beginClose retargets every row to where it already is, so only a row actually travelling is carried.
+    // The real trees stay hidden until teardown, so a workspace switch during the close runs as the row scroll. The
+    // close still ends with the zoom, so binds keep their timing; a row still travelling hands its offset and velocity
+    // to the real slide. beginClose retargets each row to the active workspace, so a row resting there is not carried.
     std::vector<std::tuple<WorkspaceGroup*, double, double>> carried;
     for (const auto& state : m_outputs) {
       const AnimatedValue& row = state->rowScroll;

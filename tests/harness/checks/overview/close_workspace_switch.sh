@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # A workspace switch during the closing zoom runs as the filmstrip row scroll, since the real trees stay hidden until
-# the overview tears down. Teardown at the zoom's landing used to drop the rest of that scroll, so the later in the
-# close the switch came, the more of it was skipped (#79 fixed the missing animation, not this cut). The close still
-# ends with the zoom (keybind_actions holds binds to that timing); the real slide takes the switch over from there.
+# the overview tears down. The close still ends with the zoom (keybind_actions holds binds to that timing); a row
+# scroll still travelling when the zoom lands carries on as the real workspace slide instead of stopping there.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
