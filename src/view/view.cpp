@@ -863,10 +863,16 @@ namespace umbriel {
     wlr_scene_node_reparent(&m_sceneTree->node, parent);
     syncShadowPool();
     if (leavingDragTree) {
-      // The drag tree's elevation over pinned/fullscreen served this view; and
-      // transient children elevated with it follow it home.
-      wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
+      // Transient children elevated with this view follow it home.
       syncTransientChildren();
+      // The drag tree's elevation over pinned/fullscreen serves the whole drag
+      // presentation, not just the departing view: a settling release or an
+      // elevated transient child unmapping must not demote a drag that is still
+      // in progress. The elevation drops when the last drag-presented view
+      // leaves (the insert hint is not one).
+      if (!dragTreeOccupied()) {
+        wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
+      }
     }
     // Another parent can put the window elsewhere in layout coordinates.
     if (m_xsurface != nullptr && m_mapped) {
@@ -895,6 +901,17 @@ namespace umbriel {
         child->syncTransientChildren();
       }
     }
+  }
+
+  bool View::dragTreeOccupied() const {
+    const auto views = m_server->registry().all();
+    for (const auto& view : std::views::reverse(views)) {
+      View* other = view.get();
+      if (other != nullptr && other != this && other->m_sceneTree->node.parent == m_server->dragTree()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void View::syncShadowPool() {
