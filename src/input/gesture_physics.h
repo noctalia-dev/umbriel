@@ -15,6 +15,25 @@ namespace umbriel {
     // Travel in either direction before a gesture commits to one axis.
     static constexpr double kAxisLock = 16.0;
 
+    // The delta pair a swipe consumes. libinput accelerates gesture deltas and can also report them unaccelerated;
+    // wlroots carries both pairs when it has an unaccelerated source (UMBRIEL_WLR_GESTURE_UNACCEL) and sets the
+    // unaccelerated pair equal to the accelerated one otherwise. Travel on the unaccelerated pair matches niri and
+    // keeps swipe distance independent of finger speed.
+    struct DeltaPair {
+      double dx, dy;
+    };
+
+    [[nodiscard]] static constexpr DeltaPair
+    selectSwipeDelta(double dx, double dy, double unaccelDx, double unaccelDy) {
+#ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+      return {unaccelDx, unaccelDy};
+#else
+      (void)unaccelDx;
+      (void)unaccelDy;
+      return {dx, dy};
+#endif
+    }
+
     // Past either end of a step the fingers keep moving while the content lags further and further behind: the extra
     // travel approaches `limit` steps without ever reaching it, and the derivative of that curve is how much of the
     // visible speed a release still carries.

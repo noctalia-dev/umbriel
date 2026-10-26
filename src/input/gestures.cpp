@@ -34,6 +34,17 @@ namespace umbriel {
       return libinput_device_config_scroll_get_natural_scroll_enabled(device) != 0 ? 1 : -1;
     }
 
+    // The delta pair the gesture pipeline consumes. wlroots carries the unaccelerated pair when it has an
+    // unaccelerated source (UMBRIEL_WLR_GESTURE_UNACCEL); reading the same feed niri reads keeps swipe travel
+    // independent of finger speed. The client-forwarded pair stays accelerated (State::Forward).
+    GesturePhysics::DeltaPair swipeDelta(const wlr_pointer_swipe_update_event* event) {
+#ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+      return GesturePhysics::selectSwipeDelta(event->dx, event->dy, event->unaccel_dx, event->unaccel_dy);
+#else
+      return GesturePhysics::selectSwipeDelta(event->dx, event->dy, event->dx, event->dy);
+#endif
+    }
+
   } // namespace
 
   // trampolines (same pattern as Cursor)
@@ -386,6 +397,7 @@ namespace umbriel {
 
   void Gestures::handleSwipeUpdate(void* data) {
     auto* event = static_cast<wlr_pointer_swipe_update_event*>(data);
+    const GesturePhysics::DeltaPair delta = swipeDelta(event);
     m_server->notifyInputActivity();
     if (m_server->sessionLocked()) {
       silentCancel();
@@ -403,8 +415,8 @@ namespace umbriel {
       return;
 
     case State::Pending: {
-      m_accumX += event->dx;
-      m_accumY += event->dy;
+      m_accumX += delta.dx;
+      m_accumY += delta.dy;
       const double maxAccum = std::max(std::abs(m_accumX), std::abs(m_accumY));
       if (maxAccum < GesturePhysics::kAxisLock) {
         return; // Not enough travel to decide axis.
@@ -458,7 +470,7 @@ namespace umbriel {
         m_state = State::Switch;
         // The travel that decided the axis is this gesture's first reading, so the slide moves with the fingers from
         // the frame the lock happens instead of after it.
-        updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? event->dx : event->dy, event->time_msec);
+        updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? delta.dx : delta.dy, event->time_msec);
       }
       return;
     }
@@ -466,7 +478,7 @@ namespace umbriel {
     case State::Scroll: {
       // Natural: fingers move against the strip axis → content follows them. The strip runs
       // unclamped, past its edges included; the release resolves the overscroll.
-      updateScroll(m_scrollVertical ? event->dy : event->dx, event->time_msec);
+      updateScroll(m_scrollVertical ? delta.dy : delta.dx, event->time_msec);
       return;
     }
 
@@ -480,7 +492,7 @@ namespace umbriel {
         m_state = State::Idle;
         return;
       }
-      updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? event->dx : event->dy, event->time_msec);
+      updateSwitch(m_workspaceAxis == WorkspaceAxis::Horizontal ? delta.dx : delta.dy, event->time_msec);
       return;
     }
 
@@ -495,7 +507,7 @@ namespace umbriel {
         return;
       }
       overview->updateNavigation(
-          -event->dx * m_naturalScrollDirection, -event->dy * m_naturalScrollDirection, event->time_msec
+          -delta.dx * m_naturalScrollDirection, -delta.dy * m_naturalScrollDirection, event->time_msec
       );
       return;
     }
@@ -508,7 +520,7 @@ namespace umbriel {
       }
       // Swipe up opens, swipe down closes; base is where the gesture started.
       const double base = m_overviewWasOpen ? 1.0 : 0.0;
-      m_overviewTracker.push(-event->dy, event->time_msec);
+      m_overviewTracker.push(-delta.dy, event->time_msec);
       const double p = GesturePhysics::rubberBand(
           base + m_overviewTracker.pos() / kOverviewDistancePx, 0.0, 1.0, GesturePhysics::kOverscrollLimit
       );

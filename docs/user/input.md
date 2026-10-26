@@ -162,6 +162,8 @@ scroll_factor = { horizontal = 2.0, vertical = 1.5 }
 
 This factor changes continuous two-finger application scrolling. Overview navigation uses the factors documented in [Workspaces Overview](workspaces-overview.md#settings-and-behavior).
 
+Three-finger swipe travel reads the touchpad's unaccelerated gesture deltas when the wlroots in use carries them, so the distance a swipe covers no longer grows with finger speed and `accel_profile`/`sensitivity` no longer change how far a swipe travels. On a wlroots without the unaccelerated deltas (or in a nested session, whose protocol has no such source), swipes consume the accelerated deltas as before. Swipe distance therefore changes once the unaccelerated feed becomes active for setups that tuned around the old speed-dependent travel with a `flat` profile or a low `sensitivity`; retune those to taste.
+
 ### Mouse
 
 ```toml

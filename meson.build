@@ -78,6 +78,20 @@ if test_ipc_opt.enabled() or (test_ipc_opt.auto() and get_option('buildtype') ==
   add_project_arguments('-DUMBRIEL_TEST_IPC', language: 'cpp')
 endif
 
+# wlroots carrying unaccelerated gesture deltas (upstream patch, or a release
+# that includes it): the gesture pipeline consumes the unaccelerated pair so
+# swipe travel no longer depends on finger speed. Stock 0.20.x lacks the
+# fields and compiles the accelerated fallback.
+wlr_has_unaccel_gesture = cpp.has_member(
+  'struct wlr_pointer_swipe_update_event',
+  'unaccel_dx',
+  prefix: '#define WLR_USE_UNSTABLE\n#include <wlr/types/wlr_pointer.h>',
+  dependencies: wlroots_dep,
+)
+if wlr_has_unaccel_gesture
+  add_project_arguments('-DUMBRIEL_WLR_GESTURE_UNACCEL', language: 'cpp')
+endif
+
 if cpp.get_define('WLR_HAS_SESSION', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
   error('Umbriel requires wlroots built with session support')
 endif

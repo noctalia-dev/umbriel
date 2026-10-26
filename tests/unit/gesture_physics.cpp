@@ -130,4 +130,26 @@ UMBRIEL_TEST(theOverviewSettlesOnTheSideTheProjectionPointsTo) {
   CHECK_EQ(pastEnd.target, 1);
 }
 
+UMBRIEL_TEST(swipeDeltasComeFromTheUnacceleratedSourceWhenTheBuildCarriesIt) {
+  // The pair the gesture pipeline consumes is a pure selection over four doubles: the unaccelerated pair when the
+  // wlroots in use carries it (UMBRIEL_WLR_GESTURE_UNACCEL), the accelerated pair otherwise.
+#ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+  const auto pair = GesturePhysics::selectSwipeDelta(2.0, 3.0, 1.0, -1.0);
+  CHECK_EQ(pair.dx, 1.0);
+  CHECK_EQ(pair.dy, -1.0);
+#else
+  const auto pair = GesturePhysics::selectSwipeDelta(2.0, 3.0, 1.0, -1.0);
+  CHECK_EQ(pair.dx, 2.0);
+  CHECK_EQ(pair.dy, 3.0);
+#endif
+}
+
+UMBRIEL_TEST(aBackendWithoutAnUnacceleratedSourceDegradesToTheAcceleratedPair) {
+  // The degrade contract: a backend with no unaccelerated source sets the pair equal to dx/dy, so the selection is
+  // the same on every build and today's behaviour survives unchanged.
+  const auto pair = GesturePhysics::selectSwipeDelta(2.0, 3.0, 2.0, 3.0);
+  CHECK_EQ(pair.dx, 2.0);
+  CHECK_EQ(pair.dy, 3.0);
+}
+
 int main() { return RUN_TESTS(); }

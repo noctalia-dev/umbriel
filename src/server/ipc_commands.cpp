@@ -1221,21 +1221,42 @@ namespace umbriel {
     std::string phase;
     uint32_t time = 0;
     double dx = 0, dy = 0;
+    double unaccelDx = 0, unaccelDy = 0;
     int cancelled = 0;
+    bool haveUnaccel = false;
     input >> phase >> time;
     if (phase == "update") {
       input >> dx >> dy;
+      // The unaccelerated pair is optional and defaults to the accelerated pair, so every existing caller stays
+      // bit-identical: update <ms> <dx> <dy> [unaccel_dx unaccel_dy]. A divergent pair makes the delta source the
+      // gesture pipeline consumes observable. A failed probe means "no pair given" and must not fail the parse —
+      // unless the stream was already unhealthy (then the error below reports it).
+      const bool healthyBefore = !input.fail();
+      if (input >> unaccelDx) {
+        input >> unaccelDy;
+        haveUnaccel = true;
+      } else if (healthyBefore) {
+        input.clear();
+      }
     } else if (phase == "end") {
       input >> cancelled;
+    }
+    if (!haveUnaccel) {
+      unaccelDx = dx;
+      unaccelDy = dy;
     }
     std::string extra;
     if (input.fail()
         || (input >> extra)
         || !std::isfinite(dx)
         || !std::isfinite(dy)
+        || !std::isfinite(unaccelDx)
+        || !std::isfinite(unaccelDy)
         || (phase != "begin" && phase != "update" && phase != "end")
         || (cancelled != 0 && cancelled != 1)) {
-      return nlohmann::json{{"err", "expected begin <ms>, update <ms> <dx> <dy>, or end <ms> <cancelled:0|1>"}};
+      return nlohmann::json{
+          {"err",
+           "expected begin <ms>, update <ms> <dx> <dy> [unaccel_dx unaccel_dy], or end <ms> <cancelled:0|1>"}};
     }
     wlr_cursor* cursor = server.cursor()->wlr();
     if (phase == "begin") {
@@ -1243,6 +1264,12 @@ namespace umbriel {
       wl_signal_emit_mutable(&cursor->events.swipe_begin, &event);
     } else if (phase == "update") {
       wlr_pointer_swipe_update_event event{.pointer = nullptr, .time_msec = time, .fingers = 3, .dx = dx, .dy = dy};
+#ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+      // Explicitly assigned: designated initializers zero-fill omitted members, and the degrade contract is that the
+      // unaccelerated pair equals the accelerated pair when a backend has no unaccelerated source.
+      event.unaccel_dx = unaccelDx;
+      event.unaccel_dy = unaccelDy;
+#endif
       wl_signal_emit_mutable(&cursor->events.swipe_update, &event);
     } else {
       wlr_pointer_swipe_end_event event{.pointer = nullptr, .time_msec = time, .cancelled = cancelled != 0};
@@ -1250,10 +1277,16 @@ namespace umbriel {
     }
     Output* output = server.outputFromWlr(server.preferredOutput());
     WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
+#ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+    constexpr bool unaccelSupport = true;
+#else
+    constexpr bool unaccelSupport = false;
+#endif
     return nlohmann::json{
         {"ok",
          {{"progress", group != nullptr ? group->slideProgress() : 0.0},
-          {"reveal", group != nullptr && group->revealActive()}}}
+          {"reveal", group != nullptr && group->revealActive()},
+          {"unaccel_support", unaccelSupport}}}
     };
   }
 
