@@ -251,7 +251,7 @@ namespace umbriel {
       if (!axis) {
         return;
       }
-      const auto& presets = boundedPresets(floatingPresetsFor(view), 1.0);
+      const auto presets = boundedPresets(floatingPresetsFor(view), 1.0);
       const double current = presetSnappedFraction(presets, (*axis)[0], (*axis)[1]);
       const double next = nextFractionPreset(presets, current, Direction);
       view.resizeFloatingFractions(

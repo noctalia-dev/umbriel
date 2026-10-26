@@ -94,12 +94,12 @@ center_focused = "never"
 center_on_overview_select = false
 ```
 
-| Key                         | Default   | Description                                                                                                                                    |
-| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default_extent_fraction`   | unset     | Initial column extent from 0.1 to 4.0 (above 1.0 spans several viewports — see [Wide columns](#wide-columns)). The packaged config uses `0.5`. |
-| `center_underfull_strip`    | `true`    | Center a strip narrower than the viewport.                                                                                                     |
-| `center_focused`            | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                                                      |
-| `center_on_overview_select` | `false`   | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says.                                       |
+| Key                         | Default   | Description                                                                                                                                   |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default_extent_fraction`   | unset     | Initial column extent from 0.1 to 4.0 (above 1.0 spans several viewports; see [Wide columns](#wide-columns)). The packaged config uses `0.5`. |
+| `center_underfull_strip`    | `true`    | Center a strip narrower than the viewport.                                                                                                    |
+| `center_focused`            | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                                                     |
+| `center_on_overview_select` | `false`   | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says.                                      |
 
 ### Horizontal and vertical scrolling
 
@@ -260,9 +260,9 @@ The `window-set-*` actions assign an exact fraction. `window-modify-*` changes i
 
 ### Wide columns
 
-A scrolling column may span more than one output: extent fractions up to `4.0` fill `fraction × (viewport + gap) - gap` pixels, so `2.0` covers two viewports with the gap between them. Values above `1.0` apply only to the scrolling layout — the other layouts clamp to one viewport, and floating extent cycles skip presets they cannot realize. `window-set-*` accepts the wider range and the layout clamps what it cannot show.
+A scrolling column may span more than one output: extent fractions up to `4.0` fill `fraction × (viewport + gap) - gap` pixels, so `2.0` covers two viewports with the gap between them. Values above `1.0` apply only to the scrolling layout: the other layouts clamp to one viewport, and floating extent cycles skip presets they cannot realize. `window-set-*` accepts the wider range and the layout clamps what it cannot show.
 
-A wide column scrolls like a strip longer than the output: `layout-scroll-left`, `layout-scroll-right`, and `layout-scroll-drag` pan through it, a strip swipe rests at either of its edges, and refocusing the column keeps the pan in place instead of snapping back. Focus arriving from a neighbor shows that side's edge. Interactive resizing grows a column up to the same `4.0` ceiling, but the pointer cannot leave the output, so growth stops when the cursor reaches its edge — use the extent actions, or drag, scroll, then drag again to grow further. A client-chosen first width still fits one viewport; wider extents come from the keys above, window rules, and resize.
+A wide column scrolls like a strip longer than the output: `layout-scroll-left`, `layout-scroll-right`, and `layout-scroll-drag` pan through it, a strip swipe rests at either of its edges, and refocusing the column keeps the pan in place instead of snapping back. Focus arriving from a neighbor shows that side's edge. Interactive resizing grows a column up to the same `4.0` ceiling, but the pointer cannot leave the output, so growth stops when the cursor reaches its edge; use the extent actions, or drag, scroll, then drag again to grow further. A client-chosen width, including a client's minimum size, still fits one viewport; wider extents come from the keys above, window rules, and resize.
 
 ### Client minimum sizes
 
