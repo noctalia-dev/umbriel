@@ -2,6 +2,7 @@
 # A focused client may inhibit ordinary compositor keyboard shortcuts while an
 # explicitly exempt escape binding remains available to the user.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -125,4 +126,134 @@ wait_for "the inhibitor window to close" '[[ $("$UMBRIEL" windows --json | jq le
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" mod logo tap "$KEY_1" mod none
 wait_for "shortcuts after inhibitor destruction" '[[ $(focused_layout) == master ]]'
 
-echo "focused shortcut inhibition forwards ordinary keys and preserves explicit escape bindings"
+# Window policy controls client requests, including objects already created.
+readonly RULE_CONFIG="$UMBRIEL_RUNTIME_DIR/shortcuts-rule.toml"
+readonly RULE_LOG="$UMBRIEL_RUNTIME_DIR/shortcuts-rule.log"
+readonly RULE_CONTROL="$UMBRIEL_RUNTIME_DIR/shortcuts-rule-control"
+readonly KEY_MARKER=4
+cat >> "$UMBRIEL_CONFIG" <<EOF
+
+[include]
+files = ["$RULE_CONFIG"]
+EOF
+
+rule_policy() {
+  local policy=$1
+  : > "$RULE_CONFIG"
+  if [[ $policy != omitted ]]; then
+    cat > "$RULE_CONFIG" <<'EOF'
+[[window_rule]]
+match.app_id = "^shortcuts-rule$"
+EOF
+    if [[ $policy == focused ]]; then
+      printf 'match.is_focused = true\nallow_shortcuts_inhibit = false\n' >> "$RULE_CONFIG"
+    else
+      printf 'allow_shortcuts_inhibit = %s\n' "$policy" >> "$RULE_CONFIG"
+    fi
+  fi
+  "$UMBRIEL" msg config-reload > /dev/null
+}
+
+rule_control() {
+  local command=$1 count
+  count=$(events "$RULE_LOG" "shortcuts-command $command")
+  printf '%s' "$command" >&"$rule_fd"
+  await_events "$RULE_LOG" "shortcuts-command $command" "$((count + 1))"
+}
+
+rule_protocol() {
+  local active=$1 inactive=$2
+  # This roundtrip observes the protocol events queued by the earlier policy change.
+  rule_control i
+  if (($(events "$RULE_LOG" 'shortcuts-inhibitor active') != active \
+      || $(events "$RULE_LOG" 'shortcuts-inhibitor inactive') != inactive)); then
+    echo "expected inhibitor events active=$active inactive=$inactive: $(tr '\n' '|' < "$RULE_LOG")"
+    exit 1
+  fi
+}
+
+rule_shortcut() {
+  local expected_layout=$1 forwarded=$2 log=${3:-$RULE_LOG} presses releases markers
+  presses=$(events "$log" "keyboard-key code=$KEY_1 state=pressed")
+  releases=$(events "$log" "keyboard-key code=$KEY_1 state=released")
+  markers=$(events "$log" "keyboard-key code=$KEY_MARKER state=released")
+  "$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+  "$POINTER" "$OUTPUT_W" "$OUTPUT_H" keyboard-only mod logo tap "$KEY_1" mod none tap "$KEY_MARKER"
+  await_events "$log" "keyboard-key code=$KEY_MARKER state=released" "$((markers + 1))"
+  if [[ $(focused_layout) != "$expected_layout" ]] \
+    || (($(events "$log" "keyboard-key code=$KEY_1 state=pressed") != presses + forwarded \
+      || $(events "$log" "keyboard-key code=$KEY_1 state=released") != releases + forwarded)); then
+    echo "shortcut policy expected layout=$expected_layout forwarded=$forwarded, got $(focused_layout)"
+    cat "$log"
+    exit 1
+  fi
+}
+
+rule_policy false
+mkfifo "$RULE_CONTROL"
+exec {rule_fd}<> "$RULE_CONTROL"
+SEAT_LOG_APP_ID=shortcuts-rule SHORTCUTS_INHIBIT_CONTROL=1 INHIBIT_SHORTCUTS=1 \
+  "$OBSERVER" shortcuts-rule <&"$rule_fd" > "$RULE_LOG" 2>&1 &
+wait_for "the rule-controlled window" '[[ $("$UMBRIEL" windows --json | jq length) == 2 ]]'
+rule_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shortcuts-rule") | .id')
+other_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shortcuts-other") | .id')
+"$UMBRIEL" msg "window-focus:$rule_id" > /dev/null
+rule_protocol 0 0
+rule_shortcut master 0
+
+# Reloads activate and deactivate the same client object, without a fresh request.
+rule_policy true
+rule_protocol 1 0
+rule_shortcut scrolling 1
+rule_policy false
+rule_protocol 1 1
+rule_shortcut master 0
+rule_policy true
+rule_protocol 2 1
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_protocol 2 2
+rule_policy false
+rule_policy true
+rule_protocol 2 2
+rule_shortcut master 0
+
+# A rule change must not undo the user's manual escape, while explicit manual
+# passthrough remains available even when client requests are denied.
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_protocol 3 2
+rule_policy false
+rule_protocol 3 3
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_protocol 3 3
+rule_shortcut scrolling 1
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_shortcut master 0
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_policy true
+rule_protocol 4 3
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_protocol 4 4
+rule_shortcut master 0
+
+# State selectors follow focus, and removing the rule restores normal admission.
+"$UMBRIEL" msg shortcuts-inhibit-toggle > /dev/null
+rule_protocol 5 4
+rule_policy focused
+rule_protocol 5 5
+rule_shortcut master 0
+"$UMBRIEL" msg "window-focus:$other_id" > /dev/null
+rule_protocol 6 5
+rule_shortcut master 0 "$OTHER_LOG"
+"$UMBRIEL" msg "window-focus:$rule_id" > /dev/null
+rule_protocol 6 6
+rule_shortcut master 0
+rule_policy omitted
+rule_protocol 7 6
+rule_shortcut scrolling 1
+rule_control u
+rule_shortcut master 0
+rule_control i
+rule_protocol 8 6
+rule_shortcut scrolling 1
+
+echo "shortcut inhibition follows window rules and live changes while preserving manual overrides and balanced keys"

@@ -39,7 +39,7 @@ UMBRIEL_TEST(windowRuleOpacityDoesNotAttenuateBlur) {
   decoration.applyRule(rule);
 
   const wlr_box box{0, 0, 100, 100};
-  decoration.updateBlur(&scene->tree, nullptr, box, box, 0, nullptr, 0.8F, 1.0F);
+  decoration.updateBlur(&scene->tree, nullptr, box, box, corner_radii_none(), nullptr, 0.8F, 1.0F);
 
   wlr_scene_blur* blur = onlyBlurChild(scene->tree);
   CHECK(blur != nullptr);
@@ -65,7 +65,7 @@ UMBRIEL_TEST(transitionOpacityStillAttenuatesBlur) {
   decoration.applyRule(rule);
 
   const wlr_box box{0, 0, 100, 100};
-  decoration.updateBlur(&scene->tree, nullptr, box, box, 0, nullptr, 0.4F, 0.5F);
+  decoration.updateBlur(&scene->tree, nullptr, box, box, corner_radii_none(), nullptr, 0.4F, 0.5F);
 
   wlr_scene_blur* blur = onlyBlurChild(scene->tree);
   CHECK(blur != nullptr);

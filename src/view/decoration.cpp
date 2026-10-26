@@ -146,11 +146,11 @@ namespace umbriel {
 
   // Blur
   void ViewDecoration::updateBlur(
-      wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
-      const wlr_box* clip, float surfaceOpacity, float blurAlpha
+      wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
+      fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha
   ) {
     m_blur.setAlpha(blurAlpha);
-    m_blur.update(tree, surface, nodeBox, geometry, radius, clip, m_blurOptions, surfaceOpacity);
+    m_blur.update(tree, surface, nodeBox, geometry, corners, clip, m_blurOptions, surfaceOpacity);
   }
 
   void ViewDecoration::hideBlur() { m_blur.hide(); }

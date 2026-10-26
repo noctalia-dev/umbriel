@@ -295,3 +295,22 @@ UMBRIEL_TEST(pointerConfinementBooleanParsesAndReloads) {
   const auto invalid = load(toml::parse("[[window_rule]]\nconfine_pointer = \"yes\"\n"));
   CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) { return message.contains("confine_pointer"); }));
 }
+
+UMBRIEL_TEST(shortcutsInhibitionRuleParsesAndParticipatesInReloads) {
+  const auto enabled = load(toml::parse("[[window_rule]]\nallow_shortcuts_inhibit = true\n"));
+  CHECK(enabled.messages.empty());
+  CHECK(enabled.config.windowRules.at(0).allowShortcutsInhibit.value_or(false));
+  const auto disabled = load(toml::parse("[[window_rule]]\nallow_shortcuts_inhibit = false\n"));
+  CHECK(disabled.messages.empty());
+  CHECK(disabled.config.windowRules != enabled.config.windowRules);
+  CHECK(disabled.config.windowRules.at(0).allowShortcutsInhibit.has_value());
+  CHECK(!disabled.config.windowRules.at(0).allowShortcutsInhibit.value_or(true));
+  const auto omitted = load(toml::parse("[[window_rule]]\n"));
+  CHECK(omitted.messages.empty());
+  CHECK(!omitted.config.windowRules.at(0).allowShortcutsInhibit.has_value());
+  const auto invalid = load(toml::parse("[[window_rule]]\nallow_shortcuts_inhibit = \"false\"\n"));
+  CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) {
+    return message.contains("allow_shortcuts_inhibit") && message.contains("expected boolean");
+  }));
+  CHECK(std::ranges::none_of(invalid.messages, [](const auto& message) { return message.contains("unknown key"); }));
+}

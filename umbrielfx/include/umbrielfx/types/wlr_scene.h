@@ -597,6 +597,23 @@ struct wlr_scene_tree* wlr_scene_tree_create(struct wlr_scene_tree* parent);
 void wlr_scene_tree_set_clip(struct wlr_scene_tree* tree, const struct wlr_box* clip);
 
 /**
+ * Clip a node and its descendants to a region in node-local logical coordinates.
+ *
+ * This scissor intersects all rectangular tree clips and region clips above it.
+ * Pass NULL to remove it. An empty region hides the whole subtree. The caller
+ * keeps ownership of the region; its contents are copied. Neither source boxes
+ * nor destination sizes change. Rendering, opaque occlusion, damage, output
+ * membership, frame callbacks, and hit testing follow the clipped geometry.
+ * Returns false on allocation failure, leaving the previous clip unchanged.
+ */
+bool wlr_scene_node_set_clip_region(struct wlr_scene_node* node, const pixman_region32_t* region);
+/**
+ * The node's own region clip, or NULL when unset. The returned region belongs
+ * to the node and remains valid until its clip changes or the node is destroyed.
+ */
+const pixman_region32_t* wlr_scene_node_get_clip_region(const struct wlr_scene_node* node);
+
+/**
  * Add a node displaying a single surface to the scene-graph.
  *
  * The child sub-surfaces are ignored. See wlr_scene_subsurface_tree_create()

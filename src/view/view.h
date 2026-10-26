@@ -148,6 +148,7 @@ namespace umbriel {
     // Effective optional window-rule override used by tearing diagnostics.
     [[nodiscard]] std::optional<bool> tearingRuleOverride();
     [[nodiscard]] bool confinePointer();
+    [[nodiscard]] bool allowsShortcutsInhibit();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
     [[nodiscard]] bool backgroundRender() const { return m_backgroundRender; }
@@ -540,6 +541,8 @@ namespace umbriel {
     [[nodiscard]] XwaylandRegion xwaylandRegion() const;
     // Draws the X11 window's surface at `scale` X pixels per layout unit.
     void applyXwaylandScale(double scale);
+    // Reproject the X11 bounding shape after a buffer crop, scale, commit, or ShapeNotify.
+    void syncXwaylandShape();
     // An X11 length in layout units, rounded as the scene rounds the drawn surface.
     [[nodiscard]] int xToLayoutLength(int length) const;
     void handleXwaylandRequestConfigure(const wlr_xwayland_surface_configure_event* event);
@@ -548,6 +551,7 @@ namespace umbriel {
     static void onXwaylandRequestConfigure(wl_listener* listener, void* data);
     static void onXwaylandRequestActivate(wl_listener* listener, void* data);
     static void onXwaylandSetHints(wl_listener* listener, void* data);
+    static void onXwaylandShapeChanged(wl_listener* listener, void* data);
     // Lend the shadow to the workspace's tile shadow layer while the frame is in the tiled layer, or take it back.
     void syncShadowPool();
 
@@ -1063,6 +1067,7 @@ namespace umbriel {
     bool m_initialContentTypeRulesSettled = false;
     float m_ruleOpacity = 1.0F;
     bool m_backgroundRender = false;
+    bool m_allowShortcutsInhibit = true;
     float m_dragOpacity = 1.0F;
     float m_overviewOpacity = 1.0F;
     std::vector<std::unique_ptr<ViewSurfaceWatch>> m_viewSurfaceWatches;
@@ -1103,6 +1108,7 @@ namespace umbriel {
     wl_listener m_xRequestConfigure{};
     wl_listener m_xRequestActivate{};
     wl_listener m_xSetHints{};
+    wl_listener m_xShapeChanged{};
     wl_listener m_setDecorations{};
     static void onSetDecorations(wl_listener* listener, void* data);
     void handleSetDecorations();

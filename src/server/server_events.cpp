@@ -1520,8 +1520,8 @@ namespace umbriel {
     watch->destroy.notify = onShortcutsInhibitorDestroy;
     wl_signal_add(&inhibitor->events.destroy, &watch->destroy);
     self->m_shortcutsInhibitors.push_back(std::move(watch));
-    wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
-    kLog.debug("keyboard shortcuts inhibitor activated");
+    self->refreshKeyboardShortcutsInhibitors();
+    kLog.debug("keyboard shortcuts inhibitor {}", inhibitor->active ? "activated" : "blocked by window rule");
   }
 
   void Server::onShortcutsInhibitorDestroy(wl_listener* listener, void* /*data*/) {

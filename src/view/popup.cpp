@@ -78,7 +78,7 @@ namespace umbriel {
     }
     m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,
-        wlr_box{0, 0, geometry.width, geometry.height}, geometry, 0, nullptr, blurOptions
+        wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_none(), nullptr, blurOptions
     );
     if (!m_popup->base->initial_commit) {
       return;

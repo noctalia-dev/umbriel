@@ -200,6 +200,7 @@ namespace umbriel {
           boolean("focus_on_activate", &W::focusOnActivate),
           boolean("attach_to_parent", &W::attachToParent),
           boolean("confine_pointer", &W::confinePointer),
+          boolean("allow_shortcuts_inhibit", &W::allowShortcutsInhibit),
           boolean("background_render", &W::backgroundRender),
           boolean("tearing", &W::allowTearing),
           boolean("blur", &W::blur),

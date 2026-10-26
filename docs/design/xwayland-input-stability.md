@@ -2,6 +2,18 @@
 
 Umbriel supports X11 clients through wlroots' Xwayland server: managed X11 windows are views, and the compositor tells the X server where each one sits on screen. X11 games are sensitive to compositor-side geometry churn, and several Umbriel invariants exist to keep it away from them. Breaking any of these reintroduces a bug class where an X11 game's mouse input dies in part of the screen while everything looks correct.
 
+## Bounding shapes constrain scene coverage
+
+An X11 bounding shape can contain holes or disconnected rectangles. Xwayland exports the window's rectangular backing buffer without applying that mask to its alpha. Pixels outside the shape can therefore be opaque black, even for an ARGB window with a transparent background. Reading the window with XGetImage does not establish backing-buffer alpha: Xwayland can zero the returned pixels outside its visible region.
+
+`XwaylandShapes` reads `ShapeBounding` on the existing XWM connection and listens for bounding `ShapeNotify` events. Extension discovery and shape replies are asynchronous. Initial queries keep the surface clipped to an empty region until discovery completes; live queries retain the previous mask. A private wakeup event ensures wlroots drains X events that reply polling may have queued. The tracker owns no additional X connection, so it preserves lazy Xwayland shutdown and resets when that server exits.
+
+UmbrielFX stores arbitrary node clips in addons, preserving its scene ABI. A null clip is unrestricted; an empty region hides the node. Region clips intersect existing rectangular clips and constrain drawing, opaque occlusion, damage, output membership, and hit testing. Clipped buffers cannot bypass those regions through direct scanout.
+
+For managed windows, `applySurfaceShape` projects the surface-local X region through the buffer's current source crop and destination size. The same projection applies to isolated capture scenes and overview copies. Masks are copied with close-animation buffers, and blur is confined to the corresponding visible region. Native-resolution X pixels are converted through the drawn scene geometry; output and layout geometry remain logical coordinates. Unmanaged X11 windows refresh their mask after shape, scale, and surface-state changes. Input shapes are handled independently and never serve as drawing masks.
+
+The region primitive is covered by `tests/unit/scene_clip.cpp`. Run `just check protocol/xwayland_shape` for real Xwayland framebuffer, overview, and window-capture transitions at scales 1 and 2. The check preserves painted pixels while shrinking and restoring the shape, so an opaque backing buffer cannot pass through an unrelated alpha fallback. Window capture uses XRGB, so removed widgets become black in that isolated capture while the desktop shows through them on the output.
+
 ## Output membership follows real geometry
 
 wlroots emits enter/leave from scene-node visibility with a 10% overlap threshold, and scale-aware clients size and map input from the outputs a surface entered. Two situations cross that threshold:

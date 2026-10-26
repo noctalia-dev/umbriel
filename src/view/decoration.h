@@ -59,8 +59,8 @@ namespace umbriel {
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
     void updateBlur(
-        wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
-        const wlr_box* clip, float surfaceOpacity, float blurAlpha
+        wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
+        fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha
     );
     void hideBlur();
     void setBlurLive(bool live) { m_blur.setLive(live); }

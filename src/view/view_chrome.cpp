@@ -49,6 +49,7 @@ namespace umbriel {
       return;
     updateBorderGeometry();
     applyCornerRadius();
+    updateBlur();
     updateShadow();
     refitFloatingMaximized();
   }
@@ -286,8 +287,12 @@ namespace umbriel {
       return;
     }
     const wlr_box nodeBox{0, 0, contentWidth, contentHeight};
+    const int radius = surfaceRadius();
+    // Content and its backdrop share a square seam below the title bar.
+    const fx_corner_radii corners =
+        titleBarHeight() > 0 ? corner_radii_new(0, 0, radius, radius) : corner_radii_all(radius);
     m_decoration.updateBlur(
-        m_contentTree, rootSurface(), nodeBox, geometryBox(), surfaceRadius(), nullptr, effectiveOpacity(), m_fadeAlpha
+        m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr, effectiveOpacity(), m_fadeAlpha
     );
   }
 

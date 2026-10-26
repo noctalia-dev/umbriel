@@ -1,5 +1,7 @@
 #include "config/config.h"
 #include "output/output.h"
+#include "overview/overview.h"
+#include "scene/surface_shape.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/size_hints.h"
@@ -380,6 +382,32 @@ namespace umbriel {
     wlr_scene_subsurface_tree_set_scale(&m_contentTree->node, scale);
     if (m_captureScene != nullptr) {
       wlr_scene_subsurface_tree_set_scale(&m_captureScene->tree.node, scale);
+    }
+    syncXwaylandShape();
+  }
+
+  void View::syncXwaylandShape() {
+    if (m_xsurface == nullptr || m_xsurface->surface == nullptr) {
+      return;
+    }
+    wlr_surface* surface = m_xsurface->surface;
+    const pixman_region32_t* shape = m_server->xwayland()->surfaceShape(surface);
+    applySurfaceTreeShape(&m_contentTree->node, surface, shape);
+    if (m_captureScene != nullptr) {
+      applySurfaceTreeShape(&m_captureScene->tree.node, surface, shape);
+    }
+  }
+
+  void View::onXwaylandShapeChanged(wl_listener* listener, void* data) {
+    View* self = wl_container_of(listener, self, m_xShapeChanged); // NOLINT(modernize-use-auto)
+    if (data != self->rootSurface()) {
+      return;
+    }
+    self->syncXwaylandShape();
+    self->m_presentation.setFullscreenOpaque(self->fullscreenOpaque());
+    self->updateBlur();
+    if (Overview* overview = self->m_server->overview()) {
+      overview->onViewPresentationChanged(self);
     }
   }
 

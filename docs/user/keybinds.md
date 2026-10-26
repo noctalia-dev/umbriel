@@ -104,7 +104,9 @@ Press the binding again to restore ordinary shortcuts. Bindings marked `allow_wh
 
 Manual passthrough belongs to the exact keyboard-focused surface. It pauses when focus moves to another surface and resumes when that surface regains focus. Popups and other surfaces do not inherit it. Destroying the surface clears its manual state. The toggle requires an unlocked session with a focused surface; locking preserves the setting for when focus returns after unlocking.
 
-When the client already has a shortcuts inhibitor, the toggle activates or deactivates that inhibitor. If the client creates one while manual passthrough is active, one toggle disables both sources together. Destroying a client inhibitor does not clear an existing manual setting.
+Use a [window rule](window-rules.md#keyboard-shortcuts-inhibition) with `allow_shortcuts_inhibit = false` to deny automatic client requests for selected applications. The manual toggle still enables passthrough for those windows.
+
+When the client already has an allowed shortcuts inhibitor, the toggle activates or deactivates that inhibitor. Rule changes preserve a manual deactivation. If the client creates one while manual passthrough is active, one toggle disables both sources together. Destroying a client inhibitor does not clear an existing manual setting.
 
 ## Cooldown
 

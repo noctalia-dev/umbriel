@@ -551,6 +551,9 @@ int main(int argc, char** argv) {
   state.toplevel = xdg_surface_get_toplevel(state.xdgSurface);
   xdg_toplevel_add_listener(state.toplevel, &kToplevelListener, &state);
   xdg_toplevel_set_title(state.toplevel, title);
+  if (const char* appId = std::getenv("SEAT_LOG_APP_ID")) {
+    xdg_toplevel_set_app_id(state.toplevel, appId);
+  }
   if (state.shortcutsControl || std::getenv("INHIBIT_SHORTCUTS") != nullptr) {
     if (state.shortcutsInhibitManager == nullptr) {
       std::println(stderr, "seat-log-client: compositor is missing zwp_keyboard_shortcuts_inhibit_manager_v1");

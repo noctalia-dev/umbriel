@@ -2,6 +2,7 @@
 
 #include <optional>
 
+struct fx_corner_radii;
 struct wlr_box;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
@@ -30,7 +31,7 @@ namespace umbriel {
     // buffer to use instead of finding the surface's regular scene buffer.
     void update(
         wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox,
-        int cornerRadius, const wlr_box* clipBox = nullptr, const SurfaceBlurOptions& options = {},
+        fx_corner_radii corners, const wlr_box* clipBox = nullptr, const SurfaceBlurOptions& options = {},
         float surfaceOpacity = 1.0F, wlr_scene_buffer* maskSource = nullptr
     );
     // Opacity of the blur effect itself. Keep this independent from surface
