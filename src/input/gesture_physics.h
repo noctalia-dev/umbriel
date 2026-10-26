@@ -26,6 +26,8 @@ namespace umbriel {
     [[nodiscard]] static constexpr DeltaPair
     selectSwipeDelta(double dx, double dy, double unaccelDx, double unaccelDy) {
 #ifdef UMBRIEL_WLR_GESTURE_UNACCEL
+      (void)dx;
+      (void)dy;
       return {unaccelDx, unaccelDy};
 #else
       (void)unaccelDx;
