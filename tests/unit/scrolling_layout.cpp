@@ -615,11 +615,19 @@ UMBRIEL_TEST(clientMaxWidthNarrowsAColumn) {
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 300);
 }
 
-UMBRIEL_TEST(constraintsNeverExceedTheWideCeiling) {
+UMBRIEL_TEST(constraintsNeverExceedTheViewport) {
   Fixture fixture;
   fixture.addColumns(1);
   fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minWidth = 99999}; });
-  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 5076);
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
+}
+
+UMBRIEL_TEST(clientMinHintKeepsAWideColumnAtItsOwnExtent) {
+  Fixture fixture;
+  fixture.addColumns(1);
+  fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minWidth = 99999}; });
+  CHECK(fixture.layout.setWidthFraction(0, 2.0));
+  CHECK_EQ(fixture.layout.columnWidth(0, kViewport), 2532);
 }
 
 UMBRIEL_TEST(clientMaxHintCapsAWideColumn) {
@@ -2053,7 +2061,7 @@ UMBRIEL_TEST(ensureVisibleKeepsAPannedWideColumn) {
   CHECK(fixture.layout.scroll() == x + width - kViewport);
 }
 
-UMBRIEL_TEST(activateColumnPansAwideColumnFromTheEntrySide) {
+UMBRIEL_TEST(activateColumnPansAWideColumnFromTheEntrySide) {
   Fixture fixture;
   fixture.addColumns(3);
   CHECK(fixture.layout.setWidthFraction(1, 2.0));

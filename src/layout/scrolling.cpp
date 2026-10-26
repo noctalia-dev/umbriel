@@ -423,14 +423,15 @@ namespace umbriel {
     }
     const double slotEnd = slotStart + column.widthFrac * slotExtent;
     int width = static_cast<int>(std::lround(slotEnd) - std::lround(slotStart)) - gap;
-    width = std::max(width, columnMinPrimaryPx(column, *this));
+    // A client minimum widens a column up to one viewport, or to the column's own wider extent: only user-set extents
+    // span several viewports, so a client never creates a wide column.
+    width = std::max(width, std::min(columnMinPrimaryPx(column, *this), std::max(width, viewportPrimary)));
     const int maxWidth = columnMaxPrimaryPx(column, *this);
     if (maxWidth > 0) {
       width = std::min(width, maxWidth);
     }
     // No viewport ceiling: a column may span several viewports (kMaxWideFraction bounds it at set time), so the strip
-    // is longer than the output and scrolls. Size hints floor and cap within that ceiling: a client cannot demand its
-    // way past it.
+    // is longer than the output and scrolls.
     return std::clamp(width, 1, fractionalWidth(viewportPrimary, kMaxWideFraction));
   }
 
@@ -1552,10 +1553,11 @@ namespace umbriel {
         const int edgePad = layout.layoutConfig()->edgePad;
         const int viewportPrimary = std::max(1, (m_vertical ? usable.height : usable.width) - 2 * edgePad);
         const int availableCross = std::max(1, (m_vertical ? usable.width : usable.height) - 2 * edgePad);
-        // The wide ceiling, not the viewport, bounds interactive growth (same slot arithmetic as columnWidth).
-        const int extentGap = layout.layoutConfig()->totalGap;
+        // The wide ceiling, not the viewport, bounds interactive growth (same slot arithmetic as columnWidth). A client
+        // minimum floors only within one viewport, as in columnWidth.
+        const int gap = layout.layoutConfig()->totalGap;
         const int wideCeiling =
-            std::max(1, static_cast<int>(std::lround(kMaxWideFraction * (viewportPrimary + extentGap) - extentGap)));
+            std::max(1, static_cast<int>(std::lround(kMaxWideFraction * (viewportPrimary + gap) - gap)));
 
         auto columnMinPrimary = [&](int columnIndex) {
           int minimum = static_cast<int>(std::lround(0.15 * viewportPrimary));
@@ -1568,7 +1570,7 @@ namespace umbriel {
               minimum = std::max(minimum, m_vertical ? constraints.minHeight : constraints.minWidth);
             }
           }
-          return std::min(minimum, wideCeiling);
+          return std::min(minimum, viewportPrimary);
         };
         auto columnMaxPrimary = [&](int columnIndex) {
           int maximum = wideCeiling;
@@ -1593,7 +1595,6 @@ namespace umbriel {
           }
           return std::max(maximum, columnMinPrimary(columnIndex));
         };
-        const int gap = layout.layoutConfig()->totalGap;
         auto setColumnPrimaryPx = [&](int columnIndex, int extent) {
           const double fraction = static_cast<double>(extent + gap) / static_cast<double>(viewportPrimary + gap);
           layout.setWidthFraction(columnIndex, fraction);
