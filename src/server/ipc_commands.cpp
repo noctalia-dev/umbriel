@@ -111,7 +111,7 @@ namespace umbriel {
       return "unknown";
     }
 
-    // One human row per window entry; `msg focused-window` prints the same row for its reply.
+    // One human row per window entry; `focused-window` prints the same row for its reply.
     void printWindowRow(const nlohmann::json& entry) {
       const std::string appId = entry.value("app_id", "");
       const std::string title = entry.value("title", "");
@@ -606,7 +606,7 @@ namespace umbriel {
 
     using PendingLayouts = std::map<const Workspace*, std::unique_ptr<Layout>>;
 
-    // One `windows` listing entry for `view`. `msg focused-window` shares this builder so its reply is
+    // One `windows` listing entry for `view`. `focused-window` shares this builder so its reply is
     // byte-identical to the entry the listing prints for the same window.
     nlohmann::json windowEntry(Server& server, View& view, PendingLayouts& pendingLayouts) {
       nlohmann::json entry;

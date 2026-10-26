@@ -93,8 +93,8 @@ jq -e --arg id "$id_b" '.id == $id' > /dev/null <<< "$reply" \
   || fail "answer changed after the layer went away: $reply"
 
 # A scratchpad holding the seat with nothing focused answers "no focused window"
-# rather than falling back to the workspace's remembered focus — the state the
-# window actions treat as having no target. Hiding the pad restores the answer.
+# rather than falling back to the workspace's remembered focus, which is the state
+# the window actions treat as having no target. Hiding the pad restores the answer.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 "$UMBRIEL" settle > /dev/null
 if scratch_reply=$("$UMBRIEL" focused-window -j 2> "$UMBRIEL_RUNTIME_DIR/focused-window-scratch.err"); then
