@@ -1255,8 +1255,8 @@ namespace umbriel {
         || (phase != "begin" && phase != "update" && phase != "end")
         || (cancelled != 0 && cancelled != 1)) {
       return nlohmann::json{
-          {"err",
-           "expected begin <ms>, update <ms> <dx> <dy> [unaccel_dx unaccel_dy], or end <ms> <cancelled:0|1>"}};
+          {"err", "expected begin <ms>, update <ms> <dx> <dy> [unaccel_dx unaccel_dy], or end <ms> <cancelled:0|1>"}
+      };
     }
     wlr_cursor* cursor = server.cursor()->wlr();
     if (phase == "begin") {
