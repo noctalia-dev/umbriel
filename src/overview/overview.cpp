@@ -27,6 +27,7 @@ extern "C" {
 #include "scene/surface_shape.h"
 #include "scene/text_buffer.h"
 #include "server/color_manager.h"
+#include "server/focus.h"
 #include "server/server.h"
 #include "view/view.h"
 // clang-format off
@@ -1746,6 +1747,7 @@ namespace umbriel {
     m_progress = 0.0;
     m_targetProgress = 0.0;
     m_pendingFocus = nullptr;
+    m_pendingCursorWarp = false;
     m_pointerOutput = m_server->outputFromWlr(m_server->preferredOutput());
     m_server->notifyOverviewChanged();
 
@@ -1802,6 +1804,7 @@ namespace umbriel {
       m_closing = false;
       m_server->notifyOverviewChanged();
       m_pendingFocus = nullptr;
+      m_pendingCursorWarp = false;
       if (m_progress < 1.0 || m_targetProgress < 1.0) {
         startAnimation(1.0, false);
       }
@@ -1823,7 +1826,7 @@ namespace umbriel {
 
   void Overview::close() { beginClose(nullptr); }
 
-  void Overview::closeToWorkspace(Workspace* workspace, View* focus) {
+  void Overview::closeToWorkspace(Workspace* workspace, View* focus, bool warpCursor) {
     if (!m_active || m_closing) {
       return;
     }
@@ -1840,10 +1843,10 @@ namespace umbriel {
         focus->workspace()->centerFocusedColumn();
       }
     }
-    beginClose(focus);
+    beginClose(focus, 0, warpCursor);
   }
 
-  void Overview::beginClose(View* focus, double releaseVelocity) {
+  void Overview::beginClose(View* focus, double releaseVelocity, bool warpCursor) {
     if (!m_active || m_closing) {
       return;
     }
@@ -1859,6 +1862,7 @@ namespace umbriel {
     m_pressWorkspace = nullptr;
     clearMiddlePress();
     m_pendingFocus = focus;
+    m_pendingCursorWarp = warpCursor && config().input.cursor.followsFocus && focus != nullptr;
     for (const auto& state : m_outputs) {
       const WorkspaceGroup* group = state->output->workspaceGroup();
       if (group != nullptr && group->active() != nullptr) {
@@ -1880,6 +1884,7 @@ namespace umbriel {
       endDrag(false);
     }
     m_pendingFocus = nullptr;
+    m_pendingCursorWarp = false;
     teardown();
     restoreFocus(nullptr);
   }
@@ -1988,7 +1993,9 @@ namespace umbriel {
       return;
     }
     View* focus = m_pendingFocus;
+    const bool warpCursor = m_pendingCursorWarp;
     m_pendingFocus = nullptr;
+    m_pendingCursorWarp = false;
     // The real trees stay hidden until teardown, so a workspace switch during the close runs as the row scroll. The
     // close still ends with the zoom, so binds keep their timing; a row still travelling hands its offset and velocity
     // to the real slide. beginClose retargets each row to the active workspace, so a row resting there is not carried.
@@ -2017,6 +2024,12 @@ namespace umbriel {
       }
     }
     restoreFocus(focus);
+    if (warpCursor
+        && focus != nullptr
+        && focus->mapped()
+        && seatFocusedWindow(*m_server) == focus->placementRoot()->inputDelegate()) {
+      m_server->cursor()->warpToView(*focus);
+    }
   }
 
   void Overview::restoreFocus(View* focus) {
@@ -2235,6 +2248,7 @@ namespace umbriel {
     });
     if (m_pendingFocus == view) {
       m_pendingFocus = nullptr;
+      m_pendingCursorWarp = false;
     }
     if (m_pressCard != nullptr && m_pressCard->view == view) {
       m_pressCard = nullptr;
@@ -2376,6 +2390,7 @@ namespace umbriel {
     }
     if (m_closing) {
       m_pendingFocus = nullptr;
+      m_pendingCursorWarp = false;
     }
     animateRow(*target, row);
     assignShortcuts();
@@ -2422,6 +2437,7 @@ namespace umbriel {
     cancelNavigation();
     if (m_closing) {
       m_pendingFocus = nullptr;
+      m_pendingCursorWarp = false;
     }
     applyProgress();
   }
@@ -3194,7 +3210,7 @@ namespace umbriel {
               && shortcutStartsWith(card->shortcut, candidate)
               && card->view != nullptr
               && card->view->mapped()) {
-            closeToWorkspace(card->view->workspace(), card->view);
+            closeToWorkspace(card->view->workspace(), card->view, true);
             return true;
           }
         }
@@ -3237,6 +3253,7 @@ namespace umbriel {
 
     if (m_closing && (directional || outputFocus)) {
       m_pendingFocus = nullptr;
+      m_pendingCursorWarp = false;
     }
 
     if (directional && interactive() && !m_shortcutInput.empty()) {
