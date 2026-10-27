@@ -139,6 +139,11 @@ numlock_toggle = true
 # follows_mouse = true
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
+# Cursor following also applies to overview keyboard shortcut selections.
+# The cursor moves after the overview closes.
+# [input.cursor]
+# follows_focus = false
+
 # Confine touch input to one display.
 #
 # [input.touch]
