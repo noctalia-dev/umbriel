@@ -21,6 +21,10 @@ Start with the user guide when a detail affects configuration or normal use. Use
 - [Scene helper ownership](scene-helper-ownership.md)
 - [DRM GPU exclusion](drm-device-policy.md)
 
+## Pull request template checks
+
+The canonical pull request checklist is in [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md). Keep `MANDATORY_CHECKLIST_ITEMS` in [the enforcement script](../../.github/workflows/scripts/enforce-pr-template.py) aligned with that wording when the template changes. `just test-workflows` checks acceptance of the actual template with both unchecked and completed checklists.
+
 ## Harness-only IPC
 
 `settle`, `clock-freeze`, `clock-advance`, `clock-resume`, `renderer-recover`, `animation-capture-fail`, `blur-composite-split`, `swipe-test`, and `effect-frames` exist for `tests/harness` and are compiled only with the `test_ipc` option (auto: debug builds). The harness also drives hotplug through `output-create` and `output-destroy`, which every build ships for [virtual outputs](../user/outputs.md#virtual-outputs). `settle` replies once no animation is running, no workspace has an arrange pending, every mapped window has acknowledged and committed its latest configure, and every output has drawn a frame since the request; it errors after 30 seconds.

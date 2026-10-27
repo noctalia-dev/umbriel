@@ -287,4 +287,137 @@ UMBRIEL_TEST(hitTestSeededInsideTheClippedSubtreeStillClips) {
   fixture.tearDown();
 }
 
+UMBRIEL_TEST(regionClipPreservesDisconnectedPiecesAndCutsTheHole) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 0, 0, 100, Fixture::kBufferHeight);
+  pixman_region32_union_rect(&region, &region, 300, 0, 100, Fixture::kBufferHeight);
+  CHECK(wlr_scene_node_set_clip_region(&fixture.buffer->node, &region));
+  pixman_region32_fini(&region);
+
+  // The source region was copied; its destruction leaves both islands visible.
+  CHECK(fixture.nodeAt(1150, 150) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1450, 150) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1300, 150) == nullptr);
+  CHECK(fixture.onLeft.inside);
+  CHECK(fixture.onRight.inside);
+
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(emptyRegionLeavesOutputsAndClearingItReenters) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+
+  pixman_region32_t empty;
+  pixman_region32_init(&empty);
+  CHECK(wlr_scene_node_set_clip_region(&fixture.tree->node, &empty));
+  pixman_region32_fini(&empty);
+
+  CHECK(!fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  CHECK_EQ(fixture.onLeft.leaves, 1);
+  CHECK_EQ(fixture.onRight.leaves, 1);
+  CHECK(fixture.buffer->primary_output == nullptr);
+  CHECK(fixture.nodeAt(1200, 150) == nullptr);
+  CHECK(wlr_scene_node_get_clip_region(&fixture.tree->node) != nullptr);
+
+  CHECK(wlr_scene_node_set_clip_region(&fixture.tree->node, nullptr));
+  CHECK(fixture.onLeft.inside);
+  CHECK(fixture.onRight.inside);
+  CHECK_EQ(fixture.onLeft.enters, 2);
+  CHECK_EQ(fixture.onRight.enters, 2);
+  CHECK(fixture.nodeAt(1200, 150) == &fixture.buffer->node);
+  CHECK(wlr_scene_node_get_clip_region(&fixture.tree->node) == nullptr);
+
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(regionAndRectangleClipsIntersectOnTheSameTree) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 1100, 100, 100, Fixture::kBufferHeight);
+  pixman_region32_union_rect(&region, &region, 1400, 100, 100, Fixture::kBufferHeight);
+  CHECK(wlr_scene_node_set_clip_region(&fixture.tree->node, &region));
+  pixman_region32_fini(&region);
+  wlr_scene_tree_set_clip(fixture.tree, &kLeftOutputBox);
+
+  CHECK(fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  CHECK(fixture.nodeAt(1150, 150) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1450, 150) == nullptr);
+
+  // Removing only the rectangle restores the second island, keeping the hole.
+  wlr_scene_tree_set_clip(fixture.tree, nullptr);
+  CHECK(fixture.onRight.inside);
+  CHECK_EQ(fixture.onRight.enters, 2);
+  CHECK(fixture.nodeAt(1450, 150) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1300, 150) == nullptr);
+
+  CHECK(wlr_scene_node_set_clip_region(&fixture.tree->node, nullptr));
+  CHECK(fixture.nodeAt(1300, 150) == &fixture.buffer->node);
+
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(regionClipsFollowTreeMovementAndSeededHitTests) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 1100, 100, 100, Fixture::kBufferHeight);
+  CHECK(wlr_scene_node_set_clip_region(&fixture.tree->node, &region));
+  pixman_region32_fini(&region);
+  wlr_scene_node_set_position(&fixture.tree->node, 30, 40);
+
+  CHECK(fixture.nodeAt(1150, 190) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1110, 190) == nullptr);
+  double nx = 0;
+  double ny = 0;
+  CHECK(wlr_scene_node_at(&fixture.buffer->node, 1150, 190, &nx, &ny) == &fixture.buffer->node);
+  CHECK(wlr_scene_node_at(&fixture.buffer->node, 1250, 190, &nx, &ny) == nullptr);
+
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(regionHoleUncoversPreviouslyOccludedContent) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+
+  constexpr float opaque[] = {1.F, 0.F, 0.F, 1.F};
+  wlr_scene_rect* occluder = wlr_scene_rect_create(fixture.tree, Fixture::kBufferWidth, Fixture::kBufferHeight, opaque);
+  CHECK(occluder != nullptr);
+  wlr_scene_node_set_position(&occluder->node, Fixture::kBufferX, Fixture::kBufferY);
+  CHECK(!fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  CHECK_EQ(fixture.onLeft.leaves, 1);
+  CHECK_EQ(fixture.onRight.leaves, 1);
+
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 0, 0, 100, Fixture::kBufferHeight);
+  pixman_region32_union_rect(&region, &region, 300, 0, 100, Fixture::kBufferHeight);
+  CHECK(wlr_scene_node_set_clip_region(&occluder->node, &region));
+  pixman_region32_fini(&region);
+
+  CHECK(fixture.onLeft.inside);
+  CHECK(fixture.onRight.inside);
+  CHECK_EQ(fixture.onLeft.enters, 2);
+  CHECK_EQ(fixture.onRight.enters, 2);
+  CHECK(fixture.nodeAt(1300, 150) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1150, 150) == &occluder->node);
+
+  CHECK(wlr_scene_node_set_clip_region(&occluder->node, nullptr));
+  CHECK(!fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  CHECK_EQ(fixture.onLeft.leaves, 2);
+  CHECK_EQ(fixture.onRight.leaves, 2);
+  CHECK(fixture.nodeAt(1300, 150) == &occluder->node);
+
+  fixture.tearDown();
+}
+
 int main() { return RUN_TESTS(); }

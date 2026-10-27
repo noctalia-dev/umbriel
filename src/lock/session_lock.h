@@ -48,6 +48,8 @@ namespace umbriel {
     wlr_session_lock_surface_v1* m_lockSurface = nullptr;
     wlr_scene_tree* m_sceneTree = nullptr;
     bool m_mapped = false;
+    int m_configuredWidth = -1;
+    int m_configuredHeight = -1;
 
     wl_listener m_map{};
     wl_listener m_unmap{};

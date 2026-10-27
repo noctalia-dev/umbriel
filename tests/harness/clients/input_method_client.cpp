@@ -1,6 +1,7 @@
 // Holds an input-method keyboard grab and an input-method-owned virtual keyboard. Optional lifecycle modes create the
 // grab only while text input is active, with either a transient or persistent owned keyboard. A separate harness
-// virtual keyboard drives physical modifiers through the grab.
+// virtual keyboard drives physical modifiers through the grab. Surrounding text and content type are printed when a
+// done event applies them.
 
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <print>
+#include <string>
 #include <unistd.h>
 #include <wayland-client.h>
 
@@ -28,6 +30,13 @@ namespace {
     bool persistentKeyboard = false;
     bool pendingActivate = false;
     bool pendingDeactivate = false;
+    bool pendingSurrounding = false;
+    std::string surroundingText;
+    uint32_t surroundingCursor = 0;
+    uint32_t surroundingAnchor = 0;
+    bool pendingContentType = false;
+    uint32_t contentHint = 0;
+    uint32_t contentPurpose = 0;
   };
 
   void createKeyboardGrab(State& state);
@@ -76,11 +85,35 @@ namespace {
     auto& state = *static_cast<State*>(data);
     state.pendingDeactivate = true;
   }
-  void inputMethodSurroundingText(void*, zwp_input_method_v2*, const char*, uint32_t, uint32_t) {}
+  void
+  inputMethodSurroundingText(void* data, zwp_input_method_v2*, const char* text, uint32_t cursor, uint32_t anchor) {
+    auto& state = *static_cast<State*>(data);
+    state.pendingSurrounding = true;
+    state.surroundingText = text;
+    state.surroundingCursor = cursor;
+    state.surroundingAnchor = anchor;
+  }
   void inputMethodTextChangeCause(void*, zwp_input_method_v2*, uint32_t) {}
-  void inputMethodContentType(void*, zwp_input_method_v2*, uint32_t, uint32_t) {}
+  void inputMethodContentType(void* data, zwp_input_method_v2*, uint32_t hint, uint32_t purpose) {
+    auto& state = *static_cast<State*>(data);
+    state.pendingContentType = true;
+    state.contentHint = hint;
+    state.contentPurpose = purpose;
+  }
   void inputMethodDone(void* data, zwp_input_method_v2*) {
     auto& state = *static_cast<State*>(data);
+    if (state.pendingSurrounding) {
+      state.pendingSurrounding = false;
+      std::println(
+          "surrounding-text text='{}' cursor={} anchor={}", state.surroundingText, state.surroundingCursor,
+          state.surroundingAnchor
+      );
+    }
+    if (state.pendingContentType) {
+      state.pendingContentType = false;
+      std::println("content-type hint={} purpose={}", state.contentHint, state.contentPurpose);
+    }
+    std::fflush(stdout);
     if (!state.activationLifecycle) {
       return;
     }

@@ -364,13 +364,17 @@ namespace umbriel {
     }
 
     const wlr_text_input_v3_state& current = m_activeTextInput->current;
-    if ((m_activeTextInput->active_features & WLR_TEXT_INPUT_V3_FEATURE_SURROUNDING_TEXT) != 0) {
+    // A client may first set surrounding text or content type in a commit after the one
+    // that enables the text input (Chromium sends surrounding text that way). wlroots fixes
+    // active_features at the enable commit, so check what the client has set instead, as
+    // the cursor rectangle below already does.
+    if ((current.features & WLR_TEXT_INPUT_V3_FEATURE_SURROUNDING_TEXT) != 0) {
       wlr_input_method_v2_send_surrounding_text(
           m_inputMethod, current.surrounding.text, current.surrounding.cursor, current.surrounding.anchor
       );
     }
     wlr_input_method_v2_send_text_change_cause(m_inputMethod, current.text_change_cause);
-    if ((m_activeTextInput->active_features & WLR_TEXT_INPUT_V3_FEATURE_CONTENT_TYPE) != 0) {
+    if ((current.features & WLR_TEXT_INPUT_V3_FEATURE_CONTENT_TYPE) != 0) {
       wlr_input_method_v2_send_content_type(m_inputMethod, current.content_type.hint, current.content_type.purpose);
     }
     wlr_input_method_v2_send_done(m_inputMethod);

@@ -77,13 +77,15 @@ The archive is linked as a whole so its internal utility symbols survive distrib
 - Cairo and PangoCairo
 - tomlplusplus
 - nlohmann-json
-- xcb, xcb-icccm, and xcb-ewmh
+- xcb, xcb-icccm, xcb-ewmh, and xcb-shape
 - xcb-render, xcb-xfixes, xcb-xtest, and libei 1.3 or newer when the `tests` feature is enabled
 - EGL, GLES2, and GBM
 - lcms2, optional; without it `umbrielfx` rejects client ICC profiles and keeps only its parametric color transforms
 - jemalloc on glibc, optional
 
 The canonical dependency declarations are in [`meson.build`](meson.build). Distribution package names vary.
+
+`xcb-shape` comes from libxcb and has no additional minimum-version requirement. Debian and Ubuntu split its build files into `libxcb-shape0-dev` and its runtime library into `libxcb-shape0`. On openSUSE, the existing `libxcb-devel` build package provides `xcb-shape.pc` and the headers; the runtime library is `libxcb-shape0`. Arch, Fedora, Alpine, Nix, Guix, and Void include the shape library in their existing libxcb package.
 
 ### Runtime dependencies
 

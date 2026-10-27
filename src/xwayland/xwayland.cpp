@@ -6,6 +6,7 @@
 #include "input/seat.h"
 #include "server/server.h"
 #include "wlr.h"
+#include "xwayland/shape.h"
 #include "xwayland/window.h"
 
 #include <algorithm>
@@ -75,11 +76,15 @@ namespace umbriel {
       return;
     }
     m_outputs = std::make_unique<XwaylandOutputs>(server.display(), server.outputLayout(), m_nativeResolution);
+    m_shapes = std::make_unique<XwaylandShapes>(server.display());
+    m_wlr->data = this;
+    m_wlr->user_event_handler = onXEvent;
     // wlroots drops the seat whenever the window manager goes away, which happens each time the lazy Xwayland exits
     // with its last client, so hand it over again before every start. wlroots passes the seat to the window manager
     // when Xwayland is ready; setting it from the ready handler instead makes X requests there that can leave the
     // first client's MapRequest unread in xcb's queue.
     m_serverStart.notify = onServerStart;
+    m_clientDestroy.notify = onClientDestroy;
     wl_signal_add(&m_wlr->server->events.start, &m_serverStart);
     applyCursor(server.cursor()->xcursorManager());
     m_ready.notify = onReady;
@@ -111,6 +116,12 @@ namespace umbriel {
     }
     // Windows only detach here; the server deletes views before destroying this.
     m_windows.clear();
+    m_wlr->user_event_handler = nullptr;
+    m_wlr->data = nullptr;
+    m_shapes.reset();
+    if (m_clientDestroy.link.next != nullptr) {
+      wl_list_remove(&m_clientDestroy.link);
+    }
     wl_list_remove(&m_serverStart.link);
     wl_list_remove(&m_ready.link);
     wl_list_remove(&m_newSurface.link);
@@ -180,8 +191,13 @@ namespace umbriel {
   }
 
   void Xwayland::forget(XwaylandWindow* window) {
+    m_shapes->remove(window->xsurface());
     std::erase_if(m_windows, [window](const std::unique_ptr<XwaylandWindow>& entry) { return entry.get() == window; });
   }
+
+  const pixman_region32_t* Xwayland::surfaceShape(wlr_surface* surface) const { return m_shapes->shape(surface); }
+
+  wl_signal* Xwayland::shapeChanged() const { return m_shapes->changed(); }
 
   double Xwayland::surfaceScale(wlr_surface* surface) const {
     if (!m_nativeResolution || surface == nullptr) {
@@ -228,6 +244,12 @@ namespace umbriel {
 
   void Xwayland::onServerStart(wl_listener* listener, void* /*data*/) {
     Xwayland* self = wl_container_of(listener, self, m_serverStart); // NOLINT(modernize-use-auto)
+    self->m_shapes->stop();
+    if (self->m_clientDestroy.link.next != nullptr) {
+      wl_list_remove(&self->m_clientDestroy.link);
+    }
+    // This listener runs before the XWM's later client-destroy listener invalidates its XCB connection.
+    wl_client_add_destroy_listener(self->m_wlr->server->client, &self->m_clientDestroy);
     // wlroots double-forks Xwayland, so its server PID is not the final peer PID. Authenticate the EIS connection
     // against possession of Xwayland's private Wayland socket, which only that launched process inherits.
     struct stat info{};
@@ -237,6 +259,17 @@ namespace umbriel {
       self->m_inputSocketInode = info.st_ino;
     }
     wlr_xwayland_set_seat(self->m_wlr, self->m_server.seat()->wlr());
+  }
+
+  void Xwayland::onClientDestroy(wl_listener* listener, void* /*data*/) {
+    Xwayland* self = wl_container_of(listener, self, m_clientDestroy); // NOLINT(modernize-use-auto)
+    wl_list_remove(&self->m_clientDestroy.link);
+    self->m_clientDestroy.link = {};
+    self->m_shapes->stop();
+  }
+
+  bool Xwayland::onXEvent(wlr_xwayland* xwayland, xcb_generic_event_t* event) {
+    return static_cast<Xwayland*>(xwayland->data)->m_shapes->handleEvent(event);
   }
 
   void Xwayland::onReady(wl_listener* listener, void* /*data*/) {
@@ -278,6 +311,7 @@ namespace umbriel {
   }
 
   void Xwayland::handleReady() {
+    m_shapes->start(m_wlr);
     const auto atoms =
         resolveAtoms<4>(m_wlr->display_name, {"_NET_ACTIVE_WINDOW", "_XSETTINGS_S0", "_XSETTINGS_SETTINGS", "MANAGER"});
     m_netActiveWindow = atoms[0];
@@ -296,6 +330,7 @@ namespace umbriel {
   }
 
   void Xwayland::handleNewSurface(wlr_xwayland_surface* xsurface) {
+    m_shapes->add(xsurface);
     m_windows.push_back(std::make_unique<XwaylandWindow>(m_server, *this, xsurface));
   }
 

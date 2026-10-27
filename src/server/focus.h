@@ -13,6 +13,7 @@ namespace umbriel {
   class Output;
   class Server;
   class View;
+  class Workspace;
 
   struct SsdFrameHit {
     View* view = nullptr;
@@ -94,5 +95,28 @@ namespace umbriel {
     // popup grab or a seat handoff restacks exactly as the transition that selected the view did.
     bool m_lastRaise = true;
   };
+
+  // The pointer output's active workspace: the target of explicit workspace and
+  // layout actions, which intentionally follow the pointer.
+  Workspace* activeWorkspace(Server& server);
+
+  // The view holding the seat's keyboard focus, if any.
+  View* seatFocusedWindow(Server& server);
+
+  // Scratchpad focus follows the seat, not the pointer-selected output. A
+  // cursor on another monitor must not expose that monitor's remembered
+  // workspace focus to window-relative actions.
+  View* focusedScratchpadWindow(Server& server);
+
+  // Whether a detached scratchpad owns the seat: its window holds the keyboard,
+  // or no window does while a scratchpad is active on the pointer output.
+  bool scratchpadHoldsFocus(Server& server);
+
+  // The window window-relative actions act on: the seat's focused view, else
+  // none while a scratchpad holds the seat (the pointer output's remembered
+  // focus must not leak), else the active workspace's remembered focus. A
+  // layer surface or the overview borrowing the keyboard leaves the answer on
+  // that remembered focus.
+  View* focusedWindow(Server& server);
 
 } // namespace umbriel

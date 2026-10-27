@@ -138,7 +138,7 @@ namespace umbriel {
           warnAt(node.source(), "ignoring {} (expected non-empty array of numbers)", path);
           return std::nullopt;
         }
-        const double used = std::clamp(*value, 0.1, 1.0);
+        const double used = std::clamp(*value, 0.1, kMaxWideFraction);
         if (used != *value) {
           warnAt(entry.source(), "{} = {} out of range, clamped to {}", path, *value, used);
         }
@@ -172,7 +172,7 @@ namespace umbriel {
           integer("bottom", -kStrutLimit, kStrutLimit, &Struts::bottom),
       };
       static const Fields<Scrolling> scrolling{
-          real("default_extent_fraction", 0.1, 1.0, &Scrolling::defaultExtentFraction),
+          real("default_extent_fraction", 0.1, kMaxWideFraction, &Scrolling::defaultExtentFraction),
           boolean("center_underfull_strip", &Scrolling::centerUnderfullStrip),
           choice("center_focused", &Scrolling::centerFocused, centerFocusedModes()),
           boolean("center_on_overview_select", &Scrolling::centerOnOverviewSelect),
@@ -199,7 +199,7 @@ namespace umbriel {
           integer("gap", 0, 500, &L::gap),
           table("struts", &L::struts, struts),
           custom<L>(
-              "extent_presets", registry::KeyDescription("float_array").withRange(0.1, 1.0),
+              "extent_presets", registry::KeyDescription("float_array").withRange(0.1, kMaxWideFraction),
               [](const toml::node& node, const std::string& path, L& target, registry::ReadContext&) {
                 if (auto presets = parseExtentPresets(node, path)) {
                   target.extentPresets = std::move(*presets);

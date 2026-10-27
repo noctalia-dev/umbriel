@@ -823,7 +823,10 @@ namespace umbriel {
             [&](wlr_output_state& pending) {
               return wlr_scene_output_build_state(m_sceneOutput, &pending, &sceneOptions);
             },
-            [&](const wlr_output_state& pending) { return wlr_output_commit_state(m_output, &pending); }
+            [&](const wlr_output_state& pending) {
+              SceneCommit observation(*this, pending);
+              return wlr_output_commit_state(m_output, &pending);
+            }
         );
         if (secureMask != nullptr) {
           wlr_scene_node_destroy(&secureMask->node);
@@ -1615,7 +1618,35 @@ namespace umbriel {
     return 0;
   }
 
-  void Output::observeDirectScanout() {
+  Output::SceneCommit::SceneCommit(Output& output, const wlr_output_state& state) : m_output(output) {
+    wl_list_init(&m_commit.link);
+    if ((state.committed & WLR_OUTPUT_STATE_BUFFER) == 0 || state.buffer == nullptr) {
+      return;
+    }
+    // The submitted state owns the buffer for this scope. Snapshot the decision before commit callbacks can change
+    // the scene, and avoid attributing a later cursor or metadata commit to an earlier failed scene build.
+    m_buffer = state.buffer;
+    m_state = output.builtDirectScanout();
+    m_commit.notify = onCommit;
+    wl_signal_add(&output.m_output->events.commit, &m_commit);
+  }
+
+  Output::SceneCommit::~SceneCommit() { wl_list_remove(&m_commit.link); }
+
+  void Output::SceneCommit::onCommit(wl_listener* listener, void* data) {
+    SceneCommit* self;
+    self = wl_container_of(listener, self, m_commit);
+    const auto* event = static_cast<wlr_output_event_commit*>(data);
+    if ((event->state->committed & WLR_OUTPUT_STATE_BUFFER) == 0 || event->state->buffer != self->m_buffer) {
+      return;
+    }
+    self->m_output.recordDirectScanout(self->m_state, event->output->commit_seq);
+    // A synchronous backend attempt can account for this built buffer only once.
+    wl_list_remove(&self->m_commit.link);
+    wl_list_init(&self->m_commit.link);
+  }
+
+  DirectScanoutState Output::builtDirectScanout() const {
     const wlr_scene_direct_scanout_status status = wlr_scene_output_direct_scanout_status(m_sceneOutput);
     DirectScanoutState state;
     state.active = status == WLR_SCENE_DIRECT_SCANOUT_ACTIVE;
@@ -1630,8 +1661,12 @@ namespace umbriel {
         state.title = view->title() != nullptr ? view->title() : "";
       }
     }
+    return state;
+  }
+
+  void Output::recordDirectScanout(const DirectScanoutState& state, uint32_t commitSeq) {
     // Restarting the wait on every change settles only a state that held for the whole interval.
-    const DirectScanoutTracker::Observation observation = m_directScanout.observe(state);
+    const DirectScanoutTracker::Observation observation = m_directScanout.recordCommit(state, commitSeq);
     if (observation != DirectScanoutTracker::Observation::Unchanged && m_directScanoutTimer != nullptr) {
       const bool pending = observation == DirectScanoutTracker::Observation::Pending;
       wl_event_source_timer_update(m_directScanoutTimer, pending ? DirectScanoutTracker::kSettleMs : 0);
@@ -1963,9 +1998,6 @@ namespace umbriel {
         m_workspaceGroup->abandonReveal();
       }
       if (built) {
-        observeDirectScanout();
-      }
-      if (built) {
         // Hardware gamma only (DRM). Nested Wayland has no gamma LUT; leave that alone.
         // Apply only when dirty: uploading the LUT every frame stalls the compositor.
         bool gammaPending = false;
@@ -2005,6 +2037,7 @@ namespace umbriel {
 
         {
           UMBRIEL_ZONE("Output::commitState");
+          SceneCommit observation(*this, state);
           commitOk = wlr_output_commit_state(m_output, &state);
         }
         if (hasBuffer) {

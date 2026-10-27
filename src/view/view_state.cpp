@@ -562,8 +562,10 @@ namespace umbriel {
         && m_workspace->scrollingLayout() != nullptr
         && !m_workspace->layoutConfig().scrolling.defaultExtentFraction) {
       // A window first opened floating has no earlier column extent. Seed its new column from the normal floating
-      // size rather than the maximized client buffer; explicit layout defaults still choose their own extent.
-      m_savedScrollingExtentPx = m_workspace->scrollingVertical() ? floatingRestore->height : floatingRestore->width;
+      // size rather than the maximized client buffer; explicit layout defaults still choose their own extent. A
+      // client-chosen width is one tile (same boundary as Workspace::layoutAttach) and never creates a wide column.
+      const int primary = m_workspace->scrollingVertical() ? floatingRestore->height : floatingRestore->width;
+      m_savedScrollingExtentPx = std::min(primary, m_workspace->scrollViewportExtent());
     }
     if (keepMaximized && wasTiled) {
       // Recover the ordinary column geometry before detaching. A first-time float restores that size; a window

@@ -221,6 +221,8 @@ sudo meson install -C build-release --no-rebuild
 
 The release binary is written to `build-release/umbriel`. `just debug` builds the debug binary at `build-debug/umbriel`.
 
+X11 window shapes require the `xcb-shape` library from libxcb. Debian and Ubuntu need `libxcb-shape0-dev` for building and `libxcb-shape0` at runtime. On openSUSE, `libxcb-devel` provides the build files and `libxcb-shape0` provides the runtime library. Arch, Fedora, Alpine, Nix, Guix, and Void bundle the shape library with libxcb.
+
 `jemalloc` is optional and recommended on glibc. Meson's default `-Djemalloc=auto` uses it when the development package is installed. Use `-Djemalloc=enabled` or `-Djemalloc=disabled` to force the choice. The `auto` setting skips it on non-glibc systems.
 
 The default installation prefix is `/usr/local`. Meson stores the prefix when the build directory is configured. To install under your home directory, configure that prefix explicitly before building, including when reusing an existing build directory:

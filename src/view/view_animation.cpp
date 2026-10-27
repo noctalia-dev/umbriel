@@ -57,13 +57,21 @@ namespace umbriel {
   }
 
   bool View::fullscreenOpaque() const {
+    wlr_surface* surface = rootSurface();
+    if (m_xsurface != nullptr) {
+      if (const pixman_region32_t* shape = m_server->xwayland()->surfaceShape(surface)) {
+        const pixman_box32_t bounds{0, 0, surface->current.width, surface->current.height};
+        if (pixman_region32_contains_rectangle(shape, &bounds) != PIXMAN_REGION_IN) {
+          return false;
+        }
+      }
+    }
     if (config().appearance.opaqueFullscreen) {
       return true;
     }
     if (m_ruleOpacity < 1.0F) {
       return false;
     }
-    wlr_surface* surface = rootSurface();
     if (const wlr_alpha_modifier_surface_v1_state* clientAlpha = wlr_alpha_modifier_v1_get_surface_state(surface);
         clientAlpha != nullptr && clientAlpha->multiplier < 1.0) {
       return false;
@@ -239,6 +247,7 @@ namespace umbriel {
 
   void View::applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip) {
     m_presentation.applyCrop(m_contentTree, rootSurface(), geometryBox(), content, surfaceClip);
+    syncXwaylandShape();
   }
 
   void View::resetPresentedSurface() {
@@ -1073,6 +1082,7 @@ namespace umbriel {
           wlr_scene_buffer_set_corner_radii(copy, src->corners);
           wlr_scene_buffer_set_corner_box(copy, &src->corner_box);
           wlr_scene_buffer_set_opacity(copy, src->opacity);
+          wlr_scene_node_set_clip_region(&copy->node, wlr_scene_node_get_clip_region(&src->node));
           wlr_scene_buffer_copy_color(copy, src);
           if (c->colorManager != nullptr) {
             c->colorManager->applySurfaceDescriptionToBuffer(sceneSurface->surface, copy);
@@ -1117,6 +1127,7 @@ namespace umbriel {
     }
     // Fullscreen policy can change the compositor multiplier even when the clip stays the same.
     applyEffectiveOpacity();
+    syncXwaylandShape();
   }
 
   void View::resetSurfaceClip() {

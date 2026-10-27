@@ -20,6 +20,7 @@
 struct wlr_gamma_control_v1;
 struct wlr_output;
 struct wlr_output_state;
+struct wlr_buffer;
 struct wlr_output_layout_output;
 struct wlr_scene_rect;
 struct wlr_scene_output;
@@ -132,8 +133,25 @@ namespace umbriel {
     [[nodiscard]] const std::optional<bool>& lastPresentationPresented() const { return m_lastPresentationPresented; }
     [[nodiscard]] std::optional<bool> lastPresentationVsync() const;
     [[nodiscard]] const std::string& tearingFallbackReason() const { return m_tearingFallbackReason; }
-    // Settled, so it can lag the latest frame by DirectScanoutTracker::kSettleMs.
-    [[nodiscard]] const DirectScanoutState& directScanout() const { return m_directScanout.settled(); }
+    // The latest scene buffer accepted by the backend, independently of the log's settling interval.
+    [[nodiscard]] const DirectScanoutState& directScanout() const { return m_directScanout.current(); }
+    [[nodiscard]] const DirectScanoutTracker& directScanoutTracker() const { return m_directScanout; }
+    // Observe only the scene state submitted by this attempt. Commit events also cover successful child commits
+    // when a grouped output transaction later fails on another backend.
+    class SceneCommit {
+    public:
+      SceneCommit(Output& output, const wlr_output_state& state);
+      ~SceneCommit();
+      SceneCommit(const SceneCommit&) = delete;
+      SceneCommit& operator=(const SceneCommit&) = delete;
+
+    private:
+      static void onCommit(wl_listener* listener, void* data);
+      Output& m_output;
+      wlr_buffer* m_buffer = nullptr;
+      DirectScanoutState m_state;
+      wl_listener m_commit{};
+    };
     [[nodiscard]] bool clientTearingHintAsync(const View* view) const;
     [[nodiscard]] bool tearingEligible(View* view) const;
     [[nodiscard]] View* tearingCandidate() const;
@@ -204,8 +222,8 @@ namespace umbriel {
     void updateSceneSdrWhite();
     void updateSceneHdrWhitePoint(wlr_gamma_control_v1* control);
     void armFrameRetry();
-    // Reads the scanout outcome of the frame just built.
-    void observeDirectScanout();
+    [[nodiscard]] DirectScanoutState builtDirectScanout() const;
+    void recordDirectScanout(const DirectScanoutState& state, uint32_t commitSeq);
     void armEffectFrame(uint64_t nowMsec);
     // Render locks other than this output's animation lock.
     [[nodiscard]] int externalRenderLocks() const;

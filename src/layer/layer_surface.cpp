@@ -395,7 +395,7 @@ namespace umbriel {
 
   void LayerSurface::updateBlur() {
     const wlr_box box{0, 0, m_layerSurface->surface->current.width, m_layerSurface->surface->current.height};
-    m_blur.update(m_scene->tree, m_layerSurface->surface, box, box, 0, nullptr, blurOptions());
+    m_blur.update(m_scene->tree, m_layerSurface->surface, box, box, corner_radii_none(), nullptr, blurOptions());
   }
 
   void LayerSurface::applyConfig() {

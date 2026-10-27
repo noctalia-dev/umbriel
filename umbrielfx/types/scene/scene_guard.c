@@ -36,6 +36,8 @@ const char* umbrielfx_scene_check_helpers(void) {
     const void* fn;
   } helpers[] = {
       {"wlr_scene_buffer_create", (const void*)&wlr_scene_buffer_create},
+      {"wlr_scene_node_set_clip_region", (const void*)&wlr_scene_node_set_clip_region},
+      {"wlr_scene_node_get_clip_region", (const void*)&wlr_scene_node_get_clip_region},
       {"wlr_ext_image_capture_source_v1_create_with_scene_node",
        (const void*)&wlr_ext_image_capture_source_v1_create_with_scene_node},
       {"wlr_scene_surface_create", (const void*)&wlr_scene_surface_create},

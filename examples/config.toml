@@ -313,6 +313,11 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Keep compositor shortcuts available while a virtual machine window is focused.
+# [[window_rule]]
+# match.app_id = "^virt-manager$"
+# allow_shortcuts_inhibit = false
+
 # Keep an application drawing while it is hidden on another workspace, for programs whose other work stalls without it.
 # [[window_rule]]
 # match.app_id = "^obs$"

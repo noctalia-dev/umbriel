@@ -68,7 +68,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libei libinput libxkbcommon mesa pango pixman \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxcb libxkbcommon mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository
@@ -99,7 +99,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libei libinput libxkbcommon mesa pango pixman \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxcb libxkbcommon mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository

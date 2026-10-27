@@ -48,6 +48,7 @@ await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" ready 1
 echo 'color magenta FFFF00FF' >&"$wallpaper_fd"
 await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" 'done magenta' 1
 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 0 bottom-layer >"$UMBRIEL_RUNTIME_DIR/square.log" 2>&1 &
+square_pid=$!
 await_lines "$UMBRIEL_RUNTIME_DIR/square.log" ready 1
 mkfifo "$UMBRIEL_RUNTIME_DIR/window.fifo"
 exec {window_fd}<>"$UMBRIEL_RUNTIME_DIR/window.fifo"
@@ -257,4 +258,101 @@ for style in fade slide; do
   }
   "$UMBRIEL" clock-resume >/dev/null
 done
-echo "title bar blur follows window rules, scaling, dragging, overview, and close animations"
+
+# Transparent content must meet the title bar with square blur corners on both
+# sides. Move a patterned wallpaper edge beneath each corner so missing blur
+# reveals magenta instead of the green carried across that edge by the kernel.
+kill "$square_pid"
+wait "$square_pid" || true
+sed -i '/^\[animation\]$/,/^\[/s/^enabled = true$/enabled = false/; s/^blur_optimized = false$/blur_optimized = true/' "$UMBRIEL_CONFIG"
+reload
+FILL_COLOR=0x66000000 "$UMBRIEL_UNMAP_CLIENT" ssd-blur 480 300 >"$UMBRIEL_RUNTIME_DIR/transparent.log" 2>&1 &
+await_lines "$UMBRIEL_RUNTIME_DIR/transparent.log" mapped 1
+title_bar_wait_box ssd-blur 480x300+100+128
+echo 'child-color corner-pattern FF00FF00' >&"$wallpaper_fd"
+await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" 'done corner-pattern' 1
+
+expect_content_corner() {
+  local label=$1 rounded=$2 x=$3 y=$4 green
+  read -r _ green _ < <(sample "$x" "$y")
+  if ((rounded)); then
+    ((green < 5)) || {
+      echo "$label: blur escaped the rounded corner: green=$green"
+      exit 1
+    }
+  else
+    ((green > 15 && green < 150)) || {
+      echo "$label: transparent content retained a rounded blur corner: green=$green"
+      exit 1
+    }
+  fi
+}
+
+for scale in 1 1.25; do
+  sed -i "s/^scale = .*$/scale = $scale/" "$UMBRIEL_CONFIG"
+  reload
+  for side in left right; do
+    if [[ $side == left ]]; then
+      pattern_x=106 corner_x=101
+    else
+      pattern_x=374 corner_x=578
+    fi
+    echo "child-move $side-$scale $pattern_x 28" >&"$wallpaper_fd"
+    await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" "done $side-$scale" 1
+    pixel_x=$(awk -v x="$corner_x" -v scale="$scale" 'BEGIN { printf "%d", x * scale }')
+    pixel_y=$(awk -v scale="$scale" 'BEGIN { printf "%d", 129 * scale }')
+    expect_content_corner "$side seam at scale $scale" 0 "$pixel_x" "$pixel_y"
+
+    # The title bar retains its outer top arc. Hiding it restores rounding to
+    # the content, and showing it again must clear that rounding immediately.
+    outer_y=$(awk -v scale="$scale" 'BEGIN { printf "%d", 101 * scale }')
+    expect_content_corner "$side outer frame at scale $scale" 1 "$pixel_x" "$outer_y"
+    sed -i 's/^mode = "forced"$/mode = "off"/' "$UMBRIEL_CONFIG"
+    reload
+    title_bar_wait_field ssd-blur title_bar false
+    expect_content_corner "$side without a title bar at scale $scale" 1 "$pixel_x" "$pixel_y"
+    sed -i 's/^mode = "off"$/mode = "forced"/' "$UMBRIEL_CONFIG"
+    reload
+    title_bar_wait_field ssd-blur title_bar true
+    expect_content_corner "$side restored title bar at scale $scale" 0 "$pixel_x" "$pixel_y"
+
+    echo "child-move bottom-$side-$scale $pattern_x 328" >&"$wallpaper_fd"
+    await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" "done bottom-$side-$scale" 1
+    bottom_y=$(awk -v scale="$scale" 'BEGIN { printf "%d", 426 * scale }')
+    expect_content_corner "$side bottom frame at scale $scale" 1 "$pixel_x" "$bottom_y"
+  done
+done
+
+# Locate the card from an opaque blue title bar, so the probes follow its real
+# zoom and placement instead of assuming the overview's workspace dimensions.
+# A visible border keeps the card decorated, including its nonzero radius.
+sed -i 's/#00000040/#0000FFFF/g; s/^border_width = 0$/border_width = 2/' "$UMBRIEL_CONFIG"
+reload
+for side in left right; do
+  if [[ $side == left ]]; then
+    pattern_x=106
+  else
+    pattern_x=374
+  fi
+  echo "child-move overview-$side $pattern_x 28" >&"$wallpaper_fd"
+  await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" "done overview-$side" 1
+  "$UMBRIEL" msg overview-open >/dev/null
+  "$UMBRIEL" settle >/dev/null
+  grim -o HEADLESS-1 "$image"
+  read -r bar_x bar_y bar_w bar_h < <(
+    "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r < 0.02 && g < 0.02 && b > 0.98'
+  )
+  ((bar_w > 0 && bar_h > 0)) || {
+    echo "transparent preview lost its title bar"
+    exit 1
+  }
+  if [[ $side == left ]]; then
+    preview_x=$((bar_x + 1))
+  else
+    preview_x=$((bar_x + bar_w - 2))
+  fi
+  preview_y=$((bar_y + bar_h + 1))
+  expect_content_corner "$side overview seam" 0 "$preview_x" "$preview_y"
+  "$UMBRIEL" msg overview-close >/dev/null
+done
+echo "title bar blur follows window rules, scaling, dragging, overview, close animations, and transparent content corners"

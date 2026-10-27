@@ -11,6 +11,7 @@
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
 #include "scene/quit_confirm.h"
+#include "server/focus.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -41,14 +42,6 @@ namespace umbriel {
     template <wlr_direction D> bool actionOutputFocus(Server& server, const Keybind& bind, std::string* error);
     template <wlr_direction D> bool actionColumnMoveToOutput(Server& server, const Keybind& bind, std::string* error);
     void finishWorkspaceTransfer(Server& server, View& focused);
-
-    Workspace* activeWorkspace(Server& server) {
-      Output* output = server.outputFromWlr(server.preferredOutput());
-      if (output == nullptr || output->workspaceGroup() == nullptr) {
-        return nullptr;
-      }
-      return output->workspaceGroup()->active();
-    }
 
     std::optional<std::string_view> scratchpadName(Server& server, const Keybind& bind, std::string* error) {
       const auto* arg = payloadIf<ScratchpadArg>(bind);
@@ -120,45 +113,11 @@ namespace umbriel {
       return target;
     }
 
-    View* seatFocusedWindow(Server& server) {
-      return View::fromSurface(server.seat()->wlr()->keyboard_state.focused_surface);
-    }
-
-    // Scratchpad focus follows the seat, not the pointer-selected output. A
-    // cursor on another monitor must not expose that monitor's remembered
-    // workspace focus to window-relative actions.
-    View* focusedScratchpadWindow(Server& server) {
-      View* view = seatFocusedWindow(server);
-      ScratchpadManager* scratchpad = server.scratchpadManager();
-      return view != nullptr && scratchpad != nullptr && scratchpad->contains(view) ? view : nullptr;
-    }
-
-    bool scratchpadHoldsFocus(Server& server) {
-      if (focusedScratchpadWindow(server) != nullptr) {
-        return true;
-      }
-      ScratchpadManager* scratchpad = server.scratchpadManager();
-      return seatFocusedWindow(server) == nullptr
-          && scratchpad != nullptr
-          && !scratchpad->activeOn(server.outputFromWlr(server.preferredOutput())).empty();
-    }
-
     // Layout-relative window actions have no workspace target while a detached
     // scratchpad owns the seat. Explicit workspace and layout actions continue
     // to use activeWorkspace(), which intentionally follows the pointer output.
     Workspace* windowActionWorkspace(Server& server) {
       return scratchpadHoldsFocus(server) ? nullptr : activeWorkspace(server);
-    }
-
-    View* focusedWindow(Server& server) {
-      if (View* view = seatFocusedWindow(server)) {
-        return view;
-      }
-      if (scratchpadHoldsFocus(server)) {
-        return nullptr;
-      }
-      Workspace* workspace = activeWorkspace(server);
-      return workspace != nullptr ? workspace->focusedView() : nullptr;
     }
 
     // Window IDs are ext-foreign-toplevel identifiers, the same strings
@@ -251,7 +210,7 @@ namespace umbriel {
       if (!axis) {
         return;
       }
-      const auto& presets = floatingPresetsFor(view);
+      const auto presets = boundedPresets(floatingPresetsFor(view), 1.0);
       const double current = presetSnappedFraction(presets, (*axis)[0], (*axis)[1]);
       const double next = nextFractionPreset(presets, current, Direction);
       view.resizeFloatingFractions(

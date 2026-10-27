@@ -87,6 +87,7 @@ namespace umbriel {
     bool cycleWidth(int columnIndex, int direction) override;
     bool toggleFullWidth(int columnIndex) override;
     bool setWidthFraction(int columnIndex, double fraction) override;
+    [[nodiscard]] double maxExtentFraction() const override { return kMaxWideFraction; }
     void clearFullWidthState(int columnIndex) override;
     [[nodiscard]] double widthFraction(int columnIndex) const override;
     [[nodiscard]] double heightFraction(const View* view) const override;
@@ -133,6 +134,9 @@ namespace umbriel {
     // long after the activation that set it, by which time the strip may have gained or lost columns.
     enum class FocusSide { None, FromLeft, FromRight };
     [[nodiscard]] bool alwaysCentersFocus() const;
+    // Whether a column is read through panning: wider than the viewport, but not the fullscreen/maximize overhang
+    // (which keeps its single covering offset).
+    [[nodiscard]] bool pansWide(int columnIndex, int viewportPrimary) const;
     // Side a focus move from the focused column to `columnIndex` would come from.
     [[nodiscard]] FocusSide focusSideFrom(int columnIndex) const;
     // Side an extent change measures its pair from, with no focus move left to read it.

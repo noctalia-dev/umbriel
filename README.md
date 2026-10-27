@@ -51,6 +51,17 @@ Copy [`examples/config.toml`](examples/config.toml) to `~/.config/umbriel/config
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development builds, code style, and checks, and [SCOPE.md](SCOPE.md) for what the project takes on and declines; please skim it before opening a feature request. Bug reports are always welcome, and help and design discussion happen on [Discord](https://discord.noctalia.dev).
 
+## Acknowledgements
+
+Umbriel would not exist without the work of these projects, and we are grateful to everyone who builds and maintains them:
+
+- [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots): the compositor library Umbriel is built on.
+- [SceneFX](https://github.com/wlrfx/scenefx): `umbrielfx`, Umbriel's scene graph and renderer, is a hard fork of SceneFX (MIT). Thank you for the foundation.
+- [niri](https://github.com/YaLTeR/niri): its scrolling layout and animations inspired ours. Thank you for showing how good they can feel.
+- [Hyprland](https://github.com/hyprwm/Hyprland): its visual effects inspired ours. Thank you for raising the bar.
+
+Thank you to all their authors and contributors.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

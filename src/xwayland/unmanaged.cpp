@@ -1,6 +1,7 @@
 #include "xwayland/unmanaged.h"
 
 #include "input/seat.h"
+#include "scene/surface_shape.h"
 #include "server/server.h"
 #include "wlr.h"
 #include "xwayland/xwayland.h"
@@ -39,6 +40,10 @@ namespace umbriel {
     wl_signal_add(&xsurface->events.set_geometry, &m_setGeometry);
     m_requestConfigure.notify = onRequestConfigure;
     wl_signal_add(&xsurface->events.request_configure, &m_requestConfigure);
+    m_commit.notify = onCommit;
+    wl_signal_add(&xsurface->surface->events.commit, &m_commit);
+    m_shapeChanged.notify = onShapeChanged;
+    wl_signal_add(server.xwayland()->shapeChanged(), &m_shapeChanged);
     if (xsurface->surface->mapped) {
       handleMap();
     }
@@ -49,6 +54,8 @@ namespace umbriel {
     wl_list_remove(&m_unmap.link);
     wl_list_remove(&m_setGeometry.link);
     wl_list_remove(&m_requestConfigure.link);
+    wl_list_remove(&m_commit.link);
+    wl_list_remove(&m_shapeChanged.link);
     releaseKeyboard();
     wlr_scene_node_destroy(&m_tree->node);
   }
@@ -71,6 +78,23 @@ namespace umbriel {
   void XwaylandUnmanaged::onRequestConfigure(wl_listener* listener, void* data) {
     XwaylandUnmanaged* self = wl_container_of(listener, self, m_requestConfigure); // NOLINT(modernize-use-auto)
     self->handleRequestConfigure(static_cast<const wlr_xwayland_surface_configure_event*>(data));
+  }
+
+  void XwaylandUnmanaged::onCommit(wl_listener* listener, void* /*data*/) {
+    XwaylandUnmanaged* self = wl_container_of(listener, self, m_commit); // NOLINT(modernize-use-auto)
+    self->updateShape();
+  }
+
+  void XwaylandUnmanaged::onShapeChanged(wl_listener* listener, void* data) {
+    XwaylandUnmanaged* self = wl_container_of(listener, self, m_shapeChanged); // NOLINT(modernize-use-auto)
+    if (data == self->m_xsurface->surface) {
+      self->updateShape();
+    }
+  }
+
+  void XwaylandUnmanaged::updateShape() {
+    wlr_surface* surface = m_xsurface->surface;
+    applySurfaceTreeShape(&m_tree->node, surface, m_server.xwayland()->surfaceShape(surface));
   }
 
   void XwaylandUnmanaged::handleMap() {
@@ -118,6 +142,7 @@ namespace umbriel {
       m_scale = region.scale;
       wlr_scene_subsurface_tree_set_scale(&m_tree->node, m_scale);
     }
+    updateShape();
   }
 
   void XwaylandUnmanaged::handleRequestConfigure(const wlr_xwayland_surface_configure_event* event) {

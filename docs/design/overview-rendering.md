@@ -28,7 +28,7 @@ Only overview-specific motion lives in `Overview`: opening and closing zoom, fil
 
 Selecting a card focuses it before the closing zoom starts. The overview still withholds keyboard input until teardown, while a scrolling layout can begin revealing the selected column on the same frame and animation timeline as the zoom. The close therefore lands directly on the selected column instead of starting a second movement afterwards.
 
-Configured keybinds continue to dispatch during the closing zoom. A later focus or workspace selection replaces the card that initiated the close as the landing target. Workspace retargets use a separate animation value, so repeated navigation cannot extend the zoom deadline.
+Configured keybinds continue to dispatch during the closing zoom. A later focus or workspace selection replaces the card that initiated the close as the landing target. Workspace retargets use a separate animation value, so repeated navigation cannot extend the zoom deadline. A row scroll still travelling when the zoom lands carries on as a real workspace slide instead of stopping at teardown.
 
 A spring `curve` runs the opening and closing zoom through `AnimatedValue::settleSpring`, and `Overview::tickAnimations` ends it with `finishSpringTail` once its remaining motion is under half a logical pixel. `Overview::zoomPixelsPerUnit` supplies that scale: half the largest output extent per unit of zoom for a close, plus one row step for an open, whose end shows the neighbouring rows.
 
@@ -80,6 +80,7 @@ The relevant checks are:
 - [`tests/harness/checks/drag/left_hint.sh`](../../tests/harness/checks/drag/left_hint.sh) for the visible prepend target on an overflowing scrolling strip.
 - [`tests/harness/checks/overview/refocus.sh`](../../tests/harness/checks/overview/refocus.sh) for adjacent focus reassignment when the focused window closes in the overview.
 - [`tests/harness/checks/overview/card_lifecycle.sh`](../../tests/harness/checks/overview/card_lifecycle.sh) for a card dropping its live movement effect, running the configured `windows_out` shader after unmap, and disappearing when the close snapshot settles.
+- [`tests/harness/checks/overview/close_workspace_switch.sh`](../../tests/harness/checks/overview/close_workspace_switch.sh) for a workspace switch during the closing zoom sliding on after it lands.
 - [`tests/harness/checks/overview/focus_motion.sh`](../../tests/harness/checks/overview/focus_motion.sh) for selected-column focus and reveal beginning during the closing zoom.
 - [`tests/harness/checks/overview/focus_marker.sh`](../../tests/harness/checks/overview/focus_marker.sh) for one live marker across two outputs, following both an output-changing keybind and plain pointer motion.
 - [`tests/harness/checks/overview/effect_scale.sh`](../../tests/harness/checks/overview/effect_scale.sh) for border details and inner overlays shrinking with the zoom, including animated zoom, rotated fractional output scale, and close snapshots.

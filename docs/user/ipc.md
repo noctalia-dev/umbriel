@@ -14,17 +14,20 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 
 ## Queries
 
-| Request                          | CLI                         |
-| -------------------------------- | --------------------------- |
-| `{"cmd":"effects"}`              | `umbriel effects --json`    |
-| `{"cmd":"windows"}`              | `umbriel windows --json`    |
-| `{"cmd":"workspaces"}`           | `umbriel workspaces --json` |
-| `{"cmd":"submap"}`               | `umbriel submap --json`     |
-| `{"cmd":"layers"}`               | `umbriel layers --json`     |
-| `{"cmd":"outputs"}`              | `umbriel outputs --json`    |
-| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>`      |
+| Request                          | CLI                             |
+| -------------------------------- | ------------------------------- |
+| `{"cmd":"effects"}`              | `umbriel effects --json`        |
+| `{"cmd":"windows"}`              | `umbriel windows --json`        |
+| `{"cmd":"focused-window"}`       | `umbriel focused-window --json` |
+| `{"cmd":"workspaces"}`           | `umbriel workspaces --json`     |
+| `{"cmd":"submap"}`               | `umbriel submap --json`         |
+| `{"cmd":"layers"}`               | `umbriel layers --json`         |
+| `{"cmd":"outputs"}`              | `umbriel outputs --json`        |
+| `{"cmd":"msg","arg":"<action>"}` | `umbriel msg <action>`          |
 
 Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
+
+`{"cmd":"focused-window"}` answers with the focused window's listing entry: the window the window actions act on. The seat's focused window wins (for a modal dialog, the dialog itself; for a visible scratchpad window holding the keyboard, that window); while a layer surface or the overview holds the keyboard, the answer falls back to the pointer output's active workspace's remembered focus; and the reply is `{"err": "no focused window"}` while a scratchpad owns the seat with no window focused, or when nothing is focused. The entry is exactly a `windows` entry for that window; its `focused` member stays the workspace-local remembered focus and does not select which window the query answers about.
 
 Window state follows what Umbriel has decided, ahead of the client's redraw, the same way geometry reports layout targets:
 
@@ -49,7 +52,19 @@ Layer entries describe layer-shell surfaces such as panels, launchers, and wallp
 
 Output entries list every connected output, including disabled ones: `name`, `description`, `make`, `model`, `serial`, `config_name` (the [monitor identity](outputs.md), or `null` when the display reports none), `physical_size`, `enabled` (part of the desktop), `powered` (enabled and not switched off by DPMS), `focused`, `active_workspace` (its ID), `position`, `logical_size`, `usable_area` (the part layer-shell exclusive zones leave, in layout coordinates), `transform`, `scale`, `adaptive_sync` (`null` when the output cannot use variable refresh), `hdr_active`, `direct_scanout`, and `modes`, each with `width`, `height`, `refresh_mhz`, `preferred`, and `current`. A disabled output reports a zero `logical_size` and `usable_area`.
 
-`direct_scanout` is `null` while the output is disabled or powered off. Otherwise it holds `active`, `reason` (why the output composites, or `null` while active), and `window` (the scanned-out window's `id`, `app_id`, and `title`, or `null`). It reports a state only once it has held for half a second, so a cursor or notification passing over a fullscreen window does not flood subscribers. See [direct scanout](outputs.md#direct-scanout) for the reasons.
+`direct_scanout` is `null` while the output is disabled or powered off. Otherwise it holds `active`, `reason` (why the output composites, or `null` while active), and `window` (the scanned-out window's `id`, `app_id`, and `title`, or `null`). Queries report the latest scene buffer accepted by the backend immediately. A successful commit does not guarantee physical presentation. Failed builds, rejected commits, and bufferless cursor or output-property commits do not update this state.
+
+Three diagnostic fields retain successful scene-buffer commit history for each output:
+
+| Field             | Meaning                                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commits`         | Number of accepted scene-buffer commits, composed or scanned out.                                                                                   |
+| `scanout_commits` | Number of those commits that used direct scanout, including brief episodes.                                                                         |
+| `commit_seq`      | The backend's 32-bit commit sequence for the latest accepted scene buffer. It can wrap and can skip numbers used by commits without a scene buffer. |
+
+The counters survive configuration reloads and power cycles. They reset when Umbriel restarts or the output is destroyed and recreated. Compare snapshots from the same output lifetime to measure activity during a game session. A zero increase in `scanout_commits` means no direct scanout commits occurred during that interval.
+
+Scanout-triggered subscription notifications and routine log messages still wait until a state has held for half a second. Counter increments alone do not trigger subscription events. Other output events can carry a newer snapshot before that interval expires. Poll `outputs` when immediate state or updated counters are needed. See [direct scanout](outputs.md#direct-scanout) for the reasons.
 
 ## Effect inspection
 

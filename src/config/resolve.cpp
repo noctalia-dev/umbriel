@@ -340,6 +340,9 @@ namespace umbriel {
       if (rule.confinePointer) {
         resolved.confinePointer = rule.confinePointer;
       }
+      if (rule.allowShortcutsInhibit) {
+        resolved.allowShortcutsInhibit = rule.allowShortcutsInhibit;
+      }
       if (rule.backgroundRender) {
         resolved.backgroundRender = rule.backgroundRender;
       }

@@ -1520,8 +1520,8 @@ namespace umbriel {
     watch->destroy.notify = onShortcutsInhibitorDestroy;
     wl_signal_add(&inhibitor->events.destroy, &watch->destroy);
     self->m_shortcutsInhibitors.push_back(std::move(watch));
-    wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
-    kLog.debug("keyboard shortcuts inhibitor activated");
+    self->refreshKeyboardShortcutsInhibitors();
+    kLog.debug("keyboard shortcuts inhibitor {}", inhibitor->active ? "activated" : "blocked by window rule");
   }
 
   void Server::onShortcutsInhibitorDestroy(wl_listener* listener, void* /*data*/) {
@@ -3896,6 +3896,18 @@ namespace umbriel {
       return true;
     };
 
+    const auto commitSceneStates = [this](wlr_backend_output_state* pending, size_t pendingLen) {
+      std::vector<std::unique_ptr<Output::SceneCommit>> observations;
+      observations.reserve(pendingLen);
+      for (size_t i = 0; i < pendingLen; ++i) {
+        if (Output* output = outputFromWlr(pending[i].output)) {
+          observations.push_back(std::make_unique<Output::SceneCommit>(*output, pending[i].base));
+        }
+      }
+      // Each output's successful commit event is authoritative even if a later child backend fails the group.
+      return wlr_backend_commit(m_backend, pending, pendingLen);
+    };
+
     struct BackendSnapshot {
       wlr_output* output = nullptr;
       bool enabled = false;
@@ -3963,7 +3975,7 @@ namespace umbriel {
         // logical layout transaction is complete.
         m_deferOutputManagerConfig = true;
         commitAttempted = true;
-        ok = wlr_backend_commit(m_backend, states, statesLen);
+        ok = commitSceneStates(states, statesLen);
         if (ok) {
           wlr_output_swapchain_manager_apply(&swapchainManager);
         }
@@ -3983,7 +3995,7 @@ namespace umbriel {
             wlr_output_swapchain_manager_prepare(&rollbackManager, rollbackStates.data(), rollbackStates.size());
         if (restoredAsGroup) {
           restoredAsGroup = buildSceneStates(rollbackManager, rollbackStates.data(), rollbackStates.size())
-              && wlr_backend_commit(m_backend, rollbackStates.data(), rollbackStates.size());
+              && commitSceneStates(rollbackStates.data(), rollbackStates.size());
         }
         if (restoredAsGroup) {
           wlr_output_swapchain_manager_apply(&rollbackManager);
@@ -3997,7 +4009,8 @@ namespace umbriel {
         }
         rollbackStates.clear();
 
-        const auto restoreEnabled = [this, &buildSceneStates, &stageSnapshot](const BackendSnapshot& snapshot) {
+        const auto restoreEnabled = [this, &buildSceneStates, &commitSceneStates,
+                                     &stageSnapshot](const BackendSnapshot& snapshot) {
           wlr_backend_output_state restore{};
           restore.output = snapshot.output;
           wlr_output_state_init(&restore.base);
@@ -4007,7 +4020,7 @@ namespace umbriel {
           wlr_output_swapchain_manager_init(&manager, m_backend);
           bool restored = wlr_output_swapchain_manager_prepare(&manager, &restore, 1);
           if (restored) {
-            restored = buildSceneStates(manager, &restore, 1) && wlr_backend_commit(m_backend, &restore, 1);
+            restored = buildSceneStates(manager, &restore, 1) && commitSceneStates(&restore, 1);
           }
           if (restored) {
             wlr_output_swapchain_manager_apply(&manager);

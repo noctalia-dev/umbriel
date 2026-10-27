@@ -17,18 +17,18 @@ For dependencies and normal build commands, start with the [installation guide](
 
 Direct project dependencies. Transitive dependencies are owned by their providing system packages.
 
-| Layer                   | Library                                                                                                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compositor framework    | `wlroots-0.20`                                                                                                                                                 |
-| Scene graph and effects | `umbrielfx` (blur, shadows, rounded corners; maintained in-tree)                                                                                               |
-| Wayland core            | `wayland-server`, `wayland-client`, `wayland-protocols`, `wayland-scanner`                                                                                     |
-| Input                   | `libinput`, `xkbcommon`, `libeis >= 1.3`, `libsystemd` (sd-bus, optional: the systemd-localed keymap)                                                          |
-| Graphics                | `pixman`, `libdrm`, OpenGL via wlroots                                                                                                                         |
-| Text                    | `cairo`, `pangocairo`                                                                                                                                          |
-| Memory allocation       | `jemalloc` (optional, glibc)                                                                                                                                   |
-| Config                  | `tomlplusplus`                                                                                                                                                 |
-| JSON (IPC)              | `nlohmann/json`                                                                                                                                                |
-| Xwayland                | wlroots' Xwayland server (`Xwayland` spawned on demand), `xcb`, `xcb-icccm`, `xcb-ewmh`; test-only `xcb-render`, `xcb-xfixes`, `xcb-xtest`, and `libei >= 1.3` |
+| Layer                   | Library                                                                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compositor framework    | `wlroots-0.20`                                                                                                                                                              |
+| Scene graph and effects | `umbrielfx` (blur, shadows, rounded corners; maintained in-tree)                                                                                                            |
+| Wayland core            | `wayland-server`, `wayland-client`, `wayland-protocols`, `wayland-scanner`                                                                                                  |
+| Input                   | `libinput`, `xkbcommon`, `libeis >= 1.3`, `libsystemd` (sd-bus, optional: the systemd-localed keymap)                                                                       |
+| Graphics                | `pixman`, `libdrm`, OpenGL via wlroots                                                                                                                                      |
+| Text                    | `cairo`, `pangocairo`                                                                                                                                                       |
+| Memory allocation       | `jemalloc` (optional, glibc)                                                                                                                                                |
+| Config                  | `tomlplusplus`                                                                                                                                                              |
+| JSON (IPC)              | `nlohmann/json`                                                                                                                                                             |
+| Xwayland                | wlroots' Xwayland server (`Xwayland` spawned on demand), `xcb`, `xcb-icccm`, `xcb-ewmh`, `xcb-shape`; test-only `xcb-render`, `xcb-xfixes`, `xcb-xtest`, and `libei >= 1.3` |
 
 ## Development Commands
 
@@ -338,6 +338,7 @@ umbriel config validate [-c <config>]  # check a config file without starting
 umbriel config schema [--json]  # list every config key with its type and default
 umbriel outputs                  # list connectors and modes
 umbriel windows                  # list windows (focused *, urgent !)
+umbriel focused-window           # print the focused window (app id and title)
 umbriel effects                  # inspect effect programs, pools, and owner selections
 umbriel workspaces               # list workspaces and their layouts
 umbriel subscribe <events>       # stream events as JSON lines until closed
@@ -347,7 +348,7 @@ umbriel msg --help              # list actions available to `msg` and keybinds
 umbriel msg <action> [args...]   # send an action to the running compositor
 ```
 
-`windows`, `effects`, `workspaces`, `layers`, `outputs`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for machine-readable output. `subscribe` is always JSON; see [docs/user/ipc.md](docs/user/ipc.md) for the families and payloads.
+`windows`, `focused-window`, `effects`, `workspaces`, `layers`, `outputs`, `keyboard-layouts`, and `msg` accept `--json` / `-j` for machine-readable output. `subscribe` is always JSON; see [docs/user/ipc.md](docs/user/ipc.md) for the families and payloads.
 
 ## Commits
 

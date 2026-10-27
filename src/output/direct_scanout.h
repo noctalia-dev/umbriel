@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace umbriel {
@@ -17,9 +18,8 @@ namespace umbriel {
     bool operator==(const DirectScanoutState&) const = default;
   };
 
-  // Scanout can change every frame, for instance while a cursor or a notification comes and goes over a fullscreen
-  // game. Reports follow only a state that held for kSettleMs, so the log and the IPC stream see each lasting change
-  // once.
+  // Queries follow every successful scene-buffer commit. Logs and subscription notifications settle for kSettleMs
+  // so a cursor or notification passing over a fullscreen game does not produce an event every frame.
   class DirectScanoutTracker {
   public:
     static constexpr int kSettleMs = 500;
@@ -33,26 +33,35 @@ namespace umbriel {
       Settled,
     };
 
-    // Records the latest frame's state.
-    Observation observe(const DirectScanoutState& state) {
-      if (state == m_observed) {
+    // Only call after the backend accepts the scene buffer, including commits made during output reconfiguration.
+    Observation recordCommit(const DirectScanoutState& state, uint32_t commitSeq) {
+      ++m_commits;
+      if (state.active) {
+        ++m_scanoutCommits;
+      }
+      m_commitSeq = commitSeq;
+      if (state == m_current) {
         return Observation::Unchanged;
       }
-      m_observed = state;
-      return m_observed != m_settled ? Observation::Pending : Observation::Settled;
+      m_current = state;
+      return m_current != m_settled ? Observation::Pending : Observation::Settled;
     }
 
     // Adopts the observed state once it has held. True when the settled state changed.
     bool settle() {
-      if (m_observed == m_settled) {
+      if (m_current == m_settled) {
         return false;
       }
       m_previous = m_settled;
-      m_settled = m_observed;
+      m_settled = m_current;
       return true;
     }
 
+    [[nodiscard]] const DirectScanoutState& current() const { return m_current; }
     [[nodiscard]] const DirectScanoutState& settled() const { return m_settled; }
+    [[nodiscard]] uint64_t commits() const { return m_commits; }
+    [[nodiscard]] uint64_t scanoutCommits() const { return m_scanoutCommits; }
+    [[nodiscard]] uint32_t commitSeq() const { return m_commitSeq; }
 
     // Whether the last settle is worth a log line: scanout started or stopped, or moved to another window. A change
     // between two reasons to composite is not.
@@ -61,9 +70,12 @@ namespace umbriel {
     }
 
   private:
-    DirectScanoutState m_observed;
+    DirectScanoutState m_current;
     DirectScanoutState m_settled;
     DirectScanoutState m_previous;
+    uint64_t m_commits = 0;
+    uint64_t m_scanoutCommits = 0;
+    uint32_t m_commitSeq = 0;
   };
 
 } // namespace umbriel

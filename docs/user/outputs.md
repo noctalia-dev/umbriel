@@ -48,7 +48,7 @@ Umbriel first uses the first remaining enabled output in its internal output ord
 | `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                             |
 | `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                         |
 | `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                     |
-| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output.                                                 |
+| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                     |
 | `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output. |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply the configured mode, it uses the preferred advertised mode and logs a warning. Backend tests include the 8-bit SDR fallback, so a rejected swapchain can reach the preferred mode. On that mode, Umbriel retries the configured HDR and bit-depth preferences. A temporary rendering failure after an accepted backend test retries the current candidate instead of changing modes.
@@ -134,12 +134,29 @@ Set `WLR_SCENE_DISABLE_DIRECT_SCANOUT=1` before starting Umbriel to disable dire
   Direct scanout: inactive (software cursor)
 ```
 
+The listing reports the latest scene buffer accepted by the backend immediately. Rejected commits do not change it. This describes a successful commit, not confirmation that the display presented it.
+
+`umbriel outputs --json` also reports `direct_scanout.commits`, `direct_scanout.scanout_commits`, and `direct_scanout.commit_seq`. The two counters count accepted scene buffers and the subset committed through direct scanout. They retain brief scanout episodes even if the next query finds the output compositing again. Counters survive reloads and power cycles, and reset when the compositor restarts or the output is destroyed and recreated. The sequence identifies the latest accepted scene-buffer commit in the backend's wrapping 32-bit commit sequence.
+
+For fullscreen corruption investigations, save a baseline before launching the application and another snapshot while the problem is visible:
+
+```sh
+umbriel outputs --json > outputs-before-launch.json
+# Launch the application and reproduce the problem.
+umbriel outputs --json > outputs-corrupted.json
+umbriel color --json > color-corrupted.json
+```
+
+Collect the second snapshot before opening an overlay or switching workspaces. If `scanout_commits` increased, the backend accepted direct scanout commits on that output during the interval even if `active` is now false. An increase alone does not identify which window used scanout or establish the cause of corruption. Use a separate directory for each run when comparing scanout enabled and disabled before application startup, keeping HDR and the application arguments unchanged.
+
 The log records each time scanout starts, stops, or moves to another window, once the new state has held for half a second:
 
 ```text
 [INF] [output] output 'DP-1': direct scanout on (steam_app_223850 "3DMark Steel Nomad")
 [INF] [output] output 'DP-1': direct scanout off (composited)
 ```
+
+Scanout-triggered subscription notifications use the same settling interval. Counter increments alone do not push events; query `outputs` for immediate diagnostics.
 
 When it is inactive, the reason is the first condition that ruled it out:
 

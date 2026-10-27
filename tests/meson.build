@@ -418,6 +418,13 @@ xwayland_selection_client = executable(
   dependencies: [xcb_dep, dependency('xcb-xfixes')],
 )
 
+# ARGB windows whose bounding and input shapes change independently.
+xwayland_shape_client = executable(
+  'xwayland-shape-client',
+  ['harness/clients/xwayland_shape_client.cpp'],
+  dependencies: [xcb_dep, xcb_shape_dep],
+)
+
 # Harness pair that proves only Xwayland-owned theme cursor surfaces are
 # promoted to compositor Xcursors. The X11 fixture also supplies an unmatched
 # custom cursor, while the native fixture supplies matching theme pixels as an
@@ -506,6 +513,7 @@ harness_client_targets = [
   xwayland_input_client,
   ei_peer_client,
   xwayland_selection_client,
+  xwayland_shape_client,
   xwayland_cursor_client,
   xsettings_client,
   wayland_cursor_client,

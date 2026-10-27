@@ -44,8 +44,9 @@ namespace umbriel {
   }
 
   void SurfaceBlur::update(
-      wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox, int cornerRadius,
-      const wlr_box* clipBox, const SurfaceBlurOptions& options, float surfaceOpacity, wlr_scene_buffer* maskSource
+      wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox,
+      fx_corner_radii corners, const wlr_box* clipBox, const SurfaceBlurOptions& options, float surfaceOpacity,
+      wlr_scene_buffer* maskSource
   ) {
     const Config::Appearance::Blur& cfg = config().appearance.blur;
     wlr_box drawBox = nodeBox;
@@ -109,11 +110,30 @@ namespace umbriel {
     if (m_node->width != drawBox.width || m_node->height != drawBox.height) {
       wlr_scene_blur_set_size(m_node, drawBox.width, drawBox.height);
     }
-    if (m_node->corners.top_left != cornerRadius) {
-      wlr_scene_blur_set_corner_radius(m_node, cornerRadius);
+    if (!fx_corner_radii_eq(m_node->corners, corners)) {
+      wlr_scene_blur_set_corner_radii(m_node, corners);
     }
     if (m_node->alpha != m_alpha) {
       wlr_scene_blur_set_alpha(m_node, m_alpha);
+    }
+    wlr_scene_buffer* shapeSource = wlr_scene_blur_get_transparency_mask_source(m_node);
+    const pixman_region32_t* shape =
+        shapeSource != nullptr ? wlr_scene_node_get_clip_region(&shapeSource->node) : nullptr;
+    if (shape != nullptr) {
+      pixman_region32_t clip;
+      pixman_region32_init(&clip);
+      pixman_region32_copy(&clip, shape);
+      int sourceX = 0;
+      int sourceY = 0;
+      int blurX = 0;
+      int blurY = 0;
+      wlr_scene_node_coords(&shapeSource->node, &sourceX, &sourceY);
+      wlr_scene_node_coords(&m_node->node, &blurX, &blurY);
+      pixman_region32_translate(&clip, sourceX - blurX, sourceY - blurY);
+      wlr_scene_node_set_clip_region(&m_node->node, &clip);
+      pixman_region32_fini(&clip);
+    } else {
+      wlr_scene_node_set_clip_region(&m_node->node, nullptr);
     }
   }
 

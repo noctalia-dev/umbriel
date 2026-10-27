@@ -423,12 +423,16 @@ namespace umbriel {
     }
     const double slotEnd = slotStart + column.widthFrac * slotExtent;
     int width = static_cast<int>(std::lround(slotEnd) - std::lround(slotStart)) - gap;
-    width = std::max(width, columnMinPrimaryPx(column, *this));
+    // A client minimum widens a column up to one viewport, or to the column's own wider extent: only user-set extents
+    // span several viewports, so a client never creates a wide column.
+    width = std::max(width, std::min(columnMinPrimaryPx(column, *this), std::max(width, viewportPrimary)));
     const int maxWidth = columnMaxPrimaryPx(column, *this);
     if (maxWidth > 0) {
       width = std::min(width, maxWidth);
     }
-    return std::clamp(width, 1, std::max(1, viewportPrimary));
+    // No viewport ceiling: a column may span several viewports (kMaxWideFraction bounds it at set time), so the strip
+    // is longer than the output and scrolls.
+    return std::clamp(width, 1, fractionalWidth(viewportPrimary, kMaxWideFraction));
   }
 
   bool ScrollingLayout::setWidthFromPixels(int columnIndex, int viewportPrimary, int width) {
@@ -437,8 +441,12 @@ namespace umbriel {
     }
     const int gap = m_config->totalGap;
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
-    column.widthFrac =
-        static_cast<double>(std::max(1, width) + gap) / static_cast<double>(std::max(1, viewportPrimary) + gap);
+    // No 0.1 floor on purpose: a pixel rule may ask for a sliver below it (the fractional setter would clamp), but
+    // the wide ceiling still bounds a runaway px value.
+    column.widthFrac = std::min(
+        static_cast<double>(std::max(1, width) + gap) / static_cast<double>(std::max(1, viewportPrimary) + gap),
+        kMaxWideFraction
+    );
     column.savedWidthFrac = 0.0;
     return true;
   }
@@ -877,7 +885,9 @@ namespace umbriel {
     const auto width = static_cast<double>(columnWidth(columnIndex, viewportPrimary));
     const auto viewport = static_cast<double>(viewportPrimary);
     const auto max = static_cast<double>(maxScroll(viewportPrimary));
-    if (width >= viewport) {
+    if (width >= viewport && columnFillsViewport(m_columns[static_cast<size_t>(columnIndex)], *this)) {
+      // Fullscreen and maximize-to-edges overhang by the edge pads: the single offset covering the viewport. Any other
+      // column wider than the viewport is pannable and rests at both edges.
       const double cover = std::clamp(x + (width - viewport) / 2.0, 0.0, max);
       return {cover, cover};
     }
@@ -895,7 +905,8 @@ namespace umbriel {
   }
 
   void ScrollingLayout::reconcileFocusedColumn(int columnIndex, int viewportPrimary) {
-    if (alwaysCentersFocus()) {
+    // A pannable column is read through scrolling; parking it in the middle would lose the pan.
+    if (alwaysCentersFocus() && !pansWide(columnIndex, viewportPrimary)) {
       centerColumn(columnIndex, viewportPrimary);
       return;
     }
@@ -910,13 +921,20 @@ namespace umbriel {
   bool ScrollingLayout::shouldCenterFocusedColumn(int columnIndex, int viewportPrimary, FocusSide side) const {
     switch (m_config->scrolling.centerFocused) {
     case CenterFocusedColumn::Always:
-      return true;
+      return !pansWide(columnIndex, viewportPrimary);
     case CenterFocusedColumn::OnOverflow:
       return shouldCenterOnOverflow(columnIndex, viewportPrimary, side);
     case CenterFocusedColumn::Never:
       break;
     }
     return false;
+  }
+
+  bool ScrollingLayout::pansWide(int columnIndex, int viewportPrimary) const {
+    return columnIndex >= 0
+        && columnIndex < static_cast<int>(m_columns.size())
+        && columnWidth(columnIndex, viewportPrimary) > viewportPrimary
+        && !columnFillsViewport(m_columns[static_cast<size_t>(columnIndex)], *this);
   }
 
   ScrollingLayout::FocusSide ScrollingLayout::focusSideFrom(int columnIndex) const {
@@ -934,6 +952,11 @@ namespace umbriel {
   bool ScrollingLayout::shouldCenterOnOverflow(int columnIndex, int viewportPrimary, FocusSide side) const {
     const int columnCount = static_cast<int>(m_columns.size());
     if (columnIndex < 0 || columnIndex >= columnCount || side == FocusSide::None) {
+      return false;
+    }
+    // A pannable column overflows with every neighbor, so centering on overflow would fight the pan: it is always
+    // read through scrolling, never parked in the middle.
+    if (pansWide(columnIndex, viewportPrimary)) {
       return false;
     }
     const int neighbor = focusNeighbor(columnIndex, side);
@@ -970,13 +993,35 @@ namespace umbriel {
     const int x = columnX(columnIndex, viewportPrimary);
     const int width = columnWidth(columnIndex, viewportPrimary);
     const double max = static_cast<double>(std::max(0, totalWidth(viewportPrimary) - viewportPrimary));
+    // Any column wider than the viewport pans; only the fullscreen/maximize overhang keeps a single cover offset.
+    const bool pan = pansWide(columnIndex, viewportPrimary);
 
-    if (width >= viewportPrimary) {
+    if (width >= viewportPrimary && !pan) {
+      // Fullscreen and maximize-to-edges overhang by the edge pads: the single offset covering the viewport.
       const double cover = static_cast<double>(x) + static_cast<double>(width - viewportPrimary) / 2.0;
       return std::clamp(cover, 0.0, max);
     }
     if (center) {
       return static_cast<double>(x) - (viewportPrimary - width) / 2.0;
+    }
+    if (pan) {
+      // A wide column pans instead of snapping to cover: keep where the user panned when the viewport already lies
+      // inside it. A focus move lands the edge focus came from; without one, an overshoot springs back to the nearest
+      // edge. The pan rule owns pannable columns even for a forced snap.
+      const auto leading = static_cast<double>(x);
+      const auto trailing = static_cast<double>(x + width - viewportPrimary);
+      if (m_scroll >= leading && m_scroll <= trailing) {
+        return m_centeredRest ? m_scroll : std::clamp(m_scroll, 0.0, max);
+      }
+      switch (m_focusSide) {
+      case FocusSide::FromRight:
+        return std::clamp(trailing, 0.0, max);
+      case FocusSide::FromLeft:
+        return std::clamp(leading, 0.0, max);
+      case FocusSide::None:
+        break;
+      }
+      return std::clamp(m_scroll, leading, trailing);
     }
     if (force) {
       return std::clamp(static_cast<double>(x), 0.0, max);
@@ -1034,7 +1079,7 @@ namespace umbriel {
   }
 
   void ScrollingLayout::ensureVisible(int columnIndex, int viewportPrimary) {
-    revealColumn(columnIndex, viewportPrimary, alwaysCentersFocus());
+    revealColumn(columnIndex, viewportPrimary, alwaysCentersFocus() && !pansWide(columnIndex, viewportPrimary));
   }
 
   // `previousIndex` is where the column sat before it moved, which is the side focus came from. A move keeps focus, so
@@ -1078,7 +1123,13 @@ namespace umbriel {
       revealColumn(columnIndex, viewportPrimary, true);
       // Always centers by the user's standing choice, so only OnOverflow's centering is the policy's to take back.
       m_policyCenteredRest = m_config->scrolling.centerFocused == CenterFocusedColumn::OnOverflow;
-    } else if (m_config->scrolling.centerFocused == CenterFocusedColumn::OnOverflow && m_policyCenteredRest) {
+    } else if (
+        m_config->scrolling.centerFocused == CenterFocusedColumn::OnOverflow
+        && m_policyCenteredRest
+        // A pannable column never pairs up again, so its centering is not stale: undoing it here would jump past the
+        // pan rule and lose the column off screen.
+        && !pansWide(columnIndex, viewportPrimary)
+    ) {
       // The pair fits again, so a centering the policy made is stale. A plain fit would keep it, the column being fully
       // visible already: put the pair back at the edge it reads from, where the focus move left the strip.
       m_centeredRest = false;
@@ -1275,7 +1326,8 @@ namespace umbriel {
     if (wantMaximized) {
       extent = viewportPrimary;
     } else if (ruleExtentPx) {
-      extent = std::clamp(*ruleExtentPx, 1, viewportPrimary);
+      // The rule's px range is checked at parse; the wide ceiling, not the viewport, bounds it.
+      extent = std::clamp(*ruleExtentPx, 1, fractionalWidth(viewportPrimary, kMaxWideFraction));
     } else if (ruleExtent) {
       extent = fractionalWidth(viewportPrimary, *ruleExtent);
     } else if (m_config->scrolling.defaultExtentFraction) {
@@ -1331,7 +1383,7 @@ namespace umbriel {
       return false;
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
-    column.widthFrac = std::clamp(fraction, 0.1, 1.0);
+    column.widthFrac = std::clamp(fraction, 0.1, kMaxWideFraction);
     column.savedWidthFrac = 0.0;
     return true;
   }
@@ -1501,6 +1553,11 @@ namespace umbriel {
         const int edgePad = layout.layoutConfig()->edgePad;
         const int viewportPrimary = std::max(1, (m_vertical ? usable.height : usable.width) - 2 * edgePad);
         const int availableCross = std::max(1, (m_vertical ? usable.width : usable.height) - 2 * edgePad);
+        // The wide ceiling, not the viewport, bounds interactive growth (same slot arithmetic as columnWidth). A client
+        // minimum floors only within one viewport, as in columnWidth.
+        const int gap = layout.layoutConfig()->totalGap;
+        const int wideCeiling =
+            std::max(1, static_cast<int>(std::lround(kMaxWideFraction * (viewportPrimary + gap) - gap)));
 
         auto columnMinPrimary = [&](int columnIndex) {
           int minimum = static_cast<int>(std::lround(0.15 * viewportPrimary));
@@ -1516,7 +1573,7 @@ namespace umbriel {
           return std::min(minimum, viewportPrimary);
         };
         auto columnMaxPrimary = [&](int columnIndex) {
-          int maximum = viewportPrimary;
+          int maximum = wideCeiling;
           if (columnIndex < 0 || columnIndex >= static_cast<int>(layout.columns().size())) {
             return maximum;
           }
@@ -1538,7 +1595,6 @@ namespace umbriel {
           }
           return std::max(maximum, columnMinPrimary(columnIndex));
         };
-        const int gap = layout.layoutConfig()->totalGap;
         auto setColumnPrimaryPx = [&](int columnIndex, int extent) {
           const double fraction = static_cast<double>(extent + gap) / static_cast<double>(viewportPrimary + gap);
           layout.setWidthFraction(columnIndex, fraction);

@@ -820,6 +820,7 @@ namespace umbriel {
       const wlr_box captureClip = geometryBox();
       wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
     }
+    syncXwaylandShape();
     if (openingConfigurePending() || reconfigureOpeningState) {
       // Resolve window rules early to influence initial tiled/float decision and size.
       WindowRuleState openingState = ruleState();
@@ -1126,7 +1127,7 @@ namespace umbriel {
     for (wl_listener* listener :
          {&m_map, &m_unmap, &m_commit, &m_destroy, &m_requestMove, &m_requestResize, &m_requestMaximize,
           &m_requestMinimize, &m_requestFullscreen, &m_setParent, &m_setTitle, &m_setAppId, &m_xRequestConfigure,
-          &m_xRequestActivate, &m_xSetHints, &m_setDecorations}) {
+          &m_xRequestActivate, &m_xSetHints, &m_xShapeChanged, &m_setDecorations}) {
       removeListener(*listener);
     }
     m_sceneTree->node.data = nullptr;

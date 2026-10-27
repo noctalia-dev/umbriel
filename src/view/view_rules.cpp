@@ -266,6 +266,8 @@ namespace umbriel {
 
   bool View::confinePointer() { return resolvedRules().confinePointer.value_or(false); }
 
+  bool View::allowsShortcutsInhibit() { return resolvedRules().allowShortcutsInhibit.value_or(true); }
+
   std::optional<bool> View::tearingRuleOverride() { return resolvedRules().allowTearing; }
 
   void View::applyWindowRules() {
@@ -637,6 +639,10 @@ namespace umbriel {
     }
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     m_appliedRuleState = ruleState();
+    if (const bool allowed = rule.allowShortcutsInhibit.value_or(true); allowed != m_allowShortcutsInhibit) {
+      m_allowShortcutsInhibit = allowed;
+      m_server->refreshKeyboardShortcutsInhibitors();
+    }
     const std::optional<TitleBarMode> titleBarMode = rule.titleBar;
     if (m_titleBarMode != titleBarMode) {
       m_titleBarMode = titleBarMode;

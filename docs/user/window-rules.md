@@ -37,7 +37,7 @@ match.app_id = ["^mpv$", "^celluloid$"]
 window_effect = "scanlines"
 ```
 
-Run `umbriel windows` to inspect current application IDs, titles, tags, and content types. Prefer `app_id` for placement because titles often change.
+Run `umbriel windows` to inspect current application IDs, titles, tags, and content types, or `umbriel focused-window` for the focused window only. Prefer `app_id` for placement because titles often change.
 
 State selectors update while the window is open. Opening settings are resolved before a rule's own state changes take effect, so a rule cannot select on the floating or pinned state that it creates.
 
@@ -78,13 +78,13 @@ attach_to_parent = false
 
 ## Size and Position Rules
 
-| Key                           | Applies to | Description                                                  |
-| ----------------------------- | ---------- | ------------------------------------------------------------ |
-| `default_floating_size_px`    | Floating   | Logical-pixel size, such as `{ width = 800, height = 600 }`. |
-| `default_floating_size`       | Floating   | Fraction of the output usable area.                          |
-| `default_scrolling_extent_px` | Scrolling  | Initial logical-pixel extent along the strip.                |
-| `default_scrolling_extent`    | Scrolling  | Initial fractional extent along the strip.                   |
-| `default_position`            | Floating   | Position from a named anchor.                                |
+| Key                           | Applies to | Description                                                      |
+| ----------------------------- | ---------- | ---------------------------------------------------------------- |
+| `default_floating_size_px`    | Floating   | Logical-pixel size, such as `{ width = 800, height = 600 }`.     |
+| `default_floating_size`       | Floating   | Fraction of the output usable area.                              |
+| `default_scrolling_extent_px` | Scrolling  | Initial logical-pixel extent along the strip, up to 4 viewports. |
+| `default_scrolling_extent`    | Scrolling  | Initial fractional extent along the strip, 0.1 to 4.0.           |
+| `default_position`            | Floating   | Position from a named anchor.                                    |
 
 Pixel values take precedence over fractions. Each axis is optional. A tiled window remembers floating size and position rules until it first floats, and a floating window remembers its scrolling extent until it first tiles.
 
@@ -163,30 +163,31 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 
 ## Settings updated while a window is open
 
-| Key                      | Description                                                                                                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `opacity`                | Surface opacity from 0.0 to 1.0.                                                                                                                                                                                                                                       |
-| `blur`                   | Enable or disable window blur, including translucent Umbriel title bars.                                                                                                                                                                                               |
-| `blur_popups`            | Apply blur to descendant XDG popups.                                                                                                                                                                                                                                   |
-| `blur_ignore_alpha`      | Skip blur below an alpha threshold.                                                                                                                                                                                                                                    |
-| `blur_optimized`         | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
-| `confine_pointer`        | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
-| `background_render`      | Keep this window drawing while hidden (default `false`). See [Background rendering](#background-rendering).                                                                                                                                                            |
-| `focus_on_activate`      | Override activation focus for this window.                                                                                                                                                                                                                             |
-| `vrr`                    | Override the focused output's VRR policy.                                                                                                                                                                                                                              |
-| `tearing`                | Request or veto asynchronous presentation.                                                                                                                                                                                                                             |
-| `hdr`                    | Override the focused output's HDR policy.                                                                                                                                                                                                                              |
-| `border_color_focused`   | Override `colors.border.focused`.                                                                                                                                                                                                                                      |
-| `border_color_unfocused` | Override `colors.border.unfocused`.                                                                                                                                                                                                                                    |
-| `border_color_outer`     | Override `colors.border.outer`.                                                                                                                                                                                                                                        |
-| `border_width`           | Override `appearance.border_width`, 0 to 100.                                                                                                                                                                                                                          |
-| `outer_border_width`     | Override `appearance.outer_border_width`, 0 to 100.                                                                                                                                                                                                                    |
-| `title_bar`              | `"on"` follows client decoration preferences, `"negotiated"` requires Wayland decoration negotiation selecting server-side decorations, `"forced"` forces a title bar, and `"off"` hides it. Overrides `appearance.title_bar.mode`; omission inherits the global mode. |
-| `title_bar_buttons`      | Title bar buttons for this window, from the title outward: any of `"minimize"`, `"maximize"`, and `"close"`, or `[]` for none. Overrides `appearance.title_bar.buttons`; omission inherits it.                                                                         |
-| `corner_radius`          | Override `appearance.corner_radius`, 0 to 100.                                                                                                                                                                                                                         |
-| `shadow`                 | Override `appearance.shadow.enabled`.                                                                                                                                                                                                                                  |
-| `border_effect`          | Replace `effects.border` with a border preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
-| `window_effect`          | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
+| Key                       | Description                                                                                                                                                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opacity`                 | Surface opacity from 0.0 to 1.0.                                                                                                                                                                                                                                       |
+| `blur`                    | Enable or disable window blur, including translucent Umbriel title bars.                                                                                                                                                                                               |
+| `blur_popups`             | Apply blur to descendant XDG popups.                                                                                                                                                                                                                                   |
+| `blur_ignore_alpha`       | Skip blur below an alpha threshold.                                                                                                                                                                                                                                    |
+| `blur_optimized`          | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
+| `confine_pointer`         | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
+| `allow_shortcuts_inhibit` | Allow client-requested keyboard shortcut inhibition (default `true`). Set `false` to keep compositor shortcuts available. See [Keyboard shortcuts inhibition](#keyboard-shortcuts-inhibition).                                                                         |
+| `background_render`       | Keep this window drawing while hidden (default `false`). See [Background rendering](#background-rendering).                                                                                                                                                            |
+| `focus_on_activate`       | Override activation focus for this window.                                                                                                                                                                                                                             |
+| `vrr`                     | Override the focused output's VRR policy.                                                                                                                                                                                                                              |
+| `tearing`                 | Request or veto asynchronous presentation.                                                                                                                                                                                                                             |
+| `hdr`                     | Override the focused output's HDR policy.                                                                                                                                                                                                                              |
+| `border_color_focused`    | Override `colors.border.focused`.                                                                                                                                                                                                                                      |
+| `border_color_unfocused`  | Override `colors.border.unfocused`.                                                                                                                                                                                                                                    |
+| `border_color_outer`      | Override `colors.border.outer`.                                                                                                                                                                                                                                        |
+| `border_width`            | Override `appearance.border_width`, 0 to 100.                                                                                                                                                                                                                          |
+| `outer_border_width`      | Override `appearance.outer_border_width`, 0 to 100.                                                                                                                                                                                                                    |
+| `title_bar`               | `"on"` follows client decoration preferences, `"negotiated"` requires Wayland decoration negotiation selecting server-side decorations, `"forced"` forces a title bar, and `"off"` hides it. Overrides `appearance.title_bar.mode`; omission inherits the global mode. |
+| `title_bar_buttons`       | Title bar buttons for this window, from the title outward: any of `"minimize"`, `"maximize"`, and `"close"`, or `[]` for none. Overrides `appearance.title_bar.buttons`; omission inherits it.                                                                         |
+| `corner_radius`           | Override `appearance.corner_radius`, 0 to 100.                                                                                                                                                                                                                         |
+| `shadow`                  | Override `appearance.shadow.enabled`.                                                                                                                                                                                                                                  |
+| `border_effect`           | Replace `effects.border` with a border preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
+| `window_effect`           | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
 
@@ -350,6 +351,20 @@ confine_pointer = true
 The rule applies to floating, tiled and fullscreen windows. It takes effect when that window has keyboard focus and the pointer is inside its visible content. Client-requested pointer locks still work; confinement resumes when the client releases its lock. Reloading the configuration updates existing windows, and a later matching rule can disable confinement with `confine_pointer = false`.
 
 Use a focus or workspace keybind to escape. With focus-follows-mouse enabled, small movements over the window you just left do not refocus it; leaving and re-entering it, clicking it, or explicitly focusing it allows confinement again. Compositor cursor warps remain available. Confinement is suspended during session lock, overview, compositor move/resize and client drag operations.
+
+### Keyboard shortcuts inhibition
+
+Keep compositor shortcuts available in a virtual machine or remote desktop window:
+
+```toml
+[[window_rule]]
+match.app_id = "^virt-manager$"
+allow_shortcuts_inhibit = false
+```
+
+Use the application's ID reported by `umbriel windows --json`. The default is `true`, and a later matching rule can allow requests again with `allow_shortcuts_inhibit = true`.
+
+This setting controls client-requested inhibition. Reloading the configuration or changing which rules match also updates existing client inhibitors. The [manual passthrough toggle](keybinds.md#keyboard-shortcuts-inhibition) remains available as an explicit override, even when the rule denies client requests. If you use the toggle to deactivate an inhibitor, rule changes preserve that choice until you toggle it again or the client creates a new inhibitor.
 
 ### Background rendering
 

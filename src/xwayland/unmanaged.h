@@ -33,10 +33,13 @@ namespace umbriel {
     static void onUnmap(wl_listener* listener, void* data);
     static void onSetGeometry(wl_listener* listener, void* data);
     static void onRequestConfigure(wl_listener* listener, void* data);
+    static void onCommit(wl_listener* listener, void* data);
+    static void onShapeChanged(wl_listener* listener, void* data);
     void handleMap();
     void handleUnmap();
     void handleSetGeometry();
     void handleRequestConfigure(const wlr_xwayland_surface_configure_event* event);
+    void updateShape();
     // Hand the keyboard back to the activated view when this window holds it.
     void releaseKeyboard();
 
@@ -48,6 +51,8 @@ namespace umbriel {
     wl_listener m_unmap{};
     wl_listener m_setGeometry{};
     wl_listener m_requestConfigure{};
+    wl_listener m_commit{};
+    wl_listener m_shapeChanged{};
   };
 
 } // namespace umbriel

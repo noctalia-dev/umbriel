@@ -85,7 +85,12 @@ namespace umbriel {
     int width = 0;
     int height = 0;
     wlr_output_effective_resolution(output, &width, &height);
-    wlr_session_lock_surface_v1_configure(m_lockSurface, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+    // Deduplicate sent sizes, including unacked configures, to avoid repaint loops.
+    if (width != m_configuredWidth || height != m_configuredHeight) {
+      wlr_session_lock_surface_v1_configure(m_lockSurface, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+      m_configuredWidth = width;
+      m_configuredHeight = height;
+    }
 
     if (m_sceneTree != nullptr) {
       wlr_box layoutBox{};

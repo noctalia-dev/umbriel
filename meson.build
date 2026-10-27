@@ -132,6 +132,7 @@ libsystemd_dep = dependency('libsystemd', version: '>=243', required: get_option
 xcb_dep = dependency('xcb')
 xcb_icccm_dep = dependency('xcb-icccm')
 xcb_ewmh_dep = dependency('xcb-ewmh')
+xcb_shape_dep = dependency('xcb-shape')
 native_drm_policy_supported = wlr_has_drm_backend and libudev_dep.found()
 native_drm_policy_deps = []
 if native_drm_policy_supported
@@ -791,6 +792,7 @@ core_sources = files(
   'src/view/registry.cpp',
   'src/server/focus.cpp',
   'src/xwayland/xwayland.cpp',
+  'src/xwayland/shape.cpp',
   'src/input/eis.cpp',
   'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
@@ -811,6 +813,7 @@ core_sources = files(
   'src/view/popup.cpp',
   'src/layer/layer_surface.cpp',
   'src/scene/surface_blur.cpp',
+  'src/scene/surface_shape.cpp',
   'src/scene/hint_rect.cpp',
   'src/scene/border_rect.cpp',
   'src/scene/surface_shadow.cpp',
@@ -854,6 +857,7 @@ umbriel_core_deps = [
   xcb_dep,
   xcb_icccm_dep,
   xcb_ewmh_dep,
+  xcb_shape_dep,
 ]
 
 umbriel_core = static_library(
