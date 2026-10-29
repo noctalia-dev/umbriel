@@ -368,14 +368,12 @@ namespace umbriel {
 
   const Keybind* Cursor::hotCornerAction(size_t* cornerIndex) const {
     const Config::HotCorners& configured = config().hotCorners;
-    // The overview coexists with the shell's own exclusive-keyboard chrome (Noctalia maps its type-to-launch
-    // keyboard capture while the overview is open). That layer is part of the overview, not a user modal, so the
-    // modal gate must not swallow corners through it. A closing overview is back to desktop rules, and a real
-    // modal layer on the desktop blocks corners exactly as before.
-    const bool overviewChrome = m_server->overview() != nullptr && m_server->overview()->interactive();
+    // The open overview owns the pointer regardless of exclusive-keyboard layers (a shell may keep a keyboard capture
+    // over it), so those layers do not block corners there. A closing overview follows the desktop rule.
+    const bool overviewOpen = m_server->overview() != nullptr && m_server->overview()->interactive();
     if (!isPassthrough()
         || m_server->sessionLocked()
-        || (!overviewChrome && m_server->exclusiveKeyboardLayer() != nullptr)) {
+        || (!overviewOpen && m_server->exclusiveKeyboardLayer() != nullptr)) {
       return nullptr;
     }
     const wlr_seat* seat = m_server->seat()->wlr();

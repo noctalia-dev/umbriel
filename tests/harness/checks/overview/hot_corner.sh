@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A hot corner runs its action while the overview is open, the same as on the desktop — including when the shell
+# A hot corner runs its action while the overview is open, the same as on the desktop, including when the shell
 # maps its own exclusive-keyboard overview chrome (Noctalia's type-to-launch proxy) over it. That layer is part of
 # the overview, not a modal, so it must not swallow corners; on the desktop the same focused modal layer still
 # blocks them.

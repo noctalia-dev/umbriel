@@ -165,7 +165,7 @@ Named effect `set` and `cycle` arguments are checked against preset/pool kind wh
 
 Hot corners are inactive while the output's focused window is fullscreen. This check follows the output containing the corner, including when keyboard focus remains on another monitor. A fullscreen window on a different output or an inactive workspace does not block the corner. Neither does a retained fullscreen window after another window on that output takes focus.
 
-An exclusive-keyboard layer blocks hot corners while it is mapped: a modal launcher or lock-like surface owns input, and a corner must not fire behind it. The shell's own overview chrome is exempt — exclusive-keyboard layers that the overview coexists with (such as a type-to-launch keyboard capture) do not block corners while the overview is open; a closing overview is back to the normal rule.
+Hot corners are also inactive while an exclusive-keyboard layer surface, such as a launcher, is mapped. While the overview is open, exclusive-keyboard layers do not block hot corners.
 
 ## Cheatsheet
 
