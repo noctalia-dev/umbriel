@@ -104,9 +104,11 @@ namespace umbriel {
       layer->unconstrainPopup(m_popup);
     } else if (View* view = View::fromSurface(m_popup->parent)) {
       view->unconstrainPopup(m_popup);
-    } else {
-      wlr_xdg_surface_schedule_configure(m_popup->base);
     }
+    // Unconstraining schedules the configure, but it is skipped while the parent is not shown or has no output. A
+    // client must not draw before its first configure, and some block until it arrives. A configure already
+    // scheduled is reused, not sent twice.
+    wlr_xdg_surface_schedule_configure(m_popup->base);
   }
 
   void Popup::handleMap() {
