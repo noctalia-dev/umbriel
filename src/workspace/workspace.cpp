@@ -3096,6 +3096,15 @@ namespace umbriel {
     }
     reconcileDynamicNames(resolved.workspaces);
 
+    // Keep reserved launch destinations after populated workspaces without destroying their identities.
+    std::ranges::stable_partition(m_workspaces, [this](const auto& workspace) {
+      return workspace.get() == m_active
+          || workspace->named()
+          || workspace->displacedWorkspace()
+          || workspace->occupied()
+          || !workspace->launchReserved();
+    });
+
     // Dynamic groups keep their active empty workspace until the user leaves it. It can serve as the trailing sentinel
     // when every workspace after it is another anonymous empty, but not when a named or occupied workspace follows it.
     const bool emptyAbove = config().workspaces.emptyAbove;

@@ -70,6 +70,7 @@ fi
 temp_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.app_id == "spawn-workspace-temp") | .id')
 trailing_index=$("$UMBRIEL" workspaces --json | jq -r --arg id "$trailing_workspace" '.[] | select(.id == $id) | .index')
 "$UMBRIEL" msg window-focus "$temp_id" > /dev/null
+"$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" msg window-move-to-workspace-silent "$trailing_index" > /dev/null
 for _ in $(seq 80); do
   windows=$("$UMBRIEL" windows --json)
@@ -87,6 +88,13 @@ fi
 workspaces=$("$UMBRIEL" workspaces --json)
 if ! jq -e --arg id "$launch_workspace" 'any(.[]; .id == $id)' <<< "$workspaces" > /dev/null; then
   echo "pending launch did not preserve its empty workspace: $workspaces"
+  exit 1
+fi
+if ! jq -e --arg pending "$launch_workspace" --arg occupied "$trailing_workspace" '
+  any(.[]; .id == $occupied and .index == 2 and .occupied)
+  and any(.[]; .id == $pending and .index == 3 and (.occupied | not))
+' <<< "$workspaces" > /dev/null; then
+  echo "pending launch left a gap before the fullscreen workspace: $workspaces"
   exit 1
 fi
 

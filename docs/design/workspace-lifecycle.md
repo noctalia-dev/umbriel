@@ -12,7 +12,7 @@ The inventory maintains these invariants:
 - With `workspaces.empty_above` enabled, it also has a distinct leading empty anonymous workspace while capacity permits, including before the first view maps.
 - Outside a workspace slide, an occupied sentinel causes Umbriel to add a new empty workspace at that edge when capacity remains. At the limit, the occupied edge persists until another slot becomes available.
 - Other empty inactive anonymous workspaces are removed, except that the count never drops below the output's `min_workspaces`. Pruning runs from the end, so the surviving anonymous empties are the lowest-positioned ones.
-- An anonymous workspace recorded by a pending `spawn` activation token is neither removed nor repurposed. The hold ends when its first map is placed, the launched process completes an IPC request, the token deadline passes, or the output leaves the desktop.
+- An anonymous workspace recorded by a pending `spawn` activation token is neither removed nor repurposed. While empty and inactive, it follows the other workspaces so the reservation leaves no gap before populated workspaces. The hold ends when its first map is placed, the launched process completes an IPC request, the token deadline passes, or the output leaves the desktop.
 - Named workspaces remain even when empty.
 - Anonymous workspaces are renamed and all workspaces are reindexed from `1` in their current order. Named workspaces keep their explicit names.
 - Workspace layout rules are resolved again after renumbering.
