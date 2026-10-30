@@ -1692,11 +1692,12 @@ namespace umbriel {
     );
   }
 
-  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued) {
+  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid) {
     auto* watch = new ActivationTokenWatch();
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
+    watch->launchPid = launchPid;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
     watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
@@ -1816,6 +1817,19 @@ namespace umbriel {
       return;
     }
     claimLaunchOrigin(view, token);
+  }
+
+  void Server::completeIpcLaunch(std::string_view tokenName, pid_t pid) {
+    if (m_xdgActivation == nullptr || tokenName.empty() || pid <= 0) {
+      return;
+    }
+    const std::string name(tokenName);
+    wlr_xdg_activation_token_v1* token = wlr_xdg_activation_v1_find_token(m_xdgActivation, name.c_str());
+    const auto* watch = token != nullptr ? static_cast<ActivationTokenWatch*>(token->data) : nullptr;
+    // A CLI helper inside a launch script must leave the script's application placement intact.
+    if (watch != nullptr && watch->compositorIssued && !watch->launchClaimed && watch->launchPid == pid) {
+      wlr_xdg_activation_token_v1_destroy(token);
+    }
   }
 
   void Server::onActivationTokenDestroy(wl_listener* listener, void* /*data*/) {

@@ -95,6 +95,8 @@ namespace umbriel {
     static void closeConnection(Connection& connection);
     // Empty when the reply is deferred, as for settle.
     std::optional<std::string> handleRequest(Connection& connection, std::string_view line);
+    std::optional<std::string>
+    dispatchRequest(Connection& connection, const nlohmann::json& request, size_t requestSize);
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);

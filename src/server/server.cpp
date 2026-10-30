@@ -1539,7 +1539,6 @@ namespace umbriel {
     if (withActivationToken && m_xdgActivation != nullptr) {
       launchToken = wlr_xdg_activation_token_v1_create(m_xdgActivation);
       if (launchToken != nullptr) {
-        trackActivationToken(launchToken, true);
         const char* name = wlr_xdg_activation_token_v1_get_name(launchToken);
         if (name != nullptr) {
           launchTokenName = name;
@@ -1592,6 +1591,9 @@ namespace umbriel {
       _exit(1);
     }
 
+    if (launchToken != nullptr) {
+      trackActivationToken(launchToken, true, pid);
+    }
     if (scopeRequired) {
       wlr_log(
           WLR_INFO, "launch requested for '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
