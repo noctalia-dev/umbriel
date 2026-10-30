@@ -25,12 +25,23 @@ namespace umbriel {
     };
 
     bool isPopup(const wlr_xwayland_surface* xsurface) {
-      return xsurface->override_redirect || std::ranges::any_of(kPopupWindowTypes, [xsurface](auto type) {
+      return xsurface->override_redirect
+          || isPassiveUtilityPopup(xsurface)
+          || std::ranges::any_of(kPopupWindowTypes, [xsurface](auto type) {
                return wlr_xwayland_surface_has_window_type(xsurface, type);
              });
     }
 
   } // namespace
+
+  bool isPassiveUtilityPopup(const wlr_xwayland_surface* xsurface) {
+    return !xsurface->override_redirect
+        && xsurface->parent != nullptr
+        && wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_UTILITY)
+        && xsurface->hints != nullptr
+        && (xsurface->hints->flags & XCB_ICCCM_WM_HINT_INPUT) != 0
+        && xsurface->hints->input == 0;
+  }
 
   XwaylandWindow::XwaylandWindow(Server& server, Xwayland& owner, wlr_xwayland_surface* xsurface)
       : m_server(server), m_owner(owner), m_xsurface(xsurface),

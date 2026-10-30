@@ -11,9 +11,9 @@ namespace umbriel {
 
   class Server;
 
-  // An X11 context menu, notification, tooltip, combo dropdown, or drag icon, override-redirect or typed as one. The X
-  // client positions it in layout coordinates and the compositor only shows it there, above every window. Its scene
-  // node carries no view tag, so pointer hit tests find the surface without a view.
+  // An X11 context menu, notification, tooltip, combo dropdown, drag icon, or passive utility popup, override-redirect
+  // or typed as one. The X client positions it in layout coordinates and the compositor only shows it there, above
+  // every window. Its scene node carries no view tag, so pointer hit tests find the surface without a view.
   class XwaylandUnmanaged {
   public:
     // `xsurface` must be associated with a wl_surface.

@@ -189,11 +189,29 @@ expect_pixels() {
   done
 }
 
+# The passive popup draws over its maximized parent instead of the backdrop.
+expect_passive_pixels() {
+  local label=$1 image="$UMBRIEL_RUNTIME_DIR/popup-$1.png" pixel
+  "$UMBRIEL" settle > /dev/null
+  grim -o HEADLESS-1 "$image"
+  pixel=$("$UMBRIEL_PIXEL_PROBE" "$image" pixel 350 230)
+  [[ $pixel == '48 96 144' ]] || { echo "$label: popup content pixel was $pixel"; return 1; }
+  pixel=$("$UMBRIEL_PIXEL_PROBE" "$image" pixel 510 230)
+  [[ $pixel == '192 128 64' ]] || { echo "$label: parent pixel was $pixel"; return 1; }
+}
+
 type_key() {
   local key=$1 before
   before=$(events "$client_log" "key code=$((key + 8)) state=pressed")
   "$UMBRIEL_POINTER_CLIENT" 1280 720 tap "$key" > /dev/null
   await_lines "$client_log" "key code=$((key + 8)) state=pressed" "$((before + 1))" 0.025
+}
+
+type_key_to() {
+  local key=$1 window=$2 before
+  before=$(events "$client_log" "key code=$((key + 8)) state=pressed window=$window")
+  "$UMBRIEL_POINTER_CLIENT" 1280 720 tap "$key" > /dev/null
+  await_lines "$client_log" "key code=$((key + 8)) state=pressed window=$window" "$((before + 1))" 0.025
 }
 
 # The same metadata before association is the classification control. Broad
@@ -404,5 +422,27 @@ stop_client
 kill "$native_pid"
 wait "$native_pid" 2>/dev/null || true
 native_pid=
+
+# A utility window transient for another X11 window that refuses keyboard input is client-placed, like WeChat's search
+# suggestions. It must not join the layout or take typing from the window it belongs to.
+start_client passive
+send parent-map
+expect_managed
+parent_window=$(grep -o 'parent=0x[0-9a-f]*' "$client_log" | head -1 | cut -d= -f2)
+send 'transient' 'type utility' 'input false' 'take-focus' map
+expect_state passive 'map=2 override=false type=utility x=200 y=150 w=300 h=160 input=false active=false listed=true stacked=true max_horz=false max_vert=false fullscreen=false'
+expect_view_count 1
+expect_passive_pixels passive
+type_key_to 44 "$parent_window"
+
+# Remapping the same X window re-reads its metadata before the wrapper exists.
+send unmap
+expect_state passive-withdrawn 'map=0 override=false type=utility .* listed=false stacked=false max_horz=false max_vert=false fullscreen=false'
+send map
+expect_state passive-remapped 'map=2 override=false type=utility x=200 y=150 w=300 h=160 input=false active=false listed=true stacked=true max_horz=false max_vert=false fullscreen=false'
+expect_view_count 1
+expect_passive_pixels passive-remapped
+type_key_to 45 "$parent_window"
+stop_client
 
 echo 'mapped X11 windows reclassify by popup type and override-redirect state while preserving client geometry and input'
