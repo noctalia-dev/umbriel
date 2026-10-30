@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "output/output.h"
 #include "server/server.h"
 #include "wlr.h"
 #include "xwayland/primary.h"
@@ -76,7 +77,12 @@ namespace umbriel {
       kLog.error("failed to create the Xwayland server");
       return;
     }
-    m_outputs = std::make_unique<XwaylandOutputs>(server.display(), server.outputLayout(), m_nativeResolution);
+    m_outputs = std::make_unique<XwaylandOutputs>(
+        server.display(), server.outputLayout(), m_nativeResolution, [](const wlr_output* output) {
+          const auto* bound = static_cast<const Output*>(output->data);
+          return bound != nullptr ? bound->clientRenderScale() : static_cast<double>(output->scale);
+        }
+    );
     m_shapes = std::make_unique<XwaylandShapes>(server.display());
     m_primary = std::make_unique<XwaylandPrimary>(server.display());
     m_wlr->data = this;

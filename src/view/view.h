@@ -137,6 +137,10 @@ namespace umbriel {
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool captureBlocked() const { return m_captureBlocked; }
     void refreshCaptureProtection();
+
+    // The capture mirror scene carries its own downsample policy; keep it in
+    // step with the server's appearance.downsample.
+    void applyDownsampleMode(enum wlr_scene_downsample_mode mode);
     [[nodiscard]] bool mapped() const { return m_mapped; }
     // The pid of the application process, or -1 when it is unknown (an X11 client that sets no _NET_WM_PID).
     [[nodiscard]] pid_t pid() const;

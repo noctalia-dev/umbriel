@@ -312,6 +312,7 @@ namespace umbriel {
         std::println("  Position: {},{}", position.value("x", 0), position.value("y", 0));
         std::println("  Transform: {}", output.value("transform", "normal"));
         std::println("  Scale: {:f}", output.value("scale", 1.0));
+        std::println("  Render scale: {:f}", output.value("render_scale", 1.0));
         const auto& usable = output.at("usable_area");
         std::println(
             "  Usable area: {}x{}{:+}{:+}", usable.value("width", 0), usable.value("height", 0), usable.value("x", 0),
@@ -970,6 +971,7 @@ namespace umbriel {
           {"usable_area", {{"x", usable.x}, {"y", usable.y}, {"width", usable.width}, {"height", usable.height}}},
           {"transform", transformName(wlrOutput->transform)},
           {"scale", wlrOutput->scale},
+          {"render_scale", output->clientRenderScale()},
           {"adaptive_sync", std::move(adaptiveSync)},
           {"hdr_active", output->hdrActive()},
           {"direct_scanout", std::move(directScanout)},

@@ -477,56 +477,108 @@ static bool link_shaders(struct fx_renderer* renderer) {
   }
 
   // Basic fragment shaders
-  if (!link_tex_program(&renderer->shaders.tex_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_RGBA shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_RGBX shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_EXTERNAL shader");
     goto error;
   }
 
   // Effects fragment shaders
-  if (!link_tex_program(&renderer->shaders.tex_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_effects_RGBA shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_effects_RGBX shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, false)) {
+  if (!link_tex_program(&renderer->shaders.tex_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, false, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_effects_EXTERNAL shader");
     goto error;
   }
 
   // Sample-clamp fragment shaders for fractionally cropped surfaces
-  if (!link_tex_program(&renderer->shaders.tex_clamp_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_RGBA shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_clamp_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_RGBX shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_clamp_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_EXTERNAL shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_RGBA shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_RGBX shader");
     goto error;
   }
-  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, true)) {
+  if (!link_tex_program(&renderer->shaders.tex_clamp_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, true, false)) {
     wlr_log(WLR_ERROR, "Could not link tex_clamp_effects_EXTERNAL shader");
+    goto error;
+  }
+
+  // Box (area) downsample fragment shaders for minified sources
+  if (!link_tex_program(&renderer->shaders.tex_box_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_RGBA shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_RGBX shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_EXTERNAL shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_effects_RGBA shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_effects_RGBX shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, false, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_effects_EXTERNAL shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_clamp_rgba, SHADER_SOURCE_TEXTURE_RGBA, false, true, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_RGBA shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_clamp_rgbx, SHADER_SOURCE_TEXTURE_RGBX, false, true, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_RGBX shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_clamp_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, false, true, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_EXTERNAL shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_clamp_effects_rgba, SHADER_SOURCE_TEXTURE_RGBA, true, true, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_effects_RGBA shader");
+    goto error;
+  }
+  if (!link_tex_program(&renderer->shaders.tex_box_clamp_effects_rgbx, SHADER_SOURCE_TEXTURE_RGBX, true, true, true)) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_effects_RGBX shader");
+    goto error;
+  }
+  if (!link_tex_program(
+          &renderer->shaders.tex_box_clamp_effects_ext, SHADER_SOURCE_TEXTURE_EXTERNAL, true, true, true
+      )) {
+    wlr_log(WLR_ERROR, "Could not link tex_box_clamp_effects_EXTERNAL shader");
     goto error;
   }
   if (!link_output_program(&renderer->shaders.output)) {

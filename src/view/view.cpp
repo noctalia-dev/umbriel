@@ -199,6 +199,7 @@ namespace umbriel {
       } else {
         wlr_scene_subsurface_tree_create(&m_captureScene->tree, surface);
       }
+      applyDownsampleMode(m_server->sceneDownsampleMode());
     }
     if (m_xsurface != nullptr) {
       // Until the first configure places it, the window is drawn at the scale of the output its X position is on.
@@ -360,6 +361,12 @@ namespace umbriel {
   }
 
   wlr_scene_tree* View::captureTree() const { return m_captureScene != nullptr ? &m_captureScene->tree : nullptr; }
+
+  void View::applyDownsampleMode(enum wlr_scene_downsample_mode mode) {
+    if (m_captureScene != nullptr) {
+      wlr_scene_set_downsample_mode(m_captureScene, mode);
+    }
+  }
 
   void View::moveToWorkspace(Workspace* workspace, bool attachToLayout) {
     moveToWorkspace(workspace, attachToLayout, LayoutAttachOrigin::ExistingView);

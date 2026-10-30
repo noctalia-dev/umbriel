@@ -273,10 +273,12 @@ bool link_quad_grad_round_program(struct quad_grad_round_shader* shader, int max
   return true;
 }
 
-bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp) {
-  GLchar frag_src_part[8192];
-  GLchar frag_src[12288];
-  snprintf(frag_src_part, sizeof(frag_src_part), tex_frag_src, source, effects, sample_clamp);
+bool link_tex_program(
+    struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool downsample
+) {
+  GLchar frag_src_part[12288];
+  GLchar frag_src[16384];
+  snprintf(frag_src_part, sizeof(frag_src_part), tex_frag_src, source, effects, sample_clamp, downsample);
   snprintf(frag_src, sizeof(frag_src), "%s\n%s\n", frag_src_part, effects ? corner_alpha_frag_src : "");
 
   GLuint prog;
@@ -299,6 +301,8 @@ bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source sourc
 
   shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
   shader->sample_bounds = sample_clamp ? glGetUniformLocation(prog, "sample_bounds") : -1;
+  shader->taps = downsample ? glGetUniformLocation(prog, "taps") : -1;
+  shader->tap_step = downsample ? glGetUniformLocation(prog, "tap_step") : -1;
 
   if (!effects) {
     return true;

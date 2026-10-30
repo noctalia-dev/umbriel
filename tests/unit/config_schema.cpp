@@ -254,6 +254,21 @@ UMBRIEL_TEST(outputSdrTransferSchemaListsCanonicalValuesAndDefault) {
   CHECK(found);
 }
 
+UMBRIEL_TEST(outputRenderScaleSchemaDeclaresRangeAndUnsetDefault) {
+  const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
+  bool found = false;
+  for (const auto& key : descriptions) {
+    if (key.path == "output.<name>.render_scale") {
+      found = true;
+      CHECK_EQ(key.type, std::string_view{"float"});
+      CHECK_EQ(key.min, 0.25);
+      CHECK_EQ(key.max, 4.0);
+      CHECK(key.defaultValue.is_null());
+    }
+  }
+  CHECK(found);
+}
+
 UMBRIEL_TEST(effectPoolSchemaReportsMembersPoliciesAndRequiredKind) {
   const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
   bool kind = false;

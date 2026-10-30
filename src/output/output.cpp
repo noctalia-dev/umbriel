@@ -473,6 +473,11 @@ namespace umbriel {
     return rule == nullptr || rule->directScanout;
   }
 
+  double Output::clientRenderScale() const {
+    const OutputRule* rule = findOutputRule(config(), identity());
+    return rule != nullptr && rule->renderScale.has_value() ? *rule->renderScale : static_cast<double>(m_output->scale);
+  }
+
   bool Output::configuredTearingAllowed() const {
     const OutputRule* rule = findOutputRule(config(), identity());
     return rule != nullptr && rule->allowTearing;
@@ -985,8 +990,9 @@ namespace umbriel {
     m_server->updateIdleInhibit();
     if (enabled) {
       kLog.info(
-          "output '{}': applied mode={}x{}@{}mHz scale={} transform={}", m_output->name, m_output->width,
-          m_output->height, m_output->refresh, m_output->scale, static_cast<int>(m_output->transform)
+          "output '{}': applied mode={}x{}@{}mHz scale={} render_scale={} transform={}", m_output->name,
+          m_output->width, m_output->height, m_output->refresh, m_output->scale, clientRenderScale(),
+          static_cast<int>(m_output->transform)
       );
     } else if (!desktopEnabled()) {
       const OutputRule* rule = findOutputRule(config(), identity());
@@ -1324,8 +1330,12 @@ namespace umbriel {
     if (surface == nullptr || self == nullptr || self->m_output == nullptr) {
       return;
     }
-    wlr_fractional_scale_v1_notify_scale(surface, self->m_output->scale);
-    wlr_surface_set_preferred_buffer_scale(surface, static_cast<int32_t>(std::ceil(self->m_output->scale)));
+    // The hints carry the render scale alone: the scene samples the larger
+    // buffers down to the output's `scale` raster, and logical geometry is
+    // untouched.
+    const double renderScale = self->clientRenderScale();
+    wlr_fractional_scale_v1_notify_scale(surface, renderScale);
+    wlr_surface_set_preferred_buffer_scale(surface, static_cast<int32_t>(std::ceil(renderScale)));
   }
 
   Output::~Output() {

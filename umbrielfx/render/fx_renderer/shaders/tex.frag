@@ -1,12 +1,13 @@
 #define SOURCE % d
 #define EFFECTS % d
 #define SAMPLE_CLAMP % d
+#define DOWNSAMPLE % d
 
 #define SOURCE_TEXTURE_RGBA 1
 #define SOURCE_TEXTURE_RGBX 2
 #define SOURCE_TEXTURE_EXTERNAL 3
 
-#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP)
+#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP) || !defined(DOWNSAMPLE)
 #error "Missing shader preamble"
 #endif
 
@@ -68,15 +69,45 @@ uniform float discard_transparent;
 // every other draw keeps the exact fetch drivers already handle well.
 uniform vec4 sample_bounds;
 #define SAMPLE_UV clamp(v_texcoord, sample_bounds.xy, sample_bounds.zw)
+#define SAMPLE_AT(uv) clamp((uv), sample_bounds.xy, sample_bounds.zw)
 #else
 #define SAMPLE_UV v_texcoord
+#define SAMPLE_AT(uv) (uv)
 #endif
 
-vec4 sample_texture() {
+#if DOWNSAMPLE
+// Area (box) average for a minified source: taps.x times taps.y samples at
+// ratio/K texel steps, weighted evenly, tiling the fragment's whole footprint
+// (texel centers exactly while integer ratios fit the grid). The grid is
+// constant-bounded and skips entries past the per-axis tap counts, which the
+// pass derives from the minification ratio (clamped to 4).
+uniform vec2 taps;
+uniform vec2 tap_step;
+#endif
+
+vec4 sample_texel(vec2 uv) {
 #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
-  return texture2D(tex, SAMPLE_UV);
+  return texture2D(tex, SAMPLE_AT(uv));
 #elif SOURCE == SOURCE_TEXTURE_RGBX
-  return vec4(texture2D(tex, SAMPLE_UV).rgb, 1.0);
+  return vec4(texture2D(tex, SAMPLE_AT(uv)).rgb, 1.0);
+#endif
+}
+
+vec4 sample_texture() {
+#if DOWNSAMPLE
+  vec4 acc = vec4(0.0);
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      if (float(x) >= taps.x || float(y) >= taps.y) {
+        continue;
+      }
+      vec2 offset = (vec2(float(x), float(y)) + 0.5 - taps * 0.5) * tap_step;
+      acc += sample_texel(v_texcoord + offset);
+    }
+  }
+  return acc / (taps.x * taps.y);
+#else
+  return sample_texel(SAMPLE_UV);
 #endif
 }
 

@@ -69,6 +69,7 @@ files = []
 # mode = "2560x1440@144"
 # position = [0, 0]
 # scale = 1.25
+# render_scale = 2.0 # Supersample: clients render at 2.0, compositor samples down to `scale`.
 # vrr = "fullscreen"
 # hdr = "auto"
 # sdr_transfer = "gamma22" # Or "srgb" for piecewise SDR decoding in HDR.
@@ -78,6 +79,11 @@ files = []
 # Blur uses a smaller radius than the built-in default.
 # https://docs.noctalia.dev/umbriel/appearance/
 #
+# [appearance]
+# How content that shrinks is sampled: "box" averages the source texel
+# footprint, "bilinear" and "nearest" fetch a single texel per pixel.
+# downsample = "box"
+
 [appearance.blur]
 radius = 3
 
