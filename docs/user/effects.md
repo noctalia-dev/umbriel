@@ -62,14 +62,15 @@ screen_effect = "off"
 
 `[effects]`:
 
-| Key          | Default | Description                                                                                                                                                                                                         |
-| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`     | `""`    | Border preset or pool for the focused window.                                                                                                                                                                       |
-| `window`     | `""`    | Window preset or pool applied to every window.                                                                                                                                                                      |
-| `screen`     | `""`    | Screen preset or pool applied to every output.                                                                                                                                                                      |
-| `cursor`     | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                                                       |
-| `max_fps`    | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                                            |
-| `in_capture` | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear, and an export-dmabuf capture always sees the same frame as the display, regardless of this setting. |
+| Key           | Default | Description                                                                                                                                                                                                         |
+| ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `border`      | `""`    | Border preset or pool for the focused window.                                                                                                                                                                       |
+| `window`      | `""`    | Window preset or pool applied to every window.                                                                                                                                                                      |
+| `screen`      | `""`    | Screen preset or pool applied to every output.                                                                                                                                                                      |
+| `screen_cast` | `""`    | Screen preset or pool that replaces `screen` on an output while a client captures that output whole, as a portal screen share does. Other outputs keep theirs. It reaches viewers only with `in_capture`.           |
+| `cursor`      | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                                                       |
+| `max_fps`     | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                                            |
+| `in_capture`  | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear, and an export-dmabuf capture always sees the same frame as the display, regardless of this setting. |
 
 Where each kind draws:
 

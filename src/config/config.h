@@ -331,7 +331,8 @@ namespace umbriel {
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     SdrTransfer sdrTransfer = SdrTransfer::Gamma22;
-    std::optional<std::string> screenEffect; // "off" disables the default
+    std::optional<std::string> screenEffect;     // "off" disables the default
+    std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
     int bitDepth = 8;
     // Explicit workspace inventory. A count creates anonymous positional

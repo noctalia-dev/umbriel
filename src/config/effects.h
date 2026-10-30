@@ -103,6 +103,8 @@ namespace umbriel {
     std::string border; // "" = off
     std::string window;
     std::string screen;
+    // Replaces `screen` on an output while a client captures it whole. "" = none.
+    std::string screenCast;
     std::string cursor;
     int maxFps = 0; // 0-240, 0 follows the refresh rate
     bool inCapture = false;

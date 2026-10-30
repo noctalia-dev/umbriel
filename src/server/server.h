@@ -195,6 +195,8 @@ namespace umbriel {
     [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
     // True while a live cursor session is attached to a capture source of this output.
     [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
+    // True while a live image-copy session reads `output` as a whole.
+    [[nodiscard]] bool outputCaptured(const wlr_output* output) const;
     [[nodiscard]] wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     [[nodiscard]] ColorManager* colorManager() const { return m_colorManager.get(); }
     [[nodiscard]] const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
@@ -557,6 +559,7 @@ namespace umbriel {
     static void onNewImageCopySession(wl_listener* listener, void* data);
     static void onImageCopySessionDestroy(wl_listener* listener, void* data);
     void refreshCaptureRuleEffects(const wlr_ext_image_capture_source_v1* source);
+    void refreshScreenCastEffect(wlr_output* output);
     static void onNewActivationToken(wl_listener* listener, void* data);
     static void onActivationTokenDestroy(wl_listener* listener, void* data);
     static void onRequestActivate(wl_listener* listener, void* data);

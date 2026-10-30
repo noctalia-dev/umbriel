@@ -126,6 +126,9 @@ radius = 3
 #
 # [effects]
 # border = "pulse"
+# For a screen effect only while an output is shared (a portal screen share or a
+# screenshot), include /usr/share/umbriel/effects/screen/vignette/effect.toml and
+# set screen_cast = "vignette" in [effects]; add in_capture = true for viewers to see it.
 
 # ==============================================================================
 # Input

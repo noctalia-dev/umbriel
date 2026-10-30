@@ -1494,6 +1494,7 @@ namespace umbriel {
     self->m_imageCopySessions.push_back(std::move(watch));
     self->scheduleSuspensionSync();
     self->refreshCaptureRuleEffects(session->source);
+    self->refreshScreenCastEffect(self->m_imageCopySessions.back()->output);
   }
 
   // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
@@ -1502,6 +1503,7 @@ namespace umbriel {
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
     wlr_ext_image_capture_source_v1* source = watch->session->source;
+    wlr_output* captured = watch->output;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
@@ -1511,6 +1513,21 @@ namespace umbriel {
     }
     server->scheduleSuspensionSync();
     server->refreshCaptureRuleEffects(source);
+    server->refreshScreenCastEffect(captured);
+  }
+
+  // `effects.screen_cast` follows the sessions on an output source; only that output rebinds.
+  void Server::refreshScreenCastEffect(wlr_output* output) {
+    Output* target = outputFromWlr(output);
+    if (target == nullptr) {
+      return;
+    }
+    const std::string before(target->screenEffectSlot().effectiveName());
+    resolveOutputEffect(*target);
+    if (target->screenEffectSlot().effectiveName() != before) {
+      kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
+      target->applyOutputEffects();
+    }
   }
 
   // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.

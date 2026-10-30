@@ -913,6 +913,13 @@ namespace umbriel {
     }
   } // namespace
 
+  bool Server::outputCaptured(const wlr_output* output) const {
+    return output != nullptr
+        && std::ranges::any_of(m_imageCopySessions, [output](const std::unique_ptr<ImageCopySessionWatch>& watch) {
+             return watch->session != nullptr && watch->output == output;
+           });
+  }
+
   bool Server::hasCopyCaptureFor(const wlr_output* output) const {
     if (output == nullptr) {
       return false;
