@@ -55,8 +55,6 @@ Shortcut badges provide direct, unmodified key sequences for visible window card
 
 Set `shortcuts = false` to disable badges. A normal keybind takes precedence over a badge. `shortcut_keys` must contain at least two unique printable ASCII characters.
 
-When cursor following is enabled, selecting a window by its shortcut moves the cursor to the center of that window's visible area after the overview closes. Mouse selection and closing the overview with Escape keep their existing cursor behavior.
-
 ### Move windows
 
 Drag a window onto another workspace preview to move it. In a dynamic workspace list, dropping into a gap creates a workspace at that position. Static workspace inventories accept drops only onto existing previews.

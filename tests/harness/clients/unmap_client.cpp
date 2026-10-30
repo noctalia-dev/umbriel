@@ -106,8 +106,6 @@ namespace {
     xdg_toplevel* toplevel = nullptr;
     wl_seat* seat = nullptr;
     wl_keyboard* keyboard = nullptr;
-    wl_pointer* pointer = nullptr;
-    bool logPointer = false;
     wp_color_manager_v1* colorManager = nullptr;
     wp_color_management_surface_v1* colorSurface = nullptr;
     wp_image_description_v1* imageDescription = nullptr;
@@ -276,60 +274,11 @@ namespace {
       .repeat_info = keyboardRepeatInfo,
   };
 
-  void pointerEnter(void* data, wl_pointer*, uint32_t, wl_surface* surface, wl_fixed_t sx, wl_fixed_t sy) {
-    auto& state = *static_cast<State*>(data);
-    if (state.logPointer && surface == state.surface) {
-      std::println("pointer-enter x={:.3f} y={:.3f}", wl_fixed_to_double(sx), wl_fixed_to_double(sy));
-      std::fflush(stdout);
-    }
-  }
-
-  void pointerLeave(void*, wl_pointer*, uint32_t, wl_surface*) {}
-  void pointerMotion(void* data, wl_pointer*, uint32_t, wl_fixed_t sx, wl_fixed_t sy) {
-    auto& state = *static_cast<State*>(data);
-    if (state.logPointer) {
-      std::println("pointer-motion x={:.3f} y={:.3f}", wl_fixed_to_double(sx), wl_fixed_to_double(sy));
-      std::fflush(stdout);
-    }
-  }
-  void pointerButton(void*, wl_pointer*, uint32_t, uint32_t, uint32_t, uint32_t) {}
-  void pointerAxis(void*, wl_pointer*, uint32_t, uint32_t, wl_fixed_t) {}
-  void pointerFrame(void*, wl_pointer*) {}
-  void pointerAxisSource(void*, wl_pointer*, uint32_t) {}
-  void pointerAxisStop(void*, wl_pointer*, uint32_t, uint32_t) {}
-  void pointerAxisDiscrete(void*, wl_pointer*, uint32_t, int32_t) {}
-  void pointerAxisValue120(void*, wl_pointer*, uint32_t, int32_t) {}
-  void pointerAxisRelativeDirection(void*, wl_pointer*, uint32_t, uint32_t) {}
-#ifdef WL_POINTER_WARP_SINCE_VERSION
-  void pointerWarp(void*, wl_pointer*, wl_fixed_t, wl_fixed_t) {}
-#endif
-
-  constexpr wl_pointer_listener kPointerListener = {
-      .enter = pointerEnter,
-      .leave = pointerLeave,
-      .motion = pointerMotion,
-      .button = pointerButton,
-      .axis = pointerAxis,
-      .frame = pointerFrame,
-      .axis_source = pointerAxisSource,
-      .axis_stop = pointerAxisStop,
-      .axis_discrete = pointerAxisDiscrete,
-      .axis_value120 = pointerAxisValue120,
-      .axis_relative_direction = pointerAxisRelativeDirection,
-#ifdef WL_POINTER_WARP_SINCE_VERSION
-      .warp = pointerWarp,
-#endif
-  };
-
   void seatCapabilities(void* data, wl_seat* seat, uint32_t capabilities) {
     auto& state = *static_cast<State*>(data);
     if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0 && state.keyboard == nullptr) {
       state.keyboard = wl_seat_get_keyboard(seat);
       wl_keyboard_add_listener(state.keyboard, &kKeyboardListener, &state);
-    }
-    if (state.logPointer && (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0 && state.pointer == nullptr) {
-      state.pointer = wl_seat_get_pointer(seat);
-      wl_pointer_add_listener(state.pointer, &kPointerListener, &state);
     }
   }
 
@@ -879,7 +828,6 @@ int main(int argc, char** argv) {
   }
 
   State state;
-  state.logPointer = std::getenv("UMBRIEL_LOG_POINTER") != nullptr;
   state.title = argc > 1 ? argv[1] : "unmap-client";
   state.appId = std::getenv("APP_ID");
   state.remapAppId = std::getenv("APP_ID_AFTER_ACTIVATION");
@@ -1471,9 +1419,6 @@ int main(int argc, char** argv) {
   }
   if (state.keyboard != nullptr) {
     wl_keyboard_destroy(state.keyboard);
-  }
-  if (state.pointer != nullptr) {
-    wl_pointer_destroy(state.pointer);
   }
   if (state.seat != nullptr) {
     wl_seat_destroy(state.seat);

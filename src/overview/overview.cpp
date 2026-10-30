@@ -1747,7 +1747,6 @@ namespace umbriel {
     m_progress = 0.0;
     m_targetProgress = 0.0;
     m_pendingFocus = nullptr;
-    m_pendingCursorWarp = false;
     m_pointerOutput = m_server->outputFromWlr(m_server->preferredOutput());
     m_server->notifyOverviewChanged();
 
@@ -1804,7 +1803,6 @@ namespace umbriel {
       m_closing = false;
       m_server->notifyOverviewChanged();
       m_pendingFocus = nullptr;
-      m_pendingCursorWarp = false;
       if (m_progress < 1.0 || m_targetProgress < 1.0) {
         startAnimation(1.0, false);
       }
@@ -1884,7 +1882,6 @@ namespace umbriel {
       endDrag(false);
     }
     m_pendingFocus = nullptr;
-    m_pendingCursorWarp = false;
     teardown();
     restoreFocus(nullptr);
   }
@@ -2248,7 +2245,6 @@ namespace umbriel {
     });
     if (m_pendingFocus == view) {
       m_pendingFocus = nullptr;
-      m_pendingCursorWarp = false;
     }
     if (m_pressCard != nullptr && m_pressCard->view == view) {
       m_pressCard = nullptr;
@@ -2390,7 +2386,6 @@ namespace umbriel {
     }
     if (m_closing) {
       m_pendingFocus = nullptr;
-      m_pendingCursorWarp = false;
     }
     animateRow(*target, row);
     assignShortcuts();
@@ -2437,7 +2432,6 @@ namespace umbriel {
     cancelNavigation();
     if (m_closing) {
       m_pendingFocus = nullptr;
-      m_pendingCursorWarp = false;
     }
     applyProgress();
   }
@@ -3253,7 +3247,6 @@ namespace umbriel {
 
     if (m_closing && (directional || outputFocus)) {
       m_pendingFocus = nullptr;
-      m_pendingCursorWarp = false;
     }
 
     if (directional && interactive() && !m_shortcutInput.empty()) {
