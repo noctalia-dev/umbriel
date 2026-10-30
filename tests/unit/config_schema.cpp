@@ -254,6 +254,34 @@ UMBRIEL_TEST(outputSdrTransferSchemaListsCanonicalValuesAndDefault) {
   CHECK(found);
 }
 
+UMBRIEL_TEST(outputColorProfileSchemaListsBuiltinSourcesAndDefault) {
+  const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
+  bool found = false;
+  for (const auto& key : descriptions) {
+    if (key.path == "output.<name>.color_profile") {
+      found = true;
+      CHECK_EQ(key.type, std::string_view{"string"});
+      CHECK(key.values == std::vector<std::string_view>({"none", "edid"}));
+      CHECK(key.defaultValue == "none");
+    }
+  }
+  CHECK(found);
+}
+
+UMBRIEL_TEST(outputSdrGamutSchemaListsCanonicalValuesAndDefault) {
+  const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
+  bool found = false;
+  for (const auto& key : descriptions) {
+    if (key.path == "output.<name>.sdr_gamut") {
+      found = true;
+      CHECK_EQ(key.type, std::string_view{"enum"});
+      CHECK(key.values == std::vector<std::string_view>({"srgb", "native"}));
+      CHECK(key.defaultValue == "native");
+    }
+  }
+  CHECK(found);
+}
+
 UMBRIEL_TEST(effectPoolSchemaReportsMembersPoliciesAndRequiredKind) {
   const auto descriptions = umbriel::registry::describeConfig(umbriel::Config{});
   bool kind = false;

@@ -3939,6 +3939,9 @@ namespace umbriel {
         output->markBlurBackgroundDirty();
         wlr_scene_output_state_options options{};
         options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
+        // Test frames must carry the same supplied transform as regular frames
+        // or the built state silently drops SDR gamut mapping.
+        options.color_transform = output->stagedSdrGamutTransform();
         if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
           kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
           return false;

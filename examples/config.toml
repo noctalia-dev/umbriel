@@ -72,6 +72,8 @@ files = []
 # vrr = "fullscreen"
 # hdr = "auto"
 # sdr_transfer = "gamma22" # Or "srgb" for piecewise SDR decoding in HDR.
+# color_profile = "edid" # Or a factory ICC path; characterized panels describe themselves to tagged clients.
+# sdr_gamut = "srgb" # Map untagged SDR into the panel gamut; "native" stages no mapping.
 
 # ==============================================================================
 # Appearance

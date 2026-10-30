@@ -79,9 +79,19 @@ initial=$(snapshot initial)
 assert_sdr_descriptions
 assert_surface PQ true
 
-if ! jq -se '
+# icc_v2_v4 (feature 0) is advertised only in builds with the real ICC parser;
+# probe the shipped binary's own undefined lcms2 symbols instead of assuming
+# the feature list (ldd is useless here: unrelated libraries can pull liblcms2
+# into the transitive closure). grep -c, not -q: under pipefail an early-exit
+# grep SIGPIPEs nm and the pipeline reports failure.
+expected_features='[0, 1, 2, 3, 4, 5, 6, 7]'
+cms_symbols=$(nm -D --undefined-only "$UMBRIEL" 2>/dev/null | grep -cE '\bcms[A-Z]' || true)
+if ((cms_symbols == 0)); then
+  expected_features='[1, 2, 3, 4, 5, 6, 7]'
+fi
+if ! jq -se --argjson features "$expected_features" '
   any(.[]; .event == "manager" and .version == 2)
-  and ([.[] | select(.event == "feature") | .value] | unique | sort) == [1, 2, 4, 5, 6, 7]
+  and ([.[] | select(.event == "feature") | .value] | unique | sort) == $features
 ' "$CLIENT_LOG" > /dev/null; then
   echo "native color manager capabilities were incorrect: $(cat "$CLIENT_LOG")"
   exit 1

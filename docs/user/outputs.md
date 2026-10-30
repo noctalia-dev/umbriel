@@ -43,6 +43,8 @@ Umbriel first uses the first remaining enabled output in its internal output ord
 | `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                          |
 | `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                               |
 | `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                        |
+| `color_profile`                            | string                            | `"none"`     | SDR panel characterization: `"none"`, `"edid"`, or a path to an ICC profile.                    |
+| `sdr_gamut`                                | string                            | `"native"`   | SDR gamut policy while a characterization is active: `"native"` or `"srgb"`.                    |
 | `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                   |
 | `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                            |
 | `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                             |
@@ -271,6 +273,49 @@ Window captures, including portal window previews, honor the client's committed 
 Existing gamma-control clients, including Night Light tools, can adjust white point and brightness while HDR remains enabled. Umbriel uses each gamma ramp's white endpoint to adjust the image in linear light before PQ encoding. This retains HDR highlight headroom instead of clipping highlights to SDR white, though warming the image deliberately changes its colors and channel brightness.
 
 Custom gamma-curve calibration applies only in SDR. Umbriel keeps the client's latest full gamma table and restores it when the output returns to SDR. An HDR white-point adjustment applies to the whole display, including the cursor, and requires composition while active. SDR screenshots and recordings exclude this adjustment.
+
+### Color profile and SDR gamut
+
+A wide-color-gamut panel reads every signal in its own primaries. Untagged SDR content carries sRGB-encoded values and no tag, so the panel saturates them into its native gamut: reds and greens more vivid than the content, which is why a window that looks right on an sRGB monitor looks wrong here. Compositors fix this by characterizing the display and converting during composition.
+
+`color_profile` accepts `"none"`, `"edid"`, or a path to an ICC profile; characterization priority is the ICC file, then the EDID, then none. The ICC file is the factory measurement and is preferred. EDID colorimetry is derived from the display's own metadata. Nested and headless outputs have no EDID, so `color_profile = "edid"` logs a warning and stays inert there, while a file path still works. The characterization describes the panel in SDR mode; it interprets untagged SDR as sRGB and maps it into the panel's colorimetry when asked to.
+
+Profile paths follow these rules:
+
+- A relative path resolves against the directory of the config file that sets it, include files included.
+- `~` and `~/` expand to `$HOME`, like include paths. No other variable placeholders are expanded.
+- `"none"` and `"edid"` are reserved keywords. A file literally named `edid` (or `none`) must be spelled `./edid` (`./none`) or given as an absolute path.
+- The path must resolve to a readable regular file. Directories, FIFOs, and device files are rejected.
+
+Failures fall back down the characterization chain, never fail the output:
+
+- An invalid value (not `"none"`, `"edid"`, or a string) is ignored with a warning, and the output stays uncharacterized.
+- A path that cannot be resolved to a readable regular file at load time falls back to `"edid"` with a warning.
+- A profile the compositor cannot read at apply time (the file changed, disappeared, or is no longer regular), or an ICC profile it cannot parse, falls back to EDID with a warning. The apply-time read is authoritative: the load-time check is advisory and can be stale.
+- With no usable EDID either, the output stays uncharacterized and gamut mapping stays inactive.
+
+A profile file edit is picked up on the next config reload: the rule records the file's mtime, so the profile is re-read and re-applied. Configured profile files are watched along with the config, so saving one triggers the reload itself. EDID characterization is re-read whenever an output re-applies its state.
+
+`sdr_gamut` decides what happens to untagged SDR while a characterization is active:
+
+- `"native"` (the default) stages no transform at all. Pixels stay bit-identical to an uncharacterized output even with a profile set, so behavior only changes where the user opted in.
+- `"srgb"` interprets untagged SDR as sRGB and maps it into the panel's colorimetry — the oversaturation fix. The mapping is white-preserving (relative): the source white maps to the panel's native white, so switching between `"native"` and `"srgb"` does not change white.
+
+Tagged clients are separate from this policy: whenever a characterization is active, output and preferred color descriptions advertise the panel's real custom primaries under both settings, so applications with explicit color management convert accurately. Their pixels can therefore change as soon as a profile is configured, even under `sdr_gamut = "native"`; untagged content is untouched unless `sdr_gamut = "srgb"` stages the mapping.
+
+ICC import accepts matrix-shaper profiles only. LUT-based profiles (`A2B0`/`B2A0`) are rejected with a warning and fall back down the characterization chain. A `vcgt` tag is ignored with a warning: it is a pre-dispatch gamma ramp, not content colorimetry. While a mapping is staged it disables direct scanout — `color_profile = "none"` restores it — and SDR frames leave the 8-bit fast path for FP16 compositing with a per-damage re-encode, which increases composition and encoding work on redraws and may increase GPU power use. Screenshots and recordings show the on-screen mapped result, because capture re-encodes through the same transform.
+
+The characterization applies to SDR-mode composition only. Under HDR the PQ/BT.2020 pipeline, `sdr_white`, and `sdr_transfer` behave exactly as described above. Run `umbriel color` to inspect the resolved `panel_primaries` and `panel_transfer` alongside the configured `color_profile` and `sdr_gamut`.
+
+Building ICC support requires lcms2 (the `lcms2` meson feature option, which gates both output profile parsing and client ICC evaluation). Without it a configured profile path warns and falls back like an unreadable file, EDID characterization works but advertises no ICC bytes, and clients cannot create ICC-based image descriptions.
+
+#### Client ICC descriptions
+
+Clients can create ICC-based image descriptions through the protocol's `create_icc` creator; Umbriel advertises the `icc_v2_v4` and `set_tf_power` features that gate those requests (`icc_v2_v4` only when built with lcms2 — the fallback parser cannot accept any profile). Accepted profiles are ICC v2 or v4, 3-channel, of Display or ColorSpace class, matrix-shaper only, and at most 32 MB. A profile that fails any of that arrives as the description's `failed` event and allows no further information — never a protocol error. The only protocol errors are the request contract's own: setting the profile twice, an unreadable or unseekable file descriptor, a length outside `(0, 32 MB]`, and a range beyond the file.
+
+Client transfer curves meet the renderer as follows: profiles whose curves match sRGB or gamma 2.2 render through those named curves, and any other curve is approximated by a power fit in the protocol's `set_tf_power` range (1.0 to 10.0) that renders through the nearest named curve. This is an approximation; full fidelity for non-representable curves would need per-buffer 3D LUTs and is out of scope.
+
+Per the protocol's create contract, a client-created description does not answer `get_information`, so it never carries an `icc_file`. Output and preferred descriptions do send `icc_file` whenever a characterization is active: the exact configured bytes for a file profile, and a synthesized matrix-shaper profile matching the panel for an EDID characterization.
 
 ### Bit depth
 

@@ -10,13 +10,18 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fcntl.h>
+#include <format>
 #include <poll.h>
 #include <print>
 #include <ranges>
+#include <string>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <vector>
 #include <wayland-client.h>
 
 namespace {
@@ -35,6 +40,10 @@ namespace {
     uint32_t targetMaximum = 0;
     uint32_t maxCll = 0;
     uint32_t maxFall = 0;
+    uint32_t iccSize = 0;
+    std::string iccHead;
+    bool hasPrimaries = false;
+    std::array<int32_t, 8> primariesXY{};
   };
 
   struct State {
@@ -82,21 +91,70 @@ namespace {
 
   void informationDone(void* data, wp_image_description_info_v1* information) {
     const auto& description = *static_cast<Description*>(data);
+    std::string primariesJson = "null";
+    if (description.hasPrimaries) {
+      primariesJson = "[";
+      for (size_t index = 0; index < description.primariesXY.size(); ++index) {
+        primariesJson += std::format("{}{}", index == 0 ? "" : ",", description.primariesXY[index]);
+      }
+      primariesJson += "]";
+    }
     std::println(
         "{{\"event\":\"description\",\"source\":\"{}\",\"generation\":{},\"identity\":{},\"ready_version\":{},"
         "\"tf\":{},\"primaries\":{},"
-        "\"min\":{},\"max\":{},\"reference\":{},\"target_min\":{},\"target_max\":{},\"max_cll\":{},\"max_fall\":{}}}",
+        "\"min\":{},\"max\":{},\"reference\":{},\"target_min\":{},\"target_max\":{},\"max_cll\":{},\"max_fall\":{},"
+        "\"icc_size\":{},\"icc_head\":\"{}\",\"primaries_xy\":{}}}",
         description.source, description.generation, description.identity, description.readyVersion,
         description.transferFunction, description.primaries, description.minimum, description.maximum,
         description.reference, description.targetMinimum, description.targetMaximum, description.maxCll,
-        description.maxFall
+        description.maxFall, description.iccSize, description.iccHead, primariesJson
     );
     std::fflush(stdout);
     wp_image_description_info_v1_destroy(information);
     wp_image_description_v1_destroy(description.proxy);
   }
-  void informationIcc(void*, wp_image_description_info_v1*, int32_t fd, uint32_t) { close(fd); }
+  // Surfacing, not swallowing: the icc_file fd is read
+  // whole, its size and first bytes ride the description JSON, and the exact
+  // bytes land at $UMBRIEL_ICC_DUMP.<source>.<generation> so a check can
+  // byte-compare them against the configured profile.
+  void informationIcc(void* data, wp_image_description_info_v1*, int32_t fd, uint32_t size) {
+    auto& description = *static_cast<Description*>(data);
+    std::string contents;
+    contents.reserve(size);
+    char buffer[4096];
+    ssize_t got = 0;
+    while ((got = read(fd, buffer, sizeof(buffer))) > 0) {
+      contents.append(buffer, static_cast<size_t>(got));
+    }
+    close(fd);
+    if (got < 0) {
+      std::println(stderr, "color-feedback-client: reading icc_file failed: {}", std::strerror(errno));
+      return;
+    }
+    description.iccSize = static_cast<uint32_t>(contents.size());
+    for (size_t index = 0; index < std::min<size_t>(8, contents.size()); ++index) {
+      description.iccHead += std::format("{:02x}", static_cast<unsigned char>(contents[index]));
+    }
+    const char* dump = std::getenv("UMBRIEL_ICC_DUMP");
+    if (dump != nullptr && !contents.empty()) {
+      const std::string path = std::format("{}.{}.{}", dump, description.source, description.generation);
+      if (FILE* out = std::fopen(path.c_str(), "wb")) {
+        std::fwrite(contents.data(), 1, contents.size(), out);
+        std::fclose(out);
+      } else {
+        std::println(stderr, "color-feedback-client: cannot dump icc_file to {}", path);
+      }
+    }
+  }
   void informationPrimaries(
+      void* data, wp_image_description_info_v1*, int32_t redX, int32_t redY, int32_t greenX, int32_t greenY,
+      int32_t blueX, int32_t blueY, int32_t whiteX, int32_t whiteY
+  ) {
+    auto& description = *static_cast<Description*>(data);
+    description.primariesXY = {redX, redY, greenX, greenY, blueX, blueY, whiteX, whiteY};
+    description.hasPrimaries = true;
+  }
+  void informationTargetPrimaries(
       void*, wp_image_description_info_v1*, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t
   ) {}
   void informationPrimariesNamed(void* data, wp_image_description_info_v1*, uint32_t primaries) {
@@ -134,7 +192,29 @@ namespace {
       .tf_power = informationTransferPower,
       .tf_named = informationTransferNamed,
       .luminances = informationLuminances,
-      .target_primaries = informationPrimaries,
+      .target_primaries = informationTargetPrimaries,
+      .target_luminance = informationTargetLuminance,
+      .target_max_cll = informationMaxCll,
+      .target_max_fall = informationMaxFall,
+  };
+  // Repeated get_information on one description answers with the same data
+  // every time, so the storm counter only needs the done events; the icc_file
+  // fds are the client's to close just like the single-shot paths do.
+  unsigned stormDone = 0;
+  void informationDoneCount(void*, wp_image_description_info_v1* information) {
+    ++stormDone;
+    wp_image_description_info_v1_destroy(information);
+  }
+  void informationDiscardIcc(void*, wp_image_description_info_v1*, int32_t fd, uint32_t) { close(fd); }
+  constexpr wp_image_description_info_v1_listener kCountingListener{
+      .done = informationDoneCount,
+      .icc_file = informationDiscardIcc,
+      .primaries = informationPrimaries,
+      .primaries_named = informationPrimariesNamed,
+      .tf_power = informationTransferPower,
+      .tf_named = informationTransferNamed,
+      .luminances = informationLuminances,
+      .target_primaries = informationTargetPrimaries,
       .target_luminance = informationTargetLuminance,
       .target_max_cll = informationMaxCll,
       .target_max_fall = informationMaxFall,
@@ -165,7 +245,11 @@ namespace {
   };
 
   void observeDescription(State& state, wp_image_description_v1* proxy, const char* source, unsigned generation) {
-    state.descriptions.push_back({.proxy = proxy, .source = source, .generation = generation});
+    Description entry;
+    entry.proxy = proxy;
+    entry.source = source;
+    entry.generation = generation;
+    state.descriptions.push_back(entry);
     wp_image_description_v1_add_listener(proxy, &kDescriptionListener, &state.descriptions.back());
   }
   void outputChanged(void* data, wp_color_management_output_v1* output) {
@@ -365,17 +449,22 @@ namespace {
     bool ready = false;
     bool failed = false;
     uint32_t cause = 0;
+    uint64_t identity = 0;
   };
   void resultFailed(void* data, wp_image_description_v1*, uint32_t cause, const char*) {
     auto& result = *static_cast<DescriptionResult*>(data);
     result.failed = true;
     result.cause = cause;
   }
-  void resultReady(void* data, wp_image_description_v1*, uint32_t) {
-    static_cast<DescriptionResult*>(data)->ready = true;
+  void resultReady(void* data, wp_image_description_v1*, uint32_t identity) {
+    auto& result = *static_cast<DescriptionResult*>(data);
+    result.ready = true;
+    result.identity = identity;
   }
-  void resultReady2(void* data, wp_image_description_v1*, uint32_t, uint32_t) {
-    static_cast<DescriptionResult*>(data)->ready = true;
+  void resultReady2(void* data, wp_image_description_v1*, uint32_t high, uint32_t low) {
+    auto& result = *static_cast<DescriptionResult*>(data);
+    result.ready = true;
+    result.identity = (static_cast<uint64_t>(high) << 32) | low;
   }
   constexpr wp_image_description_v1_listener kResultListener{
       .failed = resultFailed,
@@ -445,6 +534,245 @@ int main(int argc, char** argv) {
     wp_image_description_v1_destroy(description);
     wl_display_disconnect(state.display);
     return 0;
+  }
+  if (argc >= 2 && std::strncmp(argv[1], "icc-", 4) == 0) {
+    // create_icc drive: one-shot modes that build a
+    // wp_image_description_creator_icc_v1 from a profile file and report the
+    // wire outcome as one JSON line.
+    const char* mode = argv[1] + 4;
+    if (std::strcmp(mode, "nonregular") == 0) {
+      // The fd must be a seekable, readable regular file: a directory fd
+      // lseeks fine but cannot be read, so it must be refused at set_icc_file.
+      const int fd = open(".", O_RDONLY | O_DIRECTORY);
+      if (fd < 0) {
+        std::println(stderr, "color-feedback-client: cannot open a directory fd");
+        return 1;
+      }
+      auto* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+      wp_image_description_creator_icc_v1_set_icc_file(creator, fd, 0, 1);
+      close(fd);
+      if (!expectProtocolError(
+              state, &wp_image_description_creator_icc_v1_interface, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_FD
+          )) {
+        std::println(stderr, "color-feedback-client: the directory fd was not refused with bad_fd");
+        return 1;
+      }
+      std::println(
+          R"({{"event":"icc_bad_fd","code":{}}})",
+          static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_FD)
+      );
+      wl_display_disconnect(state.display);
+      return 2;
+    }
+    if (std::strcmp(mode, "storm") == 0) {
+      // Repeated get_information on one output description: each answer
+      // advertises the profile through icc_file, so the compositor must not
+      // accumulate descriptors or profile copies across the loop.
+      const int count = argc == 3 ? std::atoi(argv[2]) : 0;
+      if (count <= 0) {
+        std::println(stderr, "color-feedback-client: icc-storm needs a positive request count");
+        return 1;
+      }
+      state.colorOutput = wp_color_manager_v1_get_output(state.manager, state.output);
+      wp_image_description_v1* description = wp_color_management_output_v1_get_image_description(state.colorOutput);
+      DescriptionResult result;
+      wp_image_description_v1_add_listener(description, &kResultListener, &result);
+      while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+      }
+      if (!result.ready) {
+        std::println(stderr, "color-feedback-client: output description was not ready for the icc storm");
+        return 1;
+      }
+      Description sink;
+      for (int request = 0; request < count; ++request) {
+        wp_image_description_info_v1* information = wp_image_description_v1_get_information(description);
+        wp_image_description_info_v1_add_listener(information, &kCountingListener, &sink);
+        if (wl_display_roundtrip(state.display) < 0) {
+          std::println(stderr, "color-feedback-client: the icc storm died at request {}", request);
+          return 1;
+        }
+      }
+      std::println(R"({{"event":"icc_storm","requests":{},"answered":{}}})", count, stormDone);
+      wp_image_description_v1_destroy(description);
+      wl_display_disconnect(state.display);
+      return 0;
+    }
+    if (std::strcmp(mode, "cap-creators") == 0) {
+      // The per-client budget admits four concurrent creators; the fifth
+      // request must be refused instead of staging another profile.
+      std::array<wp_image_description_creator_icc_v1*, 5> creators{};
+      for (auto*& creator : creators) {
+        creator = wp_color_manager_v1_create_icc_creator(state.manager);
+      }
+      if (!expectProtocolError(state, &wp_color_manager_v1_interface, WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE)) {
+        std::println(stderr, "color-feedback-client: the fifth concurrent ICC creator was not refused");
+        return 1;
+      }
+      std::println(
+          R"({{"event":"icc_cap_creators","code":{}}})",
+          static_cast<uint32_t>(WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE)
+      );
+      wl_display_disconnect(state.display);
+      return 2;
+    }
+    if (std::strcmp(mode, "cap-bytes") == 0) {
+      // One maximum-size profile fills the per-client byte budget, so a
+      // second creator's set_icc_file must be refused before it allocates.
+      const int first = open(argv[2], O_RDONLY);
+      const int second = open(argv[2], O_RDONLY);
+      if (first < 0 || second < 0) {
+        std::println(stderr, "color-feedback-client: cannot open ICC budget fixture {}", argv[2]);
+        return 1;
+      }
+      auto* filled = wp_color_manager_v1_create_icc_creator(state.manager);
+      auto* overflow = wp_color_manager_v1_create_icc_creator(state.manager);
+      wp_image_description_creator_icc_v1_set_icc_file(filled, first, 0, 32U * 1024U * 1024U);
+      wp_image_description_creator_icc_v1_set_icc_file(overflow, second, 0, 1);
+      close(first);
+      close(second);
+      if (!expectProtocolError(
+              state, &wp_image_description_creator_icc_v1_interface, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE
+          )) {
+        std::println(stderr, "color-feedback-client: the ICC byte budget did not refuse the overflow set_icc_file");
+        return 1;
+      }
+      std::println(
+          R"({{"event":"icc_cap_bytes","code":{}}})",
+          static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE)
+      );
+      wl_display_disconnect(state.display);
+      return 2;
+    }
+    if (std::strcmp(mode, "cap-retained") == 0) {
+      // Created descriptions keep their exact profile bytes, so the budget
+      // covers what the client already created: two maximum-padded
+      // descriptions leave no room for a third staging buffer.
+      std::array<wp_image_description_v1*, 2> kept{};
+      for (size_t index = 0; index < 3; ++index) {
+        const int fd = open(argv[2], O_RDONLY);
+        if (fd < 0) {
+          std::println(stderr, "color-feedback-client: cannot open ICC budget fixture {}", argv[2]);
+          return 1;
+        }
+        const off_t length = lseek(fd, 0, SEEK_END);
+        lseek(fd, 0, SEEK_SET);
+        auto* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+        wp_image_description_creator_icc_v1_set_icc_file(creator, fd, 0, static_cast<uint32_t>(length));
+        close(fd);
+        if (expectProtocolError(
+                state, &wp_image_description_creator_icc_v1_interface,
+                WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE
+            )) {
+          std::println(
+              R"({{"event":"icc_cap_retained","code":{},"iteration":{}}})",
+              static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE), index
+          );
+          wl_display_disconnect(state.display);
+          return 2;
+        }
+        auto* description = wp_image_description_creator_icc_v1_create(creator);
+        DescriptionResult result;
+        wp_image_description_v1_add_listener(description, &kResultListener, &result);
+        while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+        }
+        if (!result.ready) {
+          std::println(stderr, "color-feedback-client: budget fixture did not parse (cause {})", result.cause);
+          return 1;
+        }
+        if (index < kept.size()) {
+          kept[index] = description;
+        }
+      }
+      std::println(stderr, "color-feedback-client: the retained ICC budget did not refuse the third description");
+      return 1;
+    }
+    if (argc != 3) {
+      std::println(stderr, "color-feedback-client: icc mode {} needs a profile argument", mode);
+      return 1;
+    }
+    const int fd = open(argv[2], O_RDONLY);
+    if (fd < 0) {
+      std::println(stderr, "color-feedback-client: cannot open ICC profile {}", argv[2]);
+      return 1;
+    }
+    const off_t length = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+    if (length <= 0 || static_cast<unsigned long long>(length) > 0xFFFFFFFFULL) {
+      std::println(stderr, "color-feedback-client: unusable ICC profile size {}", static_cast<long long>(length));
+      close(fd);
+      return 1;
+    }
+    wp_image_description_creator_icc_v1* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+    if (std::strcmp(mode, "oversize") == 0) {
+      // bad_size is a request-contract protocol error ("If length is greater
+      // than [32 MB] or zero"): it kills this connection and nothing else.
+      wp_image_description_creator_icc_v1_set_icc_file(creator, fd, 0, 33U * 1024U * 1024U);
+      close(fd);
+      if (!expectProtocolError(
+              state, &wp_image_description_creator_icc_v1_interface, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE
+          )) {
+        std::println(stderr, "color-feedback-client: oversized set_icc_file did not raise bad_size");
+        return 1;
+      }
+      std::println(
+          R"({{"event":"icc_bad_size","code":{}}})",
+          static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE)
+      );
+      wl_display_disconnect(state.display);
+      return 2;
+    }
+    wp_image_description_creator_icc_v1_set_icc_file(creator, fd, 0, static_cast<uint32_t>(length));
+    close(fd);
+    wp_image_description_v1* description = wp_image_description_creator_icc_v1_create(creator);
+    DescriptionResult result;
+    wp_image_description_v1_add_listener(description, &kResultListener, &result);
+    while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+    }
+    if (std::strcmp(mode, "ready") == 0) {
+      if (!result.ready) {
+        std::println(R"({{"event":"icc_failed","cause":{}}})", result.cause);
+        return 1;
+      }
+      std::println(R"({{"event":"icc_ready","identity":{}}})", result.identity);
+      wp_image_description_v1_destroy(description);
+      wl_display_disconnect(state.display);
+      return 0;
+    }
+    if (std::strcmp(mode, "denied") == 0) {
+      // The create contract: "The resulting image description object does not
+      // allow get_information request" — no_information, never ICC bytes.
+      wp_image_description_info_v1* information = wp_image_description_v1_get_information(description);
+      (void)information;
+      if (!result.ready
+          || !expectProtocolError(
+              state, &wp_image_description_v1_interface, WP_IMAGE_DESCRIPTION_V1_ERROR_NO_INFORMATION
+          )) {
+        std::println(stderr, "color-feedback-client: client-created description answered get_information");
+        return 1;
+      }
+      std::println(
+          R"({{"event":"icc_info_denied","code":{}}})",
+          static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_V1_ERROR_NO_INFORMATION)
+      );
+      wl_display_disconnect(state.display);
+      return 0;
+    }
+    if (std::strcmp(mode, "failed") == 0) {
+      // Rejected profiles fail gracefully ('unsupported'), and the failed
+      // description exposes no information either (not_ready).
+      wp_image_description_info_v1* information = wp_image_description_v1_get_information(description);
+      (void)information;
+      if (!result.failed
+          || !expectProtocolError(state, &wp_image_description_v1_interface, WP_IMAGE_DESCRIPTION_V1_ERROR_NOT_READY)) {
+        std::println(stderr, "color-feedback-client: rejected profile did not fail with information unavailable");
+        return 1;
+      }
+      std::println(R"({{"event":"icc_failed","cause":{},"information_denied":"not_ready"}})", result.cause);
+      wl_display_disconnect(state.display);
+      return 0;
+    }
+    std::println(stderr, "color-feedback-client: unknown icc mode: {}", mode);
+    return 1;
   }
   if (argc == 2 && std::strncmp(argv[1], "params-", 7) == 0) {
     const char* mode = argv[1] + 7;
