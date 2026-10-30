@@ -4406,6 +4406,13 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene* scene, struct wlr_color_ma
   wl_signal_add(&manager->events.destroy, &scene->color_manager_v1_destroy);
 }
 
+void wlr_scene_set_preferred_scale_provider(
+    struct wlr_scene* scene, double (*get)(struct wlr_output* output, void* data), void* data
+) {
+  scene->preferred_scale_provider = get;
+  scene->preferred_scale_provider_data = data;
+}
+
 static void scene_output_handle_destroy(struct wlr_addon* addon) {
   struct wlr_scene_output* scene_output = wl_container_of(addon, scene_output, addon);
   wlr_scene_output_destroy(scene_output);

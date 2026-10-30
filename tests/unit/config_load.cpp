@@ -752,6 +752,47 @@ center_focused = true
   CHECK(!store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
 }
 
+UMBRIEL_TEST(outputRenderScaleIsHonoredWarnedAndClamped) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(R"(
+[output.DP-1]
+scale = 1.5
+render_scale = 2.0
+
+[output.HDMI-1]
+scale = 1.5
+render_scale = 1.0
+)");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{2});
+  CHECK(store.config().outputs[0].renderScale.has_value());
+  CHECK_EQ(*store.config().outputs[0].renderScale, 2.0);
+  CHECK(store.config().outputs[1].renderScale.has_value());
+  CHECK_EQ(*store.config().outputs[1].renderScale, 1.0);
+  CHECK(containsDiagnostic(store, "output.HDMI-1.render_scale"));
+  CHECK(containsDiagnostic(store, "undersamples"));
+
+  file.write("[output.DP-1]\nscale = 1.5\nrender_scale = 9.0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(*store.config().outputs[0].renderScale, 4.0);
+  CHECK(containsDiagnostic(store, "output.DP-1.render_scale = 9"));
+
+  // Without `scale`, the warn compares against the documented default: an
+  // undersampling render_scale still warns and is still honored.
+  file.write("[output.DP-1]\nrender_scale = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(*store.config().outputs[0].renderScale, 0.5);
+  CHECK(containsDiagnostic(store, "undersamples"));
+
+  file.write("[output.DP-1]\nscale = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].renderScale.has_value());
+  CHECK(!containsDiagnostic(store, "render_scale"));
+}
+
 UMBRIEL_TEST(outputWorkspaceAxisAcceptsOnlyItsTwoNames) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

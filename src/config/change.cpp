@@ -46,6 +46,7 @@ namespace umbriel {
           && lhs.mode == rhs.mode
           && lhs.position == rhs.position
           && lhs.scale == rhs.scale
+          && lhs.renderScale == rhs.renderScale
           && lhs.transform == rhs.transform
           && lhs.vrr == rhs.vrr
           && lhs.hdr == rhs.hdr

@@ -124,6 +124,9 @@ namespace umbriel {
     [[nodiscard]] int configuredBitDepth() const;
     [[nodiscard]] const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
     [[nodiscard]] bool configuredDirectScanoutEnabled() const;
+    // The scale clients are asked to render at: the rule's render_scale, or the
+    // logical scale when it is unset.
+    [[nodiscard]] double clientRenderScale() const;
     [[nodiscard]] bool configuredTearingAllowed() const;
     // Whether a workspace step wraps around the ends of this output's inventory.
     [[nodiscard]] bool configuredCyclicWorkspaces() const;

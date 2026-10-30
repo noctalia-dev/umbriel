@@ -204,6 +204,22 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
 }
 
+UMBRIEL_TEST(aRenderScaleChangeReappliesOutputState) {
+  Config before;
+  before.outputs.push_back({});
+  before.outputs.back().name = "DP-1";
+  before.outputs.back().scale = 1.25;
+
+  Config after = before;
+  after.outputs[0].renderScale = 2.0;
+
+  CHECK(ConfigChange::between(before, after).outputs);
+  CHECK(ConfigEffects::between(before, after).outputState);
+  // Dropping the key again must re-notify clients back to the logical scale.
+  CHECK(ConfigChange::between(after, before).outputs);
+  CHECK(ConfigEffects::between(after, before).outputState);
+}
+
 UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   const Config before;
   Config after;

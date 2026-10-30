@@ -170,6 +170,12 @@ struct wlr_scene {
     float background_color[4];
     size_t capture_protected_nodes;
     bool capture_policy_failed;
+
+    // May be NULL: the scale clients should render at for a surface presented
+    // on a given output (its render scale). Derivation falls back to the
+    // output's own scale.
+    double (*preferred_scale_provider)(struct wlr_output* output, void* data);
+    void* preferred_scale_provider_data;
   } WLR_PRIVATE;
 };
 
@@ -582,6 +588,17 @@ void wlr_scene_set_gamma_control_manager_v1(
  * Asserts that a struct wlr_color_manager_v1 hasn't already been set for the scene.
  */
 void wlr_scene_set_color_manager_v1(struct wlr_scene* scene, struct wlr_color_manager_v1* manager);
+
+/**
+ * Overrides the preferred client scale derived when a surface's outputs
+ * change. `get` answers with the scale clients should render at for the given
+ * output; answers of 0 or below exclude that output from the derivation. A
+ * scene without a provider is a render-only mirror: it keeps output membership
+ * for frame pacing but publishes no scale hints to its surfaces' clients.
+ */
+void wlr_scene_set_preferred_scale_provider(
+    struct wlr_scene* scene, double (*get)(struct wlr_output* output, void* data), void* data
+);
 
 /**
  * Add a node displaying nothing but its children.

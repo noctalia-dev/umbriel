@@ -322,6 +322,9 @@ namespace umbriel {
     std::optional<OutputMode> mode;
     std::optional<std::array<int, 2>> position;
     std::optional<double> scale;
+    // Scale clients are asked to render at; the compositor samples the larger
+    // buffers down to the `scale` raster. Unset follows the logical scale.
+    std::optional<double> renderScale;
     std::optional<int> transform;
     VrrMode vrr = VrrMode::Disabled;
     bool focusAtStartup = false;

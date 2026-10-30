@@ -137,6 +137,7 @@ namespace umbriel {
               }
           ),
           registry::real("scale", 0.25, 4.0, &O::scale),
+          registry::real("render_scale", 0.25, 4.0, &O::renderScale),
           registry::choice("vrr", &O::vrr, vrrModes()),
           registry::choice("hdr", &O::hdr, hdrModes()),
           registry::real("sdr_white", 80.0, 1000.0, &O::sdrWhite),
@@ -195,6 +196,16 @@ namespace umbriel {
       }
       if (const toml::node* minNode = keys.node("min_workspaces"); minNode != nullptr && rule.workspaces) {
         errorAt(minNode->source(), "{} requires dynamic workspaces", keys.qualified("min_workspaces"));
+      }
+      // The warning compares against the documented default logical scale when
+      // the rule omits `scale`; an auto-detected output scale is not knowable
+      // at parse.
+      if (const toml::node* renderNode = keys.node("render_scale");
+          renderNode != nullptr && rule.renderScale.has_value() && *rule.renderScale < rule.scale.value_or(1.0)) {
+        warnAt(
+            renderNode->source(), "{} below the logical scale undersamples (blurry output)",
+            keys.qualified("render_scale")
+        );
       }
       loaded.outputs.push_back(std::move(rule));
       recordRuleEffect(context, keys, "screen_effect", EffectKind::Screen, [&loaded, name] {

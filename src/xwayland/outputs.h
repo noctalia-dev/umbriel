@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,7 +47,13 @@ namespace umbriel {
   // goes through an XwaylandRegion.
   class XwaylandOutputs {
   public:
-    XwaylandOutputs(wl_display* display, wlr_output_layout* layout, bool nativeResolution);
+    // The scale X11 clients are asked to render each output at — its render
+    // scale, resolved through the shell's output binding.
+    using RenderScale = std::function<double(const wlr_output*)>;
+    // Empty `renderScale` publishes each output's own scale.
+    XwaylandOutputs(
+        wl_display* display, wlr_output_layout* layout, bool nativeResolution, RenderScale renderScale = {}
+    );
     ~XwaylandOutputs();
 
     XwaylandOutputs(const XwaylandOutputs&) = delete;
@@ -97,6 +104,7 @@ namespace umbriel {
     wlr_output_layout* m_layout = nullptr;
     wl_global* m_global = nullptr;
     bool m_nativeResolution = false;
+    RenderScale m_renderScale;
     double m_scale = 1.0;
     // Stands in when no output is in the layout: a plain translation to the X origin.
     XwaylandRegion m_fallback;
