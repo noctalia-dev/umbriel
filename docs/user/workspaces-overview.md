@@ -39,6 +39,8 @@ Press `Mod+O` by default, or use an [overview action](actions.md#overview). Open
 
 Two-finger scrolling and three-finger swipes navigate continuously. Movement along the output's [workspace axis](workspaces.md#workspace-axis) moves between workspaces. Movement across it pans a scrolling workspace preview. Dwindle and Master layouts have no strip to pan.
 
+While a window card drag is held, scrolling stays live and both dimensions use the same mechanic: two-finger travel pans the layout strip across the workspace axis and the workspace rows along it, and holding the dragged card near a screen edge slides whichever dimension runs toward it with [drag edge scroll](input.md#drag-edge-scroll) — the strip at its ends, the workspace rows at theirs. The rows never step to another workspace under the hold; releasing drops the window on the workspace under the pointer, which then becomes active.
+
 Touchpad `natural_scroll` controls gesture direction. The horizontal and vertical overview factors adjust gesture distance and wheel sensitivity without changing application scrolling.
 
 #### Which window actions act on

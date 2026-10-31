@@ -2416,6 +2416,12 @@ namespace umbriel {
     if (m_navigationOutput == group->output()) {
       cancelNavigation();
     }
+    // A row pruned mid-drag must not survive in the drop state: endDrag and the edge-scroll timer both resolve
+    // the strip through it. The hint clears with it, like every other drop-state reset (onOutputRemoved).
+    if (m_drop.workspace != nullptr && !workspaceRowAlive(m_drop.workspace)) {
+      hideDropHint();
+      m_drop = {};
+    }
     OutputState* state = stateFor(group->output());
     if (state == nullptr) {
       return;
@@ -2542,8 +2548,9 @@ namespace umbriel {
     return nullptr;
   }
 
-  Workspace*
-  Overview::workspaceAtPoint(double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis) {
+  Workspace* Overview::workspaceAtPoint(
+      double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis, bool extendFilmstripEnds
+  ) {
     for (const auto& state : m_outputs) {
       PreviewMetrics metrics{};
       if (!previewMetrics(*state, *m_server, zoom(), metrics)) {
@@ -2577,6 +2584,32 @@ namespace umbriel {
           } else {
             box.x = metrics.outputBox.x;
             box.width = metrics.outputBox.width;
+          }
+        }
+        if (extendFilmstripEnds) {
+          // The same dead-zone fix along the workspace axis, drop targeting only: the rows at either end of the
+          // filmstrip claim the space out to the output edge, so a card dragged (or edge-scroll panned) past the
+          // last preview still drops on the end workspace. Insertion gaps keep priority — workspaceGapAt runs
+          // first and still owns the spaces between previews and the dynamic edge before row 0. Wheel, pointer
+          // scroll and navigation lookups pass this false and keep their previous hitboxes.
+          const size_t count = state->workspaceBackgrounds.size();
+          if (index == 0) {
+            if (horizontalWorkspaces) {
+              const int end = box.x + box.width;
+              box.x = metrics.outputBox.x;
+              box.width = end - box.x;
+            } else {
+              const int end = box.y + box.height;
+              box.y = metrics.outputBox.y;
+              box.height = end - box.y;
+            }
+          }
+          if (index + 1 == count) {
+            if (horizontalWorkspaces) {
+              box.width = metrics.outputBox.x + metrics.outputBox.width - box.x;
+            } else {
+              box.height = metrics.outputBox.y + metrics.outputBox.height - box.y;
+            }
           }
         }
         if (!boxContains(box, lx, ly)) {
@@ -2733,7 +2766,7 @@ namespace umbriel {
       m_middlePressCard = card;
       Workspace* workspace = card != nullptr && card->view != nullptr
           ? card->view->workspace()
-          : workspaceAtPoint(lx, ly, nullptr, nullptr, false);
+          : workspaceAtPoint(lx, ly, nullptr, nullptr, false, false);
       m_middleOutput = workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : nullptr;
       m_middlePressX = lx;
       m_middlePressY = ly;
@@ -2753,7 +2786,7 @@ namespace umbriel {
     m_pressX = lx;
     m_pressY = ly;
     if (card == nullptr) {
-      m_pressWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, false);
+      m_pressWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, false, false);
     }
     return true;
   }
@@ -2854,6 +2887,11 @@ namespace umbriel {
   }
 
   bool Overview::handleAxisNotch(bool vertical, double direction, double lx, double ly) {
+    if (m_dragCard != nullptr) {
+      // Pan-only while a card drag is live: a wheel notch commits a workspace/focus move, which the contract
+      // forbids under the held card (and it would leave the drop stale). Ignore the notch entirely.
+      return true;
+    }
     cancelNavigation();
     if (!interactive()) {
       return true;
@@ -2867,7 +2905,7 @@ namespace umbriel {
       selectRelativeWorkspace(sign, output);
       return true;
     }
-    Workspace* workspace = workspaceAtPoint(lx, ly, nullptr, nullptr, true);
+    Workspace* workspace = workspaceAtPoint(lx, ly, nullptr, nullptr, true, false);
     ScrollingLayout* scrolling = workspace != nullptr ? workspace->scrollingLayout() : nullptr;
     if (scrolling == nullptr) {
       return true;
@@ -2892,7 +2930,7 @@ namespace umbriel {
     if (!interactive()) {
       return nullptr;
     }
-    return workspaceAtPoint(lx, ly, nullptr, nullptr, true);
+    return workspaceAtPoint(lx, ly, nullptr, nullptr, true, false);
   }
 
   Workspace* Overview::navigationWorkspace() const {
@@ -2907,6 +2945,28 @@ namespace umbriel {
     return nullptr;
   }
 
+  bool Overview::workspaceRowAlive(const Workspace* workspace) const {
+    if (workspace == nullptr) {
+      return false;
+    }
+    for (const auto& state : m_outputs) {
+      const WorkspaceGroup* group = state->output != nullptr ? state->output->workspaceGroup() : nullptr;
+      if (group == nullptr) {
+        continue;
+      }
+      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+        if (group->workspaceAt(index) == workspace) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Workspace* Overview::dragTargetWorkspace() const {
+    return m_dragCard != nullptr && workspaceRowAlive(m_drop.workspace) ? m_drop.workspace : nullptr;
+  }
+
   void Overview::onNavigationDeviceDestroyed(wl_listener* listener, void* /*data*/) {
     Overview* self;
     self = wl_container_of(listener, self, m_navigationDeviceDestroy);
@@ -2917,7 +2977,10 @@ namespace umbriel {
 
   void Overview::beginNavigation(wlr_pointer* pointer, NavigationSource source, double lx, double ly) {
     cancelNavigation();
-    if (!interactive() || dragging() || pointer == nullptr) {
+    // A held card drag may still scroll: the touchpad finger stream must not be swallowed by the hold.
+    // Middle-press keeps refusing — handleMotion gives it its own pointer-scroll path.
+    const bool dragScroll = m_dragCard != nullptr && source == NavigationSource::Scroll;
+    if (!interactive() || (dragging() && !dragScroll) || pointer == nullptr) {
       return;
     }
     Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
@@ -2926,7 +2989,7 @@ namespace umbriel {
     }
     m_navigationOutput = output;
     m_navigationHorizontalWorkspaces = output->workspaceGroup()->workspaceAxis() == WorkspaceAxis::Horizontal;
-    m_navigationWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, true);
+    m_navigationWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, true, false);
     if (m_navigationWorkspace == nullptr || m_navigationWorkspace->group() != output->workspaceGroup()) {
       m_navigationWorkspace = output->workspaceGroup()->active();
     }
@@ -2958,6 +3021,9 @@ namespace umbriel {
         axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical;
     const auto travel = OverviewNavigation::travelFor(m_navigationSource);
     if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
+      // The rows follow the fingers in both cases — panning is not a workspace step. While a card drag is live
+      // the release settles without selecting anything (see endNavigation) and the drop re-resolves under the
+      // stationary pointer instead; that is the pan-only contract the held card needs.
       if (!m_navigationStarted) {
         m_navigationStart = state->rowScroll.current();
         m_navigationScale = OverviewNavigation::travelScale(1.0, settledZoom(), factor, travel.workspace);
@@ -2972,6 +3038,9 @@ namespace umbriel {
           )
       );
       applyProgress();
+      if (m_dragCard != nullptr) {
+        refreshDragTarget();
+      }
       return;
     }
     Workspace* workspace = navigationWorkspace();
@@ -2996,6 +3065,9 @@ namespace umbriel {
         )
     );
     workspace->markArrange(false);
+    if (m_dragCard != nullptr) {
+      refreshDragTarget();
+    }
   }
 
   void Overview::endNavigation(bool cancelled, uint32_t timeMsec, NavigationSource source) {
@@ -3030,6 +3102,18 @@ namespace umbriel {
         return;
       }
       const auto last = static_cast<double>(group->workspaceCount() - 1);
+      if (m_dragCard != nullptr) {
+        // Settle-only while a card drag is live: snap the rows (back to where the pan started on a cancel) and
+        // select nothing — the active workspace must not change under the held card. The drop then resolves under
+        // the pointer at the settled position; applyDrop activates its destination when it lands.
+        state->rowScroll.snap(
+            cancelled ? m_navigationStart
+                      : static_cast<double>(GesturePhysics::stepTarget(projected, 0, static_cast<int>(last)))
+        );
+        applyProgress();
+        refreshDragTarget();
+        return;
+      }
       const int index = cancelled ? static_cast<int>(group->active()->index())
                                   : GesturePhysics::stepTarget(projected, 0, static_cast<int>(last));
       // Rubber-banded travel moves the filmstrip slower than the fingers, so the release carries the visible speed.
@@ -3054,10 +3138,15 @@ namespace umbriel {
     const int viewport = workspace->scrollViewportExtent();
     const auto maximum = static_cast<double>(scrolling->maxScroll(viewport));
     if (cancelled) {
+      // A cancel (an unrelated press, a device switch mid-pan) restores the scroll the gesture started from,
+      // drag or not — matching non-drag semantics; the refresh keeps the drop honest at the reverted position.
       scrolling->setScroll(
           m_navigationCentered ? m_navigationStart : std::clamp(m_navigationStart, 0.0, maximum), m_navigationCentered
       );
       workspace->markArrange(true);
+      if (m_dragCard != nullptr) {
+        refreshDragTarget();
+      }
       return;
     }
     double bestDistance = std::numeric_limits<double>::max();
@@ -3088,6 +3177,14 @@ namespace umbriel {
         break;
       }
       bestColumn = index;
+    }
+    if (m_dragCard != nullptr) {
+      // Settle the pan only while a card drag is live: snap the scroll to the chosen column but move no focus and
+      // commit no selection under the held card, then re-resolve the drop where the pointer sits.
+      scrolling->setScroll(bestPosition);
+      workspace->markArrange(true);
+      refreshDragTarget();
+      return;
     }
     View* target = workspace->focusedView();
     const bool focusMoved = bestColumn >= 0 && (target == nullptr || scrolling->columnOf(target) != bestColumn);
@@ -3327,6 +3424,8 @@ namespace umbriel {
     }
     View* view = card->view;
     m_dragCard = card;
+    m_dragPointerX = m_pressX;
+    m_dragPointerY = m_pressY;
     m_dragOffsetX = m_pressX - card->box.x;
     m_dragOffsetY = m_pressY - card->box.y;
     m_dragSourceWorkspace = view->workspace();
@@ -3355,8 +3454,63 @@ namespace umbriel {
     m_server->cursor()->overrideCursor("grabbing");
   }
 
+  // The strip can move under a stationary drag pointer (edge auto-scroll, finger-scroll pan): re-running updateDrag
+  // at the stored position keeps the drop resolving where the card visibly sits. Valid before arrange() because
+  // computeDropTarget reads layout.scroll() directly (drop_target.cpp) — the refresh sees the new scroll at once.
+  void Overview::refreshDragTarget() {
+    if (m_dragCard != nullptr) {
+      updateDrag(m_dragPointerX, m_dragPointerY);
+    }
+  }
+
+  bool Overview::filmstripEdgeScrolling(Output& output, double speedPxPerSec) {
+    if (speedPxPerSec == 0) {
+      return false;
+    }
+    OutputState* state = stateFor(&output);
+    WorkspaceGroup* group = output.workspaceGroup();
+    if (state == nullptr || group == nullptr || group->workspaceCount() < 2) {
+      return false;
+    }
+    const double current = state->rowScroll.current();
+    const auto last = static_cast<double>(group->workspaceCount() - 1);
+    return speedPxPerSec < 0 ? current > 0 : current < last;
+  }
+
+  bool Overview::advanceFilmstripEdgeScroll(Output& output, double speedPxPerSec, uint32_t elapsedMsec) {
+    OutputState* state = stateFor(&output);
+    WorkspaceGroup* group = output.workspaceGroup();
+    PreviewMetrics metrics{};
+    if (state == nullptr
+        || group == nullptr
+        || elapsedMsec == 0
+        || !previewMetrics(*state, *m_server, zoom(), metrics)) {
+      return false;
+    }
+    // Neighbouring previews step one preview plus the gap along the workspace axis. The strip slides at
+    // speedPxPerSec world px/s (visible at zoom in the overview); convert so the filmstrip's visible slide matches.
+    const int step = (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
+    if (step <= 0) {
+      return false;
+    }
+    const double rowsPerSec = speedPxPerSec * metrics.zoom / static_cast<double>(step);
+    const double current = state->rowScroll.current();
+    const auto last = static_cast<double>(group->workspaceCount() - 1);
+    const double next = std::clamp(current + rowsPerSec * static_cast<double>(elapsedMsec) / 1000.0, 0.0, last);
+    if (next == current) {
+      return false;
+    }
+    state->rowScroll.snap(next);
+    applyProgress();
+    // The rows moved under a stationary pointer: a live card drag must drop where it visibly sits now.
+    refreshDragTarget();
+    return true;
+  }
+
   void Overview::updateDrag(double lx, double ly) {
     Card* card = m_dragCard;
+    m_dragPointerX = lx;
+    m_dragPointerY = ly;
     card->box.x = static_cast<int>(std::lround(lx - m_dragOffsetX));
     card->box.y = static_cast<int>(std::lround(ly - m_dragOffsetY));
     wlr_scene_node_set_position(&card->tree->node, card->box.x, card->box.y);
@@ -3375,7 +3529,7 @@ namespace umbriel {
     m_dropWorkspaceGroup = nullptr;
 
     size_t workspacePosition = 0;
-    Workspace* workspace = workspaceAtPoint(lx, ly, &state, &workspacePosition, true);
+    Workspace* workspace = workspaceAtPoint(lx, ly, &state, &workspacePosition, true, true);
     m_drop = {.workspace = workspace};
     if (workspace == nullptr || state == nullptr) {
       hideDropHint();
@@ -3426,6 +3580,12 @@ namespace umbriel {
     if (card == nullptr) {
       return;
     }
+    // A finger-scroll still in flight settles pan-only before the drop resolves: left armed, its next frames
+    // take the normal navigation path (filmstrip step, focus-moving settle) after the drop and strand keyboard
+    // focus off the dropped window.
+    if (m_navigationPointer != nullptr && m_navigationSource == NavigationSource::Scroll) {
+      endNavigation(false, m_scrollTime, NavigationSource::Scroll);
+    }
     View* view = card->view;
     WorkspaceGroup* insertionGroup = drop ? m_dropWorkspaceGroup : nullptr;
     Workspace* target = drop ? m_drop.workspace : nullptr;
@@ -3438,6 +3598,8 @@ namespace umbriel {
     m_dropWorkspaceGroup = nullptr;
     hideDropHint();
     m_server->cursor()->overrideCursor(nullptr);
+    // A card drag is a drag this timer may be serving: edge auto-scroll dies with it (mirror handleDataDragEnded).
+    m_server->cursor()->handleDataDragEnded();
 
     if (view == nullptr || !view->mapped()) {
       return;

@@ -134,10 +134,32 @@ namespace umbriel {
     // how far the zoom has come.
     [[nodiscard]] static double settledZoom();
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
+    [[nodiscard]] bool cardDragging() const { return m_dragCard != nullptr; }
+    // A middle-press pointer-scroll pan owns the motion while it runs (handleMotion routes it ahead of the card
+    // drag), so the held card's drop row must not drive edge-scroll pairing in that window.
+    [[nodiscard]] bool middlePressed() const { return m_middlePressed; }
+    // Re-resolves the drop under the stationary drag pointer after the strip moved beneath it (edge auto-scroll or
+    // finger-scroll pan). A no-op without a live card drag.
+    void refreshDragTarget();
+    // The workspace a held card would drop into — the row under the drag pointer as refreshDragTarget last
+    // resolved it. Null without a live card drag, while the pointer sits in an insertion gap, or when the row
+    // has been pruned from its group underneath the drag.
+    [[nodiscard]] Workspace* dragTargetWorkspace() const;
+    // Workspace-filmstrip twin of the layout-strip edge auto-scroll (input.drag_edge_scroll drives both during a
+    // held card drag): pan the rows along the workspace axis. speedPxPerSec is the edge ramp's signed screen-px/s;
+    // the filmstrip converts it to rows through the preview step so the visible slide matches the strip's.
+    // filmstripEdgeScrolling reports whether the rows can still move that way;
+    // advanceFilmstripEdgeScroll moves them over elapsedMsec, clamped at the ends, re-resolving the drop under the
+    // stationary drag pointer, and returns false when nothing moved.
+    [[nodiscard]] bool filmstripEdgeScrolling(Output& output, double speedPxPerSec);
+    bool advanceFilmstripEdgeScroll(Output& output, double speedPxPerSec, uint32_t elapsedMsec);
 
   private:
     static void onNavigationDeviceDestroyed(wl_listener* listener, void* data);
     [[nodiscard]] Workspace* navigationWorkspace() const;
+    // Pointer-identity membership test that never dereferences `workspace`: dynamic-workspace reconciliation can
+    // prune a row while the drop state still holds it (navigationWorkspace()'s pattern).
+    [[nodiscard]] bool workspaceRowAlive(const Workspace* workspace) const;
     OverviewNavigation m_navigation;
     Output* m_navigationOutput = nullptr;
     Workspace* m_navigationWorkspace = nullptr;
@@ -376,8 +398,15 @@ namespace umbriel {
     void scheduleFrames() const;
 
     [[nodiscard]] Card* cardAt(double lx, double ly);
-    [[nodiscard]] Workspace*
-    workspaceAtPoint(double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis);
+    // Hit-test a workspace preview. `extendScrollingAxis` widens the boxes over the whole output along the
+    // scrolling axis (overhanging cards must stay targetable there). `extendFilmstripEnds` is drop-targeting
+    // only: the rows at either end of the filmstrip claim the space out to the output edge along the workspace
+    // axis, so a card released past the last preview lands on the end workspace instead of nowhere. Wheel,
+    // pointer-scroll and navigation lookups pass it false and keep the narrow preview hitbox in those extremes.
+    [[nodiscard]] Workspace* workspaceAtPoint(
+        double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis,
+        bool extendFilmstripEnds
+    );
     [[nodiscard]] WorkspaceGroup*
     workspaceGapAt(double lx, double ly, OutputState** outState, size_t* outIndex, wlr_box* outHintBox);
     [[nodiscard]] Workspace* preferredWorkspace() const;
@@ -433,6 +462,9 @@ namespace umbriel {
     bool m_middleScrolling = false;
 
     Card* m_dragCard = nullptr;
+    // Last pointer position the drag followed — refreshDragTarget() re-resolves the drop from it.
+    double m_dragPointerX = 0;
+    double m_dragPointerY = 0;
     double m_dragOffsetX = 0;
     double m_dragOffsetY = 0;
     Workspace* m_dragSourceWorkspace = nullptr;

@@ -392,7 +392,19 @@ namespace umbriel {
     [[nodiscard]] const Keybind* hotCornerAction(size_t* index = nullptr) const;
     static int onHotCornerTimer(void* data);
     [[nodiscard]] bool tiledMoveDragActive() const;
-    [[nodiscard]] Workspace* dataDragEdgeScrollTarget(double* speed) const;
+    // What the edge auto-scroll may move right now (input.drag_edge_scroll drives both sinks from one
+    // mechanism): the active workspace's scrolling layout along its scrolling axis (data drags, tiled moves,
+    // overview card drags), and — during an overview card drag — the overview's workspace filmstrip along the
+    // workspace axis. Each sink takes the signed edge ramp's speed in screen px/s; the strip consumes it as
+    // layout px/s, the filmstrip converts it to rows through the preview step. Either may be null when that
+    // dimension has nothing left to scroll.
+    struct EdgeScrollTargets {
+      Workspace* workspace = nullptr;
+      double workspaceSpeed = 0;
+      Output* filmstrip = nullptr;
+      double filmstripSpeed = 0;
+    };
+    [[nodiscard]] EdgeScrollTargets edgeScrollTargets() const;
     void updateDataDragEdgeScroll();
     void cancelDataDragEdgeScroll();
     static int onDataDragEdgeScrollTimer(void* data);
@@ -485,8 +497,13 @@ namespace umbriel {
     wl_event_source* m_hotCornerTimer = nullptr;
     wl_event_source* m_dropZoneDwellTimer = nullptr;
     wl_event_source* m_dataDragEdgeScrollTimer = nullptr;
+    // Both sinks share one delay/advance timeline (input.drag_edge_scroll's mechanic): a sink appearing or an
+    // active sink flipping direction re-arms the configured delay for the set, and each tick advances whichever
+    // sinks are live from the elapsed time.
     Workspace* m_dataDragEdgeScrollWorkspace = nullptr;
+    Output* m_dataDragEdgeScrollFilmstrip = nullptr;
     double m_dataDragEdgeScrollSpeed = 0;
+    double m_dataDragEdgeScrollFilmstripSpeed = 0;
     uint32_t m_dataDragEdgeScrollLastMsec = 0;
     bool m_dataDragEdgeScrollPending = false;
     bool m_hotCornerPending = false;
