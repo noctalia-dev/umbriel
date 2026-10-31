@@ -420,6 +420,13 @@ enabled = true
 delay_ms = 500
 action = "overview-open"
 
+# Window-rule opacity and blur fade on focus changes by default. Disable this
+# independently of border fades, or choose its own duration and curve.
+# [animation.windows_opacity]
+# enabled = true
+# curve = "spring:1,900"
+# duration_ms = 250 # For non-spring curves; a spring sets its own length.
+
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
 # [animation.workspaces]

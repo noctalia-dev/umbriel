@@ -253,7 +253,7 @@ namespace umbriel {
     // Focus ring only. Public alongside setForeignActivated because both are
     // activation chrome the focus manager drives from outside.
     void setBorderFocused(bool focused);
-    // Jump the focus border color and unfocused dim to their targets. For views revealed after focus changed while
+    // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
     void setWorkspace(Workspace* workspace, bool attachToLayout = true);
@@ -643,7 +643,8 @@ namespace umbriel {
     void refreshConfigChrome();
     void updateBlur();
     void updateBlur(int contentWidth, int contentHeight);
-    [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_decoration.blurOptions(); }
+    [[nodiscard]] SurfaceBlurOptions blurOptions() const;
+    [[nodiscard]] float blurAlpha() const;
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_decoration.popupBlurOptions(); }
     void updateShadow();
     void updateShadow(int contentWidth, int contentHeight);
@@ -830,6 +831,7 @@ namespace umbriel {
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin);
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
+    void updateBorderColor(bool focusChanged);
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
@@ -1069,6 +1071,7 @@ namespace umbriel {
     AnimatedValue m_fade;
     bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
+    AnimatedColor m_outerBorderColorAnim;
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
@@ -1077,7 +1080,8 @@ namespace umbriel {
     // non-none content type each get one chance to add one-shot rule effects.
     bool m_initialTitleRulesSettled = false;
     bool m_initialContentTypeRulesSettled = false;
-    float m_ruleOpacity = 1.0F;
+    AnimatedValue m_ruleOpacity{1.0};
+    AnimatedValue m_ruleBlur{0.0};
     bool m_backgroundRender = false;
     bool m_allowShortcutsInhibit = true;
     float m_dragOpacity = 1.0F;

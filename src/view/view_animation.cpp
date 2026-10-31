@@ -49,7 +49,9 @@ namespace umbriel {
 
   float View::effectiveOpacity() const {
     // Overshooting curves can push this past [0, 1]; wlr_scene_buffer_set_opacity asserts.
-    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen ? 1.0F : m_ruleOpacity;
+    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen
+        ? 1.0F
+        : static_cast<float>(m_ruleOpacity.current());
     const float fade = fadeComposited() ? 1.0F : m_fadeAlpha;
     return std::clamp(
         fade * ruleOpacity * m_dragOpacity * m_overviewOpacity * static_cast<float>(m_focusDim.current()), 0.0F, 1.0F
@@ -69,7 +71,7 @@ namespace umbriel {
     if (config().appearance.opaqueFullscreen) {
       return true;
     }
-    if (m_ruleOpacity < 1.0F) {
+    if (m_ruleOpacity.current() < 1.0) {
       return false;
     }
     if (const wlr_alpha_modifier_surface_v1_state* clientAlpha = wlr_alpha_modifier_v1_get_surface_state(surface);
@@ -85,16 +87,16 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     applyEffectiveOpacity();
     const float effective = effectiveOpacity();
-    m_decoration.setBorderRawColor(m_borderColorAnim.current(), effective);
+    m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effective);
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = fadeComposited() ? effective * m_fadeAlpha : effective;
-    m_decoration.setAlpha(shadowOpacity, m_fadeAlpha * m_overviewOpacity);
+    m_decoration.setAlpha(shadowOpacity, blurAlpha());
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setAlpha(chromeAlpha());
     }
     if (m_ssdFrame != nullptr)
-      m_ssdFrame->setAlphas(chromeAlpha(), m_fadeAlpha * m_overviewOpacity);
+      m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
   }
 
   void View::setOverviewOpacity(float opacity) {
@@ -940,14 +942,29 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
       active = active || m_focusDim.animating();
     }
+    const bool opacityChanged = m_ruleOpacity.tick(nowMsec);
+    const bool blurChanged = m_ruleBlur.tick(nowMsec);
+    if (opacityChanged || blurChanged) {
+      setFadeAlpha(m_fadeAlpha);
+      m_presentation.setFullscreenOpaque(fullscreenOpaque());
+      updateBlur();
+      if (m_workspace != nullptr) {
+        m_workspace->syncViewPresentation(this);
+      }
+      active = active || m_ruleOpacity.animating() || m_ruleBlur.animating();
+    }
     if (m_modalShadeAlpha.tick(nowMsec)) {
       syncModalShade();
       active = active || m_modalShadeAlpha.animating();
     }
 
-    if (m_borderColorAnim.tick(nowMsec)) {
-      m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
-      active = active || m_borderColorAnim.animating();
+    const bool innerChanged = m_borderColorAnim.tick(nowMsec);
+    const bool outerChanged = m_outerBorderColorAnim.tick(nowMsec);
+    if (innerChanged || outerChanged) {
+      m_decoration.setBorderRawColors(
+          m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity()
+      );
+      active = active || m_borderColorAnim.animating() || m_outerBorderColorAnim.animating();
     }
     if (m_dragPhysics.active() || m_dragPhysics.grabbed()) {
       if (effectRegistry().deformationShader() == nullptr) {
@@ -991,6 +1008,9 @@ namespace umbriel {
         || sizeAnimating()
         || m_fade.animating()
         || m_borderColorAnim.animating()
+        || m_outerBorderColorAnim.animating()
+        || m_ruleOpacity.animating()
+        || m_ruleBlur.animating()
         || m_focusDim.animating()
         || m_modalShadeAlpha.animating()
         || m_dragPhysics.active();
@@ -1047,7 +1067,9 @@ namespace umbriel {
     }
 
     std::vector<BorderSnapshot> snapBorders;
-    m_decoration.snapshotBorders(snap, m_borderColorAnim.current(), effectiveOpacity(), snapBorders);
+    m_decoration.snapshotBorders(
+        snap, m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
+    );
     if (m_ssdFrame != nullptr && titleBarHeight() > 0)
       m_ssdFrame->snapshot(snap);
 

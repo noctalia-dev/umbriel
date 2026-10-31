@@ -892,6 +892,13 @@ namespace umbriel {
         bool operator==(const Border&) const = default;
       } border;
 
+      struct WindowsOpacity {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
+        bool operator==(const WindowsOpacity&) const = default;
+      } windowsOpacity;
+
       struct DimUnfocused {
         std::string effect;
         bool enabled = false;

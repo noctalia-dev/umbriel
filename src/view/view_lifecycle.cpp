@@ -396,7 +396,7 @@ namespace umbriel {
     // Apply rule opacity: flush to scene buffers immediately so views on
     // inactive workspaces get the correct opacity when they become visible.
     if (rule.opacity) {
-      m_ruleOpacity = static_cast<float>(*rule.opacity);
+      m_ruleOpacity.snap(*rule.opacity);
       setFadeAlpha(m_fadeAlpha);
     }
 
@@ -772,7 +772,9 @@ namespace umbriel {
     m_namedScrollingColumnName.reset();
     m_namedScrollingColumnOrder.reset();
     m_ownsNamedScrollingColumnExtent = false;
-    m_ruleOpacity = 1.0F;
+    m_ruleOpacity.snap(1.0);
+    m_ruleBlur.snap(0.0);
+    m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
     // An unmapped window keeps no layout state, so the alone effect it owned is gone with it.
     m_aloneEffectsActive = false;

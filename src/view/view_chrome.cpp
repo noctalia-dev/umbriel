@@ -110,7 +110,7 @@ namespace umbriel {
     syncTitleBarButtons();
     m_ssdFrame->setMaximized(scheduledMaximized() || floatingMaximized());
     m_ssdFrame->setFocused(m_borderFocusedState);
-    m_ssdFrame->setAlphas(chromeAlpha(), m_fadeAlpha * m_overviewOpacity);
+    m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
     const wlr_box content =
@@ -166,39 +166,49 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
     }
 
-    const Config::Colors::Border& colors = m_decoration.borderColors();
-    const std::array<float, 4>& targetBase = focused ? colors.focused : colors.unfocused;
-
-    // A window without a drawn border has nothing to fade, and an invisible transition would still keep frames coming.
-    const auto& border = animation.border;
-    const bool borderAnimates = m_mapped && animation.enabled && border.enabled && borderInset() > 0;
-    if (borderAnimates && focusChanged) {
-      m_borderColorAnim.retarget(targetBase, border.durationMs, border.curve);
-      scheduleFrame();
-    } else if (borderAnimates && m_borderColorAnim.animating()) {
-      // A repeated request for the same focus state, such as the pointer crossing outputs before an output-focus action
-      // refocuses, keeps the running transition; only a new color target redirects it.
-      if (m_borderColorAnim.target() != targetBase) {
-        m_borderColorAnim.retarget(targetBase, border.durationMs, border.curve);
-        scheduleFrame();
-      }
-    } else {
-      m_borderColorAnim.snap(targetBase);
-      m_decoration.setBorderColor(focused, effectiveOpacity());
-    }
-
     if (focusChanged && m_mapped) {
       applyDynamicRules();
+    } else {
+      updateBorderColor(focusChanged);
     }
   }
 
+  void View::updateBorderColor(bool focusChanged) {
+    const auto& animation = config().animation;
+    const Config::Colors::Border& colors = m_decoration.borderColors();
+    const auto& targetBase = m_borderFocusedState ? colors.focused : colors.unfocused;
+    const auto& border = animation.border;
+    const bool borderAnimates = m_mapped && animation.enabled && border.enabled && borderInset() > 0;
+    const auto update = [&](AnimatedColor& value, const auto& target, bool focusEvent) {
+      if (borderAnimates && (focusChanged || value.animating())) {
+        if (value.target() != target || (focusChanged && focusEvent)) {
+          value.retarget(target, border.durationMs, border.curve);
+          scheduleFrame();
+        }
+      } else {
+        value.snap(target);
+      }
+    };
+    update(m_borderColorAnim, targetBase, true);
+    update(m_outerBorderColorAnim, colors.outer, false);
+    m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity());
+  }
+
   void View::settleFocusChrome() {
-    if (!m_borderColorAnim.animating() && !m_focusDim.animating()) {
+    if (!m_borderColorAnim.animating()
+        && !m_outerBorderColorAnim.animating()
+        && !m_focusDim.animating()
+        && !m_ruleOpacity.animating()
+        && !m_ruleBlur.animating()) {
       return;
     }
     m_borderColorAnim.snap(m_borderColorAnim.target());
+    m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_focusDim.snap(m_focusDim.target());
+    m_ruleOpacity.snap(m_ruleOpacity.target());
+    m_ruleBlur.snap(m_ruleBlur.target());
     setFadeAlpha(m_fadeAlpha);
+    updateBlur();
     syncAnimationEffects();
   }
 
@@ -278,10 +288,23 @@ namespace umbriel {
     updateBlur(content.width, content.height);
   }
 
+  SurfaceBlurOptions View::blurOptions() const {
+    auto options = m_decoration.blurOptions();
+    // A disabled target must keep drawing until its focus transition reaches zero.
+    options.enabled = m_ruleBlur.current() > 0.0 || m_ruleBlur.target() > 0.0;
+    return options;
+  }
+
+  float View::blurAlpha() const {
+    return m_fadeAlpha * m_overviewOpacity * static_cast<float>(std::clamp(m_ruleBlur.current(), 0.0, 1.0));
+  }
+
   void View::updateBlur(int contentWidth, int contentHeight) {
     UMBRIEL_ZONE("View::updateBlur");
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setBlurOptions(blurOptions());
+      m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    }
     if (currentFullscreen() && fullscreenOpaque()) {
       m_decoration.hideBlur();
       return;
@@ -292,7 +315,8 @@ namespace umbriel {
     const fx_corner_radii corners =
         titleBarHeight() > 0 ? corner_radii_new(0, 0, radius, radius) : corner_radii_all(radius);
     m_decoration.updateBlur(
-        m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr, effectiveOpacity(), m_fadeAlpha
+        m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr, effectiveOpacity(), blurAlpha(),
+        blurOptions()
     );
   }
 

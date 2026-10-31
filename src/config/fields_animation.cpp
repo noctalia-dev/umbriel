@@ -116,6 +116,7 @@ namespace umbriel {
       apply(animation.scratchpad.durationMs, animation.scratchpad.curve);
       apply(animation.dialogs.durationMs, animation.dialogs.curve);
       apply(animation.border.durationMs, animation.border.curve);
+      apply(animation.windowsOpacity.durationMs, animation.windowsOpacity.curve);
       apply(animation.dimUnfocused.durationMs, animation.dimUnfocused.curve);
       apply(animation.layers.durationMs, animation.layers.curve);
     }
@@ -207,6 +208,8 @@ namespace umbriel {
           real("dim", 0.0, 1.0, &A::Dialogs::dim),
       });
       static const registry::Fields<A::Border> border = eventFields<A::Border>({});
+      static const registry::Fields<A::WindowsOpacity> windowsOpacity =
+          timelineFields<A::WindowsOpacity>({boolean("enabled", &A::WindowsOpacity::enabled)});
       static const registry::Fields<A::DimUnfocused> dimUnfocused = eventFields<A::DimUnfocused>({
           real("dim", 0.0, 1.0, &A::DimUnfocused::dim),
       });
@@ -282,6 +285,7 @@ namespace umbriel {
           table("scratchpad", &A::scratchpad, scratchpad),
           table("dialogs", &A::dialogs, dialogs),
           table("border", &A::border, border),
+          table("windows_opacity", &A::windowsOpacity, windowsOpacity),
           table("dim_unfocused", &A::dimUnfocused, dimUnfocused),
           table("layers", &A::layers, layers),
           table("windows_drag", &A::windowsDrag, windowsDrag),

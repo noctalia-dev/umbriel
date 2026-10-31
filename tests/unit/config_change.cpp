@@ -204,6 +204,27 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
 }
 
+UMBRIEL_TEST(windowOpacityTimingRefreshesPresentationWithoutLayoutChanges) {
+  Config before;
+  Config after = before;
+  after.animation.windowsOpacity.enabled = false;
+  auto effects = ConfigEffects::between(before, after);
+  CHECK(effects.animation);
+  CHECK(effects.viewChrome);
+  CHECK(!effects.workspaceLayout);
+  CHECK(!effects.effects);
+
+  after = before;
+  after.animation.windowsOpacity.durationMs += 1;
+  effects = ConfigEffects::between(before, after);
+  CHECK(effects.viewChrome);
+  CHECK(!effects.workspaceLayout);
+
+  after = before;
+  after.animation.windowsOpacity.curve.easing = umbriel::Easing::Linear;
+  CHECK(ConfigEffects::between(before, after).viewChrome);
+}
+
 UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   const Config before;
   Config after;

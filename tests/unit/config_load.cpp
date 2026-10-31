@@ -2616,6 +2616,42 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
   CHECK(store.diagnostics().empty());
 }
 
+UMBRIEL_TEST(windowOpacityAnimationUsesBorderDefaultsAndIndependentTiming) {
+  const umbriel::Config defaults;
+  CHECK(defaults.animation.windowsOpacity.enabled);
+  CHECK_EQ(defaults.animation.windowsOpacity.durationMs, defaults.animation.border.durationMs);
+  CHECK(defaults.animation.windowsOpacity.curve == defaults.animation.border.curve);
+  const TempConfig file;
+  file.write(
+      "[animation]\nduration_ms = 800\ncurve = 'linear'\n"
+      "[animation.windows_opacity]\nenabled = false\nduration_ms = 350\ncurve = 'easeinoutsine'\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 350);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInOutSine);
+  CHECK_EQ(store.config().animation.border.durationMs, 800);
+  CHECK(store.config().animation.border.curve.easing == umbriel::Easing::Linear);
+  CHECK(store.diagnostics().empty());
+
+  file.write("[animation]\nduration_ms = 600\ncurve = 'easeinquad'\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 600);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInQuad);
+
+  file.write(
+      "[animation.springs]\nsoft = { damping = 0.8, stiffness = 350 }\n"
+      "[animation.windows_opacity]\ncurve = 'soft'\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(store.config().animation.windowsOpacity.curve.spring.stiffness, 350.0);
+  CHECK(store.diagnostics().empty());
+}
+
 UMBRIEL_TEST(emptyRuleArrayDropsRulesFromIncludes) {
   const TempConfig file;
   file.write("window_rule = []\n[include]\nfiles = [\"" + file.includeName() + "\"]\n");
