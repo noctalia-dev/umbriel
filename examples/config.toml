@@ -364,6 +364,8 @@ default_pinned = true
 # [[scratchpad]]
 # name = "music"
 # spawn_when_empty = "spotify"
+# Preserve each window's current size proportions when moving between monitors.
+# proportional_size = true
 
 # [[window_rule]]
 # match.app_id = "^spotify$"

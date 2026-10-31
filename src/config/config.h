@@ -148,6 +148,7 @@ namespace umbriel {
   struct ScratchpadConfig {
     std::string name;
     std::string spawnWhenEmpty;
+    bool proportionalSize = false;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 

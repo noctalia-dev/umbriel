@@ -6,6 +6,7 @@
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
 #include "server/server.h"
+#include "view/size_hints.h"
 #include "view/view.h"
 #include "wlr.h"
 #include "workspace/workspace.h"
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <ranges>
 #include <set>
 #include <utility>
@@ -529,10 +531,12 @@ namespace umbriel {
 
     const wlr_box previousArea = state->usableArea.value_or(usableArea(*m_server, previous));
     const wlr_box targetArea = usableArea(*m_server, output);
+    const bool proportionalSize = usesProportionalSize(name);
     state->output = output;
-    state->usableArea = output != nullptr && targetArea.width > 0 && targetArea.height > 0
-        ? std::optional<wlr_box>{targetArea}
-        : std::nullopt;
+    // Retain the size basis while every output is absent.
+    if (output != nullptr && targetArea.width > 0 && targetArea.height > 0) {
+      state->usableArea = targetArea;
+    }
     if (clearDisplacement) {
       state->displacedOutput.clear();
     }
@@ -545,24 +549,13 @@ namespace umbriel {
       if (clearDisplacement) {
         entry.displacedPosition.reset();
       }
-      if (previous != nullptr
+      if ((previous != nullptr || proportionalSize)
           && output != nullptr
           && previousArea.width > 0
           && previousArea.height > 0
           && targetArea.width > 0
           && targetArea.height > 0) {
-        remapViewRestoreGeometry(view, previousArea, targetArea);
-        if (view != alreadyPositioned) {
-          const double xFraction = static_cast<double>(view->layoutX() - previousArea.x) / previousArea.width;
-          const double yFraction = static_cast<double>(view->layoutY() - previousArea.y) / previousArea.height;
-          const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));
-          const int newY = targetArea.y + static_cast<int>(std::lround(yFraction * targetArea.height));
-          view->cancelPositionAnimation();
-          view->setPosition(
-              std::clamp(newX, targetArea.x, targetArea.x + std::max(0, targetArea.width - view->currentSize().width)),
-              std::clamp(newY, targetArea.y, targetArea.y + std::max(0, targetArea.height - view->currentSize().height))
-          );
-        }
+        remapViewGeometry(view, previousArea, targetArea, proportionalSize, view != alreadyPositioned);
       }
 
       if (presents(*state, view)) {
@@ -610,7 +603,14 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
   }
 
-  void ScratchpadManager::remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea) {
+  bool ScratchpadManager::usesProportionalSize(std::string_view name) const {
+    const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
+    return definition != config().scratchpads.end() && definition->proportionalSize;
+  }
+
+  void ScratchpadManager::remapViewGeometry(
+      View* view, const wlr_box& previousArea, const wlr_box& targetArea, bool proportionalSize, bool reposition
+  ) {
     if (view == nullptr
         || previousArea.width <= 0
         || previousArea.height <= 0
@@ -618,11 +618,23 @@ namespace umbriel {
         || targetArea.height <= 0) {
       return;
     }
+    const SizeHints hints = view->sizeHints();
+    const auto proportionalExtent = [](int size, int previous, int target) {
+      const long scaled = std::lround(static_cast<double>(size) * target / previous);
+      return static_cast<int>(std::clamp(scaled, 1L, static_cast<long>(std::numeric_limits<int>::max())));
+    };
+    const auto resize = [&](wlr_box& box) {
+      if (proportionalSize) {
+        box.width = clampWidth(proportionalExtent(box.width, previousArea.width, targetArea.width), hints);
+        box.height = clampHeight(proportionalExtent(box.height, previousArea.height, targetArea.height), hints);
+      }
+    };
     const auto remap = [&](wlr_box& box) {
       const double xFraction = static_cast<double>(box.x - previousArea.x) / previousArea.width;
       const double yFraction = static_cast<double>(box.y - previousArea.y) / previousArea.height;
       const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));
       const int newY = targetArea.y + static_cast<int>(std::lround(yFraction * targetArea.height));
+      resize(box);
       box.x = std::clamp(newX, targetArea.x, targetArea.x + std::max(0, targetArea.width - box.width));
       box.y = std::clamp(newY, targetArea.y, targetArea.y + std::max(0, targetArea.height - box.height));
     };
@@ -631,6 +643,28 @@ namespace umbriel {
     }
     if (view->m_hasFullscreenRestoreBox) {
       remap(view->m_fullscreenRestoreBox);
+    }
+
+    const bool managedSize = view->scheduledFullscreen()
+        || view->currentFullscreen()
+        || view->maximizedToEdges()
+        || view->m_floatingMaximized;
+    const auto [width, height] = proportionalSize && !managedSize
+        ? view->floatingSize()
+        : std::array{view->currentSize().width, view->currentSize().height};
+    wlr_box box{view->layoutX(), view->layoutY(), width, height};
+    if (reposition) {
+      remap(box);
+    } else {
+      resize(box);
+    }
+    if (reposition) {
+      view->cancelPositionAnimation();
+      view->setPosition(box.x, box.y);
+    }
+    if (proportionalSize && !managedSize && (box.width != width || box.height != height)) {
+      view->requestFloatingSize(box.width, box.height);
+      view->beginResizeAnimation(box.width, box.height);
     }
   }
 
@@ -668,18 +702,7 @@ namespace umbriel {
           continue;
         }
         View* view = entry.view;
-        remapViewRestoreGeometry(view, previousArea, targetArea);
-        const double xFraction = static_cast<double>(view->layoutX() - previousArea.x) / previousArea.width;
-        const double yFraction = static_cast<double>(view->layoutY() - previousArea.y) / previousArea.height;
-        const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));
-        const int newY = targetArea.y + static_cast<int>(std::lround(yFraction * targetArea.height));
-        const int width = view->currentSize().width;
-        const int height = view->currentSize().height;
-        view->cancelPositionAnimation();
-        view->setPosition(
-            std::clamp(newX, targetArea.x, targetArea.x + std::max(0, targetArea.width - width)),
-            std::clamp(newY, targetArea.y, targetArea.y + std::max(0, targetArea.height - height))
-        );
+        remapViewGeometry(view, previousArea, targetArea, false);
         syncViewPresentation(view, true);
         movedEntry = true;
       }

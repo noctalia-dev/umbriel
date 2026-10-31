@@ -159,7 +159,11 @@ namespace umbriel {
     void moveScratchpad(
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true
     );
-    void remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea);
+    [[nodiscard]] bool usesProportionalSize(std::string_view name) const;
+    void remapViewGeometry(
+        View* view, const wlr_box& previousArea, const wlr_box& targetArea, bool proportionalSize,
+        bool reposition = true
+    );
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);

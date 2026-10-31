@@ -388,6 +388,36 @@ spawn_when_empty = 7
   CHECK(containsDiagnostic(store, "ignoring scratchpad[2].spawn_when_empty (expected string)"));
 }
 
+UMBRIEL_TEST(scratchpadProportionalSizeIsAnOptionalBoolean) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "term"
+proportional_size = true
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "notes"
+proportional_size = false
+
+[[scratchpad]]
+name = "invalid"
+proportional_size = "true"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{4});
+  CHECK(store.config().scratchpads[0].proportionalSize);
+  CHECK(!store.config().scratchpads[1].proportionalSize);
+  CHECK(!store.config().scratchpads[2].proportionalSize);
+  CHECK(!store.config().scratchpads[3].proportionalSize);
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[3].proportional_size (expected boolean)"));
+}
+
 UMBRIEL_TEST(scratchpadDefinitionsRequireValidUniqueNames) {
   const TempConfig file;
   file.write("[[scratchpad]]\nname = \"kept\"\n");
