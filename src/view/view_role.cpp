@@ -27,11 +27,13 @@ namespace umbriel {
   const char* View::appId() const { return m_toplevel != nullptr ? m_toplevel->app_id : m_xsurface->class_; }
 
   bool View::scheduledFullscreen() const {
-    return m_toplevel != nullptr ? m_toplevel->scheduled.fullscreen : m_xState.fullscreen;
+    return m_toplevel != nullptr ? m_toplevel->scheduled.fullscreen && !m_windowedFullscreen : m_xState.fullscreen;
   }
 
   bool View::currentFullscreen() const {
-    return m_toplevel != nullptr ? m_toplevel->current.fullscreen : m_xState.fullscreen;
+    return m_toplevel != nullptr
+        ? m_toplevel->current.fullscreen && !m_windowedFullscreen && !m_windowedFullscreenExitPending
+        : m_xState.fullscreen;
   }
 
   bool View::scheduledMaximized() const {
@@ -123,6 +125,16 @@ namespace umbriel {
       wlr_xwayland_surface_set_fullscreen(m_xsurface, fullscreen);
     }
     syncSsdFrame();
+  }
+
+  void View::sendClientFullscreen(bool fullscreen) {
+    // Only the client's view of the state: m_xState.fullscreen stays the compositor's.
+    m_server->scheduleIpcWindowsEvent();
+    if (m_toplevel != nullptr) {
+      wlr_xdg_toplevel_set_fullscreen(m_toplevel, fullscreen);
+    } else {
+      wlr_xwayland_surface_set_fullscreen(m_xsurface, fullscreen);
+    }
   }
 
   void View::setMaximizedState(bool maximized) {
@@ -273,7 +285,7 @@ namespace umbriel {
       wlr_xdg_surface_schedule_configure(m_toplevel->base);
       return;
     }
-    wlr_xwayland_surface_set_fullscreen(m_xsurface, m_xState.fullscreen);
+    wlr_xwayland_surface_set_fullscreen(m_xsurface, m_xState.fullscreen || m_windowedFullscreen);
     wlr_xwayland_surface_set_maximized(m_xsurface, m_xState.maximized, m_xState.maximized);
   }
 

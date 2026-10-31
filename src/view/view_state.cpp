@@ -472,6 +472,11 @@ namespace umbriel {
       reassertRoleState();
       return;
     }
+    if (m_windowedFullscreen) {
+      // A video player's own fullscreen button stays in the tile; its exit leaves windowed fullscreen.
+      setWindowedFullscreen(requested);
+      return;
+    }
     if (!requested && scheduledFullscreen() && m_xCompositorFullscreen) {
       kLog.debug("request_fullscreen denied for compositor-owned X11 '{}'", appId() != nullptr ? appId() : "?");
       reassertRoleState();
@@ -538,6 +543,31 @@ namespace umbriel {
     const bool fullscreen = !scheduledFullscreen();
     m_xCompositorFullscreen = m_xsurface != nullptr && fullscreen;
     setFullscreen(fullscreen);
+  }
+
+  void View::toggleWindowedFullscreen() {
+    if (!roleInitialized() || attached()) {
+      return;
+    }
+    if (!m_windowedFullscreen && scheduledFullscreen()) {
+      setFullscreen(false);
+    }
+    setWindowedFullscreen(!m_windowedFullscreen);
+  }
+
+  void View::setWindowedFullscreen(bool windowed) {
+    if (windowed == m_windowedFullscreen) {
+      sendClientFullscreen(windowed);
+      return;
+    }
+    kLog.debug(
+        "set_windowed_fullscreen '{}' [{}] -> {}", appId() != nullptr ? appId() : "?", static_cast<const void*>(this),
+        windowed
+    );
+    m_deferredUnfullscreen.clear();
+    m_windowedFullscreen = windowed;
+    m_windowedFullscreenExitPending = !windowed && m_toplevel != nullptr;
+    sendClientFullscreen(windowed);
   }
 
   void View::applyDeferredUnfullscreen() {
@@ -1018,6 +1048,10 @@ namespace umbriel {
     if (continuePresentation) {
       m_presentation.setSize(presentedWidth, presentedHeight);
     }
+    // Real fullscreen, entered or left, replaces windowed fullscreen. Leaving still hides the client's acked state.
+    m_windowedFullscreenExitPending =
+        !fullscreen && m_toplevel != nullptr && (m_windowedFullscreen || m_windowedFullscreenExitPending);
+    m_windowedFullscreen = false;
     setFullscreenState(fullscreen);
     if (m_workspace != nullptr) {
       m_workspace->syncFloatingStack(this);
