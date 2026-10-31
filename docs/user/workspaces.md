@@ -18,7 +18,7 @@ A dynamic output keeps an empty workspace at the end and creates another when th
 
 Closing the last window keeps the current workspace active. Cleanup runs after you leave it and the workspace transition finishes. A client that keeps its closed toplevel alive does not prevent normal empty-workspace cleanup.
 
-An empty anonymous workspace reserved for an application that is still starting moves to the end after you leave it. Populated workspaces close the gap immediately, and the arriving application keeps its recorded workspace destination.
+An empty anonymous workspace reserved for an application that is still starting disappears from the visible list after you leave it. Umbriel retains its destination privately and restores the workspace when the application's toplevel claims it. An unused startup token does not leave a selectable empty workspace behind.
 
 Set `empty_above = true` under the global [`[workspaces]`](#global-workspace-settings) section to keep an additional empty workspace at the beginning.
 

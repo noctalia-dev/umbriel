@@ -398,6 +398,7 @@ namespace umbriel {
     if (view == nullptr || std::ranges::find(m_views, view) != m_views.end()) {
       return;
     }
+    m_group->restoreLaunchWorkspace(*this);
     m_views.push_back(view);
     // Occupancy and the window count are part of the IPC workspace listing, so every membership change pushes an event,
     // even on a static output, where reconciliation never adds or removes a workspace.
@@ -2630,6 +2631,7 @@ namespace umbriel {
       wlr_ext_workspace_group_handle_v1_output_leave(m_handle, m_output->wlr());
     }
     m_workspaces.clear();
+    m_reservedWorkspaces.clear();
     if (m_handle != nullptr) {
       if (m_handle->data == this) {
         m_handle->data = nullptr;
@@ -2645,8 +2647,10 @@ namespace umbriel {
       std::string id = std::format("{}:{}", connector.empty() ? "output" : connector, m_nextHandleSerial++);
       const bool exists = std::ranges::any_of(m_server->outputs(), [&id](const auto& output) {
         const WorkspaceGroup* group = output->workspaceGroup();
+        const auto matches = [&id](const auto& workspace) { return workspace->id() == id; };
         return group != nullptr
-            && std::ranges::any_of(group->m_workspaces, [&id](const auto& workspace) { return workspace->id() == id; });
+            && (std::ranges::any_of(group->m_workspaces, matches)
+                || std::ranges::any_of(group->m_reservedWorkspaces, matches));
       });
       if (!exists) {
         return id;
@@ -2711,7 +2715,7 @@ namespace umbriel {
   }
 
   Workspace* WorkspaceGroup::insertDynamicWorkspace(size_t index) {
-    if (!m_dynamic || m_output == nullptr || m_output->wlr() == nullptr || m_workspaces.size() >= kMaxWorkspaces) {
+    if (!m_dynamic || m_output == nullptr || m_output->wlr() == nullptr || storedWorkspaceCount() >= kMaxWorkspaces) {
       return nullptr;
     }
     index = std::min(index, m_workspaces.size());
@@ -2813,7 +2817,7 @@ namespace umbriel {
         continue;
       }
 
-      if (m_workspaces.size() >= kMaxWorkspaces) {
+      if (storedWorkspaceCount() >= kMaxWorkspaces) {
         Workspace* leadingSentinel = nullptr;
         if (config().workspaces.emptyAbove
             && !m_workspaces.empty()
@@ -2862,6 +2866,9 @@ namespace umbriel {
 
   void WorkspaceGroup::reconcileInventory() {
     slideFinish();
+    while (!m_reservedWorkspaces.empty()) {
+      restoreLaunchWorkspace(*m_reservedWorkspaces.back());
+    }
     m_transferredNames.clear();
     for (const auto& workspace : m_workspaces) {
       workspace->m_transferred = false;
@@ -3057,6 +3064,7 @@ namespace umbriel {
       return;
     }
 
+    std::erase_if(m_reservedWorkspaces, [](const auto& workspace) { return !workspace->launchReserved(); });
     const bool removedTemporary = pruneDisplacedWorkspaces();
     const auto finishInventoryChange = [this] {
       refreshWorkspaceMetadata();
@@ -3095,15 +3103,6 @@ namespace umbriel {
       m_omittedConfiguredNames = resolved.omittedNamed;
     }
     reconcileDynamicNames(resolved.workspaces);
-
-    // Keep reserved launch destinations after populated workspaces without destroying their identities.
-    std::ranges::stable_partition(m_workspaces, [this](const auto& workspace) {
-      return workspace.get() == m_active
-          || workspace->named()
-          || workspace->displacedWorkspace()
-          || workspace->occupied()
-          || !workspace->launchReserved();
-    });
 
     // Dynamic groups keep their active empty workspace until the user leaves it. It can serve as the trailing sentinel
     // when every workspace after it is another anonymous empty, but not when a named or occupied workspace follows it.
@@ -3149,18 +3148,26 @@ namespace umbriel {
       if (!workspace->named()
           && !workspace->displacedWorkspace()
           && std::ranges::none_of(workspace->allViews(), &View::mapped)
-          && !workspace->launchReserved()
+          && !workspace->hasPendingLaunchView()
           && workspace != activeKeeper
           && workspace != backKeeper
           && workspace != frontKeeper) {
         if (m_previous == workspace) {
           m_previous = nullptr;
         }
+        if (workspace->launchReserved()) {
+          wlr_ext_workspace_handle_v1_set_hidden(workspace->handle(), true);
+          wlr_ext_workspace_handle_v1_set_group(workspace->handle(), nullptr);
+          m_reservedWorkspaces.push_back(std::move(m_workspaces[index]));
+        }
         m_workspaces.erase(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index));
         m_server->scheduleIpcWorkspacesEvent();
       }
     }
-    // Filling the floor appends empty workspaces, so the last of them is the trailing empty this group needs.
+    // Reuse retained entries before allocating more workspaces to meet the configured floor.
+    while (m_workspaces.size() < minimum && !m_reservedWorkspaces.empty()) {
+      restoreLaunchWorkspace(*m_reservedWorkspaces.back());
+    }
     while (m_workspaces.size() < minimum) {
       backKeeper = appendDynamicWorkspace();
     }
@@ -3168,10 +3175,10 @@ namespace umbriel {
          || m_workspaces.back()->named()
          || m_workspaces.back()->occupied()
          || m_workspaces.back().get() == frontKeeper)
-        && m_workspaces.size() < kMaxWorkspaces) {
+        && storedWorkspaceCount() < kMaxWorkspaces) {
       appendDynamicWorkspace();
     }
-    if (emptyAbove && frontKeeper == nullptr && m_workspaces.size() < kMaxWorkspaces) {
+    if (emptyAbove && frontKeeper == nullptr && storedWorkspaceCount() < kMaxWorkspaces) {
       prependDynamicWorkspace();
     }
 
@@ -3180,6 +3187,29 @@ namespace umbriel {
       m_active->setActive(true);
     }
     finishInventoryChange();
+  }
+
+  void WorkspaceGroup::restoreLaunchWorkspace(Workspace& workspace) {
+    const auto entry = std::ranges::find_if(m_reservedWorkspaces, [&workspace](const auto& candidate) {
+      return candidate.get() == &workspace;
+    });
+    if (entry == m_reservedWorkspaces.end()) {
+      return;
+    }
+    const size_t index = std::min(workspace.index(), m_workspaces.size());
+    m_workspaces.insert(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index), std::move(*entry));
+    m_reservedWorkspaces.erase(entry);
+    refreshWorkspaceMetadata();
+    wlr_ext_workspace_handle_v1_set_group(workspace.handle(), m_handle);
+    wlr_ext_workspace_handle_v1_set_hidden(workspace.handle(), false);
+    m_server->scheduleIpcWorkspacesEvent();
+  }
+
+  void WorkspaceGroup::invalidateLaunchReservations() {
+    for (const auto& workspace : m_workspaces) {
+      workspace->invalidateLaunchReservations();
+    }
+    m_reservedWorkspaces.clear();
   }
 
   Workspace* WorkspaceGroup::workspaceAt(size_t index) const {
@@ -3474,6 +3504,7 @@ namespace umbriel {
     if (workspace == nullptr || workspace->group() != this) {
       return;
     }
+    restoreLaunchWorkspace(*workspace);
     if (m_active == workspace) {
       return;
     }
@@ -3589,7 +3620,7 @@ namespace umbriel {
     if (&destination == this) {
       return true;
     }
-    if (destination.m_workspaces.size() >= kMaxWorkspaces) {
+    if (destination.storedWorkspaceCount() >= kMaxWorkspaces) {
       return reject("output workspace limit reached");
     }
     Workspace* workspace = &source;
@@ -3668,7 +3699,7 @@ namespace umbriel {
         && (origin.workspaceNamed || (existing->transferred() && !existing->named()))) {
       return existing;
     }
-    if (m_workspaces.size() >= kMaxWorkspaces) {
+    if (storedWorkspaceCount() >= kMaxWorkspaces) {
       return nullptr;
     }
     slideFinish();
@@ -3706,7 +3737,7 @@ namespace umbriel {
     if (existing != m_workspaces.end()) {
       return existing->get();
     }
-    if (m_workspaces.size() >= kMaxWorkspaces) {
+    if (storedWorkspaceCount() >= kMaxWorkspaces) {
       return nullptr;
     }
     const size_t index = m_workspaces.size();

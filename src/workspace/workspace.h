@@ -39,6 +39,7 @@ namespace umbriel {
   // output removal never leave a dangling placement target.
   struct WorkspaceLaunchAnchor {
     Workspace* workspace = nullptr;
+    size_t pendingViews = 0;
   };
 
   enum class LayoutAttachOrigin {
@@ -80,6 +81,7 @@ namespace umbriel {
     }
     [[nodiscard]] std::shared_ptr<WorkspaceLaunchAnchor> reserveForLaunch() const { return m_launchAnchor; }
     [[nodiscard]] bool launchReserved() const { return m_launchAnchor.use_count() > 1; }
+    [[nodiscard]] bool hasPendingLaunchView() const { return m_launchAnchor->pendingViews > 0; }
     void invalidateLaunchReservations();
     [[nodiscard]] Layout& layout() { return *m_layout; }
     [[nodiscard]] const Layout& layout() const { return *m_layout; }
@@ -438,6 +440,9 @@ namespace umbriel {
     // axis first. Called before per-workspace layout resolution.
     void refreshWorkspaceAxis();
     void reconcileDynamic();
+    // A retained launch destination rejoins the visible inventory when its first toplevel claims it.
+    void restoreLaunchWorkspace(Workspace& workspace);
+    void invalidateLaunchReservations();
     // Every workspace, not just the active one: a client can change fullscreen state while another workspace is
     // showing, and that workspace still owes it a configure at the right size.
     void flushArrange();
@@ -472,6 +477,7 @@ namespace umbriel {
     void reconcileDynamicNames(const std::vector<ResolvedWorkspace>& resolved);
     void refreshWorkspaceMetadata();
     bool pruneDisplacedWorkspaces();
+    [[nodiscard]] size_t storedWorkspaceCount() const { return m_workspaces.size() + m_reservedWorkspaces.size(); }
 
     void beginReveal();
     // The workspace a reveal at `progress` shows coming in; the previous one when progress is held at the base.
@@ -499,6 +505,7 @@ namespace umbriel {
     uint32_t m_nextHandleSerial = 1;
     std::vector<std::string> m_transferredNames;
     std::vector<std::unique_ptr<Workspace>> m_workspaces;
+    std::vector<std::unique_ptr<Workspace>> m_reservedWorkspaces;
     AnimatedValue m_slideAnim;
     Slide m_slide;
   };

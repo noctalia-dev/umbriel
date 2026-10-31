@@ -86,15 +86,12 @@ fi
 "$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 workspaces=$("$UMBRIEL" workspaces --json)
-if ! jq -e --arg id "$launch_workspace" 'any(.[]; .id == $id)' <<< "$workspaces" > /dev/null; then
-  echo "pending launch did not preserve its empty workspace: $workspaces"
-  exit 1
-fi
 if ! jq -e --arg pending "$launch_workspace" --arg occupied "$trailing_workspace" '
-  any(.[]; .id == $occupied and .index == 2 and .occupied)
-  and any(.[]; .id == $pending and .index == 3 and (.occupied | not))
+  all(.[]; .id != $pending)
+  and any(.[]; .id == $occupied and .index == 2 and .occupied)
+  and length == 3
 ' <<< "$workspaces" > /dev/null; then
-  echo "pending launch left a gap before the fullscreen workspace: $workspaces"
+  echo "pending launch left a visible empty workspace: $workspaces"
   exit 1
 fi
 

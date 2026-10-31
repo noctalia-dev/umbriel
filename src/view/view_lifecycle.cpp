@@ -224,6 +224,9 @@ namespace umbriel {
     }
     const auto openingFloatingRuleSize = std::exchange(m_openingFloatingRuleSize, std::array<int, 2>{});
     m_mapped = true;
+    if (m_workspace != nullptr) {
+      m_workspace->group()->restoreLaunchWorkspace(*m_workspace);
+    }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
     m_presentedTiledBox = {};

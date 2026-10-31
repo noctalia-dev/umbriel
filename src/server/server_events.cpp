@@ -1907,7 +1907,8 @@ namespace umbriel {
     if (handle == nullptr || handle->data == nullptr) {
       return nullptr;
     }
-    return static_cast<Workspace*>(handle->data);
+    auto* workspace = static_cast<Workspace*>(handle->data);
+    return workspace->group()->workspaceFromHandle(handle);
   }
 
   WorkspaceGroup* Server::workspaceGroupFromHandle(wlr_ext_workspace_group_handle_v1* handle) const {
@@ -2810,9 +2811,7 @@ namespace umbriel {
         ? destination->workspaceGroup()->active()
         : nullptr;
     if (sourceGroup != nullptr) {
-      for (size_t index = 0; index < sourceGroup->workspaceCount(); ++index) {
-        sourceGroup->workspaceAt(index)->invalidateLaunchReservations();
-      }
+      sourceGroup->invalidateLaunchReservations();
     }
     const char* sourceName = source->wlr()->name;
     if (sourceGroup != nullptr

@@ -93,7 +93,7 @@ for mode in helper nested; do
   fi
   msg workspace-switch 1
   "$UMBRIEL" settle
-  assert_source true "$mode launch lost its pending workspace"
+  assert_source false "$mode launch left its pending workspace visible"
   printf 'start\n' >&"$gate_fd"
   await_window "$mode"
   "$UMBRIEL" settle

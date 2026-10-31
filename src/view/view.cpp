@@ -540,11 +540,13 @@ namespace umbriel {
       }
     }
     m_launchWorkspace = std::move(workspace);
+    ++m_launchWorkspace->pendingViews;
     m_launchScratchpad = scratchpad;
     m_launchToken = token;
     m_launchWorkspaceId = target->id();
     m_launchPlacementPending = true;
     m_launchPlacementTimer = timer;
+    target->group()->restoreLaunchWorkspace(*target);
     return true;
   }
 
@@ -574,6 +576,9 @@ namespace umbriel {
     if (m_launchPlacementTimer != nullptr) {
       wl_event_source_remove(m_launchPlacementTimer);
       m_launchPlacementTimer = nullptr;
+    }
+    if (m_launchWorkspace != nullptr && m_launchPlacementPending) {
+      --m_launchWorkspace->pendingViews;
     }
     m_launchWorkspace.reset();
     m_launchScratchpad.clear();
