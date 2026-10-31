@@ -1309,6 +1309,9 @@ namespace umbriel {
         view->settleFloatingDrop(view->layoutX(), view->layoutY());
       }
     }
+    if (view != nullptr) {
+      view->closeReleaseRehomeWindow();
+    }
     // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
     // an unchanged clip otherwise keeps the scaled source/destination until the client commits again.
     if (resizedWorkspace != nullptr) {

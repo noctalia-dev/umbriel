@@ -463,7 +463,11 @@ namespace umbriel {
     }
   }
 
-  void View::endDragPhysics() { m_dragPhysics.release(); }
+  void View::endDragPhysics() {
+    m_dragPhysics.release();
+    // The resting re-home's wait covers the reparents the release issues.
+    m_releaseRehomeArmed = true;
+  }
 
   void View::restoreHomePresentation() {
     // The drag derived its own presented size and crop; drop them so the
@@ -474,7 +478,6 @@ namespace umbriel {
     if (m_ssdFrame != nullptr)
       m_ssdFrame->setBlurLive(false);
     setFadeAlpha(m_fadeAlpha);
-    wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(this)) {
       scratchpad->restorePresentation(this);
@@ -966,7 +969,7 @@ namespace umbriel {
       );
       active = active || m_borderColorAnim.animating() || m_outerBorderColorAnim.animating();
     }
-    if (m_dragPhysics.active() || m_dragPhysics.grabbed()) {
+    if (dragSheetDisplaced()) {
       if (effectRegistry().deformationShader() == nullptr) {
         // Without the program (physics turned off), the window stays rigid for the rest of the drag.
         m_dragPhysics = DragPhysics{};
@@ -980,6 +983,21 @@ namespace umbriel {
         const int refreshMhz = output != nullptr ? output->wlr()->refresh : 0;
         const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 0.0;
         active = m_dragPhysics.tick(elapsed / 1000.0, cadenceS) || active;
+      }
+    }
+    // The deferred resting re-home lands in the same tick the spring settles —
+    // a later tick may never come — or earlier while an overview is open and
+    // its cards need the home tree. This tick is also the backstop that closes
+    // the release's say over where the view rests.
+    m_releaseRehomeArmed = false;
+    if (m_pendingHomeParent != nullptr
+        && (!dragSheetDisplaced() || (m_server->overview() != nullptr && m_server->overview()->active()))) {
+      flushReleaseRehome();
+      if (m_workspace != nullptr && !m_pinned) {
+        m_workspace->restackFloatingViews();
+        if (m_mapped) {
+          m_workspace->syncViewPresentation(this);
+        }
       }
     }
     syncAnimationEffects();

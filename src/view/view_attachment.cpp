@@ -161,6 +161,9 @@ namespace umbriel {
 
     m_attachedTo = parent;
     parent->m_attachments.push_back(this);
+    // The raw reparent below supersedes any deferred resting re-home.
+    m_pendingHomeParent = nullptr;
+    m_releaseRehomeArmed = false;
     wlr_scene_node_reparent(&m_sceneTree->node, parent->m_attachmentTree);
     syncShadowPool();
     setOnActiveWorkspace(true);

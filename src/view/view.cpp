@@ -795,13 +795,81 @@ namespace umbriel {
     refreshStateRuleEffects();
   }
 
+  bool View::dragSheetDisplaced() const { return m_dragPhysics.active() || m_dragPhysics.grabbed(); }
+
   void View::setSceneParent(wlr_scene_tree* parent) {
+    // A released sheet stays displaced past a home tree's output clip while the
+    // spring settles; the release's resting re-homes wait for it (the invisible
+    // part is only correct when the window is settled). The wait covers every
+    // reparent the release issues, including a transfer's park + re-home; a
+    // later state change (fullscreen, pin, scratchpad) applies immediately and
+    // drops it, and a repeated request for the tree already waiting is
+    // absorbed. closeReleaseRehomeWindow() ends the release's say.
+    const bool waitingForThisTree = m_pendingHomeParent != nullptr && m_pendingHomeParent == parent;
+    const bool displacedInDragTree =
+        parent != m_server->dragTree() && m_sceneTree->node.parent == m_server->dragTree() && dragSheetDisplaced();
+    if (displacedInDragTree && (m_releaseRehomeArmed || waitingForThisTree)) {
+      if (m_releaseRehomeArmed) {
+        m_pendingHomeParent = parent;
+      }
+      return;
+    }
+    const bool leavingDragTree = m_sceneTree->node.parent == m_server->dragTree() && parent != m_server->dragTree();
+    m_pendingHomeParent = nullptr;
+    m_releaseRehomeArmed = false;
+
     wlr_scene_node_reparent(&m_sceneTree->node, parent);
     syncShadowPool();
+    if (leavingDragTree) {
+      // Transient children elevated with this view follow it home.
+      syncTransientChildren();
+      // The drag tree's elevation over pinned/fullscreen serves the whole drag
+      // presentation, not just the departing view: a settling release or an
+      // elevated transient child unmapping must not demote a drag that is still
+      // in progress. The elevation drops when the last drag-presented view
+      // leaves (the insert hint is not one).
+      if (!dragTreeOccupied()) {
+        wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
+      }
+    }
     // Another parent can put the window elsewhere in layout coordinates.
     if (m_xsurface != nullptr && m_mapped) {
       syncXwaylandConfigure();
     }
+  }
+
+  void View::closeReleaseRehomeWindow() { m_releaseRehomeArmed = false; }
+
+  void View::flushReleaseRehome() {
+    if (m_pendingHomeParent == nullptr) {
+      return;
+    }
+    wlr_scene_tree* target = m_pendingHomeParent;
+    m_pendingHomeParent = nullptr;
+    m_releaseRehomeArmed = false;
+    setSceneParent(target);
+  }
+
+  void View::syncTransientChildren() {
+    const auto views = m_server->registry().all();
+    for (const auto& view : std::views::reverse(views)) {
+      View* child = view.get();
+      if (child != nullptr && child != this && child->transientParent() == this) {
+        child->syncTransientSceneParent();
+        child->syncTransientChildren();
+      }
+    }
+  }
+
+  bool View::dragTreeOccupied() const {
+    const auto views = m_server->registry().all();
+    for (const auto& view : std::views::reverse(views)) {
+      View* other = view.get();
+      if (other != nullptr && other != this && other->m_sceneTree->node.parent == m_server->dragTree()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void View::syncShadowPool() {

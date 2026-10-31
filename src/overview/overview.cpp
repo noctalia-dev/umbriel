@@ -1749,6 +1749,14 @@ namespace umbriel {
     }
 
     m_active = true;
+    // Cards need their home trees now; land deferred release re-homes without
+    // waiting for the next tick.
+    const auto overviewViews = m_server->registry().all();
+    for (const auto& entry : overviewViews) {
+      if (View* v = entry.get(); v != nullptr) {
+        v->flushReleaseRehome();
+      }
+    }
     m_closing = false;
     m_progress = 0.0;
     m_targetProgress = 0.0;
