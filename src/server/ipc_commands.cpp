@@ -638,6 +638,7 @@ namespace umbriel {
       entry["floating"] = view.floating();
       entry["title_bar"] = view.titleBarHeight() > 0;
       entry["fullscreen"] = view.scheduledFullscreen();
+      entry["windowed_fullscreen"] = view.windowedFullscreen();
       entry["maximized"] = view.scheduledMaximized();
       entry["maximized_to_edges"] = view.maximizedToEdges();
       entry["pinned"] = view.pinned();

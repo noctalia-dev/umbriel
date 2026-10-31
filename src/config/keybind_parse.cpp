@@ -620,6 +620,8 @@ namespace umbriel {
         {"window-toggle-pinned", "", "Pin the focused window above other windows", KeybindAction::TogglePinned},
         {"window-toggle-scratchpad", "[<scratchpad>]", "Move the focused window to or from a scratchpad",
          KeybindAction::WindowToggleScratchpad, ActionArgKind::OptionalScratchpad},
+        {"window-toggle-windowed-fullscreen", "", "Tell the window it is fullscreen while it keeps its size",
+         KeybindAction::ToggleWindowedFullscreen},
         {"workspace-focus-last", "", "Focus the previously active workspace", KeybindAction::WorkspaceFocusLast},
         {"workspace-move-down", "", "Move the focused workspace down the list", KeybindAction::WorkspaceMoveDown},
         {"workspace-move-to-output", "<destination> [<workspace>] [--output <output>]",

@@ -465,6 +465,7 @@ namespace {
     case A::ToggleMaximize:
     case A::ToggleMaximizeToEdges:
     case A::ToggleFullscreen:
+    case A::ToggleWindowedFullscreen:
     case A::TogglePinned:
     case A::ColumnToggleTabbed:
     case A::ColumnSetDisplay:
