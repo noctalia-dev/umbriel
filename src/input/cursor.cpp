@@ -1038,6 +1038,9 @@ namespace umbriel {
         .startY = m_cursor->y,
         .lastX = m_cursor->x,
         .lastY = m_cursor->y,
+        .tabs = {},
+        .tabBar = std::nullopt,
+        .tabHome = {},
     };
     if (grab.sourceWorkspace != nullptr) {
       grab.sourceColumn = grab.sourceWorkspace->layout().columnOf(view);
@@ -1287,8 +1290,16 @@ namespace umbriel {
       m_server->gestures()->endPointerScroll(true, 0);
     }
     const bool restoreDragPresentation = isDraggingView(view);
-    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != nullptr && grab->physics) {
-      grab->view->endDragPhysics();
+    std::vector<View*> liftedTabs;
+    std::optional<bool> liftedTabBar;
+    TabGroupHome liftedHome;
+    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != nullptr) {
+      if (grab->physics) {
+        grab->view->endDragPhysics();
+      }
+      liftedTabs = std::move(grab->tabs);
+      liftedTabBar = grab->tabBar;
+      liftedHome = grab->tabHome;
     }
     const auto* tiledResize = std::get_if<TiledResizeGrab>(&m_grab);
     Workspace* resizedWorkspace = tiledResize != nullptr ? tiledResize->workspace : nullptr;
@@ -1307,6 +1318,25 @@ namespace umbriel {
       // window, and the margin must hold without waiting for a usable change.
       if (view->floating()) {
         view->settleFloatingDrop(view->layoutX(), view->layoutY());
+      }
+    }
+    // The tabs a drag lifted rejoin the dragged window in the scrolling column it landed in. A cancelled drag takes the
+    // whole group back where it was. Anywhere else, the rest go back without it, showing the tab before it as a closed
+    // tab would.
+    if (!liftedTabs.empty()) {
+      Workspace* landed = view->workspace();
+      const bool placed = landed != nullptr && landed->layout().columnOf(view) >= 0;
+      if (placed && landed->scrollingLayout() != nullptr) {
+        rebuildTabGroup(*view, *landed, liftedTabs, liftedTabBar);
+      } else if (!placed && view->mapped() && view->tiled()) {
+        returnTabGroup(*view, liftedTabs, liftedTabBar, liftedHome);
+      } else {
+        const auto dragged = std::ranges::find(liftedTabs, view) - liftedTabs.begin();
+        std::erase(liftedTabs, view);
+        if (!liftedTabs.empty()) {
+          View& shown = *liftedTabs[static_cast<size_t>(std::max<std::ptrdiff_t>(0, dragged - 1))];
+          returnTabGroup(shown, liftedTabs, liftedTabBar, liftedHome);
+        }
       }
     }
     // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
@@ -1845,7 +1875,9 @@ namespace umbriel {
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
-      beginMove(view, button);
+      if (beginMove(view, button)) {
+        std::get<MoveGrab>(m_grab).carryTabGroup = true;
+      }
       return;
     }
     if (button == BTN_RIGHT && modHeld && view != nullptr) {
@@ -2846,6 +2878,9 @@ namespace umbriel {
     m_lastTitleBarClick = {};
     grab.pending = false;
     if (grab.sourceWorkspace != nullptr) {
+      if (grab.carryTabGroup) {
+        liftTabGroup(grab);
+      }
       grab.sourceWorkspace->layoutDetach(grab.view);
     }
     grab.view->enterDragPresentation();
@@ -2853,6 +2888,37 @@ namespace umbriel {
     grab.lastX = m_cursor->x;
     grab.lastY = m_cursor->y;
     updateInteractiveCursor(grab.view);
+  }
+
+  void Cursor::liftTabGroup(MoveGrab& grab) {
+    const ScrollingLayout* scrolling = grab.sourceWorkspace->scrollingLayout();
+    const int columnIndex = scrolling != nullptr ? scrolling->columnOf(grab.view) : -1;
+    if (columnIndex < 0) {
+      return;
+    }
+    const Column& column = scrolling->columns()[static_cast<size_t>(columnIndex)];
+    const TabGroup* group = tabGroupOf(column, grab.view);
+    if (group == nullptr) {
+      return;
+    }
+    const auto first = column.views.begin() + static_cast<std::ptrdiff_t>(group->first);
+    grab.tabs.assign(first, first + static_cast<std::ptrdiff_t>(group->count));
+    grab.tabBar = group->bar;
+    for (View* tab : grab.tabs) {
+      if (tab != grab.view) {
+        grab.sourceWorkspace->layoutDetach(tab);
+        tab->setTabHidden(true);
+      }
+    }
+    // Alone in its column now, the dragged tab owns the width a group filling that column had.
+    grab.sourceWidth = captureDropColumnWidth(*grab.sourceWorkspace, grab.view);
+    const int row = scrolling->rowOf(grab.view);
+    grab.tabHome = {
+        .column = columnIndex,
+        .row = column.views.size() > 1 ? row : -1,
+        .weight = scrolling->heightWeight(columnIndex, row),
+        .width = grab.sourceWidth,
+    };
   }
 
   void Cursor::updateDropTarget() {
@@ -3282,6 +3348,11 @@ namespace umbriel {
       m_ssdButtonPress = {};
     if (m_ssdHoverView == view)
       m_ssdHoverView = nullptr;
+    // A hidden tab leaves the lifted group. The dragged window keeps its place there until handleUnmap's resetMode()
+    // puts the group back.
+    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != view) {
+      std::erase(grab->tabs, view);
+    }
     // Only the click pair sits outside the grab machinery: the deferred press
     // is a grab and handleUnmap's resetMode() drops it.
     if (m_lastModRightClick.view == view) {

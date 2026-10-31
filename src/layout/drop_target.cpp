@@ -589,4 +589,66 @@ namespace umbriel {
     server.focusView(&view, FocusReason::DragDrop);
   }
 
+  void rebuildTabGroup(View& view, Workspace& workspace, std::span<View* const> tabs, std::optional<bool> bar) {
+    Layout& layout = workspace.layout();
+    const int column = layout.columnOf(&view);
+    // A window that landed on its own becomes a group of one, which the other tabs then join.
+    if (ScrollingLayout* scrolling = workspace.scrollingLayout(); scrolling != nullptr && column >= 0) {
+      const Column& landed = scrolling->columns()[static_cast<size_t>(column)];
+      if (tabGroupOf(landed, &view) == nullptr) {
+        ColumnTabs groups = landed.tabs;
+        const auto row = static_cast<size_t>(scrolling->rowOf(&view));
+        groups.form(row, 1, row, bar);
+        scrolling->adoptTabs(column, groups);
+      }
+    }
+    TabbedContainers* containers = layout.tabbedContainers();
+    const auto self = std::ranges::find(tabs, &view);
+    const bool grouped = containers != nullptr
+        && self != tabs.end()
+        && column >= 0
+        && tabGroupOf(layout.columns()[static_cast<size_t>(column)], &view) != nullptr;
+    for (auto tab = tabs.begin(); tab != tabs.end(); ++tab) {
+      if (*tab == &view) {
+        continue;
+      }
+      if ((*tab)->workspace() != &workspace) {
+        (*tab)->moveToWorkspace(&workspace, /*attachToLayout=*/false);
+      }
+      // Earlier tabs go in just before `view` and later ones after it, so the group keeps its order.
+      const int row = layout.rowOf(&view) + static_cast<int>(tab < self ? 0 : tab - self);
+      if (!grouped || !containers->insertTab(*tab, column, row, &view)) {
+        (*tab)->setTabHidden(false);
+        workspace.layoutAttach(*tab);
+      }
+    }
+    workspace.markArrange(true);
+  }
+
+  void returnTabGroup(View& shown, std::span<View* const> tabs, std::optional<bool> bar, const TabGroupHome& home) {
+    Workspace& workspace = *shown.workspace();
+    Layout& layout = workspace.layout();
+    shown.setTabHidden(false);
+    if (home.row >= 0) {
+      layout.insertViewIntoColumn(&shown, home.column, home.row);
+    }
+    if (const int column = layout.columnOf(&shown); column >= 0) {
+      if (ScrollingLayout* scrolling = workspace.scrollingLayout()) {
+        scrolling->setHeightWeight(column, scrolling->rowOf(&shown), home.weight);
+      }
+    } else {
+      // A group that filled its column, or whose column has gone since, comes back as a column of its own.
+      layout.insertView(&shown, home.column);
+      if (home.width) {
+        const int inserted = layout.columnOf(&shown);
+        layout.setWidthFraction(inserted, home.width->fraction);
+        if (home.width->fullWidth) {
+          layout.toggleFullWidth(inserted);
+        }
+        shown.setMaximizedState(home.width->fullWidth);
+      }
+    }
+    rebuildTabGroup(shown, workspace, tabs, bar);
+  }
+
 } // namespace umbriel

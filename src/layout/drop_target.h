@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 
 extern "C" {
 #include <wlr/util/box.h>
@@ -55,5 +56,21 @@ namespace umbriel {
       Server& server, View& view, Workspace& target, const DropTarget& drop, const DropColumnWidth* columnWidth,
       bool animate
   );
+
+  // Puts the detached tabs of `view`'s former group back around it on `workspace`, where `view` already sits. `tabs`
+  // is the whole group in row order, `view` among them. Tabs the layout cannot group arrive as ordinary windows.
+  void rebuildTabGroup(View& view, Workspace& workspace, std::span<View* const> tabs, std::optional<bool> bar);
+
+  // Where a lifted tab group sat: rows from `row` of `column`, `weight` high, or, when `row` is negative, a column of
+  // its own at gap `column`, `width` wide.
+  struct TabGroupHome {
+    int column = -1;
+    int row = -1;
+    double weight = 1.0;
+    std::optional<DropColumnWidth> width;
+  };
+
+  // Puts the detached `tabs` of a lifted group back at `home` on `shown`'s workspace, as a group showing `shown`.
+  void returnTabGroup(View& shown, std::span<View* const> tabs, std::optional<bool> bar, const TabGroupHome& home);
 
 } // namespace umbriel
