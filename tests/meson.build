@@ -341,6 +341,18 @@ idle_inhibit_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that holds an ext-idle-notification and reports when it idles
+# and resumes.
+idle_notify_client = executable(
+  'idle-notify-client',
+  [
+    'harness/clients/idle_notify_client.cpp',
+    ext_idle_notify_client_h,
+    ext_idle_notify_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 # Harness helper that locks the session through ext-session-lock and unlocks it
 # on demand, so checks can compare compositor state across a real lock cycle.
 lock_client = executable(
@@ -549,6 +561,7 @@ harness_client_targets = [
   fractional_client,
   syncobj_client,
   idle_inhibit_client,
+  idle_notify_client,
   lock_client,
   security_context_client,
   seat_log_client,
