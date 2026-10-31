@@ -196,6 +196,11 @@ namespace umbriel {
         add(*corner.action);
       }
     }
+    for (const auto& edge : config.hotEdges.edges) {
+      if (edge.enabled && edge.action) {
+        add(*edge.action);
+      }
+    }
     std::ranges::sort(roots);
     roots.erase(std::ranges::unique(roots).begin(), roots.end());
     return roots;
@@ -250,7 +255,8 @@ namespace umbriel {
             || focusAppearance,
         .layerEffects = sceneBlur || before.layerRules != after.layerRules,
         .animation = before.animation != after.animation,
-        .input = before.input != after.input || before.hotCorners != after.hotCorners,
+        .input =
+            before.input != after.input || before.hotCorners != after.hotCorners || before.hotEdges != after.hotEdges,
         .overviewPresentation = before.overview != after.overview || before.colors != after.colors,
         .internalUi = before.colors != after.colors || before.general.modKey != after.general.modKey,
         .effects = effectsChanged,
@@ -286,6 +292,7 @@ namespace umbriel {
         .animation = true,
         .overview = true,
         .hotCorners = true,
+        .hotEdges = true,
         .layout = true,
         .workspaces = true,
         .general = true,
@@ -311,6 +318,7 @@ namespace umbriel {
         .animation = before.animation != after.animation,
         .overview = before.overview != after.overview,
         .hotCorners = before.hotCorners != after.hotCorners,
+        .hotEdges = before.hotEdges != after.hotEdges,
         .layout = before.layout != after.layout,
         .workspaces = before.workspaces != after.workspaces,
         .general = before.general != after.general,
@@ -345,6 +353,7 @@ namespace umbriel {
     add(animation, "animation");
     add(overview, "overview");
     add(hotCorners, "hot corners");
+    add(hotEdges, "hot edges");
     add(layout, "layout");
     add(workspaces, "workspaces");
     add(general, "general");

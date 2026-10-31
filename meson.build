@@ -698,6 +698,7 @@ pure_sources = files(
   'src/config/value_parse.cpp',
   'src/config/section.cpp',
   'src/config/effects.cpp',
+  'src/input/hot_edge.cpp',
   'src/input/lid_state.cpp',
   'src/input/modifier_tap.cpp',
   'src/input/swipe_tracker.cpp',

@@ -1022,6 +1022,11 @@ UMBRIEL_TEST(overviewInvalidationExcludesIrrelevantRuntimeEffects) {
   CHECK(!hotCornerEffects.overviewPresentation);
   CHECK(!hotCornerEffects.invalidatesOverview());
   CHECK(ConfigChange::between(before, hotCornerChanged).hotCorners);
+
+  Config hotEdgeChanged;
+  hotEdgeChanged.hotEdges.edges[0].enabled = true;
+  CHECK(ConfigEffects::between(before, hotEdgeChanged).input);
+  CHECK(ConfigChange::between(before, hotEdgeChanged).hotEdges);
 }
 
 UMBRIEL_TEST(modKeyReloadRefreshesOnlyInternalUi) {

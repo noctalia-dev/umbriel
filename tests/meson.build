@@ -32,6 +32,7 @@ unit_tests = [
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],
+  ['hot-edge', ['unit/hot_edge.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],
   ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
   ['cursor-plane-pace', ['unit/cursor_plane_pace.cpp'], []],

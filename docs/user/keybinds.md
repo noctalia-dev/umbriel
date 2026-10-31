@@ -167,6 +167,30 @@ Hot corners are inactive while the output's focused window is fullscreen. This c
 
 Hot corners are also inactive while an exclusive-keyboard layer surface, such as a launcher, is mapped. While the overview is open, exclusive-keyboard layers do not block hot corners.
 
+## Hot edges
+
+Hot edges run an action when the pointer is pushed against an outer output edge:
+
+```toml
+[hot_edges.left]
+enabled = true
+resistance_px = 300
+action = "window-focus-left"
+```
+
+Available sections are `left`, `right`, `top`, and `bottom`. All are disabled by default.
+
+| Key             | Default | Description                                           |
+| --------------- | ------- | ----------------------------------------------------- |
+| `enabled`       | `false` | Enable this edge.                                     |
+| `resistance_px` | `300`   | Pointer travel past the edge, from 1 to 65535 pixels. |
+| `action`        | unset   | Any action accepted by a keybind.                     |
+| `overview`      | `false` | Also run while the overview is open.                  |
+
+Only relative pointer motion counts. Travel past the edge accumulates while it is mostly along the edge's axis, and a tie goes to `left` and `right`. When the total reaches `resistance_px` the action runs once. Moving the pointer off the edge, or any suppression below, re-arms it.
+
+An edge is inactive while the session is locked, a button is held or a drag or grab is active, a pointer constraint is active, an exclusive-keyboard layer surface is mapped (not while the overview is open), or the output's focused window is fullscreen. An edge with another output on that side never fires, and neither does a push that moves the pointer onto another output. Effect action references are checked like hot corners, and enabled edges prepare their effects the same way.
+
 ## Cheatsheet
 
 The cheatsheet lists active keybinds. It opens at startup when `general.show_cheatsheet` is enabled. Use `cheatsheet-toggle`, `cheatsheet-open`, or `cheatsheet-close` from a bind or `umbriel msg`.

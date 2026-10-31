@@ -1008,6 +1008,50 @@ UMBRIEL_TEST(hotCornersLoadActionsAndValidate) {
   CHECK(containsDiagnostic(store, "hot_corners.top_right.delay_ms = -1"));
 }
 
+UMBRIEL_TEST(hotEdgesLoadActionsAndValidate) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("");
+  CHECK(store.reload().success);
+  for (const auto& edge : store.config().hotEdges.edges) {
+    CHECK(!edge.enabled);
+    CHECK_EQ(edge.resistancePx, 300);
+    CHECK(!edge.action.has_value());
+    CHECK(!edge.overview);
+  }
+
+  file.write(
+      "[hot_edges.left]\nenabled = true\nresistance_px = 450\naction = \"window-focus-left\"\n"
+      "[hot_edges.bottom]\nenabled = true\nresistance_px = 65535\naction = \"overview-open\"\noverview = true\n"
+  );
+  CHECK(store.reload().success);
+  const auto& edges = store.config().hotEdges.edges;
+  CHECK(edges[0].enabled);
+  CHECK_EQ(edges[0].resistancePx, 450);
+  CHECK(edges[0].action && edges[0].action->action == umbriel::KeybindAction::WindowFocusLeft);
+  CHECK(!edges[0].overview);
+  CHECK(!edges[1].enabled);
+  CHECK(!edges[2].enabled);
+  CHECK(edges[3].enabled);
+  CHECK_EQ(edges[3].resistancePx, 65535);
+  CHECK(edges[3].action && edges[3].action->action == umbriel::KeybindAction::OverviewOpen);
+  CHECK(edges[3].overview);
+
+  file.write(
+      "[hot_edges.right]\nenabled = true\nresistance_px = 0\naction = \"not-an-action\"\n"
+      "[hot_edges.top]\nresistance_px = 65536\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().hotEdges.edges[1].resistancePx, 1);
+  CHECK(!store.config().hotEdges.edges[1].action.has_value());
+  CHECK_EQ(store.config().hotEdges.edges[2].resistancePx, 65535);
+  CHECK(containsDiagnostic(store, "invalid hot_edges.right.action \"not-an-action\""));
+  CHECK(containsDiagnostic(store, "hot_edges.right.resistance_px = 0"));
+  CHECK(containsDiagnostic(store, "hot_edges.top.resistance_px = 65536"));
+}
+
 UMBRIEL_TEST(implicitScratchpadHotCornersAcceptOnlyTheDefaultTarget) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
