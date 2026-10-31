@@ -141,6 +141,22 @@ UMBRIEL_TEST(borderEffectsApplyOnlyToFocusedDecoratedCalmWindows) {
   CHECK(!umbriel::borderEffectApplies({.focused = true, .decorated = false, .urgent = false, .fullscreen = false}));
   CHECK(!umbriel::borderEffectApplies({.focused = true, .decorated = true, .urgent = true, .fullscreen = false}));
   CHECK(!umbriel::borderEffectApplies({.focused = true, .decorated = true, .urgent = false, .fullscreen = true}));
+  // The opt-in widening (border_unfocused) opens only the focused gate; the
+  // decorated, urgent and fullscreen gates still hold without focus.
+  CHECK(
+      umbriel::borderEffectApplies(
+          {.focused = false, .allowUnfocused = true, .decorated = true, .urgent = false, .fullscreen = false}
+      )
+  );
+  CHECK(!umbriel::borderEffectApplies(
+      {.focused = false, .allowUnfocused = true, .decorated = false, .urgent = false, .fullscreen = false}
+  ));
+  CHECK(!umbriel::borderEffectApplies(
+      {.focused = false, .allowUnfocused = true, .decorated = true, .urgent = true, .fullscreen = false}
+  ));
+  CHECK(!umbriel::borderEffectApplies(
+      {.focused = false, .allowUnfocused = true, .decorated = true, .urgent = false, .fullscreen = true}
+  ));
 }
 
 UMBRIEL_TEST(borderPaddingNeedsACompiledBorderPreset) {

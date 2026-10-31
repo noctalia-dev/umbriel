@@ -1,6 +1,6 @@
 # Effects
 
-Effects are GLSL programs Umbriel runs on animation events, on the focused window's border, on windows, on whole outputs, and around the pointer. Every effect is off until you select one. Umbriel ships a small set; each is a preset you include and then name where it should apply.
+Effects are GLSL programs Umbriel runs on animation events, on window borders, on windows, on whole outputs, and around the pointer. Every effect is off until you select one. Umbriel ships a small set; each is a preset you include and then name where it should apply.
 
 ## Use a bundled effect
 
@@ -64,19 +64,20 @@ screen_effect = "off"
 
 `[effects]`:
 
-| Key          | Default | Description                                                                                                                                                                                 |
-| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`     | `""`    | Border preset or pool for the focused window.                                                                                                                                               |
-| `window`     | `""`    | Window preset or pool applied to every window.                                                                                                                                              |
-| `screen`     | `""`    | Screen preset or pool applied to every output.                                                                                                                                              |
-| `cursor`     | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                               |
-| `max_fps`    | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                    |
-| `in_capture` | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients. |
+| Key                | Default | Description                                                                                                                                                                                 |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `border`           | `""`    | Border preset or pool for the focused window.                                                                                                                                               |
+| `window`           | `""`    | Window preset or pool applied to every window.                                                                                                                                              |
+| `screen`           | `""`    | Screen preset or pool applied to every output.                                                                                                                                              |
+| `cursor`           | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                               |
+| `max_fps`          | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                    |
+| `in_capture`       | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients. |
+| `border_unfocused` | `false` | Draw the border effect on every window that passes the non-focus gates, not just the focused one. Each additional window costs one ring capture and one program pass per frame.             |
 
 Where each kind draws:
 
 - **animation** binds to an animation event through `[animation.<event>] effect = "<name>"`. The event's `enabled`, `duration_ms`, and `curve` still own its timeline; see [Animation](animation.md#custom-effects).
-- **border** draws on the focused window's border ring while the window is decorated, not fullscreen, and not urgent. `padding` reserves transparent space around the ring for the effect to paint into.
+- **border** draws on the focused window's border ring while the window is decorated, not fullscreen, and not urgent — or on every such window, focused or not, with `border_unfocused = true`. `padding` reserves transparent space around the ring for the effect to paint into.
 - **window** draws over each window in place, regardless of focus, including undecorated and fullscreen windows. It follows the window through opening, closing, moving, workspace switches, and the overview. A floating window with client-side decorations and `corner_radius = 0` has no rounding to mask against, so the effect also shades the transparent margin the client draws around such a window.
 - **screen** draws over the whole output after everything else, except the cursor effect and the software cursor.
 - **cursor** draws in a square of `radius` logical pixels around the pointer (`0` covers the whole output), after the screen effect, only on the output currently holding the pointer, clipped at that output's edges. It runs before the software cursor is drawn and never shades the cursor image, and never affects a hardware cursor. It hides when the compositor hides the pointer; a client that hides its own cursor image does not by itself turn the effect off. Motion-history shaders expand the rectangle to cover the retained path, with `radius` padding.
@@ -229,4 +230,4 @@ Referenced presets compile at startup, on effects reload, and during runtime act
 
 ## Cost
 
-Unreferenced presets and pools add no rendering work. Named keybinds and enabled hot corners prepare programs before use; selections retain bookkeeping state. A border effect renders the ring through a capture and one program pass per frame on the focused window, and requests extra frames only while its program reads `umbriel_time` and its clock advances, capped by `max_fps`. Light adds a second program pass and a blurred pyramid where the ring draws, and a blend on every output its light reaches. A window effect copies the pixels under the window and runs one pass per window per frame. Screen and cursor effects each run one pass over the output or the radius square and disable direct scanout on that output. Drag physics costs only while a window is held or settling. With `in_capture = false`, a pending screencopy or image-copy capture of an output composes its frame twice whenever any window, screen, or cursor effect is visible on that output.
+Unreferenced presets and pools add no rendering work. Named keybinds and enabled hot corners prepare programs before use; selections retain bookkeeping state. A border effect renders the ring through a capture and one program pass per frame on each window it draws: the focused window, or every decorated, calm, non-fullscreen window with `border_unfocused = true`. It requests extra frames only while its program reads `umbriel_time` and its clock advances, capped by `max_fps`. Light adds a second program pass and a blurred pyramid where the ring draws, and a blend on every output its light reaches. A window effect copies the pixels under the window and runs one pass per window per frame. Screen and cursor effects each run one pass over the output or the radius square and disable direct scanout on that output. Drag physics costs only while a window is held or settling. With `in_capture = false`, a pending screencopy or image-copy capture of an output composes its frame twice whenever any window, screen, or cursor effect is visible on that output.

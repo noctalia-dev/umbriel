@@ -829,6 +829,7 @@ namespace umbriel {
       }
       const BorderEffectGate ownGate{
           .focused = m_borderFocusedState,
+          .allowUnfocused = config().effects.borderUnfocused,
           .decorated = decorated(),
           .urgent = m_urgent,
           .fullscreen = scheduledFullscreen(),

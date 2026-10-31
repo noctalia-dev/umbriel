@@ -140,6 +140,9 @@ radius = 3
 #
 # [effects]
 # border = "pulse"
+# Draw the border on every decorated, calm, non-fullscreen window, not just
+# the focused one (overview cards included).
+# border_unfocused = true
 
 # ==============================================================================
 # Input

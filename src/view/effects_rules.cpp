@@ -3,7 +3,10 @@
 namespace umbriel {
 
   bool borderEffectApplies(const BorderEffectGate& gate) {
-    return gate.focused && gate.decorated && !gate.urgent && !gate.fullscreen;
+    // The widening to unfocused windows is opt-in (gate.allowUnfocused from
+    // [effects].border_unfocused): every drawn window costs a ring capture and
+    // one program pass per frame, so the default keeps the focused-only draw.
+    return (gate.focused || gate.allowUnfocused) && gate.decorated && !gate.urgent && !gate.fullscreen;
   }
 
   int borderPresetPadding(const EffectPreset* preset, bool compiled) {

@@ -16,6 +16,9 @@ namespace umbriel {
 
   struct BorderEffectGate {
     bool focused = false;
+    // Opt-in widening (appearance `[effects].border_unfocused`): the draw may
+    // follow the window's selected preset even when the window is unfocused.
+    bool allowUnfocused = false;
     bool decorated = false;
     bool urgent = false;
     bool fullscreen = false;
