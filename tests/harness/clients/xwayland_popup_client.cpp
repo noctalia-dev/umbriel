@@ -21,13 +21,20 @@ namespace {
     xcb_screen_t* screen = nullptr;
     xcb_window_t window = XCB_NONE;
     xcb_window_t sibling = XCB_NONE;
+    xcb_window_t parent = XCB_NONE;
     xcb_gcontext_t gc = XCB_NONE;
+    xcb_gcontext_t parentGc = XCB_NONE;
     xcb_atom_t typeProperty = XCB_ATOM_NONE;
     xcb_atom_t normal = XCB_ATOM_NONE;
     xcb_atom_t menu = XCB_ATOM_NONE;
     xcb_atom_t popup = XCB_ATOM_NONE;
     xcb_atom_t dropdown = XCB_ATOM_NONE;
     xcb_atom_t notification = XCB_ATOM_NONE;
+    xcb_atom_t utility = XCB_ATOM_NONE;
+    xcb_atom_t wmProtocols = XCB_ATOM_NONE;
+    xcb_atom_t wmDeleteWindow = XCB_ATOM_NONE;
+    xcb_atom_t wmTakeFocus = XCB_ATOM_NONE;
+    xcb_atom_t netPing = XCB_ATOM_NONE;
     xcb_atom_t clients = XCB_ATOM_NONE;
     xcb_atom_t stacking = XCB_ATOM_NONE;
     xcb_atom_t active = XCB_ATOM_NONE;
@@ -39,6 +46,8 @@ namespace {
     xcb_atom_t netName = XCB_ATOM_NONE;
     uint16_t width = 300;
     uint16_t height = 160;
+    uint16_t parentWidth = 640;
+    uint16_t parentHeight = 360;
     std::string commands;
     bool running = true;
     bool failed = false;
@@ -76,28 +85,31 @@ namespace {
     return atom;
   }
 
-  bool setTitle(State& state, std::string_view title) {
+  bool setTitle(State& state, xcb_window_t window, std::string_view title) {
     return check(
                state,
                xcb_change_property_checked(
-                   state.connection, XCB_PROP_MODE_REPLACE, state.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
+                   state.connection, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
                    static_cast<uint32_t>(title.size()), title.data()
                )
            )
         && check(
                state,
                xcb_change_property_checked(
-                   state.connection, XCB_PROP_MODE_REPLACE, state.window, state.netName, state.utf8, 8,
+                   state.connection, XCB_PROP_MODE_REPLACE, window, state.netName, state.utf8, 8,
                    static_cast<uint32_t>(title.size()), title.data()
                )
         );
   }
 
-  void paint(State& state) {
-    const xcb_rectangle_t rectangle{0, 0, state.width, state.height};
-    xcb_poly_fill_rectangle(state.connection, state.window, state.gc, 1, &rectangle);
+  void fill(State& state, xcb_window_t window, xcb_gcontext_t gc, uint16_t width, uint16_t height) {
+    const xcb_rectangle_t rectangle{0, 0, width, height};
+    xcb_poly_fill_rectangle(state.connection, window, gc, 1, &rectangle);
     xcb_flush(state.connection);
   }
+
+  void paint(State& state) { fill(state, state.window, state.gc, state.width, state.height); }
+  void paintParent(State& state) { fill(state, state.parent, state.parentGc, state.parentWidth, state.parentHeight); }
 
   xcb_window_t propertyWindow(const State& state, xcb_atom_t property) {
     auto* reply = xcb_get_property_reply(
@@ -164,6 +176,7 @@ namespace {
           : atom == state.popup                   ? "popup"
           : atom == state.dropdown                ? "dropdown"
           : atom == state.notification            ? "notification"
+          : atom == state.utility                 ? "utility"
                                                   : "none";
       bool maximizedHorz = false, maximizedVert = false, fullscreen = false;
       if (netState->type == XCB_ATOM_ATOM && netState->format == 32) {
@@ -200,6 +213,26 @@ namespace {
       check(state, xcb_map_window_checked(state.connection, state.window));
     } else if (line == "unmap") {
       check(state, xcb_unmap_window_checked(state.connection, state.window));
+    } else if (line == "parent-map") {
+      xcb_map_window(state.connection, state.parent);
+      xcb_flush(state.connection);
+    } else if (line == "transient") {
+      check(
+          state,
+          xcb_change_property_checked(
+              state.connection, XCB_PROP_MODE_REPLACE, state.window, XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 32, 1,
+              &state.parent
+          )
+      );
+    } else if (line == "take-focus") {
+      const std::array<xcb_atom_t, 3> protocols{state.wmDeleteWindow, state.wmTakeFocus, state.netPing};
+      check(
+          state,
+          xcb_change_property_checked(
+              state.connection, XCB_PROP_MODE_REPLACE, state.window, state.wmProtocols, XCB_ATOM_ATOM, 32,
+              protocols.size(), protocols.data()
+          )
+      );
     } else if (line.starts_with("type ")) {
       const std::string_view name = line.substr(5);
       const xcb_atom_t type = name == "normal" ? state.normal
@@ -207,6 +240,7 @@ namespace {
           : name == "popup"                    ? state.popup
           : name == "dropdown"                 ? state.dropdown
           : name == "notification"             ? state.notification
+          : name == "utility"                  ? state.utility
                                                : xcb_atom_t{XCB_ATOM_NONE};
       if (type == XCB_ATOM_NONE) {
         valid = false;
@@ -322,7 +356,7 @@ namespace {
       std::println("synced {}", line.substr(5));
       return;
     } else if (line.starts_with("title ")) {
-      setTitle(state, line.substr(6));
+      setTitle(state, state.window, line.substr(6));
     } else if (line == "focus") {
       // Override-redirect clients are responsible for their own X input focus.
       check(
@@ -367,8 +401,13 @@ namespace {
   void event(State& state, const xcb_generic_event_t& generic) {
     const uint8_t type = generic.response_type & 0x7FU;
     if (type == XCB_EXPOSE) {
-      if (reinterpret_cast<const xcb_expose_event_t&>(generic).count == 0) {
-        paint(state);
+      const auto& expose = reinterpret_cast<const xcb_expose_event_t&>(generic);
+      if (expose.count == 0) {
+        if (expose.window == state.parent) {
+          paintParent(state);
+        } else {
+          paint(state);
+        }
       }
     } else if (type == XCB_MAP_NOTIFY) {
       // A remap gets a new Wayland surface, even when X11 retains its pixels.
@@ -382,14 +421,22 @@ namespace {
           "configure x={} y={} w={} h={} override={}", configure.x, configure.y, configure.width, configure.height,
           configure.override_redirect != 0
       );
-      if (state.width != configure.width || state.height != configure.height) {
+      if (configure.event == state.parent) {
+        if (state.parentWidth != configure.width || state.parentHeight != configure.height) {
+          state.parentWidth = configure.width;
+          state.parentHeight = configure.height;
+          paintParent(state);
+        }
+      } else if (state.width != configure.width || state.height != configure.height) {
         state.width = configure.width;
         state.height = configure.height;
         paint(state);
       }
     } else if (type == XCB_KEY_PRESS || type == XCB_KEY_RELEASE) {
       const auto& key = reinterpret_cast<const xcb_key_press_event_t&>(generic);
-      std::println("key code={} state={}", key.detail, type == XCB_KEY_PRESS ? "pressed" : "released");
+      std::println(
+          "key code={} state={} window={:#x}", key.detail, type == XCB_KEY_PRESS ? "pressed" : "released", key.event
+      );
     } else if (type == 0) {
       const auto& error = reinterpret_cast<const xcb_generic_error_t&>(generic);
       std::println(stderr, "xwayland-popup-client: asynchronous X error {}", error.error_code);
@@ -418,6 +465,11 @@ int main(int argc, char** argv) {
   state.popup = internAtom(state, "_NET_WM_WINDOW_TYPE_POPUP_MENU");
   state.dropdown = internAtom(state, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU");
   state.notification = internAtom(state, "_NET_WM_WINDOW_TYPE_NOTIFICATION");
+  state.utility = internAtom(state, "_NET_WM_WINDOW_TYPE_UTILITY");
+  state.wmProtocols = internAtom(state, "WM_PROTOCOLS");
+  state.wmDeleteWindow = internAtom(state, "WM_DELETE_WINDOW");
+  state.wmTakeFocus = internAtom(state, "WM_TAKE_FOCUS");
+  state.netPing = internAtom(state, "_NET_WM_PING");
   state.clients = internAtom(state, "_NET_CLIENT_LIST");
   state.stacking = internAtom(state, "_NET_CLIENT_LIST_STACKING");
   state.active = internAtom(state, "_NET_ACTIVE_WINDOW");
@@ -456,7 +508,7 @@ int main(int argc, char** argv) {
   );
   state.gc = xcb_generate_id(state.connection);
   check(state, xcb_create_gc_checked(state.connection, state.gc, state.window, XCB_GC_FOREGROUND, &color));
-  setTitle(state, argv[1]);
+  setTitle(state, state.window, argv[1]);
   constexpr char wmClass[] = "umbriel-xwayland-popup\0UmbrielXwaylandPopup\0";
   check(
       state,
@@ -479,8 +531,37 @@ int main(int argc, char** argv) {
           32, 1, &pid
       )
   );
+  // A second top-level gives a fixture a real X11 transient parent. It stays unmapped until a check asks for it.
+  state.parent = xcb_generate_id(state.connection);
+  constexpr uint32_t parentColor = 0x00C08040;
+  const uint32_t parentValues[]{parentColor, events};
+  check(
+      state,
+      xcb_create_window_checked(
+          state.connection, XCB_COPY_FROM_PARENT, state.parent, state.screen->root, 40, 40, state.parentWidth,
+          state.parentHeight, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, state.screen->root_visual,
+          XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, parentValues
+      )
+  );
+  state.parentGc = xcb_generate_id(state.connection);
+  check(state, xcb_create_gc_checked(state.connection, state.parentGc, state.parent, XCB_GC_FOREGROUND, &parentColor));
+  setTitle(state, state.parent, "xwayland-popup-parent");
+  check(
+      state,
+      xcb_change_property_checked(
+          state.connection, XCB_PROP_MODE_REPLACE, state.parent, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8,
+          sizeof(wmClass) - 1, wmClass
+      )
+  );
+  check(
+      state,
+      xcb_change_property_checked(
+          state.connection, XCB_PROP_MODE_REPLACE, state.parent, state.typeProperty, XCB_ATOM_ATOM, 32, 1, &state.normal
+      )
+  );
   if (!state.failed) {
     std::println("ready window={}", state.window);
+    std::println("parent={:#x}", state.parent);
   }
 
   while (state.running && !state.failed && xcb_connection_has_error(state.connection) == 0) {
@@ -507,7 +588,9 @@ int main(int argc, char** argv) {
     state.failed = true;
   }
   xcb_free_gc(state.connection, state.gc);
+  xcb_free_gc(state.connection, state.parentGc);
   xcb_destroy_window(state.connection, state.window);
+  xcb_destroy_window(state.connection, state.parent);
   xcb_destroy_window(state.connection, state.sibling);
   xcb_disconnect(state.connection);
   return state.failed ? 1 : 0;

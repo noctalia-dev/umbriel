@@ -5,6 +5,7 @@
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
+#include "xwayland/window.h"
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
@@ -12,10 +13,12 @@ namespace umbriel {
   namespace {
 
     // An override-redirect window that takes the keyboard says so through its window type. A managed menu or dropdown
-    // is focused by the window manager, as on X11; a notification, tooltip, or drag icon never is.
+    // is focused by the window manager, as on X11; a notification, tooltip, drag icon, or passive utility popup never
+    // is.
     bool takesKeyboard(const wlr_xwayland_surface* xsurface) {
       if (wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_NOTIFICATION)
-          || wlr_xwayland_surface_icccm_input_model(xsurface) == WLR_ICCCM_INPUT_MODEL_NONE) {
+          || wlr_xwayland_surface_icccm_input_model(xsurface) == WLR_ICCCM_INPUT_MODEL_NONE
+          || isPassiveUtilityPopup(xsurface)) {
         return false;
       }
       if (xsurface->override_redirect) {
