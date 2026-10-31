@@ -76,6 +76,7 @@ namespace umbriel {
     ToggleMaximize,
     ToggleMaximizeToEdges,
     ToggleFullscreen,
+    ToggleWindowedFullscreen,
     ToggleFloating,
     TogglePinned,
     WindowFocusNext,
