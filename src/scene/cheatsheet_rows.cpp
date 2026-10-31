@@ -190,30 +190,30 @@ namespace {
         return name;
       case umbriel::ActionArgKind::Command:
         if (const auto* spawn = umbriel::payloadIf<umbriel::SpawnArg>(bind)) {
-          return name + ": " + spawn->command;
+          return name + " " + spawn->command;
         }
         return name;
       case umbriel::ActionArgKind::Submap:
         if (const auto* submap = umbriel::payloadIf<umbriel::SubmapArg>(bind)) {
-          return name + ": " + (submap->name.empty() ? "unnamed" : submap->name);
+          return name + " " + (submap->name.empty() ? "unnamed" : submap->name);
         }
         return name;
       case umbriel::ActionArgKind::Fraction:
         if (const auto* fraction = umbriel::payloadIf<umbriel::FractionArg>(bind)) {
-          return std::format("{}: {:.2g}", name, fraction->fraction);
+          return std::format("{} {:.2g}", name, fraction->fraction);
         }
         return name;
       case umbriel::ActionArgKind::FractionDelta:
         if (const auto* fraction = umbriel::payloadIf<umbriel::FractionArg>(bind)) {
-          return std::format("{}: {:+.2g}", name, fraction->fraction);
+          return std::format("{} {:+.2g}", name, fraction->fraction);
         }
         return name;
       case umbriel::ActionArgKind::LayoutMode:
         if (const auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind)) {
           if (arg->mode.has_value()) {
-            return name + ": " + std::string(umbriel::layoutModeName(*arg->mode));
+            return name + " " + std::string(umbriel::layoutModeName(*arg->mode));
           }
-          std::string label = name + ": toggle";
+          std::string label = name + " toggle";
           for (const auto mode : arg->toggleSequence) {
             label += ' ';
             label += umbriel::layoutModeName(mode);
@@ -223,22 +223,22 @@ namespace {
         return name;
       case umbriel::ActionArgKind::WindowRegion:
         if (const auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind)) {
-          return name + ": " + std::string(umbriel::windowRegionName(arg->region));
+          return name + " " + std::string(umbriel::windowRegionName(arg->region));
         }
         return name;
       case umbriel::ActionArgKind::ColumnDisplay:
         if (const auto* arg = umbriel::payloadIf<umbriel::ColumnDisplayArg>(bind)) {
-          return name + (arg->display == umbriel::ColumnDisplay::Tabbed ? ": tabbed" : ": normal");
+          return name + (arg->display == umbriel::ColumnDisplay::Tabbed ? " tabbed" : " normal");
         }
         return name;
       case umbriel::ActionArgKind::TabIndex:
         if (const auto* arg = umbriel::payloadIf<umbriel::TabIndexArg>(bind)) {
-          return std::format("{}: {}", name, arg->index);
+          return std::format("{} {}", name, arg->index);
         }
         return name;
       case umbriel::ActionArgKind::WorkspaceMoveToOutput:
         if (const auto* arg = umbriel::payloadIf<umbriel::WorkspaceMoveToOutputArg>(bind)) {
-          std::string label = name + ": " + arg->destination;
+          std::string label = name + " " + arg->destination;
           if (arg->workspace) {
             label += " " + workspaceReferenceLabel(arg->workspace->reference);
             appendFlag(label, "output", arg->workspace->output);
@@ -248,7 +248,7 @@ namespace {
         return name;
       case umbriel::ActionArgKind::Workspace:
         if (const auto* workspace = umbriel::payloadIf<umbriel::WorkspaceArg>(bind)) {
-          std::string label = name + ": " + workspaceReferenceLabel(workspace->reference);
+          std::string label = name + " " + workspaceReferenceLabel(workspace->reference);
           if (!workspace->output.empty()) {
             label += " --output " + workspace->output;
           }
@@ -260,7 +260,7 @@ namespace {
         if (const auto* arg = umbriel::payloadIf<umbriel::EffectWindowArg>(bind)) {
           std::string value = arg->name;
           appendFlag(value, "window", arg->id);
-          return value.empty() ? name : std::format("{}: {}", name, value);
+          return value.empty() ? name : std::format("{} {}", name, value);
         }
         return name;
       case umbriel::ActionArgKind::ScreenEffectSet:
@@ -268,46 +268,46 @@ namespace {
         if (const auto* arg = umbriel::payloadIf<umbriel::EffectScreenArg>(bind)) {
           std::string value = arg->name;
           appendFlag(value, "output", arg->output);
-          return value.empty() ? name : std::format("{}: {}", name, value);
+          return value.empty() ? name : std::format("{} {}", name, value);
         }
         return name;
       case umbriel::ActionArgKind::CursorEffectSet:
       case umbriel::ActionArgKind::CursorEffectCycle:
         if (const auto* arg = umbriel::payloadIf<umbriel::EffectCursorArg>(bind)) {
           std::string value = arg->name;
-          return value.empty() ? name : std::format("{}: {}", name, value);
+          return value.empty() ? name : std::format("{} {}", name, value);
         }
         return name;
       case umbriel::ActionArgKind::Output:
       case umbriel::ActionArgKind::OptionalOutput:
         if (const auto* output = umbriel::payloadIf<umbriel::OutputArg>(bind);
             output != nullptr && !output->output.empty()) {
-          return name + ": " + output->output;
+          return name + " " + output->output;
         }
         return name;
       case umbriel::ActionArgKind::OptionalScratchpad:
         if (const auto* scratchpad = umbriel::payloadIf<umbriel::ScratchpadArg>(bind);
             scratchpad != nullptr && !scratchpad->name.empty()) {
-          return name + ": " + scratchpad->name;
+          return name + " " + scratchpad->name;
         }
         return name;
       case umbriel::ActionArgKind::WindowId:
       case umbriel::ActionArgKind::OptionalWindowId:
         if (const auto* window = umbriel::payloadIf<umbriel::WindowIdArg>(bind);
             window != nullptr && !window->id.empty()) {
-          return name + ": " + window->id;
+          return name + " " + window->id;
         }
         return name;
       case umbriel::ActionArgKind::SkipConfirmation:
         if (const auto* quit = umbriel::payloadIf<umbriel::QuitArg>(bind); quit != nullptr && quit->skipConfirmation) {
-          return name + ": skip-confirmation";
+          return name + " skip-confirmation";
         }
         return name;
       case umbriel::ActionArgKind::SdrWhite:
         if (const auto* arg = umbriel::payloadIf<umbriel::SdrWhiteArg>(bind)) {
           std::string value = std::format("{:g}", arg->nits);
           appendFlag(value, "output", arg->output);
-          return std::format("{}: {}", name, value);
+          return std::format("{} {}", name, value);
         }
         return name;
       case umbriel::ActionArgKind::WindowMoveTo:
@@ -316,7 +316,7 @@ namespace {
           val += " " + std::to_string(moveTo->position.x);
           val += " " + std::to_string(moveTo->position.y);
           appendFlag(val, "window", moveTo->id);
-          return std::format("{}: {}", name, val);
+          return std::format("{} {}", name, val);
         }
         return name;
       case umbriel::ActionArgKind::WindowMoveBy:
@@ -324,7 +324,7 @@ namespace {
           std::string val = std::to_string(moveBy->deltaX);
           val += " " + std::to_string(moveBy->deltaY);
           appendFlag(val, "window", moveBy->id);
-          return std::format("{}: {}", name, val);
+          return std::format("{} {}", name, val);
         }
         return name;
       }
@@ -693,7 +693,7 @@ namespace umbriel {
       std::string displayAction = raw.actionStr;
       SpawnParts spawn;
       if (raw.actionType == KeybindAction::Spawn) {
-        constexpr std::string_view kPrefix = "spawn: ";
+        constexpr std::string_view kPrefix = "spawn ";
         if (displayAction.starts_with(kPrefix)) {
           spawn = splitSpawnCommand(std::string(displayAction.substr(kPrefix.size())));
           // Display action is the args (or binary if no args).
@@ -810,7 +810,7 @@ namespace umbriel {
         rows[digitIndices[0]].chord = modPrefix
             + "1\xe2\x80\xa6"
               "9"; // 1…9
-        rows[digitIndices[0]].action = std::string(specName) + ": 1-9";
+        rows[digitIndices[0]].action = std::string(specName) + " 1-9";
         if (!rk.submapAfter.empty()) {
           rows[digitIndices[0]].action += " \xe2\x86\x92 " + rk.submapAfter;
         }

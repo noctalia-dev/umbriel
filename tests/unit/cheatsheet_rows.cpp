@@ -123,7 +123,7 @@ UMBRIEL_TEST(unnamedSubmapIsNamedInTheActionLabel) {
   unnamed.payload = umbriel::SubmapArg{};
   const auto rows = buildCheatsheetRows(std::vector<Keybind>{unnamed});
   CHECK_EQ(rows.size(), size_t{1});
-  CHECK_EQ(rows[0].action, std::string{"submap: unnamed"});
+  CHECK_EQ(rows[0].action, std::string{"submap unnamed"});
 }
 
 UMBRIEL_TEST(bindsSharingAnActionMergeWithADitto) {
@@ -196,7 +196,7 @@ UMBRIEL_TEST(perDigitWorkspaceBindsCollapseToOneRow) {
   CHECK(rows.size() == 1);
   if (!rows.empty()) {
     CHECK(rows[0].chord.contains("1"));
-    CHECK(rows[0].action.contains("1-9"));
+    CHECK_EQ(rows[0].action, std::string{"workspace-switch 1-9"});
   }
 }
 
@@ -207,8 +207,8 @@ UMBRIEL_TEST(numericWorkspaceNamesStayDistinctFromPositionalBinds) {
   };
   const auto rows = buildCheatsheetRows(binds);
   CHECK_EQ(rows.size(), size_t{2});
-  CHECK(std::ranges::any_of(rows, [](const CheatsheetRow& row) { return row.action.ends_with(": 2"); }));
-  CHECK(std::ranges::any_of(rows, [](const CheatsheetRow& row) { return row.action.ends_with(": --name 2"); }));
+  CHECK(std::ranges::any_of(rows, [](const CheatsheetRow& row) { return row.action == "workspace-switch 2"; }));
+  CHECK(std::ranges::any_of(rows, [](const CheatsheetRow& row) { return row.action == "workspace-switch --name 2"; }));
 }
 
 UMBRIEL_TEST(numericNamedWorkspaceBindsDoNotCollapseAsAPositionalRun) {
@@ -386,10 +386,10 @@ UMBRIEL_TEST(degenerateInputsAreSafe) {
 
 UMBRIEL_TEST(effectActionLabelsPreserveSelectorsAndTargets) {
   for (const auto& [action, label] : std::vector<std::pair<std::string, std::string>>{
-           {"effect-window-cycle --window window-1", "effect-window-cycle: --window wi…"},
-           {"effect-border-set border --window window-1", "effect-border-set: border --wind…"},
-           {"effect-screen-set cinema --output vendor/panel", "effect-screen-set: cinema --outp…"},
-           {"effect-cursor-set halo", "effect-cursor-set: halo"},
+           {"effect-window-cycle --window window-1", "effect-window-cycle --window win…"},
+           {"effect-border-set border --window window-1", "effect-border-set border --windo…"},
+           {"effect-screen-set cinema --output vendor/panel", "effect-screen-set cinema --outpu…"},
+           {"effect-cursor-set halo", "effect-cursor-set halo"},
            {"effect-cursor-cycle", "effect-cursor-cycle"}
        }) {
     Keybind binding;
@@ -405,7 +405,7 @@ UMBRIEL_TEST(stackingLayoutModeIsNamedInTheActionLabel) {
   const std::vector<Keybind> binds = {layoutBind(XKB_KEY_f, umbriel::LayoutMode::Stacking)};
   const auto rows = buildCheatsheetRows(binds);
   CHECK_EQ(rows.size(), size_t{1});
-  CHECK_EQ(rows[0].action, std::string{"workspace-set-layout: stacking"});
+  CHECK_EQ(rows[0].action, std::string{"workspace-set-layout stacking"});
 }
 
 UMBRIEL_TEST(regionActionLabelsNameTheRegion) {
@@ -413,7 +413,7 @@ UMBRIEL_TEST(regionActionLabelsNameTheRegion) {
   binding.payload = umbriel::WindowRegionArg{.region = umbriel::WindowRegion::BottomLeft};
   const auto rows = buildCheatsheetRows(std::vector<Keybind>{binding});
   CHECK_EQ(rows.size(), size_t{1});
-  CHECK_EQ(rows[0].action, std::string{"window-set-region: bottom_left"});
+  CHECK_EQ(rows[0].action, std::string{"window-set-region bottom_left"});
   const auto clearRows = buildCheatsheetRows(std::vector{bind(KeybindAction::WindowClearRegion, XKB_KEY_h)});
   CHECK_EQ(clearRows.size(), size_t{1});
   CHECK_EQ(clearRows[0].action, std::string{"window-clear-region"});
