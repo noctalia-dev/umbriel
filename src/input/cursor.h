@@ -77,6 +77,11 @@ namespace umbriel {
       double lastY = 0;
       // The view's drag physics took the grab; without it the drag makes no drag physics calls.
       bool physics = false;
+      // A Mod-drag on a tab carries its whole group: every tab in row order, `view` among them, and the bar choice.
+      bool carryTabGroup = false;
+      std::vector<View*> tabs;
+      std::optional<bool> tabBar;
+      TabGroupHome tabHome;
     };
     struct FloatingResizeGrab {
       View* view = nullptr;
@@ -323,6 +328,8 @@ namespace umbriel {
     // Take the window out of the layout and into the drag presentation, once
     // the pointer has committed to the drag.
     void beginDrag(MoveGrab& grab);
+    // Take the rest of the dragged tab's group out of the layout, hidden until the grab ends.
+    void liftTabGroup(MoveGrab& grab);
     void updateDropTarget();
     void updateDropZonePreview();
     void clearDropZonePreview();
