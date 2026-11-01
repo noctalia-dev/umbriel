@@ -989,7 +989,7 @@ namespace umbriel {
   }
 
 #ifdef UMBRIEL_HARNESS
-  std::string Cursor::clientCursorSourceForTest() const {
+  std::string_view Cursor::clientCursorSourceForTest() const {
     if (!m_clientCursorKnown) {
       return "none";
     }
@@ -1503,10 +1503,10 @@ namespace umbriel {
 
     double dx = event->delta_x;
     double dy = event->delta_y;
-    if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED) {
-      if (!confineDelta(&dx, &dy)) {
-        return;
-      }
+    if (m_activeConstraint != nullptr
+        && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED
+        && !confineDelta(&dx, &dy)) {
+      return;
     }
 
     confineRuleDelta(&dx, &dy);

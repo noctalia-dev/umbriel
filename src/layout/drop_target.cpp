@@ -528,7 +528,7 @@ namespace umbriel {
       server.focusView(&view, FocusReason::DragDrop);
       return;
     }
-    const auto restoreSceneParent = [&view, &target]() {
+    const auto restoreSceneParent = [&view, &target] {
       const bool fullscreen = view.currentFullscreen() || view.scheduledFullscreen();
       view.setSceneParent(fullscreen ? target.fullscreenTree() : target.viewLayer(true));
     };

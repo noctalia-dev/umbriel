@@ -252,7 +252,7 @@ namespace umbriel {
       uint32_t renderHeight = 0;
     };
 
-    [[nodiscard]] std::string clientCursorSourceForTest() const;
+    [[nodiscard]] std::string_view clientCursorSourceForTest() const;
     [[nodiscard]] std::string clientCursorNameForTest() const { return m_clientCursorShape; }
     [[nodiscard]] bool clientCursorFromXwaylandForTest() const { return m_clientCursorFromXwayland; }
     [[nodiscard]] std::optional<RenderedCursorStateForTest> renderedCursorStateForTest() const;

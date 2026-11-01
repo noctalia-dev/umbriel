@@ -1493,7 +1493,7 @@ namespace umbriel {
         renderCardShortcut(card);
       }
     };
-    const auto clearAll = [&]() {
+    const auto clearAll = [&] {
       for (const auto& state : m_outputs) {
         for (const auto& card : state->cards) {
           updateCard(*card, {});

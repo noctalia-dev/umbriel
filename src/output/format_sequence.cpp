@@ -54,7 +54,7 @@ namespace umbriel {
       };
 
       // HDR.
-      const auto tryHdrFormats = [&]() -> bool {
+      const auto tryHdrFormats = [&] -> bool {
         if (!(params.hdrRequested && params.imageDescAvailable)) {
           if (params.hdrWasActive) {
             ops.clearImageDescription();
@@ -86,7 +86,7 @@ namespace umbriel {
       };
 
       // SDR10.
-      const auto trySdr10Formats = [&]() -> bool {
+      const auto trySdr10Formats = [&] -> bool {
         if (params.bitDepth != 10) {
           return false;
         }
@@ -114,7 +114,7 @@ namespace umbriel {
 
       // Test SDR8 too, so a rejected swapchain reaches capability fallbacks
       // instead of becoming a retryable scene-build failure.
-      const auto trySdr8Formats = [&]() -> bool {
+      const auto trySdr8Formats = [&] -> bool {
         for (const bool vrr : vrrPasses(params.tryVrrOn)) {
           if (!ops.stageSdr(DRM_FORMAT_XRGB8888, vrr) || !ops.test()) {
             continue;

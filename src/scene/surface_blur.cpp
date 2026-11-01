@@ -50,13 +50,12 @@ namespace umbriel {
   ) {
     const Config::Appearance::Blur& cfg = config().appearance.blur;
     wlr_box drawBox = nodeBox;
-    if (clipBox != nullptr) {
-      if (!wlr_box_intersection(&drawBox, &nodeBox, clipBox) || drawBox.width <= 0 || drawBox.height <= 0) {
-        if (m_node != nullptr) {
-          wlr_scene_node_set_enabled(&m_node->node, false);
-        }
-        return;
+    if (clipBox != nullptr
+        && (!wlr_box_intersection(&drawBox, &nodeBox, clipBox) || drawBox.width <= 0 || drawBox.height <= 0)) {
+      if (m_node != nullptr) {
+        wlr_scene_node_set_enabled(&m_node->node, false);
       }
+      return;
     }
     // A compositor opacity below 1 makes even a client-declared opaque surface
     // reveal the backdrop, so it also requires a blur node. Its opacity does
