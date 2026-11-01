@@ -30,6 +30,10 @@ namespace umbriel {
   [[nodiscard]] ColorLuminances defaultColorLuminances(uint32_t transferFunction);
   [[nodiscard]] bool colorDescriptionsEqual(const ColorDescription& left, const ColorDescription& right);
 
+  // Translate the piecewise sRGB curve at the negotiated protocol boundary.
+  [[nodiscard]] uint32_t colorTransferFunctionToWire(uint32_t transferFunction, uint32_t version);
+  [[nodiscard]] uint32_t colorTransferFunctionFromWire(uint32_t transferFunction, uint32_t version);
+
   // HDR encodings can carry SDR content. A known content peak at or below
   // reference white does not request an automatic display mode switch unless
   // the client also supplies HDR mastering luminance.
