@@ -23,6 +23,7 @@
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
 #include "server/backend_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "view/popup.h"
@@ -1993,6 +1994,7 @@ namespace umbriel {
     }
 
     m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    updateDrmLeaseState();
     m_sessionLock->start();
   }
 
@@ -2067,6 +2069,7 @@ namespace umbriel {
       return;
     }
     m_sessionLock.reset();
+    updateDrmLeaseState();
     if (!m_sessionLocked) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);
     }
@@ -2113,6 +2116,12 @@ namespace umbriel {
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }
 
   void Server::addOutput(wlr_output* output) {
+    if (output->non_desktop) {
+      if (m_drmLeaseManager == nullptr || !m_drmLeaseManager->offerOutput(output)) {
+        kLog.warn("non-desktop output {} is unavailable for DRM leasing", output->name);
+      }
+      return;
+    }
     if (!m_pendingOutputName.empty()) {
       // Before the Output exists: adding it to the layout advertises the name to clients, and it cannot change after.
       wlr_output_set_name(output, m_pendingOutputName.c_str());

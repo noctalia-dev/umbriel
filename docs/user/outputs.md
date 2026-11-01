@@ -27,6 +27,14 @@ If a receiving output already has a workspace with the same name, its native wor
 
 Umbriel first uses the first remaining enabled output in its internal output order. If that output has reached the 64-workspace limit, it tries another enabled output. If every enabled output is full, displaced windows share a local workspace until their home returns. Growing a fixed inventory during the disconnection can also leave too little room for temporary workspaces; those windows retain their saved homes. Empty temporary workspaces are removed. If every output disappears, windows wait until an output returns, then recover their separate workspaces there while their home output is still absent.
 
+## VR displays
+
+On a native DRM session, Umbriel offers displays marked as non-desktop by the graphics driver through the standard `drm-lease-v1` protocol. A VR runtime can take direct control of the headset display while Umbriel continues to manage ordinary monitors. No headset-specific configuration is needed.
+
+Non-desktop displays do not receive workspaces and do not appear in `umbriel outputs`. They stay outside the desktop even if leasing is unavailable. Displays without the driver's non-desktop designation remain ordinary desktop outputs.
+
+Locking the session or switching away from its active VT revokes outstanding leases. The VR runtime must acquire a new lease after the session is unlocked and active again; restarting the runtime may be necessary.
+
 ## Settings
 
 | Key                                        | Type                              | Default      | Description                                                                                     |

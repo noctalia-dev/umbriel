@@ -98,6 +98,12 @@ if native_drm_policy_supported
   ]
 endif
 
+if wlr_has_drm_backend
+  unit_tests += [
+    ['drm-lease', ['unit/drm_lease.cpp'], [umbriel_core_dep]],
+  ]
+endif
+
 unit_test_targets = []
 foreach unit_test : unit_tests
   # Optional compile and link args for tests needing paths, flags, or device I/O wrappers.

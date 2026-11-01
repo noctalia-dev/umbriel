@@ -30,6 +30,7 @@
 #include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/color_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/syncobj_acquire_barrier.h"
 #include "server/syncobj_superseded_release.h"
@@ -528,6 +529,7 @@ namespace umbriel {
   void Server::onSessionActive(wl_listener* listener, void* /*data*/) {
     Server* self;
     self = wl_container_of(listener, self, m_sessionActive);
+    self->updateDrmLeaseState();
     if (!self->m_session->active) {
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
@@ -535,6 +537,14 @@ namespace umbriel {
       if (self->m_pendingCaptureId != 0) {
         self->dismissConfirmation();
       }
+    }
+  }
+
+  void Server::updateDrmLeaseState() {
+    if (m_drmLeaseManager != nullptr) {
+      m_drmLeaseManager->setActive(
+          !m_stopping && !m_sessionLocked && m_sessionLock == nullptr && (m_session == nullptr || m_session->active)
+      );
     }
   }
 
@@ -667,6 +677,8 @@ namespace umbriel {
       throw std::runtime_error("failed to create security-context manager");
     }
     wl_display_set_global_filter(m_display, filterGlobal, this);
+    m_drmLeaseManager = std::make_unique<DrmLeaseManager>(m_display, m_backend);
+    updateDrmLeaseState();
     wlr_viewporter_create(m_display);
     wlr_fractional_scale_manager_v1_create(m_display, 1);
     wlr_presentation_create(m_display, m_backend, 2);
@@ -936,6 +948,7 @@ namespace umbriel {
 
   Server::~Server() {
     m_stopping = true;
+    updateDrmLeaseState();
     m_inputCapture.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
@@ -1073,6 +1086,7 @@ namespace umbriel {
       }
     }
     wl_display_destroy_clients(m_display);
+    m_drmLeaseManager.reset();
     m_colorManager.reset();
     m_syncobjAcquireBarrier.reset();
     m_syncobjUnmapRelease.reset();
@@ -1375,6 +1389,7 @@ namespace umbriel {
 
   void Server::stop() {
     m_stopping = true;
+    updateDrmLeaseState();
     wl_display_terminate(m_display);
   }
 

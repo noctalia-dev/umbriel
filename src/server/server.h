@@ -130,6 +130,7 @@ namespace umbriel {
   class EisInput;
   class InputCapture;
   class BackendManager;
+  class DrmLeaseManager;
   class FocusManager;
   class Xwayland;
   class ConfigWatcher;
@@ -526,6 +527,7 @@ namespace umbriel {
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
     static void onSessionActive(wl_listener* listener, void* data);
+    void updateDrmLeaseState();
     friend class Output;
 
     bool requestScreenCastCommand(ScreenCastCommandKind kind, std::string value, std::string* error);
@@ -725,6 +727,7 @@ namespace umbriel {
     wl_display* m_display = nullptr;
     wl_protocol_logger* m_protocolLogger = nullptr;
     std::unique_ptr<BackendManager> m_backendManager;
+    std::unique_ptr<DrmLeaseManager> m_drmLeaseManager;
     wlr_backend* m_backend = nullptr;
     wlr_session* m_session = nullptr;
     wl_listener m_sessionActive{};
