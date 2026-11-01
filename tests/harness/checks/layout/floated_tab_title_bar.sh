@@ -24,7 +24,7 @@ wait_for_windows() {
 cat >> "$UMBRIEL_CONFIG" << EOF
 
 [animation]
-enabled = false
+enabled = true
 
 [layout]
 gap = 0
