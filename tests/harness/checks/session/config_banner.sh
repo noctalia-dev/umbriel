@@ -10,8 +10,17 @@ readonly ERROR='#FF6B6B'
 readonly BORDER_ROWS=1280x6+0+22
 readonly MIN_BORDER_PIXELS=200
 
+# A probe predicate matching exactly the 8-bit colour #RRGGBB.
+color_predicate() {
+  local hex=${1#\#}
+  awk -v r=$((16#${hex:0:2})) -v g=$((16#${hex:2:2})) -v b=$((16#${hex:4:2})) 'BEGIN {
+    printf "r > %.6f && r < %.6f && g > %.6f && g < %.6f && b > %.6f && b < %.6f\n",
+      (r - 0.5) / 255, (r + 0.5) / 255, (g - 0.5) / 255, (g + 0.5) / 255, (b - 0.5) / 255, (b + 0.5) / 255
+  }'
+}
+
 border_pixels() {
-  magick "$SHOT" -crop "$BORDER_ROWS" +repage txt: | grep -c "$1" || true
+  "$UMBRIEL_PIXEL_PROBE" "$SHOT" count "$(color_predicate "$1")" "$BORDER_ROWS"
 }
 
 capture() {
