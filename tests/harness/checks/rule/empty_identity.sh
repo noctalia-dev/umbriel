@@ -64,12 +64,14 @@ await_window() {
 # Mean green of the only visible window, isolated from the solid green backdrop. The client paints 0xFF5577AA, so an
 # opaque window reads about 119 and one at 0.5 opacity over the backdrop reads about 187.
 window_green() {
-  local shot=$1 visual_width visual_height visual_x visual_y
-  read -r visual_width visual_height visual_x visual_y < <(
-    magick "$shot" -alpha off -fuzz 1% -transparent '#00FF00' -trim -format '%w %h %X %Y\n' info:
+  local shot=$1 visual_width visual_height visual_x visual_y green
+  read -r visual_x visual_y visual_width visual_height < <(
+    "$UMBRIEL_PIXEL_PROBE" "$shot" bbox '!(r < 0.01 && g > 0.99 && b < 0.01)'
   )
-  magick "$shot" -crop "20x20+$((visual_x + visual_width / 2 - 10))+$((visual_y + visual_height / 2 - 10))" \
-    -format '%[fx:round(255*mean.g)]' info:
+  read -r _ green _ < <(
+    "$UMBRIEL_PIXEL_PROBE" "$shot" mean "20x20+$((visual_x + visual_width / 2 - 10))+$((visual_y + visual_height / 2 - 10))"
+  )
+  echo "$green"
 }
 
 # An absent title matches no pattern, so this window opens opaque.

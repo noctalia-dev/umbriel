@@ -44,7 +44,7 @@ assert_backdrop() {
   local red= image="$UMBRIEL_RUNTIME_DIR/empty-launch.png"
   "$UMBRIEL" settle > /dev/null
   grim "$image"
-  red=$(magick "$image" -crop 10x10+5+5 -format '%[fx:round(255*mean.r)]' info:)
+  read -r red _ _ <<< "$("$UMBRIEL_PIXEL_PROBE" "$image" mean 10x10+5+5)"
   if ((red < $1 || red > $2)); then
     echo "expected backdrop in [$1,$2], got $red"
     return 1
