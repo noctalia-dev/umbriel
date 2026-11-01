@@ -819,6 +819,12 @@ namespace umbriel {
       }
       const wlr_box usable = floatingUsableArea();
       const SizeHints hints = sizeHints();
+      // A tab gets its title bar only once it floats, so its tile height can leave no room for it.
+      if (usable.height > 0) {
+        keepHeight = std::min(
+            keepHeight, clampHeight(usable.height - 2 * m_decoration.totalBorderWidth() - titleBarHeight(), hints)
+        );
+      }
       if (m_pendingFloatingWidthPx) {
         keepWidth = clampWidth(*m_pendingFloatingWidthPx, hints);
         m_pendingFloatingWidthPx.reset();
