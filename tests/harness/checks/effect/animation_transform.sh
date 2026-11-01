@@ -38,6 +38,10 @@ shader = "fixture-2.glsl"
 effect = "overview_fixture_2"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
+# Animation time only moves by clock-advance: the window's opening shader starts at the frozen instant, the
+# orientation sample lands 120 ms in, and the overview sample halfway through the overview's 4000 ms timeline, while
+# the window's own opening shader is still running.
+"$UMBRIEL" clock-freeze
 "$UMBRIEL_UNMAP_CLIENT" shader-composition 700 700 > "$UMBRIEL_RUNTIME_DIR/client.log" 2>&1 &
 for _ in $(seq 80); do
   window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "shader-composition")')
@@ -47,29 +51,24 @@ done
 [[ -n $window ]]
 home=$(jq -r '.workspace | split(":")[0]' <<< "$window")
 if [[ $home == HEADLESS-1 ]]; then neighbour=HEADLESS-2; else neighbour=HEADLESS-1; fi
-sleep 0.12
+"$UMBRIEL" clock-advance 120
 grim -s 1 -o "$home" "$IMAGE"
 # The client may still be resizing toward its layout target. Locate its drawn
 # rectangle, then test orientation within that actual intermediate frame.
-read -r width height x y < <(magick "$IMAGE" -colorspace gray -threshold 1% -trim -format '%w %h %X %Y\n' info:)
-x=${x#+}
-y=${y#+}
+read -r x y width height < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" bbox 'r > 0.01 || g > 0.01 || b > 0.01')
 left=$((x + width / 4))
 right=$((x + 3 * width / 4))
 middle=$((y + height / 2))
-read -r red blue < <(magick "$IMAGE" -crop "4x4+$left+$middle" -format '%[fx:round(mean.r*255)] %[fx:round(mean.b*255)]\n' info:)
+read -r red _ blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$left+$middle")
 if ! (( red > 220 && blue < 30 )); then
   echo "logical left side was not red on rotated/scaled output: $red $blue"
   exit 1
 fi
-read -r red blue < <(magick "$IMAGE" -crop "4x4+$right+$middle" -format '%[fx:round(mean.r*255)] %[fx:round(mean.b*255)]\n' info:)
+read -r red _ blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$right+$middle")
 if ! (( blue > 220 && red < 30 )); then
   echo "logical right side was not blue on rotated/scaled output: $red $blue"
   exit 1
 fi
-# Animation time only moves by clock-advance: the overview sample lands halfway through its 4000 ms timeline, while
-# the window's own opening shader is still running.
-"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" clock-advance 2000
 grim -s 1 -o "$home" "$IMAGE"

@@ -53,8 +53,7 @@ spawn() {
 
 sample() {
   grim "$IMAGE"
-  read -r red green blue < <(magick "$IMAGE" -crop "4x4+${sample_x}+${sample_y}" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+${sample_x}+${sample_y}")
 }
 
 # Animation time only moves by clock-advance, measured from each trigger; advancing 3000 ms finishes every

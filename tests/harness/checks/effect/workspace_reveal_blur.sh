@@ -111,15 +111,8 @@ sed -i 's/^optimized = true$/optimized = false/' "$UMBRIEL_CONFIG"
 grim "$UMBRIEL_RUNTIME_DIR/native-edge.png"
 start_reveal
 grim "$UMBRIEL_RUNTIME_DIR/reveal-edge.png"
-for name in native reveal; do
-  magick "$UMBRIEL_RUNTIME_DIR/$name-edge.png" -crop 120x100+130+50 +repage "$UMBRIEL_RUNTIME_DIR/$name-crop.png"
-done
-error=$(magick "$UMBRIEL_RUNTIME_DIR/native-crop.png" "$UMBRIEL_RUNTIME_DIR/reveal-crop.png" \
-  -compose difference -composite -format '%[fx:maxima*255]' info:)
-awk -v error="$error" 'BEGIN { exit !(error <= 3) }' || {
-  echo "isolated blur edge differs from native by $error channel levels"; exit 1;
-}
-"$UMBRIEL" clock-advance 1000
-"$UMBRIEL" clock-resume
-"$UMBRIEL" settle
+read -r error _ < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/native-edge.png" diff "$UMBRIEL_RUNTIME_DIR/reveal-edge.png" 120x100+130+50)
+if (( error > 3 )); then
+  echo "isolated blur edge differs from native by $error channel levels"; exit 1
+fi
 echo 'real-client blur, optimized backdrop, shared panel and filtered/unfiltered reveal captures verified'

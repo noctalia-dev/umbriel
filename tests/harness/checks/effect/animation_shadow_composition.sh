@@ -68,8 +68,7 @@ spawn() {
   [[ -n $window ]]
 }
 pixel() {
-  read -r r g b < <(magick "$IMAGE" -crop "2x2+$1+$2" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$1+$2")
 }
 configure false
 spawn occluder 180 180
