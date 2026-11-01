@@ -251,8 +251,8 @@ int __wrap_stat(const char* path, struct stat* result) {
 }
 
 udev_enumerate* udev_enumerate_new(udev*) { return new udev_enumerate; }
-udev_enumerate* udev_enumerate_unref(udev_enumerate* enumerate) {
-  delete enumerate;
+udev_enumerate* udev_enumerate_unref(udev_enumerate* p) {
+  delete p;
   return nullptr;
 }
 int udev_enumerate_add_match_subsystem(udev_enumerate*, const char*) { return 0; }
