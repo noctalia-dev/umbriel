@@ -9,18 +9,6 @@ readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/floating-dialog.log"
 readonly CONTROL="$UMBRIEL_RUNTIME_DIR/floating-dialog.control"
 readonly PARENT=xwayland-dialog-parent
 readonly CHILD=xwayland-dialog-child
-pointer_held=false
-client_pid=
-
-cleanup() {
-  if [[ $pointer_held == true ]]; then pointer_release || true; fi
-  if [[ -n $client_pid ]]; then
-    printf 'quit\n' >&"$control_fd" || true
-    wait "$client_pid" || true
-  fi
-}
-trap cleanup EXIT
-
 windows() { "$UMBRIEL" windows --json; }
 window() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 send_client() { printf '%s\n' "$@" >&"$control_fd"; }
@@ -118,7 +106,6 @@ CONFIG
 mkfifo "$CONTROL"
 exec {control_fd}<> "$CONTROL"
 "$UMBRIEL_XWAYLAND_DIALOG_CLIENT" <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
-client_pid=$!
 wait_window "$PARENT"
 wait_focus "$PARENT" 'initial parent'
 "$UMBRIEL" settle > /dev/null
@@ -137,7 +124,6 @@ for raises in true false; do
     move 640 360 mark inside-child hold \
     move 128 360 mark parent-return hold \
     click 272 mark parent-click hold
-  pointer_held=true
   assert_pixel "parent-$raises" 128 360 '48 96 144'
 
   send_client map-dialog
@@ -183,7 +169,6 @@ for raises in true false; do
   await_events "$CLIENT_LOG" "button window=$PARENT code=1 state=pressed" "$((buttons_before + 1))" 'parent click delivery'
   type_into "$PARENT" 32 "hover_raises=$raises parent typing after click"
   pointer_release
-  pointer_held=false
 
   send_client unmap-dialog
   for _ in $(seq 100); do
@@ -197,9 +182,4 @@ for raises in true false; do
   wait_focus "$PARENT" "hover_raises=$raises parent after withdrawal"
   expect_x_focus "$PARENT" "withdrawn_$raises"
 done
-
-send_client quit
-wait "$client_pid"
-client_pid=
-exec {control_fd}>&-
 echo 'floating X11 dialogs retain typing through parent hover, with explicit parent clicks delivered in both hover-raise modes'
