@@ -222,7 +222,7 @@ second_request_ms=0
 frame_count=0
 elapsed_ms=1
 deadline_ms=$((SECOND_CLOSE_MS + OUT_MS + 400))
-declare -a sample_times=() analyzers=()
+declare -a sample_times=()
 "$UMBRIEL" clock-advance 1
 while ((elapsed_ms <= deadline_ms)); do
   if ((second_request_ms == 0 && elapsed_ms >= SECOND_CLOSE_MS)); then
@@ -233,8 +233,6 @@ while ((elapsed_ms <= deadline_ms)); do
     elapsed_ms=$((elapsed_ms + 1))
   fi
   grim "$SHOTS/frame-$frame_count.png"
-  analyze_frame "$SHOTS/frame-$frame_count.png" &
-  analyzers+=($!)
   sample_times[$frame_count]=$elapsed_ms
   frame_count=$((frame_count + 1))
   step_ms=$STEP_MS
@@ -244,9 +242,16 @@ while ((elapsed_ms <= deadline_ms)); do
   "$UMBRIEL" clock-advance "$step_ms"
   elapsed_ms=$((elapsed_ms + step_ms))
 done
-for analyzer in "${analyzers[@]}"; do
-  wait "$analyzer"
-done
+# Frames are analysed in parallel. The subshell's only children are the analyses, so each wait -n reaps one and fails
+# the check if it failed.
+(
+  for ((i = 0; i < frame_count; i++)); do
+    analyze_frame "$SHOTS/frame-$i.png" &
+  done
+  for ((i = 0; i < frame_count; i++)); do
+    wait -n
+  done
+)
 
 if ((second_request_ms == 0)); then
   echo "second close was never requested"
