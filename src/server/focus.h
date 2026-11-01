@@ -80,6 +80,8 @@ namespace umbriel {
     // The layer surface holding exclusive keyboard focus, if any. While one
     // exists it owns the seat and views only get chrome, not the keyboard.
     [[nodiscard]] LayerSurface* exclusiveKeyboardLayer() const;
+    // Reconcile top-layer ownership after fullscreen coverage changes, preserving the viewport.
+    void refreshLayerFocus(Output* output);
 
     // Hit-test the scene. Returns the view under the point, or nullptr with `layer` set when a layer surface is there
     // instead. `surface` receives the wlr_surface under the point in either case, with `sx`/`sy` surface-local.

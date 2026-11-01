@@ -1031,6 +1031,24 @@ namespace umbriel {
            });
   }
 
+  bool Output::fullscreenCoversOutput() const {
+    const Workspace* workspace = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    const wlr_box box = layoutBox();
+    return workspace != nullptr
+        && box.width > 0
+        && box.height > 0
+        && std::ranges::any_of(workspace->allViews(), [&box](const View* view) {
+             const wlr_box& fullscreen = view->presentedBox();
+             return view->mapped()
+                 && (view->layoutFullscreen() || view->currentFullscreen())
+                 && view->presented()
+                 && fullscreen.x <= box.x
+                 && fullscreen.y <= box.y
+                 && fullscreen.x + fullscreen.width >= box.x + box.width
+                 && fullscreen.y + fullscreen.height >= box.y + box.height;
+           });
+  }
+
   bool Output::autoHdrEligible(const View* view) const {
     if (view == nullptr
         || !view->mapped()
@@ -1796,6 +1814,24 @@ namespace umbriel {
     }
   }
 
+  void Output::updateFullscreenStack() {
+    if (m_server->sessionLocked() || (m_server->overview() != nullptr && m_server->overview()->active())) {
+      return;
+    }
+    const bool above = fullscreenCoversOutput();
+    wlr_scene_tree* parent = above ? m_server->fullscreenTree() : m_server->xdgTree();
+    if (m_fullscreenRoot->node.parent != parent) {
+      wlr_scene_node_reparent(&m_fullscreenRoot->node, parent);
+      if (!above) {
+        wlr_scene_node_place_above(&m_fullscreenRoot->node, &m_viewRoot->node);
+      }
+    }
+    if (above != m_fullscreenAboveTopLayer) {
+      m_fullscreenAboveTopLayer = above;
+      m_server->refreshLayerFocus(this);
+    }
+  }
+
   void Output::handleFrame() {
     UMBRIEL_ZONE("Output::handleFrame");
     // A failed DRM commit can immediately queue another frame after logind revokes device access. Stop before that
@@ -1859,6 +1895,7 @@ namespace umbriel {
     if (m_workspaceGroup != nullptr) {
       m_workspaceGroup->refreshReveal();
     }
+    updateFullscreenStack();
 
     // A direct-scanned fullscreen client may stop submitting as soon as it loses focus. On VRR outputs that can leave
     // the first workspace-switch frame waiting on the old client, so the compositor never gets a vblank to advance the

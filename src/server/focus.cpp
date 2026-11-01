@@ -208,6 +208,34 @@ namespace umbriel {
     return nullptr;
   }
 
+  void FocusManager::refreshLayerFocus(Output* output) {
+    if (m_server.sessionLocked() || (m_server.overview() != nullptr && m_server.overview()->active())) {
+      return;
+    }
+    LayerSurface* focused = LayerSurface::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
+    if (focused != nullptr && focused->exclusiveKeyboard()) {
+      return;
+    }
+    if (LayerSurface* exclusive = exclusiveKeyboardLayer()) {
+      exclusive->focus();
+      return;
+    }
+    if (focused == nullptr || focused->output() != output || focused->acceptsKeyboard()) {
+      return;
+    }
+    Workspace* workspace = output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+    View* target = workspace != nullptr ? workspace->focusedView() : nullptr;
+    if (target != nullptr
+        && target->mapped()
+        && !target->minimized()
+        && target->inputDelegate()->acceptsKeyboardFocus()) {
+      // The pan already placed the viewport; returning the seat must not reveal the remembered column.
+      focusView(target, FocusReason::Gesture);
+    } else {
+      clearKeyboardFocus();
+    }
+  }
+
   bool FocusManager::retainCurrentKeyboardFocus() {
     if (m_server.overview() != nullptr && m_server.overview()->active()) {
       return false;

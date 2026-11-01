@@ -493,6 +493,7 @@ namespace umbriel {
     void refocus() { m_focus.refocus(); }
     void refocus(Output* preferred) { m_focus.refocus(preferred); }
     void refocusExplicit(Output* preferred) { m_focus.refocusExplicit(preferred); }
+    void refreshLayerFocus(Output* output) { m_focus.refreshLayerFocus(output); }
     void reconcileDynamicWorkspaces();
     void clearKeyboardFocus() { m_focus.clearKeyboardFocus(); }
     void deactivateViews(View* except = nullptr) { m_focus.deactivateViews(except); }

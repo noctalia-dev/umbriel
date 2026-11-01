@@ -75,6 +75,8 @@ namespace umbriel {
     // has committed the exit. Output-wide fullscreen policies such as HDR and
     // VRR must cover both transitions.
     [[nodiscard]] bool hasFullscreenView(const View* ignored = nullptr) const;
+    // Fullscreen stacking and top-layer keyboard priority share the same presentation state.
+    [[nodiscard]] bool fullscreenAboveTopLayer() const { return m_fullscreenAboveTopLayer; }
 
     void arrangeLayers();
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
@@ -208,6 +210,8 @@ namespace umbriel {
     static int onDirectScanoutTimer(void* data);
 
     void handleFrame();
+    void updateFullscreenStack();
+    [[nodiscard]] bool fullscreenCoversOutput() const;
     void handleRequestState(void* data);
     void handlePresent(void* data);
     void handleDestroy();
@@ -260,6 +264,7 @@ namespace umbriel {
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
+    bool m_fullscreenAboveTopLayer = false;
     CursorPlaneState m_lastCursorPlane{};
 #ifdef UMBRIEL_HARNESS
     std::optional<CursorPlaneState> m_syntheticPlaneCursor;
