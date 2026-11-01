@@ -22,12 +22,9 @@ ipc_box() {
 # sees, so the interpolation is sampled from pixels.
 capture_width() {
   local image="$UMBRIEL_RUNTIME_DIR/$1.png"
-  local w h x y
+  local w
   grim "$image"
-  read -r w h x y < <(
-    magick "$image" -alpha off -colorspace gray -threshold 1% \
-      -bordercolor black -border 1 -trim -format '%w %h %X %Y\n' info:
-  )
+  read -r _ _ w _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01')
   echo "$w"
 }
 

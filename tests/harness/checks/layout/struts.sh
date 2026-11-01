@@ -132,13 +132,15 @@ assert_size() {
 }
 
 pixel_color() {
-  magick "$1" -alpha off -format "%[hex:p{$2,$3}]" info:
+  local red green blue
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$1" pixel "$2" "$3")
+  printf '%02X%02X%02X\n' "$red" "$green" "$blue"
 }
 
 assert_client_pixel() {
   local image=$1 x=$2 y=$3 color
   color=$(pixel_color "$image" "$x" "$y")
-  if [[ $color != 0000FF* && $color != 00FF00* ]]; then
+  if [[ $color != 0000FF && $color != 00FF00 ]]; then
     echo "expected client content at $x,$y, got #$color"
     return 1
   fi
@@ -147,7 +149,7 @@ assert_client_pixel() {
 assert_not_client_pixel() {
   local image=$1 x=$2 y=$3 color
   color=$(pixel_color "$image" "$x" "$y")
-  if [[ $color == 0000FF* || $color == 00FF00* ]]; then
+  if [[ $color == 0000FF || $color == 00FF00 ]]; then
     echo "expected non-client content at $x,$y, got #$color"
     return 1
   fi
@@ -156,7 +158,7 @@ assert_not_client_pixel() {
 assert_not_backdrop_pixel() {
   local image=$1 x=$2 y=$3 color
   color=$(pixel_color "$image" "$x" "$y")
-  if [[ $color == 000000* ]]; then
+  if [[ $color == 000000 ]]; then
     echo "expected content over backdrop at $x,$y, got #$color"
     return 1
   fi
@@ -164,7 +166,7 @@ assert_not_backdrop_pixel() {
 
 assert_image_size() {
   local image=$1 expected="$2x$3" actual
-  actual=$(magick "$image" -format "%wx%h" info:)
+  actual=$("$UMBRIEL_PIXEL_PROBE" "$image" size)
   if [[ $actual != "$expected" ]]; then
     echo "expected screenshot size $expected, got $actual"
     return 1

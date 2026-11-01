@@ -111,13 +111,13 @@ id_of() {
 # Mean blue of a 20x20 patch. The harness client paints 0x5577AA, the backdrop is black, so a patch is either client
 # content (blue well above 100) or uncovered output (blue at 0).
 sample_blue() {
-  magick "$SHOT" -crop "20x20+$1+$2" -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SHOT" mean "20x20+$1+$2" | awk '{ print $3 }'
 }
 
 # Brightest blue inside a crop geometry: any client pixel in the region answers well above 100, an empty region
 # answers 0. A region tolerates the eased slide passing through it instead of pinning one displacement.
 region_blue() {
-  magick "$SHOT" -crop "$1" -format '%[fx:round(255*maxima.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SHOT" max "$1" | awk '{ print $3 }'
 }
 
 fast_animations() {
