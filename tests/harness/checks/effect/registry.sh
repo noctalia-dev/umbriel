@@ -205,7 +205,7 @@ runtime_preset_order=$(awk -F '\t' '$1 ~ /^runtime_(border_z|border_a|overlay|in
 runtime_pool_order=$(awk -F '\t' '$1 ~ /^runtime_pool_[za]$/ {print $1}' <<< "$runtime_text" | paste -sd ',')
 expect "registry-text-preset-order" "$runtime_preset_order" "runtime_border_z,runtime_border_a,runtime_overlay,runtime_inert,runtime_failed"
 expect "registry-text-pool-order" "$runtime_pool_order" "runtime_pool_z,runtime_pool_a"
-"$UMBRIEL" msg "effect-border-set:runtime_pool_z/$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-border-set runtime_pool_z --window "$runtime_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 for name in runtime_border_z runtime_border_a runtime_overlay; do
   expect "registry-pool-root $name" "$(runtime_state "$name")" compiled
@@ -215,8 +215,8 @@ if (( r < 240 || g > 15 || b > 15 )); then
   echo "registry-overlay-pixel: IPC-only border overlay did not render: $r $g $b"
   exit 1
 fi
-"$UMBRIEL" msg "effect-border-toggle:$runtime_id" > /dev/null
-"$UMBRIEL" msg "effect-window-set:runtime_inert/$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-border-toggle "$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-window-set runtime_inert --window "$runtime_id" > /dev/null
 expect "registry-inert" "$(runtime_state runtime_inert)" inert
 "$UMBRIEL" settle > /dev/null
 read -r r g b < <(runtime_pixel)
@@ -224,7 +224,7 @@ if (( b < 240 || r > 15 || g > 15 )); then
   echo "registry-inert-plain: inert selection did not render plainly: $r $g $b"
   exit 1
 fi
-"$UMBRIEL" msg "effect-window-set:runtime_failed/$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-window-set runtime_failed --window "$runtime_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 expect "registry-failed" "$(runtime_state runtime_failed)" failed
 for name in runtime_border_z runtime_border_a runtime_overlay; do
@@ -235,11 +235,11 @@ if (( b < 240 || r > 15 || g > 15 )); then
   echo "registry-failed-plain: failed selection did not render plainly: $r $g $b"
   exit 1
 fi
-"$UMBRIEL" msg "effect-border-reset:$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-border-reset "$runtime_id" > /dev/null
 for name in runtime_border_z runtime_border_a runtime_overlay; do
   expect "registry-pruned-root $name" "$(runtime_state "$name")" unreferenced
 done
-"$UMBRIEL" msg "effect-window-reset:$runtime_id" > /dev/null
+"$UMBRIEL" msg effect-window-reset "$runtime_id" > /dev/null
 expect "registry-pruned-failure" "$(runtime_state runtime_failed)" unreferenced
 
 # Configured effect actions are preparation roots before any key or corner fires.
@@ -275,20 +275,20 @@ expect_action_roots() {
     expect "$label $name" "$(runtime_state "$name")" "$expected"
   done
 }
-write_action_roots '[keybinds]' '"Mod+F9" = "effect-border-cycle:action_pool"'
+write_action_roots '[keybinds]' '"Mod+F9" = "effect-border-cycle action_pool"'
 expect_action_roots registry-keybind-prepared compiled
-write_action_roots '[keybinds]' '"Mod+F9" = "effect-window-set:action_spare"'
+write_action_roots '[keybinds]' '"Mod+F9" = "effect-window-set action_spare"'
 expect_action_roots registry-keybind-replaced unreferenced
 expect "registry-keybind-replacement-prepared" "$(runtime_state action_spare)" compiled
-write_action_roots '[hot_corners.top_left]' 'enabled = false' 'action = "effect-border-set:action_pool"'
+write_action_roots '[hot_corners.top_left]' 'enabled = false' 'action = "effect-border-set action_pool"'
 expect_action_roots registry-disabled-corner-unreferenced unreferenced
 expect "registry-keybind-removed" "$(runtime_state action_spare)" unreferenced
-write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-border-set:action_pool"'
+write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-border-set action_pool"'
 expect_action_roots registry-corner-pool-prepared compiled
-write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-border-set:action_border"'
+write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-border-set action_border"'
 expect_action_roots registry-corner-preset-prepared compiled
-write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-window-set:action_spare"'
+write_action_roots '[hot_corners.top_left]' 'enabled = true' 'action = "effect-window-set action_spare"'
 expect_action_roots registry-corner-replaced unreferenced
 expect "registry-corner-replacement-prepared" "$(runtime_state action_spare)" compiled
-write_action_roots '[hot_corners.top_left]' 'enabled = false' 'action = "effect-window-set:action_spare"'
+write_action_roots '[hot_corners.top_left]' 'enabled = false' 'action = "effect-window-set action_spare"'
 expect "registry-corner-disabled" "$(runtime_state action_spare)" unreferenced

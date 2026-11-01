@@ -146,9 +146,9 @@ fi
 BINARY=$(realpath "$BINARY")
 BINARY_DIR=$(dirname "$BINARY")
 
-# Checks drive harness-only IPC commands, which only a build with the test_ipc option has.
+# Checks drive harness-only IPC commands, which only a build with the harness option has.
 if ! "$BINARY" --help 2>/dev/null | grep -qw settle; then
-  echo "check: '$BINARY' lacks the harness IPC commands; configure it with -Dtest_ipc=enabled" >&2
+  echo "check: '$BINARY' lacks the harness IPC commands; configure it with -Dharness=enabled" >&2
   exit 1
 fi
 
@@ -178,6 +178,10 @@ export UMBRIEL_SECURITY_CONTEXT_CLIENT="$CLIENT_DIR/security-context-client"
 export UMBRIEL_SEAT_LOG_CLIENT="$CLIENT_DIR/seat-log-client"
 export UMBRIEL_COLOR_FEEDBACK_CLIENT="$CLIENT_DIR/color-feedback-client"
 export UMBRIEL_XWAYLAND_FOCUS_CLIENT="$CLIENT_DIR/xwayland-focus-client"
+export UMBRIEL_XWAYLAND_OUTPUT_CLIENT="$CLIENT_DIR/xwayland-output-client"
+export UMBRIEL_XWAYLAND_ASSOCIATION_CLIENT="$CLIENT_DIR/xwayland-association-client"
+export UMBRIEL_XWAYLAND_DIALOG_CLIENT="$CLIENT_DIR/xwayland-dialog-client"
+export UMBRIEL_XWAYLAND_POPUP_CLIENT="$CLIENT_DIR/xwayland-popup-client"
 export UMBRIEL_XWAYLAND_INPUT_CLIENT="$CLIENT_DIR/xwayland-input-client"
 export UMBRIEL_EI_PEER_CLIENT="$CLIENT_DIR/ei-peer-client"
 export UMBRIEL_XWAYLAND_SELECTION_CLIENT="$CLIENT_DIR/xwayland-selection-client"
@@ -257,7 +261,7 @@ kill_check_group() {
 }
 
 # Kills the instance and everything it forked. The compositor runs in its own
-# session, so processes it spawned itself (autostarts, `msg spawn:`) sit in the
+# session, so processes it spawned itself (autostarts, `msg spawn`) sit in the
 # instance's process group rather than the check's, and reaping that group is
 # the only way they do not outlive the run.
 kill_instance() {
@@ -382,6 +386,19 @@ check_xwayland() {
   echo "${declared:-false}"
 }
 
+check_xwayland_proxy() {
+  sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland_proxy=\(association\)$/\1/p' | head -1
+}
+
+# The compositor's config file watcher is off unless the header declares `# harness: config-watch=true`.
+check_config_watch() {
+  if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: config-watch=true'; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 check_xcursor_theme() {
   if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: xcursor-theme=true'; then
     echo umbriel-harness
@@ -490,6 +507,8 @@ start_instance() {
   local outputs=$1
   local xwayland=$2
   local cursor_theme=$3
+  local xwayland_proxy=$4
+  local config_watch=$5
   # sockaddr_un caps paths at 108 bytes and the compositor appends
   # "/umbriel-wayland-0.sock" (23) to XDG_RUNTIME_DIR, so keep the root short. A
   # long path makes wl_display_add_socket fail and the boot abort.
@@ -506,17 +525,35 @@ start_instance() {
     fi
   fi
   write_default_config "$config" "$xwayland" "$cursor_theme"
+  local xwayland_environment=()
+  if [[ $xwayland_proxy == association ]]; then
+    local real_xwayland
+    if ! real_xwayland=$(command -v "${WLR_XWAYLAND:-Xwayland}"); then
+      BOOT_ERROR="Xwayland is required for the association check"
+      return 1
+    fi
+    mkfifo "$RUNTIME_DIR/xwayland-association.control"
+    export UMBRIEL_XWAYLAND_ASSOCIATION_LOG="$RUNTIME_DIR/xwayland-association.log"
+    export UMBRIEL_XWAYLAND_ASSOCIATION_CONTROL="$RUNTIME_DIR/xwayland-association.control"
+    xwayland_environment=(
+      "WLR_XWAYLAND=$HARNESS_DIR/clients/xwayland_association_proxy.py"
+      "UMBRIEL_XWAYLAND_REAL_BINARY=$real_xwayland"
+      "UMBRIEL_WLR_DEBUG=1"
+    )
+  fi
 
   # setsid puts the compositor in a session of its own, so anything it forks
-  # (an autostart, a keybind `spawn:`) is reachable as one process group at
+  # (an autostart, a keybind `spawn`) is reachable as one process group at
   # teardown instead of joining the harness's own group where it cannot be
   # signalled. The wrapper reports the group id it leads and then execs the
   # compositor in place, so SERVER_PID stays the compositor.
   local pgid_file=$RUNTIME_DIR/instance.pgid
   setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+    "${xwayland_environment[@]}" \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WLR_BACKENDS=headless \
+    UMBRIEL_CONFIG_WATCH="$config_watch" \
     WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_HEADLESS_OUTPUTS="$outputs" \
     bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
@@ -684,7 +721,8 @@ run_one() {
   cursor_theme=$(check_xcursor_theme "$name")
 
   BOOT_ERROR=
-  if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme"; then
+  if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme" \
+    "$(check_xwayland_proxy "$name")" "$(check_config_watch "$name")"; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi

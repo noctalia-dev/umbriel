@@ -13,10 +13,10 @@ umbriel = os.environ["UMBRIEL"]
 client = os.environ["UMBRIEL_SEAT_LOG_CLIENT"]
 
 
-def action(value, success=True):
-    result = subprocess.run([umbriel, "msg", value], capture_output=True, text=True, timeout=5)
+def action(*words, success=True):
+    result = subprocess.run([umbriel, "msg", *words], capture_output=True, text=True, timeout=5)
     if (result.returncode == 0) != success:
-        raise SystemExit(f"unexpected result for {value}: {result.stdout} {result.stderr}")
+        raise SystemExit(f"unexpected result for {' '.join(words)}: {result.stdout} {result.stderr}")
 
 
 def windows():
@@ -55,7 +55,7 @@ def assert_killed(process):
 action("window-kill")
 background, background_id = spawn("kill-background")
 focused, focused_id = spawn("kill-focused")
-action("window-kill:definitely-not-a-window", success=False)
+action("window-kill", "definitely-not-a-window", success=False)
 if background.poll() is not None or focused.poll() is not None:
     raise SystemExit("an unknown window ID terminated a client")
 
@@ -70,7 +70,7 @@ if background.poll() is not None:
 
 # An explicit ID selects a background window without killing the focused client.
 survivor, survivor_id = spawn("kill-survivor")
-action(f"window-kill:{background_id}")
+action("window-kill", background_id)
 assert_killed(background)
 if survivor.poll() is not None:
     raise SystemExit("killing a window by ID also terminated the focused client")

@@ -271,7 +271,7 @@ namespace umbriel {
     fx_effect_shader* cursor = suspended ? nullptr : registry.preset(cursorName, EffectKind::Cursor);
     const EffectPreset* cursorPreset = cursor != nullptr ? registry.presetConfig(cursorName) : nullptr;
     bool advancing = true;
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     advancing = !m_server->animationClockFrozen();
 #endif
     wlr_scene_output_set_effect_time(m_sceneOutput, m_server->animationClockMsec());
@@ -322,21 +322,13 @@ namespace umbriel {
 
   int Output::externalRenderLocks() const { return m_output->attach_render_locks - (m_animationRenderLocked ? 1 : 0); }
 
-  int Output::captureRenderLocks(int externalLocks) const {
-    if (wlr_export_dmabuf_manager_v1* manager = m_server->exportDmabufManager()) {
-      wlr_export_dmabuf_frame_v1* frame;
-      wl_list_for_each(frame, &manager->frames, link) {
-        if (frame->output == m_output) {
-          --externalLocks;
-        }
-      }
-    }
-    return externalLocks;
-  }
-
   bool Output::effectCapturePending(int captureLocks) const {
     // Keyed on configuration, not instances: a close snapshot keeps its window slots after its instances leave.
     return captureLocks > 0 && !config().effects.inCapture && m_server->effects().inPlaceReferenced();
+  }
+
+  bool Output::captureExclusionPending(int captureLocks) const {
+    return captureLocks > 0 && umbrielfx_scene_has_capture_exclusion(m_sceneOutput->scene);
   }
 
   unsigned Output::effectEligible() const { return m_server->effects().ledger().eligible(this); }
@@ -812,18 +804,22 @@ namespace umbriel {
           }
         }
 
-        const int captureLocks = captureRenderLocks(externalRenderLocks());
+        const int captureLocks = externalRenderLocks();
         wlr_scene_output_state_options sceneOptions{};
         sceneOptions.capture_sdr = targetHdr && captureLocks > 0;
         sceneOptions.effect_capture_pending = effectCapturePending(captureLocks);
-        m_effectCaptureBuilt = sceneOptions.effect_capture_pending;
+        sceneOptions.capture_exclusion = captureExclusionPending(captureLocks);
+        m_effectCaptureBuilt = sceneOptions.effect_capture_pending || sceneOptions.capture_exclusion;
 
         const RenderedStateCommitResult commitResult = commitRenderedState(
             frameState,
             [&](wlr_output_state& pending) {
               return wlr_scene_output_build_state(m_sceneOutput, &pending, &sceneOptions);
             },
-            [&](const wlr_output_state& pending) { return wlr_output_commit_state(m_output, &pending); }
+            [&](const wlr_output_state& pending) {
+              SceneCommit observation(*this, pending);
+              return wlr_output_commit_state(m_output, &pending);
+            }
         );
         if (secureMask != nullptr) {
           wlr_scene_node_destroy(&secureMask->node);
@@ -1227,7 +1223,7 @@ namespace umbriel {
     return true;
   }
 
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
   void Output::setSyntheticPlaneCursorForTest(
       double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
   ) {
@@ -1263,7 +1259,7 @@ namespace umbriel {
         .hotspot_y = plane != nullptr ? plane->hotspot_y : 0,
         .image = plane != nullptr ? m_output->cursor_front_buffer : nullptr,
     };
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     if (m_syntheticPlaneCursor.has_value()) {
       now = *m_syntheticPlaneCursor;
     }
@@ -1296,7 +1292,7 @@ namespace umbriel {
     }
     // Only an output whose capture source carries a live cursor-metadata
     // session is paced. The session bookkeeping and the source mapping live
-    // in Server; screencopy and export-dmabuf never register there.
+    // in Server; screencopy never registers there.
     return m_server->hasCopyCaptureFor(m_output);
   }
 
@@ -1615,7 +1611,35 @@ namespace umbriel {
     return 0;
   }
 
-  void Output::observeDirectScanout() {
+  Output::SceneCommit::SceneCommit(Output& output, const wlr_output_state& state) : m_output(output) {
+    wl_list_init(&m_commit.link);
+    if ((state.committed & WLR_OUTPUT_STATE_BUFFER) == 0 || state.buffer == nullptr) {
+      return;
+    }
+    // The submitted state owns the buffer for this scope. Snapshot the decision before commit callbacks can change
+    // the scene, and avoid attributing a later cursor or metadata commit to an earlier failed scene build.
+    m_buffer = state.buffer;
+    m_state = output.builtDirectScanout();
+    m_commit.notify = onCommit;
+    wl_signal_add(&output.m_output->events.commit, &m_commit);
+  }
+
+  Output::SceneCommit::~SceneCommit() { wl_list_remove(&m_commit.link); }
+
+  void Output::SceneCommit::onCommit(wl_listener* listener, void* data) {
+    SceneCommit* self;
+    self = wl_container_of(listener, self, m_commit);
+    const auto* event = static_cast<wlr_output_event_commit*>(data);
+    if ((event->state->committed & WLR_OUTPUT_STATE_BUFFER) == 0 || event->state->buffer != self->m_buffer) {
+      return;
+    }
+    self->m_output.recordDirectScanout(self->m_state, event->output->commit_seq);
+    // A synchronous backend attempt can account for this built buffer only once.
+    wl_list_remove(&self->m_commit.link);
+    wl_list_init(&self->m_commit.link);
+  }
+
+  DirectScanoutState Output::builtDirectScanout() const {
     const wlr_scene_direct_scanout_status status = wlr_scene_output_direct_scanout_status(m_sceneOutput);
     DirectScanoutState state;
     state.active = status == WLR_SCENE_DIRECT_SCANOUT_ACTIVE;
@@ -1630,8 +1654,12 @@ namespace umbriel {
         state.title = view->title() != nullptr ? view->title() : "";
       }
     }
+    return state;
+  }
+
+  void Output::recordDirectScanout(const DirectScanoutState& state, uint32_t commitSeq) {
     // Restarting the wait on every change settles only a state that held for the whole interval.
-    const DirectScanoutTracker::Observation observation = m_directScanout.observe(state);
+    const DirectScanoutTracker::Observation observation = m_directScanout.recordCommit(state, commitSeq);
     if (observation != DirectScanoutTracker::Observation::Unchanged && m_directScanoutTimer != nullptr) {
       const bool pending = observation == DirectScanoutTracker::Observation::Pending;
       wl_event_source_timer_update(m_directScanoutTimer, pending ? DirectScanoutTracker::kSettleMs : 0);
@@ -1808,7 +1836,7 @@ namespace umbriel {
     const EffectRegistry& effects = m_server->effects();
     bool stampEffectTime =
         effectFrame || (effectEligible() == 0 && (effects.persistentReferenced() || effects.active()));
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     stampEffectTime = stampEffectTime || m_server->animationClockFrozen();
 #endif
     if (stampEffectTime) {
@@ -1943,11 +1971,12 @@ namespace umbriel {
       wlr_output_state_init(&state);
 
       bool commitOk = false;
-      const int captureLocks = captureRenderLocks(externalLocks);
+      const int captureLocks = externalLocks;
       wlr_scene_output_state_options sceneOptions{};
       sceneOptions.capture_sdr = hdrActive() && captureLocks > 0;
       sceneOptions.effect_capture_pending = effectCapturePending(captureLocks);
-      m_effectCaptureBuilt = sceneOptions.effect_capture_pending;
+      sceneOptions.capture_exclusion = captureExclusionPending(captureLocks);
+      m_effectCaptureBuilt = sceneOptions.effect_capture_pending || sceneOptions.capture_exclusion;
       sceneOptions.require_animation_success = m_workspaceGroup != nullptr && m_workspaceGroup->revealActive();
       if (sceneOptions.require_animation_success) {
         sceneOptions.workspace_from = m_workspaceGroup->revealRoot(false);
@@ -1961,9 +1990,6 @@ namespace umbriel {
       if (!built && sceneOptions.require_animation_success) {
         // Reject the incomplete frame and resume native slide at the same progress.
         m_workspaceGroup->abandonReveal();
-      }
-      if (built) {
-        observeDirectScanout();
       }
       if (built) {
         // Hardware gamma only (DRM). Nested Wayland has no gamma LUT; leave that alone.
@@ -2005,6 +2031,7 @@ namespace umbriel {
 
         {
           UMBRIEL_ZONE("Output::commitState");
+          SceneCommit observation(*this, state);
           commitOk = wlr_output_commit_state(m_output, &state);
         }
         if (hasBuffer) {
@@ -2042,7 +2069,8 @@ namespace umbriel {
     }
 
     // Screencopy drops its lock inside the commit; image-copy sessions ask for the release frame when they end.
-    if (m_effectCaptureBuilt && !effectCapturePending(captureRenderLocks(externalRenderLocks()))) {
+    if (m_effectCaptureBuilt
+        && !(effectCapturePending(externalRenderLocks()) || captureExclusionPending(externalRenderLocks()))) {
       scheduleEffectCaptureRelease();
     }
 

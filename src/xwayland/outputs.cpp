@@ -1,5 +1,6 @@
 #include "xwayland/outputs.h"
 
+#include "output/identity.h"
 #include "wlr.h"
 #include "xdg-output-unstable-v1-protocol.h"
 
@@ -71,6 +72,27 @@ namespace umbriel {
 
   bool XwaylandOutputs::advertise(const wl_client* client, const wl_global* global, const wl_client* xwayland) const {
     return (global == m_global) == (client == xwayland);
+  }
+
+  std::optional<std::string> XwaylandOutputs::primaryOutput(std::string_view name) const {
+    if (name.empty()) {
+      return std::nullopt;
+    }
+    const auto text = [](const char* value) { return value != nullptr ? std::string_view(value) : std::string_view(); };
+    wlr_output_layout_output* layoutOutput = nullptr;
+    wl_list_for_each(layoutOutput, &m_layout->outputs, link) {
+      const wlr_output* output = layoutOutput->output;
+      const OutputIdentity identity{
+          .connector = text(output->name),
+          .make = text(output->make),
+          .model = text(output->model),
+          .serial = text(output->serial),
+      };
+      if (outputNameMatch(identity, name) != OutputNameMatch::None) {
+        return std::string(identity.connector);
+      }
+    }
+    return std::string();
   }
 
   bool XwaylandOutputs::update() {

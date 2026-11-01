@@ -109,7 +109,7 @@ namespace umbriel {
 
     // Raise is decided once: only a hover under follows_mouse may focus without lifting the window. Every other
     // reason (clicks, keybinds, activation, workspace switches, mapping) raises.
-    const bool raise = !(reason == FocusReason::PointerHover && !config().input.focus.hoverRaises);
+    const bool raise = reason != FocusReason::PointerHover || config().input.focus.hoverRaises;
     m_lastRaise = raise;
     // Keep workspace focus while exclusive layer-shell holds the seat; refocus applies it later. focus() also returns
     // the seat to a layer that was uncovered by a fullscreen window leaving, and clears the previous window's
@@ -303,9 +303,9 @@ namespace umbriel {
 
   void FocusManager::refocus(Output* preferred) {
     // If a scratchpad is open and it already has focus, don't steal it.
-    auto surface = m_server.seat()->wlr()->keyboard_state.focused_surface;
-    auto focused = View::fromSurface(surface);
-    auto pad = m_server.scratchpadManager();
+    auto* surface = m_server.seat()->wlr()->keyboard_state.focused_surface;
+    auto* focused = View::fromSurface(surface);
+    auto* pad = m_server.scratchpadManager();
     if (preferred != nullptr
         && surface != nullptr
         && surface->mapped

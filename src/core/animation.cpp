@@ -1,15 +1,17 @@
 #include "core/animation.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <mutex>
 #include <numbers>
 #include <shared_mutex>
+#include <span>
 #include <sys/random.h>
 #include <unistd.h>
 #include <unordered_map>
@@ -110,29 +112,45 @@ namespace umbriel {
           return curve;
         }
 
-        const auto fullyConsumed = [](const std::string& input, int consumed) {
-          return consumed > 0
-              && std::ranges::all_of(std::string_view(input).substr(static_cast<size_t>(consumed)), [](char ch) {
-                   return std::isspace(static_cast<unsigned char>(ch));
-                 });
+        // Comma-separated numbers filling `out`, with nothing but whitespace after the last.
+        const auto readNumbers = [](const std::string& input, std::span<double> out) {
+          const char* cursor = input.c_str();
+          for (size_t i = 0; i < out.size(); ++i) {
+            if (i > 0) {
+              while (std::isspace(static_cast<unsigned char>(*cursor))) {
+                ++cursor;
+              }
+              if (*cursor != ',') {
+                return false;
+              }
+              ++cursor;
+            }
+            char* end = nullptr;
+            out[i] = std::strtod(cursor, &end);
+            if (end == cursor) {
+              return false;
+            }
+            cursor = end;
+          }
+          while (std::isspace(static_cast<unsigned char>(*cursor))) {
+            ++cursor;
+          }
+          return *cursor == '\0';
         };
 
-        double x1 = 0.0;
-        double y1 = 0.0;
-        double x2 = 0.0;
-        double y2 = 0.0;
-        int consumed = 0;
-        if (std::sscanf(value.c_str(), " %lf , %lf , %lf , %lf %n", &x1, &y1, &x2, &y2, &consumed) == 4
-            && fullyConsumed(value, consumed)
-            && std::isfinite(x1)
-            && std::isfinite(y1)
-            && std::isfinite(x2)
-            && std::isfinite(y2)
-            && x1 >= 0.0
-            && x1 <= 1.0
-            && x2 >= 0.0
-            && x2 <= 1.0) {
-          return AnimationCurve{.easing = Easing::CustomBezier, .bezier = {x1, y1, x2, y2}};
+        std::array<double, 4> bezier{};
+        if (readNumbers(value, bezier)) {
+          const auto [x1, y1, x2, y2] = bezier;
+          if (std::isfinite(x1)
+              && std::isfinite(y1)
+              && std::isfinite(x2)
+              && std::isfinite(y2)
+              && x1 >= 0.0
+              && x1 <= 1.0
+              && x2 >= 0.0
+              && x2 <= 1.0) {
+            return AnimationCurve{.easing = Easing::CustomBezier, .bezier = {x1, y1, x2, y2}};
+          }
         }
 
         constexpr std::string_view kSpringPrefix = "spring:";
@@ -140,19 +158,17 @@ namespace umbriel {
           return std::nullopt;
         }
         const std::string parameters = value.substr(kSpringPrefix.size());
-        double damping = 0.0;
-        double stiffness = 0.0;
-        consumed = 0;
-        if (std::sscanf(parameters.c_str(), " %lf , %lf %n", &damping, &stiffness, &consumed) != 2
-            || !fullyConsumed(parameters, consumed)
-            || !std::isfinite(damping)
-            || !std::isfinite(stiffness)
-            || damping < 0.01
-            || damping > 5.0
-            || stiffness < 1.0
-            || stiffness > 10000.0) {
+        std::array<double, 2> spring{};
+        if (!readNumbers(parameters, spring)
+            || !std::isfinite(spring[0])
+            || !std::isfinite(spring[1])
+            || spring[0] < 0.01
+            || spring[0] > 5.0
+            || spring[1] < 1.0
+            || spring[1] > 10000.0) {
           return std::nullopt;
         }
+        const auto [damping, stiffness] = spring;
         return AnimationCurve{
             .easing = Easing::Spring, .spring = {.damping = damping, .stiffness = stiffness, .mass = 1.0}
         };

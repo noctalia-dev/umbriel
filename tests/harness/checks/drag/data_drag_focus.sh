@@ -70,7 +70,7 @@ POINTER_PID=$!
 sleep 0.1
 
 # The virtual keyboard must exist before source focus is established so its client receives the initial keyboard enter.
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 if [[ $(active_title) != data-drag-source ]]; then
   echo "could not establish source keyboard focus: $("$UMBRIEL" windows --json)"
   exit 1
@@ -87,7 +87,7 @@ fi
 
 # This is the same logical focus change produced by crossing onto another output with focus-follows-mouse. The drag's
 # keyboard grab discards the seat enter, but the target's active state and border still change immediately.
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
 if [[ $(active_title) != data-drag-target ]]; then
   echo "target did not become visibly focused during the drag: $("$UMBRIEL" windows --json)"
   exit 1

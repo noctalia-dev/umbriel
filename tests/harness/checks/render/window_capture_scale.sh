@@ -113,13 +113,13 @@ configure 2.5
 expect_capture 5 2 "$from_line" 'live transition back to scale 2.5'
 
 from_line=$(($(wc -l < "$CAPTURE_LOG") + 1))
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-2 > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 --output HEADLESS-2 > /dev/null
 "$UMBRIEL" settle > /dev/null
 expect_capture 5 4 "$from_line" 'move to a scale 1.25 output with pixel rounding'
 
 from_line=$(($(wc -l < "$CAPTURE_LOG") + 1))
-"$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 expect_capture 5 2 "$from_line" 'move back to scale 2.5'
 

@@ -38,7 +38,7 @@ expect_active() {
 }
 
 focus_dialog() {
-  "$UMBRIEL" msg "window-focus:$(window_of focus-dialog | jq -r .id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(window_of focus-dialog | jq -r .id)" > /dev/null
   expect_active focus-dialog "the dialog did not take focus"
 }
 

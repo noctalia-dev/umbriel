@@ -13,11 +13,11 @@ readonly KEY_4=5
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [keybinds]
-"Mod+S" = { action = "submap:outer", repeat = false }
-"submap[outer],1" = { action = "workspace-set-layout:dwindle", submap = "reset" }
-"submap[outer],2" = { action = "workspace-set-layout:master", submap = "inner" }
-"submap[outer],3" = { action = "submap:inner", submap = "reset" }
-"submap[outer],4" = { action = "workspace-set-layout:master", repeat = true }
+"Mod+S" = { action = "submap outer", repeat = false }
+"submap[outer],1" = { action = "workspace-set-layout dwindle", submap = "reset" }
+"submap[outer],2" = { action = "workspace-set-layout master", submap = "inner" }
+"submap[outer],3" = { action = "submap inner", submap = "reset" }
+"submap[outer],4" = { action = "workspace-set-layout master", repeat = true }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -58,7 +58,7 @@ enter_outer
 "$POINTER" 1280 720 tap "$KEY_2"
 wait_for_value "focused layout" master focused_layout
 wait_for_value "active submap" inner active_submap
-"$UMBRIEL" msg submap:reset > /dev/null
+"$UMBRIEL" msg submap reset > /dev/null
 wait_for_value "revealed parent submap" outer active_submap
 
 # Action first pushes inner, then the post-action reset pops it. Reversing that
@@ -66,7 +66,7 @@ wait_for_value "revealed parent submap" outer active_submap
 "$POINTER" 1280 720 tap "$KEY_3"
 wait_for_value "action-then-transition submap" outer active_submap
 
-"$UMBRIEL" msg submap:reset > /dev/null
+"$UMBRIEL" msg submap reset > /dev/null
 wait_for_value "final active submap" default active_submap
 
 echo "keybind actions reset or enter submaps after dispatch while preserving nested stack order"

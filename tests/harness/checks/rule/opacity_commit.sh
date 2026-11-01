@@ -38,8 +38,8 @@ fi
 
 # Switching back applies the view clip, then subsequent client commits must
 # preserve the 0.5 compositor opacity rather than restoring opaque black.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 sleep 0.5 # real time: foot commits fresh content after the switch
 grim "$SCREENSHOT"
 

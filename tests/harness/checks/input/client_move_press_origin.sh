@@ -2,7 +2,7 @@
 # Client moves count motion before the request, and an already crossed threshold promotes without another event.
 set -euo pipefail
 source "$(dirname "$UMBRIEL_HARNESS_LIB")/title_bar.sh"
-cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+cat >>"$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
 enabled = false
 [appearance]
@@ -33,22 +33,22 @@ content_box() {
 
 for scale in 1 2; do
   sed -i "s/^scale = .*/scale = $scale/" "$UMBRIEL_CONFIG"
-  "$UMBRIEL" msg config-reload > /dev/null
+  "$UMBRIEL" msg config-reload >/dev/null
   output=$("$UMBRIEL" outputs --json | jq -c '.[0].logical_size')
-  width=$(jq -r '.width' <<< "$output")
-  height=$(jq -r '.height' <<< "$output")
-  for layout in scrolling floating; do
-    "$UMBRIEL" msg "workspace-set-layout:$layout" > /dev/null
+  width=$(jq -r '.width' <<<"$output")
+  height=$(jq -r '.height' <<<"$output")
+  for layout in scrolling stacking; do
+    "$UMBRIEL" msg workspace-set-layout "$layout" >/dev/null
     for timing in partial crossed; do
       title=press-origin-$scale-$layout-$timing
       log=$UMBRIEL_RUNTIME_DIR/$title.log
-      "$UMBRIEL_SEAT_LOG_CLIENT" "$title" move-on-motion > "$log" 2>&1 &
+      "$UMBRIEL_SEAT_LOG_CLIENT" "$title" move-on-motion >"$log" 2>&1 &
       client=$!
       title_bar_wait_field "$title" title_bar false
-      "$UMBRIEL" settle > /dev/null
+      "$UMBRIEL" settle >/dev/null
       window=$(title_bar_window "$title")
-      pointer_x=$(jq -r '.x + 200' <<< "$window")
-      pointer_y=$(jq -r '.y + 60' <<< "$window")
+      pointer_x=$(jq -r '.x + 200' <<<"$window")
+      pointer_y=$(jq -r '.y + 60' <<<"$window")
       distance=8
       after=12
       if [[ $timing == crossed ]]; then
@@ -65,19 +65,28 @@ for scale in 1 2; do
       await_lines "$log" pointer-leave 1 0.025
       requested=$(cursor_hash "$title-requested")
       requested_box=$(content_box "$title-requested-box")
-      [[ $requested_box == "$before_box" ]] || { echo "$title: accepting the move jumped the window: $before_box to $requested_box"; exit 1; }
+      [[ $requested_box == "$before_box" ]] || {
+        echo "$title: accepting the move jumped the window: $before_box to $requested_box"
+        exit 1
+      }
       if [[ $timing == partial ]]; then
         # Accepting the request transfers cursor ownership from the client. Use this pending cursor as the
         # reference for the active transition, rather than comparing against an application that hides its cursor.
         normal=$requested
       else
-        [[ $requested != "$normal" ]] || { echo "$title: an already crossed threshold waited for another motion event"; exit 1; }
+        [[ $requested != "$normal" ]] || {
+          echo "$title: an already crossed threshold waited for another motion event"
+          exit 1
+        }
       fi
       pointer_step continued
       pointer_x=$((pointer_x + after - distance))
       continued=$(cursor_hash "$title-continued")
-      [[ $continued != "$normal" ]] || { echo "$title: the move applied a second drag threshold"; exit 1; }
-      read -r bx by bw bh <<< "$before_box"
+      [[ $continued != "$normal" ]] || {
+        echo "$title: the move applied a second drag threshold"
+        exit 1
+      }
+      read -r bx by bw bh <<<"$before_box"
       read -r ax ay aw ah < <(content_box "$title-moved")
       expected_x=$((bx + (after - distance) * scale))
       [[ "$ax $ay $aw $ah" == "$expected_x $by $bw $bh" ]] || {
@@ -85,7 +94,7 @@ for scale in 1 2; do
         exit 1
       }
       pointer_release
-      "$UMBRIEL" settle > /dev/null
+      "$UMBRIEL" settle >/dev/null
       kill "$client"
       wait "$client" 2>/dev/null || true
       title_bar_wait_absent "$title"

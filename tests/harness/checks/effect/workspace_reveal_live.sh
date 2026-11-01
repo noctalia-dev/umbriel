@@ -18,13 +18,13 @@ REPAINT_ON_STDIN=1 FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" reveal-a 600 50
   <&"$a_fd" > "$UMBRIEL_RUNTIME_DIR/a.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/a.log" mapped 1
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 REPAINT_ON_STDIN=1 FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" reveal-b 400 600 \
   <&"$b_fd" > "$UMBRIEL_RUNTIME_DIR/b.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/b.log" mapped 1
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 
 pixel() { "$UMBRIEL_PIXEL_PROBE" "$SHOT" pixel "$1" "$2"; }
@@ -34,7 +34,7 @@ expect_pixel() {
   [[ $value == "$want" ]] || { echo "pixel $x,$y: expected $want, got $value"; return 1; }
 }
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 500
 # Default vertical axis: incoming at the top, outgoing at the bottom. Both
 # floating clients cover these positions at rest; a half slide would not.
@@ -56,9 +56,9 @@ expect_pixel 640 200 '255 0 0'
 expect_pixel 640 520 '0 0 255'
 # The next native transition may reveal again.
 "$UMBRIEL" clock-advance 1000
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" clock-advance 1000
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 expect_pixel 640 200 '0 0 255'
@@ -92,12 +92,12 @@ expect_pixel 640 200 '255 0 0'
 expect_pixel 640 520 '255 0 0'
 
 # Reverse direction and interrupt at half progress with a native rebase.
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 expect_pixel 640 200 '255 0 0'
 expect_pixel 640 520 '0 255 0'
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 1000
 grim "$SHOT"
 expect_pixel 640 200 '255 0 0'
@@ -106,11 +106,11 @@ expect_pixel 640 520 '255 0 0'
 "$UMBRIEL" clock-resume
 "$UMBRIEL" settle
 b_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "reveal-b") | .id')
-"$UMBRIEL" msg "window-focus-warp:$b_id" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$b_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 expect_pixel 640 200 '255 0 0'
@@ -134,7 +134,7 @@ CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 expect_pixel 500 360 '255 0 0'
@@ -149,7 +149,7 @@ grim "$SHOT"
 expect_pixel 500 360 '255 0 0'
 expect_pixel 780 360 '255 0 0'
 # A new reveal uses the replacement renderer; an empty endpoint leaves no source pixels.
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 "$UMBRIEL" clock-advance 1000
 grim "$SHOT"
 [[ $(pixel 640 360) != '255 0 0' ]]

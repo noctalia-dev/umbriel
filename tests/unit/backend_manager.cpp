@@ -272,9 +272,9 @@ udev_device* udev_device_new_from_syspath(udev*, const char* path) {
   const auto found = std::ranges::find(devices->inventory, path, &udev_device::syspath);
   return found == devices->inventory.end() || !found->present ? nullptr : &*found;
 }
-udev_device* udev_device_new_from_devnum(udev*, char, dev_t number) {
+udev_device* udev_device_new_from_devnum(udev*, char, dev_t devnum) {
   const auto found = std::ranges::find_if(devices->inventory, [&](const auto& device) {
-    return device.present && device.device == number && device.subsystem == "drm";
+    return device.present && device.device == devnum && device.subsystem == "drm";
   });
   return found == devices->inventory.end() ? nullptr : &*found;
 }

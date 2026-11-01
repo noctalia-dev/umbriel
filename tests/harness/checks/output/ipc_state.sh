@@ -9,6 +9,7 @@ readonly EVENTS="$UMBRIEL_RUNTIME_DIR/output-ipc-events.jsonl"
 
 printf '\n[output.HEADLESS-1]\nworkspaces = 2\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle > /dev/null
 "$UMBRIEL" subscribe outputs > "$EVENTS" &
 
 # Waits until the newest pushed outputs event satisfies a jq predicate on its data.
@@ -54,7 +55,7 @@ action output-focus-next
 await_outputs "[.[] | select(.focused) | .name] == [(.[] | select(.name != \"$focused\") | .name)]" \
   "focusing the next output"
 
-action workspace-switch:2/HEADLESS-1
+action workspace-switch 2 --output HEADLESS-1
 second_workspace=$(active_workspace HEADLESS-1)
 if [[ $second_workspace == "$first_workspace" ]]; then
   echo "workspace-switch did not change the active workspace of HEADLESS-1"
@@ -70,17 +71,17 @@ await_outputs '
     | .usable_area.y == .position.y + 40 and .usable_area.height == .logical_size.height - 40
 ' "an exclusive panel did not shrink the usable area"
 
-action dpms-off:HEADLESS-2
+action dpms-off HEADLESS-2
 await_outputs '.[] | select(.name == "HEADLESS-2") | .enabled and (.powered | not)' "powering an output off"
-action dpms-on:HEADLESS-2
+action dpms-on HEADLESS-2
 await_outputs '.[] | select(.name == "HEADLESS-2") | .powered' "powering an output on"
 
-action output-disable:HEADLESS-2
+action output-disable HEADLESS-2
 await_outputs '
   .[] | select(.name == "HEADLESS-2")
     | (.enabled | not) and (.powered | not) and .logical_size == {width: 0, height: 0}
 ' "disabling an output"
-action output-enable:HEADLESS-2
+action output-enable HEADLESS-2
 await_outputs '.[] | select(.name == "HEADLESS-2") | .enabled and .logical_size.width > 0' "enabling an output"
 
 # A virtual output appears with its custom mode as the current one, and leaves when destroyed.

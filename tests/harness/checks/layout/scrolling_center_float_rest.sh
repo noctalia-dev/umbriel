@@ -55,7 +55,7 @@ spawn_titled T2
 wait_for_count 2
 spawn_titled T3
 wait_for_count 3
-"$UMBRIEL" msg "window-focus:$(id_of T2)" > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of T2)" > /dev/null
 "$UMBRIEL" settle
 
 t1_x_centered=$(field_of T1 x)
@@ -77,7 +77,7 @@ fi
 # throughout, mirroring the reported episode.
 spawn_titled F2
 wait_for_count 4
-"$UMBRIEL" msg "window-focus:$(id_of F2)" > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of F2)" > /dev/null
 "$UMBRIEL" settle
 kill -TERM "${CLIENT_PID[F2]}" 2>/dev/null || true
 wait_for_count 3
@@ -91,7 +91,7 @@ fi
 
 # T3 is the last column, so its centered rest lies past maxScroll. Once it floats, T1 is alone and the strip has to
 # center it rather than keep resting where T3 was.
-"$UMBRIEL" msg "window-focus:$(id_of T3)" > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of T3)" > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle

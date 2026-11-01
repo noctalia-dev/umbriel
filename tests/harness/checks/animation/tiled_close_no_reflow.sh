@@ -89,7 +89,7 @@ x=$(jq -r .x <<< "$closing")
 y=$(jq -r .y <<< "$closing")
 w=$(jq -r .w <<< "$closing")
 h=$(jq -r .h <<< "$closing")
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/tiled-close-static.log" && break
   sleep 0.025
@@ -148,7 +148,7 @@ x=$(jq -r .x <<< "$lone")
 y=$(jq -r .y <<< "$lone")
 w=$(jq -r .w <<< "$lone")
 h=$(jq -r .h <<< "$lone")
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/tiled-close-survivor.log" && break
   sleep 0.025

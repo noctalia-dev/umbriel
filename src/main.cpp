@@ -18,6 +18,7 @@
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <print>
 #include <string>
@@ -35,11 +36,16 @@
 namespace {
   constexpr Logger kLog("main");
 
+  bool isJsonFlag(const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; }
+
   int validateConfig(int argc, char** argv) {
     const char* configPath = nullptr;
+    bool json = false;
     for (int i = 3; i < argc; ++i) {
       if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
         configPath = argv[++i];
+      } else if (isJsonFlag(argv[i])) {
+        json = true;
       } else {
         std::println(stderr, "error: unknown option '{}' for config validate", argv[i]);
         return EXIT_FAILURE;
@@ -48,6 +54,29 @@ namespace {
 
     umbriel::loadConfig(configPath);
     const auto& diags = umbriel::configDiagnostics();
+    if (json) {
+      nlohmann::json diagnostics = nlohmann::json::array();
+      for (const auto& d : diags) {
+        const bool located = !d.file.empty();
+        diagnostics.push_back({
+            {"severity", d.severity == umbriel::ConfigDiagnostic::Severity::Error ? "error" : "warning"},
+            {"message", d.message},
+            {"file", located ? nlohmann::json(d.file) : nlohmann::json(nullptr)},
+            {"line", located && d.line > 0 ? nlohmann::json(d.line) : nlohmann::json(nullptr)},
+            {"column", located && d.column > 0 ? nlohmann::json(d.column) : nlohmann::json(nullptr)},
+        });
+      }
+      std::println(
+          "{}",
+          nlohmann::json{
+              {"valid", diags.empty()},
+              {"path", umbriel::configRootPath().string()},
+              {"diagnostics", std::move(diagnostics)},
+          }
+              .dump()
+      );
+      return diags.empty() ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     if (diags.empty()) {
       std::println("config: ok ({})", umbriel::configRootPath().string());
       return EXIT_SUCCESS;
@@ -110,6 +139,7 @@ namespace {
     row("-c <config>", "use <config> instead of the default config path");
 
     heading("Control the running compositor");
+    row("msg <action> [args...]", "send an action to the compositor");
     specRows(umbriel::IpcCommandGroup::Control);
 
     heading("Inspect the running compositor");
@@ -127,7 +157,7 @@ namespace {
     }
 
     heading("Configuration, without a running compositor");
-    row("config validate [-c <config>]", "check the config file");
+    row("config validate [-c <config>]", "check the config file; --json lists diagnostics");
     row("config schema [--json]", "count or describe every config key");
 
     if (std::ranges::any_of(umbriel::ipcCommands(), [](const auto& spec) {
@@ -142,6 +172,45 @@ namespace {
     row("-v | -V | --version", "print version");
 
     std::println(stream, "\nRun `umbriel msg --help` to list all available actions for `msg` and keybinds.");
+  }
+
+  // `umbriel msg --help`: every action with its arguments, grouped as the cheatsheet groups them.
+  void printActionHelp() {
+    std::println("Usage: umbriel msg <action> [args...]");
+    std::println("");
+    std::println("Send an action to the running compositor.");
+    std::println(
+        "Arguments follow the action as separate words; `spawn` runs the remaining words as one shell command."
+    );
+    std::println("Available actions, grouped as the cheatsheet groups them:");
+    for (const umbriel::Group group : umbriel::fixedGroupOrder()) {
+      std::vector<std::string> names;
+      std::vector<std::string_view> summaries;
+      for (const auto& actionSpec : umbriel::actionSpecs()) {
+        if (umbriel::groupForAction(actionSpec.action) != group) {
+          continue;
+        }
+        names.emplace_back(
+            actionSpec.param.empty() ? std::string(actionSpec.name)
+                                     : std::format("{} {}", actionSpec.name, actionSpec.param)
+        );
+        summaries.push_back(actionSpec.summary);
+      }
+      if (names.empty()) {
+        continue;
+      }
+      // Pad per group: a single global column would push every summary past the width of the widest name in the
+      // table, which only one group actually needs.
+      size_t width = 0;
+      for (const auto& name : names) {
+        width = std::max(width, name.size());
+      }
+      std::println("");
+      std::println("{}", umbriel::groupTitle(group));
+      for (size_t i = 0; i < names.size(); ++i) {
+        std::println("  {:<{}}  {}", names[i], width, summaries[i]);
+      }
+    }
   }
 } // namespace
 
@@ -162,7 +231,6 @@ int main(int argc, char** argv) {
   mallopt(M_ARENA_MAX, 2);
 #endif
   if (argc >= 2) {
-    auto isJsonFlag = [](const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; };
     auto isHelpFlag = [](const char* arg) { return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0; };
 
     // Commands that read the config without a running compositor.
@@ -214,6 +282,10 @@ int main(int argc, char** argv) {
           printHelp(stdout);
           return EXIT_SUCCESS;
         }
+        // Every event is already a JSON line; the flag is accepted so scripts can pass it uniformly.
+        if (isJsonFlag(argv[i])) {
+          continue;
+        }
         // Comma-separated or repeated arguments, so `subscribe workspaces,windows` and `subscribe workspaces windows`
         // both work.
         std::string_view arg{argv[i]};
@@ -237,8 +309,31 @@ int main(int argc, char** argv) {
       return umbriel::runIpcSubscribe(events);
     }
 
+    // Not an IpcCommandSpec: the words are parsed here and sent as a structured action request.
+    if (std::strcmp(argv[1], "msg") == 0) {
+      if (argc == 3 && isHelpFlag(argv[2])) {
+        printActionHelp();
+        return EXIT_SUCCESS;
+      }
+      // Only flags before the action name are msg's own; everything after it belongs to the action.
+      bool jf = false;
+      std::vector<std::string> words;
+      for (int i = 2; i < argc; ++i) {
+        if (words.empty() && isJsonFlag(argv[i])) {
+          jf = true;
+        } else {
+          words.emplace_back(argv[i]);
+        }
+      }
+      if (words.empty()) {
+        printHelp(stderr);
+        return EXIT_FAILURE;
+      }
+      return umbriel::runIpcAction(words, jf);
+    }
+
     if (const auto* spec = umbriel::findIpcCommand(argv[1])) {
-      if (!spec->takesArg) {
+      if (!spec->takesArgs) {
         bool jf = false;
         for (int i = 2; i < argc; ++i) {
           if (isHelpFlag(argv[i])) {
@@ -255,63 +350,20 @@ int main(int argc, char** argv) {
         return umbriel::runIpcCommand(*spec, {}, jf);
       }
 
-      // Help only when -h/--help is the immediate argument (not buried in spawn args).
       if (argc == 3 && isHelpFlag(argv[2])) {
         std::println("Usage: umbriel {} {}", spec->name, spec->argSpec);
-        if (spec->name != "msg") {
-          std::println("");
-          std::println("{}", spec->description);
-          return EXIT_SUCCESS;
-        }
         std::println("");
-        std::println("Send an action to the running compositor.");
-        std::println("Use `msg spawn <cmd...>` as shorthand for `msg spawn:<cmd...>`.");
-        std::println("Available actions, grouped as the cheatsheet groups them:");
-        for (const umbriel::Group group : umbriel::fixedGroupOrder()) {
-          std::vector<std::string> names;
-          std::vector<std::string_view> summaries;
-          for (const auto& actionSpec : umbriel::actionSpecs()) {
-            if (umbriel::groupForAction(actionSpec.action) != group) {
-              continue;
-            }
-            names.emplace_back(
-                actionSpec.param.empty() ? std::string(actionSpec.name)
-                                         : std::format("{}:{}", actionSpec.name, actionSpec.param)
-            );
-            summaries.push_back(actionSpec.summary);
-          }
-          if (names.empty()) {
-            continue;
-          }
-          // Pad per group: a single global column would push every summary past the width of the widest name in the
-          // table, which only one group actually needs.
-          size_t width = 0;
-          for (const auto& name : names) {
-            width = std::max(width, name.size());
-          }
-          std::println("");
-          std::println("{}", umbriel::groupTitle(group));
-          for (size_t i = 0; i < names.size(); ++i) {
-            std::println("  {:<{}}  {}", names[i], width, summaries[i]);
-          }
-        }
+        std::println("{}", spec->description);
         return EXIT_SUCCESS;
       }
 
       bool jf = false;
-      // Collect non-flag args; for spawn, everything after "spawn" is literal.
-      std::vector<const char*> args;
-      bool inSpawnTail = false;
+      std::vector<std::string> args;
       for (int i = 2; i < argc; ++i) {
-        if (!inSpawnTail && isJsonFlag(argv[i])) {
+        if (isJsonFlag(argv[i])) {
           jf = true;
         } else {
-          args.push_back(argv[i]);
-          // Once we see "spawn" as the first non-flag arg and there are more,
-          // everything after belongs to the command (no flag stripping).
-          if (args.size() == 1 && std::strcmp(argv[i], "spawn") == 0) {
-            inSpawnTail = true;
-          }
+          args.emplace_back(argv[i]);
         }
       }
 
@@ -319,25 +371,7 @@ int main(int argc, char** argv) {
         printHelp(stderr);
         return EXIT_FAILURE;
       }
-
-      std::string actionString;
-      if (std::strcmp(args[0], "spawn") == 0 && args.size() > 1) {
-        actionString = "spawn:";
-        for (size_t i = 1; i < args.size(); ++i) {
-          if (i > 1) {
-            actionString += ' ';
-          }
-          actionString += args[i];
-        }
-      } else {
-        for (size_t i = 0; i < args.size(); ++i) {
-          if (i > 0) {
-            actionString += ' ';
-          }
-          actionString += args[i];
-        }
-      }
-      return umbriel::runIpcCommand(*spec, actionString, jf);
+      return umbriel::runIpcCommand(*spec, args, jf);
     }
   }
 
@@ -401,7 +435,7 @@ int main(int argc, char** argv) {
     if (purgeResult != 0) {
       kLog.warn("failed to purge jemalloc arenas: {}", std::strerror(purgeResult));
     }
-#elif defined(__GLIBC__)
+#elifdef __GLIBC__
     malloc_trim(0);
 #endif
 

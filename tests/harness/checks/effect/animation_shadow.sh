@@ -94,7 +94,7 @@ pixel "$((x+3*w/4))" "$((y+h+6))"
 if ! (( g > 25 && r < 5 && b < 5 )); then
   echo "settled window did not restore its full analytic shadow: $r $g $b"; exit 1
 fi
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_half_shadow closing
 "$UMBRIEL" clock-advance 2000

@@ -8,16 +8,15 @@ Configure keyboard, pointer, touchpad, tablet, cursor, and focus behavior under 
 [input]
 middle_click_paste = false
 client_window_drag = true
-window_snapping = true
 window_drag_toggle = "none"
 mod_right_double_click = "none"
 ```
 
 `middle_click_paste = false` disables primary-selection paste, including Shift+Insert. The regular Ctrl+C and Ctrl+V clipboard is unaffected. Applications started while primary selection is disabled must be restarted after it is re-enabled.
 
-`window_snapping = true` (the default) enables edge and corner drop zones for floating windows in any layout, using title bar, client move, or Mod+drag. Set it to `false` to drop windows exactly where released. A preview shows the placement before release. Left, right, top, and bottom edges snap to the corresponding half of the screen. All four corners snap to quarters. Maximize remains available through the title bar button, double-click, or an action. The targets respect panels, layout struts, gaps, borders, title bars, and client size limits, all in logical coordinates.
+Edge and corner drag placement is configured with [`layout.stacking.drop_zones`](layout.md#drop-zones-and-region-placement). It is enabled by default in stacking workspaces. Individual floating windows above tiling layouts use free placement instead.
 
-Dragging a snapped or maximized window away restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Snapping on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a zone, so dragging straight across monitors remains possible. Tiled, pinned, scratchpad, overview, data-device, and toplevel-transfer drags do not use these zones. Keyboard actions `window-snap:<region>` and `window-unsnap` work independently of the pointer setting. See [Actions](actions.md).
+Dragging a window out of a region placement or maximize restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Placing it on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a drop zone, so dragging straight across monitors remains possible. Tiled, pinned, scratchpad, overview, data-device, and toplevel-transfer drags do not use these zones. The explicit `window-set-region <region>` and `window-clear-region` actions work independently of the pointer setting within stacking. See [Actions](actions.md).
 
 `client_window_drag = false` ignores move requests from applications, such as dragging a client-side title bar or the empty tab strip of Chromium, Firefox, or Electron apps. Ordinary window moves then use Mod+drag, keybinds, or an enabled [Umbriel title bar](appearance.md#title-bar). Resizing from client-side borders and tab tear-off operations using `xdg-toplevel-drag-v1` are unaffected.
 
@@ -52,6 +51,10 @@ The state changes when the window is dropped. Unsupported transitions, such as p
 
 Umbriel supports `xdg-toplevel-drag-v1` for native Wayland applications that implement it, including Chromium-based browsers. During a pointer drag, a detached window follows the pointer above ordinary windows and stays outside the tiling layout. Windows underneath it can receive the drop, allowing the application to merge a tab or dock a panel. If the application keeps the detached window after the drop, Umbriel places it using normal tiled or floating window-drag behavior. No additional configuration is needed.
 
+### Input capture
+
+The InputCapture portal supports approved keyboard and pointer sharing through `xdg-desktop-portal-umbriel`. It provides screen-edge activation, keyboard events and modifiers, pointer motion, buttons, and scrolling. Press **Ctrl+Alt+Escape** to restore local control. Applications can request optional remembered approval through restore tokens. Clipboard sharing, touch, tablet, and gesture capture are not supported. See [Input capture](security.md#input-capture) for the complete support table and permission behavior.
+
 ### Keyboard
 
 ```toml
@@ -70,7 +73,7 @@ track_layout = "global"
 | ---------------- | ------------------------ | -------------------------------------------------- |
 | `repeat_rate`    | 0 to 1000 Hz             | Key repeats per second; `0` disables repeat.       |
 | `repeat_delay`   | 0 to 10000 ms            | Delay before a held key repeats.                   |
-| `numlock_toggle` | bool                     | Enable NumLock when a keyboard connects.           |
+| `numlock_toggle` | bool                     | Enable NumLock for the first physical keyboard.    |
 | `track_layout`   | `"global"` or `"window"` | Choose session-wide or per-window layout tracking. |
 
 Use a comma-separated layout list to configure several layouts:
@@ -100,7 +103,11 @@ Bind `keyboard-layout-next` to cycle configured physical keyboard layouts:
 
 When an input method removes its virtual keyboard, Umbriel restores the keyboard that supplied the input. Held shortcut modifiers stay active until they are released, even when another connected keyboard is idle.
 
-Lock-key LEDs follow the active input source across physical keyboards, including newly connected devices. This keeps keyboard lights and LED-based lock-key OSDs working when an application forwards input through a uinput keyboard without LED feedback, such as a screen recorder's global-hotkey helper.
+Physical keyboards share lock state, including uinput keyboards without LED feedback, such as a screen recorder's global-hotkey helper or a mouse's auxiliary keyboard interface. Toggling a lock on one device updates the others before they process further input. Ordinary keys from another device leave NumLock, CapsLock, and ScrollLock unchanged, and their LEDs reflect the shared state.
+
+Configuration reloads preserve locks. An unchanged keymap also retains held-key and latch state; a changed keymap restores locks and latched modifiers by name. Newly connected keyboards inherit the current locks, even after all previous keyboards have disconnected. `numlock_toggle` supplies the initial NumLock state rather than overriding later user choices during hotplug or reload.
+
+Wayland virtual keyboards retain their client-provided keymap and modifier state. Their lock changes update the shared state without replacing unrelated locks with a stale snapshot. Input-method echoes do not change shared locks.
 
 #### Tracking the layout per window
 
@@ -258,6 +265,12 @@ map_to_output = "eDP-1"
 
 Without `map_to_output`, a touchscreen maps to the output its device reports, or else to the built-in panel (`eDP-`, `LVDS-`, or `DSI-`) when exactly one is enabled. Otherwise it spans the whole output layout.
 
+A touchscreen reports its output through the `WL_OUTPUT` udev property, which names a connector. A udev rule can set it so each touchscreen keeps its own monitor without the global `map_to_output`:
+
+```text
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", ENV{WL_OUTPUT}="DP-1"
+```
+
 ### Cursor
 
 ```toml
@@ -281,7 +294,7 @@ hide_timeout_ms = 0
 
 Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout.
 
-`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Pointer-driven focus, gestures, and automatic replacement focus do not move it. `window-focus-warp:<id>` always moves the cursor regardless of this setting. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
+`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Pointer-driven focus, gestures, and automatic replacement focus do not move it. `window-focus-warp <id>` always moves the cursor regardless of this setting. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
 
 ### Drag edge scroll
 
@@ -313,13 +326,17 @@ follows_mouse_max_scroll = 0.5
 hover_raises = true
 ```
 
-`follows_mouse = true` focuses the window that the pointer enters through real pointer motion. Scrolling or dragging a layout beneath a stationary pointer does not change focus. After explicit layout scrolling settles, the next real pointer motion can focus the window beneath it without a border crossing. Pointer motion during scrolling does not change focus. Consume and expel commands also let the next pointer motion refresh focus after rearranging windows. This follows the actual seat focus across tiled, floating, and pinned windows, including pinned windows whose owning workspace is inactive.
+`follows_mouse = true` focuses the window that the pointer enters through real pointer motion. Scrolling or dragging a layout beneath a stationary pointer does not change focus. After explicit layout scrolling settles, the next real pointer motion can focus the window beneath it without a border crossing. Pointer motion during scrolling does not change focus. Consume and expel commands also let the next pointer motion refresh focus after rearranging windows. This follows the actual seat focus across tiled, floating, and pinned windows, including a pinned window that kept focus across a workspace switch.
+
+When a dialog has focus, motion within the parent window beneath the pointer keeps the dialog focused so the pointer can reach it. This applies to floating dialogs and lets tiled dialogs finish scrolling into view. Crossing back into the parent from another window, clicking it, or choosing it with a focus command still transfers focus to the parent. This behavior is the same with either value of `hover_raises`.
 
 `hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters with `follows_mouse = true`, and defaults to `true`.
 
 While a client holds a pointer or keyboard grab, such as an open tray menu, hovering a window or crossing outputs preserves that grab and its keyboard focus. An outside click or explicit focus action can still dismiss the menu.
 
 X11 windows that declare `Input=False` without `WM_TAKE_FOCUS`, including Steam's on-screen keyboard, receive pointer input without taking keyboard focus. Hovering or clicking the keyboard leaves typing directed at the previously focused window. These windows are also skipped when Umbriel chooses replacement focus after a window closes.
+
+X11 windows marked `_NET_WM_WINDOW_TYPE_NOTIFICATION` do not take keyboard focus, regardless of their input hints or override-redirect flag. An existing popup that becomes a notification releases keyboard focus back to the active window.
 
 `follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal that window, measured in viewport widths. `0.0` allows only fully visible windows. Omit the key for no limit.
 

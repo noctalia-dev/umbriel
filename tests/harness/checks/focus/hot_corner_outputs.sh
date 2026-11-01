@@ -22,7 +22,7 @@ wait_field() {
 focus() {
   local id
   id=$(windows | jq -r --arg title "$1" '.[] | select(.title == $title) | .id')
-  action "window-focus:$id"
+  action window-focus "$id"
   wait_field "$1" active true
 }
 wait_workspace() {
@@ -123,12 +123,12 @@ for follows in false true; do
     pointer move 1 2 pause 180
     wait_workspace HEADLESS-1 2
     wait_workspace HEADLESS-2 1
-    action workspace-switch:1/HEADLESS-1
+    action workspace-switch 1 --output HEADLESS-1
   done
 done
 
 # A retained fullscreen flag on an inactive workspace must not block the current one.
-action workspace-switch:2/HEADLESS-2
+action workspace-switch 2 --output HEADLESS-2
 pointer move 600 360
 focus corner-left
 pointer move 1281 2 pause 180
@@ -138,7 +138,7 @@ wait_field corner-middle-game fullscreen true
 # The destination's current regular focus wins over an older fullscreen window there.
 sed -i 's/^follows_mouse = .*/follows_mouse = false/' "$UMBRIEL_CONFIG"
 action config-reload
-action workspace-switch:1/HEADLESS-2
+action workspace-switch 1 --output HEADLESS-2
 pointer move 1792 288
 "$UMBRIEL_UNMAP_CLIENT" corner-middle-foreground > "$UMBRIEL_RUNTIME_DIR/foreground.log" 2>&1 &
 wait_field corner-middle-foreground fullscreen false

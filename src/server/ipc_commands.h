@@ -13,36 +13,42 @@ namespace umbriel {
 
   class Server;
 
+  // A request's `args` array, one string per CLI word.
+  using IpcArgs = std::span<const std::string>;
+
   struct IpcCommands {
-    static nlohmann::json keyboardLayouts(Server& server, std::string_view arg);
+    static nlohmann::json keyboardLayouts(Server& server, IpcArgs args);
+    static nlohmann::json inputCapturePermissions(Server& server, IpcArgs args);
+    static nlohmann::json inputCaptureRevoke(Server& server, IpcArgs args);
     [[nodiscard]] static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
-    static nlohmann::json effects(Server& server, std::string_view arg);
-    static nlohmann::json windows(Server& server, std::string_view arg);
-    static nlohmann::json focusedWindow(Server& server, std::string_view arg);
-    static nlohmann::json workspaces(Server& server, std::string_view arg);
-    static nlohmann::json submap(Server& server, std::string_view arg);
-    static nlohmann::json layers(Server& server, std::string_view arg);
-    static nlohmann::json outputs(Server& server, std::string_view arg);
-    static nlohmann::json color(Server& server, std::string_view arg);
-    static nlohmann::json tearing(Server& server, std::string_view arg);
-    static nlohmann::json msg(Server& server, std::string_view arg);
-    static nlohmann::json outputCreate(Server& server, std::string_view arg);
-    static nlohmann::json outputDestroy(Server& server, std::string_view arg);
-    static nlohmann::json configReplace(Server& server, std::string_view arg);
+    static nlohmann::json effects(Server& server, IpcArgs args);
+    static nlohmann::json windows(Server& server, IpcArgs args);
+    static nlohmann::json focusedWindow(Server& server, IpcArgs args);
+    static nlohmann::json workspaces(Server& server, IpcArgs args);
+    static nlohmann::json submap(Server& server, IpcArgs args);
+    static nlohmann::json layers(Server& server, IpcArgs args);
+    static nlohmann::json outputs(Server& server, IpcArgs args);
+    static nlohmann::json color(Server& server, IpcArgs args);
+    static nlohmann::json tearing(Server& server, IpcArgs args);
+    // Runs a structured action request ({"cmd":"action", ...}); see server/action_request.h.
+    static nlohmann::json action(Server& server, const nlohmann::json& request);
+    static nlohmann::json outputCreate(Server& server, IpcArgs args);
+    static nlohmann::json outputDestroy(Server& server, IpcArgs args);
+    static nlohmann::json configReplace(Server& server, IpcArgs args);
     // The reply to a settle request. The IPC server holds the request until the compositor is settled.
-    static nlohmann::json settle(Server& server, std::string_view arg);
-    static nlohmann::json clockFreeze(Server& server, std::string_view arg);
+    static nlohmann::json settle(Server& server, IpcArgs args);
+    static nlohmann::json clockFreeze(Server& server, IpcArgs args);
     // The reply to clock-advance. The IPC server advances the clock and holds the reply until every output has drawn.
-    static nlohmann::json clockAdvance(Server& server, std::string_view arg);
-    static nlohmann::json clockResume(Server& server, std::string_view arg);
-#ifdef UMBRIEL_TEST_IPC
-    static nlohmann::json rendererRecover(Server& server, std::string_view arg);
-    static nlohmann::json swipeForTest(Server& server, std::string_view arg);
-    static nlohmann::json animationCaptureFail(Server& server, std::string_view arg);
-    static nlohmann::json blurCompositeSplit(Server& server, std::string_view arg);
-    static nlohmann::json planeCursor(Server& server, std::string_view arg);
-    static nlohmann::json effectFrames(Server& server, std::string_view arg);
-    static nlohmann::json cursorState(Server& server, std::string_view arg);
+    static nlohmann::json clockAdvance(Server& server, IpcArgs args);
+    static nlohmann::json clockResume(Server& server, IpcArgs args);
+#ifdef UMBRIEL_HARNESS
+    static nlohmann::json rendererRecover(Server& server, IpcArgs args);
+    static nlohmann::json swipeForTest(Server& server, IpcArgs args);
+    static nlohmann::json animationCaptureFail(Server& server, IpcArgs args);
+    static nlohmann::json blurCompositeSplit(Server& server, IpcArgs args);
+    static nlohmann::json planeCursor(Server& server, IpcArgs args);
+    static nlohmann::json effectFrames(Server& server, IpcArgs args);
+    static nlohmann::json cursorState(Server& server, IpcArgs args);
 #endif
   };
 
@@ -58,8 +64,8 @@ namespace umbriel {
     std::string_view argSpec;
     std::string_view description;
     IpcCommandGroup group;
-    bool takesArg;
-    nlohmann::json (*handle)(Server& server, std::string_view arg);
+    bool takesArgs;
+    nlohmann::json (*handle)(Server& server, IpcArgs args);
     void (*printHuman)(const nlohmann::json& ok);
     // How long the CLI waits for the reply.
     int replyTimeoutSec = 2;
@@ -68,9 +74,8 @@ namespace umbriel {
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
 
-  // Splits an output-create argument into the output name and its optional mode, in the config `mode` format
+  // Reads output-create's arguments: the output name and its optional mode, in the config `mode` format
   // ("WIDTHxHEIGHT[@HZ]"). Returns false with `error` set on anything else.
-  bool
-  parseOutputCreateArg(std::string_view arg, std::string& name, std::optional<OutputMode>& mode, std::string& error);
+  bool parseOutputCreateArgs(IpcArgs args, std::string& name, std::optional<OutputMode>& mode, std::string& error);
 
 } // namespace umbriel

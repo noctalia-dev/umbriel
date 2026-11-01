@@ -34,13 +34,15 @@ namespace umbriel {
     uint32_t edges = 0;
   };
 
+  // About half the bar height, with the bar's parity so the margins above and below are whole and equal pixels.
+  [[nodiscard]] int titleBarButtonDiameter(int height);
   // `shown` lists the buttons from the title outward, so the last one sits at the bar's edge on `side`.
   [[nodiscard]] TitleBarLayout
   titleBarLayout(int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown);
   // Coordinates relative to client content; the title bar lies above y = 0.
   [[nodiscard]] SsdFramePoint ssdFramePointAt(
-      int contentWidth, int contentHeight, int titleBarHeight, int borderInset, bool resizable, TitleBarButtonSide side,
-      std::span<const TitleBarButton> shown, double x, double y
+      int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
+      double x, double y
   );
   [[nodiscard]] wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
 } // namespace umbriel

@@ -188,7 +188,7 @@ namespace umbriel {
     }
     FloatingPoint origin = centeredOrigin(usable, geo.width, geo.height + titleBarHeight());
     origin.y += titleBarHeight();
-    clearSnapState();
+    clearRegionState();
     animateTo(origin.x, origin.y);
     m_floating.rememberPositionFraction(origin, usable);
     return true;
@@ -205,7 +205,7 @@ namespace umbriel {
     if (!floatingPosition) {
       return false;
     }
-    clearSnapState();
+    clearRegionState();
     animateTo(floatingPosition->x, floatingPosition->y);
     m_floating.rememberPositionFraction(*floatingPosition, usable);
     return true;
@@ -222,7 +222,7 @@ namespace umbriel {
     }
     FloatingPoint origin = {.x = layoutTargetX() + deltaX, .y = layoutTargetY() + deltaY};
     origin = clampFloatingOrigin(origin, geo, usable);
-    clearSnapState();
+    clearRegionState();
     animateTo(origin.x, origin.y);
     m_floating.rememberPositionFraction(origin, usable);
     return true;
@@ -259,7 +259,7 @@ namespace umbriel {
     if (origin.x == current.x && origin.y == current.y) {
       return false;
     }
-    clearSnapState();
+    clearRegionState();
     animateTo(origin.x, origin.y);
     m_floating.rememberPositionFraction(origin, usable);
     return true;
@@ -327,17 +327,19 @@ namespace umbriel {
     return keepTitleBarReachable(origin, titleBarHeight(), usable);
   }
 
-  void View::placeInUsableArea(const std::optional<WindowPosition>& position) {
+  void View::placeInUsableArea(
+      const std::optional<WindowPosition>& position, std::optional<std::array<int, 2>> placementSize
+  ) {
     if (attached()) {
       return;
     }
     const wlr_box usable = floatingUsableArea();
 
-    std::optional<std::array<int, 2>> placementSize;
-    const bool automatic = !position
+    const bool automatic = !placementSize
+        && !position
         && transientParent() == nullptr
         && m_workspace != nullptr
-        && m_workspace->layoutMode() == LayoutMode::Floating
+        && m_workspace->layoutMode() == LayoutMode::Stacking
         && !m_initialRules.defaultFloatingWidth
         && !m_initialRules.defaultFloatingWidthPx
         && !m_initialRules.defaultFloatingHeight
@@ -369,10 +371,11 @@ namespace umbriel {
       // shows over any panel, so the whole output counts as visible for it.
       const wlr_box shownIn = parent->scheduledFullscreen() ? parent->fullscreenArea() : usable;
       const wlr_box& geo = geometryBox();
-      const int width = geo.width > 0 ? geo.width : usable.width;
-      const int height = geo.height > 0 ? geo.height : usable.height;
-      origin = centeredOverShown(parent->targetBox(), shownIn, width, height);
-    } else if (m_workspace != nullptr && m_workspace->layoutMode() == LayoutMode::Floating) {
+      const auto size = placementSize.value_or(
+          std::array{geo.width > 0 ? geo.width : usable.width, geo.height > 0 ? geo.height : usable.height}
+      );
+      origin = centeredOverShown(parent->targetBox(), shownIn, size[0], size[1]);
+    } else if (m_workspace != nullptr && m_workspace->layoutMode() == LayoutMode::Stacking) {
       const int border = borderInset();
       const int bar = titleBarHeight();
       int step = floatingCascadeStep(bar, border);
@@ -464,7 +467,7 @@ namespace umbriel {
     if (width <= 0 || height <= 0) {
       return false;
     }
-    clearSnapState();
+    clearRegionState();
     dropMaximizedForResize();
     requestFloatingSize(width, height);
     beginResizeAnimation(width, height);
@@ -501,7 +504,7 @@ namespace umbriel {
   }
 
   void View::beginFloatingResize(uint32_t edges) {
-    clearSnapState();
+    clearRegionState();
     const wlr_box& geo = geometryBox();
     m_floating.beginResize(
         {.x = layoutX() + geo.x, .y = layoutY() + geo.y, .width = geo.width, .height = geo.height}, edges
@@ -560,7 +563,7 @@ namespace umbriel {
     const FloatingPoint anchoredOrigin =
         anchoredContentOrigin(anchor, edges, {.x = 0, .y = 0, .width = width, .height = height});
     m_floating.beginResize(anchor, edges);
-    clearSnapState();
+    clearRegionState();
     dropMaximizedForResize();
     requestFloatingSize(width, height);
     beginResizeAnimation(width, height);
@@ -592,7 +595,7 @@ namespace umbriel {
   }
 
   void View::adoptFloatingClientSize() {
-    if (m_tiled || !m_mapped || scheduledFullscreen() || scheduledMaximized() || m_snapRegion) {
+    if (m_tiled || !m_mapped || scheduledFullscreen() || scheduledMaximized() || m_region) {
       return;
     }
     if (!retireFloatingSizeRequest()) {
@@ -608,7 +611,7 @@ namespace umbriel {
       adoptScheduledSize(geo.width, geo.height);
       const wlr_box usable = floatingUsableArea();
       if (m_workspace != nullptr
-          && m_workspace->layoutMode() == LayoutMode::Floating
+          && m_workspace->layoutMode() == LayoutMode::Stacking
           && !m_floating.restoredOrigin(usable)
           && transientParent() == nullptr) {
         placeInUsableArea();

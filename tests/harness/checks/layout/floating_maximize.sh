@@ -51,7 +51,7 @@ assert_box() {
 wait_for_field float-maximize floating true
 assert_box 640 360 320 180
 
-"$UMBRIEL" msg "window-focus-warp:$(field_of float-maximize id)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(field_of float-maximize id)" > /dev/null
 
 # The verb reaches the float instead of bailing on the missing column, and the
 # window keeps the gap and border margin rather than growing in place off the edge.
@@ -66,7 +66,7 @@ assert_box 640 360 320 180
 # next toggle has to maximize. If the state survived, this would restore 640.
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_field float-maximize w 1260
-"$UMBRIEL" msg window-modify-primary-extent:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-primary-extent -0.2 > /dev/null
 wait_for_field float-maximize w 1004
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_field float-maximize w 1260

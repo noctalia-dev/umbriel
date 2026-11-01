@@ -123,9 +123,9 @@ wait_for_output_origin HEADLESS-2 1280 0
 
 "$CLIENT" "$TITLE" > "$UMBRIEL_RUNTIME_DIR/$TITLE.log" 2>&1 &
 wait_for_count 1
-"$UMBRIEL" msg "window-focus:$(field_of id)" > /dev/null
-"$UMBRIEL" msg "window-move-to-scratchpad:$NAME" > /dev/null
-"$UMBRIEL" msg "scratchpad-toggle:$NAME" > /dev/null
+"$UMBRIEL" msg window-focus "$(field_of id)" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$NAME" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$NAME" > /dev/null
 wait_for_field scratchpad "$NAME"
 wait_for_field workspace ""
 wait_for_field x 1520
@@ -167,7 +167,7 @@ assert_bright "HEADLESS-1 after the layout change" "$FIRST_SHOT"
 assert_content "HEADLESS-2 after the layout change" "$SECOND_SHOT"
 assert_dimmed "HEADLESS-2 after the layout change" "$SECOND_SHOT"
 
-"$UMBRIEL" msg "scratchpad-focus-next:$NAME" > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next "$NAME" > /dev/null
 wait_for_field active true
 
 # A maximized scratchpad tracks a live mode change, while its saved floating
@@ -185,7 +185,7 @@ wait_for_field x 0
 wait_for_field y 0
 wait_for_field w 960
 wait_for_field h 540
-"$UMBRIEL" msg "scratchpad-focus-next:$NAME" > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next "$NAME" > /dev/null
 wait_for_field active true
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_field x 180
@@ -193,7 +193,7 @@ wait_for_field y 135
 wait_for_field w 360
 wait_for_field h 220
 
-"$UMBRIEL" msg "window-restore-from-scratchpad:$NAME" > /dev/null
+"$UMBRIEL" msg window-restore-from-scratchpad "$NAME" > /dev/null
 wait_for_field scratchpad ""
 for _ in $(seq 80); do
   workspace=$(field_of workspace)

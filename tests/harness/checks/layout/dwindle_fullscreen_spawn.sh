@@ -97,12 +97,12 @@ wait_for_query \
   "second window did not become floating"
 first_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-fullscreen-first") | .id')
 second_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-fullscreen-second") | .id')
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null
+"$UMBRIEL" msg window-focus "$first_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen_query \
   '[.surfaces[] | select(.title == "dwindle-fullscreen-first" and .fullscreen)] | length == 1' \
   "first window did not re-enter fullscreen"
-"$UMBRIEL" msg "window-focus:$second_id" > /dev/null
+"$UMBRIEL" msg window-focus "$second_id" > /dev/null
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-second" and (.floating | not))] | length == 1' \
@@ -119,7 +119,7 @@ wait_for_fullscreen_query \
   '(.surfaces | length) == 3 and all(.surfaces[]; .fullscreen == false)' \
   "mapping a new window did not exit fullscreen"
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$CLIENT" dwindle-fullscreen-target > "$TARGET_LOG" 2>&1 &
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-target" and .active and .focused)] | length == 1' \
@@ -128,7 +128,7 @@ wait_for_query \
 wait_for_fullscreen_query \
   '[.surfaces[] | select(.title == "dwindle-fullscreen-target" and .fullscreen)] | length == 1' \
   "target workspace window did not enter fullscreen"
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 mkfifo "$TITLE_FIFO"
 exec {title_fd}<>"$TITLE_FIFO"
@@ -149,15 +149,15 @@ target_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-f
 third_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-fullscreen-third") | .id')
 late_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-fullscreen-late") | .id')
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen_query \
   '[.surfaces[] | select(.title == "dwindle-fullscreen-target" and .fullscreen)] | length == 1' \
   "target window did not re-enter fullscreen"
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
-"$UMBRIEL" msg "window-focus:$third_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
+"$UMBRIEL" msg window-focus "$third_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-third" and (.workspace | endswith(":2")))] | length == 1' \
   "third window did not move to workspace 2"
@@ -168,12 +168,12 @@ wait_for_fullscreen_query \
 sed -i 's/^new_exits_fullscreen = "tiled"$/new_exits_fullscreen = "floating"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
-"$UMBRIEL" msg "window-focus:$late_id" > /dev/null
+"$UMBRIEL" msg window-focus "$late_id" > /dev/null
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-late" and .floating)] | length == 1' \
   "late window did not become floating"
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen_query \
   '[.surfaces[] | select(.title == "dwindle-fullscreen-target" and .fullscreen)] | length == 1' \
@@ -181,8 +181,8 @@ wait_for_fullscreen_query \
 
 # A move onto the workspace the window already occupies is not an arrival. settle waits for every configure an
 # erroneous exit would send to be acknowledged, so the fullscreen state read after it is final.
-"$UMBRIEL" msg "window-focus:$late_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
+"$UMBRIEL" msg window-focus "$late_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
 "$UMBRIEL" settle
 state=$("$UMBRIEL" tearing --json)
 if ! jq -e '[.surfaces[] | select(.title == "dwindle-fullscreen-target") | .fullscreen] == [true]' <<< "$state" \
@@ -191,11 +191,11 @@ if ! jq -e '[.surfaces[] | select(.title == "dwindle-fullscreen-target") | .full
   exit 1
 fi
 
-"$UMBRIEL" msg window-move-to-workspace:1 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-late" and (.workspace | endswith(":1")))] | length == 1' \
   "late window did not move to workspace 1"
-"$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-late" and (.workspace | endswith(":2")))] | length == 1' \
   "late window did not move back to workspace 2"
@@ -206,18 +206,18 @@ wait_for_fullscreen_query \
 # On a scrolling workspace a tiled arrival opens beside the fullscreen column, so even "all" keeps fullscreen.
 sed -i 's/^new_exits_fullscreen = "floating"$/new_exits_fullscreen = "all"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 wait_for_fullscreen_query \
   '[.surfaces[] | select(.title == "dwindle-fullscreen-target" and .fullscreen)] | length == 1' \
   "target window did not enter fullscreen on the scrolling workspace"
-"$UMBRIEL" msg "window-focus:$third_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:1 > /dev/null
+"$UMBRIEL" msg window-focus "$third_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-third" and (.workspace | endswith(":1")))] | length == 1' \
   "third window did not move to workspace 1"
-"$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
 wait_for_query \
   '[.[] | select(.title == "dwindle-fullscreen-third" and (.workspace | endswith(":2")))] | length == 1' \
   "third window did not move back to the scrolling workspace"

@@ -137,7 +137,7 @@ if [[ $("$WORKSPACE") != 2 ]]; then
   exit 1
 fi
 "$UMBRIEL" msg overview-close > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 # Restore the horizontal presentation and first column so a known card sits under the overview test point.
 sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$UMBRIEL_CONFIG"

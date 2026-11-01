@@ -52,10 +52,10 @@ EOF
 
 FILL_COLOR=0xFFCC0000 "$CLIENT" close-switch-red 1200 700 > /dev/null 2>&1 &
 wait_for_count 1
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 FILL_COLOR=0xFF0000CC "$CLIENT" close-switch-blue 1200 700 > /dev/null 2>&1 &
 wait_for_count 2
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 
 "$UMBRIEL" msg overview-open > /dev/null

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="umbriel_input_capture_v1">
+  <copyright>
+    Copyright 2026 Umbriel contributors
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <description summary="compositor-controlled portal input capture">
+    Private bridge for the InputCapture portal backend. All coordinates use
+    logical desktop units. Creating a session grants no access. Each start
+    requires compositor-owned user approval; application labels are untrusted.
+    Clients must not assume that an enabled session is actively capturing.
+  </description>
+  <interface name="umbriel_input_capture_manager_v1" version="2">
+    <request name="destroy" type="destructor"/>
+    <request name="create_session">
+      <arg name="session" type="new_id" interface="umbriel_input_capture_session_v1"/>
+    </request>
+    <request name="expire_scope" since="2">
+      <description summary="expire application-lifetime remembered grants">
+        The portal forwards the disappearance of the requesting application's
+        D-Bus peer. This only expires mode-one grants issued to this bridge
+        client and application instance; durable grants are unaffected.
+      </description>
+      <arg name="application_instance" type="string"/>
+    </request>
+  </interface>
+  <interface name="umbriel_input_capture_session_v1" version="2">
+    <description summary="one permission-scoped input capture session">
+      Request identifiers correlate replies. Status values are zero for success,
+      one for user cancellation, and two for failure. A session may start once.
+      Destroying the object stops capture and closes the EIS connection.
+      Explicit disable and release do not emit disabled or deactivated events.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <request name="start">
+      <arg name="request_id" type="uint"/>
+      <arg name="application" type="string"/>
+      <arg name="capabilities" type="uint"/>
+    </request>
+    <request name="get_zones"><arg name="request_id" type="uint"/></request>
+    <request name="clear_barriers"/>
+    <request name="add_barrier">
+      <arg name="id" type="uint"/>
+      <arg name="x1" type="int"/><arg name="y1" type="int"/>
+      <arg name="x2" type="int"/><arg name="y2" type="int"/>
+    </request>
+    <request name="commit_barriers">
+      <arg name="request_id" type="uint"/><arg name="zone_set" type="uint"/>
+    </request>
+    <request name="connect_eis"><arg name="request_id" type="uint"/></request>
+    <request name="enable"><arg name="request_id" type="uint"/></request>
+    <request name="disable"><arg name="request_id" type="uint"/></request>
+    <request name="release">
+      <arg name="request_id" type="uint"/><arg name="activation_id" type="uint"/>
+      <arg name="has_position" type="uint"/>
+      <arg name="x" type="fixed"/><arg name="y" type="fixed"/>
+    </request>
+    <event name="started">
+      <arg name="request_id" type="uint"/><arg name="status" type="uint"/>
+      <arg name="capabilities" type="uint"/>
+    </event>
+    <event name="zone">
+      <arg name="request_id" type="uint"/>
+      <arg name="width" type="uint"/><arg name="height" type="uint"/>
+      <arg name="x" type="int"/><arg name="y" type="int"/>
+    </event>
+    <event name="zones_done">
+      <arg name="request_id" type="uint"/><arg name="status" type="uint"/>
+      <arg name="zone_set" type="uint"/>
+    </event>
+    <event name="barrier_failed"><arg name="request_id" type="uint"/><arg name="id" type="uint"/></event>
+    <event name="barriers_done"><arg name="request_id" type="uint"/><arg name="status" type="uint"/></event>
+    <event name="eis_fd"><arg name="request_id" type="uint"/><arg name="fd" type="fd"/></event>
+    <event name="result"><arg name="request_id" type="uint"/><arg name="status" type="uint"/></event>
+    <event name="activated">
+      <arg name="activation_id" type="uint"/>
+      <arg name="x" type="fixed"/><arg name="y" type="fixed"/>
+      <arg name="barrier_id" type="uint"/>
+    </event>
+    <event name="deactivated"><arg name="activation_id" type="uint"/></event>
+    <event name="disabled"/>
+    <event name="zones_changed"><arg name="zone_set" type="uint"/></event>
+    <event name="closed"/>
+    <request name="set_persistence" since="2">
+      <description summary="request remembered permission before starting">
+        Mode zero requests a single session, one lasts for the application
+        instance within this bridge client, and two lasts until revoked. The restore token is an opaque compositor
+        grant, not the application's public portal restore token. A missing or
+        invalid grant requires physical approval. Application labels alone
+        never restore permission. This request is valid only before start.
+      </description>
+      <arg name="persist_mode" type="uint"/>
+      <arg name="restore_token" type="string"/>
+      <arg name="application_instance" type="string"/>
+    </request>
+    <event name="grant" since="2">
+      <description summary="approved permission to restore a later session">
+        Sent before started for a successful remembered grant. The application
+        identifier and approved capabilities are checked by the compositor on
+        restoration. The opaque token must be kept private and is consumed by
+        a successful restoration. Use the returned token for the next session.
+      </description>
+      <arg name="request_id" type="uint"/>
+      <arg name="persist_mode" type="uint"/>
+      <arg name="token" type="string"/>
+    </event>
+  </interface>
+</protocol>

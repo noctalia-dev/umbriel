@@ -61,7 +61,7 @@ assert_no_log_since "$mark" "output 'HEADLESS-2': applied mode=" \
 # A named action is case-insensitive, changes only the requested monitor, and
 # stays in effect during activity on the monitor that remains awake.
 mark=$(log_mark)
-"$UMBRIEL" msg dpms-off:headless-2 > /dev/null
+"$UMBRIEL" msg dpms-off headless-2 > /dev/null
 wait_for_log_since "$mark" "output 'HEADLESS-2': powered off"
 if tail -n +"$((mark + 1))" "$UMBRIEL_LOG" | grep -q "output 'HEADLESS-1': powered off"; then
   echo "named DPMS action also powered off HEADLESS-1"
@@ -75,9 +75,9 @@ assert_no_log_since "$mark" "output 'HEADLESS-2': applied mode=" \
 
 # Reapply the named off state so the explicit on transition below is observable
 # even during the pre-fix sensitivity run, where pointer motion already woke it.
-"$UMBRIEL" msg dpms-off:headless-2 > /dev/null
+"$UMBRIEL" msg dpms-off headless-2 > /dev/null
 mark=$(log_mark)
-"$UMBRIEL" msg dpms-on:headless-2 > /dev/null
+"$UMBRIEL" msg dpms-on headless-2 > /dev/null
 wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
 
 # A bare action changes all configured monitors.

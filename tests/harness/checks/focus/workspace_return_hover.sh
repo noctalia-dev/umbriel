@@ -66,9 +66,9 @@ sleep 0.1
 
 # Clear pointer focus on an empty workspace, then return without moving the pointer. Workspace focus history restores
 # the right window while the pointer's position is over the left window.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 pointer move 64 64
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 wait_for_active "workspace-hover-right"
 sleep 0.1
 

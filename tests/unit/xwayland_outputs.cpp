@@ -13,6 +13,8 @@ extern "C" {
 #include <wlr/backend/headless.h>
 }
 
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -155,6 +157,31 @@ UMBRIEL_TEST(wholeOutputMapsExactlyAtFractionalScale) {
   CHECK_EQ(region.toXHeight(region.layout.height), 1440);
   CHECK_EQ(region.toLayoutWidth(2560), region.layout.width);
   CHECK_EQ(region.toLayoutHeight(1440), region.layout.height);
+}
+
+UMBRIEL_TEST(primarySelectorFollowsIdentityAndLayoutMembership) {
+  Fixture fixture;
+  CHECK(fixture.setUp(kMixedScales));
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, false);
+  wlr_output* main = fixture.outputs[0];
+  std::free(main->make);
+  std::free(main->model);
+  std::free(main->serial);
+  main->make = strdup("Microstep");
+  main->model = strdup("MSI MAG 275QF");
+  main->serial = strdup("CE2M165901246");
+
+  CHECK(!outputs.primaryOutput(""));
+  std::string connector = main->name;
+  connector[0] = 'h';
+  CHECK_EQ(outputs.primaryOutput(connector).value_or("unmanaged"), main->name);
+  constexpr std::string_view kIdentity = "microstep MSI MAG 275QF ce2m165901246";
+  CHECK_EQ(outputs.primaryOutput(kIdentity).value_or("unmanaged"), main->name);
+  wlr_output_layout_remove(fixture.layout, main);
+  CHECK_EQ(outputs.primaryOutput(kIdentity).value_or("unmanaged"), "");
+  CHECK(wlr_output_layout_add(fixture.layout, main, 0, 0) != nullptr);
+  CHECK_EQ(outputs.primaryOutput(kIdentity).value_or("unmanaged"), main->name);
+  CHECK_EQ(outputs.primaryOutput("missing").value_or("unmanaged"), "");
 }
 
 int main() { return RUN_TESTS(); }

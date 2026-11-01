@@ -392,7 +392,6 @@ namespace umbriel {
       static const Fields<In> fields{
           boolean("middle_click_paste", &In::middleClickPaste),
           boolean("client_window_drag", &In::clientWindowDrag),
-          boolean("window_snapping", &In::windowSnapping),
           choice(
               "window_drag_toggle", &In::windowDragToggle,
               {{.name = "none", .value = WindowDragToggle::None},

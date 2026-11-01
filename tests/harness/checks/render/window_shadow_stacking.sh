@@ -150,7 +150,7 @@ read -r lx ly lw lh < <(box_of tile-left)
 read -r rx ry rw rh < <(box_of tile-right)
 seam_y=$((ry + rh / 2))
 for focus in tile-left tile-right; do
-  "$UMBRIEL" msg "window-focus:$(id_of "$focus")" > /dev/null
+  "$UMBRIEL" msg window-focus "$(id_of "$focus")" > /dev/null
   capture
   clean "tile-right beside $focus on top" "$((rx + 4))" "$seam_y" "$((rx + rw / 2))" "$seam_y"
   clean "tile-left beside $focus on top" "$((rx - 8))" "$seam_y" "$((lx + lw / 2))" "$seam_y"
@@ -169,15 +169,15 @@ read -r ux uy uw uh < <(box_of upper)
 shadowed "floating over floating" "$((ux - 8))" "$((uy + 20))" "$((fx + 20))" "$((fy + 20))"
 
 # Raising the covered window reverses the pair.
-"$UMBRIEL" msg "window-focus:$(id_of floater)" > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of floater)" > /dev/null
 capture
 shadowed "raised floating window" "$((fx + fw + 4))" "$((uy + 40))" "$((ux + uw - 20))" "$((uy + uh - 20))"
 clean "lowered floating window" "$((ux - 8))" "$((uy + 20))" "$((fx + 20))" "$((fy + 20))"
 
 # A closing window keeps its shadow on the window below while it fades.
-"$UMBRIEL" msg "window-focus:$(id_of upper)" > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of upper)" > /dev/null
 capture
-"$UMBRIEL" msg "window-close:$(id_of upper)" > /dev/null
+"$UMBRIEL" msg window-close "$(id_of upper)" > /dev/null
 "$UMBRIEL" clock-advance 200
 grim "$IMAGE"
 shadowed "closing floating window" "$((ux - 8))" "$((uy + 20))" "$((fx + 20))" "$((fy + 20))"
@@ -194,8 +194,8 @@ shadowed "pinned over pinned" "$((bx - 8))" "$((by + 20))" "$((ax + 20))" "$((ay
 # Scratchpad windows shadow each other.
 spawn scratch-low 300 200
 spawn scratch-high 300 200
-"$UMBRIEL" msg scratchpad-toggle:shade > /dev/null
-"$UMBRIEL" msg "window-focus:$(id_of scratch-high)" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle shade > /dev/null
+"$UMBRIEL" msg window-focus "$(id_of scratch-high)" > /dev/null
 capture
 read -r sx sy _ _ < <(box_of scratch-low)
 read -r tx ty _ _ < <(box_of scratch-high)

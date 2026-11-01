@@ -70,7 +70,7 @@ wait_for_count 2
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 322 360
 left_id=$(windows | jq -r '.[] | select(.title == "client-fullscreen-left") | .id')
-"$UMBRIEL" msg "window-focus:$left_id" > /dev/null
+"$UMBRIEL" msg window-focus "$left_id" > /dev/null
 wait_for_query \
   '[.[] | select(.title == "client-fullscreen-left" and .active)] | length == 1' \
   "left tile did not take pointer focus"

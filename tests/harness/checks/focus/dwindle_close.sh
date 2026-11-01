@@ -107,9 +107,9 @@ fi
 # the newest window without moving the pointer, then close it.
 pointer move "$focused_x" "$focused_y" move "$other_x" "$other_y"
 wait_for_focus "$other_id"
-"$UMBRIEL" msg "window-focus:$focused_id" > /dev/null
+"$UMBRIEL" msg window-focus "$focused_id" > /dev/null
 wait_for_focus "$focused_id"
-"$UMBRIEL" msg "window-close:$focused_id" > /dev/null
+"$UMBRIEL" msg window-close "$focused_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-focused.log" && break
   sleep 0.1
@@ -122,7 +122,7 @@ wait_for_count 2
 wait_for_focus "$predecessor_id"
 
 # Use another workspace for the close-under-pointer scenario so its Dwindle tree is independent of the first one.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 
 # Repeated insertion builds a nested Dwindle branch. Closing the fourth leaf exposes the fifth, then closing the fifth
 # exposes the sixth. The ordinary layout predecessor remains the third leaf, so both focus policies stay observably
@@ -155,7 +155,7 @@ fi
 pointer_pid=$!
 wait_for_focus "$closing_id"
 
-"$UMBRIEL" msg "window-close:$closing_id" > /dev/null
+"$UMBRIEL" msg window-close "$closing_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-under-pointer.log" && break
   sleep 0.1
@@ -175,7 +175,7 @@ wait_for_focus "$expander_id"
 # inherit hover focus just like the first survivor did. This catches stale seat pointer focus left by the first unmap.
 # The close decides hover ownership from what is on screen, so the survivor must have been drawn in its new slot.
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-close:$expander_id" > /dev/null
+"$UMBRIEL" msg window-close "$expander_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-expander.log" && break
   sleep 0.1

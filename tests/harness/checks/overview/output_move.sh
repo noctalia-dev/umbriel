@@ -125,7 +125,7 @@ if [[ $workspace != "$target":* ]]; then
   exit 1
 fi
 moved_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "overview-output-move") | .id')
-"$UMBRIEL" msg "window-focus:$moved_id" > /dev/null
+"$UMBRIEL" msg window-focus "$moved_id" > /dev/null
 for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq -r '.[] | select(.active) | .title') == overview-output-move ]] && break
   sleep 0.05
@@ -186,7 +186,7 @@ assert_no_card source "$SOURCE_SHOT" 640 360
 
 # Selecting the destination's second workspace slides its previews sideways, because that output arranges workspaces
 # along X. The card of the workspace left behind must appear left of the active preview, not above or below it.
-"$UMBRIEL" msg "workspace-switch:2/$target" > /dev/null
+"$UMBRIEL" msg workspace-switch 2 --output "$target" > /dev/null
 "$UMBRIEL" settle
 grim -o "$target" "$TARGET_SHOT"
 assert_no_card "destination active preview" "$TARGET_SHOT" "$card_x" "$card_y"

@@ -897,7 +897,13 @@ namespace umbriel {
 
   wlr_backend* BackendManager::backend() const { return m_impl->backend(); }
   wlr_session* BackendManager::session() const { return m_impl->session(); }
-  wlr_renderer* BackendManager::createRenderer() { return m_impl->createRenderer(); }
+  wlr_renderer* BackendManager::createRenderer() {
+    wlr_renderer* renderer = m_impl->createRenderer();
+    if (renderer != nullptr) {
+      fx_renderer_set_nvidia_sync_workaround(renderer, config().general.nvidiaSyncWorkaround);
+    }
+    return renderer;
+  }
   bool BackendManager::verifyOpenDevices(std::string_view context) { return m_impl->verifyOpenDevices(context); }
   void BackendManager::markStarted() { m_impl->markStarted(); }
 

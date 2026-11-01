@@ -49,11 +49,11 @@ EOF
 
 spawn_client "transition-first"
 wait_for_count 1
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 spawn_client "transition-second"
 wait_for_count 2
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 
 # Slow only the transition under test. The setup switches stay fast so this check does not spend twenty seconds waiting
@@ -136,8 +136,8 @@ settle_to() {
   local target=$1 via=3
   [[ $target == 3 ]] && via=4
   fast_animations
-  "$UMBRIEL" msg "workspace-switch:$via" > /dev/null
-  "$UMBRIEL" msg "workspace-switch:$target" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$via" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$target" > /dev/null
   "$UMBRIEL" settle
 }
 
@@ -181,7 +181,7 @@ fi
 
 # Horizontal workspaces scroll vertically, so a tiled window sits at the strip's left gap, centred on the scrolling
 # axis. Its rendered pixels are exactly the box the IPC reports.
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 spawn_sized axis-tiled 600 300
 wait_for_count 3
 "$UMBRIEL" settle
@@ -208,7 +208,7 @@ fi
 # resumes before the fast switches that bring every workspace back to rest.
 slow_animations
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_near=$(sample_blue "$tile_near" "$tile_row")
@@ -244,7 +244,7 @@ wait_for_count 4
 spawn_sized axis-pinned 200 200
 wait_for_count 5
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$(id_of axis-pinned)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(id_of axis-pinned)" > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
 "$UMBRIEL" settle
 read -r float_x float_y float_w float_h <<< "$(box_of axis-float)"
@@ -271,7 +271,7 @@ fi
 # Backwards along the axis: workspace 3 is left of workspace 4, so its content leaves to the right.
 slow_animations
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_float_right=$(sample_blue "$float_right" "$float_inside_y")
@@ -296,7 +296,7 @@ settle_to 3
 spawn_sized axis-fullscreen "$OUTPUT_W" "$OUTPUT_H"
 wait_for_count 6
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$(id_of axis-fullscreen)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(id_of axis-fullscreen)" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
 grim "$SHOT"
@@ -307,7 +307,7 @@ if ((rest_full < 100)); then
 fi
 slow_animations
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$SHOT"
 slide_full_left=$(sample_blue 20 400)
@@ -322,7 +322,7 @@ if ((slide_full_left < 100)); then
 fi
 "$UMBRIEL" clock-resume
 settle_to 3
-"$UMBRIEL" msg "window-focus-warp:$(id_of axis-fullscreen)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(id_of axis-fullscreen)" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
 
@@ -330,7 +330,7 @@ settle_to 3
 # switch travels on the new axis.
 slow_animations
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 "$UMBRIEL" clock-advance 500
 sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -360,7 +360,7 @@ if ((settled_below > 10 || settled_above > 10)); then
 fi
 
 # Vertical workspaces again: workspace 3 is above workspace 4, so its content leaves downwards, not sideways.
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 "$UMBRIEL" clock-advance 800
 grim "$SHOT"
 next_below=$(region_blue "$band_below")
@@ -380,7 +380,7 @@ fi
 settle_to 3
 slow_animations
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 "$UMBRIEL" clock-advance 500
 sed -i 's/^gap = 8$/gap = 24/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null

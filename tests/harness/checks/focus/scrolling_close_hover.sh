@@ -101,7 +101,7 @@ pointer_y=$((bottom_y - 30))
 pointer_pid=$!
 wait_for_active scroll-hover-middle
 
-"$UMBRIEL" msg "window-close:$middle_id" > /dev/null
+"$UMBRIEL" msg window-close "$middle_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/scroll-hover-middle.log" && break
   sleep 0.1

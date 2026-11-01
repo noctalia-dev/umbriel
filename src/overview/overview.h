@@ -46,7 +46,7 @@ namespace umbriel {
   class Overview : public Animatable {
   public:
     explicit Overview(Server& server);
-    ~Overview();
+    ~Overview() override;
 
     Overview(const Overview&) = delete;
     Overview& operator=(const Overview&) = delete;
@@ -66,7 +66,7 @@ namespace umbriel {
     // Activate `workspace` (no slide, the real trees are hidden), focus `focus`
     // so its column reveal shares the closing zoom, then restore keyboard focus
     // once the zoom lands. Null lets normal refocus choose the target.
-    void closeToWorkspace(Workspace* workspace, View* focus);
+    void closeToWorkspace(Workspace* workspace, View* focus, bool warpCursor = false);
     // Instant teardown with no animation (session lock, config reload, output loss).
     void forceClose();
 
@@ -84,7 +84,7 @@ namespace umbriel {
     [[nodiscard]] bool animatesOn(const Output* /*output*/) const override { return true; }
 
     void onViewMapped(View* view);
-    void onViewUnmapped(View* view);
+    void onViewUnmapped(View* view, bool animateClose = true);
     void onViewPinnedChanged(View* view);
     void onViewFloatingChanged(View* view);
     void onViewWorkspaceChanged(View* view);
@@ -391,7 +391,7 @@ namespace umbriel {
     // in rows per second, and is zero for every other caller.
     void animateRow(OutputState& state, double target, double releaseVelocity = 0);
     void finishAnimation();
-    void beginClose(View* focus, double releaseVelocity = 0);
+    void beginClose(View* focus, double releaseVelocity = 0, bool warpCursor = false);
     void teardown();
     // Hand the seat back after teardown: `focus`, or normal refocus when null or unmapped.
     void restoreFocus(View* focus);
@@ -438,6 +438,7 @@ namespace umbriel {
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
     View* m_pendingFocus = nullptr;
+    bool m_pendingCursorWarp = false;
     bool m_cardPresentationDirty = false;
     bool m_gestureOpenedHere = false;
     bool m_shortcutsDirty = true;

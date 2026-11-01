@@ -43,7 +43,7 @@ focus_title() {
     echo "could not resolve window '$title': $("$UMBRIEL" windows --json)"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
 }
 
 write_config() {
@@ -133,7 +133,7 @@ fi
 "$UMBRIEL" msg overview-close > /dev/null
 
 write_config
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 finish
 "$UMBRIEL" msg overview-open > /dev/null
 finish

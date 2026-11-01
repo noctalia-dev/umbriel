@@ -61,7 +61,7 @@ window_id=$(jq -r .id <<< "$window")
 
 # Animation time only moves by clock-advance; advancing 2000 ms finishes the 1600 ms windows_out timeline.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$CLIENT_LOG" && break
   sleep 0.025
@@ -123,7 +123,7 @@ if [[ -z $overshoot_window ]]; then
 fi
 
 overshoot_id=$(jq -r .id <<< "$overshoot_window")
-"$UMBRIEL" msg "window-close:$overshoot_id" > /dev/null
+"$UMBRIEL" msg window-close "$overshoot_id" > /dev/null
 for _ in $(seq 80); do
   if ! "$UMBRIEL" windows --json | jq -e 'any(.[]; .title == "tiled-close-overshoot")' > /dev/null; then
     break

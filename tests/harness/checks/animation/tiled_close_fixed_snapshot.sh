@@ -121,7 +121,7 @@ run_case() {
   ((move_ms > max_duration)) && max_duration=$move_ms
 
   set_durations "$close_ms" "$move_ms"
-  "$UMBRIEL" msg "workspace-switch:$workspace" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$workspace" > /dev/null
   "$UMBRIEL" clock-advance 100
 
   spawn "$survivor_title" 0xFFFF0000
@@ -132,7 +132,7 @@ run_case() {
   # Opening the second tile also reflows the survivor. Let that independent movement finish before measuring close.
   "$UMBRIEL" clock-advance "$((move_ms + 200))"
 
-  "$UMBRIEL" msg "window-close:$closer_id" > /dev/null
+  "$UMBRIEL" msg window-close "$closer_id" > /dev/null
   for _ in $(seq 100); do
     "$UMBRIEL" windows --json | jq -e --arg title "$closer_title" 'any(.[]; .title == $title)' > /dev/null || break
     sleep 0.02

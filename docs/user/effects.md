@@ -38,6 +38,8 @@ Bundled presets:
 | `trail`      | cursor    | Noctalia-inspired purple, lavender and moon-yellow motion tail; include `cursor/trail/effect.toml`, then set `[effects] cursor = "trail"`. |
 | `trail-path` | cursor    | Two-second curved tail coloured along its length; include `cursor/trail-path/effect.toml`, then set `[effects] cursor = "trail-path"`.     |
 
+[Capture protection](window-rules.md#capture-protection) always omits protected windows, regardless of `effects.in_capture`.
+
 ## Turn a default off for one window or output
 
 Set a selector to `""` to select nothing. A window rule or an output table can replace the default by name or switch it off with `"off"`:
@@ -62,14 +64,14 @@ screen_effect = "off"
 
 `[effects]`:
 
-| Key          | Default | Description                                                                                                                                                                                                         |
-| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`     | `""`    | Border preset or pool for the focused window.                                                                                                                                                                       |
-| `window`     | `""`    | Window preset or pool applied to every window.                                                                                                                                                                      |
-| `screen`     | `""`    | Screen preset or pool applied to every output.                                                                                                                                                                      |
-| `cursor`     | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                                                       |
-| `max_fps`    | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                                            |
-| `in_capture` | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear, and an export-dmabuf capture always sees the same frame as the display, regardless of this setting. |
+| Key          | Default | Description                                                                                                                                                                                 |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `border`     | `""`    | Border preset or pool for the focused window.                                                                                                                                               |
+| `window`     | `""`    | Window preset or pool applied to every window.                                                                                                                                              |
+| `screen`     | `""`    | Screen preset or pool applied to every output.                                                                                                                                              |
+| `cursor`     | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                               |
+| `max_fps`    | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                    |
+| `in_capture` | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients. |
 
 Where each kind draws:
 
@@ -150,15 +152,15 @@ Visibility and drawing gates do not allocate. A focus rule that changes the winn
 The sixteen [effect actions](actions.md) operate independently on window, border, screen, and cursor slots:
 
 ```sh
-umbriel msg effect-window-set:scanlines
-umbriel msg effect-border-cycle:borders
+umbriel msg effect-window-set scanlines
+umbriel msg effect-border-cycle borders
 umbriel msg effect-window-toggle
 umbriel msg effect-window-reset
-umbriel msg effect-screen-set:vignette/HDMI-A-1
-umbriel msg effect-cursor-set:glow
+umbriel msg effect-screen-set vignette --output HDMI-A-1
+umbriel msg effect-cursor-set glow
 ```
 
-Window/border actions default to the focused window; screen actions use the preferred output. Set and cycle accept a target after the first `/`, preserving any further slashes in output names. An unnamed targeted cycle is `effect-window-cycle:/<window-id>`. Toggle/reset take an optional target directly. Cursor actions have no target. Explicit screen targets can address present disabled outputs; their cached selection is visible when they are enabled again.
+Window/border actions default to the focused window; screen actions use the preferred output. Set and cycle accept a target as `--window <window-id>` or `--output <output>`; output names may contain slashes. An unnamed targeted cycle is `effect-window-cycle --window <window-id>`. Toggle/reset take an optional target as a plain word. Cursor actions have no target. Explicit screen targets can address present disabled outputs; their cached selection is visible when they are enabled again.
 
 `set <name>` installs a runtime override, clears suppression, and makes a fresh policy pick for a pool. `cycle [pool]` advances through that pool (or the underlying current pool), installs an override, and clears suppression. If the current member is absent from the requested pool, cycle uses its policy. One-member pools cycle successfully; empty pools report `pool is empty`.
 

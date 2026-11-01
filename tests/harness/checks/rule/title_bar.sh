@@ -118,7 +118,7 @@ title_bar_wait_field ssd-force-on title_bar true
 start_controlled ssd-float-on XDG_DECORATION=server
 title_bar_wait_field ssd-float-on title_bar true
 id=$(title_bar_window ssd-float-on | jq -r .id)
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 title_bar_wait_box ssd-float-on 1264x676+8+36
 command_to ssd-float-on 'xdg client'

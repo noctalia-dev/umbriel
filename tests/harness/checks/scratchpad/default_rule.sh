@@ -132,29 +132,29 @@ APP_ID="$CLIENT_APP_ID" "$CLIENT" "$TITLE" 480 300 > "$UMBRIEL_RUNTIME_DIR/$TITL
 wait_for_state false
 wait_for_geometry 400 8 480 300
 
-"$UMBRIEL" msg scratchpad-toggle:term > /dev/null
+"$UMBRIEL" msg scratchpad-toggle term > /dev/null
 wait_for_state true
 wait_for_geometry 400 8 480 300
 
-"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+"$UMBRIEL" msg scratchpad-toggle spawned > /dev/null
 wait_for_window scratchpad-spawned spawned true
 
-"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+"$UMBRIEL" msg scratchpad-toggle spawned > /dev/null
 wait_for_window scratchpad-spawned spawned false
 
-"$UMBRIEL" msg scratchpad-toggle:spawned > /dev/null
+"$UMBRIEL" msg scratchpad-toggle spawned > /dev/null
 wait_for_window scratchpad-spawned spawned true
 if [[ $(windows | jq '[.[] | select(.title == "scratchpad-spawned")] | length') != 1 ]]; then
   echo "toggling a populated scratchpad ran spawn_when_empty again: $(windows)"
   exit 1
 fi
 
-"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
-"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+"$UMBRIEL" msg scratchpad-toggle late > /dev/null
+"$UMBRIEL" msg scratchpad-toggle late > /dev/null
 touch "$UMBRIEL_RUNTIME_DIR/late-release"
 wait_for_window scratchpad-late late false
 
-"$UMBRIEL" msg scratchpad-toggle:late > /dev/null
+"$UMBRIEL" msg scratchpad-toggle late > /dev/null
 wait_for_window scratchpad-late late true
 
 "$CLIENT" scratchpad-summoned 480 300 > "$UMBRIEL_RUNTIME_DIR/scratchpad-summoned.log" 2>&1 &

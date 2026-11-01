@@ -166,14 +166,14 @@ slide_open=$(sample_blue 940 310)
 assert_slide_brighter opening "$fade_open" "$slide_open"
 "$UMBRIEL" clock-advance 5000
 
-"$UMBRIEL" msg "window-close:$(window_id style-fade)" > /dev/null
+"$UMBRIEL" msg window-close "$(window_id style-fade)" > /dev/null
 "$UMBRIEL" clock-advance 2350
 fade_close=$(sample_blue 280 280)
 "$UMBRIEL" clock-advance 5000
 
 sed -i 's/^style = "fade" # CLOSE_STYLE$/style = "slide" # CLOSE_STYLE/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-close:$(window_id style-slide)" > /dev/null
+"$UMBRIEL" msg window-close "$(window_id style-slide)" > /dev/null
 "$UMBRIEL" clock-advance 2350
 slide_close=$(sample_blue 940 310)
 assert_slide_brighter closing "$fade_close" "$slide_close"
@@ -189,7 +189,7 @@ if ((popin_x < 98 || popin_x > 102 || popin_y < 438 || popin_y > 442 \
   echo "popin window did not settle at its configured box: $popin_x $popin_y $popin_w $popin_h"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$(window_id style-popin)" > /dev/null
+"$UMBRIEL" msg window-close "$(window_id style-popin)" > /dev/null
 "$UMBRIEL" clock-advance 2350
 read -r mid_x mid_y mid_w mid_h <<< "$(blue_bounds)"
 # Linear 5000 ms close sampled near 0.47: scale is about 0.906 of the captured 400x240 box, centred on 300, 560.
@@ -243,7 +243,7 @@ if ((red > 15 || green > 15 || blue < 240)); then
   echo "shown blue tab did not draw before closing: $red $green $blue"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$(window_id style-tab-blue)" > /dev/null
+"$UMBRIEL" msg window-close "$(window_id style-tab-blue)" > /dev/null
 wait_unmapped style-tab-blue
 "$UMBRIEL" clock-advance "$((DURATION_MS / 2))"
 grim "$IMAGE"
@@ -262,7 +262,7 @@ fi
 
 spawn style-tab-hidden
 "$UMBRIEL" clock-advance 5000
-"$UMBRIEL" msg "window-focus:$(window_id style-tab-red)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_id style-tab-red)" > /dev/null
 "$UMBRIEL" clock-advance 1
 if ! "$UMBRIEL" windows --json | jq -e '
   any(.[]; .title == "style-tab-hidden" and .tab_hidden)
@@ -271,7 +271,7 @@ if ! "$UMBRIEL" windows --json | jq -e '
   echo "expected the blue closer to be hidden before its close begins"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$(window_id style-tab-hidden)" > /dev/null
+"$UMBRIEL" msg window-close "$(window_id style-tab-hidden)" > /dev/null
 wait_unmapped style-tab-hidden
 for advance in 1 "$((DURATION_MS / 2))"; do
   "$UMBRIEL" clock-advance "$advance"

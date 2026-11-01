@@ -88,7 +88,7 @@ vec4 animation(vec2 uv) { return uv.x >= 0.5 ? umbriel_sample(uv) : vec4(0.0); }
 GLSL
 "$UMBRIEL" msg config-reload > /dev/null
 assert_half_shadow reloaded
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 500
 assert_half_shadow closing
 "$UMBRIEL" clock-advance 2000

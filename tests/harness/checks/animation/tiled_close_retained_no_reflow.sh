@@ -138,7 +138,7 @@ closing_id=$(jq -r .id <<< "$window")
 
 survivors_before=$("$UMBRIEL" windows --json | jq -c \
   '[.[] | select(.title == "retained-owner" or .title == "retained-peer") | {title, x, y, w, h}] | sort_by(.title)')
-"$UMBRIEL" msg "window-close:$closing_id" > /dev/null
+"$UMBRIEL" msg window-close "$closing_id" > /dev/null
 wait_unmapped retained-close
 survivors_after=$("$UMBRIEL" windows --json | jq -c \
   '[.[] | select(.title == "retained-owner" or .title == "retained-peer") | {title, x, y, w, h}] | sort_by(.title)')
@@ -162,7 +162,7 @@ wait_for_query \
 
 # Consuming the middle peer adds a third row to the same left column. It must not reinterpret the retained close as a
 # new vacancy or collapse its mask.
-"$UMBRIEL" msg "window-focus:$peer_id" > /dev/null
+"$UMBRIEL" msg window-focus "$peer_id" > /dev/null
 "$UMBRIEL" msg window-consume-left > /dev/null
 capture_series consume
 wait_for_query \

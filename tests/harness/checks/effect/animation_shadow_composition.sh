@@ -96,8 +96,8 @@ pixel 540 170
 if ! (( r < 5 && g < 5 && b > 115 && b < 140 )); then
   echo "shadow tinted translucent caster content: $r $g $b"; exit 1
 fi
-"$UMBRIEL" msg "window-close:$occluder" > /dev/null
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg window-close "$occluder" > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 200
 grim "$IMAGE"
 red=$("$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'r > 0.04 && g < 0.01 && b < 0.01')

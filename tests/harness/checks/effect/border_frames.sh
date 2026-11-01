@@ -142,7 +142,7 @@ EOF
 grim "$IMAGE"
 read -r ring_r5 ring_g5 ring_b5 < <(ring_pixel "$ring_x" "$ring_y")
 before_close=$(frames)
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 # The close animation is now running but frozen; settle would refuse (an active animation never finishes on a
 # frozen clock), so this polls the window list instead, which drops the title once the close snapshot takes over.
 for _ in $(seq 100); do
@@ -253,9 +253,9 @@ open_window frame-two 0xFF0000FF
 two_id=$id
 two_x=$((x + w / 2))
 two_y=$((y + h / 2))
-"$UMBRIEL" msg "window-focus:$one_id" > /dev/null
+"$UMBRIEL" msg window-focus "$one_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
-"$UMBRIEL" msg "window-close:$two_id" > /dev/null
+"$UMBRIEL" msg window-close "$two_id" > /dev/null
 for _ in $(seq 100); do
   [[ -z $("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "frame-two")') ]] && break
   sleep 0.02

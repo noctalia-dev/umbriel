@@ -22,7 +22,7 @@ namespace umbriel {
   class HintRect : public Animatable {
   public:
     HintRect(Server& server, wlr_scene_tree* parent);
-    ~HintRect();
+    ~HintRect() override;
     HintRect(const HintRect&) = delete;
     HintRect& operator=(const HintRect&) = delete;
 

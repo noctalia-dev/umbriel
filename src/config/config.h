@@ -34,6 +34,8 @@ namespace umbriel {
 
   enum class TitleBarMode : uint8_t { On, Negotiated, Forced, Off };
 
+  enum class TitleBarButtonGlyph : uint8_t { Always, Hover, Never };
+
   enum class ModifierKey {
     Super,
     Alt,
@@ -115,6 +117,10 @@ namespace umbriel {
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
+    struct Stacking {
+      std::optional<bool> dropZones;
+      bool operator==(const Stacking&) const = default;
+    } stacking;
     struct Tabs {
       std::optional<ColumnDisplay> defaultDisplay;
       std::optional<NewTabPosition> newTabPosition;
@@ -142,6 +148,7 @@ namespace umbriel {
   struct ScratchpadConfig {
     std::string name;
     std::string spawnWhenEmpty;
+    bool proportionalSize = false;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -174,6 +181,10 @@ namespace umbriel {
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
+    struct Stacking {
+      bool dropZones = true;
+      bool operator==(const Stacking&) const = default;
+    } stacking;
     struct Tabs {
       ColumnDisplay defaultDisplay = ColumnDisplay::Normal;
       NewTabPosition newTabPosition = NewTabPosition::End;
@@ -358,7 +369,7 @@ namespace umbriel {
     Game,
   };
 
-  [[nodiscard]] inline constexpr std::string_view contentTypeName(ContentType type) {
+  [[nodiscard]] constexpr std::string_view contentTypeName(ContentType type) {
     switch (type) {
     case ContentType::None:
       return "none";
@@ -453,6 +464,7 @@ namespace umbriel {
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
     // non-rendering work stalls without them.
     std::optional<bool> backgroundRender;
+    std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     // Overrides the client's tearing-control hint. Omitted follows the hint,
     // true forces async preference, and false vetoes it.
@@ -520,6 +532,7 @@ namespace umbriel {
           && confinePointer == other.confinePointer
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
+          && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
@@ -568,6 +581,7 @@ namespace umbriel {
     std::optional<bool> confinePointer;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
+    std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
@@ -654,8 +668,14 @@ namespace umbriel {
         std::array<float, 4> text{0.9098039F, 0.9098039F, 0.9176471F, 1.0F};
         std::array<float, 4> textUnfocused{0.5411765F, 0.5411765F, 0.5725490F, 1.0F};
         std::array<float, 4> close{1.0F, 0.4196078F, 0.4196078F, 1.0F};
+        std::array<float, 4> closeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> closeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         std::array<float, 4> maximize{0.4784314F, 0.6392157F, 1.0F, 1.0F};
+        std::array<float, 4> maximizeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> maximizeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         std::array<float, 4> minimize{1.0F, 0.8196078F, 0.4F, 1.0F};
+        std::array<float, 4> minimizeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> minimizeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         bool operator==(const TitleBar&) const = default;
       } titleBar;
       std::array<float, 4> background{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
@@ -714,6 +734,8 @@ namespace umbriel {
         std::string font = "sans 10";
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
+        TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
         bool operator==(const TitleBar&) const = default;
@@ -871,6 +893,13 @@ namespace umbriel {
         bool operator==(const Border&) const = default;
       } border;
 
+      struct WindowsOpacity {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
+        bool operator==(const WindowsOpacity&) const = default;
+      } windowsOpacity;
+
       struct DimUnfocused {
         std::string effect;
         bool enabled = false;
@@ -1003,6 +1032,10 @@ namespace umbriel {
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;
+      struct Stacking {
+        bool dropZones = true;
+        bool operator==(const Stacking&) const = default;
+      } stacking;
       struct Tabs {
         ColumnDisplay defaultDisplay = ColumnDisplay::Normal;
         NewTabPosition newTabPosition = NewTabPosition::End;
@@ -1045,6 +1078,10 @@ namespace umbriel {
       bool xwaylandNativeResolution = false;
       // Run an XSETTINGS manager in Xwayland that announces the X screen scale and cursor theme. Requires restart.
       bool xwaylandXsettings = true;
+      // Connector or monitor identity to publish as the X11 primary. Empty leaves RandR unmanaged.
+      std::string xwaylandPrimaryOutput;
+      // Wait for composed NVIDIA output frames when no explicit synchronization timeline is available.
+      bool nvidiaSyncWorkaround = true;
       // Show the keybinds cheatsheet overlay on startup.
       bool showCheatsheet = true;
       // Honor activation requests by focusing and revealing the target window.
@@ -1085,8 +1122,6 @@ namespace umbriel {
       // Let a client start an interactive move from its own drag area
       // (xdg_toplevel.move), such as a CSD title bar or Chromium tab strip.
       bool clientWindowDrag = true;
-      // Preview and apply half or quarter placement while dragging to output edges.
-      bool windowSnapping = true;
       // Retarget an interactive window drag with the free mouse button: float
       // it, pin it, or leave the drag alone.
       WindowDragToggle windowDragToggle = WindowDragToggle::None;
@@ -1251,12 +1286,7 @@ namespace umbriel {
           return true;
         }
       }
-      for (const LayerRule& rule : layerRules) {
-        if (rule.optimized.value_or(false)) {
-          return true;
-        }
-      }
-      return false;
+      return std::ranges::any_of(layerRules, [](const LayerRule& rule) { return rule.optimized.value_or(false); });
     }
 
     bool operator==(const Config&) const = default;

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# harness: config-watch=true
 # Observe shader-specific intermediate colors, source sampling, completion,
 # closing snapshots, and automatic reload of an imported GLSL file.
 set -euo pipefail
@@ -79,7 +80,7 @@ if ! (( blue > 80 && red < 200 )); then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 150
 sample
 if ! (( green > 220 && red < 30 && blue < 30 )); then

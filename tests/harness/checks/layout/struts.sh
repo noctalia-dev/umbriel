@@ -192,7 +192,7 @@ focus_window() {
   for _ in $(seq 80); do
     id=$(field_of "$1" id)
     if [[ -n $id ]]; then
-      "$UMBRIEL" msg "window-focus-warp:$id" > /dev/null
+      "$UMBRIEL" msg window-focus-warp "$id" > /dev/null
       return 0
     fi
     sleep 0.1
@@ -246,12 +246,12 @@ spawn_client strut-float 200 100
 focus_window strut-float
 assert_box strut-float 200 100 0 40
 
-"$UMBRIEL" msg workspace-switch:override > /dev/null
+"$UMBRIEL" msg workspace-switch override > /dev/null
 spawn_client strut-override
 focus_window strut-override
 assert_box strut-override 1170 646 50 45
 
-"$UMBRIEL" msg workspace-switch:scroll-h > /dev/null
+"$UMBRIEL" msg workspace-switch scroll-h > /dev/null
 spawn_client strut-scroll-h
 focus_window strut-scroll-h
 assert_box strut-scroll-h 608 604 25 79
@@ -282,7 +282,7 @@ assert_box strut-scroll-neighbor 608 604 641 79
 # Horizontally arranged workspaces turn the strip vertical for the scroll-v phase.
 write_config with-struts horizontal
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-switch:scroll-v > /dev/null
+"$UMBRIEL" msg workspace-switch scroll-v > /dev/null
 spawn_client strut-scroll-v
 focus_window strut-scroll-v
 assert_box strut-scroll-v 1224 298 25 79
@@ -295,10 +295,10 @@ write_config without-struts horizontal
 "$UMBRIEL" msg config-reload > /dev/null
 assert_box strut-scroll-v 1264 328 8 48
 
-"$UMBRIEL" msg workspace-switch:override > /dev/null
+"$UMBRIEL" msg workspace-switch override > /dev/null
 assert_box strut-override 1280 680 0 40
 
-"$UMBRIEL" msg workspace-switch:base > /dev/null
+"$UMBRIEL" msg workspace-switch base > /dev/null
 assert_box strut-base 1280 680 0 40
 assert_box strut-float 200 100 0 40
 # The truncated 915x500 logical box still covers the 1282x700 output.

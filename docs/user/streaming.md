@@ -39,8 +39,8 @@ case "$1" in
         for id in $(umbriel windows --json |
             jq -r --arg out "$name:" '.[] | select(.workspace | startswith($out)) | .id'); do
             [ -n "$target" ] || break
-            umbriel msg "window-focus:$id"
-            umbriel msg "window-move-to-workspace-silent:$target"
+            umbriel msg window-focus "$id"
+            umbriel msg window-move-to-workspace-silent "$target"
         done
         umbriel output-destroy "$name" >/dev/null 2>&1 || true
         ;;

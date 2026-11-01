@@ -98,7 +98,7 @@ if (( $(red_at "2x2+$((x3 + w3 / 2))+$((y3 - 12))") > 0 )); then
   echo "border_effect = off did not disable the default on the plain window"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$id2" > /dev/null
+"$UMBRIEL" msg window-focus "$id2" > /dev/null
 "$UMBRIEL" settle > /dev/null
 
 # Frames: a time-reading program requests effect-only frames while the clock advances, none once frozen.
@@ -201,7 +201,7 @@ EOF
 spawn effect-near
 "$UMBRIEL" settle > /dev/null
 read -r near_id near_top < <(jq -r '"\(.id) \(.y)"' <<< "$window")
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 grim "$IMAGE"
 # The lit ring box (4 px ring, 1 px raster margin, 10 px padding) ends 15 px below the client; the sample sits inside
@@ -220,7 +220,7 @@ if (( r < 15 )); then
   echo "border light did not spill over the neighbouring window: red=$r"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$near_id" > /dev/null
+"$UMBRIEL" msg window-close "$near_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 
 # An overview card closed while focused keeps the ring effect on its close snapshot: the red preset still paints the
@@ -265,7 +265,7 @@ match.title = "^effect-(one|two|plain)$"
 default_floating = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle > /dev/null
@@ -289,7 +289,7 @@ fi
 readonly CARD_TOP="${card_w}x6+${card_x}+${card_y}"
 card_red=$(red_at "$CARD_TOP")
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 # Settle refuses while the frozen close animation runs, so poll the window list for the snapshot taking over.
 for _ in $(seq 100); do
   [[ -z $("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "effect-one")') ]] && break

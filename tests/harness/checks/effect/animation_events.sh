@@ -82,22 +82,22 @@ assert_no_red move
 assert_transition resize
 
 configure border
-"$UMBRIEL" msg "window-focus:$second" > /dev/null
+"$UMBRIEL" msg window-focus "$second" > /dev/null
 "$UMBRIEL" clock-advance 1000
 assert_no_red border
-"$UMBRIEL" msg "window-focus:$first" > /dev/null
+"$UMBRIEL" msg window-focus "$first" > /dev/null
 assert_transition border
 
 configure dim_unfocused
 assert_no_red dim_unfocused
-"$UMBRIEL" msg "window-focus:$second" > /dev/null
+"$UMBRIEL" msg window-focus "$second" > /dev/null
 assert_transition dim_unfocused
 
 configure workspaces
 assert_no_red workspaces
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 assert_transition workspaces
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" clock-advance 1000
 
 configure overview

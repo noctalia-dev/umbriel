@@ -176,20 +176,20 @@ EOF
 wait_for_count 1
 wait_for_workspace "$FIRST_TITLE" "$FIRST_OUTPUT"
 move_pointer_to_output "$FIRST_OUTPUT"
-"$UMBRIEL" msg "window-move-to-scratchpad:$FIRST_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$FIRST_SCRATCHPAD" > /dev/null
 wait_for_empty_workspace "$FIRST_TITLE"
 
 "$CLIENT" "$SECOND_TITLE" 420 260 > "$SECOND_LOG" 2>&1 &
 wait_for_count 2
 wait_for_workspace "$SECOND_TITLE" "$SECOND_OUTPUT"
 move_pointer_to_output "$SECOND_OUTPUT"
-"$UMBRIEL" msg "window-move-to-scratchpad:$SECOND_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SECOND_SCRATCHPAD" > /dev/null
 wait_for_empty_workspace "$SECOND_TITLE"
 
 move_pointer_to_output "$FIRST_OUTPUT"
-"$UMBRIEL" msg "scratchpad-toggle:$FIRST_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$FIRST_SCRATCHPAD" > /dev/null
 move_pointer_to_output "$SECOND_OUTPUT"
-"$UMBRIEL" msg "scratchpad-toggle:$SECOND_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SECOND_SCRATCHPAD" > /dev/null
 sleep 0.1
 
 read -r first_x first_y < <(window_center "$FIRST_TITLE" "$FIRST_OUTPUT")
@@ -215,11 +215,11 @@ fi
 # Nothing re-enters a scratchpad while the overview covers the screen.
 move_pointer_to_output "$FIRST_OUTPUT"
 first_id=$("$UMBRIEL" windows --json | jq -r --arg t "$FIRST_TITLE" '.[] | select(.title == $t) | .id')
-"$UMBRIEL" msg "scratchpad-toggle:$FIRST_SCRATCHPAD" > /dev/null || true
-"$UMBRIEL" msg "scratchpad-window-show-next:$FIRST_SCRATCHPAD" > /dev/null || true
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null || true
+"$UMBRIEL" msg scratchpad-toggle "$FIRST_SCRATCHPAD" > /dev/null || true
+"$UMBRIEL" msg scratchpad-window-show-next "$FIRST_SCRATCHPAD" > /dev/null || true
+"$UMBRIEL" msg window-focus "$first_id" > /dev/null || true
 move_pointer_to_output "$SECOND_OUTPUT"
-"$UMBRIEL" msg "scratchpad-window-show-previous:$SECOND_SCRATCHPAD" > /dev/null || true
+"$UMBRIEL" msg scratchpad-window-show-previous "$SECOND_SCRATCHPAD" > /dev/null || true
 "$UMBRIEL" settle > /dev/null
 shown=$("$UMBRIEL" windows --json | jq -c '[.[] | select(.scratchpad != "" and .active) | .title]')
 if [[ $shown != "[]" ]]; then
@@ -235,7 +235,7 @@ assert_dark "$FIRST_OUTPUT after overview-close" "$first_closed" "$first_x" "$fi
 assert_dark "$SECOND_OUTPUT after overview-close" "$second_closed" "$second_x" "$second_y"
 
 move_pointer_to_output "$FIRST_OUTPUT"
-"$UMBRIEL" msg "scratchpad-toggle:$FIRST_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$FIRST_SCRATCHPAD" > /dev/null
 sleep 0.1
 first_restored=$(capture "$FIRST_OUTPUT" overview-scratch-first-restored)
 second_still_hidden=$(capture "$SECOND_OUTPUT" overview-scratch-second-still-hidden)
@@ -243,7 +243,7 @@ assert_blue "$FIRST_OUTPUT after its first toggle" "$first_restored" "$first_x" 
 assert_dark "$SECOND_OUTPUT before its first toggle" "$second_still_hidden" "$second_x" "$second_y"
 
 move_pointer_to_output "$SECOND_OUTPUT"
-"$UMBRIEL" msg "scratchpad-toggle:$SECOND_SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SECOND_SCRATCHPAD" > /dev/null
 sleep 0.1
 second_restored=$(capture "$SECOND_OUTPUT" overview-scratch-second-restored)
 assert_blue "$SECOND_OUTPUT after its first toggle" "$second_restored" "$second_x" "$second_y"

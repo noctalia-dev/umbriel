@@ -24,7 +24,7 @@ if [[ $("$UMBRIEL" windows --json | jq 'length') -ne 1 ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 for _ in $(seq 40); do
   [[ $(active_workspace) == 2 ]] && break
   sleep 0.05

@@ -71,11 +71,10 @@ build_tests = tests_opt.enabled() or (
   and get_option('b_sanitize') == 'none'
 )
 
-# Harness-only IPC commands are compiled out of anything but a debug build unless requested, so a release cannot
-# expose them.
-test_ipc_opt = get_option('test_ipc')
-if test_ipc_opt.enabled() or (test_ipc_opt.auto() and get_option('buildtype') == 'debug')
-  add_project_arguments('-DUMBRIEL_TEST_IPC', language: 'cpp')
+# Harness-only behavior is compiled out of anything but a debug build unless requested, so a release cannot expose it.
+harness_opt = get_option('harness')
+if harness_opt.enabled() or (harness_opt.auto() and get_option('buildtype') == 'debug')
+  add_project_arguments('-DUMBRIEL_HARNESS', language: 'cpp')
 endif
 
 if cpp.get_define('WLR_HAS_SESSION', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
@@ -116,8 +115,8 @@ if is_glibc
   endif
 endif
 
-xkbcommon_dep = dependency('xkbcommon')
-libinput_dep = dependency('libinput', version: '>=1.27')
+xkbcommon_dep = dependency('xkbcommon', version: '>=1.10.0')
+libinput_dep = dependency('libinput', version: '>=1.29')
 libeis_dep = dependency('libeis-1.0', version: '>=1.3')
 pixman_dep = dependency('pixman-1', version: '>=0.43.0')
 tomlplusplus_dep = dependency('tomlplusplus')
@@ -133,6 +132,7 @@ xcb_dep = dependency('xcb')
 xcb_icccm_dep = dependency('xcb-icccm')
 xcb_ewmh_dep = dependency('xcb-ewmh')
 xcb_shape_dep = dependency('xcb-shape')
+xcb_randr_dep = dependency('xcb-randr')
 native_drm_policy_supported = wlr_has_drm_backend and libudev_dep.found()
 native_drm_policy_deps = []
 if native_drm_policy_supported
@@ -145,6 +145,25 @@ add_project_arguments(
 )
 
 wayland_scanner = find_program('wayland-scanner')
+
+input_capture_server_h = custom_target(
+  'umbriel-input-capture-v1-server-protocol.h',
+  input: 'protocols/umbriel-input-capture-v1.xml',
+  output: 'umbriel-input-capture-v1-server-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+input_capture_client_h = custom_target(
+  'umbriel-input-capture-v1-client-protocol.h',
+  input: 'protocols/umbriel-input-capture-v1.xml',
+  output: 'umbriel-input-capture-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+input_capture_protocol_c = custom_target(
+  'umbriel-input-capture-v1-protocol.c',
+  input: 'protocols/umbriel-input-capture-v1.xml',
+  output: 'umbriel-input-capture-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
 
 # umbrielfx's vendored layer-shell scene helper needs this server header, so it
 # is generated before the subdir that consumes it.
@@ -684,6 +703,8 @@ pure_sources = files(
   'src/input/swipe_tracker.cpp',
   'src/input/keyboard_layout.cpp',
   'src/input/keyboard_leds.cpp',
+  'src/input/keyboard_state.cpp',
+  'src/input/input_capture_geometry.cpp',
   'src/input/surface_layouts.cpp',
   'src/input/shortcuts_inhibit.cpp',
   'src/input/shortcut_keysym.cpp',
@@ -694,7 +715,7 @@ pure_sources = files(
   'src/layout/scrolling.cpp',
   'src/layout/dwindle.cpp',
   'src/layout/master.cpp',
-  'src/layout/floating.cpp',
+  'src/layout/stacking.cpp',
   'src/output/direction.cpp',
   'src/output/identity.cpp',
   'src/output/enable_overrides.cpp',
@@ -710,7 +731,7 @@ pure_sources = files(
   'src/view/border_ring.cpp',
   'src/view/effects_rules.cpp',
   'src/view/floating.cpp',
-  'src/view/snap.cpp',
+  'src/view/window_region.cpp',
   'src/view/drag_physics.cpp',
   'src/xwayland/xsettings.cpp',
 )
@@ -794,10 +815,13 @@ core_sources = files(
   'src/xwayland/xwayland.cpp',
   'src/xwayland/shape.cpp',
   'src/input/eis.cpp',
+  'src/input/input_capture.cpp',
+  'src/input/input_capture_permissions.cpp',
   'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
   'src/xwayland/unmanaged.cpp',
   'src/xwayland/outputs.cpp',
+  'src/xwayland/primary.cpp',
   'src/core/process.cpp',
   'src/core/process_syscall.cpp',
   'src/view/view_foreign.cpp',
@@ -806,7 +830,7 @@ core_sources = files(
   'src/view/view_attachment.cpp',
   'src/view/view_chrome.cpp',
   'src/view/view_floating.cpp',
-  'src/view/view_snap.cpp',
+  'src/view/view_region.cpp',
   'src/view/view_lifecycle.cpp',
   'src/view/view_rules.cpp',
   'src/view/view_state.cpp',
@@ -821,6 +845,8 @@ core_sources = files(
   'src/scene/quit_confirm.cpp',
   'src/scene/cheatsheet.cpp',
   'src/scene/text_buffer.cpp',
+  'src/scene/cairo_buffer.cpp',
+  'src/scene/title_bar_icon.cpp',
   'src/scene/tab_bar.cpp',
   'src/scene/ssd_frame.cpp',
   'src/scene/tab_bar_style.cpp',
@@ -831,6 +857,7 @@ core_sources = files(
   'src/workspace/tab_presenter.cpp',
   'src/workspace/scratchpad.cpp',
   'src/cli/ipc_client.cpp',
+  'src/server/action_request.cpp',
   'src/server/ipc.cpp',
   'src/server/ipc_commands.cpp',
 )
@@ -858,11 +885,14 @@ umbriel_core_deps = [
   xcb_icccm_dep,
   xcb_ewmh_dep,
   xcb_shape_dep,
+  xcb_randr_dep,
 ]
 
 umbriel_core = static_library(
   'umbriel-core',
   core_sources + [
+    input_capture_server_h,
+    input_capture_protocol_c,
     toplevel_drag_server_h,
     toplevel_drag_c,
     xdg_shell_client_c,

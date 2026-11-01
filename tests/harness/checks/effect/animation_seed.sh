@@ -102,7 +102,7 @@ if [[ $first != "$first_later" ]]; then
 fi
 
 window_id=$(jq -r .id <<< "$window")
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 150
 closing=$(sample_seed)
 if [[ $closing != "$first" ]]; then

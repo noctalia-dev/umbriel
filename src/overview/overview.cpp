@@ -27,6 +27,7 @@ extern "C" {
 #include "scene/surface_shape.h"
 #include "scene/text_buffer.h"
 #include "server/color_manager.h"
+#include "server/focus.h"
 #include "server/server.h"
 #include "view/view.h"
 // clang-format off
@@ -516,6 +517,7 @@ namespace umbriel {
       if (card.shadowTree == nullptr) {
         return;
       }
+      (void)umbrielfx_scene_node_share_capture_policy(&card.shadowTree->node, &card.tree->node);
       card.shadow = wlr_scene_shadow_create(card.shadowTree, 0, 0, 0, 0.0F, source->color);
       if (card.shadow == nullptr) {
         destroyCardShadow(card);
@@ -1197,6 +1199,7 @@ namespace umbriel {
       return nullptr;
     }
     card->surfaceTree = wlr_scene_tree_create(card->tree);
+    (void)umbrielfx_scene_node_share_capture_policy(&card->tree->node, &view->sceneTree()->node);
     if (card->surfaceTree == nullptr) {
       wlr_scene_node_destroy(&card->tree->node);
       return nullptr;
@@ -1227,6 +1230,10 @@ namespace umbriel {
 
     wlr_scene_tree* snapshot = wlr_scene_tree_create(m_tree);
     if (snapshot == nullptr) {
+      return;
+    }
+    if (!umbrielfx_scene_node_share_capture_policy(&snapshot->node, &card.tree->node)) {
+      wlr_scene_node_destroy(&snapshot->node);
       return;
     }
     wlr_box outputBox{};
@@ -1823,7 +1830,7 @@ namespace umbriel {
 
   void Overview::close() { beginClose(nullptr); }
 
-  void Overview::closeToWorkspace(Workspace* workspace, View* focus) {
+  void Overview::closeToWorkspace(Workspace* workspace, View* focus, bool warpCursor) {
     if (!m_active || m_closing) {
       return;
     }
@@ -1840,10 +1847,10 @@ namespace umbriel {
         focus->workspace()->centerFocusedColumn();
       }
     }
-    beginClose(focus);
+    beginClose(focus, 0, warpCursor);
   }
 
-  void Overview::beginClose(View* focus, double releaseVelocity) {
+  void Overview::beginClose(View* focus, double releaseVelocity, bool warpCursor) {
     if (!m_active || m_closing) {
       return;
     }
@@ -1859,6 +1866,7 @@ namespace umbriel {
     m_pressWorkspace = nullptr;
     clearMiddlePress();
     m_pendingFocus = focus;
+    m_pendingCursorWarp = warpCursor && config().input.cursor.followsFocus && focus != nullptr;
     for (const auto& state : m_outputs) {
       const WorkspaceGroup* group = state->output->workspaceGroup();
       if (group != nullptr && group->active() != nullptr) {
@@ -1988,7 +1996,9 @@ namespace umbriel {
       return;
     }
     View* focus = m_pendingFocus;
+    const bool warpCursor = m_pendingCursorWarp;
     m_pendingFocus = nullptr;
+    m_pendingCursorWarp = false;
     // The real trees stay hidden until teardown, so a workspace switch during the close runs as the row scroll. The
     // close still ends with the zoom, so binds keep their timing; a row still travelling hands its offset and velocity
     // to the real slide. beginClose retargets each row to the active workspace, so a row resting there is not carried.
@@ -2017,6 +2027,12 @@ namespace umbriel {
       }
     }
     restoreFocus(focus);
+    if (warpCursor
+        && focus != nullptr
+        && focus->mapped()
+        && seatFocusedWindow(*m_server) == focus->placementRoot()->inputDelegate()) {
+      m_server->cursor()->warpToView(*focus);
+    }
   }
 
   void Overview::restoreFocus(View* focus) {
@@ -2226,7 +2242,7 @@ namespace umbriel {
     assignShortcuts();
   }
 
-  void Overview::onViewUnmapped(View* view) {
+  void Overview::onViewUnmapped(View* view, bool animateClose) {
     if (!m_active || view == nullptr) {
       return;
     }
@@ -2257,7 +2273,7 @@ namespace umbriel {
     }
     Workspace* workspace = view->workspace();
     OutputState* state = stateForWorkspace(workspace);
-    if (Card* card = findCard(view)) {
+    if (Card* card = findCard(view); card != nullptr && animateClose) {
       snapshotCardForClose(*card);
     }
     dropCard(view);
@@ -2348,6 +2364,8 @@ namespace umbriel {
 
     std::unique_ptr<Card> moved = std::move(*it);
     source->cards.erase(it);
+    // A hidden card may skip shadow layout; release its source-output shadow before changing owners.
+    destroyCardShadow(*moved);
     moved->owner = target;
     wlr_scene_node_reparent(&moved->tree->node, target->tree);
     target->cards.push_back(std::move(moved));
@@ -3291,7 +3309,7 @@ namespace umbriel {
               && shortcutStartsWith(card->shortcut, candidate)
               && card->view != nullptr
               && card->view->mapped()) {
-            closeToWorkspace(card->view->workspace(), card->view);
+            closeToWorkspace(card->view->workspace(), card->view, true);
             return true;
           }
         }
@@ -3352,7 +3370,7 @@ namespace umbriel {
     auto dispatch = [this](KeybindAction action) {
       Keybind bind;
       bind.action = action;
-      return m_server->executeKeybindAction(bind);
+      return m_server->executeAction(bind);
     };
     // Local windows first, exactly like the composite focus actions. Only an arrow
     // pointing along the output's workspace axis falls through to a workspace step.
@@ -3601,8 +3619,8 @@ namespace umbriel {
       }
     }
 
-    if (target != nullptr && target->layoutMode() == LayoutMode::Floating && view->tiled()) {
-      view->floatForLayout();
+    if (target != nullptr && target->layoutMode() == LayoutMode::Stacking && view->tiled()) {
+      view->floatForStackingLayout();
     }
     if (target != nullptr && view->tiled()) {
       applyDrop(
@@ -3638,7 +3656,7 @@ namespace umbriel {
       }
     } else if (m_dragSourceWorkspace != nullptr && view->tiled() && m_dragSourceColumn >= 0) {
       // Cancelled or dropped on nothing: put the tile back where it came from.
-      if (m_dragSourceWorkspace->layoutMode() == LayoutMode::Floating) {
+      if (m_dragSourceWorkspace->layoutMode() == LayoutMode::Stacking) {
         m_dragSourceWorkspace->layoutAttach(view);
       } else if (m_dragSourceWidth.has_value()) {
         m_dragSourceWorkspace->layout().insertView(view, m_dragSourceColumn);

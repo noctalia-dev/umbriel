@@ -154,7 +154,7 @@ sed -i 's/^workspace_axis = "vertical"$/workspace_axis = "horizontal"/' "$UMBRIE
 # overhang-7 shares its column with overhang-4, so detaching it cannot collapse a column and shift the stack under the
 # pointer mid-drag. Focusing it also scrolls that column into the preview.
 source_id=$(jq -r '.[] | select(.title == "overhang-7") | .id' <<< "$windows")
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 stack_rows=0
 for _ in $(seq 30); do
   stack_rows=$("$UMBRIEL" windows --json | jq '[.[] | .y] | unique | length')

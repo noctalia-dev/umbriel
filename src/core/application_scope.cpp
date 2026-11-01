@@ -3,6 +3,7 @@
 #include <array>
 #include <charconv>
 #include <cstdlib>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -95,7 +96,7 @@ namespace umbriel {
     for (const auto& [name, value] : configuredEnvironment) {
       for (size_t index = 0; index < kSystemdControlEnvironmentVariables.size(); ++index) {
         if (name == kSystemdControlEnvironmentVariables[index]) {
-          arguments[index] = "--setenv=" + name + "=" + value;
+          arguments[index] = std::format("--setenv={}={}", name, value);
           break;
         }
       }

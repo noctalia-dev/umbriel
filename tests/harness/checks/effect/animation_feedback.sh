@@ -136,7 +136,7 @@ if ! (( initial_red > 70 && initial_red < 100 && initial_green > 100 && initial_
 fi
 
 small_id=$(jq -r .id <<< "$small")
-"$UMBRIEL" msg "window-close:$small_id" > /dev/null
+"$UMBRIEL" msg window-close "$small_id" > /dev/null
 "$UMBRIEL" clock-advance 150
 grim "$IMAGE"
 read -r closing_red closing_green closing_blue <<< "$(sample "$small" 0.25 0.55)"

@@ -131,7 +131,7 @@ verify_workspace_slide() {
   fi
 
   id=$(jq -r .id <<< "$closing")
-  "$UMBRIEL" msg "window-close:$id" > /dev/null
+  "$UMBRIEL" msg window-close "$id" > /dev/null
   wait_unmapped "$closing_title"
   "$UMBRIEL" clock-advance 50
 
@@ -148,7 +148,7 @@ verify_workspace_slide() {
   local base_delta=$((2 * base_gx + base_gw - 2 * base_rx - base_rw))
   local previous_rx=$base_rx previous_gx=$base_gx
 
-  "$UMBRIEL" msg "workspace-switch:$destination" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$destination" > /dev/null
   "$UMBRIEL" clock-advance 250
   grim "$SHOTS/$phase-early.png"
   "$UMBRIEL" clock-advance 350

@@ -21,8 +21,8 @@ readonly LOCK_CONTROL="$UMBRIEL_RUNTIME_DIR/shortcuts-lock-control"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [keybinds]
-"Mod+1" = "workspace-set-layout:master"
-"Mod+2" = { action = "workspace-set-layout:dwindle", allow_when_inhibited = true }
+"Mod+1" = "workspace-set-layout master"
+"Mod+2" = { action = "workspace-set-layout dwindle", allow_when_inhibited = true }
 "Mod+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -100,18 +100,18 @@ input "$CLIENT_LOG" mod logo tap "$KEY_2" mod none
 assert_layout dwindle
 assert_keys "$CLIENT_LOG" "$KEY_2" 0
 input "$CLIENT_LOG" mod logo tap "$KEY_ESC" mod none
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo tap "$KEY_1" mod none
 assert_layout master
 assert_keys "$CLIENT_LOG" "$KEY_1" 1
 assert_keys "$CLIENT_LOG" "$KEY_ESC" 0
 
 # Key ownership remains balanced when inhibition changes during a held key.
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo key-press "$KEY_1" tap "$KEY_ESC" key-release "$KEY_1" mod none
 assert_layout master
 assert_keys "$CLIENT_LOG" "$KEY_1" 1
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo key-press "$KEY_1" tap "$KEY_ESC" key-release "$KEY_1" mod none
 assert_layout scrolling
 assert_keys "$CLIENT_LOG" "$KEY_1" 2
@@ -123,12 +123,12 @@ input "$CLIENT_LOG" mod logo tap "$KEY_ESC" mod none
 wait_for "the other test window" '[[ $("$UMBRIEL" windows --json | jq length) == 2 ]]'
 wait_for "the other surface to gain focus" \
   '[[ $("$UMBRIEL" windows --json | jq -r '\''.[] | select(.focused) | .title'\'') == shortcuts-other ]]'
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$OTHER_LOG" mod logo tap "$KEY_1" mod none
 assert_layout master
 assert_keys "$OTHER_LOG" "$KEY_1" 0
-"$UMBRIEL" msg "window-focus:$manual_id" > /dev/null
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg window-focus "$manual_id" > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo tap "$KEY_1" mod none
 assert_layout scrolling
 assert_keys "$CLIENT_LOG" "$KEY_1" 3
@@ -150,7 +150,7 @@ input "$CLIENT_LOG" mod logo tap "$KEY_1" mod none
 assert_layout master
 assert_keys "$CLIENT_LOG" "$KEY_1" 4
 control u
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo tap "$KEY_1" mod none
 assert_layout master
 assert_keys "$CLIENT_LOG" "$KEY_1" 4
@@ -173,13 +173,13 @@ wait "$lock_pid"
 "$UMBRIEL" settle
 # Explicitly transfer focus so the assertion observes a fresh keyboard enter.
 other_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shortcuts-other") | .id')
-"$UMBRIEL" msg "window-focus:$other_id" > /dev/null
+"$UMBRIEL" msg window-focus "$other_id" > /dev/null
 expected_enters=$(($(events "$CLIENT_LOG" keyboard-enter) + 1))
-"$UMBRIEL" msg "window-focus:$manual_id" > /dev/null
+"$UMBRIEL" msg window-focus "$manual_id" > /dev/null
 await_events "$CLIENT_LOG" keyboard-enter "$expected_enters"
 wait_for "the original surface to regain focus" \
   '[[ $("$UMBRIEL" windows --json | jq -r '\''.[] | select(.focused) | .id'\'') == "$manual_id" ]]'
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$CLIENT_LOG" mod logo tap "$KEY_1" mod none
 assert_layout scrolling
 assert_keys "$CLIENT_LOG" "$KEY_1" 5
@@ -187,7 +187,7 @@ assert_keys "$CLIENT_LOG" "$KEY_1" 5
 # Destroying the manually inhibited focused surface restores normal shortcuts.
 kill "$manual_pid"
 wait_for "the manual window to close" '[[ $("$UMBRIEL" windows --json | jq length) == 1 ]]'
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 input "$OTHER_LOG" mod logo tap "$KEY_1" mod none
 assert_layout master
 assert_keys "$OTHER_LOG" "$KEY_1" 0

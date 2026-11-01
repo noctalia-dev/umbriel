@@ -19,6 +19,11 @@ struct wlr_renderer* fx_renderer_create(struct wlr_backend* backend);
 struct fx_renderer* fx_get_renderer(struct wlr_renderer* wlr_renderer);
 
 bool fx_renderer_check_ext(struct wlr_renderer* renderer, const char* ext);
+/**
+ * Enables the NVIDIA GPU completion wait for output passes without an explicit
+ * synchronization timeline. Enabled by default; capture synchronization is independent.
+ */
+void fx_renderer_set_nvidia_sync_workaround(struct wlr_renderer* renderer, bool enabled);
 GLuint fx_renderer_get_buffer_fbo(struct wlr_renderer* renderer, struct wlr_buffer* buffer);
 void fx_renderer_clear_output_effect_buffers(struct wlr_output* output);
 

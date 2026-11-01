@@ -27,9 +27,9 @@ duration_ms = 1
 curve = "linear"
 
 [keybinds]
-"Mod+1" = "workspace-switch:1"
-"Mod+2" = "workspace-switch:2"
-"Mod+Return" = "workspace-switch:1"
+"Mod+1" = "workspace-switch 1"
+"Mod+2" = "workspace-switch 2"
+"Mod+Return" = "workspace-switch 1"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

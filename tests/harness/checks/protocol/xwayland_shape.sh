@@ -267,7 +267,7 @@ start_client managed fullscreen-background unshaped
 background_pid=$client_pid
 background_fd=$CLIENT_FD
 start_client managed fullscreen-foreground
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 for _ in $(seq 80); do
   window=$("$UMBRIEL" windows --json | jq -c --arg id "$window_id" '.[] | select(.id == $id)')

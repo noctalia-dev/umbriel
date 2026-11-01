@@ -126,7 +126,7 @@ if [[ -z $CLOSE_ID ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$CLOSE_ID" > /dev/null
+"$UMBRIEL" msg window-close "$CLOSE_ID" > /dev/null
 for _ in $(seq 100); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-root.log" && break
   sleep 0.025

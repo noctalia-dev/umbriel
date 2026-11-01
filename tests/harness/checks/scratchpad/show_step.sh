@@ -118,7 +118,7 @@ expect scratchpad-window-show-next "$after"
 # window-focus on a hidden member shows that member in place of the one on show.
 hidden=red
 [[ $after == red ]] && hidden=blue
-"$UMBRIEL" msg "window-focus:$(window_of "pad-$hidden" | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_of "pad-$hidden" | jq -r .id)" > /dev/null
 expect "" "$hidden"
 
 # Closing the window on show hides the pad rather than revealing the rest.
@@ -160,7 +160,7 @@ for _ in $(seq 80); do
   [[ -n "$(window_of plain-blue)" ]] && break
   sleep 0.025
 done
-"$UMBRIEL" msg "window-focus:$(window_of plain-blue | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_of plain-blue | jq -r .id)" > /dev/null
 printf 't\n' >&"$retitle_fd"
 for _ in $(seq 80); do
   [[ $(window_of pad-focused-retitled | jq -r .scratchpad) == default ]] && break

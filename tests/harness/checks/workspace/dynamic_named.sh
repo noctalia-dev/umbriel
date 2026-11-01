@@ -190,11 +190,11 @@ expect_named_state "$left_sentinel_id" false
 expect_named_state "$right_sentinel_id" false
 
 # The string "2" is an exact name at index 1. Selecting it must not fall back to the dynamic trailing workspace.
-"$UMBRIEL" msg 'workspace-switch:"2"/HEADLESS-1' > /dev/null
+"$UMBRIEL" msg workspace-switch --name 2 --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$numeric_id"
 
 # A TOML string window target resolves the exact numeric name rather than positional slot 2.
-"$UMBRIEL" msg workspace-switch:GLOBAL/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch GLOBAL --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$left_global_id"
 APP_ID=dynamic-name-two "$CLIENT" dynamic-name-two 800 600 \
   > "$UMBRIEL_RUNTIME_DIR/dynamic-name-two.log" 2>&1 &
@@ -210,7 +210,7 @@ wait_for_window_workspace dynamic-right "$right_id"
 destroy_window dynamic-right "$dynamic_right_pid"
 
 # Leaving the empty named workspace triggers dynamic reconciliation. It must retain the same protocol identity.
-"$UMBRIEL" msg workspace-switch:GLOBAL/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch GLOBAL --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$left_global_id"
 expect_inventory "empty named persistence" \
   '[["2",1,"master"],["GLOBAL",2,"dwindle"],["3",3,"scrolling"]]' \
@@ -221,7 +221,7 @@ expect_named_state "$numeric_id" true
 expect_named_state "$left_sentinel_id" false
 
 # An integer window-rule target remains positional. Slot 2 is GLOBAL, while the numeric string name "2" is slot 1.
-"$UMBRIEL" msg 'workspace-switch:"2"/HEADLESS-1' > /dev/null
+"$UMBRIEL" msg workspace-switch --name 2 --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$numeric_id"
 APP_ID=dynamic-position-two "$CLIENT" dynamic-position-two 800 600 \
   > "$UMBRIEL_RUNTIME_DIR/dynamic-position-two.log" 2>&1 &
@@ -251,7 +251,7 @@ expect_named_state "$right_sentinel_id" false
 
 # Remove the empty numeric name while GLOBAL is active. Ordinary dynamic pruning removes its old ID and renumbers
 # the same trailing sentinel into slot 2, while every unrelated configured workspace keeps its identity.
-"$UMBRIEL" msg workspace-switch:GLOBAL/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch GLOBAL --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$left_global_id"
 write_config scrolling absent HEADLESS-2
 expect_inventory "named declaration removal" \
@@ -284,9 +284,9 @@ expect_stable_id HEADLESS-1 3 "$left_sentinel_id"
 expect_stable_id HEADLESS-2 3 "$right_sentinel_id"
 expect_named_state "$readded_numeric_id" true
 expect_named_state "$left_sentinel_id" false
-"$UMBRIEL" msg 'workspace-switch:"2"/HEADLESS-1' > /dev/null
+"$UMBRIEL" msg workspace-switch --name 2 --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$readded_numeric_id"
-"$UMBRIEL" msg workspace-switch:GLOBAL/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch GLOBAL --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$left_global_id"
 
 # Retargeting RIGHT removes the old empty instance on HEADLESS-2 and materializes a fresh one at the top of
@@ -313,9 +313,9 @@ expect_named_state "$right_sentinel_id" false
 
 # Removing a populated inactive name keeps that workspace and its windows as an anonymous member. The empty GLOBAL on
 # HEADLESS-2 is active, so it survives anonymously and becomes the trailing empty after its old successor is pruned.
-"$UMBRIEL" msg workspace-switch:GLOBAL/HEADLESS-2 > /dev/null
+"$UMBRIEL" msg workspace-switch GLOBAL --output HEADLESS-2 > /dev/null
 wait_for_focused_workspace "$right_global_id"
-"$UMBRIEL" msg workspace-switch:RIGHT/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch RIGHT --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$retargeted_right_id"
 write_config scrolling present HEADLESS-1 absent
 expect_inventory "populated named declaration removal" \
@@ -334,7 +334,7 @@ wait_for_window_workspace dynamic-position-two "$left_global_id"
 # window to the numeric-looking configured name now at that position.
 position_window_id=$("$UMBRIEL" windows --json | jq -r \
   '.[] | select(.title == "dynamic-position-two") | .id')
-"$UMBRIEL" msg "window-focus:$position_window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$position_window_id" > /dev/null
 wait_for_focused_workspace "$left_global_id"
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 for _ in $(seq 60); do
@@ -351,7 +351,7 @@ if ! "$UMBRIEL" windows --json | jq -e '
   echo "dynamic-position-two did not enter the scratchpad: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg workspace-switch:RIGHT/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch RIGHT --output HEADLESS-1 > /dev/null
 wait_for_focused_workspace "$retargeted_right_id"
 write_config scrolling present HEADLESS-1 present
 expect_inventory "scratchpad return collision setup" \

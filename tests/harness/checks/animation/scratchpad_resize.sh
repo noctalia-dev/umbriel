@@ -81,7 +81,7 @@ fi
 
 # Animation time only moves by clock-advance; advancing 2000 ms finishes the 2000 ms timeline.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg window-set-primary-extent:0.2 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.2 > /dev/null
 "$UMBRIEL" clock-advance 250
 read -r first_x first_y first_w first_h < <(capture_box resize-250ms)
 "$UMBRIEL" clock-advance 1000

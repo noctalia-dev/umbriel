@@ -36,7 +36,7 @@ window() {
 for variant in detached before-start after-map existing dwindle master held-buttons; do
   layout=scrolling
   [[ $variant == dwindle || $variant == master ]] && layout=$variant
-  "$UMBRIEL" msg "workspace-set-layout:$layout" > /dev/null
+  "$UMBRIEL" msg workspace-set-layout "$layout" > /dev/null
   source_log="$UMBRIEL_RUNTIME_DIR/toplevel-$variant-source.log"
   target_log="$UMBRIEL_RUNTIME_DIR/toplevel-$variant-target.log"
   fifo="$UMBRIEL_RUNTIME_DIR/toplevel-$variant.fifo"

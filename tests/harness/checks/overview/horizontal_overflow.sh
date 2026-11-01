@@ -71,7 +71,7 @@ if [[ -z $first_id ]]; then
   echo "could not resolve the first horizontal column: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null
+"$UMBRIEL" msg window-focus "$first_id" > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
@@ -97,11 +97,11 @@ EOF
 
 # A client on the neighbouring workspace makes its preview identifiable by colour: the shared black workspace
 # background cannot be told apart from the backdrop.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 spawn_client horizontal-overflow-neighbour
 wait_for_count 4
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" msg column-focus-first > /dev/null
 "$UMBRIEL" settle
 

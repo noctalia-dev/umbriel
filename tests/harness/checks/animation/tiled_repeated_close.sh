@@ -132,7 +132,7 @@ analyze_frame() {
 
 close_window() {
   local id=$1
-  "$UMBRIEL" msg "window-close:$id" > /dev/null
+  "$UMBRIEL" msg window-close "$id" > /dev/null
   for _ in $(seq 100); do
     "$UMBRIEL" windows --json | jq -e --arg id "$id" 'any(.[]; .id == $id)' > /dev/null || return 0
     sleep 0.02

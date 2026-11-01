@@ -57,7 +57,7 @@ await_lines "$log" 'pointer-button 272 1' 1
 await_lines "$log" 'pointer-button 272 0' 1
 
 # A frame that was resizable while floating must stop offering grips when tiled.
-"$UMBRIEL" msg "window-toggle-floating:$(title_bar_window "$title" | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-toggle-floating "$(title_bar_window "$title" | jq -r .id)" > /dev/null
 title_bar_wait_field "$title" floating false
 "$UMBRIEL" settle > /dev/null
 read_box

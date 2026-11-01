@@ -35,7 +35,9 @@ field_of() {
 
 spawn() {
   local title=$1 selector=$2 expected=$3 id=
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   RESIZE_FILL_COLOR=0xFF5577AA "$CLIENT" "$title" 800 600 \
     > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 50); do
@@ -47,8 +49,8 @@ spawn() {
     echo "client '$title' did not map: $(< "$UMBRIEL_RUNTIME_DIR/$title.log")"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
-  "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "${words[@]}" > /dev/null
 }
 
 snapshot() {
@@ -78,7 +80,7 @@ visit_window_workspace() {
   local workspace index
   workspace=$(field_of "$1" workspace)
   index=$("$UMBRIEL" workspaces --json | jq -r --arg id "$workspace" '.[] | select(.id == $id) | .index')
-  "$UMBRIEL" msg "workspace-switch:$index/${workspace%%:*}" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$index" --output "${workspace%%:*}" > /dev/null
   "$UMBRIEL" settle
 }
 
@@ -154,16 +156,16 @@ assert_restored() {
   assert_same "$phase did not restore the dwindle layout" "$WEB_BOXES" "$(snapshot evac-web- 0)"
 }
 
-spawn refuge-code code/HEADLESS-2 1
-spawn evac-code-top code/HEADLESS-1 2
-spawn evac-code-bottom code/HEADLESS-1 3
+spawn refuge-code 'code --output HEADLESS-2' 1
+spawn evac-code-top 'code --output HEADLESS-1' 2
+spawn evac-code-bottom 'code --output HEADLESS-1' 3
 "$UMBRIEL" msg window-consume-or-expel-left > /dev/null
-"$UMBRIEL" msg window-modify-secondary-extent:-0.2 > /dev/null
-spawn evac-code-wide code/HEADLESS-1 4
-"$UMBRIEL" msg window-modify-primary-extent:0.15 > /dev/null
-spawn evac-web-first web/HEADLESS-1 5
-spawn evac-web-second web/HEADLESS-1 6
-"$UMBRIEL" msg window-modify-primary-extent:0.15 > /dev/null
+"$UMBRIEL" msg window-modify-secondary-extent -0.2 > /dev/null
+spawn evac-code-wide 'code --output HEADLESS-1' 4
+"$UMBRIEL" msg window-modify-primary-extent 0.15 > /dev/null
+spawn evac-web-first 'web --output HEADLESS-1' 5
+spawn evac-web-second 'web --output HEADLESS-1' 6
+"$UMBRIEL" msg window-modify-primary-extent 0.15 > /dev/null
 "$UMBRIEL" settle
 
 readonly CODE_BOXES="$(snapshot evac-code- 0)"

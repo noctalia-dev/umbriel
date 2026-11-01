@@ -48,11 +48,11 @@ EOF
 
 spawn_client "input-first"
 wait_for_count 1
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 sleep 0.1
 spawn_client "input-second"
 wait_for_count 2
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 sleep 0.1
 
 # Create the physical harness keyboard first, then pause while the input method creates its own current keyboard and
@@ -103,7 +103,7 @@ if grep -q '^key 30 1$' "$FIRST_LOG" 2>/dev/null; then
 fi
 
 # Observe the IME echo while Super is held, then verify the release action.
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" key-press 125 pause 1000 key-release 125 > "$POINTER_LOG" 2>&1 &
 POINTER_PID=$!
 for _ in $(seq 40); do
@@ -121,7 +121,7 @@ if [[ $(active_title) != input-second ]]; then
 fi
 
 # An unrelated virtual keyboard's key press still cancels a held modifier tap.
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 presses_before=$(grep -c '^key 56 1$' "$FIRST_LOG" || true)
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" key-press 56 pause 1000 key-release 56 > "$POINTER_LOG" 2>&1 &
 POINTER_PID=$!
@@ -157,6 +157,6 @@ if [[ $(active_title) != input-second ]]; then
   echo "virtual keyboard modifier tap did not switch to workspace 2 without an input method"
   exit 1
 fi
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 echo "input-method grabs preserve modifier wheel bindings, taps, cancellation, and keyboard focus"

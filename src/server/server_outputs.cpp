@@ -167,16 +167,11 @@ namespace umbriel {
       return false;
     };
     const auto ambiguous = [name, outputName]() -> std::expected<Workspace*, std::string> {
-      const bool numeric =
-          !name.empty() && std::ranges::all_of(name, [](char value) { return value >= '0' && value <= '9'; });
-      const std::string token = numeric ? "\"" + std::string(name) + "\"" : std::string(name);
       return std::unexpected(
           "ambiguous workspace: "
           + std::string(name)
           + (outputName.empty() ? "" : " on output " + std::string(outputName))
-          + " (qualify it as "
-          + token
-          + "/<output>; displaced names accept their original output)"
+          + " (qualify with --output <output>; displaced names accept their original output)"
       );
     };
     if (!outputName.empty()) {

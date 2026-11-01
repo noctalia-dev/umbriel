@@ -23,7 +23,7 @@ Without a matching output section, Umbriel enables outputs that advertise a pref
 
 When an output disconnects or is disabled, each populated workspace moves into its own temporary workspace on another enabled output. Umbriel appends these workspaces without replacing that output's configured workspaces, including when its workspace inventory is fixed. Temporary workspaces use numeric labels for originally anonymous workspaces; named workspaces keep their explicit names, so name-based keybinds continue to work. Both retain their original layout rules. When the same output connector becomes available again, their layout and positions are restored there. Windows opened in a temporary workspace return with it; explicitly moving a window into a local workspace cancels its automatic return. Tiling edits made in a temporary workspace also return with it when its tiled windows remain mapped.
 
-If a receiving output already has a workspace with the same name, its native workspace keeps priority for name lookup. Qualify the displaced name with its original output, such as `workspace-switch:WEB/DP-1`, to select it while `DP-1` is unavailable. See [workspace selectors](workspaces.md#workspace-selectors).
+If a receiving output already has a workspace with the same name, its native workspace keeps priority for name lookup. Qualify the displaced name with its original output, such as `workspace-switch WEB --output DP-1`, to select it while `DP-1` is unavailable. See [workspace selectors](workspaces.md#workspace-selectors).
 
 Umbriel first uses the first remaining enabled output in its internal output order. If that output has reached the 64-workspace limit, it tries another enabled output. If every enabled output is full, displaced windows share a local workspace until their home returns. Growing a fixed inventory during the disconnection can also leave too little room for temporary workspaces; those windows retain their saved homes. Empty temporary workspaces are removed. If every output disappears, windows wait until an output returns, then recover their separate workspaces there while their home output is still absent.
 
@@ -60,6 +60,8 @@ Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply th
 - `"dynamic"` or an omitted value for workspaces that grow and shrink
 - An integer for a fixed number of anonymous workspaces
 - A string array for a fixed ordered list of names
+
+[Workspace transfers](workspaces.md#moving-a-workspace-between-outputs) can grow or shrink a fixed inventory for the current session. Changing workspace inventory configuration reapplies the configured inventory.
 
 `min_workspaces` sets a floor for a dynamic output:
 
@@ -134,12 +136,29 @@ Set `WLR_SCENE_DISABLE_DIRECT_SCANOUT=1` before starting Umbriel to disable dire
   Direct scanout: inactive (software cursor)
 ```
 
+The listing reports the latest scene buffer accepted by the backend immediately. Rejected commits do not change it. This describes a successful commit, not confirmation that the display presented it.
+
+`umbriel outputs --json` also reports `direct_scanout.commits`, `direct_scanout.scanout_commits`, and `direct_scanout.commit_seq`. The two counters count accepted scene buffers and the subset committed through direct scanout. They retain brief scanout episodes even if the next query finds the output compositing again. Counters survive reloads and power cycles, and reset when the compositor restarts or the output is destroyed and recreated. The sequence identifies the latest accepted scene-buffer commit in the backend's wrapping 32-bit commit sequence.
+
+For fullscreen corruption investigations, save a baseline before launching the application and another snapshot while the problem is visible:
+
+```sh
+umbriel outputs --json > outputs-before-launch.json
+# Launch the application and reproduce the problem.
+umbriel outputs --json > outputs-corrupted.json
+umbriel color --json > color-corrupted.json
+```
+
+Collect the second snapshot before opening an overlay or switching workspaces. If `scanout_commits` increased, the backend accepted direct scanout commits on that output during the interval even if `active` is now false. An increase alone does not identify which window used scanout or establish the cause of corruption. Use a separate directory for each run when comparing scanout enabled and disabled before application startup, keeping HDR and the application arguments unchanged.
+
 The log records each time scanout starts, stops, or moves to another window, once the new state has held for half a second:
 
 ```text
 [INF] [output] output 'DP-1': direct scanout on (steam_app_223850 "3DMark Steel Nomad")
 [INF] [output] output 'DP-1': direct scanout off (composited)
 ```
+
+Scanout-triggered subscription notifications use the same settling interval. Counter increments alone do not push events; query `outputs` for immediate diagnostics.
 
 When it is inactive, the reason is the first condition that ruled it out:
 
@@ -225,8 +244,8 @@ The choice applies on reload and only while that output uses HDR (PQ). It also k
 `sdr_white` can also be selected for one running output without editing the configuration:
 
 ```sh
-umbriel msg output-sdr-white:203
-umbriel msg output-sdr-white:120/DP-1
+umbriel msg output-sdr-white 203
+umbriel msg output-sdr-white 120 --output DP-1
 ```
 
 The preferred output, or the named one, keeps the value until it disconnects or a configuration reload changes output state, which restores the configured `sdr_white`. `umbriel color` reports the selected value.
@@ -245,7 +264,7 @@ These display limits describe the target color volume independently of `sdr_whit
 
 Run `umbriel color` to inspect the metadata in the active output description. The JSON form reports `mastering_display_primaries`, `mastering_luminance`, `max_cll`, and `max_fall` for each output. For surfaces with explicit primary coordinates, `primaries` reports `"custom"`.
 
-Shared-memory screenshots from normal screencopy and image-copy clients receive an 8-bit SDR view while HDR is active. DMA-BUF capture may retain 10-bit storage while still containing SDR values. Export-DMA-BUF bypasses the SDR capture view and retains the output's native HDR representation.
+Shared-memory screenshots from normal screencopy and image-copy clients receive an 8-bit SDR view while HDR is active. DMA-BUF capture may retain 10-bit storage while still containing SDR values. Raw export-DMA-BUF is not advertised. Use screencopy or image-copy clients, including image-copy clients with DMA-BUF destinations.
 
 Window captures, including portal window previews, honor the client's committed color metadata and convert HDR client content to SDR.
 
@@ -280,7 +299,7 @@ Direct scanout remains enabled by the `direct_scanout` setting, but it may be le
 
 #### Screencopy and capture
 
-Shared-memory captures through screencopy and image-copy use an 8-bit format even when the output render format is XR30 or XB30. This applies to both 10-bit SDR outputs and the SDR capture view produced while HDR is active, improving compatibility with clients whose shared-memory paths assume 8-bit pixels. DMA-BUF capture may retain the negotiated 10-bit storage format. During HDR, that buffer still contains Umbriel's SDR capture view. Export-DMA-BUF alone bypasses the conversion and exposes the displayed native representation.
+Shared-memory captures through screencopy and image-copy use an 8-bit format even when the output render format is XR30 or XB30. This applies to both 10-bit SDR outputs and the SDR capture view produced while HDR is active, improving compatibility with clients whose shared-memory paths assume 8-bit pixels. DMA-BUF capture may retain the negotiated 10-bit storage format. During HDR, that buffer still contains Umbriel's SDR capture view. Raw export-DMA-BUF is not available.
 
 ### Window capture resolution
 
@@ -324,9 +343,9 @@ The output leaves the desktop, but its workspaces and windows are retained and r
 Use the logical output actions for the same temporary change without an external output-management tool:
 
 ```sh
-umbriel msg output-disable:eDP-1
-umbriel msg output-enable:eDP-1
-umbriel msg output-toggle:eDP-1
+umbriel msg output-disable eDP-1
+umbriel msg output-enable eDP-1
+umbriel msg output-toggle eDP-1
 ```
 
 These actions remove and restore the output as part of the desktop layout. Windows move to another enabled output while their home is unavailable, then return when it is enabled again. A disabled output is also absent from whole-desktop screenshots. The actions can be used directly by [lid event commands](configuration.md#events).
@@ -339,8 +358,8 @@ Use DPMS actions to power monitors off without removing their workspaces:
 
 ```sh
 umbriel msg dpms-off
-umbriel msg dpms-off:DP-1
-umbriel msg dpms-on:DP-1
+umbriel msg dpms-off DP-1
+umbriel msg dpms-on DP-1
 ```
 
 The bare actions target every configured output. Input wakes all monitors when every output is powered off. Outputs disabled with `enabled = false` are not affected. DPMS does not remove an output from the logical desktop, move its windows, or exclude it from a whole-desktop capture.

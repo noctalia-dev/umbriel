@@ -101,12 +101,12 @@ wait_for_window activate-dialog
 expect "red green parent" "every window and the dialog did not show"
 
 # Step to the red window, hiding the parent and its dialog.
-"$UMBRIEL" msg "window-focus:$(window_of activate-parent | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_of activate-parent | jq -r .id)" > /dev/null
 "$UMBRIEL" msg scratchpad-window-show-next > /dev/null
 expect "red" "stepping from the parent did not show the red window on its own"
 
 # Focusing the hidden dialog brings its parent along.
-"$UMBRIEL" msg "window-focus:$(window_of activate-dialog | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_of activate-dialog | jq -r .id)" > /dev/null
 expect "green parent" "focusing the hidden dialog did not show it with its parent"
 if [[ $(windows | jq -r '.[] | select(.active) | .title') != activate-dialog ]]; then
   echo "the dialog asked for did not take focus: $(windows)"

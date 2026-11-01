@@ -12,11 +12,47 @@ X11 applications can request control of the pointer and keyboard through XTest. 
 
 Press Enter to allow the requesting application for the current Umbriel session. Any other non-modifier key or pointer click denies it. Allow and deny decisions last until Umbriel restarts. Input received through this XTest emulation path cannot approve another permission prompt.
 
-The prompt says that an application is *claiming* its name: X11 application names are not verified sandbox identities. This permission is separate from `security_context_rule`, which controls Wayland protocol visibility.
-
 While the session is locked, Umbriel releases held emulated keys and buttons and discards further emulated input. That input is not replayed after unlock. Physical input devices continue to work on the lock screen.
 
 This requires Xwayland built with libei support. No Steam preload library, device permission change, or RemoteDesktop portal implementation is required for this XTest input path.
+
+## Input capture
+
+Umbriel and a matching `xdg-desktop-portal-umbriel` support version 2 of `org.freedesktop.portal.InputCapture`. Applications can request capture for keyboard and pointer sharing, then activate it by crossing an approved screen-edge barrier. Actual input events use the standard EI transport.
+
+| Feature                                                 | Support                                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Keyboard events and modifiers                           | Supported                                                                 |
+| Pointer motion, buttons, and scrolling                  | Supported                                                                 |
+| Keyboard-only or pointer-only sessions                  | Supported; capability masks `1`, `2`, or `3`                              |
+| Logical screen zones and exterior edge barriers         | Supported, including negative output positions and scaled outputs         |
+| `CreateSession2`, `Start`, enable, disable, and release | Supported                                                                 |
+| Permission persistence and restore tokens               | Optional explicit approval, for the application lifetime or until revoked |
+| Clipboard sharing through the capture session           | Not supported                                                             |
+| Touchscreen, tablet, and touchpad gesture capture       | Not supported                                                             |
+| RemoteDesktop portal input injection                    | Not provided by InputCapture                                              |
+
+When an application starts a new capture session, Umbriel displays its own permission prompt. Press Enter on a backend keyboard to allow that session once. If the application requests permission persistence, press **R** to remember approval for the lifetime shown in the prompt: while the application runs, or until revoked. Any other non-modifier key or pointer click denies it. Wayland virtual keyboards and emulated EI input cannot approve or remember capture. The application label is supplied by the requester; its name alone never restores permission.
+
+Remembered approval is available to any application using the standard restore-token flow, including applications with an unidentified label. Applications must save and supply the token returned by the portal. Invalid, expired, or revoked tokens and requests for additional capabilities require fresh approval. Applications that do not request persistence continue to ask for each new session. Remembering input permission does not grant clipboard access.
+
+Inspect and revoke grants with:
+
+```sh
+umbriel input-capture-permissions
+umbriel input-capture-revoke <id>
+umbriel input-capture-revoke all
+```
+
+Revocation stops sessions using the grant. Application-lifetime grants expire when the application's D-Bus connection disappears. Durable grants survive restarts and are stored privately in `$XDG_STATE_HOME/umbriel/input-capture-permissions.json`, defaulting to `~/.local/state/umbriel/input-capture-permissions.json`. Treat restore tokens as private credentials; the permission listing never exposes them.
+
+Enabling a session arms its barriers. Capture begins only when Umbriel detects a permitted crossing. While a capability is captured, its events go to the approved EI receiver instead of local clients. Press **Ctrl+Alt+Escape** on a backend keyboard to stop capture and restore local control. The application must enable the session again before another crossing can activate capture.
+
+Locking, VT/session deactivation, transport failure, and session closure stop capture. Output geometry changes disable capture and invalidate its barriers. Touchscreen and tablet input also restore local control. Pointer constraints, held pointer buttons, and compositor grabs prevent a barrier from taking over an existing interaction. Held input is released during handoff so it cannot remain pressed after capture ends. Lock-screen input is never exported.
+
+Install matching versions of Umbriel and the portal backend. The portal frontend must support InputCapture; version 2 calls require a frontend exposing version 2. The integration checks exercise the real `xdg-desktop-portal` 1.22.1 frontend. No configuration option or additional libei package is needed in Umbriel.
+
+For Deskflow with multiple monitors, use version 1.27 or newer. Deskflow 1.26 can submit duplicate barrier IDs and fail to arm capture.
 
 ## Sandboxed Wayland clients
 
@@ -29,6 +65,7 @@ A sandbox engine can create a restricted Wayland connection and label it with th
 Restricted clients retain the protocols needed for ordinary windows, rendering, focused input, clipboard use, output discovery, idle inhibition, and activation. Umbriel withholds compositor-wide authority, including:
 
 - Screen and window capture
+- Direct access to the input-capture bridge
 - Virtual input and input-method ownership
 - Clipboard-manager access
 - Layer shell and session locking

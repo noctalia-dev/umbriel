@@ -80,12 +80,12 @@ wait_for_term_active() {
 focus_window() {
   local id=
   id=$(field_of "$1" id)
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
 }
 
 expect_rejected() {
   local action=$1 expected=$2 output=
-  if output=$("$UMBRIEL" msg "$action" 2>&1); then
+  if output=$("$UMBRIEL" msg $action 2>&1); then
     echo "expected '$action' to be rejected with '$expected'"
     return 1
   fi
@@ -147,7 +147,7 @@ if [[ -z $(field_of "$DEFAULT_WINDOW" workspace) ]]; then
   exit 1
 fi
 expect_rejected scratchpad-toggle "scratchpad name"
-expect_rejected scratchpad-toggle:missing "unknown scratchpad"
+expect_rejected "scratchpad-toggle missing" "unknown scratchpad"
 
 for title in "$TERM_A" "$TERM_B"; do
   expected_count=$(windows | jq 'length')
@@ -155,31 +155,31 @@ for title in "$TERM_A" "$TERM_B"; do
   "$CLIENT" "$title" > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   wait_for_count "$expected_count"
   focus_window "$title"
-  "$UMBRIEL" msg window-move-to-scratchpad:term > /dev/null
+  "$UMBRIEL" msg window-move-to-scratchpad term > /dev/null
   wait_for_field "$title" scratchpad term
 done
 
 "$CLIENT" "$MUSIC" > "$UMBRIEL_RUNTIME_DIR/$MUSIC.log" 2>&1 &
 wait_for_count 4
 focus_window "$MUSIC"
-"$UMBRIEL" msg window-move-to-scratchpad:music > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad music > /dev/null
 wait_for_field "$MUSIC" scratchpad music
 
 # Show term on the left, then invoke it from the right. A visible global
 # scratchpad is summoned rather than hidden when the invoking output changes.
-"$UMBRIEL" msg scratchpad-toggle:term > /dev/null
+"$UMBRIEL" msg scratchpad-toggle term > /dev/null
 wait_for_field "$TERM_A" active true
 "$POINTER" 2560 720 move 1920 360
-"$UMBRIEL" msg scratchpad-toggle:term > /dev/null
+"$UMBRIEL" msg scratchpad-toggle term > /dev/null
 wait_for_x_range "$TERM_A" 1280 2560
 wait_for_x_range "$TERM_B" 1280 2560
 wait_for_term_active
 
 # Showing music on the occupied right output hides term. A focus request for
 # the hidden term pad must not take focus back from music.
-"$UMBRIEL" msg scratchpad-toggle:music > /dev/null
+"$UMBRIEL" msg scratchpad-toggle music > /dev/null
 wait_for_field "$MUSIC" active true
-"$UMBRIEL" msg scratchpad-focus-next:term > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next term > /dev/null
 for _ in $(seq 5); do
   sleep 0.1
   if [[ $(field_of "$MUSIC" active) != true
@@ -193,12 +193,12 @@ done
 # Summoning term to the free left output leaves music visible on the right.
 # Both names must then accept focus independently.
 "$POINTER" 2560 720 move 640 360
-"$UMBRIEL" msg scratchpad-toggle:term > /dev/null
+"$UMBRIEL" msg scratchpad-toggle term > /dev/null
 wait_for_x_range "$TERM_A" 0 1280
 wait_for_x_range "$TERM_B" 0 1280
-"$UMBRIEL" msg scratchpad-focus-next:music > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next music > /dev/null
 wait_for_field "$MUSIC" active true
-"$UMBRIEL" msg scratchpad-focus-next:term > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next term > /dev/null
 wait_for_term_active
 
 # Separate the two term members on the left, then drag one onto the right.

@@ -68,7 +68,7 @@ FILL_COLOR=0xFFFF0000 FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 "$CLIENT" scratch-v
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 
 wait_for_count 1
-"$UMBRIEL" msg "scratchpad-toggle:test" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle test > /dev/null
 "$UMBRIEL" settle
 
 grim "$BEFORE"

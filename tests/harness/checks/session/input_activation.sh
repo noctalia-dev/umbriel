@@ -35,7 +35,7 @@ if [[ -z ${target_id:-} ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name') != 2 ]]; then
   echo "workspace 2 did not become active before input activation: $("$UMBRIEL" workspaces --json)"
   exit 1
@@ -52,7 +52,7 @@ if [[ -z ${source_id:-} ]]; then
   echo "input activation source did not map: $windows"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 
 "$POINTER" 1280 720 tap 30 pause 5000 > "$POINTER_LOG" 2>&1 &
 for _ in $(seq 40); do
@@ -95,10 +95,10 @@ if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name') !=
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 pinned_launch_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .id')
 if [[ -z $pinned_launch_workspace \
@@ -143,7 +143,7 @@ if ! grep -q '^map-pending$' "$PINNED_TARGET_LOG" 2>/dev/null; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 printf m >&"$pinned_target_fd"
 for _ in $(seq 60); do

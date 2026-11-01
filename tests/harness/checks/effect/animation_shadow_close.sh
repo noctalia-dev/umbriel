@@ -78,10 +78,10 @@ assert_shadow() {
     echo "$1: border shader shadow did not follow the content edge: $r $g $b"; exit 1
   fi
 }
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_shadow focus
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_shadow closing
 echo "descendant-only border silhouette and its closing snapshot shadow verified"

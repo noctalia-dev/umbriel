@@ -72,7 +72,7 @@ POINTER_PID=$!
 sleep 0.1
 
 # The virtual keyboard must exist before source focus is established so its client receives the initial keyboard enter.
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 if [[ $(active_title) != data-drag-hover-source ]]; then
   echo "could not establish source keyboard focus: $("$UMBRIEL" windows --json)"
   exit 1

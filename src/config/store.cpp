@@ -167,6 +167,9 @@ namespace umbriel {
     m_rootPath = std::move(rootPath);
     m_fileMissing = fileMissing;
     ++m_generation;
+    if (result.effects.workspaceLayout) {
+      m_workspaceLayoutGeneration = m_generation;
+    }
     return result;
   }
 

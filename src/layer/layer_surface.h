@@ -24,7 +24,7 @@ namespace umbriel {
     [[nodiscard]] static LayerSurface* fromSurface(wlr_surface* surface);
 
     LayerSurface(Server& server, wlr_layer_surface_v1* layerSurface);
-    ~LayerSurface();
+    ~LayerSurface() override;
 
     LayerSurface(const LayerSurface&) = delete;
     LayerSurface& operator=(const LayerSurface&) = delete;

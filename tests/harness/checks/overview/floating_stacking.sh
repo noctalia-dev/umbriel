@@ -59,7 +59,7 @@ toggled_id=$(window_of stacking-toggled | jq -r .id)
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 
-"$UMBRIEL" msg "window-focus:$toggled_id" > /dev/null
+"$UMBRIEL" msg window-focus "$toggled_id" > /dev/null
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
 

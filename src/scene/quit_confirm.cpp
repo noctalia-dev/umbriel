@@ -1,6 +1,7 @@
 #include "scene/quit_confirm.h"
 
 #include "config/config.h"
+#include "input/input_capture.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
 #include "scene/text_buffer.h"
@@ -30,6 +31,9 @@ namespace umbriel {
   QuitConfirm::~QuitConfirm() { hide(); }
 
   void QuitConfirm::show(Kind kind) {
+    if (InputCapture* capture = m_server.inputCapture(); capture != nullptr && capture->active()) {
+      capture->suspend();
+    }
     m_kind = kind;
     render();
   }
@@ -37,6 +41,12 @@ namespace umbriel {
   void QuitConfirm::showInputEmulation(std::string_view application) {
     m_application = application;
     show(Kind::InputEmulation);
+  }
+
+  void QuitConfirm::showInputCapture(std::string_view application, uint32_t persistMode) {
+    m_application = application;
+    m_inputCapturePersistMode = persistMode;
+    show(Kind::InputCapture);
   }
 
   void QuitConfirm::hide() {
@@ -85,10 +95,30 @@ namespace umbriel {
     const std::string headingColor = rgbaHex(accent);
     const std::string textColor = rgbaHex(colors.textPrimary);
 
-    const std::string_view heading = m_kind == Kind::InputEmulation ? "Allow desktop control?"
-        : m_kind == Kind::SessionQuit                               ? "Quit Umbriel?"
-                                                                    : "Allow screencast target changes?";
-    const std::string detail = m_kind == Kind::InputEmulation
+    const std::string_view heading = m_kind == Kind::InputCapture ? "Allow input capture?"
+        : m_kind == Kind::InputEmulation                          ? "Allow desktop control?"
+        : m_kind == Kind::SessionQuit                             ? "Quit Umbriel?"
+                                                                  : "Allow screencast target changes?";
+    std::string_view captureChoices = "Enter allows this capture session.\n"
+                                      "Any other key or click denies it.";
+    if (m_inputCapturePersistMode == 1) {
+      captureChoices = "Enter allows once.\n"
+                       "R remembers approval while the application runs.\n"
+                       "Any other key or click denies it.";
+    } else if (m_inputCapturePersistMode == 2) {
+      captureChoices = "Enter allows once.\n"
+                       "R remembers approval until you revoke it.\n"
+                       "Any other key or click denies it.";
+    }
+    const std::string detail = m_kind == Kind::InputCapture
+        ? std::format(
+              "A client requesting capture for '{}' wants to send your input to another application.\n"
+              "The application label is supplied by the requester.\n\n"
+              "{}\n\n"
+              "Press Ctrl+Alt+Escape to stop capture and restore local control.",
+              m_application, captureChoices
+          )
+        : m_kind == Kind::InputEmulation
         ? std::format(
               "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n"
               "Enter allows it for this Umbriel session; any other key or click denies it.",
@@ -99,7 +129,10 @@ namespace umbriel {
         : "This can reveal another window or screen. Enter confirms; any other key or click cancels";
     std::string markup =
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
-    markup += std::format("\n<span foreground='{}'>{}</span>", textColor, escapeMarkup(detail));
+    markup += std::format(
+        "{}<span foreground='{}'>{}</span>", m_kind == Kind::InputCapture ? "\n\n" : "\n", textColor,
+        escapeMarkup(detail)
+    );
     TextBufferResult rendered = renderTextBuffer({
         .markup = std::move(markup),
         .font = "monospace 11",

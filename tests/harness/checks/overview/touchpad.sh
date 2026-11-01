@@ -77,7 +77,7 @@ for workspace_axis in vertical horizontal; do
   }
 
   configure "$workspace_axis" 1.0 1.0
-  "$UMBRIEL" msg workspace-switch:1 > /dev/null
+  "$UMBRIEL" msg workspace-switch 1 > /dev/null
   "$UMBRIEL" msg column-focus-first > /dev/null
   "$UMBRIEL_POINTER_CLIENT" 1280 720 move 640 360
   "$UMBRIEL" msg overview-open > /dev/null
@@ -145,7 +145,7 @@ for workspace_axis in vertical horizontal; do
     "$UMBRIEL" msg overview-open > /dev/null
     "$UMBRIEL_POINTER_CLIENT" 1280 720 axis "$workspace_axis" 210 pause 180 axis-stop "$workspace_axis"
     wait_workspace 2
-    "$UMBRIEL" msg workspace-switch:1 > /dev/null
+    "$UMBRIEL" msg workspace-switch 1 > /dev/null
   fi
   "$UMBRIEL" msg overview-close > /dev/null
   "$UMBRIEL" settle

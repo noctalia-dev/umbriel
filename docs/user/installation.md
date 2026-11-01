@@ -142,9 +142,9 @@ The Home Manager module (`inputs.umbriel.homeModules.default`) and the hjem modu
       layout.gap = 5;
       input.keyboard.layout = "de";
       keybinds = {
-        "Mod+Return" = "spawn:kitty";
+        "Mod+Return" = "spawn kitty";
         "Mod+Q" = "window-close";
-        "Mod" = "spawn:noctalia msg panel-toggle launcher";
+        "Mod" = "spawn noctalia msg panel-toggle launcher";
       };
     };
   };
@@ -221,6 +221,10 @@ sudo meson install -C build-release --no-rebuild
 
 The release binary is written to `build-release/umbriel`. `just debug` builds the debug binary at `build-debug/umbriel`.
 
+Release builds omit unit tests, harness clients, and harness-only IPC commands by default. Packagers can explicitly disable these with Meson's `-Dtests=disabled -Dharness=disabled` options.
+
+libxkbcommon 1.10.0 or newer is required at build time and runtime. Its pkg-config name is `xkbcommon`; Umbriel uses its server-side modifier API to preserve keyboard locks and latches.
+
 X11 window shapes require the `xcb-shape` library from libxcb. Debian and Ubuntu need `libxcb-shape0-dev` for building and `libxcb-shape0` at runtime. On openSUSE, `libxcb-devel` provides the build files and `libxcb-shape0` provides the runtime library. Arch, Fedora, Alpine, Nix, Guix, and Void bundle the shape library with libxcb.
 
 `jemalloc` is optional and recommended on glibc. Meson's default `-Djemalloc=auto` uses it when the development package is installed. Use `-Djemalloc=enabled` or `-Djemalloc=disabled` to force the choice. The `auto` setting skips it on non-glibc systems.
@@ -274,7 +278,7 @@ start-umbriel
 
 The launcher loads the login profile for supported shells such as bash, zsh, and fish. Environment variables from that profile, including `PATH`, are available to Umbriel and applications started in the session. Interactive shell files such as `~/.zshrc` are not loaded. In a systemd-managed session, the launcher imports the login environment into the user manager before starting Umbriel. Login-profile values take precedence over values with the same names from `environment.d`; variables found only in the user manager remain available. The direct fallback inherits the same login environment without importing it.
 
-In a managed native session, Umbriel places startup, autostart, event, and `spawn:` commands in scopes bound to the compositor service, so they are cleaned up when the session ends. This requires systemd 254 or newer.
+In a managed native session, Umbriel places startup, autostart, event, and `spawn` commands in scopes bound to the compositor service, so they are cleaned up when the session ends. This requires systemd 254 or newer.
 
 The compositor service queues the graphical session targets at startup and reports readiness only after its display and IPC sockets are available and its session environment has been published to systemd and D-Bus. Services ordered after `graphical-session.target`, including desktop portals, wait for that readiness notification. Configured startup commands also wait for the environment import to finish.
 
@@ -283,6 +287,8 @@ Run `umbriel` directly only for a nested development session or an explicitly un
 ## Screen sharing
 
 Screen sharing in Discord, browsers, and other portal-aware applications needs [`xdg-desktop-portal-umbriel`](https://github.com/noctalia-dev/xdg-desktop-portal-umbriel).
+
+On rotated or flipped outputs, the shared cursor may appear offset because of a wlroots 0.20.2 cursor metadata issue.
 
 ### Picker missing after login
 

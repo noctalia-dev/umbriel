@@ -14,8 +14,8 @@ readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-cl
 readonly OFFSET=1280
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     exit 1
   fi
 }
@@ -137,7 +137,7 @@ if [[ -z $left || -z $right ]]; then
   echo "named workspaces missing: left='$left' right='$right'"
   exit 1
 fi
-accepts "workspace-switch:LEFT/HEADLESS-1"
+accepts workspace-switch LEFT --output HEADLESS-1
 
 spawn_client stack-top
 wait_for_windows 1
@@ -145,17 +145,17 @@ spawn_client stack-bottom
 wait_for_windows 2
 # One column holding an uneven two-row stack, plus a wider second column. Both
 # survive only if the transfer replays widths and row weights, not defaults.
-accepts "window-focus:$(field_of stack-bottom id)"
+accepts window-focus "$(field_of stack-bottom id)"
 accepts window-consume-or-expel-left
-accepts "window-modify-secondary-extent:-0.2"
+accepts window-modify-secondary-extent -0.2
 spawn_client wide
 wait_for_windows 3
-accepts "window-modify-primary-extent:0.15"
+accepts window-modify-primary-extent 0.15
 
-accepts "workspace-switch:RIGHT/HEADLESS-2"
+accepts workspace-switch RIGHT --output HEADLESS-2
 spawn_client lone
 wait_for_windows 4
-accepts "workspace-switch:LEFT/HEADLESS-1"
+accepts workspace-switch LEFT --output HEADLESS-1
 "$UMBRIEL" settle
 
 top_before=$(box_of stack-top)
@@ -176,7 +176,7 @@ assert_box wide "$right" "$OFFSET" "$wide_before"
 assert_box lone "$left" "-$OFFSET" "$lone_before"
 
 # The directional action reaches the same pair from the other side.
-accepts "workspace-switch:RIGHT/HEADLESS-2"
+accepts workspace-switch RIGHT --output HEADLESS-2
 accepts workspace-swap-active-output-left
 wait_for_workspace stack-top "$left"
 "$UMBRIEL" settle
@@ -187,12 +187,12 @@ assert_box lone "$right" 0 "$lone_before"
 
 # Dwindle keeps a split tree rather than columns, so its ratios only survive if
 # the transfer replays the layout's own state instead of rebuilding columns.
-accepts "workspace-switch:RIGHT/HEADLESS-2"
-accepts "workspace-set-layout:dwindle"
-accepts "workspace-switch:LEFT/HEADLESS-1"
-accepts "workspace-set-layout:dwindle"
-accepts "window-focus:$(field_of wide id)"
-accepts "window-modify-primary-extent:0.15"
+accepts workspace-switch RIGHT --output HEADLESS-2
+accepts workspace-set-layout dwindle
+accepts workspace-switch LEFT --output HEADLESS-1
+accepts workspace-set-layout dwindle
+accepts window-focus "$(field_of wide id)"
+accepts window-modify-primary-extent 0.15
 "$UMBRIEL" settle
 top_dwindle=$(box_of stack-top)
 bottom_dwindle=$(box_of stack-bottom)
@@ -210,7 +210,7 @@ assert_box lone "$left" "-$OFFSET" "$lone_dwindle"
 # Without a follow-warp the pointer and seat stay on the invoking output while
 # that output receives the other workspace's remembered focus.
 "$POINTER" 2560 720 move 640 360
-accepts "window-focus:$(field_of lone id)"
+accepts window-focus "$(field_of lone id)"
 assert_seat_on "$left" lone
 
 accepts workspace-swap-active-output-next
@@ -225,7 +225,7 @@ accepts workspace-swap-active-output-next
 wait_for_workspace lone "$left"
 sed -i 's/follows_focus = false/follows_focus = true/' "$UMBRIEL_CONFIG"
 accepts config-reload
-accepts "window-focus:$(field_of lone id)"
+accepts window-focus "$(field_of lone id)"
 assert_seat_on "$left" lone
 
 accepts workspace-swap-active-output-next

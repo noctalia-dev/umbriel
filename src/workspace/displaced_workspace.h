@@ -1,6 +1,6 @@
 #pragma once
 
-#include "layout/layout.h"
+#include "config/config.h"
 #include "output/identity.h"
 
 #include <cstddef>
@@ -22,6 +22,8 @@ namespace umbriel {
     bool workspaceNamed = false;
     uint64_t configGeneration = 0;
     std::optional<LayoutMode> layoutModeOverride;
+    // Runtime inventory and layout survive output loss until relevant configuration changes.
+    std::optional<ResolvedLayoutConfig> transferredLayout;
 
     [[nodiscard]] OutputIdentity identity() const {
       return {

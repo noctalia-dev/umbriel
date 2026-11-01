@@ -74,7 +74,7 @@ set_mode forced
 spawn_mode_client ssd-float-mode XDG_DECORATION=client
 title_bar_wait_field ssd-float-mode title_bar true
 id=$(title_bar_window ssd-float-mode | jq -r .id)
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 title_bar_wait_box ssd-float-mode 1264x676+8+36
 set_mode off

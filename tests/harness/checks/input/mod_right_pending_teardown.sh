@@ -60,7 +60,7 @@ pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   -- move $((x + 40)) $((y + 40)) release "$BTN_RIGHT" mod none
 
 # Kill the referenced window through IPC with the button still down.
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 await_count 0
 
 # Fresh views are the most likely to reuse the freed storage the pending

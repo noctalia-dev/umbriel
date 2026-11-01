@@ -22,7 +22,7 @@ namespace umbriel {
     Scrolling,
     Dwindle,
     Master,
-    Floating,
+    Stacking,
   };
 
   enum class ScrollingDirection {
@@ -370,14 +370,14 @@ namespace umbriel {
     // The usable area minus edge padding on both axes: the box the layout has
     // to fill.
     [[nodiscard]] wlr_box contentArea(const wlr_box& usable) const;
+    // Space a tab group of `tabs` tabs gives its bar on the bar's edge: the bar and one gap, or nothing while its bar
+    // is hidden.
+    [[nodiscard]] int tabBarReserve(size_t tabs, std::optional<bool> bar) const;
 
     // Anything only one layout can answer lives on that layout. Reach it through the single downcast seam,
     // Workspace::scrollingLayout(), rather than by asking every layout a question most of them have no answer to.
 
   protected:
-    // Space a tab group of `tabs` tabs gives its bar on the bar's edge: the bar and one gap, or nothing while its bar
-    // is hidden.
-    [[nodiscard]] int tabBarReserve(size_t tabs, std::optional<bool> bar) const;
     // The box every tab of a group shares: `box`, the group's unit, less the bar's reserve on the bar's edge.
     [[nodiscard]] wlr_box tabbedBox(const wlr_box& box, size_t tabs, std::optional<bool> bar) const;
     // Whether a column created now starts with its window as a tab.

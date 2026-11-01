@@ -41,7 +41,6 @@ struct wlr_image_description_v1_data;
 struct wlr_ext_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
-struct wlr_export_dmabuf_manager_v1;
 struct wlr_ext_image_copy_capture_session_v1;
 struct wlr_ext_image_capture_source_v1;
 struct wlr_foreign_toplevel_manager_v1;
@@ -129,6 +128,7 @@ namespace umbriel {
 
   class Cursor;
   class EisInput;
+  class InputCapture;
   class BackendManager;
   class FocusManager;
   class Xwayland;
@@ -179,6 +179,9 @@ namespace umbriel {
     // Null when general.xwayland is off or the Xwayland server could not be created.
     [[nodiscard]] Xwayland* xwayland() const { return m_xwayland.get(); }
     [[nodiscard]] EisInput* eisInput() const { return m_eisInput.get(); }
+    [[nodiscard]] InputCapture* inputCapture() const { return m_inputCapture.get(); }
+    [[nodiscard]] bool physicalInputDevice(const wlr_input_device* device) const;
+    [[nodiscard]] bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
     [[nodiscard]] wlr_backend* backend() const { return m_backend; }
     [[nodiscard]] wlr_session* session() const { return m_session; }
     [[nodiscard]] wlr_renderer* renderer() const { return m_renderer; }
@@ -188,7 +191,6 @@ namespace umbriel {
     // The security-context metadata for a restricted client, or null for a
     // client on the ordinary socket.
     [[nodiscard]] const wlr_security_context_v1_state* clientSecurityContext(const wl_client* client) const;
-    [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
     // True while a live cursor session is attached to a capture source of this output.
     [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
     [[nodiscard]] wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
@@ -260,7 +262,7 @@ namespace umbriel {
     // The animation clock, in fractional milliseconds, at a CLOCK_MONOTONIC instant such as an output's latest vblank.
     // Frames tick from it, so motion steps keep sub-millisecond spacing.
     [[nodiscard]] double animationFrameClockMsec(double monotonicMsec) const;
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     void freezeAnimationClock();
     // Moves a frozen clock forward and schedules a frame on every output. False when the clock is not frozen.
     bool advanceAnimationClock(uint64_t ms);
@@ -281,6 +283,7 @@ namespace umbriel {
     void stopFollowingScreenCast();
     void confirmScreenCastDynamic();
     void confirmInputEmulation();
+    void confirmInputCapture(bool remember = false);
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
     // never re-state which owners exist or in what order they run.
@@ -323,8 +326,8 @@ namespace umbriel {
     // Registers a view created for a new toplevel of either shell role.
     View& adoptView(std::unique_ptr<View> view);
 
-    // Runs a parsed action. Shared by the keybind path and the IPC `msg` command.
-    bool executeKeybindAction(const Keybind& bind, std::string* error = nullptr, bool* cooldownBlocked = nullptr);
+    // Runs a parsed action, whether a keybind, hot corner, overview shortcut, or IPC request triggered it.
+    bool executeAction(const Keybind& bind, std::string* error = nullptr, bool* cooldownBlocked = nullptr);
     bool cooldownAllows(const Keybind& bind);
     // Re-evaluates alone rules on every workspace whose arrange is still pending.
     void refreshPendingAloneRules();
@@ -341,6 +344,7 @@ namespace umbriel {
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
     void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
+    void completeIpcLaunch(std::string_view tokenName, pid_t pid);
     void handleConfigReload(const ConfigReloadResult& result);
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.
@@ -412,7 +416,7 @@ namespace umbriel {
     // Combined state across independent keyboard devices. Media and brightness
     // keys commonly come from a device separate from held modifiers. An input
     // method's mirrored keyboard is not independent and is excluded.
-    [[nodiscard]] uint32_t keyboardModifiers() const;
+    [[nodiscard]] uint32_t keyboardModifiers(bool includeCaptured = false) const;
     [[nodiscard]] bool keyboardShortcutsInhibited() const;
     bool toggleKeyboardShortcutsInhibit();
     // Reconcile existing client inhibitors after a window's rule or the user's override changes.
@@ -468,6 +472,7 @@ namespace umbriel {
     void scheduleDisplacedViewRestore();
     void rememberKeyboardInputSource(Keyboard& keyboard);
     void refreshKeyboardLeds();
+    [[nodiscard]] bool syncingKeyboardLocks() const;
     void removeKeyboard(Keyboard* keyboard);
     void removeView(View* view);
     void removeLayerSurface(LayerSurface* layerSurface, wlr_output* output);
@@ -517,6 +522,10 @@ namespace umbriel {
     friend class EisInput;
     void requestInputEmulation(uint64_t id, std::string_view name);
     void cancelInputEmulation(uint64_t id);
+    void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode);
+    void cancelInputCapture(uint64_t id);
+    void inputCaptureStateChanged(bool active);
+    static void onSessionActive(wl_listener* listener, void* data);
     friend class Output;
 
     bool requestScreenCastCommand(ScreenCastCommandKind kind, std::string value, std::string* error);
@@ -583,7 +592,7 @@ namespace umbriel {
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
 
-    void trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued);
+    void trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid = 0);
     void assignLaunchOriginFromEnvironment(View& view);
     bool claimLaunchOrigin(View& view, wlr_xdg_activation_token_v1* token);
 
@@ -653,7 +662,7 @@ namespace umbriel {
     void handleWorkspaceCommit(void* data);
     [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
     bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
-    bool commitOutputEnabled(Output& output, bool enabled);
+    bool commitOutputEnabled(Output& target, bool enabled);
     [[nodiscard]] bool initialOutputEnabled(const Output& output);
     void rememberOutputEnableOverride(const Output& output, bool enabled);
     void restoreDisplacedViews();
@@ -704,6 +713,7 @@ namespace umbriel {
       bool inputBacked = false;
       bool pointerBacked = false;
       bool launchClaimed = false;
+      pid_t launchPid = 0;
       std::shared_ptr<WorkspaceLaunchAnchor> launchWorkspace;
       std::string launchScratchpad;
       std::string tokenName;
@@ -717,6 +727,7 @@ namespace umbriel {
     std::unique_ptr<BackendManager> m_backendManager;
     wlr_backend* m_backend = nullptr;
     wlr_session* m_session = nullptr;
+    wl_listener m_sessionActive{};
     wlr_renderer* m_renderer = nullptr;
     wlr_allocator* m_allocator = nullptr;
     wlr_compositor* m_compositor = nullptr;
@@ -741,7 +752,6 @@ namespace umbriel {
     wlr_foreign_toplevel_manager_v1* m_foreignToplevelManager = nullptr;
     wlr_ext_foreign_toplevel_list_v1* m_extForeignToplevelList = nullptr;
     wlr_ext_foreign_toplevel_image_capture_source_manager_v1* m_toplevelCaptureSourceManager = nullptr;
-    wlr_export_dmabuf_manager_v1* m_exportDmabufManager = nullptr;
     wlr_tearing_control_manager_v1* m_tearingControlManager = nullptr;
     wlr_ext_workspace_manager_v1* m_workspaceManager = nullptr;
     wlr_session_lock_manager_v1* m_sessionLockManager = nullptr;
@@ -893,7 +903,7 @@ namespace umbriel {
     std::optional<ScreenCastCommand> m_pendingScreenCastCommand;
     bool m_screenCastActive = false;
     bool m_screenCastDynamicConfirmed = false;
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     std::optional<uint64_t> m_frozenAnimationClockMsec;
     int64_t m_animationClockOffsetMsec = 0;
 #endif
@@ -923,6 +933,9 @@ namespace umbriel {
 
     std::unique_ptr<Xwayland> m_xwayland;
     std::unique_ptr<EisInput> m_eisInput;
+    std::unique_ptr<InputCapture> m_inputCapture;
+    uint64_t m_pendingCaptureId = 0;
+    uint32_t m_inputCaptureCapabilities = 0;
     uint64_t m_pendingInputId = 0;
     std::string m_pendingInputName;
     std::unordered_set<std::string> m_allowedInputNames;

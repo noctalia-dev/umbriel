@@ -52,7 +52,7 @@ assert_backdrop() {
 }
 
 spawn() {
-  "$UMBRIEL" msg "spawn:exec '$CLIENT' '$1' 300 200 > '$UMBRIEL_RUNTIME_DIR/$1.log' 2>&1" > /dev/null
+  "$UMBRIEL" msg spawn "exec '$CLIENT' '$1' 300 200 > '$UMBRIEL_RUNTIME_DIR/$1.log' 2>&1" > /dev/null
 }
 
 assert_backdrop 250 255
@@ -67,9 +67,9 @@ assert_backdrop 120 135
 
 # Window-relative actions have no target while the pad is empty. The retained workspace focus must stay untouched.
 home_workspace=$(field empty-home workspace)
-for action in window-toggle-floating column-focus-first window-move-to-workspace-silent:2 \
+for action in window-toggle-floating column-focus-first "window-move-to-workspace-silent 2" \
   window-move-to-scratchpad window-toggle-scratchpad; do
-  "$UMBRIEL" msg "$action" > /dev/null
+  "$UMBRIEL" msg $action > /dev/null
   if [[ $(field empty-home floating) != false || $(field empty-home active) != false \
       || $(field empty-home workspace) != "$home_workspace" || $(field empty-home scratchpad) != "" ]]; then
     echo "empty scratchpad let $action reach the workspace window: $("$UMBRIEL" windows --json)"
@@ -82,7 +82,7 @@ wait_field empty-first scratchpad default
 wait_field empty-first active true
 wait_field empty-home workspace "$home_workspace"
 first_id=$(field empty-first id)
-"$UMBRIEL" msg "window-close:$first_id" > /dev/null
+"$UMBRIEL" msg window-close "$first_id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/empty-first.log" && break
   sleep 0.1
@@ -107,7 +107,7 @@ wait_field empty-second active true
 mkfifo "$FIFO"
 exec {control_fd}<>"$FIFO"
 "$UMBRIEL" msg \
-  "spawn:exec env MAP_ON_STDIN=1 '$CLIENT' empty-delayed 300 200 < '$FIFO' > '$LOG' 2>&1" > /dev/null
+  spawn "exec env MAP_ON_STDIN=1 '$CLIENT' empty-delayed 300 200 < '$FIFO' > '$LOG' 2>&1" > /dev/null
 for _ in $(seq 80); do
   grep -q '^map-pending$' "$LOG" 2>/dev/null && break
   sleep 0.1
@@ -131,7 +131,7 @@ wait_field empty-workspace-child active true
 
 # An empty-background click relinquishes scratchpad launch context even while its backdrop stays visible.
 scratch_id=$(field empty-second id)
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_field empty-second active true
 "$POINTER" 1280 720 move 1200 650 click 272
 wait_field empty-workspace-child active true

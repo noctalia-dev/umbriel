@@ -27,7 +27,9 @@ field() {
 
 spawn() {
   local title=$1 selector=$2 count=$3 id
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   "$UMBRIEL_UNMAP_CLIENT" "$title" 800 600 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 50); do
     [[ $("$UMBRIEL" windows --json | jq 'length') == "$count" ]] && break
@@ -38,14 +40,14 @@ spawn() {
     echo "window '$title' did not map: $(< "$UMBRIEL_RUNTIME_DIR/$title.log")"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
-  "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "${words[@]}" > /dev/null
 }
 
-spawn local 1/HEADLESS-1 1
+spawn local '1 --output HEADLESS-1' 1
 readonly LOCAL_HOME="$(field local workspace)"
-spawn first-left 1/HEADLESS-2 2
-spawn first-right 1/HEADLESS-2 3
+spawn first-left '1 --output HEADLESS-2' 2
+spawn first-right '1 --output HEADLESS-2' 3
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
 "$UMBRIEL" settle
 readonly FIRST_REFUGE="$(field first-left workspace)"
@@ -58,14 +60,14 @@ if [[ $FIRST_REFUGE == "$LOCAL_HOME" || $(field first-right workspace) != "$FIRS
   echo "first lost output did not receive a separate temporary workspace at position 64: $("$UMBRIEL" windows --json) $summary"
   exit 1
 fi
-"$UMBRIEL" msg workspace-switch:64/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 64 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle
 readonly FIRST_LAYOUT="$("$UMBRIEL" windows --json | jq -c '
   [.[] | select(.title | startswith("first-")) | {title, column, row, x, y, w, h}] | sort_by(.title)
 ')"
 "$UMBRIEL" output-create HEADLESS-3 > /dev/null
-spawn second 1/HEADLESS-3 4
-"$UMBRIEL" msg workspace-switch:64/HEADLESS-1 > /dev/null
+spawn second '1 --output HEADLESS-3' 4
+"$UMBRIEL" msg workspace-switch 64 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" output-destroy HEADLESS-3 > /dev/null
 "$UMBRIEL" settle
 windows=$("$UMBRIEL" windows --json)

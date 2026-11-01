@@ -70,7 +70,7 @@ sed -i 's/^duration_ms = 200$/duration_ms = 10000/' "$UMBRIEL_CONFIG"
 # visible slice of the window stays 280 logical pixels wide at any progress, so
 # neither sample depends on where the eased slide has reached.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 1000
 grim "$TRANSITION_SHOT"
 onscreen=$(frame_blue "$TRANSITION_SHOT")

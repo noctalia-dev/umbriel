@@ -78,7 +78,7 @@ fi
 
 # Animation time only moves by clock-advance: samples land at 250 ms and 1250 ms of the 2000 ms linear timeline.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg window-set-primary-extent:0.2 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.2 > /dev/null
 "$UMBRIEL" clock-advance 250
 read -r first_x first_y first_w first_h < <(capture_box shrink-250ms)
 "$UMBRIEL" clock-advance 1000

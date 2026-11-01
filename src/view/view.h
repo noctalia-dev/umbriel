@@ -9,7 +9,7 @@
 #include "view/effects.h"
 #include "view/floating.h"
 #include "view/presentation.h"
-#include "view/snap.h"
+#include "view/window_region.h"
 
 #include <algorithm>
 #include <array>
@@ -59,7 +59,7 @@ namespace umbriel {
   public:
     View(Server& server, wlr_xdg_toplevel* toplevel);
     View(Server& server, wlr_xwayland_surface* xsurface);
-    ~View();
+    ~View() override;
 
     View(const View&) = delete;
     View& operator=(const View&) = delete;
@@ -135,6 +135,8 @@ namespace umbriel {
     [[nodiscard]] bool effectSelectionPending() const { return m_effectSelectionIdle != nullptr; }
     void refreshEffectSelection();
     [[nodiscard]] wlr_scene_tree* captureTree() const;
+    [[nodiscard]] bool captureBlocked() const { return m_captureBlocked; }
+    void refreshCaptureProtection();
     [[nodiscard]] bool mapped() const { return m_mapped; }
     // The pid of the application process, or -1 when it is unknown (an X11 client that sets no _NET_WM_PID).
     [[nodiscard]] pid_t pid() const;
@@ -157,7 +159,7 @@ namespace umbriel {
     }
     [[nodiscard]] bool tiled() const { return m_tiled; }
     [[nodiscard]] bool floating() const { return !m_tiled; }
-    [[nodiscard]] bool layoutFloated() const { return m_layoutFloated; }
+    [[nodiscard]] bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
     [[nodiscard]] bool isAloneInLayout() const;
     [[nodiscard]] bool isOnlyWindowOnWorkspace() const;
     [[nodiscard]] const std::optional<std::string>& namedScrollingColumnName() const {
@@ -251,7 +253,7 @@ namespace umbriel {
     // Focus ring only. Public alongside setForeignActivated because both are
     // activation chrome the focus manager drives from outside.
     void setBorderFocused(bool focused);
-    // Jump the focus border color and unfocused dim to their targets. For views revealed after focus changed while
+    // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
     void setWorkspace(Workspace* workspace, bool attachToLayout = true);
@@ -403,15 +405,15 @@ namespace umbriel {
     // Put a maximized float back in the box its settings give it now, after a layout, border, strut, or usable area
     // change. Does nothing unless that box moved, so every arrange can ask.
     void refitFloatingMaximized();
-    [[nodiscard]] std::optional<SnapRegion> snapRegion() const { return m_snapRegion; }
+    [[nodiscard]] std::optional<WindowRegion> region() const { return m_region; }
     [[nodiscard]] std::optional<wlr_box>
-    floatingSnappedBox(SnapRegion region, const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
-    [[nodiscard]] bool canSnap() const;
+    floatingRegionBox(WindowRegion region, const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
+    [[nodiscard]] bool canSetRegion(const Workspace* destination = nullptr) const;
     // A pointer drop can preserve its normal restore origin without moving the frame away from the release point.
-    bool snapTo(SnapRegion region, std::optional<FloatingPoint> restoreOrigin = std::nullopt);
-    void unsnap(bool animate = true);
-    void clearSnapState();
-    void refitFloatingSnapped();
+    bool setRegion(WindowRegion region, std::optional<FloatingPoint> restoreOrigin = std::nullopt);
+    void clearRegion(bool animate = true);
+    void clearRegionState();
+    void refitFloatingRegion();
     // The usable area an opening window is sized against: the target output's,
     // then its full layout box, then whatever sits under the cursor. A hotplug
     // race can leave an output with no usable area computed yet.
@@ -479,8 +481,8 @@ namespace umbriel {
     enum class TilePlacement : uint8_t { Layout, Detached };
     void setFloating(bool floating, bool focus = true, TilePlacement placement = TilePlacement::Layout);
     void toggleFloating(bool focus = true);
-    void floatForLayout();
-    void adoptLayoutFloat();
+    void floatForStackingLayout();
+    void adoptStackingLayoutFloat();
     void togglePinned();
     // Restore the global pinned scene layer after temporary drag reparenting.
     void restorePinnedSceneParent();
@@ -509,6 +511,9 @@ namespace umbriel {
     void placeFloatingMaximized(const wlr_box& box, bool animate);
     friend class Overview;
     friend class Workspace;
+    friend class XwaylandWindow;
+
+    [[nodiscard]] bool canUseRegionGeometry() const;
 
     // Move the frame, and a lent shadow with it.
     void setScenePosition(int x, int y);
@@ -601,7 +606,7 @@ namespace umbriel {
 
     static void onCaptureSourceDestroy(wl_listener* listener, void* data);
     void handleMap();
-    void handleUnmap();
+    void handleUnmap(bool animateClose = true);
     void handleCommit(bool reconfigureOpeningState = false);
     void setXdgTag(std::string_view tag);
     void syncContentType(wlr_surface* committedSurface = nullptr);
@@ -638,7 +643,8 @@ namespace umbriel {
     void refreshConfigChrome();
     void updateBlur();
     void updateBlur(int contentWidth, int contentHeight);
-    [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_decoration.blurOptions(); }
+    [[nodiscard]] SurfaceBlurOptions blurOptions() const;
+    [[nodiscard]] float blurAlpha() const;
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_decoration.popupBlurOptions(); }
     void updateShadow();
     void updateShadow(int contentWidth, int contentHeight);
@@ -776,7 +782,10 @@ namespace umbriel {
         const wlr_box usable, const std::optional<WindowPosition>& position = std::nullopt,
         const std::optional<std::array<int, 2>> size = std::nullopt
     );
-    void placeInUsableArea(const std::optional<WindowPosition>& position = std::nullopt);
+    void placeInUsableArea(
+        const std::optional<WindowPosition>& position = std::nullopt,
+        std::optional<std::array<int, 2>> placementSize = std::nullopt
+    );
     // The output box a fullscreen window covers: its workspace's output, else the one under it.
     [[nodiscard]] wlr_box fullscreenArea() const;
     void setPinned(bool pinned, bool focus);
@@ -822,6 +831,7 @@ namespace umbriel {
     bool attachToAvailableWorkspace(const ResolvedWindowRule& rule, LayoutAttachOrigin origin);
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
+    void updateBorderColor(bool focusChanged);
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
@@ -882,6 +892,8 @@ namespace umbriel {
     // Latest settled opening rules, plus every earlier resolution considered. The history keeps an earlier one-shot
     // value from replaying when independent identity signals temporarily remove and then restore it.
     ResolvedWindowRule m_initialRules;
+    // Rule dimensions sent in the opening floating configure; zero leaves that axis to the client.
+    std::array<int, 2> m_openingFloatingRuleSize{};
     std::vector<ResolvedWindowRule> m_initialRuleHistory;
     WindowRuleState m_initialRuleState;
     std::optional<std::string> m_initialRulesAppId;
@@ -970,6 +982,8 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
+    bool m_captureBlocked = false;
+    bool m_ruleCaptureBlocked = false;
     wlr_xdg_dialog_v1* m_dialog = nullptr;
     Workspace* m_workspace = nullptr;
     // The window whose attachment tree holds this one, and the dialogs attached to this one, oldest first: the last is
@@ -1020,15 +1034,15 @@ namespace umbriel {
     double m_openingScale = 1.0;
     int m_openingSlide = 0;
     bool m_tiled = false;
-    // Floating because its workspace floats every window; tiles again when moved to a tiling layout.
-    bool m_layoutFloated = false;
+    // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
+    bool m_floatedByStackingLayout = false;
     bool m_floatingMaximized = false;
     bool m_maximizedToEdges = false;
     bool m_restoreMaximizedToEdges = false;
-    std::optional<SnapRegion> m_snapRegion;
-    wlr_box m_snapRestoreBox{};
-    bool m_hasSnapRestoreBox = false;
-    wlr_box m_snappedBox{};
+    std::optional<WindowRegion> m_region;
+    wlr_box m_regionRestoreBox{};
+    bool m_hasRegionRestoreBox = false;
+    wlr_box m_regionBox{};
     wlr_box m_fullscreenRestoreBox{};
     bool m_hasFullscreenRestoreBox = false;
     bool m_pinned = false;
@@ -1057,6 +1071,7 @@ namespace umbriel {
     AnimatedValue m_fade;
     bool m_customFade = false;
     AnimatedColor m_borderColorAnim;
+    AnimatedColor m_outerBorderColorAnim;
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
@@ -1065,7 +1080,8 @@ namespace umbriel {
     // non-none content type each get one chance to add one-shot rule effects.
     bool m_initialTitleRulesSettled = false;
     bool m_initialContentTypeRulesSettled = false;
-    float m_ruleOpacity = 1.0F;
+    AnimatedValue m_ruleOpacity{1.0};
+    AnimatedValue m_ruleBlur{0.0};
     bool m_backgroundRender = false;
     bool m_allowShortcutsInhibit = true;
     float m_dragOpacity = 1.0F;

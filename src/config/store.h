@@ -38,6 +38,8 @@ namespace umbriel {
     // found. Drives the "no config" notice on the cheatsheet.
     [[nodiscard]] bool fileMissing() const { return m_fileMissing; }
     [[nodiscard]] uint64_t generation() const { return m_generation; }
+    // Generation of the last reload that reapplied workspace layouts.
+    [[nodiscard]] uint64_t workspaceLayoutGeneration() const { return m_workspaceLayoutGeneration; }
     [[nodiscard]] bool missingIncludes() const { return m_missingIncludes; }
 
     // Loader-only writers follow. The read-only API remains above.
@@ -69,6 +71,7 @@ namespace umbriel {
     bool m_fileMissing = false;
     bool m_missingIncludes = false;
     uint64_t m_generation = 0;
+    uint64_t m_workspaceLayoutGeneration = 0;
   };
 
   // The process-wide store, read by consumers below Server on render paths. The layout and parsing layers take their

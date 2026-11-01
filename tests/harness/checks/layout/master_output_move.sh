@@ -6,8 +6,8 @@ set -euo pipefail
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -71,7 +71,7 @@ if [[ -z $one_id || -z $right_one_id ]]; then
   echo "expected workspace ids for both outputs"
   exit 1
 fi
-accepts "workspace-switch:ONE/HEADLESS-1"
+accepts workspace-switch ONE --output HEADLESS-1
 
 spawn_client master-a
 wait_for_windows 1
@@ -91,7 +91,7 @@ wait_for_workspace master-a "$one_id"
 wait_for_workspace stack-b "$one_id"
 wait_for_workspace stack-c "$one_id"
 
-accepts "window-focus:$stack_c_id"
+accepts window-focus "$stack_c_id"
 accepts window-move-or-output-right
 wait_for_workspace master-a "$one_id"
 wait_for_workspace stack-b "$right_one_id"

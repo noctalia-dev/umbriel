@@ -51,7 +51,7 @@ wait_for_box() {
 wait_for_box 480x300+173+109
 
 window_id=$("$UMBRIEL" windows --json | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .id')
-"$UMBRIEL" msg "window-focus-warp:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$window_id" > /dev/null
 
 # Grab the center and move by exactly +320,+180 without changing workspace.
 "$POINTER" 1280 720 move 413 259 mod logo press "$BTN_LEFT" move 733 439 release "$BTN_LEFT" mod none

@@ -96,7 +96,7 @@ if ! (( red > 220 && green < 30 && blue > 220 )); then
   echo "source reload replaced a program during its active transition: $red $green $blue"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 120
 sample
 if ! (( red < 30 && green > 220 && blue < 30 )); then

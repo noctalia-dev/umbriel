@@ -4,7 +4,9 @@
 #include "core/log.h"
 #include "input/cursor.h"
 #include "input/eis.h"
+#include "input/input_capture.h"
 #include "input/keyboard_layout.h"
+#include "input/keyboard_state.h"
 #include "input/seat.h"
 #include "input/shortcut_keysym.h"
 #include "input/text_input.h"
@@ -34,13 +36,6 @@ namespace umbriel {
       m_server->inputMethodRelay()->canonicalizeOwnedKeyboardKeymap(m_keyboard);
     }
     applyConfig();
-    if (!m_virtual && config().input.keyboard.numlockToggle && m_keyboard->keymap != nullptr) {
-      const xkb_mod_index_t numLock = xkb_keymap_mod_get_index(m_keyboard->keymap, XKB_MOD_NAME_NUM);
-      if (numLock != XKB_MOD_INVALID) {
-        wlr_keyboard_notify_modifiers(m_keyboard, 0, 0, 1U << numLock, 0);
-      }
-    }
-
     m_modifiers.notify = onModifiers;
     wl_signal_add(&m_keyboard->events.modifiers, &m_modifiers);
     m_key.notify = onKey;
@@ -90,7 +85,14 @@ namespace umbriel {
     xkb_keymap* keymap =
         context == nullptr ? nullptr : xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if (keymap != nullptr) {
-      wlr_keyboard_set_keymap(m_keyboard, keymap);
+      // Restoring lock state emits a synthetic modifiers event. It must not
+      // select an inactive keyboard as the user's current input source.
+      m_syncingLayout = true;
+      const bool applied = setKeyboardKeymapPreservingState(m_keyboard, keymap);
+      m_syncingLayout = false;
+      if (!applied) {
+        wlr_log(WLR_ERROR, "failed to apply keyboard keymap");
+      }
       xkb_keymap_unref(keymap);
     } else {
       wlr_log(WLR_ERROR, "failed to create keyboard keymap");
@@ -99,8 +101,8 @@ namespace umbriel {
       xkb_context_unref(context);
     }
     wlr_keyboard_set_repeat_info(m_keyboard, repeatRate, repeatDelay);
-    // A new keymap starts in group zero. Record it without treating initial
-    // setup or a config reload as a user-driven layout transition.
+    // A changed keymap starts in group zero; an identical map keeps its state.
+    // Record either without treating config reload as a user layout transition.
     m_lastNotifiedLayout = m_keyboard->xkb_state == nullptr
         ? XKB_LAYOUT_INVALID
         : xkb_state_serialize_layout(m_keyboard->xkb_state, XKB_STATE_LAYOUT_EFFECTIVE);
@@ -229,12 +231,38 @@ namespace umbriel {
     self->handleDestroy();
   }
 
+  void Keyboard::prepareInputCapture(bool ending) {
+    cancelRepeat();
+    if (ending) {
+      for (size_t index = 0; index < m_keyboard->num_keycodes; ++index) {
+        m_consumedKeycodes.insert(m_keyboard->keycodes[index]);
+      }
+      return;
+    }
+    if (wlr_input_method_keyboard_grab_v2* grab = activeInputMethodGrab(); grab != nullptr) {
+      for (size_t index = 0; index < m_keyboard->num_keycodes; ++index) {
+        const uint32_t keycode = m_keyboard->keycodes[index];
+        if (!m_consumedKeycodes.contains(keycode)) {
+          wlr_input_method_keyboard_grab_v2_send_key(grab, 0, keycode, WL_KEYBOARD_KEY_STATE_RELEASED);
+        }
+      }
+      wlr_keyboard_modifiers neutral{};
+      wlr_input_method_keyboard_grab_v2_send_modifiers(grab, &neutral);
+    }
+  }
+
   void Keyboard::handleModifiers() {
-    if (!m_virtual && m_server->eisInput() != nullptr) {
-      m_server->eisInput()->updateModifiers(m_keyboard->modifiers);
+    if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 1U) != 0) {
+      if (!m_syncingLayout && !m_server->syncingKeyboardLocks() && !m_virtual) {
+        m_server->rememberKeyboardInputSource(*this);
+      }
+      if (!m_virtual) {
+        capture->captureModifiers(m_keyboard);
+      }
+      return;
     }
     wlr_seat* seat = m_server->seat()->wlr();
-    if (m_syncingLayout) {
+    if (m_syncingLayout || m_server->syncingKeyboardLocks()) {
       m_server->refreshKeyboardLeds();
       // A config reload can remap the seat's current keyboard to a differently
       // ordered matching group. Forward that current state, but never select or
@@ -250,6 +278,9 @@ namespace umbriel {
         m_server->seat()->notifyPointerModifiers();
       }
       return;
+    }
+    if (!m_virtual && m_server->eisInput() != nullptr) {
+      m_server->eisInput()->updateModifiers(m_keyboard->modifiers);
     }
     m_server->rememberKeyboardInputSource(*this);
     cancelRepeat();
@@ -273,6 +304,15 @@ namespace umbriel {
 
   void Keyboard::handleKey(void* data) {
     auto* event = static_cast<wlr_keyboard_key_event*>(data);
+    if (InputCapture* capture = m_server->inputCapture();
+        capture != nullptr && (capture->capabilities() & 1U) != 0 && m_virtual) {
+      if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        m_consumedKeycodes.insert(event->keycode);
+      } else {
+        m_consumedKeycodes.erase(event->keycode);
+      }
+      return;
+    }
     m_server->rememberKeyboardInputSource(*this);
     if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
       m_server->notifyInputActivity();
@@ -293,7 +333,47 @@ namespace umbriel {
     std::optional<Keybind> modifierTap;
     // An XF86 key can arrive from a dedicated hotkey device while its modifiers are held on the main keyboard. Match
     // against the combined seat-wide state so those chords behave like keys on one device.
-    uint32_t modifiers = m_server->keyboardModifiers();
+    uint32_t modifiers = m_server->keyboardModifiers(true);
+    if (QuitConfirm* confirm = m_server->quitConfirm();
+        confirm != nullptr && confirm->visible() && confirm->kind() == QuitConfirm::Kind::InputCapture && m_virtual) {
+      if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        m_consumedKeycodes.insert(event->keycode);
+      } else {
+        m_consumedKeycodes.erase(event->keycode);
+      }
+      return;
+    }
+    if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && capture->active()) {
+      cancelRepeat();
+      const bool pressed = event->state == WL_KEYBOARD_KEY_STATE_PRESSED;
+      if (!m_virtual && pressed) {
+        const bool escape =
+            (modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) == (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)
+            && std::ranges::any_of(std::span(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), [](xkb_keysym_t sym) {
+                 return sym == XKB_KEY_Escape;
+               });
+        bool vt = false;
+        for (int index = 0; index < nsyms && !escape; ++index) {
+          vt = m_server->handleVtSwitch(syms[index], modifiers) || vt;
+        }
+        if (escape || vt) {
+          capture->suspend();
+          m_consumedKeycodes.insert(event->keycode);
+          return;
+        }
+      }
+      if ((capture->capabilities() & 1U) != 0) {
+        if (pressed) {
+          m_consumedKeycodes.insert(event->keycode);
+        } else {
+          m_consumedKeycodes.erase(event->keycode);
+        }
+        if (!m_virtual) {
+          capture->captureKey(event->time_msec, m_keyboard, event->keycode, pressed);
+        }
+        return;
+      }
+    }
     if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
       if (!modifierOnly && nsyms > 0) {
         m_server->cursor()->noteTyping();
@@ -312,15 +392,20 @@ namespace umbriel {
           handled = true;
         }
       }
-      // Modal confirmation: Enter or a matching action confirms, while any other non-modifier key cancels. The press is
-      // consumed either way, reaching neither binds nor clients. Modifier-only presses pass through so held chords stay
-      // intact.
+      // Modal confirmation consumes non-modifier presses before binds or clients.
+      // Enter or a matching action confirms; input capture can also offer R to
+      // remember approval. Modifier-only presses keep held chords intact.
       bool confirmationConsumed = false;
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
         if (!modifierOnly) {
           bool confirmed = false;
+          bool rememberCapture = false;
           for (int i = 0; i < nsyms; ++i) {
             confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
+            if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
+              confirmed = true;
+              rememberCapture = true;
+            }
           }
           // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
           // matchKeybind mirrors handleKeybind without running the action, so the pending screencast command remains
@@ -344,6 +429,8 @@ namespace umbriel {
               m_server->requestSessionExit();
             } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
               m_server->confirmInputEmulation();
+            } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
+              m_server->confirmInputCapture(rememberCapture);
             } else {
               m_server->confirmScreenCastDynamic();
             }
@@ -429,7 +516,7 @@ namespace umbriel {
     // A modifier-only action runs after its release reaches the focused
     // client, so opening a surface cannot strand the old focus with Mod held.
     if (modifierTap.has_value()) {
-      m_server->executeKeybindAction(*modifierTap);
+      m_server->executeAction(*modifierTap);
     }
   }
 
@@ -494,7 +581,7 @@ namespace umbriel {
       return 0;
     }
     self->m_server->notifyIdleActivity();
-    self->m_server->executeKeybindAction(self->m_repeatBind);
+    self->m_server->executeAction(self->m_repeatBind);
     wl_event_source_timer_update(self->m_repeatTimer, self->m_repeatIntervalMs);
     return 0;
   }

@@ -131,7 +131,8 @@ namespace umbriel {
       }
     }
 
-    // The heaviest minimum extent on the stacking axis among the rows of the unit holding `row`.
+    // The heaviest minimum extent on the stacking axis among the rows of the unit holding `row`, plus a tab group's bar
+    // when the bar stacks with its tabs.
     int unitMinCross(const Column& column, size_t row, const Layout& layout, bool vertical) {
       int minimum = 0;
       const size_t end = std::min(column.tabs.unitEnd(row), column.views.size());
@@ -140,6 +141,10 @@ namespace umbriel {
           const LayoutConstraints constraints = layout.constraintsFor(view);
           minimum = std::max(minimum, vertical ? constraints.minWidth : constraints.minHeight);
         }
+      }
+      const TabGroup* group = column.tabs.groupAt(row);
+      if (group != nullptr && tabBarAcross(layout.layoutConfig()->tabs.barPosition) != vertical) {
+        minimum += layout.tabBarReserve(group->count, group->bar);
       }
       return minimum;
     }
@@ -192,13 +197,13 @@ namespace umbriel {
     }
 
     bool columnFillsViewport(const Column& column, const Layout& layout) {
-      for (const View* view : column.views) {
-        const LayoutConstraints constraints = layout.constraintsFor(view);
-        if (view != nullptr && (constraints.fullscreen || constraints.maximizedToEdges)) {
-          return true;
+      return std::ranges::any_of(column.views, [&layout](const View* view) {
+        if (view == nullptr) {
+          return false;
         }
-      }
-      return false;
+        const LayoutConstraints constraints = layout.constraintsFor(view);
+        return constraints.fullscreen || constraints.maximizedToEdges;
+      });
     }
 
     // Fullscreen and maximize-to-edges views are presented against the wider
@@ -1199,6 +1204,8 @@ namespace umbriel {
           crossSize = std::max(1, crossSize);
         }
         if (const TabGroup* group = column.tabs.groupAt(start)) {
+          // A group holds its minimum, bar included, as a window holds its own.
+          crossSize = std::max(crossSize, unitMinCross(column, start, *this, v));
           const wlr_box unit = v ? wlr_box{.x = cross, .y = primary, .width = crossSize, .height = primarySize}
                                  : wlr_box{.x = primary, .y = cross, .width = primarySize, .height = crossSize};
           pushTabTargets(column, *group, unit);
@@ -1440,7 +1447,20 @@ namespace umbriel {
     }
     const double oldWeight = std::max(kMinHeightWeight, heightWeight(columnIndex, row));
     const double others = columnTotalWeight(column) - oldWeight;
-    const double target = std::clamp(fraction, 0.1, 0.95);
+    double target = fraction;
+    // Growing stops where another unit would show less than its minimum, so no weight claims less than is shown.
+    if (m_lastAvailableCross > 0) {
+      const int units = static_cast<int>(column.tabs.unitCount(column.views.size()));
+      const int stack = std::max(units, m_lastAvailableCross - (units - 1) * m_config->totalGap);
+      const size_t own = column.tabs.unitStart(static_cast<size_t>(row));
+      for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
+        if (start != own) {
+          const double minimum = static_cast<double>(unitMinCross(column, start, *this, vertical())) / stack;
+          target = std::min(target, 1.0 - minimum * others / std::max(kMinHeightWeight, column.heightWeights[start]));
+        }
+      }
+    }
+    target = std::clamp(target, 0.1, 0.95);
     return setHeightWeight(columnIndex, row, target * others / (1.0 - target));
   }
 

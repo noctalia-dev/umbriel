@@ -109,7 +109,7 @@ rest_x=$x rest_y=$y rest_w=$w rest_h=$h rest_id=$id
 
 # Close: a fading snapshot is itself a running animation, so the effect keeps shading window content alone (the
 # same contract as the opening capture) rather than the backdrop-inclusive at-rest blend.
-"$UMBRIEL" msg "window-close:$rest_id" > /dev/null
+"$UMBRIEL" msg window-close "$rest_id" > /dev/null
 "$UMBRIEL" clock-advance 200
 x=$rest_x y=$rest_y w=$rest_w h=$rest_h
 read -r r g b < <(centre)
@@ -250,7 +250,7 @@ fi
 # Only the card under test should appear in the next section's overview.
 for title in window-override window-default window-off overlay-one overlay-two; do
   close_id=$("$UMBRIEL" windows --json | jq -r --arg title "$title" '.[] | select(.title == $title) | .id')
-  [[ -n $close_id ]] && "$UMBRIEL" msg "window-close:$close_id" > /dev/null
+  [[ -n $close_id ]] && "$UMBRIEL" msg window-close "$close_id" > /dev/null
 done
 for _ in $(seq 100); do
   [[ -z $("$UMBRIEL" windows --json | jq -c '.[] | select(.title != null)') ]] && break
@@ -309,7 +309,7 @@ if (( green_open < 200 )); then
   exit 1
 fi
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-close:$card_id" > /dev/null
+"$UMBRIEL" msg window-close "$card_id" > /dev/null
 # Settle refuses while the frozen close animation runs, so poll the window list for the snapshot taking over.
 for _ in $(seq 100); do
   [[ -z $("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "overview-card")') ]] && break

@@ -36,8 +36,8 @@ if [[ -z $window_id ]]; then
   echo "could not resolve the pinned window id"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
 before=$(
   "$UMBRIEL" windows --json \
@@ -46,7 +46,7 @@ before=$(
 
 "$UMBRIEL" output-destroy HEADLESS-1 > /dev/null
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 for _ in $(seq 60); do
   grep -q '^redrawn$' "$CLIENT_LOG" && break
   sleep 0.1

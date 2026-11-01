@@ -66,9 +66,10 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          # libxcb supplies the RandR client library and xcb-randr.pc.
           pacman -Syu --noconfirm --needed \
-            base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libei libinput libxcb libxkbcommon mesa pango pixman \
+            base-devel clang dbus git jemalloc just meson ninja pkgconf \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxcb 'libxkbcommon>=1.10.0' mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository
@@ -97,9 +98,10 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          # libxcb supplies the RandR client library and xcb-randr.pc.
           pacman -Syu --noconfirm --needed \
-            base-devel clang git jemalloc just meson ninja pkgconf \
-            cairo lcms2 libdisplay-info libdrm libei libinput libxcb libxkbcommon mesa pango pixman \
+            base-devel clang dbus git jemalloc just meson ninja pkgconf \
+            cairo lcms2 libdisplay-info libdrm libei libinput libxcb 'libxkbcommon>=1.10.0' mesa pango pixman \
             nlohmann-json tomlplusplus wayland wayland-protocols wlroots0.20
 
       - name: Check out repository

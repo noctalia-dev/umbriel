@@ -30,8 +30,7 @@ namespace umbriel {
     void setBordersEnabled(bool enabled);
     void updateBorderGeometry(int contentWidth, int contentHeight, int topExtension);
     // `alpha` premultiplies the border color so a fading view's ring fades with it.
-    void setBorderColor(bool focused, float alpha);
-    void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
+    void setBorderRawColors(const std::array<float, 4>& inner, const std::array<float, 4>& outer, float alpha);
     // [colors.border] with the last applied rule's overrides.
     [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_borderColors; }
     // [appearance] border widths and corner_radius with the last applied rule's overrides.
@@ -45,11 +44,10 @@ namespace umbriel {
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight, int topExtension) const;
-    // Copy the border into a close-animation snapshot tree. `innerColor` is the straight colour the ring currently
-    // shows and `opacity` the effective opacity it is drawn at.
+    // Copy the border into a close-animation snapshot tree, using its currently drawn straight colors and opacity.
     void snapshotBorders(
-        wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity,
-        std::vector<BorderSnapshot>& out
+        wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, const std::array<float, 4>& outerColor,
+        float opacity, std::vector<BorderSnapshot>& out
     ) const;
     // Take the rule's blur options, border colors, and decoration overrides. True when the ring geometry, corner
     // radius, or shadow switch changed, so the caller redraws them.
@@ -60,7 +58,8 @@ namespace umbriel {
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
-        fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha
+        fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha,
+        const SurfaceBlurOptions& options
     );
     void hideBlur();
     void setBlurLive(bool live) { m_blur.setLive(live); }

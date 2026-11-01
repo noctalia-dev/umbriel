@@ -45,6 +45,7 @@ namespace umbriel {
     // Forget consumed keys whose release will never arrive, for example after a
     // VT switch. Otherwise the stale entry swallows a later, unrelated release.
     void forgetConsumedKeycodes() { m_consumedKeycodes.clear(); }
+    void prepareInputCapture(bool ending);
 
   private:
     static void onModifiers(wl_listener* listener, void* data);

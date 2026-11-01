@@ -32,7 +32,7 @@ box() {
 }
 
 focus() {
-  "$UMBRIEL" msg "window-focus:$("$UMBRIEL" windows --json | jq -r --arg t "$1" '.[] | select(.title == $t) | .id')" > /dev/null
+  "$UMBRIEL" msg window-focus "$("$UMBRIEL" windows --json | jq -r --arg t "$1" '.[] | select(.title == $t) | .id')" > /dev/null
   "$UMBRIEL" settle
 }
 
@@ -130,7 +130,7 @@ before_lower=$(box col-c)
 
 # Down: the middle window keeps its top edge and takes the room from below, so the
 # upper neighbour must not move at all (the unanchored action would shrink it).
-"$UMBRIEL" msg window-modify-height-down:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-height-down 0.1 > /dev/null
 height_down_ok() {
   read -r _ y _ h < <(box col-b)
   read -r _ ly _ lh < <(box col-c)
@@ -145,7 +145,7 @@ until_true "height-down to pin the middle window's top edge and move only the lo
 read -r _ mid_down_y _ mid_down_h < <(box col-b)
 read -r _ _ _ upper_down_h < <(box col-a)
 after_down_lower=$(box col-c)
-"$UMBRIEL" msg window-modify-height-up:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-height-up 0.1 > /dev/null
 height_up_ok() {
   read -r _ y _ h < <(box col-b)
   read -r _ _ _ uh < <(box col-a)
@@ -191,7 +191,7 @@ focus "$left"
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 "$UMBRIEL" settle
 before=$(box "$left")
-"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.1 > /dev/null
 "$UMBRIEL" settle
 if [[ $(box "$left") != "$before" ]]; then
   echo "width-left changed the geometry of a screen-facing edge: $before -> $(box "$left")"
@@ -202,7 +202,7 @@ fi
 
 # The split it owns still resizes, pinning that screen edge.
 read -r before_x _ before_w _ < <(box "$left")
-"$UMBRIEL" msg window-modify-width-right:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-right 0.1 > /dev/null
 left_split_ok() {
   read -r x _ w _ < <(box "$left")
   (( x == before_x && w > before_w ))
@@ -213,7 +213,7 @@ until_true "width-right to resize the dwindle split with the left screen edge pi
 # the right screen edge (x + w unchanged).
 focus "$right"
 before=$(box "$right")
-"$UMBRIEL" msg window-modify-width-right:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-right 0.1 > /dev/null
 "$UMBRIEL" settle
 if [[ $(box "$right") != "$before" ]]; then
   echo "width-right changed the geometry of a screen-facing edge: $before -> $(box "$right")"
@@ -221,7 +221,7 @@ if [[ $(box "$right") != "$before" ]]; then
 fi
 
 read -r before_x _ before_w _ < <(box "$right")
-"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.1 > /dev/null
 right_split_ok() {
   read -r x _ w _ < <(box "$right")
   (( x < before_x && w > before_w && x + w == before_x + before_w ))
@@ -252,7 +252,7 @@ wait_count 1
 "$UMBRIEL" settle
 before=$(box float-a)
 presents=$(grep -c '^mapped' "$UMBRIEL_RUNTIME_DIR/float-a.log" || true)
-"$UMBRIEL" msg window-modify-width-right:0.3 > /dev/null
+"$UMBRIEL" msg window-modify-width-right 0.3 > /dev/null
 "$UMBRIEL" settle
 if [[ $(box float-a) != "$before" ]]; then
   echo "a fullscreen float was resized: $before -> $(box float-a)"
@@ -270,7 +270,7 @@ fi
 # this is 0.547 - 0.9 -> 0.1, where pixel arithmetic would land on 1px.
 floor=$(box float-a)
 read -r floor_x _ floor_w _ <<< "$floor"
-"$UMBRIEL" msg window-modify-width-left:-0.9 > /dev/null
+"$UMBRIEL" msg window-modify-width-left -0.9 > /dev/null
 "$UMBRIEL" settle
 shrunk=$(box float-a)
 read -r shrunk_x _ shrunk_w _ <<< "$shrunk"
@@ -287,7 +287,7 @@ fi
 # the whole usable extent (the pixel cap in floatingFractionSize would hide a
 # missing 1.0 clamp here, so this asserts the outcome and the opposite edge, not
 # the arithmetic behind it).
-"$UMBRIEL" msg window-modify-width-left:0.9 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.9 > /dev/null
 "$UMBRIEL" settle
 grown=$(box float-a)
 read -r grown_x _ grown_w _ <<< "$grown"
@@ -302,7 +302,7 @@ fi
 
 # The fraction is saturated now, so a second identical press has nothing left to
 # do: it must not walk the float any further off the output.
-"$UMBRIEL" msg window-modify-width-left:0.9 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.9 > /dev/null
 "$UMBRIEL" settle
 if [[ $(box float-a) != "$grown" ]]; then
   echo "a second width-left:0.9 moved a saturated float: $grown -> $(box float-a)"
@@ -316,7 +316,7 @@ fi
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 "$UMBRIEL" settle
 maximized=$(box float-a)
-"$UMBRIEL" msg window-modify-width-left:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-width-left -0.2 > /dev/null
 "$UMBRIEL" settle
 if [[ $(box float-a) == "$maximized" ]]; then
   echo "width-left:-0.2 left a maximized float at $maximized"
@@ -348,7 +348,7 @@ wait_count 1
 "$UMBRIEL" settle
 read -r _ v_y _ v_h < <(box vert-a)
 
-"$UMBRIEL" msg window-modify-height-down:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-height-down -0.2 > /dev/null
 "$UMBRIEL" settle
 read -r _ d_y _ d_h < <(box vert-a)
 if (( d_y != v_y || d_h >= v_h )); then
@@ -356,7 +356,7 @@ if (( d_y != v_y || d_h >= v_h )); then
   exit 1
 fi
 
-"$UMBRIEL" msg window-modify-height-down:0.2 > /dev/null
+"$UMBRIEL" msg window-modify-height-down 0.2 > /dev/null
 "$UMBRIEL" settle
 read -r _ e_y _ e_h < <(box vert-a)
 if (( e_y != d_y || e_h <= d_h )); then
@@ -364,7 +364,7 @@ if (( e_y != d_y || e_h <= d_h )); then
   exit 1
 fi
 
-"$UMBRIEL" msg window-modify-height-up:0.2 > /dev/null
+"$UMBRIEL" msg window-modify-height-up 0.2 > /dev/null
 "$UMBRIEL" settle
 read -r _ u_y _ u_h < <(box vert-a)
 if (( u_y >= e_y || u_h <= e_h || u_y + u_h != e_y + e_h )); then
@@ -389,7 +389,7 @@ wait_count 1
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
 read -r h_x _ h_w _ < <(box hold-a)
-"$UMBRIEL" msg window-modify-width-left:0.2 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.2 > /dev/null
 "$UMBRIEL" settle
 read -r i_x _ i_w _ < <(box hold-a)
 if (( i_w != h_w )); then
@@ -468,7 +468,7 @@ finish
 read -r base_x _ base_w _ < <(capture_box anim-base)
 read -r _ _ logical_w _ < <(box float-anim)
 # 700 + 0.2 * 1280 = 956, still pinned on the right edge.
-"$UMBRIEL" msg window-modify-width-left:0.2 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.2 > /dev/null
 wait_presented float-anim $((logical_w + OUTPUT_W / 5))
 "$UMBRIEL" clock-advance 150 > /dev/null
 read -r mid_x _ mid_w _ < <(capture_box anim-mid)
@@ -500,10 +500,10 @@ fi
 # is in flight. Re-anchoring from the intermediate scene position would walk the
 # right edge even though both actions move only the left edge.
 repeat_right=$((settled_x + settled_w))
-"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.1 > /dev/null
 wait_presented float-anim $((settled_w + OUTPUT_W / 10))
 "$UMBRIEL" clock-advance 250 > /dev/null
-"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+"$UMBRIEL" msg window-modify-width-left 0.1 > /dev/null
 finish
 read -r repeated_x _ repeated_w _ < <(box float-anim)
 if (( repeated_w != settled_w + OUTPUT_W / 5 || repeated_x + repeated_w != repeat_right )); then

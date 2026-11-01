@@ -64,7 +64,7 @@ if [[ $initial_width != 942 ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg window-set-primary-extent:0.25 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.25 > /dev/null
 "$UMBRIEL" settle
 manual_width=$(window_width)
 if (( manual_width >= initial_width )); then

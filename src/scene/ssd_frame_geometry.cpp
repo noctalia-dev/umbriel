@@ -8,8 +8,15 @@ extern "C" {
 }
 
 namespace umbriel {
-  TitleBarLayout titleBarLayout(int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown) {
+  int titleBarButtonDiameter(int height) {
     const int diameter = std::max(8, (height + 1) / 2);
+    if ((height - diameter) % 2 == 0)
+      return diameter;
+    return diameter > 8 ? diameter - 1 : diameter + 1;
+  }
+
+  TitleBarLayout titleBarLayout(int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown) {
+    const int diameter = titleBarButtonDiameter(height);
     const int inset = (height - diameter) / 2;
     TitleBarLayout result{.title = {kTitleBarTitlePadding, 0, 0, height}};
     // Walk from the edge inward: the last listed button is outermost.

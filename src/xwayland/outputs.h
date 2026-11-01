@@ -1,6 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 #include <wayland-server-core.h>
 
@@ -55,6 +58,9 @@ namespace umbriel {
     // Recomputes the X screen from the output layout and republishes the outputs whose X geometry changed. Returns
     // true when the mapping between layout and X coordinates changed.
     bool update();
+    // Resolve a connector or monitor identity against the live layout, including outputs still being constructed.
+    // An empty selector leaves RandR unmanaged; a missing monitor resolves to an empty name.
+    [[nodiscard]] std::optional<std::string> primaryOutput(std::string_view name) const;
 
     // The region of `output`. Without one, the output nearest the layout point stands in.
     [[nodiscard]] XwaylandRegion region(const wlr_output* output, int layoutX, int layoutY) const;

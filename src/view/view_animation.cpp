@@ -49,7 +49,9 @@ namespace umbriel {
 
   float View::effectiveOpacity() const {
     // Overshooting curves can push this past [0, 1]; wlr_scene_buffer_set_opacity asserts.
-    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen ? 1.0F : m_ruleOpacity;
+    const float ruleOpacity = scheduledFullscreen() && config().appearance.opaqueFullscreen
+        ? 1.0F
+        : static_cast<float>(m_ruleOpacity.current());
     const float fade = fadeComposited() ? 1.0F : m_fadeAlpha;
     return std::clamp(
         fade * ruleOpacity * m_dragOpacity * m_overviewOpacity * static_cast<float>(m_focusDim.current()), 0.0F, 1.0F
@@ -69,7 +71,7 @@ namespace umbriel {
     if (config().appearance.opaqueFullscreen) {
       return true;
     }
-    if (m_ruleOpacity < 1.0F) {
+    if (m_ruleOpacity.current() < 1.0) {
       return false;
     }
     if (const wlr_alpha_modifier_surface_v1_state* clientAlpha = wlr_alpha_modifier_v1_get_surface_state(surface);
@@ -85,16 +87,16 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     applyEffectiveOpacity();
     const float effective = effectiveOpacity();
-    m_decoration.setBorderRawColor(m_borderColorAnim.current(), effective);
+    m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effective);
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = fadeComposited() ? effective * m_fadeAlpha : effective;
-    m_decoration.setAlpha(shadowOpacity, m_fadeAlpha * m_overviewOpacity);
+    m_decoration.setAlpha(shadowOpacity, blurAlpha());
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setAlpha(chromeAlpha());
     }
     if (m_ssdFrame != nullptr)
-      m_ssdFrame->setAlphas(chromeAlpha(), m_fadeAlpha * m_overviewOpacity);
+      m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
   }
 
   void View::setOverviewOpacity(float opacity) {
@@ -296,7 +298,7 @@ namespace umbriel {
   }
 
   void View::applyDragPresentation() {
-    // Restoring a snapped float requests its normal size before the client can redraw. Keep the entire frame at that
+    // Clearing a float's region requests its normal size before the client can redraw. Keep the entire frame at that
     // requested size throughout the grab, including commits and stationary pointer frames.
     const auto size =
         !m_tiled && !sizeAnimating() ? floatingSize() : std::array{m_presentation.width(), m_presentation.height()};
@@ -330,7 +332,7 @@ namespace umbriel {
     }
     dropOpeningInset();
     const wlr_box content = committedContentBox();
-    m_presentation.snapTo(content.width, content.height);
+    m_presentation.setRegion(content.width, content.height);
     finishSizeAnimation();
   }
 
@@ -525,7 +527,7 @@ namespace umbriel {
     const auto& resize = animation.windowsResize;
     if (!animation.enabled || !resize.enabled) {
       m_presentation.setSize(width, height);
-      m_presentation.snapTo(width, height);
+      m_presentation.setRegion(width, height);
       applyPresentedSize();
       return;
     }
@@ -565,7 +567,7 @@ namespace umbriel {
     if ((tiledOpeningActive() || fullscreenOpeningActive()) && m_presentation.animating()) {
       // windows_in owns lifecycle composition. A resize tween started by the admitting arrange would otherwise win
       // shader selection and apply a second windows_move over the workspace-owned logical presentation.
-      m_presentation.snapTo(m_presentation.width(), m_presentation.height());
+      m_presentation.setRegion(m_presentation.width(), m_presentation.height());
     }
     placePresentedBox(box);
     applyPresentedSize();
@@ -621,7 +623,7 @@ namespace umbriel {
 
   void View::beginLayoutMotion(float direction) {
     // The motion owns the presented size from here; a size tween still running would overwrite it on its next tick.
-    m_presentation.snapTo(m_presentation.width(), m_presentation.height());
+    m_presentation.setRegion(m_presentation.width(), m_presentation.height());
     m_layoutPresentationHeld = false;
     m_layoutMotion = true;
     m_layoutMotionDirection = direction;
@@ -656,7 +658,7 @@ namespace umbriel {
     if (m_layoutPresentationHeld) {
       m_layoutPresentationHeld = false;
       m_presentation.setSize(content.width, content.height);
-      m_presentation.snapTo(content.width, content.height);
+      m_presentation.setRegion(content.width, content.height);
       resetPresentedSurface();
     }
     return true;
@@ -839,7 +841,7 @@ namespace umbriel {
           .gate = gate != nullptr ? *gate : ownGate,
           .scale = scale,
           .seconds = m_effects.configured() && output != nullptr ? output->effectSeconds() : 0.0F,
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
           .clockAdvancing = !m_server->animationClockFrozen(),
 #endif
           .output = output,
@@ -940,14 +942,29 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
       active = active || m_focusDim.animating();
     }
+    const bool opacityChanged = m_ruleOpacity.tick(nowMsec);
+    const bool blurChanged = m_ruleBlur.tick(nowMsec);
+    if (opacityChanged || blurChanged) {
+      setFadeAlpha(m_fadeAlpha);
+      m_presentation.setFullscreenOpaque(fullscreenOpaque());
+      updateBlur();
+      if (m_workspace != nullptr) {
+        m_workspace->syncViewPresentation(this);
+      }
+      active = active || m_ruleOpacity.animating() || m_ruleBlur.animating();
+    }
     if (m_modalShadeAlpha.tick(nowMsec)) {
       syncModalShade();
       active = active || m_modalShadeAlpha.animating();
     }
 
-    if (m_borderColorAnim.tick(nowMsec)) {
-      m_decoration.setBorderRawColor(m_borderColorAnim.current(), effectiveOpacity());
-      active = active || m_borderColorAnim.animating();
+    const bool innerChanged = m_borderColorAnim.tick(nowMsec);
+    const bool outerChanged = m_outerBorderColorAnim.tick(nowMsec);
+    if (innerChanged || outerChanged) {
+      m_decoration.setBorderRawColors(
+          m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity()
+      );
+      active = active || m_borderColorAnim.animating() || m_outerBorderColorAnim.animating();
     }
     if (m_dragPhysics.active() || m_dragPhysics.grabbed()) {
       if (effectRegistry().deformationShader() == nullptr) {
@@ -991,6 +1008,9 @@ namespace umbriel {
         || sizeAnimating()
         || m_fade.animating()
         || m_borderColorAnim.animating()
+        || m_outerBorderColorAnim.animating()
+        || m_ruleOpacity.animating()
+        || m_ruleBlur.animating()
         || m_focusDim.animating()
         || m_modalShadeAlpha.animating()
         || m_dragPhysics.active();
@@ -1036,6 +1056,10 @@ namespace umbriel {
       return kInvalidCloseSnapshot;
     }
     wlr_scene_node_set_position(&snap->node, m_presentedBox.x, m_presentedBox.y);
+    if (!umbrielfx_scene_node_share_capture_policy(&snap->node, &m_sceneTree->node)) {
+      wlr_scene_node_destroy(&snap->node);
+      return kInvalidCloseSnapshot;
+    }
     wlr_scene_tree* content = wlr_scene_tree_create(snap);
     if (content == nullptr) {
       wlr_scene_node_destroy(&snap->node);
@@ -1043,7 +1067,9 @@ namespace umbriel {
     }
 
     std::vector<BorderSnapshot> snapBorders;
-    m_decoration.snapshotBorders(snap, m_borderColorAnim.current(), effectiveOpacity(), snapBorders);
+    m_decoration.snapshotBorders(
+        snap, m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
+    );
     if (m_ssdFrame != nullptr && titleBarHeight() > 0)
       m_ssdFrame->snapshot(snap);
 

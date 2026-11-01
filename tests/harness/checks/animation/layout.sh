@@ -102,8 +102,8 @@ assert_tiled_strip "after column-move-left" 3
 assert_tiled_strip "after column-move-right" 3
 
 # A workspace switch animates the slide, in a different phase from the views.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 assert_tiled_strip "after workspace round trip" 3
 
 # Closing a window animates its snapshot and the surviving layout from the same spatial transition.

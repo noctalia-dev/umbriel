@@ -1,6 +1,6 @@
 # Umbriel
 
-Umbriel is a Wayland compositor designed for daily use, with scrolling, dwindle, master, and floating layouts, per-output workspaces, window rules, blur, shadows, and fluid animations.
+A Wayland compositor designed for daily use, with scrolling, dwindle, master, and stacking layouts, per-output workspaces, window rules, blur, shadows, and fluid animations.
 
 It runs independently and pairs with [Noctalia](https://github.com/noctalia-dev/noctalia), which provides a first-class desktop shell on top. Under the hood: C++23, [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots), and `umbrielfx`, an in-tree hard fork of [SceneFX](https://github.com/wlrfx/scenefx).
 
@@ -30,9 +30,9 @@ To understand the values and philosophy guiding the project, read our [ethos](ht
 
 ## Features
 
-- **Layouts:** scrolling, dwindle, master, and [floating](docs/user/layout.md#floating-layout) per workspace, with [tab groups](docs/user/layout.md#tab-groups), [scratchpads](docs/user/scratchpad.md), and mouse-driven resizing and reordering
+- **Layouts:** scrolling, dwindle, master, and [stacking](docs/user/layout.md#stacking-layout) per workspace, with [tab groups](docs/user/layout.md#tab-groups), [scratchpads](docs/user/scratchpad.md), and mouse-driven resizing and reordering
 - **Workspaces and outputs:** independent workspaces per output, hotplug restoration, fractional scaling, and [virtual outputs](docs/user/outputs.md#virtual-outputs) for [game streaming](docs/user/streaming.md)
-- **Windows:** [window rules](docs/user/window-rules.md), [layer rules](docs/user/layer-rules.md), optional [title bars](docs/user/appearance.md#title-bar), [edge snapping](docs/user/input.md#settings), and an animated overview
+- **Windows:** [window rules](docs/user/window-rules.md), [layer rules](docs/user/layer-rules.md), optional [title bars](docs/user/appearance.md#title-bar), [stacking drop zones](docs/user/layout.md#drop-zones-and-region-placement), and an animated overview
 - **Visuals:** blur, shadows, rounded corners, double borders, animations, and [GLSL effect presets](docs/user/effects.md)
 - **Gaming and display:** opt-in [HDR](docs/user/outputs.md#hdr), [variable refresh rate](docs/user/outputs.md#variable-refresh-rate), [tearing](docs/user/outputs.md#tearing), [direct scanout](docs/user/outputs.md#direct-scanout), and explicit sync, where hardware and clients support them
 - **Input:** keyboard, touchpad gestures, touch, tablets, input methods, and pointer locking and confinement
@@ -70,6 +70,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 <p align="center">
   <a href="https://github.com/noctalia-dev/noctalia/stargazers">
-    <img src="https://api.noctalia.dev/stars/umbriel" alt="Star History" />
+    <img src="https://api.noctalia.dev/stars-animated/umbriel" alt="Star History" />
   </a>
 </p>

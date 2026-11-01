@@ -58,18 +58,18 @@ if [[ -z $target_id || $target_id == null ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 wait_for_scratchpad_state false
 
 # Exercise the report's hidden-scratchpad state explicitly rather than relying
 # on move-to-scratchpad's initial hidden presentation.
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_scratchpad_state true
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_scratchpad_state false
 
-"$UMBRIEL" msg "window-focus-warp:$target_id" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$target_id" > /dev/null
 wait_for_scratchpad_state true
 
 echo "window-focus-warp summoned and focused the hidden scratchpad target"

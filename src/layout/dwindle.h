@@ -38,7 +38,7 @@ namespace umbriel {
     [[nodiscard]] int columnOf(const View* view) const override;
     [[nodiscard]] int rowOf(const View* view) const override;
     [[nodiscard]] LayoutCapture captureState() const override;
-    bool restoreState(const LayoutSnapshot& snapshot, std::span<const LayoutMember> members) override;
+    bool restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) override;
 
     // Inserts at a gap index: the preceding leaf is split, except gap 0 which splits the first leaf with the new view
     // first.

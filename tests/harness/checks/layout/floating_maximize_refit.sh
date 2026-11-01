@@ -52,7 +52,7 @@ assert_box() {
 reload_with ""
 "$CLIENT" refit-float > "$UMBRIEL_RUNTIME_DIR/refit-float.log" 2>&1 &
 assert_box refit-float 640x360+320+180 "the float did not open at half size"
-"$UMBRIEL" msg "window-focus-warp:$(field_of refit-float id)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(field_of refit-float id)" > /dev/null
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 assert_box refit-float 1260x700+10+10 "maximize did not keep the default margin"
 
@@ -84,7 +84,7 @@ assert_box refit-float 640x360+320+180 "restoring after refits did not return th
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus:$(field_of refit-float id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(field_of refit-float id)" > /dev/null
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 assert_box refit-float 1260x700+10+10 "the scratchpad window did not maximize inside the margin"
 reload_with $'[layout]\ngap = 30'

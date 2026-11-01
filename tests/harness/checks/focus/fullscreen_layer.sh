@@ -64,7 +64,7 @@ for mode in on-demand exclusive; do
   await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
   assert_no_enter
 
-  "$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+  "$UMBRIEL" msg window-focus "$window_id" > /dev/null
   "$UMBRIEL_POINTER_CLIENT" 2560 720 tap 57
   key_count=$((key_count + 1))
   await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"

@@ -72,8 +72,8 @@ for scale in 1 2; do
   sed -i "s/^scale = .*/scale = $scale/" "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload >/dev/null
   read -r output_w output_h < <("$UMBRIEL" outputs --json | jq -r '.[0].logical_size | "\(.width) \(.height)"')
-  for layout in scrolling floating; do
-    "$UMBRIEL" msg "workspace-set-layout:$layout" >/dev/null
+  for layout in scrolling stacking; do
+    "$UMBRIEL" msg workspace-set-layout "$layout" >/dev/null
     for side in right left; do
       sed -i "s/^button_position = .*/button_position = \"$side\"/" "$UMBRIEL_CONFIG"
       "$UMBRIEL" msg config-reload >/dev/null

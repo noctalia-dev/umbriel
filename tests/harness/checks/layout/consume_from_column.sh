@@ -5,8 +5,8 @@
 set -euo pipefail
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -57,7 +57,7 @@ if [[ $(focus_of) != harness-a ]]; then
   echo "expected harness-a focused, got $(focus_of)"
   exit 1
 fi
-accepts window-set-primary-extent:0.333
+accepts window-set-primary-extent 0.333
 "$UMBRIEL" settle
 
 # Focus b, the second column, so both sides have a column to pull from.
@@ -128,7 +128,7 @@ if ! jq -e '
 fi
 
 # The master layout pulls the neighboring area's window instead of a neighboring column's.
-accepts workspace-set-layout:master
+accepts workspace-set-layout master
 "$UMBRIEL" settle
 spawn_client e
 wait_for_windows 5
@@ -158,7 +158,7 @@ if [[ $(focus_of) != harness-e ]]; then
 fi
 
 # A dwindle leaf holds one window, so there is nothing to pull and the tree must not move.
-accepts workspace-set-layout:dwindle
+accepts workspace-set-layout dwindle
 "$UMBRIEL" settle
 before=$("$UMBRIEL" windows --json | jq -c 'sort_by(.title) | map({title, x, y, w, h})')
 accepts window-consume-from-left

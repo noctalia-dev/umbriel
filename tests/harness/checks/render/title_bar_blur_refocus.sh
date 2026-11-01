@@ -3,7 +3,7 @@
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
-cat >> "$UMBRIEL_CONFIG" <<'EOF'
+cat >>"$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 enabled = true
 [appearance]
@@ -23,7 +23,7 @@ background_unfocused = "#FF00FF80"
 match.title = "^blur-refocus-"
 blur = true
 EOF
-"$UMBRIEL" config validate >/dev/null
+"$UMBRIEL" config validate -c "$UMBRIEL_CONFIG" >/dev/null
 "$UMBRIEL" msg config-reload >/dev/null
 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 0 >"$UMBRIEL_RUNTIME_DIR/wallpaper.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" ready 1
@@ -36,9 +36,9 @@ expect_background() {
   local phase=$1 window x y color
   "$UMBRIEL" settle >/dev/null
   window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.active)')
-  [[ $(jq -r '.title_bar' <<< "$window") == true ]]
-  x=$(jq -r '.x + 180' <<< "$window")
-  y=$(jq -r '.y - 14' <<< "$window")
+  [[ $(jq -r '.title_bar' <<<"$window") == true ]]
+  x=$(jq -r '.x + 180' <<<"$window")
+  y=$(jq -r '.y - 14' <<<"$window")
   grim -o HEADLESS-1 "$UMBRIEL_RUNTIME_DIR/title-bar.png"
   color=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/title-bar.png" pixel "$x" "$y")
   [[ $color == "0 0 0" ]] || {
@@ -49,7 +49,7 @@ expect_background() {
 
 ids=$("$UMBRIEL" windows --json | jq -r '.[].id')
 for id in $ids; do
-  "$UMBRIEL" msg "window-focus:$id" >/dev/null
+  "$UMBRIEL" msg window-focus "$id" >/dev/null
   expect_background "before overview"
   "$UMBRIEL" msg overview-open >/dev/null
   "$UMBRIEL" settle >/dev/null
@@ -57,7 +57,7 @@ for id in $ids; do
   expect_background "after overview"
 done
 for id in $ids; do
-  "$UMBRIEL" msg "window-focus:$id" >/dev/null
+  "$UMBRIEL" msg window-focus "$id" >/dev/null
   expect_background "after IPC refocus"
 done
 echo "opaque title bars retain their background across overview and IPC refocus with blur"

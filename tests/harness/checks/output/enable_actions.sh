@@ -81,27 +81,27 @@ spawn_client
 wait_for_workspace 'HEADLESS-2:1'
 native_refuge=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .index == 1) | .id')
 
-"$UMBRIEL" msg output-disable:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-disable HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 false
 wait_for_temporary_workspace "$native_refuge"
 expect_capture_failure HEADLESS-2
 timeout 5s grim "$XDG_RUNTIME_DIR/output-action-desktop.png"
 
-"$UMBRIEL" msg output-enable:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-enable HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 true
 wait_for_workspace 'HEADLESS-2:1'
 
-"$UMBRIEL" msg output-toggle:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-toggle HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 false
 wait_for_temporary_workspace "$native_refuge"
-"$UMBRIEL" msg output-toggle:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-toggle HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 true
 wait_for_workspace 'HEADLESS-2:1'
 
 # A temporary logical override belongs to the compositor session, not to one
 # backend Output object. Recreating the disabled head must not revive it or
 # restore its displaced window onto an unavailable desktop target.
-"$UMBRIEL" msg output-disable:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-disable HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 false
 wait_for_temporary_workspace "$native_refuge"
 displaced_workspace=$("$UMBRIEL" windows --json | jq -r '.[0].workspace')
@@ -118,7 +118,7 @@ expect_capture_failure HEADLESS-2
 "$UMBRIEL" output-destroy HEADLESS-1 > /dev/null
 wait_for_output_count 1
 wait_for_workspace ''
-"$UMBRIEL" msg output-enable:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-enable HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 true
 wait_for_workspace 'HEADLESS-2:1'
 
@@ -137,7 +137,7 @@ wait_for_workspace ''
 wait_for_output_count 1
 wait_for_enabled HEADLESS-2 false
 wait_for_workspace ''
-"$UMBRIEL" msg output-enable:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg output-enable HEADLESS-2 > /dev/null
 wait_for_enabled HEADLESS-2 true
 wait_for_workspace 'HEADLESS-2:1'
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
@@ -148,7 +148,7 @@ wait_for_output_count 1
 wait_for_enabled HEADLESS-2 true
 wait_for_workspace 'HEADLESS-2:1'
 
-if "$UMBRIEL" msg output-disable:missing-output > /dev/null 2>&1; then
+if "$UMBRIEL" msg output-disable missing-output > /dev/null 2>&1; then
   echo "unknown output action unexpectedly succeeded"
   exit 1
 fi

@@ -88,17 +88,17 @@ wait_for_field "$WS" active true
 wait_for_count 2
 scratch_id=$(field_of "$SCRATCH" id)
 ws_id=$(field_of "$WS" id)
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" scratchpad "$SCRATCHPAD"
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" active true
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 
 # Phase one: focus sits on the workspace, so the layer release must hand it
 # back to the workspace, not the scratchpad.
-"$UMBRIEL" msg "window-focus:$ws_id" > /dev/null
+"$UMBRIEL" msg window-focus "$ws_id" > /dev/null
 wait_for_field "$WS" active true
 if ! wait_for_field "$SCRATCH" active false; then
   echo "workspace did not take focus from the visible scratchpad"
@@ -113,7 +113,7 @@ fi
 
 # Phase two: focus sits on the scratchpad, so the layer release must hand it
 # back to the scratchpad, not the workspace behind it.
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 steal_with_layer "$UMBRIEL_RUNTIME_DIR/layer-scratchpad.log"
 wait_for_field "$SCRATCH" active true

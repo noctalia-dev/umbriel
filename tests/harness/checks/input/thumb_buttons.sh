@@ -13,8 +13,8 @@ readonly MARKS="$UMBRIEL_RUNTIME_DIR/thumb-buttons.log"
 cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [keybinds]
-"Mod+MouseBack" = "spawn:echo back >> $MARKS"
-"Mod+MouseForward" = "spawn:echo forward >> $MARKS"
+"Mod+MouseBack" = "spawn echo back >> $MARKS"
+"Mod+MouseForward" = "spawn echo forward >> $MARKS"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

@@ -126,13 +126,13 @@ move_pointer_to_output() {
 }
 
 focus_window() {
-  "$UMBRIEL" msg "window-focus-warp:$(field_of "$1" id)" > /dev/null
+  "$UMBRIEL" msg window-focus-warp "$(field_of "$1" id)" > /dev/null
 }
 
 move_to_workspace() {
   local title=$1 workspace=$2
   focus_window "$title"
-  "$UMBRIEL" msg "window-move-to-workspace:$workspace/HEADLESS-1" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "$workspace" --output HEADLESS-1 > /dev/null
   wait_for_home "$title" "HEADLESS-1/$workspace"
 }
 
@@ -249,7 +249,7 @@ assert_visible_scratchpad_cycle() {
   local output=$1 active=
   declare -A seen=()
   for _ in 1 2 3; do
-    if ! "$UMBRIEL" msg "scratchpad-focus-next:$SCRATCHPAD" > /dev/null; then
+    if ! "$UMBRIEL" msg scratchpad-focus-next "$SCRATCHPAD" > /dev/null; then
       echo "scratchpad on '$output' was not visible while cycling '$active'"
       return 1
     fi
@@ -347,6 +347,8 @@ done
 # A pinned view remains pinned across recovery. One toggle after return must
 # unpin and retile it, which distinguishes a retained pin from an ordinary
 # floating view without adding a pin flag to the public windows response.
+# Pinned views belong to their output, so they return to its active workspace
+# and retile there.
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$UMBRIEL" msg window-toggle-pinned > /dev/null
@@ -359,12 +361,20 @@ for title in "${probes[@]}"; do
   wait_for_field "$title" floating true
 done
 recreate_home
-wait_for_workspace_homes "${titles[@]}"
+wait_for_workspace_homes "${anchors[@]}"
+active=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .active) | .name')
+for title in "${probes[@]}"; do
+  wait_for_home "$title" "HEADLESS-1/$active"
+done
 wait_for_snapshot all "$pinned_before"
 for title in "${probes[@]}"; do
   focus_window "$title"
   "$UMBRIEL" msg window-toggle-pinned > /dev/null
   wait_for_field "$title" floating false
+  wait_for_home "$title" "HEADLESS-1/$active"
+done
+for title in "${probes[@]}"; do
+  move_to_workspace "$title" "${workspace_of[$title]}"
 done
 
 # Ordinary floating views stay workspace-owned while a separate scratchpad
@@ -382,9 +392,9 @@ wait_for_count "$count"
 move_to_workspace legit-scratch 1
 move_pointer_to_output HEADLESS-1
 focus_window legit-scratch
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 wait_for_home legit-scratch ''
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 
 write_matrix_config false false
 "$UMBRIEL" msg config-reload > /dev/null
@@ -407,7 +417,7 @@ for title in "${probes[@]}"; do
 done
 wait_for_field late-float floating true
 wait_for_home legit-scratch ''
-"$UMBRIEL" msg "scratchpad-focus-next:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next "$SCRATCHPAD" > /dev/null
 
 write_matrix_config true true
 "$UMBRIEL" msg config-reload > /dev/null
@@ -416,13 +426,13 @@ for title in "${probes[@]}"; do
   wait_for_field "$title" floating true
 done
 wait_for_home legit-scratch ''
-"$UMBRIEL" msg "scratchpad-focus-next:$SCRATCHPAD" > /dev/null
-"$UMBRIEL" msg "window-close:$(field_of legit-scratch id)" > /dev/null
+"$UMBRIEL" msg scratchpad-focus-next "$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-close "$(field_of legit-scratch id)" > /dev/null
 count=$((count - 1))
 wait_for_count "$count"
 # Closing the last member leaves the empty scratchpad open; dismiss it before the next phase.
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
-"$UMBRIEL" msg "window-close:$(field_of late-float id)" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-close "$(field_of late-float id)" > /dev/null
 count=$((count - 1))
 wait_for_count "$count"
 for title in "${probes[@]}"; do
@@ -446,11 +456,11 @@ scratchpad_phase() {
   move_pointer_to_output HEADLESS-1
   for title in "${probes[@]}"; do
     focus_window "$title"
-    "$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+    "$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
     wait_for_home "$title" ''
     wait_for_field "$title" floating true
   done
-  "$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+  "$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
   assert_visible_scratchpad_cycle HEADLESS-1
   scratch_anchor_before=$(wait_for_stable_snapshot anchors)
 
@@ -467,7 +477,7 @@ scratchpad_phase() {
 
   for title in "${probes[@]}"; do
     focus_window "$title"
-    "$UMBRIEL" msg "window-restore-from-scratchpad:$SCRATCHPAD" > /dev/null
+    "$UMBRIEL" msg window-restore-from-scratchpad "$SCRATCHPAD" > /dev/null
     wait_for_home "$title" "HEADLESS-1/${workspace_of[$title]}"
     wait_for_field "$title" floating "$return_floating"
   done

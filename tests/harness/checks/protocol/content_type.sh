@@ -296,8 +296,8 @@ replay_id=$(
   jq -r '.[] | select(.app_id == "content-type-replay" and .title == "content-type-replay-settled") | .id' \
     <<< "$windows"
 )
-"$UMBRIEL" msg "window-focus:$replay_id" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:1 > /dev/null
+"$UMBRIEL" msg window-focus "$replay_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 > /dev/null
 
 for _ in $(seq 80); do
   windows=$("$UMBRIEL" windows --json)

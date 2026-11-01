@@ -2,6 +2,7 @@
 // exercises native client metadata. Reading a label from stdin synchronizes events and reports notification counts.
 
 #include "color-management-v1-client-protocol.h"
+#include "parse_ints.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -692,14 +693,13 @@ int main(int argc, char** argv) {
         }
         wl_surface_commit(state.surface);
       } else if (state.contentLight && std::strncmp(label, "content ", 8) == 0) {
-        unsigned index = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 8, "%u%c", &index, &trailing) != 1 || index >= state.contentLightDescriptions.size()) {
+        const auto index = harness::parseInts<size_t, 1>(label + 8, ' ');
+        if (!index || (*index)[0] >= state.contentLightDescriptions.size()) {
           std::println(stderr, "color-feedback-client: invalid content description: {}", label);
           return 1;
         }
         state.tagged = true;
-        state.selectedDescription = state.contentLightDescriptions[index];
+        state.selectedDescription = state.contentLightDescriptions[(*index)[0]];
         wp_color_management_surface_v1_set_image_description(
             state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
         );
@@ -708,14 +708,13 @@ int main(int argc, char** argv) {
           wl_surface_commit(state.surface);
         }
       } else if (state.custom && std::strncmp(label, "custom ", 7) == 0) {
-        unsigned index = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 7, "%u%c", &index, &trailing) != 1 || index >= state.customDescriptions.size()) {
+        const auto index = harness::parseInts<size_t, 1>(label + 7, ' ');
+        if (!index || (*index)[0] >= state.customDescriptions.size()) {
           std::println(stderr, "color-feedback-client: invalid custom description: {}", label);
           return 1;
         }
         state.tagged = true;
-        state.selectedDescription = state.customDescriptions[index];
+        state.selectedDescription = state.customDescriptions[(*index)[0]];
         wp_color_management_surface_v1_set_image_description(
             state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
         );
@@ -786,13 +785,12 @@ int main(int argc, char** argv) {
       } else if (std::strncmp(label, "title ", 6) == 0) {
         xdg_toplevel_set_title(state.toplevel, label + 6);
       } else if (std::strncmp(label, "color ", 6) == 0) {
-        unsigned color = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 6, "%x%c", &color, &trailing) != 1) {
+        const auto color = harness::parseInts<uint32_t, 1>(label + 6, ' ', 16);
+        if (!color) {
           std::println(stderr, "color-feedback-client: invalid color: {}", label);
           return 1;
         }
-        state.fillColor = static_cast<uint32_t>(color);
+        state.fillColor = (*color)[0];
         if (!present(state)) {
           return 1;
         }

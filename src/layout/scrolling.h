@@ -24,12 +24,12 @@ namespace umbriel {
     [[nodiscard]] int rowOf(const View* view) const override;
     [[nodiscard]] LayoutCapture captureState() const override;
     [[nodiscard]] LayoutCapture captureStateForViewport(int viewportPrimary) const;
-    bool restoreState(const LayoutSnapshot& snapshot, std::span<const LayoutMember> members) override;
+    bool restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) override;
     // Structural replay records a surviving lane anchor. Once focus has
     // settled, restore its viewport position using the returned output's
     // current logical extent. Exact raw offsets are used only when geometry is
     // known to be unchanged.
-    void restoreSnapshotViewport(const LayoutSnapshot& snapshot, int viewportPrimary, bool geometryUnchanged);
+    void restoreSnapshotViewport(const LayoutSnapshot& base, int viewportPrimary, bool geometryUnchanged);
     [[nodiscard]] double scroll() const { return m_scroll; }
     [[nodiscard]] int columnX(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] int columnWidth(int columnIndex, int viewportPrimary) const;

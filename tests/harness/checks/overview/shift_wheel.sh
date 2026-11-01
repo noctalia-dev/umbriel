@@ -65,7 +65,7 @@ done
 "$UMBRIEL_POINTER_CLIENT" 1280 720 mod shift notch 1 mod none
 [[ $(selected_title) == shift-wheel-2 ]] || { echo 'fresh half-factor notches did not select the next column'; exit 1; }
 
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL_POINTER_CLIENT" 1280 720 notch 1
 for _ in $(seq 60); do
   [[ $(active_workspace) == 3 ]] && break
@@ -76,7 +76,7 @@ done
 # The same horizontal input follows the filmstrip when the workspace axis changes.
 printf '\nworkspace_axis = "horizontal"\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" msg overview-open > /dev/null
 # In this arrangement the vertical wheel steps columns, not workspaces. Factor 2 skips to column 3.
 "$UMBRIEL" msg column-focus-first > /dev/null
@@ -96,7 +96,7 @@ echo 'wheel steps vertically, Shift-wheel steps horizontally, factors count notc
 
 # Unequal neighbors make a stale direction observable: the incoming pair fits while the opposite pair overflows.
 "$UMBRIEL" msg overview-close > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 cat > "$UMBRIEL_CONFIG" <<'EOF'
 [general]
 xwayland = false
@@ -124,8 +124,8 @@ EOF
 set_column_extent() {
   local id
   id=$("$UMBRIEL" windows --json | jq -r --arg title "shift-wheel-$1" '.[] | select(.title == $title) | .id')
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
-  "$UMBRIEL" msg "window-set-primary-extent:$2" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
+  "$UMBRIEL" msg window-set-primary-extent "$2" > /dev/null
   "$UMBRIEL" settle
 }
 

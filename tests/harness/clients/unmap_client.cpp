@@ -30,6 +30,7 @@
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
+// OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
 // LOG_SUSPENDED binds xdg-shell at version 6 and prints "suspended" and "resumed" whenever the toplevel's suspended
@@ -37,6 +38,7 @@
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
+#include "parse_ints.h"
 #include "tearing-control-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
@@ -309,7 +311,8 @@ namespace {
     std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
-    buffer.resource = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
+    const uint32_t format = std::getenv("OPAQUE_BUFFER") != nullptr ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888;
+    buffer.resource = wl_shm_pool_create_buffer(pool, 0, width, height, stride, format);
     wl_shm_pool_destroy(pool);
     close(fd);
     return buffer;
@@ -910,10 +913,10 @@ int main(int argc, char** argv) {
     state.resizeFillColor = static_cast<uint32_t>(value);
   }
   if (argc > 2) {
-    state.width = std::max(1, std::atoi(argv[2]));
+    state.width = std::max(1, std::stoi(argv[2]));
   }
   if (argc > 3) {
-    state.height = std::max(1, std::atoi(argv[3]));
+    state.height = std::max(1, std::stoi(argv[3]));
   }
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
@@ -981,10 +984,14 @@ int main(int argc, char** argv) {
   }
   int parentWidth = state.width;
   int parentHeight = state.height;
-  if (const char* size = std::getenv("TRANSIENT_PARENT_SIZE"); size != nullptr
-      && (std::sscanf(size, "%dx%d", &parentWidth, &parentHeight) != 2 || parentWidth < 1 || parentHeight < 1)) {
-    std::println(stderr, "unmap-client: TRANSIENT_PARENT_SIZE must be <width>x<height>");
-    return EXIT_FAILURE;
+  if (const char* size = std::getenv("TRANSIENT_PARENT_SIZE"); size != nullptr) {
+    const auto parsed = harness::parseInts<int, 2>(size, 'x');
+    if (!parsed || (*parsed)[0] < 1 || (*parsed)[1] < 1) {
+      std::println(stderr, "unmap-client: TRANSIENT_PARENT_SIZE must be <width>x<height>");
+      return EXIT_FAILURE;
+    }
+    parentWidth = (*parsed)[0];
+    parentHeight = (*parsed)[1];
   }
   AuxiliaryToplevel transientParent;
   AuxiliaryToplevel transientUnrelated;
@@ -1044,10 +1051,7 @@ int main(int argc, char** argv) {
       return false;
     }
     state.colorChildSurface = wl_compositor_create_surface(state.compositor);
-    if (state.colorChildSurface == nullptr) {
-      return false;
-    }
-    return true;
+    return state.colorChildSurface != nullptr;
   };
   const auto attachRenderingChild = [&]() {
     if (state.colorChildSubsurface != nullptr) {

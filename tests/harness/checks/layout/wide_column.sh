@@ -45,11 +45,11 @@ wait_for_window wide-a
 "$UMBRIEL" settle > /dev/null
 
 # 2.0 spans two viewports with the gap between the would-be slots: a little under twice the 1280-wide output.
-"$UMBRIEL" msg window-set-primary-extent:2.0 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 2.0 > /dev/null
 "$UMBRIEL" settle > /dev/null
 width=$(field wide-a w)
 if (( width < 2450 || width > 2650 )); then
-  echo "window-set-primary-extent:2.0 configured ${width}px, expected about twice the 1280-wide output: $(windows)"
+  echo "window-set-primary-extent 2.0 configured ${width}px, expected about twice the 1280-wide output: $(windows)"
   exit 1
 fi
 
@@ -79,11 +79,11 @@ if (( $(field wide-a x) != end_x )); then
 fi
 
 # The fraction round-trips: back to one viewport the column fits the output again.
-"$UMBRIEL" msg window-set-primary-extent:1.0 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 1.0 > /dev/null
 "$UMBRIEL" settle > /dev/null
 narrow=$(field wide-a w)
 if (( narrow < 1230 || narrow > 1330 )); then
-  echo "window-set-primary-extent:1.0 configured ${narrow}px, expected about one output width: $(windows)"
+  echo "window-set-primary-extent 1.0 configured ${narrow}px, expected about one output width: $(windows)"
   exit 1
 fi
 

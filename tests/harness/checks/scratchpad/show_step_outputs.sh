@@ -83,7 +83,7 @@ other=red
 
 # With the pointer on the other output, focus the member the scratchpad was not showing.
 "$POINTER" 2560 720 move 1920 360
-"$UMBRIEL" msg "window-focus:$(window_of "outputs-$other" | jq -r .id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(window_of "outputs-$other" | jq -r .id)" > /dev/null
 actual=$(shown)
 if [[ $actual != "$other" ]]; then
   echo "window-focus on the other output showed [$actual] instead of [$other]: $(windows)"

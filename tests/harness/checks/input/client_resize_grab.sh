@@ -134,7 +134,7 @@ echo "client-requested tiled resize changed the layout and released input to its
 kill "$source_pid" "$target_pid"
 wait "$source_pid" "$target_pid" 2>/dev/null || true
 await_windows 0
-"$UMBRIEL" msg workspace-set-layout:dwindle > /dev/null
+"$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 readonly PATTERN="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 HOLD_SIZE=1 "$PATTERN" "$SOURCE" 1200 700 > "$SOURCE_LOG" 2>&1 &
 await_windows 1

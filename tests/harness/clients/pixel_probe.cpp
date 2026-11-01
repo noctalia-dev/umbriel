@@ -3,6 +3,7 @@
 //
 //   pixel-probe <png> count <predicate>... [region]  matching pixels, one count per predicate
 //   pixel-probe <png> bbox <predicate> [region]    "x y w h" of matching pixels, "0 0 0 0" when none match
+//   pixel-probe <png> centroid <expr> [region]     "x y" center of mass weighted by <expr>, such as a bare channel
 //   pixel-probe <png> mean [region]                "r g b" region mean
 //   pixel-probe <png> max [region]                 "r g b" per-channel maximum
 //   pixel-probe <png> pixel <x> <y>                "r g b"
@@ -10,7 +11,8 @@
 //   pixel-probe <png> size                         "WxH"
 //
 // A predicate compares r, g, b and numbers with < <= > >= == !=, combined with && || ! and parentheses, for example
-// '(r > 0.8 && g < 0.1) || b > 0.5'.
+// '(r > 0.8 && g < 0.1) || b > 0.5'. A bare channel such as 'r' evaluates to its value. Pixel (x, y) covers x..x+1, so
+// a centroid of x + 0.5 is that pixel's center.
 
 #include <algorithm>
 #include <cairo.h>
@@ -297,6 +299,7 @@ namespace {
   int usage() {
     std::println(stderr, "usage: pixel-probe <png> count <predicate>... [WxH+X+Y]");
     std::println(stderr, "       pixel-probe <png> bbox <predicate> [WxH+X+Y]");
+    std::println(stderr, "       pixel-probe <png> centroid <expression> [WxH+X+Y]");
     std::println(stderr, "       pixel-probe <png> mean|max [WxH+X+Y]");
     std::println(stderr, "       pixel-probe <png> pixel <x> <y>");
     std::println(stderr, "       pixel-probe <png> diff <other-png> [WxH+X+Y]");
@@ -403,6 +406,30 @@ int main(int argc, char** argv) {
       }
     }
     std::println("{} {}", largest, differing);
+    return 0;
+  }
+  if (op == "centroid" && !args.empty() && args.size() <= 2) {
+    const std::unique_ptr<Node> weight = Parser(args[0]).parse();
+    const std::optional<Region> region = regionArg(1);
+    if (weight == nullptr || !region) {
+      return usage();
+    }
+    double total = 0.0;
+    double sumX = 0.0;
+    double sumY = 0.0;
+    for (int y = region->y; y < region->y + region->height; ++y) {
+      for (int x = region->x; x < region->x + region->width; ++x) {
+        const double value = evaluate(*weight, image->at(x, y));
+        total += value;
+        sumX += value * (x + 0.5);
+        sumY += value * (y + 0.5);
+      }
+    }
+    if (total <= 0.0) {
+      std::println(stderr, "pixel-probe: no weight in region");
+      return 1;
+    }
+    std::println("{:.3f} {:.3f}", sumX / total, sumY / total);
     return 0;
   }
   if (op == "count" || op == "bbox") {

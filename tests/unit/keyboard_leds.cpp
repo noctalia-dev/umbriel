@@ -1,6 +1,7 @@
 #include "input/keyboard_leds.h"
 
 #include "check.h"
+#include "input/keyboard_state.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -58,13 +59,15 @@ namespace {
     void clearWrites() { m_writes.clear(); }
     void stopObserving() { m_leds = nullptr; }
 
-    void observe(umbriel::KeyboardLeds& leds, bool changesSource = true, bool virtualDevice = false) {
+    void observe(
+        umbriel::KeyboardLeds& leds, bool changesSource = true, bool virtualDevice = false, bool initialNumLock = false
+    ) {
       m_leds = &leds;
       m_changesSource = changesSource;
-      leds.add(&m_keyboard, virtualDevice);
+      leds.add(&m_keyboard, virtualDevice, initialNumLock);
     }
 
-    void setKeymap(const char* layouts) {
+    void setKeymap(const char* layouts, bool preserveState = false) {
       xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
       const xkb_rule_names names{
           .rules = nullptr, .model = nullptr, .layout = layouts, .variant = nullptr, .options = nullptr
@@ -75,7 +78,18 @@ namespace {
         xkb_context_unref(context);
         throw std::runtime_error("could not create the keyboard LED test keymap");
       }
-      const bool applied = wlr_keyboard_set_keymap(&m_keyboard, keymap);
+      // Config replacement callbacks do not select a fresh input source.
+      // Refresh shared locks after the state-preserving helper has returned.
+      umbriel::KeyboardLeds* observer = m_leds;
+      if (preserveState) {
+        m_leds = nullptr;
+      }
+      const bool applied = preserveState ? umbriel::setKeyboardKeymapPreservingState(&m_keyboard, keymap)
+                                         : wlr_keyboard_set_keymap(&m_keyboard, keymap);
+      m_leds = observer;
+      if (preserveState && m_leds != nullptr) {
+        m_leds->update();
+      }
       xkb_keymap_unref(keymap);
       xkb_context_unref(context);
       if (!applied) {
@@ -83,15 +97,16 @@ namespace {
       }
     }
 
-    void renameCapsIndicator() {
+    void renameCapsIndicator() { renameKeymapText("\"Caps Lock\"", "\"Private Caps Indicator\""); }
+    void renameNumModifier() { renameKeymapText("NumLock", "PrivateNumLock"); }
+
+    void renameKeymapText(std::string_view original, std::string_view replacement) {
       char* serialized = xkb_keymap_get_as_string(m_keyboard.keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
       if (serialized == nullptr) {
         throw std::runtime_error("could not serialize the keyboard LED test keymap");
       }
       std::string text(serialized);
       std::free(serialized);
-      constexpr std::string_view original = "\"Caps Lock\"";
-      constexpr std::string_view replacement = "\"Private Caps Indicator\"";
       size_t position = 0;
       while ((position = text.find(original, position)) != std::string::npos) {
         text.replace(position, original.size(), replacement);
@@ -125,6 +140,14 @@ namespace {
 
     void modifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
       wlr_keyboard_notify_modifiers(&m_keyboard, depressed, latched, locked, group);
+    }
+
+    [[nodiscard]] bool locked(const char* name) const {
+      return xkb_state_mod_name_is_active(m_keyboard.xkb_state, name, XKB_STATE_MODS_LOCKED) > 0;
+    }
+
+    [[nodiscard]] xkb_keysym_t keysym(uint32_t code) const {
+      return xkb_state_key_get_one_sym(m_keyboard.xkb_state, code + 8);
     }
 
     [[nodiscard]] uint32_t modifierMask(const char* name) const {
@@ -163,7 +186,7 @@ namespace {
     }
 
     void update() {
-      if (m_leds != nullptr) {
+      if (m_leds != nullptr && !m_leds->syncing()) {
         m_leds->update(m_changesSource ? &m_keyboard : nullptr);
       }
     }
@@ -183,7 +206,7 @@ namespace {
 
 } // namespace
 
-UMBRIEL_TEST(ledlessSourcePublishesTheFirstCapsAndNumTransitions) {
+UMBRIEL_TEST(ledlessSourceSharesTheFirstCapsAndNumTransitions) {
   EventLoop loop;
   umbriel::KeyboardLeds leds(loop.get());
   BackendKeyboard laptop;
@@ -195,57 +218,73 @@ UMBRIEL_TEST(ledlessSourcePublishesTheFirstCapsAndNumTransitions) {
   loop.flush();
 
   proxy.tap(58);
-  CHECK(laptop.writes().empty());
   loop.flush();
   CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
   CHECK_EQ(receiver.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
-  CHECK_EQ(xkb_state_led_name_is_active(proxy.get()->xkb_state, XKB_LED_NAME_CAPS), 1);
-  CHECK_EQ(xkb_state_led_name_is_active(laptop.get()->xkb_state, XKB_LED_NAME_CAPS), 0);
+  CHECK(proxy.locked(XKB_MOD_NAME_CAPS));
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(receiver.locked(XKB_MOD_NAME_CAPS));
 
-  proxy.tap(58);
+  receiver.tap(58);
   loop.flush();
   const std::vector<uint32_t> capsTransitions{WLR_LED_CAPS_LOCK, 0};
   CHECK_EQ(laptop.writes(), capsTransitions);
   CHECK_EQ(receiver.writes(), capsTransitions);
+  CHECK(!proxy.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!laptop.locked(XKB_MOD_NAME_CAPS));
 
   proxy.tap(69);
   loop.flush();
   const std::vector<uint32_t> allTransitions{WLR_LED_CAPS_LOCK, 0, WLR_LED_NUM_LOCK};
   CHECK_EQ(laptop.writes(), allTransitions);
   CHECK_EQ(receiver.writes(), allTransitions);
+  CHECK(proxy.locked(XKB_MOD_NAME_NUM));
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(receiver.locked(XKB_MOD_NAME_NUM));
 }
 
-UMBRIEL_TEST(postEventRefreshRestoresAnIndicatorOverwrittenByLocalKeyProcessing) {
+UMBRIEL_TEST(alternatingOrdinaryInputPreservesNumLockWithoutLedFlicker) {
   EventLoop loop;
   umbriel::KeyboardLeds leds(loop.get());
   BackendKeyboard laptop;
   BackendKeyboard proxy(false);
-  // Infrastructure events can refresh LEDs without selecting a new source.
-  laptop.observe(leds, false);
+  laptop.tap(69);
+  laptop.observe(leds);
   proxy.observe(leds);
   loop.flush();
-  proxy.tap(58);
-  loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+  CHECK(proxy.locked(XKB_MOD_NAME_NUM));
+  laptop.clearWrites();
 
-  laptop.key(30, WL_KEYBOARD_KEY_STATE_PRESSED);
-  const std::vector<uint32_t> overwritten{WLR_LED_CAPS_LOCK, 0};
-  CHECK_EQ(laptop.writes(), overwritten);
+  for (BackendKeyboard* keyboard : {&laptop, &proxy, &laptop, &proxy}) {
+    CHECK_EQ(keyboard->keysym(79), xkb_keysym_t{XKB_KEY_KP_1});
+    keyboard->tap(30);
+    keyboard->tap(79);
+    loop.flush();
+    CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+    CHECK(proxy.locked(XKB_MOD_NAME_NUM));
+    CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_NUM_LOCK});
+    CHECK(laptop.writes().empty());
+  }
+
+  proxy.tap(69);
   loop.flush();
-  const std::vector<uint32_t> restored{WLR_LED_CAPS_LOCK, 0, WLR_LED_CAPS_LOCK};
-  CHECK_EQ(laptop.writes(), restored);
-  CHECK_EQ(laptop.get()->modifiers.locked, uint32_t{0});
-  laptop.key(30, WL_KEYBOARD_KEY_STATE_RELEASED);
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(!proxy.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.keysym(79), xkb_keysym_t{XKB_KEY_KP_End});
+  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{0});
+  laptop.tap(30);
   loop.flush();
+  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{0});
 }
 
-UMBRIEL_TEST(realInputSelectsItsOwnIndicatorsWithoutCopyingOtherKeyboardState) {
+UMBRIEL_TEST(sharedLocksPreserveHeldModifiersLatchesLayoutsAndKeymaps) {
   EventLoop loop;
   umbriel::KeyboardLeds leds(loop.get());
   BackendKeyboard laptop(true, "de,us");
   BackendKeyboard proxy(false, "us,de");
   const uint32_t shift = laptop.modifierMask(XKB_MOD_NAME_SHIFT);
   const uint32_t num = laptop.modifierMask(XKB_MOD_NAME_NUM);
+  laptop.key(42, WL_KEYBOARD_KEY_STATE_PRESSED);
   laptop.modifiers(shift, shift, num, 1);
   laptop.observe(leds);
   proxy.observe(leds);
@@ -255,55 +294,116 @@ UMBRIEL_TEST(realInputSelectsItsOwnIndicatorsWithoutCopyingOtherKeyboardState) {
 
   proxy.tap(58);
   loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK | WLR_LED_NUM_LOCK});
   CHECK_EQ(laptop.get()->keymap, originalMap);
   CHECK_EQ(laptop.get()->modifiers.depressed, shift);
   CHECK_EQ(laptop.get()->modifiers.latched, shift);
-  CHECK_EQ(laptop.get()->modifiers.locked, num);
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
   CHECK_EQ(laptop.get()->modifiers.group, uint32_t{1});
+  CHECK_EQ(proxy.get()->modifiers.group, uint32_t{0});
 
-  // A real event on this keyboard becomes authoritative using its own state.
-  laptop.key(30, WL_KEYBOARD_KEY_STATE_PRESSED);
+  laptop.key(42, WL_KEYBOARD_KEY_STATE_RELEASED);
   loop.flush();
-  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_NUM_LOCK});
-  CHECK_EQ(proxy.get()->leds, uint32_t{WLR_LED_NUM_LOCK});
-  CHECK_EQ(proxy.get()->modifiers.locked, proxy.modifierMask(XKB_MOD_NAME_CAPS));
-  laptop.key(30, WL_KEYBOARD_KEY_STATE_RELEASED);
-  loop.flush();
+  CHECK_EQ(laptop.get()->modifiers.depressed, uint32_t{0});
+  CHECK_EQ(laptop.get()->modifiers.group, uint32_t{1});
+  CHECK(proxy.locked(XKB_MOD_NAME_NUM));
+  CHECK(proxy.locked(XKB_MOD_NAME_CAPS));
 }
 
-UMBRIEL_TEST(hotplugAndKeymapChangesRetainTheCurrentSource) {
+UMBRIEL_TEST(hotplugAndKeymapReplacementInheritCurrentLocks) {
   EventLoop loop;
   umbriel::KeyboardLeds leds(loop.get());
   BackendKeyboard laptop;
   BackendKeyboard proxy(false);
-  laptop.observe(leds, false);
+  laptop.observe(leds);
   proxy.observe(leds);
   loop.flush();
   proxy.tap(58);
   loop.flush();
 
   BackendKeyboard hotplug;
-  hotplug.observe(leds, false);
+  hotplug.tap(69);
+  hotplug.observe(leds);
   loop.flush();
-  CHECK_EQ(hotplug.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+  CHECK(hotplug.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!hotplug.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(hotplug.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 
   laptop.setKeymap("de");
-  CHECK_EQ(xkb_state_led_name_is_active(laptop.get()->xkb_state, XKB_LED_NAME_CAPS), 0);
-  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
   loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
   CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
   CHECK_EQ(hotplug.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 
-  // A source's keymap replacement also refreshes indicators without a key.
   proxy.setKeymap("fr");
-  CHECK_EQ(proxy.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
   loop.flush();
-  CHECK_EQ(laptop.get()->leds, uint32_t{0});
-  CHECK_EQ(hotplug.get()->leds, uint32_t{0});
+  CHECK(proxy.locked(XKB_MOD_NAME_CAPS));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
+  CHECK_EQ(hotplug.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
+  hotplug.tap(58);
+  loop.flush();
+  CHECK(!laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!proxy.locked(XKB_MOD_NAME_CAPS));
 }
 
-UMBRIEL_TEST(sourceRemovalBeforeIdleSelectsASurvivingPhysicalKeyboard) {
+UMBRIEL_TEST(aReplacementKeymapGainsSharedLocksThatTheOldMapCannotRepresent) {
+  EventLoop loop;
+  umbriel::KeyboardLeds leds(loop.get());
+  BackendKeyboard laptop;
+  BackendKeyboard secondary;
+  secondary.renameNumModifier();
+  CHECK_EQ(xkb_keymap_mod_get_mask(secondary.get()->keymap, "NumLock"), xkb_mod_mask_t{0});
+  laptop.tap(69);
+  laptop.observe(leds);
+  secondary.observe(leds);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(!secondary.locked(XKB_MOD_NAME_NUM));
+
+  secondary.setKeymap("us,de", true);
+  loop.flush();
+  CHECK(secondary.locked(XKB_MOD_NAME_NUM));
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(secondary.keysym(79), xkb_keysym_t{XKB_KEY_KP_1});
+  CHECK_EQ(secondary.get()->leds, uint32_t{WLR_LED_NUM_LOCK});
+  secondary.tap(30);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+}
+
+UMBRIEL_TEST(numLockStartupPolicyDoesNotOverrideLaterHotplugOrReconnects) {
+  EventLoop loop;
+  umbriel::KeyboardLeds leds(loop.get());
+  BackendKeyboard laptop;
+  laptop.observe(leds, true, false, true);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_NUM_LOCK});
+  laptop.tap(69);
+  loop.flush();
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  laptop.clearWrites();
+
+  BackendKeyboard hotplug;
+  hotplug.observe(leds, true, false, true);
+  loop.flush();
+  CHECK(!hotplug.locked(XKB_MOD_NAME_NUM));
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(hotplug.writes().empty());
+  CHECK(laptop.writes().empty());
+  hotplug.finish();
+  laptop.finish();
+  loop.flush();
+
+  BackendKeyboard reconnect;
+  reconnect.observe(leds, true, false, true);
+  loop.flush();
+  CHECK(!reconnect.locked(XKB_MOD_NAME_NUM));
+  CHECK(reconnect.writes().empty());
+}
+
+UMBRIEL_TEST(sourceRemovalBeforeIdlePreservesSharedLocks) {
   EventLoop loop;
   umbriel::KeyboardLeds leds(loop.get());
   BackendKeyboard laptop;
@@ -314,17 +414,73 @@ UMBRIEL_TEST(sourceRemovalBeforeIdleSelectsASurvivingPhysicalKeyboard) {
   proxy.tap(58);
   proxy.finish();
   loop.flush();
-  CHECK(laptop.writes().empty());
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 
   BackendKeyboard replacement(false);
   replacement.observe(leds);
+  CHECK(replacement.locked(XKB_MOD_NAME_CAPS));
   replacement.tap(69);
   loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_NUM_LOCK});
+  const uint32_t both = WLR_LED_CAPS_LOCK | WLR_LED_NUM_LOCK;
+  CHECK_EQ(laptop.get()->leds, both);
   replacement.finish();
   loop.flush();
-  const std::vector<uint32_t> fallbackTransitions{WLR_LED_NUM_LOCK, 0};
-  CHECK_EQ(laptop.writes(), fallbackTransitions);
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, both);
+}
+
+UMBRIEL_TEST(staleVirtualSnapshotsOnlyChangeLocksTheyActuallyToggle) {
+  EventLoop loop;
+  umbriel::KeyboardLeds leds(loop.get());
+  BackendKeyboard laptop;
+  BackendKeyboard client;
+  laptop.tap(69);
+  laptop.observe(leds);
+  client.observe(leds, true, true);
+  loop.flush();
+  xkb_keymap* originalMap = client.get()->keymap;
+  CHECK(!client.locked(XKB_MOD_NAME_NUM));
+  laptop.clearWrites();
+  client.clearWrites();
+
+  const uint32_t caps = client.modifierMask(XKB_MOD_NAME_CAPS);
+  const uint32_t shift = client.modifierMask(XKB_MOD_NAME_SHIFT);
+  client.modifiers(0, 0, caps, 0);
+  loop.flush();
+  const uint32_t both = WLR_LED_CAPS_LOCK | WLR_LED_NUM_LOCK;
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK_EQ(laptop.get()->leds, both);
+  CHECK(!client.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(client.get()->keymap, originalMap);
+  CHECK_EQ(client.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+
+  laptop.clearWrites();
+  client.modifiers(shift, 0, caps, 0);
+  client.tap(30);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK_EQ(laptop.get()->leds, both);
+  CHECK(laptop.writes().empty());
+
+  client.modifiers(0, 0, 0, 0);
+  loop.flush();
+  CHECK(!laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_NUM_LOCK});
+
+  laptop.tap(58);
+  loop.flush();
+  laptop.clearWrites();
+  client.tap(30);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, both);
+  CHECK(laptop.writes().empty());
 }
 
 UMBRIEL_TEST(changedIndicatorNamesDoNotTurnInvalidIndexesIntoActiveLeds) {
@@ -337,15 +493,17 @@ UMBRIEL_TEST(changedIndicatorNamesDoNotTurnInvalidIndexesIntoActiveLeds) {
   loop.flush();
   proxy.tap(58);
   loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 
   proxy.renameCapsIndicator();
-  proxy.tap(58);
+  proxy.tap(30);
   loop.flush();
   CHECK_EQ(xkb_keymap_led_get_index(proxy.get()->keymap, XKB_LED_NAME_CAPS), XKB_LED_INVALID);
-  CHECK_EQ(xkb_state_mod_name_is_active(proxy.get()->xkb_state, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_LOCKED), 1);
-  const std::vector<uint32_t> transitions{WLR_LED_CAPS_LOCK, 0};
-  CHECK_EQ(laptop.writes(), transitions);
+  CHECK(proxy.locked(XKB_MOD_NAME_CAPS));
+  CHECK_EQ(laptop.get()->leds, uint32_t{0});
+  laptop.tap(30);
+  loop.flush();
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 }
 
 UMBRIEL_TEST(losingTheFinalUsableSourceClearsSurvivingIndicators) {
@@ -358,16 +516,15 @@ UMBRIEL_TEST(losingTheFinalUsableSourceClearsSurvivingIndicators) {
   loop.flush();
   proxy.tap(58);
   loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 
   CHECK(wlr_keyboard_set_keymap(laptop.get(), nullptr));
   proxy.finish();
   loop.flush();
-  const std::vector<uint32_t> transitions{WLR_LED_CAPS_LOCK, 0};
-  CHECK_EQ(laptop.writes(), transitions);
+  CHECK_EQ(laptop.get()->leds, uint32_t{0});
 }
 
-UMBRIEL_TEST(virtualTargetsAndInputMethodEchoesDoNotReplaceTheRealSource) {
+UMBRIEL_TEST(inputMethodEchoesCannotChangeSharedLocksOrVirtualKeymaps) {
   EventLoop loop;
   wlr_keyboard* excluded = nullptr;
   umbriel::KeyboardLeds leds(loop.get(), [&excluded](wlr_keyboard* source) { return source != excluded; });
@@ -376,28 +533,39 @@ UMBRIEL_TEST(virtualTargetsAndInputMethodEchoesDoNotReplaceTheRealSource) {
   BackendKeyboard inputMethod;
   laptop.observe(leds);
   proxy.observe(leds);
-  inputMethod.observe(leds, false, true);
+  inputMethod.observe(leds, true, true);
   loop.flush();
   proxy.tap(58);
   loop.flush();
-  CHECK_EQ(laptop.writes(), std::vector<uint32_t>{WLR_LED_CAPS_LOCK});
-  CHECK(inputMethod.writes().empty());
-
-  excluded = inputMethod.get();
-  leds.update(inputMethod.get());
-  loop.flush();
   CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
-  CHECK(inputMethod.writes().empty());
+  xkb_keymap* originalMap = inputMethod.get()->keymap;
+  inputMethod.clearWrites();
 
-  // Ownership may be recognized after an idle update was queued.
+  excluded = inputMethod.get();
+  const uint32_t num = inputMethod.modifierMask(XKB_MOD_NAME_NUM);
+  inputMethod.modifiers(0, 0, num, 0);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
+  CHECK_EQ(inputMethod.get()->keymap, originalMap);
+  CHECK(!inputMethod.locked(XKB_MOD_NAME_CAPS));
+  CHECK(inputMethod.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(inputMethod.writes(), std::vector<uint32_t>{WLR_LED_NUM_LOCK});
+
   excluded = nullptr;
+  inputMethod.tap(30);
+  loop.flush();
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
+
   leds.update(inputMethod.get());
   excluded = inputMethod.get();
   loop.flush();
-  CHECK_EQ(laptop.get()->leds, uint32_t{0});
-  const std::vector<uint32_t> fallbackTransitions{WLR_LED_CAPS_LOCK, 0};
-  CHECK_EQ(laptop.writes(), fallbackTransitions);
-  CHECK(inputMethod.writes().empty());
+  CHECK(laptop.locked(XKB_MOD_NAME_CAPS));
+  CHECK(!laptop.locked(XKB_MOD_NAME_NUM));
+  CHECK_EQ(laptop.get()->leds, uint32_t{WLR_LED_CAPS_LOCK});
 }
 
 UMBRIEL_TEST(destroyingTheRelayCancelsPendingCallbacksAndRemovesListeners) {

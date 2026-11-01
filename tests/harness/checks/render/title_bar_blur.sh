@@ -231,7 +231,7 @@ for style in fade slide; do
   "$UMBRIEL" settle >/dev/null
   "$UMBRIEL" clock-freeze >/dev/null
   id=$(title_bar_window ssd-blur | jq -r '.id')
-  "$UMBRIEL" msg "window-close:$id" >/dev/null
+  "$UMBRIEL" msg window-close "$id" >/dev/null
   title_bar_wait_absent ssd-blur
   grim -o HEADLESS-1 "$image"
   read -r _ first_green _ < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel "$sample_x" "$sample_y")
