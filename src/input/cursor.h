@@ -390,7 +390,7 @@ namespace umbriel {
     [[nodiscard]] bool tiledMoveDragActive() const;
     // What the edge auto-scroll may move right now (input.drag_edge_scroll drives both sinks from one
     // mechanism): the active workspace's scrolling layout along its scrolling axis (data drags, tiled moves,
-    // overview card drags), and — during an overview card drag — the overview's workspace filmstrip along the
+    // overview card drags), and, during an overview card drag, the overview's workspace filmstrip along the
     // workspace axis. Each sink takes the signed edge ramp's speed in screen px/s; the strip consumes it as
     // layout px/s, the filmstrip converts it to rows through the preview step. Either may be null when that
     // dimension has nothing left to scroll.

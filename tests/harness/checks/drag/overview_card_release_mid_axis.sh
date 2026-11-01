@@ -60,7 +60,7 @@ press_y=$((180 + start_y / 2))
 
 # Card drag (plain press past the drag threshold); the first hold lands after the threshold, so the
 # post-detach position is the baseline. Then the finger pan runs and the button releases BEFORE the
-# axis-stop — the drop must settle the navigation, not leave it armed.
+# axis-stop; the drop must settle the navigation, not leave it armed.
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   move "$press_x" "$press_y" press "$BTN_LEFT" move $((press_x + 30)) "$press_y" \
   -- axis horizontal 150 pause 200 mark panned hold release "$BTN_LEFT" axis-stop horizontal

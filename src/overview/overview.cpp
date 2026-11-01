@@ -2571,7 +2571,7 @@ namespace umbriel {
         if (extendFilmstripEnds) {
           // The same dead-zone fix along the workspace axis, drop targeting only: the rows at either end of the
           // filmstrip claim the space out to the output edge, so a card dragged (or edge-scroll panned) past the
-          // last preview still drops on the end workspace. Insertion gaps keep priority — workspaceGapAt runs
+          // last preview still drops on the end workspace. Insertion gaps keep priority: workspaceGapAt runs
           // first and still owns the spaces between previews and the dynamic edge before row 0. Wheel, pointer
           // scroll and navigation lookups pass this false and keep their previous hitboxes.
           const size_t count = state->workspaceBackgrounds.size();
@@ -2960,7 +2960,7 @@ namespace umbriel {
   void Overview::beginNavigation(wlr_pointer* pointer, NavigationSource source, double lx, double ly) {
     cancelNavigation();
     // A held card drag may still scroll: the touchpad finger stream must not be swallowed by the hold.
-    // Middle-press keeps refusing — handleMotion gives it its own pointer-scroll path.
+    // Middle-press keeps refusing; handleMotion gives it its own pointer-scroll path.
     const bool dragScroll = m_dragCard != nullptr && source == NavigationSource::Scroll;
     if (!interactive() || (dragging() && !dragScroll) || pointer == nullptr) {
       return;
@@ -3003,7 +3003,7 @@ namespace umbriel {
         axis == OverviewNavigation::Axis::Horizontal ? overview.scrollFactorHorizontal : overview.scrollFactorVertical;
     const auto travel = OverviewNavigation::travelFor(m_navigationSource);
     if ((axis == OverviewNavigation::Axis::Horizontal) == m_navigationHorizontalWorkspaces) {
-      // The rows follow the fingers in both cases — panning is not a workspace step. While a card drag is live
+      // The rows follow the fingers in both cases; panning is not a workspace step. While a card drag is live
       // the release settles without selecting anything (see endNavigation) and the drop re-resolves under the
       // stationary pointer instead; that is the pan-only contract the held card needs.
       if (!m_navigationStarted) {
@@ -3086,7 +3086,7 @@ namespace umbriel {
       const auto last = static_cast<double>(group->workspaceCount() - 1);
       if (m_dragCard != nullptr) {
         // Settle-only while a card drag is live: snap the rows (back to where the pan started on a cancel) and
-        // select nothing — the active workspace must not change under the held card. The drop then resolves under
+        // select nothing: the active workspace must not change under the held card. The drop then resolves under
         // the pointer at the settled position; applyDrop activates its destination when it lands.
         state->rowScroll.snap(
             cancelled ? m_navigationStart
@@ -3121,7 +3121,7 @@ namespace umbriel {
     const auto maximum = static_cast<double>(scrolling->maxScroll(viewport));
     if (cancelled) {
       // A cancel (an unrelated press, a device switch mid-pan) restores the scroll the gesture started from,
-      // drag or not — matching non-drag semantics; the refresh keeps the drop honest at the reverted position.
+      // drag or not, matching non-drag semantics; the refresh keeps the drop honest at the reverted position.
       scrolling->setScroll(
           m_navigationCentered ? m_navigationStart : std::clamp(m_navigationStart, 0.0, maximum), m_navigationCentered
       );
@@ -3438,7 +3438,7 @@ namespace umbriel {
 
   // The strip can move under a stationary drag pointer (edge auto-scroll, finger-scroll pan): re-running updateDrag
   // at the stored position keeps the drop resolving where the card visibly sits. Valid before arrange() because
-  // computeDropTarget reads layout.scroll() directly (drop_target.cpp) — the refresh sees the new scroll at once.
+  // computeDropTarget reads layout.scroll() directly (drop_target.cpp), so the refresh sees the new scroll at once.
   void Overview::refreshDragTarget() {
     if (m_dragCard != nullptr) {
       updateDrag(m_dragPointerX, m_dragPointerY);

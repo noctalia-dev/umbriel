@@ -141,7 +141,7 @@ namespace umbriel {
     // Re-resolves the drop under the stationary drag pointer after the strip moved beneath it (edge auto-scroll or
     // finger-scroll pan). A no-op without a live card drag.
     void refreshDragTarget();
-    // The workspace a held card would drop into — the row under the drag pointer as refreshDragTarget last
+    // The workspace a held card would drop into: the row under the drag pointer as refreshDragTarget last
     // resolved it. Null without a live card drag, while the pointer sits in an insertion gap, or when the row
     // has been pruned from its group underneath the drag.
     [[nodiscard]] Workspace* dragTargetWorkspace() const;
@@ -464,7 +464,7 @@ namespace umbriel {
     bool m_middleScrolling = false;
 
     Card* m_dragCard = nullptr;
-    // Last pointer position the drag followed — refreshDragTarget() re-resolves the drop from it.
+    // Last pointer position the drag followed; refreshDragTarget() re-resolves the drop from it.
     double m_dragPointerX = 0;
     double m_dragPointerY = 0;
     double m_dragOffsetX = 0;

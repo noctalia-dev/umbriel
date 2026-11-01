@@ -2,7 +2,7 @@
 # harness: outputs=1
 # Regression check (2026-10-26 user feedback, overview card drag input): while an overview card
 # drag is held, smooth finger travel (the touchpad finger-scroll stream) must still pan the strip,
-# as it does without a hold (overview/touchpad.sh) — the hold must not swallow the axis stream.
+# as it does without a hold (overview/touchpad.sh); the hold must not swallow the axis stream.
 # Asserts: post-detach baseline (beginDrag detaches the tile and the strip closes the gap live),
 # >50 px of strip pan from the axis travel with the drag held, and the drop lands after the panned
 # position (the drop target refreshed under the stationary pointer).
@@ -59,7 +59,7 @@ press_y=$((180 + start_y / 2))
 "$UMBRIEL" settle
 
 # Card drag (plain press past the drag threshold). The first hold lands after the drag
-# threshold — beginDrag detaches the tile and the strip closes the gap — so the post-detach
+# threshold (beginDrag detaches the tile and the strip closes the gap), so the post-detach
 # position is the baseline the axis pan must beat. Then the touchpad finger-scroll stream runs
 # while the drag is live (same travel overview/touchpad.sh pans with, without a hold).
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \

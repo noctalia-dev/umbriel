@@ -2,7 +2,7 @@
 # harness: outputs=1
 # Regression check (2026-10-26 user feedback, overview card drag input): an overview card drag
 # (plain press on a window card) held at the screen edge of a long scrolling-layout workspace must
-# slide the strip so the window can be dropped at the other end — the edge auto-scroll a tiled move
+# slide the strip so the window can be dropped at the other end: the edge auto-scroll a tiled move
 # already has (drag/move_drag_edge_scroll.sh), for the overview CARD drag.
 # Asserts: post-detach baseline (beginDrag detaches the tile and the strip closes the gap live),
 # >50 px of further strip movement while parked at the edge, then drop placement after the
@@ -58,7 +58,7 @@ fi
 "$UMBRIEL" settle
 
 # Card position: overview zoom 0.5 scales the 1280x720 output to a centered preview
-# (origin 320,180, half scale) — map the window's layout center onto it.
+# (origin 320,180, half scale); map the window's layout center onto it.
 start_x=$(jq -r '.[] | select(.title == "card-edge-1") | (.x + .w / 2 | round)' <<< "$windows")
 start_y=$(jq -r '.[] | select(.title == "card-edge-1") | (.y + .h / 2 | round)' <<< "$windows")
 press_x=$((320 + start_x / 2))

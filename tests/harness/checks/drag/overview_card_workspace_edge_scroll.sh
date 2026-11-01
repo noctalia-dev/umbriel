@@ -2,7 +2,7 @@
 # harness: outputs=1
 # Regression check (2026-10-27 user feedback: "the feature is missing for vertical workspace;
 # horizontal and vertical scroll could use the same mechanic"): the workspace-axis twin of
-# drag/overview_card_drag_edge_scroll.sh — an overview card drag held at the screen edge along the
+# drag/overview_card_drag_edge_scroll.sh: an overview card drag held at the screen edge along the
 # WORKSPACE axis slides the workspace filmstrip (input.drag_edge_scroll's zones/delay/ramp, reused
 # from the layout-strip mechanic) so the window can be carried to the far workspace. Runs both
 # workspace arrangements: the bottom edge with the default vertical axis, then the right edge with
@@ -73,7 +73,7 @@ press_y=$((180 + start_y / 2))
 "$UMBRIEL" settle
 
 # Park at the bottom edge (workspace axis is vertical; rows step 396 px at zoom 0.5). At rest the
-# pointer at y=719 sits in row 1's band (576..936) — a plain drop lands on workspace 2. Only a
+# pointer at y=719 sits in row 1's band (576..936), so a plain drop lands on workspace 2. Only a
 # filmstrip slide can bring workspace 3 (the far end) under the pointer.
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   move "$press_x" "$press_y" press "$BTN_LEFT" move $((press_x + 30)) "$press_y" \
@@ -101,7 +101,7 @@ fi
 
 echo "GREEN: overview card drag at the bottom edge slid the filmstrip and dropped on $dropped"
 
-# Phase 2 — the transposed arrangement. workspace_axis = "horizontal" steps the workspaces along X
+# Phase 2: the transposed arrangement. workspace_axis = "horizontal" steps the workspaces along X
 # (and turns the layout strip vertical), so the same filmstrip slide must fire at the RIGHT edge.
 configure horizontal
 "$UMBRIEL" msg workspace-switch:1 > /dev/null

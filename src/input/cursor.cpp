@@ -501,8 +501,8 @@ namespace umbriel {
     // drags AND compositor tiled moves keep the overview exclusion (DnD-overview semantics, pinned by
     // drag/data_drag_edge_scroll.sh; the MoveGrab-in-overview drag model belongs to a later wave). A concurrent
     // middle-press pointer-scroll pan owns the motion while it runs, so the card's frozen drop row must not pair
-    // with the live pointer's edge ramp — the machinery stands down until the hold is the card's alone. The
-    // target maths resolve the real usable-area edges — not the row under the pointer or the preview bounds.
+    // with the live pointer's edge ramp; the machinery stands down until the hold is the card's alone. The
+    // target maths resolve the real usable-area edges, not the row under the pointer or the preview bounds.
     const bool cardDrag = overview != nullptr && overview->cardDragging() && !overview->middlePressed();
     const bool tiledMove = tiledMoveDragActive();
     if (!edge.enabled
@@ -520,8 +520,8 @@ namespace umbriel {
       return targets;
     }
 
-    // A held card aims at the row under the drag pointer — its drop target, the same row the finger-pan path
-    // resolves through navigationWorkspace() — so the strip it must reveal is that workspace's, not the active
+    // A held card aims at the row under the drag pointer (its drop target, the same row the finger-pan path
+    // resolves through navigationWorkspace()), so the strip it must reveal is that workspace's, not the active
     // one's. A card over an insertion gap has no row to slide. Data drags and tiled moves keep the active
     // workspace. The shared edge ramp runs on the target workspace's real usable-area edges.
     Workspace* workspace = cardDrag ? overview->dragTargetWorkspace() : active;
@@ -582,7 +582,7 @@ namespace umbriel {
     }
     const auto direction = [](double speed) { return (speed > 0) - (speed < 0); };
     // A sink appearing or an active sink changing direction starts a fresh scroll (delay and all); a sink
-    // vanishing — its dimension hit the end — drops out of the set without disturbing the other sink's timeline.
+    // vanishing (its dimension hit the end) drops out of the set without disturbing the other sink's timeline.
     const bool restart = (targets.workspace != nullptr
                           && (targets.workspace != m_dataDragEdgeScrollWorkspace
                               || direction(targets.workspaceSpeed) != direction(m_dataDragEdgeScrollSpeed)))

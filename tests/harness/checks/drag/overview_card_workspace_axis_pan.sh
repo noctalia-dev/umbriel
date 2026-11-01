@@ -3,7 +3,7 @@
 # Regression check (2026-10-27 user feedback: "the feature is missing for vertical workspace;
 # horizontal and vertical scroll could use the same mechanic"): while an overview card drag is
 # held, the touchpad finger-scroll stream must pan the WORKSPACE FILMSTRIP along the workspace axis
-# — the workspace-axis twin of the strip pan drag/overview_card_axis_pan.sh pins. Pan-only: the
+# (the workspace-axis twin of the strip pan drag/overview_card_axis_pan.sh pins). Pan-only: the
 # rows follow the fingers, the active workspace never changes under the hold, and the release
 # settles without selecting anything so the drop lands on the workspace under the pointer (the
 # drop's focus is what activates its destination).

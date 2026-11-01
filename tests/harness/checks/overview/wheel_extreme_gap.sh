@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # harness: outputs=1
 # Regression check (talia review findings 3+4 on the overview card drag input): the filmstrip
-# end-band widening in workspaceAtPoint is DROP-ONLY. Wheel notches — and the pointer-scroll and
-# navigation lookups sharing the same hit-test flags — keep the narrow preview hitbox, so a
+# end-band widening in workspaceAtPoint is DROP-ONLY. Wheel notches (and the pointer-scroll and
+# navigation lookups sharing the same hit-test flags) keep the narrow preview hitbox, so a
 # Shift-wheel notch over the extreme gap beyond the first preview stays inert instead of focusing
 # the end row's columns as the widened drop hitbox would.
 # Asserts: the notch over the gap changes nothing, the same notch inside the row's band moves column

@@ -4,7 +4,7 @@
 # strip twin of drag/overview_card_drag_edge_scroll.sh. With workspace_axis = "horizontal" the
 # layout strip runs along Y (scrolling layouts run perpendicular to the workspace axis), and an
 # overview card drag held at the bottom edge must slide it exactly like the horizontal twin slides
-# the columns at the right edge — pinning that the edge auto-scroll mechanic is axis-generic.
+# the columns at the right edge, pinning that the edge auto-scroll mechanic is axis-generic.
 # Asserts: post-detach baseline (beginDrag detaches the tile and the strip closes the gap live),
 # >50 px of further vertical strip movement while parked at the edge, then drop placement after the
 # revealed column.
