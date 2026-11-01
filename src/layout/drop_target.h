@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 extern "C" {
 #include <wlr/util/box.h>
@@ -72,5 +73,21 @@ namespace umbriel {
 
   // Puts the detached `tabs` of a lifted group back at `home` on `shown`'s workspace, as a group showing `shown`.
   void returnTabGroup(View& shown, std::span<View* const> tabs, std::optional<bool> bar, const TabGroupHome& home);
+
+  // A tab group lifted off its scrolling column while one of its tabs is dragged. `tabs` is the whole group in row
+  // order, the dragged tab among them.
+  struct LiftedTabGroup {
+    std::vector<View*> tabs;
+    std::optional<bool> bar;
+    TabGroupHome home;
+  };
+
+  // Detaches and hides the other tabs of `view`'s group so a drag of `view` carries them. Empty when `view` is not a
+  // tab in a scrolling column.
+  [[nodiscard]] LiftedTabGroup liftTabGroup(Workspace& workspace, View& view);
+
+  // Regroups `lifted` once the drag of `view` ends: around `view` in the scrolling column it landed in, all back home
+  // when the drag was cancelled, else back home without `view`, showing the tab before it as a closed tab would.
+  void landTabGroup(View& view, const LiftedTabGroup& lifted, bool closing);
 
 } // namespace umbriel
