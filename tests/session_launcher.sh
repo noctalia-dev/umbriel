@@ -362,6 +362,7 @@ if [[ ${2:-} == start && ${4:-} == umbriel-shutdown.target ]]; then
   rm -f "$state/active"
 fi
 EOF
+sed -i "1c#!$BASH" "$TEST_BIN/systemctl"
 cat > "$TEST_BIN/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
 exit 0
