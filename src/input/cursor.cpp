@@ -562,7 +562,8 @@ namespace umbriel {
       if (edgeSpeed(vertical, &speed)) {
         const double oldScroll = scrolling->scroll();
         const auto maximum = static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent()));
-        if (maximum > 0 && !((speed < 0 && oldScroll <= 0) || (speed > 0 && oldScroll >= maximum))) {
+        const bool atScrollLimit = (speed < 0 && oldScroll <= 0) || (speed > 0 && oldScroll >= maximum);
+        if (maximum > 0 && !atScrollLimit) {
           targets.workspace = workspace;
           targets.workspaceSpeed = speed;
         }
