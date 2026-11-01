@@ -104,7 +104,7 @@ echo "GREEN: overview card drag at the bottom edge slid the filmstrip and droppe
 # Phase 2: the transposed arrangement. workspace_axis = "horizontal" steps the workspaces along X
 # (and turns the layout strip vertical), so the same filmstrip slide must fire at the RIGHT edge.
 configure horizontal
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 
 spawn_client 2

@@ -41,7 +41,7 @@ EOF
 
 count=0
 for ws in 1 2; do
-  "$UMBRIEL" msg "workspace-switch:$ws" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$ws" > /dev/null
   for id in $(seq 1 4); do
     spawn_client "$ws-$id"
     count=$((count + 1))
@@ -53,7 +53,7 @@ for ws in 1 2; do
 done
 "$UMBRIEL" msg column-focus-first > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" msg column-focus-first > /dev/null
 "$UMBRIEL" settle
 
