@@ -357,11 +357,3 @@ umbriel msg <action> [args...]   # send an action to the running compositor
 Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): imperative summary`, with lowercase types such as `feat`, `fix`, `refactor`, `chore`, `test`, or `docs` and a focused subsystem scope when it helps.
 
 Default to the summary line alone. Add a body only when it carries information a reader would otherwise miss: a non-obvious root cause, a constraint that forced the approach, a behavior change users will notice, or a `Fixes #N` reference. Do not restate the diff or list touched files.
-
-## Maintainer triage intake
-
-`.github/workflows/project-intake.yml` attaches newly opened or reopened Umbriel issues and pull requests to the organization Maintainer triage project as native cards. New cards receive Status Inbox, Component Umbriel, and Kind Issue or PR. It does not create drafts, post comments, change issue state, or set Priority. Existing card statuses, priorities, and other triage values are preserved. Archived cards are left archived; conflicting Component or Kind values fail the run rather than overwrite triage.
-
-Run Maintainer Triage Intake manually from GitHub Actions to reconcile all open issues and pull requests. Closed items are excluded. The Umbriel views require matching Component and Kind values.
-
-Intake authenticates as the organization's Noctalia Automation GitHub App: each run mints a short-lived token limited to this repository, organization project write and issue/pull request read, from the organization variable `AUTOMATION_APP_CLIENT_ID` and the organization secret `AUTOMATION_APP_PRIVATE_KEY`. The App must stay installed on this repository with Organization projects read and write. Rotate the key from the App's settings page and update the secret; never commit it. Intake on `pull_request_target` runs only the trusted workflow code and does not check out pull request code.
