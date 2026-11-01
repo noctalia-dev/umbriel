@@ -11,20 +11,7 @@ readonly NATIVE_CLIENT="$UMBRIEL_SEAT_LOG_CLIENT"
 readonly NATIVE_TITLE=xwayland-popup-native
 readonly NATIVE_LOG="$UMBRIEL_RUNTIME_DIR/popup-native.log"
 client_pid=
-native_pid=
 sequence=0
-
-cleanup() {
-  if [[ -n $client_pid ]]; then
-    printf 'quit\n' >&"$control_fd" || true
-    wait "$client_pid" || true
-  fi
-  if [[ -n $native_pid ]]; then
-    kill "$native_pid" 2>/dev/null || true
-    wait "$native_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
 
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
@@ -379,7 +366,6 @@ send 'type popup'
 expect_view_count 0
 expect_popup_state before-native false
 "$NATIVE_CLIENT" "$NATIVE_TITLE" > "$NATIVE_LOG" 2>&1 &
-native_pid=$!
 expect_native_active
 await_lines "$NATIVE_LOG" keyboard-enter 1 0.025
 expect_raw_focus_clear native-focused
@@ -400,9 +386,5 @@ if [[ $(events "$client_log" 'key code=47 state=pressed') != "$x_keys_before" ]]
   echo "native typing also reached the withdrawn X11 popup: $(cat "$client_log")"
   exit 1
 fi
-stop_client
-kill "$native_pid"
-wait "$native_pid" 2>/dev/null || true
-native_pid=
 
 echo 'mapped X11 windows reclassify by popup type and override-redirect state while preserving client geometry and input'
