@@ -50,16 +50,9 @@ wait_for_box() {
 }
 
 capture_box() {
-  local label=$1 image="$UMBRIEL_RUNTIME_DIR/$1.png"
-  local width height x y
+  local image="$UMBRIEL_RUNTIME_DIR/$1.png"
   grim "$image"
-  read -r width height x y < <(
-    magick "$image" -alpha off -colorspace gray -threshold 1% \
-      -bordercolor black -border 1 -trim -format '%w %h %X %Y\n' info:
-  )
-  x=${x#+}
-  y=${y#+}
-  printf '%d %d %d %d\n' "$((x - 1))" "$((y - 1))" "$width" "$height"
+  "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01'
 }
 
 assert_exact_box() {

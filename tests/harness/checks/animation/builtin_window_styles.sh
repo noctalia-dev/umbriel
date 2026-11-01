@@ -111,8 +111,7 @@ wait_unmapped() {
 sample_rgb() {
   local x=$1 y=$2
   grim "$IMAGE"
-  magick "$IMAGE" -alpha off -crop "40x40+$x+$y" +repage \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "40x40+$x+$y" | awk '{ print $1, $3 }'
 }
 
 assert_group_fade() {
@@ -130,7 +129,7 @@ assert_group_fade() {
 sample_blue() {
   local x=$1 y=$2
   grim "$IMAGE"
-  magick "$IMAGE" -crop "40x40+$x+$y" -format '%[fx:round(255*mean.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "40x40+$x+$y" | awk '{ print $3 }'
 }
 
 blue_bounds() {
