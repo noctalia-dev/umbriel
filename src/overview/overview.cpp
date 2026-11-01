@@ -2502,6 +2502,9 @@ namespace umbriel {
       m_dropWorkspaceGroup = nullptr;
     }
     if (m_dragCard != nullptr && m_dragCard->owner == it->get()) {
+      if (!m_dragTabGroup.tabs.empty()) {
+        landTabGroup(*m_dragCard->view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+      }
       hideDropHint();
       m_dragCard = nullptr;
       m_dragSourceWorkspace = nullptr;
