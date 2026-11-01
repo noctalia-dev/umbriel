@@ -415,6 +415,9 @@ namespace umbriel {
     void beginDrag();
     void updateDrag(double lx, double ly);
     void endDrag(bool drop);
+    // Edge scroll can leave a filmstrip between rows under a held card. Once the drag ends, every output's rows not
+    // already headed to its active workspace animate there.
+    void settleRowsOnActiveWorkspace();
     void syncWorkspaceRows(OutputState& state, WorkspaceGroup& group);
     void showDropHint(
         const wlr_box& worldBox, const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex,

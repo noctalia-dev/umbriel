@@ -3584,6 +3584,7 @@ namespace umbriel {
     m_server->cursor()->handleDataDragEnded();
 
     if (view == nullptr || !view->mapped()) {
+      settleRowsOnActiveWorkspace();
       return;
     }
 
@@ -3666,6 +3667,20 @@ namespace umbriel {
     // about than rebinding its surface listeners in place.
     rebuildCard(view);
     applyProgress();
+    settleRowsOnActiveWorkspace();
+  }
+
+  void Overview::settleRowsOnActiveWorkspace() {
+    for (const auto& state : m_outputs) {
+      const WorkspaceGroup* group = state->output->workspaceGroup();
+      if (group == nullptr || group->active() == nullptr) {
+        continue;
+      }
+      const auto row = static_cast<double>(group->active()->index());
+      if (std::abs(state->rowScroll.target() - row) >= 0.001) {
+        animateRow(*state, row);
+      }
+    }
   }
 
   void Overview::syncWorkspaceRows(OutputState& state, WorkspaceGroup& group) {
