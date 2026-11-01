@@ -196,14 +196,19 @@ namespace umbriel {
       return any ? maximum : 0;
     }
 
+    // A hidden tab does not count: its group keeps its own width while another tab shows.
     bool columnFillsViewport(const Column& column, const Layout& layout) {
-      return std::ranges::any_of(column.views, [&layout](const View* view) {
-        if (view == nullptr) {
-          return false;
+      for (size_t row = 0; row < column.views.size(); ++row) {
+        const View* view = column.views[row];
+        if (view == nullptr || column.tabs.hidden(row)) {
+          continue;
         }
         const LayoutConstraints constraints = layout.constraintsFor(view);
-        return constraints.fullscreen || constraints.maximizedToEdges;
-      });
+        if (constraints.fullscreen || constraints.maximizedToEdges) {
+          return true;
+        }
+      }
+      return false;
     }
 
     // Fullscreen and maximize-to-edges views are presented against the wider
