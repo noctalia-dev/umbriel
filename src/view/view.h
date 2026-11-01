@@ -83,6 +83,9 @@ namespace umbriel {
     [[nodiscard]] bool currentMaximized() const;
     [[nodiscard]] bool scheduledActivated() const;
     [[nodiscard]] bool acceptsKeyboardFocus() const;
+    // An X11 utility window transient for another window whose WM_HINTS refuse keyboard input, such as a completion
+    // list. It never takes the keyboard from its parent and opens where its client placed it.
+    [[nodiscard]] bool passiveXwaylandUtility() const;
     void setActivatedState(bool activated);
     // Take X input focus back for an X11 window that stayed activated while one of its menus held it; a no-op for xdg
     // toplevels.

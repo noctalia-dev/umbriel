@@ -278,7 +278,8 @@ namespace umbriel {
     }
     const bool restoreTiled = m_tiled;
     const bool draggedToplevel = m_server->seat()->toplevelDrags().attached(m_toplevel);
-    if (draggedToplevel) {
+    // A passive utility belongs at its client's position over its parent, whatever app-wide rule tiles the client.
+    if (draggedToplevel || passiveXwaylandUtility()) {
       m_tiled = false;
     }
     // Unsettled when any rule uses a title pattern: the first handleSetTitle after map re-applies disruptive effects
@@ -886,10 +887,17 @@ namespace umbriel {
       const bool openingInScratchpad = !openingScratchpad.empty()
           && scratchpadManager != nullptr
           && scratchpadManager->hasScratchpad(openingScratchpad);
+      const bool passiveUtility = passiveXwaylandUtility();
       bool wantTiled = !m_server->seat()->toplevelDrags().attached(m_toplevel)
+          && !passiveUtility
           && !openingInScratchpad
           && !rule.defaultPinned.value_or(false)
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled());
+      if (passiveUtility) {
+        // The opening configure carries the frame's position, so start it where the client put the window.
+        const XwaylandRegion region = m_server->xwayland()->outputs().regionAtX(m_xsurface->x, m_xsurface->y);
+        setPosition(region.toLayoutX(m_xsurface->x), region.toLayoutY(m_xsurface->y));
+      }
 
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.

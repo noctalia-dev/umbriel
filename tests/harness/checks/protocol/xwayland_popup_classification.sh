@@ -183,6 +183,34 @@ type_key() {
   await_lines "$client_log" "key code=$((key + 8)) state=pressed" "$((before + 1))" 0.025
 }
 
+type_key_to() {
+  local key=$1 window=$2 before
+  before=$(events "$client_log" "key code=$((key + 8)) state=pressed window=$window")
+  "$UMBRIEL_POINTER_CLIENT" 1280 720 tap "$key" > /dev/null
+  await_lines "$client_log" "key code=$((key + 8)) state=pressed window=$window" "$((before + 1))" 0.025
+}
+
+# The passive utility floats at its client position over its maximized parent, which keeps the keyboard.
+expect_passive_utility() {
+  local label=$1 image="$UMBRIEL_RUNTIME_DIR/popup-$1.png" pixel
+  expect_view_count 2
+  for _ in $(seq 100); do
+    if views | jq -e '(map(select(.floating)) | length == 1) and (map(select(.active and .maximized)) | length == 1)' \
+      > /dev/null; then
+      break
+    fi
+    sleep 0.025
+  done
+  views | jq -e '(map(select(.floating)) | length == 1) and (map(select(.active and .maximized)) | length == 1)' \
+    > /dev/null || { echo "$label: expected a floating utility over an active maximized parent: $(views)"; return 1; }
+  "$UMBRIEL" settle > /dev/null
+  grim -o HEADLESS-1 "$image"
+  pixel=$("$UMBRIEL_PIXEL_PROBE" "$image" pixel 350 230)
+  [[ $pixel == '48 96 144' ]] || { echo "$label: utility content pixel was $pixel"; return 1; }
+  pixel=$("$UMBRIEL_PIXEL_PROBE" "$image" pixel 510 230)
+  [[ $pixel == '192 128 64' ]] || { echo "$label: parent pixel was $pixel"; return 1; }
+}
+
 # The same metadata before association is the classification control. Broad
 # application tiling/maximize rules must never own a client-placed menu.
 start_client before
@@ -386,5 +414,24 @@ if [[ $(events "$client_log" 'key code=47 state=pressed') != "$x_keys_before" ]]
   echo "native typing also reached the withdrawn X11 popup: $(cat "$client_log")"
   exit 1
 fi
+
+# A utility window transient for another X11 window that refuses keyboard input, such as a completion list, stays a
+# managed window. It must not tile under the broad rule, move from its client position, or take typing from its parent.
+start_client passive
+send parent-map
+expect_managed
+parent_window=$(grep -o 'parent=0x[0-9a-f]*' "$client_log" | head -1 | cut -d= -f2)
+send 'transient' 'type utility' 'input false' 'take-focus' map
+expect_state passive 'map=2 override=false type=utility x=200 y=150 w=300 h=160 input=false active=false .* max_horz=false max_vert=false fullscreen=false'
+expect_passive_utility passive
+type_key_to 44 "$parent_window"
+
+send unmap
+expect_view_count 1
+send map
+expect_state passive-remapped 'map=2 override=false type=utility x=200 y=150 w=300 h=160 input=false active=false .* max_horz=false max_vert=false fullscreen=false'
+expect_passive_utility passive-remapped
+type_key_to 45 "$parent_window"
+stop_client
 
 echo 'mapped X11 windows reclassify by popup type and override-redirect state while preserving client geometry and input'
