@@ -776,7 +776,7 @@ namespace umbriel {
           .earlyHdrFail = earlyHdrFail,
       };
 
-      const auto commitStagedState = [&]() -> FormatCommitResult {
+      const auto commitStagedState = [&] -> FormatCommitResult {
         const bool targetHdr = state.image_description != nullptr;
         wlr_scene_output_set_sdr_white_level(m_sceneOutput, targetHdr ? sdrWhite() : 0.0F);
         wlr_damage_ring_add_whole(&m_sceneOutput->damage_ring);

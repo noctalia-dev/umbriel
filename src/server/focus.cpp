@@ -376,14 +376,13 @@ namespace umbriel {
       if (workspace == nullptr) {
         return false;
       }
-      if (View* focused = workspace->focusedView()) {
-        if (focused->mapped()
-            && focused->onActiveWorkspace()
-            && !focused->minimized()
-            && focused->inputDelegate()->acceptsKeyboardFocus()) {
-          focusView(focused);
-          return true;
-        }
+      if (View* focused = workspace->focusedView(); focused != nullptr
+          && focused->mapped()
+          && focused->onActiveWorkspace()
+          && !focused->minimized()
+          && focused->inputDelegate()->acceptsKeyboardFocus()) {
+        focusView(focused);
+        return true;
       }
       for (const auto& entry : m_server.registry().placementRoots()) {
         if (entry->mapped()

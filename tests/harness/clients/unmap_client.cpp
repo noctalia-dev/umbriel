@@ -1042,7 +1042,7 @@ int main(int argc, char** argv) {
       && !state.colorOnSubsurface
       && initialContentType == nullptr
       && updatedContentType != nullptr;
-  const auto createRenderingChildSurface = [&]() {
+  const auto createRenderingChildSurface = [&] {
     if (state.colorChildSurface != nullptr) {
       return true;
     }
@@ -1053,7 +1053,7 @@ int main(int argc, char** argv) {
     state.colorChildSurface = wl_compositor_create_surface(state.compositor);
     return state.colorChildSurface != nullptr;
   };
-  const auto attachRenderingChild = [&]() {
+  const auto attachRenderingChild = [&] {
     if (state.colorChildSubsurface != nullptr) {
       return true;
     }

@@ -723,9 +723,12 @@ namespace umbriel {
     const auto at = static_cast<size_t>(row);
     const size_t start = col.tabs.unitStart(at);
     const size_t end = col.tabs.unitEnd(at);
-    // A tab steps out of its group toward the move, keeping the group's extent as its own.
+    // A tab steps out of its group toward the move, keeping the group's extent as its own. Out of the column's end it
+    // lands in that end's free space instead, as a row added there would.
     if (end - start > 1) {
       const size_t edge = direction > 0 ? end - 1 : start;
+      const double weight =
+          claimInsertWeight(col, static_cast<int>(direction > 0 ? end : start), col.heightWeights[start]);
       if (direction > 0) {
         rotateRows(col, at, at + 1, end);
       } else {
@@ -733,6 +736,7 @@ namespace umbriel {
       }
       col.tabs.select(edge);
       col.tabs.leave(edge);
+      col.heightWeights[edge] = weight;
       return true;
     }
     const bool down = direction > 0;

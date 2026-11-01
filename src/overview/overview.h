@@ -474,6 +474,8 @@ namespace umbriel {
     int m_dragSourceColumn = -1;
     int m_dragSourceRow = -1;
     std::optional<DropColumnWidth> m_dragSourceWidth;
+    // A dragged card that is a tab carries its whole group.
+    LiftedTabGroup m_dragTabGroup;
     DropTarget m_drop{};
     WorkspaceGroup* m_dropWorkspaceGroup = nullptr;
     size_t m_dropWorkspaceIndex = 0;

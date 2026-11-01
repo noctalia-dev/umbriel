@@ -632,6 +632,41 @@ UMBRIEL_TEST(movingATabStepsOutOfItsGroup) {
   CHECK_EQ(fixture.layout.rowOf(stub(1)), 2);
 }
 
+UMBRIEL_TEST(aTabSteppingOutBelowTheColumnFillsItsFreeSpace) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setHeightFraction(stub(0), 0.5));
+  fixture.layout.arrange(kUsable);
+  const wlr_box group = fixture.layout.targetBox(stub(0));
+  CHECK(fixture.layout.moveViewVertical(stub(1), 1));
+  fixture.layout.arrange(kUsable);
+  // The group keeps its extent and the tab takes everything below it, down to the column's end.
+  CHECK(sameBox(fixture.layout.targetBox(stub(0)), group));
+  const wlr_box below = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(below.y, group.y + group.height + 12);
+  CHECK_EQ(below.y + below.height, kUsable.height - 10);
+  CHECK(std::fabs(fixture.layout.bottomGapWeight(0)) < 1e-9);
+}
+
+UMBRIEL_TEST(aTabSteppingOutAboveTheColumnFillsItsFreeSpace) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.setHeightWeight(0, 0, 0.5));
+  CHECK(fixture.layout.setTopGapWeight(0, 0.5));
+  fixture.layout.arrange(kUsable);
+  const wlr_box group = fixture.layout.targetBox(stub(1));
+  CHECK(fixture.layout.moveViewVertical(stub(0), -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(sameBox(fixture.layout.targetBox(stub(1)), group));
+  const wlr_box above = fixture.layout.targetBox(stub(0));
+  CHECK_EQ(above.y, 10);
+  CHECK_EQ(above.y + above.height + 12, group.y - kReserve);
+  CHECK(std::fabs(fixture.layout.topGapWeight(0)) < 1e-9);
+}
+
 UMBRIEL_TEST(aOneTabGroupTradesPlacesAsAUnit) {
   ScrollingFixture fixture;
   fixture.stack(2);

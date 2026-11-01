@@ -1572,10 +1572,9 @@ namespace umbriel {
     if (pid == 0) {
       resetChildSignalState();
       restoreFileDescriptorLimit();
-      if (scopeRequired) {
-        if (!closeChildFileDescriptors() || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
-          _exit(1);
-        }
+      if (scopeRequired
+          && (!closeChildFileDescriptors() || !restoreSystemdControlEnvironment(m_systemdControlEnvironment))) {
+        _exit(1);
       }
       setenv("WAYLAND_DISPLAY", m_socketName.c_str(), 1);
       unsetenv("WAYLAND_SOCKET");

@@ -11,8 +11,11 @@ project(
   ],
 )
 
+# wl_container_of recovers listener owners with offsetof on non-standard-layout classes, which
+# GCC and clang support; silence the conditionally-supported warning at every expansion site.
 add_project_arguments(
   '-DWLR_USE_UNSTABLE',
+  '-Wno-invalid-offsetof',
   language: 'cpp',
 )
 git_program = find_program('git', required: false)
@@ -47,11 +50,8 @@ add_project_arguments(
 )
 
 # Version floors here are the union of the compositor's needs and umbrielfx's.
-# Some distros install the wayland headers under a subdirectory added with `-I`, which makes
-# GCC report `-Winvalid-offsetof` from every `wl_container_of` expansion. Treat them as
-# system headers so the warning stays suppressed regardless of the install layout.
-wayland_server_dep = dependency('wayland-server', version: '>=1.24', include_type: 'system')
-wayland_client_dep = dependency('wayland-client', include_type: 'system')
+wayland_server_dep = dependency('wayland-server', version: '>=1.24')
+wayland_client_dep = dependency('wayland-client')
 wayland_protocols_dep = dependency('wayland-protocols', version: '>=1.47')
 # umbrielfx compiles against wlroots' private struct layouts, so it is pinned to
 # one minor series rather than tracking whatever is installed. The floor is

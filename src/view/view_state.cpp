@@ -410,13 +410,13 @@ namespace umbriel {
     // workspace's client_maximize, a floating window keeps the default behavior
     // whatever it says. The gesture passes the direction explicitly because it
     // computes the opposite of the current state at its second press.
-    if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(
-              maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
-          )) {
-        setMaximizedToEdges(maximized);
-        return;
-      }
+    if (m_tiled
+        && m_workspace != nullptr
+        && maximizeRequestTargetsEdges(
+            maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
+        )) {
+      setMaximizedToEdges(maximized);
+      return;
     }
     setMaximized(maximized);
   }
@@ -502,6 +502,9 @@ namespace umbriel {
 
   void View::handleSetParent() {
     refreshCaptureProtection();
+    if (m_xsurface != nullptr) {
+      m_server->xwaylandHintsChanged(this);
+    }
     if (m_mapped) {
       reconcileAttachment();
       // `match.is_dialog` follows the parent.
