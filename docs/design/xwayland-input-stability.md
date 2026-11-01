@@ -80,6 +80,8 @@ An X11 window with `WM_HINTS.input = False` and no `WM_TAKE_FOCUS` protocol uses
 
 This follows window hints rather than Steam titles or application identities. An `Input=False` client that implements `WM_TAKE_FOCUS` has a different input model and is not classified as NoInput.
 
+One `Input=False` window is refused focus whatever its input model: a utility window transient for another X11 window, such as a completion list under a search field. It remains a managed View, so workspaces, the overview, and stacking treat it as usual, but it never takes the keyboard from its parent. It also floats at the position its client requested, even when a window rule tiles the application, because centering it over the parent would detach it from the field it belongs to. A change to its hints or transient parent refreshes keyboard eligibility. [`protocol/xwayland_popup_classification`](../../tests/harness/checks/protocol/xwayland_popup_classification.sh) covers placement and typing across remaps.
+
 ## Native selections are reannounced on X11 focus return
 
 wlroots publishes Wayland clipboard ownership changes immediately, including while a native client has keyboard focus. It rejects X11 selection reads until an Xwayland surface is focused. Wine reads targets eagerly on ownership notifications, so a denied background read can leave its clipboard cache empty even after the user returns to the game.
