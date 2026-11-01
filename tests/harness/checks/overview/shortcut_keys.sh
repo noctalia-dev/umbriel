@@ -78,7 +78,7 @@ write_config
 finish
 # One virtual keyboard sends both keys, so the key after the overview closes reaches the client it focused. The pause
 # only has to outlast the clock-advance that finishes the close.
-pointer tap 4 pause 300 tap 30 &
+"$POINTER" "$OUTPUT_W" "$OUTPUT_H" tap 4 pause 300 tap 30 &
 pointer_pid=$!
 for _ in $(seq 40); do
   [[ $(focused_title) == shortcut-third ]] && break
