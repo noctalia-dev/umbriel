@@ -2210,6 +2210,9 @@ namespace umbriel {
         hideDropHint();
       }
       if (m_dragCard == card) {
+        if (!m_dragTabGroup.tabs.empty()) {
+          landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+        }
         hideDropHint();
         m_dragCard = nullptr;
         m_dragSourceWorkspace = nullptr;
@@ -2263,7 +2266,14 @@ namespace umbriel {
       m_drop.edge = 0;
       hideDropHint();
     }
+    // A hidden tab leaves the lifted group; the dragged window closing sends the rest back where the group was.
+    if (m_dragCard != nullptr && m_dragCard->view != view) {
+      std::erase(m_dragTabGroup.tabs, view);
+    }
     if (m_dragCard != nullptr && m_dragCard->view == view) {
+      if (!m_dragTabGroup.tabs.empty()) {
+        landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/true);
+      }
       hideDropHint();
       m_dragCard = nullptr;
       m_dragSourceWorkspace = nullptr;
@@ -2492,6 +2502,9 @@ namespace umbriel {
       m_dropWorkspaceGroup = nullptr;
     }
     if (m_dragCard != nullptr && m_dragCard->owner == it->get()) {
+      if (!m_dragTabGroup.tabs.empty()) {
+        landTabGroup(*m_dragCard->view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+      }
       hideDropHint();
       m_dragCard = nullptr;
       m_dragSourceWorkspace = nullptr;
@@ -3436,6 +3449,8 @@ namespace umbriel {
     m_dropWorkspaceGroup = nullptr;
 
     if (m_dragSourceWorkspace != nullptr && view->tiled()) {
+      // Lifted first, so the source position and width below are those of the group.
+      m_dragTabGroup = liftTabGroup(*m_dragSourceWorkspace, *view);
       m_dragSourceColumn = m_dragSourceWorkspace->layout().columnOf(view);
       m_dragSourceRow = m_dragSourceWorkspace->layout().rowOf(view);
       m_dragSourceWidth = captureDropColumnWidth(*m_dragSourceWorkspace, view);
@@ -3675,6 +3690,9 @@ namespace umbriel {
         m_dragSourceWorkspace->layout().insertView(view, m_dragSourceColumn);
       }
       m_dragSourceWorkspace->arrange(false);
+    }
+    if (!m_dragTabGroup.tabs.empty()) {
+      landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
     }
 
     m_dragSourceWorkspace = nullptr;
