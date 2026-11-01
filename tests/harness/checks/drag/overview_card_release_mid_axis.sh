@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# Regression check (2026-10-26 user feedback, overview card drag input): releasing the card mid-finger-pan
-# must settle the in-flight scroll navigation pan-only and drop at the settled position. A navigation left
-# armed past the drop takes the normal path afterwards (filmstrip step, focus-moving settle) and strands
-# keyboard focus off the dropped window.
-# Asserts: the strip pans with the drag held (>50 px, post-detach baseline), the drop lands under the
-# stationary pointer at the panned position (world space), and the dropped window keeps keyboard focus.
+# Releasing an overview card mid-finger-pan settles the pan without moving focus and drops at the settled position.
+# Asserts: the strip pans with the drag held (>50 px, post-detach baseline), the drop lands under the stationary
+# pointer at the panned position (world space), and the dropped window keeps keyboard focus.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"

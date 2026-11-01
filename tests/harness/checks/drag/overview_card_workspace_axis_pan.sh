@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# Regression check (2026-10-27 user feedback: "the feature is missing for vertical workspace;
-# horizontal and vertical scroll could use the same mechanic"): while an overview card drag is
-# held, the touchpad finger-scroll stream must pan the WORKSPACE FILMSTRIP along the workspace axis
-# (the workspace-axis twin of the strip pan drag/overview_card_axis_pan.sh pins). Pan-only: the
-# rows follow the fingers, the active workspace never changes under the hold, and the release
-# settles without selecting anything so the drop lands on the workspace under the pointer (the
-# drop's focus is what activates its destination).
+# Finger travel along the workspace axis pans the workspace rows while an overview card is held. The active
+# workspace never changes under the hold, and the release settles without selecting, so the drop lands on the
+# workspace under the pointer.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"

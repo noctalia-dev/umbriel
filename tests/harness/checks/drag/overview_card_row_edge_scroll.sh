@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# Regression check (talia review findings 1+2 on the overview card drag input): while a card drag is
-# held, the layout-strip edge auto-scroll must slide the strip of the ROW UNDER THE DRAG POINTER (the
-# drop target), not the active workspace's: a corner push must reveal the hovered preview's offscreen
-# columns, the same row the finger-pan path resolves through navigationWorkspace(). Pins the lookup
-# against a regression to group->active().
-# Asserts: while the held card rides at the strip edge over the second row's band, that row's columns
-# slide (>50 px) and the active row's columns stay put, then the drop lands on the hovered row.
+# A held overview card at the strip edge slides the strip of the row under the drag pointer (its drop target),
+# not the active workspace's.
+# Asserts: the hovered row's columns slide (>50 px) while the active row's stay put, then the drop lands on the
+# hovered row.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"

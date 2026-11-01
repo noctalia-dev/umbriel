@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 # harness: outputs=1
-# Regression check (2026-10-27 user feedback: "the feature is missing for vertical workspace;
-# horizontal and vertical scroll could use the same mechanic"): the workspace-axis twin of
-# drag/overview_card_drag_edge_scroll.sh: an overview card drag held at the screen edge along the
-# WORKSPACE axis slides the workspace filmstrip (input.drag_edge_scroll's zones/delay/ramp, reused
-# from the layout-strip mechanic) so the window can be carried to the far workspace. Runs both
-# workspace arrangements: the bottom edge with the default vertical axis, then the right edge with
-# workspace_axis = "horizontal" (its layout strip turns vertical, see
-# drag/overview_card_drag_edge_scroll_vertical.sh).
+# A held overview card at the screen edge along the workspace axis slides the workspace rows with drag edge scroll.
+# Asserts: a short slide followed by a drop back on the active workspace leaves the rows resting on that workspace
+# again, and a long slide carries the card to the far workspace, past the last preview.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"
@@ -15,16 +10,11 @@ source "$UMBRIEL_HARNESS_LIB"
 readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
+# Card colours against the black overview background; workspace 3's window is red so its card is told apart.
+readonly CARD='r > 0.08'
+readonly RED='r > 0.3 && g < 0.1'
 
-spawn_client() {
-  foot --title="card-wsedge-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
-}
-
-# Whole-config rewrite (touchpad.sh's pattern): a second appended [output."HEADLESS-1"] table would
-# be a duplicate TOML table and the reload would silently keep the old arrangement.
-# $1 workspace axis.
-configure() {
-  cat > "$UMBRIEL_CONFIG" <<EOF
+cat > "$UMBRIEL_CONFIG" <<EOF
 [general]
 xwayland = false
 show_cheatsheet = false
@@ -48,105 +38,88 @@ zoom = 0.5
 
 [output."HEADLESS-1"]
 workspaces = 3
-workspace_axis = "$1"
 EOF
-  "$UMBRIEL" msg config-reload > /dev/null
-}
+"$UMBRIEL" msg config-reload > /dev/null
 
-configure vertical
-
-spawn_client 1
-for _ in $(seq 60); do
-  [[ $("$UMBRIEL" windows --json | jq 'length') -eq 1 ]] && break
-  sleep 0.25
+# One window per workspace; the ones on 2 and 3 are the markers the slide brings into view.
+count=0
+for ws in 2 3 1; do
+  "$UMBRIEL" msg workspace-switch "$ws" > /dev/null
+  colour=$([[ $ws == 3 ]] && echo 800000 || echo 222222)
+  foot --title="card-wsedge-$ws" -o "colors.background=$colour" sh -c 'sleep 120' > /dev/null 2>&1 &
+  count=$((count + 1))
+  for _ in $(seq 60); do
+    [[ $("$UMBRIEL" windows --json | jq 'length') -eq $count ]] && break
+    sleep 0.25
+  done
 done
 "$UMBRIEL" settle
+
+window_workspace() { "$UMBRIEL" windows --json | jq -r '.[] | select(.title == "card-wsedge-1") | .workspace'; }
+
+# Waits until pixels matching the predicate cover part of the region, sampled from live frames while the edge
+# scroll runs.
+await_card() {
+  local frame=$UMBRIEL_RUNTIME_DIR/edge.png
+  for _ in $(seq 200); do
+    grim "$frame"
+    (($("$UMBRIEL_PIXEL_PROBE" "$frame" count "$1" "$2") > 0)) && return 0
+  done
+  return 1
+}
 
 windows=$("$UMBRIEL" windows --json)
 start_x=$(jq -r '.[] | select(.title == "card-wsedge-1") | (.x + .w / 2 | round)' <<< "$windows")
 start_y=$(jq -r '.[] | select(.title == "card-wsedge-1") | (.y + .h / 2 | round)' <<< "$windows")
+# The active preview sits at (320,180) at half scale; rows step 396 px along Y.
 press_x=$((320 + start_x / 2))
 press_y=$((180 + start_y / 2))
 
 "$UMBRIEL_POINTER_CLIENT" "$OUTPUT_W" "$OUTPUT_H" move 640 360
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
+grim "$UMBRIEL_RUNTIME_DIR/before.png"
 
-# Park at the bottom edge (workspace axis is vertical; rows step 396 px at zoom 0.5). At rest the
-# pointer at y=719 sits in row 1's band (576..936), so a plain drop lands on workspace 2. Only a
-# filmstrip slide can bring workspace 3 (the far end) under the pointer.
+# Short slide: workspace 2's card rises into the gap below the active preview, then the card drops back on workspace
+# 1, which still covers y=200 at any offset reached here.
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   move "$press_x" "$press_y" press "$BTN_LEFT" move $((press_x + 30)) "$press_y" \
-  -- move 640 719 mark atedge hold release "$BTN_LEFT"
-
-pointer_step atedge
-
-# The slide needs ~1.1s (vertical) / ~2.0s (horizontal) at max_speed 1500 after delay_ms 100;
-# 3.5s covers both arrangements with margin.
-for _ in $(seq 35); do
-  sleep 0.1
-done
-
+  -- move 1000 719 mark short hold move 1000 200 release "$BTN_LEFT"
+pointer_step short
+await_card "$CARD" 20x10+630+556 || {
+  echo "the bottom edge did not slide the workspace rows"
+  exit 1
+}
 pointer_release
 "$UMBRIEL" settle
 
-windows=$("$UMBRIEL" windows --json)
-dropped=$(jq -r '.[] | select(.title == "card-wsedge-1") | .workspace' <<< "$windows")
-echo "probe: dropped workspace $dropped after parking at the bottom edge"
-
-if [[ $dropped != *":3" ]]; then
-  echo "RED: overview card drag at the bottom edge did not slide the workspace filmstrip to the far end: drop on $dropped"
+[[ $(window_workspace) == *":1" ]] || {
+  echo "the short slide's drop left workspace 1: $(window_workspace)"
   exit 1
-fi
+}
+grim "$UMBRIEL_RUNTIME_DIR/after.png"
+read -r _ changed < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/after.png" diff "$UMBRIEL_RUNTIME_DIR/before.png" 640x720+0+0)
+((changed == 0)) || {
+  echo "the rows did not settle back on workspace 1 after the drop: $changed pixels differ"
+  exit 1
+}
 
-echo "GREEN: overview card drag at the bottom edge slid the filmstrip and dropped on $dropped"
-
-# Phase 2: the transposed arrangement. workspace_axis = "horizontal" steps the workspaces along X
-# (and turns the layout strip vertical), so the same filmstrip slide must fire at the RIGHT edge.
-configure horizontal
-"$UMBRIEL" msg workspace-switch 1 > /dev/null
-"$UMBRIEL" settle
-
-spawn_client 2
-for _ in $(seq 60); do
-  [[ $("$UMBRIEL" windows --json | jq 'length') -eq 2 ]] && break
-  sleep 0.25
-done
-"$UMBRIEL" settle
-
-# Phase 1's drop and the workspace switch can leave the overview closed; the drag needs it open.
-"$UMBRIEL_POINTER_CLIENT" "$OUTPUT_W" "$OUTPUT_H" move 640 360
-"$UMBRIEL" msg overview-open > /dev/null
-"$UMBRIEL" settle
-
-windows=$("$UMBRIEL" windows --json)
-start_x=$(jq -r '.[] | select(.title == "card-wsedge-2") | (.x + .w / 2 | round)' <<< "$windows")
-start_y=$(jq -r '.[] | select(.title == "card-wsedge-2") | (.y + .h / 2 | round)' <<< "$windows")
-press_x=$((320 + start_x / 2))
-press_y=$((180 + start_y / 2))
-
+# Long slide: hold until workspace 3's card reaches the middle of the screen, which puts the pointer past the last
+# preview, then drop there.
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
   move "$press_x" "$press_y" press "$BTN_LEFT" move $((press_x + 30)) "$press_y" \
-  -- move 1279 360 mark atedge2 hold release "$BTN_LEFT"
-
-pointer_step atedge2
-
-# The slide needs ~1.1s (vertical) / ~2.0s (horizontal) at max_speed 1500 after delay_ms 100;
-# 3.5s covers both arrangements with margin.
-for _ in $(seq 35); do
-  sleep 0.1
-done
-
+  -- move 1000 719 mark long hold release "$BTN_LEFT"
+pointer_step long
+await_card "$RED" 20x20+630+350 || {
+  echo "the bottom edge did not slide the rows to workspace 3"
+  exit 1
+}
 pointer_release
 "$UMBRIEL" settle
 
-windows=$("$UMBRIEL" windows --json)
-dropped=$(jq -r '.[] | select(.title == "card-wsedge-2") | .workspace' <<< "$windows")
-echo "probe: horizontal arrangement dropped workspace $dropped after parking at the right edge"
-
-if [[ $dropped != *":3" ]]; then
-  echo "RED: overview card drag at the right edge did not slide the filmstrip on the horizontal arrangement: drop on $dropped"
+[[ $(window_workspace) == *":3" ]] || {
+  echo "the long slide did not drop on workspace 3: $(window_workspace)"
   exit 1
-fi
+}
 
-echo "GREEN: overview card drag at the right edge slid the filmstrip and dropped on $dropped (horizontal arrangement)"
+echo "edge scroll slid the workspace rows, settled them after a drop on workspace 1, and carried the card to 3"
