@@ -17,6 +17,7 @@ namespace umbriel {
     bool animation = false;
     bool overview = false;
     bool hotCorners = false;
+    bool hotEdges = false;
     bool layout = false;
     bool workspaces = false;
     bool general = false;
@@ -39,6 +40,7 @@ namespace umbriel {
           || animation
           || overview
           || hotCorners
+          || hotEdges
           || layout
           || workspaces
           || general

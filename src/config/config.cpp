@@ -32,6 +32,7 @@ namespace umbriel {
           overviewTable(),
           scratchpadTable(),
           hotCornersTable(),
+          hotEdgesTable(),
           layoutTable(),
           generalTable(),
           drmTable(),

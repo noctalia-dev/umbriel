@@ -422,6 +422,14 @@ enabled = true
 delay_ms = 500
 action = "overview-open"
 
+# Hot edges run an action when the pointer is pushed against an outer output
+# edge (left, right, top, bottom). All are disabled by default.
+# [hot_edges.left]
+# enabled = true
+# resistance_px = 300
+# action = "window-focus-left"
+# overview = false # Also run while the overview is open.
+
 # Window-rule opacity and blur fade on focus changes by default. Disable this
 # independently of border fades, or choose its own duration and curve.
 # [animation.windows_opacity]

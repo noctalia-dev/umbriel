@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "input/event_time.h"
 #include "input/gestures.h"
+#include "input/hot_edge.h"
 #include "input/input_capture.h"
 #include "input/seat.h"
 #include "input/toplevel_drag.h"
@@ -248,6 +249,7 @@ namespace umbriel {
     updateHideTimer();
     cancelHotCorner();
     updateHotCorner();
+    resetHotEdge();
     if (configured.theme == m_xcursorTheme && configured.size == m_xcursorSize) {
       return;
     }
@@ -416,26 +418,86 @@ namespace umbriel {
     if (!corner.enabled || !corner.action) {
       return nullptr;
     }
-    const Output* umbrielOutput = m_server->outputFromWlr(output);
-    View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
-    // Corner handling precedes pointer-output refocus. Use the destination's remembered focus when the seat is
-    // elsewhere, including click-to-focus sessions where crossing outputs does not move keyboard focus at all.
-    if (umbrielOutput != nullptr && (focused == nullptr || focused->currentOutput() != umbrielOutput)) {
-      const WorkspaceGroup* group = umbrielOutput->workspaceGroup();
-      const Workspace* workspace = group != nullptr ? group->active() : nullptr;
-      focused = workspace != nullptr ? workspace->focusedView() : nullptr;
-    }
-    if (focused != nullptr
-        && focused->mapped()
-        && focused->onActiveWorkspace()
-        && focused->currentOutput() == umbrielOutput
-        && (focused->layoutFullscreen() || focused->currentFullscreen())) {
+    if (fullscreenBlocksHotZone(m_server->outputFromWlr(output))) {
       return nullptr;
     }
     if (cornerIndex != nullptr) {
       *cornerIndex = index;
     }
     return &*corner.action;
+  }
+
+  bool Cursor::fullscreenBlocksHotZone(const Output* umbrielOutput) const {
+    const wlr_seat* seat = m_server->seat()->wlr();
+    View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
+    // Zone handling precedes pointer-output refocus. Use the destination's remembered focus when the seat is
+    // elsewhere, including click-to-focus sessions where crossing outputs does not move keyboard focus at all.
+    if (umbrielOutput != nullptr && (focused == nullptr || focused->currentOutput() != umbrielOutput)) {
+      const WorkspaceGroup* group = umbrielOutput->workspaceGroup();
+      const Workspace* workspace = group != nullptr ? group->active() : nullptr;
+      focused = workspace != nullptr ? workspace->focusedView() : nullptr;
+    }
+    return focused != nullptr
+        && focused->mapped()
+        && focused->onActiveWorkspace()
+        && focused->currentOutput() == umbrielOutput
+        && (focused->layoutFullscreen() || focused->currentFullscreen());
+  }
+
+  void Cursor::resetHotEdge() { m_hotEdge.reset(); }
+
+  void Cursor::updateHotEdge(double requestedX, double requestedY, double oldX, double oldY) {
+    const double overX = requestedX - m_cursor->x;
+    const double overY = requestedY - m_cursor->y;
+    const auto side = hotEdgeSide(overX, overY);
+    if (!side) {
+      resetHotEdge();
+      return;
+    }
+    const Config::HotEdge& edge = config().hotEdges.edges[static_cast<size_t>(*side)];
+    wlr_output_layout* layout = m_server->outputLayout();
+    wlr_output* output = wlr_output_layout_output_at(layout, m_cursor->x, m_cursor->y);
+    const bool overviewOpen = m_server->overview() != nullptr && m_server->overview()->interactive();
+    const wlr_seat* seat = m_server->seat()->wlr();
+    if (!edge.enabled
+        || !edge.action
+        || output == nullptr
+        || output != wlr_output_layout_output_at(layout, oldX, oldY)
+        || !isPassthrough()
+        || m_server->sessionLocked()
+        || (m_server->exclusiveKeyboardLayer() != nullptr && !overviewOpen)
+        || seat->drag != nullptr
+        || wlr_seat_pointer_has_grab(m_server->seat()->wlr())
+        || seat->pointer_state.button_count != 0
+        || (overviewOpen && !edge.overview)
+        || fullscreenBlocksHotZone(m_server->outputFromWlr(output))) {
+      resetHotEdge();
+      return;
+    }
+
+    std::vector<OutputBox> boxes;
+    size_t referenceIndex = 0;
+    for (const auto& candidate : m_server->outputs()) {
+      wlr_box box{};
+      wlr_output_layout_get_box(layout, candidate->wlr(), &box);
+      if (box.width <= 0 || box.height <= 0) {
+        continue;
+      }
+      if (candidate->wlr() == output) {
+        referenceIndex = boxes.size();
+      }
+      boxes.push_back({box.x, box.y, box.width, box.height});
+    }
+    if (hotEdgeHasNeighbor(boxes, referenceIndex, *side, m_cursor->x, m_cursor->y)) {
+      resetHotEdge();
+      return;
+    }
+
+    const bool horizontal = *side == HotEdgeSide::Left || *side == HotEdgeSide::Right;
+    if (m_hotEdge.push(*side, std::abs(horizontal ? overX : overY), edge.resistancePx)) {
+      Keybind triggered = *edge.action;
+      m_server->executeAction(triggered);
+    }
   }
 
   void Cursor::cancelHotCorner() {
@@ -1519,22 +1581,31 @@ namespace umbriel {
       clearConstraint();
     }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+      resetHotEdge();
       return;
     }
 
     double dx = event->delta_x;
     double dy = event->delta_y;
-    if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED) {
-      if (!confineDelta(&dx, &dy)) {
-        return;
-      }
+    if (m_activeConstraint != nullptr
+        && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED
+        && !confineDelta(&dx, &dy)) {
+      resetHotEdge();
+      return;
     }
 
+    const double requestedDx = dx;
+    const double requestedDy = dy;
     confineRuleDelta(&dx, &dy);
     promotePendingModRightResize(m_cursor->x + dx, m_cursor->y + dy);
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_move(m_cursor, &event->pointer->base, dx, dy);
+    if (m_activeConstraint == nullptr && dx == requestedDx && dy == requestedDy) {
+      updateHotEdge(oldX + dx, oldY + dy, oldX, oldY);
+    } else {
+      resetHotEdge();
+    }
     processMotion(event->time_msec, oldX, oldY);
   }
 
@@ -1542,6 +1613,7 @@ namespace umbriel {
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
     m_server->notifyInputActivity();
+    resetHotEdge();
     if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
       clearConstraint();
     }

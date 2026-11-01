@@ -300,6 +300,38 @@ namespace umbriel {
       return fields;
     }
 
+    const registry::Fields<Config::HotEdges>& hotEdgeFields() {
+      using Edges = Config::HotEdges;
+      using Edge = Config::HotEdge;
+      static const registry::Fields<Edge> edge{
+          registry::boolean("enabled", &Edge::enabled),
+          registry::integer("resistance_px", 1, 65535, &Edge::resistancePx),
+          registry::custom<Edge>(
+              "action", registry::KeyDescription("string").withFormat("action"),
+              [](const toml::node& node, const std::string& path, Edge& target, registry::ReadContext& context) {
+                if (auto bind = parseActionKey(node, path, context.loaded)) {
+                  target.action = std::move(*bind);
+                }
+              }
+          ),
+          registry::boolean("overview", &Edge::overview),
+      };
+      // Edges are ordered left, right, top, bottom.
+      static const registry::Fields<Edges> fields{
+          registry::table<Edges>(
+              "left", [](auto& e) -> auto& { return e.edges[0]; }, edge
+          ),
+          registry::table<Edges>(
+              "right", [](auto& e) -> auto& { return e.edges[1]; }, edge
+          ),
+          registry::table<Edges>(
+              "top", [](auto& e) -> auto& { return e.edges[2]; }, edge
+          ),
+          registry::table<Edges>("bottom", [](auto& e) -> auto& { return e.edges[3]; }, edge),
+      };
+      return fields;
+    }
+
     const registry::Fields<Config::Workspaces>& workspaceSettingFields() {
       using W = Config::Workspaces;
       static const registry::Fields<W> fields{
@@ -442,6 +474,8 @@ namespace umbriel {
   registry::Field<Config> hotCornersTable() {
     return registry::table("hot_corners", &Config::hotCorners, hotCornerFields());
   }
+
+  registry::Field<Config> hotEdgesTable() { return registry::table("hot_edges", &Config::hotEdges, hotEdgeFields()); }
 
   registry::Field<Config> generalTable() { return registry::table("general", &Config::general, generalFields()); }
 

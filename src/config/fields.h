@@ -133,6 +133,7 @@ namespace umbriel {
   [[nodiscard]] registry::Field<Config> appearanceTable();
   [[nodiscard]] registry::Field<Config> overviewTable();
   [[nodiscard]] registry::Field<Config> hotCornersTable();
+  [[nodiscard]] registry::Field<Config> hotEdgesTable();
   [[nodiscard]] registry::Field<Config> generalTable();
   [[nodiscard]] registry::Field<Config> environmentTable();
   [[nodiscard]] registry::Field<Config> eventsTable();

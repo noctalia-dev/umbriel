@@ -1,4 +1,5 @@
 #pragma once
+#include "input/hot_edge.h"
 #include "layout/drop_target.h"
 #include "scene/ssd_frame_geometry.h"
 #include "view/window_region.h"
@@ -398,6 +399,9 @@ namespace umbriel {
     void cancelHotCorner();
     [[nodiscard]] const Keybind* hotCornerAction(size_t* index = nullptr) const;
     static int onHotCornerTimer(void* data);
+    [[nodiscard]] bool fullscreenBlocksHotZone(const Output* output) const;
+    void resetHotEdge();
+    void updateHotEdge(double requestedX, double requestedY, double oldX, double oldY);
     [[nodiscard]] bool tiledMoveDragActive() const;
     // What the edge auto-scroll may move right now (input.drag_edge_scroll drives both sinks from one
     // mechanism): the active workspace's scrolling layout along its scrolling axis (data drags, tiled moves,
@@ -516,6 +520,7 @@ namespace umbriel {
     bool m_hotCornerPending = false;
     bool m_hotCornerTriggered = false;
     size_t m_hotCornerIndex = 4;
+    HotEdgeAccumulator m_hotEdge;
 
     wl_listener m_motion{};
     wl_listener m_motionAbsolute{};
