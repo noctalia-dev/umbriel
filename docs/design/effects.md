@@ -22,7 +22,7 @@ Runtime actions validate typed payloads, targets, names/kinds, and non-empty cyc
 
 The built-in fade and drag deformation retain their existing preparation and animation gates. `fillTimeUniforms` supplies time only when a linked program reads it and palette only for palette presets.
 
-[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate requires decoration, no urgency, no fullscreen, and focus unless the gate carries `allowUnfocused` (filled from `[effects].border_unfocused` at the view and overview-card producers); overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
+[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate requires decoration, no urgency, no fullscreen, and focus unless `allowUnfocused` widens it (`[effects].border_unfocused`); overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
 
 [`Output::applyOutputEffects`](../../src/output/output.cpp) reads its cached screen slot and the Server's single cursor slot, applies capture policy and lock suspension, and pushes pointer position after binding a cursor program. It performs no owner walk or pool pick. `Cursor::forwardEffectPointer` reads cached cursor activity, which includes suppression and registry suspension.
 

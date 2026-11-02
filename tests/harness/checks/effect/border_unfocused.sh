@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# border_unfocused = true widens the border-effect draw gate from the focused window to every decorated, calm,
-# non-fullscreen window: each unfocused window paints its own selected preset (the reporter's focused/unfocused
-# shader pair), and with the overview open every card paints its window's preset. With the flag off (the default)
-# the gate stays focused-only and bit-identical — effect/border.sh owns that path.
+# With border_unfocused = true, every decorated, calm, non-fullscreen window paints its selected
+# border preset, focused or not. effect/border.sh owns the focused-only default path.
 set -euo pipefail
+
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/effect-border-unfocused.png"
 cat > "$UMBRIEL_RUNTIME_DIR/focused-ring.glsl" <<'GLSL'
-// Solid red ring. The green term is invisible at 8 bits but keeps umbriel_time an active uniform.
-vec4 border(vec2 uv) { return vec4(1.0, 0.001 * sin(umbriel_time), 0.0, 1.0); }
+vec4 border(vec2 uv) { return vec4(1.0, 0.0, 0.0, 1.0); }
 GLSL
 cat > "$UMBRIEL_RUNTIME_DIR/unfocused-ring.glsl" <<'GLSL'
-// Solid green ring. The blue term keeps umbriel_time alive for the same reason.
-vec4 border(vec2 uv) { return vec4(0.0, 1.0, 0.001 * sin(umbriel_time), 1.0); }
+vec4 border(vec2 uv) { return vec4(0.0, 1.0, 0.0, 1.0); }
 GLSL
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -60,31 +58,25 @@ EOF
 
 spawn() {
   FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" "$1" 300 200 > "$UMBRIEL_RUNTIME_DIR/$1.log" 2>&1 &
-  for _ in $(seq 80); do
-    window=$("$UMBRIEL" windows --json | jq -c --arg title "$1" '.[] | select(.title == $title)')
-    [[ -n $window ]] && break
-    sleep 0.025
-  done
-  [[ -n $window ]]
+  await_window "$1"
 }
 red_at() { "$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'r > 0.9 && g < 0.1 && b < 0.1' "$1"; }
 green_at() { "$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'g > 0.9 && r < 0.1 && b < 0.2' "$1"; }
 
 spawn border-unfocused-one
 "$UMBRIEL" settle > /dev/null
-read -r x1 y1 w1 _ < <(jq -r '"\(.x) \(.y) \(.w) \(.h)"' <<< "$window")
+read -r x1 y1 w1 _ < <(window_by_title border-unfocused-one | jq -r '"\(.x) \(.y) \(.w) \(.h)"')
 spawn border-unfocused-two
 "$UMBRIEL" settle > /dev/null
-read -r x2 y2 w2 _ < <(jq -r '"\(.x) \(.y) \(.w) \(.h)"' <<< "$window")
+read -r x2 y2 w2 _ < <(window_by_title border-unfocused-two | jq -r '"\(.x) \(.y) \(.w) \(.h)"')
 grim "$IMAGE"
 # The last-spawned window is focused: its padding paints the focused preset.
 if (( $(red_at "2x2+$((x2 + w2 / 2))+$((y2 - 12))") < 4 )); then
   echo "focused window did not paint its focused preset"
   exit 1
 fi
-# The deliverable: the unfocused window paints its own unfocused preset in the
-# same 24 px band (4 px ring + 20 px padding). Without border_unfocused this
-# padding is empty.
+# The unfocused window paints its unfocused preset in the same 24 px band
+# (4 px ring + 20 px padding).
 if (( $(green_at "2x2+$((x1 + w1 / 2))+$((y1 - 12))") < 4 )); then
   echo "unfocused window did not paint its unfocused preset"
   exit 1
@@ -96,9 +88,6 @@ fi
 
 # Overview cards follow the same gate. Opening the overview clears the seat, so
 # both windows re-resolve to the unfocused preset and both cards paint green.
-# The previously unfocused card is the deliverable probe: it draws only through
-# allowUnfocused. The previously focused card keeps the workspace's focused
-# gate, so its probe covers that pre-existing path, not the widening.
 # The workspace row is the output box scaled by zoom (0.5) and centered, so a
 # window at (x,y) lands at (row_x + x/2, row_y + y/2) and its padding band
 # scales to 12 px (4 px ring + 20 px padding at half zoom).

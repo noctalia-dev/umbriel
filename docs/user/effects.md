@@ -66,13 +66,13 @@ screen_effect = "off"
 
 | Key                | Default | Description                                                                                                                                                                                 |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`           | `""`    | Border preset or pool for the focused window.                                                                                                                                               |
+| `border`           | `""`    | Border preset or pool for the focused window — or every decorated, calm, non-fullscreen window with `border_unfocused`.                                                                     |
 | `window`           | `""`    | Window preset or pool applied to every window.                                                                                                                                              |
 | `screen`           | `""`    | Screen preset or pool applied to every output.                                                                                                                                              |
 | `cursor`           | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                               |
 | `max_fps`          | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                    |
 | `in_capture`       | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients. |
-| `border_unfocused` | `false` | Draw the border effect on every window that passes the non-focus gates, not just the focused one. Each additional window costs one ring capture and one program pass per frame.             |
+| `border_unfocused` | `false` | Draw the border effect on every decorated, calm, non-fullscreen window, focused or not.                                                                                                     |
 
 Where each kind draws:
 
