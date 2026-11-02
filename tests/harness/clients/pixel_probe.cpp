@@ -43,7 +43,7 @@ namespace {
     int width = 0;
     int height = 0;
     std::vector<Rgb> pixels;
-    [[nodiscard]] const Rgb& at(int x, int y) const { return pixels[static_cast<size_t>(y) * width + x]; }
+    const Rgb& at(int x, int y) const { return pixels[static_cast<size_t>(y) * width + x]; }
   };
 
   struct Region {

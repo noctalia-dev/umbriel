@@ -18,16 +18,16 @@ namespace umbriel {
 
   // Columns a greedy fill needs when none may exceed `limit` lines. Greedy is optimal: filling each column as far as it
   // goes can never need more columns than holding back would.
-  [[nodiscard]] int columnsNeededFor(std::span<const int> blockSizes, int limit);
+  int columnsNeededFor(std::span<const int> blockSizes, int limit);
 
   // The shortest the tallest column can be, given `numCols` of them, found by binary search: the column count a limit
   // requires only falls as the limit rises, so the smallest limit that fits is optimal. The lower bound is the largest
   // block, since each group is held whole.
-  [[nodiscard]] int balancedColumnHeight(std::span<const int> blockSizes, int numCols);
+  int balancedColumnHeight(std::span<const int> blockSizes, int numCols);
 
   // Display columns occupied by a generated chord in the cheatsheet's
   // monospace font.
-  [[nodiscard]] size_t cheatsheetChordColumns(std::string_view chord);
+  size_t cheatsheetChordColumns(std::string_view chord);
 
   struct CheatsheetRow {
     std::string chord;  // display chord(s)
@@ -59,15 +59,15 @@ namespace umbriel {
   };
 
   // Plain text, not markup: the caller escapes it for pango, so a pre-escaped title would show its entities on screen.
-  [[nodiscard]] const char* groupTitle(Group group);
-  [[nodiscard]] Group groupForAction(KeybindAction action);
+  const char* groupTitle(Group group);
+  Group groupForAction(KeybindAction action);
 
   // Display order of the non-submap groups, shared by the cheatsheet overlay and `umbriel msg --help` so the two never
   // present the same actions in a different shape. Submap groups follow in first-seen order and are not listed here.
-  [[nodiscard]] std::span<const Group> fixedGroupOrder();
+  std::span<const Group> fixedGroupOrder();
 
   // One row per chord. Binds sharing an action collapse into a group whose first
   // row carries the label and whose others carry a ditto mark.
-  [[nodiscard]] std::vector<CheatsheetRow> buildCheatsheetRows(std::span<const Keybind> keybinds);
+  std::vector<CheatsheetRow> buildCheatsheetRows(std::span<const Keybind> keybinds);
 
 } // namespace umbriel

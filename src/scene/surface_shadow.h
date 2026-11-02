@@ -37,9 +37,9 @@ namespace umbriel {
     void setAlpha(float alpha);
     void setAnimationSource(wlr_scene_node* source);
     // `inPool` puts the copy under every sibling in `parent`; otherwise it sits directly below `source`, a sibling.
-    [[nodiscard]] ShadowSnapshot snapshot(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const;
+    ShadowSnapshot snapshot(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const;
     // Null until the first update() creates it.
-    [[nodiscard]] const wlr_scene_shadow* node() const { return m_node; }
+    const wlr_scene_shadow* node() const { return m_node; }
 
   private:
     wlr_scene_shadow* m_node = nullptr;

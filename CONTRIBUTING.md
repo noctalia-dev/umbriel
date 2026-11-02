@@ -183,7 +183,9 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 
 Scoped enums (`enum class`) use PascalCase enumerators and an explicit `std::uint8_t` underlying type where it makes sense: `enum class FocusReason : uint8_t { Directional, PointerPress, ... }`.
 
-Getters are the noun, without a `get` prefix, and `[[nodiscard]]`: `toplevel()`, `mapped()`, `workspace()`.
+Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
+
+Use `[[nodiscard]]` only where ignoring the result is likely a bug: a call with side effects that reports failure or hands back something the caller must own, consume or keep (a token, id or claimed node), and `&&` builders. Mark result and status types with `struct [[nodiscard]] Name` instead of each function that returns them. Getters and pure functions go without it.
 
 ### Configuration vocabulary
 

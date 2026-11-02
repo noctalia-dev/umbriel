@@ -25,7 +25,7 @@ namespace umbriel {
     // Runtime inventory and layout survive output loss until relevant configuration changes.
     std::optional<ResolvedLayoutConfig> transferredLayout;
 
-    [[nodiscard]] OutputIdentity identity() const {
+    OutputIdentity identity() const {
       return {
           .connector = outputName,
           .make = outputMake,

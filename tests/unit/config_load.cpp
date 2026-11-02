@@ -63,8 +63,8 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] const std::filesystem::path& path() const { return m_path; }
-    [[nodiscard]] std::string includeName() const { return m_includePath.filename().string(); }
+    const std::filesystem::path& path() const { return m_path; }
+    std::string includeName() const { return m_includePath.filename().string(); }
 
   private:
     std::filesystem::path m_path;
@@ -87,9 +87,7 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] std::filesystem::path path(const std::filesystem::path& relativePath) const {
-      return m_path / relativePath;
-    }
+    std::filesystem::path path(const std::filesystem::path& relativePath) const { return m_path / relativePath; }
 
   private:
     std::filesystem::path m_path;

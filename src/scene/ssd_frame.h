@@ -40,21 +40,21 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
-    [[nodiscard]] bool maximizeEnabled() const { return m_maximizeEnabled; }
-    [[nodiscard]] int titleBarHeight() const { return m_geometry.titleBarHeight; }
-    [[nodiscard]] bool contains(const wlr_scene_node* node) const;
-    [[nodiscard]] SsdFramePoint pointAt(double x, double y) const;
+    bool maximizeEnabled() const { return m_maximizeEnabled; }
+    int titleBarHeight() const { return m_geometry.titleBarHeight; }
+    bool contains(const wlr_scene_node* node) const;
+    SsdFramePoint pointAt(double x, double y) const;
     void snapshot(wlr_scene_tree* parent) const;
-    [[nodiscard]] std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
+    std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
     void syncPreview(ViewChromeAttachment& preview) const override;
 
   private:
     void redraw();
     void updateColors();
     void updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible);
-    [[nodiscard]] std::span<const TitleBarButton> visibleButtons() const;
+    std::span<const TitleBarButton> visibleButtons() const;
     void updateBlur();
-    [[nodiscard]] int zoomed(int value) const;
+    int zoomed(int value) const;
     wlr_scene_tree* m_tree = nullptr;
     // Invisible resize bands stay outside the window's animation capture bounds.
     wlr_scene_tree* m_gripTree = nullptr;

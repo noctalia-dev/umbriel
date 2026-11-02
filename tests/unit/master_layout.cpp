@@ -48,7 +48,7 @@ namespace {
       }
     }
 
-    [[nodiscard]] size_t viewCount() const {
+    size_t viewCount() const {
       size_t count = 0;
       for (const auto& column : layout.columns()) {
         count += column.views.size();

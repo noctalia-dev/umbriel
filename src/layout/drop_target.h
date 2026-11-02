@@ -27,7 +27,7 @@ namespace umbriel {
   };
   // Captures the width owned by a single-view scrolling column before a drag
   // detaches it. Stacked views do not own their destination column width.
-  [[nodiscard]] std::optional<DropColumnWidth> captureDropColumnWidth(const Workspace& source, const View* view);
+  std::optional<DropColumnWidth> captureDropColumnWidth(const Workspace& source, const View* view);
 
   // Where a dragged tile would land, plus the world-space hint rectangle. Scrolling: row >= 0 inserts into column
   // `column` at that row; row < 0 opens a new column at gap index `column`. Master: as scrolling, except row < 0 starts
@@ -47,7 +47,7 @@ namespace umbriel {
   // `worldX`/`worldY` are layout coordinates. The normal cursor path clips the hint to the output's usable area and
   // reserves its viewport edges. A projected overview path can preserve the hint until after applying its own output
   // bounds and use only the scrolling strip's content-space targets.
-  [[nodiscard]] DropTarget computeDropTarget(
+  DropTarget computeDropTarget(
       Workspace& workspace, double worldX, double worldY, const View* excludedView, const DropTargetOptions& options
   );
 

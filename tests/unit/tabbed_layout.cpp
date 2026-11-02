@@ -68,7 +68,7 @@ namespace {
       }
     }
 
-    [[nodiscard]] const Column& column(int index = 0) const { return layout.columns()[static_cast<size_t>(index)]; }
+    const Column& column(int index = 0) const { return layout.columns()[static_cast<size_t>(index)]; }
   };
 
   struct MasterFixture {
