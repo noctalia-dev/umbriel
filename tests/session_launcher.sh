@@ -325,8 +325,9 @@ fi
 
 echo "native session launcher imports the login profile environment"
 
-cat > "$TEST_BIN/systemctl" <<'EOF'
-#!/usr/bin/env bash
+{
+  printf '#!%s\n' "$BASH"
+  cat <<'EOF'
 set -eu
 state=$UMBRIEL_TEST_STATE
 case "${2:-}" in
@@ -362,7 +363,7 @@ if [[ ${2:-} == start && ${4:-} == umbriel-shutdown.target ]]; then
   rm -f "$state/active"
 fi
 EOF
-sed -i "1c#!$BASH" "$TEST_BIN/systemctl"
+} > "$TEST_BIN/systemctl"
 cat > "$TEST_BIN/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
 exit 0
