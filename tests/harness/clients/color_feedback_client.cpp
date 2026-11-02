@@ -98,7 +98,7 @@ namespace {
       for (size_t index = 0; index < description.primariesXY.size(); ++index) {
         primariesJson += std::format("{}{}", index == 0 ? "" : ",", description.primariesXY[index]);
       }
-      primariesJson += "]";
+      primariesJson += ']';
     }
     std::println(
         "{{\"event\":\"description\",\"source\":\"{}\",\"generation\":{},\"identity\":{},\"ready_version\":{},"
@@ -573,7 +573,8 @@ int main(int argc, char** argv) {
       // Repeated get_information on one output description: each answer
       // advertises the profile through icc_file, so the compositor must not
       // accumulate descriptors or profile copies across the loop.
-      const int count = argc == 3 ? std::atoi(argv[2]) : 0;
+      const auto parsedCount = argc == 3 ? harness::parseInts<int, 1>(argv[2], ' ') : std::nullopt;
+      const int count = parsedCount ? (*parsedCount)[0] : 0;
       if (count <= 0) {
         std::println(stderr, "color-feedback-client: icc-storm needs a positive request count");
         return 1;

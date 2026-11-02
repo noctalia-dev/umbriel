@@ -925,7 +925,7 @@ namespace umbriel {
         return;
       }
       const float exponent = static_cast<float>(eexp) / 10000.0F;
-      if (!(exponent >= 1.0F && exponent <= 10.0F)) {
+      if (exponent < 1.0F || exponent > 10.0F) {
         wl_resource_post_error(
             resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF,
             "power transfer exponent must be within [1.0, 10.0]"
@@ -1353,7 +1353,7 @@ namespace umbriel {
       if (colorDescriptionsEqual(description, output->description)) {
         return;
       }
-      output->description = description;
+      output->description = std::move(description);
       wp_color_management_output_v1_send_image_description_changed(output->resource);
       wlr_output_schedule_done(output->output);
     }

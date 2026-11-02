@@ -132,9 +132,7 @@ namespace umbriel {
     // sdr_gamut so protocol descriptions can report the panel's real
     // colorimetry even when "native" stages no mapping transform. Null when
     // uncharacterized.
-    const PanelColorimetry* panelColorimetry() const {
-      return m_panelColorimetry ? &*m_panelColorimetry : nullptr;
-    }
+    const PanelColorimetry* panelColorimetry() const { return m_panelColorimetry ? &*m_panelColorimetry : nullptr; }
     // Raw ICC bytes behind get_information's icc_file advertising: the exact
     // file bytes for file characterizations, a synthesized matrix-shaper
     // profile for EDID ones, and nothing when inert or built without lcms2.

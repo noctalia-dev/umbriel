@@ -1548,7 +1548,7 @@ UMBRIEL_TEST(iccMutationFuzzRejectsOrParsesSanely) {
   CHECK(!base.empty());
 
   uint64_t state = 0x9E3779B97F4A7C15ULL;
-  const auto next = [&state]() {
+  const auto next = [&state] {
     state ^= state << 13;
     state ^= state >> 7;
     state ^= state << 17;

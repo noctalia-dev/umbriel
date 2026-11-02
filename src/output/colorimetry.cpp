@@ -404,7 +404,7 @@ namespace umbriel {
       }
 
       // A curv or para tag must declare counts that fit its own tag data.
-      std::string curveCountError(std::span<const uint8_t> data, size_t tagOffset, size_t tagSize) {
+      std::string_view curveCountError(std::span<const uint8_t> data, size_t tagOffset, size_t tagSize) {
         if (tagSize < 12) {
           return {};
         }
@@ -459,8 +459,8 @@ namespace umbriel {
         if (tagOffset > usable || tagSize > usable - tagOffset) {
           return "ICC tag entry leaves the profile";
         }
-        if (const std::string curveError = curveCountError(data, tagOffset, tagSize); !curveError.empty()) {
-          return curveError;
+        if (const auto curveError = curveCountError(data, tagOffset, tagSize); !curveError.empty()) {
+          return std::string(curveError);
         }
       }
       return {};
