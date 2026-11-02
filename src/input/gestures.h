@@ -35,7 +35,7 @@ namespace umbriel {
       double offset = 0;
       double velocity = 0; // rows/s
     };
-    [[nodiscard]] SwitchPick pickSwitchForOverview();
+    SwitchPick pickSwitchForOverview();
     // Mouse-button bindings use the same overscroll, velocity projection, and
     // column settling as the three-finger strip gesture, but pointer travel is
     // mapped one-to-one to content travel. The point picks the strip: the active
@@ -44,7 +44,7 @@ namespace umbriel {
     void updatePointerScroll(double dx, double dy, uint32_t timeMsec);
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
     // A gesture or pointer scroll is moving compositor content.
-    [[nodiscard]] bool movingContent() const {
+    bool movingContent() const {
       return m_state != State::Idle && m_state != State::Forward && m_state != State::Pending;
     }
 
@@ -81,10 +81,10 @@ namespace umbriel {
     void updateSwitch(double travel, uint32_t timeMsec);
     // Where a released workspace switch lands, and what the slide keeps of its speed. The release uses it, and so does
     // the overview when it takes a swipe that is still in flight.
-    [[nodiscard]] GesturePhysics::StepRelease switchSettle(uint32_t timeMsec);
+    GesturePhysics::StepRelease switchSettle(uint32_t timeMsec);
     // A held mouse button owns the scroll state until it is released, whether it pans the active workspace or an
     // overview row. Touchpad gestures step aside for it.
-    [[nodiscard]] bool pointerScrollActive() const {
+    bool pointerScrollActive() const {
       return m_state == State::Scroll
           && (m_scrollSource == ScrollSource::Pointer || m_scrollSource == ScrollSource::OverviewPointer);
     }

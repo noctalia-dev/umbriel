@@ -26,7 +26,7 @@ namespace umbriel {
     static nlohmann::json keyboardLayouts(Server& server, IpcArgs args);
     static nlohmann::json inputCapturePermissions(Server& server, IpcArgs args);
     static nlohmann::json inputCaptureRevoke(Server& server, IpcArgs args);
-    [[nodiscard]] static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
+    static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, IpcArgs args);
     static nlohmann::json windows(Server& server, IpcArgs args);
     static nlohmann::json focusedWindow(Server& server, IpcArgs args);
@@ -47,7 +47,7 @@ namespace umbriel {
     // The reply to clock-advance. The IPC server advances the clock and holds the reply until every output has drawn.
     static nlohmann::json clockAdvance(Server& server, IpcArgs args);
     static nlohmann::json clockResume(Server& server, IpcArgs args);
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     static nlohmann::json rendererRecover(Server& server, IpcArgs args);
     static nlohmann::json swipeForTest(Server& server, IpcArgs args);
     static nlohmann::json animationCaptureFail(Server& server, IpcArgs args);

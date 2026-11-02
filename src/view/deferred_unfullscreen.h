@@ -16,7 +16,7 @@ namespace umbriel {
     using TimePoint = Clock::time_point;
     static constexpr auto kGrace = std::chrono::milliseconds(750);
 
-    [[nodiscard]] FullscreenRequestDisposition
+    FullscreenRequestDisposition
     observeClientRequest(bool requested, bool activated, bool scheduledFullscreen, TimePoint now = Clock::now()) {
       if (requested == scheduledFullscreen) {
         clear();
@@ -40,7 +40,7 @@ namespace umbriel {
     }
 
     void clear() { m_pending = false; }
-    [[nodiscard]] bool pending() const { return m_pending; }
+    bool pending() const { return m_pending; }
 
   private:
     bool m_pending = false;

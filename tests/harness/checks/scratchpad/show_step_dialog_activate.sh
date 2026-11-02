@@ -61,7 +61,7 @@ shown() {
   ((w > 0 && h > 0)) && visible+=(red)
   read -r _ _ w h < <("$UMBRIEL_PIXEL_PROBE" "$FRAME" bbox 'g > 0.9 && r < 0.1 && b < 0.1')
   ((w > 0 && h > 0)) && visible+=(green)
-  parent=$(magick "$FRAME" -crop 40x40+110+120 -format '%[fx:mean > 0.05 ? 1 : 0]' info:)
+  parent=$("$UMBRIEL_PIXEL_PROBE" "$FRAME" mean 40x40+110+120 | awk '{print (($1 + $2 + $3) / 3 > 0.05 * 255) ? 1 : 0}')
   [[ $parent == 1 ]] && visible+=(parent)
   echo "${visible[*]}"
 }

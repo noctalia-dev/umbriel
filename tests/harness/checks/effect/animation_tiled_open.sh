@@ -79,10 +79,7 @@ sample_center() {
   x=$(jq -r '.x + 100' <<< "$json")
   y=$(jq -r '.y + 100' <<< "$json")
   grim "$IMAGE"
-  read -r red green blue < <(
-    magick "$IMAGE" -alpha off -crop "8x8+$((x - 4))+$((y - 4))" +repage \
-      -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:
-  )
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "8x8+$((x - 4))+$((y - 4))")
   if ! ((red < 40 && green > 200 && blue < 40)); then
     echo "$description did not show its windows_in shader over its final slot: $red $green $blue"
     exit 1

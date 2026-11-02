@@ -30,10 +30,10 @@ namespace umbriel {
     void setAuthorizationCancelled(AuthorizationCancelled cancelled);
     void setActiveChanged(ActiveChanged changed);
     void authorizeSession(uint64_t id, bool allowed, bool remember = false);
-    [[nodiscard]] std::vector<InputCapturePermission> permissions();
+    std::vector<InputCapturePermission> permissions();
     [[nodiscard]] bool revokePermission(std::string_view id);
-    [[nodiscard]] bool active() const;
-    [[nodiscard]] uint32_t capabilities() const;
+    bool active() const;
+    uint32_t capabilities() const;
     void addKeyboard(wlr_keyboard* keyboard);
     void removeKeyboard(wlr_keyboard* keyboard);
     void forgetAbsoluteDevice(const void* device);

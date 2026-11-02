@@ -20,9 +20,9 @@ namespace umbriel {
     Seat(const Seat&) = delete;
     Seat& operator=(const Seat&) = delete;
 
-    [[nodiscard]] wlr_seat* wlr() const { return m_seat; }
+    wlr_seat* wlr() const { return m_seat; }
 
-    [[nodiscard]] ToplevelDragManager& toplevelDrags() const { return *m_toplevelDrags; }
+    ToplevelDragManager& toplevelDrags() const { return *m_toplevelDrags; }
 
     void applyConfig();
     void updateCapabilities(bool hasKeyboard, bool hasTouch);

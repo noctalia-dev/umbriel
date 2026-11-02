@@ -113,8 +113,7 @@ capture() {
 }
 
 rgb_at() {
-  magick "$IMAGE" -crop "4x4+$1+$2" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$1+$2"
 }
 
 # shadowed LABEL X Y REF_X REF_Y: the sample is greener, and no redder or bluer, than the reference.

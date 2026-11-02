@@ -442,8 +442,7 @@ if ! jq -e 'type == "array"' <<< "$layers" > /dev/null; then
   exit 1
 fi
 
-# The output listing keeps the field shapes scripts already parse, and follows the
-# same JSON flag convention as the other inspection commands.
+# The output listing keeps the field shapes scripts already parse.
 outputs=$("$UMBRIEL" outputs --json)
 if ! jq -e '
   type == "array" and length == 1
@@ -474,10 +473,6 @@ if ! jq -e '
   )
 ' <<< "$outputs" > /dev/null; then
   echo "outputs --json has an unexpected shape: $outputs"
-  exit 1
-fi
-if [[ $("$UMBRIEL" outputs -j) != "$outputs" ]]; then
-  echo "outputs -j differs from outputs --json"
   exit 1
 fi
 

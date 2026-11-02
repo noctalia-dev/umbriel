@@ -11,6 +11,7 @@ readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/mod-cursor-before.png"
 readonly DURING="$UMBRIEL_RUNTIME_DIR/mod-cursor-during.png"
 readonly AFTER="$UMBRIEL_RUNTIME_DIR/mod-cursor-after.png"
+readonly PREVIOUS="$UMBRIEL_RUNTIME_DIR/mod-cursor-previous.png"
 
 if [[ ! -x $POINTER ]] || ! command -v foot > /dev/null; then
   echo "cursor helpers are not available"
@@ -40,33 +41,34 @@ fi
 x=$(jq -r '(.x + .w / 2 | round)' <<< "$window")
 y=$(jq -r '(.y + .h / 2 | round)' <<< "$window")
 crop="48x48+$x+$y"
-cursor_hash() {
-  grim -c "$1"
-  magick "$1" -crop "$crop" +repage rgba:- | sha256sum | cut -d' ' -f1
+same_cursor() {
+  local changed
+  read -r _ changed < <("$UMBRIEL_PIXEL_PROBE" "$1" diff "$2" "$crop")
+  ((changed == 0))
 }
 
 # Park the pointer inside the window so the client sets its own cursor.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$x" "$y"
 # The client sets its cursor asynchronously after pointer enter; wait until two captures agree.
-before=$(cursor_hash "$BEFORE")
+grim -c "$BEFORE"
 for _ in $(seq 20); do
-  previous=$before
-  before=$(cursor_hash "$BEFORE")
-  [[ $before == "$previous" ]] && break
+  mv "$BEFORE" "$PREVIOUS"
+  grim -c "$BEFORE"
+  same_cursor "$BEFORE" "$PREVIOUS" && break
 done
 
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" mod logo -- mod none
-during=$(cursor_hash "$DURING")
-if [[ $before == "$during" ]]; then
+grim -c "$DURING"
+if same_cursor "$BEFORE" "$DURING"; then
   echo "positive control failed: holding mod did not change the cursor"
   exit 1
 fi
 
 pointer_release
 "$UMBRIEL" settle
-after=$(cursor_hash "$AFTER")
-if [[ $before != "$after" ]]; then
-  echo "releasing mod did not restore the client cursor: before=$before during=$during after=$after"
+grim -c "$AFTER"
+if ! same_cursor "$BEFORE" "$AFTER"; then
+  echo "releasing mod did not restore the client cursor: difference $("$UMBRIEL_PIXEL_PROBE" "$BEFORE" diff "$AFTER" "$crop")"
   exit 1
 fi
 

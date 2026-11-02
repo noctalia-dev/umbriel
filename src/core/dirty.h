@@ -25,17 +25,17 @@ namespace umbriel {
   // Session-lock blanking stays immediate, preventing a frame from exposing
   // desktop content after an output or mode change.
 
-  [[nodiscard]] constexpr Dirty operator|(Dirty a, Dirty b) {
+  constexpr Dirty operator|(Dirty a, Dirty b) {
     return static_cast<Dirty>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
   }
 
-  [[nodiscard]] constexpr Dirty operator&(Dirty a, Dirty b) {
+  constexpr Dirty operator&(Dirty a, Dirty b) {
     return static_cast<Dirty>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
   }
 
   constexpr Dirty& operator|=(Dirty& a, Dirty b) { return a = a | b; }
 
-  [[nodiscard]] constexpr bool any(Dirty set) { return static_cast<uint32_t>(set) != 0; }
-  [[nodiscard]] constexpr bool has(Dirty set, Dirty bit) { return any(set & bit); }
+  constexpr bool any(Dirty set) { return static_cast<uint32_t>(set) != 0; }
+  constexpr bool has(Dirty set, Dirty bit) { return any(set & bit); }
 
 } // namespace umbriel

@@ -56,8 +56,7 @@ spawn() {
 
 sample() {
   local x=$1 y=$2
-  magick "$IMAGE" -crop "8x8+$((x - 4))+$((y - 4))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "8x8+$((x - 4))+$((y - 4))"
 }
 
 is_blue() {

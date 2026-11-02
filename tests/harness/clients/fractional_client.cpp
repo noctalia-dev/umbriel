@@ -17,6 +17,7 @@
 // RESIZE_BEFORE_MAP uses the default dimensions for that first buffer, then follows later configures normally.
 
 #include "fractional-scale-v1-client-protocol.h"
+#include "parse_ints.h"
 #include "server-decoration-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
@@ -276,16 +277,13 @@ namespace {
       const uint32_t mode = command == "legacy server" ? 2 : (command == "legacy none" ? 0 : 1);
       org_kde_kwin_server_decoration_request_mode(state.legacyDecoration, mode);
     } else if (command.starts_with("resize ")) {
-      int width = 0;
-      int height = 0;
-      if (std::sscanf(std::string(command.substr(7)).c_str(), "%d %d", &width, &height) != 2
-          || width <= 0
-          || height <= 0) {
+      const auto size = harness::parseInts<int, 2>(command.substr(7), ' ');
+      if (!size || (*size)[0] <= 0 || (*size)[1] <= 0) {
         state.running = false;
         return;
       }
-      state.logicalWidth = width;
-      state.logicalHeight = height;
+      state.logicalWidth = (*size)[0];
+      state.logicalHeight = (*size)[1];
       present(state);
     } else if (command.starts_with("title ")) {
       xdg_toplevel_set_title(state.toplevel, std::string(command.substr(6)).c_str());
@@ -361,11 +359,11 @@ int main(int argc, char** argv) {
 
   State state;
   if (argc > 3) {
-    state.defaultWidth = std::atoi(argv[2]);
-    state.defaultHeight = std::atoi(argv[3]);
+    state.defaultWidth = std::stoi(argv[2]);
+    state.defaultHeight = std::stoi(argv[3]);
   }
   if (argc > 4) {
-    state.margin = std::atoi(argv[4]);
+    state.margin = std::stoi(argv[4]);
     if (state.margin < 0) {
       std::println(stderr, "fractional-client: bad margin");
       return 1;

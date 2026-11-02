@@ -93,7 +93,7 @@ fi
 
 shot_settled
 
-read -r screen_w screen_h <<< "$(magick identify -format '%w %h' "$SCREENSHOT")"
+IFS=x read -r screen_w screen_h <<< "$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" size)"
 
 # One pixel of the screenshot, as RRGGBB, at an offset from a window's own
 # top-left corner.
@@ -104,8 +104,7 @@ hex_at() {
     echo "sample ($x,$y) falls outside the ${screen_w}x${screen_h} output" >&2
     exit 1
   fi
-  magick "$SCREENSHOT" -alpha off -crop "1x1+$x+$y" +repage -depth 8 txt:- |
-    sed -n 's/.*#\([0-9A-F]\{6\}\).*/\1/p' | head -1
+  printf '%02X%02X%02X\n' $("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$x" "$y")
 }
 
 expect_frame() {

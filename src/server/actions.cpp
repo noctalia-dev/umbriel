@@ -1078,11 +1078,10 @@ namespace umbriel {
       if (scratchpadHoldsFocus(server)) {
         return true;
       }
-      if (Workspace* workspace = windowActionWorkspace(server)) {
-        if (workspace->moveFocusedVertical(Direction)) {
-          maybeWarpCursorToWindow(server, workspace->focusedView());
-          return true;
-        }
+      if (Workspace* workspace = windowActionWorkspace(server);
+          workspace != nullptr && workspace->moveFocusedVertical(Direction)) {
+        maybeWarpCursorToWindow(server, workspace->focusedView());
+        return true;
       }
       return actionColumnMoveToOutput<WlrDir>(server, bind, error);
     }
@@ -1115,19 +1114,17 @@ namespace umbriel {
 
     template <int Direction>
     bool actionMoveVerticalOrWorkspace(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      if (Workspace* workspace = windowActionWorkspace(server)) {
-        if (!workspace->moveFocusedVertical(Direction)) {
-          Workspace* source = workspace;
-          if (source->group() == nullptr) {
-            return true;
-          }
-          Workspace* target = stepWorkspace(*source->group(), source->index(), Direction);
-          if (target == nullptr || target == source) {
-            return true;
-          }
-          if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
-            moveViewToWorkspace(server, *view, *target);
-          }
+      if (Workspace* source = windowActionWorkspace(server);
+          source != nullptr && !source->moveFocusedVertical(Direction)) {
+        if (source->group() == nullptr) {
+          return true;
+        }
+        Workspace* target = stepWorkspace(*source->group(), source->index(), Direction);
+        if (target == nullptr || target == source) {
+          return true;
+        }
+        if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
+          moveViewToWorkspace(server, *view, *target);
         }
       }
       return true;
@@ -1316,17 +1313,15 @@ namespace umbriel {
         }
         view->toggleFloating(false);
         return true;
-      } else {
-
-        if (scratchpadHoldsFocus(server)) {
-          return true;
+      }
+      if (scratchpadHoldsFocus(server)) {
+        return true;
+      }
+      if (Workspace* workspace = activeWorkspace(server)) {
+        if (workspace->layoutMode() == LayoutMode::Stacking) {
+          return reject(error, "window-toggle-floating needs a tiling layout");
         }
-        if (Workspace* workspace = activeWorkspace(server)) {
-          if (workspace->layoutMode() == LayoutMode::Stacking) {
-            return reject(error, "window-toggle-floating needs a tiling layout");
-          }
-          workspace->toggleFocusedFloating();
-        }
+        workspace->toggleFocusedFloating();
       }
       return true;
     }

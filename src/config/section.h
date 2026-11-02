@@ -55,9 +55,9 @@ namespace umbriel {
     // the key known, so the claim and the read cannot come apart.
     [[nodiscard]] const toml::node* take(std::string_view key) { return claim(key); }
     // The raw node without claiming, when the key is claimed elsewhere.
-    [[nodiscard]] const toml::node* node(std::string_view key) const { return m_table.get(key); }
+    const toml::node* node(std::string_view key) const { return m_table.get(key); }
     // The table itself, for readers that walk user-chosen names.
-    [[nodiscard]] const toml::table& table() const { return m_table; }
+    const toml::table& table() const { return m_table; }
 
     // Suppress the unknown-key report entirely, for tables whose keys are
     // user-chosen names rather than a fixed vocabulary.
@@ -65,16 +65,16 @@ namespace umbriel {
 
     // Whether every key in the table has been claimed, for readers that reject
     // an entry on a stray key instead of only warning.
-    [[nodiscard]] bool allKeysKnown() const;
+    bool allKeysKnown() const;
 
     // This table's path, as diagnostics name it.
-    [[nodiscard]] const std::string& name() const { return m_name; }
+    const std::string& name() const { return m_name; }
     // `key` as diagnostics name it, qualified by this table's path.
-    [[nodiscard]] std::string qualified(std::string_view key) const;
+    std::string qualified(std::string_view key) const;
     // Report against `node` into this table's diagnostics, for readers built on top of this class.
     void warn(const toml::node& node, std::string message);
     void error(const toml::node& node, std::string message);
-    [[nodiscard]] std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
+    std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
 
   private:
     const toml::node* claim(std::string_view key);

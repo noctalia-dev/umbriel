@@ -107,8 +107,7 @@ sample() {
   read -r x y width height <<< "$(jq -r '[.x, .y, .w, .h] | @tsv' <<< "$window")"
   sample_x=$(awk -v x="$x" -v width="$width" -v fraction="$x_fraction" 'BEGIN { printf "%d", x + width * fraction }')
   sample_y=$(awk -v y="$y" -v height="$height" -v fraction="$y_fraction" 'BEGIN { printf "%d", y + height * fraction }')
-  magick "$IMAGE" -crop "6x6+$((sample_x - 3))+$((sample_y - 3))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "6x6+$((sample_x - 3))+$((sample_y - 3))"
 }
 
 read -r small_red small_green small_blue <<< "$(sample "$small" 0.25 0.55)"

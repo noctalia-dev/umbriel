@@ -58,6 +58,7 @@ unit_tests = [
   ['shortcut-labels', ['unit/shortcut_labels.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
+  ['title-bar-icon', ['unit/title_bar_icon.cpp'], [umbriel_core_dep]],
   ['floating', ['unit/floating.cpp'], []],
   ['window-region', ['unit/window_region.cpp'], []],
   ['drag-physics', ['unit/drag_physics.cpp'], []],
@@ -97,6 +98,12 @@ if native_drm_policy_supported
   stat_symbol = is_glibc ? 'stat64' : 'stat'
   unit_tests += [
     ['backend-manager', ['unit/backend_manager.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=' + stat_symbol]],
+  ]
+endif
+
+if wlr_has_drm_backend
+  unit_tests += [
+    ['drm-lease', ['unit/drm_lease.cpp'], [umbriel_core_dep]],
   ]
 endif
 

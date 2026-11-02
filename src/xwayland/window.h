@@ -31,9 +31,9 @@ namespace umbriel {
     // An event-stream barrier completed for one map of this window.
     void handleXwmSync(uint64_t serial);
     void refreshCaptureProtection();
-    [[nodiscard]] wlr_xwayland_surface* xsurface() const { return m_xsurface; }
+    wlr_xwayland_surface* xsurface() const { return m_xsurface; }
     // X pixels per layout unit in the window's surface.
-    [[nodiscard]] double scale() const;
+    double scale() const;
 
   private:
     static void onAssociate(wl_listener* listener, void* data);

@@ -26,8 +26,7 @@ output_y() {
 
 # Samples a 40x40 patch centered on the given point of an output-local screenshot.
 sample_at() {
-  magick "$1" -crop "40x40+$(($2 - 20))+$(($3 - 20))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean "40x40+$(($2 - 20))+$(($3 - 20))"
 }
 
 assert_blue_card() {

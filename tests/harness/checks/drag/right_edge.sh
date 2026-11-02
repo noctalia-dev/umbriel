@@ -69,10 +69,7 @@ pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$start_x" "$start_y" press "$BTN_LEFT
 
 outside_screenshot="$UMBRIEL_RUNTIME_DIR/drag-right-outside-hint.png"
 grim "$outside_screenshot"
-outside_red=$(magick "$outside_screenshot" -crop 100x240+980+240 \
-  -format '%[fx:round(255*mean.r)]' info:)
-outside_green=$(magick "$outside_screenshot" -crop 100x240+980+240 \
-  -format '%[fx:round(255*mean.g)]' info:)
+read -r outside_red outside_green _ < <("$UMBRIEL_PIXEL_PROBE" "$outside_screenshot" mean 100x240+980+240)
 if (( outside_red < outside_green + 35 )); then
   echo "trailing gap hint overlapped the last card instead of staying in the overview margin: red=$outside_red green=$outside_green"
   exit 1
@@ -82,10 +79,7 @@ pointer_step inside
 "$UMBRIEL" clock-advance 500 > /dev/null
 inside_screenshot="$UMBRIEL_RUNTIME_DIR/drag-right-inside-hint.png"
 grim "$inside_screenshot"
-inside_red=$(magick "$inside_screenshot" -crop 100x50+700+195 \
-  -format '%[fx:round(255*mean.r)]' info:)
-inside_green=$(magick "$inside_screenshot" -crop 100x50+700+195 \
-  -format '%[fx:round(255*mean.g)]' info:)
+read -r inside_red inside_green _ < <("$UMBRIEL_PIXEL_PROBE" "$inside_screenshot" mean 100x50+700+195)
 if (( inside_red < inside_green + 35 )); then
   echo "the last card's outer side remained a duplicate append target: red=$inside_red green=$inside_green"
   exit 1

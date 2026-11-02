@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <string>
 #include <variant>
 #include <vector>
@@ -1212,9 +1213,9 @@ UMBRIEL_TEST(effectActionsParseTypedTargets) {
     CHECK(parseAction("effect-" + kind + "-set off", bind));
     CHECK_EQ(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name, std::string{"off"});
     for (const std::string op : {"toggle", "reset"}) {
-      CHECK(parseAction("effect-" + kind + "-" + op + " window-1", bind));
+      CHECK(parseAction(std::format("effect-{}-{} window-1", kind, op), bind));
       CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"window-1"});
-      CHECK(parseAction("effect-" + kind + "-" + op, bind));
+      CHECK(parseAction(std::format("effect-{}-{}", kind, op), bind));
     }
   }
   CHECK(parseAction("effect-screen-set cinema --output vendor/panel", bind));
@@ -1245,11 +1246,11 @@ UMBRIEL_TEST(effectActionsRejectMalformedNamesAndTargets) {
     const std::string flag = kind == "screen" ? "output" : "window";
     for (const std::string& arg :
          std::vector<std::string>{"", " ''", " --" + flag + " target", " name --" + flag, " a b"}) {
-      CHECK(!parseAction("effect-" + kind + "-set" + arg, bind));
+      CHECK(!parseAction(std::format("effect-{}-set{}", kind, arg), bind));
     }
     for (const std::string& arg :
          std::vector<std::string>{" ''", " off", " off --" + flag + " target", " name --" + flag, " a b"}) {
-      CHECK(!parseAction("effect-" + kind + "-cycle" + arg, bind));
+      CHECK(!parseAction(std::format("effect-{}-cycle{}", kind, arg), bind));
     }
     CHECK(!parseAction("effect-" + kind + "-toggle ''", bind));
     CHECK(!parseAction("effect-" + kind + "-reset ''", bind));
@@ -1364,7 +1365,7 @@ UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
 UMBRIEL_TEST(parsesStackingLayoutAndCustomCycle) {
   Keybind bind;
   CHECK(parseAction("workspace-set-layout stacking", bind));
-  auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
+  const auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(arg != nullptr && arg->mode == umbriel::LayoutMode::Stacking);
   CHECK(parseAction("workspace-set-layout toggle stacking scrolling", bind));
   arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
@@ -1382,7 +1383,7 @@ UMBRIEL_TEST(parsesRegionActionsAndRejectsRemovedNames) {
   Keybind bind;
   CHECK(parseAction("window-set-region top_left", bind));
   CHECK(bind.action == KeybindAction::WindowSetRegion);
-  auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
+  const auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
   CHECK(arg != nullptr && arg->region == umbriel::WindowRegion::TopLeft);
   CHECK(parseAction("window-set-region top", bind));
   arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);

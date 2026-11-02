@@ -92,8 +92,7 @@ sample_green() {
     "$UMBRIEL" windows --json | jq -r '.[] | select(.app_id == "only-a") | "\(.x) \(.y) \(.w) \(.h)"'
   )"
   grim "$SCREENSHOT"
-  magick "$SCREENSHOT" -crop "20x20+$((x + w / 4 - 10))+$((y + h / 4 - 10))" \
-    -format '%[fx:round(255*mean.g)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "20x20+$((x + w / 4 - 10))+$((y + h / 4 - 10))" | awk '{print $2}'
 }
 
 # Failures go to stderr: the caller captures stdout to report the samples it saw.

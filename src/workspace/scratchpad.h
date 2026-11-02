@@ -34,15 +34,15 @@ namespace umbriel {
     ScratchpadManager(Server& server, wlr_scene_tree* root);
     ~ScratchpadManager() override;
 
-    [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+    AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(double nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override;
-    [[nodiscard]] bool animatesOn(const Output* output) const override;
+    bool hasActiveAnimations() const override;
+    bool animatesOn(const Output* output) const override;
 
-    [[nodiscard]] bool contains(const View* view) const;
-    [[nodiscard]] Output* outputFor(const View* view) const;
-    [[nodiscard]] std::string_view nameFor(const View* view) const;
-    [[nodiscard]] bool hasScratchpad(std::string_view name) const;
+    bool contains(const View* view) const;
+    Output* outputFor(const View* view) const;
+    std::string_view nameFor(const View* view) const;
+    bool hasScratchpad(std::string_view name) const;
     struct AutomaticAdmission {
       Output* restoreOutput = nullptr;
       Workspace* restoreWorkspace = nullptr;
@@ -50,14 +50,14 @@ namespace umbriel {
       std::optional<bool> restoreTiled;
       bool updateRestoreLocation = false;
     };
-    [[nodiscard]] Output* presentationOutput(std::string_view name, Output* fallback) const;
-    [[nodiscard]] Output* restoreOutputFor(const View* view) const;
+    Output* presentationOutput(std::string_view name, Output* fallback) const;
+    Output* restoreOutputFor(const View* view) const;
     [[nodiscard]] bool moveToScratchpad(View* view, std::string_view name, Output* invokingOutput);
     [[nodiscard]] bool
     assignAutomatic(View* view, std::string_view name, Output* placementOutput, const AutomaticAdmission& options);
     [[nodiscard]] bool assignFromParent(View* view, const View* parent, const AutomaticAdmission& options);
     // Launch context survives an empty pad. Explicit workspace focus relinquishes it on that output.
-    [[nodiscard]] std::string_view activeOn(const Output* output) const;
+    std::string_view activeOn(const Output* output) const;
     void deactivateOn(const Output* output);
     bool refocusActive(Output* output);
     // Show a scratchpad on the invoking output without changing keyboard focus. Naming `member` while the pad shows a
@@ -71,11 +71,11 @@ namespace umbriel {
     // Show one window of the scratchpad at a time: the one after (`direction` > 0) or before the window on show,
     // wrapping at the ends. A hidden pad shows its most recently focused window.
     bool showStep(std::string_view name, int direction, Output* invokingOutput);
-    [[nodiscard]] View* focused(std::string_view name) const;
-    [[nodiscard]] bool hasFocus(std::string_view name) const;
+    View* focused(std::string_view name) const;
+    bool hasFocus(std::string_view name) const;
     // The most recently focused window when that focus went to a scratchpad
     // and the window is still visible on `output`.
-    [[nodiscard]] View* focusedOn(const Output* output) const;
+    View* focusedOn(const Output* output) const;
     void noteFocus(View* view);
     void finishMove(View* view, Output* output);
     // Apply the manager-owned floating presentation after a commit or while a
@@ -102,7 +102,7 @@ namespace umbriel {
     struct PendingSpawn {
       std::chrono::steady_clock::time_point expiresAt;
 
-      [[nodiscard]] bool live() const { return std::chrono::steady_clock::now() < expiresAt; }
+      bool live() const { return std::chrono::steady_clock::now() < expiresAt; }
     };
 
     struct Scratchpad {
@@ -134,19 +134,19 @@ namespace umbriel {
       bool returnTiled = false;
     };
 
-    [[nodiscard]] Scratchpad* findScratchpad(std::string_view name);
-    [[nodiscard]] const Scratchpad* findScratchpad(std::string_view name) const;
-    [[nodiscard]] Entry* findEntry(const View* view);
-    [[nodiscard]] const Entry* findEntry(const View* view) const;
-    [[nodiscard]] bool hasEntries(std::string_view name) const;
-    [[nodiscard]] bool visibleOn(Output* output) const;
+    Scratchpad* findScratchpad(std::string_view name);
+    const Scratchpad* findScratchpad(std::string_view name) const;
+    Entry* findEntry(const View* view);
+    const Entry* findEntry(const View* view) const;
+    bool hasEntries(std::string_view name) const;
+    bool visibleOn(Output* output) const;
     // Whether `view`, a member of `scratchpad`, is on screen.
-    [[nodiscard]] static bool presents(const Scratchpad& scratchpad, const View* view);
+    static bool presents(const Scratchpad& scratchpad, const View* view);
     // Whether `view` is a dialog of another member of scratchpad `name`, shown along with that member.
-    [[nodiscard]] bool ridesWithParent(const View* view, std::string_view name) const;
+    bool ridesWithParent(const View* view, std::string_view name) const;
     // The regular member of scratchpad `name` that `view` belongs to: `view` itself, or for a dialog the member it was
     // opened from.
-    [[nodiscard]] View* memberFor(View* view, std::string_view name) const;
+    View* memberFor(View* view, std::string_view name) const;
     // Called as `view` leaves scratchpad `name`: if it was the window focused last, a dialog hands that over to the
     // nearest window of the scratchpad it was opened from, and any other window clears it.
     void forgetLastFocused(Scratchpad& scratchpad, std::string_view name, const View* view) const;
@@ -159,7 +159,11 @@ namespace umbriel {
     void moveScratchpad(
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true
     );
-    void remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea);
+    bool usesProportionalSize(std::string_view name) const;
+    void remapViewGeometry(
+        View* view, const wlr_box& previousArea, const wlr_box& targetArea, bool proportionalSize,
+        bool reposition = true
+    );
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);

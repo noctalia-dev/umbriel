@@ -161,7 +161,7 @@ assert_pass_through 'profile with native gamut'
 # contract against the generator's own colorants (the daemon must report the
 # file as written); the parser math itself is pinned by tests/unit/colorimetry.cpp.
 INFO_LOG="$RUNTIME/color-profile-info.log"
-if ! UMBRIEL_ICC_DUMP="$DUMP" "$CLIENT" v1 > "$INFO_LOG" 2>&1; then
+if ! UMBRIEL_ICC_DUMP="$DUMP" "$CLIENT" v1 probe > "$INFO_LOG" 2>&1; then
   echo "the color feedback client did not collect output/preferred descriptions: $(cat "$INFO_LOG")"
   exit 1
 fi

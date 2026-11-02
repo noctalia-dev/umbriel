@@ -12,8 +12,8 @@ namespace umbriel {
   // Modifier encodings belong to one keymap. Keep names when carrying state
   // to another keymap, preferring semantic virtual names to backing real
   // modifiers so a moved lock does not also lock its old modifier.
-  [[nodiscard]] std::vector<std::string> keyboardModifierNames(xkb_keymap* keymap, xkb_mod_mask_t mask);
-  [[nodiscard]] xkb_mod_mask_t keyboardModifierMask(xkb_keymap* keymap, std::span<const std::string> names);
+  std::vector<std::string> keyboardModifierNames(xkb_keymap* keymap, xkb_mod_mask_t mask);
+  xkb_mod_mask_t keyboardModifierMask(xkb_keymap* keymap, std::span<const std::string> names);
 
   // Change only the latched and locked modifiers. Preserve held keys and all
   // layout components, and publish the resulting modifiers and LEDs through

@@ -234,13 +234,10 @@ namespace umbriel {
     if (dynamicRuleMatches(rule)) {
       return true;
     }
-    for (const auto& output : config.outputs) {
+    return std::ranges::any_of(config.outputs, [&](const auto& output) {
       const auto* inventory = workspaceInventoryForOutput(config, output.name);
-      if (inventory != nullptr && workspaceRuleMatches(rule, *inventory)) {
-        return true;
-      }
-    }
-    return false;
+      return inventory != nullptr && workspaceRuleMatches(rule, *inventory);
+    });
   }
 
   ResolvedWindowRule resolveWindowRules(

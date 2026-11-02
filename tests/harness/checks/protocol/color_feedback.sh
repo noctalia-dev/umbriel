@@ -20,15 +20,26 @@ snapshot() {
 }
 
 assert_sdr_descriptions() {
-  local log=${1:-$CLIENT_LOG}
-  if ! jq -se '
+  local log=${1:-$CLIENT_LOG} transfer=${2:-14}
+  if ! jq -se --argjson transfer "$transfer" '
     [.[] | select(.event == "description")] as $descriptions
     | ["output", "preferred", "preferred_parametric"] | all(. as $source
         | [$descriptions[] | select(.source == $source)] | last
         | .reference == 80 and .max == 80 and .min <= (.reference * 10000)
-          and .target_max == 80 and .tf == 2 and .primaries == 1)
+          and .target_max == 80 and .tf == $transfer and .primaries == 1)
   ' "$log" > /dev/null; then
     echo "native SDR descriptions were missing or incoherent: $(cat "$log")"
+    exit 1
+  fi
+}
+
+assert_transfers() {
+  local log=$1 supported=$2 unsupported=$3
+  if ! jq -se --argjson supported "$supported" --argjson unsupported "$unsupported" '
+    [.[] | select(.event == "transfer") | .value]
+    | index($supported) != null and index($unsupported) == null
+  ' "$log" > /dev/null; then
+    echo "native color manager advertised the wrong versioned SDR transfers: $(cat "$log")"
     exit 1
   fi
 }
@@ -63,8 +74,9 @@ assert_surface() {
 }
 
 write_config 500
-"$CLIENT" v1 > "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" 2>&1
-assert_sdr_descriptions "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log"
+"$CLIENT" compound v1 probe > "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" 2>&1
+assert_sdr_descriptions "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" 9
+assert_transfers "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" 9 14
 assert_preferred_identity "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" 1
 if ! jq -se 'any(.[]; .event == "manager" and .version == 1)' \
     "$UMBRIEL_RUNTIME_DIR/color-feedback-v1.log" > /dev/null; then
@@ -77,6 +89,7 @@ exec {CLIENT_FD}> "$UMBRIEL_RUNTIME_DIR/color-feedback.fifo"
 await_lines "$CLIENT_LOG" '{"event":"mapped"}' 1
 initial=$(snapshot initial)
 assert_sdr_descriptions
+assert_transfers "$CLIENT_LOG" 14 9
 assert_surface PQ true
 
 # icc_v2_v4 (feature 0) is advertised only in builds with the real ICC parser;
@@ -154,7 +167,7 @@ for version in v1 v2 v3; do
     exit 1
   fi
 done
-for mode in named-raw raw-named raw-raw luminances-twice invalid-maximum invalid-reference degenerate; do
+for mode in named-raw raw-named raw-raw luminances-twice invalid-maximum invalid-reference degenerate unsupported-srgb; do
   "$CLIENT" "params-$mode" > "$UMBRIEL_RUNTIME_DIR/native-params-$mode.log" 2>&1
 done
 "$CLIENT" duplicate > "$UMBRIEL_RUNTIME_DIR/native-duplicate.log" 2>&1

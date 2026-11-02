@@ -28,7 +28,7 @@ namespace {
     EventLoop(const EventLoop&) = delete;
     EventLoop& operator=(const EventLoop&) = delete;
 
-    [[nodiscard]] wl_event_loop* get() const { return m_loop; }
+    wl_event_loop* get() const { return m_loop; }
     void flush() const { wl_event_loop_dispatch_idle(m_loop); }
 
   private:
@@ -54,8 +54,8 @@ namespace {
     BackendKeyboard(const BackendKeyboard&) = delete;
     BackendKeyboard& operator=(const BackendKeyboard&) = delete;
 
-    [[nodiscard]] wlr_keyboard* get() { return &m_keyboard; }
-    [[nodiscard]] const std::vector<uint32_t>& writes() const { return m_writes; }
+    wlr_keyboard* get() { return &m_keyboard; }
+    const std::vector<uint32_t>& writes() const { return m_writes; }
     void clearWrites() { m_writes.clear(); }
     void stopObserving() { m_leds = nullptr; }
 
@@ -142,15 +142,13 @@ namespace {
       wlr_keyboard_notify_modifiers(&m_keyboard, depressed, latched, locked, group);
     }
 
-    [[nodiscard]] bool locked(const char* name) const {
+    bool locked(const char* name) const {
       return xkb_state_mod_name_is_active(m_keyboard.xkb_state, name, XKB_STATE_MODS_LOCKED) > 0;
     }
 
-    [[nodiscard]] xkb_keysym_t keysym(uint32_t code) const {
-      return xkb_state_key_get_one_sym(m_keyboard.xkb_state, code + 8);
-    }
+    xkb_keysym_t keysym(uint32_t code) const { return xkb_state_key_get_one_sym(m_keyboard.xkb_state, code + 8); }
 
-    [[nodiscard]] uint32_t modifierMask(const char* name) const {
+    uint32_t modifierMask(const char* name) const {
       const xkb_mod_index_t index = xkb_keymap_mod_get_index(m_keyboard.keymap, name);
       if (index == XKB_MOD_INVALID || index >= 32) {
         throw std::runtime_error("keyboard LED test keymap lacks the requested modifier");

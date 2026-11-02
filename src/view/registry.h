@@ -25,11 +25,11 @@ namespace umbriel {
     void remove(View* view);
     void clear();
 
-    [[nodiscard]] std::span<const std::unique_ptr<View>> all() const { return m_views; }
+    std::span<const std::unique_ptr<View>> all() const { return m_views; }
     // The views that own a placement, in the same order: an attached dialog lives inside its parent, so a scan picking
     // a window to focus or act on skips it.
-    [[nodiscard]] auto placementRoots() const { return std::views::filter(m_views, &ViewRegistry::isPlacementRoot); }
-    [[nodiscard]] bool empty() const { return m_views.empty(); }
+    auto placementRoots() const { return std::views::filter(m_views, &ViewRegistry::isPlacementRoot); }
+    bool empty() const { return m_views.empty(); }
 
     // Move `view` to the front. No-op when it is absent or already there.
     void promote(View* view);

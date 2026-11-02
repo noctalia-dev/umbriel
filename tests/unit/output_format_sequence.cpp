@@ -87,12 +87,12 @@ namespace {
       return true;
     }
 
-    [[nodiscard]] size_t count(Kind kind) const {
+    size_t count(Kind kind) const {
       return static_cast<size_t>(std::ranges::count_if(calls, [&](const Call& c) { return c.kind == kind; }));
     }
 
     // The staged format and VRR state of every commit attempt, in order.
-    [[nodiscard]] std::vector<Call> commits() const {
+    std::vector<Call> commits() const {
       std::vector<Call> out;
       for (const Call& c : calls) {
         if (c.kind == Kind::Commit) {

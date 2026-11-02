@@ -83,8 +83,7 @@ fi
 
 sample() {
   grim "$IMAGE"
-  magick "$IMAGE" -crop "8x8+${sample_x}+${sample_y}" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "8x8+${sample_x}+${sample_y}"
 }
 
 # The configured windows_move timeline ended 200 ms ago, while windows_out is still near the start of its timeline.
@@ -137,8 +136,7 @@ fi
 
 "$UMBRIEL" clock-advance 800
 grim "$IMAGE"
-read -r red green blue < <(magick "$IMAGE" \
-  -format '%[fx:round(255*maxima.r)] %[fx:round(255*maxima.g)] %[fx:round(255*maxima.b)]\n' info:)
+read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" max)
 if ! ((green > 220 && red < 30 && blue < 30)); then
   echo "overshooting windows_out curve hid its active snapshot early: sampled peak $red $green $blue"
   exit 1
@@ -147,8 +145,7 @@ fi
 "$UMBRIEL" clock-advance 2000
 "$UMBRIEL" settle
 grim "$IMAGE"
-read -r red green blue < <(magick "$IMAGE" \
-  -format '%[fx:round(255*maxima.r)] %[fx:round(255*maxima.g)] %[fx:round(255*maxima.b)]\n' info:)
+read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" max)
 if ! ((green < 30 && red < 30 && blue < 30)); then
   echo "overshooting tiled close snapshot remained after windows_out: sampled peak $red $green $blue"
   exit 1

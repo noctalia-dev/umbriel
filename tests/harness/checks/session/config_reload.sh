@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# harness: config-watch=true
 # A reload that changes nothing does nothing; one that changes something applies only that. A reapplied view loop
 # clears every focus ring before refocus puts one back, so a no-op reload would flicker and could move focus. This
 # asserts that an unchanged file is inert and that a changed one still takes effect.

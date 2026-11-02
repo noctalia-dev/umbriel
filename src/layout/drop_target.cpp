@@ -528,7 +528,7 @@ namespace umbriel {
       server.focusView(&view, FocusReason::DragDrop);
       return;
     }
-    const auto restoreSceneParent = [&view, &target]() {
+    const auto restoreSceneParent = [&view, &target] {
       const bool fullscreen = view.currentFullscreen() || view.scheduledFullscreen();
       view.setSceneParent(fullscreen ? target.fullscreenTree() : target.viewLayer(true));
     };
@@ -587,6 +587,118 @@ namespace umbriel {
     restoreSceneParent();
     target.markArrange(animate);
     server.focusView(&view, FocusReason::DragDrop);
+  }
+
+  void rebuildTabGroup(View& view, Workspace& workspace, std::span<View* const> tabs, std::optional<bool> bar) {
+    Layout& layout = workspace.layout();
+    const int column = layout.columnOf(&view);
+    // A window that landed on its own becomes a group of one, which the other tabs then join.
+    if (ScrollingLayout* scrolling = workspace.scrollingLayout(); scrolling != nullptr && column >= 0) {
+      const Column& landed = scrolling->columns()[static_cast<size_t>(column)];
+      if (tabGroupOf(landed, &view) == nullptr) {
+        ColumnTabs groups = landed.tabs;
+        const auto row = static_cast<size_t>(scrolling->rowOf(&view));
+        groups.form(row, 1, row, bar);
+        scrolling->adoptTabs(column, groups);
+      }
+    }
+    TabbedContainers* containers = layout.tabbedContainers();
+    const auto self = std::ranges::find(tabs, &view);
+    const bool grouped = containers != nullptr
+        && self != tabs.end()
+        && column >= 0
+        && tabGroupOf(layout.columns()[static_cast<size_t>(column)], &view) != nullptr;
+    for (auto tab = tabs.begin(); tab != tabs.end(); ++tab) {
+      if (*tab == &view) {
+        continue;
+      }
+      if ((*tab)->workspace() != &workspace) {
+        (*tab)->moveToWorkspace(&workspace, /*attachToLayout=*/false);
+      }
+      // Earlier tabs go in just before `view` and later ones after it, so the group keeps its order.
+      const int row = layout.rowOf(&view) + static_cast<int>(tab < self ? 0 : tab - self);
+      if (!grouped || !containers->insertTab(*tab, column, row, &view)) {
+        (*tab)->setTabHidden(false);
+        workspace.layoutAttach(*tab);
+      }
+    }
+    workspace.markArrange(true);
+  }
+
+  void returnTabGroup(View& shown, std::span<View* const> tabs, std::optional<bool> bar, const TabGroupHome& home) {
+    Workspace& workspace = *shown.workspace();
+    Layout& layout = workspace.layout();
+    shown.setTabHidden(false);
+    if (home.row >= 0) {
+      layout.insertViewIntoColumn(&shown, home.column, home.row);
+    }
+    if (const int column = layout.columnOf(&shown); column >= 0) {
+      if (ScrollingLayout* scrolling = workspace.scrollingLayout()) {
+        scrolling->setHeightWeight(column, scrolling->rowOf(&shown), home.weight);
+      }
+    } else {
+      // A group that filled its column, or whose column has gone since, comes back as a column of its own.
+      layout.insertView(&shown, home.column);
+      if (home.width) {
+        const int inserted = layout.columnOf(&shown);
+        layout.setWidthFraction(inserted, home.width->fraction);
+        if (home.width->fullWidth) {
+          layout.toggleFullWidth(inserted);
+        }
+        shown.setMaximizedState(home.width->fullWidth);
+      }
+    }
+    rebuildTabGroup(shown, workspace, tabs, bar);
+  }
+
+  LiftedTabGroup liftTabGroup(Workspace& workspace, View& view) {
+    const ScrollingLayout* scrolling = workspace.scrollingLayout();
+    const int columnIndex = scrolling != nullptr ? scrolling->columnOf(&view) : -1;
+    if (columnIndex < 0) {
+      return {};
+    }
+    const Column& column = scrolling->columns()[static_cast<size_t>(columnIndex)];
+    const TabGroup* group = tabGroupOf(column, &view);
+    if (group == nullptr) {
+      return {};
+    }
+    const auto first = column.views.begin() + static_cast<std::ptrdiff_t>(group->first);
+    LiftedTabGroup lifted{
+        .tabs = {first, first + static_cast<std::ptrdiff_t>(group->count)}, .bar = group->bar, .home = {}
+    };
+    for (View* tab : lifted.tabs) {
+      if (tab != &view) {
+        workspace.layoutDetach(tab);
+        tab->setTabHidden(true);
+      }
+    }
+    // Alone in its column now, the dragged tab owns the width a group filling that column had.
+    const int row = scrolling->rowOf(&view);
+    lifted.home = {
+        .column = columnIndex,
+        .row = column.views.size() > 1 ? row : -1,
+        .weight = scrolling->heightWeight(columnIndex, row),
+        .width = captureDropColumnWidth(workspace, &view),
+    };
+    return lifted;
+  }
+
+  void landTabGroup(View& view, const LiftedTabGroup& lifted, bool closing) {
+    Workspace* landed = view.workspace();
+    const bool placed = landed != nullptr && landed->layout().columnOf(&view) >= 0;
+    if (placed && landed->scrollingLayout() != nullptr) {
+      rebuildTabGroup(view, *landed, lifted.tabs, lifted.bar);
+    } else if (!placed && !closing && view.tiled()) {
+      returnTabGroup(view, lifted.tabs, lifted.bar, lifted.home);
+    } else {
+      std::vector<View*> rest = lifted.tabs;
+      const auto dragged = std::ranges::find(rest, &view) - rest.begin();
+      std::erase(rest, &view);
+      if (!rest.empty()) {
+        View& shown = *rest[static_cast<size_t>(std::max<std::ptrdiff_t>(0, dragged - 1))];
+        returnTabGroup(shown, rest, lifted.bar, lifted.home);
+      }
+    }
   }
 
 } // namespace umbriel

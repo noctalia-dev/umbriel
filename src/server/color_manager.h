@@ -21,12 +21,12 @@ namespace umbriel {
     ColorManager(const ColorManager&) = delete;
     ColorManager& operator=(const ColorManager&) = delete;
 
-    [[nodiscard]] bool valid() const;
-    [[nodiscard]] wl_global* global() const;
+    bool valid() const;
+    wl_global* global() const;
     // The surface's whole committed description: its protocol data plus the
     // fitted power transfer (tfPower) the bare data cannot carry.
-    [[nodiscard]] const ColorDescription* surfaceDescription(wlr_surface* surface) const;
-    [[nodiscard]] bool surfaceRequiresHdrOutput(wlr_surface* surface) const;
+    const ColorDescription* surfaceDescription(wlr_surface* surface) const;
+    bool surfaceRequiresHdrOutput(wlr_surface* surface) const;
     // Register before adding surfaces. Scene destruction removes the registration.
     [[nodiscard]] bool registerScene(wlr_scene* scene);
     void applySurfaceDescriptionToBuffer(wlr_surface* surface, wlr_scene_buffer* buffer) const;

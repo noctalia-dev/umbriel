@@ -13,8 +13,7 @@ readonly CLOSED="$UMBRIEL_RUNTIME_DIR/overview-pinned-closed.png"
 readonly SWITCHED="$UMBRIEL_RUNTIME_DIR/overview-pinned-switched.png"
 
 sample_rgb() {
-  magick "$1" -crop 20x20+390+240 \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 20x20+390+240
 }
 
 assert_blue_visible() {

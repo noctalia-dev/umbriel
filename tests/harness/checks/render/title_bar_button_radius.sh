@@ -16,6 +16,7 @@ mode = "forced"
 height = 28
 button_position = "right"
 button_corner_radius = -1
+button_glyph = "never"
 [colors.title_bar]
 background = "#FF00FFFF"
 background_unfocused = "#FF00FFFF"

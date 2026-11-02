@@ -8,7 +8,7 @@ readonly AFTER="$UMBRIEL_RUNTIME_DIR/scratchpad-restore-after.png"
 
 sample_corner() {
   # Top-left 20x20, well outside where a centered foot window lands on a 1280x720 output.
-  magick "$1" -crop 20x20+5+5 -format '%[fx:round(255*mean.r)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 20x20+5+5 | awk '{print $1}'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'

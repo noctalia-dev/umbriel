@@ -22,11 +22,11 @@ wait_for_count() {
 
 sample_blue() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$x+$y" -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$image" mean "20x20+$x+$y" | awk '{ print $3 }'
 }
 
 frame_blue() {
-  magick "$1" -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean | awk '{ print $3 }'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'

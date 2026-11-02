@@ -1,5 +1,6 @@
 #include "input/keyboard_state.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -15,14 +16,7 @@ namespace umbriel {
     constexpr std::array<std::string_view, 8> kRealModifiers{"Shift", "Lock", "Control", "Mod1",
                                                              "Mod2",  "Mod3", "Mod4",    "Mod5"};
 
-    bool realModifier(std::string_view name) {
-      for (const std::string_view real : kRealModifiers) {
-        if (name == real) {
-          return true;
-        }
-      }
-      return false;
-    }
+    bool realModifier(std::string_view name) { return std::ranges::contains(kRealModifiers, name); }
   } // namespace
 
   std::vector<std::string> keyboardModifierNames(xkb_keymap* keymap, xkb_mod_mask_t mask) {
