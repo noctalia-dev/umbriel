@@ -306,8 +306,4 @@ if (( snapshot_red * 2 < card_red )); then
   echo "the overview card's close snapshot dropped the border effect: red $card_red -> $snapshot_red"
   exit 1
 fi
-"$UMBRIEL" clock-advance 5000
-"$UMBRIEL" clock-resume
-"$UMBRIEL" msg overview-close > /dev/null
-"$UMBRIEL" settle > /dev/null
 echo "border effect padding, hole, focus, off override, frame gating, light, and overview close snapshots verified"

@@ -10,19 +10,6 @@ readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/xwayland-dialog.log"
 readonly CONTROL="$UMBRIEL_RUNTIME_DIR/xwayland-dialog.control"
 readonly PARENT=xwayland-dialog-parent
 readonly CHILD=xwayland-dialog-child
-pointer_held=false
-client_pid=
-
-cleanup() {
-  if [[ $pointer_held == true ]]; then pointer_release || true; fi
-  "$UMBRIEL" clock-resume > /dev/null 2>&1 || true
-  if [[ -n $client_pid ]]; then
-    printf 'quit\n' >&"$control_fd" || true
-    wait "$client_pid" || true
-  fi
-}
-trap cleanup EXIT
-
 windows() { "$UMBRIEL" windows --json; }
 window() { windows | jq -c --arg title "$1" '.[] | select(.title == $title)'; }
 send_client() { printf '%s\n' "$@" >&"$control_fd"; }
@@ -116,7 +103,6 @@ CONFIG
 mkfifo "$CONTROL"
 exec {control_fd}<> "$CONTROL"
 "$CLIENT" <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
-client_pid=$!
 wait_window "$PARENT"
 wait_active "$PARENT" 'initial parent'
 "$UMBRIEL" settle > /dev/null
@@ -126,7 +112,6 @@ type_into "$PARENT" 30 'initial parent keyboard'
 parent_id=$(window "$PARENT" | jq -r .id)
 
 pointer_hold 1280 720 move 128 360 -- move 129 360 mark incidental hold
-pointer_held=true
 "$UMBRIEL" clock-freeze > /dev/null
 assert_pixel before-map 128 360 '48 96 144'
 send_client map-dialog
@@ -150,7 +135,6 @@ assert_active "$CHILD" 'one-pixel motion inside the same parent during reveal'
 expect_x_focus "$CHILD" incidental
 type_into "$CHILD" 31 'dialog keyboard during reveal'
 pointer_release
-pointer_held=false
 "$UMBRIEL" clock-advance 2000 > /dev/null
 "$UMBRIEL" settle > /dev/null
 assert_active "$CHILD" 'completed dialog reveal'
@@ -208,10 +192,5 @@ if [[ -n $(window "$CHILD") ]]; then echo "dialog did not withdraw: $(windows)";
 wait_active "$PARENT" 'parent after dialog withdrawal'
 expect_x_focus "$PARENT" withdrawn
 type_into "$PARENT" 32 'parent keyboard after dialog withdrawal'
-send_client quit
-wait "$client_pid"
-client_pid=
-exec {control_fd}>&-
-"$UMBRIEL" clock-resume > /dev/null
 
 echo 'tiled X11 dialog reveal survives incidental parent motion while entry, clicks, and withdrawal retain focus control'

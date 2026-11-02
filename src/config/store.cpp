@@ -258,7 +258,7 @@ namespace umbriel {
 
       m_diagnostics = std::move(diagnostics);
       m_missingIncludes = missingIncludes;
-      m_watchPaths = watchPaths;
+      m_watchPaths = std::move(watchPaths);
 
       return {};
     }

@@ -290,8 +290,8 @@ namespace umbriel {
       }
     }
 
-    [[nodiscard]] wlr_backend* backend() const { return m_backend; }
-    [[nodiscard]] wlr_session* session() const { return m_session; }
+    wlr_backend* backend() const { return m_backend; }
+    wlr_session* session() const { return m_session; }
 
     [[nodiscard]] wlr_renderer* createRenderer() {
 #if UMBRIEL_HAS_NATIVE_DRM_POLICY
@@ -493,7 +493,7 @@ namespace umbriel {
       return true;
     }
 
-    [[nodiscard]] std::optional<std::vector<DrmDeviceIdentity>> enumerateDrmCards() const {
+    std::optional<std::vector<DrmDeviceIdentity>> enumerateDrmCards() const {
       UdevEnumerate enumerate(udev_enumerate_new(m_session->udev));
       if (!enumerate) {
         kLog.error("failed to allocate a udev DRM enumeration");
@@ -720,7 +720,7 @@ namespace umbriel {
       return renderer;
     }
 
-    [[nodiscard]] bool verifyNoExcludedDeviceIsOpen(std::string_view context) const {
+    bool verifyNoExcludedDeviceIsOpen(std::string_view context) const {
       if (m_session == nullptr) {
         kLog.error("native session is unavailable {}", context);
         return false;
@@ -793,7 +793,7 @@ namespace umbriel {
       return true;
     }
 
-    [[nodiscard]] std::optional<DrmDeviceIdentity> rendererIdentity(wlr_renderer* renderer) const {
+    std::optional<DrmDeviceIdentity> rendererIdentity(wlr_renderer* renderer) const {
       if (m_session == nullptr) {
         return std::nullopt;
       }

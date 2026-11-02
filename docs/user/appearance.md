@@ -131,6 +131,8 @@ font = "sans 10"
 button_position = "right"
 buttons = ["minimize", "maximize", "close"]
 button_corner_radius = -1
+button_glyph = "hover"
+button_background = true
 
 [colors.title_bar]
 background = "#292933FF"
@@ -138,8 +140,14 @@ background_unfocused = "#1A1A1FFF"
 text = "#E8E8EAFF"
 text_unfocused = "#8A8A92FF"
 close = "#FF6B6BFF"
+close_glyph = "#141419FF"
+close_glyph_hover = "#141419FF"
 maximize = "#7AA3FFFF"
+maximize_glyph = "#141419FF"
+maximize_glyph_hover = "#141419FF"
 minimize = "#FFD166FF"
+minimize_glyph = "#141419FF"
+minimize_glyph_hover = "#141419FF"
 ```
 
 Choose a title bar mode:
@@ -151,7 +159,21 @@ Choose a title bar mode:
 | `"on"`         | Follow client decoration preferences; show when no preference is known.                    |
 | `"forced"`     | Show regardless of client preference.                                                      |
 
-`height` is 16 to 128 logical pixels, and `font` is a Pango font description. `button_position` accepts `"left"` or `"right"`. `buttons` lists the buttons to show, from the title outward: the last one sits at the bar's edge, so the default puts close outermost on either side. Leave a name out to hide that button, or use `[]` for a bar without buttons; each of `"minimize"`, `"maximize"`, and `"close"` may appear once. The buttons are colored and have no icons. `button_corner_radius` uses logical pixels, from `0` to `100`. Its default, `-1`, follows the window's `corner_radius`, including window rules. Use `0` for square buttons or a small positive value for rounded squares. The radius is capped at half the button size, producing circles at larger values. The shape scales with the output and overview zoom, and updates on reload. The maximize button is disabled for fixed-size windows. The minimize button shows only while the window can [minimize](layout.md#minimize), so tiled and pinned windows do not have one. `background` and `text` apply to the focused window; their `_unfocused` variants apply to other windows. Colors and title bar settings reload live.
+`height` is 16 to 128 logical pixels, and `font` is a Pango font description. `button_position` accepts `"left"` or `"right"`. `buttons` lists the buttons to show, from the title outward: the last one sits at the bar's edge, so the default puts close outermost on either side. Leave a name out to hide that button, or use `[]` for a bar without buttons; each of `"minimize"`, `"maximize"`, and `"close"` may appear once.
+
+Buttons show a drawn X for close, an outlined square for maximize, and an underscore for minimize. `button_glyph` controls when those symbols appear:
+
+| Value      | Behavior                                                                    |
+| ---------- | --------------------------------------------------------------------------- |
+| `"always"` | Show each symbol at all times.                                              |
+| `"hover"`  | Show each symbol only while its button is hovered or pressed (the default). |
+| `"never"`  | Hide the symbols and show only the colored backgrounds.                     |
+
+`button_background = false` removes the colored backgrounds and leaves only the symbols. Buttons keep their click targets while their symbols are hidden, including when backgrounds are off. Setting `button_glyph = "never"` together with `button_background = false` hides the controls and returns their space to the title.
+
+The `close`, `maximize`, and `minimize` colors control button backgrounds. Each button has independent `*_glyph` and `*_glyph_hover` colors for its idle and hovered or pressed symbol. All six glyph colors default to `"#141419FF"`, with no color difference on hover. These colors apply with or without backgrounds, support alpha, and are not adjusted automatically. For symbols alone on a dark title bar, choose lighter glyph colors. Disabled buttons keep their idle glyph color and appear dimmed. Backgrounds retain their hover and pressed feedback.
+
+`button_corner_radius` uses logical pixels, from `0` to `100`. Its default, `-1`, follows the window's `corner_radius`, including window rules. Use `0` for square buttons or a small positive value for rounded squares. The radius is capped at half the button size, producing circles at larger values. Buttons and symbols scale with the output and overview zoom, and update on reload. The maximize button is disabled for fixed-size windows. The minimize button shows only while the window can [minimize](layout.md#minimize), so tiled and pinned windows do not have one. `background` and `text` apply to the focused window; their `_unfocused` variants apply to other windows. Colors and title bar settings reload live.
 
 The title bar follows its window's `blur`, `blur_optimized`, and `blur_ignore_alpha` rules, together with the global [blur settings](#blur). Give `background` and `background_unfocused` some transparency, such as `"#292933CC"`, to see the blurred backdrop. The alpha threshold applies to the title bar's own background color, independently of the application's content. Opaque title bar backgrounds remain opaque with blur enabled, including after leaving overview or switching focus between windows. No layer rule is needed. Dragging, overview previews, and close animations keep the blur with the window.
 
@@ -171,7 +193,7 @@ title_bar_buttons = ["close"]
 
 Application-drawn headerbars, tab strips, and custom controls remain part of the application content. To avoid duplicate title bars, select the application's native or system title bar option where available. `prefer_no_csd = true` still advertises Umbriel's preference to applications that support decoration negotiation.
 
-Drag empty title bar space with the left button to move a window without a modifier, or double-click it to toggle maximize. Click a colored button to maximize/restore or close the window. Buttons activate on release inside the same button. Floating windows also have modifier-free resize grips around their borders and corners, including when the Umbriel title bar is hidden. This also applies to individually floated windows in tiling layouts. Application content keeps its normal pointer behavior.
+Drag empty title bar space with the left button to move a window without a modifier, or double-click it to toggle maximize. Click a button to minimize, maximize/restore, or close the window. Buttons activate on release inside the same button. Floating windows also have modifier-free resize grips around their borders and corners, including when the Umbriel title bar is hidden. This also applies to individually floated windows in tiling layouts. Application content keeps its normal pointer behavior.
 
 Enabled buttons show a pointing cursor on hover. Their colors lighten against dark title bars and darken against light ones; pressing makes them darker again. Disabled maximize buttons keep the arrow cursor and do not highlight.
 

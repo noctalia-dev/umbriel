@@ -19,9 +19,9 @@ namespace umbriel {
     void push(double delta, uint32_t timeMsec);
     void reset();
 
-    [[nodiscard]] double pos() const { return m_pos; }
-    [[nodiscard]] double velocity() const;
-    [[nodiscard]] double projectedEndPos() const;
+    double pos() const { return m_pos; }
+    double velocity() const;
+    double projectedEndPos() const;
 
   private:
     struct Event {

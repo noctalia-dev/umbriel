@@ -38,6 +38,7 @@
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
+#include "parse_ints.h"
 #include "tearing-control-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
@@ -912,10 +913,10 @@ int main(int argc, char** argv) {
     state.resizeFillColor = static_cast<uint32_t>(value);
   }
   if (argc > 2) {
-    state.width = std::max(1, std::atoi(argv[2]));
+    state.width = std::max(1, std::stoi(argv[2]));
   }
   if (argc > 3) {
-    state.height = std::max(1, std::atoi(argv[3]));
+    state.height = std::max(1, std::stoi(argv[3]));
   }
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
@@ -983,10 +984,14 @@ int main(int argc, char** argv) {
   }
   int parentWidth = state.width;
   int parentHeight = state.height;
-  if (const char* size = std::getenv("TRANSIENT_PARENT_SIZE"); size != nullptr
-      && (std::sscanf(size, "%dx%d", &parentWidth, &parentHeight) != 2 || parentWidth < 1 || parentHeight < 1)) {
-    std::println(stderr, "unmap-client: TRANSIENT_PARENT_SIZE must be <width>x<height>");
-    return EXIT_FAILURE;
+  if (const char* size = std::getenv("TRANSIENT_PARENT_SIZE"); size != nullptr) {
+    const auto parsed = harness::parseInts<int, 2>(size, 'x');
+    if (!parsed || (*parsed)[0] < 1 || (*parsed)[1] < 1) {
+      std::println(stderr, "unmap-client: TRANSIENT_PARENT_SIZE must be <width>x<height>");
+      return EXIT_FAILURE;
+    }
+    parentWidth = (*parsed)[0];
+    parentHeight = (*parsed)[1];
   }
   AuxiliaryToplevel transientParent;
   AuxiliaryToplevel transientUnrelated;
@@ -1037,7 +1042,7 @@ int main(int argc, char** argv) {
       && !state.colorOnSubsurface
       && initialContentType == nullptr
       && updatedContentType != nullptr;
-  const auto createRenderingChildSurface = [&]() {
+  const auto createRenderingChildSurface = [&] {
     if (state.colorChildSurface != nullptr) {
       return true;
     }
@@ -1046,12 +1051,9 @@ int main(int argc, char** argv) {
       return false;
     }
     state.colorChildSurface = wl_compositor_create_surface(state.compositor);
-    if (state.colorChildSurface == nullptr) {
-      return false;
-    }
-    return true;
+    return state.colorChildSurface != nullptr;
   };
-  const auto attachRenderingChild = [&]() {
+  const auto attachRenderingChild = [&] {
     if (state.colorChildSubsurface != nullptr) {
       return true;
     }

@@ -84,7 +84,7 @@ namespace umbriel::registry {
   }
 
   // Every declared key, reporting `values` as its defaults: the built-in ones when given `Config{}`.
-  [[nodiscard]] Descriptions describeConfig(const Config& values);
+  Descriptions describeConfig(const Config& values);
 
   namespace detail {
 
@@ -98,7 +98,7 @@ namespace umbriel::registry {
       out.push_back(std::move(entry));
     }
 
-    template <typename T, typename Current> auto leaf(KeyDescription shape, Current current) {
+    template <typename T, typename Current> auto leaf(KeyDescription shape, const Current& current) {
       return [shape = std::move(shape), current](const T& defaults, const std::string& path, Descriptions& out) {
         KeyDescription entry = shape;
         entry.defaultValue = current(defaults);
@@ -197,7 +197,7 @@ namespace umbriel::registry {
   }
 
   // `#rrggbbaa`, the form a color is written in.
-  [[nodiscard]] inline std::string formatColor(const std::array<float, 4>& color) {
+  inline std::string formatColor(const std::array<float, 4>& color) {
     std::string text = "#";
     for (const float component : color) {
       text += std::format("{:02x}", static_cast<int>(std::lround(std::clamp(component, 0.0F, 1.0F) * 255.0F)));
@@ -235,7 +235,7 @@ namespace umbriel::registry {
   enum class Case : std::uint8_t { Exact, Fold };
 
   // The listed spellings of `choices`, and the name `value` is reported by.
-  template <typename E> [[nodiscard]] std::vector<std::string_view> choiceNames(const Choices<E>& choices) {
+  template <typename E> std::vector<std::string_view> choiceNames(const Choices<E>& choices) {
     std::vector<std::string_view> names;
     names.reserve(choices.size());
     for (const Choice<E>& option : choices) {
@@ -246,14 +246,14 @@ namespace umbriel::registry {
     return names;
   }
 
-  template <typename E> [[nodiscard]] nlohmann::ordered_json choiceName(const Choices<E>& choices, const E& value) {
+  template <typename E> nlohmann::ordered_json choiceName(const Choices<E>& choices, const E& value) {
     const auto found =
         std::ranges::find_if(choices, [&](const Choice<E>& option) { return !option.alias && option.value == value; });
     return found == choices.end() ? nlohmann::ordered_json() : nlohmann::ordered_json(found->name);
   }
 
   // `"a"`, `"a" or "b"`, `"a", "b", or "c"`.
-  [[nodiscard]] inline std::string quotedList(const std::vector<std::string_view>& names) {
+  inline std::string quotedList(const std::vector<std::string_view>& names) {
     std::string out;
     for (size_t index = 0; index < names.size(); ++index) {
       if (index > 0) {
@@ -295,10 +295,10 @@ namespace umbriel::registry {
   // A string naming one of `choices`. Anything else is reported and leaves the target alone.
   template <typename T, typename V>
   Field<T> choice(
-      std::string_view key, V T::* member, Choices<typename detail::Unwrapped<V>::type> choices,
+      std::string_view key, V T::* member, const Choices<typename detail::Unwrapped<V>::type>& choices,
       Case match = Case::Exact
   ) {
-    using E = typename detail::Unwrapped<V>::type;
+    using E = detail::Unwrapped<V>::type;
     KeyDescription shape = KeyDescription("enum").withValues(choiceNames(choices));
     return {
         .key = key,
@@ -334,7 +334,7 @@ namespace umbriel::registry {
 
   // Whether `key` is present and holds a value `Section::integer` accepts, so a rule can follow a key only when it
   // was configured.
-  [[nodiscard]] inline bool configuredInteger(const Section& s, std::string_view key) {
+  inline bool configuredInteger(const Section& s, std::string_view key) {
     const toml::node* node = s.node(key);
     return node != nullptr && node->value<std::int64_t>().has_value();
   }
@@ -348,7 +348,7 @@ namespace umbriel::registry {
   // A key whose parsing is its own and may reject the rule entry holding it. See `custom`.
   template <typename T>
   Field<T> checked(
-      std::string_view key, KeyDescription shape, std::type_identity_t<CheckedParse<T>> parse,
+      std::string_view key, KeyDescription shape, const std::type_identity_t<CheckedParse<T>>& parse,
       std::type_identity_t<Current<T>> current = nullptr, Descriptions extra = {}
   ) {
     return {
@@ -397,10 +397,9 @@ namespace umbriel::registry {
   Field<T> table(
       std::string_view key, Project project,
       const Fields<std::remove_cvref_t<decltype(std::declval<Project>()(std::declval<T&>()))>>& fields,
-      std::type_identity_t<std::function<bool(
+      const std::type_identity_t<std::function<bool(
           const toml::node&, std::remove_cvref_t<decltype(std::declval<Project>()(std::declval<T&>()))>&, ReadContext&
-      )>>
-          after = nullptr
+      )>>& after = nullptr
   ) {
     return {
         .key = key,
@@ -426,9 +425,9 @@ namespace umbriel::registry {
   template <typename T, typename C>
   Field<T> table(
       std::string_view key, C T::* member, const Fields<C>& fields,
-      std::type_identity_t<std::function<bool(const toml::node&, C&, ReadContext&)>> after = nullptr
+      const std::type_identity_t<std::function<bool(const toml::node&, C&, ReadContext&)>>& after = nullptr
   ) {
-    return table<T>(key, [member](auto& parent) -> auto& { return parent.*member; }, fields, std::move(after));
+    return table<T>(key, [member](auto& parent) -> auto& { return parent.*member; }, fields, after);
   }
 
   // A table whose keys are names the user picks, such as environment variables. `read` gets the table's Section,
@@ -477,7 +476,7 @@ namespace umbriel::registry {
   template <typename T, typename C>
   Field<T> rules(
       std::string_view key, std::vector<C> T::* member, const Fields<C>& fields, Shape shape,
-      std::type_identity_t<Accept<T, C>> accept = nullptr
+      const std::type_identity_t<Accept<T, C>>& accept = nullptr
   ) {
     return {
         .key = key,
@@ -527,7 +526,7 @@ namespace umbriel::registry {
   }
 
   // Whether every key of `table` is one of `fields`.
-  template <typename C> [[nodiscard]] bool declaresAll(const Fields<C>& fields, const toml::table& table) {
+  template <typename C> bool declaresAll(const Fields<C>& fields, const toml::table& table) {
     return std::ranges::all_of(table, [&](const auto& entry) {
       return std::ranges::any_of(fields, [&](const Field<C>& field) { return field.key == entry.first.str(); });
     });

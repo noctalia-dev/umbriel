@@ -58,27 +58,26 @@ namespace umbriel {
     emitDiag(ConfigDiagnostic::Severity::Error, &src, std::format(fmt, std::forward<A>(args)...));
   }
 
-  [[nodiscard]] std::string lowercase(std::string_view text);
+  std::string lowercase(std::string_view text);
 
   // Vocabularies outputs and window rules share.
-  [[nodiscard]] const registry::Choices<VrrMode>& vrrModes();
-  [[nodiscard]] const registry::Choices<HdrMode>& hdrModes();
-  [[nodiscard]] const registry::Choices<ContentType>& contentTypes();
+  const registry::Choices<VrrMode>& vrrModes();
+  const registry::Choices<HdrMode>& hdrModes();
+  const registry::Choices<ContentType>& contentTypes();
   // Shared by [layout.tabs] and window rules.
-  [[nodiscard]] const registry::Choices<ColumnDisplay>& columnDisplays();
+  const registry::Choices<ColumnDisplay>& columnDisplays();
   // Shared by [appearance.title_bar] buttons and the title_bar_buttons window rule: an array of distinct buttons, read
   // from the title outward. Unknown or repeated entries are reported and skipped; nullopt when the value is no array.
-  [[nodiscard]] std::optional<std::vector<TitleBarButton>>
-  parseTitleBarButtons(const toml::node& node, const std::string& path);
-  [[nodiscard]] std::vector<std::string_view> titleBarButtonNames();
-  [[nodiscard]] nlohmann::ordered_json titleBarButtonsJson(const std::vector<TitleBarButton>& buttons);
+  std::optional<std::vector<TitleBarButton>> parseTitleBarButtons(const toml::node& node, const std::string& path);
+  std::vector<std::string_view> titleBarButtonNames();
+  nlohmann::ordered_json titleBarButtonsJson(const std::vector<TitleBarButton>& buttons);
 
   // Why an action or rule may not name a scratchpad, or nullopt when it may. Scratchpads are read before every table
   // that names one.
-  [[nodiscard]] std::optional<std::string> scratchpadSelectorError(const Config& loaded, const Keybind& binding);
-  [[nodiscard]] std::optional<std::string> scratchpadTargetError(const Config& loaded, std::string_view name);
+  std::optional<std::string> scratchpadSelectorError(const Config& loaded, const Keybind& binding);
+  std::optional<std::string> scratchpadTargetError(const Config& loaded, std::string_view name);
   // Why an effect action may not name its preset or pool, or nullopt when it may. Effects are read first.
-  [[nodiscard]] std::optional<std::string> effectActionError(const Config& loaded, const Keybind& binding);
+  std::optional<std::string> effectActionError(const Config& loaded, const Keybind& binding);
 
   void addEffectReference(
       std::vector<EffectReference>& references, std::string context,
@@ -129,33 +128,33 @@ namespace umbriel {
   }
 
   // The top-level tables, each defined in the fields_*.cpp of its topic. config.cpp lists them in reading order.
-  [[nodiscard]] registry::Field<Config> colorsTable();
-  [[nodiscard]] registry::Field<Config> appearanceTable();
-  [[nodiscard]] registry::Field<Config> overviewTable();
-  [[nodiscard]] registry::Field<Config> hotCornersTable();
-  [[nodiscard]] registry::Field<Config> generalTable();
-  [[nodiscard]] registry::Field<Config> environmentTable();
-  [[nodiscard]] registry::Field<Config> eventsTable();
-  [[nodiscard]] registry::Field<Config> workspaceSettingsTable(); // [workspaces]
-  [[nodiscard]] registry::Field<Config> screencastTable();
-  [[nodiscard]] registry::Field<Config> effectsTable();
-  [[nodiscard]] registry::Field<Config> animationTable();
-  [[nodiscard]] registry::Field<Config> layoutTable();
-  [[nodiscard]] registry::Field<Config> workspaceRulesTable(); // [[workspace]]
-  [[nodiscard]] registry::Field<Config> scratchpadTable();
-  [[nodiscard]] registry::Field<Config> windowRuleTable();
-  [[nodiscard]] registry::Field<Config> layerRuleTable();
-  [[nodiscard]] registry::Field<Config> securityContextRuleTable();
-  [[nodiscard]] registry::Field<Config> drmTable();
-  [[nodiscard]] registry::Field<Config> inputTable();
-  [[nodiscard]] registry::Field<Config> outputTable();
-  [[nodiscard]] registry::Field<Config> keybindsTable();
+  registry::Field<Config> colorsTable();
+  registry::Field<Config> appearanceTable();
+  registry::Field<Config> overviewTable();
+  registry::Field<Config> hotCornersTable();
+  registry::Field<Config> generalTable();
+  registry::Field<Config> environmentTable();
+  registry::Field<Config> eventsTable();
+  registry::Field<Config> workspaceSettingsTable(); // [workspaces]
+  registry::Field<Config> screencastTable();
+  registry::Field<Config> effectsTable();
+  registry::Field<Config> animationTable();
+  registry::Field<Config> layoutTable();
+  registry::Field<Config> workspaceRulesTable(); // [[workspace]]
+  registry::Field<Config> scratchpadTable();
+  registry::Field<Config> windowRuleTable();
+  registry::Field<Config> layerRuleTable();
+  registry::Field<Config> securityContextRuleTable();
+  registry::Field<Config> drmTable();
+  registry::Field<Config> inputTable();
+  registry::Field<Config> outputTable();
+  registry::Field<Config> keybindsTable();
 
   // Checks that need every table read.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references);
   void warnScrollButtonBinds(const Config& loaded);
 
-  enum class ConfigParseOutcome : uint8_t {
+  enum class [[nodiscard]] ConfigParseOutcome : uint8_t {
     Loaded,
     Missing,
     // Errors were reported. Startup falls back to defaults; a reload keeps the previous configuration.
@@ -164,6 +163,6 @@ namespace umbriel {
 
   // Merge `rootPath` with its includes and read every table into `out`, which is left alone unless the result is
   // Loaded. The caller has already found the file and reset the store for this load.
-  [[nodiscard]] ConfigParseOutcome parseConfig(Config& out, const std::filesystem::path& rootPath);
+  ConfigParseOutcome parseConfig(Config& out, const std::filesystem::path& rootPath);
 
 } // namespace umbriel

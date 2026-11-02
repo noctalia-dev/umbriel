@@ -94,21 +94,20 @@ if ! "$UMBRIEL" windows | grep -Fq '[xdg_tag=game-launcher]'; then
   exit 1
 fi
 
-sleep 0.1
+"$UMBRIEL" settle
 grim "$BEFORE_SHOT"
-read -r image_width image_height < <(magick identify -format '%w %h\n' "$BEFORE_SHOT")
-read -r visual_width visual_height visual_x visual_y < <(
-  magick "$BEFORE_SHOT" -alpha off -fuzz 1% -transparent '#00FF00' -trim -format '%w %h %X %Y\n' info:
+IFS=x read -r image_width image_height < <("$UMBRIEL_PIXEL_PROBE" "$BEFORE_SHOT" size)
+read -r visual_x visual_y visual_width visual_height < <(
+  "$UMBRIEL_PIXEL_PROBE" "$BEFORE_SHOT" bbox '!(r < 0.01 && g > 0.99 && b < 0.01)'
 )
 sample_x=$((visual_x + visual_width / 2))
 sample_y=$((visual_y + visual_height / 2))
-if ((sample_x < 0 || sample_x >= image_width || sample_y < 0 || sample_y >= image_height)); then
-  echo "visible window center is outside the captured output: geometry ${visual_width}x${visual_height}${visual_x}${visual_y}; image ${image_width}x${image_height}"
+if ((visual_width == 0 || sample_x < 0 || sample_x >= image_width || sample_y < 0 || sample_y >= image_height)); then
+  echo "visible window center is outside the captured output: geometry ${visual_width}x${visual_height}+${visual_x}+${visual_y}; image ${image_width}x${image_height}"
   exit 1
 fi
-before_green=$(
-  magick "$BEFORE_SHOT" -crop "20x20+$((sample_x - 10))+$((sample_y - 10))" \
-    -format '%[fx:round(255*mean.g)]' info:
+read -r _ before_green _ < <(
+  "$UMBRIEL_PIXEL_PROBE" "$BEFORE_SHOT" mean "20x20+$((sample_x - 10))+$((sample_y - 10))"
 )
 
 printf 'u' >&"$control_fd"
@@ -138,11 +137,10 @@ if ! "$UMBRIEL" windows | grep -Fq '[xdg_tag=game-running]'; then
   exit 1
 fi
 
-sleep 0.1
+"$UMBRIEL" settle
 grim "$AFTER_SHOT"
-after_green=$(
-  magick "$AFTER_SHOT" -crop "20x20+$((sample_x - 10))+$((sample_y - 10))" \
-    -format '%[fx:round(255*mean.g)]' info:
+read -r _ after_green _ < <(
+  "$UMBRIEL_PIXEL_PROBE" "$AFTER_SHOT" mean "20x20+$((sample_x - 10))+$((sample_y - 10))"
 )
 if ((after_green < before_green + 30)); then
   echo "post-map xdg tag did not replace the old tag or apply dynamic opacity: green $before_green -> $after_green"

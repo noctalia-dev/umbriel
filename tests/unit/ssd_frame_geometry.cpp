@@ -52,6 +52,16 @@ UMBRIEL_TEST(omittedButtonsLeaveNoGapAndWidenTheTitle) {
   }
 }
 
+UMBRIEL_TEST(buttonsSitOnTheBarCenterAtEveryHeight) {
+  for (int height = 16; height <= 128; ++height) {
+    const auto parts = titleBarLayout(480, height, TitleBarButtonSide::Right, kAll);
+    const wlr_box close = *parts.button(TitleBarButton::Close);
+    CHECK_EQ(2 * close.y + close.height, height);
+    CHECK_EQ(480 - close.x - close.width, close.y);
+    CHECK(close.height >= 8 && close.height <= (height + 1) / 2);
+  }
+}
+
 UMBRIEL_TEST(buttonHitSpansTitleBarHeight) {
   const auto at = [](TitleBarButtonSide side, std::span<const TitleBarButton> shown, double x, double y) {
     return ssdFramePointAt(480, 300, 28, 2, true, side, shown, x, y).part;

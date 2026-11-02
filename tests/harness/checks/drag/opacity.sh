@@ -8,10 +8,11 @@ readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 
+client_pid=
+
 measure_drag_green() {
   local alpha=$1 title=$2
   local screenshot="$UMBRIEL_RUNTIME_DIR/$title.png"
-  local client_pid
   foot --config=/dev/null --override=colors-dark.background=000000 --override="colors-dark.alpha=$alpha" \
     --title="$title" sh -c 'sleep 120' > /dev/null 2>&1 &
   client_pid=$!
@@ -35,19 +36,22 @@ measure_drag_green() {
 
   local green
   # An opaque card at the configured 0.5 drag opacity over pure green leaves 255 * 0.5 = 128 in the encoded pixel.
-  green=$(magick "$screenshot" -crop 40x40+680+430 -format '%[fx:round(255*mean.g)]' info:)
+  read -r _ green _ < <("$UMBRIEL_PIXEL_PROBE" "$screenshot" mean 40x40+680+430)
   pointer_release >&2
   "$UMBRIEL" clock-resume > /dev/null
+  printf '%s\n' "$green"
+}
+
+# Both measurements share one compositor instance, so the card from the first scenario has to be gone before the
+# second one opens the overview on a single card again.
+remove_card() {
   "$UMBRIEL" msg overview-close > /dev/null
-  # Both measurements share one compositor instance, so the card from this scenario has to be gone before the next one
-  # opens the overview on a single card again.
   kill -KILL "$client_pid" 2>/dev/null || true
   wait "$client_pid" 2>/dev/null || true
   for _ in $(seq 40); do
     [[ $("$UMBRIEL" windows --json | jq 'length') -eq 0 ]] && break
     sleep 0.1
   done
-  printf '%s\n' "$green"
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -64,11 +68,13 @@ drag_opacity = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-opaque_green=$(measure_drag_green 1 drag-opaque)
+measure_drag_green 1 drag-opaque > "$UMBRIEL_RUNTIME_DIR/opaque-green"
+opaque_green=$(< "$UMBRIEL_RUNTIME_DIR/opaque-green")
 if (( opaque_green < 110 || opaque_green > 145 )); then
   echo "opaque dragged card did not use configured opacity: mean green=$opaque_green"
   exit 1
 fi
+remove_card
 
 transparent_green=$(measure_drag_green 0.5 drag-transparent)
 if (( transparent_green < 170 || transparent_green > 210 )); then

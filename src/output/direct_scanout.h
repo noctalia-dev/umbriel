@@ -57,15 +57,15 @@ namespace umbriel {
       return true;
     }
 
-    [[nodiscard]] const DirectScanoutState& current() const { return m_current; }
-    [[nodiscard]] const DirectScanoutState& settled() const { return m_settled; }
-    [[nodiscard]] uint64_t commits() const { return m_commits; }
-    [[nodiscard]] uint64_t scanoutCommits() const { return m_scanoutCommits; }
-    [[nodiscard]] uint32_t commitSeq() const { return m_commitSeq; }
+    const DirectScanoutState& current() const { return m_current; }
+    const DirectScanoutState& settled() const { return m_settled; }
+    uint64_t commits() const { return m_commits; }
+    uint64_t scanoutCommits() const { return m_scanoutCommits; }
+    uint32_t commitSeq() const { return m_commitSeq; }
 
     // Whether the last settle is worth a log line: scanout started or stopped, or moved to another window. A change
     // between two reasons to composite is not.
-    [[nodiscard]] bool settledChangeIsNotable() const {
+    bool settledChangeIsNotable() const {
       return m_previous.active != m_settled.active || (m_settled.active && m_previous.windowId != m_settled.windowId);
     }
 

@@ -26,12 +26,12 @@ namespace umbriel {
   // Produces the pointer to store in wlr_scene_node::data; always store through this, never a raw `this`. A derived
   // class with a polymorphic base does not start with its SceneNode subobject, so the implicit conversion here applies
   // the offset that sceneNodeFrom relies on.
-  [[nodiscard]] inline void* sceneNodeData(SceneNode* node) { return node; }
+  inline void* sceneNodeData(SceneNode* node) { return node; }
 
   // Recovers a SceneNode from a wlr_scene_node::data pointer, or null when the pointer is something else, such as user
   // data a wlroots or SceneFX helper stored on a node we walk over. It is a guard, not a proof: reading `magic` through
   // a foreign pointer is only safe because anything in that field points at a live object.
-  [[nodiscard]] inline SceneNode* sceneNodeFrom(void* data) {
+  inline SceneNode* sceneNodeFrom(void* data) {
     auto* node = static_cast<SceneNode*>(data);
     if (node == nullptr || node->magic != SceneNode::kMagic) {
       return nullptr;

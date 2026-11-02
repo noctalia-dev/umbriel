@@ -11,15 +11,6 @@ readonly OUTPUT_H=720
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
-pointer_pid=
-cleanup() {
-  if [[ -n $pointer_pid ]]; then
-    kill "$pointer_pid" 2>/dev/null || true
-    wait "$pointer_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
-
 pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
 }
@@ -152,7 +143,6 @@ fi
 # from its gaps. Waiting for focus proves the initial move landed before the close request is sent.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$((closing_x + 50))" "$((closing_y + 50))" pause 10000 \
   > "$UMBRIEL_RUNTIME_DIR/stationary-pointer.log" 2>&1 &
-pointer_pid=$!
 wait_for_focus "$closing_id"
 
 "$UMBRIEL" msg window-close "$closing_id" > /dev/null

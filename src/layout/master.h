@@ -31,19 +31,19 @@ namespace umbriel {
       wlr_box box{};
     };
 
-    [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Master; }
+    LayoutMode mode() const override { return LayoutMode::Master; }
 
-    [[nodiscard]] const std::vector<Column>& columns() const override { return m_columns; }
-    [[nodiscard]] int columnOf(const View* view) const override;
-    [[nodiscard]] int rowOf(const View* view) const override;
-    [[nodiscard]] LayoutCapture captureState() const override;
-    bool restoreState(const LayoutSnapshot& snapshot, std::span<const LayoutMember> members) override;
+    const std::vector<Column>& columns() const override { return m_columns; }
+    int columnOf(const View* view) const override;
+    int rowOf(const View* view) const override;
+    LayoutCapture captureState() const override;
+    bool restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) override;
 
     void insertView(View* view, int columnIndex) override;
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
-    [[nodiscard]] std::vector<EmptyStack> emptyStacks(const wlr_box& usable) const;
+    std::vector<EmptyStack> emptyStacks(const wlr_box& usable) const;
     // Where arrange puts the master area once a window starts it in an empty layout.
-    [[nodiscard]] wlr_box emptyMasterBox(const wlr_box& usable) const;
+    wlr_box emptyMasterBox(const wlr_box& usable) const;
     // Starts the empty stack at gap index `gap` with `view`, which must not be in the layout. False when no empty stack
     // lies there.
     bool openStack(View* view, int gap);
@@ -58,28 +58,28 @@ namespace umbriel {
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;
 
-    [[nodiscard]] wlr_box targetBox(const View* view) const override;
-    [[nodiscard]] InitialSize initialSize(
+    wlr_box targetBox(const View* view) const override;
+    InitialSize initialSize(
         const wlr_box& usable, bool wantMaximized, std::optional<double> ruleExtent, std::optional<int> ruleExtentPx,
         const View* /*splitAnchor*/
     ) const override;
-    [[nodiscard]] std::optional<View*> focusHorizontalLeaf(const View* view, int direction) const override;
-    [[nodiscard]] std::optional<View*> focusVerticalLeaf(const View* view, int direction) const override;
+    std::optional<View*> focusHorizontalLeaf(const View* view, int direction) const override;
+    std::optional<View*> focusVerticalLeaf(const View* view, int direction) const override;
 
     bool cycleWidth(int columnIndex, int direction) override;
     bool toggleFullWidth(int columnIndex) override;
-    [[nodiscard]] bool isFullWidth(int columnIndex) const override;
+    bool isFullWidth(int columnIndex) const override;
     bool setWidthFraction(int columnIndex, double fraction) override;
     void clearFullWidthState(int columnIndex) override;
-    [[nodiscard]] double widthFraction(int columnIndex) const override;
-    [[nodiscard]] double heightFraction(const View* view) const override;
+    double widthFraction(int columnIndex) const override;
+    double heightFraction(const View* view) const override;
     bool setHeightFraction(View* view, double fraction) override;
 
-    [[nodiscard]] uint32_t resizeEdgesAt(const View* view, double cx, double cy) const override;
-    [[nodiscard]] uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
+    uint32_t resizeEdgesAt(const View* view, double cx, double cy) const override;
+    uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
     std::unique_ptr<ResizeGrab> beginResize(View* view, uint32_t edges, const wlr_box& usable) override;
 
-    [[nodiscard]] TabbedContainers* tabbedContainers() override { return this; }
+    TabbedContainers* tabbedContainers() override { return this; }
     bool setTabbed(const View* view, bool tabbed) override;
     bool selectTab(const View* view) override;
     bool insertTab(View* view, int column, int row, const View* member) override;
@@ -92,37 +92,37 @@ namespace umbriel {
     void insertRow(Area& area, size_t row, View* view, double weight) const;
     double eraseRow(Area& area, size_t row);
     // The row a window joining `area` by consume lands on.
-    [[nodiscard]] size_t joinRow(const Area& area) const;
+    size_t joinRow(const Area& area) const;
     // The window focus entering `area` from outside lands on: its shown tab when it is tabbed, else its first row.
-    [[nodiscard]] View* areaEntry(const Area& area) const;
+    View* areaEntry(const Area& area) const;
     // Targets other than hidden tabs, which share the box of the tab on show and would otherwise tie with it.
-    [[nodiscard]] std::vector<LayoutTarget> visibleTargets() const;
+    std::vector<LayoutTarget> visibleTargets() const;
     // The size a window joining `area`, `width` wide, gets, matching what arrange will assign.
-    [[nodiscard]] InitialSize joiningSize(const Area& area, int width, int contentHeight, int gap) const;
-    [[nodiscard]] double masterFrac() const;
-    [[nodiscard]] bool masterIsLeft() const;
-    [[nodiscard]] bool masterIsCenter() const;
+    InitialSize joiningSize(const Area& area, int width, int contentHeight, int gap) const;
+    double masterFrac() const;
+    bool masterIsLeft() const;
+    bool masterIsCenter() const;
     // The areas in visual order, master centered between both stacks in center mode. Unused slots are null.
-    [[nodiscard]] std::array<Area*, 3> orderedAreas();
-    [[nodiscard]] std::array<const Area*, 3> orderedAreas() const;
+    std::array<Area*, 3> orderedAreas();
+    std::array<const Area*, 3> orderedAreas() const;
     // Where a new stack row goes: the emptier stack in center mode, ties to m_stack.
-    [[nodiscard]] Area& insertionStack();
-    [[nodiscard]] const Area& insertionStack() const;
+    Area& insertionStack();
+    const Area& insertionStack() const;
     // Where a promotion takes its row from: the fuller stack in center mode, ties to m_stack. Null when every stack
     // is empty.
-    [[nodiscard]] Area* promotionStack();
+    Area* promotionStack();
     // Outside center mode the second stack cannot exist, so a reload that leaves center appends it to m_stack.
     void foldSecondStack();
     // Whether primary extent actions have a boundary to move: the master margins in center mode, both areas otherwise.
-    [[nodiscard]] bool widthAdjustable() const;
-    [[nodiscard]] Area* areaOf(const View* view);
-    [[nodiscard]] const Area* areaOf(const View* view) const;
-    [[nodiscard]] Area* visualArea(int columnIndex);
-    [[nodiscard]] const Area* visualArea(int columnIndex) const;
+    bool widthAdjustable() const;
+    Area* areaOf(const View* view);
+    const Area* areaOf(const View* view) const;
+    Area* visualArea(int columnIndex);
+    const Area* visualArea(int columnIndex) const;
     // The empty stack at the outer gap index `gap` beside a non-empty master area, else null.
-    [[nodiscard]] const Area* emptyStackAt(int gap) const;
-    [[nodiscard]] int rowInArea(const Area& area, const View* view) const;
-    [[nodiscard]] uint32_t resizableEdges(const View* view) const;
+    const Area* emptyStackAt(int gap) const;
+    int rowInArea(const Area& area, const View* view) const;
+    uint32_t resizableEdges(const View* view) const;
     void eraseFromAreas(View* view);
     void rebuildColumns();
 

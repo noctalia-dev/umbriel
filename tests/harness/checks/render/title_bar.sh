@@ -12,7 +12,7 @@ image=$UMBRIEL_RUNTIME_DIR/title-bar.png
 grim -o HEADLESS-1 "$image"
 read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 180 85)
 awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(r > 240 && g < 12 && b > 240) }'
-read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 639 95)
+read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 633 95)
 awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(g > 200 && r < 64 && b < 64) }'
 
 # Explicit client-side decoration keeps client controls; no preference uses the default.

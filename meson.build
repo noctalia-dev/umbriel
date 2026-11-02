@@ -11,8 +11,11 @@ project(
   ],
 )
 
+# wl_container_of recovers listener owners with offsetof on non-standard-layout classes, which
+# GCC and clang support; silence the conditionally-supported warning at every expansion site.
 add_project_arguments(
   '-DWLR_USE_UNSTABLE',
+  '-Wno-invalid-offsetof',
   language: 'cpp',
 )
 git_program = find_program('git', required: false)
@@ -47,11 +50,8 @@ add_project_arguments(
 )
 
 # Version floors here are the union of the compositor's needs and umbrielfx's.
-# Some distros install the wayland headers under a subdirectory added with `-I`, which makes
-# GCC report `-Winvalid-offsetof` from every `wl_container_of` expansion. Treat them as
-# system headers so the warning stays suppressed regardless of the install layout.
-wayland_server_dep = dependency('wayland-server', version: '>=1.24', include_type: 'system')
-wayland_client_dep = dependency('wayland-client', include_type: 'system')
+wayland_server_dep = dependency('wayland-server', version: '>=1.24')
+wayland_client_dep = dependency('wayland-client')
 wayland_protocols_dep = dependency('wayland-protocols', version: '>=1.47')
 # umbrielfx compiles against wlroots' private struct layouts, so it is pinned to
 # one minor series rather than tracking whatever is installed. The floor is
@@ -71,11 +71,10 @@ build_tests = tests_opt.enabled() or (
   and get_option('b_sanitize') == 'none'
 )
 
-# Harness-only IPC commands are compiled out of anything but a debug build unless requested, so a release cannot
-# expose them.
-test_ipc_opt = get_option('test_ipc')
-if test_ipc_opt.enabled() or (test_ipc_opt.auto() and get_option('buildtype') == 'debug')
-  add_project_arguments('-DUMBRIEL_TEST_IPC', language: 'cpp')
+# Harness-only behavior is compiled out of anything but a debug build unless requested, so a release cannot expose it.
+harness_opt = get_option('harness')
+if harness_opt.enabled() or (harness_opt.auto() and get_option('buildtype') == 'debug')
+  add_project_arguments('-DUMBRIEL_HARNESS', language: 'cpp')
 endif
 
 if cpp.get_define('WLR_HAS_SESSION', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
@@ -787,6 +786,7 @@ core_sources = files(
   'src/server/color_manager.cpp',
   'src/server/color_description.cpp',
   'src/server/backend_manager.cpp',
+  'src/server/drm_lease.cpp',
   'src/server/allocator.cpp',
   'src/server/server.cpp',
   'src/server/server_events.cpp',
@@ -846,6 +846,8 @@ core_sources = files(
   'src/scene/quit_confirm.cpp',
   'src/scene/cheatsheet.cpp',
   'src/scene/text_buffer.cpp',
+  'src/scene/cairo_buffer.cpp',
+  'src/scene/title_bar_icon.cpp',
   'src/scene/tab_bar.cpp',
   'src/scene/ssd_frame.cpp',
   'src/scene/tab_bar_style.cpp',

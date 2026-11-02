@@ -228,6 +228,8 @@ umbriel subscribe workspaces |
   jq -r '.data[] | select(.focused) | "\(.output) \(.name) \(.layout)"'
 ```
 
+Because the output is always JSON, `--json` and `-j` are accepted and change nothing. Scripts can pass the flag to every inspection command.
+
 ## Audio input
 
 An external analyser, such as Noctalia, can supply a shared 64-band spectrum to [effect shaders](effects.md#audio-input). Keep a dedicated Unix socket connection to `$UMBRIEL_SOCKET` open and send complete newline-delimited JSON snapshots. For example, a silent snapshot is:

@@ -157,6 +157,5 @@ if [[ $(active_title) != input-second ]]; then
   echo "virtual keyboard modifier tap did not switch to workspace 2 without an input method"
   exit 1
 fi
-"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 echo "input-method grabs preserve modifier wheel bindings, taps, cancellation, and keyboard focus"

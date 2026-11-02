@@ -411,12 +411,7 @@ namespace umbriel::configmerge {
     // `[[layer_rule]]`, `[[security_context_rule]]`, `[[workspace]]`, `[[input.device]]`); nothing else in the
     // vocabulary holds tables in an array, so the merge cannot drift away from the readers.
     bool holdsOnlyTables(const toml::array& array) {
-      for (const toml::node& element : array) {
-        if (!element.is_table()) {
-          return false;
-        }
-      }
-      return true;
+      return std::ranges::all_of(array, [](const toml::node& element) { return element.is_table(); });
     }
 
   } // namespace

@@ -12,6 +12,7 @@
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
+#include "server/ipc.h"
 #include "server/server.h"
 #include "view/view.h"
 extern "C" {
@@ -223,6 +224,9 @@ namespace umbriel {
     }
     const auto openingFloatingRuleSize = std::exchange(m_openingFloatingRuleSize, std::array<int, 2>{});
     m_mapped = true;
+    if (m_workspace != nullptr) {
+      m_workspace->group()->restoreLaunchWorkspace(*m_workspace);
+    }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
     m_presentedTiledBox = {};
@@ -274,7 +278,8 @@ namespace umbriel {
     }
     const bool restoreTiled = m_tiled;
     const bool draggedToplevel = m_server->seat()->toplevelDrags().attached(m_toplevel);
-    if (draggedToplevel) {
+    // A passive utility belongs at its client's position over its parent, whatever app-wide rule tiles the client.
+    if (draggedToplevel || passiveXwaylandUtility()) {
       m_tiled = false;
     }
     // Unsettled when any rule uses a title pattern: the first handleSetTitle after map re-applies disruptive effects
@@ -392,7 +397,7 @@ namespace umbriel {
     // Apply rule opacity: flush to scene buffers immediately so views on
     // inactive workspaces get the correct opacity when they become visible.
     if (rule.opacity) {
-      m_ruleOpacity = static_cast<float>(*rule.opacity);
+      m_ruleOpacity.snap(*rule.opacity);
       setFadeAlpha(m_fadeAlpha);
     }
 
@@ -563,6 +568,10 @@ namespace umbriel {
     syncMinimizeEligibility();
     if (draggedToplevel) {
       m_server->seat()->toplevelDrags().mapped(this, restoreTiled && !assignedScratchpad);
+    }
+    if (m_workspace != nullptr) {
+      // A remap can retain membership in an empty workspace without going through addView().
+      m_workspace->group()->reconcileDynamic();
     }
   }
 
@@ -764,7 +773,9 @@ namespace umbriel {
     m_namedScrollingColumnName.reset();
     m_namedScrollingColumnOrder.reset();
     m_ownsNamedScrollingColumnExtent = false;
-    m_ruleOpacity = 1.0F;
+    m_ruleOpacity.snap(1.0);
+    m_ruleBlur.snap(0.0);
+    m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
     // An unmapped window keeps no layout state, so the alone effect it owned is gone with it.
     m_aloneEffectsActive = false;
@@ -783,6 +794,10 @@ namespace umbriel {
     m_savedScrollingExtent.reset();
     if (m_displacedHome) {
       m_server->scheduleDisplacedViewRestore();
+    }
+    if (m_workspace != nullptr) {
+      // A client can keep its unmapped toplevel alive. Reconcile after its workspace and scene cleanup is complete.
+      m_workspace->group()->reconcileDynamic();
     }
   }
 
@@ -872,10 +887,17 @@ namespace umbriel {
       const bool openingInScratchpad = !openingScratchpad.empty()
           && scratchpadManager != nullptr
           && scratchpadManager->hasScratchpad(openingScratchpad);
+      const bool passiveUtility = passiveXwaylandUtility();
       bool wantTiled = !m_server->seat()->toplevelDrags().attached(m_toplevel)
+          && !passiveUtility
           && !openingInScratchpad
           && !rule.defaultPinned.value_or(false)
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled());
+      if (passiveUtility) {
+        // The opening configure carries the frame's position, so start it where the client put the window.
+        const XwaylandRegion region = m_server->xwayland()->outputs().regionAtX(m_xsurface->x, m_xsurface->y);
+        setPosition(region.toLayoutX(m_xsurface->x), region.toLayoutY(m_xsurface->y));
+      }
 
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.
@@ -1114,6 +1136,9 @@ namespace umbriel {
       if (m_mapped) {
         m_server->scheduleIpcWindowsEvent();
       }
+    }
+    if (Ipc* ipc = m_server->ipc()) {
+      ipc->notifyWindowCommitted();
     }
   }
 

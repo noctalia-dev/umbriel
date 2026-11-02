@@ -9,7 +9,11 @@ readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/spawn-rule-control"
 readonly TOKEN_FILE="$UMBRIEL_RUNTIME_DIR/spawn-rule-token"
 
 sed -i '/autostart = \[\]/a focus_on_activate = false' "$UMBRIEL_CONFIG"
+# Keep both remap destinations alive so these assertions measure activation policy.
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output.HEADLESS-1]
+workspaces = 2
 
 [[window_rule]]
 match.app_id = "^spawn-rule-target$"

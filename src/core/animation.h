@@ -13,7 +13,7 @@ namespace umbriel {
 
   // A fresh id for one animation transition, never 0 (reserved for "no transition") and never repeated
   // for the process lifetime. Shared by every transition source, including drag physics.
-  [[nodiscard]] uint64_t nextAnimationTransitionId();
+  uint64_t nextAnimationTransitionId();
 
   struct AnimationTransition {
     uint64_t id;
@@ -82,23 +82,20 @@ namespace umbriel {
   };
 
   // Standalone math and evaluation functions
-  [[nodiscard]] double solveCubicBezier(double x1, double y1, double x2, double y2, double x);
+  double solveCubicBezier(double x1, double y1, double x2, double y2, double x);
   // Wall-clock length of a spring curve: the time a unit step from rest needs to settle within
   // kSpringSettleEpsilon of its target. Stiffness and mass set that timescale, damping only the shape, so a spring
   // curve owns its duration and the configured duration_ms does not apply to it. Clamped to the duration_ms range.
-  [[nodiscard]] int springDurationMs(const SpringConfig& config);
-  [[nodiscard]] double solveSpringPhysics(
+  int springDurationMs(const SpringConfig& config);
+  double solveSpringPhysics(
       double from, double to, double velocity, double elapsedSec, const SpringConfig& config,
       double* outVelocity = nullptr
   );
   // Upper bound on the displacement a damped spring can reach from its current position and velocity. The bound is
   // expressed in the same units as current and target and follows from the spring's remaining mechanical energy.
-  [[nodiscard]] double
-  springDisplacementBound(double current, double target, double velocity, const SpringConfig& config);
-  [[nodiscard]] double applyEasing(const AnimationCurve& curve, double progress);
-  [[nodiscard]] inline double evaluateCurve(const AnimationCurve& curve, double progress) {
-    return applyEasing(curve, progress);
-  }
+  double springDisplacementBound(double current, double target, double velocity, const SpringConfig& config);
+  double applyEasing(const AnimationCurve& curve, double progress);
+  inline double evaluateCurve(const AnimationCurve& curve, double progress) { return applyEasing(curve, progress); }
 
   // Logical layout geometry must remain between its endpoints and advance in one direction. Curves that reverse or
   // overshoot are projected onto cumulative travel, so their timing remains visible for the full configured duration
@@ -109,7 +106,7 @@ namespace umbriel {
     explicit MonotonicEasing(const AnimationCurve& curve);
 
     void reset(const AnimationCurve& curve);
-    [[nodiscard]] double value(double linearProgress) const;
+    double value(double linearProgress) const;
 
   private:
     static constexpr std::size_t kSampleCount = 512;
@@ -126,13 +123,13 @@ namespace umbriel {
     static void registerBezier(std::string_view name, double x1, double y1, double x2, double y2);
     static void
     registerSpring(std::string_view name, double damping = 0.75, double stiffness = 100.0, double mass = 1.0);
-    [[nodiscard]] static std::optional<AnimationCurve> lookup(std::string_view name);
-    [[nodiscard]] static AnimationCurve
+    static std::optional<AnimationCurve> lookup(std::string_view name);
+    static AnimationCurve
     get(std::string_view name, const AnimationCurve& fallback = AnimationCurve{.easing = Easing::EaseOutCubic});
-    [[nodiscard]] static bool has(std::string_view name);
+    static bool has(std::string_view name);
     static bool unregisterCurve(std::string_view name);
     static void resetToDefaults();
-    [[nodiscard]] static std::optional<AnimationCurve> parse(std::string_view str);
+    static std::optional<AnimationCurve> parse(std::string_view str);
   };
 
   // Owners tick in phase order, and the order is load-bearing. Finishing an overview animation calls Server::focusView,
@@ -153,13 +150,13 @@ namespace umbriel {
     Animatable(const Animatable&) = delete;
     Animatable& operator=(const Animatable&) = delete;
 
-    [[nodiscard]] virtual AnimationPhase animationPhase() const = 0;
+    virtual AnimationPhase animationPhase() const = 0;
     // Advance to `nowMsec`; true while anything is still running.
     virtual bool tickAnimations(double nowMsec) = 0;
-    [[nodiscard]] virtual bool hasActiveAnimations() const = 0;
+    virtual bool hasActiveAnimations() const = 0;
     // Whether `output` has to keep scheduling frames for this owner. An owner spanning every output (the overview)
     // answers true for all of them; one with no output yet answers false for all.
-    [[nodiscard]] virtual bool animatesOn(const Output* output) const = 0;
+    virtual bool animatesOn(const Output* output) const = 0;
   };
 
   // Identifies a Server::CloseSnapshot for as long as it fades; 0 is never assigned.
@@ -201,16 +198,16 @@ namespace umbriel {
     // && !animating()).
     bool tick(double nowMsec);
 
-    [[nodiscard]] double current() const { return m_current; }
-    [[nodiscard]] double target() const { return m_target; }
-    [[nodiscard]] double from() const { return m_from; }
-    [[nodiscard]] bool animating() const { return m_animating; }
-    [[nodiscard]] const AnimationCurve& curve() const { return m_curve; }
-    [[nodiscard]] double velocity() const { return m_velocity; }
-    [[nodiscard]] double progress() const;
-    [[nodiscard]] uint64_t durationMs() const { return m_durationMsec; }
-    [[nodiscard]] uint64_t transitionId() const { return m_transitionId; }
-    [[nodiscard]] const std::array<float, 4>& shaderSeed() const { return m_shaderSeed; }
+    double current() const { return m_current; }
+    double target() const { return m_target; }
+    double from() const { return m_from; }
+    bool animating() const { return m_animating; }
+    const AnimationCurve& curve() const { return m_curve; }
+    double velocity() const { return m_velocity; }
+    double progress() const;
+    uint64_t durationMs() const { return m_durationMsec; }
+    uint64_t transitionId() const { return m_transitionId; }
+    const std::array<float, 4>& shaderSeed() const { return m_shaderSeed; }
 
   private:
     double m_from = 0.0;
@@ -254,22 +251,22 @@ namespace umbriel {
     // Advances the color animation
     bool tick(double nowMsec);
 
-    [[nodiscard]] const std::array<float, 4>& current() const { return m_current; }
+    const std::array<float, 4>& current() const { return m_current; }
     void current(float out[4]) const;
 
-    [[nodiscard]] const std::array<float, 4>& target() const { return m_target; }
-    [[nodiscard]] const std::array<float, 4>& from() const { return m_from; }
-    [[nodiscard]] bool animating() const { return m_animating; }
-    [[nodiscard]] const AnimationCurve& curve() const { return m_curve; }
-    [[nodiscard]] double progress() const;
-    [[nodiscard]] uint64_t durationMs() const { return m_durationMsec; }
-    [[nodiscard]] uint64_t transitionId() const { return m_transitionId; }
-    [[nodiscard]] const std::array<float, 4>& shaderSeed() const { return m_shaderSeed; }
+    const std::array<float, 4>& target() const { return m_target; }
+    const std::array<float, 4>& from() const { return m_from; }
+    bool animating() const { return m_animating; }
+    const AnimationCurve& curve() const { return m_curve; }
+    double progress() const;
+    uint64_t durationMs() const { return m_durationMsec; }
+    uint64_t transitionId() const { return m_transitionId; }
+    const std::array<float, 4>& shaderSeed() const { return m_shaderSeed; }
 
-    [[nodiscard]] float r() const { return m_current[0]; }
-    [[nodiscard]] float g() const { return m_current[1]; }
-    [[nodiscard]] float b() const { return m_current[2]; }
-    [[nodiscard]] float a() const { return m_current[3]; }
+    float r() const { return m_current[0]; }
+    float g() const { return m_current[1]; }
+    float b() const { return m_current[2]; }
+    float a() const { return m_current[3]; }
 
   private:
     std::array<float, 4> m_from{0.0F, 0.0F, 0.0F, 1.0F};

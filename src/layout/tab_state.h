@@ -30,7 +30,7 @@ namespace umbriel {
   };
 
   // Whether a bar on that edge runs across the column, its slots side by side, rather than down it, stacked.
-  [[nodiscard]] constexpr bool tabBarAcross(TabBarPosition position) {
+  constexpr bool tabBarAcross(TabBarPosition position) {
     return position == TabBarPosition::Top || position == TabBarPosition::Bottom;
   }
 
@@ -39,10 +39,10 @@ namespace umbriel {
   // column's row count after the change and keeps the selection inside it.
   class TabState {
   public:
-    [[nodiscard]] constexpr bool tabbed() const { return m_tabbed; }
-    [[nodiscard]] constexpr size_t active() const { return m_active; }
+    constexpr bool tabbed() const { return m_tabbed; }
+    constexpr size_t active() const { return m_active; }
     // Whether the bar is drawn, when the user said so; unset follows the configuration.
-    [[nodiscard]] constexpr std::optional<bool> bar() const { return m_bar; }
+    constexpr std::optional<bool> bar() const { return m_bar; }
     constexpr void setBar(std::optional<bool> bar) { m_bar = bar; }
 
     // True when the display changed.
@@ -109,8 +109,8 @@ namespace umbriel {
     // Whether the group draws its bar, when the user said so; unset follows the configuration.
     std::optional<bool> bar;
 
-    [[nodiscard]] constexpr size_t end() const { return first + count; }
-    [[nodiscard]] constexpr bool contains(size_t row) const { return row >= first && row < end(); }
+    constexpr size_t end() const { return first + count; }
+    constexpr bool contains(size_t row) const { return row >= first && row < end(); }
     constexpr bool operator==(const TabGroup&) const = default;
   };
 
@@ -119,10 +119,10 @@ namespace umbriel {
   // the column reports, and each group's active row follows its view while it stays in the group.
   class ColumnTabs {
   public:
-    [[nodiscard]] bool empty() const { return m_groups.empty(); }
-    [[nodiscard]] const std::vector<TabGroup>& groups() const { return m_groups; }
+    bool empty() const { return m_groups.empty(); }
+    const std::vector<TabGroup>& groups() const { return m_groups; }
 
-    [[nodiscard]] std::optional<size_t> groupIndexAt(size_t row) const {
+    std::optional<size_t> groupIndexAt(size_t row) const {
       for (size_t index = 0; index < m_groups.size(); ++index) {
         if (m_groups[index].contains(row)) {
           return index;
@@ -131,27 +131,27 @@ namespace umbriel {
       return std::nullopt;
     }
 
-    [[nodiscard]] const TabGroup* groupAt(size_t row) const {
+    const TabGroup* groupAt(size_t row) const {
       const std::optional<size_t> index = groupIndexAt(row);
       return index ? &m_groups[*index] : nullptr;
     }
 
     // The rows of the unit holding `row`: its group's, or the row's alone.
-    [[nodiscard]] size_t unitStart(size_t row) const {
+    size_t unitStart(size_t row) const {
       const TabGroup* group = groupAt(row);
       return group != nullptr ? group->first : row;
     }
-    [[nodiscard]] size_t unitEnd(size_t row) const {
+    size_t unitEnd(size_t row) const {
       const TabGroup* group = groupAt(row);
       return group != nullptr ? group->end() : row + 1;
     }
     // The row the unit holding `row` shows.
-    [[nodiscard]] size_t unitShown(size_t row) const {
+    size_t unitShown(size_t row) const {
       const TabGroup* group = groupAt(row);
       return group != nullptr ? group->active : row;
     }
     // Units in a column of `rows` rows.
-    [[nodiscard]] size_t unitCount(size_t rows) const {
+    size_t unitCount(size_t rows) const {
       size_t units = rows;
       for (const TabGroup& group : m_groups) {
         units -= std::min(units, group.count - 1);
@@ -159,7 +159,7 @@ namespace umbriel {
       return units;
     }
     // True for a tab its group is not showing.
-    [[nodiscard]] bool hidden(size_t row) const {
+    bool hidden(size_t row) const {
       const TabGroup* group = groupAt(row);
       return group != nullptr && group->active != row;
     }

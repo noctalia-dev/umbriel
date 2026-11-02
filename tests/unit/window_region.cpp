@@ -68,7 +68,8 @@ UMBRIEL_TEST(regionsUseLogicalCoordinatesOnNegativeOutputs) {
 }
 
 UMBRIEL_TEST(regionNamesRoundTrip) {
-  for (const auto name : {"left", "right", "top", "bottom", "top_left", "top_right", "bottom_left", "bottom_right"}) {
+  for (const auto* const name :
+       {"left", "right", "top", "bottom", "top_left", "top_right", "bottom_left", "bottom_right"}) {
     const auto region = windowRegionNamed(name);
     CHECK(region.has_value());
     if (region)

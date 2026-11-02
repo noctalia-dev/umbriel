@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "scene/color.h"
 #include "scene/tab_label_cache.h"
+#include "scene/title_bar_icon.h"
 #include "view/border_ring.h"
 #include "wlr.h"
 
@@ -38,6 +39,10 @@ namespace umbriel {
       wlr_scene_node_destroy(&m_blur->node);
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
+    for (auto* buffer : m_iconBuffers) {
+      if (buffer != nullptr)
+        wlr_buffer_unlock(buffer);
+    }
   }
 
   void SsdFrame::layout(const ViewChromeGeometry& geometry) {
@@ -146,31 +151,98 @@ namespace umbriel {
 
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
 
+  std::span<const TitleBarButton> SsdFrame::visibleButtons() const {
+    const auto& style = config().appearance.titleBar;
+    return style.buttonGlyph != TitleBarButtonGlyph::Never || style.buttonBackground
+        ? std::span<const TitleBarButton>(m_buttons)
+        : std::span<const TitleBarButton>();
+  }
+
+  void SsdFrame::updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible) {
+    const auto index = static_cast<size_t>(button);
+    auto*& icon = m_icons[index];
+    const std::array<wlr_scene_rect*, kTitleBarButtonCount> backgrounds{m_minimize, m_maximize, m_close};
+    const auto* background = backgrounds[index];
+    if (!visible || !background->node.enabled) {
+      if (icon != nullptr)
+        wlr_scene_node_set_enabled(&icon->node, false);
+      return;
+    }
+    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight);
+    const float scale = std::max(1.0F, m_geometry.scale);
+    // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
+    // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
+    // symbol half a pixel off center. Twice the resolution makes it resample symmetrically instead.
+    const int pixels = static_cast<int>(std::ceil(size * scale)) * (scale == std::floor(scale) ? 1 : 2);
+    if (icon == nullptr || m_iconSizes[index] != pixels || m_iconColors[index] != color) {
+      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color);
+      if (icon == nullptr) {
+        icon = wlr_scene_buffer_create(m_tree, buffer);
+        if (icon != nullptr)
+          icon->point_accepts_input = rejectInput;
+      } else {
+        wlr_scene_buffer_set_buffer(icon, buffer);
+      }
+      if (icon == nullptr) {
+        wlr_buffer_drop(buffer);
+        return;
+      }
+      if (auto* previous = std::exchange(m_iconBuffers[index], wlr_buffer_lock(buffer)); previous != nullptr)
+        wlr_buffer_unlock(previous);
+      wlr_buffer_drop(buffer);
+      m_iconSizes[index] = pixels;
+      m_iconColors[index] = color;
+    }
+    wlr_scene_buffer_set_dest_size(icon, background->width, background->height);
+    wlr_scene_buffer_set_opacity(icon, alpha);
+    wlr_scene_node_set_position(&icon->node, background->node.x, background->node.y);
+    wlr_scene_node_set_enabled(&icon->node, true);
+  }
+
   void SsdFrame::updateColors() {
     const auto& colors = config().colors.titleBar;
+    const auto& style = config().appearance.titleBar;
+    const bool backgrounds = style.buttonBackground;
     float color[4];
     const auto& background = m_focused ? colors.background : colors.backgroundUnfocused;
     premultiplied(color, background, m_alpha);
     wlr_scene_rect_set_color(m_background, color);
     const float contrast =
         background[0] * 0.2126F + background[1] * 0.7152F + background[2] * 0.0722F < 0.5F ? 1.0F : 0.0F;
-    const auto button = [&](wlr_scene_rect* rect, const std::array<float, 4>& base, SsdFramePart part, bool enabled) {
+    const auto button = [&](wlr_scene_rect* rect, const std::array<float, 4>& base,
+                            const std::array<float, 4>& idleGlyph, const std::array<float, 4>& hoverGlyph,
+                            SsdFramePart part, bool enabled, TitleBarButton which) {
       auto value = base;
-      const float alpha = !enabled ? 0.35F : (m_hovered == part ? 1.0F : 0.85F);
-      if (enabled && m_hovered == part) {
+      const bool hovered = m_hovered == part;
+      const bool pressed = m_pressed == part;
+      const float alpha = !enabled ? 0.35F : (hovered ? 1.0F : 0.85F);
+      if (enabled && hovered) {
         for (size_t i = 0; i < 3; ++i)
           value[i] += (contrast - value[i]) * 0.2F;
       }
-      if (enabled && m_pressed == part) {
+      if (enabled && pressed) {
         for (size_t i = 0; i < 3; ++i)
           value[i] *= 0.8F;
       }
-      premultiplied(color, value, m_alpha * alpha);
+      premultiplied(color, value, backgrounds ? m_alpha * alpha : 0.0F);
       wlr_scene_rect_set_color(rect, color);
+      const auto& glyphColor = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
+      const bool glyphVisible = style.buttonGlyph == TitleBarButtonGlyph::Always
+          || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
+      updateButtonIcon(which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible);
     };
-    button(m_close, colors.close, SsdFramePart::Close, true);
-    button(m_maximize, colors.maximize, SsdFramePart::Maximize, m_maximizeEnabled);
-    button(m_minimize, colors.minimize, SsdFramePart::Minimize, true);
+    button(
+        m_close, colors.close, colors.closeGlyph, colors.closeGlyphHover, SsdFramePart::Close, true,
+        TitleBarButton::Close
+    );
+    button(
+        m_maximize, colors.maximize, colors.maximizeGlyph, colors.maximizeGlyphHover, SsdFramePart::Maximize,
+        m_maximizeEnabled, TitleBarButton::Maximize
+    );
+    button(
+        m_minimize, colors.minimize, colors.minimizeGlyph, colors.minimizeGlyphHover, SsdFramePart::Minimize, true,
+        TitleBarButton::Minimize
+    );
     if (m_label != nullptr)
       wlr_scene_buffer_set_opacity(m_label, m_alpha);
     updateBlur();
@@ -216,7 +288,7 @@ namespace umbriel {
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     wlr_scene_rect_set_corner_radii(m_background, corner_radii_new(zoomed(radius), zoomed(radius), 0, 0));
     const auto& style = config().appearance.titleBar;
-    const TitleBarLayout parts = titleBarLayout(g.contentWidth, h, style.buttonPosition, m_buttons);
+    const TitleBarLayout parts = titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons());
     const auto drawButton = [&](wlr_scene_rect* button, const std::optional<wlr_box>& slot) {
       if (!slot) {
         wlr_scene_node_set_enabled(&button->node, false);
@@ -272,7 +344,7 @@ namespace umbriel {
       return {};
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,
-        m_resizable, config().appearance.titleBar.buttonPosition, m_buttons, x, y
+        m_resizable, config().appearance.titleBar.buttonPosition, visibleButtons(), x, y
     );
   }
 
@@ -298,13 +370,18 @@ namespace umbriel {
       wlr_scene_rect_set_corner_radii(copy, source->corners);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     }
-    if (m_label != nullptr && m_label->buffer != nullptr) {
-      auto* copy = wlr_scene_buffer_create(tree, m_label->buffer);
+    const auto copyBuffer = [&](const wlr_scene_buffer* source) {
+      if (source == nullptr || !source->node.enabled || source->buffer == nullptr)
+        return;
+      auto* copy = wlr_scene_buffer_create(tree, source->buffer);
       copy->point_accepts_input = rejectInput;
-      wlr_scene_buffer_set_dest_size(copy, m_label->dst_width, m_label->dst_height);
-      wlr_scene_buffer_set_opacity(copy, m_label->opacity);
-      wlr_scene_node_set_position(&copy->node, m_tree->node.x + m_label->node.x, m_tree->node.y + m_label->node.y);
-    }
+      wlr_scene_buffer_set_dest_size(copy, source->dst_width, source->dst_height);
+      wlr_scene_buffer_set_opacity(copy, source->opacity);
+      wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
+    };
+    copyBuffer(m_label);
+    for (const auto* icon : m_icons)
+      copyBuffer(icon);
   }
   std::unique_ptr<ViewChromeAttachment> SsdFrame::makePreview(wlr_scene_tree* parent) const {
     auto preview = std::make_unique<SsdFrame>(parent, m_labels);

@@ -84,7 +84,7 @@ tests/harness/clients/  Wayland helper clients the checks drive
 
 A unit test covers math and pure decisions (layout geometry, config classification, keybind parsing) and never needs a compositor. A harness check covers anything that only exists in a running compositor: real clients, real framebuffers, seat grabs, live reloads. Every unit test gets `umbriel_pure_dep`, and one that needs compositor code adds `umbriel_core_dep` in the third field of the `unit_tests` table in `tests/meson.build`. A test that is not in that table is not built and will rot unnoticed.
 
-Test targets exist only where the `tests` feature option resolves to enabled. `just configure` leaves it at `auto`: unsanitized debug builds get the targets, release and asan builds get none. `just test`, `just gpu-test`, `just check`, `just check-stress`, and `just lint` switch the selected build directory to `-Dtests=enabled` when it lacks them, so they work in every mode; a plain `just build` of a release directory never compiles a test. Test binaries land in the build directory's `tests` subdir. Checks also drive IPC commands that exist only with the `test_ipc` option (auto: debug builds, which includes asan), so `just check` and `just check-stress` also switch a release directory to `-Dtest_ipc=enabled`, and `check.sh` refuses a binary built without it.
+Test targets exist only where the `tests` feature option resolves to enabled. `just configure` leaves it at `auto`: unsanitized debug builds get the targets, release and asan builds get none. `just test`, `just gpu-test`, `just check`, `just check-stress`, and `just lint` switch the selected build directory to `-Dtests=enabled` when it lacks them, so they work in every mode; a plain `just build` of a release directory never compiles a test. Test binaries land in the build directory's `tests` subdir. Checks also drive IPC commands that exist only with the `harness` option (auto: debug builds, which includes asan), so `just check` and `just check-stress` also switch a release directory to `-Dharness=enabled`, and `check.sh` refuses a binary built without it.
 
 `check.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless instance is booted per check, the check runs in its own process group with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` already pointing at that instance, and the harness kills the group and asserts the instance exited cleanly. Boot plus teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. That isolation is also what lets the harness run several checks at once, bounded by `-j` (default: the core count), starting the slowest first by the durations the previous run recorded. Reports stay in declaration order whatever order the checks finish in. Seven rules follow:
 
@@ -105,6 +105,8 @@ A harness check that asserts a value a unit test computes is coverage in the wro
 An instance has one output unless the check asks for more with a `# harness: outputs=N` directive in its header, which `output/disable`, `output/dpms`, and `output/two_output_containment` use. Output count is fixed when the compositor starts, so it cannot be a runtime config change. Single-output instances are what `session/action_dispatch` relies on to assert that directional output actions are rejected when there is nowhere to move.
 
 A check that needs deterministic Xcursor images declares `# harness: xcursor-theme=true`. The harness creates an isolated theme with distinct nominal sizes 24 and 48, exports its path and name, and writes the matching cursor configuration before the compositor starts.
+
+The compositor's config file watcher is off in harness instances, so a check applies a config change with `umbriel msg config-reload`. A check about automatic reloads declares `# harness: config-watch=true`, as `session/config_reload` and `effect/animation` do.
 
 A headless session starts with no keyboard, so the harness connects a keyboard-only helper to each instance before its check runs and keeps it through teardown, the way a real session always has one. Without it the seat's keyboard capability would come and go with each pointer-client run, and clients would bind `wl_keyboard` too late for the first keys. A check about how keyboards themselves arrive opts out with `# harness: keyboard=none` in its header, as `input/input_method_wheel` and `input/keyboard_keymap` do.
 
@@ -181,7 +183,9 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 
 Scoped enums (`enum class`) use PascalCase enumerators and an explicit `std::uint8_t` underlying type where it makes sense: `enum class FocusReason : uint8_t { Directional, PointerPress, ... }`.
 
-Getters are the noun, without a `get` prefix, and `[[nodiscard]]`: `toplevel()`, `mapped()`, `workspace()`.
+Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
+
+Use `[[nodiscard]]` only where ignoring the result is likely a bug: a call with side effects that reports failure or hands back something the caller must own, consume or keep (a token, id or claimed node), and `&&` builders. Mark result and status types with `struct [[nodiscard]] Name` instead of each function that returns them. Getters and pure functions go without it.
 
 ### Configuration vocabulary
 
@@ -355,11 +359,3 @@ umbriel msg <action> [args...]   # send an action to the running compositor
 Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): imperative summary`, with lowercase types such as `feat`, `fix`, `refactor`, `chore`, `test`, or `docs` and a focused subsystem scope when it helps.
 
 Default to the summary line alone. Add a body only when it carries information a reader would otherwise miss: a non-obvious root cause, a constraint that forced the approach, a behavior change users will notice, or a `Fixes #N` reference. Do not restate the diff or list touched files.
-
-## Maintainer triage intake
-
-`.github/workflows/project-intake.yml` attaches newly opened or reopened Umbriel issues and pull requests to the organization Maintainer triage project as native cards. New cards receive Status Inbox, Component Umbriel, and Kind Issue or PR. It does not create drafts, post comments, change issue state, or set Priority. Existing card statuses, priorities, and other triage values are preserved. Archived cards are left archived; conflicting Component or Kind values fail the run rather than overwrite triage.
-
-Run Maintainer Triage Intake manually from GitHub Actions to reconcile all open issues and pull requests. Closed items are excluded. The Umbriel views require matching Component and Kind values.
-
-Intake authenticates as the organization's Noctalia Automation GitHub App: each run mints a short-lived token limited to this repository, organization project write and issue/pull request read, from the organization variable `AUTOMATION_APP_CLIENT_ID` and the organization secret `AUTOMATION_APP_PRIVATE_KEY`. The App must stay installed on this repository with Organization projects read and write. Rotate the key from the App's settings page and update the secret; never commit it. Intake on `pull_request_target` runs only the trusted workflow code and does not check out pull request code.

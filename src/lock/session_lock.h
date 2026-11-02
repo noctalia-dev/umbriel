@@ -26,10 +26,10 @@ namespace umbriel {
     LockSurface(const LockSurface&) = delete;
     LockSurface& operator=(const LockSurface&) = delete;
 
-    [[nodiscard]] wlr_session_lock_surface_v1* lockSurface() const { return m_lockSurface; }
-    [[nodiscard]] wlr_surface* surface() const;
-    [[nodiscard]] wlr_output* output() const;
-    [[nodiscard]] bool mapped() const { return m_mapped; }
+    wlr_session_lock_surface_v1* lockSurface() const { return m_lockSurface; }
+    wlr_surface* surface() const;
+    wlr_output* output() const;
+    bool mapped() const { return m_mapped; }
     void focus();
     void configure();
 
@@ -65,10 +65,10 @@ namespace umbriel {
     SessionLock(const SessionLock&) = delete;
     SessionLock& operator=(const SessionLock&) = delete;
 
-    [[nodiscard]] wlr_session_lock_v1* lock() const { return m_lock; }
-    [[nodiscard]] bool unlocked() const { return m_unlocked; }
-    [[nodiscard]] bool presenting() const;
-    [[nodiscard]] bool locked() const;
+    wlr_session_lock_v1* lock() const { return m_lock; }
+    bool unlocked() const { return m_unlocked; }
+    bool presenting() const;
+    bool locked() const;
 
     void start();
     void removeSurface(LockSurface* surface);
@@ -107,9 +107,9 @@ namespace umbriel {
     void syncOutputPresentations();
     void maybeSendLocked();
     void focusMappedSurface();
-    [[nodiscard]] bool outputActive(const Output& output) const;
-    [[nodiscard]] bool surfacesReady() const;
-    [[nodiscard]] OutputPresentation* presentationFor(wlr_output* output);
+    bool outputActive(const Output& output) const;
+    bool surfacesReady() const;
+    OutputPresentation* presentationFor(wlr_output* output);
 
     Server* m_server = nullptr;
     wlr_session_lock_v1* m_lock = nullptr;

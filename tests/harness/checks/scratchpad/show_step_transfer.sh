@@ -37,7 +37,7 @@ field_of() { windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.ti
 dimmed() {
   "$UMBRIEL" settle
   grim "$FRAME"
-  magick "$FRAME" -crop 20x20+5+5 -format '%[fx:mean < 0.8 ? 1 : 0]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$FRAME" mean 20x20+5+5 | awk '{print (($1 + $2 + $3) / 3 < 0.8 * 255) ? 1 : 0}'
 }
 
 mkfifo "$CONTROL"

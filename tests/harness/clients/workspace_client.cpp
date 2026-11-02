@@ -153,7 +153,7 @@ namespace {
 } // namespace
 
 // Default output is the active workspace of each group, one per line. `--all`
-// lists every workspace as "id<TAB>name"; `--active` lists active ones in the
+// lists every visible workspace as "id<TAB>name"; `--active` lists active ones in the
 // same form. `--groups` adds the output name as a third field. `--create OUTPUT NAME`
 // sends one protocol create request to the group advertising that output.
 int main(int argc, char** argv) {
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
 
   int active = 0;
   for (const auto& workspace : state.workspaces) {
-    if (workspace->removed) {
+    if (workspace->removed || (workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN) != 0) {
       continue;
     }
     if (listAll) {

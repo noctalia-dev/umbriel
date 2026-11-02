@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace umbriel {
@@ -75,6 +76,13 @@ namespace umbriel {
       return true;
     }
 
+    std::string requestPayload(nlohmann::json request) {
+      if (const char* token = std::getenv("UMBRIEL_LAUNCH_TOKEN"); token != nullptr && token[0] != '\0') {
+        request["launch_token"] = token;
+      }
+      return request.dump() + "\n";
+    }
+
     // Sends one request and prints its reply: the `ok` value as JSON, through `printHuman`, or nothing.
     int
     exchange(const nlohmann::json& request, int replyTimeoutSec, void (*printHuman)(const nlohmann::json&), bool json) {
@@ -88,7 +96,7 @@ namespace umbriel {
       tv.tv_sec = replyTimeoutSec;
       setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-      if (!sendAll(fd, request.dump() + "\n")) {
+      if (!sendAll(fd, requestPayload(request))) {
         close(fd);
         return EXIT_FAILURE;
       }
@@ -185,7 +193,7 @@ namespace umbriel {
     nlohmann::json req;
     req["cmd"] = "subscribe";
     req["events"] = events;
-    if (!sendAll(fd, req.dump() + "\n")) {
+    if (!sendAll(fd, requestPayload(std::move(req)))) {
       close(fd);
       return EXIT_FAILURE;
     }

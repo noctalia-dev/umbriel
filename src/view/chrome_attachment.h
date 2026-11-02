@@ -46,9 +46,7 @@ namespace umbriel {
 
     // A copy of this chrome under `parent`, for a scaled preview of the view, or null for chrome with nothing to show
     // there. The preview is laid out like any chrome and follows this one through syncPreview.
-    [[nodiscard]] virtual std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* /*parent*/) const {
-      return nullptr;
-    }
+    virtual std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* /*parent*/) const { return nullptr; }
     // Bring `preview`, made by this chrome's makePreview, in line with what this chrome shows.
     virtual void syncPreview(ViewChromeAttachment& /*preview*/) const {}
   };

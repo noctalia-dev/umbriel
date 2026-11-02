@@ -77,6 +77,9 @@ namespace umbriel {
       double lastY = 0;
       // The view's drag physics took the grab; without it the drag makes no drag physics calls.
       bool physics = false;
+      // A Mod-drag on a tab carries its whole group.
+      bool carryTabGroup = false;
+      LiftedTabGroup tabGroup;
     };
     struct FloatingResizeGrab {
       View* view = nullptr;
@@ -159,28 +162,28 @@ namespace umbriel {
     Cursor(const Cursor&) = delete;
     Cursor& operator=(const Cursor&) = delete;
 
-    [[nodiscard]] wlr_cursor* wlr() const { return m_cursor; }
-    [[nodiscard]] bool visible() const { return !m_cursorHidden; }
+    wlr_cursor* wlr() const { return m_cursor; }
+    bool visible() const { return !m_cursorHidden; }
     // Re-sends the pointer to the cursor effect after outputs were added, moved or removed. wlr_cursor must have
     // clamped the pointer onto the new layout first.
     void handleOutputLayoutChange() const;
-    [[nodiscard]] wlr_xcursor_manager* xcursorManager() const { return m_xcursorManager; }
-    [[nodiscard]] bool isPassthrough() const;
-    [[nodiscard]] bool canCaptureInput() const;
+    wlr_xcursor_manager* xcursorManager() const { return m_xcursorManager; }
+    bool isPassthrough() const;
+    bool canCaptureInput() const;
     void setInputCaptured(bool captured);
-    [[nodiscard]] View* grabbedView() const;
+    View* grabbedView() const;
     // True while `view` is under an interactive move and spans outputs
     // unclipped. Layout code must not re-clip it during the drag.
-    [[nodiscard]] bool isDraggingView(const View* view) const;
+    bool isDraggingView(const View* view) const;
     // True while an interactive move will drop its window back into the tiled
     // layout, so layout-directed input (wheel scrolling, insert hints) applies
     // to the drag.
-    [[nodiscard]] bool isDraggingIntoLayout() const;
+    bool isDraggingIntoLayout() const;
     // Pending presses do not own geometry until they become an actual resize.
-    [[nodiscard]] bool isResizingView(const View* view) const;
+    bool isResizingView(const View* view) const;
     // A tiled resize updates every view in its workspace without size
     // animations trailing the pointer.
-    [[nodiscard]] bool isResizingWorkspace(const Workspace* workspace) const;
+    bool isResizingWorkspace(const Workspace* workspace) const;
 
     void attachInputDevice(wlr_input_device* device);
     void applyConfig();
@@ -193,7 +196,7 @@ namespace umbriel {
     // position and timer-driven motion.
     void beginToplevelDrag(View* view, int x, int y, bool tileOnDrop);
     void finishToplevelDrag(bool place);
-    [[nodiscard]] View* toplevelDragView() const { return m_toplevelDrag ? grabbedView() : nullptr; }
+    View* toplevelDragView() const { return m_toplevelDrag ? grabbedView() : nullptr; }
     void handleDataDragStarted();
     void handleDataDragEnded();
     void setCursorSurface(wlr_surface* surface, int32_t hotspotX, int32_t hotspotY, wl_client* owner);
@@ -240,8 +243,8 @@ namespace umbriel {
     // Compositor-owned cursor override for grabs the Cursor does not track
     // (overview drag). nullptr restores the client cursor.
     void overrideCursor(const char* name) { setCompositorCursor(name); }
-    [[nodiscard]] bool compositorOwnsCursor() const { return m_compositorOwnsCursor; }
-#ifdef UMBRIEL_TEST_IPC
+    bool compositorOwnsCursor() const { return m_compositorOwnsCursor; }
+#ifdef UMBRIEL_HARNESS
     struct RenderedCursorStateForTest {
       uint32_t textureWidth = 0;
       uint32_t textureHeight = 0;
@@ -249,10 +252,10 @@ namespace umbriel {
       uint32_t renderHeight = 0;
     };
 
-    [[nodiscard]] std::string clientCursorSourceForTest() const;
-    [[nodiscard]] std::string clientCursorNameForTest() const { return m_clientCursorShape; }
-    [[nodiscard]] bool clientCursorFromXwaylandForTest() const { return m_clientCursorFromXwayland; }
-    [[nodiscard]] std::optional<RenderedCursorStateForTest> renderedCursorStateForTest() const;
+    std::string_view clientCursorSourceForTest() const;
+    std::string clientCursorNameForTest() const { return m_clientCursorShape; }
+    bool clientCursorFromXwaylandForTest() const { return m_clientCursorFromXwayland; }
+    std::optional<RenderedCursorStateForTest> renderedCursorStateForTest() const;
 #endif
 
     // The only ways compositor code may change pointer focus. While a client holds an implicit grab (any button down,
@@ -341,13 +344,13 @@ namespace umbriel {
     void toggleDragTarget(uint32_t button);
     void processResize();
     void processResizeTile();
-    [[nodiscard]] std::optional<uint32_t>
+    std::optional<uint32_t>
     clientPointerGrabButton(const View* view, wlr_seat_client* seatClient, uint32_t serial) const;
-    [[nodiscard]] uint32_t floatResizeEdges(View* view) const;
-    [[nodiscard]] uint32_t hoverResizeEdges(View* view) const;
+    uint32_t floatResizeEdges(View* view) const;
+    uint32_t hoverResizeEdges(View* view) const;
     // True when this press completes a Mod+double-right-click with the
     // recorded one (same window, within the time window and pointer slop).
-    [[nodiscard]] bool isModRightDoubleClick(uint32_t timeMsec, const View* view) const;
+    bool isModRightDoubleClick(uint32_t timeMsec, const View* view) const;
     // Record a Mod+right-click as the pair's first press.
     void recordModRightClick(uint32_t timeMsec, View* view);
     // Promote a deferred Mod+right resize to a real grab once the pointer is
@@ -360,7 +363,7 @@ namespace umbriel {
     // presented box intersected with the usable area, minus the edges the
     // layout cannot resize. Shared with beginResize so a deferred grab and a
     // live one cannot drift apart.
-    [[nodiscard]] uint32_t tiledResizeEdges(View* view, double x, double y) const;
+    uint32_t tiledResizeEdges(View* view, double x, double y) const;
     // A Mod+right click that resized nothing still reveals the focused tile,
     // since a grab focus skips the reveal.
     void revealClickedTile(View* view);
@@ -368,15 +371,15 @@ namespace umbriel {
     void setCompositorCursor(const char* name);
     void restoreClientCursor();
     // True while a client owns an implicit pointer grab, which pins focus.
-    [[nodiscard]] bool pointerFocusPinned() const;
+    bool pointerFocusPinned() const;
     // The pointer would land on a different surface or position than the focused client last saw.
-    [[nodiscard]] bool pointerContentsStale(const wlr_surface* surface, double sx, double sy) const;
+    bool pointerContentsStale(const wlr_surface* surface, double sx, double sy) const;
     // Re-resolve pointer focus against the surface under the cursor.
     void refreshPointerFocus();
     void applyClientCursor();
     void handleClientCursorCommit();
     void captureXwaylandCursorImage(wlr_buffer* buffer);
-    [[nodiscard]] std::optional<std::string> matchXwaylandCursor() const;
+    std::optional<std::string> matchXwaylandCursor() const;
     void finishClientCursorFrame() const;
     void forgetClientCursor();
     static void onClientCursorOwnerDestroy(wl_listener* listener, void* data);
@@ -389,23 +392,35 @@ namespace umbriel {
     static int onHideTimer(void* data);
     void updateHotCorner();
     void cancelHotCorner();
-    [[nodiscard]] const Keybind* hotCornerAction(size_t* index = nullptr) const;
+    const Keybind* hotCornerAction(size_t* index = nullptr) const;
     static int onHotCornerTimer(void* data);
-    [[nodiscard]] bool tiledMoveDragActive() const;
-    [[nodiscard]] Workspace* dataDragEdgeScrollTarget(double* speed) const;
+    bool tiledMoveDragActive() const;
+    // What the edge auto-scroll may move right now (input.drag_edge_scroll drives both sinks from one
+    // mechanism): the active workspace's scrolling layout along its scrolling axis (data drags, tiled moves,
+    // overview card drags), and, during an overview card drag, the overview's workspace filmstrip along the
+    // workspace axis. Each sink takes the signed edge ramp's speed in screen px/s; the strip consumes it as
+    // layout px/s, the filmstrip converts it to rows through the preview step. Either may be null when that
+    // dimension has nothing left to scroll.
+    struct EdgeScrollTargets {
+      Workspace* workspace = nullptr;
+      double workspaceSpeed = 0;
+      Output* filmstrip = nullptr;
+      double filmstripSpeed = 0;
+    };
+    EdgeScrollTargets edgeScrollTargets() const;
     void updateDataDragEdgeScroll();
     void cancelDataDragEdgeScroll();
     static int onDataDragEdgeScrollTimer(void* data);
     int handleDataDragEdgeScrollTimer();
     void setActiveConstraint(wlr_pointer_constraint_v1* constraint);
     void updateConstraintForSurface(wlr_surface* surface);
-    [[nodiscard]] bool constraintSurfaceActive() const;
+    bool constraintSurfaceActive() const;
     void warpToConstraintHint(wlr_pointer_constraint_v1* constraint);
-    [[nodiscard]] bool confineDelta(double* dx, double* dy) const;
+    bool confineDelta(double* dx, double* dy) const;
     // Surface-local units per layout unit in `surface`: above 1 for an X11 window drawn at native resolution.
-    [[nodiscard]] double surfaceScale(wlr_surface* surface) const;
-    [[nodiscard]] bool ruleConstraintApplies(View& view) const;
-    [[nodiscard]] bool ruleConstraintEligible(View& view) const;
+    double surfaceScale(wlr_surface* surface) const;
+    bool ruleConstraintApplies(View& view) const;
+    bool ruleConstraintEligible(View& view) const;
     void confineRuleDelta(double* dx, double* dy);
     TabletToolState* toolState(wlr_tablet_tool* tool);
     void setToolEmulating(TabletToolState* state, bool emulating);
@@ -485,8 +500,13 @@ namespace umbriel {
     wl_event_source* m_hotCornerTimer = nullptr;
     wl_event_source* m_dropZoneDwellTimer = nullptr;
     wl_event_source* m_dataDragEdgeScrollTimer = nullptr;
+    // Both sinks share one delay/advance timeline (input.drag_edge_scroll's mechanic): a sink appearing or an
+    // active sink flipping direction re-arms the configured delay for the set, and each tick advances whichever
+    // sinks are live from the elapsed time.
     Workspace* m_dataDragEdgeScrollWorkspace = nullptr;
+    Output* m_dataDragEdgeScrollFilmstrip = nullptr;
     double m_dataDragEdgeScrollSpeed = 0;
+    double m_dataDragEdgeScrollFilmstripSpeed = 0;
     uint32_t m_dataDragEdgeScrollLastMsec = 0;
     bool m_dataDragEdgeScrollPending = false;
     bool m_hotCornerPending = false;

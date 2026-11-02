@@ -60,21 +60,21 @@ namespace umbriel {
     void releaseAll();
 
     // The tab whose bar slot lies under the layout point.
-    [[nodiscard]] std::optional<TabHit> tabAt(double lx, double ly) const;
+    std::optional<TabHit> tabAt(double lx, double ly) const;
     // Where a window dropped at the layout point onto column `column` joins one of its tab groups, or nullopt when the
     // point is on none of them. Over a bar it lands beside the slot under the point; over the middle of a group it
     // lands where new tabs go. Near a group's ends it joins nothing, so the drop can land beside the group instead.
-    [[nodiscard]] std::optional<TabDrop> dropSlot(int column, double lx, double ly) const;
+    std::optional<TabDrop> dropSlot(int column, double lx, double ly) const;
     // The tab `direction` steps from the focused one, wrapping at the ends when tabs are set to. Null outside a
     // tab group, at an end that does not wrap, or with a single tab.
-    [[nodiscard]] View* stepTarget(int direction) const;
+    View* stepTarget(int direction) const;
     // The same step from the tab `member`'s group shows, for a bar the pointer is over rather than the focused one.
-    [[nodiscard]] View* stepFrom(const View* member, int direction) const;
+    View* stepFrom(const View* member, int direction) const;
     // Tab `index` of the focused group, counted from 1, or from the end when negative. Null when there is none.
-    [[nodiscard]] View* indexTarget(int index) const;
+    View* indexTarget(int index) const;
     // The tab before or after the one `member`'s group shows, wrapping at the ends whatever wrap_focus says: what
     // the bar's cycle buttons select.
-    [[nodiscard]] View* cycleFrom(const View* member, int direction) const;
+    View* cycleFrom(const View* member, int direction) const;
 
   private:
     // A tab group and the column holding it, both owned by the layout and valid until it next changes.
@@ -84,18 +84,18 @@ namespace umbriel {
     };
 
     // One tab from the one `member`'s group shows, wrapping at the ends when `wrap` is set.
-    [[nodiscard]] View* step(const View* member, int direction, bool wrap) const;
+    View* step(const View* member, int direction, bool wrap) const;
     // Hide, reveal, and dress the members of one tab group.
     void presentGroup(const Column& column, const TabGroup& group);
     // Forget `view`'s tab state: reveal it and take its bar.
     void clear(View* view);
-    [[nodiscard]] bool barShown(const TabGroup& group) const;
-    [[nodiscard]] TabBarModel modelFor(const Column& column, const TabGroup& group) const;
+    bool barShown(const TabGroup& group) const;
+    TabBarModel modelFor(const Column& column, const TabGroup& group) const;
     // The bar the group drew last, so its strip moves on from where it was; null before the first.
-    [[nodiscard]] static const TabBarModel* previousModel(const Column& column, const TabGroup& group);
-    [[nodiscard]] std::string titleFor(const View* view, size_t index) const;
-    [[nodiscard]] std::optional<GroupRef> groupOf(const View* view) const;
-    [[nodiscard]] static TabBar* barOf(const View* view);
+    static const TabBarModel* previousModel(const Column& column, const TabGroup& group);
+    std::string titleFor(const View* view, size_t index) const;
+    std::optional<GroupRef> groupOf(const View* view) const;
+    static TabBar* barOf(const View* view);
 
     Workspace& m_workspace;
     std::shared_ptr<TabLabelCache> m_labels;

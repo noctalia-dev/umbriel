@@ -45,7 +45,9 @@ top=$(jq -r '.y + 4' <<< "$window")
 middle=$(jq -r '.y + (.h / 2 | floor)' <<< "$window")
 bottom=$(jq -r '.y + .h - 6' <<< "$window")
 blue_at() {
-  magick "$IMAGE" -crop "2x2+$x+$1" -format '%[fx:round(mean.b*255)]' info:
+  local blue
+  read -r _ _ blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$x+$1")
+  echo "$blue"
 }
 "$UMBRIEL" clock-advance 850
 grim "$IMAGE"
@@ -54,7 +56,7 @@ if (( $(blue_at "$top") > 10 || $(blue_at "$bottom") > 10 || $(blue_at "$middle"
   exit 1
 fi
 for edge in "$top" "$bottom"; do
-  green=$(magick "$IMAGE" -crop "2x2+$x+$edge" -format '%[fx:round(mean.g*255)]' info:)
+  read -r _ green _ < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$x+$edge")
   if (( green < 25 )); then
     echo "squash shadow did not follow the compressed edge at y=$edge: green=$green"
     exit 1
