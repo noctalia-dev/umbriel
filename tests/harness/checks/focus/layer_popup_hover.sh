@@ -69,7 +69,7 @@ await_events "$OTHER_LOG" keyboard-enter 1 "the second-output window"
 
 window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "layer-popup-hover-window") | .id')
 window_enters=$(events "$WINDOW_LOG" keyboard-enter)
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 await_events "$WINDOW_LOG" keyboard-enter "$((window_enters + 1))" "the refocused first-output window"
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 popup-on-click > "$PANEL_LOG" 2>&1 &
@@ -101,7 +101,7 @@ await_events "$OTHER_LOG" keyboard-enter "$((other_enters + 1))" "the clicked se
 
 # Leave the pointer on the second output while focusing elsewhere. The next real motion must restore hover focus
 # without relying on the separate focus handoff performed when crossing outputs.
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 await_events "$WINDOW_LOG" keyboard-enter "$((window_enters + 1))" "the refocused first-output window"
 pointer_release
 await_events "$OTHER_LOG" keyboard-enter "$((other_enters + 2))" "the hovered second-output window"

@@ -72,7 +72,7 @@ wait_for_count 2
 wait_for_stack
 
 bottom_id=$(field_of scroll-close-bottom id)
-"$UMBRIEL" msg "window-focus:$bottom_id" > /dev/null
+"$UMBRIEL" msg window-focus "$bottom_id" > /dev/null
 wait_for_active scroll-close-bottom
 
 spawn_client scroll-close-temporary
@@ -80,7 +80,7 @@ wait_for_count 3
 wait_for_active scroll-close-temporary
 
 temporary_id=$(field_of scroll-close-temporary id)
-"$UMBRIEL" msg "window-close:$temporary_id" > /dev/null
+"$UMBRIEL" msg window-close "$temporary_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/scroll-close-temporary.log" && break
   sleep 0.1

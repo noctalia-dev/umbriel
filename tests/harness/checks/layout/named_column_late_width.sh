@@ -189,7 +189,7 @@ APP_ID=named-order-joiner TITLE_AFTER_MAP=named-order-late \
   "$CLIENT" named-order-placeholder 800 600 <&"$order_fd" > "$UMBRIEL_RUNTIME_DIR/named-order-joiner.log" 2>&1 &
 wait_for_windows 9
 order_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "named-order-placeholder") | .id')
-"$UMBRIEL" msg "window-focus:$order_id" > /dev/null
+"$UMBRIEL" msg window-focus "$order_id" > /dev/null
 "$UMBRIEL" msg window-consume-or-expel-right > /dev/null
 spawn_client named-order-after
 wait_for_windows 10

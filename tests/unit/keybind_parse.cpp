@@ -12,8 +12,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <string>
 #include <variant>
+#include <vector>
 
 using umbriel::ActionArgKind;
 using umbriel::ActionSpec;
@@ -210,18 +212,18 @@ UMBRIEL_TEST(parsesSessionQuitConfirmation) {
   CHECK(plain != nullptr);
   CHECK(plain == nullptr || !plain->skipConfirmation);
 
-  CHECK(parseAction("session-quit:skip-confirmation", bind));
+  CHECK(parseAction("session-quit skip-confirmation", bind));
   const auto* skip = umbriel::payloadIf<umbriel::QuitArg>(bind);
   CHECK(skip != nullptr);
   CHECK(skip == nullptr || skip->skipConfirmation);
 
-  CHECK(!parseAction("session-quit:bogus", bind));
-  CHECK(!parseAction("session-quit:", bind));
+  CHECK(!parseAction("session-quit bogus", bind));
+  CHECK(!parseAction("session-quit ''", bind));
 }
 
 UMBRIEL_TEST(parsesCommandActions) {
   Keybind bind;
-  CHECK(parseAction("spawn:foot -e htop", bind));
+  CHECK(parseAction("spawn foot -e htop", bind));
   CHECK(bind.action == KeybindAction::Spawn);
   const auto* spawn = umbriel::payloadIf<umbriel::SpawnArg>(bind);
   CHECK(spawn != nullptr);
@@ -231,7 +233,7 @@ UMBRIEL_TEST(parsesCommandActions) {
 UMBRIEL_TEST(submapNoLongerSharesStorageWithSpawn) {
   // A submap name and a shell command live in separate fields.
   Keybind bind;
-  CHECK(parseAction("submap:resize", bind));
+  CHECK(parseAction("submap resize", bind));
   CHECK(bind.action == KeybindAction::Submap);
   const auto* submap = umbriel::payloadIf<umbriel::SubmapArg>(bind);
   CHECK(submap != nullptr);
@@ -239,53 +241,53 @@ UMBRIEL_TEST(submapNoLongerSharesStorageWithSpawn) {
   CHECK(umbriel::payloadIf<umbriel::SpawnArg>(bind) == nullptr);
 
   CHECK(!parseAction("submap", bind));
-  CHECK(!parseAction("submap:", bind));
-  CHECK(!parseAction("submap:invalid]name", bind));
+  CHECK(!parseAction("submap ''", bind));
+  CHECK(!parseAction("submap invalid]name", bind));
 
-  CHECK(parseAction("spawn:resize", bind));
+  CHECK(parseAction("spawn resize", bind));
   CHECK(umbriel::payloadIf<umbriel::SubmapArg>(bind) == nullptr);
 }
 
 UMBRIEL_TEST(onlyResetPopsASubmap) {
   Keybind bind;
-  CHECK(parseAction("submap:reset", bind));
+  CHECK(parseAction("submap reset", bind));
   CHECK(umbriel::isSubmapResetBind(bind));
-  CHECK(!parseAction("submap:disable", bind));
-  CHECK(parseAction("submap:resize", bind));
+  CHECK(!parseAction("submap disable", bind));
+  CHECK(parseAction("submap resize", bind));
   CHECK(!umbriel::isSubmapResetBind(bind));
 
   // Only a submap bind can be a submap reset, whatever its payload says.
-  CHECK(parseAction("spawn:reset", bind));
+  CHECK(parseAction("spawn reset", bind));
   CHECK(!umbriel::isSubmapResetBind(bind));
 }
 
 UMBRIEL_TEST(parsesPrimaryExtentFractions) {
   Keybind bind;
-  CHECK(parseAction("window-set-primary-extent:0.5", bind));
+  CHECK(parseAction("window-set-primary-extent 0.5", bind));
   CHECK(bind.action == KeybindAction::WindowSetPrimaryExtent);
   const auto* width = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(width != nullptr);
   CHECK(width != nullptr && std::fabs(width->fraction - 0.5) < 1e-9);
 
-  CHECK(parseAction("window-set-primary-extent:1.0", bind));
-  CHECK(parseAction("window-set-primary-extent:0.1", bind));
+  CHECK(parseAction("window-set-primary-extent 1.0", bind));
+  CHECK(parseAction("window-set-primary-extent 0.1", bind));
   // Scrolling columns may span several viewports; the parser cannot know the layout, so wider values parse and the
   // layout clamps what it realizes.
-  CHECK(parseAction("window-set-primary-extent:1.5", bind));
-  CHECK(parseAction("window-set-primary-extent:4.0", bind));
+  CHECK(parseAction("window-set-primary-extent 1.5", bind));
+  CHECK(parseAction("window-set-primary-extent 4.0", bind));
 }
 
 UMBRIEL_TEST(rejectsOutOfRangePrimaryExtentFractions) {
   Keybind bind;
-  CHECK(!parseAction("window-set-primary-extent:0", bind)); // below the 0.1 floor
-  CHECK(!parseAction("window-set-primary-extent:0.09", bind));
-  CHECK(!parseAction("window-set-primary-extent:4.5", bind)); // above the 4.0 wide ceiling
-  CHECK(!parseAction("window-set-primary-extent:10", bind));
-  CHECK(!parseAction("window-set-primary-extent:-0.5", bind));
-  CHECK(!parseAction("window-set-primary-extent:abc", bind));
-  CHECK(!parseAction("window-set-primary-extent:0.5x", bind)); // trailing garbage
-  CHECK(!parseAction("window-set-primary-extent:", bind));
-  CHECK(!parseAction("window-set-primary-extent:nan", bind));
+  CHECK(!parseAction("window-set-primary-extent 0", bind)); // below the 0.1 floor
+  CHECK(!parseAction("window-set-primary-extent 0.09", bind));
+  CHECK(!parseAction("window-set-primary-extent 4.5", bind)); // above the 4.0 wide ceiling
+  CHECK(!parseAction("window-set-primary-extent 10", bind));
+  CHECK(!parseAction("window-set-primary-extent -0.5", bind));
+  CHECK(!parseAction("window-set-primary-extent abc", bind));
+  CHECK(!parseAction("window-set-primary-extent 0.5x", bind)); // trailing garbage
+  CHECK(!parseAction("window-set-primary-extent ''", bind));
+  CHECK(!parseAction("window-set-primary-extent nan", bind));
 }
 
 UMBRIEL_TEST(parsesPrimaryExtentDeltas) {
@@ -295,55 +297,55 @@ UMBRIEL_TEST(parsesPrimaryExtentDeltas) {
   };
 
   Keybind bind;
-  CHECK(parseAction("window-modify-primary-extent:-0.2", bind));
+  CHECK(parseAction("window-modify-primary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifyPrimaryExtent);
   CHECK(std::fabs(fraction(bind) + 0.2) < 1e-9);
 
-  CHECK(parseAction("window-modify-primary-extent:+0.1", bind)); // explicit plus is allowed
+  CHECK(parseAction("window-modify-primary-extent +0.1", bind)); // explicit plus is allowed
   CHECK(std::fabs(fraction(bind) - 0.1) < 1e-9);
 
-  CHECK(parseAction("window-modify-primary-extent:0.25", bind));
+  CHECK(parseAction("window-modify-primary-extent 0.25", bind));
   CHECK(std::fabs(fraction(bind) - 0.25) < 1e-9);
 }
 
 UMBRIEL_TEST(rejectsInvalidPrimaryExtentDeltas) {
   Keybind bind;
-  CHECK(!parseAction("window-modify-primary-extent:0", bind));    // zero delta is a no-op
-  CHECK(!parseAction("window-modify-primary-extent:1.5", bind));  // above the 0.9 cap
-  CHECK(!parseAction("window-modify-primary-extent:-1.0", bind)); // below -0.9
-  CHECK(!parseAction("window-modify-primary-extent:abc", bind));
-  CHECK(!parseAction("window-modify-primary-extent:", bind));      // empty arg
+  CHECK(!parseAction("window-modify-primary-extent 0", bind));    // zero delta is a no-op
+  CHECK(!parseAction("window-modify-primary-extent 1.5", bind));  // above the 0.9 cap
+  CHECK(!parseAction("window-modify-primary-extent -1.0", bind)); // below -0.9
+  CHECK(!parseAction("window-modify-primary-extent abc", bind));
+  CHECK(!parseAction("window-modify-primary-extent ''", bind));    // empty arg
   CHECK(!parseAction("window-modify-primary-extent", bind));       // requires an argument
-  CHECK(!parseAction("window-modify-primary-extent:++0.1", bind)); // only one leading '+'
-  CHECK(!parseAction("window-modify-primary-extent:0.1x", bind));  // trailing garbage
-  CHECK(!parseAction("window-modify-primary-extent:nan", bind));
+  CHECK(!parseAction("window-modify-primary-extent ++0.1", bind)); // only one leading '+'
+  CHECK(!parseAction("window-modify-primary-extent 0.1x", bind));  // trailing garbage
+  CHECK(!parseAction("window-modify-primary-extent nan", bind));
 }
 
 UMBRIEL_TEST(parsesSecondaryExtentActions) {
   Keybind bind;
-  CHECK(parseAction("window-set-secondary-extent:0.5", bind));
+  CHECK(parseAction("window-set-secondary-extent 0.5", bind));
   CHECK(bind.action == KeybindAction::WindowSetSecondaryExtent);
   const auto* height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr);
   CHECK(height != nullptr && std::fabs(height->fraction - 0.5) < 1e-9);
 
-  CHECK(parseAction("window-modify-secondary-extent:-0.2", bind));
+  CHECK(parseAction("window-modify-secondary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifySecondaryExtent);
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr && std::fabs(height->fraction + 0.2) < 1e-9);
 
-  CHECK(parseAction("window-modify-secondary-extent:+0.1", bind));
+  CHECK(parseAction("window-modify-secondary-extent +0.1", bind));
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr && std::fabs(height->fraction - 0.1) < 1e-9);
 
-  CHECK(!parseAction("window-set-secondary-extent:0.05", bind));
-  CHECK(!parseAction("window-modify-secondary-extent:0", bind));
+  CHECK(!parseAction("window-set-secondary-extent 0.05", bind));
+  CHECK(!parseAction("window-modify-secondary-extent 0", bind));
 }
 
 UMBRIEL_TEST(rejectsRemovedWidthAndHeightActions) {
   constexpr std::array<std::string_view, 8> removed{
       "window-cycle-width",   "window-cycle-width-back", "window-cycle-height",     "window-cycle-height-back",
-      "window-set-width:0.5", "window-set-height:0.5",   "window-modify-width:0.1", "window-modify-height:0.1",
+      "window-set-width 0.5", "window-set-height 0.5",   "window-modify-width 0.1", "window-modify-height 0.1",
   };
   for (const std::string_view action : removed) {
     Keybind bind;
@@ -353,33 +355,33 @@ UMBRIEL_TEST(rejectsRemovedWidthAndHeightActions) {
 
 UMBRIEL_TEST(parsesLayoutModeActions) {
   Keybind bind;
-  CHECK(parseAction("workspace-set-layout:scrolling", bind));
+  CHECK(parseAction("workspace-set-layout scrolling", bind));
   CHECK(bind.action == KeybindAction::WorkspaceSetLayout);
   const auto* scrolling = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(scrolling != nullptr);
   CHECK(scrolling != nullptr && scrolling->mode == umbriel::LayoutMode::Scrolling);
 
-  CHECK(parseAction("workspace-set-layout:dwindle", bind));
+  CHECK(parseAction("workspace-set-layout dwindle", bind));
   const auto* dwindle = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(dwindle != nullptr && dwindle->mode == umbriel::LayoutMode::Dwindle);
 
-  CHECK(parseAction("workspace-set-layout:master", bind));
+  CHECK(parseAction("workspace-set-layout master", bind));
   const auto* master = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(master != nullptr && master->mode == umbriel::LayoutMode::Master);
 
-  CHECK(parseAction("workspace-set-layout:toggle", bind));
+  CHECK(parseAction("workspace-set-layout toggle", bind));
   const auto* toggle = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(toggle != nullptr && !toggle->mode.has_value());
   CHECK(toggle != nullptr && toggle->toggleSequence.empty());
 
-  CHECK(parseAction("workspace-set-layout:toggle:scrolling,master", bind));
+  CHECK(parseAction("workspace-set-layout toggle scrolling master", bind));
   const auto* twoMode = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(twoMode != nullptr && !twoMode->mode.has_value());
   CHECK(twoMode != nullptr && twoMode->toggleSequence.size() == 2);
   CHECK(twoMode != nullptr && twoMode->toggleSequence[0] == umbriel::LayoutMode::Scrolling);
   CHECK(twoMode != nullptr && twoMode->toggleSequence[1] == umbriel::LayoutMode::Master);
 
-  CHECK(parseAction("workspace-set-layout:toggle:master,scrolling,dwindle", bind));
+  CHECK(parseAction("workspace-set-layout toggle master scrolling dwindle", bind));
   const auto* threeMode = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(threeMode != nullptr && threeMode->toggleSequence.size() == 3);
   CHECK(threeMode != nullptr && threeMode->toggleSequence[0] == umbriel::LayoutMode::Master);
@@ -389,17 +391,18 @@ UMBRIEL_TEST(parsesLayoutModeActions) {
 
 UMBRIEL_TEST(rejectsInvalidLayoutModeActions) {
   Keybind bind;
-  CHECK(!parseAction("workspace-set-layout:spiral", bind));                       // not a known mode
-  CHECK(!parseAction("workspace-set-layout:", bind));                             // empty arg
+  CHECK(!parseAction("workspace-set-layout spiral", bind));                       // not a known mode
+  CHECK(!parseAction("workspace-set-layout ''", bind));                           // empty arg
   CHECK(!parseAction("workspace-set-layout", bind));                              // requires an argument
-  CHECK(!parseAction("workspace-set-layout:Scrolling", bind));                    // exact lowercase only
-  CHECK(!parseAction("workspace-set-layout:toggle:", bind));                      // toggle with empty sequence
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling", bind));             // single mode not enough
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,master,", bind));     // trailing comma
-  CHECK(!parseAction("workspace-set-layout:toggle:,master", bind));               // leading comma
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,spiral", bind));      // unknown in sequence
-  CHECK(!parseAction("workspace-set-layout:toggle:scrolling,scrolling", bind));   // repeated mode
-  CHECK(!parseAction("workspace-set-layout:toggle:master,dwindle,master", bind)); // repeated mode
+  CHECK(!parseAction("workspace-set-layout Scrolling", bind));                    // exact lowercase only
+  CHECK(!parseAction("workspace-set-layout toggle ''", bind));                    // empty mode in sequence
+  CHECK(!parseAction("workspace-set-layout toggle scrolling", bind));             // single mode not enough
+  CHECK(!parseAction("workspace-set-layout toggle scrolling master ''", bind));   // trailing empty mode
+  CHECK(!parseAction("workspace-set-layout toggle scrolling,master", bind));      // commas do not separate modes
+  CHECK(!parseAction("workspace-set-layout toggle scrolling spiral", bind));      // unknown in sequence
+  CHECK(!parseAction("workspace-set-layout toggle scrolling scrolling", bind));   // repeated mode
+  CHECK(!parseAction("workspace-set-layout toggle master dwindle master", bind)); // repeated mode
+  CHECK(!parseAction("workspace-set-layout master dwindle", bind));               // extra positional
 }
 
 UMBRIEL_TEST(parsesArgumentFreeNewActions) {
@@ -480,28 +483,28 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(!parseAction("window-consume-from", bind));
 
   // Argument-free actions reject arguments.
-  CHECK(!parseAction("workspace-next:1", bind));
-  CHECK(!parseAction("window-move-to-workspace-next:1", bind));
-  CHECK(!parseAction("window-move-to-workspace-previous:1", bind));
-  CHECK(!parseAction("column-move-to-workspace-next:1", bind));
-  CHECK(!parseAction("column-move-to-workspace-previous:1", bind));
-  CHECK(!parseAction("output-focus-left:DP-1", bind));
-  CHECK(!parseAction("window-center:x", bind));
-  CHECK(!parseAction("window-toggle-maximize-to-edges:x", bind));
-  CHECK(!parseAction("window-focus-last:x", bind));
-  CHECK(!parseAction("window-consume-left:x", bind));
-  CHECK(!parseAction("window-consume-or-expel-left:x", bind));
-  CHECK(!parseAction("window-consume-right:x", bind));
-  CHECK(!parseAction("window-consume-or-expel-right:x", bind));
-  CHECK(!parseAction("window-consume-from-left:x", bind));
-  CHECK(!parseAction("window-consume-from-right:x", bind));
+  CHECK(!parseAction("workspace-next 1", bind));
+  CHECK(!parseAction("window-move-to-workspace-next 1", bind));
+  CHECK(!parseAction("window-move-to-workspace-previous 1", bind));
+  CHECK(!parseAction("column-move-to-workspace-next 1", bind));
+  CHECK(!parseAction("column-move-to-workspace-previous 1", bind));
+  CHECK(!parseAction("output-focus-left DP-1", bind));
+  CHECK(!parseAction("window-center x", bind));
+  CHECK(!parseAction("window-toggle-maximize-to-edges x", bind));
+  CHECK(!parseAction("window-focus-last x", bind));
+  CHECK(!parseAction("window-consume-left x", bind));
+  CHECK(!parseAction("window-consume-or-expel-left x", bind));
+  CHECK(!parseAction("window-consume-right x", bind));
+  CHECK(!parseAction("window-consume-or-expel-right x", bind));
+  CHECK(!parseAction("window-consume-from-left x", bind));
+  CHECK(!parseAction("window-consume-from-right x", bind));
 }
 
 UMBRIEL_TEST(parsesWorkspaceSelectors) {
   const auto selector = [](const Keybind& bind) { return umbriel::payloadIf<umbriel::WorkspaceArg>(bind); };
 
   Keybind bind;
-  CHECK(parseAction("workspace-switch:3", bind));
+  CHECK(parseAction("workspace-switch 3", bind));
   CHECK(bind.action == KeybindAction::WorkspaceSwitch);
   const auto* position = selector(bind);
   CHECK(position != nullptr);
@@ -511,7 +514,7 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(positionValue != nullptr && positionValue->value == 3);
   CHECK(position != nullptr && position->output.empty());
 
-  CHECK(parseAction("workspace-switch:web/DP-1", bind));
+  CHECK(parseAction("workspace-switch web --output DP-1", bind));
   const auto* named = selector(bind);
   CHECK(named != nullptr);
   const auto* nameValue = named != nullptr ? std::get_if<umbriel::WorkspaceName>(&named->reference) : nullptr;
@@ -519,7 +522,7 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(nameValue != nullptr && nameValue->value == "web");
   CHECK(named != nullptr && named->output == "DP-1");
 
-  CHECK(parseAction("window-move-to-workspace:2/HDMI-A-1", bind));
+  CHECK(parseAction("window-move-to-workspace 2 --output HDMI-A-1", bind));
   CHECK(bind.action == KeybindAction::WindowMoveToWorkspace);
   position = selector(bind);
   positionValue = position != nullptr ? std::get_if<umbriel::WorkspaceIndex>(&position->reference) : nullptr;
@@ -527,7 +530,7 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(positionValue != nullptr && positionValue->value == 2);
   CHECK(position != nullptr && position->output == "HDMI-A-1");
 
-  CHECK(parseAction("window-move-to-workspace-silent:2/HDMI-A-1", bind));
+  CHECK(parseAction("window-move-to-workspace-silent --output HDMI-A-1 2", bind));
   CHECK(bind.action == KeybindAction::WindowMoveToWorkspaceSilent);
   position = selector(bind);
   positionValue = position != nullptr ? std::get_if<umbriel::WorkspaceIndex>(&position->reference) : nullptr;
@@ -535,7 +538,7 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(positionValue != nullptr && positionValue->value == 2);
   CHECK(position != nullptr && position->output == "HDMI-A-1");
 
-  CHECK(parseAction("column-move-to-workspace:\"2\"/DP-1", bind));
+  CHECK(parseAction("column-move-to-workspace --name 2 --output DP-1", bind));
   CHECK(bind.action == KeybindAction::ColumnMoveToWorkspace);
   named = selector(bind);
   nameValue = named != nullptr ? std::get_if<umbriel::WorkspaceName>(&named->reference) : nullptr;
@@ -543,26 +546,37 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(nameValue != nullptr && nameValue->value == "2");
   CHECK(named != nullptr && named->output == "DP-1");
 
-  CHECK(parseAction("workspace-switch:name:2", bind));
+  CHECK(parseAction("workspace-switch 'My web'", bind));
   named = selector(bind);
   nameValue = named != nullptr ? std::get_if<umbriel::WorkspaceName>(&named->reference) : nullptr;
   CHECK(nameValue != nullptr);
-  CHECK(nameValue != nullptr && nameValue->value == "name:2");
+  CHECK(nameValue != nullptr && nameValue->value == "My web");
+
+  // A flag value may itself start with `--`.
+  CHECK(parseAction("workspace-switch --name --web", bind));
+  named = selector(bind);
+  nameValue = named != nullptr ? std::get_if<umbriel::WorkspaceName>(&named->reference) : nullptr;
+  CHECK(nameValue != nullptr && nameValue->value == "--web");
 }
 
 UMBRIEL_TEST(rejectsMalformedWorkspaceSelectors) {
   Keybind bind;
-  CHECK(!parseAction("workspace-switch:", bind));      // no selector
-  CHECK(!parseAction("workspace-switch:/DP-1", bind)); // empty workspace
-  CHECK(!parseAction("workspace-switch:web/", bind));  // empty output
-  CHECK(!parseAction("workspace-switch:a/b/c", bind)); // two separators
-  CHECK(!parseAction("workspace-switch:0", bind));
-  CHECK(!parseAction("workspace-switch:65", bind));
-  CHECK(!parseAction("workspace-switch:\"\"", bind));
-  CHECK(!parseAction("workspace-switch:\"2", bind));
-  CHECK(!parseAction("workspace-switch:2\"", bind));
-  CHECK(!parseAction("column-move-to-workspace:", bind));
-  CHECK(!parseAction("column-move-to-workspace:/DP-1", bind));
+  CHECK(!parseAction("workspace-switch ''", bind));              // empty selector
+  CHECK(!parseAction("workspace-switch --output DP-1", bind));   // no selector
+  CHECK(!parseAction("workspace-switch web --output", bind));    // flag without value
+  CHECK(!parseAction("workspace-switch web --output ''", bind)); // empty output
+  CHECK(!parseAction("workspace-switch a b", bind));             // two positionals
+  CHECK(!parseAction("workspace-switch 0", bind));
+  CHECK(!parseAction("workspace-switch 65", bind));
+  CHECK(!parseAction("workspace-switch --name ''", bind));
+  CHECK(!parseAction("workspace-switch \"2", bind));                     // unterminated quote
+  CHECK(!parseAction("workspace-switch 2 --name x", bind));              // both positional and --name
+  CHECK(!parseAction("workspace-switch 2 --output A --output B", bind)); // repeated flag
+  CHECK(!parseAction("workspace-switch 2 --window x", bind));            // flag not allowed here
+  CHECK(!parseAction("workspace-switch 2 --bogus x", bind));             // unknown flag
+  CHECK(!parseAction("column-move-to-workspace ''", bind));
+  CHECK(!parseAction("column-move-to-workspace --output DP-1", bind));
+  CHECK(!parseAction("workspace-switch:2", bind));
 }
 
 UMBRIEL_TEST(parsesOptionalOutputActions) {
@@ -575,30 +589,30 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   CHECK(parseAction("dpms-off", bind));
   CHECK(bind.action == KeybindAction::DpmsOff);
   CHECK(outputOf(bind).empty());
-  CHECK(parseAction("dpms-off:DP-1", bind));
+  CHECK(parseAction("dpms-off DP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
   CHECK(parseAction("dpms-on", bind));
   CHECK(bind.action == KeybindAction::DpmsOn);
-  CHECK(parseAction("dpms-on:eDP-1", bind));
+  CHECK(parseAction("dpms-on eDP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
 
   CHECK(parseAction("screencast-set-output", bind));
   CHECK(bind.action == KeybindAction::ScreenCastSetOutput);
   CHECK(outputOf(bind).empty());
-  CHECK(parseAction("screencast-set-output:DP-1", bind));
+  CHECK(parseAction("screencast-set-output DP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
 
-  CHECK(parseAction("output-disable:eDP-1", bind));
+  CHECK(parseAction("output-disable eDP-1", bind));
   CHECK(bind.action == KeybindAction::OutputDisable);
   CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
-  CHECK(parseAction("output-enable:DP-1", bind));
+  CHECK(parseAction("output-enable DP-1", bind));
   CHECK(bind.action == KeybindAction::OutputEnable);
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
-  CHECK(parseAction("output-toggle:HDMI-A-1", bind));
+  CHECK(parseAction("output-toggle HDMI-A-1", bind));
   CHECK(bind.action == KeybindAction::OutputToggle);
   CHECK_EQ(outputOf(bind), std::string{"HDMI-A-1"});
   CHECK(!parseAction("output-disable", bind));
-  CHECK(!parseAction("output-enable:", bind));
+  CHECK(!parseAction("output-enable ''", bind));
   CHECK(!parseAction("output-toggle", bind));
 }
 
@@ -613,35 +627,36 @@ UMBRIEL_TEST(parsesOutputSdrWhiteAction) {
   };
 
   Keybind bind;
-  CHECK(parseAction("output-sdr-white:203", bind));
+  CHECK(parseAction("output-sdr-white 203", bind));
   CHECK(bind.action == KeybindAction::OutputSdrWhite);
   CHECK(std::fabs(sdrWhiteOf(bind) - 203.0) < 1e-9);
   CHECK(outputOf(bind).empty());
 
-  CHECK(parseAction("output-sdr-white:120/DP-1", bind));
+  CHECK(parseAction("output-sdr-white 120 --output DP-1", bind));
   CHECK(std::fabs(sdrWhiteOf(bind) - 120.0) < 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
 
-  // Everything after the first slash is the output name, as for effect targets.
-  CHECK(parseAction("output-sdr-white:120.5/vendor/panel", bind));
+  // The flag may precede the level, and its value is taken verbatim.
+  CHECK(parseAction("output-sdr-white --output vendor/panel 120.5", bind));
   CHECK(std::fabs(sdrWhiteOf(bind) - 120.5) < 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"vendor/panel"});
 
-  CHECK(parseAction("output-sdr-white:80", bind));
-  CHECK(parseAction("output-sdr-white:1000", bind));
+  CHECK(parseAction("output-sdr-white 80", bind));
+  CHECK(parseAction("output-sdr-white 1000", bind));
 }
 
 UMBRIEL_TEST(rejectsMalformedOutputSdrWhiteArguments) {
   Keybind bind;
-  CHECK(!parseAction("output-sdr-white", bind));      // no level
-  CHECK(!parseAction("output-sdr-white:", bind));     // no level
-  CHECK(!parseAction("output-sdr-white:200/", bind)); // empty output
-  CHECK(!parseAction("output-sdr-white:79", bind));   // below the configured floor
-  CHECK(!parseAction("output-sdr-white:1001", bind)); // above the configured ceiling
-  CHECK(!parseAction("output-sdr-white:abc", bind));
-  CHECK(!parseAction("output-sdr-white:nan", bind));
-  CHECK(!parseAction("output-sdr-white:inf", bind));
-  CHECK(!parseAction("output-sdr-white:-203", bind));
+  CHECK(!parseAction("output-sdr-white", bind));              // no level
+  CHECK(!parseAction("output-sdr-white ''", bind));           // no level
+  CHECK(!parseAction("output-sdr-white 200 --output", bind)); // flag without value
+  CHECK(!parseAction("output-sdr-white 200 DP-1", bind));     // output must be a flag
+  CHECK(!parseAction("output-sdr-white 79", bind));           // below the configured floor
+  CHECK(!parseAction("output-sdr-white 1001", bind));         // above the configured ceiling
+  CHECK(!parseAction("output-sdr-white abc", bind));
+  CHECK(!parseAction("output-sdr-white nan", bind));
+  CHECK(!parseAction("output-sdr-white inf", bind));
+  CHECK(!parseAction("output-sdr-white -203", bind));
 }
 
 UMBRIEL_TEST(parsesOptionalScratchpadActions) {
@@ -659,23 +674,23 @@ UMBRIEL_TEST(parsesOptionalScratchpadActions) {
   CHECK(umbriel::payloadIf<umbriel::OutputArg>(bind) == nullptr);
   CHECK(scratchpadOf(bind).empty());
 
-  CHECK(parseAction("scratchpad-toggle:terminal", bind));
+  CHECK(parseAction("scratchpad-toggle terminal", bind));
   CHECK_EQ(scratchpadOf(bind), std::string{"terminal"});
 
-  CHECK(parseAction("window-move-to-scratchpad:notes", bind));
+  CHECK(parseAction("window-move-to-scratchpad notes", bind));
   CHECK(bind.action == KeybindAction::WindowMoveToScratchpad);
   CHECK_EQ(scratchpadOf(bind), std::string{"notes"});
-  CHECK(parseAction("window-restore-from-scratchpad:music", bind));
+  CHECK(parseAction("window-restore-from-scratchpad music", bind));
   CHECK_EQ(scratchpadOf(bind), std::string{"music"});
-  CHECK(parseAction("window-toggle-scratchpad:chat", bind));
+  CHECK(parseAction("window-toggle-scratchpad chat", bind));
   CHECK(bind.action == KeybindAction::WindowToggleScratchpad);
   CHECK_EQ(scratchpadOf(bind), std::string{"chat"});
-  CHECK(parseAction("scratchpad-focus-next:terminal", bind));
+  CHECK(parseAction("scratchpad-focus-next terminal", bind));
   CHECK_EQ(scratchpadOf(bind), std::string{"terminal"});
 
   CHECK(parseAction("window-move-to-scratchpad", bind));
   CHECK(scratchpadOf(bind).empty());
-  CHECK(!parseAction("scratchpad-toggle:", bind));
+  CHECK(!parseAction("scratchpad-toggle ''", bind));
 }
 
 UMBRIEL_TEST(parsesWindowIdActions) {
@@ -691,27 +706,27 @@ UMBRIEL_TEST(parsesWindowIdActions) {
   CHECK(parseAction("screencast-set-window", bind));
   CHECK(bind.action == KeybindAction::ScreenCastSetWindow);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{});
-  CHECK(parseAction("screencast-set-window:abc123", bind));
+  CHECK(parseAction("screencast-set-window abc123", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
   CHECK(!parseAction("dynamic-cast-window", bind));
   CHECK(!parseAction("dynamic-cast-output", bind));
   CHECK(!parseAction("dynamic-cast-clear", bind));
   CHECK(parseAction("window-close", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{});
-  CHECK(parseAction("window-close:abc123", bind));
+  CHECK(parseAction("window-close abc123", bind));
   CHECK(bind.action == KeybindAction::WindowClose);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
   CHECK(parseAction("window-kill", bind));
   CHECK(bind.action == KeybindAction::WindowKill);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{});
-  CHECK(parseAction("window-kill:abc123", bind));
+  CHECK(parseAction("window-kill abc123", bind));
   CHECK(bind.action == KeybindAction::WindowKill);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
-  CHECK(!parseAction("window-kill:", bind));
-  CHECK(parseAction("window-focus:abc123", bind));
+  CHECK(!parseAction("window-kill ''", bind));
+  CHECK(parseAction("window-focus abc123", bind));
   CHECK(bind.action == KeybindAction::WindowFocusId);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
-  CHECK(parseAction("window-focus-warp:abc123", bind));
+  CHECK(parseAction("window-focus-warp abc123", bind));
   CHECK(bind.action == KeybindAction::WindowFocusWarpId);
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
 }
@@ -730,28 +745,34 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::SkipConfirmation:
       break;
     case ActionArgKind::Command:
-      input += ":value";
+      input += " value";
+      break;
+    case ActionArgKind::Submap:
+      input += " resize";
       break;
     case ActionArgKind::Fraction:
-      input += ":0.5";
+      input += " 0.5";
       break;
     case ActionArgKind::FractionDelta:
-      input += ":0.1";
+      input += " 0.1";
       break;
     case ActionArgKind::LayoutMode:
-      input += ":toggle";
+      input += " toggle";
       break;
-    case ActionArgKind::SnapRegion:
-      input += ":left";
+    case ActionArgKind::WindowRegion:
+      input += " left";
       break;
     case ActionArgKind::ColumnDisplay:
-      input += ":tabbed";
+      input += " tabbed";
       break;
     case ActionArgKind::TabIndex:
-      input += ":2";
+      input += " 2";
+      break;
+    case ActionArgKind::WorkspaceMoveToOutput:
+      input += " current WEB --output DP-1";
       break;
     case ActionArgKind::Workspace:
-      input += ":1";
+      input += " 1";
       break;
     case ActionArgKind::WindowEffectSet:
     case ActionArgKind::WindowEffectCycle:
@@ -759,22 +780,22 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::ScreenEffectCycle:
     case ActionArgKind::CursorEffectSet:
     case ActionArgKind::CursorEffectCycle:
-      input += ":sample";
+      input += " sample";
       break;
     case ActionArgKind::Output:
-      input += ":DP-1";
+      input += " DP-1";
       break;
     case ActionArgKind::SdrWhite:
-      input += ":200/DP-1";
+      input += " 200 --output DP-1";
       break;
     case ActionArgKind::WindowId:
-      input += ":abc";
+      input += " abc";
       break;
     case ActionArgKind::WindowMoveTo:
-      input += ":center/1/1";
+      input += " center 1 1";
       break;
     case ActionArgKind::WindowMoveBy:
-      input += ":1/1";
+      input += " 1 1";
       break;
     }
     CHECK(parseAction(input, bind));
@@ -784,10 +805,10 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       CHECK(std::holds_alternative<std::monostate>(bind.payload));
       break;
     case ActionArgKind::Command:
-      CHECK(
-          umbriel::payloadIf<umbriel::SpawnArg>(bind) != nullptr
-          || umbriel::payloadIf<umbriel::SubmapArg>(bind) != nullptr
-      );
+      CHECK(umbriel::payloadIf<umbriel::SpawnArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::Submap:
+      CHECK(umbriel::payloadIf<umbriel::SubmapArg>(bind) != nullptr);
       break;
     case ActionArgKind::Fraction:
     case ActionArgKind::FractionDelta:
@@ -796,14 +817,17 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::LayoutMode:
       CHECK(umbriel::payloadIf<umbriel::LayoutModeArg>(bind) != nullptr);
       break;
-    case ActionArgKind::SnapRegion:
-      CHECK(umbriel::payloadIf<umbriel::SnapRegionArg>(bind) != nullptr);
+    case ActionArgKind::WindowRegion:
+      CHECK(umbriel::payloadIf<umbriel::WindowRegionArg>(bind) != nullptr);
       break;
     case ActionArgKind::ColumnDisplay:
       CHECK(umbriel::payloadIf<umbriel::ColumnDisplayArg>(bind) != nullptr);
       break;
     case ActionArgKind::TabIndex:
       CHECK(umbriel::payloadIf<umbriel::TabIndexArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WorkspaceMoveToOutput:
+      CHECK(umbriel::payloadIf<umbriel::WorkspaceMoveToOutputArg>(bind) != nullptr);
       break;
     case ActionArgKind::Workspace:
       CHECK(umbriel::payloadIf<umbriel::WorkspaceArg>(bind) != nullptr);
@@ -853,11 +877,14 @@ UMBRIEL_TEST(rejectsUnknownActions) {
   CHECK(!parseAction("not-an-action", bind));
   CHECK(!parseAction("window-clos", bind));        // truncated
   CHECK(!parseAction("window-close-extra", bind)); // superstring
-  CHECK(!parseAction("overview-open:arg", bind));  // takes no argument
+  CHECK(!parseAction("overview-open arg", bind));  // takes no argument
   CHECK(!parseAction("window-focus", bind));       // requires an argument
-  CHECK(!parseAction("window-focus:", bind));      // requires a non-empty argument
+  CHECK(!parseAction("window-focus ''", bind));    // requires a non-empty argument
   CHECK(!parseAction("spawn", bind));              // requires an argument
-  CHECK(!parseAction("spawn:", bind));             // requires a non-empty argument
+  CHECK(!parseAction("spawn   ", bind));           // requires a non-empty argument
+  CHECK(!parseAction("window-close:abc", bind));   // colon form is not an action name
+  CHECK(!parseAction("workspace-switch:2", bind));
+  CHECK(!parseAction("spawn:kitty", bind));
 }
 
 // action spec table
@@ -875,28 +902,34 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
     case ActionArgKind::SkipConfirmation:
       break;
     case ActionArgKind::Command:
-      input += ":true";
+      input += " true";
+      break;
+    case ActionArgKind::Submap:
+      input += " resize";
       break;
     case ActionArgKind::Fraction:
-      input += ":0.5";
+      input += " 0.5";
       break;
     case ActionArgKind::FractionDelta:
-      input += ":0.1";
+      input += " 0.1";
       break;
     case ActionArgKind::LayoutMode:
-      input += ":toggle";
+      input += " toggle";
       break;
-    case ActionArgKind::SnapRegion:
-      input += ":left";
+    case ActionArgKind::WindowRegion:
+      input += " left";
       break;
     case ActionArgKind::ColumnDisplay:
-      input += ":tabbed";
+      input += " tabbed";
       break;
     case ActionArgKind::TabIndex:
-      input += ":2";
+      input += " 2";
+      break;
+    case ActionArgKind::WorkspaceMoveToOutput:
+      input += " current WEB --output DP-1";
       break;
     case ActionArgKind::Workspace:
-      input += ":1";
+      input += " 1";
       break;
     case ActionArgKind::WindowEffectSet:
     case ActionArgKind::WindowEffectCycle:
@@ -904,22 +937,22 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
     case ActionArgKind::ScreenEffectCycle:
     case ActionArgKind::CursorEffectSet:
     case ActionArgKind::CursorEffectCycle:
-      input += ":sample";
+      input += " sample";
       break;
     case ActionArgKind::Output:
-      input += ":DP-1";
+      input += " DP-1";
       break;
     case ActionArgKind::SdrWhite:
-      input += ":200/DP-1";
+      input += " 200 --output DP-1";
       break;
     case ActionArgKind::WindowId:
-      input += ":abc";
+      input += " abc";
       break;
     case ActionArgKind::WindowMoveTo:
-      input += ":center/1/1";
+      input += " center 1 1";
       break;
     case ActionArgKind::WindowMoveBy:
-      input += ":1/1";
+      input += " 1 1";
       break;
     }
     if (!parseAction(input, bind)) {
@@ -1035,45 +1068,49 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::None:
       return {};
     case ActionArgKind::Command:
-      return ":true";
+      return " true";
+    case ActionArgKind::Submap:
+      return " resize";
     case ActionArgKind::Fraction:
-      return ":0.5";
+      return " 0.5";
+    case ActionArgKind::WorkspaceMoveToOutput:
+      return " current WEB --output DP-1";
     case ActionArgKind::Workspace:
-      return ":1";
+      return " 1";
     case ActionArgKind::WindowEffectSet:
     case ActionArgKind::WindowEffectCycle:
     case ActionArgKind::ScreenEffectSet:
     case ActionArgKind::ScreenEffectCycle:
     case ActionArgKind::CursorEffectSet:
     case ActionArgKind::CursorEffectCycle:
-      return ":sample";
+      return " sample";
     case ActionArgKind::Output:
-      return ":DP-1";
+      return " DP-1";
     case ActionArgKind::OptionalOutput:
-      return ":DP-1";
+      return " DP-1";
     case ActionArgKind::OptionalScratchpad:
-      return ":terminal";
+      return " terminal";
     case ActionArgKind::WindowId:
     case ActionArgKind::OptionalWindowId:
-      return ":window-1";
+      return " window-1";
     case ActionArgKind::FractionDelta:
-      return ":0.1";
+      return " 0.1";
     case ActionArgKind::LayoutMode:
-      return ":scrolling";
-    case ActionArgKind::SnapRegion:
-      return ":top_left";
+      return " scrolling";
+    case ActionArgKind::WindowRegion:
+      return " top_left";
     case ActionArgKind::ColumnDisplay:
-      return ":normal";
+      return " normal";
     case ActionArgKind::TabIndex:
-      return ":-1";
+      return " -1";
     case ActionArgKind::SkipConfirmation:
-      return ":skip-confirmation";
+      return " skip-confirmation";
     case ActionArgKind::SdrWhite:
-      return ":200/DP-1";
+      return " 200 --output DP-1";
     case ActionArgKind::WindowMoveTo:
-      return ":center/1/1";
+      return " center 1 1";
     case ActionArgKind::WindowMoveBy:
-      return ":1/1";
+      return " 1 1";
     }
     return {};
   };
@@ -1083,19 +1120,23 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::None:
       return "";
     case ActionArgKind::Command:
-      return "<cmd>";
+      return "<cmd...>";
+    case ActionArgKind::Submap:
+      return "<name>";
     case ActionArgKind::Fraction:
       return "<fraction>";
+    case ActionArgKind::WorkspaceMoveToOutput:
+      return "<destination> [<workspace>] [--output <output>]";
     case ActionArgKind::Workspace:
-      return "<workspace>[/<output>]";
+      return "<workspace> [--output <output>]";
     case ActionArgKind::WindowEffectSet:
-      return "<name>[/<window-id>]";
+      return "<name> [--window <window-id>]";
     case ActionArgKind::WindowEffectCycle:
-      return "[<pool>][/<window-id>]";
+      return "[<pool>] [--window <window-id>]";
     case ActionArgKind::ScreenEffectSet:
-      return "<name>[/<output>]";
+      return "<name> [--output <output>]";
     case ActionArgKind::ScreenEffectCycle:
-      return "[<pool>][/<output>]";
+      return "[<pool>] [--output <output>]";
     case ActionArgKind::CursorEffectSet:
       return "<name>";
     case ActionArgKind::CursorEffectCycle:
@@ -1113,21 +1154,21 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::FractionDelta:
       return "<delta>";
     case ActionArgKind::LayoutMode:
-      return "<scrolling|dwindle|master|floating|toggle[:mode1,mode2,...]>";
-    case ActionArgKind::SnapRegion:
+      return "<scrolling|dwindle|master|stacking|toggle [mode1 mode2 ...]>";
+    case ActionArgKind::WindowRegion:
       return "<left|right|top|bottom|top_left|top_right|bottom_left|bottom_right>";
     case ActionArgKind::ColumnDisplay:
       return "<normal|tabbed>";
     case ActionArgKind::TabIndex:
       return "<index>";
     case ActionArgKind::SdrWhite:
-      return "<nits>[/<output>]";
+      return "<nits> [--output <output>]";
     case ActionArgKind::SkipConfirmation:
       return "[skip-confirmation]";
     case ActionArgKind::WindowMoveTo:
-      return "<anchor>/<x>/<y>[/<window-id>]";
+      return "<anchor> <x> <y> [--window <window-id>]";
     case ActionArgKind::WindowMoveBy:
-      return "<delta-x>/<delta-y>[/<window-id>]";
+      return "<delta-x> <delta-y> [--window <window-id>]";
     }
     return "";
   };
@@ -1147,51 +1188,49 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       CHECK(parseAction(spec.name, bare));
       CHECK(bare.action == spec.action);
     }
-    // `msg --help` and docs/user/actions.md render `param` verbatim, so it is what the user types against. "submap"
-    // shares the name:<text> syntax with "spawn" while naming a submap rather than a shell command.
-    const std::string_view expectedParam =
-        spec.action == KeybindAction::Submap ? std::string_view{"<name>"} : paramFor(spec.argKind);
+    // `msg --help` and docs/user/actions.md render `param` verbatim, so it is what the user types against.
+    const std::string_view expectedParam = paramFor(spec.argKind);
     CHECK_EQ(std::string(spec.param), std::string(expectedParam));
     ++swept;
   }
   CHECK(swept > 100);
 }
 
-UMBRIEL_TEST(effectActionsParseTypedTargetsAndFirstSlash) {
+UMBRIEL_TEST(effectActionsParseTypedTargets) {
   Keybind bind;
   for (const std::string kind : {"window", "border"}) {
-    CHECK(parseAction("effect-" + kind + "-set:scanlines/window-1", bind));
+    CHECK(parseAction("effect-" + kind + "-set scanlines --window window-1", bind));
     const auto* selected = umbriel::payloadIf<umbriel::EffectWindowArg>(bind);
     CHECK(selected != nullptr);
     CHECK_EQ(selected->name, std::string{"scanlines"});
     CHECK_EQ(selected->id, std::string{"window-1"});
-    CHECK(parseAction("effect-" + kind + "-cycle:/window-1", bind));
+    CHECK(parseAction("effect-" + kind + "-cycle --window window-1", bind));
     selected = umbriel::payloadIf<umbriel::EffectWindowArg>(bind);
     CHECK(selected->name.empty());
     CHECK_EQ(selected->id, std::string{"window-1"});
     CHECK(parseAction("effect-" + kind + "-cycle", bind));
     CHECK(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name.empty());
-    CHECK(parseAction("effect-" + kind + "-set:off", bind));
+    CHECK(parseAction("effect-" + kind + "-set off", bind));
     CHECK_EQ(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name, std::string{"off"});
     for (const std::string op : {"toggle", "reset"}) {
-      CHECK(parseAction("effect-" + kind + "-" + op + ":window-1", bind));
+      CHECK(parseAction(std::format("effect-{}-{} window-1", kind, op), bind));
       CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"window-1"});
-      CHECK(parseAction("effect-" + kind + "-" + op, bind));
+      CHECK(parseAction(std::format("effect-{}-{}", kind, op), bind));
     }
   }
-  CHECK(parseAction("effect-screen-set:cinema/vendor/panel", bind));
+  CHECK(parseAction("effect-screen-set cinema --output vendor/panel", bind));
   const auto* screen = umbriel::payloadIf<umbriel::EffectScreenArg>(bind);
   CHECK_EQ(screen->name, std::string{"cinema"});
   CHECK_EQ(screen->output, std::string{"vendor/panel"});
-  CHECK(parseAction("effect-screen-cycle:/vendor/panel", bind));
+  CHECK(parseAction("effect-screen-cycle --output vendor/panel", bind));
   screen = umbriel::payloadIf<umbriel::EffectScreenArg>(bind);
   CHECK(screen->name.empty());
   CHECK_EQ(screen->output, std::string{"vendor/panel"});
-  CHECK(parseAction("effect-screen-toggle:vendor/panel", bind));
+  CHECK(parseAction("effect-screen-toggle vendor/panel", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::OutputArg>(bind)->output, std::string{"vendor/panel"});
-  CHECK(parseAction("effect-screen-reset:vendor/panel", bind));
+  CHECK(parseAction("effect-screen-reset vendor/panel", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::OutputArg>(bind)->output, std::string{"vendor/panel"});
-  CHECK(parseAction("effect-cursor-set:halo", bind));
+  CHECK(parseAction("effect-cursor-set halo", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::EffectCursorArg>(bind)->name, std::string{"halo"});
   CHECK(parseAction("effect-cursor-cycle", bind));
   CHECK(umbriel::payloadIf<umbriel::EffectCursorArg>(bind)->name.empty());
@@ -1204,21 +1243,26 @@ UMBRIEL_TEST(effectActionsParseTypedTargetsAndFirstSlash) {
 UMBRIEL_TEST(effectActionsRejectMalformedNamesAndTargets) {
   Keybind bind;
   for (const std::string kind : {"window", "border", "screen", "cursor"}) {
-    for (const std::string arg : {"", ":", ":/target", ":name/", ":/"}) {
-      CHECK(!parseAction("effect-" + kind + "-set" + arg, bind));
+    const std::string flag = kind == "screen" ? "output" : "window";
+    for (const std::string& arg :
+         std::vector<std::string>{"", " ''", " --" + flag + " target", " name --" + flag, " a b"}) {
+      CHECK(!parseAction(std::format("effect-{}-set{}", kind, arg), bind));
     }
-    for (const std::string arg : {":", ":off", ":off/target", ":name/", ":/"}) {
-      CHECK(!parseAction("effect-" + kind + "-cycle" + arg, bind));
+    for (const std::string& arg :
+         std::vector<std::string>{" ''", " off", " off --" + flag + " target", " name --" + flag, " a b"}) {
+      CHECK(!parseAction(std::format("effect-{}-cycle{}", kind, arg), bind));
     }
-    CHECK(!parseAction("effect-" + kind + "-toggle:", bind));
-    CHECK(!parseAction("effect-" + kind + "-reset:", bind));
+    CHECK(!parseAction("effect-" + kind + "-toggle ''", bind));
+    CHECK(!parseAction("effect-" + kind + "-reset ''", bind));
   }
-  for (const std::string op : {"set", "cycle", "toggle", "reset"}) {
-    CHECK(!parseAction("effect-cursor-" + op + ":name/target", bind));
-    CHECK(!parseAction("effect-cursor-" + op + ":/target", bind));
+  for (const std::string op : {"set", "cycle"}) {
+    CHECK(!parseAction("effect-cursor-" + op + " name --window target", bind));
+    CHECK(!parseAction("effect-cursor-" + op + " name --output target", bind));
   }
-  CHECK(!parseAction("effect-cursor-toggle:name", bind));
-  CHECK(!parseAction("effect-cursor-reset:name", bind));
+  CHECK(!parseAction("effect-window-set name --output target", bind));
+  CHECK(!parseAction("effect-screen-set name --window target", bind));
+  CHECK(!parseAction("effect-cursor-toggle name", bind));
+  CHECK(!parseAction("effect-cursor-reset name", bind));
 }
 
 UMBRIEL_TEST(effectActionReferencesDescribeOnlyNamedRoots) {
@@ -1228,19 +1272,19 @@ UMBRIEL_TEST(effectActionReferencesDescribeOnlyNamedRoots) {
            std::pair{"screen", umbriel::EffectKind::Screen}, std::pair{"cursor", umbriel::EffectKind::Cursor}
        }) {
     for (const std::string op : {"set", "cycle"}) {
-      CHECK(parseAction("effect-" + std::string(name) + "-" + op + ":selected", bind));
+      CHECK(parseAction("effect-" + std::string(name) + "-" + op + " selected", bind));
       const auto reference = umbriel::effectActionReference(bind);
       CHECK(reference.has_value());
       CHECK_EQ(reference->name, std::string_view{"selected"});
       CHECK(reference->kind == kind);
       CHECK(reference->poolRequired == (op == "cycle"));
     }
-    for (const std::string suffix : {"set:off", "cycle", "toggle", "reset"}) {
+    for (const std::string suffix : {"set off", "cycle", "toggle", "reset"}) {
       CHECK(parseAction("effect-" + std::string(name) + "-" + suffix, bind));
       CHECK(!umbriel::effectActionReference(bind));
     }
   }
-  CHECK(parseAction("spawn:hello", bind));
+  CHECK(parseAction("spawn hello", bind));
   CHECK(!umbriel::effectActionReference(bind));
 }
 
@@ -1249,7 +1293,7 @@ UMBRIEL_TEST(windowMoveToActionParseArgs) {
   using umbriel::WindowPositionAnchor;
   Keybind bind;
   for (const auto& [name, anchor] : umbriel::kWindowPositionAnchorNames) {
-    CHECK(parseAction("window-move-to:" + std::string(name) + "/10/20/abc", bind));
+    CHECK(parseAction("window-move-to " + std::string(name) + " 10 20 --window abc", bind));
     const auto* arg = umbriel::payloadIf<WindowMoveToArg>(bind);
     CHECK((arg != nullptr && *arg == WindowMoveToArg{.id = "abc", .position = {.x = 10, .y = 20, .anchor = anchor}}));
   }
@@ -1258,15 +1302,15 @@ UMBRIEL_TEST(windowMoveToActionParseArgs) {
     return arg != nullptr ? std::optional(*arg) : std::nullopt;
   };
   CHECK(
-      (parsed("window-move-to:center/10/20")
+      (parsed("window-move-to center 10 20")
        == WindowMoveToArg{.id = "", .position = {.x = 10, .y = 20, .anchor = WindowPositionAnchor::Center}})
   );
   CHECK(
-      (parsed("window-move-to:right/+10/+20")
+      (parsed("window-move-to right +10 +20")
        == WindowMoveToArg{.id = "", .position = {.x = 10, .y = 20, .anchor = WindowPositionAnchor::Right}})
   );
   CHECK(
-      (parsed("window-move-to:bottom/-10/-20")
+      (parsed("window-move-to bottom -10 -20")
        == WindowMoveToArg{.id = "", .position = {.x = -10, .y = -20, .anchor = WindowPositionAnchor::Bottom}})
   );
 }
@@ -1274,18 +1318,18 @@ UMBRIEL_TEST(windowMoveToActionParseArgs) {
 UMBRIEL_TEST(windowMoveToActionRejectMalformedArgs) {
   Keybind bind;
   CHECK(!parseAction("window-move-to", bind));
-  CHECK(!parseAction("window-move-to:bottom_left", bind));
-  CHECK(!parseAction("window-move-to:anchor/0/0", bind));
-  CHECK(!parseAction("window-move-to://", bind));
-  CHECK(!parseAction("window-move-to:center//", bind));
-  CHECK(!parseAction("window-move-to:center///", bind));
-  CHECK(!parseAction("window-move-to:center/0", bind));
-  CHECK(!parseAction("window-move-to:center/a/10", bind));
-  CHECK(!parseAction("window-move-to:center/10/a", bind));
-  CHECK(!parseAction("window-move-to:top_left/0/0/0/0", bind));
-  CHECK(!parseAction("window-move-to:top_left/3.9/0", bind));
-  CHECK(!parseAction("window-move-to:top_left/0/3.9", bind));
-  CHECK(!parseAction("window-move-to:center/10/10/", bind));
+  CHECK(!parseAction("window-move-to bottom_left", bind));
+  CHECK(!parseAction("window-move-to anchor 0 0", bind));
+  CHECK(!parseAction("window-move-to center/0/0", bind));
+  CHECK(!parseAction("window-move-to center '' ''", bind));
+  CHECK(!parseAction("window-move-to center 0", bind));
+  CHECK(!parseAction("window-move-to center a 10", bind));
+  CHECK(!parseAction("window-move-to center 10 a", bind));
+  CHECK(!parseAction("window-move-to top_left 0 0 0", bind));
+  CHECK(!parseAction("window-move-to top_left 3.9 0", bind));
+  CHECK(!parseAction("window-move-to top_left 0 3.9", bind));
+  CHECK(!parseAction("window-move-to center 10 10 --window", bind));
+  CHECK(!parseAction("window-move-to center 10 10 --output DP-1", bind));
 }
 
 UMBRIEL_TEST(windowMoveByActionParseArgs) {
@@ -1295,58 +1339,142 @@ UMBRIEL_TEST(windowMoveByActionParseArgs) {
     const auto* arg = parseAction(input, bind) ? umbriel::payloadIf<WindowMoveByArg>(bind) : nullptr;
     return arg != nullptr ? std::optional(*arg) : std::nullopt;
   };
-  CHECK((parsed("window-move-by:10/20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
-  CHECK((parsed("window-move-by:10/20/abc") == WindowMoveByArg{.id = "abc", .deltaX = 10, .deltaY = 20}));
-  CHECK((parsed("window-move-by:+10/+20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
-  CHECK((parsed("window-move-by:-10/20") == WindowMoveByArg{.id = "", .deltaX = -10, .deltaY = 20}));
-  CHECK((parsed("window-move-by:10/-20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = -20}));
+  CHECK((parsed("window-move-by 10 20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by 10 20 --window abc") == WindowMoveByArg{.id = "abc", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by --window abc 10 20") == WindowMoveByArg{.id = "abc", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by +10 +20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = 20}));
+  CHECK((parsed("window-move-by -10 20") == WindowMoveByArg{.id = "", .deltaX = -10, .deltaY = 20}));
+  CHECK((parsed("window-move-by 10 -20") == WindowMoveByArg{.id = "", .deltaX = 10, .deltaY = -20}));
 }
 
 UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
   Keybind bind;
   CHECK(!parseAction("window-move-by", bind));
-  CHECK(!parseAction("window-move-by:10", bind));
-  CHECK(!parseAction("window-move-by:/", bind));
-  CHECK(!parseAction("window-move-by://", bind));
-  CHECK(!parseAction("window-move-by:abc", bind));
-  CHECK(!parseAction("window-move-by:abc/0", bind));
-  CHECK(!parseAction("window-move-by:0/abc", bind));
-  CHECK(!parseAction("window-move-by:3.4/0", bind));
-  CHECK(!parseAction("window-move-by:0/3.4", bind));
-  CHECK(!parseAction("window-move-by:0/0/abc/abc", bind));
-  CHECK(!parseAction("window-move-by:10/10/", bind));
+  CHECK(!parseAction("window-move-by 10", bind));
+  CHECK(!parseAction("window-move-by 10/20", bind));
+  CHECK(!parseAction("window-move-by '' ''", bind));
+  CHECK(!parseAction("window-move-by abc", bind));
+  CHECK(!parseAction("window-move-by abc 0", bind));
+  CHECK(!parseAction("window-move-by 0 abc", bind));
+  CHECK(!parseAction("window-move-by 3.4 0", bind));
+  CHECK(!parseAction("window-move-by 0 3.4", bind));
+  CHECK(!parseAction("window-move-by 0 0 abc", bind));
+  CHECK(!parseAction("window-move-by 10 10 --window", bind));
 }
 
-UMBRIEL_TEST(parsesFloatingLayoutAndCustomCycle) {
+UMBRIEL_TEST(parsesStackingLayoutAndCustomCycle) {
   Keybind bind;
-  CHECK(parseAction("workspace-set-layout:floating", bind));
-  auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
-  CHECK(arg != nullptr && arg->mode == umbriel::LayoutMode::Floating);
-  CHECK(parseAction("workspace-set-layout:toggle:floating,scrolling", bind));
+  CHECK(parseAction("workspace-set-layout stacking", bind));
+  const auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
+  CHECK(arg != nullptr && arg->mode == umbriel::LayoutMode::Stacking);
+  CHECK(parseAction("workspace-set-layout toggle stacking scrolling", bind));
   arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(arg != nullptr && !arg->mode.has_value());
   CHECK(arg != nullptr && arg->toggleSequence.size() == 2);
-  CHECK(arg != nullptr && arg->toggleSequence[0] == umbriel::LayoutMode::Floating);
+  CHECK(arg != nullptr && arg->toggleSequence[0] == umbriel::LayoutMode::Stacking);
   CHECK(arg != nullptr && arg->toggleSequence[1] == umbriel::LayoutMode::Scrolling);
+  CHECK(!parseAction("workspace-set-layout floating", bind));
+  CHECK(!parseAction("workspace-set-layout toggle scrolling floating", bind));
+  CHECK(parseAction("window-toggle-floating", bind));
+  CHECK(parseAction("window-focus-switch-floating", bind));
 }
 
-UMBRIEL_TEST(parsesFloatingSnapActions) {
+UMBRIEL_TEST(parsesRegionActionsAndRejectsRemovedNames) {
   Keybind bind;
-  CHECK(parseAction("window-snap:top_left", bind));
-  CHECK(bind.action == KeybindAction::WindowSnap);
-  auto* arg = umbriel::payloadIf<umbriel::SnapRegionArg>(bind);
-  CHECK(arg != nullptr && arg->region == umbriel::SnapRegion::TopLeft);
-  CHECK(parseAction("window-snap:top", bind));
-  arg = umbriel::payloadIf<umbriel::SnapRegionArg>(bind);
-  CHECK(arg != nullptr && arg->region == umbriel::SnapRegion::Top);
-  CHECK(parseAction("window-snap:bottom", bind));
-  arg = umbriel::payloadIf<umbriel::SnapRegionArg>(bind);
-  CHECK(arg != nullptr && arg->region == umbriel::SnapRegion::Bottom);
-  CHECK(parseAction("window-unsnap", bind));
-  CHECK(bind.action == KeybindAction::WindowUnsnap);
-  CHECK(!parseAction("window-snap:top-left", bind));
-  CHECK(!parseAction("window-snap", bind));
-  CHECK(!parseAction("window-unsnap:left", bind));
+  CHECK(parseAction("window-set-region top_left", bind));
+  CHECK(bind.action == KeybindAction::WindowSetRegion);
+  const auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
+  CHECK(arg != nullptr && arg->region == umbriel::WindowRegion::TopLeft);
+  CHECK(parseAction("window-set-region top", bind));
+  arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
+  CHECK(arg != nullptr && arg->region == umbriel::WindowRegion::Top);
+  CHECK(parseAction("window-set-region bottom", bind));
+  arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
+  CHECK(arg != nullptr && arg->region == umbriel::WindowRegion::Bottom);
+  CHECK(parseAction("window-clear-region", bind));
+  CHECK(bind.action == KeybindAction::WindowClearRegion);
+  CHECK(!parseAction("window-set-region top-left", bind));
+  CHECK(!parseAction("window-set-region", bind));
+  CHECK(!parseAction("window-clear-region left", bind));
+  CHECK(!parseAction("window-snap left", bind));
+  CHECK(!parseAction("window-unsnap", bind));
+  CHECK(!parseAction("window-toggle-region left", bind));
+}
+
+UMBRIEL_TEST(splitsActionStringsLikeAShell) {
+  const auto words = umbriel::splitActionString(R"(a 'b c' "d \"e\"" f\ g)");
+  CHECK(words.has_value());
+  CHECK((words == std::vector<std::string>{"a", "b c", "d \"e\"", "f g"}));
+  CHECK((umbriel::splitActionString(R"(a"b c" '' "")") == std::vector<std::string>{"ab c", "", ""}));
+  CHECK(!umbriel::splitActionString(R"("x)").has_value());
+  CHECK(!umbriel::splitActionString(R"(x\)").has_value());
+}
+
+UMBRIEL_TEST(spawnKeepsTheRawRestOfAConfigString) {
+  Keybind bind;
+  CHECK(parseAction(R"x(spawn grim -g "$(slurp)" out.png)x", bind));
+  const auto* spawn = umbriel::payloadIf<umbriel::SpawnArg>(bind);
+  CHECK_EQ(spawn != nullptr ? spawn->command : std::string{}, std::string{R"x(grim -g "$(slurp)" out.png)x"});
+  // Only the separating whitespace is dropped; a trailing escaped space belongs to the command.
+  CHECK(parseAction(R"x(spawn printf '%s' foo\ )x", bind));
+  spawn = umbriel::payloadIf<umbriel::SpawnArg>(bind);
+  CHECK_EQ(spawn != nullptr ? spawn->command : std::string{}, std::string{R"x(printf '%s' foo\ )x"});
+
+  const std::vector<std::string> words{"spawn", "kitty", "-e", "htop"};
+  CHECK(umbriel::parseActionWords(words, bind));
+  spawn = umbriel::payloadIf<umbriel::SpawnArg>(bind);
+  CHECK_EQ(spawn != nullptr ? spawn->command : std::string{}, std::string{"kitty -e htop"});
+}
+
+UMBRIEL_TEST(parsesActionWords) {
+  Keybind bind;
+  CHECK(!umbriel::parseActionWords(std::vector<std::string>{}, bind));
+  CHECK(!umbriel::parseActionWords(std::vector<std::string>{"workspace-switch:2"}, bind));
+  CHECK(umbriel::parseActionWords(std::vector<std::string>{"workspace-switch", "--name", "2"}, bind));
+  const auto* selector = umbriel::payloadIf<umbriel::WorkspaceArg>(bind);
+  const auto* name = selector != nullptr ? std::get_if<umbriel::WorkspaceName>(&selector->reference) : nullptr;
+  CHECK(name != nullptr && name->value == "2");
+  // IPC words are not split again.
+  CHECK(umbriel::parseActionWords(std::vector<std::string>{"workspace-switch", "My web"}, bind));
+  selector = umbriel::payloadIf<umbriel::WorkspaceArg>(bind);
+  name = selector != nullptr ? std::get_if<umbriel::WorkspaceName>(&selector->reference) : nullptr;
+  CHECK(name != nullptr && name->value == "My web");
+  CHECK(!umbriel::parseActionWords(std::vector<std::string>{"window-close", ""}, bind));
+}
+
+UMBRIEL_TEST(effectCycleRejectsOffAndLayoutToggleNeedsTwoModes) {
+  Keybind bind;
+  CHECK(!parseAction("effect-window-cycle off", bind));
+  CHECK(!parseAction("workspace-set-layout toggle master", bind));
+  CHECK(parseAction("window-move-to top_left -10 20 --window w", bind));
+}
+
+UMBRIEL_TEST(workspaceOutputTargetsReuseWorkspaceSelectors) {
+  const struct {
+    std::string_view input;
+    umbriel::WorkspaceMoveToOutputArg expected;
+  } cases[] = {
+      {"DP-2", {"DP-2", std::nullopt}},
+      {"--output DP-1 current --name 3", {"current", umbriel::WorkspaceArg{umbriel::WorkspaceName{"3"}, "DP-1"}}},
+      {"'Vendor Model Serial' 'My web'",
+       {"Vendor Model Serial", umbriel::WorkspaceArg{umbriel::WorkspaceName{"My web"}, ""}}},
+      {"DP-2 3 --output DP-1", {"DP-2", umbriel::WorkspaceArg{umbriel::WorkspaceIndex{3}, "DP-1"}}},
+  };
+  for (const auto& [input, expected] : cases) {
+    Keybind bind;
+    CHECK(parseAction("workspace-move-to-output " + std::string(input), bind));
+    const auto* arg = umbriel::payloadIf<umbriel::WorkspaceMoveToOutputArg>(bind);
+    CHECK(arg != nullptr && *arg == expected);
+  }
+  for (const std::string_view input :
+       {"workspace-move-to-output", "workspace-move-to-output DP-2 --output DP-1",
+        "workspace-move-to-output current WEB OTHER", "workspace-move-to-output current WEB --name WEB",
+        "workspace-move-to-output current WEB --output", "workspace-move-to-output current 0",
+        "workspace-move-to-output current 65", "workspace-move-to-output:DP-2/WEB/DP-1",
+        "workspace-move-to-output DP-2 WEB --output DP-1 --output DP-3"}) {
+    Keybind bind;
+    CHECK(!parseAction(input, bind));
+  }
 }
 
 int main() { return RUN_TESTS(); }

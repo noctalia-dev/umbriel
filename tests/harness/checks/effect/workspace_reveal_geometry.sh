@@ -11,7 +11,7 @@ FILL_COLOR=0xFFFF0000 RESIZE_FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" geome
 await_lines "$UMBRIEL_RUNTIME_DIR/a.log" mapped 1
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 FILL_COLOR=0xFF0000FF RESIZE_FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" geometry-b 1280 720 > "$UMBRIEL_RUNTIME_DIR/b.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/b.log" mapped 1
@@ -28,12 +28,12 @@ workspace_axis = "horizontal"
 CONFIG
   "$UMBRIEL" msg config-reload > /dev/null
   "$UMBRIEL" clock-freeze
-  "$UMBRIEL" msg workspace-switch:1 > /dev/null
+  "$UMBRIEL" msg workspace-switch 1 > /dev/null
   "$UMBRIEL" clock-advance 1000
   "$UMBRIEL" clock-resume
   "$UMBRIEL" settle
   "$UMBRIEL" clock-freeze
-  "$UMBRIEL" msg workspace-switch:2 > /dev/null
+  "$UMBRIEL" msg workspace-switch 2 > /dev/null
   "$UMBRIEL" clock-advance 500
   grim -s 1 -o HEADLESS-1 "$IMAGE"
   IFS=x read -r width height < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" size)
@@ -48,7 +48,7 @@ CONFIG
 done
 # Changing geometry during a held reveal must leave the native active destination intact.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" clock-advance 500
 sed -i 's/^scale = 1.25$/scale = 1.5/; s/^transform = .*/transform = "normal"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null

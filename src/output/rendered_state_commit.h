@@ -10,7 +10,7 @@ extern "C" {
 
 namespace umbriel {
 
-  enum class RenderedStateCommitResult {
+  enum class [[nodiscard]] RenderedStateCommitResult {
     BuildFailed,
     MissingBuffer,
     CommitFailed,
@@ -18,7 +18,7 @@ namespace umbriel {
   };
 
   template <typename Build, typename Commit>
-  [[nodiscard]] RenderedStateCommitResult commitRenderedState(wlr_output_state& state, Build&& build, Commit&& commit) {
+  RenderedStateCommitResult commitRenderedState(wlr_output_state& state, Build&& build, Commit&& commit) {
     if (!std::forward<Build>(build)(state)) {
       return RenderedStateCommitResult::BuildFailed;
     }

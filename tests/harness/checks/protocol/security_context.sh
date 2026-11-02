@@ -56,7 +56,6 @@ readonly -a RESTRICTED_GLOBALS=(
   zwp_virtual_keyboard_manager_v1
   zwlr_virtual_pointer_manager_v1
   zwlr_screencopy_manager_v1
-  zwlr_export_dmabuf_manager_v1
   ext_output_image_capture_source_manager_v1
   ext_foreign_toplevel_image_capture_source_manager_v1
   ext_image_copy_capture_manager_v1
@@ -68,6 +67,8 @@ readonly -a RESTRICTED_GLOBALS=(
 )
 
 "$GLOBAL_CLIENT" wp_security_context_manager_v1 present 1
+
+"$GLOBAL_CLIENT" zwlr_export_dmabuf_manager_v1 absent
 
 for interface in "${NORMAL_GLOBALS[@]}"; do
   "$GLOBAL_CLIENT" "$interface" present

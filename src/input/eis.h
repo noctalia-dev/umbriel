@@ -25,8 +25,8 @@ namespace umbriel {
     EisInput(const EisInput&) = delete;
     EisInput& operator=(const EisInput&) = delete;
 
-    [[nodiscard]] int socketFd() const;
-    [[nodiscard]] bool ownsDevice(const wlr_input_device* device) const;
+    int socketFd() const;
+    bool ownsDevice(const wlr_input_device* device) const;
     void setAuthenticate(PeerAuthentication authenticate);
     void setAuthorize(AuthorizationRequest authorize);
     void setAuthorizationCancelled(AuthorizationCancelled cancelled);
@@ -41,7 +41,7 @@ namespace umbriel {
     std::unique_ptr<Impl> m_impl;
     void addKeyboard(wlr_input_device* device);
     void addPointer(wlr_input_device* device);
-    [[nodiscard]] wlr_keyboard* sourceKeyboard() const;
+    wlr_keyboard* sourceKeyboard() const;
   };
 
 } // namespace umbriel

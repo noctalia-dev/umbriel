@@ -62,7 +62,7 @@ done
 "$UMBRIEL" settle
 
 # Park the float at the right-bottom clamp of its own output: x=1205/1280 and y=645/720 of the usable area.
-"$UMBRIEL" msg window-move-by:9999/9999 > /dev/null
+"$UMBRIEL" msg window-move-by 9999 9999 > /dev/null
 "$UMBRIEL" settle
 read -r sx sy sw sh < <(ipc_box)
 if ((sx != 1205 || sy != 645)); then

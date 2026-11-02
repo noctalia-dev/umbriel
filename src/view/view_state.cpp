@@ -410,13 +410,13 @@ namespace umbriel {
     // workspace's client_maximize, a floating window keeps the default behavior
     // whatever it says. The gesture passes the direction explicitly because it
     // computes the opposite of the current state at its second press.
-    if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(
-              maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
-          )) {
-        setMaximizedToEdges(maximized);
-        return;
-      }
+    if (m_tiled
+        && m_workspace != nullptr
+        && maximizeRequestTargetsEdges(
+            maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
+        )) {
+      setMaximizedToEdges(maximized);
+      return;
     }
     setMaximized(maximized);
   }
@@ -501,6 +501,10 @@ namespace umbriel {
   }
 
   void View::handleSetParent() {
+    refreshCaptureProtection();
+    if (m_xsurface != nullptr) {
+      m_server->xwaylandHintsChanged(this);
+    }
     if (m_mapped) {
       reconcileAttachment();
       // `match.is_dialog` follows the parent.
@@ -653,6 +657,12 @@ namespace umbriel {
         setFloating(true, false);
       }
       applyPinnedState();
+      // Pinning a window on a hidden workspace hands it to the output's active workspace.
+      if (m_workspace != nullptr && !m_workspace->active() && m_workspace->group() != nullptr) {
+        if (Workspace* active = m_workspace->group()->active(); active != nullptr && active->active()) {
+          setWorkspace(active);
+        }
+      }
       if (focus) {
         m_server->focusView(this);
       }
@@ -691,7 +701,7 @@ namespace umbriel {
     }
   }
 
-  void View::floatForLayout() {
+  void View::floatForStackingLayout() {
     if (m_tiled) {
       const bool fullscreen = scheduledFullscreen() || currentFullscreen();
       const auto restore = m_hasFullscreenRestoreBox ? std::optional{m_fullscreenRestoreBox} : std::nullopt;
@@ -706,12 +716,12 @@ namespace umbriel {
         }
       }
     }
-    m_layoutFloated = true;
+    m_floatedByStackingLayout = true;
   }
 
-  void View::adoptLayoutFloat() {
+  void View::adoptStackingLayoutFloat() {
     m_tiled = false;
-    m_layoutFloated = true;
+    m_floatedByStackingLayout = true;
     const bool fullscreen = scheduledFullscreen() || currentFullscreen();
     setSceneParent(fullscreen ? m_workspace->fullscreenTree() : m_workspace->viewLayer(false));
     m_workspace->syncFloatingStack(this);
@@ -721,8 +731,8 @@ namespace umbriel {
     if (!floating
         && placement == TilePlacement::Layout
         && m_workspace != nullptr
-        && m_workspace->layoutMode() == LayoutMode::Floating) {
-      m_layoutFloated = true;
+        && m_workspace->layoutMode() == LayoutMode::Stacking) {
+      m_floatedByStackingLayout = true;
       return;
     }
     assert(!attached());
@@ -746,9 +756,9 @@ namespace umbriel {
     if (!floating && m_minimized) {
       setMinimized(false);
     }
-    m_layoutFloated = false;
+    m_floatedByStackingLayout = false;
     if (!floating) {
-      clearSnapState();
+      clearRegionState();
     }
     if (m_maximizedToEdges) {
       setMaximizedToEdges(false, false);

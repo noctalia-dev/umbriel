@@ -26,8 +26,7 @@ output_y() {
 
 # Samples a 40x40 patch centered on the given point of an output-local screenshot.
 sample_at() {
-  magick "$1" -crop "40x40+$(($2 - 20))+$(($3 - 20))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean "40x40+$(($2 - 20))+$(($3 - 20))"
 }
 
 assert_blue_card() {
@@ -125,7 +124,7 @@ if [[ $workspace != "$target":* ]]; then
   exit 1
 fi
 moved_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "overview-output-move") | .id')
-"$UMBRIEL" msg "window-focus:$moved_id" > /dev/null
+"$UMBRIEL" msg window-focus "$moved_id" > /dev/null
 for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq -r '.[] | select(.active) | .title') == overview-output-move ]] && break
   sleep 0.05
@@ -186,7 +185,7 @@ assert_no_card source "$SOURCE_SHOT" 640 360
 
 # Selecting the destination's second workspace slides its previews sideways, because that output arranges workspaces
 # along X. The card of the workspace left behind must appear left of the active preview, not above or below it.
-"$UMBRIEL" msg "workspace-switch:2/$target" > /dev/null
+"$UMBRIEL" msg workspace-switch 2 --output "$target" > /dev/null
 "$UMBRIEL" settle
 grim -o "$target" "$TARGET_SHOT"
 assert_no_card "destination active preview" "$TARGET_SHOT" "$card_x" "$card_y"

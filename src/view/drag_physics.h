@@ -45,7 +45,7 @@ namespace umbriel {
     void resize(float width, float height, float grabX, float grabY);
     // The grab point as fractions of the box the sheet spans, for a pointer at (localX, localY); the box and the
     // pointer share one coordinate space.
-    [[nodiscard]] static std::array<float, 2>
+    static std::array<float, 2>
     grabIn(float boxX, float boxY, float boxWidth, float boxHeight, double localX, double localY);
     // Pointer delta in logical pixels since the previous call.
     void move(float dx, float dy);
@@ -54,19 +54,19 @@ namespace umbriel {
     // frame period `cadenceS` when it is known (> 0), settles immediately. Returns active().
     bool tick(double seconds, double cadenceS);
     bool tick(double seconds) { return tick(seconds, 0.0); }
-    [[nodiscard]] bool active() const { return m_active; }
-    [[nodiscard]] bool grabbed() const { return m_grabbed; }
-    [[nodiscard]] uint64_t transitionId() const { return m_transitionId; }
+    bool active() const { return m_active; }
+    bool grabbed() const { return m_grabbed; }
+    uint64_t transitionId() const { return m_transitionId; }
     // Displacements divided by the window size, as the shader expects.
-    [[nodiscard]] Sheet normalizedDisplacement() const;
+    Sheet normalizedDisplacement() const;
     // Largest displacement in logical pixels.
-    [[nodiscard]] float maxDisplacement() const;
+    float maxDisplacement() const;
     // Largest speed of any mass on either axis, in logical pixels per second.
-    [[nodiscard]] float maxVelocity() const;
+    float maxVelocity() const;
     // The displacement at (u, v) of the window (0-1) in logical pixels, interpolated as the shader does.
-    [[nodiscard]] std::array<float, 2> displacementAt(float u, float v) const;
+    std::array<float, 2> displacementAt(float u, float v) const;
     // The largest displacement constrain() allows on either axis, in logical pixels.
-    [[nodiscard]] float displacementBound() const;
+    float displacementBound() const;
 
   private:
     void setGrab(float grabX, float grabY);

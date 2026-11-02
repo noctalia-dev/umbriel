@@ -65,7 +65,7 @@ if [[ $(jq -r --arg id "$first_id" '.[] | select(.id == $id) | .floating' <<< "$
 fi
 
 # Focus the middle-created window so MRU restore differs from creation order.
-"$UMBRIEL" msg "window-focus:$anchor_id" > /dev/null
+"$UMBRIEL" msg window-focus "$anchor_id" > /dev/null
 wait_for_focus "$anchor_id"
 
 APP_ID=float-close-overlay "$CLIENT" "float-close-overlay" > "$UMBRIEL_RUNTIME_DIR/overlay.log" 2>&1 &
@@ -96,7 +96,7 @@ if [[ $overlay_floating != true ]]; then
 fi
 wait_for_focus "$overlay_id"
 
-"$UMBRIEL" msg "window-close:$overlay_id" > /dev/null
+"$UMBRIEL" msg window-close "$overlay_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/overlay.log" && break
   sleep 0.1

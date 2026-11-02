@@ -42,7 +42,7 @@ await_events "${X_FOCUS_LOGS[none]}" "button window=$NONE_TITLE code=1 state=pre
 assert_native_held clicking
 x_focus_native_key "$NATIVE_TITLE" "$NATIVE_LOG" 34
 
-"$UMBRIEL" msg "window-focus:$(x_focus_id "$NONE_TITLE")" > /dev/null
+"$UMBRIEL" msg window-focus "$(x_focus_id "$NONE_TITLE")" > /dev/null
 assert_native_held "explicit focusing"
 x_focus_native_key "$NATIVE_TITLE" "$NATIVE_LOG" 35
 
@@ -60,7 +60,7 @@ x_focus_stop passive
 x_focus_send none 'input true'
 await_events "${X_FOCUS_LOGS[none]}" input-requested=true 1 "the overlay allowing keyboard input"
 "$UMBRIEL" settle > /dev/null
-"$UMBRIEL" msg "window-focus:$(x_focus_id "$NONE_TITLE")" > /dev/null
+"$UMBRIEL" msg window-focus "$(x_focus_id "$NONE_TITLE")" > /dev/null
 eis_wait_active "$NONE_TITLE"
 eis_send sender 'tap 38'
 await_events "${X_FOCUS_LOGS[none]}" "key window=$NONE_TITLE code=46 state=pressed" 1 "the updated input hint's keyboard"

@@ -46,23 +46,31 @@ pointer_x=$(jq -r '(.x + .w / 2 | round)' <<< "$window")
 pointer_y=$(jq -r '(.y + .h / 2 | round)' <<< "$window")
 crop="48x48+$pointer_x+$pointer_y"
 
+# Pixels in the crop that differ from its top-left pixel: zero when the crop is one flat colour, so no cursor is drawn.
+off_corner_pixels() {
+  local predicate
+  predicate=$("$UMBRIEL_PIXEL_PROBE" "$1" pixel "$pointer_x" "$pointer_y" | awk '{
+    printf "r < %.4f || r > %.4f || g < %.4f || g > %.4f || b < %.4f || b > %.4f",
+      ($1 - 0.5) / 255, ($1 + 0.5) / 255, ($2 - 0.5) / 255, ($2 + 0.5) / 255, ($3 - 0.5) / 255, ($3 + 0.5) / 255
+  }')
+  "$UMBRIEL_PIXEL_PROBE" "$1" count "$predicate" "$crop"
+}
+
 # Keep the press down while a second helper sends a key. Separate connections
 # make both cursor-inclusive captures deterministic without timing guesses.
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" "$pointer_y" press "$LEFT_BUTTON" -- release "$LEFT_BUTTON"
 grim -c "$BEFORE"
-before_colors=$(magick "$BEFORE" -crop "$crop" +repage -format '%k' info:)
-if ((before_colors < 2)); then
-  echo "positive control did not capture a visible cursor: colors=$before_colors crop=$crop"
+before_pixels=$(off_corner_pixels "$BEFORE")
+if ((before_pixels == 0)); then
+  echo "positive control did not capture a visible cursor: crop=$crop"
   exit 1
 fi
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" tap 30
 grim -c "$AFTER"
-before_hash=$(magick "$BEFORE" -crop "$crop" +repage rgba:- | sha256sum | cut -d' ' -f1)
-after_hash=$(magick "$AFTER" -crop "$crop" +repage rgba:- | sha256sum | cut -d' ' -f1)
-if [[ $before_hash != "$after_hash" ]]; then
-  after_colors=$(magick "$AFTER" -crop "$crop" +repage -format '%k' info:)
-  echo "typing hid the cursor during a held button: before_colors=$before_colors after_colors=$after_colors"
+read -r _ changed < <("$UMBRIEL_PIXEL_PROBE" "$BEFORE" diff "$AFTER" "$crop")
+if ((changed != 0)); then
+  echo "typing hid the cursor during a held button: $changed pixels changed in $crop"
   exit 1
 fi
 

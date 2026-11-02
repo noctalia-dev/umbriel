@@ -19,7 +19,9 @@ output_x() {
 
 # The workspace row is the output box scaled by `zoom` and centered, so 1280x800 at 0.5 puts it at 640x400+320+200.
 row_green() {
-  magick "$1" -crop 640x400+320+200 +repage -format '%[fx:round(255*mean.g)]' info:
+  local green
+  read -r _ green _ < <("$UMBRIEL_PIXEL_PROBE" "$1" mean 640x400+320+200)
+  echo "$green"
 }
 
 assert_markers() {

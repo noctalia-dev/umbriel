@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# harness: config-watch=true
 # Observe shader-specific intermediate colors, source sampling, completion,
 # closing snapshots, and automatic reload of an imported GLSL file.
 set -euo pipefail
@@ -51,8 +52,7 @@ spawn() {
 
 sample() {
   grim "$IMAGE"
-  read -r red green blue < <(magick "$IMAGE" -crop "8x8+${sample_x}+${sample_y}" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]\n' info:)
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "8x8+${sample_x}+${sample_y}")
 }
 
 # Animation time only moves by clock-advance: opening samples land at 120 ms and 770 ms (progress 0.075 and 0.48),
@@ -79,7 +79,7 @@ if ! (( blue > 80 && red < 200 )); then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 150
 sample
 if ! (( green > 220 && red < 30 && blue < 30 )); then

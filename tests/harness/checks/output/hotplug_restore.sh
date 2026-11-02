@@ -55,8 +55,8 @@ wait_for_home() {
 
 move_to_workspace() {
   local title=$1 selector=$2
-  "$UMBRIEL" msg "window-focus:$(field_of "$title" id)" > /dev/null
-  "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field_of "$title" id)" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "${selector%%/*}" --output "${selector#*/}" > /dev/null
   wait_for_home "$title" "${selector#*/}/${selector%%/*}"
 }
 
@@ -96,7 +96,7 @@ move_to_workspace hotplug-second 2/HEADLESS-1
 spawn_client hotplug-other
 wait_for_count 3
 move_to_workspace hotplug-other 1/HEADLESS-2
-"$UMBRIEL" msg workspace-switch:3/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 --output HEADLESS-1 > /dev/null
 "$FOREIGN_TOPLEVEL" hotplug-first HEADLESS-1
 "$FOREIGN_TOPLEVEL" hotplug-second HEADLESS-1
 

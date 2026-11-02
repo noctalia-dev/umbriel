@@ -30,8 +30,9 @@ def read_line(client, buffer):
     return json.loads(line), buffer
 
 
-def action(name):
-    result = subprocess.run([umbriel, "msg", name], capture_output=True, text=True, timeout=5)
+def action(*words):
+    name = " ".join(words)
+    result = subprocess.run([umbriel, "msg", *words], capture_output=True, text=True, timeout=5)
     if result.returncode != 0:
         raise SystemExit(f"{name} was rejected: {result.stderr.strip()}")
 
@@ -58,20 +59,20 @@ if response != {"ok": None}:
 output = json.loads(
     subprocess.run([umbriel, "outputs", "--json"], check=True, capture_output=True, text=True, timeout=5).stdout
 )[0]["name"]
-set_output = f"screencast-set-output:{output}"
+set_output = ["screencast-set-output", output]
 
 # The first request opens the warning and publishes nothing. A click dismisses
 # it, so the next request must open a fresh warning instead of being treated as
 # approval.
-action(set_output)
+action(*set_output)
 expect_no_event(client, "the first target change")
 subprocess.run([pointer, "1280", "720", "click", button], check=True, timeout=5)
-action(set_output)
+action(*set_output)
 expect_no_event(client, "the target change after dismissal")
 
 # Repeating a protected action while its warning is visible confirms it. Once
 # confirmed, further target-changing actions publish immediately.
-action(set_output)
+action(*set_output)
 event, buffer = read_line(client, buffer)
 data = event.get("data", {})
 if data.get("kind") != "output" or data.get("output") != output or data.get("serial") != 1:

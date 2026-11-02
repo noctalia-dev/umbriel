@@ -17,7 +17,7 @@ namespace umbriel {
 
   // "<make> <model> <serial>", with "Unknown" for any field the display does not report. Names an output by panel
   // rather than port; shown by `umbriel outputs`.
-  [[nodiscard]] std::string outputDescriptor(const OutputIdentity& identity);
+  std::string outputDescriptor(const OutputIdentity& identity);
 
   enum class OutputNameMatch {
     None,
@@ -25,11 +25,11 @@ namespace umbriel {
     Descriptor,
   };
 
-  [[nodiscard]] bool outputNamesEqual(std::string_view left, std::string_view right);
+  bool outputNamesEqual(std::string_view left, std::string_view right);
 
   // Virtual output names use ASCII letters, digits, '-', '_' and '.', so they fit the "<output>:<n>" workspace IDs
   // and "<workspace>/<output>" action targets.
-  [[nodiscard]] bool validVirtualOutputName(std::string_view name);
+  bool validVirtualOutputName(std::string_view name);
 
   // Return which configured output-name form refers to this identity.
   //
@@ -37,6 +37,6 @@ namespace umbriel {
   // display reporting no make, model or serial can only be named by its
   // connector. The descriptor form is not attempted for it because every such
   // output would otherwise answer to "Unknown Unknown Unknown".
-  [[nodiscard]] OutputNameMatch outputNameMatch(const OutputIdentity& identity, std::string_view configured);
+  OutputNameMatch outputNameMatch(const OutputIdentity& identity, std::string_view configured);
 
 } // namespace umbriel

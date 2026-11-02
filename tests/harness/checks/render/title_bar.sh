@@ -12,7 +12,7 @@ image=$UMBRIEL_RUNTIME_DIR/title-bar.png
 grim -o HEADLESS-1 "$image"
 read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 180 85)
 awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(r > 240 && g < 12 && b > 240) }'
-read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 639 95)
+read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 633 95)
 awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(g > 200 && r < 64 && b < 64) }'
 
 # Explicit client-side decoration keeps client controls; no preference uses the default.
@@ -51,17 +51,17 @@ first=$(rg -m 1 '^configure ' "$UMBRIEL_RUNTIME_DIR/tile.log")
 
 # Tab groups replace SSD title bars, and leaving the group restores the frame.
 tile_id=$(title_bar_window ssd-tile-render | jq -r '.id')
-"$UMBRIEL" msg "window-focus:$tile_id" > /dev/null
-"$UMBRIEL" msg column-set-display:tabbed > /dev/null
+"$UMBRIEL" msg window-focus "$tile_id" > /dev/null
+"$UMBRIEL" msg column-set-display tabbed > /dev/null
 title_bar_wait_field ssd-tile-render tabbed true
 title_bar_wait_field ssd-tile-render title_bar false
-"$UMBRIEL" msg column-set-display:normal > /dev/null
+"$UMBRIEL" msg column-set-display normal > /dev/null
 title_bar_wait_field ssd-tile-render tabbed false
 title_bar_wait_field ssd-tile-render title_bar true
 
 # Every tiling mode keeps content below its title bar when the setting changes.
 for mode in dwindle master; do
-  "$UMBRIEL" msg "workspace-set-layout:$mode" > /dev/null
+  "$UMBRIEL" msg workspace-set-layout "$mode" > /dev/null
   "$UMBRIEL" settle > /dev/null
   y=$(title_bar_window ssd-tile-render | jq -r '.y')
   ((y >= 28))
@@ -89,7 +89,7 @@ count=$("$UMBRIEL_PIXEL_PROBE" "$image" count 'r > 0.8 && g < 0.2 && b > 0.8')
 
 # A close snapshot keeps the frame and fades it with the client, rather than leaving an opaque bar.
 float_id=$(title_bar_window ssd-float-render | jq -r '.id')
-"$UMBRIEL" msg "window-focus:$float_id" > /dev/null
+"$UMBRIEL" msg window-focus "$float_id" > /dev/null
 sed -i '/^\[animation\]$/ { n; s/enabled = false/enabled = true/; }' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation.windows_out]
@@ -101,7 +101,7 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" clock-freeze > /dev/null
-"$UMBRIEL" msg "window-close:$float_id" > /dev/null
+"$UMBRIEL" msg window-close "$float_id" > /dev/null
 title_bar_wait_absent ssd-float-render
 grim -o HEADLESS-1 "$image"
 read -r red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 180 85)

@@ -62,7 +62,7 @@ stdenv.mkDerivation {
     libdrm
     libdisplay-info
     libgbm
-    libxcb
+    libxcb # Includes xcb-randr; development files are selected automatically for builds.
     libxcb-wm
     lcms2
     jemalloc

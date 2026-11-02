@@ -24,7 +24,7 @@ namespace umbriel {
     void finish();
     void dropWithoutTarget(uint32_t button);
     bool rejectSelection(wlr_data_source* source);
-    [[nodiscard]] bool attached(const wlr_xdg_toplevel* toplevel) const;
+    bool attached(const wlr_xdg_toplevel* toplevel) const;
     void mapped(View* view, bool tileOnDrop);
     void unmapped(View* view);
 
@@ -32,7 +32,7 @@ namespace umbriel {
     struct Drag;
     static void bind(wl_client* client, void* data, uint32_t version, uint32_t id);
     static void destroyManager(wl_resource* resource);
-    static void getDrag(wl_client* client, wl_resource* manager, uint32_t id, wl_resource* source);
+    static void getDrag(wl_client* client, wl_resource* resource, uint32_t id, wl_resource* source);
     static void destroyDrag(wl_resource* resource);
     static void requestDestroy(wl_client* client, wl_resource* resource);
     static void attach(wl_client* client, wl_resource* resource, wl_resource* toplevel, int32_t x, int32_t y);

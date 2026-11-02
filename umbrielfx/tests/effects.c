@@ -5,6 +5,7 @@
 #include "render_fixture.h"
 #include "umbrielfx/render/effect.h"
 #include "umbrielfx/render/pass.h"
+#include "umbrielfx/types/scene_capture.h"
 
 #include <stdarg.h>
 #include <wlr/util/log.h>
@@ -1428,6 +1429,73 @@ static bool test_border_light(struct fixture* fixture) {
   return ok;
 }
 
+// Border light remains in ordinary effect captures and uses independent
+// inputs when capture exclusion is active.
+static bool test_border_light_capture(struct fixture* fixture) {
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  const float black[4] = {0, 0, 0, 1}, white[4] = {1, 1, 1, 1};
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, black);
+  struct wlr_scene_border* border = wlr_scene_border_create(&scene->tree, white, white);
+  wlr_scene_border_set_geometry(
+      border, 8, 8, 2, 0, (struct clipped_region){.area = {2, 2, 4, 4}}, (struct fx_corner_radii){0},
+      (struct fx_corner_radii){0}
+  );
+  wlr_scene_node_set_position(&border->node, 4, 4);
+  wlr_scene_set_effect_light_layer(scene, wlr_scene_tree_create(&scene->tree));
+  struct fx_effect_shader* program =
+      fx_effect_shader_create(fixture->renderer, FX_EFFECT_BORDER, kLeftEdgeSource, "border-light-capture");
+  struct fx_effect_shader* window = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_WINDOW, kSources[FX_EFFECT_WINDOW], "border-light-capture-window"
+  );
+  bool ok = check(swapchain != NULL && program != NULL && window != NULL, "capture swapchain and shaders");
+  struct fx_animation_parameters parameters = {
+      .progress = 1,
+      .linear_progress = 1,
+      .direction = 1,
+      .light = {.enabled = true, .spread = 3, .intensity = 4, .threshold = 0.1f},
+  };
+  fx_parameters_add_uniform(&parameters, "edge", FX_UNIFORM_FLOAT, 1)->floats[0] = 2;
+  wlr_scene_node_set_animation(&border->node, FX_SLOT_BORDER_EFFECT, program, &parameters);
+  wlr_scene_node_set_animation(&border->node, FX_SLOT_WINDOW, window, &parameters);
+  wlr_scene_output_set_effect_capture_policy(output, false);
+  ok = ok && warm_up(output, swapchain);
+  for (int frame = 0; ok && frame < 4; ++frame) {
+    const bool excluded = frame == 3;
+    ok &= check(umbrielfx_scene_node_set_capture_excluded(&border->node, excluded), "set border protection");
+    const struct wlr_scene_output_state_options options = {
+        .swapchain = swapchain,
+        .effect_capture_pending = true,
+        .capture_exclusion = frame == 1 || excluded,
+    };
+    wlr_scene_output_damage_whole_for_test(output);
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    const bool built = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+    ok &= check(built, "build light capture");
+    if (built) {
+      uint8_t display[4], capture[4];
+      const bool read = fixture_read_display_pixel(fixture, state.buffer, 2, 8, display)
+          && fixture_read_pixel(fixture, state.buffer, 2, 8, capture);
+      ok &= check(read, "read local and captured light spill");
+      if (read) {
+        ok &= check(display[2] > 20, "local border light remains visible");
+        ok &= check(
+            excluded ? capture[2] < 5 : capture[2] > 20,
+            excluded ? "protected border light is absent from capture" : "eligible border light remains in capture"
+        );
+      }
+    }
+    wlr_output_state_finish(&state);
+  }
+  fx_effect_shader_unref(program);
+  fx_effect_shader_unref(window);
+  wlr_scene_node_destroy(&scene->tree.node);
+  wlr_swapchain_destroy(swapchain);
+  return ok;
+}
+
 // The single light proxy in `layer`, or NULL when it holds none.
 static struct wlr_scene_rect* light_proxy(struct wlr_scene_tree* layer) {
   if (wl_list_length(&layer->children) != 1) {
@@ -1782,6 +1850,206 @@ static bool test_damage_expansion(struct fixture* fixture) {
   wlr_output_state_finish(&state);
   fx_effect_shader_unref(mirror);
   wlr_scene_node_destroy(&scene->tree.node);
+  wlr_swapchain_destroy(swapchain);
+  return ok;
+}
+
+static struct wlr_buffer* capture_test_buffer(struct fixture* fixture, const float color[4]) {
+  struct wlr_buffer* buffer = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+  if (buffer == NULL) {
+    return NULL;
+  }
+  struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, buffer, NULL);
+  if (pass == NULL) {
+    wlr_buffer_drop(buffer);
+    return NULL;
+  }
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = {0, 0, TEST_WIDTH, TEST_HEIGHT},
+          .color = {color[0], color[1], color[2], color[3]},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  if (!wlr_render_pass_submit(pass)) {
+    wlr_buffer_drop(buffer);
+    return NULL;
+  }
+  return buffer;
+}
+
+struct capture_test_samples {
+  struct wl_listener listener;
+  unsigned count;
+};
+
+static void capture_test_sample(struct wl_listener* listener, void* data) {
+  (void)data;
+  struct capture_test_samples* samples = wl_container_of(listener, samples, listener);
+  samples->count++;
+}
+
+// Independently observe local/captured pixels and sampling of buffers used only
+// by one composition. A fully covered buffer must retain its display visibility.
+static bool test_capture_exclusion(struct fixture* fixture) {
+  struct wlr_scene* scene = wlr_scene_create();
+  wlr_scene_set_blur_data(scene, 0, 0, 0, 1, 1, 1);
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  const float blue[4] = {0, 0, 1, 1}, green[4] = {0, 1, 0, 1}, red[4] = {1, 0, 0, 1};
+  struct wlr_scene_tree* desktop = wlr_scene_tree_create(&scene->tree);
+  struct wlr_scene_tree* content = wlr_scene_tree_create(desktop);
+  struct wlr_buffer* underneath_buffer = capture_test_buffer(fixture, blue);
+  struct wlr_scene_buffer* underneath = wlr_scene_buffer_create(content, underneath_buffer);
+  wlr_buffer_drop(underneath_buffer);
+  struct wlr_scene_tree* protected = wlr_scene_tree_create(desktop);
+  struct wlr_buffer* top_buffer = capture_test_buffer(fixture, red);
+  struct wlr_scene_buffer* top = wlr_scene_buffer_create(protected, top_buffer);
+  wlr_buffer_drop(top_buffer);
+  pixman_region32_t opaque;
+  pixman_region32_init_rect(&opaque, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_buffer_set_opaque_region(top, &opaque);
+  pixman_region32_fini(&opaque);
+  struct capture_test_samples lower_samples = {.listener.notify = capture_test_sample};
+  struct capture_test_samples top_samples = {.listener.notify = capture_test_sample};
+  wl_signal_add(&underneath->events.output_sample, &lower_samples.listener);
+  wl_signal_add(&top->events.output_sample, &top_samples.listener);
+  bool ok = check(umbrielfx_scene_node_set_capture_excluded(&protected->node, true), "tag subtree");
+  struct wlr_scene_output_state_options options = {.swapchain = swapchain, .capture_exclusion = true};
+  for (int frame = 0; frame < 3; ++frame) {
+    if (frame == 1) {
+      // This node is completely occluded on the display, but must still damage capture.
+      struct wlr_buffer* updated = capture_test_buffer(fixture, green);
+      wlr_scene_buffer_set_buffer(underneath, updated);
+      wlr_buffer_drop(updated);
+    } else if (frame == 2) {
+      // Exclusion must not bypass a disabled desktop ancestor (e.g. the lock scene).
+      wlr_scene_node_set_enabled(&desktop->node, false);
+    }
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    bool built = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+    ok &= check(built, "build excluded frame");
+    if (built) {
+      uint8_t display[4], capture[4];
+      ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display);
+      ok &= fixture_read_pixel(fixture, state.buffer, 8, 8, capture);
+      if (frame < 2) {
+        ok &= check(display[2] > 250 && display[1] < 5 && display[0] < 5, "local display retains protected red");
+        ok &= check(capture[2] < 5 && capture[frame == 0 ? 0 : 1] > 250, "capture reveals updating covered content");
+        ok &= check(pixman_region32_empty(&underneath->node.visible), "display visibility stays occluded");
+        ok &= check(lower_samples.count == (unsigned)frame + 1, "capture-only buffer sampled once per frame");
+        ok &= check(top_samples.count == (unsigned)frame + 1, "display-only protected buffer sampled once per frame");
+      } else {
+        ok &= check(capture[0] < 5 && capture[1] < 5 && capture[2] < 5, "disabled desktop stays hidden in capture");
+      }
+    }
+    wlr_output_state_finish(&state);
+  }
+  wlr_scene_node_set_enabled(&desktop->node, true);
+  wlr_scene_tree_set_clip(content, &(struct wlr_box){0, 0, 8, TEST_HEIGHT});
+  struct wlr_output_state clipped;
+  wlr_output_state_init(&clipped);
+  bool clipped_built = wlr_scene_output_build_state(output, &clipped, &options) && clipped.buffer != NULL;
+  ok &= check(clipped_built, "build ancestor-clipped capture");
+  if (clipped_built) {
+    uint8_t inside[4], outside[4];
+    ok &= fixture_read_pixel(fixture, clipped.buffer, 4, 8, inside)
+        && fixture_read_pixel(fixture, clipped.buffer, 12, 8, outside)
+        && check(
+              inside[1] > 250 && outside[1] < 5 && outside[2] < 5 && outside[0] < 5,
+              "capture respects the underlying subtree clip"
+        );
+  }
+  wlr_output_state_finish(&clipped);
+  fx_renderer_fail_effect_capture_for_test(fixture->renderer, true);
+  struct wlr_output_state state;
+  wlr_output_state_init(&state);
+  const bool failure_built = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+  ok &= check(failure_built, "capture failure preserves local display progress");
+  if (failure_built) {
+    uint8_t display[4];
+    ok &= fixture_read_display_pixel(fixture, state.buffer, 8, 8, display)
+        && check(display[2] > 250 && display[1] < 5, "failed capture still displays protected red locally");
+    struct wlr_texture* denied = wlr_texture_from_buffer(fixture->renderer, state.buffer);
+    uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4];
+    ok &= check(
+        denied != NULL && wlr_texture_preferred_read_format(denied) != DRM_FORMAT_INVALID,
+        "protected buffer supports format discovery"
+    );
+    ok &= check(
+        denied != NULL
+            && !wlr_texture_read_pixels(
+                denied,
+                &(struct wlr_texture_read_pixels_options){
+                    .data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4
+                }
+            ),
+        "failed capture refuses pixel reads"
+    );
+    struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+    struct wlr_render_pass* copy =
+        target != NULL ? wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL) : NULL;
+    ok &= check(copy != NULL && denied != NULL, "create DMA-BUF copy attempt");
+    if (copy != NULL) {
+      if (denied != NULL) {
+        wlr_render_pass_add_texture(copy, &(struct wlr_render_texture_options){.texture = denied});
+      }
+      ok &= check(!wlr_render_pass_submit(copy), "failed capture refuses GPU copies");
+    }
+    wlr_buffer_drop(target);
+    wlr_texture_destroy(denied);
+  }
+  wlr_output_state_finish(&state);
+  fx_renderer_fail_effect_capture_for_test(fixture->renderer, false);
+  ok &= check(umbrielfx_scene_node_set_capture_excluded(&protected->node, false), "remove exclusion");
+  options.capture_exclusion = false;
+  wlr_output_state_init(&state);
+  const bool restored = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+  ok &= check(restored, "restore ordinary composition");
+  if (restored) {
+    uint8_t capture[4];
+    ok &= fixture_read_pixel(fixture, state.buffer, 8, 8, capture)
+        && check(capture[2] > 250 && capture[1] < 5, "no stale excluded image after unprotecting");
+    // A rule change must invalidate already-rendered output buffers before a
+    // subsequent render or protocol-ready event has a chance to run.
+    ok &= umbrielfx_scene_node_set_capture_excluded(&protected->node, true);
+    struct wlr_texture* denied = wlr_texture_from_buffer(fixture->renderer, state.buffer);
+    uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4];
+    ok &= check(
+        denied != NULL
+            && !wlr_texture_read_pixels(
+                denied,
+                &(struct wlr_texture_read_pixels_options){
+                    .data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = TEST_WIDTH * 4
+                }
+            ),
+        "protection immediately closes the old-buffer read path"
+    );
+    wlr_texture_destroy(denied);
+  }
+  wlr_output_state_finish(&state);
+  struct wlr_scene_tree* retained = wlr_scene_tree_create(&scene->tree);
+  ok &= umbrielfx_scene_node_share_capture_policy(&retained->node, &protected->node);
+  ok &= umbrielfx_scene_node_set_capture_excluded(&protected->node, false);
+  ok &= check(!umbrielfx_scene_node_capture_excluded(&retained->node), "retained copy follows owner policy changes");
+  ok &= umbrielfx_scene_node_set_capture_excluded(&protected->node, true);
+  wl_list_remove(&lower_samples.listener.link);
+  wl_list_remove(&top_samples.listener.link);
+  wlr_scene_node_destroy(&protected->node);
+  ok &= check(
+      umbrielfx_scene_node_capture_excluded(&retained->node), "retained copy remains protected after owner death"
+  );
+  ok &= check(umbrielfx_scene_has_capture_exclusion(scene), "retained protection keeps capture composition active");
+  struct wlr_scene* other = wlr_scene_create();
+  wlr_scene_node_reparent(&retained->node, &other->tree);
+  ok &= check(
+      umbrielfx_scene_has_capture_exclusion(other) && !umbrielfx_scene_has_capture_exclusion(scene),
+      "reparenting transfers retained protection between scenes"
+  );
+  wlr_scene_node_destroy(&scene->tree.node);
+  wlr_scene_node_destroy(&other->tree.node);
   wlr_swapchain_destroy(swapchain);
   return ok;
 }
@@ -2860,6 +3128,8 @@ int main(int argc, char* argv[]) {
     ok = test_border_geometry_tree(&fixture);
   } else if (strcmp(argv[1], "border-light") == 0) {
     ok = test_border_light(&fixture);
+  } else if (strcmp(argv[1], "border-light-capture") == 0) {
+    ok = test_border_light_capture(&fixture);
   } else if (strcmp(argv[1], "border-light-hdr-low-alpha") == 0) {
     ok = test_border_light_hdr_low_alpha(&fixture);
   } else if (strcmp(argv[1], "border-light-lifecycle") == 0) {
@@ -2880,6 +3150,8 @@ int main(int argc, char* argv[]) {
     ok = test_capture_feedback(&fixture);
   } else if (strcmp(argv[1], "in-place-feedback") == 0) {
     ok = test_in_place_feedback(&fixture);
+  } else if (strcmp(argv[1], "capture-exclusion") == 0) {
+    ok = test_capture_exclusion(&fixture);
   } else if (strcmp(argv[1], "capture-composition") == 0) {
     ok = test_capture_composition(&fixture);
   } else if (strcmp(argv[1], "in-place-shape") == 0) {

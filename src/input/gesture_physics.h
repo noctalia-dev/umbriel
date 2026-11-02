@@ -22,14 +22,14 @@ namespace umbriel {
     static constexpr double kOverscrollLimit = 0.05;
 
     // Damped position: unchanged inside [minimum, maximum], approaching `limit` steps past either end outside it.
-    [[nodiscard]] static double rubberBand(double position, double minimum, double maximum, double limit) {
+    static double rubberBand(double position, double minimum, double maximum, double limit) {
       const double clamped = std::clamp(position, minimum, maximum);
       return clamped + std::copysign(overscroll(std::abs(position - clamped), limit), position - clamped);
     }
 
     // How much of the finger's travel still reaches the content at `position`, as a fraction. A release carries its
     // speed through the same factor, so letting go while pushed past an end cannot fling the step.
-    [[nodiscard]] static double rubberBandDerivative(double position, double minimum, double maximum, double limit) {
+    static double rubberBandDerivative(double position, double minimum, double maximum, double limit) {
       if (minimum <= position && position <= maximum) {
         return 1.0;
       }
@@ -40,14 +40,14 @@ namespace umbriel {
 
     // The step a release lands on: where the projection comes to rest, clamped to the steps that exist, then rounded
     // onto one of them.
-    [[nodiscard]] static int stepTarget(double projected, int minimum, int maximum) {
+    static int stepTarget(double projected, int minimum, int maximum) {
       const double clamped = std::clamp(projected, static_cast<double>(minimum), static_cast<double>(maximum));
       return static_cast<int>(std::lround(clamped));
     }
 
     // Reduce the effect of the overview zoom on touchpad travel, rather than multiplying sensitivity by the full
     // inverse zoom.
-    [[nodiscard]] static double zoomScale(double zoom) { return 1.0 / (1.0 + (zoom - 1.0) / 2.5); }
+    static double zoomScale(double zoom) { return 1.0 / (1.0 + (zoom - 1.0) / 2.5); }
 
     // What a released gesture settles on. Nothing here is a threshold: the projection decides the landing, so a short
     // flick and a long drag that end in the same place land differently only because of how fast they were going.
@@ -61,7 +61,7 @@ namespace umbriel {
     // the progress it began from for the overview. `minimum` and `maximum` are the whole steps that exist. The caller
     // feeds the tracker a zero-delta sample at the release time first, so idle time before letting go bleeds off the
     // speed.
-    [[nodiscard]] static StepRelease
+    static StepRelease
     release(const SwipeTracker& tracker, double unitsPerStep, double origin, double minimum, double maximum) {
       const double travelled = origin + tracker.pos() / unitsPerStep;
       const double position = rubberBand(travelled, minimum, maximum, kOverscrollLimit);
@@ -79,7 +79,7 @@ namespace umbriel {
 
   private:
     // Extra steps a position ends up outside its range, for `excess` steps of finger travel past the end.
-    [[nodiscard]] static double overscroll(double excess, double limit) {
+    static double overscroll(double excess, double limit) {
       return limit * (1.0 - 1.0 / (1.0 + kOverscrollStiffness * excess / limit));
     }
   };

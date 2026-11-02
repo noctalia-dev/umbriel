@@ -9,10 +9,10 @@ readonly BEFORE="$UMBRIEL_RUNTIME_DIR/maximize-to-edges-before.png"
 readonly DURING="$UMBRIEL_RUNTIME_DIR/maximize-to-edges-during.png"
 readonly AFTER="$UMBRIEL_RUNTIME_DIR/maximize-to-edges-after.png"
 
+# Pixels on the middle row within 2% of the client's #5577AA fill.
 presented_width() {
-  magick "$1" -alpha off -crop 1280x1+0+360 +repage -fuzz 2% \
-    -fill black +opaque '#5577AA' -fill white -opaque '#5577AA' -colorspace gray \
-    -format '%[fx:round(w*mean)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" count \
+    'r > 0.313 && r < 0.354 && g > 0.447 && g < 0.487 && b > 0.647 && b < 0.687' 1280x1+0+360
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'

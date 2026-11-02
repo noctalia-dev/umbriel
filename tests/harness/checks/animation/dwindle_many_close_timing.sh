@@ -126,7 +126,7 @@ if [[ -z $CLOSE_ID ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$CLOSE_ID" > /dev/null
+"$UMBRIEL" msg window-close "$CLOSE_ID" > /dev/null
 for _ in $(seq 100); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-root.log" && break
   sleep 0.025
@@ -138,16 +138,22 @@ fi
 
 request_ms=0
 frame_count=$(((OUT_MS + 350) / SAMPLE_MS + 1))
-declare -a sample_times=() probes=()
-# Each frame is measured in the background while the next one is captured.
+declare -a sample_times=()
 for ((i = 0; i < frame_count; i++)); do
   ((i > 0)) && "$UMBRIEL" clock-advance "$SAMPLE_MS"
   grim "$SHOTS/frame-$i.png"
   sample_times[$i]=$((i * SAMPLE_MS))
-  measure_frame "$SHOTS/frame-$i" &
-  probes+=($!)
 done
-wait "${probes[@]}"
+# Frames are measured in parallel. The subshell's only children are the measurements, so each wait -n reaps one and
+# fails the check if it failed.
+(
+  for ((i = 0; i < frame_count; i++)); do
+    measure_frame "$SHOTS/frame-$i" &
+  done
+  for ((i = 0; i < frame_count; i++)); do
+    wait -n
+  done
+)
 
 readonly colours=(red green blue yellow)
 declare -A box_x=() box_y=() box_w=() box_h=()

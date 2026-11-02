@@ -6,7 +6,7 @@
 #include "config/effects.h"
 #include "config/window_position.h"
 #include "layout/layout.h"
-#include "view/snap.h"
+#include "view/window_region.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -134,10 +134,13 @@ namespace umbriel {
     ColumnMoveToOutputRight,
     ColumnMoveToOutputUp,
     ColumnMoveToOutputDown,
+    WorkspaceMoveToOutput,
     WorkspaceMoveToOutputLeft,
     WorkspaceMoveToOutputRight,
     WorkspaceMoveToOutputUp,
     WorkspaceMoveToOutputDown,
+    WorkspaceMoveToOutputNext,
+    WorkspaceMoveToOutputPrevious,
     WorkspaceSwapActiveOutputLeft,
     WorkspaceSwapActiveOutputRight,
     WorkspaceSwapActiveOutputUp,
@@ -210,8 +213,8 @@ namespace umbriel {
     ScratchpadWindowShowPrevious,
     LayoutToggleSplit,
     OutputSdrWhite,
-    WindowSnap,
-    WindowUnsnap,
+    WindowSetRegion,
+    WindowClearRegion,
     Count,
   };
 
@@ -225,7 +228,7 @@ namespace umbriel {
     bool operator==(const SubmapArg&) const = default;
   };
 
-  [[nodiscard]] inline bool validSubmapName(std::string_view name) {
+  inline bool validSubmapName(std::string_view name) {
     return !name.empty() && name != "disable" && !name.contains(']');
   }
 
@@ -251,6 +254,11 @@ namespace umbriel {
     std::string output; // empty = the focused output
     bool operator==(const OutputArg&) const = default;
   };
+  struct WorkspaceMoveToOutputArg {
+    std::string destination;
+    std::optional<WorkspaceArg> workspace; // absent = the active workspace
+    bool operator==(const WorkspaceMoveToOutputArg&) const = default;
+  };
   struct ScratchpadArg {
     std::string name; // empty = the implicit default scratchpad
     bool operator==(const ScratchpadArg&) const = default;
@@ -262,12 +270,12 @@ namespace umbriel {
   struct LayoutModeArg {
     std::optional<LayoutMode> mode; // nullopt toggles through toggleSequence
     std::vector<LayoutMode>
-        toggleSequence; // distinct modes in toggle order; empty = scrolling, dwindle, master, floating
+        toggleSequence; // distinct modes in toggle order; empty = scrolling, dwindle, master, stacking
     bool operator==(const LayoutModeArg&) const = default;
   };
-  struct SnapRegionArg {
-    SnapRegion region = SnapRegion::Left;
-    bool operator==(const SnapRegionArg&) const = default;
+  struct WindowRegionArg {
+    WindowRegion region = WindowRegion::Left;
+    bool operator==(const WindowRegionArg&) const = default;
   };
   struct ColumnDisplayArg {
     ColumnDisplay display = ColumnDisplay::Normal;
@@ -317,7 +325,7 @@ namespace umbriel {
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
       LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
-      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, SnapRegionArg>;
+      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, WindowRegionArg, WorkspaceMoveToOutputArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -343,22 +351,20 @@ namespace umbriel {
   };
 
   // Null unless the bind carries that payload alternative.
-  template <typename Arg> [[nodiscard]] const Arg* payloadIf(const Keybind& bind) {
-    return std::get_if<Arg>(&bind.payload);
-  }
+  template <typename Arg> const Arg* payloadIf(const Keybind& bind) { return std::get_if<Arg>(&bind.payload); }
 
   // "reset" pops the current submap instead of pushing a new one. Recognised in
   // both the action and matcher so a default-context bind can be an emergency exit.
-  [[nodiscard]] inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
+  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
 
-  [[nodiscard]] inline bool isSubmapResetBind(const Keybind& bind) {
+  inline bool isSubmapResetBind(const Keybind& bind) {
     const auto* arg = payloadIf<SubmapArg>(bind);
     return bind.action == KeybindAction::Submap && arg != nullptr && isSubmapReset(*arg);
   }
 
   // The cheatsheet's own binds must not dismiss it: the press or chord that
   // opened the overlay would otherwise close it again in the same event.
-  [[nodiscard]] inline bool isCheatsheetAction(KeybindAction action) {
+  inline bool isCheatsheetAction(KeybindAction action) {
     return action == KeybindAction::CheatsheetToggle
         || action == KeybindAction::CheatsheetOpen
         || action == KeybindAction::CheatsheetClose;
@@ -367,8 +373,10 @@ namespace umbriel {
   enum class ActionArgKind : uint8_t {
     None,
     Command,
+    Submap,
     Fraction,
     Workspace,
+    WorkspaceMoveToOutput,
     Output,
     OptionalOutput,
     OptionalScratchpad,
@@ -376,7 +384,7 @@ namespace umbriel {
     OptionalWindowId,
     FractionDelta,
     LayoutMode,
-    SnapRegion,
+    WindowRegion,
     ColumnDisplay,
     TabIndex,
     SkipConfirmation,
@@ -393,7 +401,7 @@ namespace umbriel {
 
   struct ActionSpec {
     std::string_view name;  // e.g. "spawn", "workspace-switch", "window-close"
-    std::string_view param; // "" for simple, "<cmd>" / "<workspace>[/<output>]" for parameterized
+    std::string_view param; // "" for simple, "<cmd...>" / "<workspace> [--output <output>]" for parameterized
     // One line, no trailing period. `umbriel msg --help` and docs/user/actions.md render it verbatim, and a unit test
     // fails when the doc table and this table disagree.
     std::string_view summary;
@@ -403,25 +411,44 @@ namespace umbriel {
 
   // Evdev BTN_* code for a canonical mouse button name such as "MouseBack", or 0 when the name is not one. Matching is
   // case-insensitive.
-  [[nodiscard]] uint32_t mouseButtonFromName(std::string_view name);
+  uint32_t mouseButtonFromName(std::string_view name);
 
   // Canonical name for an evdev BTN_* code, or nullptr for a button Umbriel does not name.
-  [[nodiscard]] const char* mouseButtonName(uint32_t button);
+  const char* mouseButtonName(uint32_t button);
 
   // The BTN_* code binds store for a pressed button. Mice report their thumb buttons as either BTN_SIDE/BTN_EXTRA or
   // BTN_BACK/BTN_FORWARD; both pairs map to BTN_SIDE/BTN_EXTRA.
-  [[nodiscard]] uint32_t canonicalMouseButton(uint32_t button);
+  uint32_t canonicalMouseButton(uint32_t button);
 
   // Parse a chord such as "Mod+Shift+h", "Ctrl+Alt+Delete", "Mod+WheelUp", "Mod+MouseBack", or "submap[resize],Escape".
   // Only the trigger fields are written; the action is set separately by parseAction. Returns false and leaves `output`
   // default-constructed on any malformed input.
   bool parseChord(std::string_view chord, Keybind& output);
 
-  // Parse an action such as "window-close", "spawn:foot", "window-set-primary-extent:0.5", or
-  // "workspace-switch:2/DP-1", writing the action and its payload into `output` without touching the trigger fields.
-  // Numeric workspace selectors are positions; surround a name with double quotes when the name itself contains only
-  // digits.
+  // Parse a config action string such as "window-close", "spawn foot -e htop", "window-set-primary-extent 0.5",
+  // "workspace-switch 2 --output DP-1", or "workspace-switch --name 2", writing the action and its payload into
+  // `output` without touching the trigger fields. Words split like a shell (see splitActionString); `spawn` keeps the
+  // raw rest of the string as its command.
   bool parseAction(std::string_view value, Keybind& output);
+
+  // The same grammar over words that are already split, as `umbriel msg` receives them. `words[0]` is the action name;
+  // a `spawn` command is the remaining words joined with spaces.
+  bool parseActionWords(std::span<const std::string> words, Keybind& output);
+
+  // Splits a config action string into words: whitespace separates words outside quotes, '…' is literal, "…" honours
+  // \" and \\, and a backslash outside quotes escapes the next character. Adjacent pieces join into one word. Returns
+  // nullopt on an unterminated quote or a trailing lone backslash.
+  std::optional<std::vector<std::string>> splitActionString(std::string_view text);
+
+  // Argument values every action encoding shares, so the word grammar and the IPC action request accept the same set.
+  std::optional<LayoutMode> layoutModeNamed(std::string_view name);
+  std::string_view layoutModeName(LayoutMode mode);
+  // A primary or secondary extent: 0.1 up to the widest scrolling column.
+  bool validActionFraction(double fraction);
+  // A signed, non-zero extent change of at most 0.9.
+  bool validActionFractionDelta(double delta);
+  // The span the config's `output.<name>.sdr_white` accepts.
+  bool validSdrWhiteNits(double nits);
 
   // Named action roots only; suppression and current-pool cycle have no named reference.
   struct EffectActionReference {
@@ -429,9 +456,11 @@ namespace umbriel {
     EffectKind kind;
     bool poolRequired;
   };
-  [[nodiscard]] std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
+  std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
 
   std::span<const ActionSpec> actionSpecs();
+  // The spec with exactly this name, or null.
+  const ActionSpec* findActionSpec(std::string_view name);
 
   // The binds used when no config file supplies any.
   std::vector<Keybind> defaultKeybinds();

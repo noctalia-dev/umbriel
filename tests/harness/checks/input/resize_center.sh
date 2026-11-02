@@ -49,6 +49,9 @@ wait_for_maximized_size() {
 
 center_resize_click() {
   local windows x y
+  # Aim at the resting geometry: a float toggle still animates the window toward it, and the edge test reads the
+  # presented position.
+  "$UMBRIEL" settle
   windows=$("$UMBRIEL" windows --json)
   x=$(jq -r '.[0].x + (.[0].w / 2 | floor)' <<< "$windows")
   y=$(jq -r '.[0].y + (.[0].h / 2 | floor)' <<< "$windows")

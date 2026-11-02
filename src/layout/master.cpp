@@ -25,8 +25,8 @@ namespace umbriel {
         double weight = 1.0;
       };
 
-      [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Master; }
-      [[nodiscard]] size_t memberCount() const override { return members; }
+      LayoutMode mode() const override { return LayoutMode::Master; }
+      size_t memberCount() const override { return members; }
 
       std::vector<Row> master;
       std::vector<Row> stack;
@@ -93,7 +93,7 @@ namespace umbriel {
         }
       }
 
-      [[nodiscard]] const Layout* ownerLayout() const override { return m_layout; }
+      const Layout* ownerLayout() const override { return m_layout; }
 
     private:
       Layout* m_layout;

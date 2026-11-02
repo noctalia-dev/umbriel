@@ -119,17 +119,17 @@ wait_for_count 3
 wait_for_field "$SCRATCH" w 420
 wait_for_field "$SCRATCH" h 260
 scratch_id=$(field_of "$SCRATCH" id)
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
-"$UMBRIEL" msg window-move-to-scratchpad:seat > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad seat > /dev/null
 wait_for_field "$SCRATCH" workspace ""
-"$UMBRIEL" msg scratchpad-toggle:seat > /dev/null
+"$UMBRIEL" msg scratchpad-toggle seat > /dev/null
 wait_for_field "$SCRATCH" active true
 
 # Return the pointer to the first output, then restore seat focus to the visible
 # scratchpad without warping, splitting seat focus from the pointer's output.
 "$UMBRIEL" msg output-focus-left > /dev/null
 wait_for_field "$POINTER_BACKGROUND" active true
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 if [[ $(cursor_output) != "$pointer_output" ]]; then
   echo "pointer and scratchpad seat focus did not split across outputs: $(windows)"
@@ -154,7 +154,7 @@ if [[ $(cursor_output) != "$pointer_output" ]]; then
 fi
 
 baseline_background=$(background_signature)
-"$UMBRIEL" msg window-set-primary-extent:0.25 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.25 > /dev/null
 
 resized=false
 for _ in $(seq 80); do

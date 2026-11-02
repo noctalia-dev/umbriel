@@ -3,6 +3,7 @@
 #include "input/seat.h"
 #include "scene/surface_shape.h"
 #include "server/server.h"
+#include "view/view.h"
 #include "wlr.h"
 #include "xwayland/xwayland.h"
 
@@ -11,9 +12,10 @@ namespace umbriel {
   namespace {
 
     // An override-redirect window that takes the keyboard says so through its window type. A managed menu or dropdown
-    // is focused by the window manager, as on X11; a tooltip or drag icon never is.
+    // is focused by the window manager, as on X11; a notification, tooltip, or drag icon never is.
     bool takesKeyboard(const wlr_xwayland_surface* xsurface) {
-      if (wlr_xwayland_surface_icccm_input_model(xsurface) == WLR_ICCCM_INPUT_MODEL_NONE) {
+      if (wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_NOTIFICATION)
+          || wlr_xwayland_surface_icccm_input_model(xsurface) == WLR_ICCCM_INPUT_MODEL_NONE) {
         return false;
       }
       if (xsurface->override_redirect) {
@@ -25,17 +27,20 @@ namespace umbriel {
 
   } // namespace
 
-  XwaylandUnmanaged::XwaylandUnmanaged(Server& server, wlr_xwayland_surface* xsurface)
-      : m_server(server), m_xsurface(xsurface) {
+  XwaylandUnmanaged::XwaylandUnmanaged(Server& server, wlr_xwayland_surface* xsurface, bool captureBlocked)
+      : m_server(server), m_xsurface(xsurface), m_captureBlockedBeforePopup(captureBlocked) {
     m_tree = wlr_scene_tree_create(server.xwaylandUnmanagedTree());
+    wlr_scene_node_set_enabled(&m_tree->node, false);
     wlr_scene_subsurface_tree_create(m_tree, xsurface->surface);
     syncPosition();
-    wlr_scene_node_set_enabled(&m_tree->node, xsurface->surface->mapped);
+    refreshCaptureProtection();
 
     m_map.notify = onMap;
     wl_signal_add(&xsurface->surface->events.map, &m_map);
     m_unmap.notify = onUnmap;
     wl_signal_add(&xsurface->surface->events.unmap, &m_unmap);
+    m_setParent.notify = onSetParent;
+    wl_signal_add(&xsurface->events.set_parent, &m_setParent);
     m_setGeometry.notify = onSetGeometry;
     wl_signal_add(&xsurface->events.set_geometry, &m_setGeometry);
     m_requestConfigure.notify = onRequestConfigure;
@@ -53,6 +58,7 @@ namespace umbriel {
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);
     wl_list_remove(&m_setGeometry.link);
+    wl_list_remove(&m_setParent.link);
     wl_list_remove(&m_requestConfigure.link);
     wl_list_remove(&m_commit.link);
     wl_list_remove(&m_shapeChanged.link);
@@ -68,6 +74,34 @@ namespace umbriel {
   void XwaylandUnmanaged::onUnmap(wl_listener* listener, void* /*data*/) {
     XwaylandUnmanaged* self = wl_container_of(listener, self, m_unmap); // NOLINT(modernize-use-auto)
     self->handleUnmap();
+  }
+
+  void XwaylandUnmanaged::onSetParent(wl_listener* listener, void* /*data*/) {
+    XwaylandUnmanaged* self = wl_container_of(listener, self, m_setParent); // NOLINT(modernize-use-auto)
+    self->refreshCaptureProtection();
+  }
+
+  void XwaylandUnmanaged::refreshCaptureProtection() {
+    // X11 popup parent links can form chains of unmanaged surfaces.
+    auto* parent = m_xsurface->parent;
+    for (unsigned depth = 0; parent != nullptr && depth < 64; ++depth, parent = parent->parent) {
+      for (const auto& view : m_server.views()) {
+        if (view != nullptr && view->xwaylandSurface() == parent) {
+          (void)umbrielfx_scene_node_set_capture_excluded(
+              &m_tree->node, m_captureBlockedBeforePopup || view->captureBlocked()
+          );
+          return;
+        }
+      }
+    }
+    // X11 clients may omit parent information. With no reliable owner, omit
+    // unmanaged surfaces whenever an X11 view is protected rather than guessing
+    // from titles, focus, or client-supplied PIDs.
+    bool blocked = m_captureBlockedBeforePopup;
+    for (const auto& view : m_server.views()) {
+      blocked |= view != nullptr && view->xwaylandSurface() != nullptr && view->captureBlocked();
+    }
+    (void)umbrielfx_scene_node_set_capture_excluded(&m_tree->node, blocked);
   }
 
   void XwaylandUnmanaged::onSetGeometry(wl_listener* listener, void* /*data*/) {
@@ -98,6 +132,18 @@ namespace umbriel {
   }
 
   void XwaylandUnmanaged::handleMap() {
+    wlr_scene_node_set_enabled(&m_tree->node, false);
+    syncPosition();
+    // Association property reads can buffer ConfigureNotify in libxcb without leaving the XWM fd readable.
+    // Keep the first frame hidden until the XWM has dispatched those events, rather than showing stale geometry.
+    m_pendingXwmSync = m_server.xwayland()->requestXwmSync(m_xsurface);
+  }
+
+  void XwaylandUnmanaged::handleXwmSync(uint64_t serial) {
+    if (serial == 0 || serial != m_pendingXwmSync || m_xsurface->surface == nullptr || !m_xsurface->surface->mapped) {
+      return;
+    }
+    m_pendingXwmSync = 0;
     syncPosition();
     wlr_scene_node_set_enabled(&m_tree->node, true);
     wlr_scene_node_raise_to_top(&m_tree->node);
@@ -118,8 +164,15 @@ namespace umbriel {
   }
 
   void XwaylandUnmanaged::handleUnmap() {
+    m_pendingXwmSync = 0;
     wlr_scene_node_set_enabled(&m_tree->node, false);
     releaseKeyboard();
+  }
+
+  void XwaylandUnmanaged::refreshFocusPolicy() {
+    if (!takesKeyboard(m_xsurface)) {
+      releaseKeyboard();
+    }
   }
 
   void XwaylandUnmanaged::releaseKeyboard() {
@@ -146,8 +199,9 @@ namespace umbriel {
   }
 
   void XwaylandUnmanaged::handleRequestConfigure(const wlr_xwayland_surface_configure_event* event) {
-    // The resulting set_geometry moves the node.
     grantConfigureRequest(m_xsurface, event);
+    // The configure setter already updates X geometry, so ConfigureNotify may report no further change.
+    syncPosition();
   }
 
 } // namespace umbriel

@@ -104,7 +104,7 @@ if (( r > 40 )); then
   echo "reloading back to in_capture = false left the window effect in a toplevel capture: $r $g $b"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 
 ### Section 2: a fading close snapshot follows the same policy.
@@ -140,14 +140,14 @@ default_floating = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 spawn cap-snapshot
-"$UMBRIEL" msg "effect-window-set:tint/$id" > /dev/null
+"$UMBRIEL" msg effect-window-set tint --window "$id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 if ! "$UMBRIEL" effect-frames --json | jq -e '.outputs[0].eligible > 0' > /dev/null; then
   echo "the display did not keep the window effect eligible before the close while in_capture = false"
   exit 1
 fi
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 for _ in $(seq 100); do
   [[ -z $("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "cap-snapshot")') ]] && break
   sleep 0.02
@@ -231,7 +231,7 @@ if (( mapped_eligible != base_eligible + 1 )); then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$cycle_id" > /dev/null
+"$UMBRIEL" msg window-close "$cycle_id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/cap-cycle.log" && break
   sleep 0.025

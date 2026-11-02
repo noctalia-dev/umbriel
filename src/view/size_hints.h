@@ -13,7 +13,7 @@ namespace umbriel {
     int maxHeight = 0; // 0 = unlimited
   };
 
-  [[nodiscard]] inline SizeHints normalizedSizeHints(SizeHints hints) {
+  inline SizeHints normalizedSizeHints(SizeHints hints) {
     if (hints.maxWidth > 0 && hints.maxWidth < hints.minWidth) {
       hints.maxWidth = hints.minWidth;
     }
@@ -23,7 +23,7 @@ namespace umbriel {
     return hints;
   }
 
-  [[nodiscard]] inline SizeHints xdgSizeHints(const wlr_xdg_toplevel* toplevel) {
+  inline SizeHints xdgSizeHints(const wlr_xdg_toplevel* toplevel) {
     SizeHints hints;
     if (toplevel == nullptr) {
       return hints;
@@ -45,7 +45,7 @@ namespace umbriel {
   }
 
   // WM_NORMAL_HINTS of an X11 window. Only the program-specified min and max sizes constrain the window.
-  [[nodiscard]] inline SizeHints x11SizeHints(const xcb_size_hints_t* sizeHints) {
+  inline SizeHints x11SizeHints(const xcb_size_hints_t* sizeHints) {
     SizeHints hints;
     if (sizeHints == nullptr) {
       return hints;
@@ -69,7 +69,7 @@ namespace umbriel {
     return normalizedSizeHints(hints);
   }
 
-  [[nodiscard]] inline int clampWidth(int width, const SizeHints& hints) {
+  inline int clampWidth(int width, const SizeHints& hints) {
     width = std::max(width, hints.minWidth);
     if (hints.maxWidth > 0) {
       width = std::min(width, hints.maxWidth);
@@ -77,7 +77,7 @@ namespace umbriel {
     return std::max(1, width);
   }
 
-  [[nodiscard]] inline int clampHeight(int height, const SizeHints& hints) {
+  inline int clampHeight(int height, const SizeHints& hints) {
     height = std::max(height, hints.minHeight);
     if (hints.maxHeight > 0) {
       height = std::min(height, hints.maxHeight);

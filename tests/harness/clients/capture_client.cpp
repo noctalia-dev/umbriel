@@ -8,11 +8,13 @@
 // session's attachment to a source, which is why both roles run in this one client.
 // CAPTURE_CONTROL enables stdin sync LABEL commands, reporting each output's delivered frame count after a roundtrip.
 // --window selects a toplevel identifier; buffer constraints changes recreate the shared-memory target.
+// CAPTURE_PROBES="x y ..." logs the RGB value at each point on every delivered frame.
 #include "ext-foreign-toplevel-list-v1-client-protocol.h"
 #include "ext-image-capture-source-v1-client-protocol.h"
 #include "ext-image-copy-capture-v1-client-protocol.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -24,6 +26,7 @@
 #include <string_view>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <vector>
 #include <wayland-client.h>
 
 namespace {
@@ -35,6 +38,8 @@ namespace {
     ext_image_copy_capture_session_v1* session = nullptr;
     ext_image_copy_capture_frame_v1* frame = nullptr;
     wl_buffer* buffer = nullptr;
+    void* pixels = MAP_FAILED;
+    size_t pixelsSize = 0;
     std::string_view wantedOutput;
     std::string_view wantedWindow;
     ext_foreign_toplevel_handle_v1* toplevel = nullptr;
@@ -42,6 +47,7 @@ namespace {
     bool started = false;
     // Separate from `started`: session's done event arrive after startCapture() set it.
     bool announced = false;
+    bool stopped = false;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t bufferWidth = 0;
@@ -62,6 +68,7 @@ namespace {
     ext_image_copy_capture_manager_v1* copyManager = nullptr;
     Target primary;
     Target pixel;
+    std::vector<std::array<uint32_t, 2>> probes;
   } state;
 
   void printLine(std::string_view text) {
@@ -127,6 +134,31 @@ namespace {
         "frame {} {} damage {} size {} {}", target.label, target.frames, target.damage, target.frameWidth,
         target.frameHeight
     );
+    for (const auto& point : state.probes) {
+      if (target.pixels == MAP_FAILED
+          || point[0] >= target.frameWidth
+          || point[1] >= target.frameHeight
+          || target.frameWidth != target.bufferWidth
+          || target.frameHeight != target.bufferHeight) {
+        printTarget(target, "probe-outside-buffer");
+        continue;
+      }
+      const auto* pixels = static_cast<const uint32_t*>(target.pixels);
+      uint32_t rgb = pixels[point[1] * target.frameWidth + point[0]] & 0xFFFFFFU;
+      switch (target.format) {
+      case WL_SHM_FORMAT_ARGB8888:
+      case WL_SHM_FORMAT_XRGB8888:
+        break;
+      case WL_SHM_FORMAT_ABGR8888:
+      case WL_SHM_FORMAT_XBGR8888:
+        rgb = ((rgb & 0xFFU) << 16) | (rgb & 0xFF00U) | ((rgb >> 16) & 0xFFU);
+        break;
+      default:
+        printTarget(target, "probe-unsupported-format");
+        continue;
+      }
+      std::println("probe {} frame={} x={} y={} rgb={:06x}", target.label, target.frames, point[0], point[1], rgb);
+    }
     std::fflush(stdout);
     ext_image_copy_capture_frame_v1_destroy(frame);
     target.frame = nullptr;
@@ -138,6 +170,9 @@ namespace {
     std::fflush(stdout);
     ext_image_copy_capture_frame_v1_destroy(frame);
     target.frame = nullptr;
+    if (reason == EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED) {
+      target.stopped = true;
+    }
     requestFrame(target);
   }
   constexpr ext_image_copy_capture_frame_v1_listener kFrameListener = {
@@ -157,6 +192,10 @@ namespace {
     }
     if (target.buffer != nullptr) {
       wl_buffer_destroy(target.buffer);
+      if (target.pixels != MAP_FAILED) {
+        munmap(target.pixels, target.pixelsSize);
+        target.pixels = MAP_FAILED;
+      }
     }
     const int stride = static_cast<int>(target.width) * 4;
     const std::size_t size = static_cast<std::size_t>(stride) * target.height;
@@ -164,6 +203,14 @@ namespace {
     if (fd < 0 || ftruncate(fd, static_cast<off_t>(size)) != 0) {
       printTarget(target, "buffer-failed");
       std::exit(1);
+    }
+    if (!state.probes.empty()) {
+      target.pixels = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+      target.pixelsSize = size;
+      if (target.pixels == MAP_FAILED) {
+        printTarget(target, "probe-map-failed");
+        std::exit(1);
+      }
     }
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(size));
     target.buffer = wl_shm_pool_create_buffer(
@@ -177,7 +224,7 @@ namespace {
   }
 
   void requestFrame(Target& target) {
-    if (target.session == nullptr || target.buffer == nullptr || target.frame != nullptr) {
+    if (target.stopped || target.session == nullptr || target.buffer == nullptr || target.frame != nullptr) {
       return;
     }
     target.damage = 0;
@@ -215,7 +262,9 @@ namespace {
     requestFrame(target);
   }
   void sessionStopped(void* data, ext_image_copy_capture_session_v1*) {
-    printTarget(*static_cast<Target*>(data), "session-stopped");
+    auto& target = *static_cast<Target*>(data);
+    target.stopped = true;
+    printTarget(target, "session-stopped");
   }
   constexpr ext_image_copy_capture_session_v1_listener kSessionListener = {
       .buffer_size = sessionBufferSize,
@@ -343,6 +392,21 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
+  if (const char* probes = std::getenv("CAPTURE_PROBES")) {
+    std::istringstream input(probes);
+    int x = 0, y = 0;
+    while (input >> x) {
+      if (!(input >> y) || x < 0 || y < 0) {
+        printLine("invalid CAPTURE_PROBES: expected nonnegative x y pairs");
+        return 2;
+      }
+      state.probes.push_back({static_cast<uint32_t>(x), static_cast<uint32_t>(y)});
+    }
+    if (!input.eof() || state.probes.empty()) {
+      printLine("invalid CAPTURE_PROBES: expected nonnegative x y pairs");
+      return 2;
+    }
+  }
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg(argv[i]);
     if (arg == "--cursor") {
@@ -365,7 +429,7 @@ int main(int argc, char** argv) {
   }
   wl_registry* registry = wl_display_get_registry(state.display);
   wl_registry_add_listener(registry, &kRegistryListener, nullptr);
-  for (int i = 0; i < 4 && !(state.primary.started && (!pixelWanted() || state.pixel.started)); ++i) {
+  for (int i = 0; i < 4 && (!state.primary.started || (pixelWanted() && !state.pixel.started)); ++i) {
     wl_display_roundtrip(state.display);
     startCapture(state.primary);
     if (pixelWanted()) {

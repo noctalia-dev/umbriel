@@ -77,7 +77,7 @@ spawn() {
 
 close_window() {
   local title=$1
-  "$UMBRIEL" msg "window-close:$window_id" > /dev/null
+  "$UMBRIEL" msg window-close "$window_id" > /dev/null
   for _ in $(seq 100); do
     if [[ -z $(window "$title") ]] && rg -q '^unmapped$' "$CLIENT_LOG"; then
       return 0
@@ -133,7 +133,7 @@ assert_frame opening-after-marker 200 200 255
 "$UMBRIEL" settle > /dev/null
 assert_frame opening-finished 200 200 0
 
-"$UMBRIEL" msg "window-move-by:200/80/$window_id" > /dev/null
+"$UMBRIEL" msg window-move-by 200 80 --window "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 250 > /dev/null
 assert_frame moving-before-marker 250 220 0
 "$UMBRIEL" clock-advance 500 > /dev/null

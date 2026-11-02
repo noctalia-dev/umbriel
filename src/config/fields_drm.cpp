@@ -40,7 +40,7 @@ namespace umbriel {
     }
 
     std::optional<std::string> readDrmPath(const toml::node& node, std::string_view context) {
-      const auto value = node.value<std::string>();
+      auto value = node.value<std::string>();
       if (!value) {
         errorAt(node.source(), "{} must be a string", context);
         return std::nullopt;

@@ -62,9 +62,7 @@ sample_center() {
     jq -r ".[] | select(.title == \"$title\") | \"\(.x) \(.y) \(.w) \(.h)\"" <<< "$windows"
   )"
   grim "$screenshot"
-  magick "$screenshot" \
-    -crop "40x40+$((win_x + win_w / 2 - 20))+$((win_y + win_h / 2 - 20))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$screenshot" mean "40x40+$((win_x + win_w / 2 - 20))+$((win_y + win_h / 2 - 20))"
 }
 
 assert_fullscreen_client_alpha() {
@@ -97,8 +95,7 @@ wait_for_line() {
 
 sample_corner() {
   grim "$1"
-  magick "$1" -crop "20x20+5+5" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 20x20+5+5
 }
 
 is_backdrop() {

@@ -55,9 +55,9 @@ field_of() {
 }
 
 accepts() {
-  local action=$1 out
-  if ! out=$("$UMBRIEL" msg "$action" 2>&1); then
-    echo "expected '$action' to be accepted, got: $out"
+  local out
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -250,7 +250,7 @@ assert_direct_toggle() {
   fi
 }
 
-accepts workspace-switch:ONE/HEADLESS-1
+accepts workspace-switch ONE --output HEADLESS-1
 
 background_count=0
 for title in "$LEFT" "$TOP" "$BOTTOM"; do
@@ -261,10 +261,10 @@ done
 
 # Form a two-row right column. Keeping its top row as the remembered workspace
 # focus makes every representative stale-focus action below observable.
-accepts "window-focus:$(field_of "$BOTTOM" id)"
+accepts window-focus "$(field_of "$BOTTOM" id)"
 accepts window-consume-left
 wait_for_stack
-accepts "window-focus:$(field_of "$TOP" id)"
+accepts window-focus "$(field_of "$TOP" id)"
 
 "$CLIENT" "$SCRATCH" > "$UMBRIEL_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
 scratch_pid=$!
@@ -275,10 +275,10 @@ wait_for_field "$SCRATCH" x 430
 wait_for_field "$SCRATCH" y 230
 scratch_id=$(field_of "$SCRATCH" id)
 "$POINTER" 2880 900 move 640 360
-accepts "window-focus:$scratch_id"
-accepts window-move-to-scratchpad:actions
+accepts window-focus "$scratch_id"
+accepts window-move-to-scratchpad actions
 wait_for_field "$SCRATCH" workspace ""
-accepts scratchpad-toggle:actions
+accepts scratchpad-toggle actions
 # Drop the straddling window with its pointer on HEADLESS-2. Scratchpad drags
 # roam the named pad without restoring it to the workspace underneath.
 "$POINTER" 2880 900 \
@@ -287,7 +287,7 @@ wait_for_straddled_scratch
 # Recreate the deliberate split between pointer output and scratchpad seat
 # focus that the action-isolation assertions exercise.
 "$POINTER" 2880 900 move 640 360
-accepts "window-focus:$scratch_id"
+accepts window-focus "$scratch_id"
 if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .output') != HEADLESS-1 ]]; then
   echo "pointer did not remain on HEADLESS-1 while the HEADLESS-2 scratchpad held seat focus"
   exit 1
@@ -324,9 +324,9 @@ if [[ $(background_geometry) != "$baseline_geometry" ]]; then
   echo "workspace fallback changed the background layout: $(windows)"
   exit 1
 fi
-accepts workspace-switch:ONE/HEADLESS-1
-accepts "window-focus:$(field_of "$TOP" id)"
-accepts "window-focus:$scratch_id"
+accepts workspace-switch ONE --output HEADLESS-1
+accepts window-focus "$(field_of "$TOP" id)"
+accepts window-focus "$scratch_id"
 wait_for_field "$SCRATCH" active true
 baseline_background=$(background_signature)
 baseline_scratch=$(scratch_signature)
@@ -367,10 +367,10 @@ wait_for_count 3
 "$CLOSE_CLIENT" "$CLOSE_SCRATCH" 420 260 > "$UMBRIEL_RUNTIME_DIR/$CLOSE_SCRATCH.log" 2>&1 &
 wait_for_count 4
 close_scratch_id=$(field_of "$CLOSE_SCRATCH" id)
-accepts "window-focus:$close_scratch_id"
-accepts window-move-to-scratchpad:actions
+accepts window-focus "$close_scratch_id"
+accepts window-move-to-scratchpad actions
 wait_for_field "$CLOSE_SCRATCH" workspace ""
-accepts scratchpad-toggle:actions
+accepts scratchpad-toggle actions
 wait_for_field "$CLOSE_SCRATCH" active true
 accepts window-close
 wait_for_count 3

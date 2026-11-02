@@ -54,7 +54,7 @@ namespace {
     std::string_view original;
     bool capped = false;
 
-    [[nodiscard]] std::string_view text() const noexcept { return capped ? std::string_view(storage) : original; }
+    std::string_view text() const noexcept { return capped ? std::string_view(storage) : original; }
   };
 
   const char* levelTagAnsi(LogLevel level) {
@@ -291,7 +291,7 @@ namespace {
     emitUnlocked(gLastLevel, gLastSection, std::format("last message repeated {} times", count), tm, msec);
   }
 
-  [[nodiscard]] std::string resolveCacheDir() {
+  std::string resolveCacheDir() {
     const char* cacheHome = std::getenv("XDG_CACHE_HOME");
     const char* home = std::getenv("HOME");
     if (cacheHome != nullptr && cacheHome[0] != '\0') {

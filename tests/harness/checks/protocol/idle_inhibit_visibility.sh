@@ -23,7 +23,7 @@ if grep -q '^idled$' "$CLIENT_LOG"; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 for _ in $(seq 40); do
   grep -q '^idled$' "$CLIENT_LOG" && break
   sleep 0.05

@@ -138,7 +138,7 @@ verify_layout() {
   mark=$(wc -l < "$survivor_log")
   closing_id=$(jq -r .id <<< "$window")
   grim "$SHOTS/$mode-before.png"
-  "$UMBRIEL" msg "window-close:$closing_id" > /dev/null
+  "$UMBRIEL" msg window-close "$closing_id" > /dev/null
   wait_for_log "$third_log" '^unmapped$' "$mode third window did not unmap"
   wait_for_log_since "$survivor_log" "$mark" 'configured-size=640x720' \
     "$mode survivor did not receive its target configure"
@@ -182,15 +182,15 @@ verify_layout() {
 }
 
 verify_layout dwindle
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 finish_animations
-"$UMBRIEL" msg workspace-set-layout:master > /dev/null
+"$UMBRIEL" msg workspace-set-layout master > /dev/null
 finish_animations
 verify_layout master
 
 # A client may acknowledge the configure but keep rendering its old size. The compositor-owned endpoint must remain
 # authoritative after windows_move, rather than snapping back to that stale buffer while waiting for a later commit.
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 finish_animations
 readonly STALE_LOG="$UMBRIEL_RUNTIME_DIR/close-configure-stale-survivor.log"
 HOLD_SIZE=1 "$UMBRIEL_FRACTIONAL_CLIENT" close-configure-stale-survivor 640 720 \
@@ -212,7 +212,7 @@ spawn close-configure-stale-third "$UMBRIEL_RUNTIME_DIR/close-configure-stale-th
 finish_animations
 closing_id=$(jq -r .id <<< "$window")
 stale_mark=$(wc -l < "$STALE_LOG")
-"$UMBRIEL" msg "window-close:$closing_id" > /dev/null
+"$UMBRIEL" msg window-close "$closing_id" > /dev/null
 wait_for_log "$UMBRIEL_RUNTIME_DIR/close-configure-stale-third.log" '^unmapped$' \
   "stale-size closer did not unmap"
 # The survivor presents again once it has acknowledged its target configure, still at its old size.
@@ -227,9 +227,9 @@ fi
 
 # A later geometry-stable arrange must not discard that endpoint ownership while the client still refuses the
 # configured size. Force at least one layout replacement while keeping a lone tiled view fullscreen in both modes.
-"$UMBRIEL" msg workspace-set-layout:master > /dev/null
+"$UMBRIEL" msg workspace-set-layout master > /dev/null
 "$UMBRIEL" clock-advance 50
-"$UMBRIEL" msg workspace-set-layout:dwindle > /dev/null
+"$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 "$UMBRIEL" clock-advance 200
 grim "$SHOTS/stale-after-arrange.png"
 read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-after-arrange.png")"

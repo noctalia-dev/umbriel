@@ -69,7 +69,7 @@ assert_box() {
 wait_for_field float-fs-maximize floating true
 assert_box 640 360 320 180
 
-"$UMBRIEL" msg "window-focus-warp:$(field_of float-fs-maximize id)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(field_of float-fs-maximize id)" > /dev/null
 
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 assert_box 1280 720 0 0

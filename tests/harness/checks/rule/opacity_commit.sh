@@ -38,15 +38,15 @@ fi
 
 # Switching back applies the view clip, then subsequent client commits must
 # preserve the 0.5 compositor opacity rather than restoring opaque black.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 sleep 0.5 # real time: foot commits fresh content after the switch
 grim "$SCREENSHOT"
 
 # The sampled pixel is black client content over the solid green compositor
 # backdrop. At 0.5 opacity, its encoded green channel is about 128. Opaque
 # black, the broken post-commit state, yields zero.
-green=$(magick "$SCREENSHOT" -crop 40x40+600+500 -format '%[fx:round(255*mean.g)]' info:)
+read -r _ green _ <<< "$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean 40x40+600+500)"
 if (( green < 90 || green > 170 )); then
   echo "rule opacity was lost after the client commit: mean green=$green"
   exit 1

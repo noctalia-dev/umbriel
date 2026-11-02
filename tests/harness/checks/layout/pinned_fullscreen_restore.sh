@@ -57,7 +57,7 @@ expect_fullscreen() {
 }
 
 for pin_while_fullscreen in no yes; do
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   "$UMBRIEL" settle
   expect_floating false "round $pin_while_fullscreen start"
   "$UMBRIEL" msg window-toggle-pinned > /dev/null
@@ -70,7 +70,7 @@ for pin_while_fullscreen in no yes; do
   "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
   "$UMBRIEL" settle
   expect_fullscreen false
-  "$UMBRIEL" msg workspace-switch:2 > /dev/null
+  "$UMBRIEL" msg workspace-switch 2 > /dev/null
   "$UMBRIEL" settle
   grim "$SHOT"
   read -r red _ blue _ <<< "$("$UMBRIEL_PIXEL_PROBE" "$SHOT" mean 20x20+390+240)"
@@ -78,10 +78,10 @@ for pin_while_fullscreen in no yes; do
     echo "round $pin_while_fullscreen: pinned window hidden after the workspace switch: red=$red blue=$blue"
     exit 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   "$UMBRIEL" msg window-toggle-pinned > /dev/null
   "$UMBRIEL" settle
   expect_floating false "round $pin_while_fullscreen unpin"
-  "$UMBRIEL" msg workspace-switch:1 > /dev/null
+  "$UMBRIEL" msg workspace-switch 1 > /dev/null
 done
 echo "a pinned window regains its pin after fullscreen and unpins back into tiling"

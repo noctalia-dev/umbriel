@@ -25,6 +25,8 @@ struct scene_node_source {
 
   size_t num_started;
   float scale;
+  bool revoked;
+  struct wl_event_source* revoke_timer;
 
   struct wl_listener node_destroy;
   struct wl_listener scene_output_destroy;
@@ -100,6 +102,9 @@ static void get_scene_node_extents(struct wlr_scene_node* node, struct wlr_box* 
 }
 
 static void source_render(struct scene_node_source* source) {
+  if (source->revoked) {
+    return;
+  }
   struct wlr_scene_output* scene_output = source->scene_output;
 
   struct wlr_box extents;
@@ -180,6 +185,10 @@ static void source_copy_frame(
   struct scene_node_source* source = wl_container_of(base, source, base);
   struct scene_node_source_frame_event* event = wl_container_of(base_event, event, base);
 
+  if (source->revoked) {
+    wlr_ext_image_copy_capture_frame_v1_fail(frame, EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED);
+    return;
+  }
   if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame, event->buffer, source->output.renderer)) {
     wlr_ext_image_copy_capture_frame_v1_ready(frame, source->output.transform, &event->when);
   }
@@ -283,6 +292,9 @@ static const struct wlr_output_impl output_impl = {
 };
 
 static void source_destroy(struct scene_node_source* source) {
+  if (source->revoke_timer != NULL) {
+    wl_event_source_remove(source->revoke_timer);
+  }
   wl_list_remove(&source->node_destroy.link);
   wl_list_remove(&source->scene_output_destroy.link);
   wl_list_remove(&source->output_frame.link);
@@ -291,6 +303,23 @@ static void source_destroy(struct scene_node_source* source) {
   wlr_output_finish(&source->output);
   wlr_backend_finish(&source->backend);
   free(source);
+}
+
+static int source_finish_revoke(void* data) {
+  source_destroy(data);
+  return 0;
+}
+
+void umbrielfx_scene_capture_source_revoke(struct wlr_ext_image_capture_source_v1* base) {
+  if (base == NULL) {
+    return;
+  }
+  assert(base->impl == &source_impl);
+  struct scene_node_source* source = wl_container_of(base, source, base);
+  if (!source->revoked) {
+    source->revoked = true;
+    wl_event_source_timer_update(source->revoke_timer, 1);
+  }
 }
 
 static void source_handle_node_destroy(struct wl_listener* listener, void* data) {
@@ -376,6 +405,12 @@ struct wlr_ext_image_capture_source_v1* wlr_ext_image_capture_source_v1_create_w
   source->output_frame.notify = source_handle_output_frame;
   wl_signal_add(&source->output.events.frame, &source->output_frame);
 
+  // Allocate the safe teardown boundary before any session can reference us.
+  source->revoke_timer = wl_event_loop_add_timer(event_loop, source_finish_revoke, source);
+  if (source->revoke_timer == NULL) {
+    source_destroy(source);
+    return NULL;
+  }
   return &source->base;
 }
 

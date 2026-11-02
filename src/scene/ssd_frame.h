@@ -15,6 +15,7 @@ struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
+struct wlr_buffer;
 
 namespace umbriel {
   class TabLabelCache;
@@ -39,19 +40,21 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
-    [[nodiscard]] bool maximizeEnabled() const { return m_maximizeEnabled; }
-    [[nodiscard]] int titleBarHeight() const { return m_geometry.titleBarHeight; }
-    [[nodiscard]] bool contains(const wlr_scene_node* node) const;
-    [[nodiscard]] SsdFramePoint pointAt(double x, double y) const;
+    bool maximizeEnabled() const { return m_maximizeEnabled; }
+    int titleBarHeight() const { return m_geometry.titleBarHeight; }
+    bool contains(const wlr_scene_node* node) const;
+    SsdFramePoint pointAt(double x, double y) const;
     void snapshot(wlr_scene_tree* parent) const;
-    [[nodiscard]] std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
+    std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
     void syncPreview(ViewChromeAttachment& preview) const override;
 
   private:
     void redraw();
     void updateColors();
+    void updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible);
+    std::span<const TitleBarButton> visibleButtons() const;
     void updateBlur();
-    [[nodiscard]] int zoomed(int value) const;
+    int zoomed(int value) const;
     wlr_scene_tree* m_tree = nullptr;
     // Invisible resize bands stay outside the window's animation capture bounds.
     wlr_scene_tree* m_gripTree = nullptr;
@@ -63,6 +66,11 @@ namespace umbriel {
     wlr_scene_rect* m_close = nullptr;
     wlr_scene_rect* m_maximize = nullptr;
     wlr_scene_rect* m_minimize = nullptr;
+    std::array<wlr_scene_buffer*, kTitleBarButtonCount> m_icons{};
+    // Keep a consumer lock for snapshots and renderer recovery after the scene uploads an icon's texture.
+    std::array<wlr_buffer*, kTitleBarButtonCount> m_iconBuffers{};
+    std::array<std::array<float, 4>, kTitleBarButtonCount> m_iconColors{};
+    std::array<int, kTitleBarButtonCount> m_iconSizes{};
     std::vector<TitleBarButton> m_buttons;
     std::array<wlr_scene_rect*, 4> m_grips{};
     std::shared_ptr<TabLabelCache> m_labels;

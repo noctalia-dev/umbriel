@@ -86,12 +86,31 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
   session_environment_names | xargs -r dbus-update-activation-environment
 fi
 
-systemctl --user --wait start umbriel.service
+cleanup_session() {
+  umbriel_status=$?
+  trap '' HUP INT TERM
+  trap - 0
+  # Reap the start client before shutdown so it cannot submit a later start.
+  if [ "$session_wait_done" = false ] && [ -n "$!" ]; then
+    kill "$!" 2>/dev/null || :
+    wait "$!" 2>/dev/null || :
+  fi
+
+  systemctl --user start --job-mode=replace-irreversibly umbriel-shutdown.target
+  systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
+    XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME \
+    XCURSOR_SIZE UMBRIEL_SOCKET
+  exit "$umbriel_status"
+}
+
+session_wait_done=false
+trap cleanup_session 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+systemctl --user --wait start umbriel.service &
+wait "$!"
 umbriel_status=$?
-
-systemctl --user start --job-mode=replace-irreversibly umbriel-shutdown.target
-systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
-  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME \
-  XCURSOR_SIZE UMBRIEL_SOCKET
-
+session_wait_done=true
 exit "$umbriel_status"

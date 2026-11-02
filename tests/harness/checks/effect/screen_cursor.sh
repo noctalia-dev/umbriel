@@ -229,8 +229,8 @@ image = os.path.join(os.environ["UMBRIEL_RUNTIME_DIR"], "screen-cursor-pools.png
 def run(*args):
     return subprocess.check_output([umbriel, *args], text=True, timeout=10)
 
-def action(name, argument=None):
-    run("msg", name if argument is None else f"{name}:{argument}")
+def action(name, *words):
+    run("msg", name, *words)
 
 def state():
     return json.loads(run("effects", "--json"))
@@ -276,10 +276,10 @@ pixel("shared-cursor-second-output", "HEADLESS-2", "green", 220, 300)
 holds("cursor-motion-retains-one-holding", "cursors", [1, 0])
 
 # Static changes and removal must repaint even though no effect clock advances.
-action("effect-screen-cycle", "/HEADLESS-1")
+action("effect-screen-cycle", "--output", "HEADLESS-1")
 selected("screen-cycle", screen("HEADLESS-1"), "screen-red", "screens")
 pixel("static-screen-cycle-pixels", "HEADLESS-1", "red")
-action("effect-screen-set", "off/HEADLESS-1")
+action("effect-screen-set", "off", "--output", "HEADLESS-1")
 selected("screen-off-preserves-assignment", screen("HEADLESS-1"), "screen-red", "screens", suppressed=True)
 pixel("static-screen-off-pixels", "HEADLESS-1", "black")
 holds("screen-off-releases-holding", "screens", [0, 1])
@@ -288,15 +288,15 @@ pixel("static-screen-toggle-pixels", "HEADLESS-1", "red")
 action("effect-screen-reset", "HEADLESS-1")
 selected("screen-reset", screen("HEADLESS-1"), "invert", "screens", "default")
 pixel("static-screen-reset-pixels", "HEADLESS-1", "white")
-action("effect-screen-set", "invert/HEADLESS-2")
+action("effect-screen-set", "invert", "--output", "HEADLESS-2")
 selected("explicit-screen-target", screen("HEADLESS-2"), "invert", "")
 pixel("explicit-screen-target-pixels", "HEADLESS-2", "white")
 # A disabled present output retains its runtime assignment and holds its pool.
-action("effect-screen-cycle", "screens/HEADLESS-2")
+action("effect-screen-cycle", "screens", "--output", "HEADLESS-2")
 action("output-disable", "HEADLESS-2")
 selected("disabled-output-retains-assignment", screen("HEADLESS-2"), "screen-red", "screens")
 holds("disabled-output-holds", "screens", [1, 1])
-action("effect-screen-set", "invert/HEADLESS-2")
+action("effect-screen-set", "invert", "--output", "HEADLESS-2")
 selected("disabled-output-target-set", screen("HEADLESS-2"), "invert", "")
 action("effect-screen-toggle", "HEADLESS-2")
 selected("disabled-output-target-toggle", screen("HEADLESS-2"), "invert", "", suppressed=True)
@@ -331,7 +331,7 @@ pixel("plain-cursor-pixels", "HEADLESS-1", "blue", 300, 300)
 # rejected before altering the shared cursor or any screen state.
 before = state()
 expect("screen-cursor-inspection-purity", state(), before)
-result = subprocess.run([umbriel, "msg", "effect-screen-set:invert/unknown-output"],
+result = subprocess.run([umbriel, "msg", "effect-screen-set", "invert", "--output", "unknown-output"],
                         capture_output=True, text=True, timeout=10)
 if result.returncode == 0 or "unknown output" not in result.stderr:
     raise SystemExit(f"invalid-screen-target: {result.returncode}, {result.stderr}")

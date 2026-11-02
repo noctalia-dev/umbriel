@@ -30,7 +30,7 @@ for _ in $(seq 100); do
   sleep 0.05
 done
 window_id=$(jq -r '.id' <<< "$window")
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" subscribe windows > "$EVENTS" &
 
@@ -80,7 +80,7 @@ await_box continued-anchored-resize 313 169 700 440
 pointer_release
 "$UMBRIEL" settle > /dev/null
 
-"$UMBRIEL" msg window-set-primary-extent:0.5 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.5 > /dev/null
 "$UMBRIEL" settle > /dev/null
 await_box keyboard-resize 313 169 640 440
 

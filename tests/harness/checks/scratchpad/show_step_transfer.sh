@@ -37,7 +37,7 @@ field_of() { windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.ti
 dimmed() {
   "$UMBRIEL" settle
   grim "$FRAME"
-  magick "$FRAME" -crop 20x20+5+5 -format '%[fx:mean < 0.8 ? 1 : 0]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$FRAME" mean 20x20+5+5 | awk '{print (($1 + $2 + $3) / 3 < 0.8 * 255) ? 1 : 0}'
 }
 
 mkfifo "$CONTROL"
@@ -48,7 +48,7 @@ for _ in $(seq 80); do
   [[ -n "$(field_of moving-window id)" ]] && break
   sleep 0.05
 done
-"$UMBRIEL" msg window-move-to-scratchpad:a > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad a > /dev/null
 
 # A second member stays hidden while a shows the moving window on its own.
 foot --title=staying-window sh -c "sleep 120" > /dev/null 2>&1 &
@@ -57,10 +57,10 @@ for _ in $(seq 80); do
   [[ -n "$(field_of staying-window id)" ]] && break
   sleep 0.05
 done
-"$UMBRIEL" msg window-move-to-scratchpad:a > /dev/null
-"$UMBRIEL" msg scratchpad-window-show-next:a > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad a > /dev/null
+"$UMBRIEL" msg scratchpad-window-show-next a > /dev/null
 if [[ $(windows | jq -r '.[] | select(.active) | .title') != moving-window ]]; then
-  "$UMBRIEL" msg scratchpad-window-show-next:a > /dev/null
+  "$UMBRIEL" msg scratchpad-window-show-next a > /dev/null
 fi
 if [[ $(dimmed) != 1 ]]; then
   echo "scratchpad a did not open with its window: $(windows)"
@@ -88,7 +88,7 @@ for _ in $(seq 80); do
   [[ -z "$(field_of moved-out id)" ]] && break
   sleep 0.05
 done
-"$UMBRIEL" msg scratchpad-window-show-next:a > /dev/null
+"$UMBRIEL" msg scratchpad-window-show-next a > /dev/null
 if [[ $(windows | jq -r '.[] | select(.active) | .title') != staying-window ]]; then
   echo "stepping through a did not reach the window still in it: $(windows)"
   exit 1

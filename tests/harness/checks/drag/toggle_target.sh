@@ -74,13 +74,13 @@ wait_for_count 2
 # be told apart from a drag that never resized anything.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg window-set-primary-extent:0.3 > /dev/null
-"$UMBRIEL" msg window-set-secondary-extent:0.4 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.3 > /dev/null
+"$UMBRIEL" msg window-set-secondary-extent 0.4 > /dev/null
 "$UMBRIEL" settle
 read -r float_w float_h < <(window toggle-wide '"\(.w) \(.h)"')
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.75 > /dev/null
 "$UMBRIEL" settle
 read -r tiled_w tiled_h < <(window toggle-wide '"\(.w) \(.h)"')
 neighbor_w=$(window toggle-keep .w)
@@ -111,7 +111,7 @@ fi
 # the width the drag detached has to reappear.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg window-set-primary-extent:0.75 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.75 > /dev/null
 "$UMBRIEL" settle
 drag_toggling toggle-wide 1270 400 2
 read -r floating w h < <(window toggle-wide '"\(.floating) \(.w) \(.h)"')

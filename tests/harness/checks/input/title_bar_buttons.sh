@@ -46,12 +46,12 @@ wait_field() {
   return 1
 }
 
-# The color at the button slot `offset` pixels left of the bar's right edge: blue, yellow, green, or bar.
+# Sample the background beside each symbol in the slot `offset` pixels left of the bar's right edge.
 slot() {
   local x y w red green blue
   read -r x y w < <(window | jq -r '"\(.x) \(.y) \(.w)"')
   grim "$IMAGE"
-  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$((x + w - $1))" "$((y - 14))")
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$((x + w - $1 - 6))" "$((y - 14))")
   if ((red > 200 && green < 60 && blue > 200)); then
     echo bar
   elif ((red < 100 && green < 100 && blue > 200)); then
@@ -89,7 +89,7 @@ expect_slots 14=green 36=yellow 58=blue
 # Clicking minimize hides the window; naming it brings it back.
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 595 95 click 272
 wait_field minimized true
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 wait_field minimized false
 
 # A tiled window cannot minimize, so its bar has no minimize button.

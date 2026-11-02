@@ -12,8 +12,8 @@ spawn_client() {
 }
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -120,41 +120,41 @@ assert_active ONE
 spawn_client silent-source
 spawn_client silent-anchor
 wait_for_windows 2
-accepts "window-focus:$(id_of silent-source)"
+accepts window-focus "$(id_of silent-source)"
 wait_for_active silent-source
 
 # The window lands on TWO, ONE stays active, and the seat takes the window the
 # source workspace hands it instead of travelling with the moved one.
-accepts "window-move-to-workspace-silent:TWO"
+accepts window-move-to-workspace-silent TWO
 wait_for_workspace silent-source "$two_id"
 assert_active ONE
 wait_for_active silent-anchor
 
 # Contrast: the plain form still follows the window onto TWO.
-accepts "window-move-to-workspace:TWO"
+accepts window-move-to-workspace TWO
 wait_for_workspace silent-anchor "$two_id"
 assert_active TWO
 
 # An emptied source keeps its now-empty workspace active and clears the
 # keyboard focus, rather than switching to the destination.
-accepts "workspace-switch:ONE"
+accepts workspace-switch ONE
 spawn_client silent-last
 wait_for_windows 3
-accepts "window-focus:$(id_of silent-last)"
+accepts window-focus "$(id_of silent-last)"
 wait_for_active silent-last
-accepts "window-move-to-workspace-silent:TWO"
+accepts window-move-to-workspace-silent TWO
 wait_for_workspace silent-last "$two_id"
 assert_active ONE
 wait_for_active none
 
 # With nothing left to move the action is a no-op, never a workspace switch.
-accepts "window-move-to-workspace-silent:TWO"
+accepts window-move-to-workspace-silent TWO
 assert_active ONE
 
 # The adjacent silent forms obey the same rule. TWO now owns all three windows,
 # so moving backwards must leave TWO active, keep the seat on TWO, and hand it
 # to a window that stayed behind.
-accepts "workspace-switch:TWO"
+accepts workspace-switch TWO
 wait_for_active silent-anchor
 accepts "window-move-to-workspace-silent-previous"
 wait_for_workspace silent-anchor "$one_id"
@@ -164,7 +164,7 @@ wait_for_active_absent silent-anchor
 
 # Forwards out of the emptied ONE: it stays active and empty, and the window
 # still travels.
-accepts "workspace-switch:ONE"
+accepts workspace-switch ONE
 wait_for_active silent-anchor
 accepts "window-move-to-workspace-silent-next"
 wait_for_workspace silent-anchor "$two_id"

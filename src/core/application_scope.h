@@ -14,12 +14,12 @@ namespace umbriel {
   // SYSTEMD_EXEC_PID, so comparing it with the current pid prevents nested or
   // manually launched compositors from attaching applications to a host
   // Umbriel session.
-  [[nodiscard]] bool isDirectSystemdService(pid_t currentPid, const char* systemdExecPid);
+  bool isDirectSystemdService(pid_t currentPid, const char* systemdExecPid);
 
   // Return the deepest service or scope unit from cgroup file contents.
   // Empty means the process is not owned by a recognizable systemd unit.
-  [[nodiscard]] std::string systemdUnitFromCgroup(std::string_view cgroup);
-  [[nodiscard]] std::string currentSystemdUnit();
+  std::string systemdUnitFromCgroup(std::string_view cgroup);
+  std::string currentSystemdUnit();
 
   inline constexpr std::array<const char*, 3> kSystemdControlEnvironmentVariables{
       "XDG_RUNTIME_DIR",
@@ -32,9 +32,9 @@ namespace umbriel {
   // Keep the user-manager connection independent from configured application
   // values. systemd-run connects with the captured values, then applies the
   // explicit arguments to the command after its scope has started.
-  [[nodiscard]] SystemdControlEnvironment captureSystemdControlEnvironment();
+  SystemdControlEnvironment captureSystemdControlEnvironment();
   [[nodiscard]] bool restoreSystemdControlEnvironment(const SystemdControlEnvironment& environment);
-  [[nodiscard]] ApplicationScopeEnvironmentArguments
+  ApplicationScopeEnvironmentArguments
   applicationScopeEnvironmentArguments(std::span<const std::pair<std::string, std::string>> configuredEnvironment);
 
   // Replace the current child with systemd-run. The caller must pass an

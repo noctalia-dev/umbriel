@@ -141,7 +141,7 @@ fi
 "$UMBRIEL" clock-advance 1600
 "$UMBRIEL" settle
 
-"$UMBRIEL" msg "window-close:$first_id" > /dev/null
+"$UMBRIEL" msg window-close "$first_id" > /dev/null
 for _ in $(seq 80); do
   grep -q '^unmapped$' "$FIRST_LOG" && break
   sleep 0.01

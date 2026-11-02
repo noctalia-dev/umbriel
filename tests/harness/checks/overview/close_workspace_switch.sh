@@ -23,7 +23,7 @@ active_workspace() {
 
 # Mean red and blue of the whole frame, in percent.
 red_blue() {
-  magick "$1" -format '%[fx:round(100*mean.r)] %[fx:round(100*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean | awk '{ printf "%d %d\n", $1 * 100 / 255 + 0.5, $3 * 100 / 255 + 0.5 }'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -52,10 +52,10 @@ EOF
 
 FILL_COLOR=0xFFCC0000 "$CLIENT" close-switch-red 1200 700 > /dev/null 2>&1 &
 wait_for_count 1
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 FILL_COLOR=0xFF0000CC "$CLIENT" close-switch-blue 1200 700 > /dev/null 2>&1 &
 wait_for_count 2
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 
 "$UMBRIEL" msg overview-open > /dev/null

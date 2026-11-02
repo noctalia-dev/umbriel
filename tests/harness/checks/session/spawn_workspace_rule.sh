@@ -60,7 +60,7 @@ default_focused = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-"$UMBRIEL" msg workspace-switch:2/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 launch_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .active) | .id')
 rule_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-2" and .index == 2) | .id')
@@ -73,7 +73,7 @@ mkfifo "$XDG_START_FIFO" "$RULE_START_FIFO"
 exec {xdg_start_fd}<>"$XDG_START_FIFO"
 exec {rule_start_fd}<>"$RULE_START_FIFO"
 "$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$XDG_TOKEN_FILE'; read -r _ < '$XDG_START_FIFO'; exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-xdg ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-xdg > '$XDG_LOG' 2>&1" \
+  spawn "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$XDG_TOKEN_FILE'; read -r _ < '$XDG_START_FIFO'; exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-xdg ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-xdg > '$XDG_LOG' 2>&1" \
   > /dev/null
 for _ in $(seq 80); do
   [[ -s $XDG_TOKEN_FILE ]] && break
@@ -84,7 +84,7 @@ if [[ ! -s $XDG_TOKEN_FILE ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:1/HEADLESS-2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 --output HEADLESS-2 > /dev/null
 "$UMBRIEL" settle > /dev/null
 right_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-2" and .focused) | .id')
 printf 'start\n' >&"$xdg_start_fd"
@@ -106,10 +106,10 @@ if [[ $(jq -r '.[] | select(.focused) | .id' <<< "$workspaces") != "$right_works
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" msg \
-  "spawn:exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-policy ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-policy > '$POLICY_LOG' 2>&1" \
+  spawn "exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-policy ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-policy > '$POLICY_LOG' 2>&1" \
   > /dev/null
 wait_for_app spawn-workspace-policy
 windows=$("$UMBRIEL" windows --json)
@@ -125,7 +125,7 @@ if [[ $(jq -r '.workspace' <<< "$policy_target") != "$launch_workspace" \
 fi
 
 "$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$RULE_TOKEN_FILE'; read -r _ < '$RULE_START_FIFO'; exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-rule-target ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-rule-target > '$TARGET_LOG' 2>&1" \
+  spawn "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$RULE_TOKEN_FILE'; read -r _ < '$RULE_START_FIFO'; exec env -u UMBRIEL_LAUNCH_TOKEN APP_ID=spawn-workspace-rule-target ACTIVATE_ON_START=1 '$CLIENT' spawn-workspace-rule-target > '$TARGET_LOG' 2>&1" \
   > /dev/null
 for _ in $(seq 80); do
   [[ -s $RULE_TOKEN_FILE ]] && break
@@ -136,7 +136,7 @@ if [[ ! -s $RULE_TOKEN_FILE ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 left_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .focused) | .id')
 printf 'start\n' >&"$rule_start_fd"
@@ -159,7 +159,7 @@ if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-
 fi
 
 "$UMBRIEL" msg \
-  "spawn:exec env APP_ID=spawn-workspace-rule-scratch '$CLIENT' spawn-workspace-rule-scratch > '$SCRATCH_LOG' 2>&1" \
+  spawn "exec env APP_ID=spawn-workspace-rule-scratch '$CLIENT' spawn-workspace-rule-scratch > '$SCRATCH_LOG' 2>&1" \
   > /dev/null
 for _ in $(seq 80); do
   windows=$("$UMBRIEL" windows --json)

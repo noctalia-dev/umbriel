@@ -307,8 +307,10 @@ namespace umbriel {
 #endif
       wp_color_manager_v1_send_supported_intent(resource, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
       for (const wp_color_manager_v1_transfer_function transferFunction : manager->transferFunctions) {
-        if (wp_color_manager_v1_transfer_function_is_valid(transferFunction, wl_resource_get_version(resource))) {
-          wp_color_manager_v1_send_supported_tf_named(resource, transferFunction);
+        const uint32_t version = wl_resource_get_version(resource);
+        const uint32_t wireTransferFunction = colorTransferFunctionToWire(transferFunction, version);
+        if (wp_color_manager_v1_transfer_function_is_valid(wireTransferFunction, version)) {
+          wp_color_manager_v1_send_supported_tf_named(resource, wireTransferFunction);
         }
       }
       for (const wp_color_manager_v1_primaries namedPrimaries : manager->primaries) {
@@ -658,18 +660,21 @@ namespace umbriel {
         );
         return;
       }
-      if (!wp_color_manager_v1_transfer_function_is_valid(transferFunction, wl_resource_get_version(resource))
+      const uint32_t version = wl_resource_get_version(resource);
+      const uint32_t canonicalTransferFunction = colorTransferFunctionFromWire(transferFunction, version);
+      if (!wp_color_manager_v1_transfer_function_is_valid(transferFunction, version)
           || !contains(
-              creator->manager->transferFunctions, static_cast<wp_color_manager_v1_transfer_function>(transferFunction)
+              creator->manager->transferFunctions,
+              static_cast<wp_color_manager_v1_transfer_function>(canonicalTransferFunction)
           )) {
         wl_resource_post_error(
             resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF, "unsupported transfer function"
         );
         return;
       }
-      creator->description.data.tf_named = transferFunction;
+      creator->description.data.tf_named = canonicalTransferFunction;
       if (!creator->description.customLuminances) {
-        creator->description.luminances = defaultColorLuminances(transferFunction);
+        creator->description.luminances = defaultColorLuminances(canonicalTransferFunction);
       }
       creator->transferFunctionSet = true;
     }
@@ -839,7 +844,10 @@ namespace umbriel {
         wl_resource* parent, uint32_t id, const ColorDescription& description, bool informationAllowed,
         uint64_t identity = 0
     ) {
-      if (!wp_color_manager_v1_transfer_function_is_valid(description.data.tf_named, wl_resource_get_version(parent))) {
+      const uint32_t version = wl_resource_get_version(parent);
+      if (!wp_color_manager_v1_transfer_function_is_valid(
+              colorTransferFunctionToWire(description.data.tf_named, version), version
+          )) {
         createFailedImageDescription(
             parent, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_LOW_VERSION, "transfer function requires a newer protocol version"
         );
@@ -918,7 +926,9 @@ namespace umbriel {
         wp_image_description_info_v1_send_primaries_named(information, description.data.primaries_named);
       }
       sendPrimaries(information, primaryCoordinates);
-      wp_image_description_info_v1_send_tf_named(information, description.data.tf_named);
+      wp_image_description_info_v1_send_tf_named(
+          information, colorTransferFunctionToWire(description.data.tf_named, wl_resource_get_version(information))
+      );
       wp_image_description_info_v1_send_luminances(
           information, static_cast<uint32_t>(std::lround(description.luminances.min * 10000.0F)),
           static_cast<uint32_t>(std::lround(description.luminances.max)),

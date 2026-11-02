@@ -160,6 +160,7 @@ namespace umbriel {
     wl_signal_add(&surface->events.destroy, &m_rootSurfaceDestroy);
 
     m_sceneTree = wlr_scene_tree_create(m_server->xdgTree());
+    (void)umbrielfx_scene_node_set_capture_excluded(&m_sceneTree->node, false);
     m_decoration.createShadow(m_sceneTree);
     // The content tree's direct child is the root surface's subsurface tree for both roles; the effect and clip paths
     // find the surface there.
@@ -384,6 +385,13 @@ namespace umbriel {
         && m_server->scratchpadManager()->contains(this)) {
       return;
     }
+    // A pinned window belongs to its output and always joins that output's active workspace. Reconciliation may still
+    // name a workspace it is deactivating as the group's active one; only a workspace that is really active qualifies.
+    if (m_pinned && workspace != nullptr && !workspace->active() && workspace->group() != nullptr) {
+      if (Workspace* active = workspace->group()->active(); active != nullptr && active->active()) {
+        workspace = active;
+      }
+    }
     if (!m_displacedHome && !m_pinned && workspace != nullptr && workspace->displacedWorkspace()) {
       const auto& home = workspace->displacedWorkspace();
       m_displacedHome.emplace();
@@ -398,6 +406,9 @@ namespace umbriel {
     }
     if (m_workspace == workspace) {
       return;
+    }
+    if (workspace == nullptr || workspace->layoutMode() != LayoutMode::Stacking) {
+      clearRegionState();
     }
     Output* previousOutput =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : nullptr;
@@ -529,11 +540,13 @@ namespace umbriel {
       }
     }
     m_launchWorkspace = std::move(workspace);
+    ++m_launchWorkspace->pendingViews;
     m_launchScratchpad = scratchpad;
     m_launchToken = token;
     m_launchWorkspaceId = target->id();
     m_launchPlacementPending = true;
     m_launchPlacementTimer = timer;
+    target->group()->restoreLaunchWorkspace(*target);
     return true;
   }
 
@@ -563,6 +576,9 @@ namespace umbriel {
     if (m_launchPlacementTimer != nullptr) {
       wl_event_source_remove(m_launchPlacementTimer);
       m_launchPlacementTimer = nullptr;
+    }
+    if (m_launchWorkspace != nullptr && m_launchPlacementPending) {
+      --m_launchWorkspace->pendingViews;
     }
     m_launchWorkspace.reset();
     m_launchScratchpad.clear();

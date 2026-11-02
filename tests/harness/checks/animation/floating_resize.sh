@@ -55,15 +55,8 @@ wait_for_box() {
 
 capture_box() {
   local image="$UMBRIEL_RUNTIME_DIR/$1.png"
-  local width height x y
   grim "$image"
-  read -r width height x y < <(
-    magick "$image" -alpha off -colorspace gray -threshold 1% \
-      -bordercolor black -border 1 -trim -format '%w %h %X %Y\n' info:
-  )
-  x=${x#+}
-  y=${y#+}
-  printf '%d %d %d %d\n' "$((x - 1))" "$((y - 1))" "$width" "$height"
+  "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01'
 }
 
 "$CLIENT" "$TITLE" 1000 300 > "$CLIENT_LOG" 2>&1 &
@@ -78,7 +71,7 @@ fi
 
 # Animation time only moves by clock-advance: samples land at 250 ms and 1250 ms of the 2000 ms linear timeline.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg window-set-primary-extent:0.2 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.2 > /dev/null
 "$UMBRIEL" clock-advance 250
 read -r first_x first_y first_w first_h < <(capture_box shrink-250ms)
 "$UMBRIEL" clock-advance 1000

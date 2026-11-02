@@ -40,7 +40,7 @@ if [[ -z $target_id || -z $other_id ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$other_id" > /dev/null
+"$UMBRIEL" msg window-focus "$other_id" > /dev/null
 for _ in $(seq 40); do
   windows=$("$UMBRIEL" windows --json)
   target=$(jq -c --arg id "$target_id" '.[] | select(.id == $id)' <<< "$windows")
@@ -56,7 +56,7 @@ if [[ $(jq -r '.focused' <<< "$target") != true || $(jq -r '.active' <<< "$targe
 fi
 
 "$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; printf a > '$CONTROL_FIFO'" > /dev/null
+  spawn "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; printf a > '$CONTROL_FIFO'" > /dev/null
 for _ in $(seq 60); do
   windows=$("$UMBRIEL" windows --json)
   [[ $(jq -r --arg id "$target_id" '.[] | select(.id == $id) | .active' <<< "$windows") == true ]] && break

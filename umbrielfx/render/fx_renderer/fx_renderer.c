@@ -244,9 +244,17 @@ struct wlr_render_pass* fx_renderer_begin_output_buffer_pass(
     fx_offscreen_buffers_invalidate_blend(output);
   }
 
-  return begin_buffer_pass_with_output(
+  struct wlr_render_pass* pass = begin_buffer_pass_with_output(
       output->renderer, buffer, options, output_buffers, fx_output_get_sdr_transfer_function(output)
   );
+  if (pass != NULL) {
+    fx_get_render_pass(pass)->output_target = true;
+  }
+  return pass;
+}
+
+void fx_renderer_set_nvidia_sync_workaround(struct wlr_renderer* renderer, bool enabled) {
+  fx_get_renderer(renderer)->nvidia_sync_workaround = enabled;
 }
 
 GLuint fx_renderer_get_buffer_fbo(struct wlr_renderer* wlr_renderer, struct wlr_buffer* wlr_buffer) {
@@ -604,6 +612,7 @@ struct wlr_renderer* fx_renderer_create_egl(struct wlr_egl* egl) {
   int gles_major = 0;
   const bool is_gles3 = gl_version != NULL && sscanf(gl_version, "OpenGL ES %d", &gles_major) == 1 && gles_major >= 3;
   renderer->is_gles3 = is_gles3;
+  renderer->nvidia_sync_workaround = true;
   wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
   wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
   wlr_log(WLR_INFO, "Supported FX extensions: %s", exts_str);

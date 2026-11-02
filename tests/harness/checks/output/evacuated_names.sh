@@ -45,7 +45,9 @@ field() {
 
 spawn() {
   local title=$1 selector=$2 count=$3 place=${4:-true} id
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   "$UMBRIEL_UNMAP_CLIENT" "$title" 800 600 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 60); do
     [[ $("$UMBRIEL" windows --json | jq 'length') == "$count" ]] && break
@@ -57,14 +59,16 @@ spawn() {
     return 1
   fi
   if [[ $place == true ]]; then
-    "$UMBRIEL" msg "window-focus:$id" > /dev/null
-    "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+    "$UMBRIEL" msg window-focus "$id" > /dev/null
+    "$UMBRIEL" msg window-move-to-workspace "${words[@]}" > /dev/null
   fi
 }
 
 expect_selected() {
   local selector=$1 expected=$2 workspaces
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   workspaces=$("$UMBRIEL" workspaces --json)
   if ! jq -e --arg expected "$expected" \
       'any(.[]; .id == $expected and .focused)' <<< "$workspaces" > /dev/null; then
@@ -92,13 +96,13 @@ expect_evacuated() {
     echo "$phase replaced native workspaces or confused names with positions: $workspaces"
     return 1
   fi
-  expect_selected '"1"' "$one"
-  expect_selected '"4"' "$four"
-  expect_selected '"1"/HEADLESS-3' "$one"
-  expect_selected '"1"/HEADLESS-1' "$one"
-  expect_selected '"4"/HEADLESS-1' "$four"
-  expect_selected 4/HEADLESS-3 "$one"
-  expect_selected 5/HEADLESS-3 "$four"
+  expect_selected '--name 1' "$one"
+  expect_selected '--name 4' "$four"
+  expect_selected '--name 1 --output HEADLESS-3' "$one"
+  expect_selected '--name 1 --output HEADLESS-1' "$one"
+  expect_selected '--name 4 --output HEADLESS-1' "$four"
+  expect_selected '4 --output HEADLESS-3' "$one"
+  expect_selected '5 --output HEADLESS-3' "$four"
 }
 
 expect_restored() {
@@ -113,14 +117,14 @@ expect_restored() {
     echo "$phase did not restore the original named workspaces: $workspaces"
     return 1
   fi
-  expect_selected '"1"' "$(field source-one workspace)"
-  expect_selected '"4"' "$(field source-four workspace)"
+  expect_selected '--name 1' "$(field source-one workspace)"
+  expect_selected '--name 4' "$(field source-four workspace)"
 }
 
 write_config enabled
-spawn source-one '"1"/HEADLESS-1' 1
-spawn source-four '"4"/HEADLESS-1' 2
-spawn native-eight '"8"/HEADLESS-3' 3
+spawn source-one '--name 1 --output HEADLESS-1' 1
+spawn source-four '--name 4 --output HEADLESS-1' 2
+spawn native-eight '--name 8 --output HEADLESS-3' 3
 readonly NATIVE_IDS="$("$UMBRIEL" workspaces --json | jq -c '[.[] | select(.output == "HEADLESS-3") | .id]')"
 
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
@@ -144,9 +148,9 @@ expect_restored reenable
 write_config disabled-source
 rule_refuge=$(field source-one workspace)
 if [[ ${rule_refuge%%:*} == HEADLESS-2 ]]; then
-  rule_start='"8"/HEADLESS-3'
+  rule_start='--name 8 --output HEADLESS-3'
 else
-  rule_start='"5"/HEADLESS-2'
+  rule_start='--name 5 --output HEADLESS-2'
 fi
 spawn disabled-rule-name "$rule_start" 4 false
 if [[ $(field disabled-rule-name workspace) != "$rule_refuge" ]]; then

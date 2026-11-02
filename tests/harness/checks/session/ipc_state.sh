@@ -55,7 +55,7 @@ await_state workspaces "
     | .window_count == 3 and .focused_window == \"$active\" and (.urgent | not) and (.layout_override | not)
 " "the focused workspace does not count its windows or name its focused one"
 
-action "window-focus:$parent"
+action window-focus "$parent"
 await_state workspaces ".[] | select(.focused) | .focused_window == \"$parent\"" "focusing the parent"
 
 action window-toggle-fullscreen
@@ -63,7 +63,7 @@ await_state windows ".[] | select(.id == \"$parent\") | .fullscreen" "fullscreen
 action window-toggle-fullscreen
 await_state windows ".[] | select(.id == \"$parent\") | .fullscreen | not" "leaving fullscreen did not reach the listing"
 
-action "window-focus:$other"
+action window-focus "$other"
 action window-toggle-maximize
 await_state windows ".[] | select(.id == \"$other\") | .maximized and (.maximized_to_edges | not)" \
   "maximize did not reach the listing"
@@ -75,26 +75,30 @@ action window-toggle-maximize
 await_state windows ".[] | select(.id == \"$other\") | (.maximized | not) and (.maximized_to_edges | not)" \
   "restoring the window did not reach the listing"
 
-# A pinned window stays visible on another workspace; the others are hidden with their workspace.
-action "window-focus:$child"
+# A pinned window stays visible on another workspace; the others are hidden with their workspace. The pinned window
+# moves to the active workspace without making it occupied.
+action window-focus "$child"
 action window-toggle-pinned
 await_state windows ".[] | select(.id == \"$child\") | .pinned" "pinning did not reach the listing"
-action workspace-switch:2
+action workspace-switch 2
 await_state windows "
   (.[] | select(.id == \"$child\") | .visible)
   and all(.[] | select(.id != \"$child\"); .visible | not)
 " "a workspace switch did not update visibility"
-await_state workspaces '.[] | select(.focused) | .index == 2 and .focused_window == ""' \
-  "the empty workspace names a focused window"
-action workspace-switch:1
+await_state workspaces ".[] | select(.focused) | .index == 2 and (.occupied | not) and .window_count == 0" \
+  "the pinned window made the active workspace occupied"
+await_state windows ".[] | select(.id == \"$child\") | .workspace == \"$(
+  "$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id'
+)\"" "the pinned window did not follow the active workspace"
+action workspace-switch 1
 await_state windows 'all(.[]; .visible)' "returning to the workspace did not show its windows"
 
 # The scrolling strip is the only layout with columns to report.
-action workspace-set-layout:dwindle
+action workspace-set-layout dwindle
 await_state workspaces '.[] | select(.focused) | .layout == "dwindle" and .layout_override' \
   "a runtime layout is not reported as an override"
 await_state windows 'all(.[]; .column == -1 and .row == -1)' "dwindle windows report columns"
-action workspace-set-layout:scrolling
+action workspace-set-layout scrolling
 
 # A window that asks for activation but may not take focus is urgent, and so is its workspace.
 mkfifo "$CONTROL_FIFO"
@@ -102,7 +106,7 @@ exec {control_fd}<> "$CONTROL_FIFO"
 APP_ID=ipc-state-urgent REMAP_ON_STDIN=1 \
   "$CLIENT" ipc-state-urgent <&"$control_fd" > "$UMBRIEL_RUNTIME_DIR/ipc-state-urgent.log" 2>&1 &
 await_state windows 'length == 4' "the activation target did not map"
-action "window-close:$(window_id ipc-state-urgent)"
+action window-close "$(window_id ipc-state-urgent)"
 await_lines "$UMBRIEL_RUNTIME_DIR/ipc-state-urgent.log" unmapped 1
 cat >> "$UMBRIEL_CONFIG" << 'EOF'
 
@@ -126,7 +130,7 @@ await_state layers "
       and .anchor == [\"top\", \"left\", \"right\"] and .margin == {top: 0, right: 0, bottom: 0, left: 0}
       and .x == 0 and .y == 0 and .w > 0 and .h == 40)
 " "the mapped panel has unexpected layer state"
-action "window-focus:$parent"
+action window-focus "$parent"
 await_state layers 'length == 1 and (.[0].focused | not)' "the panel kept the keyboard after a window took focus"
 kill "$panel_pid"
 await_state layers 'length == 0' "the destroyed panel stayed in the layer list"

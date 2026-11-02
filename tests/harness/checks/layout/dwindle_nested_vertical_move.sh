@@ -67,7 +67,7 @@ if [[ -z $lower_id || $upper_x -ne $lower_x || $upper_y -ge $lower_y ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$lower_id" > /dev/null
+"$UMBRIEL" msg window-focus "$lower_id" > /dev/null
 "$UMBRIEL" msg window-move-up > /dev/null
 wait_for_y "$lower_id" "$upper_y"
 

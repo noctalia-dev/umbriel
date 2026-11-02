@@ -7,8 +7,8 @@ set -euo pipefail
 readonly RESERVE=32 # [appearance.tab_bar] height 24 plus layout gap 8
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -82,9 +82,9 @@ if [[ $("$UMBRIEL" windows | grep -c $'\ttab-[abc]\t\[tab ') != 3 ]]; then
   exit 1
 fi
 
-accepts column-focus-tab:1
+accepts column-focus-tab 1
 wait_for_shown tab-a
-accepts column-focus-tab:-1
+accepts column-focus-tab -1
 wait_for_shown tab-c
 accepts column-focus-tab-next
 wait_for_shown tab-a
@@ -102,9 +102,9 @@ fi
 wait_for_shown tab-b
 
 # A workspace switch neither reveals the hidden tabs nor changes which one shows.
-accepts workspace-switch:2
+accepts workspace-switch 2
 "$UMBRIEL" settle
-accepts workspace-switch:1
+accepts workspace-switch 1
 "$UMBRIEL" settle
 wait_for_shown tab-b
 
@@ -142,14 +142,14 @@ if (( $(field_of tab-c y) != tabbed_y )); then
   exit 1
 fi
 
-accepts column-set-display:normal
+accepts column-set-display normal
 "$UMBRIEL" settle
 if [[ $("$UMBRIEL" windows --json | jq '[.[] | select(.tabbed or .tab_hidden)] | length') != 0 ]]; then
-  echo "expected column-set-display:normal to leave no tabs: $("$UMBRIEL" windows --json)"
+  echo "expected column-set-display normal to leave no tabs: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 
-accepts workspace-set-layout:dwindle
+accepts workspace-set-layout dwindle
 "$UMBRIEL" settle
 if out=$("$UMBRIEL" msg column-toggle-tabbed 2>&1) || [[ $out != *"scrolling or master"* ]]; then
   echo "expected dwindle to refuse tabs, got: $out"

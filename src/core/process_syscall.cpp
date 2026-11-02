@@ -1,4 +1,4 @@
-#include <errno.h>
+#include <cerrno>
 #include <sys/syscall.h>
 #include <unistd.h>
 

@@ -55,25 +55,25 @@ wait_for_field() {
 
 "$CLIENT" "$WS1" > "$UMBRIEL_RUNTIME_DIR/$WS1.log" 2>&1 &
 wait_for_count 1
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$CLIENT" "$WS2" > "$UMBRIEL_RUNTIME_DIR/$WS2.log" 2>&1 &
 wait_for_count 2
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 wait_for_field "$WS1" active true
 
 "$CLIENT" "$SCRATCH" 420 260 > "$UMBRIEL_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
 wait_for_count 3
 scratch_id=$(field_of "$SCRATCH" id)
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" scratchpad "$SCRATCHPAD"
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" active true
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 
 # The workspace switch under test: focus must stay on the foreground scratchpad.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 wait_for_field "$SCRATCH" active true
 for _ in $(seq 5); do
   sleep 0.1

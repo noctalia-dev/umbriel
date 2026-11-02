@@ -25,7 +25,7 @@ namespace umbriel {
           {.name = "scrolling", .value = LayoutMode::Scrolling},
           {.name = "dwindle", .value = LayoutMode::Dwindle},
           {.name = "master", .value = LayoutMode::Master},
-          {.name = "floating", .value = LayoutMode::Floating},
+          {.name = "stacking", .value = LayoutMode::Stacking},
       };
       return choices;
     }
@@ -162,6 +162,7 @@ namespace umbriel {
       using Scrolling = decltype(L::scrolling);
       using Dwindle = decltype(L::dwindle);
       using Master = decltype(L::master);
+      using Stacking = decltype(L::stacking);
       using Tabs = decltype(L::tabs);
       constexpr int kStrutLimit = 65535;
 
@@ -186,6 +187,9 @@ namespace umbriel {
           real("default_width_fraction", 0.1, 0.9, &Master::defaultWidthFraction),
           boolean("new_on_top", &Master::newOnTop),
           boolean("new_becomes_master", &Master::newBecomesMaster),
+      };
+      static const Fields<Stacking> stacking{
+          boolean("drop_zones", &Stacking::dropZones),
       };
       static const Fields<Tabs> tabs{
           choice("default_display", &Tabs::defaultDisplay, columnDisplays()),
@@ -225,6 +229,7 @@ namespace umbriel {
           table("scrolling", &L::scrolling, scrolling),
           table("dwindle", &L::dwindle, dwindle),
           table("master", &L::master, master),
+          table("stacking", &L::stacking, stacking),
           table("tabs", &L::tabs, tabs),
       };
       return fields;

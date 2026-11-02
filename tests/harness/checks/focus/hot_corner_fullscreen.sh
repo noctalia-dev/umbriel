@@ -69,7 +69,7 @@ follows_mouse = false
 [hot_corners.top_left]
 enabled = true
 delay_ms = 100
-action = "workspace-switch:2/HEADLESS-1"
+action = "workspace-switch 2 --output HEADLESS-1"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -93,7 +93,7 @@ wait_for_windows \
   'length == 2 and ([.[] | select(.title == "hot-corner-focused")] | length == 1)' \
   "second test window did not map"
 focused_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "hot-corner-focused") | .id')
-"$UMBRIEL" msg "window-focus:$focused_id" > /dev/null
+"$UMBRIEL" msg window-focus "$focused_id" > /dev/null
 wait_for_windows \
   '([.[] | select(.title == "hot-corner-fullscreen") | [.focused, .active]] == [[false, false]])
     and ([.[] | select(.title == "hot-corner-focused") | [.focused, .active]] == [[true, true]])' \

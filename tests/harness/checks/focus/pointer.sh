@@ -101,9 +101,9 @@ wait_for_focus_at 10
 # while the cursor stays over the right. The click must return focus to right.
 right_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.x == 646) | .id')
 left_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.x == 10) | .id')
-"$UMBRIEL" msg "window-focus-warp:$right_id" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$right_id" > /dev/null
 wait_for_focus_at 646
-"$UMBRIEL" msg "window-focus:$left_id" > /dev/null
+"$UMBRIEL" msg window-focus "$left_id" > /dev/null
 wait_for_focus_at 10
 pointer click "$BTN_LEFT"
 wait_for_focus_at 646
@@ -128,7 +128,7 @@ printf '\n[input.cursor]\nfollows_focus = true\n' >> "$UMBRIEL_CONFIG"
 wait_for_focus_at 646
 sed -i 's/follows_focus = true/follows_focus = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus:$left_id" > /dev/null
+"$UMBRIEL" msg window-focus "$left_id" > /dev/null
 wait_for_focus_at 10
 pointer click "$BTN_LEFT"
 wait_for_focus_at 646
@@ -143,7 +143,7 @@ sed -i 's/follows_focus = false/follows_focus = true/' "$UMBRIEL_CONFIG"
 # the old pointer position, then click without motion after the transition.
 "$UMBRIEL" msg window-focus-left > /dev/null
 wait_for_focus_at 10
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 spawn_client
 wait_for_count 3
 pointer move "$RIGHT_X" "$MID_Y"
@@ -161,13 +161,13 @@ printf '\n[input.focus]\nfollows_mouse = true\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 destination_id=$("$UMBRIEL" windows --json | jq -r \
   --arg left "$left_id" --arg right "$right_id" '.[] | select(.id != $left and .id != $right) | .id')
-"$UMBRIEL" msg "window-move-to-workspace:2" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace "2" > /dev/null
 wait_for_window_x "$left_id" 646
 "$UMBRIEL" settle
 wait_for_focus_at 646
 sed -i 's/follows_focus = true/follows_focus = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus:$destination_id" > /dev/null
+"$UMBRIEL" msg window-focus "$destination_id" > /dev/null
 wait_for_focus_at 10
 pointer click "$BTN_LEFT"
 wait_for_focus_at 646

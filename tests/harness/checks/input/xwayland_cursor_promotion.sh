@@ -73,7 +73,7 @@ focus_and_enter() {
   local title=$1 window id x y
   window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
   id=$(jq -r '.id' <<< "$window")
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
   x=$(jq -r '(.x + .w / 2 | round)' <<< "$window")
   y=$(jq -r '(.y + .h / 2 | round)' <<< "$window")

@@ -30,7 +30,7 @@ APP_ID=spawn-workspace-home "$CLIENT" spawn-workspace-home > "$HOME_LOG" 2>&1 &
 wait_for_app spawn-workspace-home
 home_workspace=$("$UMBRIEL" windows --json | jq -r '.[] | select(.app_id == "spawn-workspace-home") | .workspace')
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle > /dev/null
 launch_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .id')
 if [[ -z $launch_workspace || $launch_workspace == "$home_workspace" ]]; then
@@ -55,7 +55,7 @@ mkfifo "$START_FIFO" "$CONTROL_FIFO"
 exec {start_fd}<>"$START_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 "$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; read -r _ < '$START_FIFO'; exec env APP_ID=spawn-workspace-target MAP_ON_STDIN=1 REMAP_ON_STDIN=1 '$CLIENT' spawn-workspace-target < '$CONTROL_FIFO' > '$TARGET_LOG' 2>&1" \
+  spawn "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; read -r _ < '$START_FIFO'; exec env APP_ID=spawn-workspace-target MAP_ON_STDIN=1 REMAP_ON_STDIN=1 '$CLIENT' spawn-workspace-target < '$CONTROL_FIFO' > '$TARGET_LOG' 2>&1" \
   > /dev/null
 
 for _ in $(seq 80); do
@@ -69,8 +69,9 @@ fi
 
 temp_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.app_id == "spawn-workspace-temp") | .id')
 trailing_index=$("$UMBRIEL" workspaces --json | jq -r --arg id "$trailing_workspace" '.[] | select(.id == $id) | .index')
-"$UMBRIEL" msg "window-focus:$temp_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-workspace-silent:$trailing_index" > /dev/null
+"$UMBRIEL" msg window-focus "$temp_id" > /dev/null
+"$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+"$UMBRIEL" msg window-move-to-workspace-silent "$trailing_index" > /dev/null
 for _ in $(seq 80); do
   windows=$("$UMBRIEL" windows --json)
   [[ $(jq -r '.[] | select(.app_id == "spawn-workspace-temp") | .workspace' <<< "$windows") == "$trailing_workspace" ]] \
@@ -82,11 +83,15 @@ if [[ $(jq -r '.[] | select(.app_id == "spawn-workspace-temp") | .workspace' <<<
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 workspaces=$("$UMBRIEL" workspaces --json)
-if ! jq -e --arg id "$launch_workspace" 'any(.[]; .id == $id)' <<< "$workspaces" > /dev/null; then
-  echo "pending launch did not preserve its empty workspace: $workspaces"
+if ! jq -e --arg pending "$launch_workspace" --arg occupied "$trailing_workspace" '
+  all(.[]; .id != $pending)
+  and any(.[]; .id == $occupied and .index == 2 and .occupied)
+  and length == 3
+' <<< "$workspaces" > /dev/null; then
+  echo "pending launch left a visible empty workspace: $workspaces"
   exit 1
 fi
 
@@ -119,7 +124,7 @@ if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .id') != "
 fi
 
 target_id=$(jq -r '.id' <<< "$target")
-"$UMBRIEL" msg "window-focus-warp:$target_id" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$target_id" > /dev/null
 APP_ID=spawn-workspace-keeper "$CLIENT" spawn-workspace-keeper > "$KEEPER_LOG" 2>&1 &
 keeper_pid=$!
 wait_for_app spawn-workspace-keeper
@@ -130,9 +135,9 @@ if [[ $(jq -r '.[] | select(.app_id == "spawn-workspace-keeper") | .workspace' <
 fi
 
 trailing_index=$("$UMBRIEL" workspaces --json | jq -r --arg id "$trailing_workspace" '.[] | select(.id == $id) | .index')
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-workspace-silent:$trailing_index" > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace-silent "$trailing_index" > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 
 windows=$("$UMBRIEL" windows --json)
@@ -140,7 +145,7 @@ if [[ $(jq -r '.[] | select(.app_id == "spawn-workspace-target") | .workspace' <
   echo "moving the target changed the destination workspace identity: $windows"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$target_id" > /dev/null
+"$UMBRIEL" msg window-close "$target_id" > /dev/null
 for _ in $(seq 60); do
   grep -q '^unmapped$' "$TARGET_LOG" 2>/dev/null && break
   sleep 0.1

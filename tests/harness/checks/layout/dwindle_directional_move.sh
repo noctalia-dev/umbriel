@@ -66,7 +66,7 @@ if [[ -z $lower_id || $left_x -ge $lower_x || $upper_x -ne $lower_x || $upper_y 
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$lower_id" > /dev/null
+"$UMBRIEL" msg window-focus "$lower_id" > /dev/null
 wait_for_focus "$lower_id"
 
 upper_id=$(jq -r '.[] | select(.title == "dwindle-move-upper-right") | .id' <<< "$windows")
@@ -123,9 +123,9 @@ echo "Dwindle directional swap exchanges windows between tiles"
 spawn_client dwindle-move-fourth
 wait_for_count 4
 fourth_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "dwindle-move-fourth") | .id')
-"$UMBRIEL" msg "window-focus:$lower_id" > /dev/null
+"$UMBRIEL" msg window-focus "$lower_id" > /dev/null
 wait_for_focus "$lower_id"
-"$UMBRIEL" msg "window-focus:$upper_id" > /dev/null
+"$UMBRIEL" msg window-focus "$upper_id" > /dev/null
 wait_for_focus "$upper_id"
 "$UMBRIEL" msg window-swap-right > /dev/null
 for _ in $(seq 40); do

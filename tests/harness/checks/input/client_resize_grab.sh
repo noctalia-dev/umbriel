@@ -134,7 +134,7 @@ echo "client-requested tiled resize changed the layout and released input to its
 kill "$source_pid" "$target_pid"
 wait "$source_pid" "$target_pid" 2>/dev/null || true
 await_windows 0
-"$UMBRIEL" msg workspace-set-layout:dwindle > /dev/null
+"$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 readonly PATTERN="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 HOLD_SIZE=1 "$PATTERN" "$SOURCE" 1200 700 > "$SOURCE_LOG" 2>&1 &
 await_windows 1
@@ -148,9 +148,10 @@ resize_y=$((source_y + 200))
 readonly HELD="$UMBRIEL_RUNTIME_DIR/resize-held.png"
 readonly RELEASED="$UMBRIEL_RUNTIME_DIR/resize-released.png"
 
+# Pixels in a 120px row that are neither of the pattern's exact colours, pure blue and pure green.
 impure_pixels() {
-  magick "$1" -alpha off -crop "120x1+$2+$resize_y" +repage -depth 8 txt:- |
-    tail -n +2 | grep -c -E -v '#(0000FF|00FF00) ' || true
+  "$UMBRIEL_PIXEL_PROBE" "$1" count '!((r == 0 && g == 0 && b == 1) || (r == 0 && g == 1 && b == 0))' \
+    "120x1+$2+$resize_y"
 }
 
 pointer_hold "$OUTPUT_W" "$OUTPUT_H" \

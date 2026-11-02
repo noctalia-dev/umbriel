@@ -531,7 +531,7 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const std::string outputName = argv[1];
-  const int exclusiveHeight = std::atoi(argv[2]);
+  const int exclusiveHeight = std::stoi(argv[2]);
   if (exclusiveHeight < 0) {
     std::println(stderr, "layer-client: exclusive height must not be negative");
     return EXIT_FAILURE;

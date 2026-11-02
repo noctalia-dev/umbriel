@@ -9,7 +9,7 @@ namespace umbriel {
   // Offset centering a client buffer of `contentSize` in a fullscreen tile of `tileSize`. Negative when the buffer is
   // the larger of the two, which crops it equally on both sides; a fullscreen buffer is never scaled, because scaling a
   // client that is mid mode-change shows it at the wrong aspect ratio.
-  [[nodiscard]] constexpr int fullscreenCenterOffset(int tileSize, int contentSize) {
+  constexpr int fullscreenCenterOffset(int tileSize, int contentSize) {
     return contentSize > 0 ? (tileSize - contentSize) / 2 : 0;
   }
 
@@ -17,7 +17,7 @@ namespace umbriel {
   // drawn at and `clip` its visible part (surface coordinates); `base` is the surface's buffer source box (client
   // viewport and scale). A scene clip cannot do this: it crops 1:1 and caps at the committed surface size. Returns an
   // empty box when nothing is left, meaning the buffer should be left alone.
-  [[nodiscard]] constexpr wlr_fbox croppedSourceBox(
+  constexpr wlr_fbox croppedSourceBox(
       const wlr_fbox& base, const wlr_box& geometry, const wlr_box& content, const wlr_box& clip, int surfaceWidth,
       int surfaceHeight
   ) {

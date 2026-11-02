@@ -66,8 +66,7 @@ read -r win_x win_y win_w win_h <<< "$(window_box)"
 grim "$SCREENSHOT"
 
 sample() {
-  magick "$SCREENSHOT" -crop "1x1+$1+$2" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2"
 }
 
 # (OFFSET+3, OFFSET+3) from the window origin is the main surface's own top-left, ~86 px from an arc centre it must not

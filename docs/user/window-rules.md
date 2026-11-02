@@ -66,6 +66,20 @@ A `default_maximize` rule opens the window at the full column width. [`client_ma
 
 Dialogs float by default. Use `default_floating = false` in a matching rule to force one into the layout.
 
+X11 windows marked as notifications, popup menus, dropdowns, tooltips, or other client-placed popups bypass window rules, including broad application rules that force tiling or maximize. Persistent torn-off menus marked `_NET_WM_WINDOW_TYPE_MENU` remain managed and follow window rules unless they request override-redirect. If an application publishes its popup type or override-redirect flag after opening, Umbriel switches it to popup handling immediately, restores its client-requested position and size, and clears maximize and fullscreen state. These popups do not appear in `umbriel windows`.
+
+Windows marked `_NET_WM_WINDOW_TYPE_NOTIFICATION` keep their client-requested position and size from their first visible frame, even without override-redirect, and do not take keyboard focus. They need no placement rule, including when another rule makes the application's ordinary windows floating or maximized. If an existing popup changes its type to a notification, keyboard focus returns to the active window.
+
+Client-placed X11 popups wait for pending Xwayland geometry events before they first become visible. This prevents a queued move from briefly exposing an earlier position. Later client-requested moves continue to apply normally.
+
+Some Wine and Proton native Wayland builds expose context menus as untitled, unparented `xdg_toplevel` windows. These receive normal window rules and have no popup anchor, so they can open centered or maximized. Hover focus can also return to the application while the pointer travels toward the menu. Such a client needs to supply a popup role and placement information. For affected applications, use the runtime's X11 driver. With Proton builds supporting both Wayland environment options, use this per-application Steam launch option:
+
+```sh
+PROTON_ENABLE_WAYLAND=0 PROTON_USE_WAYLAND=0 %command%
+```
+
+Restart the application after changing its driver. Its main window should then report `xwayland: true` in `umbriel windows --json`. The plain-text listing uses `-` as a placeholder for an empty title; matching the literal `-` does not select an untitled window. `match.title = "^$"` matches a client-supplied empty title, including these native Wayland menus, but rules cannot supply their missing popup anchor.
+
 A modal dialog [attaches to its parent](layout.md#dialogs) and ignores the settings above, since it goes wherever its parent goes. `attach_to_parent = false` keeps it an ordinary window that these settings place. It is checked again whenever the rules change, so a reload detaches or attaches open dialogs.
 
 A rule that matches the parent window also covers its dialogs. This is how to opt out an application whose file pickers come from the desktop portal: those dialogs carry the portal's app id, such as `xdg-desktop-portal-gtk`, not the application's. A rule that matches the dialog itself takes precedence over its parent's.
@@ -87,6 +101,8 @@ attach_to_parent = false
 | `default_position`            | Floating   | Position from a named anchor.                                    |
 
 Pixel values take precedence over fractions. Each axis is optional. A tiled window remembers floating size and position rules until it first floats, and a floating window remembers its scrolling extent until it first tiles.
+
+Floating size defaults also apply when the initial title arrives between the opening configure and the first visible buffer. Placement uses the resulting size for centering and position anchors. Unchanged dimensions are not reapplied over a size the application chooses while opening. Applications can resize themselves afterward.
 
 ```toml
 [[window_rule]]
@@ -172,6 +188,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 | `blur_optimized`          | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
 | `confine_pointer`         | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
 | `allow_shortcuts_inhibit` | Allow client-requested keyboard shortcut inhibition (default `true`). Set `false` to keep compositor shortcuts available. See [Keyboard shortcuts inhibition](#keyboard-shortcuts-inhibition).                                                                         |
+| `block_capture`           | Omit this window from screenshots and recordings (default `false`). See [Capture protection](#capture-protection).                                                                                                                                                     |
 | `background_render`       | Keep this window drawing while hidden (default `false`). See [Background rendering](#background-rendering).                                                                                                                                                            |
 | `focus_on_activate`       | Override activation focus for this window.                                                                                                                                                                                                                             |
 | `vrr`                     | Override the focused output's VRR policy.                                                                                                                                                                                                                              |
@@ -190,6 +207,28 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 | `window_effect`           | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
+
+### Focus transitions
+
+When a window gains or loses focus, its rule-defined opacity and window and title-bar backdrop blur transition smoothly. Timing lives under [`[animation.windows_opacity]`](animation.md#window-opacity), independently of the rules defining the focused and unfocused appearances:
+
+```toml
+[animation.windows_opacity]
+enabled = true
+curve = "spring:1,900"
+
+[[window_rule]]
+match.is_focused = false
+opacity = 0.75
+blur = true
+
+[[window_rule]]
+match.is_focused = true
+opacity = 1.0
+blur = false
+```
+
+Enable `[appearance.blur]` for backdrop blur. Refocusing during a transition continues from the current appearance, and repeated focus requests keep its clock running. Disable `[animation.windows_opacity]` for immediate opacity and blur changes. Identity and other state changes apply their rule targets immediately, as do popup blur, decoration geometry, placement and behavior. Border colors use `[animation.border]` independently.
 
 ### Border colors
 
@@ -377,3 +416,25 @@ background_render = true
 ```
 
 A matching window is not suspended while hidden and receives frame callbacks at its output's refresh rate, so it keeps running as if it were shown. Umbriel still does not draw it. This costs the CPU and GPU time the application spends drawing in the background. Reloading the configuration updates open windows.
+
+### Capture protection
+
+Keep selected windows visible locally but completely absent from screenshots and recordings:
+
+```toml
+[[window_rule]]
+match.app_id = "^private-app$"
+block_capture = true
+```
+
+Use the application ID from `umbriel windows --json`. Reloading updates existing windows. The last matching rule that sets `block_capture` wins; `false` removes that window's own protection. A protected parent also protects its popups and transients, even if a child has an explicit `false` rule.
+
+Output and region captures show the content underneath, including its ongoing updates. No black rectangle replaces the window. Scrolling, dwindle, master, and stacking layouts are supported, including floating windows above tiles. A protected tile keeps its allocation; neighboring windows do not reflow. Protection does not change local visibility, input, focus, or geometry.
+
+Direct window capture is refused. Enabling protection stops existing sessions for that window; removing it permits a fresh session. Frames already copied or submitted to a recorder cannot be recalled. Titles and application IDs remain available through existing window metadata protocols.
+
+Protection also covers decorations, shadows, overview cards, and closing images, regardless of `effects.in_capture`. A capture that cannot be composed safely fails while local display rendering continues. Protected captures redraw the complete output and can cost more GPU time and memory.
+
+X11 transients with a known owner inherit its protection. When an X11 popup has no reliable parent, Umbriel conservatively excludes it while any X11 window is protected; this can also hide unrelated X11 menus and notifications from capture. A protected window that changes into an unmanaged popup keeps its protection until it becomes managed again.
+
+Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.

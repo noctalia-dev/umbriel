@@ -131,7 +131,7 @@ sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$UMBRIE
 
 # Once users split a named column manually, new members join the first named
 # column in strip order, not whichever column happens to be focused.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 spawn_client named-split-a
 wait_for_windows 4
 spawn_client named-split-b
@@ -152,7 +152,7 @@ split_workspace=$(workspace_of named-split-a)
 
 # The same name on another workspace starts a local column instead of reaching
 # into the existing workspace's layout.
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 spawn_client named-split-local
 wait_for_windows 7
 local_workspace=$(workspace_of named-split-local)
@@ -173,7 +173,7 @@ wait_for_query \
 
 # Master layout keeps its own insertion policy rather than treating the name as
 # a scrolling column.
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 spawn_client named-master-a
 wait_for_windows 10
 spawn_client named-master-b

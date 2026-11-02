@@ -89,8 +89,8 @@ clients = []
 def run(*args):
     return subprocess.check_output([umbriel, *args], text=True, timeout=10)
 
-def action(name, argument=None):
-    run("msg", name if argument is None else f"{name}:{argument}")
+def action(name, *words):
+    run("msg", name, *words)
 
 def settle():
     run("settle")
@@ -184,17 +184,17 @@ sub.sendall(b'{"cmd":"subscribe","events":["windows"]}\n')
 sub.settimeout(10)
 stream = sub.makefile("rb")
 json.loads(stream.readline())
-action("effect-window-cycle", "/" + one)
+action("effect-window-cycle", "--window", one)
 event = event_window("pool-one")
 expect("effect-only-event", event["window_effect"], dict(name="green", pool="colors", source="runtime", suppressed=False))
 selected("cycle-override", one, "green", source="runtime")
 pixels("cycle-pixels", one, "green")
 held("cycle-holdings", [1, 2])
-action("effect-window-set", "off/" + one)
+action("effect-window-set", "off", "--window", one)
 selected("off-keeps-assignment", one, "green", source="runtime", suppressed=True)
 pixels("off-pixels", one, "blue")
 held("suppression-releases-holding", [1, 1])
-action("effect-window-set", "off/" + one)
+action("effect-window-set", "off", "--window", one)
 selected("repeated-off", one, "green", source="runtime", suppressed=True)
 action("effect-window-toggle", one)
 selected("toggle-restores-assignment", one, "green", source="runtime")
@@ -202,28 +202,28 @@ pixels("toggle-pixels", one, "green")
 action("effect-window-reset", one)
 selected("reset-configured-selection", one, "red")
 pixels("reset-pixels", one, "red")
-action("effect-window-set", "green/" + one)
+action("effect-window-set", "green", "--window", one)
 selected("plain-runtime-selection", one, "green", pool="", source="runtime")
 pixels("plain-runtime-pixels", one, "green")
 held("plain-preset-does-not-hold", [1, 1])
 
 # Each rejected request is checked against the whole effects response, including
 # holdings, assignments and suppression. The next valid pick is checked below.
-for rejection, (command, argument, message) in enumerate([
-    ("effect-window-set", "missing/" + one, "unknown"),
-    ("effect-window-set", "ring/" + one, "window"),
-    ("effect-window-set", "red/does-not-exist", "unknown window"),
-    ("effect-window-cycle", "red/" + one, "pool"),
-    ("effect-window-cycle", "empty/" + one, "pool is empty"),
-    ("effect-window-cycle", "/" + one, "no pool to cycle"),
+for rejection, (words, message) in enumerate([
+    (["effect-window-set", "missing", "--window", one], "unknown"),
+    (["effect-window-set", "ring", "--window", one], "window"),
+    (["effect-window-set", "red", "--window", "does-not-exist"], "unknown window"),
+    (["effect-window-cycle", "red", "--window", one], "pool"),
+    (["effect-window-cycle", "empty", "--window", one], "pool is empty"),
+    (["effect-window-cycle", "--window", one], "no pool to cycle"),
 ]):
     before = effects()
-    result = subprocess.run([umbriel, "msg", f"{command}:{argument}"], capture_output=True, text=True, timeout=10)
+    result = subprocess.run([umbriel, "msg", *words], capture_output=True, text=True, timeout=10)
     if result.returncode == 0 or message not in result.stderr:
-        raise SystemExit(f"transaction-error-{rejection}: {command}:{argument}: {result.returncode}, {result.stderr}")
+        raise SystemExit(f"transaction-error-{rejection}: {' '.join(words)}: {result.returncode}, {result.stderr}")
     expect(f"transaction-state-{rejection}", effects(), before)
 
-action("effect-window-set", "empty/" + one)
+action("effect-window-set", "empty", "--window", one)
 selected("empty-pool-selection", one, "", pool="empty", source="runtime")
 pixels("empty-pool-pixels", one, "blue")
 action("effect-window-toggle", one)
@@ -250,8 +250,8 @@ pixels("title-rule-pixels", history, "red")
 
 # Unmap releases both holdings while retaining the client's View object. Remap
 # must clear runtime overrides, suppression, and pool history from that object.
-action("effect-window-set", "green/" + one)
-action("effect-window-set", "off/" + one)
+action("effect-window-set", "green", "--window", one)
+action("effect-window-set", "off", "--window", one)
 action("window-close", one)
 for _ in range(200):
     if all(w["id"] != one for w in windows()):

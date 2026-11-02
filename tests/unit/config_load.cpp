@@ -31,12 +31,9 @@ using umbriel::WindowDragToggle;
 
 namespace {
   bool containsDiagnostic(const ConfigStore& store, const std::string& text) {
-    for (const ConfigDiagnostic& diagnostic : store.diagnostics()) {
-      if (diagnostic.message.contains(text)) {
-        return true;
-      }
-    }
-    return false;
+    return std::ranges::any_of(store.diagnostics(), [&text](const ConfigDiagnostic& diagnostic) {
+      return diagnostic.message.contains(text);
+    });
   }
 
   class TempConfig {
@@ -66,8 +63,8 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] const std::filesystem::path& path() const { return m_path; }
-    [[nodiscard]] std::string includeName() const { return m_includePath.filename().string(); }
+    const std::filesystem::path& path() const { return m_path; }
+    std::string includeName() const { return m_includePath.filename().string(); }
 
   private:
     std::filesystem::path m_path;
@@ -90,9 +87,7 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] std::filesystem::path path(const std::filesystem::path& relativePath) const {
-      return m_path / relativePath;
-    }
+    std::filesystem::path path(const std::filesystem::path& relativePath) const { return m_path / relativePath; }
 
   private:
     std::filesystem::path m_path;
@@ -391,6 +386,36 @@ spawn_when_empty = 7
   CHECK(containsDiagnostic(store, "ignoring scratchpad[2].spawn_when_empty (expected string)"));
 }
 
+UMBRIEL_TEST(scratchpadProportionalSizeIsAnOptionalBoolean) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "term"
+proportional_size = true
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "notes"
+proportional_size = false
+
+[[scratchpad]]
+name = "invalid"
+proportional_size = "true"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{4});
+  CHECK(store.config().scratchpads[0].proportionalSize);
+  CHECK(!store.config().scratchpads[1].proportionalSize);
+  CHECK(!store.config().scratchpads[2].proportionalSize);
+  CHECK(!store.config().scratchpads[3].proportionalSize);
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[3].proportional_size (expected boolean)"));
+}
+
 UMBRIEL_TEST(scratchpadDefinitionsRequireValidUniqueNames) {
   const TempConfig file;
   file.write("[[scratchpad]]\nname = \"kept\"\n");
@@ -449,8 +474,8 @@ UMBRIEL_TEST(implicitScratchpadActionsAcceptOnlyTheDefaultTarget) {
   file.write(R"(
 [keybinds]
 "Mod+1" = "scratchpad-toggle"
-"Mod+2" = "window-move-to-scratchpad:default"
-"Mod+3" = "scratchpad-focus-next:other"
+"Mod+2" = "window-move-to-scratchpad default"
+"Mod+3" = "scratchpad-focus-next other"
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -482,9 +507,9 @@ name = "term"
 
 [keybinds]
 "Mod+1" = "window-restore-from-scratchpad"
-"Mod+2" = "window-toggle-scratchpad:term"
-"Mod+3" = "scratchpad-toggle:missing"
-"Mod+4" = "window-move-to-scratchpad:default"
+"Mod+2" = "window-toggle-scratchpad term"
+"Mod+3" = "scratchpad-toggle missing"
+"Mod+4" = "window-move-to-scratchpad default"
 )");
 
   ConfigStore& store = umbriel::configStore();
@@ -847,8 +872,8 @@ UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
 
   file.write(
       "[keybinds]\n"
-      "\"XF86AudioRaiseVolume\" = { action = \"spawn:volume-up\", allow_when_locked = true }\n"
-      "\"XF86AudioLowerVolume\" = \"spawn:volume-down\"\n"
+      "\"XF86AudioRaiseVolume\" = { action = \"spawn volume-up\", allow_when_locked = true }\n"
+      "\"XF86AudioLowerVolume\" = \"spawn volume-down\"\n"
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().keybinds.size(), size_t{2});
@@ -872,7 +897,7 @@ UMBRIEL_TEST(keybindTableLoadsAllowWhenInhibited) {
   file.write(
       "[keybinds]\n"
       "\"Mod+Escape\" = { action = \"shortcuts-inhibit-toggle\", allow_when_inhibited = true }\n"
-      "\"Mod+Return\" = \"spawn:terminal\"\n"
+      "\"Mod+Return\" = \"spawn terminal\"\n"
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().keybinds.size(), size_t{2});
@@ -895,8 +920,8 @@ UMBRIEL_TEST(keybindTablePreservesWorkspaceReferenceKinds) {
 
   file.write(
       "[keybinds]\n"
-      "\"Mod+2\" = \"workspace-switch:2\"\n"
-      "\"Mod+Ctrl+2\" = 'workspace-switch:\"2\"'\n"
+      "\"Mod+2\" = \"workspace-switch 2\"\n"
+      "\"Mod+Ctrl+2\" = 'workspace-switch --name 2'\n"
   );
   CHECK(store.reload().success);
   CHECK_EQ(store.config().keybinds.size(), size_t{2});
@@ -924,12 +949,12 @@ UMBRIEL_TEST(keybindTableLoadsCooldown) {
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
 
-  file.write("[keybinds]\n\"Mod+Return\" = { action = \"spawn:terminal\", cooldown_ms = 150 }\n");
+  file.write("[keybinds]\n\"Mod+Return\" = { action = \"spawn terminal\", cooldown_ms = 150 }\n");
   CHECK(store.reload().success);
   CHECK(std::ranges::any_of(store.config().keybinds, [](const auto& bind) { return bind.cooldownMs == 150; }));
   CHECK(!containsDiagnostic(store, "cooldown_ms"));
 
-  file.write("[keybinds]\n\"Mod+Return\" = { action = \"spawn:terminal\", cooldown_ms = 3600001 }\n");
+  file.write("[keybinds]\n\"Mod+Return\" = { action = \"spawn terminal\", cooldown_ms = 3600001 }\n");
   CHECK(store.reload().success);
   CHECK(std::ranges::any_of(store.config().keybinds, [](const auto& bind) { return bind.cooldownMs == 3600000; }));
   CHECK(containsDiagnostic(store, "cooldown_ms = 3600001 out of range, clamped to 3600000"));
@@ -942,9 +967,9 @@ UMBRIEL_TEST(keybindTableLoadsPostActionSubmaps) {
 
   file.write(
       "[keybinds]\n"
-      "\"submap[outer],1\" = { action = \"workspace-switch:2\", submap = \"reset\" }\n"
-      "\"submap[outer],2\" = { action = \"workspace-switch:3\", submap = \"inner\", repeat = true }\n"
-      "\"submap[outer],3\" = { action = \"workspace-switch:4\", repeat = true }\n"
+      "\"submap[outer],1\" = { action = \"workspace-switch 2\", submap = \"reset\" }\n"
+      "\"submap[outer],2\" = { action = \"workspace-switch 3\", submap = \"inner\", repeat = true }\n"
+      "\"submap[outer],3\" = { action = \"workspace-switch 4\", repeat = true }\n"
   );
   CHECK(store.reload().success);
 
@@ -967,9 +992,9 @@ UMBRIEL_TEST(keybindTableLoadsPostActionSubmaps) {
 
   file.write(
       "[keybinds]\n"
-      "\"submap[outer],1\" = { action = \"workspace-switch:2\", submap = \"\" }\n"
-      "\"submap[outer],2\" = { action = \"workspace-switch:3\", submap = \"disable\" }\n"
-      "\"submap[outer],3\" = { action = \"workspace-switch:4\", submap = \"invalid]name\" }\n"
+      "\"submap[outer],1\" = { action = \"workspace-switch 2\", submap = \"\" }\n"
+      "\"submap[outer],2\" = { action = \"workspace-switch 3\", submap = \"disable\" }\n"
+      "\"submap[outer],3\" = { action = \"workspace-switch 4\", submap = \"invalid]name\" }\n"
   );
   CHECK(store.reload().success);
   CHECK(containsDiagnostic(store, "submap must be a non-empty name"));
@@ -983,7 +1008,7 @@ UMBRIEL_TEST(hotCornersLoadActionsAndValidate) {
 
   file.write(
       "[hot_corners.top_left]\nenabled = true\ndelay_ms = 750\naction = \"overview-open\"\n"
-      "[hot_corners.bottom_right]\nenabled = true\ndelay_ms = 125\naction = \"spawn:notify-send corner\"\n"
+      "[hot_corners.bottom_right]\nenabled = true\ndelay_ms = 125\naction = \"spawn notify-send corner\"\n"
   );
   CHECK(store.reload().success);
   CHECK(store.config().hotCorners.corners[0].enabled);
@@ -1023,11 +1048,11 @@ action = "scratchpad-toggle"
 
 [hot_corners.top_right]
 enabled = true
-action = "window-move-to-scratchpad:default"
+action = "window-move-to-scratchpad default"
 
 [hot_corners.bottom_left]
 enabled = true
-action = "scratchpad-focus-next:missing"
+action = "scratchpad-focus-next missing"
 )");
   CHECK(store.reload().success);
 
@@ -1060,11 +1085,11 @@ action = "scratchpad-toggle"
 
 [hot_corners.top_right]
 enabled = true
-action = "window-toggle-scratchpad:term"
+action = "window-toggle-scratchpad term"
 
 [hot_corners.bottom_left]
 enabled = true
-action = "window-restore-from-scratchpad:missing"
+action = "window-restore-from-scratchpad missing"
 )");
   CHECK(store.reload().success);
 
@@ -2256,6 +2281,63 @@ UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.cyclic_workspaces (expected boolean)"));
 }
 
+UMBRIEL_TEST(nvidiaSyncWorkaroundReloadsAndDefaultsOn) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.nvidiaSyncWorkaround);
+
+  file.write("[general]\nnvidia_sync_workaround = false\n");
+  const auto disabled = store.reload();
+  CHECK(disabled.success);
+  CHECK(disabled.change.general);
+  CHECK(!store.config().general.nvidiaSyncWorkaround);
+
+  file.write("[general]\nnvidia_sync_workaround = true\n");
+  const auto enabled = store.reload();
+  CHECK(enabled.success);
+  CHECK(enabled.change.general);
+  CHECK(store.config().general.nvidiaSyncWorkaround);
+
+  file.write("[general]\nnvidia_sync_workaround = false\n");
+  CHECK(store.reload().success);
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.nvidiaSyncWorkaround);
+
+  file.write("[general]\nnvidia_sync_workaround = \"false\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.nvidiaSyncWorkaround);
+  CHECK(containsDiagnostic(store, "ignoring general.nvidia_sync_workaround (expected boolean)"));
+  CHECK(!containsDiagnostic(store, "unknown key general.nvidia_sync_workaround"));
+}
+
+UMBRIEL_TEST(xwaylandPrimaryOutputLoadsAndCanBeRemoved) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[general]\nxwayland_primary_output = \"DP-1\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().general.xwaylandPrimaryOutput, "DP-1");
+  file.write("[general]\nxwayland_primary_output = \"Microstep MSI MAG 275QF CE2M165901246\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().general.xwaylandPrimaryOutput, "Microstep MSI MAG 275QF CE2M165901246");
+  file.write("[general]\nxwayland_primary_output = false\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.xwaylandPrimaryOutput.empty());
+  CHECK(containsDiagnostic(store, "ignoring general.xwayland_primary_output (expected string)"));
+  file.write("[general]\nxwayland_primary_output = \"DP-2\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().general.xwaylandPrimaryOutput, "DP-2");
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.xwaylandPrimaryOutput.empty());
+}
+
 UMBRIEL_TEST(outputFocusAtStartupLoadsAndDefaultsOff) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2559,6 +2641,42 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
   CHECK(rule.outerBorderWidth && *rule.outerBorderWidth == 6);
   CHECK(rule.cornerRadius && *rule.cornerRadius == 0);
   CHECK(rule.shadow && !*rule.shadow);
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(windowOpacityAnimationUsesBorderDefaultsAndIndependentTiming) {
+  const umbriel::Config defaults;
+  CHECK(defaults.animation.windowsOpacity.enabled);
+  CHECK_EQ(defaults.animation.windowsOpacity.durationMs, defaults.animation.border.durationMs);
+  CHECK(defaults.animation.windowsOpacity.curve == defaults.animation.border.curve);
+  const TempConfig file;
+  file.write(
+      "[animation]\nduration_ms = 800\ncurve = 'linear'\n"
+      "[animation.windows_opacity]\nenabled = false\nduration_ms = 350\ncurve = 'easeinoutsine'\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 350);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInOutSine);
+  CHECK_EQ(store.config().animation.border.durationMs, 800);
+  CHECK(store.config().animation.border.curve.easing == umbriel::Easing::Linear);
+  CHECK(store.diagnostics().empty());
+
+  file.write("[animation]\nduration_ms = 600\ncurve = 'easeinquad'\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 600);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInQuad);
+
+  file.write(
+      "[animation.springs]\nsoft = { damping = 0.8, stiffness = 350 }\n"
+      "[animation.windows_opacity]\ncurve = 'soft'\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(store.config().animation.windowsOpacity.curve.spring.stiffness, 350.0);
   CHECK(store.diagnostics().empty());
 }
 
@@ -4344,23 +4462,23 @@ kind = 'border'
 kind = 'window'
 choose = ['window']
 [keybinds]
-'Mod+F1' = 'effect-window-set:window'
-'Mod+F2' = 'effect-window-set:windows'
-'Mod+F3' = 'effect-window-cycle:windows'
-'Mod+F4' = 'effect-window-set:missing'
-'Mod+F5' = 'effect-window-set:border'
-'Mod+F6' = 'effect-window-cycle:window'
-'Mod+F7' = 'effect-window-set:off'
+'Mod+F1' = 'effect-window-set window'
+'Mod+F2' = 'effect-window-set windows'
+'Mod+F3' = 'effect-window-cycle windows'
+'Mod+F4' = 'effect-window-set missing'
+'Mod+F5' = 'effect-window-set border'
+'Mod+F6' = 'effect-window-cycle window'
+'Mod+F7' = 'effect-window-set off'
 'Mod+F8' = 'effect-window-cycle'
-'submap[effects],F9' = 'effect-window-set:missing'
-'Mod+F10' = 'effect-window-set:window'
-'Mod+f10' = 'effect-window-set:missing'
+'submap[effects],F9' = 'effect-window-set missing'
+'Mod+F10' = 'effect-window-set window'
+'Mod+f10' = 'effect-window-set missing'
 [hot_corners.top_left]
 enabled = false
-action = 'effect-screen-set:window'
+action = 'effect-screen-set window'
 [hot_corners.top_right]
 enabled = true
-action = 'effect-window-cycle:windows'
+action = 'effect-window-cycle windows'
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4393,18 +4511,18 @@ UMBRIEL_TEST(replacedEffectActionsLeaveNoReferencesOrDiagnostics) {
   TempConfig file;
   file.writeInclude(R"(
 [keybinds]
-'Mod+F1' = 'effect-window-set:missing'
+'Mod+F1' = 'effect-window-set missing'
 [hot_corners.top_left]
-action = 'effect-cursor-set:missing'
+action = 'effect-cursor-set missing'
 )");
   file.write("[include]\nfiles = ['" + file.includeName() + "']\n" + R"(
 [effects.preset.window]
 kind = 'window'
 [keybinds]
-'Mod+F1' = 'effect-window-set:window'
+'Mod+F1' = 'effect-window-set window'
 [hot_corners.top_left]
 enabled = false
-action = 'effect-window-set:window'
+action = 'effect-window-set window'
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4629,13 +4747,21 @@ height = 42
 font = "sans 12"
 button_position = "left"
 button_corner_radius = 4
+button_glyph = "never"
+button_background = false
 [colors.title_bar]
 background = "#FF0000FF"
 background_unfocused = "#00FF00FF"
 text = "#0000FFFF"
 text_unfocused = "#FF00FFFF"
 close = "#FFFF00FF"
+close_glyph = "#FF000080"
+close_glyph_hover = "#00FF00FF"
 maximize = "#00FFFFFF"
+maximize_glyph = "#0000FFFF"
+maximize_glyph_hover = "#FF00FFFF"
+minimize_glyph = "#FFFF00FF"
+minimize_glyph_hover = "#00FFFFFF"
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4647,6 +4773,8 @@ maximize = "#00FFFFFF"
   CHECK_EQ(bar.font, std::string("sans 12"));
   CHECK_EQ(bar.buttonPosition, umbriel::TitleBarButtonSide::Left);
   CHECK_EQ(bar.buttonCornerRadius, 4);
+  CHECK_EQ(bar.buttonGlyph, umbriel::TitleBarButtonGlyph::Never);
+  CHECK_EQ(bar.buttonBackground, false);
   const auto& colors = store.config().colors.titleBar;
   CHECK_EQ(colors.background[0], 1.0F);
   CHECK_EQ(colors.backgroundUnfocused[1], 1.0F);
@@ -4654,6 +4782,13 @@ maximize = "#00FFFFFF"
   CHECK_EQ(colors.textUnfocused[0], 1.0F);
   CHECK_EQ(colors.close[1], 1.0F);
   CHECK_EQ(colors.maximize[2], 1.0F);
+  CHECK_EQ(colors.closeGlyph[0], 1.0F);
+  CHECK_EQ(colors.closeGlyph[3], 128.0F / 255.0F);
+  CHECK_EQ(colors.closeGlyphHover[1], 1.0F);
+  CHECK_EQ(colors.maximizeGlyph[2], 1.0F);
+  CHECK_EQ(colors.maximizeGlyphHover[0], 1.0F);
+  CHECK_EQ(colors.minimizeGlyph[0], 1.0F);
+  CHECK_EQ(colors.minimizeGlyphHover[2], 1.0F);
 }
 
 UMBRIEL_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {
@@ -4665,6 +4800,15 @@ height = 500
 font = 123
 button_position = "middle"
 button_corner_radius = 500
+button_glyph = "sometimes"
+button_background = 1
+[colors.title_bar]
+close_glyph = true
+close_glyph_hover = 1
+maximize_glyph = "invalid"
+maximize_glyph_hover = false
+minimize_glyph = []
+minimize_glyph_hover = {}
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4673,10 +4817,19 @@ button_corner_radius = 500
   CHECK_EQ(store.config().appearance.titleBar.height, 128);
   CHECK_EQ(store.config().appearance.titleBar.buttonPosition, umbriel::TitleBarButtonSide::Right);
   CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, 100);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyph, umbriel::TitleBarButtonGlyph::Hover);
+  CHECK_EQ(store.config().appearance.titleBar.buttonBackground, true);
   CHECK(containsDiagnostic(store, "appearance.title_bar.height = 500 out of range, clamped to 128"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_position"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_background"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.mode"));
+  for (const auto* key :
+       {"close_glyph", "close_glyph_hover", "maximize_glyph", "maximize_glyph_hover", "minimize_glyph",
+        "minimize_glyph_hover"}) {
+    CHECK(containsDiagnostic(store, std::string("colors.title_bar.") + key));
+  }
   CHECK(containsDiagnostic(store, "expected string"));
   CHECK(!containsDiagnostic(store, "unknown key"));
 }
@@ -4723,7 +4876,7 @@ UMBRIEL_TEST(titleBarModesUseStrictVocabulary) {
     CHECK(store.diagnostics().empty());
     CHECK_EQ(store.config().appearance.titleBar.mode, mode);
   }
-  for (const auto name : {"auto", "force", "on-demand"}) {
+  for (const auto* const name : {"auto", "force", "on-demand"}) {
     file.write(std::string("[appearance.title_bar]\nmode = \"") + name + "\"\n");
     CHECK(store.reload().success);
     CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);
@@ -4846,37 +4999,116 @@ title_bar_buttons = ["close"]
   CHECK(!resolve("other").titleBarButtons.has_value());
 }
 
-UMBRIEL_TEST(floatingLayoutLoadsGloballyAndPerWorkspace) {
+UMBRIEL_TEST(stackingLayoutLoadsGloballyAndPerWorkspace) {
   const TempConfig file;
   file.write(R"(
 [layout]
-mode = "floating"
+mode = "stacking"
 [[workspace]]
 name = "desk"
-layout.mode = "floating"
+layout.mode = "stacking"
 )");
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
   CHECK(store.reload().success);
-  CHECK(store.config().layout.mode == LayoutMode::Floating);
+  CHECK(store.config().layout.mode == LayoutMode::Stacking);
   CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
-  CHECK(store.config().workspaceRules[0].layout.mode == LayoutMode::Floating);
+  CHECK(store.config().workspaceRules[0].layout.mode == LayoutMode::Stacking);
 }
 
-UMBRIEL_TEST(windowSnappingDefaultsOnAndRejectsNonBooleans) {
+UMBRIEL_TEST(stackingDropZonesDefaultOnAndRejectNonBooleans) {
   const TempConfig file;
-  file.write("[input]\n");
+  file.write("[layout.stacking]\n");
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
   CHECK(store.reload().success);
-  CHECK(store.config().input.windowSnapping);
-  file.write("[input]\nwindow_snapping = false\n");
+  CHECK(store.config().layout.stacking.dropZones);
+  CHECK(umbriel::resolveGlobalLayout(store.config()).stacking.dropZones);
+  file.write("[layout.stacking]\ndrop_zones = false\n");
+  const auto disabled = store.reload();
+  CHECK(disabled.success);
+  CHECK(disabled.change.layout);
+  CHECK(disabled.effects.workspaceLayout);
+  CHECK(!store.config().layout.stacking.dropZones);
+  CHECK(!umbriel::resolveGlobalLayout(store.config()).stacking.dropZones);
+  file.write("[layout.stacking]\ndrop_zones = 1\n");
   CHECK(store.reload().success);
-  CHECK(!store.config().input.windowSnapping);
-  file.write("[input]\nwindow_snapping = 1\n");
+  CHECK(store.config().layout.stacking.dropZones);
+  CHECK(containsDiagnostic(store, "layout.stacking.drop_zones"));
+  CHECK(!containsDiagnostic(store, "unknown key layout.stacking.drop_zones"));
+}
+
+UMBRIEL_TEST(stackingDropZonesResolveWorkspaceOverridesAndReloadInheritance) {
+  const TempConfig file;
+  const auto write = [&file](bool dropZones) {
+    file.write(std::string{"[layout.stacking]\ndrop_zones = "} + (dropZones ? "true\n" : "false\n") + R"(
+[[workspace]]
+name = "inherited"
+layout.mode = "stacking"
+[[workspace]]
+name = "enabled"
+layout.stacking.drop_zones = true
+[[workspace]]
+name = "disabled"
+layout.stacking.drop_zones = false
+)");
+  };
+  write(false);
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
   CHECK(store.reload().success);
-  CHECK(store.config().input.windowSnapping);
-  CHECK(containsDiagnostic(store, "input.window_snapping"));
+  const auto resolve = [&store](std::string_view name) {
+    return umbriel::resolveWorkspaceLayout(
+        store.config(), {.connector = "DP-1", .make = {}, .model = {}, .serial = {}}, name, 0
+    );
+  };
+  CHECK(!resolve("inherited").stacking.dropZones);
+  CHECK(resolve("enabled").stacking.dropZones);
+  CHECK(!resolve("disabled").stacking.dropZones);
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  write(true);
+  const auto enabled = store.reload();
+  CHECK(enabled.success);
+  CHECK(enabled.change.layout);
+  CHECK(enabled.effects.workspaceLayout);
+  CHECK(resolve("inherited").stacking.dropZones);
+  CHECK(resolve("enabled").stacking.dropZones);
+  CHECK(!resolve("disabled").stacking.dropZones);
+}
+
+UMBRIEL_TEST(stackingConfigRejectsRemovedNamesWithoutChangingFloatingWindowVocabulary) {
+  const TempConfig file;
+  file.write(R"(
+[layout]
+mode = "floating"
+new_exits_fullscreen = "floating"
+[layout.stacking]
+drop_zones = false
+[input]
+window_snapping = true
+window_drag_toggle = "floating"
+[[workspace]]
+name = "old-mode"
+layout.mode = "floating"
+[[window_rule]]
+match.is_floating = true
+default_floating = true
+)");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.config().layout.mode == LayoutMode::Scrolling);
+  CHECK(store.config().layout.newExitsFullscreen == umbriel::FullscreenExitScope::Floating);
+  CHECK(!store.config().layout.stacking.dropZones);
+  CHECK(store.config().input.windowDragToggle == WindowDragToggle::Floating);
+  CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
+  CHECK(!store.config().workspaceRules[0].layout.mode.has_value());
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFloating == true);
+  CHECK(store.config().windowRules[0].defaultFloating == true);
+  CHECK(containsDiagnostic(store, "layout.mode"));
+  CHECK(containsDiagnostic(store, "unknown key input.window_snapping"));
+  CHECK(!containsDiagnostic(store, "unknown key layout.stacking"));
 }
 
 UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {

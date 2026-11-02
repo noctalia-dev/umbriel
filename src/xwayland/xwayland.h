@@ -27,6 +27,7 @@ namespace umbriel {
   class Server;
   class XwaylandWindow;
   class XwaylandShapes;
+  class XwaylandPrimary;
 
   // Configure the window as the client asked; fields the request leaves out keep their current value.
   void grantConfigureRequest(wlr_xwayland_surface* xsurface, const wlr_xwayland_surface_configure_event* event);
@@ -42,32 +43,37 @@ namespace umbriel {
     Xwayland& operator=(const Xwayland&) = delete;
 
     // False when wlroots could not create the server; the caller drops the object.
-    [[nodiscard]] bool available() const { return m_wlr != nullptr; }
+    bool available() const { return m_wlr != nullptr; }
     // The value children get as DISPLAY.
-    [[nodiscard]] const char* displayName() const;
+    const char* displayName() const;
     [[nodiscard]] bool setInputSocket(int fd);
-    [[nodiscard]] bool authenticateInputPeer(pid_t peer) const;
+    bool authenticateInputPeer(pid_t peer) const;
     // The cursor X clients see over their windows until they set their own. The buffer belongs to `manager`, so this
     // must run again before a replaced manager is destroyed. Also republishes the cursor theme in XSETTINGS.
     void applyCursor(wlr_xcursor_manager* manager);
     // Called by a window whose X11 surface was destroyed; deletes it.
     void forget(XwaylandWindow* window);
     // Mapping between layout and X coordinates.
-    [[nodiscard]] const XwaylandOutputs& outputs() const { return *m_outputs; }
+    const XwaylandOutputs& outputs() const { return *m_outputs; }
     // X pixels per layout unit in `surface`: the scale its X11 window is drawn at. 1 for every other surface.
-    [[nodiscard]] double surfaceScale(wlr_surface* surface) const;
+    double surfaceScale(wlr_surface* surface) const;
     // Bounding shape in X surface-local coordinates. NULL means unshaped; an empty region cuts all pixels away.
     // A new surface remains empty until its initial asynchronous query completes.
-    [[nodiscard]] const pixman_region32_t* surfaceShape(wlr_surface* surface) const;
+    const pixman_region32_t* surfaceShape(wlr_surface* surface) const;
     // Emits wlr_surface* after a bounding-shape query or removal changes its rendering mask.
-    [[nodiscard]] wl_signal* shapeChanged() const;
+    wl_signal* shapeChanged() const;
     // Cursor surfaces have no wlr_xwayland_surface role. Identify them by the
     // Wayland client owned by this Xwayland server instead.
-    [[nodiscard]] bool ownsSurface(const wlr_surface* surface) const;
+    bool ownsSurface(const wlr_surface* surface) const;
     // Whether an xdg-output manager global may be advertised to `client`.
-    [[nodiscard]] bool advertiseOutputManager(const wl_client* client, const wl_global* global) const;
+    bool advertiseOutputManager(const wl_client* client, const wl_global* global) const;
     // Republishes the X screen and moves every X11 window to match it.
     void handleOutputLayoutChange();
+    void refreshCaptureProtection();
+    // Resolves the configured primary monitor after a reload or output change.
+    void updatePrimaryOutput();
+    // Completes through the XWM event stream after earlier X geometry events have been dispatched. Zero means failure.
+    [[nodiscard]] uint64_t requestXwmSync(wlr_xwayland_surface* xsurface);
     // An Xwayland surface just yielded the keyboard to a native Wayland client. Clear both X focus channels after the
     // Wayland enter has reached the client, so the native client holds keyboard focus before X11 loses it.
     void scheduleFocusClear();
@@ -100,7 +106,13 @@ namespace umbriel {
     uint64_t m_inputSocketInode = 0;
     std::unique_ptr<XwaylandOutputs> m_outputs;
     std::unique_ptr<XwaylandShapes> m_shapes;
+    std::unique_ptr<XwaylandPrimary> m_primary;
     std::vector<std::unique_ptr<XwaylandWindow>> m_windows;
+    // The barrier window uses the current XWM connection and does not keep the lazy server alive.
+    xcb_connection_t* m_xwmSyncConnection = nullptr;
+    uint32_t m_xwmSyncWindow = 0;
+    // Unique across wrappers, remaps, and lazy-server restarts, so stale replies cannot reveal another map.
+    uint64_t m_xwmSyncSerial = 0;
     uint32_t m_netActiveWindow = 0;
     // The XSETTINGS manager lives on the window manager's connection, so it neither keeps the lazy Xwayland running
     // nor outlives it. `m_xsettingsConnection` tells whether the window belongs to the current Xwayland.

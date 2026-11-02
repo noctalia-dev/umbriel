@@ -5,6 +5,7 @@
 # A stationary middle click remains the close gesture; delaying close until release lets motion disambiguate the two
 # without swallowing ordinary middle clicks outside the overview.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
@@ -137,7 +138,7 @@ if [[ $("$WORKSPACE") != 2 ]]; then
   exit 1
 fi
 "$UMBRIEL" msg overview-close > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 # Restore the horizontal presentation and first column so a known card sits under the overview test point.
 sed -i 's/^workspace_axis = "horizontal"$/workspace_axis = "vertical"/' "$UMBRIEL_CONFIG"
@@ -220,14 +221,13 @@ if [[ $(window_count) -ne 4 ]]; then
   echo "overview return drag closed a card instead of navigating"
   exit 1
 fi
-pointer move 560 360 press "$BTN_MIDDLE" pause 500 release "$BTN_MIDDLE" &
-middle_click_pid=$!
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move 560 360 press "$BTN_MIDDLE" -- release "$BTN_MIDDLE"
 sleep 0.2 # real time: the press alone must not close the card before release
 if [[ $(window_count) -ne 4 ]]; then
   echo "overview middle press closed a card before release"
   exit 1
 fi
-wait "$middle_click_pid"
+pointer_release
 wait_for_count 3
 
 echo "bound and bare mouse drags pan overview strips, navigate rows, and preserve release-only middle-click close"

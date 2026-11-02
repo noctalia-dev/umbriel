@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# session-quit asks for confirmation; session-quit:skip-confirmation does not. The confirmation path runs against the
+# session-quit asks for confirmation; session-quit skip-confirmation does not. The confirmation path runs against the
 # instance the harness booted for this check, which it is free to terminate: check.sh notices an already-exited
 # compositor and judges it by its exit status. So the first session-quit must open the dialog and leave the instance
 # answering IPC, and the second must take it down cleanly. Proving the bypass form then needs a live compositor again,
@@ -88,13 +88,13 @@ if [[ ! -S $SOCKET ]]; then
 fi
 
 # The bypass form terminates in a single call.
-"$UMBRIEL" msg session-quit:skip-confirmation > /dev/null 2>&1 || true
+"$UMBRIEL" msg session-quit skip-confirmation > /dev/null 2>&1 || true
 for _ in $(seq 40); do
   kill -0 "$SERVER_PID" 2>/dev/null || break
   sleep 0.25
 done
 if kill -0 "$SERVER_PID" 2>/dev/null; then
-  echo "compositor survived session-quit:skip-confirmation"
+  echo "compositor survived session-quit skip-confirmation"
   exit 1
 fi
 status=0

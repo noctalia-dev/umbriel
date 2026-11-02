@@ -40,19 +40,21 @@ wait_for_window() {
 
 spawn() {
   local title=$1 selector=$2 place=${3:-true} id
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   "$CLIENT" "$title" 800 600 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   wait_for_window "$title"
   if [[ $place == true ]]; then
     id=$(field "$title" id)
-    "$UMBRIEL" msg "window-focus:$id" > /dev/null
-    "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+    "$UMBRIEL" msg window-focus "$id" > /dev/null
+    "$UMBRIEL" msg window-move-to-workspace "${words[@]}" > /dev/null
   fi
 }
 
-spawn retained origin/HEADLESS-1
-spawn moved-out origin/HEADLESS-1
-spawn local local/HEADLESS-2
+spawn retained 'origin --output HEADLESS-1'
+spawn moved-out 'origin --output HEADLESS-1'
+spawn local 'local --output HEADLESS-2'
 readonly LOCAL_HOME="$(field local workspace)"
 "$UMBRIEL" output-destroy HEADLESS-1 > /dev/null
 "$UMBRIEL" settle
@@ -63,13 +65,13 @@ if [[ $REFUGE != HEADLESS-2:* || $REFUGE == "$LOCAL_HOME" || $(field moved-out w
   exit 1
 fi
 
-spawn newcomer "$INDEX/HEADLESS-2" false
+spawn newcomer "$INDEX --output HEADLESS-2" false
 if [[ $(field newcomer workspace) != "$REFUGE" ]]; then
   echo "new window did not map in the selected temporary workspace: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$(field moved-out id)" > /dev/null
-"$UMBRIEL" msg window-move-to-workspace:stay/HEADLESS-2 > /dev/null
+"$UMBRIEL" msg window-focus "$(field moved-out id)" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace stay --output HEADLESS-2 > /dev/null
 "$UMBRIEL" settle
 readonly MOVED_HOME="$(field moved-out workspace)"
 if [[ $MOVED_HOME != HEADLESS-2:* || $MOVED_HOME == "$REFUGE" ]]; then
@@ -79,11 +81,11 @@ fi
 
 # Capture a launch while the temporary workspace still exists, but keep its
 # client from connecting until the original output has reclaimed every window.
-"$UMBRIEL" msg "workspace-switch:$INDEX/HEADLESS-2" > /dev/null
+"$UMBRIEL" msg workspace-switch "$INDEX" --output HEADLESS-2 > /dev/null
 mkfifo "$START_FIFO"
 exec {start_fd}<>"$START_FIFO"
-"$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; read -r _ < '$START_FIFO'; exec '$CLIENT' pending-arrival 800 600 > '$PENDING_LOG' 2>&1" \
+"$UMBRIEL" msg spawn \
+  "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; read -r _ < '$START_FIFO'; exec '$CLIENT' pending-arrival 800 600 > '$PENDING_LOG' 2>&1" \
   > /dev/null
 for _ in $(seq 60); do
   [[ -s $TOKEN_FILE ]] && break

@@ -29,9 +29,6 @@ match.xdg_tag = ["^multi-tag-a$", "^multi-tag-b$"]
 default_floating = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-# The inotify watcher reloads this append 150ms later. Its generation bump invalidates the per-identity rule cache, so
-# let it land before the clients: an assertion here must observe the array itself, not a reload.
-sleep 0.3 # real time: inotify reload timer
 
 field_of() {
   "$UMBRIEL" windows --json | jq -r --arg t "$1" --arg f "$2" '.[] | select(.title == $t) | .[$f]'

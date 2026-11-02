@@ -87,8 +87,7 @@ red_width() {
 blue_at() {
   local x=$1 y=$2
   grim "$IMAGE"
-  magick "$IMAGE" -alpha off -crop "8x8+$((x - 4))+$((y - 4))" +repage \
-    -format '%[fx:round(255*mean.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "8x8+$((x - 4))+$((y - 4))" | awk '{ print $3 }'
 }
 
 # Animation time only moves by clock-advance: samples land at 300 ms (mid-reflow) and 900 ms (reflow done, windows_in

@@ -29,6 +29,6 @@ namespace umbriel {
 
   // Resolve a bare executable against PATH, or validate an explicit path. An
   // empty result means no executable was found.
-  [[nodiscard]] std::string resolveExecutable(const char* name);
+  std::string resolveExecutable(const char* name);
 
 } // namespace umbriel

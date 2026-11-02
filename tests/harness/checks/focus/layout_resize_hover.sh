@@ -64,7 +64,7 @@ pointer_x=$((right_x - 50))
 wait_for_active scene-resize-left
 
 # A 0.2-viewport shrink moves the right column left by about 252 pixels, well past this pointer position.
-"$UMBRIEL" msg window-modify-primary-extent:-0.2 > /dev/null
+"$UMBRIEL" msg window-modify-primary-extent -0.2 > /dev/null
 sleep 0.1
 wait_for_active scene-resize-left
 

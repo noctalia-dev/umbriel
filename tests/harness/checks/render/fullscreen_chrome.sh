@@ -72,7 +72,7 @@ fi
 grim "$SCREENSHOT"
 
 sample() {
-  magick "$SCREENSHOT" -crop "1x1+$1+$2" -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2"
 }
 
 read -r corner_red corner_green corner_blue <<< "$(sample $((win_x + 16)) $((win_y + 16)))"

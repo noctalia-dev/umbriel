@@ -55,7 +55,9 @@ field() {
 
 spawn() {
   local title=$1 selector=$2 count=$3 place=${4:-true} id
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   "$UMBRIEL_UNMAP_CLIENT" "$title" 800 600 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 60); do
     [[ $("$UMBRIEL" windows --json | jq 'length') == "$count" ]] && break
@@ -67,14 +69,16 @@ spawn() {
     return 1
   fi
   if [[ $place == true ]]; then
-    "$UMBRIEL" msg "window-focus:$id" > /dev/null
-    "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+    "$UMBRIEL" msg window-focus "$id" > /dev/null
+    "$UMBRIEL" msg window-move-to-workspace "${words[@]}" > /dev/null
   fi
 }
 
 expect_selected() {
   local selector=$1 expected=$2 workspaces
-  "$UMBRIEL" msg "workspace-switch:$selector" > /dev/null
+  local -a words
+  read -ra words <<< "$selector"
+  "$UMBRIEL" msg workspace-switch "${words[@]}" > /dev/null
   workspaces=$("$UMBRIEL" workspaces --json)
   if ! jq -e --arg expected "$expected" 'any(.[]; .id == $expected and .focused)' \
       <<< "$workspaces" > /dev/null; then
@@ -85,7 +89,9 @@ expect_selected() {
 
 expect_ambiguous() {
   local selector=$1 response
-  if response=$("$UMBRIEL" msg "workspace-switch:$selector" 2>&1); then
+  local -a words
+  read -ra words <<< "$selector"
+  if response=$("$UMBRIEL" msg workspace-switch "${words[@]}" 2>&1); then
     echo "ambiguous refugee name '$selector' unexpectedly selected a workspace"
     return 1
   fi
@@ -108,14 +114,14 @@ expect_refuges() {
     echo "$phase merged, renamed, or replaced a refugee or native workspace: $workspaces"
     return 1
   fi
-  expect_selected shared/HEADLESS-1 "$FIRST"
-  expect_selected shared/HEADLESS-2 "$SECOND"
+  expect_selected 'shared --output HEADLESS-1' "$FIRST"
+  expect_selected 'shared --output HEADLESS-2' "$SECOND"
   expect_selected unique "$UNIQUE"
 }
 
 scratchpad_round_trip() {
   local title=$1 expected=$2 pruned=${3:-false} actual workspaces
-  "$UMBRIEL" msg "window-focus:$(field "$title" id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field "$title" id)" > /dev/null
   "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
   "$UMBRIEL" settle
   if [[ $pruned == true ]] && "$UMBRIEL" workspaces --json | \
@@ -123,7 +129,7 @@ scratchpad_round_trip() {
     echo "last-view scratchpad admission did not prune its emptied refugee"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$(field "$title" id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field "$title" id)" > /dev/null
   "$UMBRIEL" msg window-restore-from-scratchpad > /dev/null
   "$UMBRIEL" settle
   actual=$(field "$title" workspace)
@@ -138,11 +144,11 @@ scratchpad_round_trip() {
 }
 
 write_config refugees
-spawn first shared/HEADLESS-1 1
-spawn first-peer shared/HEADLESS-1 2
-spawn unique unique/HEADLESS-1 3
-spawn second shared/HEADLESS-2 4
-spawn local local/HEADLESS-3 5
+spawn first 'shared --output HEADLESS-1' 1
+spawn first-peer 'shared --output HEADLESS-1' 2
+spawn unique 'unique --output HEADLESS-1' 3
+spawn second 'shared --output HEADLESS-2' 4
+spawn local 'local --output HEADLESS-3' 5
 readonly LOCAL="$(field local workspace)"
 
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
@@ -153,7 +159,7 @@ SECOND="$(field second workspace)"
 readonly UNIQUE="$(field unique workspace)"
 expect_refuges removal
 expect_ambiguous shared
-expect_ambiguous shared/HEADLESS-3
+expect_ambiguous 'shared --output HEADLESS-3'
 
 write_config refugees
 expect_refuges dynamic-reload
@@ -161,8 +167,8 @@ expect_ambiguous shared
 
 # Both scoped and global opening rules must resolve to the evacuated container,
 # rather than a missing output or a newly created same-name native workspace.
-spawn route-shared local/HEADLESS-3 6 false
-spawn route-unique local/HEADLESS-3 7 false
+spawn route-shared 'local --output HEADLESS-3' 6 false
+spawn route-unique 'local --output HEADLESS-3' 7 false
 if [[ $(field route-shared workspace) != "$FIRST" || $(field route-unique workspace) != "$UNIQUE" ]]; then
   echo "opening rules did not resolve the displaced named workspaces: $("$UMBRIEL" windows --json)"
   exit 1
@@ -177,7 +183,7 @@ if [[ -z $native || $native == *$'\n'* ]]; then
   exit 1
 fi
 expect_selected shared "$native"
-expect_selected shared/HEADLESS-3 "$native"
+expect_selected 'shared --output HEADLESS-3' "$native"
 scratchpad_round_trip first "$FIRST"
 scratchpad_round_trip second "$SECOND" true
 SECOND=$(field second workspace)
@@ -186,16 +192,16 @@ expect_refuges scratchpad-return
 write_config refugees
 expect_refuges remove-native-declaration
 expect_ambiguous shared
-expect_ambiguous shared/HEADLESS-3
+expect_ambiguous 'shared --output HEADLESS-3'
 if "$UMBRIEL" workspaces --json | jq -e --arg native "$native" 'any(.[]; .id == $native)' > /dev/null; then
   echo "removed native declaration survived as a duplicate named member"
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$(field first id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(field first id)" > /dev/null
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 "$UMBRIEL" output-create HEADLESS-1 > /dev/null
-"$UMBRIEL" msg "window-focus:$(field first id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(field first id)" > /dev/null
 "$UMBRIEL" msg window-restore-from-scratchpad > /dev/null
 if [[ $(field first workspace) != "$(field first-peer workspace)" ]]; then
   echo "scratchpad return ignored the original workspace after its output reconnected: $("$UMBRIEL" windows --json)"

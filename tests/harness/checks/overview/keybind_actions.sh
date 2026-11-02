@@ -114,7 +114,7 @@ wait_for_count 2
 second_id=$(
   "$UMBRIEL" windows --json | jq -r '.[] | select(.title == "overview-vim-second") | .id'
 )
-"$UMBRIEL" msg "window-focus:$second_id" > /dev/null
+"$UMBRIEL" msg window-focus "$second_id" > /dev/null
 "$UMBRIEL" msg window-consume-left > /dev/null
 stacked=false
 for _ in $(seq 60); do
@@ -133,15 +133,15 @@ fi
 
 "$CLIENT" overview-vim-right 1200 700 > "$UMBRIEL_RUNTIME_DIR/overview-vim-right.log" 2>&1 &
 wait_for_count 3
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$CLIENT" overview-vim-row 1200 700 > "$UMBRIEL_RUNTIME_DIR/overview-vim-row.log" 2>&1 &
 wait_for_count 4
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 read -r top_id top_title bottom_id bottom_title <<< "$("$UMBRIEL" windows --json | jq -r \
   '[.[] | select(.title == "overview-vim-first" or .title == "overview-vim-second")] | sort_by(.y)
    | "\(.[0].id) \(.[0].title) \(.[1].id) \(.[1].title)"')"
-"$UMBRIEL" msg "window-focus:$top_id" > /dev/null
+"$UMBRIEL" msg window-focus "$top_id" > /dev/null
 wait_for_focus "$top_title"
 "$UMBRIEL" settle
 
@@ -186,7 +186,7 @@ fi
 # focus the top window without a warp, then click without moving: the pointer must still be over that top window.
 "$UMBRIEL" msg overview-close > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus:$top_id" > /dev/null
+"$UMBRIEL" msg window-focus "$top_id" > /dev/null
 wait_for_focus "$top_title"
 pointer click "$BTN_LEFT"
 wait_for_focus "$top_title"
@@ -257,7 +257,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 workspace_axis = "horizontal"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 wait_for_workspace 1
 
 # The stacked pair keeps its column, which now lays its members out along X.
@@ -305,7 +305,7 @@ else
   back=108   # Down
 fi
 
-"$UMBRIEL" msg "window-focus:$left_id" > /dev/null
+"$UMBRIEL" msg window-focus "$left_id" > /dev/null
 wait_for_focus "$left_title"
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle

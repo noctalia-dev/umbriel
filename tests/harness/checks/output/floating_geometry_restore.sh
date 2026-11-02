@@ -123,12 +123,12 @@ wait_for_count 2
 for title in restore-float restore-pin; do
   wait_for_output "$title" HEADLESS-1
   wait_for_field "$title" floating true
-  "$UMBRIEL" msg "window-focus-warp:$(field_of "$title" id)" > /dev/null
+  "$UMBRIEL" msg window-focus-warp "$(field_of "$title" id)" > /dev/null
   "$UMBRIEL" msg window-center > /dev/null
   wait_for_field "$title" x 1030
   wait_for_field "$title" y 618
 done
-"$UMBRIEL" msg "window-focus-warp:$(field_of restore-pin id)" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$(field_of restore-pin id)" > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
 before=$(wait_for_stable_snapshot)
 

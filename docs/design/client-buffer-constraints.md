@@ -60,7 +60,7 @@ Pending output-description changes damage the whole output before rendering. Thi
 
 `color-sdr-white-point-alpha` checks translucent SDR pixels through warmth, neutral restoration, software gamma, and gamma removal. `color-hdr-white-point` also checks that returning to SDR immediately redraws the tagged HDR source.
 
-The SDR capture sidecar is generated before this display transform and excludes the adjustment. Export-DMA-BUF retains the adjusted native HDR representation. Math and render checks cover extraction, adaptation, HDR transitions, and the unadjusted SDR capture. Physical HDR display verification must also check warm and neutral transitions, highlight gradients, cursor matching, and return to SDR with the full gamma curve restored.
+The SDR capture sidecar is generated before this display transform and excludes the adjustment. Math and render checks cover extraction, adaptation, HDR transitions, and the unadjusted SDR capture. Physical HDR display verification must also check warm and neutral transitions, highlight gradients, cursor matching, and return to SDR with the full gamma curve restored.
 
 ## Implicit scene-buffer primaries
 
@@ -90,7 +90,7 @@ Each output owns one shared FP16 blend buffer and one shared SDR capture sidecar
 
 Creating or resizing the shared blend buffer requires whole-output damage for that frame. A new buffer is cleared and has no valid pixels outside partial damage, including pixels that blur may sample. The full redraw establishes the complete-frame invariant before incremental damage resumes. An untransformed composition or direct scanout bypasses the shared target and invalidates it, so the next transformed composition also performs a full redraw.
 
-`umbrielfx` creates the capture sidecar lazily from the pre-output-transform linear blend buffer. The sidecar is generation-matched to that blend buffer: capture can reuse it only when the requested output buffer has the same blend generation, dimensions, and DRM format. A conversion for a newer generation does not overwrite the sidecar while a capture texture still holds it. This conversion can happen during texture import, outside the normal `umbrielfx` render pass, so its EGL context must be current while the framebuffer is allocated. Export-DMA-BUF frames bypass the SDR sidecar and retain the output's native representation.
+`umbrielfx` creates the capture sidecar lazily from the pre-output-transform linear blend buffer. The sidecar is generation-matched to that blend buffer: capture can reuse it only when the requested output buffer has the same blend generation, dimensions, and DRM format. A conversion for a newer generation does not overwrite the sidecar while a capture texture still holds it. This conversion can happen during texture import, outside the normal `umbrielfx` render pass, so its EGL context must be current while the framebuffer is allocated.
 
 Output color LUTs are cached as renderer-local textures keyed by the immutable LUT transform. Reusing an output transform therefore reuses its uploaded texture, while transform and renderer destruction both release the cache entry.
 

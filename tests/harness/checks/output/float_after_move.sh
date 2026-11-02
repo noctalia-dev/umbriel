@@ -30,9 +30,9 @@ float_after_move() {
     echo "$title did not open on HEADLESS-2: $("$UMBRIEL" windows --json)"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   "$UMBRIEL" settle
-  "$UMBRIEL" msg "window-move-to-workspace:$workspace/HEADLESS-1" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "$workspace" --output HEADLESS-1 > /dev/null
   [[ $timing == settled ]] && "$UMBRIEL" settle
   "$UMBRIEL" msg window-toggle-floating > /dev/null
   "$UMBRIEL" settle

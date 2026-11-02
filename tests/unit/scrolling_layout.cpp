@@ -897,7 +897,7 @@ UMBRIEL_TEST(anOutOfRangeColumnShiftsNothing) {
 }
 
 UMBRIEL_TEST(setScrollStoresVerbatimAndDoesNotClamp) {
-  // setScroll is a raw setter; callers clamp to [0, maxScroll] themselves (see Server::executeKeybindAction,
+  // setScroll is a raw setter; callers clamp to [0, maxScroll] themselves (see Server::executeAction,
   // layout-scroll-*). Unclamped overscroll parks the strip past an edge.
   Fixture fixture;
   fixture.addColumns(6);

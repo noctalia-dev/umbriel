@@ -61,7 +61,7 @@ if [[ -z $a_id || -z $a_y || -z $b_x ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-focus:$a_id" > /dev/null
+"$UMBRIEL" msg window-focus "$a_id" > /dev/null
 wait_for_focus "$a_id"
 spawn_client dwindle-focused-d
 wait_for_count 4
@@ -98,7 +98,7 @@ new_toward_cursor = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$POINTER" 1280 720 move "$((b_x + 20))" "$((b_y + 20))" > "$UMBRIEL_RUNTIME_DIR/pointer.log" 2>&1
-"$UMBRIEL" msg "window-focus:$b_id" > /dev/null
+"$UMBRIEL" msg window-focus "$b_id" > /dev/null
 wait_for_focus "$b_id"
 spawn_client dwindle-focused-e
 wait_for_count 5

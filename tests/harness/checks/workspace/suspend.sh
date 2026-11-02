@@ -69,7 +69,7 @@ if (($(transitions) != 0)); then
 fi
 
 count=$(transitions)
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 wait_for_transition suspended "$count" "leaving its workspace"
 
@@ -98,7 +98,7 @@ count=$(transitions)
 wait_for_transition suspended "$count" "the overview closed"
 
 count=$(transitions)
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" settle
 wait_for_transition resumed "$count" "returning to its workspace"
 
