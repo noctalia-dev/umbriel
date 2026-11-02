@@ -393,7 +393,7 @@ UMBRIEL_TEST(resizingATabbedColumnStartsFromTheColumnNotItsTabs) {
   if (grab != nullptr) {
     grab->applyDelta(0.0, 0.0, kUsable);
   }
-  CHECK(std::abs(fixture.layout.widthFraction(0) - before) < 0.001);
+  CHECK_NEAR(fixture.layout.widthFraction(0), before, 0.001);
 }
 
 UMBRIEL_TEST(aLoneTabGivesUpAHiddenBarsSpace) {
@@ -647,7 +647,7 @@ UMBRIEL_TEST(aTabSteppingOutBelowTheColumnFillsItsFreeSpace) {
   const wlr_box below = fixture.layout.targetBox(stub(1));
   CHECK_EQ(below.y, group.y + group.height + 12);
   CHECK_EQ(below.y + below.height, kUsable.height - 10);
-  CHECK(std::fabs(fixture.layout.bottomGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.bottomGapWeight(0), 0.0, 1e-9);
 }
 
 UMBRIEL_TEST(aTabSteppingOutAboveTheColumnFillsItsFreeSpace) {
@@ -664,7 +664,7 @@ UMBRIEL_TEST(aTabSteppingOutAboveTheColumnFillsItsFreeSpace) {
   const wlr_box above = fixture.layout.targetBox(stub(0));
   CHECK_EQ(above.y, 10);
   CHECK_EQ(above.y + above.height + 12, group.y - kReserve);
-  CHECK(std::fabs(fixture.layout.topGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.topGapWeight(0), 0.0, 1e-9);
 }
 
 UMBRIEL_TEST(aOneTabGroupTradesPlacesAsAUnit) {
@@ -704,7 +704,7 @@ UMBRIEL_TEST(aTabGroupResizesAsOneRow) {
   CHECK(sameBox(fixture.layout.targetBox(stub(1)), tab));
   CHECK_EQ(fixture.layout.targetBox(stub(2)).y, 10 + 344 + 12);
   CHECK(fixture.layout.setHeightFraction(stub(0), 0.75));
-  CHECK(std::abs(fixture.layout.heightFraction(stub(1)) - 0.75) < 0.001);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(1)), 0.75, 0.001);
   const uint32_t edges = fixture.layout.sanitizeResizeEdges(stub(0), WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
   CHECK_EQ(edges, static_cast<uint32_t>(WLR_EDGE_TOP | WLR_EDGE_BOTTOM));
 }
@@ -824,8 +824,8 @@ UMBRIEL_TEST(masterGroupsExportTotalWeightAndKeepUntabbedProportions) {
   const wlr_box lastBox = source.layout.targetBox(last);
   const double totalWeight = source.layout.columns()[1].heightWeights[0] + source.layout.columns()[1].heightWeights[1];
   CHECK(source.layout.setTabbed(first, true));
-  CHECK(std::abs(source.layout.columns()[1].heightWeights[0] - totalWeight) < 1e-9);
-  CHECK(std::abs(source.layout.columns()[1].heightWeights[1] - totalWeight) < 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[0], totalWeight, 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[1], totalWeight, 1e-9);
   CHECK(source.layout.setTabbed(first, false));
   source.layout.arrange(kUsable);
   CHECK(sameBox(source.layout.targetBox(first), firstBox));

@@ -55,8 +55,6 @@ namespace {
     return edid;
   }
 
-  bool closeTo(double actual, double expected) { return std::abs(actual - expected) < 0.01; }
-
 } // namespace
 
 UMBRIEL_TEST(edidStaticMetadataPopulatesHdrOutputDescription) {
@@ -67,8 +65,8 @@ UMBRIEL_TEST(edidStaticMetadataPopulatesHdrOutputDescription) {
     return;
   }
 
-  CHECK(closeTo(metadata->maxLuminance, 400.0));
-  CHECK(closeTo(metadata->maxFrameAverageLuminance, 200.0));
+  CHECK_NEAR(metadata->maxLuminance, 400.0, 0.01);
+  CHECK_NEAR(metadata->maxFrameAverageLuminance, 200.0, 0.01);
   CHECK(metadata->minLuminance > 0.0);
 
   const wlr_color_primaries displayPrimaries{
@@ -80,12 +78,12 @@ UMBRIEL_TEST(edidStaticMetadataPopulatesHdrOutputDescription) {
   const wlr_output_image_description description = umbriel::makeHdrOutputDescription(&displayPrimaries, metadata);
   CHECK(description.primaries == WLR_COLOR_NAMED_PRIMARIES_BT2020);
   CHECK(description.transfer_function == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ);
-  CHECK(closeTo(description.mastering_luminance.min, metadata->minLuminance));
-  CHECK(closeTo(description.mastering_luminance.max, 400.0));
-  CHECK(closeTo(description.max_cll, 400.0));
-  CHECK(closeTo(description.max_fall, 200.0));
-  CHECK(closeTo(description.mastering_display_primaries.red.x, displayPrimaries.red.x));
-  CHECK(closeTo(description.mastering_display_primaries.white.y, displayPrimaries.white.y));
+  CHECK_NEAR(description.mastering_luminance.min, metadata->minLuminance, 0.01);
+  CHECK_NEAR(description.mastering_luminance.max, 400.0, 0.01);
+  CHECK_NEAR(description.max_cll, 400.0, 0.01);
+  CHECK_NEAR(description.max_fall, 200.0, 0.01);
+  CHECK_NEAR(description.mastering_display_primaries.red.x, displayPrimaries.red.x, 0.01);
+  CHECK_NEAR(description.mastering_display_primaries.white.y, displayPrimaries.white.y, 0.01);
 }
 
 UMBRIEL_TEST(hdrDescriptionFallsBackToBt2020TargetPrimaries) {
@@ -93,10 +91,10 @@ UMBRIEL_TEST(hdrDescriptionFallsBackToBt2020TargetPrimaries) {
   wlr_color_primaries bt2020{};
   wlr_color_primaries_from_named(&bt2020, WLR_COLOR_NAMED_PRIMARIES_BT2020);
 
-  CHECK(closeTo(description.mastering_display_primaries.red.x, bt2020.red.x));
-  CHECK(closeTo(description.mastering_display_primaries.green.y, bt2020.green.y));
-  CHECK(closeTo(description.mastering_display_primaries.blue.x, bt2020.blue.x));
-  CHECK(closeTo(description.mastering_display_primaries.white.y, bt2020.white.y));
+  CHECK_NEAR(description.mastering_display_primaries.red.x, bt2020.red.x, 0.01);
+  CHECK_NEAR(description.mastering_display_primaries.green.y, bt2020.green.y, 0.01);
+  CHECK_NEAR(description.mastering_display_primaries.blue.x, bt2020.blue.x, 0.01);
+  CHECK_NEAR(description.mastering_display_primaries.white.y, bt2020.white.y, 0.01);
   CHECK_EQ(description.mastering_luminance.max, 0.0);
   CHECK_EQ(description.max_cll, 0.0);
   CHECK_EQ(description.max_fall, 0.0);
