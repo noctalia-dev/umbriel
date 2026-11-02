@@ -76,8 +76,7 @@ grim "$SCREENSHOT"
 # blend over green is approximately red 64, green 64, blue 128. An opaque child
 # after a missed commit restore is instead blue 255 with red and green near zero.
 read -r red green blue <<< "$(
-  magick "$SCREENSHOT" -crop "40x40+$((win_x + win_w / 2 - 20))+$((win_y + win_h / 2 - 20))" \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "40x40+$((win_x + win_w / 2 - 20))+$((win_y + win_h / 2 - 20))"
 )"
 if (( red < 35 || red > 100 || green < 35 || green > 100 || blue < 90 || blue > 170 )); then
   echo "focus rule opacity was lost after a child commit: red=$red green=$green blue=$blue"

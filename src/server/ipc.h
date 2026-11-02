@@ -57,6 +57,9 @@ namespace umbriel {
     void notifyOutputsChanged();
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
+    // A window committed. A window off screen draws no frame when it commits its configure, so while a settle waits,
+    // this asks every output for the frame that checks it again.
+    void notifyWindowCommitted();
 
   private:
     enum class FrameWait : uint8_t { None, Drawn, Settled };
@@ -92,6 +95,8 @@ namespace umbriel {
     static void closeConnection(Connection& connection);
     // Empty when the reply is deferred, as for settle.
     std::optional<std::string> handleRequest(Connection& connection, std::string_view line);
+    std::optional<std::string>
+    dispatchRequest(Connection& connection, const nlohmann::json& request, size_t requestSize);
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);

@@ -8,6 +8,12 @@ readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/client-activation.log"
 readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/client-activation-control"
 
 sed -i '/autostart = \[\]/a focus_on_activate = false' "$UMBRIEL_CONFIG"
+# Keep both remap destinations alive so these assertions measure activation policy.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output.HEADLESS-1]
+workspaces = 2
+EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 mkfifo "$CONTROL_FIFO"

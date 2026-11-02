@@ -10,7 +10,7 @@ readonly DURING="$UMBRIEL_RUNTIME_DIR/scratchpad-hide-during.png"
 readonly AFTER="$UMBRIEL_RUNTIME_DIR/scratchpad-hide-after.png"
 
 sample_blue() {
-  magick "$1" -crop 20x20+630+350 -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 20x20+630+350 | awk '{ print $3 }'
 }
 
 pointer() {

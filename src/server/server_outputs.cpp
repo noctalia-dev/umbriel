@@ -166,7 +166,7 @@ namespace umbriel {
       }
       return false;
     };
-    const auto ambiguous = [name, outputName]() -> std::expected<Workspace*, std::string> {
+    const auto ambiguous = [name, outputName] -> std::expected<Workspace*, std::string> {
       return std::unexpected(
           "ambiguous workspace: "
           + std::string(name)

@@ -33,6 +33,12 @@ umbriel config validate
 
 The command prints every diagnostic with its file, line, and column, and exits nonzero when it finds a problem.
 
+For editors and scripts, `--json` (or `-j`) prints one JSON object with `valid`, the configuration `path`, and a `diagnostics` array. Each diagnostic has `severity` (`"error"` or `"warning"`), `message`, `file`, `line`, and `column`; the location fields are `null` when unknown. The exit status is the same as without the flag.
+
+```sh
+umbriel config validate --json | jq -r '.diagnostics[] | "\(.severity): \(.message)"'
+```
+
 List every configuration key the installed binary accepts:
 
 ```sh

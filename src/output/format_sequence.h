@@ -48,7 +48,7 @@ namespace umbriel {
     std::function<void(FormatTier tier)> warnVrrDropped;
   };
 
-  struct FormatSequenceResult {
+  struct [[nodiscard]] FormatSequenceResult {
     bool committed = false;
     bool usedLiveModeRetry = false;
     bool usedModeFallback = false;
@@ -61,6 +61,5 @@ namespace umbriel {
     std::string_view sdr10Fail;
   };
 
-  [[nodiscard]] FormatSequenceResult
-  runFormatSequence(const FormatSequenceParams& params, const FormatSequenceOps& ops);
+  FormatSequenceResult runFormatSequence(const FormatSequenceParams& params, const FormatSequenceOps& ops);
 } // namespace umbriel

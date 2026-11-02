@@ -24,10 +24,10 @@ namespace umbriel {
     Keyboard(const Keyboard&) = delete;
     Keyboard& operator=(const Keyboard&) = delete;
 
-    [[nodiscard]] wlr_keyboard* wlr() const { return m_keyboard; }
+    wlr_keyboard* wlr() const { return m_keyboard; }
     // Virtual keyboards own their keymap and groups; compositor configuration
     // and layout synchronization must not replace or rotate them.
-    [[nodiscard]] bool virtualDevice() const { return m_virtual; }
+    bool virtualDevice() const { return m_virtual; }
     void applyConfig();
     // Lock the next XKB group, wrapping at the end. False when this physical
     // keyboard has fewer than two layouts.
@@ -41,7 +41,7 @@ namespace umbriel {
     // Keycodes whose press a compositor bind consumed, so neither half of the
     // event reaches clients. A focus enter must exclude them: the client never
     // saw the press and will never see the release.
-    [[nodiscard]] const std::unordered_set<uint32_t>& consumedKeycodes() const { return m_consumedKeycodes; }
+    const std::unordered_set<uint32_t>& consumedKeycodes() const { return m_consumedKeycodes; }
     // Forget consumed keys whose release will never arrive, for example after a
     // VT switch. Otherwise the stale entry swallows a later, unrelated release.
     void forgetConsumedKeycodes() { m_consumedKeycodes.clear(); }
@@ -61,7 +61,7 @@ namespace umbriel {
     void notifyLayoutIfChanged();
     // The input-method grab for this keyboard, or null when none applies. Always null while locked, so an IME cannot
     // keylog the lock screen.
-    [[nodiscard]] wlr_input_method_keyboard_grab_v2* activeInputMethodGrab() const;
+    wlr_input_method_keyboard_grab_v2* activeInputMethodGrab() const;
     void armRepeat(const Keybind& bind, uint32_t keycode);
     void cancelRepeat();
     static int onRepeatTimer(void* data);

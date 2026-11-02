@@ -38,42 +38,42 @@ namespace umbriel {
 
     void prepare(wlr_renderer* renderer);
     void clear();
-    [[nodiscard]] wlr_renderer* renderer() const { return m_renderer; }
+    wlr_renderer* renderer() const { return m_renderer; }
 
     // The program for `name`, or null when the preset is off, inert, of another kind, or failed to compile.
-    [[nodiscard]] fx_effect_shader* preset(std::string_view name, EffectKind kind) const;
-    [[nodiscard]] const EffectPreset* presetConfig(std::string_view name) const;
-    [[nodiscard]] std::string_view programState(std::string_view name) const;
+    fx_effect_shader* preset(std::string_view name, EffectKind kind) const;
+    const EffectPreset* presetConfig(std::string_view name) const;
+    std::string_view programState(std::string_view name) const;
     // The preset bound to an animation event through `effect =`, or null.
-    [[nodiscard]] fx_effect_shader* animationEffect(AnimationEvent event) const;
+    fx_effect_shader* animationEffect(AnimationEvent event) const;
     // The program a lifecycle fade composes through: the event's preset, or for windows_in and windows_out without
     // one, a built-in fade that applies the lifecycle alpha to the whole window at once. Null when buffers fade
     // individually; prepare() compiles every program, never this lookup.
-    [[nodiscard]] fx_effect_shader* lifecycleEffect(AnimationEvent event) const;
+    fx_effect_shader* lifecycleEffect(AnimationEvent event) const;
     // The drag slot's built-in deformation program, compiled by prepare() for the current renderer. Null while
     // animations or windows_drag.physics are off, or when it failed to compile.
-    [[nodiscard]] fx_effect_shader* deformationShader() const;
+    fx_effect_shader* deformationShader() const;
     // The preset bound to an animation event through `effect =`, or null (also null for the built-in fade).
-    [[nodiscard]] const EffectPreset* animationPreset(AnimationEvent event) const;
+    const EffectPreset* animationPreset(AnimationEvent event) const;
     // The animation clock in seconds, read only when a program needs it. Measured from an epoch
     // taken on the first call, so the millisecond count backing it can exceed a float's exact
     // integer range without the returned value losing precision.
-    [[nodiscard]] float clockSeconds() const;
+    float clockSeconds() const;
     // Adds `umbriel_time` when `shader` reads it, and the `[colors]` palette for palette presets.
     void fillTimeUniforms(
         fx_animation_parameters& parameters, float seconds, const EffectPreset& preset, const fx_effect_shader* shader
     ) const;
 
-    [[nodiscard]] bool active() const { return m_ledger.active() > 0; }
+    bool active() const { return m_ledger.active() > 0; }
     // Prepared programs and retained snapshots both keep rendering requirements alive.
-    [[nodiscard]] bool persistentReferenced() const { return m_persistentReferenced || m_retainedPersistent > 0; }
-    [[nodiscard]] bool inPlaceReferenced() const { return m_inPlaceReferenced || m_retainedInPlace > 0; }
+    bool persistentReferenced() const { return m_persistentReferenced || m_retainedPersistent > 0; }
+    bool inPlaceReferenced() const { return m_inPlaceReferenced || m_retainedInPlace > 0; }
     // Pointer motion reaches outputs only while the selected cursor effect is active.
-    [[nodiscard]] bool cursorEffectActive() const { return m_cursorActive; }
-    [[nodiscard]] EffectLedger& ledger() { return m_ledger; }
+    bool cursorEffectActive() const { return m_cursorActive; }
+    EffectLedger& ledger() { return m_ledger; }
     void setSuspended(bool suspended);
     void setAudio(const EffectAudio& audio);
-    [[nodiscard]] const EffectAudio& audio() const { return m_audio; }
+    const EffectAudio& audio() const { return m_audio; }
     // Records an instance; schedules its output's effect frame when that output gains its first eligible instance.
     void updateInstance(const void* owner, const EffectInstanceState& state);
     void removeInstance(const void* owner);
@@ -122,7 +122,7 @@ namespace umbriel {
   };
 
   // The Server's registry. Set in Server's constructor before any view exists.
-  [[nodiscard]] EffectRegistry& effectRegistry();
+  EffectRegistry& effectRegistry();
 
   // Binds `event`'s slot on `node` to its lifecycle effect while `value` animates, and clears it otherwise. For an
   // AnimatedValue, a zero `direction` follows the sign of the value's travel.
@@ -132,7 +132,7 @@ namespace umbriel {
 
   // Seconds elapsed from `epochMsec` to `nowMsec`, computed in double precision so the result keeps
   // sub-millisecond resolution long after the raw millisecond count exceeds a float's exact range.
-  [[nodiscard]] inline float effectClockSeconds(uint64_t nowMsec, uint64_t epochMsec) {
+  inline float effectClockSeconds(uint64_t nowMsec, uint64_t epochMsec) {
     return static_cast<float>(static_cast<double>(nowMsec - epochMsec) / 1000.0);
   }
 

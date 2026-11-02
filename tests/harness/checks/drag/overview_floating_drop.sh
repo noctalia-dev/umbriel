@@ -41,7 +41,7 @@ if [[ $(position) != "100 100" ]]; then
   exit 1
 fi
 
-blue_at() { magick "$IMAGE" -crop "4x4+$1+$2" -format '%[fx:round(mean.b*255)]\n' info:; }
+blue_at() { "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$1+$2" | awk '{ print $3 }'; }
 
 # The 1280x720 output previews at half size from 320,180, so the card spans 370,230 to 520,330. Dragging it by
 # 100,50 on screen moves the window by 200,100.

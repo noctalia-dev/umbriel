@@ -15,11 +15,11 @@ namespace umbriel {
     RetryDelayed,
   };
 
-  [[nodiscard]] inline bool outputFrameAllowed(bool stopping, const wlr_session* session) {
+  inline bool outputFrameAllowed(bool stopping, const wlr_session* session) {
     return !stopping && (session == nullptr || session->active);
   }
 
-  [[nodiscard]] inline OutputFrameFollowup
+  inline OutputFrameFollowup
   outputFrameFollowup(bool stopping, const wlr_session* session, bool commitFailed, bool animationsActive) {
     if (!outputFrameAllowed(stopping, session)) {
       return OutputFrameFollowup::None;
@@ -32,7 +32,7 @@ namespace umbriel {
 
   // Delay before the next effect-only frame. 0 follows the output's refresh (schedule immediately); otherwise the
   // interval for max_fps minus the time already elapsed, at least 1 ms so a late timer never spins.
-  [[nodiscard]] inline uint64_t effectFrameDelayMs(int maxFps, uint64_t nowMsec, uint64_t lastEffectFrameMsec) {
+  inline uint64_t effectFrameDelayMs(int maxFps, uint64_t nowMsec, uint64_t lastEffectFrameMsec) {
     if (maxFps <= 0) {
       return 0;
     }
@@ -47,7 +47,7 @@ namespace umbriel {
   // never ahead of now. Projecting forward to the next vblank instead would put a slow output's instant up to a whole
   // period ahead of a fast one's; outputs share one animation state, so the fast output would then repeat frames.
   // 0 when nothing predicts it (no presentation yet, or no fixed refresh), so the caller uses now.
-  [[nodiscard]] inline uint64_t latestVblankNs(uint64_t nowNs, uint64_t lastPresentNs, uint64_t refreshNs) {
+  inline uint64_t latestVblankNs(uint64_t nowNs, uint64_t lastPresentNs, uint64_t refreshNs) {
     if (lastPresentNs == 0 || refreshNs == 0) {
       return 0;
     }
@@ -62,8 +62,8 @@ namespace umbriel {
   // self-sustaining retry loop.
   class TearingCommitRecovery {
   public:
-    [[nodiscard]] bool requestTearing(bool eligible) const { return eligible && !m_regularCommitPending; }
-    [[nodiscard]] bool regularCommitPending() const { return m_regularCommitPending; }
+    bool requestTearing(bool eligible) const { return eligible && !m_regularCommitPending; }
+    bool regularCommitPending() const { return m_regularCommitPending; }
 
     void recordCommit(bool requestedTearing, bool succeeded) {
       if (requestedTearing && !succeeded) {

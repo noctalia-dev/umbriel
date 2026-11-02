@@ -31,12 +31,9 @@ using umbriel::WindowDragToggle;
 
 namespace {
   bool containsDiagnostic(const ConfigStore& store, const std::string& text) {
-    for (const ConfigDiagnostic& diagnostic : store.diagnostics()) {
-      if (diagnostic.message.contains(text)) {
-        return true;
-      }
-    }
-    return false;
+    return std::ranges::any_of(store.diagnostics(), [&text](const ConfigDiagnostic& diagnostic) {
+      return diagnostic.message.contains(text);
+    });
   }
 
   class TempConfig {
@@ -66,8 +63,8 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] const std::filesystem::path& path() const { return m_path; }
-    [[nodiscard]] std::string includeName() const { return m_includePath.filename().string(); }
+    const std::filesystem::path& path() const { return m_path; }
+    std::string includeName() const { return m_includePath.filename().string(); }
 
   private:
     std::filesystem::path m_path;
@@ -90,9 +87,7 @@ namespace {
       stream << contents;
     }
 
-    [[nodiscard]] std::filesystem::path path(const std::filesystem::path& relativePath) const {
-      return m_path / relativePath;
-    }
+    std::filesystem::path path(const std::filesystem::path& relativePath) const { return m_path / relativePath; }
 
   private:
     std::filesystem::path m_path;
@@ -389,6 +384,36 @@ spawn_when_empty = 7
   CHECK(store.config().scratchpads[1].spawnWhenEmpty.empty());
   CHECK(store.config().scratchpads[2].spawnWhenEmpty.empty());
   CHECK(containsDiagnostic(store, "ignoring scratchpad[2].spawn_when_empty (expected string)"));
+}
+
+UMBRIEL_TEST(scratchpadProportionalSizeIsAnOptionalBoolean) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "term"
+proportional_size = true
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "notes"
+proportional_size = false
+
+[[scratchpad]]
+name = "invalid"
+proportional_size = "true"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{4});
+  CHECK(store.config().scratchpads[0].proportionalSize);
+  CHECK(!store.config().scratchpads[1].proportionalSize);
+  CHECK(!store.config().scratchpads[2].proportionalSize);
+  CHECK(!store.config().scratchpads[3].proportionalSize);
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[3].proportional_size (expected boolean)"));
 }
 
 UMBRIEL_TEST(scratchpadDefinitionsRequireValidUniqueNames) {
@@ -2660,6 +2685,42 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
   CHECK(store.diagnostics().empty());
 }
 
+UMBRIEL_TEST(windowOpacityAnimationUsesBorderDefaultsAndIndependentTiming) {
+  const umbriel::Config defaults;
+  CHECK(defaults.animation.windowsOpacity.enabled);
+  CHECK_EQ(defaults.animation.windowsOpacity.durationMs, defaults.animation.border.durationMs);
+  CHECK(defaults.animation.windowsOpacity.curve == defaults.animation.border.curve);
+  const TempConfig file;
+  file.write(
+      "[animation]\nduration_ms = 800\ncurve = 'linear'\n"
+      "[animation.windows_opacity]\nenabled = false\nduration_ms = 350\ncurve = 'easeinoutsine'\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(!store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 350);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInOutSine);
+  CHECK_EQ(store.config().animation.border.durationMs, 800);
+  CHECK(store.config().animation.border.curve.easing == umbriel::Easing::Linear);
+  CHECK(store.diagnostics().empty());
+
+  file.write("[animation]\nduration_ms = 600\ncurve = 'easeinquad'\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.enabled);
+  CHECK_EQ(store.config().animation.windowsOpacity.durationMs, 600);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::EaseInQuad);
+
+  file.write(
+      "[animation.springs]\nsoft = { damping = 0.8, stiffness = 350 }\n"
+      "[animation.windows_opacity]\ncurve = 'soft'\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsOpacity.curve.easing == umbriel::Easing::Spring);
+  CHECK_EQ(store.config().animation.windowsOpacity.curve.spring.stiffness, 350.0);
+  CHECK(store.diagnostics().empty());
+}
+
 UMBRIEL_TEST(emptyRuleArrayDropsRulesFromIncludes) {
   const TempConfig file;
   file.write("window_rule = []\n[include]\nfiles = [\"" + file.includeName() + "\"]\n");
@@ -4727,13 +4788,21 @@ height = 42
 font = "sans 12"
 button_position = "left"
 button_corner_radius = 4
+button_glyph = "never"
+button_background = false
 [colors.title_bar]
 background = "#FF0000FF"
 background_unfocused = "#00FF00FF"
 text = "#0000FFFF"
 text_unfocused = "#FF00FFFF"
 close = "#FFFF00FF"
+close_glyph = "#FF000080"
+close_glyph_hover = "#00FF00FF"
 maximize = "#00FFFFFF"
+maximize_glyph = "#0000FFFF"
+maximize_glyph_hover = "#FF00FFFF"
+minimize_glyph = "#FFFF00FF"
+minimize_glyph_hover = "#00FFFFFF"
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4745,6 +4814,8 @@ maximize = "#00FFFFFF"
   CHECK_EQ(bar.font, std::string("sans 12"));
   CHECK_EQ(bar.buttonPosition, umbriel::TitleBarButtonSide::Left);
   CHECK_EQ(bar.buttonCornerRadius, 4);
+  CHECK_EQ(bar.buttonGlyph, umbriel::TitleBarButtonGlyph::Never);
+  CHECK_EQ(bar.buttonBackground, false);
   const auto& colors = store.config().colors.titleBar;
   CHECK_EQ(colors.background[0], 1.0F);
   CHECK_EQ(colors.backgroundUnfocused[1], 1.0F);
@@ -4752,6 +4823,13 @@ maximize = "#00FFFFFF"
   CHECK_EQ(colors.textUnfocused[0], 1.0F);
   CHECK_EQ(colors.close[1], 1.0F);
   CHECK_EQ(colors.maximize[2], 1.0F);
+  CHECK_EQ(colors.closeGlyph[0], 1.0F);
+  CHECK_EQ(colors.closeGlyph[3], 128.0F / 255.0F);
+  CHECK_EQ(colors.closeGlyphHover[1], 1.0F);
+  CHECK_EQ(colors.maximizeGlyph[2], 1.0F);
+  CHECK_EQ(colors.maximizeGlyphHover[0], 1.0F);
+  CHECK_EQ(colors.minimizeGlyph[0], 1.0F);
+  CHECK_EQ(colors.minimizeGlyphHover[2], 1.0F);
 }
 
 UMBRIEL_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {
@@ -4763,6 +4841,15 @@ height = 500
 font = 123
 button_position = "middle"
 button_corner_radius = 500
+button_glyph = "sometimes"
+button_background = 1
+[colors.title_bar]
+close_glyph = true
+close_glyph_hover = 1
+maximize_glyph = "invalid"
+maximize_glyph_hover = false
+minimize_glyph = []
+minimize_glyph_hover = {}
 )");
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
@@ -4771,10 +4858,19 @@ button_corner_radius = 500
   CHECK_EQ(store.config().appearance.titleBar.height, 128);
   CHECK_EQ(store.config().appearance.titleBar.buttonPosition, umbriel::TitleBarButtonSide::Right);
   CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, 100);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyph, umbriel::TitleBarButtonGlyph::Hover);
+  CHECK_EQ(store.config().appearance.titleBar.buttonBackground, true);
   CHECK(containsDiagnostic(store, "appearance.title_bar.height = 500 out of range, clamped to 128"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_position"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_background"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.mode"));
+  for (const auto* key :
+       {"close_glyph", "close_glyph_hover", "maximize_glyph", "maximize_glyph_hover", "minimize_glyph",
+        "minimize_glyph_hover"}) {
+    CHECK(containsDiagnostic(store, std::string("colors.title_bar.") + key));
+  }
   CHECK(containsDiagnostic(store, "expected string"));
   CHECK(!containsDiagnostic(store, "unknown key"));
 }
@@ -4821,7 +4917,7 @@ UMBRIEL_TEST(titleBarModesUseStrictVocabulary) {
     CHECK(store.diagnostics().empty());
     CHECK_EQ(store.config().appearance.titleBar.mode, mode);
   }
-  for (const auto name : {"auto", "force", "on-demand"}) {
+  for (const auto* const name : {"auto", "force", "on-demand"}) {
     file.write(std::string("[appearance.title_bar]\nmode = \"") + name + "\"\n");
     CHECK(store.reload().success);
     CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);

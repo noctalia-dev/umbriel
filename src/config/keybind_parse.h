@@ -228,7 +228,7 @@ namespace umbriel {
     bool operator==(const SubmapArg&) const = default;
   };
 
-  [[nodiscard]] inline bool validSubmapName(std::string_view name) {
+  inline bool validSubmapName(std::string_view name) {
     return !name.empty() && name != "disable" && !name.contains(']');
   }
 
@@ -351,22 +351,20 @@ namespace umbriel {
   };
 
   // Null unless the bind carries that payload alternative.
-  template <typename Arg> [[nodiscard]] const Arg* payloadIf(const Keybind& bind) {
-    return std::get_if<Arg>(&bind.payload);
-  }
+  template <typename Arg> const Arg* payloadIf(const Keybind& bind) { return std::get_if<Arg>(&bind.payload); }
 
   // "reset" pops the current submap instead of pushing a new one. Recognised in
   // both the action and matcher so a default-context bind can be an emergency exit.
-  [[nodiscard]] inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
+  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
 
-  [[nodiscard]] inline bool isSubmapResetBind(const Keybind& bind) {
+  inline bool isSubmapResetBind(const Keybind& bind) {
     const auto* arg = payloadIf<SubmapArg>(bind);
     return bind.action == KeybindAction::Submap && arg != nullptr && isSubmapReset(*arg);
   }
 
   // The cheatsheet's own binds must not dismiss it: the press or chord that
   // opened the overlay would otherwise close it again in the same event.
-  [[nodiscard]] inline bool isCheatsheetAction(KeybindAction action) {
+  inline bool isCheatsheetAction(KeybindAction action) {
     return action == KeybindAction::CheatsheetToggle
         || action == KeybindAction::CheatsheetOpen
         || action == KeybindAction::CheatsheetClose;
@@ -413,14 +411,14 @@ namespace umbriel {
 
   // Evdev BTN_* code for a canonical mouse button name such as "MouseBack", or 0 when the name is not one. Matching is
   // case-insensitive.
-  [[nodiscard]] uint32_t mouseButtonFromName(std::string_view name);
+  uint32_t mouseButtonFromName(std::string_view name);
 
   // Canonical name for an evdev BTN_* code, or nullptr for a button Umbriel does not name.
-  [[nodiscard]] const char* mouseButtonName(uint32_t button);
+  const char* mouseButtonName(uint32_t button);
 
   // The BTN_* code binds store for a pressed button. Mice report their thumb buttons as either BTN_SIDE/BTN_EXTRA or
   // BTN_BACK/BTN_FORWARD; both pairs map to BTN_SIDE/BTN_EXTRA.
-  [[nodiscard]] uint32_t canonicalMouseButton(uint32_t button);
+  uint32_t canonicalMouseButton(uint32_t button);
 
   // Parse a chord such as "Mod+Shift+h", "Ctrl+Alt+Delete", "Mod+WheelUp", "Mod+MouseBack", or "submap[resize],Escape".
   // Only the trigger fields are written; the action is set separately by parseAction. Returns false and leaves `output`
@@ -440,17 +438,17 @@ namespace umbriel {
   // Splits a config action string into words: whitespace separates words outside quotes, '…' is literal, "…" honours
   // \" and \\, and a backslash outside quotes escapes the next character. Adjacent pieces join into one word. Returns
   // nullopt on an unterminated quote or a trailing lone backslash.
-  [[nodiscard]] std::optional<std::vector<std::string>> splitActionString(std::string_view text);
+  std::optional<std::vector<std::string>> splitActionString(std::string_view text);
 
   // Argument values every action encoding shares, so the word grammar and the IPC action request accept the same set.
-  [[nodiscard]] std::optional<LayoutMode> layoutModeNamed(std::string_view name);
-  [[nodiscard]] std::string_view layoutModeName(LayoutMode mode);
+  std::optional<LayoutMode> layoutModeNamed(std::string_view name);
+  std::string_view layoutModeName(LayoutMode mode);
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
-  [[nodiscard]] bool validActionFraction(double fraction);
+  bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.
-  [[nodiscard]] bool validActionFractionDelta(double delta);
+  bool validActionFractionDelta(double delta);
   // The span the config's `output.<name>.sdr_white` accepts.
-  [[nodiscard]] bool validSdrWhiteNits(double nits);
+  bool validSdrWhiteNits(double nits);
 
   // Named action roots only; suppression and current-pool cycle have no named reference.
   struct EffectActionReference {
@@ -458,11 +456,11 @@ namespace umbriel {
     EffectKind kind;
     bool poolRequired;
   };
-  [[nodiscard]] std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
+  std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
 
   std::span<const ActionSpec> actionSpecs();
   // The spec with exactly this name, or null.
-  [[nodiscard]] const ActionSpec* findActionSpec(std::string_view name);
+  const ActionSpec* findActionSpec(std::string_view name);
 
   // The binds used when no config file supplies any.
   std::vector<Keybind> defaultKeybinds();

@@ -334,7 +334,7 @@ namespace {
   }
 
   Selection* findSelection(State& state, xcb_atom_t atom) {
-    const auto found = std::ranges::find(state.selections, atom, &Selection::atom);
+    auto* const found = std::ranges::find(state.selections, atom, &Selection::atom);
     return found == state.selections.end() ? nullptr : &*found;
   }
 
@@ -414,7 +414,7 @@ namespace {
       state.running = false;
     } else if (type == state.xfixesEventBase + XCB_XFIXES_SELECTION_NOTIFY) {
       const auto& notify = reinterpret_cast<const xcb_xfixes_selection_notify_event_t&>(event);
-      const auto found = std::ranges::find(state.selections, notify.selection, &Selection::atom);
+      auto* const found = std::ranges::find(state.selections, notify.selection, &Selection::atom);
       if (notify.window == state.window && found != state.selections.end()) {
         beginRead(state, static_cast<size_t>(found - state.selections.begin()), notify.owner);
       }

@@ -563,11 +563,10 @@ int main(int argc, char** argv) {
   if (const char* appId = std::getenv("SEAT_LOG_APP_ID")) {
     xdg_toplevel_set_app_id(state.toplevel, appId);
   }
-  if (state.shortcutsControl || std::getenv("INHIBIT_SHORTCUTS") != nullptr) {
-    if (state.shortcutsInhibitManager == nullptr) {
-      std::println(stderr, "seat-log-client: compositor is missing zwp_keyboard_shortcuts_inhibit_manager_v1");
-      return EXIT_FAILURE;
-    }
+  if ((state.shortcutsControl || std::getenv("INHIBIT_SHORTCUTS") != nullptr)
+      && state.shortcutsInhibitManager == nullptr) {
+    std::println(stderr, "seat-log-client: compositor is missing zwp_keyboard_shortcuts_inhibit_manager_v1");
+    return EXIT_FAILURE;
   }
   if (std::getenv("INHIBIT_SHORTCUTS") != nullptr) {
     state.shortcutsInhibitor = zwp_keyboard_shortcuts_inhibit_manager_v1_inhibit_shortcuts(

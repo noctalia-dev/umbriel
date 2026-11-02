@@ -20,9 +20,9 @@ namespace umbriel {
     bool urgent = false;
     bool fullscreen = false;
   };
-  [[nodiscard]] bool borderEffectApplies(const BorderEffectGate& gate);
+  bool borderEffectApplies(const BorderEffectGate& gate);
   // A border preset's padding, 0 unless its program compiled.
-  [[nodiscard]] int borderPresetPadding(const EffectPreset* preset, bool compiled);
+  int borderPresetPadding(const EffectPreset* preset, bool compiled);
   // Removes the window and overlay slots from `node`; null is a no-op.
   void clearWindowEffectSlots(wlr_scene_node* node);
 
@@ -32,14 +32,12 @@ namespace umbriel {
   public:
     void syncNames(const Effects& effects);
     void resetSlots();
-    [[nodiscard]] EffectSlot& slot(EffectKind kind) { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
-    [[nodiscard]] const EffectSlot& slot(EffectKind kind) const {
-      return kind == EffectKind::Border ? m_borderSlot : m_windowSlot;
-    }
-    [[nodiscard]] const std::string& borderName() const { return m_border; }
-    [[nodiscard]] const std::string& windowName() const { return m_window; }
+    EffectSlot& slot(EffectKind kind) { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
+    const EffectSlot& slot(EffectKind kind) const { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
+    const std::string& borderName() const { return m_border; }
+    const std::string& windowName() const { return m_window; }
     // Preset padding, 0 when no border preset with a compiled program is selected.
-    [[nodiscard]] int borderPadding() const;
+    int borderPadding() const;
     struct ApplyInput {
       wlr_scene_node* surface = nullptr;
       wlr_scene_node* border = nullptr;
@@ -52,10 +50,10 @@ namespace umbriel {
       wlr_box outputBox{};          // that output's layout box: an instance is visible only inside it
     };
     // True when a border or window preset is selected for this view: the caller reads the clock only then.
-    [[nodiscard]] bool configured() const { return !m_border.empty() || !m_window.empty(); }
+    bool configured() const { return !m_border.empty() || !m_window.empty(); }
     // True when apply() reads `surface`: a window preset or a border preset with an overlay is selected, or a node of
     // this view is in the ledger.
-    [[nodiscard]] bool needsSurface() const { return !m_window.empty() || m_overlay || !m_owners.empty(); }
+    bool needsSurface() const { return !m_window.empty() || m_overlay || !m_owners.empty(); }
     void apply(const ApplyInput& input);
     // Ledger removal for every node this object registered; slots are cleared by the caller.
     void detach();

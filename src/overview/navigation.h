@@ -30,7 +30,7 @@ namespace umbriel {
     static constexpr Travel kScrollTravel{.workspace = 500.0, .viewport = 500.0};
     static constexpr Travel kSwipeTravel{.workspace = kSwipeWorkspacePx, .viewport = kSwipeViewportPx};
 
-    [[nodiscard]] static constexpr Travel travelFor(NavigationSource source) {
+    static constexpr Travel travelFor(NavigationSource source) {
       return source == NavigationSource::Scroll ? kScrollTravel : kSwipeTravel;
     }
 
@@ -48,19 +48,19 @@ namespace umbriel {
       }
     }
 
-    [[nodiscard]] Axis axis() const { return m_axis; }
-    [[nodiscard]] double position() const { return tracker().pos(); }
+    Axis axis() const { return m_axis; }
+    double position() const { return tracker().pos(); }
     // Where the travel would coast to a stop under the deceleration in SwipeTracker: the projection the release
     // settles on, and the one the snapshot in the other direction uses.
-    [[nodiscard]] double projectedPosition() const { return tracker().projectedEndPos(); }
-    [[nodiscard]] double velocity() const { return tracker().velocity(); }
+    double projectedPosition() const { return tracker().projectedEndPos(); }
+    double velocity() const { return tracker().velocity(); }
 
-    [[nodiscard]] static double travelScale(double extent, double zoom, double factor, double unitsPerStep) {
+    static double travelScale(double extent, double zoom, double factor, double unitsPerStep) {
       return extent * GesturePhysics::zoomScale(zoom) * factor / unitsPerStep;
     }
 
   private:
-    [[nodiscard]] const SwipeTracker& tracker() const { return m_axis == Axis::Horizontal ? m_x : m_y; }
+    const SwipeTracker& tracker() const { return m_axis == Axis::Horizontal ? m_x : m_y; }
     SwipeTracker m_x;
     SwipeTracker m_y;
     Axis m_axis = Axis::Pending;

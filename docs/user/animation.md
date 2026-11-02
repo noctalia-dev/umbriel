@@ -28,6 +28,10 @@ curve = "spring:1,800"
 enabled = true
 curve = "spring:1,900"
 
+[animation.windows_opacity]
+enabled = true
+curve = "spring:1,900"
+
 [animation.workspaces]
 style = "slide"
 enabled = true
@@ -72,20 +76,21 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 
 ## Event tables
 
-| Table                        | Additional fields                                                   | Transition                                                 |
-| ---------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `[animation.windows_in]`     | `style`, `scale`                                                    | Window opening                                             |
-| `[animation.windows_out]`    | `style`, `scale`                                                    | Window closing                                             |
-| `[animation.windows_move]`   | none                                                                | Position during moves, reflow, maximize, and restore       |
-| `[animation.windows_resize]` | none, and no `effect`                                               | Size during the same changes                               |
-| `[animation.workspaces]`     | `style`                                                             | Workspace switching                                        |
-| `[animation.overview]`       | `workspace_curve`                                                   | Overview opening, closing, and filmstrip movement          |
-| `[animation.scratchpad]`     | `dim`, `blur`                                                       | Scratchpad show and hide, and its backdrop                 |
-| `[animation.dialogs]`        | `dim`, and no `effect`                                              | Shade over a window while a modal dialog is attached to it |
-| `[animation.border]`         | none                                                                | Focus-border color                                         |
-| `[animation.dim_unfocused]`  | `dim`                                                               | Unfocused-window opacity                                   |
-| `[animation.layers]`         | none                                                                | Layer-shell map and unmap                                  |
-| `[animation.windows_drag]`   | `physics` (default `false`) plus the drag-physics tuning keys below | Drag physics                                               |
+| Table                         | Additional fields                                                   | Transition                                                 |
+| ----------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `[animation.windows_in]`      | `style`, `scale`                                                    | Window opening                                             |
+| `[animation.windows_out]`     | `style`, `scale`                                                    | Window closing                                             |
+| `[animation.windows_move]`    | none                                                                | Position during moves, reflow, maximize, and restore       |
+| `[animation.windows_resize]`  | none, and no `effect`                                               | Size during the same changes                               |
+| `[animation.windows_opacity]` | none, and no `effect`                                               | Focus changes to window-rule opacity and backdrop blur     |
+| `[animation.workspaces]`      | `style`                                                             | Workspace switching                                        |
+| `[animation.overview]`        | `workspace_curve`                                                   | Overview opening, closing, and filmstrip movement          |
+| `[animation.scratchpad]`      | `dim`, `blur`                                                       | Scratchpad show and hide, and its backdrop                 |
+| `[animation.dialogs]`         | `dim`, and no `effect`                                              | Shade over a window while a modal dialog is attached to it |
+| `[animation.border]`          | none                                                                | Focus-border color                                         |
+| `[animation.dim_unfocused]`   | `dim`                                                               | Unfocused-window opacity                                   |
+| `[animation.layers]`          | none                                                                | Layer-shell map and unmap                                  |
+| `[animation.windows_drag]`    | `physics` (default `false`) plus the drag-physics tuning keys below | Drag physics                                               |
 
 `windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`. `windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts `slide` or `reveal` (see [Workspace reveal](#workspace-reveal)). `scale` applies to `popin`: an opening window grows from it to full size, and a closing window shrinks toward it, while both fade.
 
@@ -96,6 +101,19 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 Scratchpad `dim` and `blur` remain active without a fade when animation is disabled. `dim` is the opacity of the black layer over the output behind a visible scratchpad; `blur` blurs it when `[appearance.blur]` is enabled.
 
 Dialogs `dim` works the same way: it is the opacity, 0.0 to 1.0 and `0.3` by default, of the black shade over a window while a modal dialog is attached to it (see [Dialogs](layout.md#dialogs)). The shade fades in when the dialog attaches and out when it leaves, and stays without a fade when animation is disabled.
+
+## Window opacity
+
+`[animation.windows_opacity]` fades between the opacity and window and title-bar blur defined by window rules when focus changes. It is enabled by default and uses the same default timing as `[animation.border]`: `curve = "spring:1,900"`, with a 250 ms fallback for duration-based curves. Explicit top-level `[animation] duration_ms` and `curve` values supply defaults just as they do for the other event tables. Each table can override them independently.
+
+Use `enabled = false` for immediate focus changes. With a non-spring curve, `duration_ms` sets the fade length. A spring derives its own duration. Refocusing during a fade starts from the current appearance. Border colors keep using `[animation.border]`; disabling that table does not disable opacity or blur fades. `[animation.dim_unfocused]` adds its own opacity multiplier independently of window rules.
+
+```toml
+[animation.windows_opacity]
+enabled = true
+duration_ms = 200
+curve = "easeinoutcubic"
+```
 
 ## Curves
 

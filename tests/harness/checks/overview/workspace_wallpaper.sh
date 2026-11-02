@@ -53,8 +53,7 @@ start_layer "$BOTTOM_LOG" HEADLESS-1 0 bottom-layer
 # 1280x720 output at zoom 0.5: the only workspace row spans 320,180 to 960,540, so the bottom-layer surface's mirror
 # lands in its top-left corner as a 100x100 square.
 sample_rgb() {
-  magick "$1" -crop "16x16+$2+$3" -format \
-    '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean "16x16+$2+$3"
 }
 
 assert_rgb() {
@@ -125,7 +124,6 @@ write_horizontal_config false
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 grim "$HORIZONTAL_FLAT"
-"$UMBRIEL" msg overview-close > /dev/null
 assert_rgb "active fill" "$HORIZONTAL_FLAT" 632 352 255 0 0
 assert_rgb "adjacent fill beside" "$HORIZONTAL_FLAT" 1100 352 255 0 0
 assert_rgb "gap between previews" "$HORIZONTAL_FLAT" 990 352 85 119 170

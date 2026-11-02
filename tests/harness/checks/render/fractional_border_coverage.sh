@@ -68,37 +68,40 @@ if (( stripe_width != 1 || stripe_height != 1 )); then
 fi
 
 grim -o HEADLESS-1 "$SCREENSHOT"
-side_red=$(magick "$SCREENSHOT" -alpha off -crop "1x100+${outer_x}+$((center_y - 50))" +repage \
-  -format '%[fx:round(255*minima.r)]' info:)
-top_red=$(magick "$SCREENSHOT" -alpha off -crop "100x1+$((center_x - 50))+${outer_y}" +repage \
-  -format '%[fx:round(255*minima.r)]' info:)
-if (( side_red < 254 || top_red < 254 )); then
-  echo "fractionally scaled straight border was translucent: side_red=$side_red top_red=$top_red window=$window"
+side_stripe="1x100+${outer_x}+$((center_y - 50))"
+top_stripe="100x1+$((center_x - 50))+${outer_y}"
+side_translucent=$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r < 0.99412' "$side_stripe")
+top_translucent=$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r < 0.99412' "$top_stripe")
+read -r side_red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "$side_stripe")
+read -r top_red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "$top_stripe")
+if (( side_translucent != 0 || top_translucent != 0 )); then
+  echo "fractionally scaled straight border was translucent: side_red=$side_red top_red=$top_red" \
+    "($side_translucent side and $top_translucent top pixels below 254) window=$window"
   exit 1
 fi
 
 # The ideal 1.25-pixel stroke has one opaque pixel plus equal fractional
 # coverage outside its top and side edges. The rounded ring's transparent
 # render margin keeps those samples inside the scene quad.
-side_aa_red=$(magick "$SCREENSHOT" -alpha off -crop "1x100+$((outer_x - 1))+$((center_y - 50))" +repage \
-  -format '%[fx:round(255*minima.r)]' info:)
-top_aa_red=$(magick "$SCREENSHOT" -alpha off -crop "100x1+$((center_x - 50))+$((outer_y - 1))" +repage \
-  -format '%[fx:round(255*minima.r)]' info:)
+side_aa_stripe="1x100+$((outer_x - 1))+$((center_y - 50))"
+top_aa_stripe="100x1+$((center_x - 50))+$((outer_y - 1))"
+side_aa_uneven=$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r < 0.15490 || r > 0.35490' "$side_aa_stripe")
+top_aa_uneven=$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r < 0.15490 || r > 0.35490' "$top_aa_stripe")
+read -r side_aa_red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "$side_aa_stripe")
+read -r top_aa_red _ _ < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "$top_aa_stripe")
 aa_delta=$((side_aa_red - top_aa_red))
 (( aa_delta < 0 )) && aa_delta=$((-aa_delta))
-if (( side_aa_red < 40 || side_aa_red > 90 || top_aa_red < 40 || top_aa_red > 90 || aa_delta > 2 )); then
+if (( side_aa_uneven != 0 || top_aa_uneven != 0 || aa_delta > 2 )); then
   echo "fractional border outer coverage was uneven: side_aa=$side_aa_red top_aa=$top_aa_red window=$window"
   exit 1
 fi
 
 # The next row and column belong to the client. Antialiasing the stroke inward
 # makes one edge look two pixels thick, depending on fractional rounding.
-side_edge=$(magick "$SCREENSHOT" -alpha off -crop "1x1+${inner_x}+${center_y}" +repage \
-  -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.b)]' info:)
-top_edge=$(magick "$SCREENSHOT" -alpha off -crop "1x1+${center_x}+${inner_y}" +repage \
-  -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.b)]' info:)
-read -r side_edge_red side_edge_blue <<< "$side_edge"
-read -r top_edge_red top_edge_blue <<< "$top_edge"
+read -r side_edge_red _ side_edge_blue < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$inner_x" "$center_y")
+read -r top_edge_red _ top_edge_blue < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$center_x" "$inner_y")
+side_edge="$side_edge_red $side_edge_blue"
+top_edge="$top_edge_red $top_edge_blue"
 if (( side_edge_red > 90 || side_edge_blue < 160 || top_edge_red > 90 || top_edge_blue < 160 )); then
   echo "fractional border feathered into the straight client edge: side=$side_edge top=$top_edge window=$window"
   exit 1

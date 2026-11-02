@@ -74,7 +74,7 @@ namespace umbriel::test {
 
 #define CHECK(expr)                                                                                                    \
   do {                                                                                                                 \
-    if (!(expr)) {                                                                                                     \
+    if (!static_cast<bool>(expr)) {                                                                                    \
       ::umbriel::test::reportFailure(__FILE__, __LINE__, "CHECK(" #expr ") failed");                                   \
     }                                                                                                                  \
   } while (false)

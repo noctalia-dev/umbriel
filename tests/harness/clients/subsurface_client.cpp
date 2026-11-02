@@ -348,13 +348,13 @@ int main(int argc, char** argv) {
   state.opaqueContent = std::getenv("OPAQUE_CONTENT") != nullptr;
   state.staleGeometry = std::getenv("STALE_GEOMETRY") != nullptr;
   if (const char* offset = std::getenv("OFFSET_GEOMETRY")) {
-    state.offset = std::max(0, std::atoi(offset));
+    state.offset = std::max(0, std::stoi(offset));
   }
   if (argc > 2) {
-    state.width = std::max(1, std::atoi(argv[2]));
+    state.width = std::max(1, std::stoi(argv[2]));
   }
   if (argc > 3) {
-    state.height = std::max(1, std::atoi(argv[3]));
+    state.height = std::max(1, std::stoi(argv[3]));
   }
   state.animateChild = argc > 4 && std::strcmp(argv[4], "animate") == 0;
   state.display = wl_display_connect(nullptr);

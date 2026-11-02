@@ -60,8 +60,7 @@ sample_blue() {
     "$UMBRIEL" windows --json | jq -r '.[] | select(.title == "state-rules") | "\(.x) \(.y) \(.w) \(.h)"'
   )"
   grim "$SCREENSHOT"
-  magick "$SCREENSHOT" -crop "20x20+$((x + w / 2 - 10))+$((y + h / 2 - 10))" \
-    -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "20x20+$((x + w / 2 - 10))+$((y + h / 2 - 10))" | awk '{print $3}'
 }
 
 # Failures go to stderr: the caller captures stdout to report the samples it saw.

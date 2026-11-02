@@ -23,7 +23,7 @@ active_workspace() {
 
 # Mean red and blue of the whole frame, in percent.
 red_blue() {
-  magick "$1" -format '%[fx:round(100*mean.r)] %[fx:round(100*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean | awk '{ printf "%d %d\n", $1 * 100 / 255 + 0.5, $3 * 100 / 255 + 0.5 }'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'

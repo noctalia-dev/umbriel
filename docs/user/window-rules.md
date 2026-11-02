@@ -208,6 +208,28 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
 
+### Focus transitions
+
+When a window gains or loses focus, its rule-defined opacity and window and title-bar backdrop blur transition smoothly. Timing lives under [`[animation.windows_opacity]`](animation.md#window-opacity), independently of the rules defining the focused and unfocused appearances:
+
+```toml
+[animation.windows_opacity]
+enabled = true
+curve = "spring:1,900"
+
+[[window_rule]]
+match.is_focused = false
+opacity = 0.75
+blur = true
+
+[[window_rule]]
+match.is_focused = true
+opacity = 1.0
+blur = false
+```
+
+Enable `[appearance.blur]` for backdrop blur. Refocusing during a transition continues from the current appearance, and repeated focus requests keep its clock running. Disable `[animation.windows_opacity]` for immediate opacity and blur changes. Identity and other state changes apply their rule targets immediately, as do popup blur, decoration geometry, placement and behavior. Border colors use `[animation.border]` independently.
+
 ### Border colors
 
 Each `border_color_*` key is independent: an unset key keeps the [`[colors.border]`](appearance.md#border-colors) color. Combined with the state selectors, they tell floating, pinned, or scratchpad windows apart:

@@ -23,16 +23,16 @@ namespace umbriel {
 
   // Compares cursor identity, ignoring only the undefined RGB channels of
   // fully transparent pixels.
-  [[nodiscard]] bool xcursorImagesEqual(XcursorImageView first, XcursorImageView second);
+  bool xcursorImagesEqual(XcursorImageView first, XcursorImageView second);
 
   // Matches any animation frame. A matching preferred semantic name wins over
   // aliases with identical pixels, then the theme's stable cursor order wins.
-  [[nodiscard]] std::optional<std::string>
+  std::optional<std::string>
   matchXcursorThemeImage(const wlr_xcursor_theme* theme, XcursorImageView image, std::string_view preferredName = {});
 
   // Loads and searches the manager's scale-1 theme. The returned name remains
   // owned by the caller and is valid across theme-manager replacement.
-  [[nodiscard]] std::optional<std::string>
+  std::optional<std::string>
   matchXcursorManagerImage(wlr_xcursor_manager* manager, XcursorImageView image, std::string_view preferredName = {});
 
 } // namespace umbriel

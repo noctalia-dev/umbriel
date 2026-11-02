@@ -28,7 +28,9 @@ field_of() {
 }
 
 pixel_color() {
-  magick "$SCREENSHOT" -alpha off -format "%[hex:p{$1,$2}]" info:
+  local r g b
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2")
+  printf '%02X%02X%02X\n' "$r" "$g" "$b"
 }
 
 # "drew <size> geometry <size>": what the client painted, and the box it declared once and never updated.

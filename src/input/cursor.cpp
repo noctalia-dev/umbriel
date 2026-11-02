@@ -501,66 +501,109 @@ namespace umbriel {
     return grab != nullptr && grab->view != nullptr && !grab->pending && grab->target == DragTarget::Tiled;
   }
 
-  Workspace* Cursor::dataDragEdgeScrollTarget(double* speed) const {
-    *speed = 0;
+  Cursor::EdgeScrollTargets Cursor::edgeScrollTargets() const {
+    EdgeScrollTargets targets;
     const Config::Input::DragEdgeScroll& edge = config().input.dragEdgeScroll;
+    Overview* overview = m_server->overview();
+    const bool overviewActive = overview != nullptr && overview->active();
+    // An overview card drag is a first-class drag here: it may slide the strip AND the workspace filmstrip. Data
+    // drags AND compositor tiled moves keep the overview exclusion (DnD-overview semantics, pinned by
+    // drag/data_drag_edge_scroll.sh; the MoveGrab-in-overview drag model belongs to a later wave). A concurrent
+    // middle-press pointer-scroll pan owns the motion while it runs, so the card's frozen drop row must not pair
+    // with the live pointer's edge ramp; the machinery stands down until the hold is the card's alone. The
+    // target maths resolve the real usable-area edges, not the row under the pointer or the preview bounds.
+    const bool cardDrag = overview != nullptr && overview->cardDragging() && !overview->middlePressed();
+    const bool tiledMove = tiledMoveDragActive();
     if (!edge.enabled
         || m_server->sessionLocked()
-        || (m_server->seat()->wlr()->drag == nullptr && !tiledMoveDragActive())
-        || (m_server->overview() != nullptr && m_server->overview()->active())) {
-      return nullptr;
+        || (m_server->seat()->wlr()->drag == nullptr && !tiledMove && !cardDrag)
+        || (overviewActive && !cardDrag)) {
+      return targets;
     }
 
     wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
     Output* output = m_server->outputFromWlr(wlrOutput);
     WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
-    Workspace* workspace = group != nullptr ? group->active() : nullptr;
+    Workspace* active = group != nullptr ? group->active() : nullptr;
+    if (output == nullptr || active == nullptr) {
+      return targets;
+    }
+
+    // A held card aims at the row under the drag pointer (its drop target, the same row the finger-pan path
+    // resolves through navigationWorkspace()), so the strip it must reveal is that workspace's, not the active
+    // one's. A card over an insertion gap has no row to slide. Data drags and tiled moves keep the active
+    // workspace. The shared edge ramp runs on the target workspace's real usable-area edges.
+    Workspace* workspace = cardDrag ? overview->dragTargetWorkspace() : active;
+
+    const wlr_box area = workspace != nullptr ? workspace->usableArea() : active->usableArea();
+    // The shared edge ramp: signed screen px/s from the pointer's depth into the trigger zone at either end of
+    // the usable area along `verticalAxis`.
+    const auto edgeSpeed = [&](bool verticalAxis, double* speed) {
+      *speed = 0;
+      const double origin = verticalAxis ? area.y : area.x;
+      const double extent = verticalAxis ? area.height : area.width;
+      if (extent <= 0) {
+        return false;
+      }
+      const double trigger = std::min(static_cast<double>(edge.triggerZone), extent / 2.0);
+      const double position = verticalAxis ? m_cursor->y : m_cursor->x;
+      if (position < origin + trigger) {
+        *speed = -edge.maxSpeed * std::clamp((origin + trigger - position) / trigger, 0.0, 1.0);
+      } else if (position > origin + extent - trigger) {
+        *speed = edge.maxSpeed * std::clamp((position - (origin + extent - trigger)) / trigger, 0.0, 1.0);
+      }
+      return *speed != 0;
+    };
+
     ScrollingLayout* scrolling = workspace != nullptr ? workspace->scrollingLayout() : nullptr;
-    if (scrolling == nullptr || scrolling->columns().empty()) {
-      return nullptr;
+    if (scrolling != nullptr && !scrolling->columns().empty()) {
+      const bool vertical = workspace->scrollingVertical();
+      double speed = 0;
+      if (edgeSpeed(vertical, &speed)) {
+        const double oldScroll = scrolling->scroll();
+        const auto maximum = static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent()));
+        const bool atScrollLimit = (speed < 0 && oldScroll <= 0) || (speed > 0 && oldScroll >= maximum);
+        if (maximum > 0 && !atScrollLimit) {
+          targets.workspace = workspace;
+          targets.workspaceSpeed = speed;
+        }
+      }
     }
 
-    const wlr_box area = workspace->usableArea();
-    const bool vertical = workspace->scrollingVertical();
-    const double origin = vertical ? area.y : area.x;
-    const double extent = vertical ? area.height : area.width;
-    if (extent <= 0) {
-      return nullptr;
+    // The workspace-axis twin (overview card drags only): the filmstrip slides under the same edge mechanic so a
+    // held card can ride the rows to a far workspace like it rides the columns to a far column.
+    if (cardDrag) {
+      const bool verticalAxis = group->workspaceAxis() == WorkspaceAxis::Vertical;
+      double speed = 0;
+      if (edgeSpeed(verticalAxis, &speed) && overview->filmstripEdgeScrolling(*output, speed)) {
+        targets.filmstrip = output;
+        targets.filmstripSpeed = speed;
+      }
     }
-    const double trigger = std::min(static_cast<double>(edge.triggerZone), extent / 2.0);
-    const double position = vertical ? m_cursor->y : m_cursor->x;
-    if (position < origin + trigger) {
-      *speed = -edge.maxSpeed * std::clamp((origin + trigger - position) / trigger, 0.0, 1.0);
-    } else if (position > origin + extent - trigger) {
-      *speed = edge.maxSpeed * std::clamp((position - (origin + extent - trigger)) / trigger, 0.0, 1.0);
-    }
-    if (*speed == 0) {
-      return nullptr;
-    }
-
-    const double oldScroll = scrolling->scroll();
-    const auto maximum = static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent()));
-    if (maximum <= 0) {
-      return nullptr;
-    }
-    if ((*speed < 0 && oldScroll <= 0) || (*speed > 0 && oldScroll >= maximum)) {
-      return nullptr;
-    }
-    return workspace;
+    return targets;
   }
 
   void Cursor::updateDataDragEdgeScroll() {
     const Config::Input::DragEdgeScroll& edge = config().input.dragEdgeScroll;
-    double speed = 0;
-    Workspace* workspace = dataDragEdgeScrollTarget(&speed);
-    const int direction = (speed > 0) - (speed < 0);
-    const int previousDirection = (m_dataDragEdgeScrollSpeed > 0) - (m_dataDragEdgeScrollSpeed < 0);
-    if (workspace == nullptr) {
+    const EdgeScrollTargets targets = edgeScrollTargets();
+    if (targets.workspace == nullptr && targets.filmstrip == nullptr) {
       cancelDataDragEdgeScroll();
       return;
     }
-    if (workspace == m_dataDragEdgeScrollWorkspace && direction == previousDirection) {
-      m_dataDragEdgeScrollSpeed = speed;
+    const auto direction = [](double speed) { return (speed > 0) - (speed < 0); };
+    // A sink appearing or an active sink changing direction starts a fresh scroll (delay and all); a sink
+    // vanishing (its dimension hit the end) drops out of the set without disturbing the other sink's timeline.
+    const bool restart = (targets.workspace != nullptr
+                          && (targets.workspace != m_dataDragEdgeScrollWorkspace
+                              || direction(targets.workspaceSpeed) != direction(m_dataDragEdgeScrollSpeed)))
+        || (targets.filmstrip != nullptr
+            && (targets.filmstrip != m_dataDragEdgeScrollFilmstrip
+                || direction(targets.filmstripSpeed) != direction(m_dataDragEdgeScrollFilmstripSpeed)));
+    m_dataDragEdgeScrollWorkspace = targets.workspace;
+    m_dataDragEdgeScrollFilmstrip = targets.filmstrip;
+    m_dataDragEdgeScrollSpeed = targets.workspaceSpeed;
+    m_dataDragEdgeScrollFilmstripSpeed = targets.filmstripSpeed;
+    if (!restart) {
       return;
     }
     if (m_dataDragEdgeScrollTimer == nullptr) {
@@ -570,8 +613,6 @@ namespace umbriel {
         return;
       }
     }
-    m_dataDragEdgeScrollWorkspace = workspace;
-    m_dataDragEdgeScrollSpeed = speed;
     m_dataDragEdgeScrollLastMsec = 0;
     m_dataDragEdgeScrollPending = true;
     if (edge.delayMs > 0) {
@@ -586,7 +627,9 @@ namespace umbriel {
       wl_event_source_timer_update(m_dataDragEdgeScrollTimer, 0);
     }
     m_dataDragEdgeScrollWorkspace = nullptr;
+    m_dataDragEdgeScrollFilmstrip = nullptr;
     m_dataDragEdgeScrollSpeed = 0;
+    m_dataDragEdgeScrollFilmstripSpeed = 0;
     m_dataDragEdgeScrollLastMsec = 0;
     m_dataDragEdgeScrollPending = false;
   }
@@ -596,19 +639,26 @@ namespace umbriel {
   }
 
   int Cursor::handleDataDragEdgeScrollTimer() {
-    double speed = 0;
-    Workspace* workspace = dataDragEdgeScrollTarget(&speed);
-    const int direction = (speed > 0) - (speed < 0);
-    const int activeDirection = (m_dataDragEdgeScrollSpeed > 0) - (m_dataDragEdgeScrollSpeed < 0);
-    if (workspace == nullptr) {
+    const EdgeScrollTargets targets = edgeScrollTargets();
+    if (targets.workspace == nullptr && targets.filmstrip == nullptr) {
       cancelDataDragEdgeScroll();
       return 0;
     }
-    if (workspace != m_dataDragEdgeScrollWorkspace || direction != activeDirection) {
+    const auto direction = [](double speed) { return (speed > 0) - (speed < 0); };
+    const bool restart = (targets.workspace != nullptr
+                          && (targets.workspace != m_dataDragEdgeScrollWorkspace
+                              || direction(targets.workspaceSpeed) != direction(m_dataDragEdgeScrollSpeed)))
+        || (targets.filmstrip != nullptr
+            && (targets.filmstrip != m_dataDragEdgeScrollFilmstrip
+                || direction(targets.filmstripSpeed) != direction(m_dataDragEdgeScrollFilmstripSpeed)));
+    if (restart) {
       updateDataDragEdgeScroll();
       return 0;
     }
-    m_dataDragEdgeScrollSpeed = speed;
+    m_dataDragEdgeScrollWorkspace = targets.workspace;
+    m_dataDragEdgeScrollFilmstrip = targets.filmstrip;
+    m_dataDragEdgeScrollSpeed = targets.workspaceSpeed;
+    m_dataDragEdgeScrollFilmstripSpeed = targets.filmstripSpeed;
 
     const uint32_t now = monotonicMsec();
     if (m_dataDragEdgeScrollPending) {
@@ -624,20 +674,47 @@ namespace umbriel {
       wl_event_source_timer_update(m_dataDragEdgeScrollTimer, kDataDragEdgeScrollTickMs);
       return 0;
     }
-    ScrollingLayout* scrolling = workspace->scrollingLayout();
-    if (scrolling == nullptr) {
+
+    bool moved = false;
+    if (m_dataDragEdgeScrollWorkspace != nullptr) {
+      ScrollingLayout* scrolling = m_dataDragEdgeScrollWorkspace->scrollingLayout();
+      const auto maximum = scrolling != nullptr
+          ? static_cast<double>(scrolling->maxScroll(m_dataDragEdgeScrollWorkspace->scrollViewportExtent()))
+          : 0.0;
+      const double oldScroll = scrolling != nullptr ? scrolling->scroll() : 0.0;
+      const double nextScroll = scrolling != nullptr
+          ? std::clamp(oldScroll + m_dataDragEdgeScrollSpeed * static_cast<double>(elapsed) / 1000.0, 0.0, maximum)
+          : oldScroll;
+      if (nextScroll == oldScroll) {
+        // Nothing left to move: sink the strip and let the filmstrip (if any) carry the machine, else stop.
+        m_dataDragEdgeScrollWorkspace = nullptr;
+        m_dataDragEdgeScrollSpeed = 0;
+      } else {
+        scrolling->setScroll(nextScroll);
+        m_dataDragEdgeScrollWorkspace->markArrange(false);
+        // The strip moved under a stationary pointer: a live card drag must drop where it visibly sits now.
+        if (Overview* overview = m_server->overview(); overview != nullptr && overview->cardDragging()) {
+          overview->refreshDragTarget();
+        }
+        moved = true;
+      }
+    }
+    if (m_dataDragEdgeScrollFilmstrip != nullptr) {
+      Overview* overview = m_server->overview();
+      if (overview != nullptr
+          && overview->advanceFilmstripEdgeScroll(
+              *m_dataDragEdgeScrollFilmstrip, m_dataDragEdgeScrollFilmstripSpeed, elapsed
+          )) {
+        moved = true;
+      } else {
+        m_dataDragEdgeScrollFilmstrip = nullptr;
+        m_dataDragEdgeScrollFilmstripSpeed = 0;
+      }
+    }
+    if (!moved) {
       cancelDataDragEdgeScroll();
       return 0;
     }
-    const auto maximum = static_cast<double>(scrolling->maxScroll(workspace->scrollViewportExtent()));
-    const double oldScroll = scrolling->scroll();
-    const double nextScroll = std::clamp(oldScroll + speed * static_cast<double>(elapsed) / 1000.0, 0.0, maximum);
-    if (nextScroll == oldScroll) {
-      cancelDataDragEdgeScroll();
-      return 0;
-    }
-    scrolling->setScroll(nextScroll);
-    workspace->markArrange(false);
     wl_event_source_timer_update(m_dataDragEdgeScrollTimer, kDataDragEdgeScrollTickMs);
     return 0;
   }
@@ -743,8 +820,7 @@ namespace umbriel {
     constexpr size_t kBytesPerPixel = sizeof(uint32_t);
     const auto width = static_cast<uint32_t>(buffer->width);
     const auto height = static_cast<uint32_t>(buffer->height);
-    const bool widthOverflows = width > std::numeric_limits<size_t>::max() / kBytesPerPixel;
-    const size_t rowBytes = widthOverflows ? 0 : static_cast<size_t>(width) * kBytesPerPixel;
+    const size_t rowBytes = static_cast<size_t>(width) * kBytesPerPixel;
     const bool sizeOverflows = rowBytes == 0 || height > std::numeric_limits<size_t>::max() / rowBytes;
     if (format == DRM_FORMAT_ARGB8888 && pixels != nullptr && stride >= rowBytes && !sizeOverflows) {
       m_clientCursorPixels.resize(rowBytes * height);
@@ -912,8 +988,8 @@ namespace umbriel {
     m_activeXcursorName = name;
   }
 
-#ifdef UMBRIEL_TEST_IPC
-  std::string Cursor::clientCursorSourceForTest() const {
+#ifdef UMBRIEL_HARNESS
+  std::string_view Cursor::clientCursorSourceForTest() const {
     if (!m_clientCursorKnown) {
       return "none";
     }
@@ -1039,6 +1115,7 @@ namespace umbriel {
         .startY = m_cursor->y,
         .lastX = m_cursor->x,
         .lastY = m_cursor->y,
+        .tabGroup = {},
     };
     if (grab.sourceWorkspace != nullptr) {
       grab.sourceColumn = grab.sourceWorkspace->layout().columnOf(view);
@@ -1288,8 +1365,12 @@ namespace umbriel {
       m_server->gestures()->endPointerScroll(true, 0);
     }
     const bool restoreDragPresentation = isDraggingView(view);
-    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != nullptr && grab->physics) {
-      grab->view->endDragPhysics();
+    LiftedTabGroup liftedTabs;
+    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != nullptr) {
+      if (grab->physics) {
+        grab->view->endDragPhysics();
+      }
+      liftedTabs = std::move(grab->tabGroup);
     }
     const auto* tiledResize = std::get_if<TiledResizeGrab>(&m_grab);
     Workspace* resizedWorkspace = tiledResize != nullptr ? tiledResize->workspace : nullptr;
@@ -1309,6 +1390,9 @@ namespace umbriel {
       if (view->floating()) {
         view->settleFloatingDrop(view->layoutX(), view->layoutY());
       }
+    }
+    if (!liftedTabs.tabs.empty()) {
+      landTabGroup(*view, liftedTabs, /*closing=*/!view->mapped());
     }
     // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
     // an unchanged clip otherwise keeps the scaled source/destination until the client commits again.
@@ -1419,10 +1503,10 @@ namespace umbriel {
 
     double dx = event->delta_x;
     double dy = event->delta_y;
-    if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED) {
-      if (!confineDelta(&dx, &dy)) {
-        return;
-      }
+    if (m_activeConstraint != nullptr
+        && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED
+        && !confineDelta(&dx, &dy)) {
+      return;
     }
 
     confineRuleDelta(&dx, &dy);
@@ -1846,7 +1930,9 @@ namespace umbriel {
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
-      beginMove(view, button);
+      if (beginMove(view, button)) {
+        std::get<MoveGrab>(m_grab).carryTabGroup = true;
+      }
       return;
     }
     if (button == BTN_RIGHT && modHeld && view != nullptr) {
@@ -2264,6 +2350,9 @@ namespace umbriel {
       overview->handleMotion(m_cursor->x, m_cursor->y, timeMsec);
       if (overview->dragging()) {
         clearPointerFocus();
+        if (overview->cardDragging()) {
+          updateDataDragEdgeScroll();
+        }
         return;
       }
       double sx = 0;
@@ -2847,6 +2936,12 @@ namespace umbriel {
     m_lastTitleBarClick = {};
     grab.pending = false;
     if (grab.sourceWorkspace != nullptr) {
+      if (grab.carryTabGroup) {
+        grab.tabGroup = liftTabGroup(*grab.sourceWorkspace, *grab.view);
+        if (!grab.tabGroup.tabs.empty()) {
+          grab.sourceWidth = grab.tabGroup.home.width;
+        }
+      }
       grab.sourceWorkspace->layoutDetach(grab.view);
     }
     grab.view->enterDragPresentation();
@@ -3283,6 +3378,11 @@ namespace umbriel {
       m_ssdButtonPress = {};
     if (m_ssdHoverView == view)
       m_ssdHoverView = nullptr;
+    // A hidden tab leaves the lifted group. The dragged window keeps its place there until handleUnmap's resetMode()
+    // puts the group back.
+    if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != view) {
+      std::erase(grab->tabGroup.tabs, view);
+    }
     // Only the click pair sits outside the grab machinery: the deferred press
     // is a grab and handleUnmap's resetMode() drops it.
     if (m_lastModRightClick.view == view) {

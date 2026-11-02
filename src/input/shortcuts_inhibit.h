@@ -18,7 +18,7 @@ namespace umbriel {
     ManualShortcutsInhibit(const ManualShortcutsInhibit&) = delete;
     ManualShortcutsInhibit& operator=(const ManualShortcutsInhibit&) = delete;
 
-    [[nodiscard]] bool enabled(wlr_surface* surface) const;
+    bool enabled(wlr_surface* surface) const;
     void enable(wlr_surface* surface);
     void disable(wlr_surface* surface);
     void clear();

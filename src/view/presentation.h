@@ -21,8 +21,8 @@ namespace umbriel {
   class ViewPresentation {
   public:
     // Presented size
-    [[nodiscard]] int width() const { return m_width; }
-    [[nodiscard]] int height() const { return m_height; }
+    int width() const { return m_width; }
+    int height() const { return m_height; }
     // Adopt a size outright: map, animation end, or an interactive resize that
     // owns the size itself.
     void setSize(int width, int height);
@@ -30,11 +30,11 @@ namespace umbriel {
     void track(int width, int height);
 
     // Size animation
-    [[nodiscard]] bool animating() const { return m_animW.animating() || m_animH.animating(); }
-    [[nodiscard]] const AnimatedValue& animation() const { return m_animW.animating() ? m_animW : m_animH; }
+    bool animating() const { return m_animW.animating() || m_animH.animating(); }
+    const AnimatedValue& animation() const { return m_animW.animating() ? m_animW : m_animH; }
     // True when an animation is already heading exactly here, so a repeated
     // layout pass does not restart it from the current interpolated size.
-    [[nodiscard]] bool targeting(int width, int height) const;
+    bool targeting(int width, int height) const;
     // Start from the presented size, not the committed one: mid-animation
     // retargets must continue from what is on screen.
     void animateTo(int width, int height, int durationMs, const AnimationCurve& curve = AnimationCurve{});
@@ -54,8 +54,8 @@ namespace umbriel {
     void reloadBackdropColor();
     // Offsets centering a client buffer that does not match the output. Negative
     // for an oversized buffer, which crops it equally on both sides.
-    [[nodiscard]] int offsetX() const { return m_offsetX; }
-    [[nodiscard]] int offsetY() const { return m_offsetY; }
+    int offsetX() const { return m_offsetX; }
+    int offsetY() const { return m_offsetY; }
     // Follows the client's *committed* fullscreen state, never the scheduled intent: a client mid mode-change (wine)
     // would otherwise render as a stale buffer wearing fullscreen chrome.
     void updateFullscreen(

@@ -42,6 +42,4 @@ drag_to "$destination"
 title_bar_wait_field card floating true
 drag_to "$origin"
 title_bar_wait_field card floating false
-"$UMBRIEL" msg overview-close >/dev/null
-"$UMBRIEL" settle >/dev/null
 echo "overview tiled and floating policy transfers verified"

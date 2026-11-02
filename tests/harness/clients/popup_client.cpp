@@ -1,6 +1,8 @@
 // Maps an XDG toplevel and creates a grabbed popup on its first left click. The
 // harness can then request redundant focus for the toplevel and observe whether
-// the compositor incorrectly dismisses the popup.
+// the compositor incorrectly dismisses the popup. With --popup-on-stdin it
+// instead creates an ungrabbed popup when a line arrives on stdin, so a check
+// can open one while the toplevel is not shown.
 
 #include "xdg-shell-client-protocol.h"
 
@@ -8,6 +10,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
+#include <poll.h>
 #include <print>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -106,7 +110,7 @@ namespace {
       .repositioned = popupRepositioned,
   };
 
-  void createPopup(State& state, uint32_t serial) {
+  void createPopup(State& state, std::optional<uint32_t> grabSerial) {
     state.popupSurface = wl_compositor_create_surface(state.compositor);
     state.popupXdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.popupSurface);
     xdg_surface_add_listener(state.popupXdgSurface, &kPopupXdgSurfaceListener, &state);
@@ -121,7 +125,9 @@ namespace {
     state.popup = xdg_surface_get_popup(state.popupXdgSurface, state.xdgSurface, positioner);
     xdg_positioner_destroy(positioner);
     xdg_popup_add_listener(state.popup, &kPopupListener, &state);
-    xdg_popup_grab(state.popup, state.seat, serial);
+    if (grabSerial) {
+      xdg_popup_grab(state.popup, state.seat, *grabSerial);
+    }
     wl_surface_commit(state.popupSurface);
   }
 
@@ -255,7 +261,7 @@ namespace {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
   State state;
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
@@ -300,7 +306,33 @@ int main() {
   std::println("ready");
   std::fflush(stdout);
 
-  while (wl_display_dispatch(state.display) >= 0) {
+  const bool popupOnStdin = argc > 1 && std::strcmp(argv[1], "--popup-on-stdin") == 0;
+  if (!popupOnStdin) {
+    while (wl_display_dispatch(state.display) >= 0) {
+    }
+  } else {
+    pollfd fds[] = {
+        {.fd = wl_display_get_fd(state.display), .events = POLLIN, .revents = 0},
+        {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
+    };
+    while (wl_display_dispatch_pending(state.display) >= 0 && wl_display_flush(state.display) >= 0) {
+      if (poll(fds, std::size(fds), -1) < 0) {
+        break;
+      }
+      if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0) {
+        break;
+      }
+      if ((fds[1].revents & (POLLIN | POLLHUP)) != 0) {
+        char line[64];
+        if (read(STDIN_FILENO, line, sizeof(line)) <= 0) {
+          fds[1].fd = -1;
+        } else if (state.popup == nullptr) {
+          createPopup(state, std::nullopt);
+          std::println("popup-requested");
+          std::fflush(stdout);
+        }
+      }
+    }
   }
 
   destroyBuffer(state.popupBuffer);

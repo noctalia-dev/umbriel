@@ -31,8 +31,8 @@ namespace umbriel {
     void remove(wlr_xwayland_surface* surface);
     [[nodiscard]] bool handleEvent(xcb_generic_event_t* event);
     // X surface-local coordinates. NULL means unshaped; an empty region also holds an initial pending query back.
-    [[nodiscard]] const pixman_region32_t* shape(wlr_surface* surface) const;
-    [[nodiscard]] wl_signal* changed() { return &m_changed; }
+    const pixman_region32_t* shape(wlr_surface* surface) const;
+    wl_signal* changed() { return &m_changed; }
 
   private:
     struct Surface;

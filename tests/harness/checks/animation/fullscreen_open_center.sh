@@ -67,7 +67,7 @@ opener_bounds() {
 }
 
 peer_blue() {
-  magick "$IMAGE" -format '%[fx:round(255*p{24,24}.b)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel 24 24 | awk '{ print $3 }'
 }
 
 assert_centred() {

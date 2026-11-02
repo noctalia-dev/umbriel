@@ -30,6 +30,7 @@
 #include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/color_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/syncobj_acquire_barrier.h"
 #include "server/syncobj_superseded_release.h"
@@ -52,6 +53,7 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <format>
 #include <optional>
 #include <ranges>
 #include <sstream>
@@ -212,7 +214,7 @@ namespace umbriel {
       std::string configuredAssignments;
       for (const auto& [name, value] : config().environment.variables) {
         configuredAssignments += ' ';
-        configuredAssignments += shellQuote(name + "=" + value);
+        configuredAssignments += shellQuote(std::format("{}={}", name, value));
       }
 
       const std::string publishConfigured =
@@ -527,6 +529,7 @@ namespace umbriel {
   void Server::onSessionActive(wl_listener* listener, void* /*data*/) {
     Server* self;
     self = wl_container_of(listener, self, m_sessionActive);
+    self->updateDrmLeaseState();
     if (!self->m_session->active) {
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
@@ -534,6 +537,14 @@ namespace umbriel {
       if (self->m_pendingCaptureId != 0) {
         self->dismissConfirmation();
       }
+    }
+  }
+
+  void Server::updateDrmLeaseState() {
+    if (m_drmLeaseManager != nullptr) {
+      m_drmLeaseManager->setActive(
+          !m_stopping && !m_sessionLocked && m_sessionLock == nullptr && (m_session == nullptr || m_session->active)
+      );
     }
   }
 
@@ -666,6 +677,8 @@ namespace umbriel {
       throw std::runtime_error("failed to create security-context manager");
     }
     wl_display_set_global_filter(m_display, filterGlobal, this);
+    m_drmLeaseManager = std::make_unique<DrmLeaseManager>(m_display, m_backend);
+    updateDrmLeaseState();
     wlr_viewporter_create(m_display);
     wlr_fractional_scale_manager_v1_create(m_display, 1);
     wlr_presentation_create(m_display, m_backend, 2);
@@ -947,6 +960,7 @@ namespace umbriel {
 
   Server::~Server() {
     m_stopping = true;
+    updateDrmLeaseState();
     m_inputCapture.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
@@ -1084,6 +1098,7 @@ namespace umbriel {
       }
     }
     wl_display_destroy_clients(m_display);
+    m_drmLeaseManager.reset();
     m_colorManager.reset();
     m_syncobjAcquireBarrier.reset();
     m_syncobjUnmapRelease.reset();
@@ -1301,12 +1316,21 @@ namespace umbriel {
       wl_event_source_timer_update(m_startupRulesTimer, kStartupRuleDurationMs);
     }
 
-    m_configWatcher = std::make_unique<ConfigWatcher>(wl_display_get_event_loop(m_display), [this] {
-      const ConfigReloadResult result = reloadConfig();
-      handleConfigReload(result);
-    });
+#ifdef UMBRIEL_HARNESS
+    // Harness builds only: UMBRIEL_CONFIG_WATCH=0 turns the config file watcher off.
+    const char* watchSetting = std::getenv("UMBRIEL_CONFIG_WATCH");
+    const bool watchConfig = watchSetting == nullptr || std::strcmp(watchSetting, "0") != 0;
+#else
+    constexpr bool watchConfig = true;
+#endif
+    if (watchConfig) {
+      m_configWatcher = std::make_unique<ConfigWatcher>(wl_display_get_event_loop(m_display), [this] {
+        const ConfigReloadResult result = reloadConfig();
+        handleConfigReload(result);
+      });
+      m_configWatcher->watch(configWatchPaths());
+    }
     m_configBanner = std::make_unique<ConfigBanner>(*this, m_bannerTree);
-    m_configWatcher->watch(configWatchPaths());
     showConfigDiagnostics();
     m_cheatsheet = std::make_unique<Cheatsheet>(*this, m_cheatsheetTree);
     if (config().general.showCheatsheet) {
@@ -1377,6 +1401,7 @@ namespace umbriel {
 
   void Server::stop() {
     m_stopping = true;
+    updateDrmLeaseState();
     wl_display_terminate(m_display);
   }
 
@@ -1541,7 +1566,6 @@ namespace umbriel {
     if (withActivationToken && m_xdgActivation != nullptr) {
       launchToken = wlr_xdg_activation_token_v1_create(m_xdgActivation);
       if (launchToken != nullptr) {
-        trackActivationToken(launchToken, true);
         const char* name = wlr_xdg_activation_token_v1_get_name(launchToken);
         if (name != nullptr) {
           launchTokenName = name;
@@ -1560,10 +1584,9 @@ namespace umbriel {
     if (pid == 0) {
       resetChildSignalState();
       restoreFileDescriptorLimit();
-      if (scopeRequired) {
-        if (!closeChildFileDescriptors() || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
-          _exit(1);
-        }
+      if (scopeRequired
+          && (!closeChildFileDescriptors() || !restoreSystemdControlEnvironment(m_systemdControlEnvironment))) {
+        _exit(1);
       }
       setenv("WAYLAND_DISPLAY", m_socketName.c_str(), 1);
       unsetenv("WAYLAND_SOCKET");
@@ -1594,6 +1617,9 @@ namespace umbriel {
       _exit(1);
     }
 
+    if (launchToken != nullptr) {
+      trackActivationToken(launchToken, true, pid);
+    }
     if (scopeRequired) {
       wlr_log(
           WLR_INFO, "launch requested for '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
@@ -1984,7 +2010,7 @@ namespace umbriel {
   }
 
   double Server::animationFrameClockMsec(double monotonicMsec) const {
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     if (m_frozenAnimationClockMsec) {
       return static_cast<double>(*m_frozenAnimationClockMsec);
     }
@@ -1994,7 +2020,7 @@ namespace umbriel {
 #endif
   }
 
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
   void Server::freezeAnimationClock() {
     if (!m_frozenAnimationClockMsec) {
       m_frozenAnimationClockMsec = animationClockMsec();

@@ -25,9 +25,9 @@ namespace umbriel {
 
   // Settings for X11 clients drawing at `scale` X pixels per logical pixel. The scale splits into an integer interface
   // scale and the fractional rest carried by the unscaled DPI, so their product, like Xft/DPI, is 96 times `scale`.
-  [[nodiscard]] XsettingsValues xsettingsFor(double scale, std::string_view cursorTheme, int cursorSize);
+  XsettingsValues xsettingsFor(double scale, std::string_view cursorTheme, int cursorSize);
 
   // The _XSETTINGS_SETTINGS property contents, little endian, with every setting stamped with `serial`.
-  [[nodiscard]] std::vector<uint8_t> encodeXsettings(uint32_t serial, const XsettingsValues& values);
+  std::vector<uint8_t> encodeXsettings(uint32_t serial, const XsettingsValues& values);
 
 } // namespace umbriel

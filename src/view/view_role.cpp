@@ -47,7 +47,18 @@ namespace umbriel {
   }
 
   bool View::acceptsKeyboardFocus() const {
-    return m_xsurface == nullptr || wlr_xwayland_surface_icccm_input_model(m_xsurface) != WLR_ICCCM_INPUT_MODEL_NONE;
+    return m_xsurface == nullptr
+        || (wlr_xwayland_surface_icccm_input_model(m_xsurface) != WLR_ICCCM_INPUT_MODEL_NONE
+            && !passiveXwaylandUtility());
+  }
+
+  bool View::passiveXwaylandUtility() const {
+    return m_xsurface != nullptr
+        && m_xsurface->parent != nullptr
+        && wlr_xwayland_surface_has_window_type(m_xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_UTILITY)
+        && m_xsurface->hints != nullptr
+        && (m_xsurface->hints->flags & XCB_ICCCM_WM_HINT_INPUT) != 0
+        && m_xsurface->hints->input == 0;
   }
 
   void View::setActivatedState(bool activated) {

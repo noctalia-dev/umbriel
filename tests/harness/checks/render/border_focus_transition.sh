@@ -66,8 +66,7 @@ border_position() {
 sample_border() {
   local title=$1 x y
   read -r x y < <(border_position "$title")
-  magick "$IMAGE" -crop "4x4+$x+$y" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$x+$y"
 }
 
 assert_color() {
@@ -145,6 +144,5 @@ if ! timeout 5 "$UMBRIEL" settle; then
   echo "a focus change animated a zero-width border"
   exit 1
 fi
-"$UMBRIEL" clock-resume
 
 echo "focus border colors interpolate during focus changes and settle across the overview"

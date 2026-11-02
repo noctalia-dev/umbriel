@@ -4,7 +4,19 @@ set -euo pipefail
 readonly SOURCE_LAUNCHER=${1:?usage: session_launcher.sh <start-umbriel>}
 readonly SOURCE_DIRECT_LAUNCHER=${2:?usage: session_launcher.sh <start-umbriel> <direct-start-umbriel>}
 readonly TEST_DIR=$(mktemp -d)
-trap 'rm -rf "$TEST_DIR"' EXIT
+lifecycle_launcher_pid=
+lifecycle_state=
+cleanup_test() {
+  if [[ -n $lifecycle_launcher_pid ]]; then
+    kill -KILL "$lifecycle_launcher_pid" 2>/dev/null || true
+    wait "$lifecycle_launcher_pid" 2>/dev/null || true
+  fi
+  if [[ -n $lifecycle_state && -f $lifecycle_state/client-live ]]; then
+    kill -KILL "$(< "$lifecycle_state/client-pid")" 2>/dev/null || true
+  fi
+  rm -rf "$TEST_DIR"
+}
+trap cleanup_test EXIT
 
 readonly TEST_HOME="$TEST_DIR/home"
 readonly TEST_BIN="$TEST_DIR/bin"
@@ -312,3 +324,165 @@ if [[ -e $DRS_INJECTION_MARKER ]]; then
 fi
 
 echo "native session launcher imports the login profile environment"
+
+cat > "$TEST_BIN/systemctl" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+state=$UMBRIEL_TEST_STATE
+case "${2:-}" in
+  show-environment) exit 0 ;;
+  unset-environment) printf 'unset\n' >> "$state/trace"; exit 0 ;;
+esac
+if [[ ${3:-} == is-active ]]; then
+  [[ -f $state/active ]]
+  exit $?
+fi
+if [[ ${3:-} == start && ${4:-} == umbriel.service ]]; then
+  trap 'rm -f "$state/client-live"; : > "$state/client-stopped"' EXIT
+  trap 'trap "" HUP INT TERM; exit 143' TERM
+  trap 'trap "" HUP INT TERM; exit 129' HUP
+  exec 3<> "$state/gate"
+  printf '%s\n' "$$" > "$state/client-pid"
+  : > "$state/client-live"
+  : > "$state/entered"
+  if [[ ${UMBRIEL_TEST_HOLD_START:-false} == true ]]; then
+    IFS= read -r release <&3
+  fi
+  : > "$state/active"
+  : > "$state/started"
+  IFS= read -r status <&3
+  rm -f "$state/active"
+  exit "$status"
+fi
+if [[ ${2:-} == start && ${4:-} == umbriel-shutdown.target ]]; then
+  if [[ -f $state/client-pid ]] && kill -0 "$(< "$state/client-pid")" 2>/dev/null; then
+    : > "$state/shutdown-before-client-exit"
+  fi
+  printf 'shutdown\n' >> "$state/trace"
+  rm -f "$state/active"
+fi
+EOF
+cat > "$TEST_BIN/dbus-update-activation-environment" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+
+wait_for_file() {
+  local path=$1
+  for ((attempt = 0; attempt < 500; attempt++)); do
+    [[ -f $path ]] && return 0
+    sleep 0.01
+  done
+  echo "session launcher did not reach $path"
+  return 1
+}
+
+start_session() {
+  lifecycle_state=$1
+  mkdir -p "$lifecycle_state"
+  mkfifo "$lifecycle_state/gate"
+  exec {lifecycle_gate}<> "$lifecycle_state/gate"
+  env -i \
+    HOME="$TEST_HOME" \
+    PATH="$TEST_BIN:$PATH" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$TEST_DIR/nonexistent-bus" \
+    UMBRIEL_LOGIN_REENTRY=1 \
+    UMBRIEL_TEST_STATE="$lifecycle_state" \
+    UMBRIEL_TEST_HOLD_START="${2:-false}" \
+    "$LAUNCHER" > "$lifecycle_state/output" 2>&1 &
+  lifecycle_launcher_pid=$!
+}
+
+finish_session() {
+  local expected_status=$1
+  for ((attempt = 0; attempt < 500; attempt++)); do
+    if ! kill -0 "$lifecycle_launcher_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.01
+  done
+  if kill -0 "$lifecycle_launcher_pid" 2>/dev/null; then
+    echo "session launcher did not exit after teardown: $lifecycle_state"
+    cat "$lifecycle_state/output"
+    return 1
+  fi
+  local status=0
+  wait "$lifecycle_launcher_pid" || status=$?
+  lifecycle_launcher_pid=
+  exec {lifecycle_gate}>&-
+  if [[ $status -ne $expected_status ]]; then
+    echo "session launcher exited with $status instead of $expected_status: $lifecycle_state"
+    cat "$lifecycle_state/output"
+    return 1
+  fi
+}
+
+assert_session_cleanup() {
+  if [[ -e $lifecycle_state/active || -e $lifecycle_state/client-live ||
+        -e $lifecycle_state/shutdown-before-client-exit ||
+        ! -f $lifecycle_state/client-stopped ]]; then
+    echo "session teardown left the service or wait client running: $lifecycle_state"
+    for marker in active client-live shutdown-before-client-exit; do
+      [[ ! -e $lifecycle_state/$marker ]] || echo "remaining marker: $marker"
+    done
+    [[ -f $lifecycle_state/client-stopped ]] || echo "wait client did not finish its exit handler"
+    return 1
+  fi
+  if [[ $(grep -c '^shutdown$' "$lifecycle_state/trace") -ne 1 ||
+        $(tail -n 2 "$lifecycle_state/trace") != $'shutdown\nunset' ]]; then
+    echo "session teardown did not shut down once before clearing the environment: $lifecycle_state"
+    cat "$lifecycle_state/trace"
+    return 1
+  fi
+}
+
+for status in 0 23; do
+  start_session "$TEST_DIR/lifecycle-status-$status"
+  wait_for_file "$lifecycle_state/started"
+  printf '%s\n' "$status" >& "$lifecycle_gate"
+  finish_session "$status"
+  assert_session_cleanup
+done
+
+for signal in TERM HUP; do
+  start_session "$TEST_DIR/lifecycle-$signal"
+  wait_for_file "$lifecycle_state/started"
+  kill -s "$signal" "$lifecycle_launcher_pid"
+  if [[ $signal == TERM ]]; then
+    finish_session 143
+  else
+    finish_session 129
+  fi
+  assert_session_cleanup
+done
+
+rm -f "$lifecycle_state/gate" "$lifecycle_state/entered" "$lifecycle_state/started" \
+  "$lifecycle_state/client-pid" "$lifecycle_state/client-stopped" "$lifecycle_state/trace"
+start_session "$lifecycle_state"
+wait_for_file "$lifecycle_state/started"
+printf '0\n' >& "$lifecycle_gate"
+finish_session 0
+assert_session_cleanup
+
+start_session "$TEST_DIR/lifecycle-scope"
+wait_for_file "$lifecycle_state/started"
+kill -TERM "$lifecycle_launcher_pid" "$(< "$lifecycle_state/client-pid")"
+finish_session 143
+assert_session_cleanup
+
+start_session "$TEST_DIR/lifecycle-pending" true
+wait_for_file "$lifecycle_state/entered"
+kill -TERM "$lifecycle_launcher_pid"
+finish_session 143
+assert_session_cleanup
+
+mkdir -p "$TEST_DIR/lifecycle-existing"
+: > "$TEST_DIR/lifecycle-existing/active"
+start_session "$TEST_DIR/lifecycle-existing"
+finish_session 1
+if [[ ! -f $lifecycle_state/active || -e $lifecycle_state/trace || -e $lifecycle_state/entered ]]; then
+  echo "rejected launcher disturbed an existing session"
+  exit 1
+fi
+
+echo "managed session launcher cleans up normal exits and interrupted startup or waits"

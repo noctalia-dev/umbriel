@@ -52,8 +52,8 @@ int main(int argc, char** argv) {
   }
   xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
   const xcb_window_t window = xcb_generate_id(connection);
-  const auto width = static_cast<uint16_t>(std::atoi(argv[2]));
-  const auto height = static_cast<uint16_t>(std::atoi(argv[3]));
+  const auto width = static_cast<uint16_t>(std::stoi(argv[2]));
+  const auto height = static_cast<uint16_t>(std::stoi(argv[3]));
   const std::array<uint32_t, 2> values{0x306090, std::strcmp(argv[4], "unmanaged") == 0 ? 1U : 0U};
   xcb_create_window(
       connection, XCB_COPY_FROM_PARENT, window, screen->root, 50, 50, width, height, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,

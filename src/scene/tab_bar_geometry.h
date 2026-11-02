@@ -15,7 +15,7 @@ namespace umbriel {
   // The span of tab `index` among `count` equal tabs across `width` logical pixels, `gap` pixels apart. The division
   // remainder goes one pixel each to the leading tabs, so the slots and gaps tile the bar exactly. Drawing, hit
   // testing, and drop placement all come through here.
-  [[nodiscard]] constexpr TabSlot tabSlot(int width, size_t count, size_t index, int gap = 0) {
+  constexpr TabSlot tabSlot(int width, size_t count, size_t index, int gap = 0) {
     if (count == 0 || index >= count || width <= 0) {
       return {};
     }
@@ -30,7 +30,7 @@ namespace umbriel {
   }
 
   // The tab whose slot, or the gap after it, holds `x` measured from the bar's left edge; -1 outside the bar.
-  [[nodiscard]] constexpr int tabIndexAt(int width, size_t count, double x, int gap = 0) {
+  constexpr int tabIndexAt(int width, size_t count, double x, int gap = 0) {
     if (count == 0 || width <= 0 || x < 0.0 || x >= static_cast<double>(width)) {
       return -1;
     }
@@ -53,7 +53,7 @@ namespace umbriel {
   // The tabs a bar of at most `maxVisible` slots shows out of `tabs`, 0 meaning every tab. It starts from where the
   // strip was, `previousFirst`, and moves only as far as it must to keep tab `active` in view, so stepping through the
   // tabs scrolls one slot at a time instead of jumping.
-  [[nodiscard]] constexpr TabStrip tabStrip(size_t tabs, size_t active, size_t maxVisible, size_t previousFirst) {
+  constexpr TabStrip tabStrip(size_t tabs, size_t active, size_t maxVisible, size_t previousFirst) {
     if (maxVisible == 0 || tabs <= maxVisible) {
       return {.first = 0, .count = tabs};
     }
@@ -82,7 +82,7 @@ namespace umbriel {
   inline constexpr int kTabCycleButtonMinWidth = 16;
   inline constexpr int kTabCycleButtonMaxWidth = 32;
 
-  [[nodiscard]] constexpr TabBarParts tabBarParts(int width, int height, int gap, bool scrolls) {
+  constexpr TabBarParts tabBarParts(int width, int height, int gap, bool scrolls) {
     if (!scrolls || width <= 0) {
       return {.buttonWidth = 0, .slotsX = 0, .slotsWidth = std::max(0, width)};
     }
@@ -110,8 +110,7 @@ namespace umbriel {
   };
 
   // What lies at `x`, measured from the left edge of a bar `width` by `height` showing `strip` out of `tabs`.
-  [[nodiscard]] constexpr TabBarPoint
-  tabBarPointAt(int width, int height, int gap, TabStrip strip, size_t tabs, double x) {
+  constexpr TabBarPoint tabBarPointAt(int width, int height, int gap, TabStrip strip, size_t tabs, double x) {
     if (width <= 0 || x < 0.0 || x >= static_cast<double>(width) || strip.count == 0) {
       return {};
     }
@@ -131,7 +130,7 @@ namespace umbriel {
 
   // Where a window dropped at `x` joins the tabs: before the tab under it when it lands on that tab's leading half,
   // after it otherwise. Returns a row in [0, count].
-  [[nodiscard]] constexpr size_t tabInsertionAt(int width, size_t count, double x, int gap = 0) {
+  constexpr size_t tabInsertionAt(int width, size_t count, double x, int gap = 0) {
     const int index = tabIndexAt(width, count, std::clamp(x, 0.0, static_cast<double>(std::max(0, width - 1))), gap);
     if (index < 0) {
       return count;
@@ -149,8 +148,7 @@ namespace umbriel {
     bool operator==(const TabDropPoint&) const = default;
   };
 
-  [[nodiscard]] constexpr TabDropPoint
-  tabBarDropAt(int width, int height, int gap, TabStrip strip, size_t tabs, double x) {
+  constexpr TabDropPoint tabBarDropAt(int width, int height, int gap, TabStrip strip, size_t tabs, double x) {
     const TabBarParts parts = tabBarParts(width, height, gap, strip.count < tabs);
     const size_t position = tabInsertionAt(parts.slotsWidth, strip.count, x - parts.slotsX, gap);
     const int boundary = position == 0 ? 0

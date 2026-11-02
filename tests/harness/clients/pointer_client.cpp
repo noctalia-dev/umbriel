@@ -170,8 +170,8 @@ int main(int argc, char** argv) {
     std::println(stderr, "usage: {} <width> <height> <command>...", argv[0]);
     return EXIT_FAILURE;
   }
-  const auto extentWidth = static_cast<uint32_t>(std::atoi(argv[1]));
-  const auto extentHeight = static_cast<uint32_t>(std::atoi(argv[2]));
+  const auto extentWidth = static_cast<uint32_t>(std::stoi(argv[1]));
+  const auto extentHeight = static_cast<uint32_t>(std::stoi(argv[2]));
 
   wl_display* display = wl_display_connect(nullptr);
   if (display == nullptr) {
@@ -241,27 +241,27 @@ int main(int argc, char** argv) {
 
     if (command == "relative") {
       needs(2);
-      const double dx = std::atof(args[i + 1].c_str());
-      const double dy = std::atof(args[i + 2].c_str());
+      const double dx = std::stod(args[i + 1].c_str());
+      const double dy = std::stod(args[i + 2].c_str());
       i += 2;
       zwlr_virtual_pointer_v1_motion(pointer, nextTime(), wl_fixed_from_double(dx), wl_fixed_from_double(dy));
     } else if (command == "move") {
       needs(2);
-      const auto x = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
-      const auto y = static_cast<uint32_t>(std::atoi(args[i + 2].c_str()));
+      const auto x = static_cast<uint32_t>(std::stoi(args[i + 1].c_str()));
+      const auto y = static_cast<uint32_t>(std::stoi(args[i + 2].c_str()));
       i += 2;
       zwlr_virtual_pointer_v1_motion_absolute(pointer, nextTime(), x, y, extentWidth, extentHeight);
     } else if (command == "move-release") {
       needs(3);
-      const auto x = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
-      const auto y = static_cast<uint32_t>(std::atoi(args[i + 2].c_str()));
-      const auto button = static_cast<uint32_t>(std::atoi(args[i + 3].c_str()));
+      const auto x = static_cast<uint32_t>(std::stoi(args[i + 1].c_str()));
+      const auto y = static_cast<uint32_t>(std::stoi(args[i + 2].c_str()));
+      const auto button = static_cast<uint32_t>(std::stoi(args[i + 3].c_str()));
       i += 3;
       zwlr_virtual_pointer_v1_motion_absolute(pointer, nextTime(), x, y, extentWidth, extentHeight);
       zwlr_virtual_pointer_v1_button(pointer, nextTime(), button, WL_POINTER_BUTTON_STATE_RELEASED);
     } else if (command == "press" || command == "release" || command == "click") {
       needs(1);
-      const auto button = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
+      const auto button = static_cast<uint32_t>(std::stoi(args[i + 1].c_str()));
       i += 1;
       if (command != "release") {
         zwlr_virtual_pointer_v1_button(pointer, nextTime(), button, WL_POINTER_BUTTON_STATE_PRESSED);
@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
       }
     } else if (command == "notch" || command == "notch-horizontal") {
       needs(1);
-      const int dir = std::atoi(args[i + 1].c_str()) < 0 ? -1 : 1;
+      const int dir = std::stoi(args[i + 1].c_str()) < 0 ? -1 : 1;
       i += 1;
       const uint32_t axis = command == "notch" ? WL_POINTER_AXIS_VERTICAL_SCROLL : WL_POINTER_AXIS_HORIZONTAL_SCROLL;
       // A real wheel sends the smooth value and the discrete step together. The overview counts notches, so the
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
           orientation == "horizontal" ? WL_POINTER_AXIS_HORIZONTAL_SCROLL : WL_POINTER_AXIS_VERTICAL_SCROLL;
       zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_FINGER);
       if (command == "axis") {
-        const double delta = std::atof(args[i + 2].c_str());
+        const double delta = std::stod(args[i + 2].c_str());
         i += 2;
         zwlr_virtual_pointer_v1_axis(pointer, nextTime(), axis, wl_fixed_from_double(delta));
       } else {
@@ -309,7 +309,7 @@ int main(int argc, char** argv) {
       );
     } else if (command == "tap" || command == "key-press" || command == "key-release") {
       needs(1);
-      const auto key = static_cast<uint32_t>(std::atoi(args[i + 1].c_str()));
+      const auto key = static_cast<uint32_t>(std::stoi(args[i + 1].c_str()));
       i += 1;
       if (command != "key-release") {
         zwp_virtual_keyboard_v1_key(keyboard.protocol, nextTime(), key, WL_KEYBOARD_KEY_STATE_PRESSED);
@@ -332,7 +332,7 @@ int main(int argc, char** argv) {
       }
     } else if (command == "pause") {
       needs(1);
-      const auto duration = std::chrono::milliseconds(std::atoi(args[i + 1].c_str()));
+      const auto duration = std::chrono::milliseconds(std::stoi(args[i + 1].c_str()));
       i += 1;
       std::this_thread::sleep_for(duration);
     } else {

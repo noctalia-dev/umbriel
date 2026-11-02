@@ -32,8 +32,14 @@ namespace umbriel {
           color("text", &C::TitleBar::text),
           color("text_unfocused", &C::TitleBar::textUnfocused),
           color("close", &C::TitleBar::close),
+          color("close_glyph", &C::TitleBar::closeGlyph),
+          color("close_glyph_hover", &C::TitleBar::closeGlyphHover),
           color("maximize", &C::TitleBar::maximize),
+          color("maximize_glyph", &C::TitleBar::maximizeGlyph),
+          color("maximize_glyph_hover", &C::TitleBar::maximizeGlyphHover),
           color("minimize", &C::TitleBar::minimize),
+          color("minimize_glyph", &C::TitleBar::minimizeGlyph),
+          color("minimize_glyph_hover", &C::TitleBar::minimizeGlyphHover),
       };
       static const registry::Fields<C::Border> border{
           color("focused", &C::Border::focused),
@@ -89,6 +95,15 @@ namespace umbriel {
           ),
           integer("height", 16, 128, &A::TitleBar::height),
           integer("button_corner_radius", -1, 100, &A::TitleBar::buttonCornerRadius),
+          registry::choice(
+              "button_glyph", &A::TitleBar::buttonGlyph,
+              {
+                  {.name = "always", .value = TitleBarButtonGlyph::Always},
+                  {.name = "hover", .value = TitleBarButtonGlyph::Hover},
+                  {.name = "never", .value = TitleBarButtonGlyph::Never},
+              }
+          ),
+          boolean("button_background", &A::TitleBar::buttonBackground),
           registry::text("font", &A::TitleBar::font),
           registry::choice(
               "button_position", &A::TitleBar::buttonPosition,
@@ -179,7 +194,7 @@ namespace umbriel {
 
     // Overview badge keys: printable ASCII, unique ignoring case.
     std::optional<std::string> parseShortcutKeys(const toml::node& node, const std::string& path) {
-      const auto value = node.value<std::string>();
+      auto value = node.value<std::string>();
       if (!value) {
         warnAt(node.source(), "ignoring {} (expected string)", path);
         return std::nullopt;
@@ -392,7 +407,7 @@ namespace umbriel {
     std::vector<TitleBarButton> buttons;
     for (const toml::node& entry : *array) {
       const auto* value = entry.as_string();
-      const auto found = value != nullptr
+      const auto* const found = value != nullptr
           ? std::ranges::find(kTitleBarButtonNames, value->get(), &std::pair<std::string_view, TitleBarButton>::first)
           : kTitleBarButtonNames.end();
       if (found == kTitleBarButtonNames.end()) {

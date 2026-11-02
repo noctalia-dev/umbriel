@@ -12,10 +12,10 @@ readonly RULED="$UMBRIEL_RUNTIME_DIR/initial-maximize-to-edges-ruled.png"
 readonly MAXIMIZED_LOG="$UMBRIEL_RUNTIME_DIR/initial-maximize-ruled.log"
 readonly EDGES_LOG="$UMBRIEL_RUNTIME_DIR/initial-maximize-to-edges-ruled.log"
 
+# Pixels of the client's #5577AA fill, within 2% per channel, across the output's middle row.
 presented_width() {
-  magick "$1" -alpha off -crop 1280x1+0+360 +repage -fuzz 2% \
-    -fill black +opaque '#5577AA' -fill white -opaque '#5577AA' -colorspace gray \
-    -format '%[fx:round(w*mean)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" count \
+    'r > 0.313 && r < 0.353 && g > 0.447 && g < 0.487 && b > 0.647 && b < 0.687' 1280x1+0+360
 }
 assert_stable_initial_size() {
   local log=$1 label=$2 first last
@@ -95,7 +95,6 @@ spawn_client edges-ruled "$EDGES_LOG" || exit 1
 "$UMBRIEL" settle
 grim "$RULED"
 ruled_width=$(presented_width "$RULED")
-stop_client
 assert_stable_initial_size "$EDGES_LOG" "default_maximize_to_edges"
 
 if (( ruled_width < 1100 || ruled_width - baseline_width < 400 )); then
