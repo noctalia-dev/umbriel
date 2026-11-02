@@ -29,11 +29,11 @@ namespace umbriel {
     // `box` in parent-tree coordinates. A zero-sized box hides the hint.
     void show(Output* output, const wlr_box& box, int cornerRadius);
     void hideImmediate();
-    [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+    AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(double nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override;
-    [[nodiscard]] bool animatesOn(const Output* output) const override { return m_output == output; }
-    [[nodiscard]] Output* output() const { return m_output; }
+    bool hasActiveAnimations() const override;
+    bool animatesOn(const Output* output) const override { return m_output == output; }
+    Output* output() const { return m_output; }
 
   private:
     void ensureScene();

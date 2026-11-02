@@ -30,9 +30,8 @@ namespace umbriel {
 
   // Portal endpoints include the full last pixel. A barrier must fit on one
   // zone's exterior boundary and cannot overlap an interior shared edge.
-  [[nodiscard]] bool
-  validInputCaptureBarrier(std::span<const InputCaptureZone> zones, const InputCaptureBarrier& barrier);
-  [[nodiscard]] std::optional<InputCaptureCrossing> inputCaptureCrossing(
+  bool validInputCaptureBarrier(std::span<const InputCaptureZone> zones, const InputCaptureBarrier& barrier);
+  std::optional<InputCaptureCrossing> inputCaptureCrossing(
       std::span<const InputCaptureZone> zones, std::span<const InputCaptureBarrier> barriers, double x, double y,
       double dx, double dy
   );

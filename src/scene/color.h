@@ -15,18 +15,18 @@ namespace umbriel {
   };
 
   namespace color_detail {
-    [[nodiscard]] inline float srgbToLinear(float component) {
+    inline float srgbToLinear(float component) {
       const float clamped = std::clamp(component, 0.0F, 1.0F);
       return clamped <= 0.04045F ? clamped / 12.92F : std::pow((clamped + 0.055F) / 1.055F, 2.4F);
     }
 
-    [[nodiscard]] inline float linearToSrgb(float component) {
+    inline float linearToSrgb(float component) {
       const float clamped = std::clamp(component, 0.0F, 1.0F);
       return clamped <= 0.0031308F ? clamped * 12.92F : 1.055F * std::pow(clamped, 1.0F / 2.4F) - 0.055F;
     }
   } // namespace color_detail
 
-  [[nodiscard]] inline OkLab srgbToOkLab(const std::array<float, 4>& color) {
+  inline OkLab srgbToOkLab(const std::array<float, 4>& color) {
     const float red = color_detail::srgbToLinear(color[0]);
     const float green = color_detail::srgbToLinear(color[1]);
     const float blue = color_detail::srgbToLinear(color[2]);
@@ -45,7 +45,7 @@ namespace umbriel {
     };
   }
 
-  [[nodiscard]] inline std::array<float, 4> okLabToSrgb(const OkLab& color, float alpha) {
+  inline std::array<float, 4> okLabToSrgb(const OkLab& color, float alpha) {
     const float lRoot = color.lightness + 0.3963377774F * color.a + 0.2158037573F * color.b;
     const float mRoot = color.lightness - 0.1055613458F * color.a - 0.0638541728F * color.b;
     const float sRoot = color.lightness - 0.0894841775F * color.a - 1.2914855480F * color.b;
@@ -65,7 +65,7 @@ namespace umbriel {
     };
   }
 
-  [[nodiscard]] inline OkLab interpolateOkLab(const OkLab& from, const OkLab& to, float progress) {
+  inline OkLab interpolateOkLab(const OkLab& from, const OkLab& to, float progress) {
     return {
         .lightness = std::lerp(from.lightness, to.lightness, progress),
         .a = std::lerp(from.a, to.a, progress),
@@ -83,7 +83,7 @@ namespace umbriel {
   }
 
   // Keycap surface: a subtle lift from the panel background toward the key accent.
-  [[nodiscard]] inline std::array<float, 4>
+  inline std::array<float, 4>
   keycapBackgroundColor(const std::array<float, 4>& background, const std::array<float, 4>& accent) {
     constexpr float kLift = 0.09F;
     std::array<float, 4> result{};

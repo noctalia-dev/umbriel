@@ -25,6 +25,6 @@ namespace umbriel {
 
   // Environment names accepted by systemd and ordinary shells: an ASCII letter or underscore followed by ASCII
   // letters, digits, or underscores.
-  [[nodiscard]] bool isEnvironmentVariableName(std::string_view name);
+  bool isEnvironmentVariableName(std::string_view name);
 
 } // namespace umbriel

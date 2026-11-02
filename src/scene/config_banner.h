@@ -24,7 +24,7 @@ namespace umbriel {
 
     void show(const std::vector<ConfigDiagnostic>& diagnostics);
     void hide();
-    [[nodiscard]] bool visible() const { return m_tree != nullptr; }
+    bool visible() const { return m_tree != nullptr; }
     void relayout();
 
   private:

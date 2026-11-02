@@ -8,8 +8,8 @@ namespace umbriel {
   namespace {
     class StackingSnapshot final : public LayoutSnapshot {
     public:
-      [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Stacking; }
-      [[nodiscard]] size_t memberCount() const override { return 0; }
+      LayoutMode mode() const override { return LayoutMode::Stacking; }
+      size_t memberCount() const override { return 0; }
     };
   } // namespace
 

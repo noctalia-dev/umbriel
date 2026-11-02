@@ -105,7 +105,7 @@ namespace umbriel {
       }
     };
 
-    [[nodiscard]] wlr_drm_lease_v1_manager* managerFor(wlr_backend* backend) {
+    wlr_drm_lease_v1_manager* managerFor(wlr_backend* backend) {
       if (!wlr_backend_is_drm(backend)) {
         return nullptr;
       }

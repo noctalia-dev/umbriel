@@ -36,13 +36,13 @@ namespace umbriel {
     constexpr int kSpringMinDurationMs = 1;
     constexpr int kSpringMaxDurationMs = 10000;
 
-    [[nodiscard]] uint64_t mixRandom(uint64_t value) {
+    uint64_t mixRandom(uint64_t value) {
       value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
       value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
       return value ^ (value >> 31);
     }
 
-    [[nodiscard]] uint64_t animationRandomSalt() {
+    uint64_t animationRandomSalt() {
       uint64_t salt = 0;
       if (getrandom(&salt, sizeof(salt), GRND_NONBLOCK) != static_cast<ssize_t>(sizeof(salt))) {
         salt = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())
@@ -52,7 +52,7 @@ namespace umbriel {
       return mixRandom(salt);
     }
 
-    [[nodiscard]] std::string normalizeName(std::string_view name) {
+    std::string normalizeName(std::string_view name) {
       std::string out;
       out.reserve(name.size());
       for (char ch : name) {
@@ -78,7 +78,7 @@ namespace umbriel {
         m_curves[normalizeName(name)] = curve;
       }
 
-      [[nodiscard]] std::optional<AnimationCurve> lookup(std::string_view name) const {
+      std::optional<AnimationCurve> lookup(std::string_view name) const {
         std::shared_lock lock(m_mutex);
         const auto it = m_curves.find(normalizeName(name));
         if (it != m_curves.end()) {
@@ -92,12 +92,12 @@ namespace umbriel {
         return m_curves.erase(normalizeName(name)) > 0;
       }
 
-      [[nodiscard]] bool has(std::string_view name) const {
+      bool has(std::string_view name) const {
         std::shared_lock lock(m_mutex);
         return m_curves.contains(normalizeName(name));
       }
 
-      [[nodiscard]] std::optional<AnimationCurve> parse(std::string_view str) const {
+      std::optional<AnimationCurve> parse(std::string_view str) const {
         std::string value(str);
         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
           value.erase(value.begin());
@@ -274,7 +274,7 @@ namespace umbriel {
     }
   } // namespace
 
-  [[nodiscard]] AnimationTransition beginAnimationTransition() {
+  AnimationTransition beginAnimationTransition() {
     static const uint64_t salt = animationRandomSalt();
     const uint64_t id = nextAnimationTransitionId();
     AnimationTransition transition{.id = id, .seed = {}};

@@ -22,7 +22,7 @@ namespace umbriel {
     EisSocket(const EisSocket&) = delete;
     EisSocket& operator=(const EisSocket&) = delete;
 
-    [[nodiscard]] int fd() const;
+    int fd() const;
 
   private:
     struct Impl;

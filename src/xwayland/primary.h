@@ -40,7 +40,7 @@ namespace umbriel {
     void request();
     void discard();
     void wakeWindowManager();
-    [[nodiscard]] bool pending() const;
+    bool pending() const;
 
     wlr_xwayland* m_xwayland = nullptr;
     xcb_connection_t* m_connection = nullptr;

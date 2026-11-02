@@ -34,7 +34,7 @@ namespace umbriel {
     [[nodiscard]] std::optional<InputCaptureGrant> restore(
         std::string_view token, std::string_view application, uint32_t capabilities, uint32_t persistMode, uint64_t peer
     );
-    [[nodiscard]] std::vector<InputCapturePermission> list();
+    std::vector<InputCapturePermission> list();
     [[nodiscard]] bool revoke(std::string_view id);
     void expirePeer(uint64_t peer);
 

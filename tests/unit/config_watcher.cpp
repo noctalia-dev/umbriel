@@ -66,11 +66,11 @@ namespace {
 
     void removeUserTarget() const { std::filesystem::remove(userTarget()); }
 
-    [[nodiscard]] const std::filesystem::path& userHome() const { return m_userHome; }
-    [[nodiscard]] const std::filesystem::path& systemDir() const { return m_systemDir; }
-    [[nodiscard]] std::filesystem::path userConfig() const { return m_userHome / "umbriel/config.toml"; }
-    [[nodiscard]] std::filesystem::path userTarget() const { return m_base / "target/config.toml"; }
-    [[nodiscard]] std::filesystem::path systemConfig() const { return m_systemDir / "umbriel/config.toml"; }
+    const std::filesystem::path& userHome() const { return m_userHome; }
+    const std::filesystem::path& systemDir() const { return m_systemDir; }
+    std::filesystem::path userConfig() const { return m_userHome / "umbriel/config.toml"; }
+    std::filesystem::path userTarget() const { return m_base / "target/config.toml"; }
+    std::filesystem::path systemConfig() const { return m_systemDir / "umbriel/config.toml"; }
 
   private:
     static void write(const std::filesystem::path& path, int gap) {
@@ -120,7 +120,7 @@ namespace {
       std::filesystem::rename(replacement, m_linkDir);
     }
 
-    [[nodiscard]] std::filesystem::path root() const { return m_linkDir / "config.toml"; }
+    std::filesystem::path root() const { return m_linkDir / "config.toml"; }
 
   private:
     std::filesystem::path m_base;

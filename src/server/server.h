@@ -121,7 +121,7 @@ namespace umbriel {
 
   // The pid of the process owning a surface's Wayland connection, or -1 when the surface has no client or the kernel
   // cannot represent that pid in the compositor's pid namespace.
-  [[nodiscard]] pid_t surfaceClientPid(const wlr_surface* surface);
+  pid_t surfaceClientPid(const wlr_surface* surface);
 
   enum class WheelDirection;
   struct Keybind;
@@ -173,108 +173,108 @@ namespace umbriel {
     void run();
     void stop();
     void requestSessionExit();
-    [[nodiscard]] bool stopping() const { return m_stopping; }
+    bool stopping() const { return m_stopping; }
 
-    [[nodiscard]] wl_display* display() const { return m_display; }
-    [[nodiscard]] wlr_compositor* compositor() const { return m_compositor; }
+    wl_display* display() const { return m_display; }
+    wlr_compositor* compositor() const { return m_compositor; }
     // Null when general.xwayland is off or the Xwayland server could not be created.
-    [[nodiscard]] Xwayland* xwayland() const { return m_xwayland.get(); }
-    [[nodiscard]] EisInput* eisInput() const { return m_eisInput.get(); }
-    [[nodiscard]] InputCapture* inputCapture() const { return m_inputCapture.get(); }
-    [[nodiscard]] bool physicalInputDevice(const wlr_input_device* device) const;
-    [[nodiscard]] bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
-    [[nodiscard]] wlr_backend* backend() const { return m_backend; }
-    [[nodiscard]] wlr_session* session() const { return m_session; }
-    [[nodiscard]] wlr_renderer* renderer() const { return m_renderer; }
-    [[nodiscard]] wlr_allocator* allocator() const { return m_allocator; }
-    [[nodiscard]] wlr_scene* scene() const { return m_scene; }
-    [[nodiscard]] ContentType surfaceContentType(wlr_surface* surface) const;
+    Xwayland* xwayland() const { return m_xwayland.get(); }
+    EisInput* eisInput() const { return m_eisInput.get(); }
+    InputCapture* inputCapture() const { return m_inputCapture.get(); }
+    bool physicalInputDevice(const wlr_input_device* device) const;
+    bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
+    wlr_backend* backend() const { return m_backend; }
+    wlr_session* session() const { return m_session; }
+    wlr_renderer* renderer() const { return m_renderer; }
+    wlr_allocator* allocator() const { return m_allocator; }
+    wlr_scene* scene() const { return m_scene; }
+    ContentType surfaceContentType(wlr_surface* surface) const;
     // The security-context metadata for a restricted client, or null for a
     // client on the ordinary socket.
-    [[nodiscard]] const wlr_security_context_v1_state* clientSecurityContext(const wl_client* client) const;
+    const wlr_security_context_v1_state* clientSecurityContext(const wl_client* client) const;
     // True while a live cursor session is attached to a capture source of this output.
-    [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
-    [[nodiscard]] wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
-    [[nodiscard]] ColorManager* colorManager() const { return m_colorManager.get(); }
-    [[nodiscard]] const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
-    [[nodiscard]] const wlr_image_description_v1_data* surfaceTreeHdrDescription(wlr_surface* surface) const;
+    bool hasCopyCaptureFor(const wlr_output* output) const;
+    wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
+    ColorManager* colorManager() const { return m_colorManager.get(); }
+    const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
+    const wlr_image_description_v1_data* surfaceTreeHdrDescription(wlr_surface* surface) const;
     void updateColorPreferences();
-    [[nodiscard]] wlr_scene_tree* xdgTree() const { return m_xdgTree; }
-    [[nodiscard]] wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }
-    [[nodiscard]] ScratchpadManager* scratchpadManager() const { return m_scratchpadManager.get(); }
+    wlr_scene_tree* xdgTree() const { return m_xdgTree; }
+    wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }
+    ScratchpadManager* scratchpadManager() const { return m_scratchpadManager.get(); }
     // Between layer-shell background and bottom: overview wallpaper blur renders
     // before bottom-layer surfaces so they remain sharp.
-    [[nodiscard]] wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
+    wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
     // Between windows and the drag/insert-hint tree: overview cards render here
     // while the real window trees are disabled.
-    [[nodiscard]] wlr_scene_tree* overviewTree() const { return m_overviewTree; }
-    [[nodiscard]] Overview* overview() const { return m_overview.get(); }
-    [[nodiscard]] ConfigBanner* configBanner() const { return m_configBanner.get(); }
-    [[nodiscard]] Cheatsheet* cheatsheet() const { return m_cheatsheet.get(); }
-    [[nodiscard]] QuitConfirm* quitConfirm() const { return m_quitConfirm.get(); }
+    wlr_scene_tree* overviewTree() const { return m_overviewTree; }
+    Overview* overview() const { return m_overview.get(); }
+    ConfigBanner* configBanner() const { return m_configBanner.get(); }
+    Cheatsheet* cheatsheet() const { return m_cheatsheet.get(); }
+    QuitConfirm* quitConfirm() const { return m_quitConfirm.get(); }
     // Above xdg windows, below layer-shell top/overlay (drag/drop insert hint).
-    [[nodiscard]] wlr_scene_tree* dragTree() const { return m_dragTree; }
+    wlr_scene_tree* dragTree() const { return m_dragTree; }
     // Parent for wl_data_device drag icons; moved to the cursor while a drag is active.
-    [[nodiscard]] wlr_scene_tree* dragIconTree() const { return m_dragIconTree; }
+    wlr_scene_tree* dragIconTree() const { return m_dragIconTree; }
     // Creates the border light layer once the scene exists, or destroys it and unregisters it from the scene.
     void setEffectLightLayer(bool present);
     // Above top panels, below overlay/lock (fullscreen xdg views).
-    [[nodiscard]] wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
-    [[nodiscard]] wlr_scene_tree* pinnedTree() const { return m_pinnedTree; }
+    wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
+    wlr_scene_tree* pinnedTree() const { return m_pinnedTree; }
     // Override-redirect X11 windows (menus, tooltips, drag icons), above every window.
-    [[nodiscard]] wlr_scene_tree* xwaylandUnmanagedTree() const { return m_xwaylandUnmanagedTree; }
-    [[nodiscard]] wlr_scene_tree* imPopupTree() const { return m_imPopupTree; }
-    [[nodiscard]] wlr_scene_tree* lockTree() const { return m_lockTree; }
-    [[nodiscard]] wlr_scene_tree* shellLayerTree(uint32_t layer) const;
-    [[nodiscard]] wlr_output_layout* outputLayout() const { return m_outputLayout; }
-    [[nodiscard]] wlr_scene_output_layout* sceneLayout() const { return m_sceneLayout; }
-    [[nodiscard]] InputMethodRelay* inputMethodRelay() const { return m_inputMethodRelay.get(); }
-    [[nodiscard]] Seat* seat() const { return m_seat.get(); }
-    [[nodiscard]] Cursor* cursor() const { return m_cursor.get(); }
-    [[nodiscard]] EffectRegistry& effects() { return m_effects; }
-    [[nodiscard]] const EffectRegistry& effects() const { return m_effects; }
-    [[nodiscard]] EffectSlot& cursorEffectSlot() { return m_cursorEffectSlot; }
-    [[nodiscard]] const EffectSlot& cursorEffectSlot() const { return m_cursorEffectSlot; }
-    [[nodiscard]] EffectHoldCounts effectHoldCounts(const EffectPool& pool, const EffectSlot* excluded = nullptr) const;
-    [[nodiscard]] std::vector<std::string> runtimeEffectSelectors() const;
-    [[nodiscard]] std::vector<View*> sortedEffectViews() const;
+    wlr_scene_tree* xwaylandUnmanagedTree() const { return m_xwaylandUnmanagedTree; }
+    wlr_scene_tree* imPopupTree() const { return m_imPopupTree; }
+    wlr_scene_tree* lockTree() const { return m_lockTree; }
+    wlr_scene_tree* shellLayerTree(uint32_t layer) const;
+    wlr_output_layout* outputLayout() const { return m_outputLayout; }
+    wlr_scene_output_layout* sceneLayout() const { return m_sceneLayout; }
+    InputMethodRelay* inputMethodRelay() const { return m_inputMethodRelay.get(); }
+    Seat* seat() const { return m_seat.get(); }
+    Cursor* cursor() const { return m_cursor.get(); }
+    EffectRegistry& effects() { return m_effects; }
+    const EffectRegistry& effects() const { return m_effects; }
+    EffectSlot& cursorEffectSlot() { return m_cursorEffectSlot; }
+    const EffectSlot& cursorEffectSlot() const { return m_cursorEffectSlot; }
+    EffectHoldCounts effectHoldCounts(const EffectPool& pool, const EffectSlot* excluded = nullptr) const;
+    std::vector<std::string> runtimeEffectSelectors() const;
+    std::vector<View*> sortedEffectViews() const;
     void resolveEffectSlot(EffectSlot& slot, EffectKind kind, bool active = true);
     void resolveOutputEffect(Output& output);
     void reconcileEffectSelections();
-    [[nodiscard]] EffectSlotActionResult
+    EffectSlotActionResult
     applyEffectAction(EffectSlot& slot, EffectKind kind, EffectSlotAction action, std::string_view argument);
     // Nested callbacks can change focus/rules while rendering. Such changes
     // defer effect selection to the owning view's idle callback.
-    [[nodiscard]] bool handlingOutputFrame() const { return m_outputFrameDepth != 0; }
+    bool handlingOutputFrame() const { return m_outputFrameDepth != 0; }
     void beginOutputFrame() { ++m_outputFrameDepth; }
     void endOutputFrame() { --m_outputFrameDepth; }
 
     // Central animation tick: advances every registered owner once per msec and
     // reports whether anything is still animating.
     bool tickAnimations(double nowMsec);
-    [[nodiscard]] bool animationsActive() const;
-    [[nodiscard]] bool animationsActiveFor(const Output* output) const;
+    bool animationsActive() const;
+    bool animationsActiveFor(const Output* output) const;
     // No animation is running, no workspace has an arrange waiting for the next frame, and every mapped window has
     // committed its latest configure.
-    [[nodiscard]] bool settled() const;
+    bool settled() const;
     // Whole milliseconds on the clock every animation ticks from, for timers and effect time. It follows the monotonic
     // clock unless a test build froze it.
-    [[nodiscard]] uint64_t animationClockMsec() const;
+    uint64_t animationClockMsec() const;
     // The animation clock, in fractional milliseconds, at a CLOCK_MONOTONIC instant such as an output's latest vblank.
     // Frames tick from it, so motion steps keep sub-millisecond spacing.
-    [[nodiscard]] double animationFrameClockMsec(double monotonicMsec) const;
+    double animationFrameClockMsec(double monotonicMsec) const;
 #ifdef UMBRIEL_HARNESS
     void freezeAnimationClock();
     // Moves a frozen clock forward and schedules a frame on every output. False when the clock is not frozen.
     bool advanceAnimationClock(uint64_t ms);
     // Continues from the frozen time, so animation time never runs backwards.
     void resumeAnimationClock();
-    [[nodiscard]] bool animationClockFrozen() const { return m_frozenAnimationClockMsec.has_value(); }
+    bool animationClockFrozen() const { return m_frozenAnimationClockMsec.has_value(); }
     void emitRendererLostForTest();
     [[nodiscard]] bool injectPlaneCursor(std::string_view spec, std::string* error);
 #endif
-    [[nodiscard]] Ipc* ipc() const { return m_ipc.get(); }
-    [[nodiscard]] const ScreenCastCommand& screenCastCommand() const { return m_screenCastCommand; }
+    Ipc* ipc() const { return m_ipc.get(); }
+    const ScreenCastCommand& screenCastCommand() const { return m_screenCastCommand; }
     void setScreenCastActive(bool active);
     void clearScreenCastTarget();
     bool setScreenCastOutput(const Output& output, std::string* error = nullptr);
@@ -292,38 +292,38 @@ namespace umbriel {
     void unregisterAnimatable(Animatable* animatable);
     [[nodiscard]] HintRect& insertHint();
     void hideInsertHint();
-    [[nodiscard]] uint64_t uptimeMs() const;
-    [[nodiscard]] SessionLock* sessionLock() const { return m_sessionLock.get(); }
-    [[nodiscard]] bool sessionLocked() const { return m_sessionLocked; }
-    [[nodiscard]] const std::string& activeSubmap() const {
+    uint64_t uptimeMs() const;
+    SessionLock* sessionLock() const { return m_sessionLock.get(); }
+    bool sessionLocked() const { return m_sessionLocked; }
+    const std::string& activeSubmap() const {
       static const std::string empty;
       return m_activeSubmaps.empty() ? empty : m_activeSubmaps.back();
     }
     // Distinct from activeSubmap(): the stack can hold an entry whose name is
     // empty, and the submap-reset action keys off depth, not the name.
-    [[nodiscard]] bool inSubmap() const { return !m_activeSubmaps.empty(); }
+    bool inSubmap() const { return !m_activeSubmaps.empty(); }
     void pushSubmap(const std::string& name);
     void popSubmap();
-    [[nodiscard]] wlr_foreign_toplevel_manager_v1* foreignToplevelManager() const { return m_foreignToplevelManager; }
-    [[nodiscard]] wlr_ext_foreign_toplevel_list_v1* extForeignToplevelList() const { return m_extForeignToplevelList; }
-    [[nodiscard]] wlr_ext_workspace_manager_v1* workspaceManager() const { return m_workspaceManager; }
-    [[nodiscard]] wlr_gamma_control_manager_v1* gammaManager() const { return m_gammaManager; }
-    [[nodiscard]] wlr_pointer_constraints_v1* pointerConstraints() const { return m_pointerConstraints; }
-    [[nodiscard]] wlr_relative_pointer_manager_v1* relativePointerManager() const { return m_relativePointerManager; }
-    [[nodiscard]] wlr_pointer_gestures_v1* pointerGestures() const { return m_pointerGestures; }
-    [[nodiscard]] wlr_virtual_pointer_manager_v1* virtualPointerManager() const { return m_virtualPointerManager; }
-    [[nodiscard]] wlr_tablet_manager_v2* tabletManager() const { return m_tabletManager; }
-    [[nodiscard]] Gestures* gestures() const { return m_gestures.get(); }
-    [[nodiscard]] bool nested() const { return m_nested; }
-    [[nodiscard]] uint32_t modKey() const;
-    [[nodiscard]] std::string_view modKeyName() const;
+    wlr_foreign_toplevel_manager_v1* foreignToplevelManager() const { return m_foreignToplevelManager; }
+    wlr_ext_foreign_toplevel_list_v1* extForeignToplevelList() const { return m_extForeignToplevelList; }
+    wlr_ext_workspace_manager_v1* workspaceManager() const { return m_workspaceManager; }
+    wlr_gamma_control_manager_v1* gammaManager() const { return m_gammaManager; }
+    wlr_pointer_constraints_v1* pointerConstraints() const { return m_pointerConstraints; }
+    wlr_relative_pointer_manager_v1* relativePointerManager() const { return m_relativePointerManager; }
+    wlr_pointer_gestures_v1* pointerGestures() const { return m_pointerGestures; }
+    wlr_virtual_pointer_manager_v1* virtualPointerManager() const { return m_virtualPointerManager; }
+    wlr_tablet_manager_v2* tabletManager() const { return m_tabletManager; }
+    Gestures* gestures() const { return m_gestures.get(); }
+    bool nested() const { return m_nested; }
+    uint32_t modKey() const;
+    std::string_view modKeyName() const;
 
     // Read-only iteration over the registries. These replace the friend list: callers can walk the registry without
     // reaching into Server's internals or being able to add to and remove from it.
-    [[nodiscard]] std::span<const std::unique_ptr<Output>> outputs() const { return m_outputs; }
-    [[nodiscard]] std::span<const std::unique_ptr<View>> views() const { return m_registry.all(); }
-    [[nodiscard]] ViewRegistry& registry() { return m_registry; }
-    [[nodiscard]] std::span<const std::unique_ptr<LayerSurface>> layerSurfaces() const { return m_layerSurfaces; }
+    std::span<const std::unique_ptr<Output>> outputs() const { return m_outputs; }
+    std::span<const std::unique_ptr<View>> views() const { return m_registry.all(); }
+    ViewRegistry& registry() { return m_registry; }
+    std::span<const std::unique_ptr<LayerSurface>> layerSurfaces() const { return m_layerSurfaces; }
     // Registers a view created for a new toplevel of either shell role.
     View& adoptView(std::unique_ptr<View> view);
 
@@ -355,9 +355,9 @@ namespace umbriel {
     void scheduleSuspensionSync();
     // True while `view`'s client must keep drawing although its frame is hidden: an overview card or a toplevel capture
     // draws its content off the shared scene, or a `background_render` rule asks for it.
-    [[nodiscard]] bool viewRenderedOffscreen(const View& view) const;
+    bool viewRenderedOffscreen(const View& view) const;
     // True while a live image-copy session reads `view`'s toplevel capture source.
-    [[nodiscard]] bool viewCaptured(const View& view) const;
+    bool viewCaptured(const View& view) const;
     // Lock the next group on one physical keyboard, then synchronize matching
     // named layouts across the remaining keyboards.
     bool cycleKeyboardLayout();
@@ -382,9 +382,9 @@ namespace umbriel {
     };
     // The canonical physical keyboard's layout vocabulary and effective group.
     // Nullopt when no configured physical keyboard exists.
-    [[nodiscard]] std::optional<KeyboardLayoutState> keyboardLayoutState() const;
+    std::optional<KeyboardLayoutState> keyboardLayoutState() const;
     // systemd-localed's keymap, for keyboards whose config sets no XKB names. Empty when unused or unavailable.
-    [[nodiscard]] const XkbNames& systemKeymap() const { return m_systemKeymap; }
+    const XkbNames& systemKeymap() const { return m_systemKeymap; }
     void notifyKeyboardLayoutIpc();
     void notifyOverviewChanged();
     void notifySubmapChanged();
@@ -407,18 +407,16 @@ namespace umbriel {
     View* viewAt(double lx, double ly, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer = nullptr) {
       return m_focus.viewAt(lx, ly, surface, sx, sy, layer);
     }
-    [[nodiscard]] std::optional<SsdFrameHit> ssdFrameAt(double lx, double ly) const {
-      return m_focus.ssdFrameAt(lx, ly);
-    }
+    std::optional<SsdFrameHit> ssdFrameAt(double lx, double ly) const { return m_focus.ssdFrameAt(lx, ly); }
     std::optional<Keybind> handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers);
     // The bind this press would fire, without running it. Null when nothing
     // matches (locked sessions match nothing, matching handleKeybind).
-    [[nodiscard]] const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const;
+    const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const;
     // Combined state across independent keyboard devices. Media and brightness
     // keys commonly come from a device separate from held modifiers. An input
     // method's mirrored keyboard is not independent and is excluded.
-    [[nodiscard]] uint32_t keyboardModifiers(bool includeCaptured = false) const;
-    [[nodiscard]] bool keyboardShortcutsInhibited() const;
+    uint32_t keyboardModifiers(bool includeCaptured = false) const;
+    bool keyboardShortcutsInhibited() const;
     bool toggleKeyboardShortcutsInhibit();
     // Reconcile existing client inhibitors after a window's rule or the user's override changes.
     void refreshKeyboardShortcutsInhibitors();
@@ -436,9 +434,9 @@ namespace umbriel {
     void refreshSurfaceScales();
     // Re-evaluate each output's policy after keyboard focus or a dynamic window rule changes.
     void refreshOutputPolicies();
-    [[nodiscard]] wlr_output* preferredOutput() const;
-    [[nodiscard]] Output* outputFromWlr(wlr_output* output) const;
-    [[nodiscard]] Output* outputFromName(const std::string& name) const;
+    wlr_output* preferredOutput() const;
+    Output* outputFromWlr(wlr_output* output) const;
+    Output* outputFromName(const std::string& name) const;
     // Named workspaces on enabled outputs, with native local names taking precedence over displaced ones. A qualifier
     // for an unavailable output identifies a displaced workspace's original output; positions remain output-local.
     [[nodiscard]] std::expected<Workspace*, std::string> resolveNamedWorkspace(
@@ -448,7 +446,7 @@ namespace umbriel {
     Workspace* displacedWorkspaceDestination(
         const std::shared_ptr<const DisplacedWorkspace>& home, Output* preferred, Output* excluded = nullptr
     );
-    [[nodiscard]] wlr_box usableAreaAt(double lx, double ly) const;
+    wlr_box usableAreaAt(double lx, double ly) const;
     void updateOutputManagerConfig();
     // Change logical desktop membership through the same atomic transaction as
     // wlr-output-management. Unlike DPMS, this displaces and restores views.
@@ -460,7 +458,7 @@ namespace umbriel {
     // output applies to the next touch sequence without signal hooks.
     void remapTouches();
     // The tablet-v2 handle for a wlroots tablet, or nullptr when unknown.
-    [[nodiscard]] wlr_tablet_v2_tablet* tabletV2FromWlr(const wlr_tablet* tablet) const;
+    wlr_tablet_v2_tablet* tabletV2FromWlr(const wlr_tablet* tablet) const;
 
     // Create and destroy headless outputs at runtime, which is how a test drives a monitor being unplugged and coming
     // back. `mode` sizes the new output and paces its frames; without one it starts at 1280x720. Returns the new
@@ -473,7 +471,7 @@ namespace umbriel {
     void scheduleDisplacedViewRestore();
     void rememberKeyboardInputSource(Keyboard& keyboard);
     void refreshKeyboardLeds();
-    [[nodiscard]] bool syncingKeyboardLocks() const;
+    bool syncingKeyboardLocks() const;
     void removeKeyboard(Keyboard* keyboard);
     void removeView(View* view);
     void removeLayerSurface(LayerSurface* layerSurface, wlr_output* output);
@@ -497,7 +495,7 @@ namespace umbriel {
     void reconcileDynamicWorkspaces();
     void clearKeyboardFocus() { m_focus.clearKeyboardFocus(); }
     void deactivateViews(View* except = nullptr) { m_focus.deactivateViews(except); }
-    [[nodiscard]] LayerSurface* exclusiveKeyboardLayer() const { return m_focus.exclusiveKeyboardLayer(); }
+    LayerSurface* exclusiveKeyboardLayer() const { return m_focus.exclusiveKeyboardLayer(); }
     // Lets a caller other than View's own close animation drive the snapshot with its own duration/curve/style.
     struct CloseSnapshotOverrides {
       int durationMs = 0;
@@ -518,7 +516,7 @@ namespace umbriel {
     // is not showing.
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
-    [[nodiscard]] bool closeSnapshotAlive(CloseSnapshotId id) const;
+    bool closeSnapshotAlive(CloseSnapshotId id) const;
 
   private:
     friend class EisInput;
@@ -554,7 +552,7 @@ namespace umbriel {
     static void onNewIdleInhibitor(wl_listener* listener, void* data);
     static void onIdleInhibitorDestroy(wl_listener* listener, void* data);
     static void onNewShortcutsInhibitor(wl_listener* listener, void* data);
-    [[nodiscard]] bool clientShortcutsInhibitAllowed(wlr_surface* surface) const;
+    bool clientShortcutsInhibitAllowed(wlr_surface* surface) const;
     static void onShortcutsInhibitorDestroy(wl_listener* listener, void* data);
     static void onNewImageCopySession(wl_listener* listener, void* data);
     static void onImageCopySessionDestroy(wl_listener* listener, void* data);
@@ -650,7 +648,7 @@ namespace umbriel {
     void pairTabletPads();
     // The output holding keyboard focus, or nullptr when focus is not on any
     // output (no surface, or an unmapped workspace).
-    [[nodiscard]] Output* focusedOutput() const;
+    Output* focusedOutput() const;
     void updateSeatCapabilities();
     void beginSessionLock(wlr_session_lock_v1* lock);
     void recreateRenderer();
@@ -663,14 +661,14 @@ namespace umbriel {
     void clearNormalFocus() { m_focus.clearNormalFocus(); }
     void setLockBlankEnabled(bool enabled);
     void handleWorkspaceCommit(void* data);
-    [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
+    Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
     bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
     bool commitOutputEnabled(Output& target, bool enabled);
-    [[nodiscard]] bool initialOutputEnabled(const Output& output);
+    bool initialOutputEnabled(const Output& output);
     void rememberOutputEnableOverride(const Output& output, bool enabled);
     void restoreDisplacedViews();
     void refreshDisplacedWorkspace(Workspace& workspace);
-    [[nodiscard]] WorkspaceGroup* workspaceGroupFromHandle(wlr_ext_workspace_group_handle_v1* handle) const;
+    WorkspaceGroup* workspaceGroupFromHandle(wlr_ext_workspace_group_handle_v1* handle) const;
 
     struct IdleInhibitorWatch {
       Server* server = nullptr;
@@ -821,15 +819,15 @@ namespace umbriel {
       );
       ~CloseSnapshot() override;
 
-      [[nodiscard]] CloseSnapshotId id() const { return m_id; }
+      CloseSnapshotId id() const { return m_id; }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
 
-      [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+      AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
-      [[nodiscard]] bool hasActiveAnimations() const override { return m_alpha.animating() || m_slide.animating(); }
-      [[nodiscard]] bool animatesOn(const Output* output) const override { return m_output == output; }
+      bool hasActiveAnimations() const override { return m_alpha.animating() || m_slide.animating(); }
+      bool animatesOn(const Output* output) const override { return m_output == output; }
 
     private:
       void applyPresentation();

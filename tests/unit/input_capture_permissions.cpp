@@ -59,7 +59,7 @@ namespace {
       }
     }
 
-    [[nodiscard]] std::string read() const {
+    std::string read() const {
       std::ifstream input(path, std::ios::binary);
       return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     }

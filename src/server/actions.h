@@ -14,10 +14,10 @@ namespace umbriel {
 
   // Null when the action has no implementation, which the caller reports rather than silently ignoring. Keeping the
   // dispatch table separate from `actionSpecs()` lets the parser stay free of any dependency on Server.
-  [[nodiscard]] ActionHandlerFn actionHandlerFor(KeybindAction action);
+  ActionHandlerFn actionHandlerFor(KeybindAction action);
 
   // True when every advertised action has exactly one handler and every
   // non-sentinel action is advertised.
-  [[nodiscard]] bool actionRegistryComplete();
+  bool actionRegistryComplete();
 
 } // namespace umbriel

@@ -25,10 +25,10 @@ namespace umbriel {
     SurfaceLayoutMemory& operator=(const SurfaceLayoutMemory&) = delete;
 
     void remember(wlr_surface* surface, std::string_view layout);
-    [[nodiscard]] std::optional<std::string_view> recall(wlr_surface* surface) const;
+    std::optional<std::string_view> recall(wlr_surface* surface) const;
     void forget(wlr_surface* surface);
     void clear();
-    [[nodiscard]] size_t size() const { return m_entries.size(); }
+    size_t size() const { return m_entries.size(); }
 
   private:
     struct Entry {
