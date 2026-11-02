@@ -863,13 +863,10 @@ namespace umbriel {
 
   bool View::dragTreeOccupied() const {
     const auto views = m_server->registry().all();
-    for (const auto& view : std::views::reverse(views)) {
+    return std::ranges::any_of(std::views::reverse(views), [this](const auto& view) {
       View* other = view.get();
-      if (other != nullptr && other != this && other->m_sceneTree->node.parent == m_server->dragTree()) {
-        return true;
-      }
-    }
-    return false;
+      return other != nullptr && other != this && other->m_sceneTree->node.parent == m_server->dragTree();
+    });
   }
 
   void View::syncShadowPool() {
