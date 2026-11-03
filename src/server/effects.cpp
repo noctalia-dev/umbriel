@@ -94,6 +94,13 @@ namespace umbriel {
     const bool overridden = rule != nullptr && rule->screenEffect.has_value();
     slot.configuredSelector = overridden ? *rule->screenEffect : config().effects.screen;
     slot.configuredSource = overridden ? EffectSelectorSource::Rule : EffectSelectorSource::Default;
+    const bool castOverridden = rule != nullptr && rule->screenCastEffect.has_value();
+    const std::string& cast = castOverridden ? *rule->screenCastEffect : config().effects.screenCast;
+    // Swapped in the selector, not at bind time, so a pool keeps its pick per selector and IPC shows what runs.
+    if (!cast.empty() && cast != kEffectOff && outputCaptured(output.wlr())) {
+      slot.configuredSelector = cast;
+      slot.configuredSource = castOverridden ? EffectSelectorSource::Rule : EffectSelectorSource::Default;
+    }
     resolveEffectSlot(slot, EffectKind::Screen);
   }
 

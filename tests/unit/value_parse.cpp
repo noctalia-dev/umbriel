@@ -3,28 +3,21 @@
 #include "check.h"
 
 #include <array>
-#include <cmath>
-
-namespace {
-
-  bool near(float actual, float expected) { return std::fabs(actual - expected) < 0.001F; }
-
-} // namespace
 
 UMBRIEL_TEST(parsesSixDigitColorAsOpaque) {
   std::array<float, 4> color{};
   CHECK(umbriel::parseColor("#ff8000", color));
-  CHECK(near(color[0], 1.0F));
-  CHECK(near(color[1], 0.50196F));
-  CHECK(near(color[2], 0.0F));
-  CHECK(near(color[3], 1.0F));
+  CHECK_NEAR(color[0], 1.0F, 0.001F);
+  CHECK_NEAR(color[1], 0.50196F, 0.001F);
+  CHECK_NEAR(color[2], 0.0F, 0.001F);
+  CHECK_NEAR(color[3], 1.0F, 0.001F);
 }
 
 UMBRIEL_TEST(parsesEightDigitColorWithAlpha) {
   std::array<float, 4> color{};
   CHECK(umbriel::parseColor("#00000080", color));
-  CHECK(near(color[0], 0.0F));
-  CHECK(near(color[3], 0.50196F));
+  CHECK_NEAR(color[0], 0.0F, 0.001F);
+  CHECK_NEAR(color[3], 0.50196F, 0.001F);
 }
 
 UMBRIEL_TEST(colorHexIsCaseInsensitive) {
