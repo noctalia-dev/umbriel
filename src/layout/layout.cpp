@@ -75,7 +75,7 @@ namespace umbriel {
     if (bar) {
       return *bar;
     }
-    return config.tabs.barVisible && !(config.tabs.hideWhenSingle && tabs <= 1);
+    return config.tabs.barVisible && (!config.tabs.hideWhenSingle || tabs > 1);
   }
 
   int Layout::tabBarReserve(size_t tabs, std::optional<bool> bar) const {

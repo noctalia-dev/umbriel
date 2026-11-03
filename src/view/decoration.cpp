@@ -50,21 +50,16 @@ namespace umbriel {
     );
   }
 
-  void ViewDecoration::setBorderColor(bool focused, float alpha) {
-    if (m_borderTree == nullptr) {
-      return;
-    }
-    setBorderRawColor(focused ? m_borderColors.focused : m_borderColors.unfocused, alpha);
-  }
-
-  void ViewDecoration::setBorderRawColor(const std::array<float, 4>& baseColor, float alpha) {
+  void ViewDecoration::setBorderRawColors(
+      const std::array<float, 4>& inner, const std::array<float, 4>& outer, float alpha
+  ) {
     if (m_border == nullptr) {
       return;
     }
     float innerColor[4];
     float outerColor[4];
-    premultiplied(innerColor, baseColor, alpha);
-    premultiplied(outerColor, m_borderColors.outer, alpha);
+    premultiplied(innerColor, inner, alpha);
+    premultiplied(outerColor, outer, alpha);
     wlr_scene_border_set_colors(m_border, innerColor, outerColor);
   }
 
@@ -81,7 +76,8 @@ namespace umbriel {
   }
 
   void ViewDecoration::snapshotBorders(
-      wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity, std::vector<BorderSnapshot>& out
+      wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, const std::array<float, 4>& outerColor,
+      float opacity, std::vector<BorderSnapshot>& out
   ) const {
     if (!bordersVisible() || m_border == nullptr) {
       return;
@@ -93,7 +89,7 @@ namespace umbriel {
         &m_borderTree->node,
         {
             .innerColor = innerColor,
-            .outerColor = m_borderColors.outer,
+            .outerColor = outerColor,
             .innerWidth = m_borderWidth,
             .outerWidth = m_outerBorderWidth,
             .cornerRadius = m_cornerRadius,
@@ -147,10 +143,11 @@ namespace umbriel {
   // Blur
   void ViewDecoration::updateBlur(
       wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
-      fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha
+      fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha,
+      const SurfaceBlurOptions& options
   ) {
     m_blur.setAlpha(blurAlpha);
-    m_blur.update(tree, surface, nodeBox, geometry, corners, clip, m_blurOptions, surfaceOpacity);
+    m_blur.update(tree, surface, nodeBox, geometry, corners, clip, options, surfaceOpacity);
   }
 
   void ViewDecoration::hideBlur() { m_blur.hide(); }

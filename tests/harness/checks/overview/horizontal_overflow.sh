@@ -23,7 +23,9 @@ spawn_client() {
 
 sample_blue() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$x+$y" -format '%[fx:round(255*mean.b)]' info:
+  local blue
+  read -r _ _ blue < <("$UMBRIEL_PIXEL_PROBE" "$image" mean "20x20+$x+$y")
+  echo "$blue"
 }
 
 wait_for_count() {
@@ -76,7 +78,7 @@ fi
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 grim "$SCREENSHOT"
-blue=$(magick "$SCREENSHOT" -crop 20x20+1090+350 -format '%[fx:round(255*mean.b)]' info:)
+blue=$(sample_blue "$SCREENSHOT" 1090 350)
 if (( blue < 80 )); then
   echo "horizontal card was clipped to the workspace background: blue=$blue"
   exit 1

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # harness: xwayland=native
 # harness: outputs=3
-# A configured primary stays stable across focus, reload, output replacement and lazy Xwayland restarts. With no
-# setting, user-selected RandR state is left alone.
+# A configured primary stays stable across focus, reload, scaling and output replacement. With no setting,
+# user-selected RandR state is left alone. protocol/xwayland_primary_restart covers lazy Xwayland restarts.
 set -euo pipefail
 
 readonly QUERY="$UMBRIEL_XWAYLAND_OUTPUT_CLIENT"
@@ -40,7 +40,6 @@ CONFIG
 
 start_holder() {
   "$HOLDER" primary-holder <&"$control_fd" > "$UMBRIEL_RUNTIME_DIR/primary-holder.log" 2>&1 &
-  holder_pid=$!
   for _ in $(seq 100); do
     if "$UMBRIEL" windows --json | jq -e 'any(.[]; .title == "primary-holder")' > /dev/null; then
       return
@@ -144,35 +143,4 @@ await_primary HEADLESS-2
 configure_primary HEADLESS-1
 await_primary HEADLESS-1
 
-# Close the last external X client and wait for that server to exit, without opening more X connections.
-xwayland_pid() {
-  python3 - "$DISPLAY" <<'PY'
-import pathlib
-import sys
-for path in pathlib.Path('/proc').glob('[0-9]*/cmdline'):
-    try:
-        args = path.read_bytes().split(b'\0')
-        if len(args) > 1 and pathlib.Path(args[0].decode()).name == 'Xwayland' and args[1].decode() == sys.argv[1]:
-            print(path.parent.name)
-            break
-    except (OSError, UnicodeError):
-        pass
-PY
-}
-server_pid=$(xwayland_pid)
-[[ -n $server_pid ]]
-printf 'quit\n' >&"$control_fd"
-wait "$holder_pid"
-for _ in $(seq 300); do
-  [[ ! -e /proc/$server_pid ]] && break
-  sleep 0.1
-done
-if [[ -e /proc/$server_pid ]]; then
-  echo 'the primary tracker kept lazy Xwayland alive'
-  exit 1
-fi
-start_holder
-await_primary HEADLESS-1
-[[ $(xwayland_pid) != "$server_pid" ]]
-
-echo 'RandR primary survives reload, focus, scaling, output replacement and lazy restart'
+echo 'RandR primary survives reload, focus, scaling and output replacement'

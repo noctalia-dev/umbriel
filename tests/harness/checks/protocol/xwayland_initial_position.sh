@@ -10,7 +10,6 @@ readonly CAPTURE_LOG="$UMBRIEL_RUNTIME_DIR/initial-position-capture.log"
 readonly PROXY_LOG="$UMBRIEL_XWAYLAND_ASSOCIATION_LOG"
 readonly PROXY_CONTROL="$UMBRIEL_XWAYLAND_ASSOCIATION_CONTROL"
 client_pid=
-capture_pid=
 sequence=0
 
 cleanup_client() {
@@ -21,14 +20,6 @@ cleanup_client() {
     exec {control_fd}>&-
   fi
 }
-cleanup() {
-  cleanup_client
-  if [[ -n $capture_pid ]]; then
-    kill "$capture_pid" 2>/dev/null || true
-    wait "$capture_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
 
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
@@ -51,7 +42,6 @@ default_floating = true
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 CAPTURE_PROBES='640 360 1080 630' "$UMBRIEL_CAPTURE_CLIENT" --output HEADLESS-1 > "$CAPTURE_LOG" 2>&1 &
-capture_pid=$!
 await_lines "$CAPTURE_LOG" 'probe HEADLESS-1 .*x=640 y=360 rgb=00ff00' 1 0.01
 
 send() { printf '%s\n' "$@" >&"$control_fd"; }

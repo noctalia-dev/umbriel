@@ -99,8 +99,8 @@ grim -o HEADLESS-1 "$SCREENSHOT"
 # content box was left uncovered; a blend of the two means the buffer was
 # resampled instead of landing on texel centers.
 impure() {
-  magick "$SCREENSHOT" -alpha off -crop "$1" +repage -depth 8 txt:- |
-    tail -n +2 | grep -c -E -v '#(0000FF|00FF00) ' || true
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count \
+    '!((r == 0 && g == 0 && b == 1) || (r == 0 && g == 1 && b == 0))' "$1"
 }
 
 last_column=$(impure "1x40+$((content_right - 1))+$((center_y - 20))")

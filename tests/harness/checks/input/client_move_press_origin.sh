@@ -18,11 +18,17 @@ follows_mouse = false
 scale = 1
 CONFIG
 
-cursor_hash() {
+# Captures the cursor's neighbourhood as its own image, so captures at different pointer positions compare whole.
+cursor_shot() {
   local image=$UMBRIEL_RUNTIME_DIR/$1.png
-  grim -c "$image"
-  magick "$image" -crop "$((48 * scale))x$((32 * scale))+$(((pointer_x - 12) * scale))+$(((pointer_y - 12) * scale))" \
-    +repage rgba:- | sha256sum | cut -d' ' -f1
+  grim -c -g "$((pointer_x - 12)),$((pointer_y - 12)) 48x32" "$image"
+  echo "$image"
+}
+
+same_shot() {
+  local changed
+  read -r _ changed < <("$UMBRIEL_PIXEL_PROBE" "$1" diff "$2")
+  ((changed == 0))
 }
 
 content_box() {
@@ -63,7 +69,7 @@ for scale in 1 2; do
       pointer_x=$((pointer_x + distance))
       await_lines "$log" move-requested 1 0.025
       await_lines "$log" pointer-leave 1 0.025
-      requested=$(cursor_hash "$title-requested")
+      requested=$(cursor_shot "$title-requested")
       requested_box=$(content_box "$title-requested-box")
       [[ $requested_box == "$before_box" ]] || {
         echo "$title: accepting the move jumped the window: $before_box to $requested_box"
@@ -74,15 +80,15 @@ for scale in 1 2; do
         # reference for the active transition, rather than comparing against an application that hides its cursor.
         normal=$requested
       else
-        [[ $requested != "$normal" ]] || {
+        ! same_shot "$requested" "$normal" || {
           echo "$title: an already crossed threshold waited for another motion event"
           exit 1
         }
       fi
       pointer_step continued
       pointer_x=$((pointer_x + after - distance))
-      continued=$(cursor_hash "$title-continued")
-      [[ $continued != "$normal" ]] || {
+      continued=$(cursor_shot "$title-continued")
+      ! same_shot "$continued" "$normal" || {
         echo "$title: the move applied a second drag threshold"
         exit 1
       }

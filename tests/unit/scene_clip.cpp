@@ -146,7 +146,7 @@ namespace {
       }
     }
 
-    [[nodiscard]] wlr_scene_node* nodeAt(double lx, double ly) const {
+    wlr_scene_node* nodeAt(double lx, double ly) const {
       double nx = 0;
       double ny = 0;
       return wlr_scene_node_at(&scene->tree.node, lx, ly, &nx, &ny);

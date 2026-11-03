@@ -146,9 +146,9 @@ fi
 BINARY=$(realpath "$BINARY")
 BINARY_DIR=$(dirname "$BINARY")
 
-# Checks drive harness-only IPC commands, which only a build with the test_ipc option has.
+# Checks drive harness-only IPC commands, which only a build with the harness option has.
 if ! "$BINARY" --help 2>/dev/null | grep -qw settle; then
-  echo "check: '$BINARY' lacks the harness IPC commands; configure it with -Dtest_ipc=enabled" >&2
+  echo "check: '$BINARY' lacks the harness IPC commands; configure it with -Dharness=enabled" >&2
   exit 1
 fi
 
@@ -390,6 +390,15 @@ check_xwayland_proxy() {
   sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland_proxy=\(association\)$/\1/p' | head -1
 }
 
+# The compositor's config file watcher is off unless the header declares `# harness: config-watch=true`.
+check_config_watch() {
+  if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: config-watch=true'; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 check_xcursor_theme() {
   if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: xcursor-theme=true'; then
     echo umbriel-harness
@@ -499,6 +508,7 @@ start_instance() {
   local xwayland=$2
   local cursor_theme=$3
   local xwayland_proxy=$4
+  local config_watch=$5
   # sockaddr_un caps paths at 108 bytes and the compositor appends
   # "/umbriel-wayland-0.sock" (23) to XDG_RUNTIME_DIR, so keep the root short. A
   # long path makes wl_display_add_socket fail and the boot abort.
@@ -543,6 +553,7 @@ start_instance() {
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WLR_BACKENDS=headless \
+    UMBRIEL_CONFIG_WATCH="$config_watch" \
     WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_HEADLESS_OUTPUTS="$outputs" \
     bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
@@ -711,7 +722,7 @@ run_one() {
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme" \
-    "$(check_xwayland_proxy "$name")"; then
+    "$(check_xwayland_proxy "$name")" "$(check_config_watch "$name")"; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi

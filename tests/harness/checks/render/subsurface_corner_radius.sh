@@ -62,7 +62,9 @@ grim "$SCREENSHOT"
 
 # One sample reports green and blue at once: green is the compositor backdrop, blue is the client's subsurface.
 sample() {
-  magick "$SCREENSHOT" -crop "1x1+$1+$2" -format '%[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  local green blue
+  read -r _ green blue < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2")
+  echo "$green $blue"
 }
 
 # (3,3) from the window origin sits ~86 px from the arc centre at (RADIUS,RADIUS), well outside the 64 px arc, so a

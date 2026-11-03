@@ -35,25 +35,25 @@ namespace umbriel {
 
   // Card and render nodes have different device numbers but share a physical
   // GPU. Prefer stable PCI and sysfs identities before the node number.
-  [[nodiscard]] bool sameDrmPhysicalDevice(const DrmDeviceIdentity& first, const DrmDeviceIdentity& second);
+  bool sameDrmPhysicalDevice(const DrmDeviceIdentity& first, const DrmDeviceIdentity& second);
 
   // Mirrors wlroots' WLR_BACKENDS precedence and comma tokenization without
   // touching process state. Presence of a display variable matters even when
   // its value is empty, matching wlr_backend_autocreate().
-  [[nodiscard]] DrmBackendEnvironment resolveDrmBackendEnvironment(
+  DrmBackendEnvironment resolveDrmBackendEnvironment(
       std::optional<std::string_view> wlrBackends, bool waylandDisplaySet, bool waylandSocketSet, bool x11DisplaySet
   );
 
-  [[nodiscard]] DrmExclusionMatch drmExclusionMatch(
+  DrmExclusionMatch drmExclusionMatch(
       const DrmDeviceIdentity& device, std::span<const DrmDeviceIdentity> ignoredDevices,
       std::span<const std::string> pciAddresses
   );
 
   // Parses one "Device Minor:" line from proprietary NVIDIA GPU metadata.
-  [[nodiscard]] std::optional<unsigned int> parseNvidiaDeviceMinor(std::string_view line);
+  std::optional<unsigned int> parseNvidiaDeviceMinor(std::string_view line);
 
   // True only for proprietary NVIDIA per-GPU character devices. Shared nodes
   // such as nvidiactl and nvidia-modeset do not identify one physical GPU.
-  [[nodiscard]] bool isNvidiaGpuDeviceNode(std::string_view node);
+  bool isNvidiaGpuDeviceNode(std::string_view node);
 
 } // namespace umbriel

@@ -165,7 +165,7 @@ namespace {
         }
       }
     }
-    [[nodiscard]] bool failed() const { return m_failed; }
+    bool failed() const { return m_failed; }
 
   private:
     void key(uint32_t code, wl_keyboard_key_state state) {

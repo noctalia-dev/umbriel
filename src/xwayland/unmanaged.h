@@ -32,7 +32,7 @@ namespace umbriel {
     void handleXwmSync(uint64_t serial);
     void refreshCaptureProtection();
     // X pixels per layout unit in the window's surface.
-    [[nodiscard]] double scale() const { return m_scale; }
+    double scale() const { return m_scale; }
 
   private:
     static void onMap(wl_listener* listener, void* data);

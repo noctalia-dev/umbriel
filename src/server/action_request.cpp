@@ -51,7 +51,7 @@ namespace umbriel {
         return true;
       }
 
-      [[nodiscard]] bool has(std::string_view key) const { return m_request.contains(key); }
+      bool has(std::string_view key) const { return m_request.contains(key); }
 
       // A present string field must be non-empty. An absent optional field leaves `output` empty.
       bool string(std::string_view key, bool required, std::string& output) {
@@ -106,7 +106,7 @@ namespace umbriel {
         return true;
       }
 
-      [[nodiscard]] const nlohmann::json* raw(std::string_view key) const {
+      const nlohmann::json* raw(std::string_view key) const {
         const auto field = m_request.find(key);
         return field == m_request.end() ? nullptr : &*field;
       }

@@ -18,6 +18,7 @@
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <print>
 #include <string>
@@ -35,11 +36,16 @@
 namespace {
   constexpr Logger kLog("main");
 
+  bool isJsonFlag(const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; }
+
   int validateConfig(int argc, char** argv) {
     const char* configPath = nullptr;
+    bool json = false;
     for (int i = 3; i < argc; ++i) {
       if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
         configPath = argv[++i];
+      } else if (isJsonFlag(argv[i])) {
+        json = true;
       } else {
         std::println(stderr, "error: unknown option '{}' for config validate", argv[i]);
         return EXIT_FAILURE;
@@ -48,6 +54,29 @@ namespace {
 
     umbriel::loadConfig(configPath);
     const auto& diags = umbriel::configDiagnostics();
+    if (json) {
+      nlohmann::json diagnostics = nlohmann::json::array();
+      for (const auto& d : diags) {
+        const bool located = !d.file.empty();
+        diagnostics.push_back({
+            {"severity", d.severity == umbriel::ConfigDiagnostic::Severity::Error ? "error" : "warning"},
+            {"message", d.message},
+            {"file", located ? nlohmann::json(d.file) : nlohmann::json(nullptr)},
+            {"line", located && d.line > 0 ? nlohmann::json(d.line) : nlohmann::json(nullptr)},
+            {"column", located && d.column > 0 ? nlohmann::json(d.column) : nlohmann::json(nullptr)},
+        });
+      }
+      std::println(
+          "{}",
+          nlohmann::json{
+              {"valid", diags.empty()},
+              {"path", umbriel::configRootPath().string()},
+              {"diagnostics", std::move(diagnostics)},
+          }
+              .dump()
+      );
+      return diags.empty() ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     if (diags.empty()) {
       std::println("config: ok ({})", umbriel::configRootPath().string());
       return EXIT_SUCCESS;
@@ -128,7 +157,7 @@ namespace {
     }
 
     heading("Configuration, without a running compositor");
-    row("config validate [-c <config>]", "check the config file");
+    row("config validate [-c <config>]", "check the config file; --json lists diagnostics");
     row("config schema [--json]", "count or describe every config key");
 
     if (std::ranges::any_of(umbriel::ipcCommands(), [](const auto& spec) {
@@ -202,7 +231,6 @@ int main(int argc, char** argv) {
   mallopt(M_ARENA_MAX, 2);
 #endif
   if (argc >= 2) {
-    auto isJsonFlag = [](const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; };
     auto isHelpFlag = [](const char* arg) { return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0; };
 
     // Commands that read the config without a running compositor.
@@ -253,6 +281,10 @@ int main(int argc, char** argv) {
         if (isHelpFlag(argv[i])) {
           printHelp(stdout);
           return EXIT_SUCCESS;
+        }
+        // Every event is already a JSON line; the flag is accepted so scripts can pass it uniformly.
+        if (isJsonFlag(argv[i])) {
+          continue;
         }
         // Comma-separated or repeated arguments, so `subscribe workspaces,windows` and `subscribe workspaces windows`
         // both work.
@@ -403,7 +435,7 @@ int main(int argc, char** argv) {
     if (purgeResult != 0) {
       kLog.warn("failed to purge jemalloc arenas: {}", std::strerror(purgeResult));
     }
-#elif defined(__GLIBC__)
+#elifdef __GLIBC__
     malloc_trim(0);
 #endif
 

@@ -40,11 +40,11 @@ namespace umbriel {
 
     // The label for `request`, rendering it on a miss; null when there is nothing to draw. The buffer stays valid until
     // the cache drops it, so a scene buffer showing it takes its own lock.
-    [[nodiscard]] const TabLabel* label(const TabLabelRequest& request);
-    [[nodiscard]] size_t size() const { return m_entries.size(); }
+    const TabLabel* label(const TabLabelRequest& request);
+    size_t size() const { return m_entries.size(); }
 
     // The cache every live tab bar shares. It lives as long as one of them holds it.
-    [[nodiscard]] static std::shared_ptr<TabLabelCache> shared();
+    static std::shared_ptr<TabLabelCache> shared();
 
     static constexpr size_t kDefaultCapacity = 256;
 

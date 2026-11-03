@@ -109,7 +109,7 @@ namespace umbriel {
 
     // Raise is decided once: only a hover under follows_mouse may focus without lifting the window. Every other
     // reason (clicks, keybinds, activation, workspace switches, mapping) raises.
-    const bool raise = !(reason == FocusReason::PointerHover && !config().input.focus.hoverRaises);
+    const bool raise = reason != FocusReason::PointerHover || config().input.focus.hoverRaises;
     m_lastRaise = raise;
     // Keep workspace focus while exclusive layer-shell holds the seat; refocus applies it later. focus() also returns
     // the seat to a layer that was uncovered by a fullscreen window leaving, and clears the previous window's
@@ -208,6 +208,34 @@ namespace umbriel {
     return nullptr;
   }
 
+  void FocusManager::refreshLayerFocus(Output* output) {
+    if (m_server.sessionLocked() || (m_server.overview() != nullptr && m_server.overview()->active())) {
+      return;
+    }
+    LayerSurface* focused = LayerSurface::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
+    if (focused != nullptr && focused->exclusiveKeyboard()) {
+      return;
+    }
+    if (LayerSurface* exclusive = exclusiveKeyboardLayer()) {
+      exclusive->focus();
+      return;
+    }
+    if (focused == nullptr || focused->output() != output || focused->acceptsKeyboard()) {
+      return;
+    }
+    Workspace* workspace = output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+    View* target = workspace != nullptr ? workspace->focusedView() : nullptr;
+    if (target != nullptr
+        && target->mapped()
+        && !target->minimized()
+        && target->inputDelegate()->acceptsKeyboardFocus()) {
+      // The pan already placed the viewport; returning the seat must not reveal the remembered column.
+      focusView(target, FocusReason::Gesture);
+    } else {
+      clearKeyboardFocus();
+    }
+  }
+
   bool FocusManager::retainCurrentKeyboardFocus() {
     if (m_server.overview() != nullptr && m_server.overview()->active()) {
       return false;
@@ -303,9 +331,9 @@ namespace umbriel {
 
   void FocusManager::refocus(Output* preferred) {
     // If a scratchpad is open and it already has focus, don't steal it.
-    auto surface = m_server.seat()->wlr()->keyboard_state.focused_surface;
-    auto focused = View::fromSurface(surface);
-    auto pad = m_server.scratchpadManager();
+    auto* surface = m_server.seat()->wlr()->keyboard_state.focused_surface;
+    auto* focused = View::fromSurface(surface);
+    auto* pad = m_server.scratchpadManager();
     if (preferred != nullptr
         && surface != nullptr
         && surface->mapped
@@ -348,14 +376,13 @@ namespace umbriel {
       if (workspace == nullptr) {
         return false;
       }
-      if (View* focused = workspace->focusedView()) {
-        if (focused->mapped()
-            && focused->onActiveWorkspace()
-            && !focused->minimized()
-            && focused->inputDelegate()->acceptsKeyboardFocus()) {
-          focusView(focused);
-          return true;
-        }
+      if (View* focused = workspace->focusedView(); focused != nullptr
+          && focused->mapped()
+          && focused->onActiveWorkspace()
+          && !focused->minimized()
+          && focused->inputDelegate()->acceptsKeyboardFocus()) {
+        focusView(focused);
+        return true;
       }
       for (const auto& entry : m_server.registry().placementRoots()) {
         if (entry->mapped()

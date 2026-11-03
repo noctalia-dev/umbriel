@@ -46,7 +46,7 @@ grim "$SCREENSHOT"
 # The sampled pixel is black client content over the solid green compositor
 # backdrop. At 0.5 opacity, its encoded green channel is about 128. Opaque
 # black, the broken post-commit state, yields zero.
-green=$(magick "$SCREENSHOT" -crop 40x40+600+500 -format '%[fx:round(255*mean.g)]' info:)
+read -r _ green _ <<< "$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean 40x40+600+500)"
 if (( green < 90 || green > 170 )); then
   echo "rule opacity was lost after the client commit: mean green=$green"
   exit 1

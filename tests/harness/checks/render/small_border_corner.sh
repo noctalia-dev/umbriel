@@ -48,8 +48,7 @@ y=$(jq -r '.y' <<< "$window")
 
 grim -o HEADLESS-1 "$SCREENSHOT"
 sample() {
-  magick "$SCREENSHOT" -alpha off -crop "1x1+$1+$2" +repage \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2"
 }
 
 corner=$(sample "$((x - TOTAL_WIDTH))" "$((y - TOTAL_WIDTH))")

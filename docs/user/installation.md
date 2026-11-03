@@ -221,6 +221,8 @@ sudo meson install -C build-release --no-rebuild
 
 The release binary is written to `build-release/umbriel`. `just debug` builds the debug binary at `build-debug/umbriel`.
 
+Release builds omit unit tests, harness clients, and harness-only IPC commands by default. Packagers can explicitly disable these with Meson's `-Dtests=disabled -Dharness=disabled` options.
+
 libxkbcommon 1.10.0 or newer is required at build time and runtime. Its pkg-config name is `xkbcommon`; Umbriel uses its server-side modifier API to preserve keyboard locks and latches.
 
 X11 window shapes require the `xcb-shape` library from libxcb. Debian and Ubuntu need `libxcb-shape0-dev` for building and `libxcb-shape0` at runtime. On openSUSE, `libxcb-devel` provides the build files and `libxcb-shape0` provides the runtime library. Arch, Fedora, Alpine, Nix, Guix, and Void bundle the shape library with libxcb.

@@ -429,7 +429,7 @@ int main(int argc, char** argv) {
   }
   wl_registry* registry = wl_display_get_registry(state.display);
   wl_registry_add_listener(registry, &kRegistryListener, nullptr);
-  for (int i = 0; i < 4 && !(state.primary.started && (!pixelWanted() || state.pixel.started)); ++i) {
+  for (int i = 0; i < 4 && (!state.primary.started || (pixelWanted() && !state.pixel.started)); ++i) {
     wl_display_roundtrip(state.display);
     startCapture(state.primary);
     if (pixelWanted()) {

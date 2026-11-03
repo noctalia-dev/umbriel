@@ -48,8 +48,7 @@ fi
 grim "$SCREENSHOT"
 
 sample_rgb() {
-  magick "$SCREENSHOT" -crop "16x16+$1+$2" -format \
-    '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" mean "16x16+$1+$2"
 }
 
 read -r center_r center_g center_b <<< "$(sample_rgb 632 352)"

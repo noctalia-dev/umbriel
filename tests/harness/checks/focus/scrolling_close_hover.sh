@@ -8,15 +8,6 @@ readonly OUTPUT_H=720
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
-pointer_pid=
-cleanup() {
-  if [[ -n $pointer_pid ]]; then
-    kill "$pointer_pid" 2>/dev/null || true
-    wait "$pointer_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
-
 spawn_client() {
   local title=$1
   "$CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
@@ -98,7 +89,6 @@ pointer_y=$((bottom_y - 30))
 # the bottom row after the remaining rows expand, while normal close replacement selects the top row.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" "$pointer_y" pause 10000 \
   > "$UMBRIEL_RUNTIME_DIR/scrolling-close-pointer.log" 2>&1 &
-pointer_pid=$!
 wait_for_active scroll-hover-middle
 
 "$UMBRIEL" msg window-close "$middle_id" > /dev/null

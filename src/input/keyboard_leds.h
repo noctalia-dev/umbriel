@@ -26,7 +26,7 @@ namespace umbriel {
     // A source contributes changes since its previous observation. Ordinary input
     // cannot replace shared locks with a different device's stale snapshot.
     void update(wlr_keyboard* source = nullptr);
-    [[nodiscard]] bool syncing() const { return m_syncing; }
+    bool syncing() const { return m_syncing; }
 
   private:
     struct Entry {
@@ -44,8 +44,8 @@ namespace umbriel {
     static void onDestroy(wl_listener* listener, void* data);
     static void onIdle(void* data);
 
-    [[nodiscard]] bool usableSource(wlr_keyboard* keyboard) const;
-    [[nodiscard]] wlr_keyboard* fallbackSource() const;
+    bool usableSource(wlr_keyboard* keyboard) const;
+    wlr_keyboard* fallbackSource() const;
     void observeLocks(Entry& entry);
     void initializeLocks(const Entry& entry);
     void syncPhysicalLocks();

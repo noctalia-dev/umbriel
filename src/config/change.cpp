@@ -65,12 +65,12 @@ namespace umbriel {
       static const OutputRule defaults;
       const OutputRule& lhs = before != nullptr ? *before : defaults;
       const OutputRule& rhs = after != nullptr ? *after : defaults;
-      return lhs.screenEffect == rhs.screenEffect;
+      return lhs.screenEffect == rhs.screenEffect && lhs.screenCastEffect == rhs.screenCastEffect;
     }
 
     bool selectsScreenEffect(const Config& settings) {
       return std::ranges::any_of(settings.outputs, [](const OutputRule& rule) {
-        return rule.screenEffect.has_value();
+        return rule.screenEffect.has_value() || rule.screenCastEffect.has_value();
       });
     }
 
@@ -219,8 +219,9 @@ namespace umbriel {
     const bool outputLayout = outputNamesChanged || outputProjectionChanged(before, after, sameOutputLayout);
     const bool sceneBlur =
         before.appearance.blur != after.appearance.blur || before.optimizedBlurNeeded() != after.optimizedBlurNeeded();
-    const bool focusDim = before.animation.enabled != after.animation.enabled
-        || before.animation.dimUnfocused != after.animation.dimUnfocused;
+    const bool focusAppearance = before.animation.enabled != after.animation.enabled
+        || before.animation.dimUnfocused != after.animation.dimUnfocused
+        || before.animation.windowsOpacity != after.animation.windowsOpacity;
     const bool effectsChanged = before.effects != after.effects
         || configuredEffectActionRoots(before) != configuredEffectActionRoots(after)
         || (outputNamesChanged && (selectsScreenEffect(before) || selectsScreenEffect(after)))
@@ -246,7 +247,7 @@ namespace umbriel {
         .viewChrome = before.appearance != after.appearance
             || before.colors != after.colors
             || before.windowRules != after.windowRules
-            || focusDim,
+            || focusAppearance,
         .layerEffects = sceneBlur || before.layerRules != after.layerRules,
         .animation = before.animation != after.animation,
         .input = before.input != after.input || before.hotCorners != after.hotCorners,

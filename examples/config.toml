@@ -91,6 +91,20 @@ radius = 3
 # button_position = "right" # or "left"
 # buttons = ["minimize", "maximize", "close"] # From the title outward; leave one out to hide it.
 # button_corner_radius = -1 # Follow the window's corner_radius; 0 makes square buttons.
+# button_glyph = "hover" # X, square, and underscore symbols: "always", "hover" (while hovered or pressed), or "never".
+# button_background = true # Show colored backgrounds behind the symbols.
+
+# Optional button palette. Glyph colors also apply when button backgrounds are off.
+# [colors.title_bar]
+# close = "#FF6B6BFF"
+# close_glyph = "#141419FF"
+# close_glyph_hover = "#141419FF"
+# maximize = "#7AA3FFFF"
+# maximize_glyph = "#141419FF"
+# maximize_glyph_hover = "#141419FF"
+# minimize = "#FFD166FF"
+# minimize_glyph = "#141419FF"
+# minimize_glyph_hover = "#141419FF"
 
 # Choose the background color shown if the lock screen takes too long to appear.
 # [colors]
@@ -129,6 +143,9 @@ radius = 3
 # Draw the border on every decorated, calm, non-fullscreen window, not just
 # the focused one (overview cards included).
 # border_unfocused = true
+# For a screen effect only while an output is shared (a portal screen share or a
+# screenshot), include /usr/share/umbriel/effects/screen/vignette/effect.toml and
+# set screen_cast = "vignette" in [effects]; add in_capture = true for viewers to see it.
 
 # ==============================================================================
 # Input
@@ -353,6 +370,8 @@ default_pinned = true
 # [[scratchpad]]
 # name = "music"
 # spawn_when_empty = "spotify"
+# Preserve each window's current size proportions when moving between monitors.
+# proportional_size = true
 
 # [[window_rule]]
 # match.app_id = "^spotify$"
@@ -408,6 +427,13 @@ blur_optimized = false
 enabled = true
 delay_ms = 500
 action = "overview-open"
+
+# Window-rule opacity and blur fade on focus changes by default. Disable this
+# independently of border fades, or choose its own duration and curve.
+# [animation.windows_opacity]
+# enabled = true
+# curve = "spring:1,900"
+# duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.

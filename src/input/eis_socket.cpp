@@ -49,7 +49,7 @@ namespace umbriel {
       bool eof = false;
       bool shutdown = false;
 
-      [[nodiscard]] bool canRead() const {
+      bool canRead() const {
         return !eof && queuedBytes < kMaxQueuedBytes && queuedFds < kMaxQueuedFds && packets.size() < kMaxQueuedPackets;
       }
     };

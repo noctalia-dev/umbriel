@@ -52,29 +52,31 @@ namespace umbriel {
     Output(const Output&) = delete;
     Output& operator=(const Output&) = delete;
 
-    [[nodiscard]] wlr_output* wlr() const { return m_output; }
-    [[nodiscard]] OutputIdentity identity() const;
-    [[nodiscard]] wlr_scene_output* sceneOutput() const { return m_sceneOutput; }
+    wlr_output* wlr() const { return m_output; }
+    OutputIdentity identity() const;
+    wlr_scene_output* sceneOutput() const { return m_sceneOutput; }
     // Create an opaque scene mask matching a pending configured state. The
     // caller owns the returned node and must keep it through the commit.
-    [[nodiscard]] wlr_scene_rect* createConfiguredFrameMask(const wlr_output_state& state) const;
-    [[nodiscard]] wlr_scene_tree* layerTree(uint32_t layer) const;
+    wlr_scene_rect* createConfiguredFrameMask(const wlr_output_state& state) const;
+    wlr_scene_tree* layerTree(uint32_t layer) const;
     // Popups stack above regular surfaces within the same shell layer.
-    [[nodiscard]] wlr_scene_tree* layerPopupTree(uint32_t layer) const;
+    wlr_scene_tree* layerPopupTree(uint32_t layer) const;
     // Clipped roots for this output's window content. Every descendant is scissored to the output's layout box, which
     // is what keeps a scrolled or animating view from rendering on, or entering, a neighbouring output. Positioned at
     // the layout origin, so root-local coordinates are layout coordinates.
-    [[nodiscard]] wlr_scene_tree* viewRoot() const { return m_viewRoot; }
-    [[nodiscard]] wlr_scene_tree* fullscreenRoot() const { return m_fullscreenRoot; }
-    [[nodiscard]] wlr_scene_tree* pinnedRoot() const { return m_pinnedRoot; }
+    wlr_scene_tree* viewRoot() const { return m_viewRoot; }
+    wlr_scene_tree* fullscreenRoot() const { return m_fullscreenRoot; }
+    wlr_scene_tree* pinnedRoot() const { return m_pinnedRoot; }
     // Full logical box at the live layout origin, or the last arranged origin while temporarily removed.
-    [[nodiscard]] wlr_box layoutBox() const;
-    [[nodiscard]] wlr_box usableArea() const;
-    [[nodiscard]] WorkspaceGroup* workspaceGroup() const { return m_workspaceGroup.get(); }
+    wlr_box layoutBox() const;
+    wlr_box usableArea() const;
+    WorkspaceGroup* workspaceGroup() const { return m_workspaceGroup.get(); }
     // True from the moment any view starts entering fullscreen until its client
     // has committed the exit. Output-wide fullscreen policies such as HDR and
     // VRR must cover both transitions.
-    [[nodiscard]] bool hasFullscreenView(const View* ignored = nullptr) const;
+    bool hasFullscreenView(const View* ignored = nullptr) const;
+    // Fullscreen stacking and top-layer keyboard priority share the same presentation state.
+    bool fullscreenAboveTopLayer() const { return m_fullscreenAboveTopLayer; }
 
     void arrangeLayers();
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
@@ -86,17 +88,17 @@ namespace umbriel {
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
-    [[nodiscard]] EffectSlot& screenEffectSlot() { return m_screenEffectSlot; }
-    [[nodiscard]] const EffectSlot& screenEffectSlot() const { return m_screenEffectSlot; }
+    EffectSlot& screenEffectSlot() { return m_screenEffectSlot; }
+    const EffectSlot& screenEffectSlot() const { return m_screenEffectSlot; }
     // Captures are released only by a built frame: asks for one when the last frame kept effects out of a capture.
     void scheduleEffectCaptureRelease();
     // Drawn frames that advanced persistent effects' time.
-    [[nodiscard]] uint64_t effectFrames() const { return m_effectFrames; }
+    uint64_t effectFrames() const { return m_effectFrames; }
     // Seconds persistent effects on this output draw at. Advances on effect frames, follows the clock while nothing
     // here needs them, and holds the frozen instant while the clock is frozen.
-    [[nodiscard]] float effectSeconds() const { return m_effectSeconds; }
+    float effectSeconds() const { return m_effectSeconds; }
     // Effect instances on this output that need frames of their own.
-    [[nodiscard]] unsigned effectEligible() const;
+    unsigned effectEligible() const;
     void onGammaChanged(wlr_gamma_control_v1* control);
     [[nodiscard]] bool applyOutputState();
     // Adopt a successfully committed wlr-output-management state in two
@@ -108,34 +110,34 @@ namespace umbriel {
     // DPMS power is independent of logical enablement. A powered-off output
     // stays in the logical layout with its workspace and windows intact.
     [[nodiscard]] bool setPowered(bool powered);
-    [[nodiscard]] bool dpmsOff() const { return m_dpmsOff; }
-    [[nodiscard]] bool configuredEnabled() const;
-    [[nodiscard]] bool desktopEnabled() const { return m_desktopEnabled; }
-    [[nodiscard]] HdrMode hdrMode() const;
-    [[nodiscard]] bool hdrRequested() const;
-    [[nodiscard]] bool hdrActive() const;
-    [[nodiscard]] bool automaticHdrAvailable() const;
-    [[nodiscard]] bool bitDepthActive() const;
-    [[nodiscard]] const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
-    [[nodiscard]] float configuredSdrWhite() const;
-    [[nodiscard]] float sdrWhite() const;
-    [[nodiscard]] SdrTransfer configuredSdrTransfer() const;
+    bool dpmsOff() const { return m_dpmsOff; }
+    bool configuredEnabled() const;
+    bool desktopEnabled() const { return m_desktopEnabled; }
+    HdrMode hdrMode() const;
+    bool hdrRequested() const;
+    bool hdrActive() const;
+    bool automaticHdrAvailable() const;
+    bool bitDepthActive() const;
+    const std::string& hdrFallbackReason() const { return m_hdrFallbackReason; }
+    float configuredSdrWhite() const;
+    float sdrWhite() const;
+    SdrTransfer configuredSdrTransfer() const;
     void setRuntimeSdrWhite(float nits);
-    [[nodiscard]] int configuredBitDepth() const;
-    [[nodiscard]] const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
-    [[nodiscard]] bool configuredDirectScanoutEnabled() const;
-    [[nodiscard]] bool configuredTearingAllowed() const;
+    int configuredBitDepth() const;
+    const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
+    bool configuredDirectScanoutEnabled() const;
+    bool configuredTearingAllowed() const;
     // Whether a workspace step wraps around the ends of this output's inventory.
-    [[nodiscard]] bool configuredCyclicWorkspaces() const;
-    [[nodiscard]] bool tearingRequested() const;
-    [[nodiscard]] bool lastCommitTearing() const { return m_lastCommitTearing; }
-    [[nodiscard]] const std::optional<uint32_t>& lastPresentationFlags() const { return m_lastPresentationFlags; }
-    [[nodiscard]] const std::optional<bool>& lastPresentationPresented() const { return m_lastPresentationPresented; }
-    [[nodiscard]] std::optional<bool> lastPresentationVsync() const;
-    [[nodiscard]] const std::string& tearingFallbackReason() const { return m_tearingFallbackReason; }
+    bool configuredCyclicWorkspaces() const;
+    bool tearingRequested() const;
+    bool lastCommitTearing() const { return m_lastCommitTearing; }
+    const std::optional<uint32_t>& lastPresentationFlags() const { return m_lastPresentationFlags; }
+    const std::optional<bool>& lastPresentationPresented() const { return m_lastPresentationPresented; }
+    std::optional<bool> lastPresentationVsync() const;
+    const std::string& tearingFallbackReason() const { return m_tearingFallbackReason; }
     // The latest scene buffer accepted by the backend, independently of the log's settling interval.
-    [[nodiscard]] const DirectScanoutState& directScanout() const { return m_directScanout.current(); }
-    [[nodiscard]] const DirectScanoutTracker& directScanoutTracker() const { return m_directScanout; }
+    const DirectScanoutState& directScanout() const { return m_directScanout.current(); }
+    const DirectScanoutTracker& directScanoutTracker() const { return m_directScanout; }
     // Observe only the scene state submitted by this attempt. Commit events also cover successful child commits
     // when a grouped output transaction later fails on another backend.
     class SceneCommit {
@@ -152,9 +154,9 @@ namespace umbriel {
       DirectScanoutState m_state;
       wl_listener m_commit{};
     };
-    [[nodiscard]] bool clientTearingHintAsync(const View* view) const;
-    [[nodiscard]] bool tearingEligible(View* view) const;
-    [[nodiscard]] View* tearingCandidate() const;
+    bool clientTearingHintAsync(const View* view) const;
+    bool tearingEligible(View* view) const;
+    View* tearingCandidate() const;
     void resetTearingState();
     void applyDirectScanoutConfig();
     void applyCursorConfig();
@@ -165,14 +167,14 @@ namespace umbriel {
     // running commits the damage. Single-threaded, non-blocking, bounded per
     // output.
     bool paceCursorPlaneTransition();
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     // Harness-only: synthesize the plane sample a headless backend cannot produce.
     void setSyntheticPlaneCursorForTest(
         double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
     );
 #endif
     // True only for sessions needing separate cursor metadata
-    [[nodiscard]] bool needsCursorCapturePacing() const;
+    bool needsCursorCapturePacing() const;
     // Re-evaluate fullscreen-controlled VRR after a view or workspace changes.
     void updateVrr();
     // Re-evaluate automatic HDR after surface color, fullscreen, visibility,
@@ -190,7 +192,7 @@ namespace umbriel {
     static void notifySurfaceScaleIter(wlr_surface* surface, int sx, int sy, void* data);
 
   private:
-    [[nodiscard]] bool audioPending() const;
+    bool audioPending() const;
     // Flushed at the top of handleFrame, in Dirty declaration order: layer arrange defines the usable area, which the
     // layout depends on, which the chrome over it depends on.
     void flushDirty();
@@ -208,28 +210,30 @@ namespace umbriel {
     static int onDirectScanoutTimer(void* data);
 
     void handleFrame();
+    void updateFullscreenStack();
+    bool fullscreenCoversOutput() const;
     void handleRequestState(void* data);
     void handlePresent(void* data);
     void handleDestroy();
     // Full configuration stages geometry. Frame-bound HDR transitions reuse
     // the live geometry and carry a freshly rendered scene buffer.
     [[nodiscard]] bool applyConfiguredState(bool stageGeometry = true);
-    [[nodiscard]] bool autoHdrEligible(const View* view) const;
-    [[nodiscard]] View* findAutoHdrCandidate() const;
-    [[nodiscard]] bool configuredVrrEnabled() const;
+    bool autoHdrEligible(const View* view) const;
+    View* findAutoHdrCandidate() const;
+    bool configuredVrrEnabled() const;
     void setHdrFallbackReason(std::string_view reason);
     void setBitDepthFallbackReason(std::string_view reason);
     void updateSceneSdrWhite();
     void updateSceneHdrWhitePoint(wlr_gamma_control_v1* control);
     void armFrameRetry();
-    [[nodiscard]] DirectScanoutState builtDirectScanout() const;
+    DirectScanoutState builtDirectScanout() const;
     void recordDirectScanout(const DirectScanoutState& state, uint32_t commitSeq);
     void armEffectFrame(uint64_t nowMsec);
     // Render locks other than this output's animation lock.
-    [[nodiscard]] int externalRenderLocks() const;
+    int externalRenderLocks() const;
     // A capture holding `captureLocks` must see frames without in-place effects.
-    [[nodiscard]] bool effectCapturePending(int captureLocks) const;
-    [[nodiscard]] bool captureExclusionPending(int captureLocks) const;
+    bool effectCapturePending(int captureLocks) const;
+    bool captureExclusionPending(int captureLocks) const;
     void disarmEffectFrame();
     wlr_output_layout_output* addToLayout();
     void arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
@@ -260,8 +264,9 @@ namespace umbriel {
     bool m_gammaDirty = false;
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
+    bool m_fullscreenAboveTopLayer = false;
     CursorPlaneState m_lastCursorPlane{};
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     std::optional<CursorPlaneState> m_syntheticPlaneCursor;
 #endif
     bool m_desktopEnabled = true;

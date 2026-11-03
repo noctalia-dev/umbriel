@@ -137,6 +137,20 @@ Scratchpads are global rather than owned by one output. The pointer selects the 
 
 Toggling a scratchpad already visible on another output moves it to the invoking output. Toggling it again on the same output hides it. Only one scratchpad can be visible on an output, but different outputs can show different scratchpads.
 
+### Proportional sizing across monitors
+
+Scratchpad windows keep their logical-pixel size by default. Enable `proportional_size` on a named scratchpad to preserve each window's width and height as proportions of the usable area when it moves to another monitor:
+
+```toml
+[[scratchpad]]
+name = "terminal"
+proportional_size = true
+```
+
+A window occupying 88% of one monitor's usable width occupies approximately 88% on the next, subject to the application's size limits. Manual resizing establishes the proportions used for the next monitor transfer; the initial window size rule is not reapplied. Showing, hiding, or moving the window within the same monitor does not resize it. Changes to that monitor's scale, mode, or panels do not proportionally resize it either.
+
+Fullscreen and maximized windows continue to fit their monitor, and their saved normal size follows the proportional setting. Restoring a window or moving it to a workspace ends proportional sizing and restores its saved tiled or floating state. Floating windows keep their current size; tiled windows follow the destination layout.
+
 ## Visibility and focus
 
 Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview hides every visible scratchpad without removing its stored windows. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.

@@ -251,8 +251,8 @@ int __wrap_stat(const char* path, struct stat* result) {
 }
 
 udev_enumerate* udev_enumerate_new(udev*) { return new udev_enumerate; }
-udev_enumerate* udev_enumerate_unref(udev_enumerate* enumerate) {
-  delete enumerate;
+udev_enumerate* udev_enumerate_unref(udev_enumerate* p) {
+  delete p;
   return nullptr;
 }
 int udev_enumerate_add_match_subsystem(udev_enumerate*, const char*) { return 0; }
@@ -272,9 +272,9 @@ udev_device* udev_device_new_from_syspath(udev*, const char* path) {
   const auto found = std::ranges::find(devices->inventory, path, &udev_device::syspath);
   return found == devices->inventory.end() || !found->present ? nullptr : &*found;
 }
-udev_device* udev_device_new_from_devnum(udev*, char, dev_t number) {
+udev_device* udev_device_new_from_devnum(udev*, char, dev_t devnum) {
   const auto found = std::ranges::find_if(devices->inventory, [&](const auto& device) {
-    return device.present && device.device == number && device.subsystem == "drm";
+    return device.present && device.device == devnum && device.subsystem == "drm";
   });
   return found == devices->inventory.end() ? nullptr : &*found;
 }

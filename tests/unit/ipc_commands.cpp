@@ -48,7 +48,7 @@ namespace {
   }
 
   // Builds a minimal color IPC payload for a single output.
-  nlohmann::json colorPayload(nlohmann::json outputOverrides) {
+  nlohmann::json colorPayload(const nlohmann::json& outputOverrides) {
     nlohmann::json output = {
         {"name", "HEADLESS-1"},
         {"enabled", true},

@@ -81,7 +81,7 @@ namespace umbriel {
         return std::nullopt;
       }
       const double value = band.get<double>();
-      if (!(value >= 0.0 && value <= 1.0)) {
+      if (std::isnan(value) || value < 0.0 || value > 1.0) {
         return std::nullopt;
       }
       audio[i] = static_cast<float>(value);
@@ -1218,7 +1218,7 @@ namespace umbriel {
   nlohmann::json IpcCommands::settle(Server& /*server*/, IpcArgs /*args*/) { return nlohmann::json{{"ok", nullptr}}; }
 
   nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     server.freezeAnimationClock();
 #endif
     return nlohmann::json{{"ok", nullptr}};
@@ -1229,13 +1229,13 @@ namespace umbriel {
   }
 
   nlohmann::json IpcCommands::clockResume([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     server.resumeAnimationClock();
 #endif
     return nlohmann::json{{"ok", nullptr}};
   }
 
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
   namespace {
     // The harness commands below parse their words as one whitespace-separated stream.
     std::string joinArgs(IpcArgs args) {
@@ -1407,7 +1407,7 @@ namespace umbriel {
        &printTearing},
       {"keyboard-layouts", "", "list keyboard layouts", IpcCommandGroup::Inspect, false, &IpcCommands::keyboardLayouts,
        &printKeyboardLayouts},
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
       {"settle", "", "wait until no layout or animation is pending and every output has drawn a frame",
        IpcCommandGroup::Harness, false, &IpcCommands::settle, nullptr, 35},
       {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},

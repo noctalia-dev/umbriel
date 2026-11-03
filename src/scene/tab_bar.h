@@ -60,23 +60,23 @@ namespace umbriel {
     ~TabBar() override;
 
     void setModel(TabBarModel model);
-    [[nodiscard]] const TabBarModel& model() const { return m_model; }
-    [[nodiscard]] const TabBarStyle& style() const { return m_style; }
+    const TabBarModel& model() const { return m_model; }
+    const TabBarStyle& style() const { return m_style; }
     // The drawn bar in layout coordinates; empty while nothing is drawn.
-    [[nodiscard]] wlr_box layoutBox() const;
+    wlr_box layoutBox() const;
     // The tabs the bar shows, its model's strip kept inside its tabs.
-    [[nodiscard]] TabStrip visibleStrip() const;
+    TabStrip visibleStrip() const;
     // What lies at a point in the bar's own coordinates: a tab, a cycle button, or nothing.
-    [[nodiscard]] TabBarPoint pointAt(double localX, double localY) const;
+    TabBarPoint pointAt(double localX, double localY) const;
     // Where a window dropped at a point in the bar's own coordinates joins the tabs.
-    [[nodiscard]] TabBarDrop dropAt(double localX, double localY) const;
+    TabBarDrop dropAt(double localX, double localY) const;
 
     void layout(const ViewChromeGeometry& geometry) override;
     void setFocused(bool focused) override;
     void setAlpha(float alpha) override;
     void reloadConfig() override;
     // An overview card's copy of this bar: the same tabs, drawn at the card's zoom.
-    [[nodiscard]] std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
+    std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
     void syncPreview(ViewChromeAttachment& preview) const override;
 
   private:
@@ -86,20 +86,20 @@ namespace umbriel {
       wlr_scene_buffer* label = nullptr;
     };
 
-    [[nodiscard]] bool drawn() const;
+    bool drawn() const;
     // Whether the bar runs across the column, top or bottom, rather than down it.
-    [[nodiscard]] bool across() const { return tabBarAcross(m_style.position); }
+    bool across() const { return tabBarAcross(m_style.position); }
     // The bar relative to the frame of the window carrying it.
-    [[nodiscard]] wlr_box localBox() const;
+    wlr_box localBox() const;
     // The bar's extent along its slots, and across them.
-    [[nodiscard]] int length() const;
-    [[nodiscard]] int thickness() const;
+    int length() const;
+    int thickness() const;
     // The part of the bar from `start` along its slots, `extent` long, the bar's whole thickness across.
-    [[nodiscard]] wlr_box span(int start, int extent) const;
+    wlr_box span(int start, int extent) const;
     // Logical bar units scaled to the size the bar is drawn at: unchanged at full size, smaller on an overview card.
     // Layout stays in logical units, so a card asks the label cache for the titles the live bar already rendered.
-    [[nodiscard]] int zoomed(int value) const;
-    [[nodiscard]] wlr_box zoomed(const wlr_box& box) const;
+    int zoomed(int value) const;
+    wlr_box zoomed(const wlr_box& box) const;
     void redraw();
     // Tab `index` drawn in `rect`.
     void drawSlot(Slot& slot, size_t index, const wlr_box& rect);
@@ -113,8 +113,8 @@ namespace umbriel {
         TitleAlign align, float alpha
     );
     // The slot fill and title colours of tab `index`, by its state.
-    [[nodiscard]] const std::array<float, 4>& fillColor(size_t index) const;
-    [[nodiscard]] const std::array<float, 4>& textColor(size_t index) const;
+    const std::array<float, 4>& fillColor(size_t index) const;
+    const std::array<float, 4>& textColor(size_t index) const;
     void dropLabel(Slot& slot);
     void destroySlot(Slot& slot);
 

@@ -8,7 +8,7 @@ namespace {
   void
   checkColorNear(const std::array<float, 4>& actual, const std::array<float, 4>& expected, float tolerance = 0.00001F) {
     for (std::size_t channel = 0; channel < actual.size(); ++channel) {
-      CHECK(std::abs(actual[channel] - expected[channel]) < tolerance);
+      CHECK_NEAR(actual[channel], expected[channel], tolerance);
     }
   }
 
@@ -56,7 +56,7 @@ UMBRIEL_TEST(animatedValueReachesItsTargetOnTheConfiguredTimeline) {
   CHECK(value.animating());
 
   CHECK(value.tick(1050));
-  CHECK(std::abs(value.current() - 15.0) < 0.0001);
+  CHECK_NEAR(value.current(), 15.0, 0.0001);
   CHECK(value.animating());
 
   CHECK(value.tick(1100));
@@ -72,7 +72,7 @@ UMBRIEL_TEST(monotonicEasingPreservesSafeCurvesAndProjectsOvershootAcrossTheFull
   const umbriel::MonotonicEasing ordinaryMotion{ordinary};
   for (int step = 0; step <= 20; ++step) {
     const double linear = static_cast<double>(step) / 20.0;
-    CHECK(std::abs(ordinaryMotion.value(linear) - umbriel::evaluateCurve(ordinary, linear)) < 0.000001);
+    CHECK_NEAR(ordinaryMotion.value(linear), umbriel::evaluateCurve(ordinary, linear), 0.000001);
   }
 
   const umbriel::AnimationCurve snappy{.easing = umbriel::Easing::Snappy};
@@ -205,7 +205,7 @@ UMBRIEL_TEST(animatedValueReportsItsCurvesSpeed) {
   value.retarget(100.0, 1000, umbriel::Easing::Linear);
   CHECK(value.tick(1000));
   CHECK(value.tick(1500));
-  CHECK(std::abs(value.velocity() - 100.0) < 0.5);
+  CHECK_NEAR(value.velocity(), 100.0, 0.5);
 }
 
 UMBRIEL_TEST(animatedValueKeepsSubMillisecondTime) {
@@ -214,9 +214,9 @@ UMBRIEL_TEST(animatedValueKeepsSubMillisecondTime) {
   value.retarget(100.0, 10, umbriel::Easing::Linear);
   CHECK(value.tick(1000.0));
   CHECK(value.tick(1000.5));
-  CHECK(std::abs(value.current() - 5.0) < 1e-9);
+  CHECK_NEAR(value.current(), 5.0, 1e-9);
   CHECK(value.tick(1006.06));
-  CHECK(std::abs(value.current() - 60.6) < 1e-6);
+  CHECK_NEAR(value.current(), 60.6, 1e-6);
 }
 
 UMBRIEL_TEST(interruptedSpringRetargetKeepsItsSpeed) {
@@ -237,7 +237,7 @@ UMBRIEL_TEST(interruptedSpringRetargetKeepsItsSpeed) {
   CHECK_EQ(value.current(), position);
   CHECK(value.tick(1051));
   const double carried = (value.current() - position) / 0.001;
-  CHECK(std::abs(carried - speed) < speed * 0.05);
+  CHECK_NEAR(carried, speed, speed * 0.05);
   CHECK(value.tick(5000));
   CHECK_EQ(value.current(), 2000.0);
   CHECK(!value.animating());
@@ -268,13 +268,13 @@ UMBRIEL_TEST(springCurveTimescaleComesFromItsParameters) {
   CHECK(fast.durationMs() != 5000);
   CHECK(slow.durationMs() != 5000);
   const double stiffnessRatio = static_cast<double>(slow.durationMs()) / static_cast<double>(fast.durationMs());
-  CHECK(std::abs(stiffnessRatio - 4.0) < 0.05);
+  CHECK_NEAR(stiffnessRatio, 4.0, 0.05);
 
   // Mass is the other half of the timescale: four times the mass takes twice as long.
   const int light = umbriel::springDurationMs({.damping = 1.0, .stiffness = 1000.0, .mass = 1.0});
   const int heavy = umbriel::springDurationMs({.damping = 1.0, .stiffness = 1000.0, .mass = 4.0});
   const double massRatio = static_cast<double>(heavy) / static_cast<double>(light);
-  CHECK(std::abs(massRatio - 2.0) < 0.05);
+  CHECK_NEAR(massRatio, 2.0, 0.05);
 
   // Damping shapes the response instead: it must not leave the timescale untouched either.
   CHECK(umbriel::springDurationMs({.damping = 2.0, .stiffness = 1000.0, .mass = 1.0}) > light);
@@ -293,7 +293,7 @@ UMBRIEL_TEST(springCurveSettlesOnItsTargetBeforeTheTimelineEnds) {
     if (!curve) {
       continue;
     }
-    CHECK(std::abs(umbriel::applyEasing(*curve, 0.999) - 1.0) < 0.001);
+    CHECK_NEAR(umbriel::applyEasing(*curve, 0.999), 1.0, 0.001);
 
     double peak = 0.0;
     for (int sample = 0; sample <= 1000; ++sample) {
@@ -314,15 +314,15 @@ UMBRIEL_TEST(overdampedSpringVelocityMatchesItsPositionDerivative) {
   const double after = umbriel::solveSpringPhysics(0.0, 1.0, 2.0, sampleTime + delta, spring);
   const double derivative = (after - before) / (2.0 * delta);
 
-  CHECK(std::abs(velocity - derivative) < 0.00001);
+  CHECK_NEAR(velocity, derivative, 0.00001);
 }
 
 UMBRIEL_TEST(springDisplacementBoundIncludesPositionAndVelocityEnergy) {
   const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 100.0, .mass = 1.0};
 
-  CHECK(std::abs(umbriel::springDisplacementBound(1.25, 1.0, 0.0, spring) - 0.25) < 1e-12);
-  CHECK(std::abs(umbriel::springDisplacementBound(1.0, 1.0, 2.0, spring) - 0.2) < 1e-12);
-  CHECK(std::abs(umbriel::springDisplacementBound(1.15, 1.0, 2.0, spring) - std::hypot(0.15, 0.2)) < 1e-12);
+  CHECK_NEAR(umbriel::springDisplacementBound(1.25, 1.0, 0.0, spring), 0.25, 1e-12);
+  CHECK_NEAR(umbriel::springDisplacementBound(1.0, 1.0, 2.0, spring), 0.2, 1e-12);
+  CHECK_NEAR(umbriel::springDisplacementBound(1.15, 1.0, 2.0, spring), std::hypot(0.15, 0.2), 1e-12);
 }
 
 UMBRIEL_TEST(springTailFinishesOnlyInsideTheTargetPixelsRoundingCell) {

@@ -164,15 +164,16 @@ verify_close() {
   "$UMBRIEL" msg window-close "$id" > /dev/null
   wait_unmapped "$closing_title"
 
-  # Each frame is measured in the background while the next one is captured.
-  local -a probes=()
-  for i in $(seq 0 29); do
-    ((i > 0)) && "$UMBRIEL" clock-advance 100
-    grim "$SHOTS/$phase-$i.png"
-    measure_frame "$SHOTS/$phase-$i" &
-    probes+=($!)
-  done
-  wait "${probes[@]}"
+  # Each frame is measured in the background while the next one is captured. The loop runs in a subshell so its
+  # wait covers only those measurements, not the clients this shell spawned.
+  (
+    for i in $(seq 0 29); do
+      ((i > 0)) && "$UMBRIEL" clock-advance 100
+      grim "$SHOTS/$phase-$i.png"
+      measure_frame "$SHOTS/$phase-$i" &
+    done
+    wait
+  )
 
   local -a early=() middle=() late=() move=() red_boxes=()
   for i in $(seq 0 29); do

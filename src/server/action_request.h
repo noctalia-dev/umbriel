@@ -14,9 +14,9 @@ namespace umbriel {
 
   // Decodes a request into the action and payload of a Keybind. Unknown, mistyped, missing, or out-of-range fields
   // fail with `error` set.
-  [[nodiscard]] std::optional<Keybind> actionFromRequest(const nlohmann::json& request, std::string& error);
+  std::optional<Keybind> actionFromRequest(const nlohmann::json& request, std::string& error);
 
   // Encodes a parsed action as a request. Empty optional payload fields are left out.
-  [[nodiscard]] nlohmann::json actionRequest(const Keybind& bind);
+  nlohmann::json actionRequest(const Keybind& bind);
 
 } // namespace umbriel

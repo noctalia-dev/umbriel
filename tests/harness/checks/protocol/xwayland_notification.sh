@@ -8,20 +8,7 @@ source "$UMBRIEL_HARNESS_LIB"
 readonly NATIVE_TITLE=xwayland-notification-native
 readonly NATIVE_LOG="$UMBRIEL_RUNTIME_DIR/notification-native.log"
 client_pid=
-native_pid=
 sequence=0
-
-cleanup() {
-  if [[ -n $client_pid ]]; then
-    printf 'quit\n' >&"$control_fd" || true
-    wait "$client_pid" || true
-  fi
-  if [[ -n $native_pid ]]; then
-    kill "$native_pid" 2>/dev/null || true
-    wait "$native_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
 
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
@@ -155,7 +142,6 @@ expect_native_held() {
 }
 
 "$UMBRIEL_SEAT_LOG_CLIENT" "$NATIVE_TITLE" > "$NATIVE_LOG" 2>&1 &
-native_pid=$!
 await_lines "$NATIVE_LOG" keyboard-enter 1 0.025
 native_id=$("$UMBRIEL" windows --json | jq -r --arg title "$NATIVE_TITLE" '.[] | select(.title == $title) | .id')
 native_leaves=$(events "$NATIVE_LOG" keyboard-leave)

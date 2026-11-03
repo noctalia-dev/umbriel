@@ -638,6 +638,7 @@ namespace umbriel {
       m_effectSelectionIdle = nullptr;
     }
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
+    const bool focusChanged = m_appliedRuleState.focused != ruleState().focused;
     m_appliedRuleState = ruleState();
     if (const bool allowed = rule.allowShortcutsInhibit.value_or(true); allowed != m_allowShortcutsInhibit) {
       m_allowShortcutsInhibit = allowed;
@@ -701,23 +702,23 @@ namespace umbriel {
         scheduleFrame();
       }
     }
-    const Config::Colors::Border& colors = m_decoration.borderColors();
-    const std::array<float, 4>& targetBorder = m_borderFocusedState ? colors.focused : colors.unfocused;
-    const auto& borderAnimation = config().animation.border;
-    if (m_mapped && m_borderColorAnim.animating() && borderAnimation.enabled) {
-      if (m_borderColorAnim.target() != targetBorder) {
-        m_borderColorAnim.retarget(targetBorder, borderAnimation.durationMs, borderAnimation.curve);
+    const auto& opacityAnimation = config().animation.windowsOpacity;
+    const bool animateFocus = m_mapped && config().animation.enabled && opacityAnimation.enabled;
+    const auto now = static_cast<double>(m_server->animationClockMsec());
+    const auto update = [&](AnimatedValue& value, double target) {
+      if (animateFocus && focusChanged && value.target() != target) {
+        value.tick(now);
+        value.retarget(target, opacityAnimation.durationMs, opacityAnimation.curve);
+        value.tick(now);
         scheduleFrame();
+      } else if (!animateFocus || value.target() != target) {
+        value.snap(target);
       }
-    } else {
-      m_borderColorAnim.snap(targetBorder);
-      m_decoration.setBorderColor(m_borderFocusedState, effectiveOpacity());
-    }
-    const float newOpacity = rule.opacity ? static_cast<float>(*rule.opacity) : 1.0F;
-    if (newOpacity != m_ruleOpacity) {
-      m_ruleOpacity = newOpacity;
-      setFadeAlpha(m_fadeAlpha); // refresh effective opacity
-    }
+    };
+    update(m_ruleOpacity, rule.opacity.value_or(1.0));
+    update(m_ruleBlur, rule.blur.value_or(false) ? 1.0 : 0.0);
+    updateBorderColor(focusChanged);
+    setFadeAlpha(m_fadeAlpha);
     m_ruleCaptureBlocked = rule.blockCapture.value_or(false);
     refreshCaptureProtection();
     if (const bool backgroundRender = rule.backgroundRender.value_or(false); backgroundRender != m_backgroundRender) {

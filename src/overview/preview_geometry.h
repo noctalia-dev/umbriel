@@ -19,11 +19,11 @@ namespace umbriel {
     int gap = 0;
 
     // Distance between neighbouring previews along the workspace axis.
-    [[nodiscard]] int step(bool horizontal) const { return (horizontal ? width : height) + gap; }
+    int step(bool horizontal) const { return (horizontal ? width : height) + gap; }
   };
 
   // Previews scaled by zoom and centred on the output box; the gap scales with the workspace axis.
-  [[nodiscard]] inline PreviewGrid
+  inline PreviewGrid
   previewGrid(int outputX, int outputY, int outputWidth, int outputHeight, double zoom, bool horizontal) {
     PreviewGrid grid;
     grid.width = std::max(1, static_cast<int>(std::lround(outputWidth * zoom)));
@@ -36,7 +36,7 @@ namespace umbriel {
   }
 
   // Origin along the workspace axis of the preview for workspaceIndex while the filmstrip is at workspaceScroll.
-  [[nodiscard]] inline int
+  inline int
   previewAxisOrigin(const PreviewGrid& grid, bool horizontal, size_t workspaceIndex, double workspaceScroll) {
     const double offset = (static_cast<double>(workspaceIndex) - workspaceScroll) * grid.step(horizontal);
     return static_cast<int>(std::lround((horizontal ? grid.baseX : grid.baseY) + offset));

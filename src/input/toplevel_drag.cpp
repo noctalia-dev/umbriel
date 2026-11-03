@@ -235,15 +235,16 @@ namespace umbriel {
   }
 
   bool ToplevelDragManager::rejectSelection(wlr_data_source* source) {
-    for (const Drag* drag : m_drags) {
-      if (drag->source != nullptr && dataSource(drag->source) == source) {
-        wl_resource_post_error(
-            drag->resource, XDG_TOPLEVEL_DRAG_MANAGER_V1_ERROR_INVALID_SOURCE, "toplevel drag source used as selection"
-        );
-        return true;
-      }
+    const auto match = std::ranges::find_if(m_drags, [source](const Drag* drag) {
+      return drag->source != nullptr && dataSource(drag->source) == source;
+    });
+    if (match == m_drags.end()) {
+      return false;
     }
-    return false;
+    wl_resource_post_error(
+        (*match)->resource, XDG_TOPLEVEL_DRAG_MANAGER_V1_ERROR_INVALID_SOURCE, "toplevel drag source used as selection"
+    );
+    return true;
   }
 
   bool ToplevelDragManager::attached(const wlr_xdg_toplevel* toplevel) const {

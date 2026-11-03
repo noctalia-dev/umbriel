@@ -18,8 +18,8 @@ namespace umbriel {
   enum class EffectSelectionPolicy : std::uint8_t { UnusedFirst, RoundRobin, Random };
   enum class EffectReferenceConstraint : std::uint8_t { PresetOnly, PresetOrPool, PoolRequired };
 
-  [[nodiscard]] std::optional<EffectSelectionPolicy> parseEffectSelectionPolicy(std::string_view text);
-  [[nodiscard]] std::string_view effectSelectionPolicyName(EffectSelectionPolicy policy);
+  std::optional<EffectSelectionPolicy> parseEffectSelectionPolicy(std::string_view text);
+  std::string_view effectSelectionPolicyName(EffectSelectionPolicy policy);
 
   // Stable inner-to-outer composition order for effects sharing a target. Values equal the FX_SLOT_* indices.
   enum class AnimationEvent : unsigned {
@@ -38,8 +38,8 @@ namespace umbriel {
     Overview
   };
 
-  [[nodiscard]] std::optional<EffectKind> parseEffectKind(std::string_view text);
-  [[nodiscard]] std::string_view effectKindName(EffectKind kind);
+  std::optional<EffectKind> parseEffectKind(std::string_view text);
+  std::string_view effectKindName(EffectKind kind);
 
   // Keep source text in the resolved configuration. File edits then participate
   // in config equality, and render paths never perform filesystem I/O.
@@ -49,7 +49,7 @@ namespace umbriel {
     bool operator==(const ShaderSource&) const = default;
   };
 
-  struct ShaderReadResult {
+  struct [[nodiscard]] ShaderReadResult {
     std::optional<ShaderSource> source;
     // Includes missing files so creating one can trigger another config load.
     std::vector<std::filesystem::path> watchPaths;
@@ -59,8 +59,7 @@ namespace umbriel {
 
   // Reads the shader file path under `key`. Relative file paths belong to the
   // TOML value's source file, including when tables were merged.
-  [[nodiscard]] ShaderReadResult
-  readShaderSource(Section& section, std::string_view key, std::vector<ConfigDiagnostic>& diagnostics);
+  ShaderReadResult readShaderSource(Section& section, std::string_view key, std::vector<ConfigDiagnostic>& diagnostics);
 
   // The reserved selector value that disables a default per window or output.
   inline constexpr std::string_view kEffectOff = "off";
@@ -85,7 +84,7 @@ namespace umbriel {
     std::string overlay = {}; // NOLINT(readability-redundant-member-init) border: names a window preset
     std::optional<BorderLight> light = std::nullopt; // border
     int radius = 0;                                  // cursor: 0-4096, 0 = whole output
-    [[nodiscard]] bool inert() const { return shader.code.empty(); }
+    bool inert() const { return shader.code.empty(); }
     bool operator==(const EffectPreset&) const = default;
   };
 
@@ -103,6 +102,8 @@ namespace umbriel {
     std::string border; // "" = off
     std::string window;
     std::string screen;
+    // Replaces `screen` on an output while a client captures it whole. "" = none.
+    std::string screenCast;
     std::string cursor;
     int maxFps = 0; // 0-240, 0 follows the refresh rate
     bool inCapture = false;
@@ -110,11 +111,11 @@ namespace umbriel {
     bool operator==(const Effects&) const = default;
   };
 
-  [[nodiscard]] const EffectPreset* findEffectPreset(const Effects& effects, std::string_view name);
-  [[nodiscard]] const EffectPool* findEffectPool(const Effects& effects, std::string_view name);
+  const EffectPreset* findEffectPreset(const Effects& effects, std::string_view name);
+  const EffectPool* findEffectPool(const Effects& effects, std::string_view name);
   // Empty and, when allowOff, "off" are valid; other references must satisfy kind and constraint.
   // Returns the diagnostic text on failure.
-  [[nodiscard]] std::optional<std::string> effectReferenceError(
+  std::optional<std::string> effectReferenceError(
       const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
       EffectReferenceConstraint constraint = EffectReferenceConstraint::PresetOnly
   );

@@ -62,10 +62,10 @@ _ensure-configured m=mode:
     fi
 
 # Auto mode leaves test targets out of release and sanitized builds, so the recipes that need them turn them on
-# for the build directory they run in. `ipc` also turns on the harness-only IPC commands, which `check` needs and
+# for the build directory they run in. `harness` also turns on the harness-only behavior, which `check` needs and
 # debug and asan builds already have.
 [no-exit-message]
-_enable-tests m=mode ipc="no":
+_enable-tests m=mode harness="no":
     #!/usr/bin/env bash
     set -euo pipefail
     configured="$(meson configure "build-{{m}}")"
@@ -74,8 +74,8 @@ _enable-tests m=mode ipc="no":
     if [[ "{{m}}" != "debug" && "$(current tests)" != "enabled" ]]; then
         args+=(-Dtests=enabled)
     fi
-    if [[ "{{ipc}}" == "yes" && "{{m}}" != "debug" && "{{m}}" != "asan" && "$(current test_ipc)" != "enabled" ]]; then
-        args+=(-Dtest_ipc=enabled)
+    if [[ "{{harness}}" == "yes" && "{{m}}" != "debug" && "{{m}}" != "asan" && "$(current harness)" != "enabled" ]]; then
+        args+=(-Dharness=enabled)
     fi
     if ((${#args[@]} > 0)); then
         meson configure "build-{{m}}" "${args[@]}"

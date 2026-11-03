@@ -33,7 +33,7 @@ namespace {
     Keymap(const Keymap&) = delete;
     Keymap& operator=(const Keymap&) = delete;
 
-    [[nodiscard]] xkb_keymap* get() const { return m_keymap; }
+    xkb_keymap* get() const { return m_keymap; }
 
   private:
     xkb_context* m_context = nullptr;

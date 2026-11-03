@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <string>
 #include <variant>
 #include <vector>
@@ -266,7 +267,9 @@ UMBRIEL_TEST(parsesPrimaryExtentFractions) {
   CHECK(bind.action == KeybindAction::WindowSetPrimaryExtent);
   const auto* width = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(width != nullptr);
-  CHECK(width != nullptr && std::fabs(width->fraction - 0.5) < 1e-9);
+  if (width != nullptr) {
+    CHECK_NEAR(width->fraction, 0.5, 1e-9);
+  }
 
   CHECK(parseAction("window-set-primary-extent 1.0", bind));
   CHECK(parseAction("window-set-primary-extent 0.1", bind));
@@ -298,13 +301,13 @@ UMBRIEL_TEST(parsesPrimaryExtentDeltas) {
   Keybind bind;
   CHECK(parseAction("window-modify-primary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifyPrimaryExtent);
-  CHECK(std::fabs(fraction(bind) + 0.2) < 1e-9);
+  CHECK_NEAR(fraction(bind), -0.2, 1e-9);
 
   CHECK(parseAction("window-modify-primary-extent +0.1", bind)); // explicit plus is allowed
-  CHECK(std::fabs(fraction(bind) - 0.1) < 1e-9);
+  CHECK_NEAR(fraction(bind), 0.1, 1e-9);
 
   CHECK(parseAction("window-modify-primary-extent 0.25", bind));
-  CHECK(std::fabs(fraction(bind) - 0.25) < 1e-9);
+  CHECK_NEAR(fraction(bind), 0.25, 1e-9);
 }
 
 UMBRIEL_TEST(rejectsInvalidPrimaryExtentDeltas) {
@@ -326,16 +329,24 @@ UMBRIEL_TEST(parsesSecondaryExtentActions) {
   CHECK(bind.action == KeybindAction::WindowSetSecondaryExtent);
   const auto* height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr);
-  CHECK(height != nullptr && std::fabs(height->fraction - 0.5) < 1e-9);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, 0.5, 1e-9);
+  }
 
   CHECK(parseAction("window-modify-secondary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifySecondaryExtent);
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
-  CHECK(height != nullptr && std::fabs(height->fraction + 0.2) < 1e-9);
+  CHECK(height != nullptr);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, -0.2, 1e-9);
+  }
 
   CHECK(parseAction("window-modify-secondary-extent +0.1", bind));
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
-  CHECK(height != nullptr && std::fabs(height->fraction - 0.1) < 1e-9);
+  CHECK(height != nullptr);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, 0.1, 1e-9);
+  }
 
   CHECK(!parseAction("window-set-secondary-extent 0.05", bind));
   CHECK(!parseAction("window-modify-secondary-extent 0", bind));
@@ -628,16 +639,16 @@ UMBRIEL_TEST(parsesOutputSdrWhiteAction) {
   Keybind bind;
   CHECK(parseAction("output-sdr-white 203", bind));
   CHECK(bind.action == KeybindAction::OutputSdrWhite);
-  CHECK(std::fabs(sdrWhiteOf(bind) - 203.0) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 203.0, 1e-9);
   CHECK(outputOf(bind).empty());
 
   CHECK(parseAction("output-sdr-white 120 --output DP-1", bind));
-  CHECK(std::fabs(sdrWhiteOf(bind) - 120.0) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 120.0, 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
 
   // The flag may precede the level, and its value is taken verbatim.
   CHECK(parseAction("output-sdr-white --output vendor/panel 120.5", bind));
-  CHECK(std::fabs(sdrWhiteOf(bind) - 120.5) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 120.5, 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"vendor/panel"});
 
   CHECK(parseAction("output-sdr-white 80", bind));
@@ -1212,9 +1223,9 @@ UMBRIEL_TEST(effectActionsParseTypedTargets) {
     CHECK(parseAction("effect-" + kind + "-set off", bind));
     CHECK_EQ(umbriel::payloadIf<umbriel::EffectWindowArg>(bind)->name, std::string{"off"});
     for (const std::string op : {"toggle", "reset"}) {
-      CHECK(parseAction("effect-" + kind + "-" + op + " window-1", bind));
+      CHECK(parseAction(std::format("effect-{}-{} window-1", kind, op), bind));
       CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"window-1"});
-      CHECK(parseAction("effect-" + kind + "-" + op, bind));
+      CHECK(parseAction(std::format("effect-{}-{}", kind, op), bind));
     }
   }
   CHECK(parseAction("effect-screen-set cinema --output vendor/panel", bind));
@@ -1245,11 +1256,11 @@ UMBRIEL_TEST(effectActionsRejectMalformedNamesAndTargets) {
     const std::string flag = kind == "screen" ? "output" : "window";
     for (const std::string& arg :
          std::vector<std::string>{"", " ''", " --" + flag + " target", " name --" + flag, " a b"}) {
-      CHECK(!parseAction("effect-" + kind + "-set" + arg, bind));
+      CHECK(!parseAction(std::format("effect-{}-set{}", kind, arg), bind));
     }
     for (const std::string& arg :
          std::vector<std::string>{" ''", " off", " off --" + flag + " target", " name --" + flag, " a b"}) {
-      CHECK(!parseAction("effect-" + kind + "-cycle" + arg, bind));
+      CHECK(!parseAction(std::format("effect-{}-cycle{}", kind, arg), bind));
     }
     CHECK(!parseAction("effect-" + kind + "-toggle ''", bind));
     CHECK(!parseAction("effect-" + kind + "-reset ''", bind));
@@ -1364,7 +1375,7 @@ UMBRIEL_TEST(windowMoveByActionRejectMalformedArgs) {
 UMBRIEL_TEST(parsesStackingLayoutAndCustomCycle) {
   Keybind bind;
   CHECK(parseAction("workspace-set-layout stacking", bind));
-  auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
+  const auto* arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
   CHECK(arg != nullptr && arg->mode == umbriel::LayoutMode::Stacking);
   CHECK(parseAction("workspace-set-layout toggle stacking scrolling", bind));
   arg = umbriel::payloadIf<umbriel::LayoutModeArg>(bind);
@@ -1382,7 +1393,7 @@ UMBRIEL_TEST(parsesRegionActionsAndRejectsRemovedNames) {
   Keybind bind;
   CHECK(parseAction("window-set-region top_left", bind));
   CHECK(bind.action == KeybindAction::WindowSetRegion);
-  auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
+  const auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);
   CHECK(arg != nullptr && arg->region == umbriel::WindowRegion::TopLeft);
   CHECK(parseAction("window-set-region top", bind));
   arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind);

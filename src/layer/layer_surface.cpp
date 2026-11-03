@@ -276,7 +276,7 @@ namespace umbriel {
       return false;
     }
     if (m_layerSurface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
-      if (Output* out = output(); out != nullptr && out->hasFullscreenView()) {
+      if (Output* out = output(); out != nullptr && out->fullscreenAboveTopLayer()) {
         return false;
       }
     }

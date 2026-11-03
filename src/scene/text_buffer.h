@@ -25,16 +25,16 @@ namespace umbriel {
     double bgA = 0.0;
   };
 
-  struct TextBufferResult {
+  struct [[nodiscard]] TextBufferResult {
     wlr_buffer* buffer = nullptr; // caller must wlr_buffer_drop after handing to scene
     int logicalWidth = 0;
     int logicalHeight = 0;
   };
 
-  [[nodiscard]] std::string escapeMarkup(std::string_view text);
+  std::string escapeMarkup(std::string_view text);
 
   // Render Pango-markup text into a Cairo-backed wlr_buffer.
   // Returns a buffer the caller owns (drop after wlr_scene_buffer_create).
-  [[nodiscard]] TextBufferResult renderTextBuffer(const TextBufferParams& params);
+  TextBufferResult renderTextBuffer(const TextBufferParams& params);
 
 } // namespace umbriel

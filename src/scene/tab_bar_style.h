@@ -22,6 +22,6 @@ namespace umbriel {
     bool operator==(const TabBarStyle&) const = default;
   };
 
-  [[nodiscard]] TabBarStyle resolveTabBarStyle(const Config& config);
+  TabBarStyle resolveTabBarStyle(const Config& config);
 
 } // namespace umbriel

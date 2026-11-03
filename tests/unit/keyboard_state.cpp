@@ -103,7 +103,7 @@ xkb_keymap {
     ~Keymap() { xkb_keymap_unref(m_keymap); }
     Keymap(const Keymap&) = delete;
     Keymap& operator=(const Keymap&) = delete;
-    [[nodiscard]] xkb_keymap* get() const { return m_keymap; }
+    xkb_keymap* get() const { return m_keymap; }
 
   private:
     xkb_keymap* m_keymap = nullptr;
@@ -139,9 +139,9 @@ xkb_keymap {
 
     BackendKeyboard(const BackendKeyboard&) = delete;
     BackendKeyboard& operator=(const BackendKeyboard&) = delete;
-    [[nodiscard]] wlr_keyboard* get() { return &m_keyboard; }
-    [[nodiscard]] const std::vector<uint32_t>& leds() const { return m_leds; }
-    [[nodiscard]] const std::vector<wlr_keyboard_modifiers>& modifiers() const { return m_modifierEvents; }
+    wlr_keyboard* get() { return &m_keyboard; }
+    const std::vector<uint32_t>& leds() const { return m_leds; }
+    const std::vector<wlr_keyboard_modifiers>& modifiers() const { return m_modifierEvents; }
 
     void key(uint32_t code, wl_keyboard_key_state state) {
       wlr_keyboard_key_event event{.time_msec = ++m_time, .keycode = code, .update_state = true, .state = state};

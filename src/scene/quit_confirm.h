@@ -32,9 +32,9 @@ namespace umbriel {
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
     void hide();
-    [[nodiscard]] bool visible() const { return m_tree != nullptr; }
-    [[nodiscard]] Kind kind() const { return m_kind; }
-    [[nodiscard]] bool canRememberInputCapture() const {
+    bool visible() const { return m_tree != nullptr; }
+    Kind kind() const { return m_kind; }
+    bool canRememberInputCapture() const {
       return m_kind == Kind::InputCapture && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2);
     }
     void relayout(); // re-render if visible (output add/remove/scale change)

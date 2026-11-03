@@ -23,6 +23,7 @@
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
 #include "server/backend_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "view/popup.h"
@@ -1494,6 +1495,7 @@ namespace umbriel {
     self->m_imageCopySessions.push_back(std::move(watch));
     self->scheduleSuspensionSync();
     self->refreshCaptureRuleEffects(session->source);
+    self->refreshScreenCastEffect(self->m_imageCopySessions.back()->output);
   }
 
   // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
@@ -1502,6 +1504,7 @@ namespace umbriel {
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
     wlr_ext_image_capture_source_v1* source = watch->session->source;
+    wlr_output* captured = watch->output;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
@@ -1511,6 +1514,21 @@ namespace umbriel {
     }
     server->scheduleSuspensionSync();
     server->refreshCaptureRuleEffects(source);
+    server->refreshScreenCastEffect(captured);
+  }
+
+  // `effects.screen_cast` follows the sessions on an output source; only that output rebinds.
+  void Server::refreshScreenCastEffect(wlr_output* output) {
+    Output* target = outputFromWlr(output);
+    if (target == nullptr) {
+      return;
+    }
+    const std::string before(target->screenEffectSlot().effectiveName());
+    resolveOutputEffect(*target);
+    if (target->screenEffectSlot().effectiveName() != before) {
+      kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
+      target->applyOutputEffects();
+    }
   }
 
   // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.
@@ -1692,11 +1710,12 @@ namespace umbriel {
     );
   }
 
-  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued) {
+  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid) {
     auto* watch = new ActivationTokenWatch();
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
+    watch->launchPid = launchPid;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
     watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
@@ -1818,6 +1837,19 @@ namespace umbriel {
     claimLaunchOrigin(view, token);
   }
 
+  void Server::completeIpcLaunch(std::string_view tokenName, pid_t pid) {
+    if (m_xdgActivation == nullptr || tokenName.empty() || pid <= 0) {
+      return;
+    }
+    const std::string name(tokenName);
+    wlr_xdg_activation_token_v1* token = wlr_xdg_activation_v1_find_token(m_xdgActivation, name.c_str());
+    const auto* watch = token != nullptr ? static_cast<ActivationTokenWatch*>(token->data) : nullptr;
+    // A CLI helper inside a launch script must leave the script's application placement intact.
+    if (watch != nullptr && watch->compositorIssued && !watch->launchClaimed && watch->launchPid == pid) {
+      wlr_xdg_activation_token_v1_destroy(token);
+    }
+  }
+
   void Server::onActivationTokenDestroy(wl_listener* listener, void* /*data*/) {
     ActivationTokenWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
@@ -1893,7 +1925,8 @@ namespace umbriel {
     if (handle == nullptr || handle->data == nullptr) {
       return nullptr;
     }
-    return static_cast<Workspace*>(handle->data);
+    auto* workspace = static_cast<Workspace*>(handle->data);
+    return workspace->group()->workspaceFromHandle(handle);
   }
 
   WorkspaceGroup* Server::workspaceGroupFromHandle(wlr_ext_workspace_group_handle_v1* handle) const {
@@ -1978,6 +2011,7 @@ namespace umbriel {
     }
 
     m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    updateDrmLeaseState();
     m_sessionLock->start();
   }
 
@@ -2052,6 +2086,7 @@ namespace umbriel {
       return;
     }
     m_sessionLock.reset();
+    updateDrmLeaseState();
     if (!m_sessionLocked) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);
     }
@@ -2098,6 +2133,12 @@ namespace umbriel {
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }
 
   void Server::addOutput(wlr_output* output) {
+    if (output->non_desktop) {
+      if (m_drmLeaseManager == nullptr || !m_drmLeaseManager->offerOutput(output)) {
+        kLog.warn("non-desktop output {} is unavailable for DRM leasing", output->name);
+      }
+      return;
+    }
     if (!m_pendingOutputName.empty()) {
       // Before the Output exists: adding it to the layout advertises the name to clients, and it cannot change after.
       wlr_output_set_name(output, m_pendingOutputName.c_str());
@@ -2796,9 +2837,7 @@ namespace umbriel {
         ? destination->workspaceGroup()->active()
         : nullptr;
     if (sourceGroup != nullptr) {
-      for (size_t index = 0; index < sourceGroup->workspaceCount(); ++index) {
-        sourceGroup->workspaceAt(index)->invalidateLaunchReservations();
-      }
+      sourceGroup->invalidateLaunchReservations();
     }
     const char* sourceName = source->wlr()->name;
     if (sourceGroup != nullptr

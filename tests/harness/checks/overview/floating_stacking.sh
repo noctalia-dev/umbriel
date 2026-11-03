@@ -76,9 +76,9 @@ fi
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 grim "$FRESH"
-differing=$(magick compare -metric AE "$IMAGE" "$FRESH" null: 2>&1 || true)
-if [[ ${differing%% *} != 0 ]]; then
-  echo "the live toggle left the overview differing from a fresh one by ${differing%% *} pixels"
+read -r _ differing < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" diff "$FRESH")
+if ((differing != 0)); then
+  echo "the live toggle left the overview differing from a fresh one by $differing pixels"
   exit 1
 fi
 

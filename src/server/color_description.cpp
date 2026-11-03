@@ -30,6 +30,22 @@ namespace umbriel {
 
   } // namespace
 
+  uint32_t colorTransferFunctionToWire(uint32_t transferFunction, uint32_t version) {
+    if (version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION
+        && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+    }
+    return transferFunction;
+  }
+
+  uint32_t colorTransferFunctionFromWire(uint32_t transferFunction, uint32_t version) {
+    if (version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION
+        && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
+    }
+    return transferFunction;
+  }
+
   ColorLuminances defaultColorLuminances(uint32_t transferFunction) {
     switch (transferFunction) {
     case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ:
@@ -80,7 +96,7 @@ namespace umbriel {
       const wlr_output_image_description* outputDescription, float effectiveSdrWhite, bool automaticHdrAvailable
   ) {
     ColorDescription description;
-    description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+    description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
     description.data.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB;
     if (outputDescription == nullptr) {
       if (automaticHdrAvailable) {
