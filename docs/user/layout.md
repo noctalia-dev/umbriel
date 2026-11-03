@@ -14,15 +14,15 @@ mode = "scrolling"
 | `scrolling` | Fixed-size columns in a scrollable strip      | Keeping many windows readable without shrinking all of them |
 | `dwindle`   | Each new window splits an existing tile       | Flexible recursive tiling                                   |
 | `master`    | Primary windows beside a stack                | Keeping one or more main windows prominent                  |
-| `floating`  | Independently positioned, overlapping windows | Moving and resizing windows freely                          |
+| `stacking`  | Independently positioned, overlapping windows | Moving and resizing windows freely                          |
 
-Change the current workspace at runtime with `workspace-set-layout:<mode>`. See [Actions](actions.md#argument-forms) and [Workspace Rules](workspaces.md#workspace-rules).
+Change the current workspace at runtime with `workspace-set-layout <mode>`. See [Actions](actions.md#argument-forms) and [Workspace Rules](workspaces.md#workspace-rules).
 
-## Floating layout
+## Stacking layout
 
 ```toml
 [layout]
-mode = "floating"
+mode = "stacking"
 
 [appearance.title_bar]
 mode = "on"
@@ -30,9 +30,24 @@ mode = "on"
 
 Every ordinary window opens floating at its preferred size. Oversized automatic windows are reduced proportionally to fit the usable area, including title bars and margins. Client-driven size changes keep automatic placement centered until you move the window. New windows start at the center and shift diagonally when they would completely cover another window whose upper-left corner is visible. Placement includes title bars and borders. The offset clears the decorated title bar, with a minimum of 32 logical pixels, and wraps to fresh diagonals at the output boundary, including when several windows open simultaneously. Dialogs center over their parent; explicit position rules take precedence.
 
-Enable title bars to move windows without a modifier and use their close and maximize buttons. Dragging updates the window position continuously, so maximize and restore use its current position even while the pointer is held. Snap animations start where you release the window and keep the normal restore box from before the drag. The configured `appearance.drag_opacity` still applies. Enable `[input] window_snapping = true` for half-screen drop zones on all four edges and quarter-screen drop zones in all four corners.
+Enable title bars to move windows without a modifier and use their close and maximize buttons. Dragging updates the window position continuously, so maximize and restore use its current position even while the pointer is held. Region placement animations start where you release the window and keep the normal restore box from before the drag. The configured `appearance.drag_opacity` still applies.
 
 Directional focus uses window geometry, including overlapping windows. `window-toggle-floating` is rejected in this layout. Switching to a tiling layout re-tiles windows floated by the layout, while windows explicitly floated by a rule or before entering this layout stay floating. Moving a layout-floated window to a tiling workspace also tiles it there.
+
+### Drop zones and region placement
+
+```toml
+[layout.stacking]
+drop_zones = true
+```
+
+Drop zones are enabled by default in the stacking layout. Drag an ordinary eligible window by its title bar, a client-side move control, or Mod+drag to preview a half-screen placement on any edge or a quarter-screen placement in any corner. Targets respect panels, layout struts, gaps, borders, title bars, and client size limits in logical coordinates. Both windows floated by the layout and explicitly floating windows inside stacking can use them.
+
+Set `drop_zones = false` to keep free dragging without edge previews or placement. This leaves existing region placements and the explicit `window-set-region` and `window-clear-region` actions available. Override it per workspace with `layout.stacking.drop_zones` in a `[[workspace]]` rule.
+
+`window-set-region <region>` selects a half or quarter. Repeating the selected region leaves it in place; changing regions preserves the original normal box. `window-clear-region` restores that box, and clearing an unplaced window does nothing. A maximized window can be returned to its retained region with `window-set-region`. Fullscreen windows reject new region placement. Maximize and fullscreen round trips within stacking preserve the placement.
+
+Individual floating windows above scrolling, dwindle, and master cannot use drop zones or create region placements. Leaving stacking clears region metadata. A window floated by the layout returns to tiling, while an explicitly floating window keeps its current geometry and stays floating. Maximize and fullscreen state remain intact. Returning to stacking does not revive an old region.
 
 ## Shared settings
 
@@ -207,15 +222,16 @@ In center mode, stack windows are balanced between the left and right sides. Pri
 
 A tab group gives each of its windows the same box and shows one of them, the active tab. A bar along one edge of the group has a slot for every window, and the active tab's slot is highlighted. In the scrolling layout a group is one row of its column: it stacks above and below other windows, takes a row's share of the column, and resizes like any row. A column can hold several groups, and a group can hold every window of its column. In the master layout the master area and each stack are tabbed as a whole. Dwindle tiles hold one window each, so they cannot be tabbed.
 
-`column-toggle-tabbed` (built in as `Mod+W`; bind it under `[keybinds]` when your config lists its own) tabs the focused window together with the windows stacked next to it, up to the nearest group above and below; in a column with no groups that is the whole column. On a tab it stacks its group's windows again. `column-set-display:<normal|tabbed>` does either one. The focused window becomes the active tab.
+`column-toggle-tabbed` (built in as `Mod+W`; bind it under `[keybinds]` when your config lists its own) tabs the focused window together with the windows stacked next to it, up to the nearest group above and below; in a column with no groups that is the whole column. On a tab it stacks its group's windows again. `column-set-display <normal|tabbed>` does either one. The focused window becomes the active tab.
 
 | To                                  | Do                                                                                                                                                                                                                                                                                                   |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Switch tabs                         | Click a slot, scroll over the bar, use `column-focus-tab-next` and `column-focus-tab-previous`, or jump with `column-focus-tab:<index>`                                                                                                                                                              |
+| Switch tabs                         | Click a slot, scroll over the bar, use `column-focus-tab-next` and `column-focus-tab-previous`, or jump with `column-focus-tab <index>`                                                                                                                                                              |
 | Add a tab                           | Move a window into the group with `window-move-up` or `window-move-down`, consume it into a column whose last row is a group, pull the neighboring column's window in with `window-consume-from-left` or `window-consume-from-right` while a tab is focused, or drop it on the group's bar or middle |
 | Put a window above or below a group | Move a tab out with `window-move-up` or `window-move-down`, or drop a window near the group's top or bottom edge                                                                                                                                                                                     |
 | Remove a tab                        | Move it out, drag its slot out of the bar, expel it, float it, or move it away                                                                                                                                                                                                                       |
 | Reorder tabs                        | Use `column-move-tab-next` and `column-move-tab-previous`, or drop a window between two slots                                                                                                                                                                                                        |
+| Move a group                        | Mod+drag the group, in the scrolling layout, or drag its card in the overview                                                                                                                                                                                                                        |
 | Resize a group                      | Drag the edge between it and the window beside it, or use the secondary extent actions on any of its tabs                                                                                                                                                                                            |
 | Hide or show its bar                | Use `column-toggle-tab-bar`, `column-hide-tab-bar`, or `column-show-tab-bar`                                                                                                                                                                                                                         |
 | Close a tab                         | Middle-click its slot, when `middle_click_closes` is on                                                                                                                                                                                                                                              |
@@ -301,13 +317,13 @@ A minimized window comes back when:
 - `window-focus` or `window-focus-warp` names it,
 - a modal dialog attaches to it.
 
-Without a taskbar, `window-restore-minimized` restores the most recently minimized window of the active workspace; repeat it to restore the one before. For a specific window, find its ID with `umbriel windows --json` and run `umbriel msg window-focus:<window-id>`.
+Without a taskbar, `window-restore-minimized` restores the most recently minimized window of the active workspace; repeat it to restore the one before. For a specific window, find its ID with `umbriel windows --json` and run `umbriel msg window-focus <window-id>`.
 
 `workspace-toggle-show-desktop` minimizes every floating window of the active workspace. Once none is left to hide, the next toggle restores every minimized window of that workspace, including ones minimized another way, and returns focus to the window that had it.
 
 ### Maximize and fullscreen
 
-`window-toggle-fullscreen` fills the complete output, ignoring struts and panel exclusive zones. A floating window keeps its normal size and position when moved through a tiled workspace while fullscreen and back to a floating workspace. Leaving fullscreen then restores that original floating box. Entering fullscreen during a resize still restores the requested size afterward.
+`window-toggle-fullscreen` fills the complete output, ignoring struts and panel exclusive zones. A floating window keeps its normal size and position when moved through a tiled workspace while fullscreen and back to a stacking workspace. Leaving fullscreen then restores that original floating box. Entering fullscreen during a resize still restores the requested size afterward.
 
 Visible floating windows above fullscreen require composition on that output. Once fullscreen covers them again, direct scanout can resume if the fullscreen buffer meets the other scanout requirements.
 

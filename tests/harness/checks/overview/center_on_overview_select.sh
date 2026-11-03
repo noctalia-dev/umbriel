@@ -25,7 +25,7 @@ first_x() {
 select_first_from_overview() {
   local id
   id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "center-select-1") | .id')
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   "$UMBRIEL" msg column-focus-first > /dev/null
   "$UMBRIEL" settle
   [[ $(first_x) == 0 ]] || { echo "first column did not rest at the left edge: x=$(first_x)"; exit 1; }

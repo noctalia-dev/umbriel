@@ -15,11 +15,13 @@
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 #include <wayland-server-core.h>
 
 namespace umbriel {
@@ -34,6 +36,23 @@ namespace umbriel {
     constexpr int kAudioFreshnessMs = 250;
     // Long enough for any configured animation to finish; a compositor that never settles still answers.
     constexpr int kFrameWaitTimeoutMs = 30000;
+
+    // A request's `args`: present, an array, and strings only.
+    std::optional<std::vector<std::string>> requestArgs(const nlohmann::json& request) {
+      const auto args = request.find("args");
+      if (args == request.end() || !args->is_array()) {
+        return std::nullopt;
+      }
+      std::vector<std::string> result;
+      result.reserve(args->size());
+      for (const auto& arg : *args) {
+        if (!arg.is_string()) {
+          return std::nullopt;
+        }
+        result.push_back(arg.get<std::string>());
+      }
+      return result;
+    }
 
     nlohmann::json themeEvent() {
       const auto& current = config();
@@ -425,7 +444,7 @@ namespace umbriel {
                  return candidate->wlr()->enabled && name == candidate->wlr()->name;
                });
       });
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
       // A frozen animation never ends, so the wait would only time out.
       if (connection->frameWait == FrameWait::Settled
           && m_server->animationClockFrozen()
@@ -445,6 +464,21 @@ namespace umbriel {
       finishFrameWait(
           *connection, R"({"err":"an animation is running on the frozen animation clock; clock-advance past it first"})"
       );
+    }
+  }
+
+  void Ipc::notifyWindowCommitted() {
+    const bool settleWaiting = std::ranges::any_of(m_connections, [](const auto& connection) {
+      return connection->frameWait == FrameWait::Settled;
+    });
+    if (!settleWaiting) {
+      return;
+    }
+    // A window off screen draws nothing when it commits, so ask for the frame that checks the wait again.
+    for (const auto& output : m_server->outputs()) {
+      if (output->wlr()->enabled) {
+        wlr_output_schedule_frame(output->wlr());
+      }
     }
   }
 
@@ -487,11 +521,38 @@ namespace umbriel {
   std::optional<std::string> Ipc::handleRequest(Connection& connection, std::string_view line) {
     auto req = nlohmann::json::parse(line, nullptr, false);
     if (&connection == m_audio || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-audio")) {
+      return dispatchRequest(connection, req, line.size() + 1);
+    }
+    std::string launchToken;
+    if (req.is_object()) {
+      if (const auto token = req.find("launch_token"); token != req.end()) {
+        if (!token->is_string()) {
+          return R"({"err":"malformed request"})";
+        }
+        launchToken = token->get<std::string>();
+        req.erase(token);
+      }
+    }
+    // Resolve positional action arguments before token cleanup can prune and renumber their workspace inventory.
+    auto response = dispatchRequest(connection, req, line.size() + 1);
+    if (!launchToken.empty()) {
+      ucred credentials{};
+      socklen_t length = sizeof(credentials);
+      if (getsockopt(connection.fd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0) {
+        m_server->completeIpcLaunch(launchToken, credentials.pid);
+      }
+    }
+    return response;
+  }
+
+  std::optional<std::string>
+  Ipc::dispatchRequest(Connection& connection, const nlohmann::json& req, size_t requestSize) {
+    if (&connection == m_audio || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-audio")) {
       const auto audio = IpcCommands::parseAudioSpectrum(req);
       const char* error = nullptr;
       if (!audio) {
         error = R"({"err":"malformed audio request"})";
-      } else if (line.size() + 1 > kMaxAudioRequestSize) {
+      } else if (requestSize > kMaxAudioRequestSize) {
         error = R"({"err":"audio request too long"})";
       } else if (!connection.input.empty()) {
         error = R"({"err":"audio request sent before the previous reply"})";
@@ -530,6 +591,9 @@ namespace umbriel {
       connection.screenCastActive = active->get<bool>();
       refreshScreenCastActive();
       return R"({"ok":null})";
+    }
+    if (cmd == "action") {
+      return IpcCommands::action(*m_server, req).dump();
     }
     if (cmd == "subscribe") {
       if (!req.contains("events") || !req["events"].is_array() || req["events"].empty()) {
@@ -598,16 +662,20 @@ namespace umbriel {
       }
       return response;
     }
-#ifdef UMBRIEL_TEST_IPC
+#ifdef UMBRIEL_HARNESS
     if (cmd == "settle") {
       beginFrameWait(connection, FrameWait::Settled, IpcCommands::settle(*m_server, {}).dump());
       return std::nullopt;
     }
     if (cmd == "clock-advance") {
-      if (!req.contains("arg") || !req["arg"].is_string()) {
+      const auto args = requestArgs(req);
+      if (!args) {
         return R"({"err":"malformed request"})";
       }
-      const auto& arg = req["arg"].get_ref<const std::string&>();
+      if (args->size() != 1) {
+        return R"({"err":"usage: clock-advance <ms>"})";
+      }
+      const std::string& arg = args->front();
       uint64_t ms = 0;
       const auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), ms);
       if (error != std::errc{} || end != arg.data() + arg.size() || ms == 0) {
@@ -617,14 +685,15 @@ namespace umbriel {
       if (!m_server->advanceAnimationClock(ms)) {
         return R"({"err":"the animation clock is not frozen"})";
       }
-      beginFrameWait(connection, FrameWait::Drawn, IpcCommands::clockAdvance(*m_server, arg).dump());
+      beginFrameWait(connection, FrameWait::Drawn, IpcCommands::clockAdvance(*m_server, *args).dump());
       return std::nullopt;
     }
     if (cmd == "blur-composite-split") {
-      if (!req.contains("arg") || !req["arg"].is_string()) {
+      const auto args = requestArgs(req);
+      if (!args) {
         return R"({"err":"malformed request"})";
       }
-      nlohmann::json reply = IpcCommands::blurCompositeSplit(*m_server, req["arg"].get_ref<const std::string&>());
+      nlohmann::json reply = IpcCommands::blurCompositeSplit(*m_server, *args);
       if (reply.contains("err")) {
         return reply.dump();
       }
@@ -637,14 +706,15 @@ namespace umbriel {
     if (spec == nullptr) {
       return nlohmann::json{{"err", "unknown command: " + cmd}}.dump();
     }
-    std::string arg;
-    if (spec->takesArg) {
-      if (!req.contains("arg") || !req["arg"].is_string()) {
+    std::vector<std::string> args;
+    if (spec->takesArgs) {
+      auto requested = requestArgs(req);
+      if (!requested) {
         return R"({"err":"malformed request"})";
       }
-      arg = req["arg"].get<std::string>();
+      args = std::move(*requested);
     }
-    return spec->handle(*m_server, arg).dump();
+    return spec->handle(*m_server, args).dump();
   }
 
   void Ipc::broadcastEvent(uint16_t event, const nlohmann::json& payload) {

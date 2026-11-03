@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "input/cursor.h"
+#include "input/input_capture.h"
 #include "input/toplevel_drag.h"
 #include "server/server.h"
 #include "wlr.h"
@@ -181,6 +182,10 @@ namespace umbriel {
   }
 
   void Seat::sendPointerModifiers(wlr_seat_client* client, bool clear) {
+    const bool capturing = m_server->inputCapture() != nullptr && (m_server->inputCapture()->capabilities() & 1U) != 0;
+    if (capturing && !clear) {
+      return;
+    }
     wlr_keyboard* keyboard = wlr_seat_get_keyboard(m_seat);
     if (client == nullptr
         || client == m_seat->keyboard_state.focused_client
@@ -193,7 +198,7 @@ namespace umbriel {
     // A reset must work after keyboard removal, and a lock-time leave must
     // not expose lock/layout state to the old normal client.
     wlr_keyboard_modifiers modifiers{};
-    if (keyboard != nullptr && keyboard->keymap != nullptr && !(clear && m_server->sessionLocked())) {
+    if (keyboard != nullptr && keyboard->keymap != nullptr && !capturing && !(clear && m_server->sessionLocked())) {
       modifiers = keyboard->modifiers;
     }
     const uint32_t serial = wlr_seat_client_next_serial(client);

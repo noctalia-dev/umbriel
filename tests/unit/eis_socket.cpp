@@ -34,7 +34,7 @@ namespace {
       reset(std::exchange(other.m_fd, -1));
       return *this;
     }
-    [[nodiscard]] int get() const { return m_fd; }
+    int get() const { return m_fd; }
     void reset(int fd = -1) {
       if (m_fd >= 0) {
         close(m_fd);
@@ -115,9 +115,9 @@ namespace {
       }
     }
 
-    [[nodiscard]] bool valid() const { return socket != nullptr && socket->fd() >= 0; }
+    bool valid() const { return socket != nullptr && socket->fd() >= 0; }
 
-    [[nodiscard]] Fd connect() const {
+    Fd connect() const {
       Fd peer(::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0));
       if (peer.get() < 0 || !valid()) {
         return Fd();

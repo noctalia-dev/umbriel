@@ -4,8 +4,8 @@
 set -euo pipefail
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -51,6 +51,7 @@ for action in \
 done
 for action in \
   output-focus-next output-focus-previous \
+  workspace-move-to-output-next workspace-move-to-output-previous \
   window-move-to-output-next window-move-to-output-previous \
   workspace-swap-active-output-next workspace-swap-active-output-previous; do
   rejects_with "$action" "no other output"
@@ -121,7 +122,7 @@ fi
 spawn_client vertical-local
 wait_for_windows 2
 local_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "vertical-local") | .id')
-accepts "window-focus:$local_id"
+accepts window-focus "$local_id"
 accepts "window-consume-left"
 stacked=false
 for _ in $(seq 40); do
@@ -137,7 +138,7 @@ if [[ $stacked != true ]]; then
   exit 1
 fi
 read -r top_id bottom_id <<< "$("$UMBRIEL" windows --json | jq -r 'sort_by(.y) | "\(.[0].id) \(.[1].id)"')"
-accepts "window-focus:$top_id"
+accepts window-focus "$top_id"
 accepts "window-focus-or-workspace-down"
 bottom_active=false
 for _ in $(seq 40); do
@@ -213,10 +214,10 @@ if [[ $returned_workspace != "$start_workspace" ]]; then
   exit 1
 fi
 
-# window-modify-primary-extent: Headless output is 1280x720 with the shipped defaults (gap 8, border 2): viewport 1260, so -0.2 shrinks a column by about 252px.
+# window-modify-primary-extent. The headless output is 1280x720 with the shipped defaults (gap 8, border 2): viewport 1260, so -0.2 shrinks a column by about 252px.
 # The exact geometry math lives in layout/scrolling.sh (624 wide at 0.5).
 before_w=$(jq -r '.[0].w' <<< "$("$UMBRIEL" windows --json)")
-accepts "window-modify-primary-extent:-0.2"
+accepts window-modify-primary-extent -0.2
 after_w=$before_w
 for _ in $(seq 40); do
   after_w=$(jq -r '.[0].w' <<< "$("$UMBRIEL" windows --json)")
@@ -234,7 +235,7 @@ narrow_w=$after_w
 spawn_client stacked-move
 wait_for_windows 2
 stacked_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "stacked-move") | .id')
-accepts "window-focus:$stacked_id"
+accepts window-focus "$stacked_id"
 accepts "window-consume-left"
 stacked=false
 for _ in $(seq 40); do
@@ -313,7 +314,7 @@ if [[ $source_w -ne $narrow_w ]]; then
   echo "expected source column to restore width $narrow_w, got $source_w"
   exit 1
 fi
-accepts "window-modify-primary-extent:+0.2"
+accepts window-modify-primary-extent +0.2
 restored_w=0
 for _ in $(seq 40); do
   restored_w=$(jq -r '.[0].w' <<< "$("$UMBRIEL" windows --json)")
@@ -368,16 +369,16 @@ wait_window_at() {
   echo "$action: expected the window at ($want_x, $want_y), got ($cur_x, $cur_y)"
   exit 1
 }
-accepts "window-move-to:top_left/10/20"
-wait_window_at 10 20 "window-move-to:top_left/10/20"
-accepts "window-move-by:+30/-5"
-wait_window_at 40 15 "window-move-by:+30/-5"
-accepts "window-move-to:bottom_right/10/20"
-wait_window_at $((1280 - w - 10)) $((720 - h - 20)) "window-move-to:bottom_right/10/20"
+accepts window-move-to top_left 10 20
+wait_window_at 10 20 "window-move-to top_left 10 20"
+accepts window-move-by +30 -5
+wait_window_at 40 15 "window-move-by +30 -5"
+accepts window-move-to bottom_right 10 20
+wait_window_at $((1280 - w - 10)) $((720 - h - 20)) "window-move-to bottom_right 10 20"
 
 # Directional moves take a float to that edge inside gap plus border (8 + 2) and keep the other axis.
-accepts "window-move-to:top_left/100/50"
-wait_window_at 100 50 "window-move-to:top_left/100/50"
+accepts window-move-to top_left 100 50
+wait_window_at 100 50 "window-move-to top_left 100 50"
 accepts "window-move-left"
 wait_window_at 10 50 "window-move-left"
 accepts "window-move-down"
@@ -393,10 +394,10 @@ spawn_client window-toggle-unfoucsed
 wait_for_windows 2
 
 read -r id <<< "$(jq -r '.[0].id' <<< "$("$UMBRIEL" windows --json)")"
-accepts "window-focus:$id"
+accepts window-focus "$id"
 
 read -r unfocused_id started_focused started_floating <<< "$(jq -r '.[1] | "\(.id) \(.focused) \(.floating)"' <<< "$("$UMBRIEL" windows --json)")"
-accepts "window-toggle-floating:$unfocused_id"
+accepts window-toggle-floating "$unfocused_id"
 read -r ended_focused ended_floating <<< "$(jq -r '.[1] | "\(.focused) \(.floating)"' <<< "$("$UMBRIEL" windows --json )")"
 
 if [[ $started_focused == false && $ended_focused == true ]]; then
@@ -409,7 +410,7 @@ if [[ $started_floating == false && $ended_floating == false ]]; then
   exit 1
 fi
 
-accepts "window-toggle-floating:$unfocused_id"
+accepts window-toggle-floating "$unfocused_id"
 
 accepts "window-move-to-scratchpad"
 accepts "scratchpad-toggle"
@@ -420,7 +421,7 @@ if [[ $active == false || $focused == true ]]; then
   exit 1
 fi
 
-accepts "window-toggle-floating:$unfocused_id"
+accepts window-toggle-floating "$unfocused_id"
 read -r ended_active ended_floating <<< "$(jq -r '.[1] | "\(.active) \(.floating)"' <<< "$("$UMBRIEL" windows --json )")"
 
 if [[ $ended_active == true ]]; then
@@ -433,7 +434,7 @@ if [[ $ended_floating == false ]]; then
   exit 1
 fi
 
-accepts "window-toggle-floating:$unfocused_id"
+accepts window-toggle-floating "$unfocused_id"
 accepts "window-restore-from-scratchpad"
 
 accepts "window-close"
@@ -443,7 +444,7 @@ spawn_client dwindle-b
 spawn_client dwindle-c
 wait_for_windows 3
 
-accepts "workspace-set-layout:dwindle"
+accepts workspace-set-layout dwindle
 min_h=720
 for _ in $(seq 40); do
   min_h=$(jq '[.[].h] | min' <<< "$("$UMBRIEL" windows --json)")
@@ -481,7 +482,7 @@ if [[ $min_h -ge 600 ]]; then
   exit 1
 fi
 
-accepts "workspace-set-layout:scrolling"
+accepts workspace-set-layout scrolling
 min_h=0
 for _ in $(seq 40); do
   min_h=$(jq '[.[].h] | min' <<< "$("$UMBRIEL" windows --json)")
@@ -493,7 +494,7 @@ if [[ $min_h -lt 690 ]]; then
   exit 1
 fi
 
-accepts "workspace-set-layout:toggle"
+accepts workspace-set-layout toggle
 min_h=720
 for _ in $(seq 40); do
   min_h=$(jq '[.[].h] | min' <<< "$("$UMBRIEL" windows --json)")

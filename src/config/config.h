@@ -34,6 +34,8 @@ namespace umbriel {
 
   enum class TitleBarMode : uint8_t { On, Negotiated, Forced, Off };
 
+  enum class TitleBarButtonGlyph : uint8_t { Always, Hover, Never };
+
   enum class ModifierKey {
     Super,
     Alt,
@@ -115,6 +117,10 @@ namespace umbriel {
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
+    struct Stacking {
+      std::optional<bool> dropZones;
+      bool operator==(const Stacking&) const = default;
+    } stacking;
     struct Tabs {
       std::optional<ColumnDisplay> defaultDisplay;
       std::optional<NewTabPosition> newTabPosition;
@@ -142,6 +148,7 @@ namespace umbriel {
   struct ScratchpadConfig {
     std::string name;
     std::string spawnWhenEmpty;
+    bool proportionalSize = false;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -174,6 +181,10 @@ namespace umbriel {
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
+    struct Stacking {
+      bool dropZones = true;
+      bool operator==(const Stacking&) const = default;
+    } stacking;
     struct Tabs {
       ColumnDisplay defaultDisplay = ColumnDisplay::Normal;
       NewTabPosition newTabPosition = NewTabPosition::End;
@@ -274,7 +285,7 @@ namespace umbriel {
     Gamma22,
     Srgb,
   };
-  [[nodiscard]] constexpr std::string_view hdrModeName(HdrMode mode) {
+  constexpr std::string_view hdrModeName(HdrMode mode) {
     switch (mode) {
     case HdrMode::Off:
       return "off";
@@ -287,21 +298,20 @@ namespace umbriel {
     }
     return "off";
   }
-  [[nodiscard]] constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
+  constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
     return mode == VrrMode::Always || (mode == VrrMode::Fullscreen && fullscreen);
   }
-  [[nodiscard]] constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
+  constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
     return mode == HdrMode::On
         || (mode == HdrMode::Auto && autoEligible)
         || (mode == HdrMode::Fullscreen && fullscreen);
   }
-  [[nodiscard]] constexpr bool effectiveVrrEnabled(
+  constexpr bool effectiveVrrEnabled(
       VrrMode outputMode, bool outputFullscreen, std::optional<VrrMode> windowMode, bool windowFullscreen
   ) {
     return windowMode ? vrrEnabled(*windowMode, windowFullscreen) : vrrEnabled(outputMode, outputFullscreen);
   }
-  [[nodiscard]] constexpr bool
-  tearingEnabled(bool outputAllowed, std::optional<bool> windowOverride, bool clientHintAsync) {
+  constexpr bool tearingEnabled(bool outputAllowed, std::optional<bool> windowOverride, bool clientHintAsync) {
     return outputAllowed && windowOverride.value_or(clientHintAsync);
   }
   struct OutputRule {
@@ -359,7 +369,7 @@ namespace umbriel {
     Game,
   };
 
-  [[nodiscard]] inline constexpr std::string_view contentTypeName(ContentType type) {
+  constexpr std::string_view contentTypeName(ContentType type) {
     switch (type) {
     case ContentType::None:
       return "none";
@@ -389,7 +399,7 @@ namespace umbriel {
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
 
-    [[nodiscard]] bool operator==(const WindowRuleState& other) const = default;
+    bool operator==(const WindowRuleState& other) const = default;
   };
 
   // The alternatives of one selector, written as a single string or as an array of them; a value matches when any one
@@ -405,10 +415,10 @@ namespace umbriel {
       return *this;
     }
     // A list with no pattern, or only an empty one, places no constraint.
-    [[nodiscard]] bool constrains() const {
+    bool constrains() const {
       return std::ranges::any_of(patterns, [](const std::string& pattern) { return !pattern.empty(); });
     }
-    [[nodiscard]] bool operator==(const RegexPatterns& other) const { return patterns == other.patterns; }
+    bool operator==(const RegexPatterns& other) const { return patterns == other.patterns; }
   };
 
   struct WindowRule {
@@ -454,6 +464,7 @@ namespace umbriel {
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
     // non-rendering work stalls without them.
     std::optional<bool> backgroundRender;
+    std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     // Overrides the client's tearing-control hint. Omitted follows the hint,
     // true forces async preference, and false vetoes it.
@@ -482,7 +493,7 @@ namespace umbriel {
     std::optional<std::string> windowEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
-    [[nodiscard]] bool operator==(const WindowRule& other) const {
+    bool operator==(const WindowRule& other) const {
       return appIdPatterns == other.appIdPatterns
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
@@ -521,6 +532,7 @@ namespace umbriel {
           && confinePointer == other.confinePointer
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
+          && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
@@ -569,6 +581,7 @@ namespace umbriel {
     std::optional<bool> confinePointer;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
+    std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
@@ -609,7 +622,7 @@ namespace umbriel {
     std::optional<bool> optimized;
 
     // See WindowRule: the regexes are derived from the patterns.
-    [[nodiscard]] bool operator==(const LayerRule& other) const {
+    bool operator==(const LayerRule& other) const {
       return namespacePatterns == other.namespacePatterns
           && matchLayer == other.matchLayer
           && matchAtStartup == other.matchAtStartup
@@ -636,7 +649,7 @@ namespace umbriel {
     std::vector<std::string> allowGlobals;
 
     // See WindowRule: the regexes are derived from the patterns.
-    [[nodiscard]] bool operator==(const SecurityContextRule& other) const {
+    bool operator==(const SecurityContextRule& other) const {
       return sandboxEnginePatterns == other.sandboxEnginePatterns
           && appIdPatterns == other.appIdPatterns
           && allowGlobals == other.allowGlobals;
@@ -655,8 +668,14 @@ namespace umbriel {
         std::array<float, 4> text{0.9098039F, 0.9098039F, 0.9176471F, 1.0F};
         std::array<float, 4> textUnfocused{0.5411765F, 0.5411765F, 0.5725490F, 1.0F};
         std::array<float, 4> close{1.0F, 0.4196078F, 0.4196078F, 1.0F};
+        std::array<float, 4> closeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> closeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         std::array<float, 4> maximize{0.4784314F, 0.6392157F, 1.0F, 1.0F};
+        std::array<float, 4> maximizeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> maximizeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         std::array<float, 4> minimize{1.0F, 0.8196078F, 0.4F, 1.0F};
+        std::array<float, 4> minimizeGlyph{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
+        std::array<float, 4> minimizeGlyphHover{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
         bool operator==(const TitleBar&) const = default;
       } titleBar;
       std::array<float, 4> background{0.0784314F, 0.0784314F, 0.0980392F, 1.0F};
@@ -715,6 +734,8 @@ namespace umbriel {
         std::string font = "sans 10";
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
+        TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
         bool operator==(const TitleBar&) const = default;
@@ -776,7 +797,7 @@ namespace umbriel {
       } tabBar;
       bool preferNoCsd = true;
 
-      [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
+      int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
       bool operator==(const Appearance&) const = default;
     } appearance;
 
@@ -872,6 +893,13 @@ namespace umbriel {
         bool operator==(const Border&) const = default;
       } border;
 
+      struct WindowsOpacity {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
+        bool operator==(const WindowsOpacity&) const = default;
+      } windowsOpacity;
+
       struct DimUnfocused {
         std::string effect;
         bool enabled = false;
@@ -909,7 +937,7 @@ namespace umbriel {
         const std::string* effect = nullptr;
         bool enabled = false;
       };
-      [[nodiscard]] EventEffect eventEffect(AnimationEvent event) const {
+      EventEffect eventEffect(AnimationEvent event) const {
         switch (event) {
         case AnimationEvent::WindowsIn:
           return {&windowsIn.effect, windowsIn.enabled};
@@ -1004,6 +1032,10 @@ namespace umbriel {
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;
+      struct Stacking {
+        bool dropZones = true;
+        bool operator==(const Stacking&) const = default;
+      } stacking;
       struct Tabs {
         ColumnDisplay defaultDisplay = ColumnDisplay::Normal;
         NewTabPosition newTabPosition = NewTabPosition::End;
@@ -1017,8 +1049,8 @@ namespace umbriel {
 
     // Clear `layout.gap` outside decoration edges: borders are drawn outside the
     // surface, so tile spacing and usable-area insets include total border width.
-    [[nodiscard]] int layoutGap() const { return layout.gap + 2 * appearance.totalBorderWidth(); }
-    [[nodiscard]] int layoutEdgePad() const { return layout.gap + appearance.totalBorderWidth(); }
+    int layoutGap() const { return layout.gap + 2 * appearance.totalBorderWidth(); }
+    int layoutEdgePad() const { return layout.gap + appearance.totalBorderWidth(); }
 
     struct Workspaces {
       // Re-selecting the active workspace jumps back to the previous one.
@@ -1046,6 +1078,10 @@ namespace umbriel {
       bool xwaylandNativeResolution = false;
       // Run an XSETTINGS manager in Xwayland that announces the X screen scale and cursor theme. Requires restart.
       bool xwaylandXsettings = true;
+      // Connector or monitor identity to publish as the X11 primary. Empty leaves RandR unmanaged.
+      std::string xwaylandPrimaryOutput;
+      // Wait for composed NVIDIA output frames when no explicit synchronization timeline is available.
+      bool nvidiaSyncWorkaround = true;
       // Show the keybinds cheatsheet overlay on startup.
       bool showCheatsheet = true;
       // Honor activation requests by focusing and revealing the target window.
@@ -1063,7 +1099,7 @@ namespace umbriel {
       // Canonical PCI domain:bus:slot.function addresses.
       std::vector<std::string> ignoredPciAddresses;
 
-      [[nodiscard]] bool configured() const { return !ignoredDevices.empty() || !ignoredPciAddresses.empty(); }
+      bool configured() const { return !ignoredDevices.empty() || !ignoredPciAddresses.empty(); }
       bool operator==(const Drm&) const = default;
     } drm;
 
@@ -1086,8 +1122,6 @@ namespace umbriel {
       // Let a client start an interactive move from its own drag area
       // (xdg_toplevel.move), such as a CSD title bar or Chromium tab strip.
       bool clientWindowDrag = true;
-      // Preview and apply half or quarter placement while dragging to output edges.
-      bool windowSnapping = true;
       // Retarget an interactive window drag with the free mouse button: float
       // it, pin it, or leave the drag alone.
       WindowDragToggle windowDragToggle = WindowDragToggle::None;
@@ -1229,7 +1263,7 @@ namespace umbriel {
       };
 
       std::vector<Device> devices;
-      [[nodiscard]] const Device* findDevice(std::string_view name) const;
+      const Device* findDevice(std::string_view name) const;
       bool operator==(const Input&) const = default;
     } input;
 
@@ -1243,7 +1277,7 @@ namespace umbriel {
 
     // True when any surface may sample the cached background blur, so every
     // output has to keep its optimized blur node alive.
-    [[nodiscard]] bool optimizedBlurNeeded() const {
+    bool optimizedBlurNeeded() const {
       if (appearance.blur.optimized) {
         return true;
       }
@@ -1252,29 +1286,24 @@ namespace umbriel {
           return true;
         }
       }
-      for (const LayerRule& rule : layerRules) {
-        if (rule.optimized.value_or(false)) {
-          return true;
-        }
-      }
-      return false;
+      return std::ranges::any_of(layerRules, [](const LayerRule& rule) { return rule.optimized.value_or(false); });
     }
 
     bool operator==(const Config&) const = default;
   };
 
   // Palette order shaders see through umbriel_palette_at: accent_primary, accent_secondary, warning, error.
-  [[nodiscard]] inline std::array<std::array<float, 4>, 4> effectPalette(const Config::Colors& colors) {
+  inline std::array<std::array<float, 4>, 4> effectPalette(const Config::Colors& colors) {
     return {colors.accentPrimary, colors.accentSecondary, colors.warning, colors.error};
   }
 
-  [[nodiscard]] const Config& config();
+  const Config& config();
   void loadConfig(const char* explicitPath);
-  [[nodiscard]] ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
-  [[nodiscard]] ConfigReloadResult reloadConfig();
-  [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();
-  [[nodiscard]] const std::vector<ConfigDiagnostic>& configDiagnostics();
-  [[nodiscard]] const std::filesystem::path& configRootPath();
-  [[nodiscard]] bool configFileMissing();
-  [[nodiscard]] bool configHasMissingIncludes();
+  ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
+  ConfigReloadResult reloadConfig();
+  const std::vector<std::filesystem::path>& configWatchPaths();
+  const std::vector<ConfigDiagnostic>& configDiagnostics();
+  const std::filesystem::path& configRootPath();
+  bool configFileMissing();
+  bool configHasMissingIncludes();
 } // namespace umbriel

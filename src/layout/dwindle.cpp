@@ -27,8 +27,8 @@ namespace umbriel {
         LayoutMemberId member = 0;
       };
 
-      [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Dwindle; }
-      [[nodiscard]] size_t memberCount() const override { return members; }
+      LayoutMode mode() const override { return LayoutMode::Dwindle; }
+      size_t memberCount() const override { return members; }
 
       std::unique_ptr<SavedNode> root;
       size_t members = 0;
@@ -884,7 +884,7 @@ namespace umbriel {
         }
       }
 
-      [[nodiscard]] const Layout* ownerLayout() const override { return m_layout; }
+      const Layout* ownerLayout() const override { return m_layout; }
 
     private:
       DwindleLayout* m_layout;

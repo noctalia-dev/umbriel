@@ -46,8 +46,8 @@ exec {target_fd}<>"$TARGET_FIFO"
 REMAP_ON_STDIN=1 ACTIVATION_TOKEN_FILE="$TOKEN_FILE" "$CLIENT" pad-token-source 300 200 \
   <&"$source_fd" > "$SOURCE_LOG" 2>&1 &
 wait_field pad-token-source active true
-"$UMBRIEL" msg window-move-to-scratchpad:input > /dev/null
-"$UMBRIEL" msg scratchpad-toggle:input > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad input > /dev/null
+"$UMBRIEL" msg scratchpad-toggle input > /dev/null
 wait_field pad-token-source active true
 "$POINTER" 1280 720 tap 30 pause 5000 > "$UMBRIEL_RUNTIME_DIR/pad-token-pointer.log" 2>&1 &
 for _ in $(seq 80); do
@@ -63,7 +63,7 @@ done
 [[ -s $TOKEN_FILE ]]
 grep -q '^input-activation-token-written$' "$SOURCE_LOG"
 
-"$UMBRIEL" msg scratchpad-toggle:other > /dev/null
+"$UMBRIEL" msg scratchpad-toggle other > /dev/null
 env -u UMBRIEL_LAUNCH_TOKEN XDG_ACTIVATION_TOKEN="$(< "$TOKEN_FILE")" ACTIVATE_ON_START=1 MAP_ON_STDIN=1 \
   "$CLIENT" pad-token-target 300 200 <&"$target_fd" > "$TARGET_LOG" 2>&1 &
 for _ in $(seq 80); do
@@ -77,7 +77,7 @@ wait_field pad-token-target active false
 wait_field pad-token-source active false
 
 "$UMBRIEL" msg \
-  "spawn:exec '$CLIENT' pad-token-other 300 200 > '$UMBRIEL_RUNTIME_DIR/pad-token-other.log' 2>&1" > /dev/null
+  spawn "exec '$CLIENT' pad-token-other 300 200 > '$UMBRIEL_RUNTIME_DIR/pad-token-other.log' 2>&1" > /dev/null
 wait_field pad-token-other scratchpad other
 wait_field pad-token-other active true
 

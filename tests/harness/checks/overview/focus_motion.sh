@@ -43,7 +43,7 @@ if [[ -z $first_id ]]; then
   echo "could not resolve the first overview motion window: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null
+"$UMBRIEL" msg window-focus "$first_id" > /dev/null
 "$UMBRIEL" settle
 
 "$UMBRIEL" msg overview-open > /dev/null

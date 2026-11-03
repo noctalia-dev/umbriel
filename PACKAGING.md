@@ -66,8 +66,8 @@ The archive is linked as a whole so its internal utility symbols survive distrib
 - wlroots 0.20.1 or newer, and strictly below 0.21, built with session, libinput, and Xwayland support: `umbrielfx` compiles against wlroots' private struct layouts
 - wayland-server 1.24 or newer, plus the Wayland client library
 - wayland-protocols 1.47 or newer
-- xkbcommon
-- libinput 1.27 or newer
+- libxkbcommon 1.10.0 or newer (pkg-config: `xkbcommon`), required for server-side keyboard lock and latch updates
+- libinput 1.29 or newer
 - libeis 1.3 or newer (provided by libei)
 - libudev, required for native `[drm]` GPU exclusion support
 - libsystemd 243 or newer, required to read the systemd-localed keymap for keyboards with no XKB configuration
@@ -89,18 +89,18 @@ The canonical dependency declarations are in [`meson.build`](meson.build). Distr
 
 ### Runtime dependencies
 
-| Dependency                                 | Role                                                                        |
-| ------------------------------------------ | --------------------------------------------------------------------------- |
-| `Xwayland`                                 | X11 application support when `general.xwayland` is enabled                  |
-| `xdg-desktop-portal-umbriel`               | Screencast and Screenshot portal interfaces for portal-based screen capture |
-| A usable font stack                        | Internal overlays and configuration diagnostics                             |
-| A Wayland-capable graphics and input stack | DRM or nested compositor operation through wlroots                          |
+| Dependency                                 | Role                                                       |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `Xwayland`                                 | X11 application support when `general.xwayland` is enabled |
+| `xdg-desktop-portal-umbriel`               | ScreenCast, Screenshot, and InputCapture portal backend    |
+| A usable font stack                        | Internal overlays and configuration diagnostics            |
+| A Wayland-capable graphics and input stack | DRM or nested compositor operation through wlroots         |
 
 `Xwayland` must be discoverable on `PATH`. It may be omitted when a package or installation deliberately disables Xwayland in the configuration.
 
 For a native launch with a working systemd user manager, `start-umbriel` runs the compositor as `umbriel.service`. Umbriel uses `systemd-run` from that existing systemd installation to place application commands in transient scopes under `app.slice`. Managed sessions require systemd 254 or newer so command arguments can be passed without systemd-side environment expansion. Without a reachable systemd user manager, and for nested launches, Umbriel does not invoke `systemd-run` and uses the direct launch path.
 
-The packaged config contains a `spawn:kitty` keybind as an editable example. Kitty is not an Umbriel runtime dependency and does not need to be forced into the compositor package.
+The packaged config contains a `spawn kitty` keybind as an editable example. Kitty is not an Umbriel runtime dependency and does not need to be forced into the compositor package.
 
 ## Installed layout
 
@@ -165,7 +165,7 @@ An external service manager can invoke `start-umbriel` as its service process. T
 
 The managed path imports the resulting login environment, including `PATH`, then starts `umbriel.service`. Login-profile values take precedence over variables with the same names generated from `environment.d`, while values present only in the user manager remain available. The service uses `Type=notify` and queues `umbriel-session.target` and `graphical-session.target` in the initial startup transaction, ordered after the compositor. Umbriel waits for publication of its graphical session variables and validated `[environment]` assignments to the systemd user manager before sending `READY=1` and launching configured startup commands. The graphical and IPC sockets are available before readiness is reported. Services ordered after `graphical-session.target` therefore wait for the published environment without requiring portal service overrides. A failed environment import prevents the managed compositor from reporting ready. The imported login-environment values are also copied to traditional D-Bus activation. Arbitrary configured values are not copied there. Imported login-environment and configured values remain in the user manager for its lifetime. User quits in the packaged `umbriel.service` activate `umbriel-shutdown.target` before the compositor exits. The service is ordered before `graphical-session.target`, so session services stop first. If shutdown control is unavailable or the request fails, the compositor terminates directly. The launcher also activates the shutdown target and removes the graphical variables after Umbriel exits.
 
-In a managed native session, Umbriel creates a separate transient scope under `app.slice` for the `-s` startup command and every autostart, event hook, and `spawn:` command. Each scope is part of `umbriel-session.target` and bound to the systemd unit that owns the compositor, normally `umbriel.service`. Each scope is ordered after its owner so the application stops before the compositor. Stopping either one, or an unexpected compositor exit, cleans up the scope, including when session-target activation fails. An application failure or OOM kill does not propagate in the other direction, so it cannot stop `umbriel.service`. `systemd-run` waits for scope creation before it replaces itself with the command. If isolation cannot be confirmed, the command is aborted instead of running inside `umbriel.service`. Direct and nested sessions launch the same commands as ordinary compositor children.
+In a managed native session, Umbriel creates a separate transient scope under `app.slice` for the `-s` startup command and every autostart, event hook, and `spawn` command. Each scope is part of `umbriel-session.target` and bound to the systemd unit that owns the compositor, normally `umbriel.service`. Each scope is ordered after its owner so the application stops before the compositor. Stopping either one, or an unexpected compositor exit, cleans up the scope, including when session-target activation fails. An application failure or OOM kill does not propagate in the other direction, so it cannot stop `umbriel.service`. `systemd-run` waits for scope creation before it replaces itself with the command. If isolation cannot be confirmed, the command is aborted instead of running inside `umbriel.service`. Direct and nested sessions launch the same commands as ordinary compositor children.
 
 No display manager or desktop shell is required by Umbriel itself. It can be paired with [Noctalia](https://github.com/noctalia-dev/noctalia) for panels, notifications, launching, locking, and other desktop-shell services, [noctalia-greeter](https://github.com/noctalia-dev/noctalia-greeter) as the display manager (using greetd), and [xdg-desktop-portal-umbriel](https://github.com/noctalia-dev/xdg-desktop-portal-umbriel) for portal screen capture and sharing.
 

@@ -46,18 +46,18 @@ namespace umbriel {
   class Overview : public Animatable {
   public:
     explicit Overview(Server& server);
-    ~Overview();
+    ~Overview() override;
 
     Overview(const Overview&) = delete;
     Overview& operator=(const Overview&) = delete;
 
     // Open, opening, or zooming back in.
-    [[nodiscard]] bool active() const { return m_active; }
+    bool active() const { return m_active; }
     // Open and not already zooming back in: pointer/keyboard edits still apply. The IPC `overview` event reports this
     // as `open`, so clients drop overview-scoped surfaces while the windows are still hidden.
-    [[nodiscard]] bool interactive() const { return m_active && !m_closing; }
+    bool interactive() const { return m_active && !m_closing; }
     // True while a card mirrors `view`, so its client must keep drawing although its real frame is hidden.
-    [[nodiscard]] bool presentsLive(const View* view) const;
+    bool presentsLive(const View* view) const;
 
     void toggle();
     void open();
@@ -66,7 +66,7 @@ namespace umbriel {
     // Activate `workspace` (no slide, the real trees are hidden), focus `focus`
     // so its column reveal shares the closing zoom, then restore keyboard focus
     // once the zoom lands. Null lets normal refocus choose the target.
-    void closeToWorkspace(Workspace* workspace, View* focus);
+    void closeToWorkspace(Workspace* workspace, View* focus, bool warpCursor = false);
     // Instant teardown with no animation (session lock, config reload, output loss).
     void forceClose();
 
@@ -76,15 +76,15 @@ namespace umbriel {
     void gestureUpdate(double progress);
     void gestureEnd(bool commitOpen, double releaseVelocity = 0);
 
-    [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+    AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     // Advances the zoom and workspace-row animations; returns true while either is still running.
     bool tickAnimations(double nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override;
+    bool hasActiveAnimations() const override;
     // The overview zooms every output at once.
-    [[nodiscard]] bool animatesOn(const Output* /*output*/) const override { return true; }
+    bool animatesOn(const Output* /*output*/) const override { return true; }
 
     void onViewMapped(View* view);
-    void onViewUnmapped(View* view);
+    void onViewUnmapped(View* view, bool animateClose = true);
     void onViewPinnedChanged(View* view);
     void onViewFloatingChanged(View* view);
     void onViewWorkspaceChanged(View* view);
@@ -129,15 +129,37 @@ namespace umbriel {
     bool selectRelativeWorkspace(int delta, Output* output);
     // The workspace row a pointer drag at this point pans. The row extends along its scrolling axis across the
     // whole output, because its cards may overhang the centered workspace preview.
-    [[nodiscard]] Workspace* pointerScrollWorkspace(double lx, double ly);
+    Workspace* pointerScrollWorkspace(double lx, double ly);
     // The scale previews rest at once open. Gesture travel maps onto the settled layout, so it must not depend on
     // how far the zoom has come.
-    [[nodiscard]] static double settledZoom();
-    [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
+    static double settledZoom();
+    bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
+    bool cardDragging() const { return m_dragCard != nullptr; }
+    // A middle-press pointer-scroll pan owns the motion while it runs (handleMotion routes it ahead of the card
+    // drag), so the held card's drop row must not drive edge-scroll pairing in that window.
+    bool middlePressed() const { return m_middlePressed; }
+    // Re-resolves the drop under the stationary drag pointer after the strip moved beneath it (edge auto-scroll or
+    // finger-scroll pan). A no-op without a live card drag.
+    void refreshDragTarget();
+    // The workspace a held card would drop into: the row under the drag pointer as refreshDragTarget last
+    // resolved it. Null without a live card drag, while the pointer sits in an insertion gap, or when the row
+    // has been pruned from its group underneath the drag.
+    Workspace* dragTargetWorkspace() const;
+    // Workspace-filmstrip twin of the layout-strip edge auto-scroll (input.drag_edge_scroll drives both during a
+    // held card drag): pan the rows along the workspace axis. speedPxPerSec is the edge ramp's signed screen-px/s;
+    // the filmstrip converts it to rows through the preview step so the visible slide matches the strip's.
+    // filmstripEdgeScrolling reports whether the rows can still move that way;
+    // advanceFilmstripEdgeScroll moves them over elapsedMsec, clamped at the ends, re-resolving the drop under the
+    // stationary drag pointer, and returns false when nothing moved.
+    bool filmstripEdgeScrolling(Output& output, double speedPxPerSec);
+    bool advanceFilmstripEdgeScroll(Output& output, double speedPxPerSec, uint32_t elapsedMsec);
 
   private:
     static void onNavigationDeviceDestroyed(wl_listener* listener, void* data);
-    [[nodiscard]] Workspace* navigationWorkspace() const;
+    Workspace* navigationWorkspace() const;
+    // Pointer-identity membership test that never dereferences `workspace`: dynamic-workspace reconciliation can
+    // prune a row while the drop state still holds it (navigationWorkspace()'s pattern).
+    bool workspaceRowAlive(const Workspace* workspace) const;
     OverviewNavigation m_navigation;
     Output* m_navigationOutput = nullptr;
     Workspace* m_navigationWorkspace = nullptr;
@@ -303,18 +325,16 @@ namespace umbriel {
     static void onDesktopMirrorFrameDone(wl_listener* listener, void* data);
 
     // Preview scale for the current open or close progress.
-    [[nodiscard]] double zoom() const;
+    double zoom() const;
     // How much of the desktop's own chrome (window shadows, pinned windows) shows: 1 at rest on the desktop, fading to
     // 0 over the first stretch of the open, so a close brings it back while the zoom is still settling.
-    [[nodiscard]] float desktopChromeAlpha() const;
+    float desktopChromeAlpha() const;
     // Upper bound on how far any visible card pixel moves per unit of zoom animation value, for ending a spring once
     // its remaining motion can no longer change a pixel.
-    [[nodiscard]] double zoomPixelsPerUnit() const;
-    [[nodiscard]] static bool
-    previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
+    double zoomPixelsPerUnit() const;
+    static bool previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
-    [[nodiscard]] static wlr_box
-    previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
+    static wlr_box previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
 
     bool beginPresentation();
     void buildState();
@@ -329,10 +349,10 @@ namespace umbriel {
     static void syncCardBuffer(CardSurface& entry);
     void dropCard(View* view);
     void rebuildCard(View* view);
-    [[nodiscard]] OutputState* stateFor(const Output* output);
-    [[nodiscard]] OutputState* stateForWorkspace(const Workspace* workspace);
-    [[nodiscard]] Card* findCard(const View* view);
-    [[nodiscard]] WorkspaceBackground createWorkspaceBackground(OutputState& state) const;
+    OutputState* stateFor(const Output* output);
+    OutputState* stateForWorkspace(const Workspace* workspace);
+    Card* findCard(const View* view);
+    WorkspaceBackground createWorkspaceBackground(OutputState& state) const;
     // Mapped background- and bottom-layer surfaces of `output`, in render order.
     void collectDesktopSurfaces(const Output& output, std::vector<DesktopEntry>& out) const;
     // Re-resolves the output's mirrored stack, rebuilding every row's mirrors when its surfaces changed.
@@ -341,7 +361,7 @@ namespace umbriel {
     void createRowMirrors(OutputState& state, WorkspaceBackground& background) const;
     // Points every mirror at its surface's committed buffer and copies its color state.
     void syncDesktopMirrors(const OutputState& state) const;
-    [[nodiscard]] static bool desktopSourceBox(const DesktopSurface& source, wlr_box& out);
+    static bool desktopSourceBox(const DesktopSurface& source, wlr_box& out);
 
     void applyProgress();
     // Applies `alpha` to every pinned window and full opacity to every other.
@@ -353,8 +373,8 @@ namespace umbriel {
     void syncCardEffects();
     // The window a focus or close action would act on right now: the focused view of the active workspace on the
     // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
-    [[nodiscard]] View* liveTargetView() const;
-    [[nodiscard]] std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
+    View* liveTargetView() const;
+    std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
     void assignShortcuts();
     void renderCardShortcut(Card& card);
     bool handleShortcutKey(uint32_t keysym);
@@ -369,23 +389,32 @@ namespace umbriel {
     // in rows per second, and is zero for every other caller.
     void animateRow(OutputState& state, double target, double releaseVelocity = 0);
     void finishAnimation();
-    void beginClose(View* focus, double releaseVelocity = 0);
+    void beginClose(View* focus, double releaseVelocity = 0, bool warpCursor = false);
     void teardown();
     // Hand the seat back after teardown: `focus`, or normal refocus when null or unmapped.
     void restoreFocus(View* focus);
     void scheduleFrames() const;
 
-    [[nodiscard]] Card* cardAt(double lx, double ly);
-    [[nodiscard]] Workspace*
-    workspaceAtPoint(double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis);
-    [[nodiscard]] WorkspaceGroup*
-    workspaceGapAt(double lx, double ly, OutputState** outState, size_t* outIndex, wlr_box* outHintBox);
-    [[nodiscard]] Workspace* preferredWorkspace() const;
+    Card* cardAt(double lx, double ly);
+    // Hit-test a workspace preview. `extendScrollingAxis` widens the boxes over the whole output along the
+    // scrolling axis (overhanging cards must stay targetable there). `extendFilmstripEnds` is drop-targeting
+    // only: the rows at either end of the filmstrip claim the space out to the output edge along the workspace
+    // axis, so a card released past the last preview lands on the end workspace instead of nowhere. Wheel,
+    // pointer-scroll and navigation lookups pass it false and keep the narrow preview hitbox in those extremes.
+    Workspace* workspaceAtPoint(
+        double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis,
+        bool extendFilmstripEnds
+    );
+    WorkspaceGroup* workspaceGapAt(double lx, double ly, OutputState** outState, size_t* outIndex, wlr_box* outHintBox);
+    Workspace* preferredWorkspace() const;
     void clearMiddlePress();
 
     void beginDrag();
     void updateDrag(double lx, double ly);
     void endDrag(bool drop);
+    // Edge scroll can leave a filmstrip between rows under a held card. Once the drag ends, every output's rows not
+    // already headed to its active workspace animate there.
+    void settleRowsOnActiveWorkspace();
     void syncWorkspaceRows(OutputState& state, WorkspaceGroup& group);
     void showDropHint(
         const wlr_box& worldBox, const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex,
@@ -406,6 +435,7 @@ namespace umbriel {
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
     View* m_pendingFocus = nullptr;
+    bool m_pendingCursorWarp = false;
     bool m_cardPresentationDirty = false;
     bool m_gestureOpenedHere = false;
     bool m_shortcutsDirty = true;
@@ -432,12 +462,17 @@ namespace umbriel {
     bool m_middleScrolling = false;
 
     Card* m_dragCard = nullptr;
+    // Last pointer position the drag followed; refreshDragTarget() re-resolves the drop from it.
+    double m_dragPointerX = 0;
+    double m_dragPointerY = 0;
     double m_dragOffsetX = 0;
     double m_dragOffsetY = 0;
     Workspace* m_dragSourceWorkspace = nullptr;
     int m_dragSourceColumn = -1;
     int m_dragSourceRow = -1;
     std::optional<DropColumnWidth> m_dragSourceWidth;
+    // A dragged card that is a tab carries its whole group.
+    LiftedTabGroup m_dragTabGroup;
     DropTarget m_drop{};
     WorkspaceGroup* m_dropWorkspaceGroup = nullptr;
     size_t m_dropWorkspaceIndex = 0;

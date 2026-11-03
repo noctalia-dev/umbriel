@@ -121,7 +121,7 @@ run_case() {
   ((move_ms > max_duration)) && max_duration=$move_ms
 
   set_durations "$close_ms" "$move_ms"
-  "$UMBRIEL" msg "workspace-switch:$workspace" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$workspace" > /dev/null
   "$UMBRIEL" clock-advance 100
 
   spawn "$survivor_title" 0xFFFF0000
@@ -132,28 +132,32 @@ run_case() {
   # Opening the second tile also reflows the survivor. Let that independent movement finish before measuring close.
   "$UMBRIEL" clock-advance "$((move_ms + 200))"
 
-  "$UMBRIEL" msg "window-close:$closer_id" > /dev/null
+  "$UMBRIEL" msg window-close "$closer_id" > /dev/null
   for _ in $(seq 100); do
     "$UMBRIEL" windows --json | jq -e --arg title "$closer_title" 'any(.[]; .title == $title)' > /dev/null || break
     sleep 0.02
   done
 
   local elapsed=1 count=0
-  local -a sample_times=() analyzers=()
+  local -a sample_times=()
   "$UMBRIEL" clock-advance 1
   while ((elapsed <= max_duration + 300)); do
     grim "$SHOTS/$phase-$count.png"
-    analyze_frame "$SHOTS/$phase-$count.png" &
-    analyzers+=($!)
     sample_times[$count]=$elapsed
     count=$((count + 1))
     "$UMBRIEL" clock-advance "$STEP_MS"
     elapsed=$((elapsed + STEP_MS))
   done
-  local analyzer
-  for analyzer in "${analyzers[@]}"; do
-    wait "$analyzer"
-  done
+  # Frames are analysed in parallel. The subshell's only children are the analyses, so each wait -n reaps one and
+  # fails the check if it failed.
+  (
+    for ((i = 0; i < count; i++)); do
+      analyze_frame "$SHOTS/$phase-$i.png" &
+    done
+    for ((i = 0; i < count; i++)); do
+      wait -n
+    done
+  )
 
   if ! grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/$closer_title.log"; then
     echo "$phase: closing client did not unmap"

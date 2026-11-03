@@ -44,7 +44,7 @@ namespace umbriel {
     m_animH.retarget(height, durationMs, curve);
   }
 
-  void ViewPresentation::snapTo(int width, int height) {
+  void ViewPresentation::setRegion(int width, int height) {
     m_animW.snap(width);
     m_animH.snap(height);
   }

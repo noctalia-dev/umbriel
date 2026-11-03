@@ -74,15 +74,15 @@ wait_field() {
 }
 
 spawn() {
-  "$UMBRIEL" msg "spawn:exec '$CLIENT' '$1' 200 150 > '$UMBRIEL_RUNTIME_DIR/$1.log' 2>&1" > /dev/null
+  "$UMBRIEL" msg spawn "exec '$CLIENT' '$1' 200 150 > '$UMBRIEL_RUNTIME_DIR/$1.log' 2>&1" > /dev/null
 }
 
 "$POINTER" 1920 720 move 400 300
-"$UMBRIEL" msg scratchpad-toggle:auto > /dev/null
+"$UMBRIEL" msg scratchpad-toggle auto > /dev/null
 wait_field pad-auto scratchpad auto
 wait_field pad-auto active true
 "$POINTER" 1920 720 move 1600 200
-"$UMBRIEL" msg scratchpad-toggle:manual > /dev/null
+"$UMBRIEL" msg scratchpad-toggle manual > /dev/null
 spawn pad-manual
 wait_field pad-manual scratchpad manual
 wait_field pad-manual active true
@@ -95,13 +95,13 @@ fi
 mkfifo "$FIFO"
 exec {control_fd}<>"$FIFO"
 "$UMBRIEL" msg \
-  "spawn:exec env MAP_ON_STDIN=1 ACTIVATE_ON_START=1 '$CLIENT' pad-delayed 200 150 < '$FIFO' > '$LOG' 2>&1" > /dev/null
+  spawn "exec env MAP_ON_STDIN=1 ACTIVATE_ON_START=1 '$CLIENT' pad-delayed 200 150 < '$FIFO' > '$LOG' 2>&1" > /dev/null
 for _ in $(seq 80); do
   grep -q '^map-pending$' "$LOG" 2>/dev/null && break
   sleep 0.1
 done
 grep -q '^map-pending$' "$LOG"
-"$UMBRIEL" msg scratchpad-toggle:auto > /dev/null
+"$UMBRIEL" msg scratchpad-toggle auto > /dev/null
 wait_field pad-auto active true
 wait_field pad-manual active false
 printf m >&"$control_fd"
@@ -124,9 +124,9 @@ wait_field pad-rule-pinned pinned true
 wait_field pad-auto active true
 
 # A pad removed before an already-created toplevel maps cannot leave dangling placement state.
-"$UMBRIEL" msg scratchpad-toggle:manual > /dev/null
+"$UMBRIEL" msg scratchpad-toggle manual > /dev/null
 "$UMBRIEL" msg \
-  "spawn:exec env MAP_ON_STDIN=1 '$CLIENT' pad-removed 200 150 < '$FIFO' > '$UMBRIEL_RUNTIME_DIR/pad-removed.log' 2>&1" > /dev/null
+  spawn "exec env MAP_ON_STDIN=1 '$CLIENT' pad-removed 200 150 < '$FIFO' > '$UMBRIEL_RUNTIME_DIR/pad-removed.log' 2>&1" > /dev/null
 for _ in $(seq 80); do
   grep -q '^map-pending$' "$UMBRIEL_RUNTIME_DIR/pad-removed.log" 2>/dev/null && break
   sleep 0.1

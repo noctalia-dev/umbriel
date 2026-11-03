@@ -36,7 +36,7 @@ await_lines "$UMBRIEL_RUNTIME_DIR/panel.log" ready 1
 FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" blur-a 1000 600 > "$UMBRIEL_RUNTIME_DIR/a.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/a.log" mapped 1
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 FILL_COLOR=0x00000000 "$UMBRIEL_UNMAP_CLIENT" blur-b 1000 600 > "$UMBRIEL_RUNTIME_DIR/b.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/b.log" mapped 1
@@ -49,12 +49,12 @@ check_pixel() {
 }
 start_reveal() {
   "$UMBRIEL" clock-freeze
-  "$UMBRIEL" msg workspace-switch:1 > /dev/null
+  "$UMBRIEL" msg workspace-switch 1 > /dev/null
   "$UMBRIEL" clock-advance 1000
   "$UMBRIEL" clock-resume
   "$UMBRIEL" settle
   "$UMBRIEL" clock-freeze
-  "$UMBRIEL" msg workspace-switch:2 > /dev/null
+  "$UMBRIEL" msg workspace-switch 2 > /dev/null
   "$UMBRIEL" clock-advance 500
 }
 for optimized in false true; do
@@ -76,7 +76,7 @@ sed -i 's/^optimized = true$/optimized = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" blur-lower 1000 600 > "$UMBRIEL_RUNTIME_DIR/lower.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/lower.log" mapped 1
-"$UMBRIEL" msg "window-focus:$b_id" > /dev/null
+"$UMBRIEL" msg window-focus "$b_id" > /dev/null
 "$UMBRIEL" settle
 start_reveal
 grim "$IMAGE"
@@ -88,7 +88,7 @@ check_pixel 640 350 '0 0 255' 'incoming blur retains own lower window'
 sed -i 's/^optimized = false$/optimized = true/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 # The two-pass capture path must retain the reveal while excluding the window effect.
-"$UMBRIEL" msg "effect-window-set:blue/$b_id" > /dev/null
+"$UMBRIEL" msg effect-window-set blue --window "$b_id" > /dev/null
 start_reveal
 grim "$IMAGE"
 check_pixel 640 350 '0 255 0' 'unfiltered capture retains reveal and native blur'
@@ -106,20 +106,13 @@ check_pixel 640 400 '255 0 0' 'filtered capture preserves outgoing role'
 # A clipped backdrop must retain the blur's whole sampling margin.
 sed -i 's/^optimized = true$/optimized = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "effect-window-set:off/$b_id" > /dev/null
+"$UMBRIEL" msg effect-window-set off --window "$b_id" > /dev/null
 "$UMBRIEL" settle
 grim "$UMBRIEL_RUNTIME_DIR/native-edge.png"
 start_reveal
 grim "$UMBRIEL_RUNTIME_DIR/reveal-edge.png"
-for name in native reveal; do
-  magick "$UMBRIEL_RUNTIME_DIR/$name-edge.png" -crop 120x100+130+50 +repage "$UMBRIEL_RUNTIME_DIR/$name-crop.png"
-done
-error=$(magick "$UMBRIEL_RUNTIME_DIR/native-crop.png" "$UMBRIEL_RUNTIME_DIR/reveal-crop.png" \
-  -compose difference -composite -format '%[fx:maxima*255]' info:)
-awk -v error="$error" 'BEGIN { exit !(error <= 3) }' || {
-  echo "isolated blur edge differs from native by $error channel levels"; exit 1;
-}
-"$UMBRIEL" clock-advance 1000
-"$UMBRIEL" clock-resume
-"$UMBRIEL" settle
+read -r error _ < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/native-edge.png" diff "$UMBRIEL_RUNTIME_DIR/reveal-edge.png" 120x100+130+50)
+if (( error > 3 )); then
+  echo "isolated blur edge differs from native by $error channel levels"; exit 1
+fi
 echo 'real-client blur, optimized backdrop, shared panel and filtered/unfiltered reveal captures verified'

@@ -132,7 +132,7 @@ fi
 # A window that moves under a stationary cursor must see the pointer where it
 # is drawn before the next press, not where it was before the move.
 source_id=$("$UMBRIEL" windows --json | jq -r --arg title "$SOURCE" '.[] | select(.title == $title) | .id')
-"$UMBRIEL" msg "window-focus:$source_id" > /dev/null
+"$UMBRIEL" msg window-focus "$source_id" > /dev/null
 hover_x=$((expected_x + source_w - 20))
 hover_y=$((expected_y + source_h - 20))
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$hover_x" "$hover_y" > "$POINTER_LOG" 2>&1 || {

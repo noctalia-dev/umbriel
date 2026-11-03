@@ -56,7 +56,7 @@ window_id() {
 
 focus_window() {
   local id=$1 title=$2
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   for _ in $(seq 60); do
     if [[ $("$UMBRIEL" windows --json | jq -r --arg id "$id" \
       '.[] | select(.id == $id) | (.focused and .active)') == true ]]; then

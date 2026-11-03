@@ -290,8 +290,8 @@ namespace umbriel {
       }
     }
 
-    [[nodiscard]] wlr_backend* backend() const { return m_backend; }
-    [[nodiscard]] wlr_session* session() const { return m_session; }
+    wlr_backend* backend() const { return m_backend; }
+    wlr_session* session() const { return m_session; }
 
     [[nodiscard]] wlr_renderer* createRenderer() {
 #if UMBRIEL_HAS_NATIVE_DRM_POLICY
@@ -493,7 +493,7 @@ namespace umbriel {
       return true;
     }
 
-    [[nodiscard]] std::optional<std::vector<DrmDeviceIdentity>> enumerateDrmCards() const {
+    std::optional<std::vector<DrmDeviceIdentity>> enumerateDrmCards() const {
       UdevEnumerate enumerate(udev_enumerate_new(m_session->udev));
       if (!enumerate) {
         kLog.error("failed to allocate a udev DRM enumeration");
@@ -720,7 +720,7 @@ namespace umbriel {
       return renderer;
     }
 
-    [[nodiscard]] bool verifyNoExcludedDeviceIsOpen(std::string_view context) const {
+    bool verifyNoExcludedDeviceIsOpen(std::string_view context) const {
       if (m_session == nullptr) {
         kLog.error("native session is unavailable {}", context);
         return false;
@@ -793,7 +793,7 @@ namespace umbriel {
       return true;
     }
 
-    [[nodiscard]] std::optional<DrmDeviceIdentity> rendererIdentity(wlr_renderer* renderer) const {
+    std::optional<DrmDeviceIdentity> rendererIdentity(wlr_renderer* renderer) const {
       if (m_session == nullptr) {
         return std::nullopt;
       }
@@ -897,7 +897,13 @@ namespace umbriel {
 
   wlr_backend* BackendManager::backend() const { return m_impl->backend(); }
   wlr_session* BackendManager::session() const { return m_impl->session(); }
-  wlr_renderer* BackendManager::createRenderer() { return m_impl->createRenderer(); }
+  wlr_renderer* BackendManager::createRenderer() {
+    wlr_renderer* renderer = m_impl->createRenderer();
+    if (renderer != nullptr) {
+      fx_renderer_set_nvidia_sync_workaround(renderer, config().general.nvidiaSyncWorkaround);
+    }
+    return renderer;
+  }
   bool BackendManager::verifyOpenDevices(std::string_view context) { return m_impl->verifyOpenDevices(context); }
   void BackendManager::markStarted() { m_impl->markStarted(); }
 

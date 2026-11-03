@@ -5,7 +5,7 @@ set -euo pipefail
 MARKER="umbriel-harness-spawn-$$"
 CHILD=
 
-"$UMBRIEL" msg "spawn:python3 -c 'import time; time.sleep(120)' $MARKER" > /dev/null
+"$UMBRIEL" msg spawn "python3 -c 'import time; time.sleep(120)' $MARKER" > /dev/null
 
 for _ in $(seq 40); do
   CHILD=$(pgrep -f "$MARKER" | head -1 || true)

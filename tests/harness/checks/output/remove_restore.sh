@@ -120,8 +120,8 @@ wait_for_active_workspace() {
 
 move_to_workspace() {
   local title=$1 selector=$2
-  "$UMBRIEL" msg "window-focus:$(field_of "$title" id)" > /dev/null
-  "$UMBRIEL" msg "window-move-to-workspace:$selector" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field_of "$title" id)" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "${selector%%/*}" --output "${selector#*/}" > /dev/null
   wait_for_output "$title" "${selector#*/}"
 }
 
@@ -156,10 +156,10 @@ fi
 
 # Windows are visited most-recently-focused first; this pins the order they leave in and come back in.
 for window in second-ws1 second-ws2 first-ws2 first-ws1; do
-  "$UMBRIEL" msg "window-focus:$(field_of "$window" id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field_of "$window" id)" > /dev/null
 done
 # Off first-ws1's workspace: the active workspace is never reaped, and this one has to be.
-"$UMBRIEL" msg workspace-switch:3/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 --output HEADLESS-1 > /dev/null
 
 # Every monitor goes away at once, the way a suspend takes them; the windows have nowhere to go.
 mark=$(log_mark)

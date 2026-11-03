@@ -2,6 +2,7 @@
 
 #include <optional>
 
+struct fx_corner_radii;
 struct wlr_box;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
@@ -17,7 +18,7 @@ namespace umbriel {
   };
 
   // True when the surface's opaque region does not cover surfaceBox, given in surface-local coordinates.
-  [[nodiscard]] bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox);
+  bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox);
 
   // Owns the desired-state logic for one SceneFX backdrop-blur node. The node itself is a child of the owner's scene
   // tree and is freed by scene-tree teardown, never by this class (no destructor).
@@ -30,7 +31,7 @@ namespace umbriel {
     // buffer to use instead of finding the surface's regular scene buffer.
     void update(
         wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox,
-        int cornerRadius, const wlr_box* clipBox = nullptr, const SurfaceBlurOptions& options = {},
+        fx_corner_radii corners, const wlr_box* clipBox = nullptr, const SurfaceBlurOptions& options = {},
         float surfaceOpacity = 1.0F, wlr_scene_buffer* maskSource = nullptr
     );
     // Opacity of the blur effect itself. Keep this independent from surface

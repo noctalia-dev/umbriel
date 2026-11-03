@@ -93,7 +93,7 @@ fi
 "$UMBRIEL" clock-advance 3000
 # Moving the window binds the rebind preset: the moved window renders solid green through the recompiled program.
 id=$(jq -r .id <<< "$window")
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$IMAGE"
@@ -146,9 +146,9 @@ choose = ["recovery_border_z", "recovery_border_a"]
 selection = "round_robin"
 EOF_CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "effect-border-set:recovery_pool/$id" > /dev/null
-"$UMBRIEL" msg "effect-border-toggle:$id" > /dev/null
-"$UMBRIEL" msg effect-screen-set:recovery_screen > /dev/null
+"$UMBRIEL" msg effect-border-set recovery_pool --window "$id" > /dev/null
+"$UMBRIEL" msg effect-border-toggle "$id" > /dev/null
+"$UMBRIEL" msg effect-screen-set recovery_screen > /dev/null
 "$UMBRIEL" msg effect-screen-toggle > /dev/null
 recovery_slot=$("$UMBRIEL" windows --json | jq -c --arg id "$id" '.[] | select(.id == $id) | .border_effect')
 "$UMBRIEL" renderer-recover > /dev/null
@@ -167,7 +167,7 @@ if [[ $recovery_slot != "$recovered_slot" ]] || ! jq -e '.name == "recovery_bord
   exit 1
 fi
 "$UMBRIEL" effects --json | jq -e '[.presets[] | select(.name | startswith("recovery_")) | .state] == ["compiled", "compiled", "compiled", "compiled"]' > /dev/null || { echo "recovery-runtime-prepared"; exit 1; }
-"$UMBRIEL" msg "effect-border-toggle:$id" > /dev/null
+"$UMBRIEL" msg effect-border-toggle "$id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 recovery_window=$("$UMBRIEL" windows --json | jq -c --arg id "$id" '.[] | select(.id == $id)')
 x=$(jq -r '.x + (.w / 2 | floor)' <<< "$recovery_window")
@@ -203,8 +203,8 @@ if (( r < 240 || g > 15 || b > 15 )); then
   echo "recovery-active-border: active cached overlay did not rebind with frozen time: $r $g $b"
   exit 1
 fi
-"$UMBRIEL" msg "effect-border-reset:$id" > /dev/null
-"$UMBRIEL" msg "effect-window-set:recovery_overlay/$id" > /dev/null
+"$UMBRIEL" msg effect-border-reset "$id" > /dev/null
+"$UMBRIEL" msg effect-window-set recovery_overlay --window "$id" > /dev/null
 "$UMBRIEL" renderer-recover > /dev/null
 for _ in $(seq 100); do
   [[ $(tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -c "renderer recreated") -ge 5 ]] && break

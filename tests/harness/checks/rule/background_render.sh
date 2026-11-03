@@ -45,7 +45,7 @@ repaints() {
   grep -c '^repainted ' "$UMBRIEL_RUNTIME_DIR/rendered.log" || true
 }
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 # The control proves the suspension pass ran; the ruled window must have stayed out of it.
 wait_for_state control suspended "leaving their workspace"

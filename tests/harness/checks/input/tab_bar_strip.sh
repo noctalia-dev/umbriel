@@ -18,8 +18,8 @@ pointer() {
 }
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -99,13 +99,13 @@ done
 "$UMBRIEL" settle
 
 # The strip follows the active tab to the end: tab-c and tab-d show, so the first slot is tab-c.
-accepts column-focus-tab:-1
+accepts column-focus-tab -1
 wait_for_shown tab-d
 click_part 0
 wait_for_shown tab-c
 
 # Back to the start: tab-a and tab-b show.
-accepts column-focus-tab:1
+accepts column-focus-tab 1
 wait_for_shown tab-a
 click_part 1
 wait_for_shown tab-b

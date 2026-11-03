@@ -53,13 +53,13 @@ wait_for_home() {
 }
 
 focus_window() {
-  "$UMBRIEL" msg "window-focus:$(field_of "$1" id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field_of "$1" id)" > /dev/null
 }
 
 move_to_workspace() {
   local title=$1 workspace=$2 output=$3
   focus_window "$title"
-  "$UMBRIEL" msg "window-move-to-workspace:$workspace/$output" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace "$workspace" --output "$output" > /dev/null
   wait_for_home "$title" "$output/$workspace"
 }
 
@@ -245,7 +245,7 @@ done
 
 # Scrolling: reorder columns, build a reversed stack, and keep a maximized
 # column with a nondefault restore width.
-"$UMBRIEL" msg workspace-switch:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 --output HEADLESS-1 > /dev/null
 focus_window scroll-c
 "$UMBRIEL" msg column-move-to-first > /dev/null
 focus_window scroll-b
@@ -266,7 +266,7 @@ wait_for_windows_query '
 focus_window scroll-c
 wait_for_stable_geometry > /dev/null
 scroll_default_width=$(field_of scroll-c w)
-"$UMBRIEL" msg window-set-primary-extent:0.67 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.67 > /dev/null
 wait_for_width_change scroll-c "$scroll_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "scroll-a")) as $a |
@@ -281,7 +281,7 @@ wait_for_width_change scroll-c "$scroll_unmax_width"
 
 # Dwindle: change leaf assignment and a split ratio, so flat insertion order
 # cannot reproduce the same tree geometry.
-"$UMBRIEL" msg workspace-switch:2/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 --output HEADLESS-1 > /dev/null
 focus_window dwindle-c
 wait_for_windows_query '
   first(.[] | select(.title == "dwindle-a")) as $a |
@@ -298,7 +298,7 @@ wait_for_windows_query '
 ' "dwindle swap did not put c in the left leaf"
 wait_for_stable_geometry > /dev/null
 dwindle_default_width=$(field_of dwindle-c w)
-"$UMBRIEL" msg window-set-primary-extent:0.67 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.67 > /dev/null
 wait_for_width_change dwindle-c "$dwindle_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "dwindle-a")) as $a |
@@ -310,7 +310,7 @@ wait_for_windows_query '
 # Master: put two windows in the master area, wait for that arrangement before
 # the target-based vertical action, then reverse their rows and retain a
 # nondefault width beneath maximized state.
-"$UMBRIEL" msg workspace-switch:3/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 --output HEADLESS-1 > /dev/null
 focus_window master-c
 wait_for_windows_query '
   first(.[] | select(.title == "master-a")) as $a |
@@ -334,7 +334,7 @@ wait_for_windows_query '
 ' "master move-up did not arrange [c,a]"
 wait_for_stable_geometry > /dev/null
 master_default_width=$(field_of master-c w)
-"$UMBRIEL" msg window-set-primary-extent:0.70 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.70 > /dev/null
 wait_for_width_change master-c "$master_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "master-a")) as $a |
@@ -364,7 +364,7 @@ for workspace in 2 3; do
   move_to_workspace "$title" "$workspace" HEADLESS-2
 done
 
-"$UMBRIEL" msg workspace-switch:1/HEADLESS-2 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 --output HEADLESS-2 > /dev/null
 focus_window refuge-scroll-c
 "$UMBRIEL" msg column-move-to-first > /dev/null
 focus_window refuge-scroll-b
@@ -385,7 +385,7 @@ wait_for_windows_query '
 focus_window refuge-scroll-c
 wait_for_stable_geometry > /dev/null
 refuge_default_width=$(field_of refuge-scroll-c w)
-"$UMBRIEL" msg window-set-primary-extent:0.63 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.63 > /dev/null
 wait_for_width_change refuge-scroll-c "$refuge_default_width"
 wait_for_windows_query '
   first(.[] | select(.title == "refuge-scroll-a")) as $a |
@@ -416,7 +416,7 @@ remap_id=$(field_of scroll-a id)
 "$UMBRIEL" output-destroy HEADLESS-1 > /dev/null
 assert_evacuated_workspaces destruction
 wait_for_geometry_snapshot "$refuge_before" refuge-
-"$UMBRIEL" msg "window-close:$remap_id" > /dev/null
+"$UMBRIEL" msg window-close "$remap_id" > /dev/null
 wait_for_count "$((count - 1))"
 if ! grep -q '^unmapped$' "$remap_log"; then
   echo "scroll-a did not stay alive and unmap while displaced"
@@ -457,11 +457,11 @@ wait_for_geometry_snapshot "$before"
 
 # The visible full width is not enough: the hidden restore width must survive
 # as part of the layout snapshot too.
-"$UMBRIEL" msg workspace-switch:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 --output HEADLESS-1 > /dev/null
 focus_window scroll-c
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_width scroll-c "$scroll_unmax_width"
-"$UMBRIEL" msg workspace-switch:3/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 --output HEADLESS-1 > /dev/null
 focus_window master-c
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
 wait_for_width master-c "$master_unmax_width"

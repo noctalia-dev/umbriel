@@ -6,7 +6,7 @@ readonly IMAGE="$UMBRIEL_RUNTIME_DIR/gesture.png"
 workspace_reveal_config
 "$UMBRIEL" msg config-reload > /dev/null
 for n in 1 2 3; do
-  "$UMBRIEL" msg "workspace-switch:$n" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$n" > /dev/null
   "$UMBRIEL" settle
   case $n in 1) color=0xFFFF0000;; 2) color=0xFF00FF00;; 3) color=0xFF0000FF;; esac
   FILL_COLOR=$color "$UMBRIEL_UNMAP_CLIENT" "gesture-$n" 1280 720 > "$UMBRIEL_RUNTIME_DIR/$n.log" 2>&1 &
@@ -14,7 +14,7 @@ for n in 1 2 3; do
   "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
   "$UMBRIEL" settle
 done
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 640 360
 "$UMBRIEL" clock-freeze

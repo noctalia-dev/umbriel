@@ -58,7 +58,7 @@ fi
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 
-"$UMBRIEL" msg "window-close:$unmap_id" > /dev/null
+"$UMBRIEL" msg window-close "$unmap_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$CLIENT_LOG" && break
   sleep 0.1

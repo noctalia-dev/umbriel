@@ -90,7 +90,7 @@ if ((open_early < open_final - 20 || open_early > open_final + 20)); then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$opener_id" > /dev/null
+"$UMBRIEL" msg window-close "$opener_id" > /dev/null
 for _ in $(seq 80); do
   if ! "$UMBRIEL" windows --json | jq -e --arg id "$opener_id" 'any(.[]; .id == $id)' > /dev/null; then
     break

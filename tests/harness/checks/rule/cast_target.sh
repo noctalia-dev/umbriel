@@ -75,8 +75,7 @@ frame_of() {
   window=$(window_of "$1")
   x=$(($(jq -r '.x' <<< "$window") - 2))
   y=$(($(jq -r '.y' <<< "$window") + 150))
-  magick "$SCREENSHOT" -alpha off -crop "1x1+$x+$y" +repage -depth 8 txt:- |
-    sed -n 's/.*#\([0-9A-F]\{6\}\).*/\1/p' | head -1
+  printf '%02X%02X%02X\n' $("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$x" "$y")
 }
 
 expect_frames() {

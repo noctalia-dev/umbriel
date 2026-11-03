@@ -73,9 +73,9 @@ directions() {
 }
 
 mover_workspace() {
-  "$UMBRIEL" msg window-move-to-workspace:2 > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
   expect "move to workspace" "\$p.workspace == \"$START:2\""
-  "$UMBRIEL" msg window-move-to-workspace:1 > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace 1 > /dev/null
   expect "move back to workspace" "\$p.workspace == \"$START_WS\""
 }
 
@@ -94,7 +94,7 @@ mover_unplug() {
   "$UMBRIEL" output-create "$OTHER" > /dev/null
   expect "output replugged" "\$p.output == \"$OTHER\""
   # Output actions resolve the window from the output under the pointer, so bring the pointer to the dialog.
-  "$UMBRIEL" msg "window-focus-warp:$(field modal-dialog id)" > /dev/null
+  "$UMBRIEL" msg window-focus-warp "$(field modal-dialog id)" > /dev/null
   "$UMBRIEL" msg window-move-to-output-next > /dev/null
   expect "back from the replugged output" "\$p.output == \"$START\""
 }
@@ -140,7 +140,7 @@ mover_column() {
     [[ $(windows | jq 'length') == 4 ]] && break
     sleep 0.05
   done
-  "$UMBRIEL" msg "window-focus:$(field transient-parent id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field transient-parent id)" > /dev/null
   expect "parent beside a neighbour" "\$p.workspace == \"$START_WS\" and (\$p.floating | not)"
   local column x
   column=$(field transient-parent column)

@@ -55,7 +55,7 @@ read -r gx gy gw gh < <(jq -r '.[] | select(.title == "confined") | "\(.x) \(.y)
 read -r ox oy < <(jq -r '.[] | select(.title == "other") | "\(.x + .w / 2 | floor) \(.y + .h / 2 | floor)"' <<< "$windows")
 cx=$((gx + gw / 2)); cy=$((gy + gh / 2))
 pointer_hold 2560 720 move "$cx" "$cy" pause 300
-"$UMBRIEL" msg "window-focus:$game" > /dev/null
+"$UMBRIEL" msg window-focus "$game" > /dev/null
 
 control() {
   local command=$1 n
@@ -101,7 +101,7 @@ assert_position 0 "$gw" "$((gh - 1))" "$gh"
 
 # A keyboard focus change with the pointer still over the game must remain an escape.
 move move "$cx" "$cy"
-"$UMBRIEL" msg "window-focus:$other" > /dev/null
+"$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
 assert_focus "$other"
 move move "$ox" "$oy"
@@ -112,9 +112,9 @@ move relative 2000 0
 assert_position "$((gw - 1))" "$gw" 0 "$gh"
 
 # Explicit warps bypass confinement.
-"$UMBRIEL" msg "window-focus-warp:$other" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$other" > /dev/null
 assert_focus "$other"
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 assert_focus "$game"
 
 # Preserve client locks and relative motion, then resume confinement in menus.
@@ -138,7 +138,7 @@ control u
 # Keyboard escape also releases a gameplay lock, even on the same workspace.
 move move "$cx" "$cy"
 control l
-"$UMBRIEL" msg "window-focus:$other" > /dev/null
+"$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
 assert_focus "$other"
 await_events "$LOG" pointer-unlocked 1
@@ -146,8 +146,8 @@ move move "$ox" "$oy"
 control u
 
 # Reload must retire keyboard escape while the pointer stays inside the game.
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
-"$UMBRIEL" msg "window-focus:$other" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
+"$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
 assert_focus "$other"
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
@@ -164,8 +164,8 @@ await_events "$LOG" pointer-locked "$((locked + 1))"
 assert_focus "$other"
 control u
 # Ordinary keyboard focus invalidation must now allow hover refocus without re-entry.
-"$UMBRIEL" msg "window-focus:$game" > /dev/null
-"$UMBRIEL" msg "window-focus:$other" > /dev/null
+"$UMBRIEL" msg window-focus "$game" > /dev/null
+"$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
 assert_focus "$game"
 move move "$ox" "$oy"
@@ -178,20 +178,20 @@ match.is_focused = true
 confine_pointer = true
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 move relative 2000 0
 assert_position "$((gw - 1))" "$gw" 0 "$gh"
 
 # Focus-sensitive rules must not lose the escape decision when they stop matching, including a gameplay lock.
 move move "$cx" "$cy"
 control l
-"$UMBRIEL" msg "window-focus:$other" > /dev/null
+"$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
 assert_focus "$other"
 move move "$ox" "$oy"
 assert_focus "$other"
 control u
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 
 # A data-device drag can cross the focused game's bounds while it owns the seat grab.
 "$UMBRIEL_DRAG_CLIENT" > "$UMBRIEL_RUNTIME_DIR/drag.log" 2>&1 &
@@ -203,12 +203,12 @@ pointer_release
 await_events "$UMBRIEL_RUNTIME_DIR/drag.log" 'drag-\(finished\|cancelled\)$' 1
 assert_focus "$other"
 pointer_hold 2560 720 pause 300
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 
 # Floating geometry follows resize and compositor moves without trapping the grab.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 floating_geometry() {
   "$UMBRIEL" windows --json | jq -r --arg id "$game" '.[] | select(.id == $id) | "\(.x) \(.y) \(.w) \(.h)"'
 }
@@ -219,7 +219,7 @@ move move "$((fx + fw - 20))" "$((fy + fh / 2))" mod logo press 273 relative 100
 "$UMBRIEL" settle
 read -r nx ny nw nh < <(floating_geometry)
 ((nw > fw)) || { echo 'confined floating window did not resize'; exit 1; }
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 move mod logo press 272 relative 150 50 release 272 mod none
 "$UMBRIEL" settle
 read -r mx my mw mh < <(floating_geometry)
@@ -230,7 +230,7 @@ read -r mx my mw mh < <(floating_geometry)
 # Fullscreen must stop at the shared output edge, for relative and absolute devices.
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 move relative 2000 0
 assert_position 1279 1280 0 720
 move move 1920 360
@@ -239,7 +239,7 @@ cursor_output() { "$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) |
 [[ $(cursor_output) == HEADLESS-1 ]]
 "$UMBRIEL" msg output-focus-right > /dev/null
 [[ $(cursor_output) == HEADLESS-2 ]]
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
 
@@ -252,7 +252,7 @@ move move 1920 360
 [[ $(cursor_output) == HEADLESS-2 ]]
 echo unlock >&9
 await_events "$UMBRIEL_RUNTIME_DIR/lock.log" 'unlocked$' 1
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 
 # Overview and workspace navigation must remain available.
 "$UMBRIEL" msg overview-toggle > /dev/null
@@ -260,19 +260,19 @@ move move 1920 360
 [[ $(cursor_output) == HEADLESS-2 ]]
 "$UMBRIEL" msg overview-toggle > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 "$UMBRIEL" msg workspace-next > /dev/null
 move move "$ox" "$oy"
-"$UMBRIEL" msg "window-focus-warp:$other" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$other" > /dev/null
 assert_focus "$other"
 
 # Scaling the home output changes the logical bounds of an already mapped game.
 sed -i '/^\[output.HEADLESS-1\]$/a scale = 1.25' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 "$UMBRIEL" settle
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 move relative 2000 0
 assert_position 1023 1024 0 576
 move relative 0 2000
@@ -284,7 +284,7 @@ sed -i '/^scale = 1.25$/d' "$UMBRIEL_CONFIG"
 "$UMBRIEL" settle
 
 # Destroying the confined window must leave the remaining client usable.
-"$UMBRIEL" msg "window-focus-warp:$game" > /dev/null
+"$UMBRIEL" msg window-focus-warp "$game" > /dev/null
 kill "$game_pid"
 wait_windows 1
 move move "$ox" "$oy" click 272

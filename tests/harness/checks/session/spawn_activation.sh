@@ -10,7 +10,11 @@ readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/spawn-activation-control"
 readonly TOKEN_FILE="$UMBRIEL_RUNTIME_DIR/spawn-activation-token"
 
 sed -i '/autostart = \[\]/a focus_on_activate = false' "$UMBRIEL_CONFIG"
+# Keep both remap destinations alive so these assertions measure activation policy.
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output.HEADLESS-1]
+workspaces = 2
 
 [[window_rule]]
 match.app_id = "^spawn-activation-target$"
@@ -39,7 +43,7 @@ if [[ -z $target_id ]]; then
   echo "could not resolve activation target: $windows"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$target_id" > /dev/null
+"$UMBRIEL" msg window-close "$target_id" > /dev/null
 for _ in $(seq 60); do
   grep -q '^unmapped$' "$CLIENT_LOG" 2>/dev/null && break
   sleep 0.1
@@ -49,7 +53,7 @@ if ! grep -q '^unmapped$' "$CLIENT_LOG" 2>/dev/null; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name') != 2 ]]; then
   echo "workspace 2 did not become active before activation: $("$UMBRIEL" workspaces --json)"
   exit 1
@@ -58,7 +62,7 @@ fi
 # The first printf finishes and closes its file before the FIFO signal is sent, so the target always reads a complete
 # token. On the target's Wayland connection, activate is queued before the remap commit.
 "$UMBRIEL" msg \
-  "spawn:printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; printf a > '$CONTROL_FIFO'" > /dev/null
+  spawn "printf '%s\n' \"\$XDG_ACTIVATION_TOKEN\" > '$TOKEN_FILE'; printf a > '$CONTROL_FIFO'" > /dev/null
 
 for _ in $(seq 80); do
   windows=$("$UMBRIEL" windows --json)

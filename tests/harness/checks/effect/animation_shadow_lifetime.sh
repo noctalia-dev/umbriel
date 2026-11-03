@@ -63,8 +63,7 @@ y=$(jq -r .y <<< "$window")
 w=$(jq -r .w <<< "$window")
 h=$(jq -r .h <<< "$window")
 pixel() {
-  read -r r g b < <(magick "$IMAGE" -crop "2x2+$1+$2" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$1+$2")
 }
 assert_half_shadow() {
   grim -s 1 "$IMAGE"
@@ -88,7 +87,7 @@ vec4 animation(vec2 uv) { return uv.x >= 0.5 ? umbriel_sample(uv) : vec4(0.0); }
 GLSL
 "$UMBRIEL" msg config-reload > /dev/null
 assert_half_shadow reloaded
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 500
 assert_half_shadow closing
 "$UMBRIEL" clock-advance 2000

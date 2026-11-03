@@ -79,14 +79,14 @@ wait_for_map() {
 }
 
 sample_seed() {
-  local x y width height sample_x sample_y values=() fraction
+  local x y width height sample_x sample_y values=() fraction red
   read -r x y width height <<< "$(jq -r '[.x, .y, .w, .h] | @tsv' <<< "$window")"
   sample_y=$((y + height / 2))
   grim "$IMAGE"
   for fraction in 0.125 0.375 0.625 0.875; do
     sample_x=$(awk -v x="$x" -v width="$width" -v fraction="$fraction" 'BEGIN { printf "%d", x + width * fraction }')
-    values+=("$(magick "$IMAGE" -crop "6x6+$((sample_x - 3))+$((sample_y - 3))" \
-      -format '%[fx:round(255*mean.r)]' info:)")
+    read -r red _ < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "6x6+$((sample_x - 3))+$((sample_y - 3))")
+    values+=("$red")
   done
   echo "${values[*]}"
 }
@@ -102,7 +102,7 @@ if [[ $first != "$first_later" ]]; then
 fi
 
 window_id=$(jq -r .id <<< "$window")
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 150
 closing=$(sample_seed)
 if [[ $closing != "$first" ]]; then

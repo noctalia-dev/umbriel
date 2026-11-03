@@ -135,13 +135,13 @@ scratchpad_offset() {
 shows_scratchpad() {
   local output=$1 active=
   move_pointer_to_output "$output"
-  "$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+  "$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
   for _ in $(seq 10); do
     active=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "scratch-restore") | .active')
     [[ $active == true ]] && break
     sleep 0.1
   done
-  "$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+  "$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
   [[ $active == true ]]
 }
 
@@ -156,7 +156,7 @@ default_position = { x = 91, y = 73, anchor = "top_left" }'
 foot --title=scratch-restore sh -c 'sleep 120' > /dev/null 2>&1 &
 wait_for_count 1
 move_pointer_to_output HEADLESS-2
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 if ! shows_scratchpad HEADLESS-2; then
   echo "scratchpad window could not be shown on HEADLESS-2"
   exit 1
@@ -202,7 +202,7 @@ fi
 panel_log="$UMBRIEL_RUNTIME_DIR/scratchpad-restore-panel.log"
 start_panel "$panel_log"
 move_pointer_to_output HEADLESS-2
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_field active true
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 wait_for_field x 1280
@@ -234,7 +234,7 @@ wait_for_field y 0
 wait_for_field w 960
 wait_for_field h 540
 
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 if ! shows_scratchpad HEADLESS-2; then
   echo "maximized scratchpad could not be toggled after returning to changed geometry"
   exit 1

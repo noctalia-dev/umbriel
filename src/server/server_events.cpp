@@ -6,6 +6,7 @@
 #include "input/cursor.h"
 #include "input/eis.h"
 #include "input/gestures.h"
+#include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
 #include "input/seat.h"
@@ -22,6 +23,7 @@
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
 #include "server/backend_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "view/popup.h"
@@ -932,6 +934,12 @@ namespace umbriel {
     m_surfaceLayouts.clear();
     for (const auto& keyboard : m_keyboards) {
       keyboard->applyConfig();
+      if (m_inputCapture != nullptr && !keyboard->virtualDevice()) {
+        m_inputCapture->updateKeymap(keyboard->wlr());
+      }
+      // A rebuilt keymap can gain locks absent from its predecessor. Reapply
+      // shared state after the per-device restoration has finished.
+      refreshKeyboardLeds();
     }
     if (m_eisInput != nullptr) {
       m_eisInput->applyConfig();
@@ -976,6 +984,12 @@ namespace umbriel {
         m_overview->forceClose();
       }
       applyConfig(result.effects);
+      if (result.change.general) {
+        fx_renderer_set_nvidia_sync_workaround(m_renderer, config().general.nvidiaSyncWorkaround);
+        if (m_xwayland != nullptr) {
+          m_xwayland->updatePrimaryOutput();
+        }
+      }
       if (systemKeymapChanged && !result.effects.input) {
         applyKeyboardConfig();
       }
@@ -1555,6 +1569,12 @@ namespace umbriel {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    if (server->m_inputCapture != nullptr) {
+      server->m_inputCapture->forgetAbsoluteDevice(watch->device);
+      if ((server->m_inputCapture->capabilities() & 2U) != 0) {
+        server->m_inputCapture->suspend();
+      }
+    }
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_pointers, [watch](const std::unique_ptr<PointerDevice>& pointer) {
       return pointer.get() == watch;
@@ -1690,11 +1710,12 @@ namespace umbriel {
     );
   }
 
-  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued) {
+  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid) {
     auto* watch = new ActivationTokenWatch();
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
+    watch->launchPid = launchPid;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
     watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
@@ -1816,6 +1837,19 @@ namespace umbriel {
     claimLaunchOrigin(view, token);
   }
 
+  void Server::completeIpcLaunch(std::string_view tokenName, pid_t pid) {
+    if (m_xdgActivation == nullptr || tokenName.empty() || pid <= 0) {
+      return;
+    }
+    const std::string name(tokenName);
+    wlr_xdg_activation_token_v1* token = wlr_xdg_activation_v1_find_token(m_xdgActivation, name.c_str());
+    const auto* watch = token != nullptr ? static_cast<ActivationTokenWatch*>(token->data) : nullptr;
+    // A CLI helper inside a launch script must leave the script's application placement intact.
+    if (watch != nullptr && watch->compositorIssued && !watch->launchClaimed && watch->launchPid == pid) {
+      wlr_xdg_activation_token_v1_destroy(token);
+    }
+  }
+
   void Server::onActivationTokenDestroy(wl_listener* listener, void* /*data*/) {
     ActivationTokenWatch* watch;
     watch = wl_container_of(listener, watch, destroy);
@@ -1891,7 +1925,8 @@ namespace umbriel {
     if (handle == nullptr || handle->data == nullptr) {
       return nullptr;
     }
-    return static_cast<Workspace*>(handle->data);
+    auto* workspace = static_cast<Workspace*>(handle->data);
+    return workspace->group()->workspaceFromHandle(handle);
   }
 
   WorkspaceGroup* Server::workspaceGroupFromHandle(wlr_ext_workspace_group_handle_v1* handle) const {
@@ -1963,6 +1998,12 @@ namespace umbriel {
   }
 
   void Server::beginSessionLock(wlr_session_lock_v1* lock) {
+    if (m_inputCapture != nullptr) {
+      m_inputCapture->suspend();
+    }
+    if (m_pendingCaptureId != 0) {
+      dismissConfirmation();
+    }
     if (m_sessionLock != nullptr) {
       kLog.info("denying session lock; one is already active");
       wlr_session_lock_v1_destroy(lock);
@@ -1970,6 +2011,7 @@ namespace umbriel {
     }
 
     m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    updateDrmLeaseState();
     m_sessionLock->start();
   }
 
@@ -1989,6 +2031,9 @@ namespace umbriel {
       }
 
       dismissConfirmation();
+      if (m_inputCapture != nullptr) {
+        m_inputCapture->suspend();
+      }
       if (m_eisInput != nullptr) {
         m_eisInput->setSessionLocked(true);
       }
@@ -2041,6 +2086,7 @@ namespace umbriel {
       return;
     }
     m_sessionLock.reset();
+    updateDrmLeaseState();
     if (!m_sessionLocked) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);
     }
@@ -2087,6 +2133,12 @@ namespace umbriel {
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }
 
   void Server::addOutput(wlr_output* output) {
+    if (output->non_desktop) {
+      if (m_drmLeaseManager == nullptr || !m_drmLeaseManager->offerOutput(output)) {
+        kLog.warn("non-desktop output {} is unavailable for DRM leasing", output->name);
+      }
+      return;
+    }
     if (!m_pendingOutputName.empty()) {
       // Before the Output exists: adding it to the layout advertises the name to clients, and it cannot change after.
       wlr_output_set_name(output, m_pendingOutputName.c_str());
@@ -2127,7 +2179,10 @@ namespace umbriel {
     if (!seatHasKeyboard && keyboard->wlr()->keymap != nullptr) {
       wlr_seat_set_keyboard(seat, keyboard->wlr());
     }
-    m_keyboardLeds->add(keyboard->wlr(), keyboard->virtualDevice());
+    m_keyboardLeds->add(keyboard->wlr(), keyboard->virtualDevice(), config().input.keyboard.numlockToggle);
+    if (m_inputCapture != nullptr && !keyboard->virtualDevice()) {
+      m_inputCapture->addKeyboard(keyboard->wlr());
+    }
   }
 
   bool Server::cycleKeyboardLayout() {
@@ -2581,9 +2636,13 @@ namespace umbriel {
   void Server::remapTouches() {
     const Config::Input::Touch& cfg = config().input.touch;
     for (const auto& touch : m_touchDevices) {
-      Output* target = !cfg.mapToOutput.empty()
-          ? outputFromName(cfg.mapToOutput)
-          : defaultTouchOutput(outputs(), wlr_touch_from_input_device(touch->device)->output_name);
+      // wlroots leaves output_name unset for libinput devices; fall back to libinput's WL_OUTPUT udev property.
+      const char* reported = wlr_touch_from_input_device(touch->device)->output_name;
+      if (reported == nullptr && wlr_input_device_is_libinput(touch->device)) {
+        reported = libinput_device_get_output_name(wlr_libinput_get_device_handle(touch->device));
+      }
+      Output* target =
+          !cfg.mapToOutput.empty() ? outputFromName(cfg.mapToOutput) : defaultTouchOutput(outputs(), reported);
       wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, target != nullptr ? target->wlr() : nullptr);
     }
   }
@@ -2778,9 +2837,7 @@ namespace umbriel {
         ? destination->workspaceGroup()->active()
         : nullptr;
     if (sourceGroup != nullptr) {
-      for (size_t index = 0; index < sourceGroup->workspaceCount(); ++index) {
-        sourceGroup->workspaceAt(index)->invalidateLaunchReservations();
-      }
+      sourceGroup->invalidateLaunchReservations();
     }
     const char* sourceName = source->wlr()->name;
     if (sourceGroup != nullptr
@@ -2813,6 +2870,8 @@ namespace umbriel {
             .workspaceNamed = workspace->named(),
             .configGeneration = configStore().generation(),
             .layoutModeOverride = workspace->layoutModeOverride(),
+            .transferredLayout =
+                workspace->transferred() ? std::make_optional(workspace->layoutConfig()) : std::nullopt,
         });
       }
       const wlr_box outputBox = output->layoutBox();
@@ -3191,6 +3250,8 @@ namespace umbriel {
         refugeHold = workspace->reserveForLaunch();
         targetGroup = workspace->group();
         target = targetGroup->output();
+      } else if (groupHome.workspaceOrigin && groupHome.workspaceOrigin->transferredLayout) {
+        workspace = targetGroup->restoreTransferredWorkspace(*groupHome.workspaceOrigin);
       } else if (groupHome.workspaceNamed) {
         workspace = targetGroup->workspaceNamed(groupHome.workspaceName);
       } else {
@@ -3547,6 +3608,9 @@ namespace umbriel {
   }
 
   void Server::notifyKeyboardEnter(wlr_surface* surface, KeyboardGrab grab) {
+    if (m_inputCapture != nullptr && (m_inputCapture->capabilities() & 1U) != 0) {
+      return;
+    }
     wlr_seat* seat = m_seat->wlr();
     wlr_surface* previous = seat->keyboard_state.focused_surface;
     const bool leavesXwayland = m_xwayland != nullptr
@@ -3649,13 +3713,13 @@ namespace umbriel {
   void Server::rememberKeyboardInputSource(Keyboard& keyboard) {
     if (m_inputMethodRelay == nullptr || !m_inputMethodRelay->ownsKeyboard(keyboard.wlr())) {
       m_keyboardInputSource = &keyboard;
-      if (!m_stopping && m_keyboardLeds != nullptr) {
-        m_keyboardLeds->update(keyboard.wlr());
-      }
-    } else {
-      refreshKeyboardLeds();
+    }
+    if (!m_stopping && m_keyboardLeds != nullptr) {
+      m_keyboardLeds->update(keyboard.wlr());
     }
   }
+
+  bool Server::syncingKeyboardLocks() const { return m_keyboardLeds != nullptr && m_keyboardLeds->syncing(); }
 
   void Server::refreshKeyboardLeds() {
     if (!m_stopping && m_keyboardLeds != nullptr) {
@@ -3664,6 +3728,9 @@ namespace umbriel {
   }
 
   void Server::removeKeyboard(Keyboard* keyboard) {
+    if (m_inputCapture != nullptr) {
+      m_inputCapture->removeKeyboard(keyboard->wlr());
+    }
     wlr_seat* seat = m_seat->wlr();
     const bool seatKeyboardRemoved = wlr_seat_get_keyboard(seat) == keyboard->wlr();
     const bool sourceRemoved = m_keyboardLayoutSource == keyboard;
@@ -3778,11 +3845,17 @@ namespace umbriel {
     if (self->m_eisInput != nullptr) {
       self->m_eisInput->updateOutputs();
     }
+    if (self->m_inputCapture != nullptr) {
+      self->m_inputCapture->updateOutputs();
+    }
   }
 
   void Server::updateOutputManagerConfig() {
     // Every output state change that output management publishes also changes the IPC output listing.
     scheduleIpcOutputsEvent();
+    if (m_inputCapture != nullptr && !m_deferOutputManagerConfig) {
+      m_inputCapture->updateOutputs();
+    }
     if (m_outputManager == nullptr || m_deferOutputManagerConfig) {
       return;
     }
@@ -3913,6 +3986,18 @@ namespace umbriel {
       return true;
     };
 
+    const auto commitSceneStates = [this](wlr_backend_output_state* pending, size_t pendingLen) {
+      std::vector<std::unique_ptr<Output::SceneCommit>> observations;
+      observations.reserve(pendingLen);
+      for (size_t i = 0; i < pendingLen; ++i) {
+        if (Output* output = outputFromWlr(pending[i].output)) {
+          observations.push_back(std::make_unique<Output::SceneCommit>(*output, pending[i].base));
+        }
+      }
+      // Each output's successful commit event is authoritative even if a later child backend fails the group.
+      return wlr_backend_commit(m_backend, pending, pendingLen);
+    };
+
     struct BackendSnapshot {
       wlr_output* output = nullptr;
       bool enabled = false;
@@ -3980,7 +4065,7 @@ namespace umbriel {
         // logical layout transaction is complete.
         m_deferOutputManagerConfig = true;
         commitAttempted = true;
-        ok = wlr_backend_commit(m_backend, states, statesLen);
+        ok = commitSceneStates(states, statesLen);
         if (ok) {
           wlr_output_swapchain_manager_apply(&swapchainManager);
         }
@@ -4000,7 +4085,7 @@ namespace umbriel {
             wlr_output_swapchain_manager_prepare(&rollbackManager, rollbackStates.data(), rollbackStates.size());
         if (restoredAsGroup) {
           restoredAsGroup = buildSceneStates(rollbackManager, rollbackStates.data(), rollbackStates.size())
-              && wlr_backend_commit(m_backend, rollbackStates.data(), rollbackStates.size());
+              && commitSceneStates(rollbackStates.data(), rollbackStates.size());
         }
         if (restoredAsGroup) {
           wlr_output_swapchain_manager_apply(&rollbackManager);
@@ -4014,7 +4099,8 @@ namespace umbriel {
         }
         rollbackStates.clear();
 
-        const auto restoreEnabled = [this, &buildSceneStates, &stageSnapshot](const BackendSnapshot& snapshot) {
+        const auto restoreEnabled = [this, &buildSceneStates, &commitSceneStates,
+                                     &stageSnapshot](const BackendSnapshot& snapshot) {
           wlr_backend_output_state restore{};
           restore.output = snapshot.output;
           wlr_output_state_init(&restore.base);
@@ -4024,7 +4110,7 @@ namespace umbriel {
           wlr_output_swapchain_manager_init(&manager, m_backend);
           bool restored = wlr_output_swapchain_manager_prepare(&manager, &restore, 1);
           if (restored) {
-            restored = buildSceneStates(manager, &restore, 1) && wlr_backend_commit(m_backend, &restore, 1);
+            restored = buildSceneStates(manager, &restore, 1) && commitSceneStates(&restore, 1);
           }
           if (restored) {
             wlr_output_swapchain_manager_apply(&manager);
@@ -4175,20 +4261,28 @@ namespace umbriel {
     auto* request = static_cast<wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request*>(data);
 
     if (request->toplevel_handle == nullptr || request->toplevel_handle->data == nullptr) {
+      wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, nullptr);
       return;
     }
     auto* view = static_cast<View*>(request->toplevel_handle->data);
+
+    if (view->captureBlocked()) {
+      wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, nullptr);
+      return;
+    }
 
     // Reuse a cached capture source when one already exists for this view.
     if (view->m_captureSource == nullptr) {
       wlr_scene_tree* captureTree = view->captureTree();
       if (captureTree == nullptr) {
+        wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, nullptr);
         return;
       }
       view->m_captureSource = wlr_ext_image_capture_source_v1_create_with_scene_node(
           &captureTree->node, wl_display_get_event_loop(self->m_display), self->m_allocator, self->m_renderer
       );
       if (view->m_captureSource == nullptr) {
+        wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, nullptr);
         return;
       }
       view->m_captureSourceDestroy.notify = View::onCaptureSourceDestroy;

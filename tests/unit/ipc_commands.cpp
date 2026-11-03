@@ -1,12 +1,20 @@
 #include "server/ipc_commands.h"
 
 #include "check.h"
+#include "config/keybind_parse.h"
+#include "server/action_request.h"
 
 #include <cstdio>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <print>
 #include <string>
+#include <string_view>
 #include <unistd.h>
+#include <utility>
+#include <variant>
+#include <vector>
 
 namespace {
 
@@ -40,7 +48,7 @@ namespace {
   }
 
   // Builds a minimal color IPC payload for a single output.
-  nlohmann::json colorPayload(nlohmann::json outputOverrides) {
+  nlohmann::json colorPayload(const nlohmann::json& outputOverrides) {
     nlohmann::json output = {
         {"name", "HEADLESS-1"},
         {"enabled", true},
@@ -180,11 +188,21 @@ UMBRIEL_TEST(colorHumanShowsCommittedHdrOutputMetadata) {
   CHECK(out.contains("output metadata: 0.005 to 400 cd/m2; MaxCLL: 400; MaxFALL: 200"));
 }
 
+namespace {
+
+  bool parseOutputCreate(
+      std::vector<std::string> args, std::string& name, std::optional<umbriel::OutputMode>& mode, std::string& error
+  ) {
+    return umbriel::parseOutputCreateArgs(args, name, mode, error);
+  }
+
+} // namespace
+
 UMBRIEL_TEST(parsesOutputCreateNameOnly) {
   std::string name;
   std::optional<umbriel::OutputMode> mode;
   std::string error;
-  CHECK(umbriel::parseOutputCreateArg("stream", name, mode, error));
+  CHECK(parseOutputCreate({"stream"}, name, mode, error));
   CHECK_EQ(name, "stream");
   CHECK(!mode.has_value());
   CHECK(error.empty());
@@ -194,7 +212,7 @@ UMBRIEL_TEST(parsesOutputCreateMode) {
   std::string name;
   std::optional<umbriel::OutputMode> mode;
   std::string error;
-  CHECK(umbriel::parseOutputCreateArg("  stream   2560x1440@120  ", name, mode, error));
+  CHECK(parseOutputCreate({"stream", "2560x1440@120"}, name, mode, error));
   CHECK_EQ(name, "stream");
   CHECK(mode.has_value());
   if (mode.has_value()) {
@@ -209,7 +227,7 @@ UMBRIEL_TEST(parsesOutputCreateModeWithoutRefresh) {
   std::string name;
   std::optional<umbriel::OutputMode> mode;
   std::string error;
-  CHECK(umbriel::parseOutputCreateArg("stream 400x300", name, mode, error));
+  CHECK(parseOutputCreate({"stream", "400x300"}, name, mode, error));
   CHECK(mode.has_value());
   if (mode.has_value()) {
     CHECK_EQ(mode->width, 400);
@@ -222,7 +240,7 @@ UMBRIEL_TEST(rejectsOutputCreateInvalidMode) {
   std::string name;
   std::optional<umbriel::OutputMode> mode;
   std::string error;
-  CHECK(!umbriel::parseOutputCreateArg("stream 1920x1080p", name, mode, error));
+  CHECK(!parseOutputCreate({"stream", "1920x1080p"}, name, mode, error));
   CHECK(!error.empty());
   CHECK(!mode.has_value());
 }
@@ -231,11 +249,15 @@ UMBRIEL_TEST(rejectsOutputCreateExtraArguments) {
   std::string name;
   std::optional<umbriel::OutputMode> mode;
   std::string error;
-  CHECK(!umbriel::parseOutputCreateArg("stream 1920x1080 extra", name, mode, error));
+  CHECK(!parseOutputCreate({"stream", "1920x1080", "extra"}, name, mode, error));
   CHECK(!error.empty());
 
   error.clear();
-  CHECK(!umbriel::parseOutputCreateArg("   ", name, mode, error));
+  CHECK(!parseOutputCreate({}, name, mode, error));
+  CHECK(!error.empty());
+
+  error.clear();
+  CHECK(!parseOutputCreate({""}, name, mode, error));
   CHECK(!error.empty());
 }
 
@@ -245,7 +267,7 @@ UMBRIEL_TEST(effectsCommandReportsStatesSuppressionAndDeclarationOrder) {
   if (spec == nullptr || spec->printHuman == nullptr) {
     return;
   }
-  CHECK(!spec->takesArg);
+  CHECK(!spec->takesArgs);
   const nlohmann::json slot = {
       {"name", "zebra"},
       {"pool", "zpool"},
@@ -321,6 +343,164 @@ UMBRIEL_TEST(audioRequestsAcceptOnlyTheCompleteBoundedSpectrumContract) {
   CHECK(!IpcCommands::parseAudioSpectrum(request));
   CHECK(!IpcCommands::parseAudioSpectrum(nlohmann::json::array()));
   CHECK(!IpcCommands::parseAudioSpectrum(nullptr));
+}
+
+namespace {
+
+  // Word-grammar samples for every argument kind, with optional fields both set and left out.
+  std::vector<std::string> actionSamples(umbriel::ActionArgKind kind) {
+    using umbriel::ActionArgKind;
+    switch (kind) {
+    case ActionArgKind::None:
+      return {""};
+    case ActionArgKind::Command:
+      return {" grim -g \"$(slurp)\" out.png"};
+    case ActionArgKind::Submap:
+      return {" 'my map'"};
+    case ActionArgKind::Fraction:
+      return {" 0.5"};
+    case ActionArgKind::FractionDelta:
+      return {" -0.25"};
+    case ActionArgKind::WorkspaceMoveToOutput:
+      return {
+          " DP-2", " current 3 --output DP-1", " --output DP-1 current --name 2", " 'Vendor Model Serial' 'My web'"
+      };
+    case ActionArgKind::Workspace:
+      return {" 3", " --name 2 --output DP-1", " web"};
+    case ActionArgKind::WindowEffectSet:
+      return {" off", " glow --window w1"};
+    case ActionArgKind::WindowEffectCycle:
+      return {"", " --window w1", " pool --window w1"};
+    case ActionArgKind::ScreenEffectSet:
+      return {" cinema --output vendor/panel"};
+    case ActionArgKind::ScreenEffectCycle:
+      return {"", " screens --output DP-1"};
+    case ActionArgKind::CursorEffectSet:
+      return {" halo"};
+    case ActionArgKind::CursorEffectCycle:
+      return {"", " cursors"};
+    case ActionArgKind::Output:
+      return {" DP-1"};
+    case ActionArgKind::OptionalOutput:
+      return {"", " DP-1"};
+    case ActionArgKind::OptionalScratchpad:
+      return {"", " term"};
+    case ActionArgKind::WindowId:
+      return {" w1"};
+    case ActionArgKind::OptionalWindowId:
+      return {"", " w1"};
+    case ActionArgKind::WindowRegion:
+      return {" bottom_left"};
+    case ActionArgKind::ColumnDisplay:
+      return {" tabbed"};
+    case ActionArgKind::TabIndex:
+      return {" -1"};
+    case ActionArgKind::SkipConfirmation:
+      return {"", " skip-confirmation"};
+    case ActionArgKind::SdrWhite:
+      return {" 200", " 300 --output DP-1"};
+    case ActionArgKind::LayoutMode:
+      return {" master", " toggle", " toggle scrolling master"};
+    case ActionArgKind::WindowMoveTo:
+      return {" top_left -10 20", " center 1 1 --window w1"};
+    case ActionArgKind::WindowMoveBy:
+      return {" 5 -5 --window w1"};
+    }
+    return {};
+  }
+
+  std::optional<umbriel::Keybind> decode(std::string_view text, std::string& error) {
+    return umbriel::actionFromRequest(nlohmann::json::parse(text), error);
+  }
+
+} // namespace
+
+// The CLI parses words and sends the structured request, so every payload the word grammar produces must survive the
+// trip through the request unchanged.
+UMBRIEL_TEST(everyWordFormRoundTripsThroughTheActionRequest) {
+  for (const auto& spec : umbriel::actionSpecs()) {
+    for (const auto& sample : actionSamples(spec.argKind)) {
+      umbriel::Keybind words;
+      CHECK(umbriel::parseAction(std::string(spec.name) + sample, words));
+      std::string error;
+      const auto decoded = umbriel::actionFromRequest(umbriel::actionRequest(words), error);
+      CHECK(decoded.has_value());
+      CHECK(error.empty());
+      if (decoded) {
+        CHECK(decoded->action == words.action);
+        CHECK(decoded->payload == words.payload);
+      }
+    }
+  }
+}
+
+UMBRIEL_TEST(actionRequestWorkspaceTypeSelectsPositionOrName) {
+  std::string error;
+  const auto position = decode(R"({"cmd":"action","action":"workspace-switch","workspace":2})", error);
+  const auto* index = position
+      ? std::get_if<umbriel::WorkspaceIndex>(&std::get<umbriel::WorkspaceArg>(position->payload).reference)
+      : nullptr;
+  CHECK(index != nullptr && index->value == 2);
+  const auto named = decode(R"({"cmd":"action","action":"workspace-switch","workspace":"2","output":"DP-1"})", error);
+  CHECK(named.has_value());
+  if (named) {
+    const auto& workspace = std::get<umbriel::WorkspaceArg>(named->payload);
+    const auto* name = std::get_if<umbriel::WorkspaceName>(&workspace.reference);
+    CHECK(name != nullptr && name->value == "2");
+    CHECK_EQ(workspace.output, std::string{"DP-1"});
+  }
+}
+
+UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
+  const std::pair<std::string_view, std::string_view> cases[] = {
+      {R"({"cmd":"action"})", R"(missing "action")"},
+      {R"({"cmd":"action","action":"nope"})", "unknown action: nope"},
+      {R"({"cmd":"action","action":"window-close","id":"w1"})", R"(unknown field "id")"},
+      {R"({"cmd":"action","action":"window-focus"})", R"(missing "window")"},
+      {R"({"cmd":"action","action":"window-focus","window":""})", R"("window" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"window-focus","window":7})", R"("window" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-switch","workspace":0})", "position must be 1 to 64"},
+      {R"({"cmd":"action","action":"workspace-switch","workspace":2.5})", "position number or a non-empty name"},
+      {R"({"cmd":"action","action":"window-set-primary-extent","fraction":9})", R"("fraction" must be)"},
+      {R"({"cmd":"action","action":"column-focus-tab","index":0})", R"("index" must not be 0)"},
+      // Unsigned JSON integers past the signed range must not wrap into an accepted value.
+      {R"({"cmd":"action","action":"column-focus-tab","index":18446744073709551615})", R"("index" is out of range)"},
+      {R"({"cmd":"action","action":"window-move-by","dx":18446744073709551615,"dy":0})", R"("dx" is out of range)"},
+      {R"({"cmd":"action","action":"workspace-switch","workspace":18446744073709551615})", "position must be 1 to 64"},
+      {R"({"cmd":"action","action":"window-move-by","dx":1.5,"dy":0})", R"("dx" must be an integer)"},
+      {R"({"cmd":"action","action":"workspace-set-layout","layout":"master","cycle":["master","dwindle"]})",
+       R"("cycle" needs "layout": "toggle")"},
+      {R"({"cmd":"action","action":"workspace-set-layout","layout":"toggle","cycle":["master","master"]})",
+       "two or more distinct layouts"},
+      {R"({"cmd":"action","action":"effect-window-cycle","pool":"off"})", R"("pool" cannot be off)"},
+      {R"({"cmd":"action","action":"effect-cursor-set","effect":"halo","window":"w1"})", R"(unknown field "window")"},
+      {R"({"cmd":"action","action":"effect-screen-set","effect":"x","window":"w1"})", R"(unknown field "window")"},
+      {R"({"cmd":"action","action":"session-quit","skip_confirmation":"yes"})", "must be a boolean"},
+  };
+  for (const auto& [request, reason] : cases) {
+    std::string error;
+    CHECK(!decode(request, error).has_value());
+    if (!error.contains(reason)) {
+      std::println(stderr, "{} -> {}", request, error);
+    }
+    CHECK(error.contains(reason));
+  }
+}
+
+UMBRIEL_TEST(workspaceOutputRequestRejectsMalformedFields) {
+  std::string error;
+  for (const auto& invalid :
+       {nlohmann::json::object(), nlohmann::json{{"destination", 2}}, nlohmann::json{{"destination", ""}},
+        nlohmann::json{{"destination", "current"}, {"output", "DP-1"}},
+        nlohmann::json{{"destination", "current"}, {"workspace", 0}},
+        nlohmann::json{{"destination", "current"}, {"workspace", true}},
+        nlohmann::json{{"destination", "current"}, {"workspace", ""}},
+        nlohmann::json{{"destination", "current"}, {"window", "id"}}}) {
+    auto bad = invalid;
+    bad["cmd"] = "action";
+    bad["action"] = "workspace-move-to-output";
+    CHECK(!umbriel::actionFromRequest(bad, error));
+  }
 }
 
 int main() { return RUN_TESTS(); }

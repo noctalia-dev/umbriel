@@ -2,7 +2,7 @@
 # harness: outputs=2
 # min_workspaces is a per-output floor on the dynamic workspace count. The configured output holds its floor while
 # every workspace is empty, grows and prunes around it, and leaves the other output's inventory alone. At the runtime
-# limit, moving a workspace onto the output reuses an empty workspace instead of merging with an occupied one.
+# limit, a workspace transfer is rejected without changing either output.
 set -euo pipefail
 
 readonly BASELINE="$(< "$UMBRIEL_CONFIG")"
@@ -50,7 +50,7 @@ expect_names HEADLESS-1 "1 2 3" "floor applied on reload"
 expect_names HEADLESS-2 "1" "floor scoped to its output"
 
 # The floor is not a ceiling: occupying the last workspace still appends a trailing empty one.
-"$UMBRIEL" msg workspace-switch:3/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 --output HEADLESS-1 > /dev/null
 foot --title=min-workspaces-view sh -c 'sleep 120' > /dev/null 2>&1 &
 wait_for_windows 1
 expect_names HEADLESS-1 "1 2 3 4" "trailing empty above the floor"
@@ -60,7 +60,7 @@ if [[ $(workspace_index_of_window) != "3" ]]; then
 fi
 
 window_id=$("$UMBRIEL" windows --json | jq -r '.[0].id')
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 wait_for_windows 0
 expect_names HEADLESS-1 "1 2 3" "pruning stops at the floor"
 
@@ -93,15 +93,15 @@ position = [1280, 0]
 [[window_rule]]
 match.title = "^workspace-limit-source$"
 default_output = "HEADLESS-2"'
-"$UMBRIEL" msg workspace-switch:64/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg workspace-switch 64 --output HEADLESS-1 > /dev/null
 foot --title=workspace-limit-view sleep 120 > /dev/null 2>&1 &
 wait_for_windows 1
 expect_names HEADLESS-1 "$(seq -s ' ' 64)" "trailing empty respects the limit"
 [[ $(workspace_index_of_window) == 64 ]]
-"$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 --output HEADLESS-1 > /dev/null
 expect_names HEADLESS-1 "$(seq -s ' ' 64)" "leading empty respects the limit"
 [[ $(workspace_index_of_window) == 1 ]]
-"$UMBRIEL" msg window-move-to-workspace:64/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 64 --output HEADLESS-1 > /dev/null
 foot --title=workspace-limit-source sleep 120 > /dev/null 2>&1 &
 wait_for_windows 2
 before_transfer=$("$UMBRIEL" windows --json)
@@ -111,18 +111,14 @@ if [[ $source_workspace != HEADLESS-2:* ]]; then
   echo "workspace transfer source did not map on HEADLESS-2: $before_transfer"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus-warp:$source_id" > /dev/null
-"$UMBRIEL" msg workspace-move-to-output-left > /dev/null
-expect_names HEADLESS-1 "$(seq -s ' ' 64)" "workspace transfer respects the limit"
-transferred=$("$UMBRIEL" windows --json)
-limit_workspace=$(jq -r '.[] | select(.title == "workspace-limit-view") | .workspace' <<< "$transferred")
-source_workspace=$(jq -r '.[] | select(.title == "workspace-limit-source") | .workspace' <<< "$transferred")
-if [[ $limit_workspace != HEADLESS-1:* || $source_workspace != HEADLESS-1:* ]]; then
-  echo "workspace transfer did not move both windows onto HEADLESS-1: $transferred"
+"$UMBRIEL" msg window-focus-warp "$source_id" > /dev/null
+if "$UMBRIEL" msg workspace-move-to-output-left > /dev/null 2>&1; then
+  echo "workspace transfer exceeded the output limit"
   exit 1
 fi
-if [[ $limit_workspace == "$source_workspace" ]]; then
-  echo "workspace transfer merged both windows into occupied workspace $limit_workspace"
+expect_names HEADLESS-1 "$(seq -s ' ' 64)" "workspace transfer respects the limit"
+if [[ $("$UMBRIEL" windows --json | jq -r --arg id "$source_id" '.[] | select(.id == $id) | .workspace') != "$source_workspace" ]]; then
+  echo "rejected transfer moved its source window"
   exit 1
 fi
 

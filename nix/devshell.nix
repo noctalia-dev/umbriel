@@ -19,6 +19,7 @@ pkgs.mkShell {
     ninja
     pkg-config
     wayland-scanner
+    dbus
     llvmPackages_22.clang-tools
     llvmPackages_22.libclang
     gnugrep

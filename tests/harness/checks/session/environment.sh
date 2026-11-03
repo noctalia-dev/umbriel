@@ -271,7 +271,7 @@ assert_autostart_environment "$NATIVE"
 sed -i 's/UMBRIEL_TEST_ONE = "alpha beta"/UMBRIEL_TEST_ONE = "reloaded"/' "$NATIVE/config.toml"
 env UMBRIEL_SOCKET="$NATIVE/umbriel-wayland-0.sock" "$UMBRIEL" msg config-reload > /dev/null
 env UMBRIEL_SOCKET="$NATIVE/umbriel-wayland-0.sock" \
-  "$UMBRIEL" msg "spawn:$NATIVE/bin/capture-reloaded-environment" > /dev/null
+  "$UMBRIEL" msg spawn "$NATIVE/bin/capture-reloaded-environment" > /dev/null
 wait_for_file "$NATIVE" "$NATIVE/reloaded-environment" true
 reloaded_value=$(< "$NATIVE/reloaded-environment")
 if [[ $reloaded_value != "alpha beta" ]]; then

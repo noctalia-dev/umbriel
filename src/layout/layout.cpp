@@ -2,9 +2,9 @@
 
 #include "config/config.h"
 #include "layout/dwindle.h"
-#include "layout/floating.h"
 #include "layout/master.h"
 #include "layout/scrolling.h"
+#include "layout/stacking.h"
 
 #include <algorithm>
 #include <cmath>
@@ -75,7 +75,7 @@ namespace umbriel {
     if (bar) {
       return *bar;
     }
-    return config.tabs.barVisible && !(config.tabs.hideWhenSingle && tabs <= 1);
+    return config.tabs.barVisible && (!config.tabs.hideWhenSingle || tabs > 1);
   }
 
   int Layout::tabBarReserve(size_t tabs, std::optional<bool> bar) const {
@@ -218,8 +218,8 @@ namespace umbriel {
       return std::make_unique<MasterStackLayout>();
     case LayoutMode::Scrolling:
       return std::make_unique<ScrollingLayout>();
-    case LayoutMode::Floating:
-      return std::make_unique<FloatingLayout>();
+    case LayoutMode::Stacking:
+      return std::make_unique<StackingLayout>();
     }
     std::unreachable();
   }

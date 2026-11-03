@@ -2,6 +2,7 @@
 // exercises native client metadata. Reading a label from stdin synchronizes events and reports notification counts.
 
 #include "color-management-v1-client-protocol.h"
+#include "parse_ints.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -71,6 +72,7 @@ namespace {
     bool desynchronized = false;
     bool tagged = true;
     bool compound = false;
+    bool probe = false;
     bool custom = false;
     bool contentLight = false;
     std::array<wp_image_description_v1*, 5> customDescriptions{};
@@ -199,7 +201,9 @@ namespace {
   void supportedFeature(void*, wp_color_manager_v1*, uint32_t feature) {
     std::println(R"({{"event":"feature","value":{}}})", feature);
   }
-  void supportedTransfer(void*, wp_color_manager_v1*, uint32_t) {}
+  void supportedTransfer(void*, wp_color_manager_v1*, uint32_t transferFunction) {
+    std::println(R"({{"event":"transfer","value":{}}})", transferFunction);
+  }
   void supportedPrimaries(void*, wp_color_manager_v1*, uint32_t) {}
   void managerDone(void*, wp_color_manager_v1*) { std::fflush(stdout); }
   constexpr wp_color_manager_v1_listener kManagerListener{
@@ -409,6 +413,8 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(argv[i], "compound") == 0) {
       state.compound = true;
       state.fillColor = 0xFF101010U;
+    } else if (std::strcmp(argv[i], "probe") == 0) {
+      state.probe = true;
     } else if (std::strcmp(argv[i], "untagged") == 0) {
       state.tagged = false;
     } else if (std::strcmp(argv[i], "subsurface") == 0 || std::strcmp(argv[i], "subsurface-desync") == 0) {
@@ -448,9 +454,15 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::strncmp(argv[1], "params-", 7) == 0) {
     const char* mode = argv[1] + 7;
     auto* params = wp_color_manager_v1_create_parametric_creator(state.manager);
-    wp_image_description_creator_params_v1_set_tf_named(params, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22);
+    const bool unsupportedSrgb = std::strcmp(mode, "unsupported-srgb") == 0;
+    wp_image_description_creator_params_v1_set_tf_named(
+        params,
+        unsupportedSrgb ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22
+    );
     uint32_t expected = WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET;
-    if (std::strcmp(mode, "named-raw") == 0) {
+    if (unsupportedSrgb) {
+      expected = WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF;
+    } else if (std::strcmp(mode, "named-raw") == 0) {
       wp_image_description_creator_params_v1_set_primaries_named(params, WP_COLOR_MANAGER_V1_PRIMARIES_SRGB);
       setRawPrimaries(params, true);
     } else if (std::strcmp(mode, "raw-named") == 0) {
@@ -543,10 +555,10 @@ int main(int argc, char** argv) {
   );
   state.colorSurface = wp_color_manager_v1_get_surface(state.manager, state.colorTarget);
   wp_image_description_creator_params_v1* params = wp_color_manager_v1_create_parametric_creator(state.manager);
+  const auto compoundTransfer = state.managerVersion == 1 ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB
+                                                          : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
   wp_image_description_creator_params_v1_set_tf_named(
-      params,
-      state.compound ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4
-                     : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
+      params, state.compound ? compoundTransfer : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
   );
   wp_image_description_creator_params_v1_set_primaries_named(
       params, state.compound ? WP_COLOR_MANAGER_V1_PRIMARIES_SRGB : WP_COLOR_MANAGER_V1_PRIMARIES_BT2020
@@ -626,7 +638,7 @@ int main(int argc, char** argv) {
     state.surfaceDescription = state.contentLightDescriptions[0];
     state.selectedDescription = state.surfaceDescription;
   }
-  if (state.requestedVersion == 1) {
+  if (state.probe) {
     observeDescription(state, wp_color_management_surface_feedback_v1_get_preferred(state.feedback), "preferred", 0);
     observeDescription(
         state, wp_color_management_surface_feedback_v1_get_preferred_parametric(state.feedback), "preferred_parametric",
@@ -692,14 +704,13 @@ int main(int argc, char** argv) {
         }
         wl_surface_commit(state.surface);
       } else if (state.contentLight && std::strncmp(label, "content ", 8) == 0) {
-        unsigned index = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 8, "%u%c", &index, &trailing) != 1 || index >= state.contentLightDescriptions.size()) {
+        const auto index = harness::parseInts<size_t, 1>(label + 8, ' ');
+        if (!index || (*index)[0] >= state.contentLightDescriptions.size()) {
           std::println(stderr, "color-feedback-client: invalid content description: {}", label);
           return 1;
         }
         state.tagged = true;
-        state.selectedDescription = state.contentLightDescriptions[index];
+        state.selectedDescription = state.contentLightDescriptions[(*index)[0]];
         wp_color_management_surface_v1_set_image_description(
             state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
         );
@@ -708,14 +719,13 @@ int main(int argc, char** argv) {
           wl_surface_commit(state.surface);
         }
       } else if (state.custom && std::strncmp(label, "custom ", 7) == 0) {
-        unsigned index = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 7, "%u%c", &index, &trailing) != 1 || index >= state.customDescriptions.size()) {
+        const auto index = harness::parseInts<size_t, 1>(label + 7, ' ');
+        if (!index || (*index)[0] >= state.customDescriptions.size()) {
           std::println(stderr, "color-feedback-client: invalid custom description: {}", label);
           return 1;
         }
         state.tagged = true;
-        state.selectedDescription = state.customDescriptions[index];
+        state.selectedDescription = state.customDescriptions[(*index)[0]];
         wp_color_management_surface_v1_set_image_description(
             state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
         );
@@ -786,13 +796,12 @@ int main(int argc, char** argv) {
       } else if (std::strncmp(label, "title ", 6) == 0) {
         xdg_toplevel_set_title(state.toplevel, label + 6);
       } else if (std::strncmp(label, "color ", 6) == 0) {
-        unsigned color = 0;
-        char trailing = '\0';
-        if (std::sscanf(label + 6, "%x%c", &color, &trailing) != 1) {
+        const auto color = harness::parseInts<uint32_t, 1>(label + 6, ' ', 16);
+        if (!color) {
           std::println(stderr, "color-feedback-client: invalid color: {}", label);
           return 1;
         }
-        state.fillColor = static_cast<uint32_t>(color);
+        state.fillColor = (*color)[0];
         if (!present(state)) {
           return 1;
         }

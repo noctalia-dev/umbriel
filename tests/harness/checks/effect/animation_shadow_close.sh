@@ -72,16 +72,15 @@ x=$(jq -r '.x + (.w / 2 | floor)' <<< "$window")
 y=$(jq -r '.y - 6' <<< "$window")
 assert_shadow() {
   grim "$IMAGE"
-  read -r r g b < <(magick "$IMAGE" -crop "2x2+$x+$y" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$x+$y")
   if ! (( g > 25 && r < 5 && b < 5 )); then
     echo "$1: border shader shadow did not follow the content edge: $r $g $b"; exit 1
   fi
 }
-"$UMBRIEL" msg "window-focus:$id" > /dev/null
+"$UMBRIEL" msg window-focus "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_shadow focus
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_shadow closing
 echo "descendant-only border silhouette and its closing snapshot shadow verified"

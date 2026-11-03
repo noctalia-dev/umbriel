@@ -8,7 +8,7 @@
 namespace umbriel {
   // wlroots emits a key event before applying that key to its modifier state.
   // Include the modifier represented by the current press when matching.
-  [[nodiscard]] bool modifierTapPressMatches(uint32_t modifiers, uint32_t pressedModifier, uint32_t expected);
+  bool modifierTapPressMatches(uint32_t modifiers, uint32_t pressedModifier, uint32_t expected);
 
   // Tracks one seat-wide modifier-only bind from its press until release. The source identity keeps identical keycodes
   // from different keyboards from completing each other's tap.
@@ -20,7 +20,7 @@ namespace umbriel {
     void arm(Keybind bind, const void* source, uint32_t keycode);
     [[nodiscard]] std::optional<Keybind> release(const void* source, uint32_t keycode);
     void cancel();
-    [[nodiscard]] bool armed() const { return m_bind.has_value(); }
+    bool armed() const { return m_bind.has_value(); }
 
   private:
     std::optional<Keybind> m_bind;

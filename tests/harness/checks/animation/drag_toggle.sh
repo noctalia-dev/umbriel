@@ -29,8 +29,7 @@ wait_for_box() {
 capture_width() {
   local image="$UMBRIEL_RUNTIME_DIR/$1.png"
   grim "$image"
-  magick "$image" -alpha off -colorspace gray -threshold 1% \
-    -bordercolor black -border 1 -trim -format '%w\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01' | awk '{ print $3 }'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -64,8 +63,8 @@ wait_for_box 1264x704
 # distance to animate, then tile it again for the drag to start from.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 "$UMBRIEL" clock-advance 3000
-"$UMBRIEL" msg window-set-primary-extent:0.25 > /dev/null
-"$UMBRIEL" msg window-set-secondary-extent:0.3 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.25 > /dev/null
+"$UMBRIEL" msg window-set-secondary-extent 0.3 > /dev/null
 wait_for_box 320x216
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 wait_for_box 1264x704

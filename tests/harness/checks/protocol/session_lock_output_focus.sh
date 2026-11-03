@@ -62,7 +62,7 @@ for _ in $(seq 40); do
   sleep 0.05
 done
 target_id=$(windows | jq -r '.[] | select(.title == "lock-focus-target") | .id')
-"$UMBRIEL" msg "window-focus:$target_id" > /dev/null
+"$UMBRIEL" msg window-focus "$target_id" > /dev/null
 for _ in $(seq 40); do
   [[ $(active_title) == lock-focus-target ]] && break
   sleep 0.05

@@ -10,7 +10,7 @@ readonly LATE_FIFO="$UMBRIEL_RUNTIME_DIR/window-rule-workspace-late-control"
 readonly LATE_LOG="$UMBRIEL_RUNTIME_DIR/window-rule-workspace-late.log"
 
 focus_left_home() {
-  "$UMBRIEL" msg 'workspace-switch:"2"/HEADLESS-1' > /dev/null
+  "$UMBRIEL" msg workspace-switch --name 2 --output HEADLESS-1 > /dev/null
 }
 
 spawn_client() {
@@ -86,7 +86,7 @@ default_workspace = "RIGHT_LATE"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-"$UMBRIEL" msg "workspace-switch:CHAT/HEADLESS-1" > /dev/null
+"$UMBRIEL" msg workspace-switch CHAT --output HEADLESS-1 > /dev/null
 spawn_client numeric-name numeric-name
 wait_for_location numeric-name HEADLESS-1/2
 

@@ -28,12 +28,12 @@ expect_active() {
 
 # Focusing the parent lands on the dialog exactly while the dialog is attached.
 expect_attached() {
-  "$UMBRIEL" msg "window-focus:$(field transient-parent id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field transient-parent id)" > /dev/null
   expect_active modal-dialog "$1"
 }
 
 expect_detached() {
-  "$UMBRIEL" msg "window-focus:$(field transient-parent id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field transient-parent id)" > /dev/null
   expect_active transient-parent "$1"
 }
 
@@ -80,7 +80,7 @@ expect_attached "keyboard"
 expect_parent_colour "shaded" $((170 * 7 / 10))
 
 # Pointer: a press on the parent, clear of the dialog, focuses the dialog.
-"$UMBRIEL" msg "window-focus:$(field transient-unrelated id)" > /dev/null
+"$UMBRIEL" msg window-focus "$(field transient-unrelated id)" > /dev/null
 expect_active transient-unrelated "focusing the unrelated window"
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 130 130 press "$BTN_LEFT" release "$BTN_LEFT" > /dev/null
 expect_active modal-dialog "pointer press on the parent"
@@ -176,7 +176,7 @@ for _ in $(seq 80); do
 done
 expect_active modal-orphan "the second dialog opening"
 parent_id=$(windows | jq -r '[.[] | select(.title == "transient-parent")] | last | .id')
-"$UMBRIEL" msg "window-close:$parent_id" > /dev/null
+"$UMBRIEL" msg window-close "$parent_id" > /dev/null
 for _ in $(seq 80); do
   windows | jq -e --arg id "$parent_id" \
     '([.[] | select(.id == $id)] | length == 0)

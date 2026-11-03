@@ -4,8 +4,8 @@
 set -euo pipefail
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -109,8 +109,8 @@ accepts window-consume-or-expel-left
 wait_for_stacked
 
 # The modify verb steps from the fraction the window already carries: 0.7 - 0.2.
-accepts window-set-secondary-extent:0.7
-accepts window-modify-secondary-extent:-0.2
+accepts window-set-secondary-extent 0.7
+accepts window-modify-secondary-extent -0.2
 wait_for_b_height_percent 46 54
 
 accepts window-consume-or-expel-left
@@ -122,7 +122,7 @@ accepts window-consume-or-expel-right
 wait_for_separate_columns
 b_workspace=$(field_of harness-b workspace)
 
-accepts workspace-switch:2
+accepts workspace-switch 2
 spawn_client harness-c
 wait_for_windows 3
 c_workspace=$(field_of harness-c workspace)

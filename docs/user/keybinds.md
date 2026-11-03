@@ -4,7 +4,7 @@ Configure bindings under `[keybinds]`. See [Actions](actions.md) for the complet
 
 ```toml
 [keybinds]
-"Mod+T" = "spawn:kitty"
+"Mod+T" = "spawn kitty"
 "Mod+Q" = "window-close"
 "Mod+Left" = "window-focus-left"
 "Mod+Right" = "window-focus-right"
@@ -50,7 +50,7 @@ Bare keys such as `XF86AudioMute` are also valid.
 A modifier can be bound by itself:
 
 ```toml
-"Mod" = "spawn:noctalia msg panel-toggle launcher"
+"Mod" = "spawn noctalia msg panel-toggle launcher"
 ```
 
 Modifier-only binds run on release when no other key, button, scroll, touch, or gesture input occurred while the modifier was held. Pointer motion alone does not cancel them.
@@ -72,10 +72,10 @@ A matched bind consumes its press and release, so neither reaches the focused ap
 
 ## Repeat
 
-Binds repeat using the configured keyboard rate and delay, including `spawn:` binds, so held volume and brightness keys keep stepping. Disable repeat for one bind, such as a launcher, with the table form:
+Binds repeat using the configured keyboard rate and delay, including `spawn` binds, so held volume and brightness keys keep stepping. Disable repeat for one bind, such as a launcher, with the table form:
 
 ```toml
-"Mod+Return" = { action = "spawn:kitty", repeat = false }
+"Mod+Return" = { action = "spawn kitty", repeat = false }
 ```
 
 Scratchpad visibility and cycling actions never repeat. The built-in `Mod+Q` and `Mod+O` binds do not repeat either.
@@ -85,7 +85,7 @@ Scratchpad visibility and cycling actions never repeat. The built-in `Mod+Q` and
 Binds are blocked while the session is locked unless explicitly allowed:
 
 ```toml
-"XF86MonBrightnessDown" = { action = "spawn:noctalia msg brightness-down 10", allow_when_locked = true }
+"XF86MonBrightnessDown" = { action = "spawn noctalia msg brightness-down 10", allow_when_locked = true }
 ```
 
 Use this only for actions that are safe without an unlocked session.
@@ -119,20 +119,20 @@ When the client already has an allowed shortcuts inhibitor, the toggle activates
 
 ## Submaps
 
-Submaps are temporary keybind layers. Enter one with `submap:<name>` and leave one level with `submap:reset`.
+Submaps are temporary keybind layers. Enter one with `submap <name>` and leave one level with `submap reset`.
 
 Prefix bindings inside a submap with `submap[name],`:
 
 ```toml
-"Mod+S" = { action = "submap:screencapture", repeat = false }
-"submap[screencapture],1" = { action = "spawn:grim screenshot.png", submap = "reset" }
-"submap[screencapture],2" = { action = "submap:region", repeat = false }
-"submap[screencapture],Escape" = "submap:reset"
-"submap[region],R" = { action = "spawn:grim -g \"$(slurp)\" screenshot.png", submap = "reset" }
-"submap[region],Escape" = "submap:reset"
+"Mod+S" = { action = "submap screencapture", repeat = false }
+"submap[screencapture],1" = { action = "spawn grim screenshot.png", submap = "reset" }
+"submap[screencapture],2" = { action = "submap region", repeat = false }
+"submap[screencapture],Escape" = "submap reset"
+"submap[region],R" = { action = "spawn grim -g \"$(slurp)\" screenshot.png", submap = "reset" }
+"submap[region],Escape" = "submap reset"
 ```
 
-The optional `submap` field applies a transition after the action. Use `submap = "reset"` for one-shot commands. A default-context `"Escape" = "submap:reset"` always matches, even outside a submap, so use it only when bare Escape should be consumed globally.
+The optional `submap` field applies a transition after the action. Use `submap = "reset"` for one-shot commands. A default-context `"Escape" = "submap reset"` always matches, even outside a submap, so use it only when bare Escape should be consumed globally.
 
 Run `umbriel submap` to print the active layer, or subscribe to `submap` events for a panel or script.
 
@@ -165,6 +165,8 @@ Named effect `set` and `cycle` arguments are checked against preset/pool kind wh
 
 Hot corners are inactive while the output's focused window is fullscreen. This check follows the output containing the corner, including when keyboard focus remains on another monitor. A fullscreen window on a different output or an inactive workspace does not block the corner. Neither does a retained fullscreen window after another window on that output takes focus.
 
+Hot corners are also inactive while an exclusive-keyboard layer surface, such as a launcher, is mapped. While the overview is open, exclusive-keyboard layers do not block hot corners.
+
 ## Cheatsheet
 
 The cheatsheet lists active keybinds. It opens at startup when `general.show_cheatsheet` is enabled. Use `cheatsheet-toggle`, `cheatsheet-open`, or `cheatsheet-close` from a bind or `umbriel msg`.
@@ -174,20 +176,20 @@ Any non-modifier key or mouse button closes it. Normal bound actions still run.
 ## Example: Noctalia shell integration
 
 ```toml
-"Mod" = "spawn:noctalia msg panel-toggle launcher"
-"Mod+V" = "spawn:noctalia msg panel-toggle clipboard"
-"Mod+W" = "spawn:noctalia msg panel-toggle wallpaper"
-"Mod+P" = "spawn:noctalia msg screenshot-region"
-"Mod+Escape" = "spawn:noctalia msg panel-toggle session"
+"Mod" = "spawn noctalia msg panel-toggle launcher"
+"Mod+V" = "spawn noctalia msg panel-toggle clipboard"
+"Mod+W" = "spawn noctalia msg panel-toggle wallpaper"
+"Mod+P" = "spawn noctalia msg screenshot-region"
+"Mod+Escape" = "spawn noctalia msg panel-toggle session"
 ```
 
 ## Example: direct primary extents
 
 ```toml
-"Mod+A" = "window-set-primary-extent:0.333"
-"Mod+S" = "window-set-primary-extent:0.5"
-"Mod+D" = "window-set-primary-extent:0.667"
-"Mod+F" = "window-set-primary-extent:1.0"
+"Mod+A" = "window-set-primary-extent 0.333"
+"Mod+S" = "window-set-primary-extent 0.5"
+"Mod+D" = "window-set-primary-extent 0.667"
+"Mod+F" = "window-set-primary-extent 1.0"
 "Mod+R" = "window-cycle-primary-extent"
 "Mod+Shift+R" = "window-cycle-primary-extent-back"
 ```
@@ -206,26 +208,26 @@ Any non-modifier key or mouse button closes it. Normal bound actions still run.
 With the Noctalia shell, route these keys through its IPC: the volume and brightness OSDs show, and the binds stay available while the session is locked.
 
 ```toml
-"XF86AudioRaiseVolume" = { action = "spawn:noctalia msg volume-up", allow_when_locked = true }
-"XF86AudioLowerVolume" = { action = "spawn:noctalia msg volume-down", allow_when_locked = true }
-"XF86AudioMute" = { action = "spawn:noctalia msg volume-mute", allow_when_locked = true, repeat = false }
-"XF86AudioPlay" = { action = "spawn:noctalia msg media toggle", allow_when_locked = true, repeat = false }
-"XF86AudioNext" = { action = "spawn:noctalia msg media next", allow_when_locked = true }
-"XF86AudioPrev" = { action = "spawn:noctalia msg media previous", allow_when_locked = true }
-"XF86MonBrightnessUp" = { action = "spawn:noctalia msg brightness-up", allow_when_locked = true }
-"XF86MonBrightnessDown" = { action = "spawn:noctalia msg brightness-down", allow_when_locked = true }
+"XF86AudioRaiseVolume" = { action = "spawn noctalia msg volume-up", allow_when_locked = true }
+"XF86AudioLowerVolume" = { action = "spawn noctalia msg volume-down", allow_when_locked = true }
+"XF86AudioMute" = { action = "spawn noctalia msg volume-mute", allow_when_locked = true, repeat = false }
+"XF86AudioPlay" = { action = "spawn noctalia msg media toggle", allow_when_locked = true, repeat = false }
+"XF86AudioNext" = { action = "spawn noctalia msg media next", allow_when_locked = true }
+"XF86AudioPrev" = { action = "spawn noctalia msg media previous", allow_when_locked = true }
+"XF86MonBrightnessUp" = { action = "spawn noctalia msg brightness-up", allow_when_locked = true }
+"XF86MonBrightnessDown" = { action = "spawn noctalia msg brightness-down", allow_when_locked = true }
 ```
 
 Without the shell, spawn the usual utilities directly:
 
 ```toml
-"XF86AudioRaiseVolume" = "spawn:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
-"XF86AudioLowerVolume" = "spawn:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
-"XF86AudioPlay" = "spawn:playerctl play-pause"
-"XF86AudioNext" = "spawn:playerctl next"
-"XF86AudioPrev" = "spawn:playerctl previous"
-"XF86MonBrightnessUp" = "spawn:brightnessctl set +5%"
-"XF86MonBrightnessDown" = "spawn:brightnessctl set 5%-"
+"XF86AudioRaiseVolume" = "spawn wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
+"XF86AudioLowerVolume" = "spawn wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+"XF86AudioPlay" = "spawn playerctl play-pause"
+"XF86AudioNext" = "spawn playerctl next"
+"XF86AudioPrev" = "spawn playerctl previous"
+"XF86MonBrightnessUp" = "spawn brightnessctl set +5%"
+"XF86MonBrightnessDown" = "spawn brightnessctl set 5%-"
 ```
 
 Volume commands require `wpctl`, media commands require `playerctl`, and brightness commands require `brightnessctl`.

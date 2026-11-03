@@ -57,7 +57,7 @@ assert_background_box() {
 
 resize_scratchpad() {
   local action=$1 expected_width=$2 expected_height=$3 state width height active
-  "$UMBRIEL" msg "$action" > /dev/null
+  "$UMBRIEL" msg $action > /dev/null
   for _ in $(seq 80); do
     assert_background_box "$action"
     state=$(windows)
@@ -86,9 +86,9 @@ wait_for_field "$BACKGROUND" h 360
 
 # Positive control: the same action must reach the background while it owns
 # focus, then restore the exact baseline used by the isolation assertions.
-"$UMBRIEL" msg window-set-primary-extent:0.6 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.6 > /dev/null
 wait_for_field "$BACKGROUND" w 768
-"$UMBRIEL" msg window-set-primary-extent:0.5 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.5 > /dev/null
 wait_for_field "$BACKGROUND" w 640
 
 "$CLIENT" "$SCRATCHPAD" > "$SCRATCHPAD_LOG" 2>&1 &
@@ -97,7 +97,7 @@ wait_for_field "$SCRATCHPAD" w 420
 wait_for_field "$SCRATCHPAD" h 260
 
 scratchpad_id=$(field_of "$SCRATCHPAD" id)
-"$UMBRIEL" msg "window-focus:$scratchpad_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratchpad_id" > /dev/null
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
 wait_for_field "$SCRATCHPAD" workspace ""
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
@@ -106,12 +106,12 @@ assert_background_box setup
 
 # Direct setters, relative changes, and preset cycling have separate handlers.
 # Exercise both axes and both cycle directions while the scratchpad owns focus.
-resize_scratchpad window-set-primary-extent:0.25 320 260
-resize_scratchpad window-modify-primary-extent:+0.1 448 260
+resize_scratchpad "window-set-primary-extent 0.25" 320 260
+resize_scratchpad "window-modify-primary-extent +0.1" 448 260
 resize_scratchpad window-cycle-primary-extent 640 260
 resize_scratchpad window-cycle-primary-extent-back 427 260
-resize_scratchpad window-set-secondary-extent:0.25 427 180
-resize_scratchpad window-modify-secondary-extent:+0.1 427 252
+resize_scratchpad "window-set-secondary-extent 0.25" 427 180
+resize_scratchpad "window-modify-secondary-extent +0.1" 427 252
 resize_scratchpad window-cycle-secondary-extent 427 360
 resize_scratchpad window-cycle-secondary-extent-back 427 240
 

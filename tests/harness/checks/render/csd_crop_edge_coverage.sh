@@ -95,8 +95,8 @@ center_y=$(physical_round "$((y + h / 2))")
 # Every window texel is one of two pure columns, and the margin is transparent.
 # A pixel that is neither pure column means the draw sampled outside the window.
 impure() {
-  magick "$SCREENSHOT" -alpha off -crop "$1" +repage -depth 8 txt:- |
-    tail -n +2 | grep -c -E -v '#(0000FF|00FF00) ' || true
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count \
+    '!((r == 0 && g == 0 && b == 1) || (r == 0 && g == 1 && b == 0))' "$1"
 }
 
 first_column=$(impure "1x40+${content_left}+$((center_y - 20))")

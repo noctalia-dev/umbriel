@@ -157,8 +157,8 @@ selection = "round_robin"
 EOF_CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 reload_id=$(jq -r .id <<< "$window")
-"$UMBRIEL" msg "effect-border-set:runtime_reload/$reload_id" > /dev/null
-"$UMBRIEL" msg "effect-border-toggle:$reload_id" > /dev/null
+"$UMBRIEL" msg effect-border-set runtime_reload --window "$reload_id" > /dev/null
+"$UMBRIEL" msg effect-border-toggle "$reload_id" > /dev/null
 slot_before=$("$UMBRIEL" windows --json | jq -c --arg id "$reload_id" '.[] | select(.id == $id) | .border_effect')
 sed -i 's/^accent_primary = "#FF0000FF"$/accent_primary = "#FFFFFFFF"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -172,7 +172,7 @@ if [[ $slot_before != "$slot_after" ]] || ! jq -e '.name == "runtime_reload_z" a
   exit 1
 fi
 "$UMBRIEL" effects --json | jq -e '[.presets[] | select(.name | startswith("runtime_reload_")) | .state] == ["compiled", "compiled", "compiled"]' > /dev/null || { echo "reload-runtime-prepared"; exit 1; }
-"$UMBRIEL" msg "effect-border-toggle:$reload_id" > /dev/null
+"$UMBRIEL" msg effect-border-toggle "$reload_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 grim "$IMAGE"
 read -r r g b < <(probe)
@@ -202,7 +202,7 @@ sed -i 's/^choose = \["runtime_reload_a"\]$/choose = ["runtime_reload_z", "runti
 sed -i 's/^\[effects.pool.runtime_reload\]$/[effects.pool.runtime_reload_removed]/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" windows --json | jq -e --arg id "$reload_id" '.[] | select(.id == $id) | .border_effect | .name == "later" and .pool == "" and .source == "default"' > /dev/null || { echo "reload-deleted-override"; exit 1; }
-"$UMBRIEL" msg "effect-border-set:runtime_reload_z/$reload_id" > /dev/null
+"$UMBRIEL" msg effect-border-set runtime_reload_z --window "$reload_id" > /dev/null
 sed -i '/^\[effects.preset.runtime_reload_z\]$/,/^\[/s/^kind = "border"$/kind = "window"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" windows --json | jq -e --arg id "$reload_id" '.[] | select(.id == $id) | .border_effect | .name == "later" and .pool == "" and .source == "default"' > /dev/null || { echo "reload-wrong-kind-override"; exit 1; }
@@ -256,7 +256,7 @@ for _ in $(seq 80); do
 done
 [[ -n $chrome_helper ]]
 chrome_id=$(jq -r .id <<< "$chrome_helper")
-"$UMBRIEL" msg "window-focus:$reload_id" > /dev/null
+"$UMBRIEL" msg window-focus "$reload_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 # This changes only effects, so the initially empty round-robin pool has never
 # made a handout.
@@ -274,7 +274,7 @@ if [[ $chrome_before != "$chrome_after" ]] || ! jq -e '.name == "chrome_focused"
 fi
 # Target an unfocused helper: choosing the untouched pool must not unfocus the
 # first owner, and a fresh round-robin pick must still start at its first member.
-"$UMBRIEL" msg "effect-window-set:chrome_idle/$chrome_id" > /dev/null
+"$UMBRIEL" msg effect-window-set chrome_idle --window "$chrome_id" > /dev/null
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" windows --json | jq -e --arg id "$chrome_id" '.[] | select(.id == $id) | .window_effect | .name == "chrome_z" and .pool == "chrome_idle"' > /dev/null || { echo "reload-chrome-no-policy-pick"; exit 1; }
 read -r cx cy cw ch < <("$UMBRIEL" windows --json | jq -r --arg id "$chrome_id" '.[] | select(.id == $id) | "\(.x) \(.y) \(.w) \(.h)"')

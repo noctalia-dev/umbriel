@@ -23,7 +23,9 @@ spawn_client() {
 
 sample_blue() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$x+$y" -format '%[fx:round(255*mean.b)]' info:
+  local blue
+  read -r _ _ blue < <("$UMBRIEL_PIXEL_PROBE" "$image" mean "20x20+$x+$y")
+  echo "$blue"
 }
 
 wait_for_count() {
@@ -71,12 +73,12 @@ if [[ -z $first_id ]]; then
   echo "could not resolve the first horizontal column: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$first_id" > /dev/null
+"$UMBRIEL" msg window-focus "$first_id" > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" msg overview-open > /dev/null
 "$UMBRIEL" settle
 grim "$SCREENSHOT"
-blue=$(magick "$SCREENSHOT" -crop 20x20+1090+350 -format '%[fx:round(255*mean.b)]' info:)
+blue=$(sample_blue "$SCREENSHOT" 1090 350)
 if (( blue < 80 )); then
   echo "horizontal card was clipped to the workspace background: blue=$blue"
   exit 1
@@ -97,11 +99,11 @@ EOF
 
 # A client on the neighbouring workspace makes its preview identifiable by colour: the shared black workspace
 # background cannot be told apart from the backdrop.
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 spawn_client horizontal-overflow-neighbour
 wait_for_count 4
 "$UMBRIEL" settle
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" msg column-focus-first > /dev/null
 "$UMBRIEL" settle
 

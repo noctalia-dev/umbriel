@@ -89,11 +89,31 @@ if "ok" not in two or not isinstance(two["ok"], list):
     raise SystemExit("one-request connection returned a malformed response")
 
 # Unknown window ids must be rejected by both window actions with the same
-# error, delivered through the msg action path.
+# error, delivered through the structured action request.
 for action in ("window-focus", "window-close"):
-    reply = request(f'{{"cmd":"msg","arg":"{action}:definitely-not-a-window"}}\n'.encode())
+    reply = request(f'{{"cmd":"action","action":"{action}","window":"definitely-not-a-window"}}\n'.encode())
     if reply.get("err") != "unknown window: definitely-not-a-window":
         raise SystemExit(f"{action} did not reject an unknown window id: {reply}")
+
+# Programs send actions as typed fields, never as the word grammar people type.
+if request(b'{"cmd":"msg","args":["window-close"]}\n').get("err") != "unknown command: msg":
+    raise SystemExit("the word-based msg request is still accepted")
+layout = request(b'{"cmd":"action","action":"workspace-set-layout","layout":"dwindle"}\n')
+if "ok" not in layout:
+    raise SystemExit(f"the action request did not run: {layout}")
+focused = [w for w in request(b'{"cmd":"workspaces"}\n')["ok"] if w["focused"]]
+if [w["layout"] for w in focused] != ["dwindle"]:
+    raise SystemExit(f"workspace-set-layout through an action request did not apply: {focused}")
+for body, expected in (
+    (b'{"cmd":"action","action":"workspace-set-layout","layout":"sideways"}', 'unknown layout "sideways"'),
+    (b'{"cmd":"action","action":"workspace-set-layout"}', 'missing "layout"'),
+    (b'{"cmd":"action","action":"window-close","id":"x"}', 'unknown field "id"'),
+    (b'{"cmd":"action","action":"not-an-action"}', "unknown action: not-an-action"),
+):
+    err = request(body + b"\n").get("err", "")
+    if expected not in err:
+        raise SystemExit(f"{body!r} was not rejected with {expected!r}: {err!r}")
+request(b'{"cmd":"action","action":"workspace-set-layout","layout":"scrolling"}\n')
 PY
 
 spawn_client
@@ -169,7 +189,7 @@ fi
 
 # The listing reports the effective mode, including a runtime override, rather
 # than only the mode last loaded from configuration.
-"$UMBRIEL" msg workspace-set-layout:dwindle > /dev/null
+"$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 workspaces=$("$UMBRIEL" workspaces --json)
 if ! jq -e '[.[] | select(.focused) | .layout] == ["dwindle"]' <<< "$workspaces" > /dev/null; then
   echo "focused workspace did not report its runtime layout override: $workspaces"
@@ -180,7 +200,7 @@ if ! grep -F "* HEADLESS-1: 1 [dwindle] (focused)" <<< "$workspace_human" > /dev
   echo "human workspace listing does not identify the focused layout: $workspace_human"
   exit 1
 fi
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 
 # The workspaces event family carries the layout mode, which no Wayland protocol exposes, so a bar follows
 # workspace-set-layout by subscribing instead of polling.
@@ -237,7 +257,7 @@ if focused_layout(initial) != "scrolling":
     raise SystemExit(f"initial workspaces event does not report the active layout: {initial['data']}")
 
 # A runtime layout switch must be pushed, and the pushed payload must be the effective mode.
-action("workspace-set-layout:master")
+action("workspace-set-layout", "master")
 pushed = None
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
@@ -251,7 +271,7 @@ while time.monotonic() < deadline:
 if pushed is None:
     raise SystemExit("workspace-set-layout did not push a workspaces event")
 sub.close()
-action("workspace-set-layout:scrolling")
+action("workspace-set-layout", "scrolling")
 
 # The CLI verb relays the same stream, one flushed line per event, so a script can read it live.
 stream = subprocess.Popen(
@@ -274,7 +294,7 @@ try:
         raise SystemExit("umbriel subscribe printed no initial line")
     if json.loads(first).get("event") != "workspaces":
         raise SystemExit(f"umbriel subscribe printed a foreign line: {first!r}")
-    action("workspace-set-layout:dwindle")
+    action("workspace-set-layout", "dwindle")
     relayed = None
     for _ in range(10):
         line = relayed_line()
@@ -289,7 +309,7 @@ finally:
     selector.close()
     stream.terminate()
     stream.wait(timeout=5)
-action("workspace-set-layout:scrolling")
+action("workspace-set-layout", "scrolling")
 
 # Submap subscribers receive the current context immediately, then each change
 # to the active value. A reset of a nested layer reveals its parent before the
@@ -310,13 +330,13 @@ def expect_submap(want, reason):
 
 
 expect_submap(None, "subscribing")
-action("submap:outer")
+action("submap", "outer")
 expect_submap("outer", "entering the outer layer")
-action("submap:inner")
+action("submap", "inner")
 expect_submap("inner", "entering the inner layer")
-action("submap:reset")
+action("submap", "reset")
 expect_submap("outer", "resetting the inner layer")
-action("submap:reset")
+action("submap", "reset")
 expect_submap(None, "resetting the outer layer")
 sub.close()
 
@@ -348,9 +368,9 @@ if line is None or json.loads(line) != {"ok": None}:
 action("screencast-clear")
 expect_screencast("clear", 1, "clearing an already empty target")
 output_name = initial["data"][0]["output"]
-action(f"screencast-set-output:{output_name}")
+action("screencast-set-output", output_name)
 expect_screencast("output", 2, "selecting an output", "output", output_name)
-action(f"screencast-set-output:{output_name}")
+action("screencast-set-output", output_name)
 expect_screencast("output", 3, "reselecting an output", "output", output_name)
 window_id = json.loads(
     subprocess.run([umbriel, "windows", "--json"], check=True, capture_output=True, text=True, timeout=5).stdout
@@ -387,7 +407,7 @@ fi
 
 # Submaps nest, so current means the top layer that handles keybinds. Popping
 # that layer must reveal the previous one before returning to the default map.
-"$UMBRIEL" msg submap:outer > /dev/null
+"$UMBRIEL" msg submap outer > /dev/null
 submap=$("$UMBRIEL" submap --json)
 if ! jq -e '. == "outer"' <<< "$submap" > /dev/null; then
   echo "submap --json did not report the active outer layer: $submap"
@@ -397,19 +417,19 @@ if [[ $("$UMBRIEL" submap) != "outer" ]]; then
   echo "human submap output did not report the active outer layer"
   exit 1
 fi
-"$UMBRIEL" msg submap:inner > /dev/null
+"$UMBRIEL" msg submap inner > /dev/null
 submap=$("$UMBRIEL" submap --json)
 if ! jq -e '. == "inner"' <<< "$submap" > /dev/null; then
   echo "submap --json did not report the nested top layer: $submap"
   exit 1
 fi
-"$UMBRIEL" msg submap:reset > /dev/null
+"$UMBRIEL" msg submap reset > /dev/null
 submap=$("$UMBRIEL" submap --json)
 if ! jq -e '. == "outer"' <<< "$submap" > /dev/null; then
   echo "submap reset did not reveal the previous layer: $submap"
   exit 1
 fi
-"$UMBRIEL" msg submap:reset > /dev/null
+"$UMBRIEL" msg submap reset > /dev/null
 submap=$("$UMBRIEL" submap --json)
 if ! jq -e '. == null' <<< "$submap" > /dev/null; then
   echo "submap reset did not restore the default context: $submap"
@@ -422,8 +442,7 @@ if ! jq -e 'type == "array"' <<< "$layers" > /dev/null; then
   exit 1
 fi
 
-# The output listing keeps the field shapes scripts already parse, and follows the
-# same JSON flag convention as the other inspection commands.
+# The output listing keeps the field shapes scripts already parse.
 outputs=$("$UMBRIEL" outputs --json)
 if ! jq -e '
   type == "array" and length == 1
@@ -456,10 +475,6 @@ if ! jq -e '
   echo "outputs --json has an unexpected shape: $outputs"
   exit 1
 fi
-if [[ $("$UMBRIEL" outputs -j) != "$outputs" ]]; then
-  echo "outputs -j differs from outputs --json"
-  exit 1
-fi
 
 # The headless harness may have no physical keyboard, in which case the command
 # errors with "no keyboard". Exactly one of the two shapes must appear.
@@ -483,6 +498,10 @@ fi
 # An unknown action must be rejected, not silently accepted.
 if "$UMBRIEL" msg definitely-not-an-action > /dev/null 2>&1; then
   echo "msg accepted an unknown action"
+  exit 1
+fi
+if "$UMBRIEL" msg workspace-switch:2 > /dev/null 2>&1; then
+  echo "msg accepted the removed name:arg form"
   exit 1
 fi
 
@@ -545,7 +564,7 @@ if line is None:
 if occupancy(json.loads(line)) != {1: True, 2: False}:
     raise SystemExit(f"static inventory does not report the mapped window's workspace as occupied: {line!r}")
 
-action("workspace-switch:2")
+action("workspace-switch", "2")
 client = subprocess.Popen(
     ["foot", "--title=ipc-occupancy", "sh", "-c", "sleep 120"],
     stdout=subprocess.DEVNULL,
@@ -558,7 +577,7 @@ finally:
     client.wait(timeout=10)
 buf = await_occupancy(sub, buf, {1: True, 2: False}, "closing the workspace's only window")
 sub.close()
-action("workspace-switch:1")
+action("workspace-switch", "1")
 PY
 wait_for_windows 1
 
@@ -633,7 +652,7 @@ if not real_id:
 
 # The focus round trip resolves the exact identifier; the same lookup must
 # also close the window.
-focused = request(f'{{"cmd":"msg","arg":"window-focus:{real_id}"}}\n'.encode())
+focused = request(f'{{"cmd":"action","action":"window-focus","window":"{real_id}"}}\n'.encode())
 if "err" in focused or "ok" not in focused:
     raise SystemExit(f"window-focus on the real window failed: {focused}")
 
@@ -655,7 +674,7 @@ if event is None or event.get("data", {}).get("open") is not True:
 sub.close()
 subprocess.run([umbriel, "msg", "overview-close"], check=True, capture_output=True, text=True, timeout=5)
 
-closed = request(f'{{"cmd":"msg","arg":"window-close:{real_id}"}}\n'.encode())
+closed = request(f'{{"cmd":"action","action":"window-close","window":"{real_id}"}}\n'.encode())
 if "err" in closed or "ok" not in closed:
     raise SystemExit(f"window-close on the real window failed: {closed}")
 PY
@@ -672,7 +691,7 @@ FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" ipc-settle 600 400 > "$UMBRIEL_RUN
 wait_for_windows 1
 "$UMBRIEL" settle
 settle_id=$("$UMBRIEL" windows --json | jq -r '.[0].id')
-"$UMBRIEL" msg "window-close:$settle_id" > /dev/null
+"$UMBRIEL" msg window-close "$settle_id" > /dev/null
 settle_start=${EPOCHREALTIME/[.,]/}
 "$UMBRIEL" settle
 settle_ms=$(((${EPOCHREALTIME/[.,]/} - settle_start) / 1000))

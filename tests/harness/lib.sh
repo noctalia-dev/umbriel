@@ -103,3 +103,63 @@ corner_radius = 0
 enabled = false
 CONFIG
 }
+
+# Query a mapped window by its exact title; wait for it before reading its state.
+window_by_title() { "$UMBRIEL" windows --json | jq -ce --arg title "$1" '.[] | select(.title == $title)'; }
+await_window() {
+  for _ in $(seq 100); do
+    window_by_title "$1" > /dev/null && return
+    sleep 0.025
+  done
+  echo "missing window: $1"; return 1
+}
+
+# Plain colours make capture pixels independent of decorations and animation.
+capture_config() {
+  cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+[animation]
+enabled = false
+[appearance]
+border_width = 0
+outer_border_width = 0
+corner_radius = 0
+[appearance.title_bar]
+mode = "off"
+[appearance.shadow]
+enabled = false
+[appearance.blur]
+enabled = false
+CONFIG
+}
+
+# Two repaintable windows under an opaque magenta window. FDs 8/9 control
+# the lower clients; each check supplies its own layout and protection rules.
+capture_clients() {
+  mkfifo "$UMBRIEL_RUNTIME_DIR/left" "$UMBRIEL_RUNTIME_DIR/right"
+  exec 8<> "$UMBRIEL_RUNTIME_DIR/left"
+  exec 9<> "$UMBRIEL_RUNTIME_DIR/right"
+  REPAINT_ON_STDIN=1 FOLLOW_CONFIGURES=1 FILL_COLOR=0xFF00FF00 \
+    "$UMBRIEL_UNMAP_CLIENT" left "$1" "$1" <&8 > "$UMBRIEL_RUNTIME_DIR/left.log" 2>&1 &
+  await_window left
+  REPAINT_ON_STDIN=1 FOLLOW_CONFIGURES=1 FILL_COLOR=0xFF0000FF \
+    "$UMBRIEL_UNMAP_CLIENT" right "$1" "$1" <&9 > "$UMBRIEL_RUNTIME_DIR/right.log" 2>&1 &
+  await_window right
+  OPAQUE_BUFFER=1 FOLLOW_CONFIGURES=1 FILL_COLOR=0xFFFF00FF \
+    "$UMBRIEL_UNMAP_CLIENT" protected 1280 720 > "$UMBRIEL_RUNTIME_DIR/protected.log" 2>&1 &
+  await_window protected
+}
+
+# Save the frame for subsequent colour/geometry assertions as well.
+capture_assert_hidden() {
+  grim "$1"
+  local count
+  count=$("$UMBRIEL_PIXEL_PROBE" "$1" count 'r>0.9&&b>0.9&&g<0.1')
+  [[ $count == 0 ]] || { echo "protected pixels leaked: $count"; return 1; }
+}
+
+# The first protection field belongs to the magenta window. Later rules stay
+# unchanged so feedback tests can keep another owner protected throughout.
+capture_set_protection() {
+  sed -i "0,/^block_capture = /s/^block_capture = .*/block_capture = $1/" "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+}

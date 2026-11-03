@@ -19,12 +19,16 @@ frame() { grim "$UMBRIEL_RUNTIME_DIR/$1.png"; }
 # Mean blue of a patch of the first preview: it drops as the filmstrip moves a card out from under it.
 blue() {
   frame "$1"
-  magick "$UMBRIEL_RUNTIME_DIR/$1.png" -crop 20x20+630+350 -format '%[fx:round(255*mean.b)]' info:
+  local blue
+  read -r _ _ blue < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/$1.png" mean 20x20+630+350)
+  echo "$blue"
 }
-# Mean difference between two frames, as a fraction of full scale.
+# Fraction of the frame's pixels that differ between two frames.
 difference() {
-  magick "$UMBRIEL_RUNTIME_DIR/$1.png" "$UMBRIEL_RUNTIME_DIR/$2.png" \
-    -compose difference -composite -format '%[fx:mean]' info:
+  local size differing
+  size=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/$1.png" size)
+  read -r _ differing < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/$1.png" diff "$UMBRIEL_RUNTIME_DIR/$2.png")
+  awk -v differing="$differing" -v size="$size" 'BEGIN { split(size, s, "x"); print differing / (s[1] * s[2]) }'
 }
 moving() { awk -v value="$(difference "$1" "$2")" 'BEGIN { exit !(value > 0.0005) }'; }
 # $1 workspace axis, $2 vertical scroll factor, $3 horizontal scroll factor.
@@ -77,7 +81,7 @@ for workspace_axis in vertical horizontal; do
   }
 
   configure "$workspace_axis" 1.0 1.0
-  "$UMBRIEL" msg workspace-switch:1 > /dev/null
+  "$UMBRIEL" msg workspace-switch 1 > /dev/null
   "$UMBRIEL" msg column-focus-first > /dev/null
   "$UMBRIEL_POINTER_CLIENT" 1280 720 move 640 360
   "$UMBRIEL" msg overview-open > /dev/null
@@ -101,26 +105,30 @@ for workspace_axis in vertical horizontal; do
   before_blue=$(blue "$workspace_axis-before")
   "$UMBRIEL_POINTER_CLIENT" 1280 720 axis "$workspace_axis" 210 pause 400 axis-stop "$workspace_axis" &
   pointer_pid=$!
-  sleep 0.2
-  [[ $(active_workspace) == 1 ]] || { echo "$workspace_axis: workspace committed before release"; exit 1; }
-  during_blue=$(blue "$workspace_axis-during")
+  for _ in $(seq 40); do
+    during_blue=$(blue "$workspace_axis-during")
+    (( before_blue > during_blue + 50 )) && break
+  done
   (( before_blue > during_blue + 50 )) || {
     echo "$workspace_axis: filmstrip did not follow the fingers: blue $before_blue -> $during_blue"
     exit 1
   }
+  [[ $(active_workspace) == 1 ]] || { echo "$workspace_axis: workspace committed before release"; exit 1; }
   wait "$pointer_pid"
   wait_workspace 2
 
   # The release settles rather than snapping: the filmstrip is still moving right after it, and at rest once the
   # spring is done. The settle does not depend on the arrangement, so one axis covers it.
   if [[ $workspace_axis == vertical ]]; then
+    "$UMBRIEL" clock-freeze
     frame early
-    sleep 0.15
+    "$UMBRIEL" clock-advance 150
     frame mid
-    sleep 0.8
+    "$UMBRIEL" clock-advance 800
     frame settled
-    sleep 0.15
+    "$UMBRIEL" clock-advance 150
     frame rest
+    "$UMBRIEL" clock-resume
     moving early mid || { echo "release snapped instead of settling: $(difference early mid)"; exit 1; }
     ! moving settled rest || { echo "filmstrip never came to rest: $(difference settled rest)"; exit 1; }
   fi
@@ -145,7 +153,7 @@ for workspace_axis in vertical horizontal; do
     "$UMBRIEL" msg overview-open > /dev/null
     "$UMBRIEL_POINTER_CLIENT" 1280 720 axis "$workspace_axis" 210 pause 180 axis-stop "$workspace_axis"
     wait_workspace 2
-    "$UMBRIEL" msg workspace-switch:1 > /dev/null
+    "$UMBRIEL" msg workspace-switch 1 > /dev/null
   fi
   "$UMBRIEL" msg overview-close > /dev/null
   "$UMBRIEL" settle

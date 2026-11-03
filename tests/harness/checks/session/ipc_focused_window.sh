@@ -44,7 +44,7 @@ id_b=$(windows_json | jq -r '.[] | select(.title == "fw-b") | .id')
 [[ -n $id_a && -n $id_b ]] || fail "missing fw-a/fw-b ids: $(windows_json)"
 
 # Focus fw-a and wait for the activation to land.
-"$UMBRIEL" msg "window-focus:$id_a" > /dev/null
+"$UMBRIEL" msg window-focus "$id_a" > /dev/null
 for _ in $(seq 100); do
   windows_json | jq -e --arg id "$id_a" 'any(.[]; .active and .id == $id)' > /dev/null && break
   sleep 0.05
@@ -60,7 +60,7 @@ jq -e --argjson entry "$entry" '. == $entry' > /dev/null <<< "$reply" \
   || fail "reply differs from the windows entry: $reply vs $entry"
 
 # The answer follows focus to fw-b.
-"$UMBRIEL" msg "window-focus:$id_b" > /dev/null
+"$UMBRIEL" msg window-focus "$id_b" > /dev/null
 for _ in $(seq 100); do
   reply=$("$UMBRIEL" focused-window -j)
   jq -e --arg id "$id_b" '.id == $id' > /dev/null <<< "$reply" && break

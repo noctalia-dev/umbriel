@@ -17,8 +17,8 @@ readonly OTHER_LOG="$UMBRIEL_RUNTIME_DIR/shortcuts-other.log"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [keybinds]
-"Mod+1" = "workspace-set-layout:master"
-"Mod+2" = { action = "workspace-set-layout:dwindle", allow_when_inhibited = true }
+"Mod+1" = "workspace-set-layout master"
+"Mod+2" = { action = "workspace-set-layout dwindle", allow_when_inhibited = true }
 "Mod+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
@@ -91,7 +91,7 @@ if ((presses != 2 || releases != 2)); then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" \
   mod logo key-press "$KEY_1" tap "$KEY_ESC" key-release "$KEY_1" mod none
 wait_for "reactivation during a held compositor key" '[[ $(grep -c "shortcuts-inhibitor active" "$CLIENT_LOG") == 3 ]]'
@@ -111,7 +111,7 @@ fi
 wait_for "the uninhibited test window" '[[ $("$UMBRIEL" windows --json | jq length) == 2 ]]'
 wait_for "the uninhibited surface to gain focus" \
   '[[ $("$UMBRIEL" windows --json | jq -r '\''.[] | select(.focused) | .title'\'') == shortcuts-other ]]'
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" mod logo tap "$KEY_1" mod none
 wait_for "the inhibitor to become irrelevant off focus" '[[ $(focused_layout) == master ]]'
 if grep -q "keyboard-key code=$KEY_1" "$OTHER_LOG"; then
@@ -122,7 +122,7 @@ fi
 # Destroying the inhibitor client leaves ordinary shortcut handling intact.
 kill "$inhibitor_pid"
 wait_for "the inhibitor window to close" '[[ $("$UMBRIEL" windows --json | jq length) == 1 ]]'
-"$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" mod logo tap "$KEY_1" mod none
 wait_for "shortcuts after inhibitor destruction" '[[ $(focused_layout) == master ]]'
 
@@ -177,7 +177,7 @@ rule_shortcut() {
   presses=$(events "$log" "keyboard-key code=$KEY_1 state=pressed")
   releases=$(events "$log" "keyboard-key code=$KEY_1 state=released")
   markers=$(events "$log" "keyboard-key code=$KEY_MARKER state=released")
-  "$UMBRIEL" msg workspace-set-layout:scrolling > /dev/null
+  "$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" keyboard-only mod logo tap "$KEY_1" mod none tap "$KEY_MARKER"
   await_events "$log" "keyboard-key code=$KEY_MARKER state=released" "$((markers + 1))"
   if [[ $(focused_layout) != "$expected_layout" ]] \
@@ -197,7 +197,7 @@ SEAT_LOG_APP_ID=shortcuts-rule SHORTCUTS_INHIBIT_CONTROL=1 INHIBIT_SHORTCUTS=1 \
 wait_for "the rule-controlled window" '[[ $("$UMBRIEL" windows --json | jq length) == 2 ]]'
 rule_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shortcuts-rule") | .id')
 other_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shortcuts-other") | .id')
-"$UMBRIEL" msg "window-focus:$rule_id" > /dev/null
+"$UMBRIEL" msg window-focus "$rule_id" > /dev/null
 rule_protocol 0 0
 rule_shortcut master 0
 
@@ -241,10 +241,10 @@ rule_protocol 5 4
 rule_policy focused
 rule_protocol 5 5
 rule_shortcut master 0
-"$UMBRIEL" msg "window-focus:$other_id" > /dev/null
+"$UMBRIEL" msg window-focus "$other_id" > /dev/null
 rule_protocol 6 5
 rule_shortcut master 0 "$OTHER_LOG"
-"$UMBRIEL" msg "window-focus:$rule_id" > /dev/null
+"$UMBRIEL" msg window-focus "$rule_id" > /dev/null
 rule_protocol 6 6
 rule_shortcut master 0
 rule_policy omitted

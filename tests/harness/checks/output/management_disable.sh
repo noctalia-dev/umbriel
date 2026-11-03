@@ -136,11 +136,11 @@ wait_for_workspace 'HEADLESS-2:1'
 # If the only remaining logical output is asleep, disabling the powered output
 # must preserve DPMS. Its displaced window waits until input wakes the logical
 # fallback, then restores there instead of remaining unassigned.
-"$UMBRIEL" msg window-move-to-workspace:1/HEADLESS-1 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 --output HEADLESS-1 > /dev/null
 wait_for_workspace 'HEADLESS-1:1'
 sleeping_refuge=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-2" and .index == 1) | .id')
 mark=$(log_mark)
-"$UMBRIEL" msg dpms-off:HEADLESS-2 > /dev/null
+"$UMBRIEL" msg dpms-off HEADLESS-2 > /dev/null
 wait_for_log_since "$mark" "output 'HEADLESS-2': powered off"
 mark=$(log_mark)
 "$OUTPUT_MANAGEMENT" apply disable HEADLESS-1 > /dev/null

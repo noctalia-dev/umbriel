@@ -27,7 +27,7 @@ printf '\n[output.HEADLESS-1]\nworkspaces = ["one", "two", "three"]\n' >> "$UMBR
 cp "$UMBRIEL_CONFIG" "$UMBRIEL_CONFIG.three"
 "$UMBRIEL" msg config-reload > /dev/null
 
-"$UMBRIEL" msg workspace-switch:three > /dev/null
+"$UMBRIEL" msg workspace-switch three > /dev/null
 for index in a b c; do
   foot --title="shrink-$index" sh -c 'sleep 120' > /dev/null 2>&1 &
 done

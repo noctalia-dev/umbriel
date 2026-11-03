@@ -1405,6 +1405,25 @@ UMBRIEL_TEST(backgroundRenderLastMatchingRuleWins) {
   CHECK(!*resolve("firefox").backgroundRender);
 }
 
+UMBRIEL_TEST(blockCaptureLastMatchingRuleWins) {
+  Config config;
+  const auto resolve = [&](std::string_view appId) {
+    return umbriel::resolveWindowRules(config, appId, "private", std::nullopt, ContentType::None, {}, 0);
+  };
+  CHECK(!resolve("secret").blockCapture.has_value());
+  WindowRule enabled;
+  enabled.appIdPatterns.add("^secret$");
+  enabled.blockCapture = true;
+  config.windowRules.push_back(enabled);
+  CHECK(resolve("secret").blockCapture.value_or(false));
+  CHECK(!resolve("editor").blockCapture.has_value());
+  WindowRule disabled;
+  disabled.blockCapture = false;
+  config.windowRules.push_back(disabled);
+  CHECK(resolve("secret").blockCapture.has_value());
+  CHECK(!*resolve("secret").blockCapture);
+}
+
 UMBRIEL_TEST(titleBarAutoResetsAnEarlierOverride) {
   Config config;
   const auto resolve = [&] {

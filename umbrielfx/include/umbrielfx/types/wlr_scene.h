@@ -168,6 +168,8 @@ struct wlr_scene {
     // Painted where no node covers the output. A rect matching it exactly
     // is dropped from the render list instead of drawn.
     float background_color[4];
+    size_t capture_protected_nodes;
+    bool capture_policy_failed;
   } WLR_PRIVATE;
 };
 
@@ -347,6 +349,8 @@ struct wlr_scene_buffer {
   struct wlr_color_luminances luminances;
   // Windows-scRGB uses absolute light on PQ outputs, independent of SDR white.
   bool absolute_luminance;
+  // Outputs whose capture composition sampled this buffer in their latest frame.
+  uint64_t capture_outputs;
 };
 
 /** A viewport for an output in the scene-graph */
@@ -417,6 +421,7 @@ struct wlr_scene_output {
     bool hdr_white_point_active;
     bool hdr_white_point_cursor_locked;
     struct wl_listener output_destroy;
+    bool capture_exclusion_active;
   } WLR_PRIVATE;
 };
 
@@ -1157,6 +1162,9 @@ struct wlr_scene_output_state_options {
    * frame for it.
    */
   bool effect_capture_pending;
+
+  // Compose captures from an independent draw list that omits capture-excluded nodes.
+  bool capture_exclusion;
 
   // Failed animation capture/composition must reject the whole output state.
   bool require_animation_success;

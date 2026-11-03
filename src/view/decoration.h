@@ -25,42 +25,41 @@ namespace umbriel {
     void ensureBorders(wlr_scene_tree* parent);
     // True while the ring exists and is showing. Fullscreen disables the tree
     // rather than destroying it, so existence alone does not answer this.
-    [[nodiscard]] bool bordersVisible() const;
-    [[nodiscard]] wlr_scene_tree* borderTree() const { return m_borderTree; }
+    bool bordersVisible() const;
+    wlr_scene_tree* borderTree() const { return m_borderTree; }
     void setBordersEnabled(bool enabled);
     void updateBorderGeometry(int contentWidth, int contentHeight, int topExtension);
     // `alpha` premultiplies the border color so a fading view's ring fades with it.
-    void setBorderColor(bool focused, float alpha);
-    void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
+    void setBorderRawColors(const std::array<float, 4>& inner, const std::array<float, 4>& outer, float alpha);
     // [colors.border] with the last applied rule's overrides.
-    [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_borderColors; }
+    const Config::Colors::Border& borderColors() const { return m_borderColors; }
     // [appearance] border widths and corner_radius with the last applied rule's overrides.
-    [[nodiscard]] int borderWidth() const { return m_borderWidth; }
-    [[nodiscard]] int outerBorderWidth() const { return m_outerBorderWidth; }
-    [[nodiscard]] int cornerRadius() const { return m_cornerRadius; }
-    [[nodiscard]] int totalBorderWidth() const { return m_borderWidth + m_outerBorderWidth; }
+    int borderWidth() const { return m_borderWidth; }
+    int outerBorderWidth() const { return m_outerBorderWidth; }
+    int cornerRadius() const { return m_cornerRadius; }
+    int totalBorderWidth() const { return m_borderWidth + m_outerBorderWidth; }
     // Transparent margin a border effect paints into. True when it changed.
     bool setBorderPadding(int padding);
-    [[nodiscard]] int borderPadding() const { return m_borderPadding; }
+    int borderPadding() const { return m_borderPadding; }
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
-    [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight, int topExtension) const;
-    // Copy the border into a close-animation snapshot tree. `innerColor` is the straight colour the ring currently
-    // shows and `opacity` the effective opacity it is drawn at.
+    bool borderGeometryStale(int contentWidth, int contentHeight, int topExtension) const;
+    // Copy the border into a close-animation snapshot tree, using its currently drawn straight colors and opacity.
     void snapshotBorders(
-        wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity,
-        std::vector<BorderSnapshot>& out
+        wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, const std::array<float, 4>& outerColor,
+        float opacity, std::vector<BorderSnapshot>& out
     ) const;
     // Take the rule's blur options, border colors, and decoration overrides. True when the ring geometry, corner
     // radius, or shadow switch changed, so the caller redraws them.
     bool applyRule(const ResolvedWindowRule& rule);
 
     // Blur
-    [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
-    [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
+    SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
+    SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
     void updateBlur(
-        wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
-        const wlr_box* clip, float surfaceOpacity, float blurAlpha
+        wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
+        fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha,
+        const SurfaceBlurOptions& options
     );
     void hideBlur();
     void setBlurLive(bool live) { m_blur.setLive(live); }
@@ -70,7 +69,7 @@ namespace umbriel {
     // Lend the container to `pool` at the frame's position and visibility, or return it below the frame's content when
     // `pool` is null.
     void poolShadow(wlr_scene_tree* frame, wlr_scene_tree* pool, int x, int y, bool enabled);
-    [[nodiscard]] bool shadowPooled() const { return m_shadowPooled; }
+    bool shadowPooled() const { return m_shadowPooled; }
     // Only a pooled container needs these; under the frame it inherits both.
     void setShadowPosition(int x, int y);
     void setShadowEnabled(bool enabled);
@@ -78,10 +77,10 @@ namespace umbriel {
     void hideShadow();
     void setShadowAnimationSource(wlr_scene_node* source) { m_shadow.setAnimationSource(source); }
     // `inPool` places the copy under every window of `parent`, otherwise directly below `source`.
-    [[nodiscard]] ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
+    ShadowSnapshot snapshotShadow(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const {
       return m_shadow.snapshot(parent, source, inPool);
     }
-    [[nodiscard]] const wlr_scene_shadow* shadowNode() const { return m_shadow.node(); }
+    const wlr_scene_shadow* shadowNode() const { return m_shadow.node(); }
 
     // Shadows follow the full view opacity. Blur follows only transition
     // opacity, otherwise a window rule attenuates the backdrop twice.

@@ -58,10 +58,10 @@ name = "terminal"
 name = "music"
 
 [keybinds]
-"Mod+Shift+Space" = "window-toggle-scratchpad:terminal"
-"Mod+Space" = "scratchpad-toggle:terminal"
-"Mod+Shift+M" = "window-toggle-scratchpad:music"
-"Mod+M" = "scratchpad-toggle:music"
+"Mod+Shift+Space" = "window-toggle-scratchpad terminal"
+"Mod+Space" = "scratchpad-toggle terminal"
+"Mod+Shift+M" = "window-toggle-scratchpad music"
+"Mod+M" = "scratchpad-toggle music"
 ```
 
 Defining any named scratchpad removes the implicit `default`. Every scratchpad action must then include a configured name. Names must be unique and `default` is reserved.
@@ -72,7 +72,7 @@ Removing a scratchpad on reload restores its windows to their saved destinations
 
 ### Launching into the open scratchpad
 
-Opening a scratchpad makes it the launch destination on that output, even when it is empty. Its backdrop appears immediately; an empty pad has no window receiving keyboard input. Window-relative bindings leave the workspace windows behind it untouched. Applications opened through `spawn:` join that pad without a window rule. Launchers that pass a trusted XDG activation token can also carry this destination to a new window.
+Opening a scratchpad makes it the launch destination on that output, even when it is empty. Its backdrop appears immediately; an empty pad has no window receiving keyboard input. Window-relative bindings leave the workspace windows behind it untouched. Applications opened through `spawn` join that pad without a window rule. Launchers that pass a trusted XDG activation token can also carry this destination to a new window.
 
 The destination is recorded at launch. Hiding the pad before the application maps leaves its new window hidden in that pad. Replacing it with another pad does not redirect the pending launch or give its arriving window focus. Focusing a workspace window or clicking the exposed workspace background makes subsequent launches use the workspace again, while the scratchpad stays visible.
 
@@ -119,23 +119,37 @@ The implicit `default` scratchpad has no definition and therefore no `spawn_when
 
 | Action                                           | What it does                                                                                                                               |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `window-move-to-scratchpad:[<scratchpad>]`       | Store the focused workspace window.                                                                                                        |
-| `scratchpad-toggle:[<scratchpad>]`               | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
-| `window-restore-from-scratchpad:[<scratchpad>]`  | Restore one remembered window.                                                                                                             |
-| `window-toggle-scratchpad:[<scratchpad>]`        | Store the focused window or restore it when already selected.                                                                              |
-| `scratchpad-focus-next:[<scratchpad>]`           | Focus the next visible member.                                                                                                             |
-| `scratchpad-window-show-next:[<scratchpad>]`     | Show only the next member, hiding the one on show.                                                                                         |
-| `scratchpad-window-show-previous:[<scratchpad>]` | Show only the previous member, hiding the one on show.                                                                                     |
+| `window-move-to-scratchpad [<scratchpad>]`       | Store the focused workspace window.                                                                                                        |
+| `scratchpad-toggle [<scratchpad>]`               | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
+| `window-restore-from-scratchpad [<scratchpad>]`  | Restore one remembered window.                                                                                                             |
+| `window-toggle-scratchpad [<scratchpad>]`        | Store the focused window or restore it when already selected.                                                                              |
+| `scratchpad-focus-next [<scratchpad>]`           | Focus the next visible member.                                                                                                             |
+| `scratchpad-window-show-next [<scratchpad>]`     | Show only the next member, hiding the one on show.                                                                                         |
+| `scratchpad-window-show-previous [<scratchpad>]` | Show only the previous member, hiding the one on show.                                                                                     |
 
 The argument is optional only for the implicit `default` scratchpad. Restore and focus-next require the scratchpad to be visible.
 
-`window-focus:<window-id>` summons a matching hidden scratchpad window before focusing it. `window-focus-warp:<window-id>` also moves the cursor to it.
+`window-focus <window-id>` summons a matching hidden scratchpad window before focusing it. `window-focus-warp <window-id>` also moves the cursor to it.
 
 ## Choosing an output
 
 Scratchpads are global rather than owned by one output. The pointer selects the output where a hidden scratchpad appears.
 
 Toggling a scratchpad already visible on another output moves it to the invoking output. Toggling it again on the same output hides it. Only one scratchpad can be visible on an output, but different outputs can show different scratchpads.
+
+### Proportional sizing across monitors
+
+Scratchpad windows keep their logical-pixel size by default. Enable `proportional_size` on a named scratchpad to preserve each window's width and height as proportions of the usable area when it moves to another monitor:
+
+```toml
+[[scratchpad]]
+name = "terminal"
+proportional_size = true
+```
+
+A window occupying 88% of one monitor's usable width occupies approximately 88% on the next, subject to the application's size limits. Manual resizing establishes the proportions used for the next monitor transfer; the initial window size rule is not reapplied. Showing, hiding, or moving the window within the same monitor does not resize it. Changes to that monitor's scale, mode, or panels do not proportionally resize it either.
+
+Fullscreen and maximized windows continue to fit their monitor, and their saved normal size follows the proportional setting. Restoring a window or moving it to a workspace ends proportional sizing and restores its saved tiled or floating state. Floating windows keep their current size; tiled windows follow the destination layout.
 
 ## Visibility and focus
 
@@ -153,7 +167,7 @@ Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters
 
 ## Moving scratchpad windows
 
-Workspace move bindings remove the focused window from its scratchpad and send it to the selected workspace, restoring its saved tiled or floating state. Use `window-move-to-workspace:<workspace>[/<output>]` to follow the window, or `window-move-to-workspace-silent:<workspace>[/<output>]` to keep the current workspace active. The next and previous variants work too, using the active workspace on the scratchpad's output as their starting point. Other members stay in the scratchpad. Moving its last member out hides the scratchpad.
+Workspace move bindings remove the focused window from its scratchpad and send it to the selected workspace, restoring its saved tiled or floating state. Use `window-move-to-workspace <workspace> [--output <output>]` to follow the window, or `window-move-to-workspace-silent <workspace> [--output <output>]` to keep the current workspace active. The next and previous variants work too, using the active workspace on the scratchpad's output as their starting point. Other members stay in the scratchpad. Moving its last member out hides the scratchpad.
 
 Dragging a scratchpad window does not restore it. Dragging one member to another output moves the whole scratchpad there while preserving the other members' relative positions.
 

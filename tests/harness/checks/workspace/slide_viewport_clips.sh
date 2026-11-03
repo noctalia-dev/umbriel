@@ -22,11 +22,11 @@ wait_for_count() {
 
 sample_blue() {
   local image=$1 x=$2 y=$3
-  magick "$image" -crop "20x20+$x+$y" -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$image" mean "20x20+$x+$y" | awk '{ print $3 }'
 }
 
 frame_blue() {
-  magick "$1" -format '%[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean | awk '{ print $3 }'
 }
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -70,7 +70,7 @@ sed -i 's/^duration_ms = 200$/duration_ms = 10000/' "$UMBRIEL_CONFIG"
 # visible slice of the window stays 280 logical pixels wide at any progress, so
 # neither sample depends on where the eased slide has reached.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" clock-advance 1000
 grim "$TRANSITION_SHOT"
 onscreen=$(frame_blue "$TRANSITION_SHOT")

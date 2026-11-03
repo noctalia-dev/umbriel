@@ -78,12 +78,12 @@ wait_for_field "$WS" active true
 "$CLIENT" "$SCRATCH" 420 260 > "$UMBRIEL_RUNTIME_DIR/$SCRATCH.log" 2>&1 &
 wait_for_count 2
 scratch_id=$(field_of "$SCRATCH" id)
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
-"$UMBRIEL" msg "window-move-to-scratchpad:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" scratchpad "$SCRATCHPAD"
-"$UMBRIEL" msg "scratchpad-toggle:$SCRATCHPAD" > /dev/null
+"$UMBRIEL" msg scratchpad-toggle "$SCRATCHPAD" > /dev/null
 wait_for_field "$SCRATCH" active true
-"$UMBRIEL" msg "window-focus:$scratch_id" > /dev/null
+"$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 
 # Precondition for the explicit path: the scratchpad owns focus while the

@@ -53,8 +53,7 @@ spawn() {
 
 sample() {
   grim "$IMAGE"
-  read -r red green blue < <(magick "$IMAGE" -crop "4x4+${sample_x}+${sample_y}" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+${sample_x}+${sample_y}")
 }
 
 # Animation time only moves by clock-advance, measured from each trigger; advancing 3000 ms finishes every
@@ -96,7 +95,7 @@ if ! (( red > 220 && green < 30 && blue > 220 )); then
   echo "source reload replaced a program during its active transition: $red $green $blue"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 "$UMBRIEL" clock-advance 120
 sample
 if ! (( red < 30 && green > 220 && blue < 30 )); then

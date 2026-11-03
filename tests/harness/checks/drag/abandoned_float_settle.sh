@@ -19,10 +19,10 @@ readonly BTN_LEFT=272
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 
-cat >> "$UMBRIEL_CONFIG" <<'EOF'
+cat >>"$UMBRIEL_CONFIG" <<'EOF'
 
 [layout]
-mode = "floating"
+mode = "stacking"
 
 [animation]
 enabled = false
@@ -39,13 +39,13 @@ match.title = "^abandon-float$"
 default_floating = true
 default_floating_size_px = { width = 400, height = 300 }
 EOF
-"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg config-reload >/dev/null
 
 ipc_box() {
   "$UMBRIEL" windows --json | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | "\(.x) \(.y) \(.w) \(.h)"'
 }
 
-"$CLIENT" "$TITLE" 400 300 > "$UMBRIEL_RUNTIME_DIR/abandon-float.log" 2>&1 &
+"$CLIENT" "$TITLE" 400 300 >"$UMBRIEL_RUNTIME_DIR/abandon-float.log" 2>&1 &
 for _ in $(seq 60); do
   [[ -n $(ipc_box) ]] && break
   sleep 0.25
@@ -65,8 +65,8 @@ pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
 # Lock mid-drag. The next motion while locked resets the grab without the drop
 # settle: the drag is abandoned wherever it parked the window.
 mkfifo "$LOCK_FIFO"
-exec {lock_fd}<> "$LOCK_FIFO"
-"$LOCK_CLIENT" <&"$lock_fd" > "$LOCK_LOG" 2>&1 &
+exec {lock_fd}<>"$LOCK_FIFO"
+"$LOCK_CLIENT" <&"$lock_fd" >"$LOCK_LOG" 2>&1 &
 for _ in $(seq 100); do
   grep -q '^locked$' "$LOCK_LOG" && break
   sleep 0.05

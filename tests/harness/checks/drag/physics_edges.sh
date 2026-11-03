@@ -95,7 +95,7 @@ EOF
       exit 1
     fi
     pointer_release
-    "$UMBRIEL" msg "window-close:$id" > /dev/null
+    "$UMBRIEL" msg window-close "$id" > /dev/null
     "$UMBRIEL" clock-resume
     for _ in $(seq 80); do
       [[ $("$UMBRIEL" windows --json | jq length) == 0 ]] && break

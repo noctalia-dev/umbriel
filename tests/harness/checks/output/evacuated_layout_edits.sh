@@ -28,12 +28,12 @@ field() {
 }
 
 focus() {
-  "$UMBRIEL" msg "window-focus:$(field "$1" id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field "$1" id)" > /dev/null
 }
 
 spawn() {
   local title=$1 count=$2 id
-  "$UMBRIEL" msg workspace-switch:origin/HEADLESS-1 > /dev/null
+  "$UMBRIEL" msg workspace-switch origin --output HEADLESS-1 > /dev/null
   RESIZE_FILL_COLOR=0xFF5577AA "$CLIENT" "$title" 800 600 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 60); do
     [[ $("$UMBRIEL" windows --json | jq 'length') == "$count" ]] && break
@@ -44,8 +44,8 @@ spawn() {
     echo "window '$title' did not map: $(< "$UMBRIEL_RUNTIME_DIR/$title.log")"
     return 1
   fi
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
-  "$UMBRIEL" msg window-move-to-workspace:origin/HEADLESS-1 > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
+  "$UMBRIEL" msg window-move-to-workspace origin --output HEADLESS-1 > /dev/null
 }
 
 snapshot() {
@@ -62,14 +62,14 @@ select_refuge() {
     echo "source windows did not enter a temporary workspace: $("$UMBRIEL" windows --json)"
     return 1
   fi
-  "$UMBRIEL" msg "workspace-switch:$index/HEADLESS-2" > /dev/null
+  "$UMBRIEL" msg workspace-switch "$index" --output HEADLESS-2 > /dev/null
   focus edit-c
   "$UMBRIEL" settle
 }
 
 assert_returned_layout() {
   local label=$1 expected=$2 mode=$3 windows workspace state actual
-  "$UMBRIEL" msg workspace-switch:origin/HEADLESS-1 > /dev/null
+  "$UMBRIEL" msg workspace-switch origin --output HEADLESS-1 > /dev/null
   focus edit-c
   "$UMBRIEL" settle
   windows=$("$UMBRIEL" windows --json)
@@ -106,7 +106,7 @@ focus edit-b
 "$UMBRIEL" msg window-consume-left > /dev/null
 "$UMBRIEL" msg window-move-up > /dev/null
 focus edit-c
-"$UMBRIEL" msg window-set-primary-extent:0.67 > /dev/null
+"$UMBRIEL" msg window-set-primary-extent 0.67 > /dev/null
 "$UMBRIEL" settle
 readonly REVISED="$(snapshot "$OFFSET")"
 if [[ $REVISED == "$ORIGINAL" ]] || ! jq -e '
@@ -126,8 +126,8 @@ assert_returned_layout scrolling "$REVISED" scrolling
 for mode in master dwindle; do
   "$UMBRIEL" output-destroy HEADLESS-1 > /dev/null
   select_refuge
-  "$UMBRIEL" msg "workspace-set-layout:$mode" > /dev/null
-  "$UMBRIEL" msg window-set-primary-extent:0.63 > /dev/null
+  "$UMBRIEL" msg workspace-set-layout "$mode" > /dev/null
+  "$UMBRIEL" msg window-set-primary-extent 0.63 > /dev/null
   "$UMBRIEL" settle
   workspace=$(field edit-c workspace)
   state=$("$UMBRIEL" workspaces --json)

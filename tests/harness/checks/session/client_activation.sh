@@ -8,6 +8,12 @@ readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/client-activation.log"
 readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/client-activation-control"
 
 sed -i '/autostart = \[\]/a focus_on_activate = false' "$UMBRIEL_CONFIG"
+# Keep both remap destinations alive so these assertions measure activation policy.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output.HEADLESS-1]
+workspaces = 2
+EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 mkfifo "$CONTROL_FIFO"
@@ -25,7 +31,7 @@ if [[ -z ${target_id:-} ]]; then
   echo "client activation target did not map: $windows"
   exit 1
 fi
-"$UMBRIEL" msg "window-close:$target_id" > /dev/null
+"$UMBRIEL" msg window-close "$target_id" > /dev/null
 for _ in $(seq 60); do
   grep -q '^unmapped$' "$CLIENT_LOG" && break
   sleep 0.1
@@ -35,7 +41,7 @@ if ! grep -q '^unmapped$' "$CLIENT_LOG"; then
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 printf c >&"$control_fd"
 for _ in $(seq 60); do
   windows=$("$UMBRIEL" windows --json)
@@ -58,7 +64,7 @@ if [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name') !=
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$target_id" > /dev/null
+"$UMBRIEL" msg window-close "$target_id" > /dev/null
 for _ in $(seq 60); do
   [[ $(grep -c '^unmapped$' "$CLIENT_LOG") -eq 2 ]] && break
   sleep 0.1
@@ -75,7 +81,7 @@ match.app_id = "^client-activation-target$"
 default_focused = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 printf c >&"$control_fd"
 for _ in $(seq 60); do
   windows=$("$UMBRIEL" windows --json)

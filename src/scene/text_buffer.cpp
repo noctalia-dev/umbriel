@@ -1,56 +1,21 @@
 #include "scene/text_buffer.h"
 
-extern "C" {
-#include <wlr/interfaces/wlr_buffer.h>
-}
+#include "scene/cairo_buffer.h"
 
+#include <algorithm>
 #include <cairo.h>
 #include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <drm_fourcc.h>
 #include <glib.h>
 #include <pango/pangocairo.h>
 
 namespace {
-
-  struct CairoBuffer {
-    wlr_buffer base;
-    cairo_surface_t* surface = nullptr;
-  };
-
-  void cairoBufferDestroy(wlr_buffer* wlrBuf) {
-    CairoBuffer* buf;
-    buf = wl_container_of(wlrBuf, buf, base);
-    cairo_surface_destroy(buf->surface);
-    delete buf;
-  }
-
-  bool
-  cairoBufferBeginDataPtrAccess(wlr_buffer* wlrBuf, uint32_t /*flags*/, void** data, uint32_t* format, size_t* stride) {
-    CairoBuffer* buf;
-    buf = wl_container_of(wlrBuf, buf, base);
-    *data = cairo_image_surface_get_data(buf->surface);
-    *format = DRM_FORMAT_ARGB8888;
-    *stride = static_cast<size_t>(cairo_image_surface_get_stride(buf->surface));
-    return true;
-  }
-
-  void cairoBufferEndDataPtrAccess(wlr_buffer* /*wlrBuf*/) {}
-
-  const wlr_buffer_impl kCairoBufferImpl = {
-      .destroy = cairoBufferDestroy,
-      .get_dmabuf = nullptr,
-      .get_shm = nullptr,
-      .begin_data_ptr_access = cairoBufferBeginDataPtrAccess,
-      .end_data_ptr_access = cairoBufferEndDataPtrAccess,
-  };
-
-  CairoBuffer* createCairoBuffer(int width, int height) {
-    auto* buf = new CairoBuffer;
-    buf->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-    wlr_buffer_init(&buf->base, &kCairoBufferImpl, width, height);
-    return buf;
+  // Subpixel antialiasing assumes an opaque, pixel-aligned destination; these textures are blended, so it fringes.
+  void useGrayscaleAntialias(cairo_t* cr) {
+    cairo_font_options_t* options = cairo_font_options_create();
+    cairo_get_font_options(cr, options);
+    cairo_font_options_set_antialias(options, CAIRO_ANTIALIAS_GRAY);
+    cairo_set_font_options(cr, options);
+    cairo_font_options_destroy(options);
   }
 
 } // namespace
@@ -71,6 +36,7 @@ namespace umbriel {
     cairo_surface_t* measureSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
     cairo_t* measureCr = cairo_create(measureSurface);
     cairo_scale(measureCr, scale, scale);
+    useGrayscaleAntialias(measureCr);
     PangoLayout* measureLayout = pango_cairo_create_layout(measureCr);
     PangoFontDescription* fontDesc = pango_font_description_from_string(params.font.c_str());
     pango_layout_set_font_description(measureLayout, fontDesc);
@@ -104,9 +70,10 @@ namespace umbriel {
     pixelH = std::max(pixelH, 1);
 
     // Render to a CairoBuffer at device-pixel resolution.
-    CairoBuffer* cairoBuf = createCairoBuffer(pixelW, pixelH);
-    cairo_t* cr = cairo_create(cairoBuf->surface);
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelW, pixelH);
+    cairo_t* cr = cairo_create(surface);
     cairo_scale(cr, scale, scale);
+    useGrayscaleAntialias(cr);
 
     // Background.
     cairo_set_source_rgba(cr, params.bgR, params.bgG, params.bgB, params.bgA);
@@ -124,10 +91,9 @@ namespace umbriel {
     g_object_unref(layout);
     pango_font_description_free(fontDesc);
     cairo_destroy(cr);
-    cairo_surface_flush(cairoBuf->surface);
 
     return {
-        .buffer = &cairoBuf->base,
+        .buffer = createCairoBuffer(surface),
         .logicalWidth = logicalW,
         .logicalHeight = logicalH,
     };

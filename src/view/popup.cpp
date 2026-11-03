@@ -78,7 +78,7 @@ namespace umbriel {
     }
     m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,
-        wlr_box{0, 0, geometry.width, geometry.height}, geometry, 0, nullptr, blurOptions
+        wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_none(), nullptr, blurOptions
     );
     if (!m_popup->base->initial_commit) {
       return;
@@ -104,9 +104,11 @@ namespace umbriel {
       layer->unconstrainPopup(m_popup);
     } else if (View* view = View::fromSurface(m_popup->parent)) {
       view->unconstrainPopup(m_popup);
-    } else {
-      wlr_xdg_surface_schedule_configure(m_popup->base);
     }
+    // Unconstraining schedules the configure, but it is skipped while the parent is not shown or has no output. A
+    // client must not draw before its first configure, and some block until it arrives. A configure already
+    // scheduled is reused, not sent twice.
+    wlr_xdg_surface_schedule_configure(m_popup->base);
   }
 
   void Popup::handleMap() {

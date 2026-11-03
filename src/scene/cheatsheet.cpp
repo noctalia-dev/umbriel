@@ -511,10 +511,8 @@ namespace umbriel {
     // Collect submaps in first-seen order.
     std::vector<std::string> submapOrder;
     for (const auto& row : rows) {
-      if (!row.submap.empty()) {
-        if (std::ranges::find(submapOrder, row.submap) == submapOrder.end()) {
-          submapOrder.push_back(row.submap);
-        }
+      if (!row.submap.empty() && std::ranges::find(submapOrder, row.submap) == submapOrder.end()) {
+        submapOrder.push_back(row.submap);
       }
     }
 

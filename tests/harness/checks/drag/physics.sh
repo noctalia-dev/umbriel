@@ -140,7 +140,7 @@ grab_y=$((y + 40))
 drag_right "$grab_x" "$grab_y"
 "$UMBRIEL" clock-advance 16 > /dev/null
 new_x=$((x + DRAG_DX))
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 # Only the snapshot may be left to probe: the live window must have left the window list first.
 for _ in $(seq 80); do
   window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "physics")')

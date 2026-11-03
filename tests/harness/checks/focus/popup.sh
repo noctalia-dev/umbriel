@@ -63,7 +63,7 @@ printf 'window=%s x=%s y=%s state=%s\n' "$window_id" "$window_x" "$window_y" "$w
 pointer_pid=$!
 wait_for_log popup-mapped
 
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 sleep 0.2 # real time: the popup is never dismissed
 if grep -qx 'popup-done' "$CLIENT_LOG" 2>/dev/null; then
   echo "redundant toplevel focus dismissed its popup: $(< "$CLIENT_LOG")"

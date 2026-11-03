@@ -44,18 +44,18 @@ namespace umbriel {
   }
 
   void SurfaceBlur::update(
-      wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox, int cornerRadius,
-      const wlr_box* clipBox, const SurfaceBlurOptions& options, float surfaceOpacity, wlr_scene_buffer* maskSource
+      wlr_scene_tree* parent, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& surfaceBox,
+      fx_corner_radii corners, const wlr_box* clipBox, const SurfaceBlurOptions& options, float surfaceOpacity,
+      wlr_scene_buffer* maskSource
   ) {
     const Config::Appearance::Blur& cfg = config().appearance.blur;
     wlr_box drawBox = nodeBox;
-    if (clipBox != nullptr) {
-      if (!wlr_box_intersection(&drawBox, &nodeBox, clipBox) || drawBox.width <= 0 || drawBox.height <= 0) {
-        if (m_node != nullptr) {
-          wlr_scene_node_set_enabled(&m_node->node, false);
-        }
-        return;
+    if (clipBox != nullptr
+        && (!wlr_box_intersection(&drawBox, &nodeBox, clipBox) || drawBox.width <= 0 || drawBox.height <= 0)) {
+      if (m_node != nullptr) {
+        wlr_scene_node_set_enabled(&m_node->node, false);
       }
+      return;
     }
     // A compositor opacity below 1 makes even a client-declared opaque surface
     // reveal the backdrop, so it also requires a blur node. Its opacity does
@@ -109,8 +109,8 @@ namespace umbriel {
     if (m_node->width != drawBox.width || m_node->height != drawBox.height) {
       wlr_scene_blur_set_size(m_node, drawBox.width, drawBox.height);
     }
-    if (m_node->corners.top_left != cornerRadius) {
-      wlr_scene_blur_set_corner_radius(m_node, cornerRadius);
+    if (!fx_corner_radii_eq(m_node->corners, corners)) {
+      wlr_scene_blur_set_corner_radii(m_node, corners);
     }
     if (m_node->alpha != m_alpha) {
       wlr_scene_blur_set_alpha(m_node, m_alpha);

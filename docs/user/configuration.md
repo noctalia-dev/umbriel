@@ -33,6 +33,12 @@ umbriel config validate
 
 The command prints every diagnostic with its file, line, and column, and exits nonzero when it finds a problem.
 
+For editors and scripts, `--json` (or `-j`) prints one JSON object with `valid`, the configuration `path`, and a `diagnostics` array. Each diagnostic has `severity` (`"error"` or `"warning"`), `message`, `file`, `line`, and `column`; the location fields are `null` when unknown. The exit status is the same as without the flag.
+
+```sh
+umbriel config validate --json | jq -r '.diagnostics[] | "\(.severity): \(.message)"'
+```
+
 List every configuration key the installed binary accepts:
 
 ```sh
@@ -81,6 +87,8 @@ mod_key = "Super"
 xwayland = true
 xwayland_native_resolution = false
 xwayland_xsettings = true
+xwayland_primary_output = ""
+nvidia_sync_workaround = true
 show_cheatsheet = true
 focus_on_activate = false
 attach_modal_dialogs = true
@@ -94,6 +102,8 @@ honor_restored_maximize = false
 | `xwayland`                   | bool         | `true`                    | Start Xwayland lazily for X11 applications. Changes require a restart.                                                                                                               |
 | `xwayland_native_resolution` | bool         | `false`                   | Show outputs to X11 applications at their physical resolution, so they render sharp on scaled outputs. Changes require a restart.                                                    |
 | `xwayland_xsettings`         | bool         | `true`                    | Announce the interface scale and cursor theme to X11 applications through XSETTINGS. Turn it off to run your own XSETTINGS manager, such as `xsettingsd`. Changes require a restart. |
+| `xwayland_primary_output`    | string       | `""`                      | Connector or monitor identity to publish as the X11 primary monitor. Applies on reload. Empty leaves primary selection unmanaged.                                                    |
+| `nvidia_sync_workaround`     | bool         | `true`                    | Wait for GPU completion on composed NVIDIA outputs without explicit synchronization. Applies on reload. See [NVIDIA synchronization](#nvidia-synchronization).                       |
 | `show_cheatsheet`            | bool         | `true`                    | Show the keybind cheatsheet when Umbriel starts.                                                                                                                                     |
 | `focus_on_activate`          | bool         | `false`                   | Let application activation requests focus and reveal their target.                                                                                                                   |
 | `attach_modal_dialogs`       | bool         | `true`                    | Attach a modal dialog to its parent, so it follows the parent and holds its input. See [Dialogs](layout.md#dialogs).                                                                 |
@@ -106,6 +116,27 @@ X11 bounding shapes clip windows to their visible regions, including holes and s
 X11 applications have no per-output scale. By default they see every output at its logical size, and Umbriel upscales their windows on outputs with a scale above 1, which looks soft. With `xwayland_native_resolution = true` they see each output at its physical size instead: a `3840x2160` output at scale `1.25` appears to them as `3840x2160` rather than `3072x1728`. Their windows render at one pixel per screen pixel and stay sharp, but X11 applications that do not scale their own interface look smaller on scaled outputs. Games benefit most.
 
 With `xwayland_xsettings = true`, Umbriel tells X11 applications that read XSETTINGS, such as GTK, Chromium, Electron, and Steam, the scale to draw their interface at: the largest output scale with `xwayland_native_resolution = true`, and `1` without it. It also announces `[input.cursor]` `theme` and `size`, the size scaled the same way. At native resolution X11 has one scale for every output, so on outputs with a smaller scale these applications look larger than native ones.
+
+### X11 primary monitor
+
+Some X11 games and Wine applications enumerate resolutions from the X11 primary monitor, independently of where Umbriel places their windows. Select that monitor explicitly:
+
+```toml
+[general]
+xwayland_primary_output = "DP-1"
+```
+
+The setting accepts the same connector names and monitor identities as [output sections](outputs.md). Run `umbriel outputs` to find them. Matching is case-insensitive. Use a monitor identity to follow a display between ports; use a connector to select a physical port. If a name matches several connected monitors with identical identities, Umbriel uses the first matching monitor in its internal layout order; use a connector to distinguish them.
+
+Umbriel applies the choice on reload, when the monitor becomes available, and whenever its lazy Xwayland server restarts. The primary stays stable while focus or the pointer moves between outputs. If the chosen monitor is disconnected or disabled, Umbriel clears the X11 primary until it returns. Removing the setting or setting it to `""` clears Umbriel's previous selection once, then leaves X11 primary selection unmanaged. With the setting omitted from startup, Umbriel preserves externally selected primaries.
+
+Output coordinates can be negative. Xwayland receives the layout translated to nonnegative coordinates, so the monitor at Umbriel's `[0, 0]` need not be at Xwayland's origin. `focus_at_startup` only places the cursor and does not select an X11 primary. Games that cache monitor information may need to be relaunched after changing the primary.
+
+### NVIDIA synchronization
+
+With `nvidia_sync_workaround = true`, Umbriel waits for GPU rendering to finish before presenting a composed output frame when the renderer uses the NVIDIA driver and the output has no explicit synchronization timeline. This can reduce flicker caused by unreliable implicit synchronization. Outputs with explicit synchronization continue to use GPU fences without this extra wait.
+
+Waiting can cause stuttering or frame drops, especially when rendering takes longer than a refresh interval. Set `nvidia_sync_workaround = false` to disable the workaround if it causes those symptoms; synchronization-related flicker may return. Changes apply to subsequent composed frames on reload and survive renderer recovery. Capture synchronization is independent of this setting.
 
 ## DRM devices
 
@@ -164,8 +195,8 @@ Logical output actions can remove the laptop panel from the desktop instead of m
 
 ```toml
 [events]
-lid_close = "umbriel msg output-disable:eDP-1"
-lid_open = "umbriel msg output-enable:eDP-1"
+lid_close = "umbriel msg output-disable eDP-1"
+lid_open = "umbriel msg output-enable eDP-1"
 ```
 
 ## Screencast
@@ -201,8 +232,8 @@ name = "terminal"
 name = "music"
 
 [keybinds]
-"Mod+Space" = "scratchpad-toggle:terminal"
-"Mod+M" = "scratchpad-toggle:music"
+"Mod+Space" = "scratchpad-toggle terminal"
+"Mod+M" = "scratchpad-toggle music"
 ```
 
 Defining a named scratchpad removes the implicit `default`. See [Scratchpads](scratchpad.md) for window assignment and behavior.

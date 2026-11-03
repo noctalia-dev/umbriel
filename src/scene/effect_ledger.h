@@ -35,9 +35,9 @@ namespace umbriel {
       std::erase_if(m_entries, [output](const Entry& entry) { return entry.state.output == output; });
     }
     void setSuspended(bool suspended) { m_suspended = suspended; }
-    [[nodiscard]] bool suspended() const { return m_suspended; }
+    bool suspended() const { return m_suspended; }
     // Instances on `output` that need effect-only frames right now.
-    [[nodiscard]] unsigned eligible(const void* output) const {
+    unsigned eligible(const void* output) const {
       if (m_suspended) {
         return 0;
       }
@@ -46,7 +46,7 @@ namespace umbriel {
       }));
     }
     // Owners carrying a persistent effect at all, visible or not.
-    [[nodiscard]] unsigned active() const { return static_cast<unsigned>(m_entries.size()); }
+    unsigned active() const { return static_cast<unsigned>(m_entries.size()); }
 
   private:
     struct Entry {

@@ -106,7 +106,7 @@ if ((child_w != 600 || child_h != 500)); then
   exit 1
 fi
 
-"$UMBRIEL" msg "window-close:$child_id" > /dev/null
+"$UMBRIEL" msg window-close "$child_id" > /dev/null
 for _ in $(seq 40); do
   grep -q '^unmapped$' "$CLIENT_LOG" && break
   sleep 0.1

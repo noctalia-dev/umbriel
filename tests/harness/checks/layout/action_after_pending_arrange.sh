@@ -30,7 +30,7 @@ done
 "$UMBRIEL" settle
 
 # Master a, stack rows c then b (new windows join the stack top); focus c.
-"$UMBRIEL" msg "window-focus:$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "c") | .id')" > /dev/null
+"$UMBRIEL" msg window-focus "$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "c") | .id')" > /dev/null
 "$UMBRIEL" settle
 before=$("$UMBRIEL" windows --json | jq -r 'sort_by(.x, .y) | map(.title) | join("")')
 if [[ $before != acb ]]; then

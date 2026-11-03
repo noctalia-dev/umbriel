@@ -19,9 +19,6 @@ namespace umbriel {
       if (image.width == 0 || image.height == 0 || image.pixels == nullptr) {
         return false;
       }
-      if (image.width > std::numeric_limits<size_t>::max() / kBytesPerPixel) {
-        return false;
-      }
       return image.stride >= static_cast<size_t>(image.width) * kBytesPerPixel;
     }
 

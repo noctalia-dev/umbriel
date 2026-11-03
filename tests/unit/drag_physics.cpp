@@ -74,7 +74,8 @@ UMBRIEL_TEST(grabPointStaysPinnedWhileTheSheetMoves) {
   }
   CHECK(physics.active());
   const auto pin = physics.displacementAt(0.25F, 0.8F);
-  CHECK(std::abs(pin[0]) < 0.05F && std::abs(pin[1]) < 0.05F);
+  CHECK_NEAR(pin[0], 0.0F, 0.05F);
+  CHECK_NEAR(pin[1], 0.0F, 0.05F);
   CHECK(physics.maxDisplacement() > 5.0F);
 }
 
@@ -90,7 +91,7 @@ UMBRIEL_TEST(motionTrailsOppositeToThePointer) {
   const auto sheet = physics.normalizedDisplacement();
   // The far corner (index 15) lags behind the motion: negative x displacement, clearly more than the near corner.
   CHECK(sheet[15][0] < -0.02F);
-  CHECK(std::abs(sheet[0][0]) < 0.05F);
+  CHECK_NEAR(sheet[0][0], 0.0F, 0.05F);
 }
 
 UMBRIEL_TEST(displacementStaysBoundedAndTheSheetNeverFoldsUnderExtremeShaking) {
@@ -164,7 +165,8 @@ UMBRIEL_TEST(reGrabbingWhileSettlingKeepsTheSheetAndItsTransition) {
   CHECK_EQ(physics.transitionId(), uint64_t{7});
   CHECK(physics.maxDisplacement() > 1.0F);
   const auto pin = physics.displacementAt(0.7F, 0.6F);
-  CHECK(std::abs(pin[0]) < 0.05F && std::abs(pin[1]) < 0.05F);
+  CHECK_NEAR(pin[0], 0.0F, 0.05F);
+  CHECK_NEAR(pin[1], 0.0F, 0.05F);
   CHECK(contracts(physics, 400, 300));
 }
 
@@ -202,8 +204,8 @@ UMBRIEL_TEST(integrationIsIndependentOfTheCallerFrameRate) {
   const auto a = slow.normalizedDisplacement();
   const auto b = fast.normalizedDisplacement();
   for (int i = 0; i < DragPhysics::kPoints; ++i) {
-    CHECK(std::abs(a[i][0] - b[i][0]) < 1e-4F);
-    CHECK(std::abs(a[i][1] - b[i][1]) < 1e-4F);
+    CHECK_NEAR(a[i][0], b[i][0], 1e-4F);
+    CHECK_NEAR(a[i][1], b[i][1], 1e-4F);
   }
 }
 
@@ -254,15 +256,16 @@ UMBRIEL_TEST(aBorderedWindowKeepsTheGrabbedCornerUnderThePointer) {
   CHECK(physics.maxDisplacement() > 5.0F);
   // Drawn where the shader puts it: the box origin, plus the grab's fraction of the box, plus its displacement.
   auto at = physics.displacementAt(grab[0], grab[1]);
-  CHECK(std::abs(boxX + grab[0] * boxWidth + at[0]) < 0.05F);
-  CHECK(std::abs(boxY + grab[1] * boxHeight + at[1]) < 0.05F);
+  CHECK_NEAR(boxX + grab[0] * boxWidth + at[0], 0.0F, 0.05F);
+  CHECK_NEAR(boxY + grab[1] * boxHeight + at[1], 0.0F, 0.05F);
 
   // Resized with the grab at the same fraction, the deformation keeps its shape relative to the window.
   const auto before = physics.normalizedDisplacement();
   physics.resize(boxWidth * 1.5F, boxHeight * 1.25F, grab[0], grab[1]);
   const auto after = physics.normalizedDisplacement();
   for (int i = 0; i < DragPhysics::kPoints; ++i) {
-    CHECK(std::abs(before[i][0] - after[i][0]) < 1e-5F && std::abs(before[i][1] - after[i][1]) < 1e-5F);
+    CHECK_NEAR(before[i][0], after[i][0], 1e-5F);
+    CHECK_NEAR(before[i][1], after[i][1], 1e-5F);
   }
 
   // A retarget grows the window under the same ring and keeps the pointer on the geometry's corner.
@@ -271,8 +274,8 @@ UMBRIEL_TEST(aBorderedWindowKeepsTheGrabbedCornerUnderThePointer) {
   physics.move(20, 0);
   physics.tick(1.0 / 60);
   at = physics.displacementAt(moved[0], moved[1]);
-  CHECK(std::abs(boxX + moved[0] * 648 + at[0]) < 0.05F);
-  CHECK(std::abs(boxY + moved[1] * 448 + at[1]) < 0.05F);
+  CHECK_NEAR(boxX + moved[0] * 648 + at[0], 0.0F, 0.05F);
+  CHECK_NEAR(boxY + moved[1] * 448 + at[1], 0.0F, 0.05F);
   CHECK(physics.maxDisplacement() <= physics.displacementBound() + 1e-3F);
   CHECK(contracts(physics, 648, 448));
 }

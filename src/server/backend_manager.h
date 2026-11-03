@@ -21,8 +21,8 @@ namespace umbriel {
     BackendManager(const BackendManager&) = delete;
     BackendManager& operator=(const BackendManager&) = delete;
 
-    [[nodiscard]] wlr_backend* backend() const;
-    [[nodiscard]] wlr_session* session() const;
+    wlr_backend* backend() const;
+    wlr_session* session() const;
     [[nodiscard]] wlr_renderer* createRenderer();
     [[nodiscard]] bool verifyOpenDevices(std::string_view context);
     void markStarted();

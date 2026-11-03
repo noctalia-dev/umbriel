@@ -147,7 +147,7 @@ EOF
 "$UMBRIEL" settle > /dev/null
 "$UMBRIEL" clock-freeze
 id=$(jq -r '.id' <<< "$window")
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 for _ in $(seq 100); do
   [[ $("$UMBRIEL" windows --json | jq 'length') -eq 0 ]] && break
   sleep 0.02

@@ -71,15 +71,12 @@ read -r win_x win_y _ _ <<< "$box"
 grim "$SCREENSHOT"
 
 sample() {
-  magick "$SCREENSHOT" -crop "1x1+$1+$2" -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2"
 }
 
 # Count the exact configured border colour rather than assuming which corner pixel lands inside the antialiased ring.
 # The transparent fullscreen client and red backdrop introduce no other green pixels.
-green_pixels=$(magick "$SCREENSHOT" -format %c histogram:info: | awk '
-  $3 == "#00FF00" { gsub(":", "", $1); print $1; found=1 }
-  END { if (!found) print 0 }
-')
+green_pixels=$("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r == 0 && g == 1 && b == 0')
 if (( green_pixels > 0 )); then
   echo "pending fullscreen map retained green window chrome: pixels=$green_pixels"
   exit 1

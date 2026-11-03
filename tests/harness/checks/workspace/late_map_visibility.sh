@@ -21,7 +21,7 @@ default_focused = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 "$UMBRIEL" workspaces --json | jq -e '.[] | select(.name == "2" and .active)' > /dev/null
 APP_ID=late-map "$UMBRIEL_UNMAP_CLIENT" late-map 1200 700 > "$UMBRIEL_RUNTIME_DIR/client.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/client.log" 'mapped' 1

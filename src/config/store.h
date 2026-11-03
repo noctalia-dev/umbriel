@@ -23,36 +23,38 @@ namespace umbriel {
     // Replace the root config file. On failure the previous configuration is kept
     // and the generation does not move: a config with a syntax error must not take
     // the session down.
-    [[nodiscard]] ConfigReloadResult replace(const std::filesystem::path& explicitPath, std::string& errors);
+    ConfigReloadResult replace(const std::filesystem::path& explicitPath, std::string& errors);
     // Re-parse. On failure the previous configuration is kept and the generation
     // does not move: a config with a syntax error must not take the session down.
-    [[nodiscard]] ConfigReloadResult reload();
+    ConfigReloadResult reload();
 
-    [[nodiscard]] const Config& config() const { return m_config; }
-    [[nodiscard]] const std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
+    const Config& config() const { return m_config; }
+    const std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
     // Every path whose change can affect the next reload: implicit lookup
     // candidates, the attempted root, and its includes.
-    [[nodiscard]] const std::vector<std::filesystem::path>& watchPaths() const { return m_watchPaths; }
-    [[nodiscard]] const std::filesystem::path& rootPath() const { return m_rootPath; }
+    const std::vector<std::filesystem::path>& watchPaths() const { return m_watchPaths; }
+    const std::filesystem::path& rootPath() const { return m_rootPath; }
     // True when the session is running on built-in defaults because no file was
     // found. Drives the "no config" notice on the cheatsheet.
-    [[nodiscard]] bool fileMissing() const { return m_fileMissing; }
-    [[nodiscard]] uint64_t generation() const { return m_generation; }
-    [[nodiscard]] bool missingIncludes() const { return m_missingIncludes; }
+    bool fileMissing() const { return m_fileMissing; }
+    uint64_t generation() const { return m_generation; }
+    // Generation of the last reload that reapplied workspace layouts.
+    uint64_t workspaceLayoutGeneration() const { return m_workspaceLayoutGeneration; }
+    bool missingIncludes() const { return m_missingIncludes; }
 
     // Loader-only writers follow. The read-only API remains above.
     // Keep the active config when a reload fails.
     void beginLoad(const std::vector<std::filesystem::path>& watchPaths);
     void addDiagnostic(ConfigDiagnostic diagnostic);
     // The sink the section readers append to directly.
-    [[nodiscard]] std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }
+    std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }
     // Ignores duplicates: the same file can be included from several places.
     void addWatchPath(std::filesystem::path path);
     // Put diagnostics back into source order. Readers emit in whatever order they run, and unknown-key reports come
     // last (after a section has finished), so without this the list jumps around the file.
     void sortDiagnostics();
     // Adopt a successfully parsed config and bump the generation.
-    [[nodiscard]] ConfigReloadResult commit(Config&& config, std::filesystem::path rootPath, bool fileMissing);
+    ConfigReloadResult commit(Config&& config, std::filesystem::path rootPath, bool fileMissing);
     void setMissingIncludes(bool missing) { m_missingIncludes = missing; }
     void setRootPath(std::filesystem::path path, bool explicitPath);
 
@@ -69,10 +71,11 @@ namespace umbriel {
     bool m_fileMissing = false;
     bool m_missingIncludes = false;
     uint64_t m_generation = 0;
+    uint64_t m_workspaceLayoutGeneration = 0;
   };
 
   // The process-wide store, read by consumers below Server on render paths. The layout and parsing layers take their
   // settings as arguments and do not reach for this.
-  [[nodiscard]] ConfigStore& configStore();
+  ConfigStore& configStore();
 
 } // namespace umbriel

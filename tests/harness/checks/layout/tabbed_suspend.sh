@@ -6,8 +6,8 @@ set -euo pipefail
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 
 accepts() {
-  if ! out=$("$UMBRIEL" msg "$1" 2>&1); then
-    echo "expected '$1' to be accepted, got: $out"
+  if ! out=$("$UMBRIEL" msg "$@" 2>&1); then
+    echo "expected '$*' to be accepted, got: $out"
     return 1
   fi
 }
@@ -67,11 +67,11 @@ accepts column-toggle-tabbed
 wait_for_state tab-a suspended
 wait_for_state tab-b resumed
 
-accepts column-focus-tab:1
+accepts column-focus-tab 1
 wait_for_state tab-a resumed
 wait_for_state tab-b suspended
 
-accepts column-set-display:normal
+accepts column-set-display normal
 wait_for_state tab-a resumed
 wait_for_state tab-b resumed
 

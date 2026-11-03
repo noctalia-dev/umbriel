@@ -42,7 +42,7 @@ wait_for_minimizable() {
     if jq -e -s --arg title "$title" --argjson expected "$expected" '
       [.[] | select(.event == "windows")] | last | .data
       | any(.[]; .title == $title and .minimizable == $expected)
-    ' "$EVENTS" > /dev/null 2>&1; then
+    ' "$EVENTS" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
@@ -51,7 +51,7 @@ wait_for_minimizable() {
   exit 1
 }
 
-msg() { "$UMBRIEL" msg "$@" > /dev/null; }
+msg() { "$UMBRIEL" msg "$@" >/dev/null; }
 
 foreign() {
   local reply
@@ -66,30 +66,30 @@ readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/minimize-control"
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
 
-cat >> "$UMBRIEL_CONFIG" <<'EOF'
+cat >>"$UMBRIEL_CONFIG" <<'EOF'
 [layout]
-mode = "floating"
+mode = "stacking"
 
 [animation]
 enabled = false
 EOF
 msg config-reload
 
-MINIMIZE_ON_STDIN=1 "$CLIENT" minimize-a 480 300 <&"$control_fd" > "$A_LOG" 2>&1 &
+MINIMIZE_ON_STDIN=1 "$CLIENT" minimize-a 480 300 <&"$control_fd" >"$A_LOG" 2>&1 &
 await_lines "$A_LOG" 'mapped$' 1
-"$CLIENT" minimize-b 480 300 > "$B_LOG" 2>&1 &
+"$CLIENT" minimize-b 480 300 >"$B_LOG" 2>&1 &
 await_lines "$B_LOG" 'mapped$' 1
 wait_for_field minimize-a floating true
 wait_for_field minimize-b floating true
 A=$(field_of minimize-a id)
 B=$(field_of minimize-b id)
 OUTPUT=$(field_of minimize-a output)
-"$UMBRIEL" subscribe windows > "$EVENTS" &
+"$UMBRIEL" subscribe windows >"$EVENTS" &
 wait_for_minimizable minimize-a true
 wait_for_minimizable minimize-b true
 
 # The action hides the focused window, hands focus on, and taskbars see the state.
-msg "window-focus:$A"
+msg window-focus "$A"
 wait_for_field minimize-a active true
 msg window-minimize
 wait_for_field minimize-a minimized true
@@ -117,7 +117,7 @@ wait_for_field minimize-a minimized true
 wait_for_field minimize-b active true
 
 # window-focus names it.
-msg "window-focus:$A"
+msg window-focus "$A"
 wait_for_field minimize-a minimized false
 wait_for_field minimize-a active true
 
@@ -129,9 +129,9 @@ expect_field minimize-a visible true
 expect_field minimize-b active true
 
 # Activation from another workspace switches back to it.
-msg "window-minimize:$A"
+msg window-minimize "$A"
 wait_for_field minimize-a minimized true
-msg workspace-switch:2
+msg workspace-switch 2
 wait_for_field minimize-b visible false
 foreign activate
 wait_for_field minimize-a minimized false
@@ -139,14 +139,14 @@ wait_for_field minimize-a active true
 wait_for_field minimize-a visible true
 
 # Tiling shows the window, and a tiled window cannot minimize.
-msg "window-minimize:$A"
+msg window-minimize "$A"
 wait_for_field minimize-a minimized true
-msg workspace-set-layout:scrolling
+msg workspace-set-layout scrolling
 wait_for_field minimize-a floating false
 wait_for_minimizable minimize-a false
 expect_field minimize-a minimized false
 expect_field minimize-a visible true
-msg "window-focus:$A"
+msg window-focus "$A"
 wait_for_field minimize-a active true
 if reply=$("$UMBRIEL" msg window-minimize 2>&1); then
   echo "window-minimize unexpectedly succeeded on a tiled window"
@@ -162,15 +162,15 @@ await_lines "$A_LOG" 'minimize-requested$' 2
 expect_field minimize-a minimized false
 
 # window-restore-minimized brings back the latest first.
-msg workspace-set-layout:floating
+msg workspace-set-layout stacking
 wait_for_field minimize-a floating true
 wait_for_field minimize-b floating true
 wait_for_minimizable minimize-a true
 wait_for_minimizable minimize-b true
-msg "window-focus:$B"
+msg window-focus "$B"
 msg window-minimize
 wait_for_field minimize-b minimized true
-msg "window-focus:$A"
+msg window-focus "$A"
 msg window-minimize
 wait_for_field minimize-a minimized true
 msg window-restore-minimized
@@ -198,7 +198,7 @@ wait_for_field minimize-b active true
 msg workspace-toggle-show-desktop
 wait_for_field minimize-a minimized true
 wait_for_field minimize-b minimized true
-msg "window-focus:$A"
+msg window-focus "$A"
 wait_for_field minimize-a minimized false
 msg window-minimize
 wait_for_field minimize-a minimized true
@@ -208,7 +208,7 @@ wait_for_field minimize-b minimized false
 wait_for_field minimize-b active true
 
 # A window minimized before showing the desktop comes back with the rest.
-msg "window-minimize:$A"
+msg window-minimize "$A"
 wait_for_field minimize-a minimized true
 msg workspace-toggle-show-desktop
 wait_for_field minimize-b minimized true
@@ -217,7 +217,7 @@ wait_for_field minimize-a minimized false
 wait_for_field minimize-b minimized false
 
 # Pinning changes eligibility without changing the window's floating placement.
-msg "window-focus:$A"
+msg window-focus "$A"
 msg window-toggle-pinned
 wait_for_field minimize-a pinned true
 expect_field minimize-a floating true

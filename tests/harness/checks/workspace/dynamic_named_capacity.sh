@@ -7,17 +7,6 @@ readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly BASELINE="$(< "$UMBRIEL_CONFIG")"
 declare -a CLIENT_PIDS=()
 
-cleanup() {
-  local pid
-  for pid in "${CLIENT_PIDS[@]}"; do
-    if [[ -n $pid ]]; then
-      kill "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
-    fi
-  done
-}
-trap cleanup EXIT
-
 workspace_snapshot() {
   "$UMBRIEL" workspaces --json |
     jq -c '[.[] | select(.output == "HEADLESS-1")] | sort_by(.index)'
@@ -123,7 +112,6 @@ fi
 
 kill "${CLIENT_PIDS[32]}"
 wait "${CLIENT_PIDS[32]}" 2>/dev/null || true
-CLIENT_PIDS[32]=
 wait_for_window_count 61
 
 settled=

@@ -66,8 +66,7 @@ border_position() {
 sample_border() {
   local title=$1 x y
   read -r x y < <(border_position "$title")
-  magick "$IMAGE" -crop "4x4+$x+$y" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:
+  "$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "4x4+$x+$y"
 }
 
 assert_color() {
@@ -88,7 +87,7 @@ a_id=$(jq -r .id <<< "$window")
 window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "focus-border-b")')
 b_id=$(jq -r .id <<< "$window")
 
-"$UMBRIEL" msg "window-focus:$a_id" > /dev/null
+"$UMBRIEL" msg window-focus "$a_id" > /dev/null
 "$UMBRIEL" settle
 grim "$IMAGE"
 assert_color focus-border-a red
@@ -96,7 +95,7 @@ assert_color focus-border-b blue
 
 # Animation time only moves by clock-advance; advancing 1000 ms finishes every border and overview timeline.
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-focus:$b_id" > /dev/null
+"$UMBRIEL" msg window-focus "$b_id" > /dev/null
 "$UMBRIEL" clock-advance 350
 grim "$IMAGE"
 assert_color focus-border-a mixed
@@ -140,11 +139,10 @@ sed -i 's/^border_width = 20$/border_width = 0/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" settle
 "$UMBRIEL" clock-freeze
-"$UMBRIEL" msg "window-focus:$a_id" > /dev/null
+"$UMBRIEL" msg window-focus "$a_id" > /dev/null
 if ! timeout 5 "$UMBRIEL" settle; then
   echo "a focus change animated a zero-width border"
   exit 1
 fi
-"$UMBRIEL" clock-resume
 
 echo "focus border colors interpolate during focus changes and settle across the overview"

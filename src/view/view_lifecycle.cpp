@@ -12,6 +12,7 @@
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
+#include "server/ipc.h"
 #include "server/server.h"
 #include "view/view.h"
 extern "C" {
@@ -34,6 +35,22 @@ namespace umbriel {
     constexpr Logger kLog("view");
     // Distance the built-in windows_in "slide" style starts an opener below its resting position.
     constexpr int kOpenSlidePx = 60;
+
+    std::array<int, 2> floatingRuleSize(const ResolvedWindowRule& rule, const SizeHints& hints, const wlr_box& usable) {
+      int width = 0;
+      int height = 0;
+      if (rule.defaultFloatingWidthPx) {
+        width = clampWidth(*rule.defaultFloatingWidthPx, hints);
+      } else if (rule.defaultFloatingWidth && usable.width > 0) {
+        width = clampWidth(floatingFractionSize(*rule.defaultFloatingWidth, usable.width), hints);
+      }
+      if (rule.defaultFloatingHeightPx) {
+        height = clampHeight(*rule.defaultFloatingHeightPx, hints);
+      } else if (rule.defaultFloatingHeight && usable.height > 0) {
+        height = clampHeight(floatingFractionSize(*rule.defaultFloatingHeight, usable.height), hints);
+      }
+      return {width, height};
+    }
 
     constexpr int contentTypePriority(ContentType type) {
       switch (type) {
@@ -205,7 +222,11 @@ namespace umbriel {
       // committedContentBox() until the client redraws at the configured size.
       handleCommit(true);
     }
+    const auto openingFloatingRuleSize = std::exchange(m_openingFloatingRuleSize, std::array<int, 2>{});
     m_mapped = true;
+    if (m_workspace != nullptr) {
+      m_workspace->group()->restoreLaunchWorkspace(*m_workspace);
+    }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
     m_presentedTiledBox = {};
@@ -257,7 +278,8 @@ namespace umbriel {
     }
     const bool restoreTiled = m_tiled;
     const bool draggedToplevel = m_server->seat()->toplevelDrags().attached(m_toplevel);
-    if (draggedToplevel) {
+    // A passive utility belongs at its client's position over its parent, whatever app-wide rule tiles the client.
+    if (draggedToplevel || passiveXwaylandUtility()) {
       m_tiled = false;
     }
     // Unsettled when any rule uses a title pattern: the first handleSetTitle after map re-applies disruptive effects
@@ -342,17 +364,27 @@ namespace umbriel {
     if (placed && !assignedScratchpad && rule.defaultPinned && *rule.defaultPinned) {
       setPinned(true, false);
     }
+    std::optional<std::array<int, 2>> mapFloatingSize;
+    if (placed && !m_tiled && !scheduledFullscreen() && !scheduledMaximized()) {
+      // The title can select a different rule after the opening configure but before the first buffer maps.
+      // Preserve the client's committed size on axes whose rule dimensions were already configured.
+      const auto size = floatingRuleSize(rule, sizeHints(), floatingUsableArea());
+      const bool resizeWidth = size[0] > 0 && size[0] != openingFloatingRuleSize[0];
+      const bool resizeHeight = size[1] > 0 && size[1] != openingFloatingRuleSize[1];
+      if (resizeWidth || resizeHeight) {
+        mapFloatingSize = {resizeWidth ? size[0] : mapGeo.width, resizeHeight ? size[1] : mapGeo.height};
+        requestFloatingSize((*mapFloatingSize)[0], (*mapFloatingSize)[1]);
+      }
+    }
     if (assignedScratchpad) {
       // Scratchpad admission has detached the view from its workspace, so its
       // assigned scratchpad output now supplies the correct usable area.
-      placeInUsableArea(rule.defaultPosition);
+      placeInUsableArea(rule.defaultPosition, mapFloatingSize);
       if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
         scratchpad->syncViewPresentation(this);
       }
     } else if (!assignedScratchpad && !m_tiled) {
-      // The initial commit already applied the floating size rules. Re-requesting them here
-      // races the client's first content-driven resize.
-      placeInUsableArea(rule.defaultPosition);
+      placeInUsableArea(rule.defaultPosition, mapFloatingSize);
       // Enable + clip the float against its home output now that per-output
       // visibility is resolved data-side (no per-render-pass pass to do it).
       if (m_workspace != nullptr) {
@@ -365,7 +397,7 @@ namespace umbriel {
     // Apply rule opacity: flush to scene buffers immediately so views on
     // inactive workspaces get the correct opacity when they become visible.
     if (rule.opacity) {
-      m_ruleOpacity = static_cast<float>(*rule.opacity);
+      m_ruleOpacity.snap(*rule.opacity);
       setFadeAlpha(m_fadeAlpha);
     }
 
@@ -537,9 +569,13 @@ namespace umbriel {
     if (draggedToplevel) {
       m_server->seat()->toplevelDrags().mapped(this, restoreTiled && !assignedScratchpad);
     }
+    if (m_workspace != nullptr) {
+      // A remap can retain membership in an empty workspace without going through addView().
+      m_workspace->group()->reconcileDynamic();
+    }
   }
 
-  void View::handleUnmap() {
+  void View::handleUnmap(bool animateClose) {
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
@@ -594,7 +630,7 @@ namespace umbriel {
     m_floatingMaximized = false;
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
-    clearSnapState();
+    clearRegionState();
     m_restorePinnedAfterFullscreen = false;
     m_xCompositorFullscreen = false;
     if (m_pinned) {
@@ -609,10 +645,10 @@ namespace umbriel {
       m_server->scratchpadManager()->remove(this);
     }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
-      overview->onViewUnmapped(this);
+      overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
-    const CloseSnapshotId snapshot = beginCloseAnimation();
+    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
     if (m_minimized) {
@@ -673,7 +709,7 @@ namespace umbriel {
     const bool hadRuntimeEffects = m_effects.slot(EffectKind::Border).runtimeSelector.has_value()
         || m_effects.slot(EffectKind::Window).runtimeSelector.has_value();
     m_mapped = false;
-    m_layoutFloated = false;
+    m_floatedByStackingLayout = false;
     if (m_workspace != nullptr) {
       m_workspace->syncFloatingStack(this);
     }
@@ -727,6 +763,7 @@ namespace umbriel {
     m_initialTitleRulesSettled = false;
     m_initialContentTypeRulesSettled = false;
     m_initialRules = {};
+    m_openingFloatingRuleSize = {};
     m_initialRuleHistory.clear();
     m_initialRuleState = {};
     m_initialRulesAppId.reset();
@@ -736,7 +773,9 @@ namespace umbriel {
     m_namedScrollingColumnName.reset();
     m_namedScrollingColumnOrder.reset();
     m_ownsNamedScrollingColumnExtent = false;
-    m_ruleOpacity = 1.0F;
+    m_ruleOpacity.snap(1.0);
+    m_ruleBlur.snap(0.0);
+    m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
     // An unmapped window keeps no layout state, so the alone effect it owned is gone with it.
     m_aloneEffectsActive = false;
@@ -755,6 +794,10 @@ namespace umbriel {
     m_savedScrollingExtent.reset();
     if (m_displacedHome) {
       m_server->scheduleDisplacedViewRestore();
+    }
+    if (m_workspace != nullptr) {
+      // A client can keep its unmapped toplevel alive. Reconcile after its workspace and scene cleanup is complete.
+      m_workspace->group()->reconcileDynamic();
     }
   }
 
@@ -822,6 +865,7 @@ namespace umbriel {
     }
     syncXwaylandShape();
     if (openingConfigurePending() || reconfigureOpeningState) {
+      m_openingFloatingRuleSize = {};
       // Resolve window rules early to influence initial tiled/float decision and size.
       WindowRuleState openingState = ruleState();
       openingState.focused = false;
@@ -843,10 +887,17 @@ namespace umbriel {
       const bool openingInScratchpad = !openingScratchpad.empty()
           && scratchpadManager != nullptr
           && scratchpadManager->hasScratchpad(openingScratchpad);
+      const bool passiveUtility = passiveXwaylandUtility();
       bool wantTiled = !m_server->seat()->toplevelDrags().attached(m_toplevel)
+          && !passiveUtility
           && !openingInScratchpad
           && !rule.defaultPinned.value_or(false)
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled());
+      if (passiveUtility) {
+        // The opening configure carries the frame's position, so start it where the client put the window.
+        const XwaylandRegion region = m_server->xwayland()->outputs().regionAtX(m_xsurface->x, m_xsurface->y);
+        setPosition(region.toLayoutX(m_xsurface->x), region.toLayoutY(m_xsurface->y));
+      }
 
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.
@@ -861,7 +912,7 @@ namespace umbriel {
       }
 
       const bool layoutFloats =
-          (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Floating;
+          (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Stacking;
       wantTiled = wantTiled && !layoutFloats;
 
       // A window that opens as the only tiled one on its workspace is configured in its `match.is_alone` state right
@@ -994,19 +1045,8 @@ namespace umbriel {
           setMaximizedState(true);
         } else {
           const wlr_box usable = openingUsableArea(targetOutput);
-          int requestedWidth = 0;
-          int requestedHeight = 0;
-          if (rule.defaultFloatingWidthPx) {
-            requestedWidth = clampWidth(*rule.defaultFloatingWidthPx, hints);
-          } else if (rule.defaultFloatingWidth && usable.width > 0) {
-            requestedWidth = clampWidth(floatingFractionSize(*rule.defaultFloatingWidth, usable.width), hints);
-          }
-          if (rule.defaultFloatingHeightPx) {
-            requestedHeight = clampHeight(*rule.defaultFloatingHeightPx, hints);
-          } else if (rule.defaultFloatingHeight && usable.height > 0) {
-            requestedHeight = clampHeight(floatingFractionSize(*rule.defaultFloatingHeight, usable.height), hints);
-          }
-          requestFloatingSize(requestedWidth, requestedHeight);
+          m_openingFloatingRuleSize = floatingRuleSize(rule, hints, usable);
+          requestFloatingSize(m_openingFloatingRuleSize[0], m_openingFloatingRuleSize[1]);
         }
 
         // Keep the configured unit until the window first enters the scrolling layout.
@@ -1096,6 +1136,9 @@ namespace umbriel {
       if (m_mapped) {
         m_server->scheduleIpcWindowsEvent();
       }
+    }
+    if (Ipc* ipc = m_server->ipc()) {
+      ipc->notifyWindowCommitted();
     }
   }
 

@@ -50,10 +50,10 @@ for mode in column edges remembered-column remembered-edges; do
   client_pid=$!
   wait_field title "$TITLE"
   window_id=$(field id)
-  "$UMBRIEL" msg "window-focus:$window_id" > /dev/null
-  float_action=window-toggle-floating
+  "$UMBRIEL" msg window-focus "$window_id" > /dev/null
+  float_action=(window-toggle-floating)
   if [[ $mode == remembered-* ]]; then
-    float_action="window-toggle-floating:$window_id"
+    float_action=(window-toggle-floating "$window_id")
   fi
   if [[ $mode == remembered-* ]]; then
     wait_field floating true
@@ -61,7 +61,7 @@ for mode in column edges remembered-column remembered-edges; do
     wait_field h 270
     wait_field x 160
     wait_field y 120
-    "$UMBRIEL" msg "$float_action" > /dev/null
+    "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   fi
   wait_field floating false
   "$UMBRIEL" settle > /dev/null
@@ -90,14 +90,14 @@ for mode in column edges remembered-column remembered-edges; do
     exit 1
   fi
 
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating true
   wait_field maximized true
   wait_field maximized_to_edges "$edges"
   wait_field w "$max_width"
 
   # Unfloating must not restore the normal size automatically. Only the following maximize binding should do that.
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating false
   wait_field maximized true
   wait_field maximized_to_edges "$edges"
@@ -106,10 +106,10 @@ for mode in column edges remembered-column remembered-edges; do
   wait_field h "$max_height"
 
   # Keep the same restore extent through another full float/unfloat cycle while still maximized.
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating true
   wait_field maximized true
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating false
   wait_field maximized true
   "$UMBRIEL" settle > /dev/null
@@ -122,7 +122,7 @@ for mode in column edges remembered-column remembered-edges; do
   wait_field h "$tile_height"
 
   # The maximized floating geometry must not overwrite the remembered normal floating size or position.
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating true
   wait_field maximized false
   wait_field w "$restore_width"
@@ -141,7 +141,7 @@ for mode in column edges remembered-column remembered-edges; do
   wait_field w "$restore_width"
   wait_field h "$restore_height"
 
-  "$UMBRIEL" msg "$float_action" > /dev/null
+  "$UMBRIEL" msg "${float_action[@]}" > /dev/null
   wait_field floating false
   wait_field w "$tile_width"
   wait_field h "$tile_height"
@@ -157,7 +157,7 @@ for mode in floating-column floating-edges; do
   wait_field floating true
   wait_field w 420
   wait_field h 270
-  "$UMBRIEL" msg "window-focus:$(field id)" > /dev/null
+  "$UMBRIEL" msg window-focus "$(field id)" > /dev/null
   action=window-toggle-maximize
   max_width=1264
   if [[ $mode == *edges ]]; then

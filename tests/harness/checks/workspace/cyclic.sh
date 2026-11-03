@@ -78,7 +78,7 @@ expect_window_at cyclic-b "HEADLESS-1:3" "column-move-to-workspace-previous"
 expect_window_at cyclic-a "HEADLESS-1:1" "the window left behind"
 
 FOCUS_ID=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "cyclic-a") | .id')
-"$UMBRIEL" msg "window-focus:$FOCUS_ID" > /dev/null
+"$UMBRIEL" msg window-focus "$FOCUS_ID" > /dev/null
 "$UMBRIEL" msg window-move-to-workspace-previous > /dev/null
 expect_window_at cyclic-a "HEADLESS-1:3" "window-move-to-workspace-previous"
 
@@ -91,7 +91,7 @@ expect_window_at cyclic-a "HEADLESS-1:3" "window-move-or-workspace-up on the fir
 # Without the key the step stops at the ends.
 sed -i 's/^cyclic_workspaces = true$/cyclic_workspaces = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 expect_workspace 1 "workspace-switch back to the first workspace"
 "$UMBRIEL" msg workspace-previous > /dev/null
 expect_workspace 1 "workspace-previous without the key"

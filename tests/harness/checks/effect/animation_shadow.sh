@@ -57,8 +57,7 @@ y=$(jq -r .y <<< "$window")
 w=$(jq -r .w <<< "$window")
 h=$(jq -r .h <<< "$window")
 pixel() {
-  read -r r g b < <(magick "$IMAGE" -crop "2x2+$1+$2" \
-    -format '%[fx:round(mean.r*255)] %[fx:round(mean.g*255)] %[fx:round(mean.b*255)]\n' info:)
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$1+$2")
 }
 assert_half_shadow() {
   grim "$IMAGE"
@@ -94,7 +93,7 @@ pixel "$((x+3*w/4))" "$((y+h+6))"
 if ! (( g > 25 && r < 5 && b < 5 )); then
   echo "settled window did not restore its full analytic shadow: $r $g $b"; exit 1
 fi
-"$UMBRIEL" msg "window-close:$id" > /dev/null
+"$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_half_shadow closing
 "$UMBRIEL" clock-advance 2000

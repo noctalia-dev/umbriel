@@ -3,8 +3,9 @@
 # drops the surface out of the commit walk that refreshes those mirrors. The card must hide that mirror: left alone it
 # kept the last frame at the zoom it was last laid out at, so a layer hidden during the opening zoom stayed on screen
 # larger than the card, anchored at the card's corner. The client's parent is red under a blue child that covers it, so
-# blue on screen is the child's mirror. The last two steps also guard reads of a scene node freed with a destroyed
-# subsurface role, which only `just mode=asan check` reports.
+# blue on screen is the child's mirror. Shortcut badges are off: the badge digit's antialiased edge can pass the blue
+# predicate. The last two steps also guard reads of a scene node freed with a destroyed subsurface role, which only
+# `just mode=asan check` reports.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -33,6 +34,7 @@ workspace_background = "#000000FF"
 [overview]
 zoom = 0.25
 background_blur = false
+shortcuts = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

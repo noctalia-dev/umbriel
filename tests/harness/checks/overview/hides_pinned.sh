@@ -13,8 +13,7 @@ readonly CLOSED="$UMBRIEL_RUNTIME_DIR/overview-pinned-closed.png"
 readonly SWITCHED="$UMBRIEL_RUNTIME_DIR/overview-pinned-switched.png"
 
 sample_rgb() {
-  magick "$1" -crop 20x20+390+240 \
-    -format '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 20x20+390+240
 }
 
 assert_blue_visible() {
@@ -86,7 +85,7 @@ if [[ -z $window_id ]]; then
   echo "could not resolve pinned overview client: $("$UMBRIEL" windows --json)"
   exit 1
 fi
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 "$UMBRIEL" msg window-toggle-pinned > /dev/null
 sleep 0.1
 
@@ -113,7 +112,7 @@ sleep 0.1
 grim "$CLOSED"
 assert_blue_visible after-overview "$CLOSED"
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 sleep 0.1
 grim "$SWITCHED"
 assert_blue_visible after-workspace-switch "$SWITCHED"

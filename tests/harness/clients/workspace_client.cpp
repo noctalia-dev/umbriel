@@ -20,6 +20,12 @@ namespace {
   struct Group {
     ext_workspace_group_handle_v1* handle = nullptr;
     std::vector<ext_workspace_handle_v1*> workspaces;
+    std::vector<wl_output*> outputs;
+  };
+
+  struct Output {
+    wl_output* handle = nullptr;
+    std::string name;
   };
 
   struct State {
@@ -27,6 +33,7 @@ namespace {
     ext_workspace_manager_v1* manager = nullptr;
     std::vector<std::unique_ptr<Group>> groups;
     std::vector<std::unique_ptr<Workspace>> workspaces;
+    std::vector<std::unique_ptr<Output>> outputs;
     bool done = false;
   };
 
@@ -58,8 +65,12 @@ namespace {
   };
 
   void groupCapabilities(void*, ext_workspace_group_handle_v1*, uint32_t) {}
-  void groupOutputEnter(void*, ext_workspace_group_handle_v1*, wl_output*) {}
-  void groupOutputLeave(void*, ext_workspace_group_handle_v1*, wl_output*) {}
+  void groupOutputEnter(void* data, ext_workspace_group_handle_v1*, wl_output* output) {
+    static_cast<Group*>(data)->outputs.push_back(output);
+  }
+  void groupOutputLeave(void* data, ext_workspace_group_handle_v1*, wl_output* output) {
+    std::erase(static_cast<Group*>(data)->outputs, output);
+  }
   void groupWorkspaceEnter(void* data, ext_workspace_group_handle_v1*, ext_workspace_handle_v1* workspace) {
     static_cast<Group*>(data)->workspaces.push_back(workspace);
   }
@@ -104,8 +115,26 @@ namespace {
       .finished = managerFinished,
   };
 
+  constexpr wl_output_listener kOutputListener{
+      .geometry = [](void*, wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*,
+                     int32_t) {},
+      .mode = [](void*, wl_output*, uint32_t, int32_t, int32_t, int32_t) {},
+      .done = [](void*, wl_output*) {},
+      .scale = [](void*, wl_output*, int32_t) {},
+      .name = [](void* data, wl_output*, const char* name) { static_cast<Output*>(data)->name = name; },
+      .description = [](void*, wl_output*, const char*) {},
+  };
+
   void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
     auto* state = static_cast<State*>(data);
+    if (std::string_view(interface) == wl_output_interface.name) {
+      auto output = std::make_unique<Output>();
+      output->handle =
+          static_cast<wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4U)));
+      wl_output_add_listener(output->handle, &kOutputListener, output.get());
+      state->outputs.push_back(std::move(output));
+      return;
+    }
     if (std::string_view(interface) != ext_workspace_manager_v1_interface.name) {
       return;
     }
@@ -124,15 +153,16 @@ namespace {
 } // namespace
 
 // Default output is the active workspace of each group, one per line. `--all`
-// lists every workspace as "id<TAB>name"; `--active` lists active ones in the
-// same form. `--create OUTPUT NAME` sends one protocol create request to the
-// group containing that output's workspace IDs.
+// lists every visible workspace as "id<TAB>name"; `--active` lists active ones in the
+// same form. `--groups` adds the output name as a third field. `--create OUTPUT NAME`
+// sends one protocol create request to the group advertising that output.
 int main(int argc, char** argv) {
   const bool listAll = argc == 2 && std::string_view(argv[1]) == "--all";
   const bool listActive = argc == 2 && std::string_view(argv[1]) == "--active";
+  const bool listGroups = argc == 2 && std::string_view(argv[1]) == "--groups";
   const bool create = argc == 4 && std::string_view(argv[1]) == "--create";
-  if (!((argc == 1) || listAll || listActive || create)) {
-    std::println(stderr, "usage: workspace-client [--all|--active|--create OUTPUT NAME]");
+  if (!((argc == 1) || listAll || listActive || listGroups || create)) {
+    std::println(stderr, "usage: workspace-client [--all|--active|--groups|--create OUTPUT NAME]");
     return 2;
   }
   wl_display* display = wl_display_connect(nullptr);
@@ -151,12 +181,10 @@ int main(int argc, char** argv) {
   }
 
   if (create) {
-    const std::string prefix = std::string(argv[2]) + ":";
     const auto group = std::ranges::find_if(state.groups, [&](const auto& candidate) {
-      return std::ranges::any_of(candidate->workspaces, [&](const auto* handle) {
-        const auto workspace =
-            std::ranges::find_if(state.workspaces, [&](const auto& entry) { return entry->handle == handle; });
-        return workspace != state.workspaces.end() && (*workspace)->id.starts_with(prefix);
+      return std::ranges::any_of(state.outputs, [&](const auto& output) {
+        return output->name == argv[2]
+            && std::ranges::find(candidate->outputs, output->handle) != candidate->outputs.end();
       });
     });
     if (group == state.groups.end()) {
@@ -173,16 +201,28 @@ int main(int argc, char** argv) {
 
   int active = 0;
   for (const auto& workspace : state.workspaces) {
-    if (workspace->removed) {
+    if (workspace->removed || (workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN) != 0) {
       continue;
     }
     if (listAll) {
       std::println("{}\t{}", workspace->id, workspace->name);
     }
+    if (listGroups) {
+      for (const auto& group : state.groups) {
+        if (std::ranges::find(group->workspaces, workspace->handle) == group->workspaces.end()) {
+          continue;
+        }
+        for (const auto& output : state.outputs) {
+          if (std::ranges::find(group->outputs, output->handle) != group->outputs.end()) {
+            std::println("{}\t{}\t{}", workspace->id, workspace->name, output->name);
+          }
+        }
+      }
+    }
     if ((workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) != 0) {
       if (listActive) {
         std::println("{}\t{}", workspace->id, workspace->name);
-      } else if (!listAll && !create) {
+      } else if (!listAll && !listGroups && !create) {
         std::println("{}", workspace->name);
       }
       ++active;
@@ -198,10 +238,13 @@ int main(int argc, char** argv) {
   if (state.manager != nullptr) {
     ext_workspace_manager_v1_destroy(state.manager);
   }
+  for (const auto& output : state.outputs) {
+    wl_output_destroy(output->handle);
+  }
   wl_registry_destroy(state.registry);
   wl_display_disconnect(display);
 
-  if (!state.done || (!listAll && !listActive && !create && active != 1)) {
+  if (!state.done || (!listAll && !listActive && !listGroups && !create && active != 1)) {
     std::println(stderr, "workspace-client: expected one active workspace, got {}", active);
     return 1;
   }

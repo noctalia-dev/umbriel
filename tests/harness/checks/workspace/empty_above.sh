@@ -32,7 +32,7 @@ if [[ $(workspace_names) != "1 2 3" || $(workspace_name_for_window) != "2" ]]; t
   exit 1
 fi
 
-"$UMBRIEL" msg workspace-switch:1 > /dev/null
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 "$UMBRIEL" msg workspace-move-down > /dev/null
 
 if [[ $(workspace_names) != "1 2 3" ]]; then

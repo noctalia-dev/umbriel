@@ -75,8 +75,8 @@ if [[ -z $handle ]]; then
   exit 1
 fi
 
-"$UMBRIEL" msg window-move-to-scratchpad:portal > /dev/null
-"$UMBRIEL" msg scratchpad-toggle:portal > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad portal > /dev/null
+"$UMBRIEL" msg scratchpad-toggle portal > /dev/null
 wait_for_query \
   '[.[] | select(.title == "scratchpad-foreign-parent" and .scratchpad == "portal" and .active)] | length == 1' \
   "scratchpad parent did not become visible and focused"
@@ -93,9 +93,9 @@ wait_for_query \
 
 # Membership owns visibility too. Hiding and showing the pad must bring the
 # dialog back as its last focused member.
-"$UMBRIEL" msg scratchpad-toggle:portal > /dev/null
+"$UMBRIEL" msg scratchpad-toggle portal > /dev/null
 wait_for_query '[.[] | select(.active)] | length == 0' "hiding the inherited dialog did not clear focus"
-"$UMBRIEL" msg scratchpad-toggle:portal > /dev/null
+"$UMBRIEL" msg scratchpad-toggle portal > /dev/null
 wait_for_query \
   '[.[] | select(.title == "scratchpad-foreign-child" and .scratchpad == "portal" and .active)] | length == 1' \
   "showing the scratchpad did not restore focus to the inherited dialog"

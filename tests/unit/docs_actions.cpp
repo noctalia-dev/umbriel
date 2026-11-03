@@ -37,7 +37,7 @@ namespace {
   }
 
   // A markdown row's cells, without the leading and trailing pipe. `\|` is a literal pipe inside a cell, not a cell
-  // boundary: `workspace-set-layout:<scrolling|dwindle|master|toggle>` has to survive as one cell.
+  // boundary: `workspace-set-layout <scrolling|dwindle|master|toggle>` has to survive as one cell.
   std::vector<std::string_view> cells(std::string_view row) {
     std::vector<std::string_view> result;
     row = trim(row);
@@ -70,7 +70,7 @@ namespace {
     return !cell.empty() && cell.find_first_not_of("-:") == std::string_view::npos;
   }
 
-  // `window-focus-left` or `window-set-primary-extent:<fraction>`: the exact spelling `msg --help` prints, wrapped in a
+  // `window-focus-left` or `window-set-primary-extent <fraction>`: the exact spelling `msg --help` prints, wrapped in a
   // code span, with any `|` escaped for the markdown table. Anything else in a two-column table (argument forms, config
   // keys, prose) is not an action row.
   bool splitActionCell(std::string_view cell, std::string& name, std::string& param) {
@@ -78,17 +78,17 @@ namespace {
       return false;
     }
     const std::string_view token = cell.substr(1, cell.size() - 2);
-    const size_t colon = token.find(':');
-    const std::string_view namePart = token.substr(0, colon);
+    const size_t space = token.find(' ');
+    const std::string_view namePart = token.substr(0, space);
     if (namePart.empty() || namePart.find_first_not_of("abcdefghijklmnopqrstuvwxyz-") != std::string_view::npos) {
       return false;
     }
     name = std::string(namePart);
     param.clear();
-    if (colon == std::string_view::npos) {
+    if (space == std::string_view::npos) {
       return true;
     }
-    for (const std::string_view rest = token.substr(colon + 1); const char character : rest) {
+    for (const std::string_view rest = token.substr(space + 1); const char character : rest) {
       if (character != '\\') {
         param.push_back(character);
       }

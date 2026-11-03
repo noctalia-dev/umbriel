@@ -224,7 +224,7 @@ expect_opacity_pixels 191 'the late child stacked over its parent at 0.5 opacity
 
 # Remapping retains the wl_surfaces while the new app id selects 0.25 opacity.
 # The first remapped frame must use the new multiplier for both surfaces.
-"$UMBRIEL" msg "window-close:$window_id" > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
 await_lines "$OPACITY_LOG" 'unmapped$' 1
 "$UMBRIEL" settle > /dev/null
 printf 'r' >&"$OPACITY_FD"

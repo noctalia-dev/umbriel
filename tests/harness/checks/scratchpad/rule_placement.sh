@@ -83,22 +83,22 @@ if ((sx + sw / 2 < 620 || sx + sw / 2 > 660 || sy + sh / 2 < 340 || sy + sh / 2 
   echo "the sized scratchpad window was not centered: $sized"
   exit 1
 fi
-"$UMBRIEL" msg scratchpad-toggle:sized > /dev/null
+"$UMBRIEL" msg scratchpad-toggle sized > /dev/null
 
 open placement-full
 wait_for placement-full '.scratchpad == "full" and .active and .fullscreen and .w == 1280 and .h == 720'
-"$UMBRIEL" msg scratchpad-toggle:full > /dev/null
+"$UMBRIEL" msg scratchpad-toggle full > /dev/null
 
 open placement-edges
 wait_for placement-edges '.scratchpad == "edges" and .active and .maximized_to_edges and .fullscreen == false'
-"$UMBRIEL" msg scratchpad-toggle:edges > /dev/null
+"$UMBRIEL" msg scratchpad-toggle edges > /dev/null
 
 open placement-moved
 wait_for placement-moved '.scratchpad == "" and .floating and .w == 400 and .h == 300'
 before=$(windows | jq -c '.[] | select(.title == "placement-moved") | [.x, .y, .w, .h]')
-"$UMBRIEL" msg "window-focus:$(windows | jq -r '.[] | select(.title == "placement-moved") | .id')" > /dev/null
-"$UMBRIEL" msg window-move-to-scratchpad:moved > /dev/null
-"$UMBRIEL" msg scratchpad-toggle:moved > /dev/null
+"$UMBRIEL" msg window-focus "$(windows | jq -r '.[] | select(.title == "placement-moved") | .id')" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad moved > /dev/null
+"$UMBRIEL" msg scratchpad-toggle moved > /dev/null
 wait_for placement-moved '.scratchpad == "moved" and .active and .fullscreen == false and .maximized_to_edges == false'
 after=$(windows | jq -c '.[] | select(.title == "placement-moved") | [.x, .y, .w, .h]')
 if [[ $before != "$after" ]]; then

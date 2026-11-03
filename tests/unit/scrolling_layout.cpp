@@ -197,33 +197,33 @@ UMBRIEL_TEST(setHeightFractionResizesAStackedRow) {
   CHECK(fixture.layout.consume(stub(1), -1));
 
   CHECK(fixture.layout.setHeightFraction(stub(1), 0.7));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(1)) - 0.7) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(1)), 0.7, 1e-9);
   fixture.layout.arrange(kUsable);
 
   const int stackCross = kUsable.height - 2 * fixture.config.edgePad - fixture.config.totalGap;
-  CHECK(std::abs(fixture.layout.targetBox(stub(1)).height - static_cast<int>(std::lround(0.7 * stackCross))) <= 1);
+  CHECK_NEAR(fixture.layout.targetBox(stub(1)).height, static_cast<int>(std::lround(0.7 * stackCross)), 1);
 }
 
 UMBRIEL_TEST(setHeightFractionShrinksASoloRowFromItsBottomEdge) {
   Fixture fixture;
   fixture.addColumns(1);
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0, 1e-9);
 
   CHECK(fixture.layout.setHeightFraction(stub(0), 1.0 / 3));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 1.0 / 3) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0 / 3, 1e-9);
   fixture.layout.arrange(kUsable);
 
   // A row with no sibling uses the gap-weight model the pointer resize uses. With no gap established yet the window
   // keeps its top edge, so the freed space collects below it, where the column's next window goes.
   const int stackCross = kUsable.height - 2 * fixture.config.edgePad;
   const wlr_box box = fixture.layout.targetBox(stub(0));
-  CHECK(std::abs(box.height - static_cast<int>(std::lround(stackCross / 3.0))) <= 1);
+  CHECK_NEAR(box.height, static_cast<int>(std::lround(stackCross / 3.0)), 1);
   CHECK_EQ(box.y, fixture.config.edgePad);
-  CHECK(std::fabs(fixture.layout.topGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.topGapWeight(0), 0.0, 1e-9);
 
   // Back to full height, gaps cleared.
   CHECK(fixture.layout.setHeightFraction(stub(0), 1.0));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0, 1e-9);
   fixture.layout.arrange(kUsable);
   CHECK_EQ(fixture.layout.targetBox(stub(0)).height, stackCross);
 }
@@ -244,7 +244,7 @@ UMBRIEL_TEST(aSecondRowTakesTheSpaceASoloRowFreed) {
   const wlr_box second = fixture.layout.targetBox(stub(1));
   const int stackCross = kUsable.height - 2 * fixture.config.edgePad - fixture.config.totalGap;
   CHECK_EQ(first.y, fixture.config.edgePad);
-  CHECK(std::abs(first.height - soloHeight) <= 2);
+  CHECK_NEAR(first.height, soloHeight, 2);
   CHECK_EQ(second.y, first.y + first.height + fixture.config.totalGap);
   CHECK_EQ(second.height, stackCross - first.height);
 }
@@ -259,13 +259,13 @@ UMBRIEL_TEST(consumeIntoAColumnTakesTheSpaceItsRowFreed) {
   const int soloHeight = fixture.layout.targetBox(stub(0)).height;
 
   CHECK(fixture.layout.consume(stub(1), -1));
-  CHECK(std::fabs(fixture.layout.bottomGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.bottomGapWeight(0), 0.0, 1e-9);
   fixture.layout.arrange(kUsable);
 
   const wlr_box first = fixture.layout.targetBox(stub(0));
   const wlr_box second = fixture.layout.targetBox(stub(1));
   const int stackCross = kUsable.height - 2 * fixture.config.edgePad - fixture.config.totalGap;
-  CHECK(std::abs(first.height - soloHeight) <= 2);
+  CHECK_NEAR(first.height, soloHeight, 2);
   CHECK_EQ(second.y, first.y + first.height + fixture.config.totalGap);
   CHECK_EQ(second.height, stackCross - first.height);
 }
@@ -277,11 +277,11 @@ UMBRIEL_TEST(soloRowHeightFractionReportsPointerDrivenEdgeGaps) {
   fixture.addColumns(1);
   CHECK(fixture.layout.setBottomGapWeight(0, 1.0));
 
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 0.5) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 0.5, 1e-9);
   // The setter preserves the anchor the drag established: all remaining weight stays in the bottom gap.
   CHECK(fixture.layout.setHeightFraction(stub(0), 0.25));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 0.25) < 1e-9);
-  CHECK(std::fabs(fixture.layout.topGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 0.25, 1e-9);
+  CHECK_NEAR(fixture.layout.topGapWeight(0), 0.0, 1e-9);
   fixture.layout.arrange(kUsable);
   CHECK_EQ(fixture.layout.targetBox(stub(0)).y, fixture.config.edgePad);
 }
@@ -415,12 +415,10 @@ UMBRIEL_TEST(horizontalResizeRecentersAnUnderfullStripImmediately) {
   const wlr_box secondAfter = fixture.layout.targetBox(stub(1));
   CHECK_EQ(firstXAfter, firstXBefore - 100);
   CHECK_EQ(secondAfter.x + secondAfter.width, rightBefore + 100);
-  CHECK(
-      std::abs(
-          (firstXAfter - fixture.config.edgePad)
-          - (kUsable.width - fixture.config.edgePad - secondAfter.x - secondAfter.width)
-      )
-      <= 1
+  // Both margins match: the strip is centered.
+  CHECK_NEAR(
+      firstXAfter - fixture.config.edgePad, kUsable.width - fixture.config.edgePad - secondAfter.x - secondAfter.width,
+      1
   );
 }
 
@@ -542,14 +540,14 @@ UMBRIEL_TEST(cycleWidthWalksThePresets) {
 
   CHECK(fixture.layout.cycleWidth(0, 1));
   const double second = fixture.layout.widthFraction(0);
-  CHECK(std::fabs(second - 0.5) < 1e-6);
+  CHECK_NEAR(second, 0.5, 1e-6);
 
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 2.0 / 3) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 2.0 / 3, 1e-6);
 
   // Wraps back to the first preset.
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 1.0 / 3) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0 / 3, 1e-6);
 }
 
 UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
@@ -558,14 +556,14 @@ UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
   CHECK(fixture.layout.setWidthFraction(0, 2.0 / 3));
 
   CHECK(fixture.layout.cycleWidth(0, -1));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 0.5) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.5, 1e-6);
 
   CHECK(fixture.layout.cycleWidth(0, -1));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 1.0 / 3) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0 / 3, 1e-6);
 
   // Wraps back to the last preset.
   CHECK(fixture.layout.cycleWidth(0, -1));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 2.0 / 3) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 2.0 / 3, 1e-6);
 }
 
 UMBRIEL_TEST(toggleFullWidthRestoresThePreviousFraction) {
@@ -582,7 +580,7 @@ UMBRIEL_TEST(toggleFullWidthRestoresThePreviousFraction) {
 
   CHECK(!fixture.layout.toggleFullWidth(0));
   CHECK(!fixture.layout.isFullWidth(0));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - before) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), before, 1e-6);
 
   CHECK(!fixture.layout.toggleFullWidth(9));
 }
@@ -705,7 +703,7 @@ UMBRIEL_TEST(preservedFullWidthSurvivesEdgeMaximizeToggle) {
   CHECK(fixture.layout.isFullWidth(0));
   CHECK_EQ(fixture.layout.columnWidth(0, kViewport), kViewport);
   CHECK(!fixture.layout.toggleFullWidth(0));
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 0.5) < 1e-6);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.5, 1e-6);
 }
 
 UMBRIEL_TEST(unsetConstraintsMeanUnconstrained) {
@@ -897,7 +895,7 @@ UMBRIEL_TEST(anOutOfRangeColumnShiftsNothing) {
 }
 
 UMBRIEL_TEST(setScrollStoresVerbatimAndDoesNotClamp) {
-  // setScroll is a raw setter; callers clamp to [0, maxScroll] themselves (see Server::executeKeybindAction,
+  // setScroll is a raw setter; callers clamp to [0, maxScroll] themselves (see Server::executeAction,
   // layout-scroll-*). Unclamped overscroll parks the strip past an edge.
   Fixture fixture;
   fixture.addColumns(6);
@@ -1581,7 +1579,7 @@ UMBRIEL_TEST(arrangeStacksRowsWithinAColumn) {
   CHECK_EQ(upper.width, lower.width);
   CHECK_EQ(lower.y, upper.y + upper.height + fixture.config.totalGap);
   // Equal weights split the stack evenly, within rounding.
-  CHECK(std::abs(upper.height - lower.height) <= 1);
+  CHECK_NEAR(upper.height, lower.height, 1);
 }
 
 UMBRIEL_TEST(arrangeHonorsClientMinHeight) {
@@ -1627,8 +1625,8 @@ UMBRIEL_TEST(heightWeightsDefaultToOneAndTrackViews) {
   Fixture fixture;
   fixture.addColumns(2);
   CHECK(fixture.layout.consume(stub(1), -1));
-  CHECK(std::fabs(fixture.layout.heightWeight(0, 0) - 1.0) < 1e-9);
-  CHECK(std::fabs(fixture.layout.heightWeight(0, 1) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightWeight(0, 0), 1.0, 1e-9);
+  CHECK_NEAR(fixture.layout.heightWeight(0, 1), 1.0, 1e-9);
   CHECK_EQ(fixture.layout.columns()[0].heightWeights.size(), size_t{2});
 }
 
@@ -1655,7 +1653,7 @@ UMBRIEL_TEST(gapWeightsInsetTheStack) {
   const wlr_box inset = fixture.layout.targetBox(stub(0));
   CHECK(inset.height < fullHeight);
   CHECK(inset.y > kUsable.y + fixture.config.edgePad);
-  CHECK(std::fabs(fixture.layout.topGapWeight(0) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.topGapWeight(0), 1.0, 1e-9);
 }
 
 UMBRIEL_TEST(insertAtBottomConsumesTheResizedGap) {
@@ -1674,7 +1672,7 @@ UMBRIEL_TEST(insertAtBottomConsumesTheResizedGap) {
   CHECK_EQ(upperAfter.height, upperBefore.height);
   CHECK_EQ(lower.y, upperAfter.y + upperAfter.height + fixture.config.totalGap);
   CHECK_EQ(lower.y + lower.height, kUsable.y + kUsable.height - fixture.config.edgePad);
-  CHECK(std::fabs(fixture.layout.bottomGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.bottomGapWeight(0), 0.0, 1e-9);
 }
 
 UMBRIEL_TEST(insertAtTopConsumesTheResizedGap) {
@@ -1693,7 +1691,7 @@ UMBRIEL_TEST(insertAtTopConsumesTheResizedGap) {
   CHECK_EQ(lowerAfter.height, lowerBefore.height);
   CHECK_EQ(upper.y, kUsable.y + fixture.config.edgePad);
   CHECK_EQ(lowerAfter.y, upper.y + upper.height + fixture.config.totalGap);
-  CHECK(std::fabs(fixture.layout.topGapWeight(0)) < 1e-9);
+  CHECK_NEAR(fixture.layout.topGapWeight(0), 0.0, 1e-9);
 }
 
 // vertical scrolling
@@ -1725,7 +1723,7 @@ UMBRIEL_TEST(verticalArrangeStacksViewsSideBySideWithinALane) {
   CHECK_EQ(left.y, right.y);
   CHECK_EQ(left.height, right.height);
   CHECK_EQ(right.x, left.x + left.width + fixture.config.totalGap);
-  CHECK(std::abs(left.width - right.width) <= 1);
+  CHECK_NEAR(left.width, right.width, 1);
   CHECK_EQ(left.height, 344);
 }
 
@@ -1822,8 +1820,8 @@ UMBRIEL_TEST(directionFlipKeepsFractionsAndRearranges) {
   fixture.layout.arrange(kUsable);
   const wlr_box vertical = fixture.layout.targetBox(stub(0));
 
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - firstFraction) < 1e-9);
-  CHECK(std::fabs(fixture.layout.widthFraction(1) - secondFraction) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), firstFraction, 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(1), secondFraction, 1e-9);
   CHECK_EQ(horizontal.width, 624);
   CHECK_EQ(horizontal.height, 700);
   CHECK_EQ(vertical.width, 1260);
@@ -1877,7 +1875,7 @@ UMBRIEL_TEST(snapshotRestoresColumnsStacksWidthsAndViewport) {
   }
 
   CHECK(!restored.layout.toggleFullWidth(restored.layout.columnOf(stub(0))));
-  CHECK(std::fabs(restored.layout.widthFraction(restored.layout.columnOf(stub(0))) - 0.67) < 1e-9);
+  CHECK_NEAR(restored.layout.widthFraction(restored.layout.columnOf(stub(0))), 0.67, 1e-9);
 }
 
 UMBRIEL_TEST(snapshotPrunesMissingRowsAndColumns) {
@@ -1927,7 +1925,7 @@ UMBRIEL_TEST(snapshotKeepsTheAnchorAtTheSameRelativePositionOnANewViewport) {
                                  + restored.layout.columnWidth(anchor, newViewport) / 2.0
                                  - restored.layout.scroll())
       / newViewport;
-  CHECK(std::fabs(actualFraction - expectedFraction) < 1e-9);
+  CHECK_NEAR(actualFraction, expectedFraction, 1e-9);
   CHECK(restored.layout.scroll() >= 0.0);
   CHECK(restored.layout.scroll() <= restored.layout.maxScroll(newViewport));
 }
@@ -1955,7 +1953,7 @@ UMBRIEL_TEST(snapshotFallsBackToTheNearestLaneWhenTheCenteredLaneClosed) {
                                  + restored.layout.columnWidth(anchor, kViewport) / 2.0
                                  - restored.layout.scroll())
       / kViewport;
-  CHECK(std::fabs(actualFraction - expectedFraction) < 1e-9);
+  CHECK_NEAR(actualFraction, expectedFraction, 1e-9);
   CHECK(restored.layout.scroll() > 0.0);
   CHECK(restored.layout.scroll() < restored.layout.maxScroll(kViewport));
 }
@@ -1982,7 +1980,7 @@ UMBRIEL_TEST(snapshotRejectsRawScrollWhenLaneGeometryChanged) {
                                  + restored.layout.columnWidth(anchor, kViewport) / 2.0
                                  - restored.layout.scroll())
       / kViewport;
-  CHECK(std::fabs(actualFraction - expectedFraction) < 1e-9);
+  CHECK_NEAR(actualFraction, expectedFraction, 1e-9);
   CHECK(restored.layout.scroll() != source.layout.scroll());
 }
 

@@ -37,7 +37,7 @@
 struct fx_render_texture_options fx_render_texture_options_default(const struct wlr_render_texture_options* base) {
   struct fx_render_texture_options options = {
       .corners = {0},
-      .discard_transparent = 0.0f,
+      .discard_transparent = 0.0F,
       .clip_box = NULL,
       .clipped_region = {0},
   };
@@ -497,11 +497,14 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
     if (!sync_implicit_target(renderer, pass->output_buffer->buffer)) {
       glFinish();
     }
+  } else if (pass->output_target && renderer->nvidia_sync_workaround && renderer->egl->ignores_implicit_fences) {
+    // NVIDIA cannot order this output through implicit fences. Complete rendering before presenting it.
+    glFinish();
   } else {
     glFlush();
   }
 
-  ok = true;
+  ok = !pass->capture_blocked;
 
 out:
   animation_history_commit_updates(pass, ok);
@@ -765,7 +768,7 @@ bool fx_render_pass_begin_isolation(struct fx_gles_render_pass* pass) {
 static float animation_box_scale(const struct wlr_box* box, const struct wlr_box* logical_box) {
   const int buffer = box->width + box->height;
   const int logical = logical_box->width + logical_box->height;
-  return buffer > 0 && logical > 0 ? (float)buffer / logical : 1.0f;
+  return buffer > 0 && logical > 0 ? (float)buffer / logical : 1.0F;
 }
 
 // Grows the node boxes by `expand` logical pixels on every side. The buffer box
@@ -809,7 +812,7 @@ static void draw_animation_texture(
     }
     uint8_t bands[FX_AUDIO_BANDS];
     for (unsigned i = 0; i < FX_AUDIO_BANDS; i++) {
-      bands[i] = (uint8_t)lroundf(fminf(1.0f, fmaxf(0.0f, audio_input[i])) * 255.0f);
+      bands[i] = (uint8_t)lroundf(fminf(1.0F, fmaxf(0.0F, audio_input[i])) * 255.0F);
     }
     glActiveTexture(GL_TEXTURE3);
     if (output->audio_texture == 0) {
@@ -851,11 +854,11 @@ static void draw_animation_texture(
   glUniform1f(shader->progress, parameters->progress);
   glUniform1f(shader->linear_progress, parameters->linear_progress);
   glUniform1f(shader->direction, parameters->direction);
-  const float effect_scale = parameters->scale > 0.0f ? parameters->scale : 1.0f;
+  const float effect_scale = parameters->scale > 0.0F ? parameters->scale : 1.0F;
   glUniform2f(shader->size, logical_box->width / effect_scale, logical_box->height / effect_scale);
   glUniform2f(
-      shader->expand, logical_box->width > 0 ? (float)expand / logical_box->width : 0.0f,
-      logical_box->height > 0 ? (float)expand / logical_box->height : 0.0f
+      shader->expand, logical_box->width > 0 ? (float)expand / logical_box->width : 0.0F,
+      logical_box->height > 0 ? (float)expand / logical_box->height : 0.0F
   );
   // Uniforms persist on a shared program, so a draw without geometry binds no hole.
   if (shader->kind == FX_EFFECT_BORDER) {
@@ -1122,7 +1125,7 @@ static bool
 light_cache_prepare(struct fx_effect_light_cache* cache, int width, int height, int margin, float spread_px) {
   const int full_width = width + 2 * margin;
   const int full_height = height + 2 * margin;
-  const float radius = spread_px * 0.5f;
+  const float radius = spread_px * 0.5F;
   int levels = (int)ceilf(log2f(radius / 3 + 1));
   levels = levels < 1 ? 1 : (levels > FX_LIGHT_LEVELS ? FX_LIGHT_LEVELS : levels);
   if (cache->emission_width == width
@@ -1168,8 +1171,8 @@ static void light_blur(
   glUniform1i(shader->tex, 0);
   glUniform1f(shader->radius, offset);
   const float ws = cache->widths[source], hs = cache->heights[source];
-  glUniform2f(shader->halfpixel, 0.5f / ws, 0.5f / hs);
-  glUniform4f(shader->sample_bounds, 0.5f / ws, 0.5f / hs, 1 - 0.5f / ws, 1 - 0.5f / hs);
+  glUniform2f(shader->halfpixel, 0.5F / ws, 0.5F / hs);
+  glUniform4f(shader->sample_bounds, 0.5F / ws, 0.5F / hs, 1 - 0.5F / ws, 1 - 0.5F / hs);
   float projection[9];
   matrix_projection(projection, cache->widths[target], cache->heights[target], WL_OUTPUT_TRANSFORM_FLIPPED_180);
   const struct wlr_box box = {.width = cache->widths[target], .height = cache->heights[target]};
@@ -1232,7 +1235,7 @@ static void emit_light(
   glUniform1i(renderer->effect_light_emission, true);
   glUniform1i(renderer->effect_light_source_linear, linear_sdr_tf(pass));
   glUniform1f(renderer->effect_light_threshold, light->threshold);
-  const float full_w = box->width + 2.0f * margin, full_h = box->height + 2.0f * margin;
+  const float full_w = box->width + 2.0F * margin, full_h = box->height + 2.0F * margin;
   glUniform4f(
       renderer->effect_light_source_region, margin / full_w, margin / full_h, box->width / full_w, box->height / full_h
   );
@@ -1245,7 +1248,7 @@ static void emit_light(
   glDisable(GL_BLEND);
   render(&level, NULL, renderer->effect_light_pos);
   // 3. Kawase down then up.
-  const float offset = (spread_px * 0.5f) / (3 * ((1 << cache->levels) - 1));
+  const float offset = (spread_px * 0.5F) / (3 * ((1 << cache->levels) - 1));
   for (int i = 1; i <= cache->levels; i++) {
     light_blur(cache, i - 1, i, &renderer->shaders.blur1, offset, true);
   }
@@ -1536,11 +1539,11 @@ static void setup_blending(enum wlr_render_blend_mode mode) {
 
 // Decodes an SDR color channel with the pass sdr_tf.
 static float sdr_to_linear(const struct fx_gles_render_pass* pass, float electrical) {
-  electrical = fmaxf(electrical, 0.0f);
+  electrical = fmaxf(electrical, 0.0F);
   if (pass->sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22) {
-    return powf(electrical, 2.2f);
+    return powf(electrical, 2.2F);
   }
-  return electrical <= 0.04045f ? electrical / 12.92f : powf((electrical + 0.055f) / 1.055f, 2.4f);
+  return electrical <= 0.04045F ? electrical / 12.92F : powf((electrical + 0.055F) / 1.055F, 2.4F);
 }
 
 bool fx_render_pass_end_animation_shadow(
@@ -1613,14 +1616,14 @@ bool fx_render_pass_end_animation_shadow(
   // Linear reconstruction then interpolates between taps instead of leaving
   // visible bands at large softness. The existing full-sized pooled target
   // holds this smaller rectangle, so no additional buffer allocation is needed.
-  const float reduction = fmaxf(1.0f, softness / 8.0f);
+  const float reduction = fmaxf(1.0F, softness / 8.0F);
   const struct wlr_box reduced = {
       .width = (int)ceilf(full.width / reduction),
       .height = (int)ceilf(full.height / reduction),
   };
   const struct fx_animation_parameters params = {0};
   glUseProgram(horizontal->program);
-  glUniform2f(glGetUniformLocation(horizontal->program, "shadow_step"), softness / (8.0f * full.width), 0);
+  glUniform2f(glGetUniformLocation(horizontal->program, "shadow_step"), softness / (8.0F * full.width), 0);
   draw_animation_texture(
       pass, caster, horizontal, &params, &reduced, &full, &full, 0, NULL, NULL, NULL, NULL, NULL,
       WL_OUTPUT_TRANSFORM_NORMAL, NULL, NULL, NULL, pass->projection_matrix, true, true
@@ -1632,7 +1635,7 @@ bool fx_render_pass_end_animation_shadow(
       glGetUniformLocation(vertical->program, "shadow_nearest"),
       pass->has_color_transform && !renderer->exts.half_float_linear
   );
-  glUniform2f(glGetUniformLocation(vertical->program, "shadow_step"), 0, softness / (8.0f * full.height));
+  glUniform2f(glGetUniformLocation(vertical->program, "shadow_step"), 0, softness / (8.0F * full.height));
   glUniform2f(glGetUniformLocation(vertical->program, "shadow_offset"), offset_x / full.width, offset_y / full.height);
   float premult[4] = {color[0], color[1], color[2], color[3]};
   for (unsigned i = 0; i < 3; i++) {
@@ -1669,7 +1672,7 @@ render_pass_mark_updated(struct fx_gles_render_pass* pass, const struct wlr_box*
 }
 
 static float color_to_linear_premult(const struct fx_gles_render_pass* pass, float electrical, float alpha) {
-  return alpha == 0.0f ? 0.0f : sdr_to_linear(pass, electrical / alpha) * alpha;
+  return alpha == 0.0F ? 0.0F : sdr_to_linear(pass, electrical / alpha) * alpha;
 }
 
 static struct wlr_render_color pass_color(struct fx_gles_render_pass* pass, const struct wlr_render_color* color) {
@@ -1920,6 +1923,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   const struct wlr_render_texture_options* options = &fx_options->base;
   struct fx_renderer* renderer = pass->buffer->renderer;
   struct fx_texture* texture = fx_get_texture(options->texture);
+  if (texture->capture_blocked) {
+    pass->capture_blocked = true;
+    return;
+  }
 
   struct tex_shader* shader = NULL;
 
@@ -2050,7 +2057,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   struct wlr_color_primaries primaries_srgb;
   wlr_color_primaries_from_named(&primaries_srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-  const float lum_multiplier = options->luminance_multiplier != NULL ? *options->luminance_multiplier : 1.0f;
+  const float lum_multiplier = options->luminance_multiplier != NULL ? *options->luminance_multiplier : 1.0F;
   const bool primaries_passthrough =
       options->primaries == NULL || color_primaries_equal(options->primaries, &primaries_srgb);
   // Only untagged content inherits the pass's SDR curve. Explicit sRGB is
@@ -2062,7 +2069,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   const enum wlr_color_transfer_function target_tf =
       pass->has_color_transform ? WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR : pass->sdr_tf;
   const bool color_passthrough =
-      source_tf == target_tf && primaries_passthrough && lum_multiplier == 1.0f && !fx_options->map_hdr_to_sdr;
+      source_tf == target_tf && primaries_passthrough && lum_multiplier == 1.0F && !fx_options->map_hdr_to_sdr;
 
   float primaries_matrix[9];
   if (primaries_passthrough) {
@@ -2076,8 +2083,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   glUniformMatrix3fv(shader->primaries_matrix, 1, GL_FALSE, primaries_matrix);
   glUniform1f(shader->lum_multiplier, lum_multiplier);
   glUniform2f(
-      shader->source_luminances, fx_options->luminances != NULL ? fx_options->luminances->min : 0.01f,
-      fx_options->luminances != NULL ? fx_options->luminances->max : 100.0f
+      shader->source_luminances, fx_options->luminances != NULL ? fx_options->luminances->min : 0.01F,
+      fx_options->luminances != NULL ? fx_options->luminances->max : 100.0F
   );
   glUniform1i(shader->target_tf, color_passthrough ? 0 : target_tf);
   glUniform1i(shader->map_hdr_to_sdr, fx_options->map_hdr_to_sdr);
@@ -2633,14 +2640,14 @@ static void render_blur_segments(
   const int sample_height =
       options->texture->height / sample_divisor + (options->texture->height % sample_divisor != 0);
   glUniform4f(
-      shader->sample_bounds, 0.5f / options->texture->width, 0.5f / options->texture->height,
-      (sample_width - 0.5f) / options->texture->width, (sample_height - 0.5f) / options->texture->height
+      shader->sample_bounds, 0.5F / options->texture->width, 0.5F / options->texture->height,
+      (sample_width - 0.5F) / options->texture->width, (sample_height - 0.5F) / options->texture->height
   );
 
   if (shader == &renderer->shaders.blur1) {
-    glUniform2f(shader->halfpixel, 0.5f / (options->texture->width / 2.0f), 0.5f / (options->texture->height / 2.0f));
+    glUniform2f(shader->halfpixel, 0.5F / (options->texture->width / 2.0F), 0.5F / (options->texture->height / 2.0F));
   } else {
-    glUniform2f(shader->halfpixel, 0.5f / (options->texture->width * 2.0f), 0.5f / (options->texture->height * 2.0f));
+    glUniform2f(shader->halfpixel, 0.5F / (options->texture->width * 2.0F), 0.5F / (options->texture->height * 2.0F));
   }
 
   set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
@@ -2758,7 +2765,7 @@ static struct fx_framebuffer* get_main_buffer_blur(
 
   // Downscale
   for (int i = 0; i < blur_data.num_passes; ++i) {
-    wlr_region_scale(&scaled_damage, &damage, 1.0f / (1 << (i + 1)));
+    wlr_region_scale(&scaled_damage, &damage, 1.0F / (1 << (i + 1)));
     render_blur_segments(pass, fx_options, &renderer->shaders.blur1, NULL, 1 << i);
   }
 
@@ -2766,7 +2773,7 @@ static struct fx_framebuffer* get_main_buffer_blur(
   const int last_upsample = final_upsample != NULL ? 1 : 0;
   for (int i = blur_data.num_passes - 1; i >= last_upsample; --i) {
     // when upsampling we make the region twice as big; the final pass also applies the blur effects
-    wlr_region_scale(&scaled_damage, &damage, 1.0f / (1 << i));
+    wlr_region_scale(&scaled_damage, &damage, 1.0F / (1 << i));
     render_blur_segments(
         pass, fx_options, &renderer->shaders.blur2, i == 0 ? &renderer->shaders.blur2_with_effects : NULL, 1 << (i + 1)
     );
@@ -2805,14 +2812,14 @@ blur_composite_is_copy(const struct fx_gles_render_pass* pass, const struct fx_r
   struct wlr_color_primaries srgb;
   wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
   return !pass->buffer->renderer->split_blur_composite_for_test
-      && options->discard_transparent <= 0.0f
+      && options->discard_transparent <= 0.0F
       && wlr_fbox_empty(&options->sample_box)
       && base->wait_timeline == NULL
       && (pass->has_color_transform
           || base->transfer_function == 0
           || base->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_SRGB)
       && (base->primaries == NULL || color_primaries_equal(base->primaries, &srgb))
-      && (base->luminance_multiplier == NULL || *base->luminance_multiplier == 1.0f);
+      && (base->luminance_multiplier == NULL || *base->luminance_multiplier == 1.0F);
 }
 
 // Draws the final blur upsample from the half-resolution level straight into
@@ -2871,9 +2878,9 @@ static void render_blur_composite(
   const int sample_width = width / 2 + width % 2;
   const int sample_height = height / 2 + height % 2;
   glUniform4f(
-      blur->sample_bounds, 0.5f / width, 0.5f / height, (sample_width - 0.5f) / width, (sample_height - 0.5f) / height
+      blur->sample_bounds, 0.5F / width, 0.5F / height, (sample_width - 0.5F) / width, (sample_height - 0.5F) / height
   );
-  glUniform2f(blur->halfpixel, 0.5f / (width * 2.0f), 0.5f / (height * 2.0f));
+  glUniform2f(blur->halfpixel, 0.5F / (width * 2.0F), 0.5F / (height * 2.0F));
   if (effects) {
     glUniform1f(shader->blur.noise, blur_data->noise);
     glUniform1f(shader->blur.brightness, blur_data->brightness);
@@ -2965,7 +2972,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
 
   // Get a stencil of the window ignoring transparent regions
   bool masked = false;
-  if (fx_options->ignore_alpha > 0.0f && fx_options->tex_options.base.texture) {
+  if (fx_options->ignore_alpha > 0.0F && fx_options->tex_options.base.texture) {
     masked = stencil_mask_init(pass);
   }
   if (masked) {
@@ -3255,6 +3262,8 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
   buffer->capture_sdr = false;
   buffer->sdr_capture_valid = false;
   buffer->effect_capture_valid = false;
+  buffer->capture_protected = false;
+  buffer->capture_policy_owner = NULL;
   buffer->output_buffers = output_buffers;
   buffer->output_generation = 0;
 

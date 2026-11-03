@@ -1,5 +1,6 @@
 #include "input/text_input.h"
 
+#include "input/input_capture.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
 #include "server/server.h"
@@ -254,7 +255,8 @@ namespace umbriel {
 
   void InputMethodRelay::handleInputMethodGrabKeyboard(wlr_input_method_keyboard_grab_v2* grab) {
     wlr_keyboard* keyboard = wlr_seat_get_keyboard(m_server->seat()->wlr());
-    if (keyboard != nullptr && grabForKeyboard(keyboard) == grab) {
+    const bool capturing = m_server->inputCapture() != nullptr && (m_server->inputCapture()->capabilities() & 1U) != 0;
+    if (!capturing && keyboard != nullptr && grabForKeyboard(keyboard) == grab) {
       wlr_input_method_keyboard_grab_v2_set_keyboard(grab, keyboard);
     }
     removeListener(m_grabDestroy);
@@ -265,7 +267,9 @@ namespace umbriel {
   void InputMethodRelay::handleGrabDestroy() {
     wlr_input_method_keyboard_grab_v2* grab = m_inputMethod != nullptr ? m_inputMethod->keyboard_grab : nullptr;
     removeListener(m_grabDestroy);
-    if (grab != nullptr && grab->keyboard != nullptr) {
+    if (grab != nullptr
+        && grab->keyboard != nullptr
+        && (m_server->inputCapture() == nullptr || (m_server->inputCapture()->capabilities() & 1U) == 0)) {
       wlr_seat* seat = m_server->seat()->wlr();
       wlr_seat_set_keyboard(seat, grab->keyboard);
       wlr_seat_keyboard_notify_modifiers(seat, &grab->keyboard->modifiers);

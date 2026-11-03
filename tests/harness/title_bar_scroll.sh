@@ -60,7 +60,7 @@ for phase in held released; do
   exec {redraw_fd}> "$fifo"
   wait_count 2
   "$UMBRIEL" settle > /dev/null
-  "$UMBRIEL" msg "window-focus:$left" > /dev/null
+  "$UMBRIEL" msg window-focus "$left" > /dev/null
   "$UMBRIEL" settle > /dev/null
   "$UMBRIEL" clock-freeze > /dev/null
   assert_gap "$phase-before"

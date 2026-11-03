@@ -129,7 +129,7 @@ sample() {
 close_all() {
   local id
   for id in $("$UMBRIEL" windows --json | jq -r '.[].id'); do
-    "$UMBRIEL" msg "window-close:$id" > /dev/null
+    "$UMBRIEL" msg window-close "$id" > /dev/null
   done
 }
 
@@ -153,7 +153,7 @@ run_mode() {
   wait_for_windows 3
   finish
 
-  "$UMBRIEL" msg "window-focus:$(window_id "motion-$tag-a")" > /dev/null
+  "$UMBRIEL" msg window-focus "$(window_id "motion-$tag-a")" > /dev/null
   "$UMBRIEL" msg window-toggle-maximize > /dev/null
   "$UMBRIEL" clock-advance 300 > /dev/null
   "$UMBRIEL" msg window-toggle-maximize > /dev/null

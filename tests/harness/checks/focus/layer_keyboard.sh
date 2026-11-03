@@ -55,7 +55,7 @@ await_events "$PANEL_LOG" ready 1 "the panel"
 await_events "$PANEL_LOG" keyboard-enter 1 "the panel"
 await_events "$WINDOW_LOG" keyboard-leave 1 "the window"
 
-"$UMBRIEL" msg "window-focus:$window_id" > /dev/null
+"$UMBRIEL" msg window-focus "$window_id" > /dev/null
 await_events "$WINDOW_LOG" keyboard-enter 2 "the window"
 await_events "$PANEL_LOG" keyboard-leave 1 "the panel"
 refuse_events "$PANEL_LOG" keyboard-enter 1 "the panel"

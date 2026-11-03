@@ -3059,18 +3059,10 @@ static void GL_APIENTRY count_image_target_texture(GLenum target, GLeglImageOES 
   image_target_texture(target, image);
 }
 
-static bool sample_framebuffer_view(
-    struct fixture* fixture, struct fx_framebuffer* source, struct wlr_buffer* target, float red,
+static bool sample_framebuffer_pixels(
+    struct fixture* fixture, struct fx_framebuffer* source, struct wlr_buffer* target, float left_red, float right_red,
     size_t expected_bindings, const char* binding_label
 ) {
-  struct wlr_render_pass* paint = wlr_renderer_begin_buffer_pass(fixture->renderer, source->buffer, NULL);
-  if (!check(paint != NULL, "begin framebuffer view update")
-      || !check(
-          submit_solid_frame(paint, source->buffer->width, source->buffer->height, red), "update framebuffer pixels"
-      )) {
-    return false;
-  }
-
   struct wlr_texture* texture = fx_texture_from_buffer(fixture->renderer, source->buffer);
   if (!check(texture != NULL, "import framebuffer view")) {
     return false;
@@ -3078,7 +3070,7 @@ static bool sample_framebuffer_view(
   if (image_target_texture_calls != expected_bindings) {
     fprintf(
         stderr, "%s: got %zu image bindings, expected %zu after rendering red %.1f\n", binding_label,
-        image_target_texture_calls, expected_bindings, red
+        image_target_texture_calls, expected_bindings, right_red
     );
   }
   bool ok = check(image_target_texture_calls == expected_bindings, binding_label);
@@ -3099,14 +3091,48 @@ static bool sample_framebuffer_view(
   ok = check(wlr_render_pass_submit(pass), "sample framebuffer view") && ok;
   wlr_texture_destroy(texture);
 
-  uint8_t pixel[4] = {0};
-  const uint8_t expected[4] = {to_u8(0.5f), to_u8(0.25f), to_u8(red), 255};
-  ok = fixture_read_display_pixel(fixture, target, TEST_WIDTH / 2, TEST_HEIGHT / 2, pixel) && ok;
-  return check(codes_close(pixel, expected, 1), "framebuffer view samples the latest rendered pixels") && ok;
+  const float reds[] = {left_red, right_red};
+  for (size_t i = 0; i < 2; i++) {
+    uint8_t pixel[4] = {0};
+    const uint8_t expected[4] = {to_u8(0.5f), to_u8(0.25f), to_u8(reds[i]), 255};
+    ok = fixture_read_display_pixel(fixture, target, TEST_WIDTH * (1 + 2 * i) / 4, TEST_HEIGHT / 2, pixel) && ok;
+    ok = check(codes_close(pixel, expected, 1), "framebuffer view samples current and preserved pixels") && ok;
+  }
+  return ok;
 }
 
-// Count real EGLImage attachment calls while sampling pixels, including a
-// renderbuffer update after the internal texture view has been established.
+static bool sample_framebuffer_view(
+    struct fixture* fixture, struct fx_framebuffer* source, struct wlr_buffer* target, float red,
+    size_t expected_bindings, const char* binding_label
+) {
+  struct wlr_render_pass* paint = wlr_renderer_begin_buffer_pass(fixture->renderer, source->buffer, NULL);
+  if (!check(paint != NULL, "begin framebuffer view update")
+      || !check(
+          submit_solid_frame(paint, source->buffer->width, source->buffer->height, red), "update framebuffer pixels"
+      )) {
+    return false;
+  }
+  return sample_framebuffer_pixels(fixture, source, target, red, red, expected_bindings, binding_label);
+}
+
+static bool check_framebuffer_texture_attachment(struct fx_framebuffer* buffer) {
+  glBindFramebuffer(GL_FRAMEBUFFER, fx_framebuffer_get_fbo(buffer));
+  GLint type = 0, name = 0;
+  glGetFramebufferAttachmentParameteriv(
+      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type
+  );
+  glGetFramebufferAttachmentParameteriv(
+      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &name
+  );
+  const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return check(type == GL_TEXTURE, "internal framebuffer renders directly into a texture")
+      && check(buffer->tex != 0 && (GLuint)name == buffer->tex, "rendering and sampling use the same texture")
+      && check(complete, "texture-backed framebuffer is complete");
+}
+
+// Check the render-to-sample attachment and partial updates without repeated
+// EGLImage imports. Client buffers retain their separate refresh behavior.
 static bool test_framebuffer_texture_binding(struct fixture* fixture) {
   struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
   struct wlr_egl_context previous;
@@ -3129,9 +3155,30 @@ static bool test_framebuffer_texture_binding(struct fixture* fixture) {
     ok = false;
     goto out;
   }
+  ok = check_framebuffer_texture_attachment(owned) && ok;
   ok = sample_framebuffer_view(fixture, owned, target, 0.2f, 1, "first owned import attaches one EGLImage") && ok;
   ok = sample_framebuffer_view(fixture, owned, target, 0.8f, 1, "owned framebuffer update reuses its EGLImage binding")
       && ok;
+
+  ok = check(fx_framebuffer_ensure_stencil(owned), "attach stencil to internal texture framebuffer") && ok;
+  ok = check_framebuffer_texture_attachment(owned) && ok;
+  struct wlr_render_pass* partial = wlr_renderer_begin_buffer_pass(fixture->renderer, owned->buffer, NULL);
+  if (!check(partial != NULL, "begin partial framebuffer update")) {
+    ok = false;
+    goto out;
+  }
+  wlr_render_pass_add_rect(
+      partial,
+      &(struct wlr_render_rect_options){
+          .box = {.x = TEST_WIDTH / 2, .width = TEST_WIDTH / 2, .height = TEST_HEIGHT},
+          .color = {.r = 0.4f, .g = 0.25f, .b = 0.5f, .a = 1.0f},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  ok = check(wlr_render_pass_submit(partial), "submit partial framebuffer update") && ok;
+  ok = sample_framebuffer_pixels(fixture, owned, target, 0.8f, 0.4f, 1, "partial update reuses its EGLImage binding")
+      && ok;
+  ok = check_framebuffer_texture_attachment(owned) && ok;
 
   fx_framebuffer_get_or_create_custom(
       renderer, fixture->allocator, TEST_WIDTH / 2, TEST_HEIGHT, DRM_FORMAT_ABGR8888, &owned, &failed
@@ -3142,6 +3189,7 @@ static bool test_framebuffer_texture_binding(struct fixture* fixture) {
     ok = false;
     goto out;
   }
+  ok = check_framebuffer_texture_attachment(owned) && ok;
   ok = sample_framebuffer_view(fixture, owned, target, 0.4f, 2, "replaced storage attaches a new EGLImage") && ok;
   ok = sample_framebuffer_view(fixture, owned, target, 0.6f, 2, "replacement update reuses its EGLImage binding") && ok;
 

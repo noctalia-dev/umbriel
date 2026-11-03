@@ -53,7 +53,7 @@ for scenario in consume consume-from fallback expel; do
   done
 
   id=$(window left | jq -r .id)
-  "$UMBRIEL" msg "window-focus:$id" > /dev/null
+  "$UMBRIEL" msg window-focus "$id" > /dev/null
   "$UMBRIEL" settle > /dev/null
   px=400
   py=180

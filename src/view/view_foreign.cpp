@@ -8,6 +8,7 @@
 #include "view/view.h"
 #include "wlr.h"
 #include "workspace/workspace.h"
+#include "xwayland/xwayland.h"
 
 namespace umbriel {
 
@@ -216,5 +217,59 @@ namespace umbriel {
     wl_list_remove(&m_captureSourceDestroy.link);
     m_captureSourceDestroy.link.next = nullptr;
     m_captureSource = nullptr;
+    if (m_mapped) {
+      refreshStateRuleEffects();
+    }
   }
+
+  void View::refreshCaptureProtection() {
+    const auto parent = [](View& view) -> View* {
+      wlr_surface* surface = nullptr;
+      if (view.m_toplevel != nullptr && view.m_toplevel->parent != nullptr) {
+        surface = view.m_toplevel->parent->base->surface;
+      } else if (view.m_xsurface != nullptr && view.m_xsurface->parent != nullptr) {
+        surface = view.m_xsurface->parent->surface;
+      }
+      return surface != nullptr ? View::fromSurface(surface) : nullptr;
+    };
+    const auto effective = [this, &parent](View& view) {
+      bool excluded = false;
+      size_t remaining = m_server->views().size();
+      View* owner = &view;
+      for (; owner != nullptr && remaining > 0; owner = parent(*owner), --remaining) {
+        excluded |= owner->m_ruleCaptureBlocked;
+      }
+      return excluded || owner != nullptr;
+    };
+    if (m_captureBlocked == effective(*this)) {
+      return;
+    }
+    // Resolve complete parent chains independently of reload/registry order.
+    for (const auto& entry : m_server->views()) {
+      if (entry == nullptr) {
+        continue;
+      }
+      View& view = *entry;
+      const bool excluded = effective(view);
+      if (excluded == view.m_captureBlocked) {
+        continue;
+      }
+      view.m_captureBlocked = excluded;
+      // Allocation failure makes scene captures fail closed, without hiding the local view.
+      (void)umbrielfx_scene_node_set_capture_excluded(&view.m_sceneTree->node, excluded);
+      if (excluded && view.m_captureSource != nullptr) {
+        // Copy submission stops immediately; destruction is deferred past the
+        // new-session/rule-evaluation stack that may have enabled protection.
+        umbrielfx_scene_capture_source_revoke(view.m_captureSource);
+      }
+    }
+    if (m_server->xwayland() != nullptr) {
+      m_server->xwayland()->refreshCaptureProtection();
+    }
+    for (const auto& output : m_server->outputs()) {
+      output->scheduleFullFrame();
+    }
+    m_server->scheduleSuspensionSync();
+  }
+
 } // namespace umbriel

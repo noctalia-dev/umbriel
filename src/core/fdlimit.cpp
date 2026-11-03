@@ -13,7 +13,7 @@ namespace {
   rlimit gOriginalLimit{};
   bool gRaised = false;
 
-  [[nodiscard]] std::string rlimitValue(rlim_t value) {
+  std::string rlimitValue(rlim_t value) {
     if (value == RLIM_INFINITY) {
       return "infinity";
     }

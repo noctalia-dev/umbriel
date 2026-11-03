@@ -161,18 +161,19 @@ verify_close() {
   before_box=$(red_bounds "$before")
 
   id=$(jq -r .id <<< "$closing")
-  "$UMBRIEL" msg "window-close:$id" > /dev/null
+  "$UMBRIEL" msg window-close "$id" > /dev/null
   wait_unmapped "$closing_title"
 
-  # Each frame is measured in the background while the next one is captured.
-  local -a probes=()
-  for i in $(seq 0 29); do
-    ((i > 0)) && "$UMBRIEL" clock-advance 100
-    grim "$SHOTS/$phase-$i.png"
-    measure_frame "$SHOTS/$phase-$i" &
-    probes+=($!)
-  done
-  wait "${probes[@]}"
+  # Each frame is measured in the background while the next one is captured. The loop runs in a subshell so its
+  # wait covers only those measurements, not the clients this shell spawned.
+  (
+    for i in $(seq 0 29); do
+      ((i > 0)) && "$UMBRIEL" clock-advance 100
+      grim "$SHOTS/$phase-$i.png"
+      measure_frame "$SHOTS/$phase-$i" &
+    done
+    wait
+  )
 
   local -a early=() middle=() late=() move=() red_boxes=()
   for i in $(seq 0 29); do
@@ -298,7 +299,7 @@ spawn shader-visible-master-close "$CLOSER_COLOR"
 finish
 verify_close ordinary shader-visible-master-close animated 0 0 1280 720
 
-"$UMBRIEL" msg workspace-switch:2 > /dev/null
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
 sed -i 's/^mode = "master"$/mode = "scrolling"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 finish
@@ -310,7 +311,7 @@ finish
 "$UMBRIEL" clock-advance 280
 verify_close consume shader-visible-consume-close animated 0 0 640 720
 
-"$UMBRIEL" msg workspace-switch:3 > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
 finish
 spawn shader-visible-expel-survivor "$SURVIVOR_COLOR"
 finish
@@ -322,7 +323,7 @@ finish
 "$UMBRIEL" clock-advance 80
 verify_close expel shader-visible-expel-close animated 0 0 640 720
 
-"$UMBRIEL" msg workspace-switch:4 > /dev/null
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
 sed -i 's/^mode = "scrolling"$/mode = "master"/' "$UMBRIEL_CONFIG"
 sed -i '/\[animation.windows_move\]/,/^$/s/^enabled = true$/enabled = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
