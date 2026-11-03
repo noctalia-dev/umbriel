@@ -267,7 +267,9 @@ UMBRIEL_TEST(parsesPrimaryExtentFractions) {
   CHECK(bind.action == KeybindAction::WindowSetPrimaryExtent);
   const auto* width = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(width != nullptr);
-  CHECK(width != nullptr && std::fabs(width->fraction - 0.5) < 1e-9);
+  if (width != nullptr) {
+    CHECK_NEAR(width->fraction, 0.5, 1e-9);
+  }
 
   CHECK(parseAction("window-set-primary-extent 1.0", bind));
   CHECK(parseAction("window-set-primary-extent 0.1", bind));
@@ -299,13 +301,13 @@ UMBRIEL_TEST(parsesPrimaryExtentDeltas) {
   Keybind bind;
   CHECK(parseAction("window-modify-primary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifyPrimaryExtent);
-  CHECK(std::fabs(fraction(bind) + 0.2) < 1e-9);
+  CHECK_NEAR(fraction(bind), -0.2, 1e-9);
 
   CHECK(parseAction("window-modify-primary-extent +0.1", bind)); // explicit plus is allowed
-  CHECK(std::fabs(fraction(bind) - 0.1) < 1e-9);
+  CHECK_NEAR(fraction(bind), 0.1, 1e-9);
 
   CHECK(parseAction("window-modify-primary-extent 0.25", bind));
-  CHECK(std::fabs(fraction(bind) - 0.25) < 1e-9);
+  CHECK_NEAR(fraction(bind), 0.25, 1e-9);
 }
 
 UMBRIEL_TEST(rejectsInvalidPrimaryExtentDeltas) {
@@ -327,16 +329,24 @@ UMBRIEL_TEST(parsesSecondaryExtentActions) {
   CHECK(bind.action == KeybindAction::WindowSetSecondaryExtent);
   const auto* height = umbriel::payloadIf<umbriel::FractionArg>(bind);
   CHECK(height != nullptr);
-  CHECK(height != nullptr && std::fabs(height->fraction - 0.5) < 1e-9);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, 0.5, 1e-9);
+  }
 
   CHECK(parseAction("window-modify-secondary-extent -0.2", bind));
   CHECK(bind.action == KeybindAction::WindowModifySecondaryExtent);
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
-  CHECK(height != nullptr && std::fabs(height->fraction + 0.2) < 1e-9);
+  CHECK(height != nullptr);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, -0.2, 1e-9);
+  }
 
   CHECK(parseAction("window-modify-secondary-extent +0.1", bind));
   height = umbriel::payloadIf<umbriel::FractionArg>(bind);
-  CHECK(height != nullptr && std::fabs(height->fraction - 0.1) < 1e-9);
+  CHECK(height != nullptr);
+  if (height != nullptr) {
+    CHECK_NEAR(height->fraction, 0.1, 1e-9);
+  }
 
   CHECK(!parseAction("window-set-secondary-extent 0.05", bind));
   CHECK(!parseAction("window-modify-secondary-extent 0", bind));
@@ -629,16 +639,16 @@ UMBRIEL_TEST(parsesOutputSdrWhiteAction) {
   Keybind bind;
   CHECK(parseAction("output-sdr-white 203", bind));
   CHECK(bind.action == KeybindAction::OutputSdrWhite);
-  CHECK(std::fabs(sdrWhiteOf(bind) - 203.0) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 203.0, 1e-9);
   CHECK(outputOf(bind).empty());
 
   CHECK(parseAction("output-sdr-white 120 --output DP-1", bind));
-  CHECK(std::fabs(sdrWhiteOf(bind) - 120.0) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 120.0, 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"DP-1"});
 
   // The flag may precede the level, and its value is taken verbatim.
   CHECK(parseAction("output-sdr-white --output vendor/panel 120.5", bind));
-  CHECK(std::fabs(sdrWhiteOf(bind) - 120.5) < 1e-9);
+  CHECK_NEAR(sdrWhiteOf(bind), 120.5, 1e-9);
   CHECK_EQ(outputOf(bind), std::string{"vendor/panel"});
 
   CHECK(parseAction("output-sdr-white 80", bind));

@@ -349,7 +349,8 @@ namespace umbriel {
     std::string colorProfile = "none";
     std::int64_t colorProfileMtime = 0;
     SdrGamut sdrGamut = SdrGamut::Native;
-    std::optional<std::string> screenEffect; // "off" disables the default
+    std::optional<std::string> screenEffect;     // "off" disables the default
+    std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
     int bitDepth = 8;
     // Explicit workspace inventory. A count creates anonymous positional
