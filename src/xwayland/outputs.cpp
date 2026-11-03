@@ -112,9 +112,9 @@ namespace umbriel {
       }
       XwaylandRegion region{.layout = box, .x = {.x = 0, .y = 0, .width = box.width, .height = box.height}};
       if (m_nativeResolution) {
-        // X11 clients render at the output's render scale, like Wayland clients.
+        // X coordinates use either the physical output scale or the explicitly forced render scale.
         region.scale = m_renderScale != nullptr ? m_renderScale(output) : static_cast<double>(output->scale);
-        // X coordinates measure render-scale pixels, so the X rectangle must
+        // X coordinates measure pixels at the chosen scale, so the X rectangle must
         // too: scale the physical resolution by the same factor the mapping
         // uses. A render scale that follows the logical one has factor 1 and
         // keeps the physical size exactly.

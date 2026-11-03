@@ -24,7 +24,7 @@ namespace {
 
   void checkWhitePoint(const std::array<float, 3>& actual, const std::array<float, 3>& expected) {
     for (size_t channel = 0; channel < actual.size(); ++channel) {
-      CHECK(std::abs(actual[channel] - expected[channel]) < 0.000001F);
+      CHECK_NEAR(actual[channel], expected[channel], 0.000001F);
     }
   }
 

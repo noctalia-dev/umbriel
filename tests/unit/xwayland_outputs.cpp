@@ -90,9 +90,15 @@ namespace {
 UMBRIEL_TEST(logicalScreenIsTheLayoutMovedToTheOrigin) {
   Fixture fixture;
   CHECK(fixture.setUp(kMixedScales));
-  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, false);
+  int renderScaleCalls = 0;
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, false, [&](const wlr_output*) {
+    ++renderScaleCalls;
+    return 2.5;
+  });
 
   const umbriel::XwaylandRegion main = outputs.region(fixture.outputs[0], 0, 0);
+  CHECK_EQ(renderScaleCalls, 0);
+  CHECK_EQ(outputs.scale(), 1.0);
   CHECK_EQ(main.x.x, 0);
   CHECK_EQ(main.x.y, 1440);
   CHECK_EQ(main.x.width, 3072);
@@ -187,7 +193,7 @@ UMBRIEL_TEST(primarySelectorFollowsIdentityAndLayoutMembership) {
 UMBRIEL_TEST(nativeScreenPublishesTheRenderScale) {
   Fixture fixture;
   CHECK(fixture.setUp(kMixedScales));
-  // A render scale beyond the logical one: X11 clients supersample like Wayland clients.
+  // A forced render scale beyond the logical one lets X11 clients supersample.
   const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, true, [](const wlr_output* output) {
     return static_cast<double>(output->scale) * 2.0;
   });

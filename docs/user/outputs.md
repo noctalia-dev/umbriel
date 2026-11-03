@@ -59,6 +59,7 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                           |
 | `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                           |
 | `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.       |
+| `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output.  |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply the configured mode, it uses the preferred advertised mode and logs a warning. Backend tests include the 8-bit SDR fallback, so a rejected swapchain can reach the preferred mode. On that mode, Umbriel retries the configured HDR and bit-depth preferences. A temporary rendering failure after an accepted backend test retries the current candidate instead of changing modes.
 
@@ -115,6 +116,13 @@ screen_effect = "off"
 
 `screen_effect` names an `[effects.preset.<name>]` or `[effects.pool.<name>]` of kind `screen`, or `"off"` to disable `effects.screen` on this output. See [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
+`screen_cast_effect` does the same for `effects.screen_cast`, the screen effect that runs on this output only while a client captures it whole:
+
+```toml
+[output."DP-1"]
+screen_cast_effect = "wisps"
+```
+
 ### Position and scale
 
 Positions use logical coordinates after scale and transform. A `3840x2160` output at scale `1.25` occupies `3072x1728` logical units. An output immediately to its right therefore starts at x = 3072.
@@ -123,7 +131,9 @@ Omit `position` to place outputs automatically from left to right. Explicitly po
 
 ### Supersampling with `render_scale`
 
-`render_scale` separates what things look like from what clients render at, the way macOS handles HiDPI. With `scale = 1.35` and `render_scale = 2.0`, clients are asked to render at 2.0 and the compositor samples their buffers down to the output's `scale` raster, which smooths text and fine detail on low-ppi and non-RGB-subpixel panels. Logical geometry is unchanged: windows keep their `scale` sizes, and the output still advertises `scale` so client interfaces size as before.
+`render_scale` separates what things look like from what Wayland clients render at, the way macOS handles HiDPI. With `scale = 1.35` and `render_scale = 2.0`, clients are asked to render at 2.0 and the compositor samples their buffers down to the output's `scale` raster, which smooths text and fine detail on low-ppi and non-RGB-subpixel panels. Logical geometry is unchanged: windows keep their `scale` sizes, and the output still advertises `scale` so client interfaces size as before.
+
+Native-resolution X11 applications use the physical output scale by default. To opt them into `render_scale`, see [`force_x11_supersample`](configuration.md#general).
 
 Applications that ignore the scale hints render as they always have. Values below `scale` are honored but undersample, which looks blurry. The configuration warning compares `render_scale` against the configured `scale` (1.0 when `scale` is unset), so it cannot see an auto-detected output scale. Hint-following buffers sized at `render_scale` no longer match the output mode while `render_scale` differs from `scale`, so they do not qualify for [direct scanout](#direct-scanout); set `render_scale` equal to `scale` for scanout-sensitive games.
 

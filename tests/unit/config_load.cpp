@@ -2356,6 +2356,23 @@ UMBRIEL_TEST(nvidiaSyncWorkaroundReloadsAndDefaultsOn) {
   CHECK(!containsDiagnostic(store, "unknown key general.nvidia_sync_workaround"));
 }
 
+UMBRIEL_TEST(forceX11SupersampleLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[general]\nforce_x11_supersample = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.forceX11Supersample);
+  file.write("[general]\nforce_x11_supersample = \"true\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
+  CHECK(containsDiagnostic(store, "ignoring general.force_x11_supersample (expected boolean)"));
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
+}
+
 UMBRIEL_TEST(xwaylandPrimaryOutputLoadsAndCanBeRemoved) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -4032,6 +4049,39 @@ UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
     CHECK_EQ(drag.settleAfterPauseS, 0.1);
     CHECK(containsDiagnostic(store, "out of range, clamped"));
   }
+}
+
+// The cast selector takes screen presets and pools like effects.screen; an output can name its own or opt out with
+// "off", and a selector of the wrong kind is dropped instead of running a border shader over a shared screen.
+UMBRIEL_TEST(screenCastSelectorsLoad) {
+  const TempConfigTree tree;
+  tree.write("s.glsl", "vec4 screen(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("b.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects]\nscreen_cast = \"casts\"\n"
+      "[effects.preset.wisps]\nkind = \"screen\"\nshader = \"s.glsl\"\n"
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"b.glsl\"\n"
+      "[effects.pool.casts]\nkind = \"screen\"\nchoose = [\"wisps\"]\n"
+      "[output.\"HEADLESS-1\"]\nscreen_cast_effect = \"wisps\"\n"
+      "[output.\"HEADLESS-2\"]\nscreen_cast_effect = \"off\"\n"
+      "[output.\"HEADLESS-3\"]\nscreen_cast_effect = \"ring\"\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.effects.screenCast, std::string("casts"));
+  CHECK_EQ(config.outputs.size(), size_t{3});
+  if (config.outputs.size() != 3) {
+    return;
+  }
+  CHECK(config.outputs[0].screenCastEffect == "wisps");
+  CHECK(config.outputs[1].screenCastEffect == "off");
+  CHECK(!config.outputs[2].screenCastEffect);
+  CHECK(containsDiagnostic(
+      store, "ignoring output.HEADLESS-3.screen_cast_effect (effect 'ring' is a border preset, not a screen preset)"
+  ));
 }
 
 UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {

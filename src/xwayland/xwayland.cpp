@@ -78,9 +78,10 @@ namespace umbriel {
       return;
     }
     m_outputs = std::make_unique<XwaylandOutputs>(
-        server.display(), server.outputLayout(), m_nativeResolution, [](const wlr_output* output) {
+        server.display(), server.outputLayout(), m_nativeResolution,
+        [forceSupersample = config().general.forceX11Supersample](const wlr_output* output) {
           const auto* bound = static_cast<const Output*>(output->data);
-          return bound != nullptr ? bound->clientRenderScale() : static_cast<double>(output->scale);
+          return forceSupersample && bound != nullptr ? bound->clientRenderScale() : static_cast<double>(output->scale);
         }
     );
     m_shapes = std::make_unique<XwaylandShapes>(server.display());

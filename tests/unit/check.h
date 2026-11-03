@@ -1,9 +1,10 @@
 #pragma once
 
-// Minimal zero-dependency test harness. UMBRIEL_TEST(descriptiveName) { CHECK(condition); CHECK_EQ(actual, expected); }
-// int main() { return RUN_TESTS(); } Cases self-register, every failure is reported (a failing CHECK does not stop the
-// case), and failures print file, line, the expressions, and both values.
+// Minimal zero-dependency test harness. UMBRIEL_TEST(descriptiveName) { CHECK(condition); CHECK_EQ(actual, expected);
+// CHECK_NEAR(actual, expected, tolerance); } int main() { return RUN_TESTS(); } Cases self-register, every failure is
+// reported (a failing CHECK does not stop the case), and failures print file, line, the expressions, and both values.
 
+#include <cmath>
 #include <cstddef>
 #include <format>
 #include <print>
@@ -89,6 +90,23 @@ namespace umbriel::test {
           std::format(                                                                                                 \
               "CHECK_EQ({}, {}) failed: got {}, want {}", #actualExpr, #expectedExpr,                                  \
               ::umbriel::test::describe(umbrielCheckActual), ::umbriel::test::describe(umbrielCheckExpected)           \
+          )                                                                                                            \
+      );                                                                                                               \
+    }                                                                                                                  \
+  } while (false)
+
+// Passes when |actual - expected| <= tolerance; a NaN on either side fails.
+#define CHECK_NEAR(actualExpr, expectedExpr, toleranceExpr)                                                            \
+  do {                                                                                                                 \
+    const auto& umbrielCheckActual = (actualExpr);                                                                     \
+    const auto& umbrielCheckExpected = (expectedExpr);                                                                 \
+    const auto& umbrielCheckTolerance = (toleranceExpr);                                                               \
+    if (!(std::abs(umbrielCheckActual - umbrielCheckExpected) <= umbrielCheckTolerance)) {                             \
+      ::umbriel::test::reportFailure(                                                                                  \
+          __FILE__, __LINE__,                                                                                          \
+          std::format(                                                                                                 \
+              "CHECK_NEAR({}, {}, {}) failed: got {}, want {}", #actualExpr, #expectedExpr, #toleranceExpr,            \
+              umbrielCheckActual, umbrielCheckExpected                                                                 \
           )                                                                                                            \
       );                                                                                                               \
     }                                                                                                                  \

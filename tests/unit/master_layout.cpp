@@ -118,18 +118,18 @@ UMBRIEL_TEST(setHeightFractionUpdatesAreaAndColumnWeights) {
   Fixture fixture;
   fixture.addViews(3);
   CHECK(fixture.layout.setHeightFraction(stub(2), 0.7));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(2)) - 0.7) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(2)), 0.7, 1e-9);
 
   const auto& weights = fixture.layout.columns()[1].heightWeights;
   CHECK_EQ(weights.size(), size_t{2});
-  CHECK(std::fabs(weights[0] / (weights[0] + weights[1]) - 0.7) < 1e-9);
+  CHECK_NEAR(weights[0] / (weights[0] + weights[1]), 0.7, 1e-9);
 }
 
 UMBRIEL_TEST(setHeightFractionRejectsAViewAloneInItsArea) {
   Fixture fixture;
   fixture.addViews(3);
   CHECK(!fixture.layout.setHeightFraction(stub(0), 0.7));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0, 1e-9);
 }
 
 UMBRIEL_TEST(insertIsIdempotentPerView) {
@@ -233,26 +233,26 @@ UMBRIEL_TEST(consumeUsesVisualDirectionWhenMasterIsRight) {
 UMBRIEL_TEST(widthFractionIsComplementaryAcrossColumns) {
   Fixture fixture;
   fixture.addViews(2);
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.55) < 1e-9);
-  CHECK(std::abs(fixture.layout.widthFraction(1) - 0.45) < 1e-9);
-  CHECK(std::abs(fixture.layout.widthFraction(0) + fixture.layout.widthFraction(1) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.55, 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(1), 0.45, 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0) + fixture.layout.widthFraction(1), 1.0, 1e-9);
 }
 
 UMBRIEL_TEST(setWidthFractionOnTheStackAdjustsTheComplement) {
   Fixture fixture;
   fixture.addViews(2);
   CHECK(fixture.layout.setWidthFraction(1, 0.4));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.6) < 1e-9);
-  CHECK(std::abs(fixture.layout.widthFraction(1) - 0.4) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.6, 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(1), 0.4, 1e-9);
 }
 
 UMBRIEL_TEST(cycleWidthWalksThePresets) {
   Fixture fixture;
   fixture.addViews(2);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 2.0 / 3.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 2.0 / 3.0, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 1.0 / 3.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0 / 3.0, 1e-9);
 }
 
 UMBRIEL_TEST(cycleWidthWrapsWhenTheNextPresetIsOutOfReach) {
@@ -260,13 +260,13 @@ UMBRIEL_TEST(cycleWidthWrapsWhenTheNextPresetIsOutOfReach) {
   Fixture fixture;
   fixture.config.master.position = umbriel::MasterPosition::Center;
   fixture.addViews(3);
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.225) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.225, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 1.0 / 3.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0 / 3.0, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.45) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.45, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 1.0 / 3.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0 / 3.0, 1e-9);
 }
 
 UMBRIEL_TEST(toggleFullWidthExpandsAndRestores) {
@@ -274,10 +274,10 @@ UMBRIEL_TEST(toggleFullWidthExpandsAndRestores) {
   fixture.addViews(2);
   CHECK(fixture.layout.toggleFullWidth(0));
   CHECK(fixture.layout.isFullWidth(0));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.9) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.9, 1e-9);
   CHECK(!fixture.layout.toggleFullWidth(0));
   CHECK(!fixture.layout.isFullWidth(0));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.55) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.55, 1e-9);
 }
 
 UMBRIEL_TEST(widthActionsFailWithASingleArea) {
@@ -287,7 +287,7 @@ UMBRIEL_TEST(widthActionsFailWithASingleArea) {
   CHECK(!fixture.layout.toggleFullWidth(0));
   CHECK(!fixture.layout.setWidthFraction(0, 0.7));
   CHECK(!fixture.layout.isFullWidth(0));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 1.0, 1e-9);
 }
 
 UMBRIEL_TEST(moveViewVerticalSwapsStackNeighbors) {
@@ -377,7 +377,7 @@ UMBRIEL_TEST(aResizeGrabMovesTheMasterBoundary) {
   CHECK(resize != nullptr);
   resize->applyDelta(100.0, 0.0, kUsable);
   fixture.layout.arrange(kUsable);
-  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - before - 100) <= 1);
+  CHECK_NEAR(fixture.layout.targetBox(stub(0)).width - before, 100, 1);
 }
 
 UMBRIEL_TEST(aVerticalGrabTransfersHeightBetweenRows) {
@@ -431,7 +431,7 @@ UMBRIEL_TEST(snapshotRestoresAreasRowsAndWidthState) {
 
   const int restoredMaster = restored.layout.columnOf(stub(2));
   CHECK(!restored.layout.toggleFullWidth(restoredMaster));
-  CHECK(std::fabs(restored.layout.widthFraction(restoredMaster) - 0.70) < 1e-9);
+  CHECK_NEAR(restored.layout.widthFraction(restoredMaster), 0.70, 1e-9);
 }
 
 UMBRIEL_TEST(snapshotPromotesTheStackWhenTheMasterIsMissing) {
@@ -639,10 +639,10 @@ UMBRIEL_TEST(centerSideFractionIsHalfTheComplement) {
   CenterFixture fixture;
   fixture.addViews(3);
 
-  CHECK(std::fabs(fixture.layout.widthFraction(0) - 0.225) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.225, 1e-9);
   CHECK(fixture.layout.setWidthFraction(0, 0.3));
-  CHECK(std::fabs(fixture.layout.widthFraction(1) - 0.4) < 1e-9);
-  CHECK(std::fabs(fixture.layout.widthFraction(2) - 0.3) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(1), 0.4, 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(2), 0.3, 1e-9);
 }
 
 UMBRIEL_TEST(centerMasterResizesSymmetrically) {
@@ -659,8 +659,8 @@ UMBRIEL_TEST(centerMasterResizesSymmetrically) {
   fixture.layout.arrange(kUsable);
 
   const wlr_box master = fixture.layout.targetBox(stub(0));
-  CHECK(std::abs(master.width - 880) <= 1);
-  CHECK(std::abs(master.x - 200) <= 1);
+  CHECK_NEAR(master.width, 880, 1);
+  CHECK_NEAR(master.x, 200, 1);
 }
 
 UMBRIEL_TEST(centerRemovingTheMasterPromotesFromTheFullerSide) {
