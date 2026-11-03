@@ -195,6 +195,7 @@ namespace umbriel {
     discardCloseSnapshots();
     endLayoutMotion();
     m_snapHold = {};
+    releaseHeldCloseSnapshots();
     if (m_snapHoldDeadline != nullptr) {
       wl_event_source_remove(m_snapHoldDeadline);
       m_snapHoldDeadline = nullptr;
@@ -1239,13 +1240,14 @@ namespace umbriel {
       const wlr_box from = openingLayoutBox.value_or(
           wlr_box{.x = view->layoutX(), .y = view->layoutY(), .width = presented.width, .height = presented.height}
       );
-      // A positioned member animates its size only when this pass reconfigured it or a motion already carries it;
-      // otherwise it keeps the size it presents, which stays inside the slot.
+      // A positioned member animates its size only when this pass reconfigured it or a motion or snap hold already
+      // carries it; otherwise it keeps the size it presents, which stays inside the slot.
       wlr_box to = slot;
       if (positioned
           && !opening
           && !openingLayoutBox.has_value()
           && !std::ranges::contains(resized, view)
+          && !std::ranges::contains(m_snapHold.resized, view)
           && std::ranges::none_of(m_motion.views, [view](const LayoutMotion::ViewEntry& entry) {
                return entry.view == view;
              })) {
@@ -1349,14 +1351,23 @@ namespace umbriel {
     }
     if (!animateMove) {
       endLayoutMotion();
+      // A later arrange in the same reflow (an alone rule maximizing the survivor of a close) sends no new configure,
+      // so it keeps waiting for the members an earlier pass is still holding for, on that pass's deadline.
       SnapHold hold;
+      bool resizedNow = false;
       for (const Member& member : members) {
         hold.members.push_back({.view = member.view, .to = member.to});
-        if (!member.opening && std::ranges::contains(resized, member.view)) {
+        if (member.opening) {
+          continue;
+        }
+        if (std::ranges::contains(resized, member.view)) {
+          hold.resized.push_back(member.view);
+          resizedNow = true;
+        } else if (std::ranges::contains(m_snapHold.resized, member.view) && member.view->tiledSizeRequestPending()) {
           hold.resized.push_back(member.view);
         }
       }
-      holdSnap(std::move(hold));
+      holdSnap(std::move(hold), resizedNow);
       return;
     }
     cancelSnapHold();
@@ -1496,12 +1507,19 @@ namespace umbriel {
     m_trackedCloseSnapshots.clear();
   }
 
-  void Workspace::holdSnap(SnapHold hold) {
+  void Workspace::holdSnap(SnapHold hold, bool rearm) {
     m_snapHold = std::move(hold);
     if (m_snapHold.resized.empty()) {
       releaseSnapHold();
       return;
     }
+    if (!rearm && m_snapHoldDeadline != nullptr) {
+      return;
+    }
+    armSnapHoldDeadline();
+  }
+
+  void Workspace::armSnapHoldDeadline() {
     if (m_snapHoldDeadline == nullptr) {
       m_snapHoldDeadline =
           wl_event_loop_add_timer(wl_display_get_event_loop(m_group->server()->display()), onSnapHoldDeadline, this);
@@ -1509,6 +1527,27 @@ namespace umbriel {
     if (m_snapHoldDeadline == nullptr || wl_event_source_timer_update(m_snapHoldDeadline, kSnapHoldDeadlineMs) < 0) {
       releaseSnapHold();
     }
+  }
+
+  void Workspace::holdCloseSnapshot(CloseSnapshotId id) {
+    m_heldCloseSnapshots.push_back(id);
+    // The close's own arrange decides whether anything waits for it; until then only the deadline releases it.
+    if (m_snapHold.resized.empty()) {
+      armSnapHoldDeadline();
+    }
+  }
+
+  void Workspace::releaseHeldCloseSnapshots() {
+    if (m_heldCloseSnapshots.empty() || m_group == nullptr) {
+      return;
+    }
+    Server* server = m_group->server();
+    for (const CloseSnapshotId id : m_heldCloseSnapshots) {
+      server->releaseCloseSnapshot(id);
+      // A released snapshot stays hidden until it is reaped; a later sync must not show it again.
+      std::erase_if(m_trackedCloseSnapshots, [id](const TrackedCloseSnapshot& tracked) { return tracked.id == id; });
+    }
+    m_heldCloseSnapshots.clear();
   }
 
   void Workspace::releaseSnapHold() {
@@ -1522,10 +1561,12 @@ namespace umbriel {
         entry.view->presentTiledBox(entry.to);
       }
     }
+    releaseHeldCloseSnapshots();
   }
 
   void Workspace::cancelSnapHold() {
     m_snapHold = {};
+    releaseHeldCloseSnapshots();
     if (m_snapHoldDeadline != nullptr) {
       wl_event_source_timer_update(m_snapHoldDeadline, 0);
     }

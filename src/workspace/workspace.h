@@ -273,6 +273,8 @@ namespace umbriel {
     // Own every view close snapshot so it follows workspace visibility and translation: the workspace translates the
     // snapshot with its slides and hides it while the workspace is not showing.
     void trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox);
+    // Keep a tracked held snapshot showing until the snapped reflow its close starts has landed.
+    void holdCloseSnapshot(CloseSnapshotId id);
     // Drop `view` from the running motion without touching its presentation; the caller now owns its box.
     void releaseLayoutMotion(View* view);
     // A tiled member committed; presents a held snap layout once every resized member has drawn its new size.
@@ -397,8 +399,11 @@ namespace umbriel {
       std::vector<View*> resized;
     };
     SnapHold m_snapHold;
+    std::vector<CloseSnapshotId> m_heldCloseSnapshots;
+    void armSnapHoldDeadline();
+    void releaseHeldCloseSnapshots();
     wl_event_source* m_snapHoldDeadline = nullptr;
-    void holdSnap(SnapHold hold);
+    void holdSnap(SnapHold hold, bool rearm);
     void releaseSnapHold();
     void cancelSnapHold();
     static int onSnapHoldDeadline(void* data);

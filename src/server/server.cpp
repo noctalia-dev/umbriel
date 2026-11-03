@@ -1886,6 +1886,26 @@ namespace umbriel {
     applyPresentation();
   }
 
+  void Server::CloseSnapshot::hold() {
+    m_held = true;
+    m_alpha.snap(1.0);
+    m_slide.snap(0.0);
+    m_shrinkTo = 1.0;
+    applyPresentation();
+  }
+
+  void Server::CloseSnapshot::release() {
+    if (!m_held) {
+      return;
+    }
+    m_held = false;
+    m_visible = false;
+    applyPresentation();
+    if (m_output != nullptr) {
+      wlr_output_schedule_frame(m_output->wlr());
+    }
+  }
+
   bool Server::CloseSnapshot::tickAnimations(double nowMsec) {
     const bool movedAlpha = m_alpha.tick(nowMsec);
     const bool movedSlide = m_slide.tick(nowMsec);
@@ -2156,7 +2176,8 @@ namespace umbriel {
       style = close.style;
       scale = close.scale;
     }
-    if (durationMs <= 0) {
+    const bool held = overrides && overrides->held;
+    if (durationMs <= 0 && !held) {
       if (shadow.tree != nullptr) {
         wlr_scene_node_destroy(&shadow.tree->node);
       }
@@ -2169,9 +2190,21 @@ namespace umbriel {
         *this, id, output, tree, content, std::move(borders), box, durationMs, curve, style, scale,
         overrides ? overrides->event : AnimationEvent::WindowsOut, shadow, topExtension
     );
+    if (held) {
+      snapshot->hold();
+    }
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
     return id;
+  }
+
+  void Server::releaseCloseSnapshot(CloseSnapshotId id) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->release();
+        return;
+      }
+    }
   }
 
   void Server::presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible) {

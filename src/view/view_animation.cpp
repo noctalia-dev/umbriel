@@ -1030,13 +1030,12 @@ namespace umbriel {
     return fullArea;
   }
 
-  CloseSnapshotId View::beginCloseAnimation() {
+  CloseSnapshotId View::beginCloseAnimation(bool held) {
     const auto& animation = config().animation;
     if (!m_mapped
         || presentationSuppressed()
         || !m_onActiveWorkspace
-        || !animation.enabled
-        || !animation.windowsOut.enabled
+        || (!held && (!animation.enabled || !animation.windowsOut.enabled))
         || m_server->sessionLocked()
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
@@ -1136,7 +1135,8 @@ namespace umbriel {
     wlr_scene_node_set_animation(&snap->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
     const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled());
     const CloseSnapshotId id = m_server->animateCloseSnapshot(
-        output, snap, content, std::move(snapBorders), m_presentedBox, std::nullopt, shadow, titleBarHeight()
+        output, snap, content, std::move(snapBorders), m_presentedBox,
+        held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
     wlr_output_schedule_frame(output->wlr());
     return id;

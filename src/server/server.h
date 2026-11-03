@@ -505,6 +505,8 @@ namespace umbriel {
       std::string style = "fade";
       double scale = 0.8;
       AnimationEvent event = AnimationEvent::WindowsOut;
+      // Show the closed window's last frame unchanged until releaseCloseSnapshot, instead of fading it out.
+      bool held = false;
     };
     // `content` is the subtree holding the copied buffers (pass `tree` when there is no separate content tree). A
     // positive `box` clips that subtree to the captured content extent. Returns kInvalidCloseSnapshot when the snapshot
@@ -519,6 +521,8 @@ namespace umbriel {
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
+    // Hide a held snapshot; it is reaped after the next tick.
+    void releaseCloseSnapshot(CloseSnapshotId id);
 
   private:
     friend class EisInput;
@@ -826,10 +830,13 @@ namespace umbriel {
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
+      // Keep the captured frame as it is until release().
+      void hold();
+      void release();
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
-      bool hasActiveAnimations() const override { return m_alpha.animating() || m_slide.animating(); }
+      bool hasActiveAnimations() const override { return m_held || m_alpha.animating() || m_slide.animating(); }
       bool animatesOn(const Output* output) const override { return m_output == output; }
 
     private:
@@ -853,6 +860,7 @@ namespace umbriel {
       bool m_blurBackground = false;
       // popin/zoom end scale; 1.0 = no shrink.
       double m_shrinkTo = 1.0;
+      bool m_held = false;
       // Each copied buffer with its captured opacity, position and size relative to the content tree.
       struct Buffer {
         wlr_scene_buffer* node = nullptr;

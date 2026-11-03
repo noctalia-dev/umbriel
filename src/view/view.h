@@ -661,7 +661,8 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    [[nodiscard]] CloseSnapshotId beginCloseAnimation();
+    // `held` keeps the snapshot unchanged until its workspace releases it, whether or not windows_out is enabled.
+    [[nodiscard]] CloseSnapshotId beginCloseAnimation(bool held = false);
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop

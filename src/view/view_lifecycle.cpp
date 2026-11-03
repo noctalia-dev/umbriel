@@ -648,7 +648,12 @@ namespace umbriel {
       overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
-    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
+    CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
+    // Without windows_out a closed tile still covers its slot while the survivors growing into it redraw.
+    const bool heldSnapshot = snapshot == kInvalidCloseSnapshot && animateClose && m_tiled && m_workspace != nullptr;
+    if (heldSnapshot) {
+      snapshot = beginCloseAnimation(true);
+    }
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
     if (m_minimized) {
@@ -693,6 +698,9 @@ namespace umbriel {
     // The workspace owns the snapshot's visibility and its slide translation from here.
     if (snapshot != kInvalidCloseSnapshot && m_workspace != nullptr) {
       m_workspace->trackCloseSnapshot(snapshot, m_presentedBox);
+      if (heldSnapshot) {
+        m_workspace->holdCloseSnapshot(snapshot);
+      }
     }
     cancelSizeAnimation();
     m_tiledSizeRequest.reset();
