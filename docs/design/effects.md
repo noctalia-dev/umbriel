@@ -24,7 +24,7 @@ Runtime actions validate typed payloads, targets, names/kinds, and non-empty cyc
 
 The built-in fade and drag deformation retain their existing preparation and animation gates. `fillTimeUniforms` supplies time only when a linked program reads it and palette only for palette presets.
 
-[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate still requires focus, decoration, no urgency, and no fullscreen; overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
+[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate requires decoration, no urgency, no fullscreen, and focus unless `allowUnfocused` widens it (`[effects].border_unfocused`); overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
 
 [`Output::applyOutputEffects`](../../src/output/output.cpp) reads its cached screen slot and the Server's single cursor slot, applies capture policy and lock suspension, and pushes pointer position after binding a cursor program. It performs no owner walk or pool pick. `Cursor::forwardEffectPointer` reads cached cursor activity, which includes suppression and registry suspension.
 
@@ -140,7 +140,7 @@ With no effect roots and drag physics off (unused pool declarations are not root
 
 With effects selected:
 
-- **Border:** a capture and one program pass per frame on the focused window; effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
+- **Border:** a capture and one program pass per frame on each window the gate draws (the focused window, or every gated window with `border_unfocused`); effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
 - **Window and overlay:** a copy of the target under the window and one program pass per window per frame.
 - **Screen and cursor:** one in-place pass over the output or the cursor square; direct scanout off on that output only.
 - **Drag physics:** only while a window is held or settling; the drag slot is transient, so the scene-wide policy applies on every output for that time. The deformation program runs up to 22 inverse-lookup iterations per pixel.
