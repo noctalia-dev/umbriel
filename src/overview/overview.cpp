@@ -1788,6 +1788,10 @@ namespace umbriel {
     }
 
     m_server->clearKeyboardFocus();
+    if (View* target = liveTargetView()) {
+      // The overview holds the keyboard, but the window it would act on keeps its focus chrome and active state.
+      target->placementRoot()->inputDelegate()->applySeatFocus(false, false);
+    }
     m_server->cursor()->clearPointerFocus();
     m_server->cursor()->clearConstraint();
 
