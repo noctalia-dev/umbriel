@@ -43,6 +43,9 @@ namespace umbriel {
 
     constexpr uint32_t kGroupCaps = EXT_WORKSPACE_GROUP_HANDLE_V1_GROUP_CAPABILITIES_CREATE_WORKSPACE;
 
+    // How long a snapped reflow waits for resized clients before landing without them.
+    constexpr int kSnapHoldDeadlineMs = 150;
+
     void refreshDropZonePreview(Server& server) {
       if (server.stopping()) {
         return;
@@ -191,6 +194,11 @@ namespace umbriel {
     m_tabs.releaseAll();
     discardCloseSnapshots();
     endLayoutMotion();
+    m_snapHold = {};
+    if (m_snapHoldDeadline != nullptr) {
+      wl_event_source_remove(m_snapHoldDeadline);
+      m_snapHoldDeadline = nullptr;
+    }
     for (View* view : m_views) {
       view->cancelPositionAnimation();
       const bool fs = view->currentFullscreen() || view->scheduledFullscreen();
@@ -800,6 +808,8 @@ namespace umbriel {
     // Outside the layout a window is never a tab; whatever presents it next finds it showing.
     m_tabs.released(view);
     releaseLayoutMotion(view);
+    std::erase_if(m_snapHold.members, [view](const SnapHold::Entry& entry) { return entry.view == view; });
+    std::erase(m_snapHold.resized, view);
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -1333,16 +1343,23 @@ namespace umbriel {
     }
 
     if (views.empty()) {
+      cancelSnapHold();
       endLayoutMotion();
       return;
     }
     if (!animateMove) {
       endLayoutMotion();
+      SnapHold hold;
       for (const Member& member : members) {
-        member.view->presentTiledBox(member.to);
+        hold.members.push_back({.view = member.view, .to = member.to});
+        if (!member.opening && std::ranges::contains(resized, member.view)) {
+          hold.resized.push_back(member.view);
+        }
       }
+      holdSnap(std::move(hold));
       return;
     }
+    cancelSnapHold();
 
     // An interrupted motion hands its speed to the next one, so repeated actions bend the motion instead of stopping
     // it and starting again from rest.
@@ -1477,6 +1494,57 @@ namespace umbriel {
       }
     }
     m_trackedCloseSnapshots.clear();
+  }
+
+  void Workspace::holdSnap(SnapHold hold) {
+    m_snapHold = std::move(hold);
+    if (m_snapHold.resized.empty()) {
+      releaseSnapHold();
+      return;
+    }
+    if (m_snapHoldDeadline == nullptr) {
+      m_snapHoldDeadline =
+          wl_event_loop_add_timer(wl_display_get_event_loop(m_group->server()->display()), onSnapHoldDeadline, this);
+    }
+    if (m_snapHoldDeadline == nullptr || wl_event_source_timer_update(m_snapHoldDeadline, kSnapHoldDeadlineMs) < 0) {
+      releaseSnapHold();
+    }
+  }
+
+  void Workspace::releaseSnapHold() {
+    SnapHold hold = std::move(m_snapHold);
+    m_snapHold = {};
+    if (m_snapHoldDeadline != nullptr) {
+      wl_event_source_timer_update(m_snapHoldDeadline, 0);
+    }
+    for (const SnapHold::Entry& entry : hold.members) {
+      if (entry.view->mapped() && m_layout->columnOf(entry.view) >= 0) {
+        entry.view->presentTiledBox(entry.to);
+      }
+    }
+  }
+
+  void Workspace::cancelSnapHold() {
+    m_snapHold = {};
+    if (m_snapHoldDeadline != nullptr) {
+      wl_event_source_timer_update(m_snapHoldDeadline, 0);
+    }
+  }
+
+  int Workspace::onSnapHoldDeadline(void* data) {
+    static_cast<Workspace*>(data)->releaseSnapHold();
+    return 0;
+  }
+
+  void Workspace::handleTiledCommit(View* view) {
+    if (!std::ranges::contains(m_snapHold.resized, view)) {
+      return;
+    }
+    if (std::ranges::none_of(m_snapHold.resized, [](const View* member) {
+          return member->tiledSizeRequestPending();
+        })) {
+      releaseSnapHold();
+    }
   }
 
   void Workspace::releaseLayoutMotion(View* view) {

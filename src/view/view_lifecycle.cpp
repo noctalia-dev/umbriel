@@ -1055,6 +1055,9 @@ namespace umbriel {
       }
     }
     (void)settleTiledSizeRequest();
+    if (m_tiled && m_workspace != nullptr) {
+      m_workspace->handleTiledCommit(this);
+    }
     if (!sizeAnimating()) {
       const wlr_box& geometry = geometryBox();
       if (m_decoration.borderGeometryStale(geometry.width, geometry.height, titleBarHeight())) {

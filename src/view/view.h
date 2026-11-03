@@ -686,6 +686,8 @@ namespace umbriel {
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
+    // A tiled size configure the client has not yet answered with a matching commit.
+    bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
     // client's possibly stale committed geometry. A later arrange can move its cached logical box independently.
     bool tiledOpeningActive() const;

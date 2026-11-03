@@ -19,6 +19,7 @@
 struct wlr_ext_workspace_group_handle_v1;
 struct wlr_ext_workspace_handle_v1;
 struct wlr_ext_workspace_manager_v1;
+struct wl_event_source;
 struct wlr_scene_tree;
 struct wlr_scene_node;
 struct fx_effect_shader;
@@ -274,6 +275,8 @@ namespace umbriel {
     void trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox);
     // Drop `view` from the running motion without touching its presentation; the caller now owns its box.
     void releaseLayoutMotion(View* view);
+    // A tiled member committed; presents a held snap layout once every resized member has drawn its new size.
+    void handleTiledCommit(View* view);
     // The running motion's progress, for the windows_move shader; null when no motion runs.
     const AnimatedValue* layoutMotionValue() const;
     // Advances the motion; true while it is still running.
@@ -382,6 +385,23 @@ namespace umbriel {
       std::vector<ViewEntry> views;
     };
     LayoutMotion m_motion;
+    // Without windows_move a reflow snaps, but a resized client has not drawn its new size yet. The old layout stays on
+    // screen until every resized member commits its configure, or the deadline passes, and then all members land
+    // together.
+    struct SnapHold {
+      struct Entry {
+        View* view = nullptr;
+        wlr_box to{};
+      };
+      std::vector<Entry> members;
+      std::vector<View*> resized;
+    };
+    SnapHold m_snapHold;
+    wl_event_source* m_snapHoldDeadline = nullptr;
+    void holdSnap(SnapHold hold);
+    void releaseSnapHold();
+    void cancelSnapHold();
+    static int onSnapHoldDeadline(void* data);
     struct TrackedCloseSnapshot {
       CloseSnapshotId id = kInvalidCloseSnapshot;
       wlr_box canvas{};
