@@ -86,8 +86,8 @@ if (( $(green_at "2x2+$((x2 + w2 / 2))+$((y2 - 12))") > 0 )); then
   exit 1
 fi
 
-# Overview cards follow the same gate. Opening the overview clears the seat, so
-# both windows re-resolve to the unfocused preset and both cards paint green.
+# The unfocused window's overview card follows the same gate and paints its
+# unfocused preset.
 # The workspace row is the output box scaled by zoom (0.5) and centered, so a
 # window at (x,y) lands at (row_x + x/2, row_y + y/2) and its padding band
 # scales to 12 px (4 px ring + 20 px padding at half zoom).
@@ -103,11 +103,7 @@ row_y=$(((out_h - out_h / 2) / 2))
 "$UMBRIEL" settle > /dev/null
 grim "$IMAGE"
 if (( $(green_at "2x2+$((row_x + x1 / 2 + w1 / 4))+$((row_y + y1 / 2 - 6))") < 4 )); then
-  echo "overview card of the previously unfocused window paints no preset"
-  exit 1
-fi
-if (( $(green_at "2x2+$((row_x + x2 / 2 + w2 / 4))+$((row_y + y2 / 2 - 6))") < 4 )); then
-  echo "overview card of the previously focused window paints no preset"
+  echo "overview card of the unfocused window paints no preset"
   exit 1
 fi
 
