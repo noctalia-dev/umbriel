@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 
+#include <functional>
 #include <memory>
 #include <string_view>
 
@@ -26,6 +27,7 @@ namespace umbriel {
     [[nodiscard]] wlr_renderer* createRenderer();
     [[nodiscard]] bool verifyOpenDevices(std::string_view context);
     void markStarted();
+    void setDrmBackendRemovedHandler(std::function<void(const wlr_backend*)> handler);
 
   private:
     class Impl;
