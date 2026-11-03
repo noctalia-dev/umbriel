@@ -87,6 +87,7 @@ namespace umbriel {
           boolean("tearing", &O::allowTearing),
           boolean("direct_scanout", &O::directScanout),
           optionalEffectField("screen_effect", &O::screenEffect),
+          optionalEffectField("screen_cast_effect", &O::screenCastEffect),
           registry::table("layout", &O::layout, layout),
           registry::integer("min_workspaces", 1, static_cast<int>(kMaxWorkspaces), &O::minWorkspaces),
           boolean("cyclic_workspaces", &O::cyclicWorkspaces),
@@ -186,7 +187,8 @@ namespace umbriel {
         std::erase_if(context.effectReferences, [&](const EffectReference& reference) {
           return std::ranges::any_of(loaded.outputs, [&](const OutputRule& existing) {
             return outputNamesEqual(existing.name, name)
-                && reference.context == "output." + existing.name + ".screen_effect";
+                && (reference.context == "output." + existing.name + ".screen_effect"
+                    || reference.context == "output." + existing.name + ".screen_cast_effect");
           });
         });
         std::erase_if(loaded.outputs, [&](const OutputRule& existing) {
@@ -200,6 +202,11 @@ namespace umbriel {
       recordRuleEffect(context, keys, "screen_effect", EffectKind::Screen, [&loaded, name] {
         if (OutputRule* output = findOutputRuleMutable(loaded, name)) {
           output->screenEffect.reset();
+        }
+      });
+      recordRuleEffect(context, keys, "screen_cast_effect", EffectKind::Screen, [&loaded, name] {
+        if (OutputRule* output = findOutputRuleMutable(loaded, name)) {
+          output->screenCastEffect.reset();
         }
       });
     }
