@@ -140,7 +140,7 @@ With no effect roots and drag physics off (unused pool declarations are not root
 
 With effects selected:
 
-- **Border:** a capture and one program pass per frame on each window the gate draws — the focused window, or every gated window with `border_unfocused`; effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
+- **Border:** a capture and one program pass per frame on each window the gate draws (the focused window, or every gated window with `border_unfocused`); effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
 - **Window and overlay:** a copy of the target under the window and one program pass per window per frame.
 - **Screen and cursor:** one in-place pass over the output or the cursor square; direct scanout off on that output only.
 - **Drag physics:** only while a window is held or settling; the drag slot is transient, so the scene-wide policy applies on every output for that time. The deformation program runs up to 22 inverse-lookup iterations per pixel.
