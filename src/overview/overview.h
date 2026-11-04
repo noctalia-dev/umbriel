@@ -374,6 +374,8 @@ namespace umbriel {
     // The window a focus or close action would act on right now: the focused view of the active workspace on the
     // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
     View* liveTargetView() const;
+    // The overview holds the keyboard, but the live target keeps its focus chrome and active state.
+    void activateLiveTarget();
     std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
     void assignShortcuts();
     void renderCardShortcut(Card& card);
