@@ -23,7 +23,8 @@ static double get_surface_preferred_buffer_scale(struct wlr_scene* scene, struct
   wl_list_for_each(surface_output, &surface->current_outputs, link) {
     double outputScale = surface_output->output->scale;
     if (scene->preferred_scale_provider != NULL) {
-      outputScale = scene->preferred_scale_provider(surface_output->output, scene->preferred_scale_provider_data);
+      outputScale =
+          scene->preferred_scale_provider(surface_output->output, surface, scene->preferred_scale_provider_data);
     }
     // A provider answer of 0 or below excludes the output: a capture mirror's
     // synthetic output shares the surface but must not drive its hints. A

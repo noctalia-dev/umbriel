@@ -644,6 +644,10 @@ namespace umbriel {
       m_allowShortcutsInhibit = allowed;
       m_server->refreshKeyboardShortcutsInhibitors();
     }
+    if (rule.supersample != m_appliedSupersampleRule) {
+      m_appliedSupersampleRule = rule.supersample;
+      refreshScaleHints();
+    }
     const std::optional<TitleBarMode> titleBarMode = rule.titleBar;
     if (m_titleBarMode != titleBarMode) {
       m_titleBarMode = titleBarMode;

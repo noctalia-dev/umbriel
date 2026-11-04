@@ -587,6 +587,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   app.focusOnActivate = false;
   app.vrr = VrrMode::Disabled;
   app.allowTearing = false;
+  app.supersample = false;
   app.allowShortcutsInhibit = false;
   app.hdr = umbriel::HdrMode::Off;
   app.defaultPosition = umbriel::WindowPosition{
@@ -602,6 +603,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   title.focusOnActivate = true;
   title.vrr = VrrMode::Always;
   title.allowTearing = true;
+  title.supersample = true;
   title.allowShortcutsInhibit = true;
   title.hdr = umbriel::HdrMode::On;
   title.defaultPinned = false;
@@ -630,6 +632,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(resolved.focusOnActivate && *resolved.focusOnActivate);
   CHECK(resolved.vrr == VrrMode::Always);
   CHECK(resolved.allowTearing && *resolved.allowTearing);
+  CHECK(resolved.supersample && *resolved.supersample);
   CHECK(resolved.allowShortcutsInhibit && *resolved.allowShortcutsInhibit);
   CHECK(resolved.hdr == umbriel::HdrMode::On);
 
@@ -639,6 +642,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(appOnly.defaultScrollingColumnOrder && *appOnly.defaultScrollingColumnOrder == 20);
   CHECK(appOnly.vrr == VrrMode::Disabled);
   CHECK(appOnly.allowTearing && !*appOnly.allowTearing);
+  CHECK(appOnly.supersample && !*appOnly.supersample);
   CHECK(appOnly.allowShortcutsInhibit && !*appOnly.allowShortcutsInhibit);
   CHECK(appOnly.hdr == umbriel::HdrMode::Off);
 

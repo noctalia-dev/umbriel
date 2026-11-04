@@ -15,7 +15,9 @@
 // HOLD_SIZE keeps the default dimensions while acknowledging configures, exposing compositor-only resize scaling.
 // TITLE_AFTER_CONFIGURE sets the opening title after the first configure and before committing the first buffer.
 // RESIZE_BEFORE_MAP uses the default dimensions for that first buffer, then follows later configures normally.
+// CONTENT_TYPE (game or video) sets that wp_content_type_v1 hint before the initial commit.
 
+#include "content-type-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "parse_ints.h"
 #include "server-decoration-client-protocol.h"
@@ -48,6 +50,7 @@ namespace {
     xdg_wm_base* wmBase = nullptr;
     wp_viewporter* viewporter = nullptr;
     wp_fractional_scale_manager_v1* scaleManager = nullptr;
+    wp_content_type_manager_v1* contentTypeManager = nullptr;
     wl_surface* surface = nullptr;
     wp_viewport* viewport = nullptr;
     xdg_surface* xdgSurface = nullptr;
@@ -342,6 +345,12 @@ namespace {
       state.scaleManager = static_cast<wp_fractional_scale_manager_v1*>(
           wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1)
       );
+    } else if (
+        strcmp(interface, wp_content_type_manager_v1_interface.name) == 0 && std::getenv("CONTENT_TYPE") != nullptr
+    ) {
+      state.contentTypeManager = static_cast<wp_content_type_manager_v1*>(
+          wl_registry_bind(registry, name, &wp_content_type_manager_v1_interface, 1)
+      );
     }
   }
 
@@ -409,6 +418,17 @@ int main(int argc, char** argv) {
   wp_fractional_scale_v1* fractionalScale =
       wp_fractional_scale_manager_v1_get_fractional_scale(state.scaleManager, state.surface);
   wp_fractional_scale_v1_add_listener(fractionalScale, &kFractionalScaleListener, &state);
+  if (const char* type = std::getenv("CONTENT_TYPE"); type != nullptr) {
+    if (state.contentTypeManager == nullptr) {
+      std::println(stderr, "fractional-client: content type manager unavailable");
+      return 1;
+    }
+    wp_content_type_v1* contentType =
+        wp_content_type_manager_v1_get_surface_content_type(state.contentTypeManager, state.surface);
+    wp_content_type_v1_set_content_type(
+        contentType, strcmp(type, "video") == 0 ? WP_CONTENT_TYPE_V1_TYPE_VIDEO : WP_CONTENT_TYPE_V1_TYPE_GAME
+    );
+  }
 
   // Legacy clients can select decorations before assigning the xdg role.
   if (const char* mode = std::getenv("LEGACY_DECORATION"); mode != nullptr) {

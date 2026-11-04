@@ -473,6 +473,16 @@ namespace umbriel {
     return rule == nullptr || rule->directScanout;
   }
 
+  double Output::surfaceRenderScale(wlr_surface* surface) const {
+    // Subsurfaces and popups answer for their window, so a game or video
+    // drawing into a subsurface stays with the rest of its window.
+    View* view = surface != nullptr ? View::fromSurface(wlr_surface_get_root_surface(surface)) : nullptr;
+    if (view != nullptr && !view->supersampled()) {
+      return static_cast<double>(m_output->scale);
+    }
+    return clientRenderScale();
+  }
+
   double Output::clientRenderScale() const {
     const OutputRule* rule = findOutputRule(config(), identity());
     return rule != nullptr && rule->renderScale.has_value() ? *rule->renderScale : static_cast<double>(m_output->scale);
@@ -1350,8 +1360,8 @@ namespace umbriel {
     }
     // The hints carry the render scale alone: the scene samples the larger
     // buffers down to the output's `scale` raster, and logical geometry is
-    // untouched.
-    const double renderScale = self->clientRenderScale();
+    // untouched. Must match the scene's preferred scale provider (server.cpp).
+    const double renderScale = self->surfaceRenderScale(surface);
     wlr_fractional_scale_v1_notify_scale(surface, renderScale);
     wlr_surface_set_preferred_buffer_scale(surface, static_cast<int32_t>(std::ceil(renderScale)));
   }

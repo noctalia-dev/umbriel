@@ -43,7 +43,9 @@ static struct wlr_surface_output* membership(struct wlr_surface* surface, struct
 // the client render scale, anything else is a capture mirror's synthetic
 // output and is excluded with a non-positive answer.
 static struct wlr_output* monitor_wlr;
-static double provider_scale(struct wlr_output* output, void* data) { return output == monitor_wlr ? 2.0 : -1.0; }
+static double provider_scale(struct wlr_output* output, struct wlr_surface* surface, void* data) {
+  return output == monitor_wlr ? 2.0 : -1.0;
+}
 
 int main(void) {
   struct wl_display* display = wl_display_create();

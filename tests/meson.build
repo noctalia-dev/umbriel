@@ -311,6 +311,8 @@ fractional_client = executable(
     legacy_decoration_client_c,
     xdg_decoration_client_h,
     xdg_decoration_client_c,
+    content_type_client_h,
+    content_type_client_c,
   ],
   dependencies: [wayland_client_dep],
 )
