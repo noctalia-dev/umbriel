@@ -266,6 +266,8 @@ namespace umbriel {
 
   bool View::confinePointer() { return resolvedRules().confinePointer.value_or(false); }
 
+  double View::scrollFactor() { return resolvedRules().scrollFactor.value_or(1.0); }
+
   bool View::allowsShortcutsInhibit() { return resolvedRules().allowShortcutsInhibit.value_or(true); }
 
   std::optional<bool> View::tearingRuleOverride() { return resolvedRules().allowTearing; }

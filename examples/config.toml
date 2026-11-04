@@ -348,6 +348,11 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Scroll more slowly on the touchpad in one application.
+# [[window_rule]]
+# match.app_id = "^chromium$"
+# scroll_factor = 0.5
+
 # Keep compositor shortcuts available while a virtual machine window is focused.
 # [[window_rule]]
 # match.app_id = "^virt-manager$"
