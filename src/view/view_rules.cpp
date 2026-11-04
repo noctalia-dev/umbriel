@@ -239,7 +239,7 @@ namespace umbriel {
       changed = true;
     }
     const bool applied = applyAloneRuleEffects(delta);
-    m_lastAloneDelta = delta;
+    m_lastAloneDelta = std::move(delta);
     m_aloneEffectsActive = applied;
     return changed || applied;
   }
