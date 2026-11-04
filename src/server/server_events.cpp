@@ -742,6 +742,13 @@ namespace umbriel {
               : isTouchpad                             ? "input.touchpad.sensitivity"
                                                        : "input.mouse.sensitivity"
       );
+      if (isTouchpad) {
+        // libinput hands gestures out relative to the speed it was configured with: flat delivers roughly half of
+        // what adaptive does on these touchpads, and sensitivity scales it by 1 + sensitivity. Keep the projection
+        // curve on the same finger speeds by shifting it by the same factor.
+        const double profileScale = accelProfile && accelProfile->kind == AccelProfile::Kind::Flat ? 0.48 : 1.0;
+        setCoastSpeedScale(profileScale * (1.0 + sensitivity.value_or(0.0)));
+      }
     }
 
     // A touchscreen is a physical panel, so with no map_to_output it follows the output the device reports, or else

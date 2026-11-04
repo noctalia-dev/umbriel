@@ -1,9 +1,18 @@
 #include "input/swipe_tracker.h"
 
+#include <algorithm>
 #include <cmath>
 #include <ranges>
 
 namespace umbriel {
+
+  namespace {
+    double gCoastSpeedScale = 1.0;
+  }
+
+  void setCoastSpeedScale(double scale) { gCoastSpeedScale = std::clamp(scale, 0.2, 3.0); }
+
+  double coastSpeedScale() { return gCoastSpeedScale; }
 
   void SwipeTracker::push(double delta, uint32_t timeMsec) {
     // For the events we care about, timestamps should always increase monotonically.
@@ -48,7 +57,26 @@ namespace umbriel {
 
   double SwipeTracker::projectedEndPos() const {
     const double vel = velocity();
-    return m_pos - vel / (1000.0 * std::log(kDecelerationTouchpad));
+    const double speed = std::abs(vel);
+    if (speed <= 0.0) {
+      return m_pos;
+    }
+
+    // Asymmetric S-curve over the release speed. A bare sigmoid would already project half a page at zero speed, so
+    // subtract its value at zero and renormalize: a slow release projects nothing, hard flicks saturate at the ceiling.
+    // The whole curve shifts with the configured libinput acceleration so the same finger speeds keep landing on the
+    // same pages.
+    const double scale = coastSpeedScale();
+    const double mid = kCoastMidSpeed * scale;
+    const double wideWidth = kCoastWidthSlow * scale;
+    const double width = (speed < mid ? wideWidth : kCoastWidthFast * scale);
+    const double base = 1.0 / (1.0 + std::exp(mid / wideWidth));
+    const double curve = 1.0 / (1.0 + std::exp(-(speed - mid) / width));
+    // A small floor fades in with speed so an ordinary slow release still flips the nearest page, while a dead stop
+    // projects nothing.
+    const double floor = 0.5 * kSwipeViewportPx * (1.0 - std::exp(-speed / 1500.0));
+    const double projection = floor + kCoastMaxPx * (curve - base) / (1.0 - base);
+    return m_pos + std::copysign(projection, vel);
   }
 
   void SwipeTracker::trimHistory(uint32_t nowMsec) {
