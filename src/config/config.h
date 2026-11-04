@@ -989,6 +989,9 @@ namespace umbriel {
       bool shortcuts = true;
       // Favorite badge keys in preference order, one ASCII character each.
       std::string shortcutKeys = "1234567890";
+      // Also pan the filmstrip when the right button is held and dragged, like the middle button. A right
+      // release never closes a card; middle keeps its close-on-release behavior.
+      bool rightButtonPan = false;
       bool operator==(const Overview&) const = default;
     } overview;
 
