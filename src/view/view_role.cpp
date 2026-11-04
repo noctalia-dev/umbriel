@@ -117,14 +117,15 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_fullscreen(m_toplevel, fullscreen);
-      // Fullscreen windows skip the supersample (see supersampled()); the hint
-      // goes out ahead of the configure.
-      refreshScaleHints();
     } else {
       m_xState.fullscreen = fullscreen;
       m_xFullscreenSize.reset();
       wlr_xwayland_surface_set_fullscreen(m_xsurface, fullscreen);
     }
+    // Fullscreen windows skip the supersample (see supersampled()); the hint
+    // goes out ahead of any resulting configure, for X11 views too so the
+    // invariant "re-send whenever supersampled() reads changes" holds.
+    refreshScaleHints();
     syncSsdFrame();
   }
 
