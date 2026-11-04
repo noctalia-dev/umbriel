@@ -208,6 +208,7 @@ namespace umbriel {
           boolean("blur", &W::blur),
           boolean("blur_popups", &W::blurPopups),
           boolean("blur_optimized", &W::blurOptimized),
+          real("dim_behind", 0.0, 1.0, &W::dimBehind),
           real("opacity", 0.0, 1.0, &W::opacity),
           real("blur_ignore_alpha", 0.0, 1.0, &W::blurIgnoreAlpha),
           color("border_color_focused", &W::borderColorFocused),
@@ -341,6 +342,7 @@ namespace umbriel {
           registry::table<L>(
               "match", [](auto& rule) -> auto& { return rule; }, match
           ),
+          registry::real("dim_behind", 0.0, 1.0, &L::dimBehind),
           registry::boolean("blur", &L::blur),
           registry::boolean("blur_popups", &L::blurPopups),
           registry::real("blur_ignore_alpha", 0.0, 1.0, &L::ignoreAlpha),

@@ -5174,4 +5174,63 @@ UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
   CHECK(store.config().windowRules[0].defaultScrollingExtent.value_or(0.0) == 1.5);
 }
 
+UMBRIEL_TEST(dimBehindRulesMergeAndValidate) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.app_id = "^launcher$"
+dim_behind = 0.5
+[[window_rule]]
+match.app_id = "^launcher$"
+blur = true
+[[window_rule]]
+match.app_id = "^launcher$"
+match.is_focused = false
+dim_behind = 0.0
+[[layer_rule]]
+match.namespace = "^launcher$"
+dim_behind = 0.6
+[[layer_rule]]
+match.namespace = "^launcher$"
+blur = true
+[[layer_rule]]
+match.namespace = "^launcher$"
+match.layer = "bottom"
+dim_behind = 0.0
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  umbriel::WindowRuleState state;
+  state.focused = true;
+  const auto window = [&](const char* appId) {
+    return umbriel::resolveWindowRules(store.config(), appId, "title", std::nullopt, ContentType::None, state, 0);
+  };
+  CHECK(window("launcher").dimBehind == 0.5);
+  CHECK(!window("other").dimBehind.has_value());
+  state.focused = false;
+  CHECK(window("launcher").dimBehind == 0.0);
+  using Layer = umbriel::LayerShellLayer;
+  CHECK(umbriel::resolveLayerRules(store.config(), "launcher", Layer::Overlay, 0).dimBehind == 0.6);
+  CHECK(umbriel::resolveLayerRules(store.config(), "launcher", Layer::Bottom, 0).dimBehind == 0.0);
+  CHECK(!umbriel::resolveLayerRules(store.config(), "other", Layer::Overlay, 0).dimBehind.has_value());
+  auto changedWindow = store.config().windowRules[0];
+  changedWindow.dimBehind = 0.25;
+  CHECK(changedWindow != store.config().windowRules[0]);
+  auto changedLayer = store.config().layerRules[0];
+  changedLayer.dimBehind = 0.25;
+  CHECK(changedLayer != store.config().layerRules[0]);
+  file.write("[[window_rule]]\ndim_behind = 2.0\n[[layer_rule]]\ndim_behind = -1.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].dimBehind == 1.0);
+  CHECK(store.config().layerRules[0].dimBehind == 0.0);
+  CHECK(containsDiagnostic(store, "dim_behind"));
+  file.write("[[window_rule]]\ndim_behind = true\n[[layer_rule]]\ndim_behind = \"dark\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].dimBehind.has_value());
+  CHECK(!store.config().layerRules[0].dimBehind.has_value());
+  CHECK(containsDiagnostic(store, "dim_behind"));
+}
+
 int main() { return RUN_TESTS(); }

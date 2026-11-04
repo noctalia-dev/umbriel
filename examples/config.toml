@@ -450,3 +450,9 @@ action = "overview-open"
 # Shade over a window while a modal dialog is attached to it.
 # [animation.dialogs]
 # dim = 0.3
+
+# Darken the output below a launcher while it is visible:
+# [[layer_rule]]
+# match.namespace = "^vicinae$"
+# dim_behind = 0.5
+# Window rules accept dim_behind too; see docs/user/window-rules.md.

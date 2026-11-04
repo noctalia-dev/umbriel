@@ -1896,6 +1896,13 @@ namespace umbriel {
       m_workspaceGroup->refreshReveal();
     }
     updateFullscreenStack();
+    // Refresh after arrangement and animation so stacking and output transfers are current.
+    for (const auto& view : m_server->views()) {
+      view->updateDimBehind();
+    }
+    for (const auto& layer : m_server->layerSurfaces()) {
+      layer->updateDimBehind();
+    }
 
     // A direct-scanned fullscreen client may stop submitting as soon as it loses focus. On VRR outputs that can leave
     // the first workspace-switch frame waiting on the old client, so the compositor never gets a vblank to advance the

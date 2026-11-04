@@ -181,6 +181,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 
 | Key                       | Description                                                                                                                                                                                                                                                            |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dim_behind`              | Darken content below this window on its output; `0.0`–`1.0`, default `0.0`.                                                                                                                                                                                            |
 | `opacity`                 | Surface opacity from 0.0 to 1.0.                                                                                                                                                                                                                                       |
 | `blur`                    | Enable or disable window blur, including translucent Umbriel title bars.                                                                                                                                                                                               |
 | `blur_popups`             | Apply blur to descendant XDG popups.                                                                                                                                                                                                                                   |
@@ -438,3 +439,13 @@ Protection also covers decorations, shadows, overview cards, and closing images,
 X11 transients with a known owner inherit its protection. When an X11 popup has no reliable parent, Umbriel conservatively excludes it while any X11 window is protected; this can also hide unrelated X11 menus and notifications from capture. A protected window that changes into an unmanaged popup keeps its protection until it becomes managed again.
 
 Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.
+
+## Dim behind
+
+```toml
+[[window_rule]]
+match.app_id = "^launcher$"
+dim_behind = 0.5
+```
+
+While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.

@@ -100,6 +100,7 @@ namespace umbriel {
     bool configureOutstanding() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
+    void updateDimBehind();
     // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
     // schedule it through Server::scheduleSuspensionSync.
     void syncSuspendedState();

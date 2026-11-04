@@ -493,6 +493,15 @@ bool wlr_scene_node_coords(struct wlr_scene_node* node, int* lx, int* ly);
  * Returns false if the observer cannot be allocated.
  */
 bool wlr_scene_node_add_update_listener(struct wlr_scene_node* node, struct wl_listener* listener);
+
+/**
+ * Update an input-transparent black backdrop below node, outside its transforms
+ * and captures. box is in layout coordinates; alpha is in [0, 1]. NULL disables
+ * it. Refresh after arranging/animating, before rendering. Ancestor clips and
+ * owner coverage limit visibility. The backdrop is destroyed with the owner.
+ * Returns false on allocation failure.
+ */
+bool wlr_scene_node_set_dim_behind(struct wlr_scene_node* node, const struct wlr_box* box, float alpha);
 /**
  * Call `iterator` on each buffer in the scene-graph, with the buffer's
  * position in layout coordinates. The function is called from root to leaves

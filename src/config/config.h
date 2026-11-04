@@ -470,6 +470,7 @@ namespace umbriel {
     // true forces async preference, and false vetoes it.
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity; // 0.0-1.0
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -536,6 +537,7 @@ namespace umbriel {
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
+          && dimBehind == other.dimBehind
           && opacity == other.opacity
           && blur == other.blur
           && blurPopups == other.blurPopups
@@ -585,6 +587,7 @@ namespace umbriel {
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -618,6 +621,7 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
 
@@ -628,6 +632,7 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && blur == other.blur
           && blurPopups == other.blurPopups
+          && dimBehind == other.dimBehind
           && ignoreAlpha == other.ignoreAlpha
           && optimized == other.optimized;
     }
@@ -636,6 +641,7 @@ namespace umbriel {
   struct ResolvedLayerRule {
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
     bool operator==(const ResolvedLayerRule&) const = default;
