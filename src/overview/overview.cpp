@@ -669,6 +669,14 @@ namespace umbriel {
     return workspace != nullptr ? workspace->focusedView() : nullptr;
   }
 
+  void Overview::activateLiveTarget() {
+    if (View* target = liveTargetView()) {
+      target->placementRoot()->inputDelegate()->applySeatFocus(false, false);
+    } else {
+      m_server->deactivateViews();
+    }
+  }
+
   void Overview::syncCardEffects(Card& card) {
     View* view = card.view;
     Workspace* workspace = view->workspace();
@@ -1789,6 +1797,7 @@ namespace umbriel {
     }
 
     m_server->clearKeyboardFocus();
+    activateLiveTarget();
     m_server->cursor()->clearPointerFocus();
     m_server->cursor()->clearConstraint();
 
@@ -2042,8 +2051,8 @@ namespace umbriel {
     } else {
       m_server->refocus();
     }
-    // Focus chrome changed while the windows were hidden (the open cleared it, focus returned during the close or
-    // just now), so they reappear with the settled result.
+    // Focus chrome changed while the windows were hidden (the live target moved during the overview, focus returned
+    // during the close or just now), so they reappear with the settled result.
     for (const auto& view : m_server->registry().all()) {
       view->settleFocusChrome();
     }
@@ -2814,6 +2823,7 @@ namespace umbriel {
     if (Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
         output != m_pointerOutput) {
       m_pointerOutput = output;
+      activateLiveTarget();
       applyProgress();
     }
     if (m_middlePressed) {
