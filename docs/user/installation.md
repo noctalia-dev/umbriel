@@ -203,9 +203,9 @@ If you generate the config from Nix, you can reference the package directly inst
 "${config.programs.umbriel.package}/share/umbriel/effects/border/pulse/effect.toml"
 ```
 
-### Void Linux
+## Void Linux
 
-Umbriel is provided by third-party repository [`UniversalRepository`](https://universalrepo.pages.dev)
+Umbriel is provided by the third-party repository [`UniversalRepository`](https://universalrepo.pages.dev).
 
 ### Install repository
 
@@ -213,13 +213,13 @@ Umbriel is provided by third-party repository [`UniversalRepository`](https://un
 echo 'repository=https://universalrepo.pages.dev/void' | sudo tee /etc/xbps.d/10-universalrepository.conf
 ```
 
-### Sync and import the signkey
+### Sync and import the signing key
 
 ```bash
 sudo xbps-install -S
 ```
 
-### Install noctalia
+### Install Umbriel
 
 ```bash
 sudo xbps-install -S umbriel
