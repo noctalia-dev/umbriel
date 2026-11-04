@@ -19,12 +19,6 @@ namespace umbriel {
   inline constexpr double kCoastWidthSlow = 14000.0;
   inline constexpr double kCoastWidthFast = 9500.0;
 
-  // Scales the coast curve with the libinput acceleration this compositor configured for touchpads: flat and low
-  // sensitivity deliver smaller gesture deltas, so the same finger motion must reach the curve's middle band earlier.
-  // The default 1.0 matches libinput's adaptive profile at sensitivity 0.
-  void setCoastSpeedScale(double scale);
-  [[nodiscard]] double coastSpeedScale();
-
   // Sliding-window swipe tracker. Accumulates deltas since the gesture start, estimates velocity over recent history
   // only, and projects where the movement would coast to a stop under the speed-dependent gain.
   class SwipeTracker {
