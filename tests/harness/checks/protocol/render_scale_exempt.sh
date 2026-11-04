@@ -49,9 +49,15 @@ echo "plain window: $presented"
 expect "$presented" "scale 240/120" "a plain window was not supersampled"
 
 output_size=$("$UMBRIEL" outputs --json | jq -r '.[0].modes[] | select(.current) | "\(.width)x\(.height)"')
-before=$(grep -c '^mapped ' "$PLAIN_LOG")
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-presented=$(next_presentation "$PLAIN_LOG" "$before")
+# The hint goes out ahead of the fullscreen configure, so the eager test
+# client can present once at the old size with the new scale. Wait for the
+# fullscreen presentation itself, then assert on it.
+await_lines "$PLAIN_LOG" "mapped .*buffer $output_size " 1 0.05 > /dev/null || {
+  echo "no fullscreen presentation in $PLAIN_LOG: $(tr '\n' '|' < "$PLAIN_LOG")" >&2
+  exit 1
+}
+presented=$(grep '^mapped ' "$PLAIN_LOG" | grep "buffer $output_size " | tail -1)
 echo "fullscreen on a ${output_size} output: $presented"
 expect "$presented" "scale 150/120" "a fullscreen window was asked to render at render_scale"
 expect "$presented" "buffer $output_size" "a fullscreen buffer is not the output's physical mode"
