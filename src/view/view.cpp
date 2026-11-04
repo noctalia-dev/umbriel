@@ -512,6 +512,9 @@ namespace umbriel {
     if (m_workspace != target) {
       return false;
     }
+    if (origin == LayoutAttachOrigin::OpeningView && !rule.defaultScratchpad) {
+      registerOpeningAloneColumn();
+    }
     target->layoutAttach(this, rule.defaultScrollingExtent, rule.defaultScrollingExtentPx, origin);
     return true;
   }

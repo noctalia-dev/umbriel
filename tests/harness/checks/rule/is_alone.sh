@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# `match.is_alone` selects rules from the workspace's tiled set, which only a
-# running layout produces. A window that opens as the only tiled one is
-# configured in its alone state before its first buffer, at the alone width and
-# maximized. Both give way when a second window joins, and the width comes back
-# when that window goes away. A pinned window floats, so it never opens in the
-# alone state, whether its rules leave the tiled decision to the client or ask
-# for tiling on unpin.
+# `match.is_alone` selects rules from the workspace's tiled columns, which only a
+# running layout produces. A window that opens in the only column is configured
+# in its alone state before its first buffer, at the alone width and maximized.
+# The column can stack another window without ending that state, while a new
+# column does. The width comes back when the new column goes away. Fullscreen
+# and maximize-to-edges need the window to be the only tile, so a window joining
+# the column ends those. A pinned window floats, so it never opens in the alone
+# state, whether its rules leave the tiled decision to the client or ask for
+# tiling on unpin.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
@@ -48,6 +50,31 @@ default_pinned = true
 [[window_rule]]
 match.title = "^pinned-tiled$"
 default_floating = false
+
+[[window_rule]]
+match.title = "^column-wide$"
+match.is_alone = true
+default_scrolling_column = "alone-column"
+default_scrolling_extent = 0.75
+
+[[window_rule]]
+match.title = "^column-peer$"
+default_scrolling_column = "alone-column"
+
+[[window_rule]]
+match.title = "^column-edge$"
+match.is_alone = true
+default_scrolling_column = "alone-edge"
+default_maximize_to_edges = true
+
+[[window_rule]]
+match.title = "^column-edge-peer$"
+default_scrolling_column = "alone-edge"
+
+[[window_rule]]
+match.title = "^column-edge-peer$"
+match.is_alone = true
+default_maximize_to_edges = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -200,4 +227,75 @@ for title in pinned-default pinned-tiled; do
   wait_gone "$title"
 done
 
-echo "is_alone configured the width and the maximized state at open, never on a pinned window: width $alone -> $shared -> $restored, maximized width $maximized_width -> $shared_width"
+# A second window that joins the same scrolling column keeps is_alone true, so the alone width stays. A new column
+# ends it, and the width comes back once that column is gone.
+"$CLIENT" column-wide > "$UMBRIEL_RUNTIME_DIR/column-wide.log" 2>&1 &
+column_wide_pid=$!
+wait_mapped column-wide
+column_alone=$(width_of column-wide)
+
+"$CLIENT" column-peer > "$UMBRIEL_RUNTIME_DIR/column-peer.log" 2>&1 &
+column_peer_pid=$!
+wait_mapped column-peer
+column_shared=$(width_of column-wide)
+if ((column_shared != column_alone)); then
+  echo "a window joining the only column changed the alone width: alone=$column_alone shared=$column_shared"
+  exit 1
+fi
+
+"$CLIENT" column-other > "$UMBRIEL_RUNTIME_DIR/column-other.log" 2>&1 &
+column_other_pid=$!
+wait_mapped column-other
+column_split=$(width_of column-wide)
+if ((column_split >= column_alone)); then
+  echo "the alone width survived a new column: alone=$column_alone split=$column_split"
+  exit 1
+fi
+
+kill "$column_other_pid"
+wait_gone column-other
+column_restored=$(width_of column-wide)
+if ((column_restored != column_alone)); then
+  echo "the alone width did not come back with the only column: restored=$column_restored alone=$column_alone"
+  exit 1
+fi
+
+kill "$column_peer_pid" "$column_wide_pid"
+wait_gone column-peer
+wait_gone column-wide
+
+# Fullscreen and maximize-to-edges still need the only tile. A peer joining the column keeps is_alone true but must
+# take the output-covering state away.
+"$CLIENT" column-edge > "$UMBRIEL_RUNTIME_DIR/column-edge.log" 2>&1 &
+column_edge_pid=$!
+wait_mapped column-edge
+for _ in $(seq 40); do
+  [[ $(field_of column-edge maximized_to_edges) == true ]] && break
+  sleep 0.1
+done
+if [[ $(field_of column-edge maximized_to_edges) != true ]]; then
+  echo "the alone maximize-to-edges never applied"
+  exit 1
+fi
+
+"$CLIENT" column-edge-peer > "$UMBRIEL_RUNTIME_DIR/column-edge-peer.log" 2>&1 &
+column_edge_peer_pid=$!
+wait_mapped column-edge-peer
+if [[ $(field_of column-edge-peer maximized_to_edges) != false ]]; then
+  echo "a window that opened into a shared column took maximize-to-edges"
+  exit 1
+fi
+for _ in $(seq 40); do
+  [[ $(field_of column-edge maximized_to_edges) == false ]] && break
+  sleep 0.1
+done
+if [[ $(field_of column-edge maximized_to_edges) != false ]]; then
+  echo "maximize-to-edges survived a second window in the only column"
+  exit 1
+fi
+
+kill "$column_edge_peer_pid" "$column_edge_pid"
+wait_gone column-edge-peer
+wait_gone column-edge
+
+echo "is_alone configured the width and the maximized state at open, never on a pinned window: width $alone -> $shared -> $restored, maximized width $maximized_width -> $shared_width; one column kept $column_alone across a peer and lost it to a new column, and its tile-only maximize-to-edges ended with that peer and never reached the peer's own opening"

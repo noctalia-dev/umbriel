@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# `match.is_alone` counts the tiled windows of a workspace, so a float beside a
-# window leaves it alone, which is what fullscreen, maximize, and extents want.
-# `match.is_only_window` asks the whole set instead, a float as much as a tile,
-# which is what the settings updated while a window is open want. The tiled
-# window here carries one rule of each: it must lose its opacity beside a float
-# and beside a tile alike, while its alone width survives the float and not the
-# tile.
+# `match.is_alone` asks about the workspace's only tiled column, so a float
+# beside a window leaves it alone, which is what fullscreen, maximize, and
+# extents want. `match.is_only_window` asks the whole set instead, a float as
+# much as a tile, which is what the settings updated while a window is open
+# want. The tiled window here carries one rule of each: it must lose its opacity
+# beside a float and beside a tile alike, while its alone width survives the
+# float and not the new tile column.
 set -euo pipefail
 
 readonly SCREENSHOT="$UMBRIEL_RUNTIME_DIR/rule-only-window.png"

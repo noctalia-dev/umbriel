@@ -302,6 +302,9 @@ namespace umbriel {
         setWorkspace(nullptr, false);
       }
       if (m_workspace != nullptr) {
+        if (!rule.defaultScratchpad) {
+          registerOpeningAloneColumn();
+        }
         m_workspace->layoutAttach(
             this, rule.defaultScrollingExtent, rule.defaultScrollingExtentPx, LayoutAttachOrigin::OpeningView
         );
@@ -736,6 +739,24 @@ namespace umbriel {
     m_server->scheduleIpcWorkspacesEvent();
     m_positioned = false;
     m_presentedTiledBox = {};
+    // A column outlives a window when other windows share it. Undo the column-wide effect this window owned before
+    // leaving, and let the survivors reapply their own alone rules on the arrange that follows. Fullscreen and
+    // maximize-to-edges cover the output only, so no survivor inherits them.
+    const bool columnWideEffect = m_aloneAction == AloneAction::Maximize || m_aloneAction == AloneAction::Width;
+    if (m_aloneEffectsActive && columnWideEffect && m_workspace != nullptr) {
+      const auto& columns = m_workspace->layout().columns();
+      const int column = m_workspace->layout().columnOf(this);
+      if (column >= 0
+          && column < static_cast<int>(columns.size())
+          && columns[static_cast<size_t>(column)].views.size() > 1) {
+        revertAloneRuleEffects();
+        for (View* other : columns[static_cast<size_t>(column)].views) {
+          if (other != this) {
+            other->m_lastAloneDelta = {};
+          }
+        }
+      }
+    }
     if (m_workspace != nullptr) {
       m_workspace->layoutDetach(this, m_tiled);
       if (focusRevealedTile) {
@@ -776,7 +797,7 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
-    // An unmapped window keeps no layout state, so the alone effect it owned is gone with it.
+    // An unmapped window keeps no layout state. Its alone effect was reverted above when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
     m_lastAloneDelta = {};
@@ -907,30 +928,46 @@ namespace umbriel {
           (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Stacking;
       wantTiled = wantTiled && !layoutFloats;
 
-      // A window that opens as the only tiled one on its workspace is configured in its `match.is_alone` state right
-      // away, instead of showing one frame at the size its not-alone rules give it. Alone-ness depends on the
-      // workspace those rules select, so this is a second pass, and it overrides only the four settings the alone
-      // effect owns. A state that neither the client nor the not-alone rules asked for is recorded as the alone
-      // rules' own, for map to hand to that effect.
-      if (wantTiled && (target == nullptr || target->isOnlyTiledView(this))) {
-        const ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      // A window that opens in the only tiled column is configured in its `match.is_alone` state right away, instead
+      // of showing one frame at the size its not-alone rules give it. Alone-ness depends on the workspace those rules
+      // select, so this is a second pass, and it overrides only the settings the alone effect owns. Fullscreen and
+      // maximize-to-edges still need this window to be the only tile in that column. A state that neither the client
+      // nor the not-alone rules asked for is recorded as the alone rules' own, for map to hand to that effect.
+      const bool openingSoleTiled = target == nullptr || target->isOnlyTiledView(this);
+      ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      const bool openingAlone = wantTiled
+          && (target == nullptr
+              || target->wouldBeAloneInLayout(
+                  this, alone.defaultScrollingColumn.value_or(""), alone.defaultScrollingColumnOrder
+              ));
+      if (openingAlone) {
+        if (!openingSoleTiled) {
+          alone.defaultFullscreen.reset();
+          alone.defaultMaximizeToEdges.reset();
+        }
         const bool seedFullscreen = alone.defaultFullscreen.value_or(false) && !rule.defaultFullscreen.value_or(false);
+        const bool seedMaximizeToEdges =
+            alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false);
         const bool seedMaximized =
             (alone.defaultMaximize.value_or(false) && !openingParented() && !rule.defaultMaximize.value_or(false))
-            || (alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false));
+            || seedMaximizeToEdges;
         // A client's restored maximize flag only blocks alone ownership when we honor it. Otherwise alone seeds as
         // usual and the restore is ignored (and consumed after map if the client re-asserts it).
         const bool clientOwnsRestoredMaximize = config().general.honorRestoredMaximize && requestedMaximized();
         if (seedFullscreen && !requestedFullscreen()) {
           m_aloneOpeningSeed = AloneSeed::Fullscreen;
         } else if (seedMaximized && !requestedFullscreen() && !clientOwnsRestoredMaximize) {
-          m_aloneOpeningSeed = AloneSeed::Maximize;
+          m_aloneOpeningSeed = seedMaximizeToEdges ? AloneSeed::MaximizeToEdges : AloneSeed::Maximize;
         }
-        rule.defaultFullscreen = alone.defaultFullscreen;
-        rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
+        if (openingSoleTiled) {
+          rule.defaultFullscreen = alone.defaultFullscreen;
+          rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
+        }
         rule.defaultMaximize = alone.defaultMaximize;
         rule.defaultScrollingExtentPx = alone.defaultScrollingExtentPx;
         rule.defaultScrollingExtent = alone.defaultScrollingExtent;
+        rule.defaultScrollingColumn = alone.defaultScrollingColumn;
+        rule.defaultScrollingColumnOrder = alone.defaultScrollingColumnOrder;
       }
 
       const bool wantFullscreen =

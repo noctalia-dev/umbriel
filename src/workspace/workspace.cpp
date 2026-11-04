@@ -130,6 +130,21 @@ namespace umbriel {
     // counts as company.
     bool sharesWorkspace(const View* view) { return view != nullptr && view->mapped() && !view->pinned(); }
 
+    // The sole non-empty column, or null while the layout holds no column or more than one.
+    const Column* onlyTiledColumn(const Layout& layout) {
+      const Column* only = nullptr;
+      for (const Column& column : layout.columns()) {
+        if (column.views.empty()) {
+          continue;
+        }
+        if (only != nullptr) {
+          return nullptr;
+        }
+        only = &column;
+      }
+      return only;
+    }
+
     bool displacedLayoutCurrent(const DisplacedWorkspace& origin) {
       return origin.transferredLayout ? origin.configGeneration >= configStore().workspaceLayoutGeneration()
                                       : origin.configGeneration == configStore().generation();
@@ -468,11 +483,8 @@ namespace umbriel {
     if (std::erase(m_views, view) > 0) {
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
-    if (view == m_lastAloneSoleView) {
-      // The window we remembered as the only one is gone: forget it, so another window that replaces it is still
-      // noticed as new.
-      m_lastAloneSoleView = nullptr;
-    }
+    // Drop the cached holders, so a replacement window is still noticed as new.
+    std::erase(m_lastAloneViews, view);
     if (view == m_lastOnlyWindowView) {
       m_lastOnlyWindowView = nullptr;
     }
@@ -522,6 +534,32 @@ namespace umbriel {
       }
     }
     return true;
+  }
+
+  bool Workspace::isAloneInLayout(const View* view) const {
+    const Column* only = onlyTiledColumn(*m_layout);
+    return only != nullptr && std::ranges::find(only->views, view) != only->views.end();
+  }
+
+  bool Workspace::wouldBeAloneInLayout(
+      const View* view, std::string_view namedScrollingColumn, std::optional<int> order
+  ) const {
+    const Column* only = onlyTiledColumn(*m_layout);
+    if (only == nullptr) {
+      // No column yet: the view starts the only one. More than one column means it cannot become alone.
+      return std::ranges::none_of(m_layout->columns(), [](const Column& column) { return !column.views.empty(); });
+    }
+    if (std::ranges::find(only->views, view) != only->views.end()) {
+      return true;
+    }
+    const ScrollingLayout* scrolling = scrollingLayout();
+    if (scrolling == nullptr || namedScrollingColumn.empty()) {
+      return false;
+    }
+    const std::optional<NamedScrollingColumnPlacement> placement =
+        namedScrollingColumnPlacement(*scrolling, view, namedScrollingColumn, order);
+    const auto index = static_cast<size_t>(only - m_layout->columns().data());
+    return placement.has_value() && placement->column == index;
   }
 
   bool Workspace::isOnlyVisibleView(const View* view) const {
@@ -828,26 +866,17 @@ namespace umbriel {
   }
 
   // Tells every window whether it is alone, and whether it is the workspace's only window, but only when one of those
-  // answers changed. It compares each answer's count and holder, and the config version, so every change is noticed
-  // (even one window replaced by another at the same time). The guard stops the window handlers from triggering another
-  // pass.
+  // answers changed. Alone follows the membership of the only tiled column; the other question compares its count and
+  // holder. The config version is part of both answers, so a reload is noticed even when no window moved and a window
+  // replaced by another at the same time is still seen as new. The guard stops the window handlers from triggering
+  // another pass.
   void Workspace::refreshAloneRuleStates() {
     if (m_refreshingAloneRules) {
       return;
     }
-    View* soleTiled = nullptr;
-    size_t tiledViewCount = 0;
-    for (const Column& column : m_layout->columns()) {
-      for (View* view : column.views) {
-        ++tiledViewCount;
-        if (tiledViewCount == 1) {
-          soleTiled = view;
-        }
-      }
-    }
-    if (tiledViewCount != 1) {
-      soleTiled = nullptr;
-    }
+    const Column* only = onlyTiledColumn(*m_layout);
+    const bool aloneChanged =
+        only != nullptr ? !std::ranges::equal(m_lastAloneViews, only->views) : !m_lastAloneViews.empty();
     View* soleVisible = nullptr;
     size_t visibleViewCount = 0;
     for (View* other : m_views) {
@@ -863,15 +892,17 @@ namespace umbriel {
       soleVisible = nullptr;
     }
     const uint64_t generation = configStore().generation();
-    if (tiledViewCount == m_lastAloneViewCount
-        && soleTiled == m_lastAloneSoleView
+    if (!aloneChanged
         && visibleViewCount == m_lastOnlyWindowCount
         && soleVisible == m_lastOnlyWindowView
         && generation == m_lastAloneGeneration) {
       return;
     }
-    m_lastAloneViewCount = tiledViewCount;
-    m_lastAloneSoleView = soleTiled;
+    if (only != nullptr) {
+      m_lastAloneViews = only->views;
+    } else {
+      m_lastAloneViews.clear();
+    }
     m_lastOnlyWindowCount = visibleViewCount;
     m_lastOnlyWindowView = soleVisible;
     m_lastAloneGeneration = generation;
