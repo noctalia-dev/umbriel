@@ -19,6 +19,7 @@ default_workspace = 2
 | `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
 | `match.is_focused`            | Match current focus state.                                                                    |
 | `match.is_floating`           | Match current floating state.                                                                 |
+| `match.is_fullscreen`         | Match fullscreen state (`true` or `false`).                                                   |
 | `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                                       |
 | `match.is_pinned`             | Match current pinned state.                                                                   |
 | `match.is_scratchpad`         | Match current scratchpad state.                                                               |
@@ -43,6 +44,16 @@ window_effect = "scanlines"
 Run `umbriel windows` to inspect current application IDs, titles, tags, and content types, or `umbriel focused-window` for the focused window only. Prefer `app_id` for placement because titles often change.
 
 State selectors update while the window is open. Opening settings are resolved before a rule's own state changes take effect, so a rule cannot select on the floating or pinned state that it creates.
+
+For example, disable window effects while a window is fullscreen:
+
+```toml
+[[window_rule]]
+match.is_fullscreen = true
+window_effect = "off"
+```
+
+This matches both Wayland and Xwayland windows and updates when fullscreen is entered or exited. Use `false` to match non-fullscreen windows. Maximizing a window does not make it fullscreen.
 
 ## Settings applied when a window opens
 

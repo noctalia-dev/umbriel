@@ -318,6 +318,11 @@ default_extent_fraction = 0.5
 # Rules combine in order, with later values overriding earlier ones.
 # https://docs.noctalia.dev/umbriel/window-rules/
 
+# Disable window effects while fullscreen.
+# [[window_rule]]
+# match.is_fullscreen = true
+# window_effect = "off"
+
 # Blur windows over the cached wallpaper blur. Set blur_optimized = false to
 # include overlapping windows behind them, at a GPU cost on every frame that
 # moves anything behind them.
