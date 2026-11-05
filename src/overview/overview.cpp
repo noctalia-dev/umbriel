@@ -1979,9 +1979,9 @@ namespace umbriel {
       applyProgress();
     }
     m_cardPresentationDirty = false;
-    // Card layout runs only while the overview moves; effects sync every tick and their time moves only on the card
-    // output's effect frames.
-    if (m_active && effectRegistry().active()) {
+    // Cards mirror their views' animation slots, whose timelines keep running after card layout settles. Persistent
+    // effect clocks advance only on the card output's effect frames.
+    if (m_active) {
       syncCardEffects();
     }
     for (const auto& state : m_outputs) {
