@@ -170,18 +170,19 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 
 ### Naming Conventions
 
-|                        | Convention           | Example                |
-| ---------------------- | -------------------- | ---------------------- |
-| Files                  | snake_case           | `session_lock.cpp`     |
-| Directories            | snake_case           | `input/`, `workspace/` |
-| Types / Classes        | PascalCase           | `SessionLock`          |
-| Functions / Methods    | camelCase            | `focusView()`          |
-| Variables / Parameters | camelCase            | `startupCmd`           |
-| Private members        | m_camelCase          | `m_sceneTree`          |
-| Constants              | k-prefixed constexpr | `kLayerCount`          |
-| Macros                 | SCREAMING_SNAKE_CASE | `UMBRIEL_VERSION`      |
+|                        | Convention           | Example                    |
+| ---------------------- | -------------------- | -------------------------- |
+| Files                  | snake_case           | `session_lock.cpp`         |
+| Directories            | snake_case           | `input/`, `workspace/`     |
+| Types / Classes        | PascalCase           | `SessionLock`              |
+| Functions / Methods    | camelCase            | `focusView()`              |
+| Variables / Parameters | camelCase            | `startupCmd`               |
+| Private members        | m_camelCase          | `m_sceneTree`              |
+| Constants              | k-prefixed constexpr | `kLayerCount`              |
+| Enumerators            | PascalCase           | `FocusReason::Directional` |
+| Macros                 | SCREAMING_SNAKE_CASE | `UMBRIEL_VERSION`          |
 
-Scoped enums (`enum class`) use PascalCase enumerators and an explicit `std::uint8_t` underlying type where it makes sense: `enum class FocusReason : uint8_t { Directional, PointerPress, ... }`.
+Scoped enums (`enum class`) use an explicit `std::uint8_t` underlying type where it makes sense.
 
 Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
 
