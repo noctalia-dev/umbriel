@@ -24,6 +24,7 @@ extern "C" {
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
 #include "scene/ssd_frame.h"
+#include "scene/surface_mirror.h"
 #include "scene/surface_shape.h"
 #include "scene/text_buffer.h"
 #include "server/color_manager.h"
@@ -986,54 +987,15 @@ namespace umbriel {
   // -: cards
 
   void Overview::syncCardBuffer(CardSurface& entry) {
-    wlr_surface* surface = entry.surface;
-    if (surface == nullptr || entry.buffer == nullptr) {
+    if (entry.surface == nullptr || entry.buffer == nullptr) {
       return;
     }
-
-    wlr_scene_buffer_set_buffer_options options{
-        .damage = &surface->buffer_damage,
-        .wait_timeline = nullptr,
-        .wait_point = 0,
-    };
-    if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(surface)) {
-      options.wait_timeline = sync->acquire_timeline;
-      options.wait_point = sync->acquire_point;
-    }
-    // A scene buffer may clear its `buffer` pointer after importing a texture and releasing the client buffer. The
-    // surface retains the authoritative committed buffer, including for hidden workspaces.
-    wlr_buffer* committed = surface->buffer != nullptr ? &surface->buffer->base : nullptr;
-    if (committed == nullptr) {
-      options.damage = nullptr;
-    }
-    wlr_scene_buffer_set_buffer_with_options(entry.buffer, committed, &options);
-
-    // Presentation state comes from the surface's committed state, NEVER from the view's scene buffers: workspace
-    // slides clip those (applyPresentation → applyPresentedCrop), and a window parked on a hidden workspace keeps the
-    // sliver crop. Copying it smears subsurface-presented content (games) into a single stretched line. layoutCard then
-    // re-crops the root surface and re-scales every entry for the thumbnail.
-    wlr_fbox src{};
-    wlr_surface_get_buffer_source_box(surface, &src);
-    wlr_scene_buffer_set_source_box(entry.buffer, &src);
     int width = 0;
     int height = 0;
-    viewSurfaceSize(entry.sourceBuffer, surface, &width, &height);
-    wlr_scene_buffer_set_dest_size(entry.buffer, width, height);
-    wlr_scene_buffer_set_transform(entry.buffer, surface->current.transform);
-    wlr_scene_buffer_set_opaque_region(entry.buffer, &surface->opaque_region);
-
-    // Protocol-derived display properties (alpha-modifier, color management)
-    // are clip-independent, so the view's scene buffer is a safe source.
-    if (wlr_scene_buffer* source = entry.sourceBuffer) {
-      wlr_scene_buffer_set_opacity(entry.buffer, source->opacity);
-      wlr_scene_buffer_copy_color(entry.buffer, source);
-    }
-    // Scene surfaces reset their color state on every commit. This passive
-    // mirror may copy that state before the render boundary repairs it, so
-    // apply the authoritative committed description directly to the mirror.
-    if (ColorManager* colorManager = entry.card->overview->m_server->colorManager()) {
-      colorManager->applySurfaceDescriptionToBuffer(surface, entry.buffer);
-    }
+    viewSurfaceSize(entry.sourceBuffer, entry.surface, &width, &height);
+    syncSurfaceMirror(
+        entry.buffer, entry.surface, entry.sourceBuffer, width, height, entry.card->overview->m_server->colorManager()
+    );
   }
 
   void Overview::forEachCardSurface(Card* card, void (*visit)(wlr_surface*, int, int, void*)) {
@@ -1171,26 +1133,13 @@ namespace umbriel {
   void Overview::onCardBufferOutputSample(wl_listener* listener, void* data) {
     CardSurface* entry;
     entry = wl_container_of(listener, entry, outputSample);
-    auto* event = static_cast<wlr_scene_output_sample_event*>(data);
-    wlr_output* output = event->output->output;
-    if (event->direct_scanout) {
-      wlr_presentation_surface_scanned_out_on_output(entry->surface, output);
-    } else {
-      wlr_presentation_surface_textured_on_output(entry->surface, output);
-    }
-    if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(entry->surface);
-        sync != nullptr && event->release_timeline != nullptr) {
-      wlr_linux_drm_syncobj_v1_state_add_release_point(
-          sync, event->release_timeline, event->release_point, output->event_loop
-      );
-    }
+    sampleSurfaceMirror(entry->surface, *static_cast<wlr_scene_output_sample_event*>(data));
   }
 
   void Overview::onCardBufferFrameDone(wl_listener* listener, void* data) {
     CardSurface* entry;
     entry = wl_container_of(listener, entry, frameDone);
-    auto* event = static_cast<wlr_scene_frame_done_event*>(data);
-    wlr_surface_send_frame_done(entry->surface, &event->when);
+    frameSurfaceMirror(entry->surface, *static_cast<wlr_scene_frame_done_event*>(data));
   }
 
   Overview::Card* Overview::createCard(OutputState& state, View* view, size_t workspaceIndex) {
