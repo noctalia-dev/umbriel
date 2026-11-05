@@ -299,8 +299,13 @@ namespace {
         }
         return name;
       case umbriel::ActionArgKind::SkipConfirmation:
-        if (const auto* quit = umbriel::payloadIf<umbriel::QuitArg>(bind); quit != nullptr && quit->skipConfirmation) {
-          return name + " skip-confirmation";
+        if (const auto* quit = umbriel::payloadIf<umbriel::QuitArg>(bind); quit != nullptr) {
+          if (!quit->waitForClients) {
+            name += " no-wait";
+          }
+          if (quit->skipConfirmation) {
+            name += " skip-confirmation";
+          }
         }
         return name;
       case umbriel::ActionArgKind::SdrWhite:
@@ -700,7 +705,8 @@ namespace umbriel {
           displayAction = spawn.args.empty() ? spawn.binary : spawn.args;
         }
       }
-      if (displayAction.size() > 32) {
+      // Keep both session-quit flags visible so graceful and forced quits remain distinguishable.
+      if (displayAction.size() > 32 && raw.actionType != KeybindAction::SessionQuit) {
         displayAction = displayAction.substr(0, 32) + "\xe2\x80\xa6"; // …
       }
       if (!raw.submapAfter.empty()) {

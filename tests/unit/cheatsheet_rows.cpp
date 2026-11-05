@@ -118,6 +118,25 @@ UMBRIEL_TEST(masterLayoutModeIsNamedInTheActionLabel) {
   CHECK(rows[0].action.contains("master"));
 }
 
+UMBRIEL_TEST(sessionQuitLabelShowsOptions) {
+  for (const bool skipConfirmation : {false, true}) {
+    for (const bool waitForClients : {false, true}) {
+      Keybind quit = bind(KeybindAction::SessionQuit, XKB_KEY_q);
+      quit.payload = umbriel::QuitArg{.skipConfirmation = skipConfirmation, .waitForClients = waitForClients};
+      const auto rows = buildCheatsheetRows(std::vector<Keybind>{quit});
+      std::string expected = "session-quit";
+      if (!waitForClients) {
+        expected += " no-wait";
+      }
+      if (skipConfirmation) {
+        expected += " skip-confirmation";
+      }
+      CHECK_EQ(rows.size(), size_t{1});
+      CHECK_EQ(rows[0].action, expected);
+    }
+  }
+}
+
 UMBRIEL_TEST(unnamedSubmapIsNamedInTheActionLabel) {
   Keybind unnamed = bind(KeybindAction::Submap, XKB_KEY_s);
   unnamed.payload = umbriel::SubmapArg{};
