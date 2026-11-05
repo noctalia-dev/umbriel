@@ -830,6 +830,26 @@ namespace umbriel {
 
   void Workspace::detachFromLayout(View* view) {
     ScrollingLayout* scrolling = scrollingLayout();
+    // A shared column outlives the window leaving it. Release a column-wide alone effect while the window still owns
+    // the column, then let the peers reapply their own rules on the arrange that follows. A workspace move has already
+    // cleared the view's workspace, so point it here for the revert.
+    const int column = m_layout->columnOf(view);
+    if (view->m_aloneEffectsActive
+        && (view->m_aloneAction == View::AloneAction::Maximize || view->m_aloneAction == View::AloneAction::Width)
+        && column >= 0
+        && m_layout->columns()[static_cast<size_t>(column)].views.size() > 1) {
+      Workspace* previous = view->m_workspace;
+      view->m_workspace = this;
+      view->revertAloneRuleEffects();
+      view->m_workspace = previous;
+      view->m_aloneEffectsActive = false;
+      view->m_lastAloneDelta = {};
+      for (View* other : m_layout->columns()[static_cast<size_t>(column)].views) {
+        if (other != view) {
+          other->m_lastAloneDelta = {};
+        }
+      }
+    }
     // Measured before the removal, because it depends on where the column is.
     const double shift = scrolling != nullptr
         ? scrolling->scrollShiftForColumnRemoval(scrolling->columnOf(view), scrollViewportExtent())

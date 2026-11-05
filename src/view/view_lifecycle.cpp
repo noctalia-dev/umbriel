@@ -739,24 +739,6 @@ namespace umbriel {
     m_server->scheduleIpcWorkspacesEvent();
     m_positioned = false;
     m_presentedTiledBox = {};
-    // A column outlives a window when other windows share it. Undo the column-wide effect this window owned before
-    // leaving, and let the survivors reapply their own alone rules on the arrange that follows. Fullscreen and
-    // maximize-to-edges cover the output only, so no survivor inherits them.
-    const bool columnWideEffect = m_aloneAction == AloneAction::Maximize || m_aloneAction == AloneAction::Width;
-    if (m_aloneEffectsActive && columnWideEffect && m_workspace != nullptr) {
-      const auto& columns = m_workspace->layout().columns();
-      const int column = m_workspace->layout().columnOf(this);
-      if (column >= 0
-          && column < static_cast<int>(columns.size())
-          && columns[static_cast<size_t>(column)].views.size() > 1) {
-        revertAloneRuleEffects();
-        for (View* other : columns[static_cast<size_t>(column)].views) {
-          if (other != this) {
-            other->m_lastAloneDelta = {};
-          }
-        }
-      }
-    }
     if (m_workspace != nullptr) {
       m_workspace->layoutDetach(this, m_tiled);
       if (focusRevealedTile) {
@@ -797,7 +779,7 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
-    // An unmapped window keeps no layout state. Its alone effect was reverted above when the column survives it.
+    // An unmapped window keeps no layout state. The detach released its alone effect when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
     m_lastAloneDelta = {};

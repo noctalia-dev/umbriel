@@ -305,7 +305,7 @@ default_maximize = true
 
 A column can hold several windows, stacked or shown as tabs, and they are all in the alone state together. `default_maximize` and `default_scrolling_extent` act on the column, so they stay applied while its windows share it. Fullscreen and maximize-to-edges cover the whole output instead, so they only apply while the window is also the only tiled window; another window joining the column removes them.
 
-The effect is removed when another column appears and restored when the window returns to the only column. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
+The effect is removed when another column appears or when its window leaves the column, and restored when the window returns to the only column. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
 
 Combine it with other selectors when only one application should receive the behavior:
 

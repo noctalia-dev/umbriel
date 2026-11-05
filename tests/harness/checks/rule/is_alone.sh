@@ -243,6 +243,38 @@ if ((column_shared != column_alone)); then
   exit 1
 fi
 
+# The owner leaving the column while the peer stays must take the column-wide effect with it. The peer has no
+# is_alone extent of its own, so the column returns to its normal width and stays there.
+column_wide_id=$(field_of column-wide id)
+"$UMBRIEL" msg window-toggle-floating "$column_wide_id" > /dev/null
+for _ in $(seq 40); do
+  [[ $(field_of column-wide floating) == true ]] && break
+  sleep 0.1
+done
+if [[ $(field_of column-wide floating) != true ]]; then
+  echo "column-wide did not float"
+  exit 1
+fi
+column_released=$(width_of column-peer)
+if ((column_released >= column_alone)); then
+  echo "the alone width outlived its owner leaving the column: alone=$column_alone released=$column_released"
+  exit 1
+fi
+"$UMBRIEL" msg window-toggle-floating "$column_wide_id" > /dev/null
+for _ in $(seq 40); do
+  [[ $(field_of column-wide floating) == false ]] && break
+  sleep 0.1
+done
+if [[ $(field_of column-wide floating) != false ]]; then
+  echo "column-wide did not return to tiling"
+  exit 1
+fi
+column_widened=$(width_of column-wide)
+if ((column_widened != column_alone)); then
+  echo "the alone width did not return with the owner: restored=$column_widened alone=$column_alone"
+  exit 1
+fi
+
 "$CLIENT" column-other > "$UMBRIEL_RUNTIME_DIR/column-other.log" 2>&1 &
 column_other_pid=$!
 wait_mapped column-other
