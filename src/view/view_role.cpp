@@ -348,7 +348,13 @@ namespace umbriel {
     lx = std::clamp(lx, kMinCoordinate, kMaxCoordinate);
     ly = std::clamp(ly, kMinCoordinate, kMaxCoordinate);
     const bool moving = m_posX.animating() || m_posY.animating() || m_layoutMotion || openingInsetActive();
-    if (moving && m_xConfigured.x != INT_MIN) {
+    if (scheduledFullscreen()) {
+      // A fullscreen window is configured where its motion comes to rest, which is its column in a scrolling strip.
+      // Publishing the pre-fullscreen position with the fullscreen size while the motion animates tells Wine its window
+      // no longer covers the monitor, and Wine leaves fullscreen.
+      lx = std::clamp(region.toX(layoutTargetX()), kMinCoordinate, kMaxCoordinate);
+      ly = std::clamp(region.toY(layoutTargetY()), kMinCoordinate, kMaxCoordinate);
+    } else if (moving && m_xConfigured.x != INT_MIN) {
       lx = m_xConfigured.x;
       ly = m_xConfigured.y;
     }
