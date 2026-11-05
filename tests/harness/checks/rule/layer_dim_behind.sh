@@ -39,6 +39,14 @@ sed -i 's/dim_behind = 0.5/dim_behind = 0.25/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 shot
 assert_region_rgb "$FRAME" 10x10+1200+650 191 191 191
+sed -i 's/dim_behind = 0.25/dim_behind = 0.0/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+shot
+assert_region_rgb "$FRAME" 10x10+1200+650 255 255 255
+sed -i 's/dim_behind = 0.0/dim_behind = 0.25/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+shot
+assert_region_rgb "$FRAME" 10x10+1200+650 191 191 191
 kill "$layer"
 for _ in $(seq 100); do
   [[ $("$UMBRIEL" layers --json | jq length) == 0 ]] && break

@@ -76,9 +76,24 @@ for _ in $(seq 100); do
 done
 shot
 assert_pixel 1200 650 255 255 255 'closing owners restores brightness'
+cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+[[window_rule]]
+match.title = "^under$"
+dim_behind = 0.5
+CONFIG
+"$UMBRIEL" msg config-reload > /dev/null
+shot
+assert_pixel 1200 650 128 128 128 'reload enables dim on an existing window'
+sed -i '/^dim_behind = /d' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+shot
+assert_pixel 1200 650 255 255 255 'removing all dim rules clears the existing backdrop'
 # Sample the backdrop halfway through the owner's opening fade.
 sed -i '/^\[animation\]$/ { n; s/enabled = false/enabled = true/; }' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+[[window_rule]]
+match.title = "^dim-one$"
+dim_behind = 0.5
 [animation.windows_in]
 style = "fade"
 duration_ms = 1000

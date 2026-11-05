@@ -1897,11 +1897,16 @@ namespace umbriel {
     }
     updateFullscreenStack();
     // Refresh after arrangement and animation so stacking and output transfers are current.
-    for (const auto& view : m_server->views()) {
-      view->updateDimBehind();
+    const auto dimsBehind = [](const auto& rule) { return rule.dimBehind.value_or(0.0) > 0.0; };
+    if (std::ranges::any_of(config().windowRules, dimsBehind)) {
+      for (const auto& view : m_server->views()) {
+        view->updateDimBehind();
+      }
     }
-    for (const auto& layer : m_server->layerSurfaces()) {
-      layer->updateDimBehind();
+    if (std::ranges::any_of(config().layerRules, dimsBehind)) {
+      for (const auto& layer : m_server->layerSurfaces()) {
+        layer->updateDimBehind();
+      }
     }
 
     // A direct-scanned fullscreen client may stop submitting as soon as it loses focus. On VRR outputs that can leave

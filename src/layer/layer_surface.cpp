@@ -414,6 +414,7 @@ namespace umbriel {
     m_rule = resolveLayerRules(
         config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
     );
+    updateDimBehind();
     updateBlur();
   }
 
