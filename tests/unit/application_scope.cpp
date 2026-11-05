@@ -421,7 +421,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 20);
+  const std::string output = readLinesWithTimeout(outputPipe[0], 21);
   close(outputPipe[0]);
   int status = 0;
   if (!waitForExit(child, &status)) {
