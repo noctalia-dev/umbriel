@@ -1977,9 +1977,8 @@ namespace umbriel {
       applyProgress();
     }
     m_cardPresentationDirty = false;
-    // Cards mirror native animation slots as well as persistent effects. Focus timelines can keep advancing after
-    // card layout settles, and their final tick must detach the shader even when the persistent-effect ledger is empty.
-    // Persistent effect clocks still advance only on the card output's effect frames.
+    // Cards mirror their views' animation slots, whose timelines keep running after card layout settles. Persistent
+    // effect clocks advance only on the card output's effect frames.
     if (m_active) {
       syncCardEffects();
     }
