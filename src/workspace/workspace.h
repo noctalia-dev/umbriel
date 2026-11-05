@@ -165,6 +165,8 @@ namespace umbriel {
         NamedScrollingColumnChange change
     );
     void layoutDetach(View* view, bool animate = false);
+    // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
+    void holdCloseSnapshot(CloseSnapshotId snapshot);
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
@@ -279,6 +281,8 @@ namespace umbriel {
     // Advances the motion; true while it is still running.
     bool tickLayoutMotion(double nowMsec);
     bool layoutMotionActive() const { return m_motion.progress.animating() || !m_motion.views.empty(); }
+    // A resizing reflow held until its clients redraw (windows_resize.wait_timeout_ms).
+    bool layoutMotionWaiting() const { return m_motion.waiting; }
     // Explicit strip scrolling defers one hover refresh until its layout motion settles and the pointer moves.
     void deferScrollHoverFocus() { m_scrollHoverFocusDeferred = true; }
     bool scrollHoverFocusDeferred() const { return m_scrollHoverFocusDeferred; }
@@ -316,6 +320,11 @@ namespace umbriel {
     void detachFromLayout(View* view);
     // Snap or animate every tiled member of the layout into its slot from wherever it is presented now.
     void applyTiledMotion(const wlr_box& usable, bool animate, std::span<View* const> resized);
+    void startLayoutTimelines(double positionSpeed, double sizeSpeed);
+    // Advances a motion held by windows_resize.wait_timeout_ms; true while it still holds.
+    bool tickLayoutMotionWait(double nowMsec);
+    bool heldOpenerAlive(const View* view) const;
+    void resumeHeldOpeners();
     void endLayoutMotion();
     void syncCloseSnapshots();
     void discardCloseSnapshots();
@@ -342,6 +351,8 @@ namespace umbriel {
     bool m_inSwitchTransition = false;
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
+    std::vector<CloseSnapshotId> m_heldCloseSnapshots;
+    void releaseHeldCloseSnapshots();
     // The usable area the last applyPositions pass clamped floating windows
     // against. An arrange whose area is unchanged, such as a focus reveal, must not
     // reposition them.
@@ -379,6 +390,17 @@ namespace umbriel {
       AnimatedValue size;
       MonotonicEasing sizeCurve;
       bool sizePhysics = false;
+      // windows_resize.wait_timeout_ms: the timelines have not started yet, because a resized member's client has not
+      // redrawn at its new size. waitStartMsec is the animation clock at the first held frame.
+      bool waiting = false;
+      std::optional<double> waitStartMsec;
+      // Openers kept hidden, and members whose frame is frozen, until the held motion switches.
+      struct Opener {
+        View* view = nullptr;
+        wlr_box box{};
+      };
+      std::vector<Opener> openers;
+      std::vector<const View*> frozen;
       std::vector<ViewEntry> views;
     };
     LayoutMotion m_motion;

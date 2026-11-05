@@ -497,6 +497,7 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
+    CloseSnapshotId captureSnapshot(bool held);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -662,6 +663,8 @@ namespace umbriel {
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
     [[nodiscard]] CloseSnapshotId beginCloseAnimation();
+    // A frozen copy of what this view shows now, held over it until Server::releaseCloseSnapshot.
+    [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop
@@ -686,6 +689,8 @@ namespace umbriel {
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
+    // A layout size configure the client has not yet answered with a commit at that size.
+    bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
     // client's possibly stale committed geometry. A later arrange can move its cached logical box independently.
     bool tiledOpeningActive() const;
@@ -726,6 +731,8 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
+    // A tiled resize grab steps through held switches (windows_resize.wait_timeout_ms) instead of stretching buffers.
+    bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
@@ -1016,7 +1023,9 @@ namespace umbriel {
       uint32_t serial = 0;
       int width = 0;
       int height = 0;
+      // The committed content and buffer size when the request went out.
       ClientSize base;
+      ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
     float m_layoutMotionDirection = 1.0F;
