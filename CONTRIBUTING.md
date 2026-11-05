@@ -182,6 +182,8 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 | Enumerators            | PascalCase           | `FocusReason::Directional` |
 | Macros                 | SCREAMING_SNAKE_CASE | `UMBRIEL_VERSION`          |
 
+clang-format inserts braces around every control statement body and clang-tidy enforces the naming table for enumerators and private members.
+
 Scoped enums (`enum class`) use an explicit `std::uint8_t` underlying type where it makes sense.
 
 Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
