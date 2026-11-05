@@ -107,10 +107,12 @@ expect_toplevel_pair() {
   exit 1
 }
 
-# Box: output px 41 covers two green texels and one blue (0,170,85), px 42 the
-# mirror (0,85,170) in the sRGB screenshot.
-expect_pair "box downsample" 170 85 85 170
-expect_toplevel_pair "box downsample in window captures" 170 85 85 170
+# Box: output px 41 covers two green texels and one blue, px 42 the mirror.
+# The box averages light, not encoded values: 2/3 and 1/3 coverage re-encode
+# through gamma 2.2 to (0,212,155) and (0,155,212); averaging the encoded
+# values would report (0,170,85).
+expect_pair "box downsample" 212 155 155 212
+expect_toplevel_pair "box downsample in window captures" 212 155 155 212
 
 sed -i 's/downsample = "box"/downsample = "bilinear"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -123,8 +125,8 @@ expect_toplevel_pair "bilinear downsample in window captures" 0 255 255 0 0
 sed -i 's/downsample = "bilinear"/downsample = "box"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" settle > /dev/null
-expect_pair "box restored on reload" 170 85 85 170
-expect_toplevel_pair "capture downsample restored on reload" 170 85 85 170
+expect_pair "box restored on reload" 212 155 155 212
+expect_toplevel_pair "capture downsample restored on reload" 212 155 155 212
 
 echo "downsample method controls minified sampling and reload re-renders"
 
@@ -134,9 +136,11 @@ echo "downsample method controls minified sampling and reload re-renders"
 # client's 1600-texel buffer into the window's 320-pixel raster (5:1), and the
 # window's logical (40,40) lands at raster (32,32). Capture at raster
 # resolution so probes read framebuffer pixels: px 41 and 42 cover 5-texel
-# footprints whose 1.25-texel taps average 5:3 and 3:5 green mixes,
-# (0,159,96) and (0,96,159); the one-texel-step mutation reaches only 4 of
-# the 5 texels and reports the even mix (0,127,127) at every pixel.
+# footprints of four taps 1.25 texels apart. Each tap is a hardware bilinear
+# mix of its two encoded neighbours (0.875/0.125 or 0.625/0.375); the shader
+# decodes the taps and averages them in light, (0,174,118) and (0,118,174).
+# The one-texel-step mutation reaches only 4 of the 5 texels and reports the
+# even mix (0,186,186) at every pixel.
 mapped_before=$(grep -c '^mapped ' "$CLIENT_LOG")
 sed -i 's/scale = 1.0/scale = 0.8/; s/render_scale = 3.0/render_scale = 4.0/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -158,6 +162,6 @@ if [[ $(pixel 31 190) != "0 0 0" || $(pixel 352 190) != "0 0 0" || $(pixel 41 31
   echo "window raster rect is not (32,32,320,240): x31..32 $(pixel 31 190)/$(pixel 32 190), x351..352 $(pixel 351 190)/$(pixel 352 190), y31..32 $(pixel 41 31)/$(pixel 41 32), y271..272 $(pixel 41 271)/$(pixel 41 272)"
   exit 1
 fi
-expect_pair "capped box spans the footprint" 159 96 96 159
+expect_pair "capped box spans the footprint" 174 118 118 174
 
 echo "capped box grid spans the full minification footprint"
