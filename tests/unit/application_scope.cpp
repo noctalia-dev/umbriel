@@ -445,6 +445,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
           + "--expand-environment=no\n"
           + "--slice=app.slice\n"
           + "--description=Umbriel application\n"
+          + "--property=TimeoutStopSec=5s\n"
           + "--unit=app-umbriel-arguments.scope\n"
           + "--property=PartOf=umbriel-session.target\n"
           + "--property=BindsTo=umbriel.service\n"
@@ -594,6 +595,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
   CHECK_EQ(systemctlProperty(systemctl, unit, "Slice"), "app.slice");
   CHECK_EQ(systemctlProperty(systemctl, unit, "CollectMode"), "inactive-or-failed");
   CHECK_EQ(systemctlProperty(systemctl, unit, "Description"), "Umbriel application");
+  CHECK_EQ(systemctlProperty(systemctl, unit, "TimeoutStopUSec"), "5s");
   const std::string partOf = systemctlProperty(systemctl, unit, "PartOf");
   CHECK(containsWord(partOf, "umbriel-session.target"));
   const std::string bindsTo = systemctlProperty(systemctl, unit, "BindsTo");

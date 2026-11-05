@@ -395,8 +395,8 @@ namespace {
       return {" tabbed"};
     case ActionArgKind::TabIndex:
       return {" -1"};
-    case ActionArgKind::SessionQuit:
-      return {"", " skip-confirmation", " kill-apps", " skip-confirmation kill-apps"};
+    case ActionArgKind::SkipConfirmation:
+      return {"", " skip-confirmation"};
     case ActionArgKind::SdrWhite:
       return {" 200", " 300 --output DP-1"};
     case ActionArgKind::LayoutMode:
@@ -431,20 +431,6 @@ UMBRIEL_TEST(everyWordFormRoundTripsThroughTheActionRequest) {
         CHECK(decoded->payload == words.payload);
       }
     }
-  }
-}
-
-UMBRIEL_TEST(sessionQuitRequestDefaultsToGracefulAndAcceptsKillApps) {
-  std::string error;
-  const auto normal = decode(R"({"cmd":"action","action":"session-quit"})", error);
-  const auto fast =
-      decode(R"({"cmd":"action","action":"session-quit","skip_confirmation":true,"kill_apps":true})", error);
-  CHECK(normal.has_value());
-  CHECK(fast.has_value());
-  if (normal && fast) {
-    CHECK(!std::get<umbriel::QuitArg>(normal->payload).killApps);
-    CHECK(std::get<umbriel::QuitArg>(fast->payload).killApps);
-    CHECK(std::get<umbriel::QuitArg>(fast->payload).skipConfirmation);
   }
 }
 
@@ -490,7 +476,6 @@ UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
       {R"({"cmd":"action","action":"effect-cursor-set","effect":"halo","window":"w1"})", R"(unknown field "window")"},
       {R"({"cmd":"action","action":"effect-screen-set","effect":"x","window":"w1"})", R"(unknown field "window")"},
       {R"({"cmd":"action","action":"session-quit","skip_confirmation":"yes"})", "must be a boolean"},
-      {R"({"cmd":"action","action":"session-quit","kill_apps":"yes"})", "must be a boolean"},
   };
   for (const auto& [request, reason] : cases) {
     std::string error;

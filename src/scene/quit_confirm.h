@@ -28,14 +28,12 @@ namespace umbriel {
     QuitConfirm(const QuitConfirm&) = delete;
     QuitConfirm& operator=(const QuitConfirm&) = delete;
 
-    void showSessionQuit(bool killApps);
     void show(Kind kind);
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
     void hide();
     bool visible() const { return m_tree != nullptr; }
     Kind kind() const { return m_kind; }
-    bool sessionQuitKillsApps() const { return m_kind == Kind::SessionQuit && m_sessionQuitKillsApps; }
     bool canRememberInputCapture() const {
       return m_kind == Kind::InputCapture && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2);
     }
@@ -50,7 +48,6 @@ namespace umbriel {
     Kind m_kind = Kind::SessionQuit;
     std::string m_application;
     uint32_t m_inputCapturePersistMode = 0;
-    bool m_sessionQuitKillsApps = false;
     SurfaceShadow m_shadow;
   };
 

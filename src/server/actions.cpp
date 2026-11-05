@@ -525,10 +525,10 @@ namespace umbriel {
       // While locked the dialog would be hidden behind the lock surface, so quit
       // directly; the lock client's own UI is the confirmation there.
       if (!skip && !server.sessionLocked() && confirm != nullptr && !confirm->visible()) {
-        confirm->showSessionQuit(arg != nullptr && arg->killApps);
+        confirm->show(QuitConfirm::Kind::SessionQuit);
         return true;
       }
-      server.requestSessionExit(arg != nullptr && arg->killApps);
+      server.requestSessionExit();
       return true;
     }
 
