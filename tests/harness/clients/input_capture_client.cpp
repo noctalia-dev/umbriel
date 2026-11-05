@@ -36,8 +36,9 @@ namespace {
   };
 
   void drainEi(State& state) {
-    if (state.receiver == nullptr)
+    if (state.receiver == nullptr) {
       return;
+    }
     ei_dispatch(state.receiver);
     while (ei_event* event = ei_get_event(state.receiver)) {
       switch (ei_event_get_type(event)) {
@@ -115,12 +116,14 @@ namespace {
   }
   void eisFd(void* data, umbriel_input_capture_session_v1*, uint32_t request, int32_t fd) {
     auto& state = *static_cast<State*>(data);
-    if (state.receiver != nullptr)
+    if (state.receiver != nullptr) {
       ei_unref(state.receiver);
+    }
     state.receiver = ei_new_receiver(nullptr);
     ei_configure_name(state.receiver, "Umbriel capture protocol test");
-    if (ei_setup_backend_fd(state.receiver, fd) != 0)
+    if (ei_setup_backend_fd(state.receiver, fd) != 0) {
       state.done = true;
+    }
     std::println("eis-fd request={}", request);
   }
   void result(void*, umbriel_input_capture_session_v1*, uint32_t request, uint32_t status) {
@@ -180,10 +183,11 @@ namespace {
       uint32_t capabilities = 3;
       uint32_t persistMode = 0;
       input >> capabilities >> persistMode;
-      if (state.protocolVersion >= 2)
+      if (state.protocolVersion >= 2) {
         umbriel_input_capture_session_v1_set_persistence(
             state.session, persistMode, state.restoreToken.c_str(), state.applicationInstance.c_str()
         );
+      }
       umbriel_input_capture_session_v1_start(state.session, request, state.application.c_str(), capabilities);
     } else if (action == "application") {
       std::getline(input >> std::ws, state.application);
@@ -224,10 +228,12 @@ namespace {
         }
       }
     } else if (action == "new-session") {
-      if (state.receiver != nullptr)
+      if (state.receiver != nullptr) {
         state.receiver = ei_unref(state.receiver);
-      if (state.session != nullptr)
+      }
+      if (state.session != nullptr) {
         umbriel_input_capture_session_v1_destroy(state.session);
+      }
       state.session = umbriel_input_capture_manager_v1_create_session(state.manager);
       umbriel_input_capture_session_v1_add_listener(state.session, &kSessionListener, &state);
       state.activation = 0;
@@ -277,15 +283,18 @@ namespace {
 int main() {
   setvbuf(stdout, nullptr, _IOLBF, 0);
   State state;
-  if (const char* version = std::getenv("CAPTURE_PROTOCOL_VERSION"))
+  if (const char* version = std::getenv("CAPTURE_PROTOCOL_VERSION")) {
     state.protocolVersion = std::strtoul(version, nullptr, 10);
+  }
   state.display = wl_display_connect(nullptr);
-  if (state.display == nullptr)
+  if (state.display == nullptr) {
     return 1;
+  }
   wl_registry* registry = wl_display_get_registry(state.display);
   wl_registry_add_listener(registry, &kRegistryListener, &state);
-  if (wl_display_roundtrip(state.display) < 0 || state.manager == nullptr)
+  if (wl_display_roundtrip(state.display) < 0 || state.manager == nullptr) {
     return 1;
+  }
   state.session = umbriel_input_capture_manager_v1_create_session(state.manager);
   umbriel_input_capture_session_v1_add_listener(state.session, &kSessionListener, &state);
   wl_display_flush(state.display);
@@ -300,19 +309,23 @@ int main() {
         {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
         {.fd = state.receiver != nullptr ? ei_get_fd(state.receiver) : -1, .events = POLLIN, .revents = 0}
     };
-    if (poll(fds, 3, 100) < 0 && errno != EINTR)
+    if (poll(fds, 3, 100) < 0 && errno != EINTR) {
       break;
-    if ((fds[0].revents & (POLLERR | POLLHUP)) != 0)
+    }
+    if ((fds[0].revents & (POLLERR | POLLHUP)) != 0) {
       break;
-    if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0)
+    }
+    if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0) {
       break;
+    }
     if ((fds[1].revents & POLLIN) != 0) {
       char bytes[2048];
       const ssize_t count = read(STDIN_FILENO, bytes, sizeof(bytes));
-      if (count > 0)
+      if (count > 0) {
         state.pending.append(bytes, static_cast<size_t>(count));
-      else if (count == 0)
+      } else if (count == 0) {
         state.done = true;
+      }
       size_t newline = 0;
       while ((newline = state.pending.find('\n')) != std::string::npos) {
         const std::string line = state.pending.substr(0, newline);
@@ -321,10 +334,12 @@ int main() {
       }
     }
   }
-  if (state.receiver != nullptr)
+  if (state.receiver != nullptr) {
     ei_unref(state.receiver);
-  if (state.session != nullptr)
+  }
+  if (state.session != nullptr) {
     umbriel_input_capture_session_v1_destroy(state.session);
+  }
   umbriel_input_capture_manager_v1_destroy(state.manager);
   wl_registry_destroy(registry);
   wl_display_disconnect(state.display);

@@ -95,8 +95,9 @@ namespace umbriel {
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setAlpha(chromeAlpha());
     }
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    }
   }
 
   void View::setOverviewOpacity(float opacity) {
@@ -354,8 +355,9 @@ namespace umbriel {
     m_dragOpacity = config().appearance.dragOpacity;
     // The insert hint sits below the dragged window, out of reach of the cached background blur.
     m_decoration.setBlurLive(true);
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setBlurLive(true);
+    }
     setFadeAlpha(m_fadeAlpha);
     if (m_pinned) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->pinnedTree()->node);
@@ -471,8 +473,9 @@ namespace umbriel {
     resetPresentedSurface();
     m_dragOpacity = 1.0F;
     m_decoration.setBlurLive(false);
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setBlurLive(false);
+    }
     setFadeAlpha(m_fadeAlpha);
     wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
@@ -1071,8 +1074,9 @@ namespace umbriel {
     m_decoration.snapshotBorders(
         snap, m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
     );
-    if (m_ssdFrame != nullptr && titleBarHeight() > 0)
+    if (m_ssdFrame != nullptr && titleBarHeight() > 0) {
       m_ssdFrame->snapshot(snap);
+    }
 
     // Copy client surfaces. Chrome snapshots already own their label buffers.
     struct CopyCtx {

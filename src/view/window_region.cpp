@@ -61,22 +61,30 @@ namespace umbriel {
     const bool onRight = right <= kDropZoneEdge && (closedEdges & WLR_EDGE_RIGHT) == 0;
     const bool onTop = top < kDropZoneEdge && (closedEdges & WLR_EDGE_TOP) == 0;
     const bool onBottom = bottom <= kDropZoneEdge && (closedEdges & WLR_EDGE_BOTTOM) == 0;
-    if ((onLeft && top < kDropZoneCornerSpan) || (onTop && left < kDropZoneCornerSpan))
+    if ((onLeft && top < kDropZoneCornerSpan) || (onTop && left < kDropZoneCornerSpan)) {
       return WindowRegion::TopLeft;
-    if ((onRight && top < kDropZoneCornerSpan) || (onTop && right <= kDropZoneCornerSpan))
+    }
+    if ((onRight && top < kDropZoneCornerSpan) || (onTop && right <= kDropZoneCornerSpan)) {
       return WindowRegion::TopRight;
-    if ((onLeft && bottom <= kDropZoneCornerSpan) || (onBottom && left < kDropZoneCornerSpan))
+    }
+    if ((onLeft && bottom <= kDropZoneCornerSpan) || (onBottom && left < kDropZoneCornerSpan)) {
       return WindowRegion::BottomLeft;
-    if ((onRight && bottom <= kDropZoneCornerSpan) || (onBottom && right <= kDropZoneCornerSpan))
+    }
+    if ((onRight && bottom <= kDropZoneCornerSpan) || (onBottom && right <= kDropZoneCornerSpan)) {
       return WindowRegion::BottomRight;
-    if (onTop)
+    }
+    if (onTop) {
       return WindowRegion::Top;
-    if (onBottom)
+    }
+    if (onBottom) {
       return WindowRegion::Bottom;
-    if (onLeft)
+    }
+    if (onLeft) {
       return WindowRegion::Left;
-    if (onRight)
+    }
+    if (onRight) {
       return WindowRegion::Right;
+    }
     return std::nullopt;
   }
 } // namespace umbriel

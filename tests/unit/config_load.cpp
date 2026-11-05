@@ -4880,10 +4880,11 @@ UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
     CHECK(store.reload().success);
     CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, expected);
     CHECK(!containsDiagnostic(store, "unknown key"));
-    if (value == "-2")
+    if (value == "-2") {
       CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
-    else
+    } else {
       CHECK(store.diagnostics().empty());
+    }
   }
   for (const std::string_view value : {"\"round\"", "0.5"}) {
     file.write(std::format("[appearance.title_bar]\nbutton_corner_radius = {}\n", value));

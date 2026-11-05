@@ -1906,12 +1906,14 @@ namespace umbriel {
     }
     for (const Rect& rect : m_rects) {
       auto color = rect.color;
-      for (float& channel : color)
+      for (float& channel : color) {
         channel *= alpha;
+      }
       wlr_scene_rect_set_color(rect.node, color.data());
     }
-    for (const Blur& blur : m_blurs)
+    for (const Blur& blur : m_blurs) {
       wlr_scene_blur_set_alpha(blur.node, blur.baseAlpha * alpha);
+    }
     for (auto& border : m_borders) {
       float innerColor[4];
       float outerColor[4];

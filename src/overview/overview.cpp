@@ -490,10 +490,12 @@ namespace umbriel {
         preview.reset();
         return;
       }
-      if (preview == nullptr)
+      if (preview == nullptr) {
         preview = live->makePreview(card.tree);
-      if (preview == nullptr)
+      }
+      if (preview == nullptr) {
         return;
+      }
       live->syncPreview(*preview);
       preview->setAlpha(alpha);
       preview->layout(geometry);

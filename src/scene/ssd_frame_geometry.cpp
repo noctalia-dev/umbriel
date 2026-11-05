@@ -10,8 +10,9 @@ extern "C" {
 namespace umbriel {
   int titleBarButtonDiameter(int height) {
     const int diameter = std::max(8, (height + 1) / 2);
-    if ((height - diameter) % 2 == 0)
+    if ((height - diameter) % 2 == 0) {
       return diameter;
+    }
     return diameter > 8 ? diameter - 1 : diameter + 1;
   }
 
@@ -48,50 +49,64 @@ namespace umbriel {
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       double x, double y
   ) {
-    if (cw <= 0 || ch <= 0 || h < 0)
+    if (cw <= 0 || ch <= 0 || h < 0) {
       return {};
+    }
     if (x >= 0 && x < cw && y >= -h && y < 0) {
       const TitleBarLayout layout = titleBarLayout(cw, h, side, shown);
       const auto inButton = [&layout, x](TitleBarButton button) {
         const std::optional<wlr_box>& box = layout.button(button);
         return box && x >= box->x - kTitleBarButtonGap / 2 && x < box->x + box->width + kTitleBarButtonGap / 2;
       };
-      if (inButton(TitleBarButton::Close))
+      if (inButton(TitleBarButton::Close)) {
         return {SsdFramePart::Close, 0};
-      if (inButton(TitleBarButton::Maximize))
+      }
+      if (inButton(TitleBarButton::Maximize)) {
         return {SsdFramePart::Maximize, 0};
-      if (inButton(TitleBarButton::Minimize))
+      }
+      if (inButton(TitleBarButton::Minimize)) {
         return {SsdFramePart::Minimize, 0};
+      }
       return {SsdFramePart::TitleBar, 0};
     }
     if (!resizable
         || x < -b - kSsdResizeBand
         || x >= cw + b + kSsdResizeBand
         || y < -h - b - kSsdResizeBand
-        || y >= ch + b + kSsdResizeBand)
+        || y >= ch + b + kSsdResizeBand) {
       return {};
+    }
     uint32_t edges = 0;
-    if (x < 0)
+    if (x < 0) {
       edges |= WLR_EDGE_LEFT;
-    if (x >= cw)
+    }
+    if (x >= cw) {
       edges |= WLR_EDGE_RIGHT;
-    if (y < -h)
+    }
+    if (y < -h) {
       edges |= WLR_EDGE_TOP;
-    if (y >= ch)
+    }
+    if (y >= ch) {
       edges |= WLR_EDGE_BOTTOM;
-    if (edges == 0)
+    }
+    if (edges == 0) {
       return {};
+    }
     if ((edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0) {
-      if (y < -h - b + kSsdResizeCorner)
+      if (y < -h - b + kSsdResizeCorner) {
         edges |= WLR_EDGE_TOP;
-      if (y >= ch + b - kSsdResizeCorner)
+      }
+      if (y >= ch + b - kSsdResizeCorner) {
         edges |= WLR_EDGE_BOTTOM;
+      }
     }
     if ((edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) != 0) {
-      if (x < -b + kSsdResizeCorner)
+      if (x < -b + kSsdResizeCorner) {
         edges |= WLR_EDGE_LEFT;
-      if (x >= cw + b - kSsdResizeCorner)
+      }
+      if (x >= cw + b - kSsdResizeCorner) {
         edges |= WLR_EDGE_RIGHT;
+      }
     }
     return {SsdFramePart::Resize, edges};
   }
