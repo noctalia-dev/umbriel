@@ -52,7 +52,7 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 | layout mode                                              | `layout`: `"scrolling"`, `"dwindle"`, `"master"`, `"stacking"`, or `"toggle"`; with `"toggle"`, optional `cycle` |
 | `<normal\|tabbed>`                                       | `display`: `"normal"` or `"tabbed"`                                                                              |
 | `<index>`                                                | `index`: integer                                                                                                 |
-| `[skip-confirmation]`                                    | optional `skip_confirmation`: boolean                                                                            |
+| `[skip-confirmation]`                                    | optional `skip_confirmation`: boolean; optional `wait_for_clients`: boolean (default `true`)                     |
 | region                                                   | `region`: string                                                                                                 |
 | `<anchor> <x> <y> [--window <window-id>]`                | `anchor`: string; `x`, `y`: integers; optional `window`: string                                                  |
 | `<delta-x> <delta-y> [--window <window-id>]`             | `dx`, `dy`: integers; optional `window`: string                                                                  |
@@ -69,6 +69,7 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 {"cmd":"action","action":"workspace-switch","workspace":2,"output":"DP-1"}
 {"cmd":"action","action":"workspace-set-layout","layout":"toggle","cycle":["scrolling","master"]}
 {"cmd":"action","action":"session-quit","skip_confirmation":true}
+{"cmd":"action","action":"session-quit","skip_confirmation":true,"wait_for_clients":false}
 ```
 
 Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
