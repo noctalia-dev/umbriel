@@ -425,7 +425,7 @@ namespace umbriel {
         }
         if (confirmed) {
           if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-            m_server->requestSessionExit();
+            m_server->requestSessionExit(confirm->sessionQuitKillsApps());
           } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
             m_server->confirmInputEmulation();
           } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {

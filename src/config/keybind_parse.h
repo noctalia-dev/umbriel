@@ -287,7 +287,7 @@ namespace umbriel {
   };
   struct QuitArg {
     bool skipConfirmation = false;
-    bool waitForClients = true;
+    bool killApps = false;
     bool operator==(const QuitArg&) const = default;
   };
   struct SdrWhiteArg {
@@ -388,7 +388,7 @@ namespace umbriel {
     WindowRegion,
     ColumnDisplay,
     TabIndex,
-    SkipConfirmation,
+    SessionQuit,
     WindowEffectSet,
     WindowEffectCycle,
     ScreenEffectSet,

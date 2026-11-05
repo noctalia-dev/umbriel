@@ -120,16 +120,16 @@ UMBRIEL_TEST(masterLayoutModeIsNamedInTheActionLabel) {
 
 UMBRIEL_TEST(sessionQuitLabelShowsOptions) {
   for (const bool skipConfirmation : {false, true}) {
-    for (const bool waitForClients : {false, true}) {
+    for (const bool killApps : {false, true}) {
       Keybind quit = bind(KeybindAction::SessionQuit, XKB_KEY_q);
-      quit.payload = umbriel::QuitArg{.skipConfirmation = skipConfirmation, .waitForClients = waitForClients};
+      quit.payload = umbriel::QuitArg{.skipConfirmation = skipConfirmation, .killApps = killApps};
       const auto rows = buildCheatsheetRows(std::vector<Keybind>{quit});
       std::string expected = "session-quit";
-      if (!waitForClients) {
-        expected += " no-wait";
-      }
       if (skipConfirmation) {
         expected += " skip-confirmation";
+      }
+      if (killApps) {
+        expected += " kill-apps";
       }
       CHECK_EQ(rows.size(), size_t{1});
       CHECK_EQ(rows[0].action, expected);

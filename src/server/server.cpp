@@ -1403,7 +1403,7 @@ namespace umbriel {
     wl_display_terminate(m_display);
   }
 
-  void Server::requestSessionExit(bool waitForClients) {
+  void Server::requestSessionExit(bool killApps) {
     if (m_stopping || m_sessionExitRequested) {
       return;
     }
@@ -1412,7 +1412,7 @@ namespace umbriel {
       return;
     }
     m_sessionExitRequested = true;
-    m_sessionExitWaitForClients = waitForClients;
+    m_sessionExitKillApps = killApps;
     int resultPipe[2]{-1, -1};
     if (pipe2(resultPipe, O_CLOEXEC | O_NONBLOCK) != 0) {
       kLog.error("cannot create session shutdown pipe: {}", std::strerror(errno));
@@ -1435,7 +1435,7 @@ namespace umbriel {
           server->m_sessionExitResultSource = nullptr;
           close(fd);
           server->m_sessionExitResultFd = -1;
-          if (!server->m_sessionExitWaitForClients) {
+          if (server->m_sessionExitKillApps) {
             if (server->m_sessionExitTimeoutSource != nullptr) {
               wl_event_source_remove(server->m_sessionExitTimeoutSource);
               server->m_sessionExitTimeoutSource = nullptr;
@@ -1459,7 +1459,7 @@ namespace umbriel {
       return;
     }
     m_sessionExitResultFd = resultPipe[0];
-    if (!waitForClients) {
+    if (killApps) {
       m_sessionExitTimeoutSource = wl_event_loop_add_timer(
           wl_display_get_event_loop(m_display),
           [](void* data) {
@@ -1476,10 +1476,10 @@ namespace umbriel {
         return;
       }
     }
-    const std::string command = waitForClients
-        ? shellQuote(m_systemctlExecutable)
-            + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x"
-        : applicationScopeKillCommand(m_systemctlExecutable, getpid()) + " 1>&2; printf x";
+    const std::string command = killApps
+        ? applicationScopeKillCommand(m_systemctlExecutable, getpid()) + " 1>&2; printf x"
+        : shellQuote(m_systemctlExecutable)
+            + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x";
     const pid_t pid = fork();
     if (pid == 0) {
       resetChildSignalState();

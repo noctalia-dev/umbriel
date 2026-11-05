@@ -38,6 +38,11 @@ namespace umbriel {
     render();
   }
 
+  void QuitConfirm::showSessionQuit(bool killApps) {
+    m_sessionQuitKillsApps = killApps;
+    show(Kind::SessionQuit);
+  }
+
   void QuitConfirm::showInputEmulation(std::string_view application) {
     m_application = application;
     show(Kind::InputEmulation);
@@ -125,7 +130,9 @@ namespace umbriel {
               m_application
           )
         : m_kind == Kind::SessionQuit
-        ? "Enter confirms; any other key or click cancels"
+        ? (m_sessionQuitKillsApps ? "Running apps will be killed immediately.\n"
+                                    "Enter confirms; any other key or click cancels"
+                                  : "Enter confirms; any other key or click cancels")
         : "This can reveal another window or screen. Enter confirms; any other key or click cancels";
     std::string markup =
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);

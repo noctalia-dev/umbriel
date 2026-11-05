@@ -298,13 +298,13 @@ namespace {
           return name + " " + window->id;
         }
         return name;
-      case umbriel::ActionArgKind::SkipConfirmation:
+      case umbriel::ActionArgKind::SessionQuit:
         if (const auto* quit = umbriel::payloadIf<umbriel::QuitArg>(bind); quit != nullptr) {
-          if (!quit->waitForClients) {
-            name += " no-wait";
-          }
           if (quit->skipConfirmation) {
             name += " skip-confirmation";
+          }
+          if (quit->killApps) {
+            name += " kill-apps";
           }
         }
         return name;

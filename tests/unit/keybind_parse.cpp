@@ -217,11 +217,11 @@ UMBRIEL_TEST(parsesSessionQuitConfirmation) {
   CHECK(skip != nullptr);
   CHECK(skip == nullptr || skip->skipConfirmation);
 
-  CHECK(parseAction("session-quit skip-confirmation no-wait", bind));
+  CHECK(parseAction("session-quit skip-confirmation kill-apps", bind));
   const auto* fast = umbriel::payloadIf<umbriel::QuitArg>(bind);
-  CHECK(fast != nullptr && fast->skipConfirmation && !fast->waitForClients);
-  CHECK(parseAction("session-quit no-wait", bind));
-  CHECK(!parseAction("session-quit no-wait no-wait", bind));
+  CHECK(fast != nullptr && fast->skipConfirmation && fast->killApps);
+  CHECK(parseAction("session-quit kill-apps", bind));
+  CHECK(!parseAction("session-quit kill-apps kill-apps", bind));
   CHECK(!parseAction("session-quit bogus", bind));
   CHECK(!parseAction("session-quit ''", bind));
 }
@@ -757,7 +757,7 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::OptionalOutput:
     case ActionArgKind::OptionalScratchpad:
     case ActionArgKind::OptionalWindowId:
-    case ActionArgKind::SkipConfirmation:
+    case ActionArgKind::SessionQuit:
       break;
     case ActionArgKind::Command:
       input += " value";
@@ -870,7 +870,7 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::OptionalWindowId:
       CHECK(umbriel::payloadIf<umbriel::WindowIdArg>(bind) != nullptr);
       break;
-    case ActionArgKind::SkipConfirmation:
+    case ActionArgKind::SessionQuit:
       CHECK(umbriel::payloadIf<umbriel::QuitArg>(bind) != nullptr);
       break;
     case ActionArgKind::SdrWhite:
@@ -914,7 +914,7 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
     case ActionArgKind::OptionalOutput:
     case ActionArgKind::OptionalScratchpad:
     case ActionArgKind::OptionalWindowId:
-    case ActionArgKind::SkipConfirmation:
+    case ActionArgKind::SessionQuit:
       break;
     case ActionArgKind::Command:
       input += " true";
@@ -1118,7 +1118,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return " normal";
     case ActionArgKind::TabIndex:
       return " -1";
-    case ActionArgKind::SkipConfirmation:
+    case ActionArgKind::SessionQuit:
       return " skip-confirmation";
     case ActionArgKind::SdrWhite:
       return " 200 --output DP-1";
@@ -1178,8 +1178,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<index>";
     case ActionArgKind::SdrWhite:
       return "<nits> [--output <output>]";
-    case ActionArgKind::SkipConfirmation:
-      return "[skip-confirmation] [no-wait]";
+    case ActionArgKind::SessionQuit:
+      return "[skip-confirmation] [kill-apps]";
     case ActionArgKind::WindowMoveTo:
       return "<anchor> <x> <y> [--window <window-id>]";
     case ActionArgKind::WindowMoveBy:
@@ -1198,7 +1198,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     if (spec.argKind == ActionArgKind::OptionalOutput
         || spec.argKind == ActionArgKind::OptionalScratchpad
         || spec.argKind == ActionArgKind::OptionalWindowId
-        || spec.argKind == ActionArgKind::SkipConfirmation) {
+        || spec.argKind == ActionArgKind::SessionQuit) {
       Keybind bare;
       CHECK(parseAction(spec.name, bare));
       CHECK(bare.action == spec.action);
