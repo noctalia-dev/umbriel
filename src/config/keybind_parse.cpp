@@ -470,7 +470,7 @@ namespace umbriel {
          KeybindAction::ScreenCastSetOutput, ActionArgKind::OptionalOutput},
         {"screencast-set-window", "[<window-id>]", "Share the focused window, or the selected window",
          KeybindAction::ScreenCastSetWindow, ActionArgKind::OptionalWindowId},
-        {"session-quit", "[skip-confirmation]", "Quit the session, confirming first unless told to skip",
+        {"session-quit", "[skip-confirmation] [no-wait]", "Quit the session, confirming first unless told to skip",
          KeybindAction::SessionQuit, ActionArgKind::SkipConfirmation},
         {"shortcuts-inhibit-toggle", "", "Toggle shortcuts inhibition for the focused surface",
          KeybindAction::ShortcutsInhibitToggle},
@@ -987,11 +987,17 @@ namespace umbriel {
         return TabIndexArg{.index = index};
       }
       case ActionArgKind::SkipConfirmation: {
-        const auto word = optionalWord(words);
-        if (!word || (!word->empty() && *word != "skip-confirmation")) {
-          return std::nullopt;
+        QuitArg arg;
+        for (const auto& word : words) {
+          if (word == "skip-confirmation" && !arg.skipConfirmation) {
+            arg.skipConfirmation = true;
+          } else if (word == "no-wait" && arg.waitForClients) {
+            arg.waitForClients = false;
+          } else {
+            return std::nullopt;
+          }
         }
-        return QuitArg{.skipConfirmation = !word->empty()};
+        return arg;
       }
       case ActionArgKind::SdrWhite:
         return parseSdrWhiteWords(words);

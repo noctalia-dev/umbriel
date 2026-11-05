@@ -342,7 +342,9 @@ namespace umbriel {
       }
       case ActionArgKind::SkipConfirmation: {
         QuitArg arg;
-        if (!fields.only({"skip_confirmation"}) || !fields.boolean("skip_confirmation", arg.skipConfirmation)) {
+        if (!fields.only({"skip_confirmation", "wait_for_clients"})
+            || !fields.boolean("skip_confirmation", arg.skipConfirmation)
+            || !fields.boolean("wait_for_clients", arg.waitForClients)) {
           return std::nullopt;
         }
         return arg;
@@ -487,6 +489,9 @@ namespace umbriel {
           } else if constexpr (std::is_same_v<Arg, QuitArg>) {
             if (arg.skipConfirmation) {
               request["skip_confirmation"] = true;
+            }
+            if (!arg.waitForClients) {
+              request["wait_for_clients"] = false;
             }
           } else if constexpr (
               std::is_same_v<Arg, EffectWindowArg>

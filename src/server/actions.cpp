@@ -528,7 +528,7 @@ namespace umbriel {
         confirm->show(QuitConfirm::Kind::SessionQuit);
         return true;
       }
-      server.requestSessionExit();
+      server.requestSessionExit(arg == nullptr || arg->waitForClients);
       return true;
     }
 

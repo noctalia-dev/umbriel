@@ -287,6 +287,7 @@ namespace umbriel {
   };
   struct QuitArg {
     bool skipConfirmation = false;
+    bool waitForClients = true;
     bool operator==(const QuitArg&) const = default;
   };
   struct SdrWhiteArg {

@@ -967,6 +967,9 @@ namespace umbriel {
     if (m_sessionExitResultSource != nullptr) {
       wl_event_source_remove(m_sessionExitResultSource);
     }
+    if (m_sessionExitTimeoutSource != nullptr) {
+      wl_event_source_remove(m_sessionExitTimeoutSource);
+    }
     if (m_sessionExitResultFd >= 0) {
       close(m_sessionExitResultFd);
     }
@@ -1400,7 +1403,7 @@ namespace umbriel {
     wl_display_terminate(m_display);
   }
 
-  void Server::requestSessionExit() {
+  void Server::requestSessionExit(bool waitForClients) {
     if (m_stopping || m_sessionExitRequested) {
       return;
     }
@@ -1409,6 +1412,7 @@ namespace umbriel {
       return;
     }
     m_sessionExitRequested = true;
+    m_sessionExitWaitForClients = waitForClients;
     int resultPipe[2]{-1, -1};
     if (pipe2(resultPipe, O_CLOEXEC | O_NONBLOCK) != 0) {
       kLog.error("cannot create session shutdown pipe: {}", std::strerror(errno));
@@ -1431,6 +1435,14 @@ namespace umbriel {
           server->m_sessionExitResultSource = nullptr;
           close(fd);
           server->m_sessionExitResultFd = -1;
+          if (!server->m_sessionExitWaitForClients) {
+            if (server->m_sessionExitTimeoutSource != nullptr) {
+              wl_event_source_remove(server->m_sessionExitTimeoutSource);
+              server->m_sessionExitTimeoutSource = nullptr;
+            }
+            server->stop();
+            return 0;
+          }
           if (size != 1 || result != 'x') {
             kLog.error("session shutdown request failed; stopping the compositor directly");
             server->stop();
@@ -1447,8 +1459,27 @@ namespace umbriel {
       return;
     }
     m_sessionExitResultFd = resultPipe[0];
-    const std::string command = shellQuote(m_systemctlExecutable)
-        + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x";
+    if (!waitForClients) {
+      m_sessionExitTimeoutSource = wl_event_loop_add_timer(
+          wl_display_get_event_loop(m_display),
+          [](void* data) {
+            static_cast<Server*>(data)->stop();
+            return 0;
+          },
+          this
+      );
+      constexpr int kSessionExitTimeoutMs = 2000;
+      if (m_sessionExitTimeoutSource == nullptr
+          || wl_event_source_timer_update(m_sessionExitTimeoutSource, kSessionExitTimeoutMs) < 0) {
+        close(resultPipe[1]);
+        stop();
+        return;
+      }
+    }
+    const std::string command = waitForClients
+        ? shellQuote(m_systemctlExecutable)
+            + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x"
+        : applicationScopeKillCommand(m_systemctlExecutable, getpid()) + " 1>&2; printf x";
     const pid_t pid = fork();
     if (pid == 0) {
       resetChildSignalState();

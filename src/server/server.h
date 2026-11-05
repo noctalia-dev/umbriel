@@ -172,7 +172,7 @@ namespace umbriel {
     bool start(const char* startupCmd = nullptr);
     void run();
     void stop();
-    void requestSessionExit();
+    void requestSessionExit(bool waitForClients = true);
     bool stopping() const { return m_stopping; }
 
     wl_display* display() const { return m_display; }
@@ -926,6 +926,8 @@ namespace umbriel {
     bool m_sessionExitRequested = false;
     int m_sessionExitResultFd = -1;
     wl_event_source* m_sessionExitResultSource = nullptr;
+    wl_event_source* m_sessionExitTimeoutSource = nullptr;
+    bool m_sessionExitWaitForClients = true;
     std::string m_socketName;
     std::string m_systemdRunExecutable;
     std::string m_systemctlExecutable;

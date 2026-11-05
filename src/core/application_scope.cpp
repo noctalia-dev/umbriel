@@ -66,6 +66,20 @@ namespace umbriel {
     return systemdUnitFromCgroup(std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()));
   }
 
+  std::string applicationScopeKillCommand(std::string_view systemctl, pid_t compositorPid) {
+    if (systemctl.empty() || compositorPid <= 0) {
+      return {};
+    }
+    std::string executable = "'";
+    for (char character : systemctl) {
+      executable += character == '\'' ? "'\\''" : std::string(1, character);
+    }
+    return executable
+        + "' --user kill --kill-whom=all --signal=SIGKILL 'app-umbriel-"
+        + std::to_string(compositorPid)
+        + "-*.scope'";
+  }
+
   SystemdControlEnvironment captureSystemdControlEnvironment() {
     SystemdControlEnvironment environment;
     for (size_t index = 0; index < kSystemdControlEnvironmentVariables.size(); ++index) {

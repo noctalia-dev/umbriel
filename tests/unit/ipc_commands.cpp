@@ -396,7 +396,7 @@ namespace {
     case ActionArgKind::TabIndex:
       return {" -1"};
     case ActionArgKind::SkipConfirmation:
-      return {"", " skip-confirmation"};
+      return {"", " skip-confirmation", " no-wait", " skip-confirmation no-wait"};
     case ActionArgKind::SdrWhite:
       return {" 200", " 300 --output DP-1"};
     case ActionArgKind::LayoutMode:
@@ -431,6 +431,20 @@ UMBRIEL_TEST(everyWordFormRoundTripsThroughTheActionRequest) {
         CHECK(decoded->payload == words.payload);
       }
     }
+  }
+}
+
+UMBRIEL_TEST(sessionQuitRequestDefaultsToWaitingAndAcceptsNoWait) {
+  std::string error;
+  const auto normal = decode(R"({"cmd":"action","action":"session-quit"})", error);
+  const auto fast =
+      decode(R"({"cmd":"action","action":"session-quit","skip_confirmation":true,"wait_for_clients":false})", error);
+  CHECK(normal.has_value());
+  CHECK(fast.has_value());
+  if (normal && fast) {
+    CHECK(std::get<umbriel::QuitArg>(normal->payload).waitForClients);
+    CHECK(!std::get<umbriel::QuitArg>(fast->payload).waitForClients);
+    CHECK(std::get<umbriel::QuitArg>(fast->payload).skipConfirmation);
   }
 }
 
@@ -476,6 +490,7 @@ UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
       {R"({"cmd":"action","action":"effect-cursor-set","effect":"halo","window":"w1"})", R"(unknown field "window")"},
       {R"({"cmd":"action","action":"effect-screen-set","effect":"x","window":"w1"})", R"(unknown field "window")"},
       {R"({"cmd":"action","action":"session-quit","skip_confirmation":"yes"})", "must be a boolean"},
+      {R"({"cmd":"action","action":"session-quit","wait_for_clients":"no"})", "must be a boolean"},
   };
   for (const auto& [request, reason] : cases) {
     std::string error;

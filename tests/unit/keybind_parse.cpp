@@ -217,6 +217,11 @@ UMBRIEL_TEST(parsesSessionQuitConfirmation) {
   CHECK(skip != nullptr);
   CHECK(skip == nullptr || skip->skipConfirmation);
 
+  CHECK(parseAction("session-quit skip-confirmation no-wait", bind));
+  const auto* fast = umbriel::payloadIf<umbriel::QuitArg>(bind);
+  CHECK(fast != nullptr && fast->skipConfirmation && !fast->waitForClients);
+  CHECK(parseAction("session-quit no-wait", bind));
+  CHECK(!parseAction("session-quit no-wait no-wait", bind));
   CHECK(!parseAction("session-quit bogus", bind));
   CHECK(!parseAction("session-quit ''", bind));
 }
@@ -1174,7 +1179,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     case ActionArgKind::SdrWhite:
       return "<nits> [--output <output>]";
     case ActionArgKind::SkipConfirmation:
-      return "[skip-confirmation]";
+      return "[skip-confirmation] [no-wait]";
     case ActionArgKind::WindowMoveTo:
       return "<anchor> <x> <y> [--window <window-id>]";
     case ActionArgKind::WindowMoveBy:

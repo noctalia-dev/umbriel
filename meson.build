@@ -692,6 +692,7 @@ ext_workspace_client_c = custom_target(
 # compositor and the tests, so a test never recompiles a translation unit. Keep this list free of anything needing
 # umbrielfx, pango, or a running server.
 pure_sources = files(
+  'src/core/application_scope.cpp',
   'src/config/change.cpp',
   'src/config/resolve.cpp',
   'src/config/keybind_parse.cpp',
@@ -763,7 +764,6 @@ umbriel_pure_dep = declare_dependency(
 # and the executable is just an entry point.
 core_sources = files(
   'src/core/animation.cpp',
-  'src/core/application_scope.cpp',
   'src/scene/effect_registry.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',

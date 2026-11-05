@@ -20,6 +20,7 @@ namespace umbriel {
   // Empty means the process is not owned by a recognizable systemd unit.
   std::string systemdUnitFromCgroup(std::string_view cgroup);
   std::string currentSystemdUnit();
+  std::string applicationScopeKillCommand(std::string_view systemctl, pid_t compositorPid);
 
   inline constexpr std::array<const char*, 3> kSystemdControlEnvironmentVariables{
       "XDG_RUNTIME_DIR",
