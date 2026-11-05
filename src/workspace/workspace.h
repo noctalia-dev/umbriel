@@ -146,14 +146,13 @@ namespace umbriel {
     void exitFullscreenForIncomingView(const View* joining);
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
-    [[nodiscard]] bool isOnlyTiledView(const View* view) const;
+    bool isOnlyTiledView(const View* view) const;
     // True when `view` belongs to the layout's only tiled column. A column can stack or tab several windows, so those
     // windows are still alone together; a floating window never is.
-    [[nodiscard]] bool isAloneInLayout(const View* view) const;
+    bool isAloneInLayout(const View* view) const;
     // The opening form of isAloneInLayout. An empty layout leaves the view in its own new column. A view joins the
     // existing column only through a named scrolling column, which `namedScrollingColumn` names.
-    [[nodiscard]] bool
-    wouldBeAloneInLayout(const View* view, std::string_view namedScrollingColumn, std::optional<int> order) const;
+    bool wouldBeAloneInLayout(const View* view, std::string_view namedScrollingColumn, std::optional<int> order) const;
     // True when `view` is the only window sharing this workspace: no other tile and no other float. A pinned or
     // scratchpad window neither holds the workspace nor takes it.
     bool isOnlyVisibleView(const View* view) const;

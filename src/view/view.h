@@ -158,17 +158,15 @@ namespace umbriel {
     bool onActiveWorkspace() const {
       return m_attachedTo != nullptr ? m_attachedTo->onActiveWorkspace() : m_onActiveWorkspace;
     }
-    [[nodiscard]] bool tiled() const { return m_tiled; }
-    [[nodiscard]] bool floating() const { return !m_tiled; }
-    [[nodiscard]] bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
+    bool tiled() const { return m_tiled; }
+    bool floating() const { return !m_tiled; }
+    bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
     // In the workspace's only tiled column, whatever the number of windows that column holds.
-    [[nodiscard]] bool isAloneInLayout() const;
-    [[nodiscard]] bool isOnlyWindowOnWorkspace() const;
-    [[nodiscard]] const std::optional<std::string>& namedScrollingColumnName() const {
-      return m_namedScrollingColumnName;
-    }
-    [[nodiscard]] std::optional<int> namedScrollingColumnOrder() const { return m_namedScrollingColumnOrder; }
-    [[nodiscard]] bool pinned() const { return m_attachedTo != nullptr ? m_attachedTo->pinned() : m_pinned; }
+    bool isAloneInLayout() const;
+    bool isOnlyWindowOnWorkspace() const;
+    const std::optional<std::string>& namedScrollingColumnName() const { return m_namedScrollingColumnName; }
+    std::optional<int> namedScrollingColumnOrder() const { return m_namedScrollingColumnOrder; }
+    bool pinned() const { return m_attachedTo != nullptr ? m_attachedTo->pinned() : m_pinned; }
     // True when unpinning puts the window back in the tiled layout, because
     // that is where it was pinned from.
     bool restoresTiledOnUnpin() const { return m_restoreTiledAfterUnpin; }
