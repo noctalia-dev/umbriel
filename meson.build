@@ -866,6 +866,7 @@ core_sources = files(
   'src/lock/session_lock.cpp',
   'src/overview/overview.cpp',
   'src/workspace/workspace.cpp',
+  'src/workspace/workspace_mirror.cpp',
   'src/workspace/tab_presenter.cpp',
   'src/workspace/scratchpad.cpp',
   'src/cli/ipc_client.cpp',

@@ -286,6 +286,14 @@ namespace umbriel {
     void notePointerFocusChange(wlr_surface* newSurface);
 
   private:
+    bool mirrorTransform(View* view, double* scale, double* tx, double* ty) const;
+    void captureGrabTransform(View* view);
+    double grabX() const;
+    double grabY() const;
+    double m_grabInputScale = 1;
+    double m_grabTranslateX = 0;
+    double m_grabTranslateY = 0;
+    bool m_grabViaMirror = false;
     static void onMotion(wl_listener* listener, void* data);
     static void onMotionAbsolute(wl_listener* listener, void* data);
     static void onButton(wl_listener* listener, void* data);

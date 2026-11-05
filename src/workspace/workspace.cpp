@@ -17,6 +17,7 @@
 #include "view/registry.h"
 #include "view/size_hints.h"
 #include "view/view.h"
+#include "workspace/workspace_mirror.h"
 // clang-format off
 #include <algorithm>
 #include <cmath>
@@ -190,11 +191,11 @@ namespace umbriel {
 
   Workspace::Workspace(
       WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
-      bool named, ResolvedLayoutConfig layoutConfig
+      bool named, ResolvedLayoutConfig layoutConfig, std::string mirrorOrigin
   )
       : m_group(&group), m_handle(handle), m_id(std::move(id)), m_name(std::move(name)), m_index(index), m_named(named),
-        m_layout(createLayout(layoutConfig.mode)), m_layoutConfig(std::move(layoutConfig)),
-        m_layoutMode(m_layoutConfig.mode) {
+        m_mirrorOrigin(std::move(mirrorOrigin)), m_layout(createLayout(layoutConfig.mode)),
+        m_layoutConfig(std::move(layoutConfig)), m_layoutMode(m_layoutConfig.mode) {
     m_launchAnchor->workspace = this;
     m_layout->setConfig(&m_layoutConfig);
     m_layout->setConstraints(&viewLayoutConstraints);
@@ -210,9 +211,21 @@ namespace umbriel {
     m_tiledLayer = wlr_scene_tree_create(m_tree);
     m_floatingLayer = wlr_scene_tree_create(m_tree);
     m_fullscreenTree = wlr_scene_tree_create(m_group->output()->fullscreenRoot());
+    if (mirror()) {
+      m_mirrorRenderer = std::make_unique<WorkspaceMirror>(*this, m_tree);
+    }
   }
 
   Workspace::~Workspace() {
+    m_mirrorRenderer.reset();
+    setMirrorSource(nullptr);
+    // A mirror whose source dies looks for the next one at idle: a refuge is pruned only once the windows are home.
+    if (!m_mirrors.empty() && !m_group->server()->stopping()) {
+      m_group->server()->scheduleDisplacedViewRestore();
+    }
+    for (Workspace* copy : std::vector<Workspace*>(m_mirrors)) {
+      copy->setMirrorSource(nullptr);
+    }
     m_launchAnchor->workspace = nullptr;
     // Windows leaving with the workspace are no longer anyone's tabs.
     m_tabs.releaseAll();
@@ -243,6 +256,36 @@ namespace umbriel {
       wlr_ext_workspace_handle_v1_destroy(m_handle);
       m_handle = nullptr;
     }
+  }
+
+  void Workspace::setMirrorSource(Workspace* source) {
+    if (m_mirrorSource == source) {
+      return;
+    }
+    if (m_mirrorSource != nullptr) {
+      std::erase(m_mirrorSource->m_mirrors, this);
+    }
+    m_mirrorSource = source;
+    if (source != nullptr) {
+      source->m_mirrors.push_back(this);
+    }
+    m_group->server()->scheduleIpcWorkspacesEvent();
+    if (m_mirrorRenderer != nullptr) {
+      m_mirrorRenderer->clear();
+      m_mirrorRenderer->schedule();
+    }
+  }
+
+  void Workspace::scheduleMirrors() {
+    for (Workspace* copy : m_mirrors) {
+      if (copy->m_mirrorRenderer != nullptr) {
+        copy->m_mirrorRenderer->schedule();
+      }
+    }
+  }
+
+  bool Workspace::visibleViaMirror() const {
+    return std::ranges::any_of(m_mirrors, [](Workspace* copy) { return copy->active(); });
   }
 
   void Workspace::invalidateLaunchReservations() {
@@ -310,12 +353,21 @@ namespace umbriel {
       return;
     }
     m_active = active;
+    if (m_mirrorRenderer != nullptr) {
+      m_mirrorRenderer->schedule();
+    }
+    if (active && m_mirrorSource != nullptr) {
+      m_mirrorSource->markArrange(false);
+    }
+    m_group->server()->scheduleSuspensionSync();
     wlr_ext_workspace_handle_v1_set_active(m_handle, active);
     applyVisibility();
     syncCloseSnapshots();
     if (active) {
-      // Pinned windows belong to their output, so they always follow its active workspace.
-      for (size_t index = 0; index < m_group->workspaceCount(); ++index) {
+      m_group->rememberOwnActive(*this);
+      // Pinned windows belong to their output, so they always follow its active workspace. A mirror holds no windows,
+      // so they stay with the own workspace that was active last and stay visible from there.
+      for (size_t index = 0; !mirror() && index < m_group->workspaceCount(); ++index) {
         if (Workspace* sibling = m_group->workspaceAt(index); sibling != nullptr && sibling != this) {
           adoptPinnedViews(*sibling);
         }
@@ -1069,10 +1121,10 @@ namespace umbriel {
         resizeRequests.push_back({.view = view, .width = width, .height = height});
       }
     }
-    // Visual state below (scroll, positions) only applies while visible.
+    // Copied hidden workspaces also need scene positions: transfers can change output-local coordinates.
     Overview* overview = m_group->server()->overview();
     const bool overviewActive = overview != nullptr && overview->active();
-    if (!m_active && !m_inSwitchTransition && !overviewActive) {
+    if (!m_active && !m_inSwitchTransition && !overviewActive && !visibleViaMirror()) {
       for (const ResizeRequest& request : resizeRequests) {
         request.view->requestTiledSize(request.width, request.height);
       }
@@ -1095,6 +1147,7 @@ namespace umbriel {
     if (view == nullptr || !view->mapped() || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
+    scheduleMirrors();
     // A window under an interactive move spans outputs unclipped; leave it as presentGrabbedViewSpanning set it
     // (re-deriving presentation mid-drag flickers A<->B).
     if (Cursor* cursor = m_group->server()->cursor(); cursor != nullptr && cursor->isDraggingView(view)) {
@@ -1126,7 +1179,8 @@ namespace umbriel {
       const auto [width, height] = view->floatingSize();
       target = {nodeX, nodeY, width, height};
     } else {
-      if (!normallyVisible && !overviewActive) {
+      const bool mirrored = std::ranges::any_of(m_mirrors, [](Workspace* copy) { return copy->active(); });
+      if (!normallyVisible && !overviewActive && !mirrored) {
         return;
       }
 
@@ -1162,7 +1216,9 @@ namespace umbriel {
   void Workspace::applyPositions(bool animate) {
     const Overview* overview = m_group != nullptr ? m_group->server()->overview() : nullptr;
     const bool overviewActive = overview != nullptr && overview->active();
-    if ((!m_active && !m_inSwitchTransition && !overviewActive) || m_group == nullptr || m_group->output() == nullptr) {
+    if ((!m_active && !m_inSwitchTransition && !overviewActive && !visibleViaMirror())
+        || m_group == nullptr
+        || m_group->output() == nullptr) {
       return;
     }
     Output* output = m_group->output();
@@ -2833,7 +2889,7 @@ namespace umbriel {
       m_workspaces.push_back(createConfiguredWorkspace(std::move(resolved.workspaces[i]), i));
     }
 
-    activate(m_workspaces.front().get());
+    activate(firstOwn());
     kLog.info(
         "workspace group for {} with {} workspaces", identity.connector.empty() ? "output" : identity.connector, count
     );
@@ -2883,7 +2939,8 @@ namespace umbriel {
     // at idle time, after the caller has pushed the workspace into the list.
     m_server->scheduleIpcWorkspacesEvent();
     return std::make_unique<Workspace>(
-        *this, handle, std::move(id), std::move(workspace.name), index, workspace.named, std::move(workspace.layout)
+        *this, handle, std::move(id), std::move(workspace.name), index, workspace.named, std::move(workspace.layout),
+        std::move(workspace.mirrorOf)
     );
   }
 
@@ -2892,7 +2949,7 @@ namespace umbriel {
     std::string name = std::to_string(index + 1);
     const OutputIdentity identity = m_output->identity();
     ResolvedLayoutConfig layout = resolveUnnamedWorkspaceLayout(config(), identity, index);
-    auto workspace = createConfiguredWorkspace({std::move(name), false, std::move(layout)}, index);
+    auto workspace = createConfiguredWorkspace({std::move(name), false, std::move(layout), {}}, index);
     Workspace* result = workspace.get();
     m_workspaces.push_back(std::move(workspace));
     return result;
@@ -2902,7 +2959,7 @@ namespace umbriel {
     const std::string name = "1";
     const OutputIdentity identity = m_output->identity();
     ResolvedLayoutConfig layout = resolveUnnamedWorkspaceLayout(config(), identity, 0);
-    auto workspace = createConfiguredWorkspace({name, false, std::move(layout)}, 0);
+    auto workspace = createConfiguredWorkspace({name, false, std::move(layout), {}}, 0);
     Workspace* result = workspace.get();
     m_workspaces.insert(m_workspaces.begin(), std::move(workspace));
     return result;
@@ -2939,7 +2996,7 @@ namespace umbriel {
     const std::string name = std::to_string(index + 1);
     const OutputIdentity identity = m_output->identity();
     ResolvedLayoutConfig layout = resolveUnnamedWorkspaceLayout(config(), identity, index);
-    auto workspace = createConfiguredWorkspace({name, false, std::move(layout)}, index);
+    auto workspace = createConfiguredWorkspace({name, false, std::move(layout), {}}, index);
     Workspace* result = workspace.get();
     m_workspaces.insert(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index), std::move(workspace));
     refreshWorkspaceMetadata();
@@ -3075,7 +3132,7 @@ namespace umbriel {
         index = 1;
       }
       ResolvedLayoutConfig layout = resolveWorkspaceLayout(config(), m_output->identity(), entry, index);
-      auto workspace = createConfiguredWorkspace({entry, true, std::move(layout)}, index);
+      auto workspace = createConfiguredWorkspace({entry, true, std::move(layout), {}}, index);
       m_workspaces.insert(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index), std::move(workspace));
       claimed.push_back(entry);
     }
@@ -3118,7 +3175,11 @@ namespace umbriel {
     // Preserve workspace identity by name before using position as a fallback.
     for (size_t i = 0; i < resolved.size(); ++i) {
       const auto match = std::ranges::find_if(old, [&](const auto& workspace) {
-        return resolved[i].named && workspace != nullptr && workspace->named() && workspace->name() == resolved[i].name;
+        return resolved[i].named
+            && workspace != nullptr
+            && workspace->named()
+            && workspace->name() == resolved[i].name
+            && workspace->mirrorOrigin() == resolved[i].mirrorOf;
       });
       if (match != old.end()) {
         next[i] = std::move(*match);
@@ -3126,7 +3187,12 @@ namespace umbriel {
     }
 
     for (size_t i = 0; i < resolved.size(); ++i) {
-      if (next[i] == nullptr && i < old.size() && old[i] != nullptr) {
+      // A mirror is never recycled by position: its name says which workspace it shows.
+      if (next[i] == nullptr
+          && i < old.size()
+          && old[i] != nullptr
+          && !old[i]->mirror()
+          && resolved[i].mirrorOf.empty()) {
         next[i] = std::move(old[i]);
       }
       if (next[i] != nullptr) {
@@ -3171,7 +3237,7 @@ namespace umbriel {
       if (removed == nullptr) {
         continue;
       }
-      Workspace* fallback = m_workspaces[std::min(removed->index(), resolved.size() - 1)].get();
+      Workspace* fallback = nearestOwn(std::min(removed->index(), resolved.size() - 1));
       if (removed.get() == m_active) {
         removed->setActive(false);
         replacementActive = fallback;
@@ -3197,6 +3263,7 @@ namespace umbriel {
     }
     old.clear();
     refreshWorkspaceMetadata();
+    resolveWorkspaceMirrors(*m_server);
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onWorkspaceInventoryChanged(this);
     }
@@ -3436,6 +3503,49 @@ namespace umbriel {
     return m_workspaces[index].get();
   }
 
+  Workspace* WorkspaceGroup::activeForLaunch() const {
+    if (m_active != nullptr && m_active->mirrorSource() != nullptr) {
+      return m_active->mirrorSource();
+    }
+    return activeOwn();
+  }
+
+  Workspace* WorkspaceGroup::activeOwn() const {
+    if (m_active != nullptr && !m_active->mirror()) {
+      return m_active;
+    }
+    const auto holds = [this](const Workspace* candidate) {
+      return std::ranges::any_of(m_workspaces, [candidate](const auto& entry) { return entry.get() == candidate; });
+    };
+    if (m_lastOwn != nullptr && holds(m_lastOwn)) {
+      return m_lastOwn;
+    }
+    return firstOwn();
+  }
+
+  Workspace* WorkspaceGroup::firstOwn() const {
+    const auto own = std::ranges::find_if(m_workspaces, [](const auto& entry) { return !entry->mirror(); });
+    return own != m_workspaces.end() ? own->get() : (m_workspaces.empty() ? nullptr : m_workspaces.front().get());
+  }
+
+  Workspace* WorkspaceGroup::nearestOwn(size_t index) const {
+    if (m_workspaces.empty()) {
+      return nullptr;
+    }
+    index = std::min(index, m_workspaces.size() - 1);
+    for (size_t i = index; i < m_workspaces.size(); ++i) {
+      if (!m_workspaces[i]->mirror()) {
+        return m_workspaces[i].get();
+      }
+    }
+    for (size_t i = index; i-- > 0;) {
+      if (!m_workspaces[i]->mirror()) {
+        return m_workspaces[i].get();
+      }
+    }
+    return m_workspaces.front().get();
+  }
+
   Workspace* WorkspaceGroup::workspaceAtClamped(size_t index) const {
     Workspace* workspace = workspaceAt(index);
     if (workspace == nullptr && m_dynamic && !m_workspaces.empty()) {
@@ -3444,11 +3554,11 @@ namespace umbriel {
     return workspace;
   }
 
-  Workspace* WorkspaceGroup::workspaceNamed(std::string_view name) const {
+  Workspace* WorkspaceGroup::workspaceNamed(std::string_view name, bool includeMirrors) const {
     Workspace* displaced = nullptr;
     bool ambiguous = false;
     for (const auto& entry : m_workspaces) {
-      if (entry->named() && entry->name() == name) {
+      if (entry->named() && entry->name() == name && (includeMirrors || !entry->mirror())) {
         if (!entry->displacedWorkspace()) {
           return entry.get();
         }
@@ -3923,8 +4033,10 @@ namespace umbriel {
     slideFinish();
     const size_t index = std::min(origin.workspaceIndex, m_workspaces.size());
     auto workspace = createConfiguredWorkspace(
-        {origin.workspaceNamed ? origin.workspaceName : std::to_string(index + 1), origin.workspaceNamed,
-         displacedWorkspaceLayout(origin)},
+        {origin.workspaceNamed ? origin.workspaceName : std::to_string(index + 1),
+         origin.workspaceNamed,
+         displacedWorkspaceLayout(origin),
+         {}},
         index
     );
     workspace->m_transferred = true;
@@ -3960,8 +4072,10 @@ namespace umbriel {
     }
     const size_t index = m_workspaces.size();
     auto workspace = createConfiguredWorkspace(
-        {origin->workspaceNamed ? origin->workspaceName : std::to_string(index + 1), origin->workspaceNamed,
-         displacedWorkspaceLayout(*origin)},
+        {origin->workspaceNamed ? origin->workspaceName : std::to_string(index + 1),
+         origin->workspaceNamed,
+         displacedWorkspaceLayout(*origin),
+         {}},
         index
     );
     workspace->m_displacedWorkspace = std::move(origin);
@@ -3974,6 +4088,58 @@ namespace umbriel {
       overview->onWorkspaceInventoryChanged(this);
     }
     return result;
+  }
+
+  namespace {
+    // The workspace a mirror shows: the one of its name on the output its origin names, or, once that output is gone,
+    // the refuge its windows were evacuated to. Never a workspace of the mirror's own output.
+    Workspace* mirrorSourceFor(Server& server, const Workspace& mirror) {
+      for (const auto& candidate : server.outputs()) {
+        WorkspaceGroup* group = candidate->workspaceGroup();
+        if (group == nullptr
+            || group == mirror.group()
+            || outputNameMatch(candidate->identity(), mirror.mirrorOrigin()) == OutputNameMatch::None) {
+          continue;
+        }
+        if (Workspace* source = group->workspaceNamed(mirror.name())) {
+          return source;
+        }
+      }
+      for (const auto& candidate : server.outputs()) {
+        WorkspaceGroup* group = candidate->workspaceGroup();
+        if (group == nullptr || group == mirror.group()) {
+          continue;
+        }
+        for (size_t index = 0; index < group->workspaceCount(); ++index) {
+          Workspace* refuge = group->workspaceAt(index);
+          const auto& origin = refuge->displacedWorkspace();
+          if (origin
+              && refuge->named()
+              && !refuge->mirror()
+              && refuge->name() == mirror.name()
+              && outputNameMatch(origin->identity(), mirror.mirrorOrigin()) != OutputNameMatch::None) {
+            return refuge;
+          }
+        }
+      }
+      return nullptr;
+    }
+  } // namespace
+
+  void resolveWorkspaceMirrors(Server& server) {
+    for (const auto& output : server.outputs()) {
+      WorkspaceGroup* group = output->workspaceGroup();
+      if (group == nullptr) {
+        continue;
+      }
+      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+        Workspace* mirror = group->workspaceAt(index);
+        if (mirror == nullptr || !mirror->mirror() || mirror->mirrorSource() != nullptr) {
+          continue;
+        }
+        mirror->setMirrorSource(mirrorSourceFor(server, *mirror));
+      }
+    }
   }
 
 } // namespace umbriel

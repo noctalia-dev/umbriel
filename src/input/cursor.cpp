@@ -1072,6 +1072,40 @@ namespace umbriel {
     return workspace != nullptr && grab != nullptr && grab->workspace == workspace;
   }
 
+  bool Cursor::mirrorTransform(View* view, double* scale, double* tx, double* ty) const {
+    *scale = 1;
+    *tx = 0;
+    *ty = 0;
+    if (view == nullptr || view->workspace() == nullptr) {
+      return false;
+    }
+    auto* receiving =
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+    Workspace* copy = receiving != nullptr ? receiving->workspaceGroup()->active() : nullptr;
+    if (copy == nullptr || !copy->mirror() || copy->mirrorSource() != view->workspace()) {
+      return false;
+    }
+    wlr_box from{};
+    wlr_box to{};
+    wlr_output_layout_get_box(m_server->outputLayout(), view->workspace()->group()->output()->wlr(), &from);
+    wlr_output_layout_get_box(m_server->outputLayout(), receiving->wlr(), &to);
+    if (from.width <= 0 || to.width <= 0) {
+      return false;
+    }
+    *scale = static_cast<double>(from.width) / to.width;
+    const double centerY = std::lround((to.height - from.height / *scale) / 2);
+    *tx = from.x - to.x * *scale;
+    *ty = from.y - (to.y + centerY) * *scale;
+    return true;
+  }
+
+  void Cursor::captureGrabTransform(View* view) {
+    m_grabViaMirror = mirrorTransform(view, &m_grabInputScale, &m_grabTranslateX, &m_grabTranslateY);
+  }
+
+  double Cursor::grabX() const { return m_cursor->x * m_grabInputScale + m_grabTranslateX; }
+  double Cursor::grabY() const { return m_cursor->y * m_grabInputScale + m_grabTranslateY; }
+
   bool Cursor::beginMove(View* view, uint32_t button, bool deferUntilThreshold) {
     if (view == nullptr || !view->mapped() || button == 0) {
       return false;
@@ -1081,6 +1115,7 @@ namespace umbriel {
     if (!isPassthrough()) {
       resetMode();
     }
+    captureGrabTransform(view);
     bool tiled = view->tiled();
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
@@ -1099,8 +1134,8 @@ namespace umbriel {
     const bool tiledUnderneath = tiled || (pinned && view->restoresTiledOnUnpin());
     MoveGrab grab{
         .view = view,
-        .offsetX = m_cursor->x - view->layoutX(),
-        .offsetY = m_cursor->y - view->layoutY(),
+        .offsetX = grabX() - view->layoutX(),
+        .offsetY = grabY() - view->layoutY(),
         .target = tiled ? DragTarget::Tiled : (pinned ? DragTarget::Pinned : DragTarget::Floating),
         .stackingLayout = !tiled
             && !pinned
@@ -1177,6 +1212,7 @@ namespace umbriel {
     if (!isPassthrough()) {
       resetMode();
     }
+    captureGrabTransform(view);
     bool tiled = view->tiled();
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && !view->attached() && scratchpad->contains(view)) {
@@ -1193,7 +1229,7 @@ namespace umbriel {
       Layout& layout = workspace->layout();
       uint32_t resolvedEdges = 0;
       if (edges != 0) {
-        resolvedEdges = layout.resolveResizeEdges(view, edges, m_cursor->x, m_cursor->y);
+        resolvedEdges = layout.resolveResizeEdges(view, edges, grabX(), grabY());
       } else {
         resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
       }
@@ -1218,8 +1254,8 @@ namespace umbriel {
       m_grab = TiledResizeGrab{
           .view = view,
           .workspace = workspace,
-          .startX = m_cursor->x,
-          .startY = m_cursor->y,
+          .startX = grabX(),
+          .startY = grabY(),
           .edges = resolvedEdges,
           .session = std::move(session),
       };
@@ -1242,8 +1278,8 @@ namespace umbriel {
     const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
-        .offsetX = m_cursor->x - borderX,
-        .offsetY = m_cursor->y - borderY,
+        .offsetX = grabX() - borderX,
+        .offsetY = grabY() - borderY,
         .geometryX = geometry.x,
         .geometryY = geometry.y,
         .geometryWidth = geometry.width,
@@ -1414,6 +1450,10 @@ namespace umbriel {
     m_toplevelDrag = false;
     m_grab = PassthroughGrab{};
     m_grabButton = 0;
+    m_grabInputScale = 1;
+    m_grabTranslateX = 0;
+    m_grabTranslateY = 0;
+    m_grabViaMirror = false;
     if (restoreDragPresentation && view != nullptr) {
       view->restoreHomePresentation();
       // A drag abandoned outside its drop path (session lock mid-drag, the
@@ -3050,11 +3090,12 @@ namespace umbriel {
       return;
     }
     grab->view->setDragPosition(
-        static_cast<int>(m_cursor->x - grab->offsetX), static_cast<int>(m_cursor->y - grab->offsetY),
-        grab->stackingLayout
+        static_cast<int>(grabX() - grab->offsetX), static_cast<int>(grabY() - grab->offsetY), grab->stackingLayout
     );
     if (grab->physics) {
-      grab->view->moveDragPhysics(m_cursor->x - grab->lastX, m_cursor->y - grab->lastY);
+      grab->view->moveDragPhysics(
+          (m_cursor->x - grab->lastX) * m_grabInputScale, (m_cursor->y - grab->lastY) * m_grabInputScale
+      );
       grab->lastX = m_cursor->x;
       grab->lastY = m_cursor->y;
     }
@@ -3064,6 +3105,13 @@ namespace umbriel {
   void Cursor::presentGrabbedViewSpanning() {
     View* view = grabbedView();
     if (view == nullptr) {
+      return;
+    }
+    if (m_grabViaMirror) {
+      view->applyDragPresentation();
+      if (view->workspace() != nullptr) {
+        view->workspace()->scheduleMirrors();
+      }
       return;
     }
     // A window dragged across a monitor boundary must span both outputs, not be
@@ -3087,7 +3135,7 @@ namespace umbriel {
       if (h > 0) {
         grab.offsetY = std::clamp(grab.offsetY, -static_cast<double>(h), -1.0);
       }
-      view->setDragPosition(m_cursor->x - grab.offsetX, m_cursor->y - grab.offsetY, grab.stackingLayout);
+      view->setDragPosition(grabX() - grab.offsetX, grabY() - grab.offsetY, grab.stackingLayout);
     }
     m_lastTitleBarClick = {};
     grab.pending = false;
@@ -3116,9 +3164,12 @@ namespace umbriel {
     if (grab->target != DragTarget::Tiled) {
       return;
     }
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
+    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY());
     Output* output = m_server->outputFromWlr(wlrOutput);
-    if (output == nullptr || output->workspaceGroup() == nullptr || output->workspaceGroup()->active() == nullptr) {
+    if (output == nullptr
+        || output->workspaceGroup() == nullptr
+        || output->workspaceGroup()->active() == nullptr
+        || output->workspaceGroup()->active()->mirror()) {
       return;
     }
 
@@ -3131,9 +3182,9 @@ namespace umbriel {
       return;
     }
 
-    Workspace* workspace = output->workspaceGroup()->active();
+    Workspace* workspace = m_grabViaMirror ? grab->view->workspace() : output->workspaceGroup()->active();
     grab->drop = computeDropTarget(
-        *workspace, m_cursor->x, m_cursor->y, grab->view,
+        *workspace, grabX(), grabY(), grab->view,
         DropTargetOptions{
             .clipHintToUsable = true,
             .reserveScrollingViewportEdges = true,
@@ -3274,8 +3325,10 @@ namespace umbriel {
     // (a fullscreen window cannot be pinned) is still tiled here and drops back
     // into the layout rather than staying detached.
     Output* destination =
-        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
-    Workspace* workspace = destination != nullptr ? destination->workspaceGroup()->active() : nullptr;
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY()));
+    Workspace* workspace = m_grabViaMirror
+        ? view->workspace()
+        : (destination != nullptr ? destination->workspaceGroup()->activeOwn() : nullptr);
     if (grab->target == DragTarget::Tiled && workspace != nullptr && workspace->layoutMode() == LayoutMode::Stacking) {
       view->floatForStackingLayout();
     } else {
@@ -3348,13 +3401,14 @@ namespace umbriel {
       return;
     }
 
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    Output* output = m_server->outputFromWlr(wlrOutput);
+    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY());
+    Output* output = m_grabViaMirror && view->workspace() != nullptr ? view->workspace()->group()->output()
+                                                                     : m_server->outputFromWlr(wlrOutput);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
       scratchpad->finishMove(view, output);
-    } else if (output != nullptr && output->workspaceGroup() != nullptr) {
-      if (Workspace* target = output->workspaceGroup()->active(); view->workspace() != target) {
+    } else if (!m_grabViaMirror && output != nullptr && output->workspaceGroup() != nullptr) {
+      if (Workspace* target = output->workspaceGroup()->activeOwn(); view->workspace() != target) {
         view->moveToWorkspace(target);
         target->exitFullscreenForIncomingView(view);
       }
@@ -3464,8 +3518,8 @@ namespace umbriel {
       resetMode();
       return;
     }
-    const double borderX = m_cursor->x - grab->offsetX;
-    const double borderY = m_cursor->y - grab->offsetY;
+    const double borderX = grabX() - grab->offsetX;
+    const double borderY = grabY() - grab->offsetY;
     int newLeft = grab->geometryX;
     int newRight = grab->geometryX + grab->geometryWidth;
     int newTop = grab->geometryY;
@@ -3897,7 +3951,7 @@ namespace umbriel {
     }
     grab->deferred = false;
     const wlr_box usable = grab->workspace->tiledArea();
-    grab->session->applyDelta(m_cursor->x - grab->startX, m_cursor->y - grab->startY, usable);
+    grab->session->applyDelta(grabX() - grab->startX, grabY() - grab->startY, usable);
     grab->view->setMaximizedState(false);
     grab->workspace->markArrange(lockstep);
   }

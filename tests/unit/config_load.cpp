@@ -2641,6 +2641,56 @@ UMBRIEL_TEST(outputMinWorkspacesLoadsAndRequiresDynamicWorkspaces) {
   CHECK(!containsDiagnostic(store, "unknown key output.DP-1.min_workspaces"));
 }
 
+UMBRIEL_TEST(outputWorkspaceMirrorsLoadInPlaceAndValidateTheirOrigin) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  using Mirror = umbriel::OutputRule::WorkspaceMirror;
+
+  // The origin may be declared after the output that mirrors it.
+  file.write("[output.DP-2]\nworkspaces = [\"own\", \"b@DP-1\"]\n[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n");
+  CHECK(store.reload().success);
+  const auto receiving =
+      std::ranges::find_if(store.config().outputs, [](const umbriel::OutputRule& rule) { return rule.name == "DP-2"; });
+  CHECK(receiving != store.config().outputs.end());
+  if (receiving != store.config().outputs.end()) {
+    const auto* names =
+        receiving->workspaces ? std::get_if<std::vector<std::string>>(&*receiving->workspaces) : nullptr;
+    CHECK(names != nullptr && *names == std::vector<std::string>({"own", "b"}));
+    CHECK(receiving->mirrors == std::vector<Mirror>({{.name = "b", .origin = "DP-1"}}));
+  }
+
+  const auto rejects = [&](const char* config, const char* diagnostic) {
+    file.write(config);
+    CHECK(!store.reload().success);
+    CHECK(containsDiagnostic(store, diagnostic));
+  };
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-9\"]\n",
+      "unknown output 'DP-9'"
+  );
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"missing@DP-1\"]\n",
+      "has no workspace 'missing'"
+  );
+  rejects("[output.DP-1]\nworkspaces = 3\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-1\"]\n", "has no workspace 'a'");
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-1\"]\n"
+      "[output.DP-3]\nworkspaces = [\"own\", \"a@DP-2\"]\n",
+      "is itself a mirror"
+  );
+  rejects("[output.DP-1]\nworkspaces = [\"a\", \"a@DP-1\"]\n", "duplicate name 'a'");
+  rejects("[output.DP-1]\nworkspaces = [\"own\", \"a@DP-1\"]\n", "mirrors its own output");
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@\"]\n",
+      R"(must be "<name>@<output>")"
+  );
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"a@DP-1\", \"b@DP-1\"]\n",
+      "needs at least one workspace of its own"
+  );
+}
+
 // The wrap switch is an ordinary per-output boolean: it defaults off, survives a
 // reload without the key, and rejects a non-boolean the way its neighbours do.
 UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {

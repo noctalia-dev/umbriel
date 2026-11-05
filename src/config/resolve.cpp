@@ -205,7 +205,7 @@ namespace umbriel {
     const OutputRule* owner = nullptr;
     for (const OutputRule& output : config.outputs) {
       const auto* names = output.workspaces ? std::get_if<std::vector<std::string>>(&*output.workspaces) : nullptr;
-      if (names == nullptr || std::ranges::find(*names, name) == names->end()) {
+      if (names == nullptr || std::ranges::find(*names, name) == names->end() || output.findMirror(name) != nullptr) {
         continue;
       }
       if (owner != nullptr) {
@@ -573,6 +573,7 @@ namespace umbriel {
 
   ResolvedWorkspaceSet resolveWorkspacesForOutput(const Config& config, const OutputIdentity& identity) {
     const auto* inventory = workspaceInventoryForIdentity(config, identity);
+    const OutputRule* rule = matchingOutputRule(config, identity);
     ResolvedWorkspaceSet result;
     if (inventory == nullptr) {
       result.dynamic = true;
@@ -588,7 +589,7 @@ namespace umbriel {
       const auto appendUnnamed = [&] {
         const size_t index = result.workspaces.size();
         const std::string name = std::to_string(index + 1);
-        result.workspaces.push_back({name, false, resolveUnnamedWorkspaceLayout(config, identity, index)});
+        result.workspaces.push_back({name, false, resolveUnnamedWorkspaceLayout(config, identity, index), {}});
       };
       if (config.workspaces.emptyAbove) {
         appendUnnamed();
@@ -596,7 +597,7 @@ namespace umbriel {
       for (std::string& name : named) {
         const size_t index = result.workspaces.size();
         ResolvedLayoutConfig layout = resolveWorkspaceLayout(config, identity, name, index);
-        result.workspaces.push_back({std::move(name), true, std::move(layout)});
+        result.workspaces.push_back({std::move(name), true, std::move(layout), {}});
       }
       while (result.workspaces.size() < count) {
         appendUnnamed();
@@ -608,7 +609,7 @@ namespace umbriel {
       result.workspaces.reserve(*count);
       for (size_t index = 0; index < *count; ++index) {
         result.workspaces.push_back(
-            {std::to_string(index + 1), false, resolveUnnamedWorkspaceLayout(config, identity, index)}
+            {std::to_string(index + 1), false, resolveUnnamedWorkspaceLayout(config, identity, index), {}}
         );
       }
       return result;
@@ -618,7 +619,11 @@ namespace umbriel {
     result.workspaces.reserve(names.size());
     for (size_t index = 0; index < names.size(); ++index) {
       const auto& name = names[index];
-      result.workspaces.push_back({name, true, resolveWorkspaceLayout(config, identity, name, index)});
+      const OutputRule::WorkspaceMirror* mirror = rule != nullptr ? rule->findMirror(name) : nullptr;
+      result.workspaces.push_back(
+          {name, true, resolveWorkspaceLayout(config, identity, name, index),
+           mirror != nullptr ? mirror->origin : std::string{}}
+      );
     }
     return result;
   }

@@ -8,6 +8,7 @@ namespace umbriel {
     View,
     LayerSurface,
     LockSurface,
+    MirrorSurface,
   };
 
   // Stored in wlr_scene_node::data so hit-testing can tell views from layers

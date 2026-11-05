@@ -318,6 +318,31 @@ UMBRIEL_TEST(workspaceInventoryResolvesStaticAndDynamicOutputs) {
   }
 }
 
+UMBRIEL_TEST(workspaceMirrorsResolveInPlaceAndLeaveTheNameToTheirOrigin) {
+  Config config;
+  OutputRule origin;
+  origin.name = "DP-1";
+  origin.workspaces = std::vector<std::string>{"main", "web"};
+  config.outputs.push_back(std::move(origin));
+
+  OutputRule receiving;
+  receiving.name = "DP-2";
+  receiving.workspaces = std::vector<std::string>{"web", "own"};
+  receiving.mirrors = {{.name = "web", .origin = "DP-1"}};
+  config.outputs.push_back(std::move(receiving));
+
+  CHECK_EQ(umbriel::uniqueFixedWorkspaceOwner(config, "web"), config.outputs.data());
+
+  const auto mirrored = umbriel::resolveWorkspacesForOutput(config, identity("DP-2"));
+  CHECK_EQ(mirrored.workspaces.size(), size_t{2});
+  if (mirrored.workspaces.size() == 2) {
+    CHECK_EQ(mirrored.workspaces[0].name, std::string{"web"});
+    CHECK_EQ(mirrored.workspaces[0].mirrorOf, std::string{"DP-1"});
+    CHECK_EQ(mirrored.workspaces[1].name, std::string{"own"});
+    CHECK(mirrored.workspaces[1].mirrorOf.empty());
+  }
+}
+
 UMBRIEL_TEST(dynamicWorkspaceNamesMaterializeWithScopeAndRemainDistinctFromNumericLabels) {
   Config config;
   config.workspaces.emptyAbove = true;

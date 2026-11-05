@@ -411,7 +411,7 @@ namespace umbriel {
             || (!assignedScratchpad && m_workspace != nullptr && m_workspace->id() == m_launchWorkspaceId));
     Output* preferredOutput = m_server->outputFromWlr(m_server->preferredOutput());
     Workspace* preferredWorkspace = preferredOutput != nullptr && preferredOutput->workspaceGroup() != nullptr
-        ? preferredOutput->workspaceGroup()->active()
+        ? preferredOutput->workspaceGroup()->activeForLaunch()
         : nullptr;
     const bool launchPlacementSilent = launchPlacementUsed
         && (assignedLaunchScratchpad ? m_server->scratchpadManager()->activeOn(preferredOutput)
@@ -929,6 +929,9 @@ namespace umbriel {
           : windowRuleWorkspaceGroup(*m_server, rule, preferred != nullptr ? preferred->workspaceGroup() : nullptr);
       if (target == nullptr) {
         target = windowRuleWorkspace(targetGroup, rule);
+      }
+      if (target != nullptr) {
+        targetGroup = target->group();
       }
 
       const bool layoutFloats =

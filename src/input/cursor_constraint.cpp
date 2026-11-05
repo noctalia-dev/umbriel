@@ -230,7 +230,11 @@ namespace umbriel {
 
   double Cursor::surfaceScale(wlr_surface* surface) const {
     const Xwayland* xwayland = m_server->xwayland();
-    return xwayland != nullptr ? xwayland->surfaceScale(surface) : 1.0;
+    double scale = 1;
+    double tx = 0;
+    double ty = 0;
+    (void)mirrorTransform(View::fromSurface(surface), &scale, &tx, &ty);
+    return scale * (xwayland != nullptr ? xwayland->surfaceScale(surface) : 1.0);
   }
 
 } // namespace umbriel
