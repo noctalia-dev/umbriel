@@ -3262,6 +3262,9 @@ bool wlr_scene_node_set_dim_behind(struct wlr_scene_node* node, const struct wlr
     wlr_addon_init(&dim->rect_addon, &dim->rect->node.addons, &scene_dim_rect_impl, &scene_dim_rect_impl);
   }
   struct wlr_scene_node* backdrop = &dim->rect->node;
+  if (!umbrielfx_scene_node_share_capture_policy(backdrop, node)) {
+    return false;
+  }
   wlr_scene_node_reparent(backdrop, node->parent);
   wlr_scene_node_place_below(backdrop, node);
   int x, y;

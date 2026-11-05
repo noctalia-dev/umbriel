@@ -467,4 +467,19 @@ UMBRIEL_TEST(dimBehindIsDestroyedWithOwner) {
   fixture.tearDown();
 }
 
+UMBRIEL_TEST(dimBehindSharesCapturePolicyAcrossToggles) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, true));
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  wlr_scene_node* dim = nullptr;
+  dim = wl_container_of(fixture.tree->node.link.prev, dim, link);
+  CHECK(umbrielfx_scene_node_capture_excluded(dim));
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, false));
+  CHECK(!umbrielfx_scene_node_capture_excluded(dim));
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, true));
+  CHECK(umbrielfx_scene_node_capture_excluded(dim));
+  fixture.tearDown();
+}
+
 int main() { return RUN_TESTS(); }
