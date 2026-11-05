@@ -14,6 +14,7 @@
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 #include <algorithm>
 
@@ -76,7 +77,8 @@ namespace umbriel {
     }
 
     if (Workspace* workspace = view->workspace()) {
-      if (WorkspaceGroup* group = workspace->group(); group != nullptr && !view->pinned() && !workspace->active()) {
+      if (WorkspaceGroup* group = workspace->group();
+          group != nullptr && !view->pinned() && !workspace->active() && !view->visibleViaMirror()) {
         const char* appId = view->appId() != nullptr ? view->appId() : "";
         // A group without a live output still has to activate; only the log's output name degrades.
         const Output* output = group->output();
@@ -90,7 +92,7 @@ namespace umbriel {
         group->activate(workspace);
       }
     }
-    if (!view->onActiveWorkspace() && !view->pinned()) {
+    if (!view->onShownWorkspace() && !view->pinned()) {
       return;
     }
     if (m_server.scratchpadManager() != nullptr) {
@@ -189,7 +191,7 @@ namespace umbriel {
     m_server.cursor()->invalidateHoverFocus();
     View* seatFocused = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
     for (const auto& entry : m_server.registry().all()) {
-      if (entry->mapped() && entry->activated() && (entry->onActiveWorkspace() || entry->pinned())) {
+      if (entry->mapped() && entry->activated() && (entry->onShownWorkspace() || entry->pinned())) {
         if (entry.get() == seatFocused) {
           return;
         }
@@ -258,7 +260,7 @@ namespace umbriel {
           || !view->acceptsKeyboardFocus()
           || view->blocked()
           || view->placementRoot()->minimized()
-          || (!view->onActiveWorkspace() && !view->pinned())) {
+          || (!view->onShownWorkspace() && !view->pinned())) {
         return false;
       }
 
@@ -378,7 +380,7 @@ namespace umbriel {
       }
       if (View* focused = workspace->focusedView(); focused != nullptr
           && focused->mapped()
-          && focused->onActiveWorkspace()
+          && focused->onShownWorkspace()
           && !focused->minimized()
           && focused->inputDelegate()->acceptsKeyboardFocus()) {
         focusView(focused);
@@ -494,6 +496,14 @@ namespace umbriel {
     }
 
     wlr_scene_buffer* sceneBuffer = wlr_scene_buffer_from_node(node);
+    View* mirroredView = nullptr;
+    if (WorkspaceMirror::resolveBuffer(sceneBuffer, surface, &mirroredView)) {
+      if (m_server.sessionLocked()) {
+        *surface = nullptr;
+        return nullptr;
+      }
+      return mirroredView;
+    }
     wlr_scene_surface* sceneSurface = wlr_scene_surface_try_from_buffer(sceneBuffer);
     if (sceneSurface == nullptr) {
       return nullptr;
@@ -537,12 +547,17 @@ namespace umbriel {
     return view;
   }
 
-  Workspace* activeWorkspace(Server& server) {
+  Workspace* shownWorkspace(Server& server) {
     Output* output = server.outputFromWlr(server.preferredOutput());
     if (output == nullptr || output->workspaceGroup() == nullptr) {
       return nullptr;
     }
     return output->workspaceGroup()->active();
+  }
+
+  Workspace* activeWorkspace(Server& server) {
+    Workspace* workspace = shownWorkspace(server);
+    return workspace != nullptr ? workspace->layoutOwner() : nullptr;
   }
 
   View* seatFocusedWindow(Server& server) {

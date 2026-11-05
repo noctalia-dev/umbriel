@@ -98,8 +98,11 @@ namespace umbriel {
     bool m_lastRaise = true;
   };
 
-  // The pointer output's active workspace: the target of explicit workspace and
-  // layout actions, which intentionally follow the pointer.
+  // The pointer output's active workspace, a mirror included: the target of
+  // workspace navigation, which intentionally follows the pointer.
+  Workspace* shownWorkspace(Server& server);
+  // The workspace holding the windows shownWorkspace() shows, its source for a
+  // mirror: the target of window and layout actions.
   Workspace* activeWorkspace(Server& server);
 
   // The view holding the seat's keyboard focus, if any.

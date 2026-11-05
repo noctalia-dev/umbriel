@@ -103,6 +103,9 @@ namespace umbriel {
     // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
     // schedule it through Server::scheduleSuspensionSync.
     void syncSuspendedState();
+    bool visibleViaMirror() const;
+    // On its output's active workspace, or shown elsewhere by an active mirror of its workspace.
+    bool onShownWorkspace() const { return onActiveWorkspace() || visibleViaMirror(); }
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
     void requestClose();

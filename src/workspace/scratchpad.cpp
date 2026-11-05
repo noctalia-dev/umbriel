@@ -1254,7 +1254,7 @@ namespace umbriel {
         }
       }
       if (workspace == nullptr) {
-        workspace = group->active();
+        workspace = group->activeOwn();
       }
     }
     view->moveToWorkspace(workspace, false);

@@ -1032,21 +1032,38 @@ namespace umbriel {
   }
 
   bool Output::fullscreenCoversOutput() const {
-    const Workspace* workspace = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    const Workspace* shown = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    const bool mirrored = shown != nullptr && shown->mirror();
+    const Workspace* workspace = shown != nullptr ? shown->layoutOwner() : nullptr;
     const wlr_box box = layoutBox();
-    return workspace != nullptr
-        && box.width > 0
-        && box.height > 0
-        && std::ranges::any_of(workspace->allViews(), [&box](const View* view) {
-             const wlr_box& fullscreen = view->presentedBox();
-             return view->mapped()
-                 && (view->layoutFullscreen() || view->currentFullscreen())
-                 && view->presented()
-                 && fullscreen.x <= box.x
-                 && fullscreen.y <= box.y
-                 && fullscreen.x + fullscreen.width >= box.x + box.width
-                 && fullscreen.y + fullscreen.height >= box.y + box.height;
-           });
+    if (workspace == nullptr || box.width <= 0 || box.height <= 0) {
+      return false;
+    }
+    const wlr_box source = mirrored ? workspace->group()->output()->layoutBox() : box;
+    if (source.width <= 0) {
+      return false;
+    }
+    const double scale = mirrored ? static_cast<double>(box.width) / source.width : 1.0;
+    return std::ranges::any_of(workspace->allViews(), [&](const View* view) {
+      if (!view->mapped()
+          || (!view->layoutFullscreen() && !view->currentFullscreen())
+          || !(mirrored ? view->visibleViaMirror() : view->presented())) {
+        return false;
+      }
+      wlr_box fullscreen = view->presentedBox();
+      if (mirrored) {
+        fullscreen.x = box.x + std::lround((fullscreen.x - source.x) * scale);
+        fullscreen.y = box.y
+            + std::lround((box.height - source.height * scale) / 2)
+            + std::lround((fullscreen.y - source.y) * scale);
+        fullscreen.width = std::lround(fullscreen.width * scale);
+        fullscreen.height = std::lround(fullscreen.height * scale);
+      }
+      return fullscreen.x <= box.x
+          && fullscreen.y <= box.y
+          && fullscreen.x + fullscreen.width >= box.x + box.width
+          && fullscreen.y + fullscreen.height >= box.y + box.height;
+    });
   }
 
   bool Output::autoHdrEligible(const View* view) const {

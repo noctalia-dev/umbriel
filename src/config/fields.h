@@ -34,11 +34,21 @@ namespace umbriel {
     std::function<void()> clear;
   };
 
+  // A workspace mirror an output's list declares, checked once every output is read: its origin output may come
+  // later in the file or in another include.
+  struct WorkspaceMirrorReference {
+    std::string output;
+    std::string name;
+    std::string origin;
+    toml::source_region source;
+  };
+
   // What one load shares across tables.
   struct registry::ReadContext {
     // The config being loaded. Tables read earlier are already in it, such as the scratchpads an action may name.
     Config& loaded;
     std::vector<EffectReference>& effectReferences;
+    std::vector<WorkspaceMirrorReference>& mirrorReferences;
     const std::vector<configmerge::EffectDeclaration>& presetDeclarations;
     const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
   };
@@ -152,6 +162,7 @@ namespace umbriel {
 
   // Checks that need every table read.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references);
+  void validateWorkspaceMirrors(const Config& loaded, const std::vector<WorkspaceMirrorReference>& references);
   void warnScrollButtonBinds(const Config& loaded);
 
   enum class [[nodiscard]] ConfigParseOutcome : uint8_t {

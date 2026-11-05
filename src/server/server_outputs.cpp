@@ -157,7 +157,9 @@ namespace umbriel {
 
   std::expected<Workspace*, std::string>
   Server::resolveNamedWorkspace(std::string_view name, WorkspaceGroup* preferred, std::string_view outputName) const {
-    const auto hasName = [name](const Workspace* workspace) { return workspace->named() && workspace->name() == name; };
+    const auto hasName = [name](const Workspace* workspace) {
+      return workspace->named() && workspace->name() == name && !workspace->mirror();
+    };
     const auto groupHasName = [&hasName](const WorkspaceGroup* group) {
       for (size_t index = 0; index < group->workspaceCount(); ++index) {
         if (hasName(group->workspaceAt(index))) {
@@ -180,7 +182,7 @@ namespace umbriel {
         if (group == nullptr) {
           return std::unexpected("output has no workspace group: " + std::string(outputName));
         }
-        if (Workspace* workspace = group->workspaceNamed(name)) {
+        if (Workspace* workspace = group->workspaceNamed(name, true)) {
           return workspace;
         }
         if (groupHasName(group)) {
@@ -223,9 +225,13 @@ namespace umbriel {
         continue;
       }
       WorkspaceGroup* group = output->workspaceGroup();
-      Workspace* match = group->workspaceNamed(name);
+      // The focused output's own workspace of that name wins, a mirror included: the name on its bar means its copy.
+      Workspace* match = group->workspaceNamed(name, group == preferred);
       if (group == preferred) {
         preferredMatch = match;
+        if (match != nullptr && match->mirror()) {
+          return match;
+        }
       }
       if (match == nullptr) {
         // A group with several same-named refugees still participates in global ambiguity.

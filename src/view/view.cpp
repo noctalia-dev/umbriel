@@ -110,7 +110,8 @@ namespace umbriel {
       if (group == nullptr) {
         return nullptr;
       }
-      Workspace* target = group->active();
+      Workspace* target =
+          rule.defaultOutput || rule.defaultPinned.value_or(false) ? group->activeOwn() : group->activeForLaunch();
       if (rule.defaultWorkspace) {
         Workspace* ruleTarget = nullptr;
         if (const auto* position = std::get_if<WorkspaceIndex>(&*rule.defaultWorkspace)) {
@@ -392,6 +393,10 @@ namespace umbriel {
         workspace = active;
       }
     }
+    // A mirror holds no windows: whatever aimed at one lands on the output's own workspace instead.
+    if (workspace != nullptr && workspace->mirror()) {
+      workspace = workspace->group()->activeOwn();
+    }
     if (!m_displacedHome && !m_pinned && workspace != nullptr && workspace->displacedWorkspace()) {
       const auto& home = workspace->displacedWorkspace();
       m_displacedHome.emplace();
@@ -671,6 +676,7 @@ namespace umbriel {
     root->raiseTransientTree();
     if (Workspace* home = workspace()) {
       home->raiseFloatingLayer();
+      home->scheduleMirrors();
     }
   }
 
@@ -841,10 +847,18 @@ namespace umbriel {
                                    : static_cast<int>(std::lround(m_posY.target()));
   }
 
+  bool View::visibleViaMirror() const {
+    return m_mapped
+        && !m_pinned
+        && !presentationSuppressed()
+        && m_workspace != nullptr
+        && m_workspace->visibleViaMirror();
+  }
+
   void View::applySeatFocus(bool withKeyboard, bool raise) {
     // Mechanism only. Policy lives in Server::focusView; do not call directly
     // from input/event code.
-    if ((!m_onActiveWorkspace && !m_pinned) || !acceptsKeyboardFocus()) {
+    if ((!m_onActiveWorkspace && !m_pinned && !visibleViaMirror()) || !acceptsKeyboardFocus()) {
       return;
     }
 

@@ -764,6 +764,11 @@ namespace umbriel {
       }
       return ambiguous ? nullptr : builtin;
     }
+
+    // A launch from a scratchpad stays on the output's own workspace; any other follows an active mirror to its source.
+    Workspace* launchWorkspaceOn(const WorkspaceGroup& group, const std::string& scratchpad) {
+      return scratchpad.empty() ? group.activeForLaunch() : group.activeOwn();
+    }
   } // namespace
   void Server::applyConfig(const ConfigEffects& effects) {
     if (!effects.any()) {
@@ -875,6 +880,7 @@ namespace umbriel {
           group->reconcileInventory();
         }
       }
+      resolveWorkspaceMirrors(*this);
     }
     if (effects.workspaceLayout) {
       for (const auto& output : m_outputs) {
@@ -1113,6 +1119,10 @@ namespace umbriel {
 
   bool Server::viewRenderedOffscreen(const View& view) const {
     if (view.backgroundRender() || (m_overview != nullptr && m_overview->presentsLive(&view))) {
+      return true;
+    }
+    if (Workspace* workspace = view.workspace();
+        workspace != nullptr && !view.pinned() && !view.presentationSuppressed() && workspace->visibleViaMirror()) {
       return true;
     }
     return viewCaptured(view);
@@ -1651,7 +1661,7 @@ namespace umbriel {
         const bool focusOnActivate = rulePolicy.value_or(trusted || config().general.focusOnActivate);
         Output* preferredOutput = self->outputFromWlr(self->preferredOutput());
         Workspace* preferredWorkspace = preferredOutput != nullptr && preferredOutput->workspaceGroup() != nullptr
-            ? preferredOutput->workspaceGroup()->active()
+            ? preferredOutput->workspaceGroup()->activeForLaunch()
             : nullptr;
         const bool launchAway = launchStartup
             && (self->m_scratchpadManager != nullptr && self->m_scratchpadManager->contains(entry.get())
@@ -1725,10 +1735,10 @@ namespace umbriel {
     Workspace* launchWorkspace = nullptr;
     if (compositorIssued) {
       if (Output* output = outputFromWlr(preferredOutput()); output != nullptr && output->workspaceGroup() != nullptr) {
-        launchWorkspace = output->workspaceGroup()->active();
         if (m_scratchpadManager != nullptr) {
           watch->launchScratchpad = m_scratchpadManager->activeOn(output);
         }
+        launchWorkspace = launchWorkspaceOn(*output->workspaceGroup(), watch->launchScratchpad);
       }
     } else if (watch->inputBacked) {
       if (View* source = viewForSurface(*this, token->surface); source != nullptr) {
@@ -1738,17 +1748,17 @@ namespace umbriel {
         launchWorkspace = source->workspace();
         if (source->pinned() || launchWorkspace == nullptr) {
           if (Output* output = source->currentOutput(); output != nullptr && output->workspaceGroup() != nullptr) {
-            launchWorkspace = output->workspaceGroup()->active();
+            launchWorkspace = launchWorkspaceOn(*output->workspaceGroup(), watch->launchScratchpad);
           }
         }
       } else if (
           LayerSurface* source = LayerSurface::fromSurface(token->surface);
           source != nullptr && source->output() != nullptr && source->output()->workspaceGroup() != nullptr
       ) {
-        launchWorkspace = source->output()->workspaceGroup()->active();
         if (m_scratchpadManager != nullptr) {
           watch->launchScratchpad = m_scratchpadManager->activeOn(source->output());
         }
+        launchWorkspace = launchWorkspaceOn(*source->output()->workspaceGroup(), watch->launchScratchpad);
       }
     }
     if (launchWorkspace != nullptr && launchWorkspace->group() != nullptr) {
@@ -1780,8 +1790,9 @@ namespace umbriel {
         && watch->pointerBacked
         && sameWaylandClient(token->surface, view.rootSurface())) {
       Output* output = outputFromWlr(preferredOutput());
-      Workspace* pointerWorkspace =
-          output != nullptr && output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+      Workspace* pointerWorkspace = output != nullptr && output->workspaceGroup() != nullptr
+          ? output->workspaceGroup()->activeForLaunch()
+          : nullptr;
       if (pointerWorkspace != nullptr
           && pointerWorkspace->group() != nullptr
           && pointerWorkspace->group() != sourceGroup) {
@@ -1789,7 +1800,9 @@ namespace umbriel {
         workspace = pointerWorkspace;
         targetGroup = pointerWorkspace->group();
         launchWorkspaceId = pointerWorkspace->id();
-        launchOutputName = output->wlr()->name != nullptr ? output->wlr()->name : "";
+        Output* targetOutput = targetGroup->output();
+        launchOutputName =
+            targetOutput != nullptr && targetOutput->wlr()->name != nullptr ? targetOutput->wlr()->name : "";
         pointerDrop = true;
       }
     }
@@ -2144,6 +2157,7 @@ namespace umbriel {
       wlr_output_set_name(output, m_pendingOutputName.c_str());
     }
     m_outputs.push_back(std::make_unique<Output>(*this, output));
+    resolveWorkspaceMirrors(*this);
     scheduleDisplacedViewRestore();
     markDirty(Dirty::Backdrop | Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
     if (m_sessionLocked) {
@@ -2813,6 +2827,8 @@ namespace umbriel {
       m_sessionLock->forgetOutput(output->wlr());
     }
     std::erase_if(m_outputs, [output](const std::unique_ptr<Output>& entry) { return entry.get() == output; });
+    // The workspaces that left with the output have refuges now: mirrors of them follow.
+    resolveWorkspaceMirrors(*this);
     if (hadRuntimeEffect && !m_stopping) {
       m_effects.prepare(m_renderer);
     }
@@ -2834,7 +2850,7 @@ namespace umbriel {
     }
     WorkspaceGroup* sourceGroup = source->workspaceGroup();
     Workspace* targetWorkspace = destination != nullptr && destination->workspaceGroup() != nullptr
-        ? destination->workspaceGroup()->active()
+        ? destination->workspaceGroup()->activeOwn()
         : nullptr;
     if (sourceGroup != nullptr) {
       sourceGroup->invalidateLaunchReservations();
@@ -3096,11 +3112,12 @@ namespace umbriel {
           home->workspaceName, home->outputName
       );
       WorkspaceGroup* group = preferred->workspaceGroup();
-      if (!group->active()->displacedWorkspace()) {
-        return group->active();
+      Workspace* own = group->activeOwn();
+      if (own != nullptr && !own->displacedWorkspace()) {
+        return own;
       }
       for (size_t index = 0; index < group->workspaceCount(); ++index) {
-        if (!group->workspaceAt(index)->displacedWorkspace()) {
+        if (!group->workspaceAt(index)->displacedWorkspace() && !group->workspaceAt(index)->mirror()) {
           return group->workspaceAt(index);
         }
       }
@@ -3124,6 +3141,7 @@ namespace umbriel {
     auto* server = static_cast<Server*>(data);
     server->m_displacedRestoreIdle = nullptr;
     server->restoreDisplacedViews();
+    resolveWorkspaceMirrors(*server);
   }
 
   void Server::restoreDisplacedViews() {
@@ -3132,12 +3150,12 @@ namespace umbriel {
       return;
     }
     const auto nativeFallback = [](WorkspaceGroup* group) -> Workspace* {
-      if (group->active() != nullptr && !group->active()->displacedWorkspace()) {
-        return group->active();
+      if (Workspace* own = group->activeOwn(); own != nullptr && !own->displacedWorkspace()) {
+        return own;
       }
       for (size_t index = 0; index < group->workspaceCount(); ++index) {
         Workspace* workspace = group->workspaceAt(index);
-        if (!workspace->displacedWorkspace()) {
+        if (!workspace->displacedWorkspace() && !workspace->mirror()) {
           return workspace;
         }
       }
@@ -3214,7 +3232,7 @@ namespace umbriel {
         for (size_t index = first; index < last; ++index) {
           View* view = displaced[index];
           if (view->pinned() && view->workspace() == nullptr) {
-            view->setWorkspace(fallback->workspaceGroup()->active());
+            view->setWorkspace(fallback->workspaceGroup()->activeOwn());
             view->restoreFloatingPosition(false);
             ++restored;
           }
@@ -3229,7 +3247,7 @@ namespace umbriel {
           continue;
         }
         workspace = groupHome.workspaceOrigin ? displacedWorkspaceDestination(groupHome.workspaceOrigin, fallback)
-                                              : fallback->workspaceGroup()->active();
+                                              : fallback->workspaceGroup()->activeOwn();
         if (workspace == nullptr || !workspace->displacedWorkspace()) {
           if (workspace != nullptr) {
             for (size_t index = first; index < last; ++index) {

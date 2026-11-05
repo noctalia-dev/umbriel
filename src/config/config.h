@@ -214,6 +214,8 @@ namespace umbriel {
     std::string name;
     bool named = false;
     ResolvedLayoutConfig layout;
+    // Output rule name this workspace mirrors; empty for an ordinary workspace.
+    std::string mirrorOf;
     bool operator==(const ResolvedWorkspace&) const = default;
   };
   struct ResolvedWorkspaceSet {
@@ -341,6 +343,18 @@ namespace umbriel {
     // members, while a string list creates named members. Omitted is dynamic.
     using WorkspaceInventory = std::variant<size_t, std::vector<std::string>>;
     std::optional<WorkspaceInventory> workspaces;
+    // Entries of a name list that mirror another output's workspace of the same name. The list keeps their place;
+    // `origin` is the output rule name written after the `@`.
+    struct WorkspaceMirror {
+      std::string name;
+      std::string origin;
+      bool operator==(const WorkspaceMirror&) const = default;
+    };
+    std::vector<WorkspaceMirror> mirrors;
+    const WorkspaceMirror* findMirror(std::string_view workspaceName) const {
+      const auto found = std::ranges::find(mirrors, workspaceName, &WorkspaceMirror::name);
+      return found == mirrors.end() ? nullptr : &*found;
+    }
     // Smallest workspace count a dynamic output keeps. Rejected alongside an
     // explicit inventory, which already states an exact count.
     int minWorkspaces = 1;

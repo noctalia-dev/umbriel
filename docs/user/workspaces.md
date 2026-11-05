@@ -55,6 +55,32 @@ workspaces = ["WEB", "CHAT", "VIDEO"]
 
 A count creates anonymous positions. A string list creates exact names, so position 3 and the name `"3"` remain different selectors. Static workspaces are never pruned.
 
+### Mirror another output's workspace
+
+An entry of a name list written `"<name>@<output>"` is a mirror: it shows the workspace `<name>` of `<output>`, with that workspace's real windows, on the output that lists it.
+
+```toml
+[output.DP-1]
+workspaces = ["WEB", "CHAT"]
+
+[output.HDMI-A-1]
+workspaces = ["TERM", "WEB@DP-1", "CHAT@DP-1"]
+```
+
+A mirror is a workspace of the output that lists it. It keeps the place it has in the list, appears in `umbriel workspaces` and in the ext-workspace protocol, and is selected like any other workspace, by position, by name, or from a bar. It occupies the output only while it is active, and the wallpaper stays visible around the windows.
+
+- The windows are the originals, drawn live at the ratio of the two outputs' widths: 0.75 when a 2560x1440 output is shown on a 1920x1080 one. When the formats differ the copy is centered. Nothing is drawn twice by the client, so the copy is a scaled picture and can look soft.
+- Pointer, keyboard, scrolling, dragging, moving and resizing act on the real window, at the coordinates of the original. Menus and popups open inside the mirror. Acting on a mirror gives the real window focus without changing the workspace the origin output shows.
+- Window and layout actions address the source layout while a mirror is active, even when the origin is hidden: focus, reordering, maximize, fullscreen, resizing, floating and the layout's own actions act on the real windows without selecting the origin output. Workspace navigation still uses the receiving output; it does not switch the origin.
+- Moving a window or column to a mirror inserts it into that mirror's source layout and selects the receiving copy, without switching the origin output. Moving to a copy of the same source is a no-op. A copy without a resolved source cannot receive a transfer.
+- The copy stays current while the original is hidden, while the origin output is off, and while the output that shows the copy is off. An output that shows an unchanged copy is not redrawn.
+- A fullscreen window covering the receiving output draws above its top-layer panels, including while the origin is hidden. Leaving fullscreen, switching away from the copy, or closing the window reveals the panels again. Overlay-layer surfaces keep their normal priority.
+- New windows launched from a mirror join its source workspace and appear in the mirror, without switching the origin output. Explicit placement rules take priority. Pinned windows and scratchpads keep their local placement. An output needs at least one workspace of its own, used as the fallback while a mirror has no source.
+- The mirror follows the workspace it shows. When `workspace-move-to-output` sends that workspace to another output the mirror keeps showing it, and when the origin output goes away it follows the refuge its windows were evacuated to. A workspace cannot be moved onto an output that already holds a workspace of the same name, a mirror included.
+- A mirror cannot show a workspace of its own output, or another mirror. `umbriel config validate` rejects an unknown output, a name the origin output does not list, and these two cases. The origin output must use a name list.
+
+`umbriel workspaces --json` marks a mirror with `"mirror": true` and reports the `id` and the output of the workspace it currently shows in `mirror_of` and `mirror_output`, or `null` while there is none.
+
 ### Change workspaces on reload
 
 Workspace changes apply on a valid configuration reload. Umbriel preserves matching names and positions where possible. Windows from a removed workspace move to the nearest remaining workspace.
