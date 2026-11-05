@@ -36,7 +36,7 @@ UMBRIEL_TEST(overscrollIsContinuousAndBoundedAtBothEnds) {
   // The same travel past either end moves the position by the same amount.
   const double pastEnd = GesturePhysics::rubberBand(1.25, 0.0, 1.0, limit) - 1.0;
   const double pastStart = 0.0 - GesturePhysics::rubberBand(-0.25, 0.0, 1.0, limit);
-  CHECK(std::abs(pastEnd - pastStart) < 1e-12);
+  CHECK_NEAR(pastEnd, pastStart, 1e-12);
 }
 
 UMBRIEL_TEST(releaseSpeedIsDampedToWhatTheContentStillMoves) {

@@ -69,9 +69,9 @@ UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
     CHECK_EQ(OverviewNavigation::travelScale(1.0, 1.0, 1.0, travel.workspace) * travel.workspace, 1.0);
     for (const double extent : {720.0, 1280.0, 2160.0, 3840.0}) {
       const double scale = OverviewNavigation::travelScale(extent, 1.0, 1.0, travel.viewport);
-      CHECK(std::abs(scale * travel.viewport - extent) < 0.000001);
+      CHECK_NEAR(scale * travel.viewport, extent, 0.000001);
       // Half the factor, twice the travel for the same distance.
-      CHECK(std::abs(OverviewNavigation::travelScale(extent, 1.0, 0.5, travel.viewport) * 2.0 - scale) < 0.000001);
+      CHECK_NEAR(OverviewNavigation::travelScale(extent, 1.0, 0.5, travel.viewport) * 2.0, scale, 0.000001);
     }
   }
   // Accelerated swipe deltas and unaccelerated scroll units are not the same distance.

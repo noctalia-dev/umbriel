@@ -20,20 +20,19 @@ namespace umbriel {
     int y = 0;
   };
 
-  [[nodiscard]] constexpr FloatingPoint
-  keepTitleBarReachable(FloatingPoint origin, int titleBarHeight, const wlr_box& usable) {
+  constexpr FloatingPoint keepTitleBarReachable(FloatingPoint origin, int titleBarHeight, const wlr_box& usable) {
     if (titleBarHeight > 0 && origin.y < usable.y + titleBarHeight)
       origin.y = usable.y + titleBarHeight;
     return origin;
   }
 
-  [[nodiscard]] constexpr int floatingCascadeStep(int titleBarHeight, int borderInset) {
+  constexpr int floatingCascadeStep(int titleBarHeight, int borderInset) {
     return std::max(32, titleBarHeight + borderInset + 5);
   }
 
   // Coordinates describe complete frames. Taken frames are ordered from front to back, so a hidden corner does not
   // displace a new window merely because it covers an already obscured window.
-  [[nodiscard]] inline FloatingPoint cascadeOrigin(
+  inline FloatingPoint cascadeOrigin(
       FloatingPoint start, std::span<const wlr_box> taken, int step, const wlr_box& usable, int width, int height
   ) {
     const auto coveredFrame = [&](FloatingPoint candidate) -> const wlr_box* {
@@ -85,7 +84,7 @@ namespace umbriel {
 
   // How much of a floating window must stay on screen per axis. A float may hang
   // off an edge, but never so far that there is nothing left to grab it by.
-  [[nodiscard]] constexpr int floatingKeepVisible(int size) {
+  constexpr int floatingKeepVisible(int size) {
     const int quarter = size / 4;
     if (quarter < 10) {
       return 10;
@@ -95,8 +94,7 @@ namespace umbriel {
 
   // Pull `origin` back until `floatingKeepVisible` of the window is inside
   // `usable` on both axes.
-  [[nodiscard]] constexpr FloatingPoint
-  clampFloatingOrigin(FloatingPoint origin, const wlr_box& geometry, const wlr_box& usable) {
+  constexpr FloatingPoint clampFloatingOrigin(FloatingPoint origin, const wlr_box& geometry, const wlr_box& usable) {
     const auto clamp = [](int value, int low, int high) {
       if (low > high) {
         return low;
@@ -113,7 +111,7 @@ namespace umbriel {
 
   // clampFloatingOrigin for a resize target, except that an axis the window fills
   // or overflows snaps to the usable edge rather than keeping its old offset.
-  [[nodiscard]] constexpr FloatingPoint
+  constexpr FloatingPoint
   clampFloatingOriginForResize(FloatingPoint origin, const wlr_box& geometry, const wlr_box& usable) {
     const FloatingPoint clamped = clampFloatingOrigin(origin, geometry, usable);
     return {
@@ -125,8 +123,7 @@ namespace umbriel {
   // Where the window's content sits mid-resize. The edge being dragged moves and the opposite one stays put, which
   // matters because the client's geometry catches up asynchronously: without an anchor, a left- or top-edge drag would
   // visibly walk the far edge as each configure lands.
-  [[nodiscard]] constexpr FloatingPoint
-  anchoredContentOrigin(const wlr_box& anchor, uint32_t edges, const wlr_box& geometry) {
+  constexpr FloatingPoint anchoredContentOrigin(const wlr_box& anchor, uint32_t edges, const wlr_box& geometry) {
     return {
         .x = (edges & WLR_EDGE_LEFT) != 0 ? anchor.x + anchor.width - geometry.width : anchor.x,
         .y = (edges & WLR_EDGE_TOP) != 0 ? anchor.y + anchor.height - geometry.height : anchor.y,
@@ -136,13 +133,13 @@ namespace umbriel {
   // Has the client caught up with the configure we sent at `requested`? Serials are a free-running 32-bit counter that
   // wraps, so this is a signed difference rather than `committed >= requested`: a plain comparison inverts for the
   // whole second half of the counter's range after a wrap.
-  [[nodiscard]] constexpr bool serialSettled(uint32_t committed, uint32_t requested) {
+  constexpr bool serialSettled(uint32_t committed, uint32_t requested) {
     return static_cast<int32_t>(committed - requested) >= 0;
   }
 
   // Center a window of the given size in `usable`. Floats keep their own size,
   // so this only ever moves them.
-  [[nodiscard]] constexpr FloatingPoint centeredOrigin(const wlr_box& usable, int width, int height) {
+  constexpr FloatingPoint centeredOrigin(const wlr_box& usable, int width, int height) {
     return {
         .x = usable.x + (usable.width - width) / 2,
         .y = usable.y + (usable.height - height) / 2,
@@ -151,8 +148,7 @@ namespace umbriel {
 
   // Center a window of the given size over what shows of `box` inside `usable`, kept fully inside `usable` when it
   // fits. A box entirely out of view centers the window on `usable` instead.
-  [[nodiscard]] constexpr FloatingPoint
-  centeredOverShown(const wlr_box& box, const wlr_box& usable, int width, int height) {
+  constexpr FloatingPoint centeredOverShown(const wlr_box& box, const wlr_box& usable, int width, int height) {
     const auto clamp = [](int value, int low, int high) { return value < low ? low : (value > high ? high : value); };
     const int left = box.x > usable.x ? box.x : usable.x;
     const int top = box.y > usable.y ? box.y : usable.y;
@@ -169,8 +165,7 @@ namespace umbriel {
   // that window's `length`, then moved inside the area [`areaStart`, `areaStart + areaLength`) with `inset` left for
   // the dialog's border. A dialog longer than the area keeps its start inside it. A window resting wholly outside the
   // area, as a scrolled-away column does, takes its dialog along centred.
-  [[nodiscard]] constexpr int
-  attachmentOffset(int start, int length, int size, int areaStart, int areaLength, int inset) {
+  constexpr int attachmentOffset(int start, int length, int size, int areaStart, int areaLength, int inset) {
     const int centred = (length - size) / 2;
     if (areaLength <= 0 || start + length <= areaStart || start >= areaStart + areaLength) {
       return centred;
@@ -186,7 +181,7 @@ namespace umbriel {
   // not disagree by a pixel on an odd axis. A degenerate axis yields 0, which
   // callers pass through unclamped so xdg-shell keeps the client's own
   // preference for that axis.
-  [[nodiscard]] constexpr int floatingFractionSize(double fraction, int usable) {
+  constexpr int floatingFractionSize(double fraction, int usable) {
     if (usable <= 0) {
       return 0;
     }
@@ -195,14 +190,14 @@ namespace umbriel {
   }
 
   // `size` as a fraction of a usable-axis length. The caller guarantees usable > 0.
-  [[nodiscard]] constexpr double floatingSizeFraction(int size, int usable) {
+  constexpr double floatingSizeFraction(int size, int usable) {
     return static_cast<double>(size) / static_cast<double>(usable);
   }
 
   // A float's cycle basis. `floatingFractionSize` rounds, so a size read back as a fraction can sit just under its
   // preset and stall `nextFractionPreset`. Snaps onto the preset whose pixel size matches; any other size keeps its
   // measured fraction. The caller guarantees extent > 0.
-  [[nodiscard]] inline double presetSnappedFraction(const std::vector<double>& presets, int size, int extent) {
+  inline double presetSnappedFraction(const std::vector<double>& presets, int size, int extent) {
     for (const double preset : presets) {
       if (floatingFractionSize(preset, extent) == size) {
         return preset;
@@ -219,11 +214,11 @@ namespace umbriel {
   public:
     // Remembered size and position
     void rememberSize(int width, int height) { m_size = {{width, height}}; }
-    [[nodiscard]] const std::optional<std::array<int, 2>>& size() const { return m_size; }
+    const std::optional<std::array<int, 2>>& size() const { return m_size; }
     // Position is stored as a fraction of the usable area so a float restored on
     // a different-sized output lands in the same relative spot.
     void rememberPositionFraction(FloatingPoint origin, const wlr_box& usable);
-    [[nodiscard]] std::optional<FloatingPoint> restoredOrigin(const wlr_box& usable) const;
+    std::optional<FloatingPoint> restoredOrigin(const wlr_box& usable) const;
 
     // Configure-serial handoff. A fully-specified request is the pending basis
     // resize actions accumulate against until the client commits its serial.
@@ -235,7 +230,7 @@ namespace umbriel {
       }
       m_sizeRequestSerial = serial;
     }
-    [[nodiscard]] const std::optional<std::array<int, 2>>& pendingSize() const { return m_pendingSize; }
+    const std::optional<std::array<int, 2>>& pendingSize() const { return m_pendingSize; }
     void clearSizeRequest() {
       m_sizeRequestSerial.reset();
       m_pendingSize.reset();
@@ -247,8 +242,8 @@ namespace umbriel {
     // Interactive resize
     void beginResize(const wlr_box& anchor, uint32_t edges);
     void endResize();
-    [[nodiscard]] const std::optional<wlr_box>& anchor() const { return m_anchor; }
-    [[nodiscard]] uint32_t edges() const { return m_edges; }
+    const std::optional<wlr_box>& anchor() const { return m_anchor; }
+    uint32_t edges() const { return m_edges; }
 
   private:
     void clearAnchor();

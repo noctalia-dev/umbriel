@@ -25,15 +25,15 @@ namespace umbriel {
     wlr_box x{};
     double scale = 1.0;
 
-    [[nodiscard]] int toX(int layoutX) const;
-    [[nodiscard]] int toY(int layoutY) const;
-    [[nodiscard]] int toLayoutX(int x) const;
-    [[nodiscard]] int toLayoutY(int y) const;
+    int toX(int layoutX) const;
+    int toY(int layoutY) const;
+    int toLayoutX(int x) const;
+    int toLayoutY(int y) const;
     // Lengths spanning the whole output map exactly onto its size on the other side, whatever the rounding.
-    [[nodiscard]] int toXWidth(int width) const;
-    [[nodiscard]] int toXHeight(int height) const;
-    [[nodiscard]] int toLayoutWidth(int width) const;
-    [[nodiscard]] int toLayoutHeight(int height) const;
+    int toXWidth(int width) const;
+    int toXHeight(int height) const;
+    int toLayoutWidth(int width) const;
+    int toLayoutHeight(int height) const;
 
     bool operator==(const XwaylandRegion&) const;
   };
@@ -54,20 +54,20 @@ namespace umbriel {
 
     // Whether an xdg-output manager `global` may be advertised to `client`: this one only to Xwayland, wlroots' one to
     // everyone else.
-    [[nodiscard]] bool advertise(const wl_client* client, const wl_global* global, const wl_client* xwayland) const;
+    bool advertise(const wl_client* client, const wl_global* global, const wl_client* xwayland) const;
     // Recomputes the X screen from the output layout and republishes the outputs whose X geometry changed. Returns
     // true when the mapping between layout and X coordinates changed.
     bool update();
     // Resolve a connector or monitor identity against the live layout, including outputs still being constructed.
     // An empty selector leaves RandR unmanaged; a missing monitor resolves to an empty name.
-    [[nodiscard]] std::optional<std::string> primaryOutput(std::string_view name) const;
+    std::optional<std::string> primaryOutput(std::string_view name) const;
 
     // The region of `output`. Without one, the output nearest the layout point stands in.
-    [[nodiscard]] XwaylandRegion region(const wlr_output* output, int layoutX, int layoutY) const;
+    XwaylandRegion region(const wlr_output* output, int layoutX, int layoutY) const;
     // The region of the output at, or else nearest to, an X point.
-    [[nodiscard]] XwaylandRegion regionAtX(int x, int y) const;
+    XwaylandRegion regionAtX(int x, int y) const;
     // The largest output scale in X pixels per layout unit: 1 unless outputs are at their physical resolution.
-    [[nodiscard]] double scale() const { return m_scale; }
+    double scale() const { return m_scale; }
 
   private:
     struct Entry {
@@ -89,7 +89,7 @@ namespace umbriel {
     static void handleResourceDestroy(wl_resource* resource);
     static void onOutputDestroy(wl_listener* listener, void* data);
     // The output's rectangle in X coordinates, empty when it is not in the layout.
-    [[nodiscard]] wlr_box xBox(const wlr_output* output) const;
+    wlr_box xBox(const wlr_output* output) const;
     // Sends the geometry when it changed; `initial` also sends the one-time name and description.
     void send(Entry& entry, bool initial);
     void forget(Entry* entry);

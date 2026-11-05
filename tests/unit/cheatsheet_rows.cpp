@@ -195,7 +195,7 @@ UMBRIEL_TEST(perDigitWorkspaceBindsCollapseToOneRow) {
   CHECK_EQ(countRows(rows, KeybindAction::WorkspaceSwitch), size_t{1});
   CHECK(rows.size() == 1);
   if (!rows.empty()) {
-    CHECK(rows[0].chord.contains("1"));
+    CHECK(rows[0].chord.contains('1'));
     CHECK_EQ(rows[0].action, std::string{"workspace-switch 1-9"});
   }
 }

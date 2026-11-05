@@ -221,9 +221,11 @@ namespace umbriel {
       static const registry::Fields<Effects> fields{
           registry::integer("max_fps", 0, 240, &Effects::maxFps),
           registry::boolean("in_capture", &Effects::inCapture),
+          registry::boolean("border_unfocused", &Effects::borderUnfocused),
           effectField("border", &Effects::border, EffectKind::Border),
           effectField("window", &Effects::window, EffectKind::Window),
           effectField("screen", &Effects::screen, EffectKind::Screen),
+          effectField("screen_cast", &Effects::screenCast, EffectKind::Screen),
           effectField("cursor", &Effects::cursor, EffectKind::Cursor),
           registry::map<Effects>(
               "preset", KeyDescription("table"), readEffectPresets,

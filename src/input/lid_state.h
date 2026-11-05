@@ -34,7 +34,7 @@ namespace umbriel {
       LidState state = LidState::Open;
     };
 
-    [[nodiscard]] std::optional<LidState> aggregate() const;
+    std::optional<LidState> aggregate() const;
 
     SourceId m_nextSource = 1;
     std::vector<Source> m_sources;

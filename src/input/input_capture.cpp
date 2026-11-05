@@ -115,7 +115,7 @@ namespace umbriel {
         umbriel_input_capture_session_v1_send_result(resource, request, success ? kSuccess : kFailure);
       }
 
-      [[nodiscard]] bool usable() const { return approved && !closed && !owner.blocked(); }
+      bool usable() const { return approved && !closed && !owner.blocked(); }
 
       void clearPointer() {
         if (pointer != nullptr) {
@@ -267,7 +267,7 @@ namespace umbriel {
         pointer = device;
       }
 
-      [[nodiscard]] bool ready() const {
+      bool ready() const {
         return client != nullptr
             && seat != nullptr
             && ((capabilities & kKeyboard) == 0 || keyboardBound)
@@ -618,7 +618,7 @@ namespace umbriel {
       permissionPeers.clear();
     }
 
-    [[nodiscard]] bool blocked() const {
+    bool blocked() const {
       return server.stopping()
           || server.sessionLocked()
           || server.sessionLock() != nullptr

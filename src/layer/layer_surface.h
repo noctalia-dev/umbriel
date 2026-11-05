@@ -21,7 +21,7 @@ namespace umbriel {
   class LayerSurface : public SceneNode, public Animatable {
   public:
     // Resolve a layer owner through subsurfaces and nested XDG popups.
-    [[nodiscard]] static LayerSurface* fromSurface(wlr_surface* surface);
+    static LayerSurface* fromSurface(wlr_surface* surface);
 
     LayerSurface(Server& server, wlr_layer_surface_v1* layerSurface);
     ~LayerSurface() override;
@@ -29,15 +29,15 @@ namespace umbriel {
     LayerSurface(const LayerSurface&) = delete;
     LayerSurface& operator=(const LayerSurface&) = delete;
 
-    [[nodiscard]] wlr_layer_surface_v1* layerSurface() const { return m_layerSurface; }
-    [[nodiscard]] wlr_scene_layer_surface_v1* scene() const { return m_scene; }
-    [[nodiscard]] bool mapped() const { return m_mapped; }
-    [[nodiscard]] bool arrangingOut() const { return m_arrangingOut; }
-    [[nodiscard]] bool exclusiveKeyboard() const;
-    [[nodiscard]] bool acceptsKeyboard() const;
-    [[nodiscard]] bool hasKeyboardFocus() const;
-    [[nodiscard]] SurfaceBlurOptions blurOptions() const;
-    [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const;
+    wlr_layer_surface_v1* layerSurface() const { return m_layerSurface; }
+    wlr_scene_layer_surface_v1* scene() const { return m_scene; }
+    bool mapped() const { return m_mapped; }
+    bool arrangingOut() const { return m_arrangingOut; }
+    bool exclusiveKeyboard() const;
+    bool acceptsKeyboard() const;
+    bool hasKeyboardFocus() const;
+    SurfaceBlurOptions blurOptions() const;
+    SurfaceBlurOptions popupBlurOptions() const;
 
     void focus();
     // A grabbing xdg_popup of this layer mapped. wlroots routes the grab's keys to the seat's focused surface and
@@ -47,12 +47,12 @@ namespace umbriel {
     // Push the owning output's scale to every surface of this layer surface
     // (fractional-scale + preferred buffer scale, popups included).
     void notifyOutputScale();
-    [[nodiscard]] Output* output() const;
+    Output* output() const;
 
-    [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
+    AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(double nowMsec) override;
-    [[nodiscard]] bool hasActiveAnimations() const override { return m_fade.animating(); }
-    [[nodiscard]] bool animatesOn(const Output* output) const override;
+    bool hasActiveAnimations() const override { return m_fade.animating(); }
+    bool animatesOn(const Output* output) const override;
 
   private:
     friend class Server;

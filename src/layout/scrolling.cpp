@@ -35,8 +35,8 @@ namespace umbriel {
         ColumnTabs tabs;
       };
 
-      [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Scrolling; }
-      [[nodiscard]] size_t memberCount() const override { return members; }
+      LayoutMode mode() const override { return LayoutMode::Scrolling; }
+      size_t memberCount() const override { return members; }
 
       std::vector<SavedColumn> columns;
       size_t members = 0;
@@ -196,14 +196,19 @@ namespace umbriel {
       return any ? maximum : 0;
     }
 
+    // A hidden tab does not count: its group keeps its own width while another tab shows.
     bool columnFillsViewport(const Column& column, const Layout& layout) {
-      return std::ranges::any_of(column.views, [&layout](const View* view) {
-        if (view == nullptr) {
-          return false;
+      for (size_t row = 0; row < column.views.size(); ++row) {
+        const View* view = column.views[row];
+        if (view == nullptr || column.tabs.hidden(row)) {
+          continue;
         }
         const LayoutConstraints constraints = layout.constraintsFor(view);
-        return constraints.fullscreen || constraints.maximizedToEdges;
-      });
+        if (constraints.fullscreen || constraints.maximizedToEdges) {
+          return true;
+        }
+      }
+      return false;
     }
 
     // Fullscreen and maximize-to-edges views are presented against the wider
@@ -723,9 +728,12 @@ namespace umbriel {
     const auto at = static_cast<size_t>(row);
     const size_t start = col.tabs.unitStart(at);
     const size_t end = col.tabs.unitEnd(at);
-    // A tab steps out of its group toward the move, keeping the group's extent as its own.
+    // A tab steps out of its group toward the move, keeping the group's extent as its own. Out of the column's end it
+    // lands in that end's free space instead, as a row added there would.
     if (end - start > 1) {
       const size_t edge = direction > 0 ? end - 1 : start;
+      const double weight =
+          claimInsertWeight(col, static_cast<int>(direction > 0 ? end : start), col.heightWeights[start]);
       if (direction > 0) {
         rotateRows(col, at, at + 1, end);
       } else {
@@ -733,6 +741,7 @@ namespace umbriel {
       }
       col.tabs.select(edge);
       col.tabs.leave(edge);
+      col.heightWeights[edge] = weight;
       return true;
     }
     const bool down = direction > 0;
@@ -1552,9 +1561,9 @@ namespace umbriel {
             m_startStripPrimaryPx(startStripPrimaryPx), m_upperRow(upperRow), m_lowerRow(lowerRow),
             m_startUpperWeight(startUpperWeight), m_startLowerWeight(startLowerWeight) {}
 
-      [[nodiscard]] bool unmaximizeOnBegin() const override { return m_clearedFullWidth; }
+      bool unmaximizeOnBegin() const override { return m_clearedFullWidth; }
 
-      [[nodiscard]] const Layout* ownerLayout() const override { return m_layout; }
+      const Layout* ownerLayout() const override { return m_layout; }
 
       void applyDelta(double dx, double dy, const wlr_box& usable) override {
         ScrollingLayout& layout = *m_layout;

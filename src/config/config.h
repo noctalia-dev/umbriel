@@ -285,7 +285,7 @@ namespace umbriel {
     Gamma22,
     Srgb,
   };
-  [[nodiscard]] constexpr std::string_view hdrModeName(HdrMode mode) {
+  constexpr std::string_view hdrModeName(HdrMode mode) {
     switch (mode) {
     case HdrMode::Off:
       return "off";
@@ -298,21 +298,20 @@ namespace umbriel {
     }
     return "off";
   }
-  [[nodiscard]] constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
+  constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
     return mode == VrrMode::Always || (mode == VrrMode::Fullscreen && fullscreen);
   }
-  [[nodiscard]] constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
+  constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
     return mode == HdrMode::On
         || (mode == HdrMode::Auto && autoEligible)
         || (mode == HdrMode::Fullscreen && fullscreen);
   }
-  [[nodiscard]] constexpr bool effectiveVrrEnabled(
+  constexpr bool effectiveVrrEnabled(
       VrrMode outputMode, bool outputFullscreen, std::optional<VrrMode> windowMode, bool windowFullscreen
   ) {
     return windowMode ? vrrEnabled(*windowMode, windowFullscreen) : vrrEnabled(outputMode, outputFullscreen);
   }
-  [[nodiscard]] constexpr bool
-  tearingEnabled(bool outputAllowed, std::optional<bool> windowOverride, bool clientHintAsync) {
+  constexpr bool tearingEnabled(bool outputAllowed, std::optional<bool> windowOverride, bool clientHintAsync) {
     return outputAllowed && windowOverride.value_or(clientHintAsync);
   }
   struct OutputRule {
@@ -334,7 +333,8 @@ namespace umbriel {
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     SdrTransfer sdrTransfer = SdrTransfer::Gamma22;
-    std::optional<std::string> screenEffect; // "off" disables the default
+    std::optional<std::string> screenEffect;     // "off" disables the default
+    std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
     int bitDepth = 8;
     // Explicit workspace inventory. A count creates anonymous positional
@@ -369,7 +369,7 @@ namespace umbriel {
     Game,
   };
 
-  [[nodiscard]] constexpr std::string_view contentTypeName(ContentType type) {
+  constexpr std::string_view contentTypeName(ContentType type) {
     switch (type) {
     case ContentType::None:
       return "none";
@@ -399,7 +399,7 @@ namespace umbriel {
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
 
-    [[nodiscard]] bool operator==(const WindowRuleState& other) const = default;
+    bool operator==(const WindowRuleState& other) const = default;
   };
 
   // The alternatives of one selector, written as a single string or as an array of them; a value matches when any one
@@ -415,10 +415,10 @@ namespace umbriel {
       return *this;
     }
     // A list with no pattern, or only an empty one, places no constraint.
-    [[nodiscard]] bool constrains() const {
+    bool constrains() const {
       return std::ranges::any_of(patterns, [](const std::string& pattern) { return !pattern.empty(); });
     }
-    [[nodiscard]] bool operator==(const RegexPatterns& other) const { return patterns == other.patterns; }
+    bool operator==(const RegexPatterns& other) const { return patterns == other.patterns; }
   };
 
   struct WindowRule {
@@ -493,7 +493,7 @@ namespace umbriel {
     std::optional<std::string> windowEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
-    [[nodiscard]] bool operator==(const WindowRule& other) const {
+    bool operator==(const WindowRule& other) const {
       return appIdPatterns == other.appIdPatterns
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
@@ -622,7 +622,7 @@ namespace umbriel {
     std::optional<bool> optimized;
 
     // See WindowRule: the regexes are derived from the patterns.
-    [[nodiscard]] bool operator==(const LayerRule& other) const {
+    bool operator==(const LayerRule& other) const {
       return namespacePatterns == other.namespacePatterns
           && matchLayer == other.matchLayer
           && matchAtStartup == other.matchAtStartup
@@ -649,7 +649,7 @@ namespace umbriel {
     std::vector<std::string> allowGlobals;
 
     // See WindowRule: the regexes are derived from the patterns.
-    [[nodiscard]] bool operator==(const SecurityContextRule& other) const {
+    bool operator==(const SecurityContextRule& other) const {
       return sandboxEnginePatterns == other.sandboxEnginePatterns
           && appIdPatterns == other.appIdPatterns
           && allowGlobals == other.allowGlobals;
@@ -797,7 +797,7 @@ namespace umbriel {
       } tabBar;
       bool preferNoCsd = true;
 
-      [[nodiscard]] int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
+      int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
       bool operator==(const Appearance&) const = default;
     } appearance;
 
@@ -937,7 +937,7 @@ namespace umbriel {
         const std::string* effect = nullptr;
         bool enabled = false;
       };
-      [[nodiscard]] EventEffect eventEffect(AnimationEvent event) const {
+      EventEffect eventEffect(AnimationEvent event) const {
         switch (event) {
         case AnimationEvent::WindowsIn:
           return {&windowsIn.effect, windowsIn.enabled};
@@ -1049,8 +1049,8 @@ namespace umbriel {
 
     // Clear `layout.gap` outside decoration edges: borders are drawn outside the
     // surface, so tile spacing and usable-area insets include total border width.
-    [[nodiscard]] int layoutGap() const { return layout.gap + 2 * appearance.totalBorderWidth(); }
-    [[nodiscard]] int layoutEdgePad() const { return layout.gap + appearance.totalBorderWidth(); }
+    int layoutGap() const { return layout.gap + 2 * appearance.totalBorderWidth(); }
+    int layoutEdgePad() const { return layout.gap + appearance.totalBorderWidth(); }
 
     struct Workspaces {
       // Re-selecting the active workspace jumps back to the previous one.
@@ -1099,7 +1099,7 @@ namespace umbriel {
       // Canonical PCI domain:bus:slot.function addresses.
       std::vector<std::string> ignoredPciAddresses;
 
-      [[nodiscard]] bool configured() const { return !ignoredDevices.empty() || !ignoredPciAddresses.empty(); }
+      bool configured() const { return !ignoredDevices.empty() || !ignoredPciAddresses.empty(); }
       bool operator==(const Drm&) const = default;
     } drm;
 
@@ -1263,7 +1263,7 @@ namespace umbriel {
       };
 
       std::vector<Device> devices;
-      [[nodiscard]] const Device* findDevice(std::string_view name) const;
+      const Device* findDevice(std::string_view name) const;
       bool operator==(const Input&) const = default;
     } input;
 
@@ -1277,7 +1277,7 @@ namespace umbriel {
 
     // True when any surface may sample the cached background blur, so every
     // output has to keep its optimized blur node alive.
-    [[nodiscard]] bool optimizedBlurNeeded() const {
+    bool optimizedBlurNeeded() const {
       if (appearance.blur.optimized) {
         return true;
       }
@@ -1293,17 +1293,17 @@ namespace umbriel {
   };
 
   // Palette order shaders see through umbriel_palette_at: accent_primary, accent_secondary, warning, error.
-  [[nodiscard]] inline std::array<std::array<float, 4>, 4> effectPalette(const Config::Colors& colors) {
+  inline std::array<std::array<float, 4>, 4> effectPalette(const Config::Colors& colors) {
     return {colors.accentPrimary, colors.accentSecondary, colors.warning, colors.error};
   }
 
-  [[nodiscard]] const Config& config();
+  const Config& config();
   void loadConfig(const char* explicitPath);
-  [[nodiscard]] ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
-  [[nodiscard]] ConfigReloadResult reloadConfig();
-  [[nodiscard]] const std::vector<std::filesystem::path>& configWatchPaths();
-  [[nodiscard]] const std::vector<ConfigDiagnostic>& configDiagnostics();
-  [[nodiscard]] const std::filesystem::path& configRootPath();
-  [[nodiscard]] bool configFileMissing();
-  [[nodiscard]] bool configHasMissingIncludes();
+  ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
+  ConfigReloadResult reloadConfig();
+  const std::vector<std::filesystem::path>& configWatchPaths();
+  const std::vector<ConfigDiagnostic>& configDiagnostics();
+  const std::filesystem::path& configRootPath();
+  bool configFileMissing();
+  bool configHasMissingIncludes();
 } // namespace umbriel

@@ -18,7 +18,7 @@ namespace umbriel {
   };
 
   // Smoothly reduces a positive outer radius without collapsing an inset contour to square.
-  [[nodiscard]] constexpr int nestedRadius(int radius, int inset) {
+  constexpr int nestedRadius(int radius, int inset) {
     if (radius <= 0) {
       return 0;
     }
@@ -28,7 +28,7 @@ namespace umbriel {
   }
 
   // `padding` is transparent space around the ring that a border effect may paint into.
-  [[nodiscard]] BorderRing
+  BorderRing
   makeBorderRing(int contentWidth, int contentHeight, int outerRadius, int innerWidth, int outerWidth, int padding = 0);
 
 } // namespace umbriel

@@ -32,12 +32,12 @@ namespace umbriel {
       int areaH = 0;
     };
 
-    [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Dwindle; }
+    LayoutMode mode() const override { return LayoutMode::Dwindle; }
 
-    [[nodiscard]] const std::vector<Column>& columns() const override { return m_flatColumns; }
-    [[nodiscard]] int columnOf(const View* view) const override;
-    [[nodiscard]] int rowOf(const View* view) const override;
-    [[nodiscard]] LayoutCapture captureState() const override;
+    const std::vector<Column>& columns() const override { return m_flatColumns; }
+    int columnOf(const View* view) const override;
+    int rowOf(const View* view) const override;
+    LayoutCapture captureState() const override;
     bool restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) override;
 
     // Inserts at a gap index: the preceding leaf is split, except gap 0 which splits the first leaf with the new view
@@ -65,18 +65,18 @@ namespace umbriel {
     void removeView(View* view) override;
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;
-    [[nodiscard]] wlr_box targetBox(const View* view) const override;
+    wlr_box targetBox(const View* view) const override;
 
-    [[nodiscard]] InitialSize initialSize(
+    InitialSize initialSize(
         const wlr_box& usable, bool wantMaximized, std::optional<double> ruleExtent, std::optional<int> ruleExtentPx,
         const View* /*splitAnchor*/
     ) const override;
 
-    [[nodiscard]] int leafIndexAt(double cx, double cy) const;
-    [[nodiscard]] wlr_box targetBoxByIndex(int index) const;
-    [[nodiscard]] std::optional<View*> focusHorizontalLeaf(const View* view, int direction) const override;
-    [[nodiscard]] std::optional<View*> focusVerticalLeaf(const View* view, int direction) const override;
-    [[nodiscard]] std::vector<View*> focusPeers(const View* from, const View* target) const override;
+    int leafIndexAt(double cx, double cy) const;
+    wlr_box targetBoxByIndex(int index) const;
+    std::optional<View*> focusHorizontalLeaf(const View* view, int direction) const override;
+    std::optional<View*> focusVerticalLeaf(const View* view, int direction) const override;
+    std::vector<View*> focusPeers(const View* from, const View* target) const override;
 
     // Drag-and-drop: split the target leaf and place the new view on the given
     // WLR edge (0 = default/automatic orientation, new view last).
@@ -84,21 +84,21 @@ namespace umbriel {
 
     // Interactive resize: which edges of the view border an internal split (screen-facing edges are excluded), the
     // current ratio/pixel span of the boundary behind an edge, and a setter for that boundary ratio.
-    [[nodiscard]] uint32_t resizableEdges(const View* view) const;
-    [[nodiscard]] bool resizeBoundary(const View* view, uint32_t edge, double* outRatio, double* outSpan) const;
+    uint32_t resizableEdges(const View* view) const;
+    bool resizeBoundary(const View* view, uint32_t edge, double* outRatio, double* outSpan) const;
     bool setResizeBoundary(View* view, uint32_t edge, double ratio);
 
-    [[nodiscard]] uint32_t resizeEdgesAt(const View* view, double cx, double cy) const override;
-    [[nodiscard]] uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
+    uint32_t resizeEdgesAt(const View* view, double cx, double cy) const override;
+    uint32_t sanitizeResizeEdges(const View* view, uint32_t edges) const override;
     std::unique_ptr<ResizeGrab> beginResize(View* view, uint32_t edges, const wlr_box& usable) override;
 
     bool cycleWidth(int columnIndex, int direction) override;
     bool toggleFullWidth(int columnIndex) override;
-    [[nodiscard]] bool isFullWidth(int columnIndex) const override;
+    bool isFullWidth(int columnIndex) const override;
     bool setWidthFraction(int columnIndex, double fraction) override;
     void clearFullWidthState(int columnIndex) override;
-    [[nodiscard]] double widthFraction(int columnIndex) const override;
-    [[nodiscard]] double heightFraction(const View* view) const override;
+    double widthFraction(int columnIndex) const override;
+    double heightFraction(const View* view) const override;
     bool setHeightFraction(View* view, double fraction) override;
 
   private:
@@ -108,16 +108,16 @@ namespace umbriel {
       double outerProduct = 1.0;
     };
 
-    [[nodiscard]] Node* findNode(const View* view) const;
-    [[nodiscard]] Node* nodeAtFlatIndex(int index) const;
-    [[nodiscard]] std::vector<Split> splits(Node* node, Node::Type type) const;
-    [[nodiscard]] static double splitShare(const Split& split);
+    Node* findNode(const View* view) const;
+    Node* nodeAtFlatIndex(int index) const;
+    std::vector<Split> splits(Node* node, Node::Type type) const;
+    static double splitShare(const Split& split);
     static void setSplitShare(const Split& split, double share);
     bool applyFraction(const std::vector<Split>& splits, double fraction);
     void splitLeaf(Node* node, View* newView, Node::Type split, bool newFirst);
     // Splits an arranged leaf as an AutoSplit, with the new view on the half facing (cx, cy).
     void splitLeafToward(Node* target, View* view, double cx, double cy);
-    [[nodiscard]] Node* boundaryNode(const View* view, uint32_t edge) const;
+    Node* boundaryNode(const View* view, uint32_t edge) const;
     void arrangeNode(Node* node, const wlr_box& area);
     // Lays the tree out over `area`, the content area arrange() derives from the usable area.
     void arrangeArea(const wlr_box& area);

@@ -23,6 +23,7 @@
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
 #include "server/backend_manager.h"
+#include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/server.h"
 #include "view/popup.h"
@@ -1494,6 +1495,7 @@ namespace umbriel {
     self->m_imageCopySessions.push_back(std::move(watch));
     self->scheduleSuspensionSync();
     self->refreshCaptureRuleEffects(session->source);
+    self->refreshScreenCastEffect(self->m_imageCopySessions.back()->output);
   }
 
   // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
@@ -1502,6 +1504,7 @@ namespace umbriel {
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
     wlr_ext_image_capture_source_v1* source = watch->session->source;
+    wlr_output* captured = watch->output;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
@@ -1511,6 +1514,21 @@ namespace umbriel {
     }
     server->scheduleSuspensionSync();
     server->refreshCaptureRuleEffects(source);
+    server->refreshScreenCastEffect(captured);
+  }
+
+  // `effects.screen_cast` follows the sessions on an output source; only that output rebinds.
+  void Server::refreshScreenCastEffect(wlr_output* output) {
+    Output* target = outputFromWlr(output);
+    if (target == nullptr) {
+      return;
+    }
+    const std::string before(target->screenEffectSlot().effectiveName());
+    resolveOutputEffect(*target);
+    if (target->screenEffectSlot().effectiveName() != before) {
+      kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
+      target->applyOutputEffects();
+    }
   }
 
   // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.
@@ -1993,6 +2011,7 @@ namespace umbriel {
     }
 
     m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    updateDrmLeaseState();
     m_sessionLock->start();
   }
 
@@ -2067,6 +2086,7 @@ namespace umbriel {
       return;
     }
     m_sessionLock.reset();
+    updateDrmLeaseState();
     if (!m_sessionLocked) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);
     }
@@ -2113,6 +2133,12 @@ namespace umbriel {
   void Server::raiseLockTree() { wlr_scene_node_raise_to_top(&m_lockTree->node); }
 
   void Server::addOutput(wlr_output* output) {
+    if (output->non_desktop) {
+      if (m_drmLeaseManager == nullptr || !m_drmLeaseManager->offerOutput(output)) {
+        kLog.warn("non-desktop output {} is unavailable for DRM leasing", output->name);
+      }
+      return;
+    }
     if (!m_pendingOutputName.empty()) {
       // Before the Output exists: adding it to the layout advertises the name to clients, and it cannot change after.
       wlr_output_set_name(output, m_pendingOutputName.c_str());

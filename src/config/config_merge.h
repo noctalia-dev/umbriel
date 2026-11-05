@@ -14,7 +14,7 @@ namespace umbriel::configmerge {
     toml::source_region source;
   };
 
-  struct MergeResult {
+  struct [[nodiscard]] MergeResult {
     toml::table merged;
     std::vector<std::filesystem::path> loadedFiles;
     std::vector<ConfigDiagnostic> diagnostics;
@@ -26,7 +26,7 @@ namespace umbriel::configmerge {
     std::vector<EffectDeclaration> pools;
   };
 
-  [[nodiscard]] MergeResult mergeWithIncludes(const std::filesystem::path& rootFile);
+  MergeResult mergeWithIncludes(const std::filesystem::path& rootFile);
   void deepMerge(toml::table& base, toml::table&& overlay);
 
 } // namespace umbriel::configmerge

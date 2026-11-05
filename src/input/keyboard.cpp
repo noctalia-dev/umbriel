@@ -396,50 +396,48 @@ namespace umbriel {
       // Enter or a matching action confirms; input capture can also offer R to
       // remember approval. Modifier-only presses keep held chords intact.
       bool confirmationConsumed = false;
-      if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
-        if (!modifierOnly) {
-          bool confirmed = false;
-          bool rememberCapture = false;
-          for (int i = 0; i < nsyms; ++i) {
-            confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
-            if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
-              confirmed = true;
-              rememberCapture = true;
-            }
+      if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible() && !modifierOnly) {
+        bool confirmed = false;
+        bool rememberCapture = false;
+        for (int i = 0; i < nsyms; ++i) {
+          confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
+          if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
+            confirmed = true;
+            rememberCapture = true;
           }
-          // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
-          // matchKeybind mirrors handleKeybind without running the action, so the pending screencast command remains
-          // the one whose warning is visible.
-          for (int i = 0; i < nsyms && !confirmed; ++i) {
-            const Keybind* matched = m_server->matchKeybind(syms[i], rawSym, modifiers);
-            if (matched == nullptr) {
-              continue;
-            }
-            if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-              confirmed = matched->action == KeybindAction::SessionQuit;
-            } else if (confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
-              confirmed = matched->action == KeybindAction::ScreenCastSetOutput
-                  || matched->action == KeybindAction::ScreenCastSetWindow
-                  || matched->action == KeybindAction::ScreenCastFollowWindow
-                  || matched->action == KeybindAction::ScreenCastFollowOutput;
-            }
-          }
-          if (confirmed) {
-            if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-              m_server->requestSessionExit();
-            } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
-              m_server->confirmInputEmulation();
-            } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
-              m_server->confirmInputCapture(rememberCapture);
-            } else {
-              m_server->confirmScreenCastDynamic();
-            }
-          } else {
-            m_server->dismissConfirmation();
-          }
-          handled = true;
-          confirmationConsumed = true;
         }
+        // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
+        // matchKeybind mirrors handleKeybind without running the action, so the pending screencast command remains
+        // the one whose warning is visible.
+        for (int i = 0; i < nsyms && !confirmed; ++i) {
+          const Keybind* matched = m_server->matchKeybind(syms[i], rawSym, modifiers);
+          if (matched == nullptr) {
+            continue;
+          }
+          if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+            confirmed = matched->action == KeybindAction::SessionQuit;
+          } else if (confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
+            confirmed = matched->action == KeybindAction::ScreenCastSetOutput
+                || matched->action == KeybindAction::ScreenCastSetWindow
+                || matched->action == KeybindAction::ScreenCastFollowWindow
+                || matched->action == KeybindAction::ScreenCastFollowOutput;
+          }
+        }
+        if (confirmed) {
+          if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+            m_server->requestSessionExit();
+          } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
+            m_server->confirmInputEmulation();
+          } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
+            m_server->confirmInputCapture(rememberCapture);
+          } else {
+            m_server->confirmScreenCastDynamic();
+          }
+        } else {
+          m_server->dismissConfirmation();
+        }
+        handled = true;
+        confirmationConsumed = true;
       }
       std::optional<Keybind> matched;
       if (!confirmationConsumed) {

@@ -14,7 +14,7 @@ namespace umbriel {
   class OutputEnableOverrides {
   public:
     void remember(const OutputIdentity& identity, bool enabled);
-    [[nodiscard]] std::optional<bool> resolve(const OutputIdentity& identity);
+    std::optional<bool> resolve(const OutputIdentity& identity);
     void clear() { m_entries.clear(); }
 
   private:

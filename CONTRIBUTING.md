@@ -183,7 +183,9 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 
 Scoped enums (`enum class`) use PascalCase enumerators and an explicit `std::uint8_t` underlying type where it makes sense: `enum class FocusReason : uint8_t { Directional, PointerPress, ... }`.
 
-Getters are the noun, without a `get` prefix, and `[[nodiscard]]`: `toplevel()`, `mapped()`, `workspace()`.
+Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
+
+Use `[[nodiscard]]` only where ignoring the result is likely a bug: a call with side effects that reports failure or hands back something the caller must own, consume or keep (a token, id or claimed node), and `&&` builders. Mark result and status types with `struct [[nodiscard]] Name` instead of each function that returns them. Getters and pure functions go without it.
 
 ### Configuration vocabulary
 
@@ -357,11 +359,3 @@ umbriel msg <action> [args...]   # send an action to the running compositor
 Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): imperative summary`, with lowercase types such as `feat`, `fix`, `refactor`, `chore`, `test`, or `docs` and a focused subsystem scope when it helps.
 
 Default to the summary line alone. Add a body only when it carries information a reader would otherwise miss: a non-obvious root cause, a constraint that forced the approach, a behavior change users will notice, or a `Fixes #N` reference. Do not restate the diff or list touched files.
-
-## Maintainer triage intake
-
-`.github/workflows/project-intake.yml` attaches newly opened or reopened Umbriel issues and pull requests to the organization Maintainer triage project as native cards. New cards receive Status Inbox, Component Umbriel, and Kind Issue or PR. It does not create drafts, post comments, change issue state, or set Priority. Existing card statuses, priorities, and other triage values are preserved. Archived cards are left archived; conflicting Component or Kind values fail the run rather than overwrite triage.
-
-Run Maintainer Triage Intake manually from GitHub Actions to reconcile all open issues and pull requests. Closed items are excluded. The Umbriel views require matching Component and Kind values.
-
-Intake authenticates as the organization's Noctalia Automation GitHub App: each run mints a short-lived token limited to this repository, organization project write and issue/pull request read, from the organization variable `AUTOMATION_APP_CLIENT_ID` and the organization secret `AUTOMATION_APP_PRIVATE_KEY`. The App must stay installed on this repository with Organization projects read and write. Rotate the key from the App's settings page and update the secret; never commit it. Intake on `pull_request_target` runs only the trusted workflow code and does not check out pull request code.

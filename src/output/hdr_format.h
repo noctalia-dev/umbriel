@@ -8,8 +8,7 @@
 
 namespace umbriel {
 
-  template <typename Probe>
-  [[nodiscard]] std::optional<uint32_t> selectHdrRenderFormat(uint32_t currentFormat, Probe&& accepts) {
+  template <typename Probe> std::optional<uint32_t> selectHdrRenderFormat(uint32_t currentFormat, Probe&& accepts) {
     std::array candidates{
         DRM_FORMAT_XRGB2101010,
         DRM_FORMAT_XBGR2101010,

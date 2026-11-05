@@ -19,7 +19,7 @@ namespace umbriel {
     void showOnStartup();
     void hide();
     void toggle();
-    [[nodiscard]] bool visible() const;
+    bool visible() const;
     void relayout();
 
   private:

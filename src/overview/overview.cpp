@@ -669,11 +669,20 @@ namespace umbriel {
     return workspace != nullptr ? workspace->focusedView() : nullptr;
   }
 
+  void Overview::activateLiveTarget() {
+    if (View* target = liveTargetView()) {
+      target->placementRoot()->inputDelegate()->applySeatFocus(false, false);
+    } else {
+      m_server->deactivateViews();
+    }
+  }
+
   void Overview::syncCardEffects(Card& card) {
     View* view = card.view;
     Workspace* workspace = view->workspace();
     const BorderEffectGate cardGate{
         .focused = workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
+        .allowUnfocused = config().effects.borderUnfocused,
         .decorated = card.border != nullptr && card.border->node.enabled && card.tree->node.enabled,
         .urgent = view->urgent(),
         .fullscreen = view->scheduledFullscreen(),
@@ -1493,7 +1502,7 @@ namespace umbriel {
         renderCardShortcut(card);
       }
     };
-    const auto clearAll = [&]() {
+    const auto clearAll = [&] {
       for (const auto& state : m_outputs) {
         for (const auto& card : state->cards) {
           updateCard(*card, {});
@@ -1788,6 +1797,7 @@ namespace umbriel {
     }
 
     m_server->clearKeyboardFocus();
+    activateLiveTarget();
     m_server->cursor()->clearPointerFocus();
     m_server->cursor()->clearConstraint();
 
@@ -2041,8 +2051,8 @@ namespace umbriel {
     } else {
       m_server->refocus();
     }
-    // Focus chrome changed while the windows were hidden (the open cleared it, focus returned during the close or
-    // just now), so they reappear with the settled result.
+    // Focus chrome changed while the windows were hidden (the live target moved during the overview, focus returned
+    // during the close or just now), so they reappear with the settled result.
     for (const auto& view : m_server->registry().all()) {
       view->settleFocusChrome();
     }
@@ -2210,6 +2220,9 @@ namespace umbriel {
         hideDropHint();
       }
       if (m_dragCard == card) {
+        if (!m_dragTabGroup.tabs.empty()) {
+          landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+        }
         hideDropHint();
         m_dragCard = nullptr;
         m_dragSourceWorkspace = nullptr;
@@ -2263,7 +2276,14 @@ namespace umbriel {
       m_drop.edge = 0;
       hideDropHint();
     }
+    // A hidden tab leaves the lifted group; the dragged window closing sends the rest back where the group was.
+    if (m_dragCard != nullptr && m_dragCard->view != view) {
+      std::erase(m_dragTabGroup.tabs, view);
+    }
     if (m_dragCard != nullptr && m_dragCard->view == view) {
+      if (!m_dragTabGroup.tabs.empty()) {
+        landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/true);
+      }
       hideDropHint();
       m_dragCard = nullptr;
       m_dragSourceWorkspace = nullptr;
@@ -2492,6 +2512,9 @@ namespace umbriel {
       m_dropWorkspaceGroup = nullptr;
     }
     if (m_dragCard != nullptr && m_dragCard->owner == it->get()) {
+      if (!m_dragTabGroup.tabs.empty()) {
+        landTabGroup(*m_dragCard->view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+      }
       hideDropHint();
       m_dragCard = nullptr;
       m_dragSourceWorkspace = nullptr;
@@ -2800,6 +2823,7 @@ namespace umbriel {
     if (Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
         output != m_pointerOutput) {
       m_pointerOutput = output;
+      activateLiveTarget();
       applyProgress();
     }
     if (m_middlePressed) {
@@ -3436,6 +3460,8 @@ namespace umbriel {
     m_dropWorkspaceGroup = nullptr;
 
     if (m_dragSourceWorkspace != nullptr && view->tiled()) {
+      // Lifted first, so the source position and width below are those of the group.
+      m_dragTabGroup = liftTabGroup(*m_dragSourceWorkspace, *view);
       m_dragSourceColumn = m_dragSourceWorkspace->layout().columnOf(view);
       m_dragSourceRow = m_dragSourceWorkspace->layout().rowOf(view);
       m_dragSourceWidth = captureDropColumnWidth(*m_dragSourceWorkspace, view);
@@ -3675,6 +3701,9 @@ namespace umbriel {
         m_dragSourceWorkspace->layout().insertView(view, m_dragSourceColumn);
       }
       m_dragSourceWorkspace->arrange(false);
+    }
+    if (!m_dragTabGroup.tabs.empty()) {
+      landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
     }
 
     m_dragSourceWorkspace = nullptr;

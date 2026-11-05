@@ -410,13 +410,13 @@ namespace umbriel {
     // workspace's client_maximize, a floating window keeps the default behavior
     // whatever it says. The gesture passes the direction explicitly because it
     // computes the opposite of the current state at its second press.
-    if (m_tiled && m_workspace != nullptr) {
-      if (maximizeRequestTargetsEdges(
-              maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
-          )) {
-        setMaximizedToEdges(maximized);
-        return;
-      }
+    if (m_tiled
+        && m_workspace != nullptr
+        && maximizeRequestTargetsEdges(
+            maximized, m_maximizedToEdges, m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
+        )) {
+      setMaximizedToEdges(maximized);
+      return;
     }
     setMaximized(maximized);
   }
@@ -502,6 +502,9 @@ namespace umbriel {
 
   void View::handleSetParent() {
     refreshCaptureProtection();
+    if (m_xsurface != nullptr) {
+      m_server->xwaylandHintsChanged(this);
+    }
     if (m_mapped) {
       reconcileAttachment();
       // `match.is_dialog` follows the parent.
@@ -819,6 +822,12 @@ namespace umbriel {
       }
       const wlr_box usable = floatingUsableArea();
       const SizeHints hints = sizeHints();
+      // The restored height leaves room in the usable area for the title bar and borders. A tab gets its title bar only
+      // once it floats, so its tile height can leave no room for it.
+      if (usable.height > 0) {
+        const int border = m_decoration.totalBorderWidth();
+        keepHeight = std::min(keepHeight, clampHeight(usable.height - 2 * border - titleBarHeight(), hints));
+      }
       if (m_pendingFloatingWidthPx) {
         keepWidth = clampWidth(*m_pendingFloatingWidthPx, hints);
         m_pendingFloatingWidthPx.reset();

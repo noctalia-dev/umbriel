@@ -10,6 +10,8 @@ Effects are the GLSL programs selected through `[effects]`, window rules, output
 
 `View::handleMap` starts a fresh slot lifetime before mapped rule resolution. [`View::applyDynamicRules`](../../src/view/view_rules.cpp) records each configured winner/source and resolves only while mapped. Same-pool valid members stay; a changed pool restores destination history before reusing a current member or making a policy pick. `ViewEffects::syncNames` caches unsuppressed names for drawing. Unmap clears state after copying closing visuals. Outputs resolve before their first bind; disabling retains state, disconnect destroys it. The cursor resolves before startup preparation.
 
+While an image-copy session reads a whole output, [`Server::resolveOutputEffect`](../../src/server/effects.cpp) configures its screen slot from `effects.screen_cast` (or the output's `screen_cast_effect`) instead of `effects.screen`/`screen_effect`, unless that selector is empty or `off`. The swap happens in the selector rather than at bind time, so a pool keeps its member per selector and inspection reports what runs; a runtime override still wins. `Server::refreshScreenCastEffect` re-resolves only the captured output when a session starts or ends, and rebinds it only when the effective name changes.
+
 [`Server::reconcileEffectSelections`](../../src/server/effects.cpp) runs before registry preparation on effects reload: reconcile policy positions, prune history, validate/drop overrides with owner diagnostics, then resolve sorted outputs and the cursor. Runtime reference collection sees validated overrides before the existing mapped-view rule/chrome refresh. Views resolve in stable foreign-identifier order, with registry order for missing identifiers. Counts are refreshed between picks. Unrelated reloads and renderer recovery do not allocate members.
 
 Workspace membership changes refresh alone-rule state before layout drawing. If an animation changes an effect rule during an output frame, the view queues one idle callback to resolve it outside rendering; `settle` waits for that callback. Unchanged and empty selectors use cached state without allocation or an owner walk. Chrome reloads preserve focus while refreshing rule bindings.
@@ -22,7 +24,7 @@ Runtime actions validate typed payloads, targets, names/kinds, and non-empty cyc
 
 The built-in fade and drag deformation retain their existing preparation and animation gates. `fillTimeUniforms` supplies time only when a linked program reads it and palette only for palette presets.
 
-[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate still requires focus, decoration, no urgency, and no fullscreen; overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
+[`ViewEffects::apply`](../../src/view/effects.cpp) reads cached effective names. The border gate requires decoration, no urgency, no fullscreen, and focus unless `allowUnfocused` widens it (`[effects].border_unfocused`); overlay follows that gate and border clock. Window/overlay slots also bind to the isolated capture scene only with `in_capture`. Live views and overview cards share `View::syncAnimationEffects`.
 
 [`Output::applyOutputEffects`](../../src/output/output.cpp) reads its cached screen slot and the Server's single cursor slot, applies capture policy and lock suspension, and pushes pointer position after binding a cursor program. It performs no owner walk or pool pick. `Cursor::forwardEffectPointer` reads cached cursor activity, which includes suppression and registry suspension.
 
@@ -138,7 +140,7 @@ With no effect roots and drag physics off (unused pool declarations are not root
 
 With effects selected:
 
-- **Border:** a capture and one program pass per frame on the focused window; effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
+- **Border:** a capture and one program pass per frame on each window the gate draws (the focused window, or every gated window with `border_unfocused`); effect-only frames for a time-reading program, capped by `max_fps`. Light adds a second program evaluation into a full-resolution emission texture, a half-resolution pyramid, and its blur on each display composite, and a blend on outputs showing the proxy.
 - **Window and overlay:** a copy of the target under the window and one program pass per window per frame.
 - **Screen and cursor:** one in-place pass over the output or the cursor square; direct scanout off on that output only.
 - **Drag physics:** only while a window is held or settling; the drag slot is transient, so the scene-wide policy applies on every output for that time. The deformation program runs up to 22 inverse-lookup iterations per pixel.

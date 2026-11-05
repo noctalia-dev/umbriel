@@ -295,12 +295,12 @@ UMBRIEL_TEST(setHeightFractionResizesAStackedLeaf) {
   fixture.layout.arrange(kUsable);
 
   CHECK(fixture.layout.setHeightFraction(stub(2), 0.7));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(2)) - 0.7) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(2)), 0.7, 1e-9);
   fixture.layout.arrange(kUsable);
 
   const int stackingExtent = kUsable.height - 2 * fixture.config.edgePad;
   const int expectedHeight = static_cast<int>(std::lround(0.7 * stackingExtent)) - fixture.config.totalGap / 2;
-  CHECK(std::abs(fixture.layout.targetBox(stub(2)).height - expectedHeight) <= 1);
+  CHECK_NEAR(fixture.layout.targetBox(stub(2)).height, expectedHeight, 1);
 }
 
 UMBRIEL_TEST(setHeightFractionRejectsAFullHeightLeaf) {
@@ -308,7 +308,7 @@ UMBRIEL_TEST(setHeightFractionRejectsAFullHeightLeaf) {
   fixture.addLeaves(3);
   fixture.layout.arrange(kUsable);
   CHECK(!fixture.layout.setHeightFraction(stub(0), 0.7));
-  CHECK(std::fabs(fixture.layout.heightFraction(stub(0)) - 1.0) < 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0, 1e-9);
 }
 
 UMBRIEL_TEST(directionalFocusFollowsScreenGeometry) {
@@ -788,7 +788,7 @@ UMBRIEL_TEST(setResizeBoundaryMovesTheSharedEdge) {
   double ratio = 0.0;
   double span = 0.0;
   CHECK(fixture.layout.resizeBoundary(stub(0), WLR_EDGE_RIGHT, &ratio, &span));
-  CHECK(std::fabs(ratio - 0.5) < 1e-6);
+  CHECK_NEAR(ratio, 0.5, 1e-6);
   CHECK(span > 0.0);
 
   CHECK(fixture.layout.setResizeBoundary(stub(0), WLR_EDGE_RIGHT, 0.75));
@@ -821,16 +821,16 @@ UMBRIEL_TEST(cycleWidthBackWalksThePresetsInReverse) {
 
   CHECK(fixture.layout.cycleWidth(0, -1));
   fixture.layout.arrange(kUsable);
-  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * 0.5)) <= 2);
+  CHECK_NEAR(fixture.layout.targetBox(stub(0)).width, static_cast<int>(span * 0.5), 2);
 
   CHECK(fixture.layout.cycleWidth(0, -1));
   fixture.layout.arrange(kUsable);
-  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * (1.0 / 3.0))) <= 2);
+  CHECK_NEAR(fixture.layout.targetBox(stub(0)).width, static_cast<int>(span * (1.0 / 3.0)), 2);
 
   // Wraps back to the last preset.
   CHECK(fixture.layout.cycleWidth(0, -1));
   fixture.layout.arrange(kUsable);
-  CHECK(std::abs(fixture.layout.targetBox(stub(0)).width - static_cast<int>(span * (2.0 / 3.0))) <= 2);
+  CHECK_NEAR(fixture.layout.targetBox(stub(0)).width, static_cast<int>(span * (2.0 / 3.0)), 2);
 }
 
 UMBRIEL_TEST(cycleWidthWrapsWhenTheNextPresetIsOutOfReach) {
@@ -841,9 +841,9 @@ UMBRIEL_TEST(cycleWidthWrapsWhenTheNextPresetIsOutOfReach) {
   fixture.layout.arrange(kUsable);
   CHECK(fixture.layout.setWidthFraction(0, 0.5));
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.9) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.9, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.5) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.5, 1e-9);
 }
 
 UMBRIEL_TEST(widePresetsWrapInsteadOfStallingASplitShare) {
@@ -854,9 +854,9 @@ UMBRIEL_TEST(widePresetsWrapInsteadOfStallingASplitShare) {
   fixture.layout.arrange(kUsable);
   CHECK(fixture.layout.setWidthFraction(0, 0.5));
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.9) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.9, 1e-9);
   CHECK(fixture.layout.cycleWidth(0, 1));
-  CHECK(std::abs(fixture.layout.widthFraction(0) - 0.5) < 1e-9);
+  CHECK_NEAR(fixture.layout.widthFraction(0), 0.5, 1e-9);
 }
 
 UMBRIEL_TEST(wideFractionsLandAtTheSingleViewportCeiling) {

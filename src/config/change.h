@@ -7,7 +7,7 @@
 namespace umbriel {
 
   // Sorted, unique names reached by retained keybinds and enabled hot corners.
-  [[nodiscard]] std::vector<std::string> configuredEffectActionRoots(const Config& config);
+  std::vector<std::string> configuredEffectActionRoots(const Config& config);
 
   // Which source sections a reload altered. Runtime effects are derived
   // separately because one section can invalidate several subsystems.
@@ -33,7 +33,7 @@ namespace umbriel {
     bool workspaceRules = false;
     bool effects = false;
 
-    [[nodiscard]] bool any() const {
+    bool any() const {
       return colors
           || appearance
           || animation
@@ -57,11 +57,11 @@ namespace umbriel {
     }
 
     // Comma-separated names of the sections that changed, empty when none did.
-    [[nodiscard]] std::string summary() const;
+    std::string summary() const;
 
     // What a first load reports: everything is new.
-    [[nodiscard]] static ConfigChange everything();
-    [[nodiscard]] static ConfigChange between(const Config& before, const Config& after);
+    static ConfigChange everything();
+    static ConfigChange between(const Config& before, const Config& after);
   };
 
   // Runtime subsystems invalidated by a successful reload. These are effects,
@@ -87,7 +87,7 @@ namespace umbriel {
     // Whether a modal dialog attaches to its parent: the global switch or a rule that may opt one out.
     bool dialogAttachment = false;
 
-    [[nodiscard]] bool any() const {
+    bool any() const {
       return outputState
           || tearingPolicy
           || directScanoutPolicy
@@ -104,17 +104,17 @@ namespace umbriel {
           || dialogAttachment;
     }
 
-    [[nodiscard]] bool invalidatesOverview() const {
+    bool invalidatesOverview() const {
       return outputState || workspaceInventory || workspaceLayout || viewChrome || overviewPresentation;
     }
 
-    [[nodiscard]] std::string summary() const;
+    std::string summary() const;
 
-    [[nodiscard]] static ConfigEffects everything();
-    [[nodiscard]] static ConfigEffects between(const Config& before, const Config& after);
+    static ConfigEffects everything();
+    static ConfigEffects between(const Config& before, const Config& after);
   };
 
-  struct ConfigReloadResult {
+  struct [[nodiscard]] ConfigReloadResult {
     bool success = false;
     ConfigChange change;
     ConfigEffects effects;

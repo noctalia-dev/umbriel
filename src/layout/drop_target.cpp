@@ -528,7 +528,7 @@ namespace umbriel {
       server.focusView(&view, FocusReason::DragDrop);
       return;
     }
-    const auto restoreSceneParent = [&view, &target]() {
+    const auto restoreSceneParent = [&view, &target] {
       const bool fullscreen = view.currentFullscreen() || view.scheduledFullscreen();
       view.setSceneParent(fullscreen ? target.fullscreenTree() : target.viewLayer(true));
     };
@@ -649,6 +649,56 @@ namespace umbriel {
       }
     }
     rebuildTabGroup(shown, workspace, tabs, bar);
+  }
+
+  LiftedTabGroup liftTabGroup(Workspace& workspace, View& view) {
+    const ScrollingLayout* scrolling = workspace.scrollingLayout();
+    const int columnIndex = scrolling != nullptr ? scrolling->columnOf(&view) : -1;
+    if (columnIndex < 0) {
+      return {};
+    }
+    const Column& column = scrolling->columns()[static_cast<size_t>(columnIndex)];
+    const TabGroup* group = tabGroupOf(column, &view);
+    if (group == nullptr) {
+      return {};
+    }
+    const auto first = column.views.begin() + static_cast<std::ptrdiff_t>(group->first);
+    LiftedTabGroup lifted{
+        .tabs = {first, first + static_cast<std::ptrdiff_t>(group->count)}, .bar = group->bar, .home = {}
+    };
+    for (View* tab : lifted.tabs) {
+      if (tab != &view) {
+        workspace.layoutDetach(tab);
+        tab->setTabHidden(true);
+      }
+    }
+    // Alone in its column now, the dragged tab owns the width a group filling that column had.
+    const int row = scrolling->rowOf(&view);
+    lifted.home = {
+        .column = columnIndex,
+        .row = column.views.size() > 1 ? row : -1,
+        .weight = scrolling->heightWeight(columnIndex, row),
+        .width = captureDropColumnWidth(workspace, &view),
+    };
+    return lifted;
+  }
+
+  void landTabGroup(View& view, const LiftedTabGroup& lifted, bool closing) {
+    Workspace* landed = view.workspace();
+    const bool placed = landed != nullptr && landed->layout().columnOf(&view) >= 0;
+    if (placed && landed->scrollingLayout() != nullptr) {
+      rebuildTabGroup(view, *landed, lifted.tabs, lifted.bar);
+    } else if (!placed && !closing && view.tiled()) {
+      returnTabGroup(view, lifted.tabs, lifted.bar, lifted.home);
+    } else {
+      std::vector<View*> rest = lifted.tabs;
+      const auto dragged = std::ranges::find(rest, &view) - rest.begin();
+      std::erase(rest, &view);
+      if (!rest.empty()) {
+        View& shown = *rest[static_cast<size_t>(std::max<std::ptrdiff_t>(0, dragged - 1))];
+        returnTabGroup(shown, rest, lifted.bar, lifted.home);
+      }
+    }
   }
 
 } // namespace umbriel

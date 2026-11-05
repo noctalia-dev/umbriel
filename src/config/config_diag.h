@@ -17,7 +17,7 @@ namespace umbriel {
     uint32_t column = 0;
 
     // "path:12:5" or "" when file empty.
-    [[nodiscard]] std::string location() const {
+    std::string location() const {
       if (file.empty()) {
         return {};
       }
@@ -26,7 +26,7 @@ namespace umbriel {
   };
 
   // Copies file/line/column out of a toml source region (path may be null).
-  [[nodiscard]] inline ConfigDiagnostic
+  inline ConfigDiagnostic
   makeDiagnostic(ConfigDiagnostic::Severity severity, const toml::source_region& source, std::string message) {
     ConfigDiagnostic diagnostic;
     diagnostic.severity = severity;

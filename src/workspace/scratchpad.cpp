@@ -361,9 +361,11 @@ namespace umbriel {
     // Admission owns the final focus decision. A floating transition must not briefly focus the workspace window
     // before it belongs to the pad, especially when a delayed launch is entering a hidden pad.
     view->setFloating(true, false);
+    // Settle at the float target, not wherever the float animation started.
+    const int settledX = view->layoutTargetX();
+    const int settledY = view->layoutTargetY();
     view->cancelPositionAnimation();
-
-    view->setPosition(view->layoutX(), view->layoutY());
+    view->setPosition(settledX, settledY);
 
     if (newEntry) {
       view->moveToWorkspace(nullptr);
