@@ -2,7 +2,11 @@
 // harness can then request redundant focus for the toplevel and observe whether
 // the compositor incorrectly dismisses the popup. With --popup-on-stdin it
 // instead creates an ungrabbed popup when a line arrives on stdin, so a check
-// can open one while the toplevel is not shown.
+// can open one while the toplevel is not shown. On that path an `unmap` line
+// drops the popup buffer, so a check can take a popup away without destroying
+// it, and a `sync` line answers with a `frame` once the compositor has read
+// everything sent before it. FILL_COLOR, POPUP_FILL_COLOR, POPUP_WIDTH and
+// POPUP_HEIGHT override the painted colours and the popup size.
 
 #include "xdg-shell-client-protocol.h"
 
@@ -23,6 +27,8 @@ namespace {
   constexpr int kWindowHeight = 700;
   constexpr int kPopupWidth = 120;
   constexpr int kPopupHeight = 80;
+  constexpr uint32_t kWindowFill = 0xFF5577AA;
+  constexpr uint32_t kPopupFill = 0xFFEEAA33;
   constexpr uint32_t kLeftButton = 0x110;
 
   struct Buffer {
@@ -46,7 +52,12 @@ namespace {
     xdg_popup* popup = nullptr;
     Buffer windowBuffer;
     Buffer popupBuffer;
+    int popupWidth = kPopupWidth;
+    int popupHeight = kPopupHeight;
+    uint32_t windowFill = kWindowFill;
+    uint32_t popupFill = kPopupFill;
     bool mapped = false;
+    bool popupWanted = false;
     bool popupMapped = false;
   };
 
@@ -76,24 +87,63 @@ namespace {
     return buffer;
   }
 
+  void attachPopupBuffer(State& state) {
+    // Toolkits set an explicit window geometry, which outlives the surface's unmap; without one the compositor
+    // derives the box from the buffer and forgets it with the buffer.
+    xdg_surface_set_window_geometry(state.popupXdgSurface, 0, 0, state.popupWidth, state.popupHeight);
+    wl_surface_attach(state.popupSurface, state.popupBuffer.resource, 0, 0);
+    wl_surface_damage_buffer(state.popupSurface, 0, 0, state.popupWidth, state.popupHeight);
+    wl_surface_commit(state.popupSurface);
+    state.popupMapped = true;
+    std::println("popup-mapped");
+    std::fflush(stdout);
+  }
+
+  void unmapPopup(State& state) {
+    state.popupWanted = false;
+    if (!state.popupMapped) {
+      return;
+    }
+    // Dropping the buffer unmaps the surface but keeps the popup object, like a client hiding a menu.
+    wl_surface_attach(state.popupSurface, nullptr, 0, 0);
+    wl_surface_commit(state.popupSurface);
+    state.popupMapped = false;
+    std::println("popup-unmapped");
+    std::fflush(stdout);
+  }
+
   void popupSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
-    if (state.popupMapped) {
+    // A popup that was never configured must not draw yet; its configure ack maps it.
+    if (!state.popupWanted || state.popupMapped) {
       return;
     }
 
-    state.popupMapped = true;
-    wl_surface_attach(state.popupSurface, state.popupBuffer.resource, 0, 0);
-    wl_surface_damage_buffer(state.popupSurface, 0, 0, kPopupWidth, kPopupHeight);
-    wl_surface_commit(state.popupSurface);
-    std::println("popup-mapped");
-    std::fflush(stdout);
+    attachPopupBuffer(state);
   }
 
   constexpr xdg_surface_listener kPopupXdgSurfaceListener = {
       .configure = popupSurfaceConfigure,
   };
+
+  void frameDone(void*, wl_callback* callback, uint32_t) {
+    wl_callback_destroy(callback);
+    std::println("frame");
+    std::fflush(stdout);
+  }
+
+  constexpr wl_callback_listener kFrameListener = {
+      .done = frameDone,
+  };
+
+  // A commit is answered only when the compositor reads it, and nothing in it sends a reply. Requesting a frame on
+  // the toplevel behind it does: the callback arrives on the next drawn frame, after the compositor has read both.
+  void syncFrame(State& state) {
+    wl_callback* callback = wl_surface_frame(state.surface);
+    wl_callback_add_listener(callback, &kFrameListener, nullptr);
+    wl_surface_commit(state.surface);
+  }
 
   void popupConfigure(void*, xdg_popup*, int32_t, int32_t, int32_t, int32_t) {}
 
@@ -116,7 +166,7 @@ namespace {
     xdg_surface_add_listener(state.popupXdgSurface, &kPopupXdgSurfaceListener, &state);
 
     xdg_positioner* positioner = xdg_wm_base_create_positioner(state.wmBase);
-    xdg_positioner_set_size(positioner, kPopupWidth, kPopupHeight);
+    xdg_positioner_set_size(positioner, state.popupWidth, state.popupHeight);
     xdg_positioner_set_anchor_rect(positioner, 0, 0, 1, 1);
     xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
     xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
@@ -128,6 +178,7 @@ namespace {
     if (grabSerial) {
       xdg_popup_grab(state.popup, state.seat, *grabSerial);
     }
+    state.popupWanted = true;
     wl_surface_commit(state.popupSurface);
   }
 
@@ -193,13 +244,13 @@ namespace {
   void surfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
-    if (state.mapped) {
-      return;
+    if (!state.mapped) {
+      state.mapped = true;
+      wl_surface_attach(state.surface, state.windowBuffer.resource, 0, 0);
+      wl_surface_damage_buffer(state.surface, 0, 0, kWindowWidth, kWindowHeight);
     }
-
-    state.mapped = true;
-    wl_surface_attach(state.surface, state.windowBuffer.resource, 0, 0);
-    wl_surface_damage_buffer(state.surface, 0, 0, kWindowWidth, kWindowHeight);
+    // An ack alone leaves the compositor's configure serial unanswered, so a check that waits for a settled instance
+    // would never see one. Committing re-uses the current buffer, which is what a client that ignores the size does.
     wl_surface_commit(state.surface);
   }
 
@@ -259,10 +310,28 @@ namespace {
     }
   }
 
+  uint32_t envColor(const char* name, uint32_t fallback) {
+    const char* value = std::getenv(name);
+    return value != nullptr ? static_cast<uint32_t>(std::strtoul(value, nullptr, 0)) : fallback;
+  }
+
+  int envSize(const char* name, int fallback) {
+    const char* value = std::getenv(name);
+    if (value == nullptr) {
+      return fallback;
+    }
+    const long parsed = std::strtol(value, nullptr, 10);
+    return parsed > 0 && parsed <= 4096 ? static_cast<int>(parsed) : fallback;
+  }
+
 } // namespace
 
 int main(int argc, char** argv) {
   State state;
+  state.popupWidth = envSize("POPUP_WIDTH", kPopupWidth);
+  state.popupHeight = envSize("POPUP_HEIGHT", kPopupHeight);
+  state.windowFill = envColor("FILL_COLOR", kWindowFill);
+  state.popupFill = envColor("POPUP_FILL_COLOR", kPopupFill);
   state.display = wl_display_connect(nullptr);
   if (state.display == nullptr) {
     std::println(stderr, "popup-client: cannot connect to WAYLAND_DISPLAY");
@@ -283,8 +352,8 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  state.windowBuffer = createBuffer(state, kWindowWidth, kWindowHeight, 0xFF5577AA);
-  state.popupBuffer = createBuffer(state, kPopupWidth, kPopupHeight, 0xFFEEAA33);
+  state.windowBuffer = createBuffer(state, kWindowWidth, kWindowHeight, state.windowFill);
+  state.popupBuffer = createBuffer(state, state.popupWidth, state.popupHeight, state.popupFill);
   if (state.windowBuffer.resource == nullptr || state.popupBuffer.resource == nullptr) {
     std::println(stderr, "popup-client: failed to allocate shared-memory buffers");
     return EXIT_FAILURE;
@@ -323,9 +392,20 @@ int main(int argc, char** argv) {
         break;
       }
       if ((fds[1].revents & (POLLIN | POLLHUP)) != 0) {
-        char line[64];
-        if (read(STDIN_FILENO, line, sizeof(line)) <= 0) {
+        char line[64] = {};
+        const ssize_t length = read(STDIN_FILENO, line, sizeof(line) - 1);
+        if (length <= 0) {
           fds[1].fd = -1;
+          continue;
+        }
+        char* command = line;
+        while (*command == ' ' || *command == '\t') {
+          ++command;
+        }
+        if (std::strncmp(command, "unmap", 5) == 0) {
+          unmapPopup(state);
+        } else if (std::strncmp(command, "sync", 4) == 0) {
+          syncFrame(state);
         } else if (state.popup == nullptr) {
           createPopup(state, std::nullopt);
           std::println("popup-requested");

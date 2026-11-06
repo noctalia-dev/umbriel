@@ -89,6 +89,13 @@ namespace umbriel {
     if (tree == nullptr) {
       return;
     }
+    // An unmapped popup draws nothing, so it must not blur anything either. Its window geometry outlives the unmap
+    // and the host tree is not disabled, so the box checks below cannot stand in for the map state: without this,
+    // the commit that drops the buffer turns the node back on, and every blur refresh keeps it on.
+    if (!m_popup->base->surface->mapped) {
+      m_blur.hide();
+      return;
+    }
     const wlr_box& geometry = m_popup->base->geometry;
     SurfaceBlurOptions blurOptions;
     if (LayerSurface* layer = LayerSurface::fromSurface(m_popup->parent)) {
@@ -142,6 +149,9 @@ namespace umbriel {
   }
 
   void Popup::handleMap() {
+    // The map signal and the commit that maps the surface are not ordered relative to each other, so the blur is
+    // derived here as well as on commit.
+    updateBlur();
     // Only a grabbing popup owns the keyboard. A toplevel's popup reaches it through its already focused window.
     if (m_popup->seat == nullptr) {
       return;
