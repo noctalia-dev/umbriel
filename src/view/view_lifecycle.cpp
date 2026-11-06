@@ -738,6 +738,9 @@ namespace umbriel {
     m_positioned = false;
     m_presentedTiledBox = {};
     if (m_workspace != nullptr) {
+      if (m_tiled) {
+        m_workspace->holdCloseSnapshot(snapshot);
+      }
       m_workspace->layoutDetach(this, m_tiled);
       if (focusRevealedTile) {
         // The scene may still be animating from its old geometry. Arrange now, then read the authoritative layout

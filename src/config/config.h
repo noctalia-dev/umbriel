@@ -807,6 +807,9 @@ namespace umbriel {
       AnimationCurve curve{.easing = Easing::EaseOutCubic};
       std::map<std::string, BezierCurve> beziers;
       std::map<std::string, SpringConfig> springs;
+      // While windows_resize.wait_for_redraw holds the tiles that fill a closed tile's space, an instant close keeps
+      // the closed tile's last frame there until they have redrawn and landed.
+      bool holdsClosedTile() const { return windowsResize.waitsForClient(enabled) && !(enabled && windowsOut.enabled); }
 
       struct WindowsIn {
         std::string effect;
@@ -842,6 +845,10 @@ namespace umbriel {
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
+        // While the size does not animate, a reflow that resizes tiles keeps showing their frames, and hides openers,
+        // until every resized client has redrawn (or kRedrawWaitMs passes), then lands in one frame.
+        bool waitForRedraw = false;
+        bool waitsForClient(bool animationEnabled) const { return waitForRedraw && !(animationEnabled && enabled); }
         bool operator==(const WindowsResize&) const = default;
       } windowsResize;
 

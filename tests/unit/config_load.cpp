@@ -1205,6 +1205,41 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
+UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
+      "false\n"
+  );
+  CHECK(store.reload().success);
+  const auto& animation = store.config().animation;
+  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
+  CHECK(animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+
+  // An animated close fills the closed tile's space itself, so it holds no frame.
+  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(!store.config().animation.holdsClosedTile());
+
+  // An animated size has nothing to wait for, so the key is reported as inert.
+  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
+  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+
+  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
+  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(store.config().animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+}
+
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
   const TempConfigTree tree;
   tree.write("wipe.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
