@@ -481,6 +481,8 @@ namespace umbriel {
   }
 
   bool ScrollingLayout::stripFitsViewport() const {
+    // Cached by arrange: between an output or workspace move and the next arrange this can lag the live viewport,
+    // which at worst masks a resize edge for one frame. Drags re-arrange every step, so it is current while it matters.
     return m_lastViewportPrimary > 0 && rawTotalWidth(m_lastViewportPrimary) < m_lastViewportPrimary;
   }
 
@@ -1644,7 +1646,32 @@ namespace umbriel {
         // Centering travels both outer edges around a fixed midpoint. The start and end alignments pin one edge
         // through the alignment offset instead, so only the free edge follows the pointer.
         const bool symmetricGrowth = underfullStrip && align == UnderfullStripAlign::Center;
-        const bool anchoredRest = underfullStrip && align != UnderfullStripAlign::Start;
+        const bool endAlignedRest = underfullStrip && align == UnderfullStripAlign::End;
+        // A drag on the boundary between two lanes keeps their pair span fixed, so one lane gives every pixel the
+        // other takes. Past the pointer-side lane's own minimum the far lane grows instead, which is the only way
+        // the boundary can keep following the pointer; callers re-anchor the strip in that case.
+        struct PairResize {
+          int lead = 0;
+          int trail = 0;
+          bool grew = false;
+        };
+        auto resizePair = [&](int leadIndex, int trailIndex, int leadStart, int trailStart,
+                              int requestedLead) -> PairResize {
+          const int span = leadStart + gap + trailStart;
+          const int minLead = columnMinPrimary(leadIndex);
+          const int minTrail = columnMinPrimary(trailIndex);
+          const int maxTrail = columnMaxPrimary(trailIndex);
+          const int minimumLead = std::max(minLead, span - gap - maxTrail);
+          const int maximumLead = std::min(columnMaxPrimary(leadIndex), span - gap - minTrail);
+          PairResize result;
+          result.lead = std::clamp(requestedLead, minimumLead, maximumLead);
+          result.trail = span - gap - result.lead;
+          if (requestedLead < minimumLead && minimumLead == minLead) {
+            result.trail = std::min(trailStart - (requestedLead - leadStart), maxTrail);
+            result.grew = true;
+          }
+          return result;
+        };
         const double centeredEdgeTravel =
             std::max(0.0, static_cast<double>(viewportPrimary - m_startStripPrimaryPx) / 2.0);
         auto centeredPrimaryDelta = [centeredEdgeTravel](double edgeDelta) {
@@ -1652,26 +1679,17 @@ namespace umbriel {
         };
 
         if ((m_edges & primaryEndEdge) != 0) {
-          if (anchoredRest && m_column + 1 < static_cast<int>(layout.columns().size())) {
-            // Interior boundary of an end-anchored fitting strip: the next lane gives way, so the pair's span (and
-            // with it the anchored trailing edge) stays put and the boundary follows the pointer.
-            const int pair = m_startPrimaryPx + gap + m_startNextPrimaryPx;
-            const int minCur = columnMinPrimary(m_column);
-            const int minNext = columnMinPrimary(m_column + 1);
-            const int maxCur = columnMaxPrimary(m_column);
-            const int maxNext = columnMaxPrimary(m_column + 1);
-            const int requestedCur = m_startPrimaryPx + static_cast<int>(std::lround(dPrimary));
-            const int minimumCur = std::max(minCur, pair - gap - maxNext);
-            const int maximumCur = std::min(maxCur, pair - gap - minNext);
-            const int newCur = std::clamp(requestedCur, minimumCur, maximumCur);
-            int newNext = pair - gap - newCur;
-            const bool growsPastNextMinimum = requestedCur > maximumCur && maximumCur == maxCur;
-            if (growsPastNextMinimum) {
-              newNext = std::min(m_startNextPrimaryPx - static_cast<int>(std::lround(dPrimary)), maxNext);
-            }
-            setColumnPrimaryPx(m_column, newCur);
-            setColumnPrimaryPx(m_column + 1, newNext);
-            if (growsPastNextMinimum) {
+          if (endAlignedRest && m_column + 1 < static_cast<int>(layout.columns().size())) {
+            // Interior boundary of an end-aligned fitting strip: the pair keeps its span, so the anchored trailing
+            // edge stays put and the boundary follows the pointer. Centered strips keep their pre-existing
+            // symmetric growth instead.
+            const PairResize pair = resizePair(
+                m_column, m_column + 1, m_startPrimaryPx, m_startNextPrimaryPx,
+                m_startPrimaryPx + static_cast<int>(std::lround(dPrimary))
+            );
+            setColumnPrimaryPx(m_column, pair.lead);
+            setColumnPrimaryPx(m_column + 1, pair.trail);
+            if (pair.grew) {
               // The pair grew, so the strip re-anchors; nothing else can keep the boundary on the pointer.
               layout.setScroll(0.0);
             }
@@ -1685,7 +1703,7 @@ namespace umbriel {
               columnMaxPrimary(m_column)
           );
           setColumnPrimaryPx(m_column, newExtent);
-          if (symmetricGrowth || anchoredRest) {
+          if (symmetricGrowth || endAlignedRest) {
             // Centering keeps the midpoint; an anchored alignment re-rests on its edge (the layout refuses that
             // boundary while it fits, see sanitizeResizeEdges, so this covers a programmatic resize).
             layout.setScroll(0.0);
@@ -1697,27 +1715,17 @@ namespace umbriel {
         } else if ((m_edges & primaryStartEdge) != 0) {
           if (m_column > 0 && !m_soloPrimary) {
             // Shared boundary with the previous lane: keep the pair span fixed.
-            const int pair = m_startPrevPrimaryPx + gap + m_startPrimaryPx;
-            const int minPrev = columnMinPrimary(m_column - 1);
-            const int minCur = columnMinPrimary(m_column);
-            const int maxPrev = columnMaxPrimary(m_column - 1);
-            const int maxCur = columnMaxPrimary(m_column);
-            const int requestedPrev = m_startPrevPrimaryPx + static_cast<int>(std::lround(dPrimary));
-            const int minimumPrev = std::max(minPrev, pair - gap - maxCur);
-            const int maximumPrev = std::min(maxPrev, pair - gap - minCur);
-            const int newPrev = std::clamp(requestedPrev, minimumPrev, maximumPrev);
-            int newCur = pair - gap - newPrev;
-            const bool growsPastPreviousMinimum = requestedPrev < minimumPrev && minimumPrev == minPrev;
-            if (growsPastPreviousMinimum) {
-              newCur = std::min(m_startPrimaryPx - static_cast<int>(std::lround(dPrimary)), maxCur);
-            }
-            setColumnPrimaryPx(m_column - 1, newPrev);
-            setColumnPrimaryPx(m_column, newCur);
-            if (growsPastPreviousMinimum) {
+            const PairResize pair = resizePair(
+                m_column - 1, m_column, m_startPrevPrimaryPx, m_startPrimaryPx,
+                m_startPrevPrimaryPx + static_cast<int>(std::lround(dPrimary))
+            );
+            setColumnPrimaryPx(m_column - 1, pair.lead);
+            setColumnPrimaryPx(m_column, pair.trail);
+            if (pair.grew) {
               layout.setScroll(
                   m_startScroll
                       + static_cast<double>(layout.columnX(m_column, viewportPrimary) - m_startColumnX)
-                      + static_cast<double>(newCur - m_startPrimaryPx),
+                      + static_cast<double>(pair.trail - m_startPrimaryPx),
                   true
               );
             }
@@ -1728,7 +1736,7 @@ namespace umbriel {
                 columnMaxPrimary(m_column)
             );
             setColumnPrimaryPx(m_column, newExtent);
-            if (symmetricGrowth || anchoredRest) {
+            if (symmetricGrowth || endAlignedRest) {
               // Centering keeps the midpoint; an end-aligned strip keeps its trailing edge, which the offset
               // re-derives from the new total width.
               layout.setScroll(0.0);

@@ -771,6 +771,11 @@ UMBRIEL_TEST(scrollingUnderfullStripParsesEveryPlacement) {
   // An invalid value leaves the default in place and names the accepted set.
   CHECK(store.config().layout.scrolling.underfullStrip == UnderfullStripAlign::Center);
   CHECK(containsDiagnostic(store, "underfull_strip \"left\" (expected \"start\", \"center\", or \"end\")"));
+
+  // The boolean this key replaced is not silently ignored: the unknown-key diagnostic is the migration path.
+  file.write("[layout.scrolling]\ncenter_underfull_strip = true\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "unknown key layout.scrolling.center_underfull_strip"));
 }
 
 UMBRIEL_TEST(outputScrollingDefaultExtentUsesNarrowLayoutScope) {

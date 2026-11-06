@@ -118,7 +118,7 @@ center_on_overview_select = false
 
 `underfull_strip` places a strip whose columns do not fill the viewport: `"start"` leaves all the leftover space after it, `"center"` splits the leftover space on both sides, and `"end"` leaves all of it before. The default, `"center"`, matches earlier releases that centered such strips. A strip that fills or overflows the viewport always starts at the strip start, so this key only moves the resting position of a workspace holding few or narrow windows.
 
-While an end-aligned strip fits, its trailing edge stays against the viewport and its windows resize from their leading edges: dragging the trailing edge would push the strip past the edge it is anchored to. Once the strip overflows, both edges resize as usual.
+While an end-aligned strip fits, its trailing edge stays against the viewport, so dragging the last window's trailing edge resizes it from its leading edge and an interior boundary moves by trading width with the next column. Once the strip overflows, both edges resize as usual.
 
 On a vertical strip, which horizontal workspaces use, `"start"` is the top edge and `"end"` the bottom one.
 

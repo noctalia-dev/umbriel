@@ -581,6 +581,97 @@ UMBRIEL_TEST(interiorTrailingBoundaryResizesThePairOnAFittingEndAlignedStrip) {
   CHECK_EQ(secondAfter.x + secondAfter.width, trailing);
 }
 
+UMBRIEL_TEST(interiorTrailingBoundaryNeverPushesTheNextLaneBelowItsMinimum) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 0.25));
+  CHECK(fixture.layout.setWidthFraction(1, 0.25));
+  fixture.layout.setConstraints([](const View* view) {
+    return LayoutConstraints{.maxWidth = view == stub(0) ? 350 : 0};
+  });
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstBefore = fixture.layout.targetBox(stub(0));
+  const wlr_box secondBefore = fixture.layout.targetBox(stub(1));
+  const int minimum = static_cast<int>(std::lround(0.15 * kViewport));
+
+  // The pointer asks for far more than the client hint allows, so the dragged column stops at the hint instead of
+  // paying the rest out of the next lane.
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(200.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstAfter = fixture.layout.targetBox(stub(0));
+  const wlr_box secondAfter = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(firstAfter.width, 350);
+  CHECK(secondAfter.width >= minimum);
+  CHECK_EQ(secondAfter.width, 262);
+  // The pair keeps its span, so the anchored trailing edge stays put.
+  CHECK_EQ(firstAfter.width + secondAfter.width, firstBefore.width + secondBefore.width);
+  CHECK_EQ(secondAfter.x, firstAfter.x + firstAfter.width + fixture.config.totalGap);
+}
+
+UMBRIEL_TEST(interiorTrailingBoundaryKeepsTrackingPastTheLaneMinimum) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 0.25));
+  CHECK(fixture.layout.setWidthFraction(1, 0.25));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstBefore = fixture.layout.targetBox(stub(0));
+  const wlr_box secondBefore = fixture.layout.targetBox(stub(1));
+  const int boundary = secondBefore.x;
+  const int minimum = static_cast<int>(std::lround(0.15 * kViewport));
+  CHECK(firstBefore.width > minimum);
+
+  // Past the dragged column's minimum the next lane grows, exactly like the mirrored leading-edge drag, so the
+  // boundary stays under the pointer instead of sticking.
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(-400.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstAfter = fixture.layout.targetBox(stub(0));
+  const wlr_box secondAfter = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(firstAfter.width, minimum);
+  // As on the leading edge, the far lane absorbs the whole remaining travel once the dragged column is pinned.
+  CHECK_EQ(secondAfter.width, secondBefore.width + 400);
+  CHECK_EQ(secondAfter.x, boundary - 400);
+  CHECK_EQ(secondAfter.x + secondAfter.width, secondBefore.x + secondBefore.width);
+}
+
+UMBRIEL_TEST(centeredInteriorTrailingBoundaryStillGrowsTheStrip) {
+  Fixture fixture;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 0.25));
+  CHECK(fixture.layout.setWidthFraction(1, 0.25));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstBefore = fixture.layout.targetBox(stub(0));
+  const wlr_box secondBefore = fixture.layout.targetBox(stub(1));
+  const int boundary = secondBefore.x;
+
+  // The default alignment keeps its pre-existing symmetric growth: the strip widens instead of trading with the
+  // next lane, so nothing the docs promise about earlier releases changes.
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(40.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstAfter = fixture.layout.targetBox(stub(0));
+  const wlr_box secondAfter = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(firstAfter.width, firstBefore.width + 80);
+  CHECK_EQ(secondAfter.width, secondBefore.width);
+  CHECK_EQ(secondAfter.x, boundary + 40);
+  CHECK_NEAR(
+      firstAfter.x - fixture.config.edgePad, kUsable.width - fixture.config.edgePad - secondAfter.x - secondAfter.width,
+      1
+  );
+}
+
 UMBRIEL_TEST(endAlignedUnderfullLeftwardResizeKeepsTheRightEdgeFixed) {
   Fixture fixture;
   fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
