@@ -266,9 +266,18 @@ namespace {
       } else if (type == XCB_CONFIGURE_NOTIFY && state.expanded && !state.resized) {
         const auto* configure = reinterpret_cast<xcb_configure_notify_event_t*>(event);
         if (configure->width == 800 && configure->height == 500) {
-          state.resized = true;
-          paint(state);
-          std::println("resized 800x500");
+          // A synthetic ConfigureNotify can announce the compositor's target
+          // before the X drawable has grown. Painting now would silently clip
+          // the expanded widget, and marking the resize complete would ignore
+          // the later real notification. Confirm the drawable before painting.
+          auto* geometry =
+              xcb_get_geometry_reply(state.connection, xcb_get_geometry(state.connection, state.window), nullptr);
+          if (geometry != nullptr && geometry->width == 800 && geometry->height == 500) {
+            state.resized = true;
+            paint(state);
+            std::println("resized 800x500");
+          }
+          std::free(geometry);
         }
       } else if (type == 0) {
         std::println(

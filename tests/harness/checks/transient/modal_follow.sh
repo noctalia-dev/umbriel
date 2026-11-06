@@ -17,14 +17,16 @@ output_x() {
     awk -v name="$1" '$1 == name {found = 1; next} found && /Position:/ {split($2, p, ","); print p[1]; exit}'
 }
 
-# The dialog shares every placement fact of the parent, and while the parent shows it sits centred on it and holds the
-# keyboard.
+# The dialog shares every placement fact of the parent, and while the parent shows it sits centred on its frame and
+# holds the keyboard. This fixture's tiled frames are 640x720 even though the parent's retained content is 640x480.
 readonly FOLLOWS='
   (.[] | select(.title == "transient-parent")) as $p | (.[] | select(.title == "modal-dialog")) as $d |
+  (if $p.floating then $p.w else 640 end) as $frame_w |
+  (if $p.floating then $p.h else 720 end) as $frame_h |
   $d.workspace == $p.workspace and $d.output == $p.output and $d.scratchpad == $p.scratchpad
   and $d.pinned == $p.pinned and $d.visible == $p.visible
-  and (($p.visible | not) or ($d.active and ($p.fullscreen or (($d.x + $d.w / 2 - $p.x - $p.w / 2 | fabs) <= 1
-    and ($d.y + $d.h / 2 - $p.y - $p.h / 2 | fabs) <= 1))))'
+  and (($p.visible | not) or ($d.active and ($p.fullscreen or (($d.x + $d.w / 2 - $p.x - $frame_w / 2 | fabs) <= 1
+    and ($d.y + $d.h / 2 - $p.y - $frame_h / 2 | fabs) <= 1))))'
 
 # expect <label> <jq condition on the parent $p>
 expect() {
@@ -45,6 +47,18 @@ enabled = false
 
 [layout]
 mode = "scrolling"
+gap = 0
+
+[layout.scrolling]
+default_extent_fraction = 0.5
+center_underfull_strip = false
+
+[appearance]
+border_width = 0
+outer_border_width = 0
+
+[appearance.title_bar]
+mode = "off"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -142,16 +156,18 @@ mover_column() {
   done
   "$UMBRIEL" msg window-focus "$(field transient-parent id)" > /dev/null
   expect "parent beside a neighbour" "\$p.workspace == \"$START_WS\" and (\$p.floating | not)"
-  local column x
+  local column
   column=$(field transient-parent column)
-  x=$(field transient-parent x)
+  # Focus reveal can scroll the strip while the columns swap, leaving the
+  # parent at the same screen x. Assert its layout order, not a pixel delta;
+  # expect also checks that the dialog stays centred on the resulting frame.
   if ((column > 0)); then
     "$UMBRIEL" msg column-move-left > /dev/null
-    expect "column moved left" "\$p.column == $((column - 1)) and \$p.x != $x"
+    expect "column moved left" "\$p.column == $((column - 1))"
     "$UMBRIEL" msg column-move-right > /dev/null
   else
     "$UMBRIEL" msg column-move-right > /dev/null
-    expect "column moved right" "\$p.column == 1 and \$p.x != $x"
+    expect "column moved right" "\$p.column == 1"
     "$UMBRIEL" msg column-move-left > /dev/null
   fi
   expect "column moved back" "\$p.column == $column"

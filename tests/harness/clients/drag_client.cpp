@@ -437,6 +437,13 @@ namespace {
 
   void xdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
+    if (xdgSurface == state.detachedXdgSurface && state.detachedToplevel == nullptr) {
+      // Destroying just the carried role leaves its xdg_surface alive. A
+      // configure queued before destruction can still be dispatched by the
+      // following roundtrip, but the server has already reset the role and
+      // discarded its serials. Do not ack or commit that obsolete configure.
+      return;
+    }
     xdg_surface_ack_configure(xdgSurface, serial);
     if (xdgSurface == state.detachedXdgSurface) {
       wl_surface_attach(state.detachedSurface, state.detachedBuffer.resource, 0, 0);

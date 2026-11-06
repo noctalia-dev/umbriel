@@ -12,7 +12,8 @@
 // answer an unsized initial configure. Then it keeps the connection alive until the harness kills it.
 // Usage: fractional-client [title [default_width default_height [margin]]].
 // UNMAPPED_SUBSURFACE adds an unbuffered child at (-200, -200), as Firefox does.
-// HOLD_SIZE keeps the default dimensions while acknowledging configures, exposing compositor-only resize scaling.
+// HOLD_SIZE keeps the default dimensions while acknowledging configures, exercising compositor-owned resize frames.
+// OPAQUE_BUFFER uses XRGB (without a transparent margin) to exercise compositor resize gap filling.
 // TITLE_AFTER_CONFIGURE sets the opening title after the first configure and before committing the first buffer.
 // RESIZE_BEFORE_MAP uses the default dimensions for that first buffer, then follows later configures normally.
 
@@ -131,8 +132,10 @@ namespace {
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(size));
     releaseBuffer(state);
-    state.buffer =
-        wl_shm_pool_create_buffer(pool, 0, bufferWidth, bufferHeight, static_cast<int>(stride), WL_SHM_FORMAT_ARGB8888);
+    state.buffer = wl_shm_pool_create_buffer(
+        pool, 0, bufferWidth, bufferHeight, static_cast<int>(stride),
+        margin == 0 && std::getenv("OPAQUE_BUFFER") != nullptr ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888
+    );
     wl_shm_pool_destroy(pool);
     close(fd);
     if (state.buffer == nullptr) {

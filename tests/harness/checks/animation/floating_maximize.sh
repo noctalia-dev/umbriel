@@ -17,6 +17,9 @@ curve = "linear"
 [animation.windows_in]
 enabled = false
 
+[colors]
+background = "#FFFFFFFF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
@@ -64,7 +67,8 @@ assert_exact_box() {
   fi
 }
 
-"$CLIENT" "$TITLE" 480 300 > "$CLIENT_LOG" 2>&1 &
+# Measure the frame, including its gap fill, rather than only the client image.
+OPAQUE_BUFFER=1 "$CLIENT" "$TITLE" 480 300 > "$CLIENT_LOG" 2>&1 &
 wait_for_box 480x300+173+109
 "$UMBRIEL" settle
 
@@ -105,6 +109,17 @@ if ! (( 0 < restore_x1 && restore_x1 < restore_x2 && restore_x2 < 173
   echo "restore did not interpolate monotonically: first=${restore_w1}x${restore_h1}+${restore_x1}+${restore_y1}, second=${restore_w2}x${restore_h2}+${restore_x2}+${restore_y2}"
   exit 1
 fi
+
+# The frame still interpolates, but client pixels must not be stretched with it.
+for sample in "restore-150ms $restore_x1 $restore_y1" "restore-450ms $restore_x2 $restore_y2"; do
+  read -r name x y <<< "$sample"
+  impure=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/$name.png" count \
+    '!((r == 0 && g == 0 && b == 1) || (r == 0 && g == 1 && b == 0))' "100x1+$((x + 10))+$((y + 10))")
+  if ((impure != 0)); then
+    echo "$name stretched natural client columns: $impure blended pixels"
+    exit 1
+  fi
+done
 
 "$UMBRIEL" clock-advance 2000
 "$UMBRIEL" settle

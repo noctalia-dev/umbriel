@@ -16,6 +16,7 @@ cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [colors]
 backdrop = "#000000FF"
+background = "#FFFFFFFF"
 
 [appearance]
 border_width = 0
@@ -86,7 +87,7 @@ run_case() {
   FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" "$name-closer" 1280 720 > "$UMBRIEL_RUNTIME_DIR/$name-closer.log" 2>&1 &
   await_window "$name-closer"
   "$UMBRIEL" clock-advance 1500 > /dev/null
-  FILL_COLOR=0xFFFF0000 FOLLOW_CONFIGURES=1 RESIZE_ON_STDIN=1 \
+  OPAQUE_BUFFER=1 FILL_COLOR=0xFFFF0000 FOLLOW_CONFIGURES=1 RESIZE_ON_STDIN=1 \
     "$UMBRIEL_UNMAP_CLIENT" "$name-survivor" 1280 720 < "$fifo" > "$log" 2>&1 &
   await_window "$name-survivor"
   # The survivor answers its half-width configure at once, so the hold starts from an up-to-date frame.
@@ -128,8 +129,20 @@ run_case() {
     "$UMBRIEL" clock-advance "$TIMEOUT_MS" > /dev/null
     "$UMBRIEL" clock-advance 1 > /dev/null
     grim "$SHOTS/$name-switched.png"
-    expect_bounds "$name survivor after the timeout" "$SHOTS/$name-switched.png" 2 0 0 1280 720
+    expect_bounds "$name natural-sized content after the timeout" "$SHOTS/$name-switched.png" 2 0 0 640 720
+    local gap
+    gap=$("$UMBRIEL_PIXEL_PROBE" "$SHOTS/$name-switched.png" count 'r == 1 && g == 1 && b == 1' '640x720+640+0')
+    if ((gap != 640 * 720)); then
+      echo "$name did not retain its full-width frame with opaque gap fill: $gap white pixels"
+      exit 1
+    fi
     expect_no_blue "$name closed tile after the timeout" "$SHOTS/$name-switched.png"
+    # A late redraw replaces the fill, without another layout change.
+    echo r >&"$control_fd"
+    await_lines "$log" 'resized 1280x720' 1 0.025
+    "$UMBRIEL" clock-advance 1 > /dev/null
+    grim "$SHOTS/$name-late.png"
+    expect_bounds "$name late redraw" "$SHOTS/$name-late.png" 2 0 0 1280 720
   fi
 }
 
