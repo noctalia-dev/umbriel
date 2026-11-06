@@ -1563,13 +1563,14 @@ namespace umbriel {
       ScrollingResizeGrab(
           ScrollingLayout* layout, int column, int row, uint32_t edges, bool vertical, bool soloPrimary,
           bool clearedFullWidth, double startScroll, int startColumnX, int startPrimaryPx, int startPrevPrimaryPx,
-          int startStripPrimaryPx, int upperRow, int lowerRow, double startUpperWeight, double startLowerWeight
+          int startNextPrimaryPx, int startStripPrimaryPx, int upperRow, int lowerRow, double startUpperWeight,
+          double startLowerWeight
       )
           : m_layout(layout), m_column(column), m_row(row), m_edges(edges), m_vertical(vertical),
             m_soloPrimary(soloPrimary), m_clearedFullWidth(clearedFullWidth), m_startScroll(startScroll),
             m_startColumnX(startColumnX), m_startPrimaryPx(startPrimaryPx), m_startPrevPrimaryPx(startPrevPrimaryPx),
-            m_startStripPrimaryPx(startStripPrimaryPx), m_upperRow(upperRow), m_lowerRow(lowerRow),
-            m_startUpperWeight(startUpperWeight), m_startLowerWeight(startLowerWeight) {}
+            m_startNextPrimaryPx(startNextPrimaryPx), m_startStripPrimaryPx(startStripPrimaryPx), m_upperRow(upperRow),
+            m_lowerRow(lowerRow), m_startUpperWeight(startUpperWeight), m_startLowerWeight(startLowerWeight) {}
 
       bool unmaximizeOnBegin() const override { return m_clearedFullWidth; }
 
@@ -1651,6 +1652,31 @@ namespace umbriel {
         };
 
         if ((m_edges & primaryEndEdge) != 0) {
+          if (anchoredRest && m_column + 1 < static_cast<int>(layout.columns().size())) {
+            // Interior boundary of an end-anchored fitting strip: the next lane gives way, so the pair's span (and
+            // with it the anchored trailing edge) stays put and the boundary follows the pointer.
+            const int pair = m_startPrimaryPx + gap + m_startNextPrimaryPx;
+            const int minCur = columnMinPrimary(m_column);
+            const int minNext = columnMinPrimary(m_column + 1);
+            const int maxCur = columnMaxPrimary(m_column);
+            const int maxNext = columnMaxPrimary(m_column + 1);
+            const int requestedCur = m_startPrimaryPx + static_cast<int>(std::lround(dPrimary));
+            const int minimumCur = std::max(minCur, pair - gap - maxNext);
+            const int maximumCur = std::min(maxCur, pair - gap - minNext);
+            const int newCur = std::clamp(requestedCur, minimumCur, maximumCur);
+            int newNext = pair - gap - newCur;
+            const bool growsPastNextMinimum = requestedCur > maximumCur && maximumCur == maxCur;
+            if (growsPastNextMinimum) {
+              newNext = std::min(m_startNextPrimaryPx - static_cast<int>(std::lround(dPrimary)), maxNext);
+            }
+            setColumnPrimaryPx(m_column, newCur);
+            setColumnPrimaryPx(m_column + 1, newNext);
+            if (growsPastNextMinimum) {
+              // The pair grew, so the strip re-anchors; nothing else can keep the boundary on the pointer.
+              layout.setScroll(0.0);
+            }
+            return;
+          }
           // While the strip fits, centering keeps its midpoint fixed: a boundary extent changes by two pointer
           // pixels for each pixel the centered outer edge moves. An aligned rest keeps its anchored edge instead.
           const double extentDelta = symmetricGrowth ? centeredPrimaryDelta(dPrimary) : dPrimary;
@@ -1803,6 +1829,7 @@ namespace umbriel {
       int m_startColumnX;
       int m_startPrimaryPx;
       int m_startPrevPrimaryPx;
+      int m_startNextPrimaryPx;
       int m_startStripPrimaryPx;
       // First rows of the units either side of the dragged boundary; -1 for the column's edge gap there.
       int m_upperRow;
@@ -1829,10 +1856,13 @@ namespace umbriel {
     if (columnIndex == 0 && m_config->scrolling.underfullStrip == UnderfullStripAlign::Start) {
       edges &= ~startEdge;
     }
-    // An end-aligned strip that fits rests against the trailing viewport edge: growing any column from its trailing
-    // edge would push the strip past that edge, so the free (leading) edges are the resize tool. Once the strip
-    // overflows, the alignment no longer applies and both edges resize as usual.
-    if (columnIndex >= 0 && m_config->scrolling.underfullStrip == UnderfullStripAlign::End && stripFitsViewport()) {
+    // An end-aligned strip that fits rests against the trailing viewport edge: growing the last column from its
+    // trailing edge would push the strip past that edge, so it resizes from its leading edge. An interior trailing
+    // boundary takes width from the next lane instead, so it stays draggable. Once the strip overflows, the alignment
+    // no longer applies and both edges resize as usual.
+    if (columnIndex == static_cast<int>(m_columns.size()) - 1
+        && m_config->scrolling.underfullStrip == UnderfullStripAlign::End
+        && stripFitsViewport()) {
       edges &= ~endEdge;
     }
     return edges;
@@ -1868,6 +1898,10 @@ namespace umbriel {
     if (column > 0 && !soloPrimary) {
       startPrevPrimaryPx = columnWidth(column - 1, viewportPrimary);
     }
+    int startNextPrimaryPx = 0;
+    if (column + 1 < static_cast<int>(m_columns.size()) && !soloPrimary) {
+      startNextPrimaryPx = columnWidth(column + 1, viewportPrimary);
+    }
     const double startScroll = scroll();
 
     // The boundary dragged lies between the unit holding the window, which may be a tab group, and the unit or edge gap
@@ -1895,7 +1929,8 @@ namespace umbriel {
 
     return std::make_unique<ScrollingResizeGrab>(
         this, column, row, edges, v, soloPrimary, clearedFullWidth, startScroll, startColumnX, startPrimaryPx,
-        startPrevPrimaryPx, rawTotalWidth(viewportPrimary), upperRow, lowerRow, startUpperWeight, startLowerWeight
+        startPrevPrimaryPx, startNextPrimaryPx, rawTotalWidth(viewportPrimary), upperRow, lowerRow, startUpperWeight,
+        startLowerWeight
     );
   }
 

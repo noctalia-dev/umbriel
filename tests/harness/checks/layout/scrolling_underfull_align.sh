@@ -89,4 +89,15 @@ geometry=$(await_geometry ".[0].w == $EXPECT_W and .[0].x == $STRIP_RIGHT" \
   "the end-aligned window did not settle back onto its resting position")
 echo "end restored: $(jq -c '.[0] | {x, w}' <<< "$geometry")"
 
+# A centered rest carries a scroll offset derived from the alignment, so reloading the alignment must re-judge it:
+# with the fix the strip returns to its new resting placement instead of keeping the old offset.
+"$UMBRIEL" msg column-center > /dev/null
+geometry=$(await_geometry ".[0].x == $STRIP_CENTER" "column-center did not center the single window")
+echo "centered rest: $(jq -c '.[0] | {x, w}' <<< "$geometry")"
+sed -i 's/underfull_strip = "end"/underfull_strip = "start"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+geometry=$(await_geometry ".[0].x == $STRIP_LEFT" \
+  "reloading away from a centered rest left the strip on the old alignment's offset")
+echo "after alignment reload: $(jq -c '.[0] | {x, w}' <<< "$geometry")"
+
 echo "single-window strip rests at start, center and end; end stays anchored while the window resizes"

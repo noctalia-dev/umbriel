@@ -751,6 +751,28 @@ UMBRIEL_TEST(scrollingDefaultExtentIsOptional) {
   CHECK(!store.config().layout.scrolling.defaultExtentFraction.has_value());
 }
 
+// The placement key round-trips every documented value, and an unknown one is reported and leaves the target alone.
+UMBRIEL_TEST(scrollingUnderfullStripParsesEveryPlacement) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  for (const auto& [name, expected] :
+       {std::pair{"start", UnderfullStripAlign::Start}, std::pair{"center", UnderfullStripAlign::Center},
+        std::pair{"end", UnderfullStripAlign::End}}) {
+    file.write(std::format("[layout.scrolling]\nunderfull_strip = \"{}\"\n", name));
+    CHECK(store.reload().success);
+    CHECK(store.config().layout.scrolling.underfullStrip == expected);
+  }
+  CHECK(!containsDiagnostic(store, "underfull_strip"));
+
+  file.write("[layout.scrolling]\nunderfull_strip = \"left\"\n");
+  CHECK(store.reload().success);
+  // An invalid value leaves the default in place and names the accepted set.
+  CHECK(store.config().layout.scrolling.underfullStrip == UnderfullStripAlign::Center);
+  CHECK(containsDiagnostic(store, "underfull_strip \"left\" (expected \"start\", \"center\", or \"end\")"));
+}
+
 UMBRIEL_TEST(outputScrollingDefaultExtentUsesNarrowLayoutScope) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

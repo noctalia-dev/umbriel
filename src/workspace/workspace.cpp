@@ -2625,6 +2625,8 @@ namespace umbriel {
 
   void Workspace::applyLayoutConfig(ResolvedLayoutConfig layoutConfig) {
     const bool centerFocusedChanged = m_layoutConfig.scrolling.centerFocused != layoutConfig.scrolling.centerFocused;
+    // A live centered rest carries a scroll offset derived from the strip's alignment, so re-judge it when that moves.
+    const bool underfullStripChanged = m_layoutConfig.scrolling.underfullStrip != layoutConfig.scrolling.underfullStrip;
     const bool strutsChanged = m_layoutConfig.struts != layoutConfig.struts;
     const bool directionChanged = m_layoutConfig.scrolling.direction != layoutConfig.scrolling.direction;
     // When moving to/from scrolling, the current extents are remembered/restored.
@@ -2642,7 +2644,7 @@ namespace umbriel {
       m_layout->setConstraints(&viewLayoutConstraints);
       if (ScrollingLayout* scrolling = scrollingLayout(); scrolling != nullptr) {
         const int focusedColumn = m_focusedView != nullptr ? scrolling->columnOf(m_focusedView) : -1;
-        const bool reconcile = centerFocusedChanged || strutsChanged || directionChanged;
+        const bool reconcile = centerFocusedChanged || underfullStripChanged || strutsChanged || directionChanged;
         if (reconcile && focusedColumn >= 0) {
           scrolling->reconcileFocusedColumn(focusedColumn, scrollViewportExtent());
         } else if (reconcile) {

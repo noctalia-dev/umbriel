@@ -548,6 +548,39 @@ UMBRIEL_TEST(lastColumnRightEdgeStaysFixedOnAFittingEndAlignedStrip) {
   CHECK((edges & WLR_EDGE_RIGHT) != 0);
 }
 
+// An interior trailing boundary takes width from the next lane, so the pair's span — and the anchored trailing edge —
+// stays put and the boundary follows the pointer.
+UMBRIEL_TEST(interiorTrailingBoundaryResizesThePairOnAFittingEndAlignedStrip) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.addColumns(2);
+  CHECK(fixture.layout.setWidthFraction(0, 0.25));
+  CHECK(fixture.layout.setWidthFraction(1, 0.25));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstBefore = fixture.layout.targetBox(stub(0));
+  const wlr_box secondBefore = fixture.layout.targetBox(stub(1));
+  const int boundary = secondBefore.x;
+  const int trailing = secondBefore.x + secondBefore.width;
+
+  // The pointer path proposes the trailing third, so the refusal must leave this interior boundary alone.
+  const uint32_t proposed = fixture.layout.resizeEdgesAt(stub(0), firstBefore.x + firstBefore.width - 1, 360);
+  CHECK_EQ(proposed, static_cast<uint32_t>(WLR_EDGE_RIGHT));
+
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(40.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstAfter = fixture.layout.targetBox(stub(0));
+  const wlr_box secondAfter = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(firstAfter.width, firstBefore.width + 40);
+  CHECK_EQ(secondAfter.width, secondBefore.width - 40);
+  // The boundary (the second lane's leading edge) follows the pointer; the anchored trailing edge stays put.
+  CHECK_EQ(secondAfter.x, boundary + 40);
+  CHECK_EQ(secondAfter.x + secondAfter.width, trailing);
+}
+
 UMBRIEL_TEST(endAlignedUnderfullLeftwardResizeKeepsTheRightEdgeFixed) {
   Fixture fixture;
   fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
