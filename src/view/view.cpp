@@ -415,6 +415,7 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       Workspace* previous = m_workspace;
       const bool sameGroup = workspace != nullptr && workspace->group() == previous->group();
+      releaseColumnWideAloneEffect();
       m_workspace = nullptr;
       // Keep an empty destination alive until this view has been attached.
       // addView() reconciles the group after the transfer is complete.

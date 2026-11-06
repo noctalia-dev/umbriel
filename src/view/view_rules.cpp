@@ -200,6 +200,37 @@ namespace umbriel {
     m_aloneAction = AloneAction::None;
   }
 
+  void View::releaseColumnWideAloneEffect() {
+    if (!m_aloneEffectsActive || m_workspace == nullptr) {
+      return;
+    }
+    if (m_aloneAction != AloneAction::Maximize && m_aloneAction != AloneAction::Width) {
+      return;
+    }
+    const int column = m_workspace->layout().columnOf(this);
+    if (column < 0) {
+      return;
+    }
+    const auto& views = m_workspace->layout().columns()[static_cast<size_t>(column)].views;
+    if (views.size() <= 1) {
+      return;
+    }
+    // toggleFloating unmaximizes, then re-maximizes the float; keep it owned for the alone pass.
+    const bool maximizeAlreadyUndone =
+        m_aloneAction == AloneAction::Maximize && !(scheduledMaximized() && !m_maximizedToEdges);
+    if (!maximizeAlreadyUndone) {
+      revertAloneRuleEffects();
+      m_aloneEffectsActive = false;
+      m_lastAloneDelta = {};
+    }
+    // The column survives, so its peers can reapply their own effects.
+    for (View* other : views) {
+      if (other != this) {
+        other->m_lastAloneDelta = {};
+      }
+    }
+  }
+
   // Called by the workspace whenever the tiled columns change, or on a config reload. The dynamic rules come first, so
   // `match.is_only_window` lands with them. If the window leaves the only column, the applied effect is undone. While
   // alone, the settings are only re-applied when the effective ones changed; gaining or losing a peer in the column

@@ -21,7 +21,7 @@ default_workspace = 2
 | `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                         |
 | `match.is_pinned`             | Match current pinned state.                                                     |
 | `match.is_scratchpad`         | Match current scratchpad state.                                                 |
-| `match.is_alone`              | Match whether this is in the only tiled column of its workspace.                |
+| `match.is_alone`              | Match whether this is alone in its workspace's tiled layout.                    |
 | `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included. |
 | `match.is_dialog`             | Match whether the application named a parent window for it.                     |
 | `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                |
@@ -295,7 +295,7 @@ Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of th
 
 ## The only tiled column
 
-`match.is_alone` reacts while a window is in the only tiled column of its workspace:
+`match.is_alone` reacts while a window is alone in its workspace's tiled layout:
 
 ```toml
 [[window_rule]]
@@ -303,7 +303,7 @@ match.is_alone = true
 default_maximize = true
 ```
 
-A column can hold several windows, stacked or shown as tabs, and they are all in the alone state together. `default_maximize` and `default_scrolling_extent` act on the column, so they stay applied while its windows share it. Fullscreen and maximize-to-edges cover the whole output instead, so they only apply while the window is also the only tiled window; another window joining the column removes them.
+In scrolling layouts, a column can hold several windows, stacked or shown as tabs, and they are all in the alone state together. `default_maximize` and `default_scrolling_extent` act on the column, so they stay applied while its windows share it. Master and dwindle layouts have no scrolling columns, so there `match.is_alone` still means the window is the only tiled window. Fullscreen and maximize-to-edges cover the whole output instead, so they only apply while the window is also the only tiled window; any other tiled window removes them.
 
 The effect is removed when another column appears or when its window leaves the column, and restored when the window returns to the only column. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
 
@@ -318,7 +318,7 @@ default_scrolling_extent = 0.8
 
 ## The only window on the workspace
 
-`match.is_alone` asks about tiled columns, so a float beside a window does not take the match away: fullscreen, maximize, and scrolling extents keep following the tiled layout. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
+`match.is_alone` asks about the tiled layout, so a float beside a window does not take the match away: fullscreen, maximize, and scrolling extents keep following the tiled layout. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
 
 ```toml
 [[window_rule]]

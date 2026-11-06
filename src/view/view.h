@@ -835,6 +835,8 @@ namespace umbriel {
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Releases a maximize or scrolling extent this window owns on a shared column before it leaves the layout.
+    void releaseColumnWideAloneEffect();
     // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
     // window did not open alone after all.
     void settleOpeningAloneState();

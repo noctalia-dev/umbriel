@@ -62,6 +62,12 @@ match.title = "^column-peer$"
 default_scrolling_column = "alone-column"
 
 [[window_rule]]
+match.title = "^max-column-"
+match.is_alone = true
+default_scrolling_column = "max-column"
+default_maximize = true
+
+[[window_rule]]
 match.title = "^column-edge$"
 match.is_alone = true
 default_scrolling_column = "alone-edge"
@@ -295,6 +301,57 @@ fi
 kill "$column_peer_pid" "$column_wide_pid"
 wait_gone column-peer
 wait_gone column-wide
+
+# Floating one of two maximized owners must not leave an orphaned maximize on the float; re-tiling restores it.
+"$CLIENT" max-column-a > "$UMBRIEL_RUNTIME_DIR/max-column-a.log" 2>&1 &
+max_column_a_pid=$!
+wait_mapped max-column-a
+"$CLIENT" max-column-b > "$UMBRIEL_RUNTIME_DIR/max-column-b.log" 2>&1 &
+max_column_b_pid=$!
+wait_mapped max-column-b
+if [[ $(field_of max-column-a maximized) != true ]]; then
+  echo "the alone maximize did not apply in the shared column"
+  exit 1
+fi
+max_column_width=$(width_of max-column-b)
+
+max_column_a_id=$(field_of max-column-a id)
+"$UMBRIEL" msg window-toggle-floating "$max_column_a_id" > /dev/null
+for _ in $(seq 40); do
+  [[ $(field_of max-column-a maximized) == false ]] && break
+  sleep 0.1
+done
+if [[ $(field_of max-column-a maximized) != false ]]; then
+  echo "a maximized alone window kept its maximize after floating"
+  exit 1
+fi
+if [[ $(field_of max-column-b maximized) != true ]]; then
+  echo "floating one owner undid the peer's maximize"
+  exit 1
+fi
+if [[ $(width_of max-column-b) != "$max_column_width" ]]; then
+  echo "floating one owner changed the peer's column width"
+  exit 1
+fi
+max_column_float_width=$(width_of max-column-a)
+if ((max_column_float_width >= max_column_width)); then
+  echo "the floating alone window kept the column width: float=$max_column_float_width column=$max_column_width"
+  exit 1
+fi
+
+"$UMBRIEL" msg window-toggle-floating "$max_column_a_id" > /dev/null
+for _ in $(seq 40); do
+  [[ $(field_of max-column-a maximized) == true ]] && break
+  sleep 0.1
+done
+if [[ $(field_of max-column-a maximized) != true ]]; then
+  echo "the shared column's maximize did not return with its window"
+  exit 1
+fi
+
+kill "$max_column_b_pid" "$max_column_a_pid"
+wait_gone max-column-b
+wait_gone max-column-a
 
 # Fullscreen and maximize-to-edges still need the only tile. A peer joining the column keeps is_alone true but must
 # take the output-covering state away.

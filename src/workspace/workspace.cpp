@@ -145,6 +145,18 @@ namespace umbriel {
       return only;
     }
 
+    // The column whose members are alone together; master and dwindle only match their sole tiled window.
+    const Column* aloneColumn(const Layout& layout) {
+      const Column* only = onlyTiledColumn(layout);
+      if (only == nullptr) {
+        return nullptr;
+      }
+      if (layout.mode() != LayoutMode::Scrolling && only->views.size() > 1) {
+        return nullptr;
+      }
+      return only;
+    }
+
     bool displacedLayoutCurrent(const DisplacedWorkspace& origin) {
       return origin.transferredLayout ? origin.configGeneration >= configStore().workspaceLayoutGeneration()
                                       : origin.configGeneration == configStore().generation();
@@ -537,14 +549,14 @@ namespace umbriel {
   }
 
   bool Workspace::isAloneInLayout(const View* view) const {
-    const Column* only = onlyTiledColumn(*m_layout);
+    const Column* only = aloneColumn(*m_layout);
     return only != nullptr && std::ranges::find(only->views, view) != only->views.end();
   }
 
   bool Workspace::wouldBeAloneInLayout(
       const View* view, std::string_view namedScrollingColumn, std::optional<int> order
   ) const {
-    const Column* only = onlyTiledColumn(*m_layout);
+    const Column* only = aloneColumn(*m_layout);
     if (only == nullptr) {
       // No column yet: the view starts the only one. More than one column means it cannot become alone.
       return std::ranges::none_of(m_layout->columns(), [](const Column& column) { return !column.views.empty(); });
@@ -829,27 +841,9 @@ namespace umbriel {
   }
 
   void Workspace::detachFromLayout(View* view) {
+    // Release the column-wide effect while the window still owns its column.
+    view->releaseColumnWideAloneEffect();
     ScrollingLayout* scrolling = scrollingLayout();
-    // A shared column outlives the window leaving it. Release a column-wide alone effect while the window still owns
-    // the column, then let the peers reapply their own rules on the arrange that follows. A workspace move has already
-    // cleared the view's workspace, so point it here for the revert.
-    const int column = m_layout->columnOf(view);
-    if (view->m_aloneEffectsActive
-        && (view->m_aloneAction == View::AloneAction::Maximize || view->m_aloneAction == View::AloneAction::Width)
-        && column >= 0
-        && m_layout->columns()[static_cast<size_t>(column)].views.size() > 1) {
-      Workspace* previous = view->m_workspace;
-      view->m_workspace = this;
-      view->revertAloneRuleEffects();
-      view->m_workspace = previous;
-      view->m_aloneEffectsActive = false;
-      view->m_lastAloneDelta = {};
-      for (View* other : m_layout->columns()[static_cast<size_t>(column)].views) {
-        if (other != view) {
-          other->m_lastAloneDelta = {};
-        }
-      }
-    }
     // Measured before the removal, because it depends on where the column is.
     const double shift = scrolling != nullptr
         ? scrolling->scrollShiftForColumnRemoval(scrolling->columnOf(view), scrollViewportExtent())
@@ -886,7 +880,7 @@ namespace umbriel {
   }
 
   // Tells every window whether it is alone, and whether it is the workspace's only window, but only when one of those
-  // answers changed. Alone follows the membership of the only tiled column; the other question compares its count and
+  // answers changed. Alone follows the membership of the alone column; the other question compares its count and
   // holder. The config version is part of both answers, so a reload is noticed even when no window moved and a window
   // replaced by another at the same time is still seen as new. The guard stops the window handlers from triggering
   // another pass.
@@ -894,7 +888,7 @@ namespace umbriel {
     if (m_refreshingAloneRules) {
       return;
     }
-    const Column* only = onlyTiledColumn(*m_layout);
+    const Column* only = aloneColumn(*m_layout);
     const bool aloneChanged =
         only != nullptr ? !std::ranges::equal(m_lastAloneViews, only->views) : !m_lastAloneViews.empty();
     View* soleVisible = nullptr;
