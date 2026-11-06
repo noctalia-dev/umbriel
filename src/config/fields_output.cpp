@@ -47,12 +47,13 @@ namespace umbriel {
         std::vector<OutputRule::WorkspaceMirror> mirrors;
         parsed.reserve(names->size());
         for (const auto& item : *names) {
-          auto value = item.value<std::string>();
+          const auto value = item.value<std::string>();
           if (!value || value->empty()) {
             errorAt(item.source(), "{} entries must be non-empty strings", path);
             valid = false;
             continue;
           }
+          std::string name = *value;
           if (const size_t at = value->rfind('@'); at != std::string::npos) {
             if (at == 0 || at + 1 == value->size()) {
               errorAt(item.source(), R"({} entry '{}' must be "<name>@<output>")", path, *value);
@@ -60,14 +61,14 @@ namespace umbriel {
               continue;
             }
             mirrors.push_back({.name = value->substr(0, at), .origin = value->substr(at + 1)});
-            *value = mirrors.back().name;
+            name = mirrors.back().name;
           }
-          if (std::ranges::find(parsed, *value) != parsed.end()) {
-            errorAt(item.source(), "{} contains duplicate name '{}'", path, *value);
+          if (std::ranges::find(parsed, name) != parsed.end()) {
+            errorAt(item.source(), "{} contains duplicate name '{}'", path, name);
             valid = false;
             continue;
           }
-          parsed.push_back(*value);
+          parsed.push_back(std::move(name));
         }
         if (valid) {
           rule.workspaces = std::move(parsed);
