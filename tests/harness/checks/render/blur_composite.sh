@@ -124,7 +124,7 @@ compare "half-faded blur"
 "$UMBRIEL" clock-advance 5000
 compare "settled blur"
 
-sed -i 's/^brightness = 1.0$/brightness = 1.6/; s/^contrast = 1.0$/contrast = 1.3/; s/^saturation = 1.0$/saturation = 0.5/' \
+sed -i 's/^brightness = 1.0$/brightness = 0.7/; s/^contrast = 1.0$/contrast = 1.3/; s/^saturation = 1.0$/saturation = 0.5/' \
   "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 spawn blur-bright 0x00000000 300 200

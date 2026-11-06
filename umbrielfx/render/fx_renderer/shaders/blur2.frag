@@ -39,12 +39,12 @@ vec3 linear_color_to_srgb(vec3 color) {
 }
 
 mat4 brightnessMatrix() {
-  float b = brightness - 1.0;
+  float b = brightness;
   // clang-format off
-  return mat4(1, 0, 0, 0,
-              0, 1, 0, 0,
-              0, 0, 1, 0,
-              b, b, b, 1);
+  return mat4(b, 0, 0, 0,
+              0, b, 0, 0,
+              0, 0, b, 0,
+              0, 0, 0, 1);
   // clang-format on
 }
 

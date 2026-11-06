@@ -1620,7 +1620,7 @@ static bool test_fp16_blur_effects(struct fixture* fixture) {
   // Blur controls act on values encoded with the pass SDR curve, gamma 2.2 on
   // a PQ target, so they look the same as over the SDR content on SDR.
   float encoded = powf(input_linear, 1.0f / 2.2f);
-  encoded = (encoded * 0.9f + 0.05f) - 0.1f;
+  encoded = (encoded * 0.9f + 0.05f) * 0.9f;
   float expected_linear = powf(encoded, 2.2f);
   int expected = lroundf(linear_to_pq(expected_linear * 203.0f / 10000.0f) * 1023.0f);
   uint32_t pixel = output[(TEST_HEIGHT / 2) * TEST_WIDTH + TEST_WIDTH / 2];
