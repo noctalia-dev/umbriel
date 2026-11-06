@@ -1279,6 +1279,18 @@ void wlr_scene_subsurface_tree_set_scale(struct wlr_scene_node* node, double sca
  */
 void wlr_scene_surface_get_size(const struct wlr_scene_surface* surface, int* width, int* height);
 
+/** Surface-local coordinates = offset + scene-buffer coordinates * scale. */
+struct wlr_scene_surface_mapping {
+  double offset_x, offset_y;
+  double scale_x, scale_y;
+};
+
+/** Derive input mapping from actual sampling, including transforms and viewports. */
+bool wlr_scene_surface_get_mapping(const struct wlr_scene_surface* surface, struct wlr_scene_surface_mapping* mapping);
+
+/** Map scene-buffer coordinates, allowing implicit grabs outside input bounds. */
+bool wlr_scene_surface_coords_to_surface(const struct wlr_scene_surface* surface, double* sx, double* sy);
+
 /**
  * Add a node displaying an xdg_surface and all of its sub-surfaces to the
  * scene-graph.

@@ -1,6 +1,7 @@
 #include "config/store.h"
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "input/surface_coordinates.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -176,11 +177,16 @@ namespace umbriel {
     }
 
     // The hint and the seat position are surface-local; the cursor moves in layout units.
-    const double scale = surfaceScale(constraint->surface);
-    double sx = seat->pointer_state.sx;
-    double sy = seat->pointer_state.sy;
-    double lx = m_cursor->x + ((constraint->current.cursor_hint.x - sx) / scale);
-    double ly = m_cursor->y + ((constraint->current.cursor_hint.y - sy) / scale);
+    double dx = constraint->current.cursor_hint.x - seat->pointer_state.sx;
+    double dy = constraint->current.cursor_hint.y - seat->pointer_state.sy;
+    const auto transform =
+        surfaceDeltaTransform(m_server->scene(), constraint->surface, surfaceScale(constraint->surface));
+    if (!transform) {
+      return;
+    }
+    transform->unmap(&dx, &dy);
+    const double lx = m_cursor->x + dx;
+    const double ly = m_cursor->y + dy;
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
     forwardEffectPointer();
     // Keep wlroots' surface-local pointer state in sync with the layout
@@ -199,9 +205,17 @@ namespace umbriel {
     }
 
     // The region is surface-local; the deltas are in layout units.
-    const double scale = surfaceScale(m_activeConstraint->surface);
+    const auto transform = surfaceDeltaTransform(
+        m_server->scene(), m_activeConstraint->surface, surfaceScale(m_activeConstraint->surface)
+    );
+    if (!transform) {
+      return false;
+    }
     double sx = seat->pointer_state.sx;
     double sy = seat->pointer_state.sy;
+    double surfaceDx = *dx;
+    double surfaceDy = *dy;
+    transform->map(&surfaceDx, &surfaceDy);
 
     pixman_region32_t* region = &m_activeConstraint->region;
     pixman_box32_t* extents = pixman_region32_extents(region);
@@ -215,7 +229,7 @@ namespace umbriel {
 
     double confinedX = 0;
     double confinedY = 0;
-    const bool ok = wlr_region_confine(region, sx, sy, sx + (*dx * scale), sy + (*dy * scale), &confinedX, &confinedY);
+    const bool ok = wlr_region_confine(region, sx, sy, sx + surfaceDx, sy + surfaceDy, &confinedX, &confinedY);
     if (region == &fullSurface) {
       pixman_region32_fini(&fullSurface);
     }
@@ -223,8 +237,9 @@ namespace umbriel {
       return false;
     }
 
-    *dx = (confinedX - sx) / scale;
-    *dy = (confinedY - sy) / scale;
+    *dx = confinedX - sx;
+    *dy = confinedY - sy;
+    transform->unmap(dx, dy);
     return true;
   }
 

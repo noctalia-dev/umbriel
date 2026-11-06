@@ -139,7 +139,7 @@ namespace umbriel {
       // mid-flight from the fullscreen origin. Restoring from either would
       // strand the float at output size with no way back.
       const auto [restoreWidth, restoreHeight] = floatingSize();
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
       m_maximizeRestoreBox = {
           .x = layoutTargetX(),
           .y = layoutTargetY(),
@@ -721,6 +721,7 @@ namespace umbriel {
 
   void View::adoptStackingLayoutFloat() {
     m_tiled = false;
+    m_tiledSizeRequest.reset();
     m_floatedByStackingLayout = true;
     const bool fullscreen = scheduledFullscreen() || currentFullscreen();
     setSceneParent(fullscreen ? m_workspace->fullscreenTree() : m_workspace->viewLayer(false));
@@ -815,6 +816,7 @@ namespace umbriel {
       const int keepX = slot.x;
       const int keepY = slot.y;
       m_tiled = false;
+      m_tiledSizeRequest.reset();
       m_presentedTiledBox = {};
       if (m_workspace != nullptr) {
         setSceneParent(m_workspace->viewLayer(m_tiled));
@@ -904,7 +906,7 @@ namespace umbriel {
     }
     m_floating.rememberPositionFraction({.x = layoutTargetX(), .y = layoutTargetY()}, usable);
 
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     m_tiled = true;
     m_restorePinnedAfterFullscreen = false;
     // Restore the fullscreen the float toggle dropped BEFORE the layout attach: arrange then sizes the column to the
@@ -1008,13 +1010,14 @@ namespace umbriel {
           setOnActiveWorkspace(m_workspace->active());
         }
       }
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
     }
     // Entering fullscreen during a size animation grows from the size on screen, not from the committed one.
     const bool continuePresentation = fullscreen && sizeAnimating();
     const int presentedWidth = m_presentation.width();
     const int presentedHeight = m_presentation.height();
     cancelSizeAnimation();
+    m_tiledSizeRequest.reset();
     if (continuePresentation) {
       m_presentation.setSize(presentedWidth, presentedHeight);
     }

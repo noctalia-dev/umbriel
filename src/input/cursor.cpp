@@ -6,6 +6,7 @@
 #include "input/gestures.h"
 #include "input/input_capture.h"
 #include "input/seat.h"
+#include "input/surface_coordinates.h"
 #include "input/toplevel_drag.h"
 #include "input/xcursor_matcher.h"
 #include "layer/layer_surface.h"
@@ -95,46 +96,6 @@ namespace umbriel {
       }
       const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
       return factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0;
-    }
-
-    // `scale` is the surface-local units per layout unit in `target`.
-    bool surfaceLocalCoordinates(
-        wlr_scene* scene, wlr_surface* target, double scale, double lx, double ly, double* sx, double* sy
-    ) {
-      if (target == nullptr) {
-        return false;
-      }
-
-      struct SurfacePosition {
-        wlr_surface* target;
-        int x = 0;
-        int y = 0;
-        bool found = false;
-      } position{target};
-
-      wlr_scene_node_for_each_buffer(
-          &scene->tree.node,
-          [](wlr_scene_buffer* buffer, int x, int y, void* data) {
-            auto* position = static_cast<SurfacePosition*>(data);
-            if (position->found) {
-              return;
-            }
-            wlr_scene_surface* sceneSurface = wlr_scene_surface_try_from_buffer(buffer);
-            if (sceneSurface != nullptr && sceneSurface->surface == position->target) {
-              position->x = x;
-              position->y = y;
-              position->found = true;
-            }
-          },
-          &position
-      );
-
-      if (!position.found) {
-        return false;
-      }
-      *sx = (lx - position.x) * scale;
-      *sy = (ly - position.y) * scale;
-      return true;
     }
 
   } // namespace
@@ -1231,15 +1192,16 @@ namespace umbriel {
       view->setMaximizedToEdges(false, false);
     }
 
-    const wlr_box& geometry = view->geometryBox();
-    const double borderX = (view->layoutX() + geometry.x) + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
-    const double borderY = (view->layoutY() + geometry.y) + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
+    const wlr_box& presented = view->presentedBox();
+    const wlr_box geometry{view->layoutX(), view->layoutY(), presented.width, presented.height};
+    const double borderX = geometry.x + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
+    const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
         .offsetX = m_cursor->x - borderX,
         .offsetY = m_cursor->y - borderY,
-        .geometryX = geometry.x + view->layoutX(),
-        .geometryY = geometry.y + view->layoutY(),
+        .geometryX = geometry.x,
+        .geometryY = geometry.y,
         .geometryWidth = geometry.width,
         .geometryHeight = geometry.height,
         .edges = edges,
@@ -1394,17 +1356,15 @@ namespace umbriel {
     if (!liftedTabs.tabs.empty()) {
       landTabGroup(*view, liftedTabs, /*closing=*/!view->mapped());
     }
-    // Resize scaling belongs to the grab, including every sibling tile it resizes. Clear it before restoring clips:
-    // an unchanged clip otherwise keeps the scaled source/destination until the client commits again.
+    // Releasing interaction does not release an unanswered frame size.
     if (resizedWorkspace != nullptr) {
       for (View* resized : resizedWorkspace->allViews()) {
         if (resized->mapped() && resized->tiled()) {
-          resized->resetPresentedSurface();
           resized->syncOwnedPresentation();
         }
       }
     } else if (restoreResizePresentation && view != nullptr && view->mapped()) {
-      view->resetPresentedSurface();
+      view->adoptFloatingClientSize();
       view->syncOwnedPresentation();
     }
     refreshInteractiveCursor();
@@ -2299,7 +2259,7 @@ namespace umbriel {
 
     double sx = 0;
     double sy = 0;
-    if (!surfaceLocalCoordinates(m_server->scene(), point->surface, surfaceScale(point->surface), lx, ly, &sx, &sy)) {
+    if (!surfaceLocalCoordinates(m_server->scene(), point->surface, lx, ly, &sx, &sy)) {
       kLog.warn(
           "touch motion id={} could not map target surface {} at layout=({}, {})", event->touch_id,
           static_cast<void*>(point->surface), lx, ly
@@ -2437,9 +2397,17 @@ namespace umbriel {
       // Keep an implicit grab in the coordinate space established by the press. Re-resolving against the scene
       // would turn compositor-driven window animation into apparent pointer travel and make small clicks look like
       // client drags.
-      const double scale = surfaceScale(seat->pointer_state.focused_surface);
-      const double sx = seat->pointer_state.sx + ((m_cursor->x - oldX) * scale);
-      const double sy = seat->pointer_state.sy + ((m_cursor->y - oldY) * scale);
+      double dx = m_cursor->x - oldX;
+      double dy = m_cursor->y - oldY;
+      const auto transform = surfaceDeltaTransform(
+          m_server->scene(), seat->pointer_state.focused_surface, surfaceScale(seat->pointer_state.focused_surface)
+      );
+      if (!transform) {
+        return;
+      }
+      transform->map(&dx, &dy);
+      const double sx = seat->pointer_state.sx + dx;
+      const double sy = seat->pointer_state.sy + dy;
       wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
       updateConstraintForSurface(seat->pointer_state.focused_surface);
       return;
@@ -2692,7 +2660,9 @@ namespace umbriel {
       double sx = 0;
       double sy = 0;
       wlr_surface* focused = state->v2->focused_surface;
-      surfaceLocalCoordinates(m_server->scene(), focused, surfaceScale(focused), m_cursor->x, m_cursor->y, &sx, &sy);
+      if (!surfaceLocalCoordinates(m_server->scene(), focused, m_cursor->x, m_cursor->y, &sx, &sy)) {
+        return;
+      }
       wlr_tablet_v2_tablet_tool_notify_motion(state->v2, sx, sy);
       forwardEffectPointer();
       return;
@@ -3362,7 +3332,7 @@ namespace umbriel {
       }
     }
 
-    grab->view->resizeFloating(newRight - newLeft, newBottom - newTop);
+    grab->view->resizeFloating({newLeft, newTop, newRight - newLeft, newBottom - newTop});
   }
 
   void Cursor::revealClickedTile(View* view) {

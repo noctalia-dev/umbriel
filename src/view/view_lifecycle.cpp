@@ -229,6 +229,7 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
+    m_openingFloatingSize.reset();
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -499,6 +500,9 @@ namespace umbriel {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
+        if (!m_tiled && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
+          m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
+        }
         setFadeAlpha(0.0F);
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
@@ -648,6 +652,7 @@ namespace umbriel {
       overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
+    const wlr_box closingBox = m_presentedBox;
     const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
@@ -692,7 +697,7 @@ namespace umbriel {
     cancelFadeAnimation();
     // The workspace owns the snapshot's visibility and its slide translation from here.
     if (snapshot != kInvalidCloseSnapshot && m_workspace != nullptr) {
-      m_workspace->trackCloseSnapshot(snapshot, m_presentedBox);
+      m_workspace->trackCloseSnapshot(snapshot, closingBox);
     }
     cancelSizeAnimation();
     m_tiledSizeRequest.reset();
@@ -702,6 +707,7 @@ namespace umbriel {
     m_decoration.setBordersEnabled(false);
     m_decoration.hideEffects();
     m_presentation.setBackdropEnabled(false);
+    m_presentation.hideResizeBackdrop();
     if (currentFullscreen() || scheduledFullscreen()) {
       // Move out of the fullscreen layer back to the normal workspace/xdg tree.
       setSceneParent(m_workspace ? m_workspace->viewLayer(m_tiled) : m_server->xdgTree());
@@ -787,7 +793,7 @@ namespace umbriel {
     m_aloneSavedWidthFrac.reset();
     m_aloneOpeningSeed = AloneSeed::None;
     m_hasMaximizeRestoreBox = false;
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     m_pendingFloatingWidthPx.reset();
     m_pendingFloatingHeightPx.reset();
     m_pendingFloatingWidth.reset();
@@ -1057,36 +1063,12 @@ namespace umbriel {
         m_savedScrollingExtent = rule.defaultScrollingExtent;
       }
     }
+    commitFloatingSize();
     (void)settleTiledSizeRequest();
-    if (!sizeAnimating()) {
-      const wlr_box& geometry = geometryBox();
-      if (m_decoration.borderGeometryStale(geometry.width, geometry.height, titleBarHeight())) {
-        updateBorderGeometry();
-      }
-    }
     applyCornerRadius();
     // Layout-assigned size changes start their presentation animation in Workspace::arrange. Client commits are not
     // resize requests: Chromium can change its geometry while keeping the same configure, and retargeting to that
     // geometry lets a tiled surface escape its assigned box.
-    if (m_mapped
-        && m_tiled
-        && m_onActiveWorkspace
-        && m_workspace != nullptr
-        && !scheduledFullscreen()
-        && !currentFullscreen()
-        && sizeGrabTracksPointer()) {
-      // During interactive resize, track geometry so no spurious animation
-      // replays the drag when the grab ends and mode returns to Passthrough. A
-      // move grab is not that: it retargets the size once and animates there,
-      // and the client's ack must not cut that animation short.
-      const wlr_box& geometry = geometryBox();
-      if (geometry.width > 0 && geometry.height > 0) {
-        if (sizeAnimating()) {
-          cancelSizeAnimation();
-        }
-        m_presentation.setSize(geometry.width, geometry.height);
-      }
-    }
     // Re-apply output clip after configure ack so Super+F / resize sizes show
     // without needing a workspace switch (clip boxes are copied, not live).
     if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
@@ -1099,9 +1081,6 @@ namespace umbriel {
       } else {
         syncFloatingResizePosition();
         adoptFloatingClientSize();
-        if (!sizeAnimating()) {
-          syncFloatingSurfaceClip();
-        }
         // Enable + clip through the current presentation owner.
         syncOwnedPresentation();
       }

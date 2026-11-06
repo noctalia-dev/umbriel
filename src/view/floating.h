@@ -138,6 +138,36 @@ namespace umbriel {
     return static_cast<int32_t>(committed - requested) >= 0;
   }
 
+  constexpr bool
+  floatingSizeResponseUsable(const std::array<int, 2>& content, const std::array<int, 2>& base, bool supplied) {
+    return content[0] > 0 && content[1] > 0 && (content != base || supplied);
+  }
+
+  struct FloatingSizeConfigure {
+    std::array<int, 2> size{};
+    std::array<int, 2> base{};
+    uint32_t serial = 0;
+    uint32_t surfaceSeq = 0;
+    bool supplied = false;
+    bool throttled = false;
+
+    bool settled(
+        uint32_t committedSerial, const std::optional<std::array<int, 2>>& target, const std::array<int, 2>& content,
+        bool pointerTracks
+    ) const {
+      if (!serialSettled(committedSerial, serial)) {
+        return false;
+      }
+      if (!target) {
+        return true;
+      }
+      return *target == size
+          && content[0] > 0
+          && content[1] > 0
+          && (content == *target || (!pointerTracks && floatingSizeResponseUsable(content, base, supplied)));
+    }
+  };
+
   // Center a window of the given size in `usable`. Floats keep their own size,
   // so this only ever moves them.
   constexpr FloatingPoint centeredOrigin(const wlr_box& usable, int width, int height) {
@@ -224,12 +254,15 @@ namespace umbriel {
     // Configure-serial handoff. A fully-specified request is the pending basis
     // resize actions accumulate against until the client commits its serial.
     void recordSizeRequest(int width, int height, uint32_t serial) {
+      setPendingSize(width, height);
+      m_sizeRequestSerial = serial;
+    }
+    void setPendingSize(int width, int height) {
       if (width > 0 && height > 0) {
         m_pendingSize = {{width, height}};
       } else {
         m_pendingSize.reset();
       }
-      m_sizeRequestSerial = serial;
     }
     const std::optional<std::array<int, 2>>& pendingSize() const { return m_pendingSize; }
     void clearSizeRequest() {

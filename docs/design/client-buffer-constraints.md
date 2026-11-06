@@ -10,9 +10,11 @@ The `Dirty::LayerArrange` flag recorded alongside is the retry: `Output::arrange
 
 ## Stale window geometry
 
-`View::committedContentBox` widens a tiled view's committed window geometry towards the size the view was configured to, capped by what the surface actually holds from the geometry origin. Presentation, the surface clip, borders, blur, shadow, the resize-animation snap, and the size the `windows` IPC listing reports all read that box.
+`View::committedContentBox` widens a tiled view's committed window geometry towards the configured size, capped by the surface extent from the geometry origin. A pending request requires an applied configure and changed surface extent before widening. Unchanged axes retain previously validated content, not old CSD padding. Content sampling and the `windows` IPC content dimensions read this box. Chrome follows the compositor-owned presented frame instead.
 
-Electron acks a configure and redraws at the new size while leaving `set_window_geometry` at the size it had before, permanently. Clipping to that box crops the content the client just drew and leaves the window occupying a fraction of its tile, with no resize available because the tile itself is already correct. Growing the box is bounded by the surface, so a client that genuinely refuses the configured size, a minimum-size hint for instance, is still presented at the size it committed.
+Electron can redraw while permanently retaining old `set_window_geometry`. Widening exposes those new pixels without stretching constrained content. Tiled frames remain layout-owned. Floating resize targets remain authoritative until a usable client response arrives, including after pointer release. Pointer resizes queue only the latest target while one configure awaits content, then flush the final target once on release. An ack retaining old content does not release the gate. A fresh same-sized buffer can answer a constrained resize.
+
+Ordinary resizing crops natural-sized content. Only built-in opening effects scale it. Opaque clients receive a non-input background fill in missing frame space, excluding existing client pixels. Transparent and shaped clients retain transparency. Fullscreen content stays centered and naturally sized. Opening completion reconciles already-committed floating content without waiting for another repaint, and closing snapshots retain the displayed letterboxing and gap-fill masks.
 
 ## Capture readback format
 

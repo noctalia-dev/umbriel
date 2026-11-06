@@ -1,6 +1,7 @@
 #include "view/presentation.h"
 
 #include "config/config.h"
+#include "scene/color.h"
 #include "view/presented_crop.h"
 
 // clang-format off
@@ -31,6 +32,10 @@ namespace umbriel {
   }
 
   void ViewPresentation::animateTo(int width, int height, int durationMs, const AnimationCurve& curve) {
+    if (width == m_width && height == m_height) {
+      setRegion(width, height);
+      return;
+    }
     // A tween still presenting this size keeps its speed through the retarget; anything else starts from the size
     // shown.
     const auto restart = [](AnimatedValue& anim, int shown) {
@@ -92,6 +97,77 @@ namespace umbriel {
   void ViewPresentation::reloadBackdropColor() {
     if (m_backdrop != nullptr) {
       wlr_scene_rect_set_color(m_backdrop, config().colors.backdrop.data());
+    }
+    setResizeBackdropOpacity(m_resizeBackdropOpacity);
+  }
+
+  void ViewPresentation::updateResizeBackdrop(
+      bool opaque, int width, int height, int contentWidth, int contentHeight, fx_corner_radii corners
+  ) {
+    if (!opaque
+        || width <= 0
+        || height <= 0
+        || contentWidth <= 0
+        || contentHeight <= 0
+        || (width <= contentWidth && height <= contentHeight)) {
+      hideResizeBackdrop();
+      return;
+    }
+    if (m_resizeBackdrop == nullptr) {
+      if (m_backdrop == nullptr) {
+        return;
+      }
+      m_resizeBackdrop =
+          wlr_scene_rect_create(m_backdrop->node.parent, width, height, config().colors.background.data());
+      if (m_resizeBackdrop == nullptr) {
+        return;
+      }
+      m_resizeBackdrop->accepts_input = false;
+      wlr_scene_node_lower_to_bottom(&m_resizeBackdrop->node);
+      setResizeBackdropOpacity(m_resizeBackdropOpacity);
+    }
+    wlr_scene_rect_set_size(m_resizeBackdrop, width, height);
+    wlr_scene_rect_set_corner_radii(m_resizeBackdrop, corners);
+    // Back only missing pixels. Don't alter the client's transparency or input.
+    pixman_region32_t gap, content;
+    pixman_region32_init_rect(&gap, 0, 0, width, height);
+    pixman_region32_init_rect(&content, 0, 0, std::min(width, contentWidth), std::min(height, contentHeight));
+    pixman_region32_subtract(&gap, &gap, &content);
+    wlr_scene_node_set_clip_region(&m_resizeBackdrop->node, &gap);
+    pixman_region32_fini(&content);
+    pixman_region32_fini(&gap);
+    wlr_scene_node_set_enabled(&m_resizeBackdrop->node, true);
+  }
+
+  void ViewPresentation::setResizeBackdropOpacity(float opacity) {
+    m_resizeBackdropOpacity = std::clamp(opacity, 0.0F, 1.0F);
+    if (m_resizeBackdrop != nullptr) {
+      float color[4];
+      premultiplied(color, config().colors.background, m_resizeBackdropOpacity);
+      wlr_scene_rect_set_color(m_resizeBackdrop, color);
+    }
+  }
+
+  void ViewPresentation::hideResizeBackdrop() {
+    if (m_resizeBackdrop != nullptr) {
+      wlr_scene_node_set_enabled(&m_resizeBackdrop->node, false);
+    }
+  }
+
+  void ViewPresentation::snapshotBackdrops(wlr_scene_tree* parent) const {
+    for (const wlr_scene_rect* source : {m_backdrop, m_resizeBackdrop}) {
+      if (source == nullptr || !source->node.enabled) {
+        continue;
+      }
+      wlr_scene_rect* copy = wlr_scene_rect_create(parent, source->width, source->height, source->color);
+      if (copy == nullptr) {
+        continue;
+      }
+      copy->accepts_input = false;
+      wlr_scene_node_set_position(&copy->node, source->node.x, source->node.y);
+      wlr_scene_rect_set_corner_radii(copy, source->corners);
+      wlr_scene_node_set_clip_region(&copy->node, wlr_scene_node_get_clip_region(&source->node));
+      wlr_scene_node_lower_to_bottom(&copy->node);
     }
   }
 
@@ -156,6 +232,10 @@ namespace umbriel {
           }
           wlr_scene_buffer_set_source_box(buffer, &src);
           wlr_scene_buffer_set_dest_size(buffer, ctx.clip->width, ctx.clip->height);
+          pixman_region32_t empty;
+          pixman_region32_init(&empty);
+          wlr_scene_buffer_set_opaque_region(buffer, &empty);
+          pixman_region32_fini(&empty);
         },
         &ctx
     );
