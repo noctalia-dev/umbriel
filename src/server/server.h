@@ -445,6 +445,9 @@ namespace umbriel {
     // Re-evaluate each output's policy after keyboard focus or a dynamic window rule changes.
     void refreshOutputPolicies();
     wlr_output* preferredOutput() const;
+    // Track pointer-preferred monitor changes by connector, without retaining pointers across output destruction.
+    void noteActiveOutput(Output* output);
+    const std::string& previousActiveOutputName() const { return m_previousActiveOutputName; }
     Output* outputFromWlr(wlr_output* output) const;
     Output* outputFromName(const std::string& name) const;
     // Named workspaces on enabled outputs, with native local names taking precedence over displaced ones. A qualifier
@@ -804,6 +807,8 @@ namespace umbriel {
     // unlocking restores focus there instead of wherever the cursor rests.
     // Empty when no window was focused or that output is gone.
     std::string m_lockFocusOutput;
+    std::string m_activeOutputName;
+    std::string m_previousActiveOutputName;
     struct BindCooldown {
       std::string submap;
       uint32_t modifiers = 0;

@@ -5,6 +5,7 @@
 #include "config/store.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/gestures.h"
 #include "input/seat.h"
 #include "layout/dwindle.h"
 #include "layout/master.h"
@@ -468,12 +469,26 @@ namespace umbriel {
     std::ranges::copy_if(from.m_views, std::back_inserter(pinned), [](const View* view) { return view->pinned(); });
     for (View* view : pinned) {
       from.removeView(view, false);
-      view->m_workspace = this;
-      addView(view, false, LayoutAttachOrigin::ExistingView, false);
+      adoptPinnedView(*view);
     }
     if (!pinned.empty()) {
       m_group->server()->scheduleIpcWindowsEvent();
     }
+  }
+
+  std::vector<View*> Workspace::takePinnedViews() {
+    std::vector<View*> pinned;
+    std::ranges::copy_if(m_views, std::back_inserter(pinned), [](const View* view) { return view->pinned(); });
+    for (View* view : pinned) {
+      removeView(view, false);
+      view->m_workspace = nullptr;
+    }
+    return pinned;
+  }
+
+  void Workspace::adoptPinnedView(View& view) {
+    view.m_workspace = this;
+    addView(&view, false, LayoutAttachOrigin::ExistingView, false);
   }
 
   View* Workspace::removeView(View* view, bool reconcile) {
@@ -488,11 +503,21 @@ namespace umbriel {
     View* replacement = focusedHere ? focusReplacementForRemoval(view) : nullptr;
     if (focusedHere) {
       // detachFromLayout() judges the survivor once the column is gone, so the note and the new focus land first.
-      noteRemovalOfFocusedColumn(m_layout->columnOf(view));
+      if (!view->pinned()) {
+        noteRemovalOfFocusedColumn(m_layout->columnOf(view));
+      }
       m_focusedView = replacement;
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
-    detachFromLayout(view);
+    // Pinned members are not in the tiled layout. Moving them between active workspaces or detaching them for an
+    // inventory swap must not reevaluate centering or reveal the focused column of the departing workspace.
+    if (!view->pinned()) {
+      detachFromLayout(view);
+    } else {
+      m_tabs.released(view);
+      releaseLayoutMotion(view);
+      view->endLayoutMotion();
+    }
     if (std::erase(m_views, view) > 0) {
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
@@ -514,7 +539,9 @@ namespace umbriel {
     // Re-anchor the strip on whatever is focused now, the way every other focus-moving operation does. Fitting the
     // survivor prevents the old scroll offset from leaving it cut off at the left edge while empty space opens on the
     // right.
-    ensureFocusedVisible();
+    if (!view->pinned()) {
+      ensureFocusedVisible();
+    }
     markArrange();
     if (reconcile) {
       m_group->reconcileDynamic();
@@ -3883,6 +3910,121 @@ namespace umbriel {
     }
     m_server->cursor()->clearConstraint();
     m_server->scheduleDisplacedViewRestore();
+    return true;
+  }
+
+  bool WorkspaceGroup::swapWith(WorkspaceGroup& other, std::string* error) {
+    const auto reject = [error](const char* message) {
+      if (error != nullptr) {
+        *error = message;
+      }
+      return false;
+    };
+    if (&other == this) {
+      return true;
+    }
+    if (m_server != other.m_server || m_active == nullptr || other.m_active == nullptr) {
+      return reject("invalid workspace groups for swap");
+    }
+    // Explicit transfers clear evacuation identities. Two evacuated workspaces with the same name must not become
+    // indistinguishable native workspaces on their new output. Names shared between the two outputs are fine.
+    for (WorkspaceGroup* group : {this, &other}) {
+      std::vector<std::string> names;
+      for (const auto& workspace : group->m_workspaces) {
+        if (workspace->named()) {
+          if (std::ranges::find(names, workspace->name()) != names.end()) {
+            return reject("output has duplicate workspace names");
+          }
+          names.push_back(workspace->name());
+        }
+      }
+    }
+
+    // A drag or resize carries geometry and layout pointers from its old output. Settle it before reparenting.
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->cancelLayoutInteraction();
+    }
+    m_server->gestures()->cancelForLayoutChange();
+    m_server->cursor()->resetMode();
+    m_server->cursor()->clearConstraint();
+    slideFinish();
+    other.slideFinish();
+
+    // Detach pinned members before changing any workspace's output. Their scene roots and geometry stay on the
+    // physical output, and neither half of the exchange may reconcile a partially swapped inventory.
+    const auto takePinned = [](WorkspaceGroup& group) {
+      std::vector<View*> pinned;
+      for (const auto& workspace : group.m_workspaces) {
+        const auto members = workspace->takePinnedViews();
+        pinned.insert(pinned.end(), members.begin(), members.end());
+      }
+      return pinned;
+    };
+    const auto pinnedHere = takePinned(*this);
+    const auto pinnedThere = takePinned(other);
+    m_active->setActive(false);
+    other.m_active->setActive(false);
+
+    // Suppression belongs to the physical output: departing configured names must not immediately be recreated by
+    // dynamic reconciliation. A name that arrives again no longer needs suppression.
+    const auto noteDepartures = [](WorkspaceGroup& group) {
+      for (const auto& workspace : group.m_workspaces) {
+        if (workspace->named()
+            && std::ranges::find(group.m_transferredNames, workspace->name()) == group.m_transferredNames.end()) {
+          group.m_transferredNames.push_back(workspace->name());
+        }
+      }
+    };
+    noteDepartures(*this);
+    noteDepartures(other);
+    std::swap(m_workspaces, other.m_workspaces);
+    std::swap(m_reservedWorkspaces, other.m_reservedWorkspaces);
+    std::swap(m_active, other.m_active);
+    std::swap(m_previous, other.m_previous);
+
+    for (WorkspaceGroup* group : {this, &other}) {
+      for (const auto& workspace : group->m_workspaces) {
+        workspace->transferTo(*group);
+        workspace->clampScrollToRange();
+        if (workspace->named()) {
+          std::erase(group->m_transferredNames, workspace->name());
+        }
+      }
+      // Launch anchors point at workspace objects, so retaining these objects makes pending applications follow the
+      // swap too. Keep their protocol handles detached until the destination is restored into the visible inventory.
+      for (const auto& workspace : group->m_reservedWorkspaces) {
+        workspace->transferTo(*group);
+        workspace->clampScrollToRange();
+        wlr_ext_workspace_handle_v1_set_group(workspace->handle(), nullptr);
+      }
+    }
+    for (View* view : pinnedHere) {
+      m_active->adoptPinnedView(*view);
+    }
+    for (View* view : pinnedThere) {
+      other.m_active->adoptPinnedView(*view);
+    }
+    m_active->setActive(true);
+    other.m_active->setActive(true);
+
+    for (WorkspaceGroup* group : {this, &other}) {
+      group->refreshWorkspaceMetadata();
+      group->reconcileDynamic();
+      group->m_output->updateVrr();
+      group->m_output->updateHdr();
+      wlr_output_schedule_frame(group->m_output->wlr());
+      if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+        overview->onWorkspaceInventoryChanged(group);
+        for (const auto& workspace : group->m_workspaces) {
+          for (View* view : workspace->allViews()) {
+            overview->onViewWorkspaceChanged(view);
+          }
+        }
+      }
+    }
+    m_server->scheduleDisplacedViewRestore();
+    m_server->scheduleIpcWindowsEvent();
+    m_server->scheduleIpcWorkspacesEvent();
     return true;
   }
 
