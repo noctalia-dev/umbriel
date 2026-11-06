@@ -12,12 +12,15 @@ namespace umbriel {
   inline constexpr double kSwipeViewportPx = 1200.0;
 
   // Coasting distance a released swipe still travels, as an S-curve over the release speed. The band just below the
-  // midpoint is wide, so two and three pages stay distinguishable, and hard flicks saturate above three pages. Speeds
-  // are in libinput-accelerated units per second.
+  // midpoint is wide, so two and three pages stay distinguishable, and hard flicks saturate above three pages. A floor
+  // that fades in with speed keeps an ordinary slow release flipping the nearest page. Speeds are in
+  // libinput-accelerated units per second.
   inline constexpr double kCoastMaxPx = 3.0 * kSwipeViewportPx;
   inline constexpr double kCoastMidSpeed = 20700.0;
   inline constexpr double kCoastWidthSlow = 14000.0;
   inline constexpr double kCoastWidthFast = 9500.0;
+  inline constexpr double kCoastFloorPx = 0.5 * kSwipeViewportPx;
+  inline constexpr double kCoastFloorSpeed = 1500.0;
 
   // Sliding-window swipe tracker. Accumulates deltas since the gesture start, estimates velocity over recent history
   // only, and projects where the movement would coast to a stop under the speed-dependent gain.

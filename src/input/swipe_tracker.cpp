@@ -55,14 +55,11 @@ namespace umbriel {
 
     // Asymmetric S-curve over the release speed. A bare sigmoid would already project half a page at zero speed, so
     // subtract its value at zero and renormalize: a slow release projects nothing, hard flicks saturate at the ceiling.
-    const double mid = kCoastMidSpeed;
-    const double wideWidth = kCoastWidthSlow;
-    const double width = (speed < mid ? wideWidth : kCoastWidthFast);
-    const double base = 1.0 / (1.0 + std::exp(mid / wideWidth));
-    const double curve = 1.0 / (1.0 + std::exp(-(speed - mid) / width));
-    // A small floor fades in with speed so an ordinary slow release still flips the nearest page, while a dead stop
-    // projects nothing.
-    const double floor = 0.5 * kSwipeViewportPx * (1.0 - std::exp(-speed / 1500.0));
+    const double width = (speed < kCoastMidSpeed ? kCoastWidthSlow : kCoastWidthFast);
+    const double base = 1.0 / (1.0 + std::exp(kCoastMidSpeed / kCoastWidthSlow));
+    const double curve = 1.0 / (1.0 + std::exp(-(speed - kCoastMidSpeed) / width));
+    // The floor fades in with speed, so a dead stop still projects nothing.
+    const double floor = kCoastFloorPx * (1.0 - std::exp(-speed / kCoastFloorSpeed));
     const double projection = floor + kCoastMaxPx * (curve - base) / (1.0 - base);
     return m_pos + std::copysign(projection, vel);
   }

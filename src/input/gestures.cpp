@@ -471,8 +471,8 @@ namespace umbriel {
     }
 
     case State::Scroll: {
-      // Natural: fingers move against the strip axis → content follows them. The strip runs
-      // unclamped, past its edges included; the release resolves the overscroll.
+      // Natural: fingers move against the strip axis → content follows them. Past either edge the strip is
+      // rubber-banded rather than clamped; the release resolves the overscroll.
       updateScroll(m_scrollVertical ? event->dy : event->dx, event->time_msec);
       return;
     }
