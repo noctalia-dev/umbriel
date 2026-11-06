@@ -17,6 +17,7 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <pixman.h>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -638,8 +639,13 @@ namespace umbriel {
     void refreshConfigChrome();
     void updateBlur();
     void updateBlur(int contentWidth, int contentHeight);
+    // Picks up a committed ext_background_effect_v1 request for the root surface. Subsurfaces keep their own owners,
+    // and popups have theirs, so only the root surface is tracked here.
+    void syncClientBlur(wlr_surface* surface);
     SurfaceBlurOptions blurOptions() const;
     float blurAlpha() const;
+    // Blur alpha that also counts a client's ext_background_effect_v1 request, which opts in without a rule.
+    float surfaceBlurAlpha() const;
     SurfaceBlurOptions popupBlurOptions() const { return m_decoration.popupBlurOptions(); }
     void updateShadow();
     void updateShadow(int contentWidth, int contentHeight);
@@ -1084,6 +1090,8 @@ namespace umbriel {
     AnimatedValue m_ruleOpacity{1.0};
     AnimatedValue m_ruleBlur{0.0};
     bool m_backgroundRender = false;
+    bool m_clientBlurRequested = false;
+    pixman_region32_t m_clientBlurRegion{};
     bool m_allowShortcutsInhibit = true;
     float m_dragOpacity = 1.0F;
     float m_overviewOpacity = 1.0F;

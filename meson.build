@@ -437,6 +437,32 @@ color_management_server_c = custom_target(
   output: 'color-management-v1-server-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
+ext_background_effect_xml = wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'staging/ext-background-effect/ext-background-effect-v1.xml'
+ext_background_effect_server_h = custom_target(
+  'ext-background-effect-v1-server-protocol.h',
+  input: ext_background_effect_xml,
+  output: 'ext-background-effect-v1-server-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+ext_background_effect_server_c = custom_target(
+  'ext-background-effect-v1-server-protocol.c',
+  input: ext_background_effect_xml,
+  output: 'ext-background-effect-v1-server-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+ext_background_effect_client_h = custom_target(
+  'ext-background-effect-v1-client-protocol.h',
+  input: ext_background_effect_xml,
+  output: 'ext-background-effect-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+ext_background_effect_client_c = custom_target(
+  'ext-background-effect-v1-client-protocol.c',
+  input: ext_background_effect_xml,
+  output: 'ext-background-effect-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 xdg_output_server_h = custom_target(
   'xdg-output-unstable-v1-protocol.h',
   input: wayland_protocols_dep.get_variable(pkgconfig: 'pkgdatadir') / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
@@ -785,6 +811,7 @@ core_sources = files(
   'src/layout/drop_target.cpp',
   'src/server/color_manager.cpp',
   'src/server/color_description.cpp',
+  'src/server/background_effect.cpp',
   'src/server/backend_manager.cpp',
   'src/server/drm_lease.cpp',
   'src/server/allocator.cpp',
@@ -899,6 +926,8 @@ umbriel_core = static_library(
     xdg_shell_client_c,
     color_management_server_h,
     color_management_server_c,
+    ext_background_effect_server_h,
+    ext_background_effect_server_c,
     xdg_output_server_h,
     xdg_output_server_c,
   ],

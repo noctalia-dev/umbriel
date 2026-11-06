@@ -16,6 +16,7 @@ unit_tests = [
   ['effects', ['unit/effects.cpp'], []],
   ['effect-selection', ['unit/effect_selection.cpp'], []],
   ['window-opacity-blur', ['unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
+  ['blur-region', ['unit/blur_region.cpp'], [umbriel_core_dep]],
   ['value-parse', ['unit/value_parse.cpp'], []],
   ['keybind-parse', ['unit/keybind_parse.cpp'], []],
   ['lid-state', ['unit/lid_state.cpp'], []],
@@ -383,6 +384,19 @@ color_feedback_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that asks for backdrop blur through ext_background_effect_v1 and applies regions on demand.
+background_effect_client = executable(
+  'background-effect-client',
+  [
+    'harness/clients/background_effect_client.cpp',
+    xdg_shell_client_h,
+    xdg_shell_client_c,
+    ext_background_effect_client_h,
+    ext_background_effect_client_c,
+  ],
+  dependencies: [wayland_client_dep],
+)
+
 # Harness helper that logs the seat input events a window receives, for input state checks.
 seat_log_client = executable(
   'seat-log-client',
@@ -537,6 +551,7 @@ harness_client_targets = [
   input_capture_compositor,
   input_capture_client,
   color_feedback_client,
+  background_effect_client,
   pixel_probe,
   capture_client,
   pointer_client,

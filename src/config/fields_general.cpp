@@ -123,10 +123,15 @@ namespace umbriel {
           ),
       };
       static const registry::Fields<A::Blur> blur{
-          boolean("enabled", &A::Blur::enabled),          boolean("optimized", &A::Blur::optimized),
-          integer("passes", 0, 8, &A::Blur::passes),      integer("radius", 0, 100, &A::Blur::radius),
-          real("noise", 0.0, 1.0, &A::Blur::noise),       real("brightness", 0.0, 2.0, &A::Blur::brightness),
-          real("contrast", 0.0, 2.0, &A::Blur::contrast), real("saturation", 0.0, 2.0, &A::Blur::saturation),
+          boolean("enabled", &A::Blur::enabled),
+          boolean("client_requests", &A::Blur::clientRequests),
+          boolean("optimized", &A::Blur::optimized),
+          integer("passes", 0, 8, &A::Blur::passes),
+          integer("radius", 0, 100, &A::Blur::radius),
+          real("noise", 0.0, 1.0, &A::Blur::noise),
+          real("brightness", 0.0, 2.0, &A::Blur::brightness),
+          real("contrast", 0.0, 2.0, &A::Blur::contrast),
+          real("saturation", 0.0, 2.0, &A::Blur::saturation),
       };
       static const registry::Fields<A::Shadow> shadow{
           boolean("enabled", &A::Shadow::enabled),

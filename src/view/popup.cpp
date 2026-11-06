@@ -3,6 +3,8 @@
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "scene/node.h"
+#include "server/background_effect.h"
+#include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
 
@@ -10,7 +12,8 @@
 
 namespace umbriel {
 
-  Popup::Popup(wlr_xdg_popup* popup, wlr_scene_tree* parentTree, wlr_scene_tree* captureTree) : m_popup(popup) {
+  Popup::Popup(wlr_xdg_popup* popup, wlr_scene_tree* parentTree, wlr_scene_tree* captureTree, Server* server)
+      : m_popup(popup), m_server(server) {
     if (parentTree == nullptr) {
       wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(m_popup->parent);
       assert(parent != nullptr);
@@ -31,9 +34,11 @@ namespace umbriel {
     wl_signal_add(&m_popup->base->surface->events.unmap, &m_unmap);
     m_destroy.notify = onDestroy;
     wl_signal_add(&m_popup->events.destroy, &m_destroy);
+    livePopups().push_back(this);
   }
 
   Popup::~Popup() {
+    std::erase(livePopups(), this);
     if (m_commit.link.next != nullptr) {
       wl_list_remove(&m_commit.link);
       wl_list_remove(&m_reposition.link);
@@ -68,7 +73,22 @@ namespace umbriel {
     self->handleDestroy();
   }
 
-  void Popup::handleCommit() {
+  std::vector<Popup*>& Popup::livePopups() {
+    static std::vector<Popup*> popups;
+    return popups;
+  }
+
+  void Popup::refreshAllBlur() {
+    for (Popup* popup : livePopups()) {
+      popup->updateBlur();
+    }
+  }
+
+  void Popup::updateBlur() {
+    auto* tree = static_cast<wlr_scene_tree*>(m_popup->base->data);
+    if (tree == nullptr) {
+      return;
+    }
     const wlr_box& geometry = m_popup->base->geometry;
     SurfaceBlurOptions blurOptions;
     if (LayerSurface* layer = LayerSurface::fromSurface(m_popup->parent)) {
@@ -76,10 +96,20 @@ namespace umbriel {
     } else if (View* view = View::fromSurface(m_popup->parent)) {
       blurOptions = view->popupBlurOptions();
     }
+    // A client-requested region follows the popup's own surface, like the rule. The popup surface is drawn 1:1 from
+    // its geometry origin, so that box is what the blur node shows.
+    const pixman_region32_t* clientRegion = nullptr;
+    if (m_server != nullptr && m_server->backgroundEffect() != nullptr) {
+      clientRegion = m_server->backgroundEffect()->region(m_popup->base->surface);
+    }
     m_blur.update(
-        static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,
-        wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_none(), nullptr, blurOptions
+        tree, m_popup->base->surface, wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_none(),
+        nullptr, blurOptions, 1.0F, nullptr, ClientBlurRegion{.region = clientRegion, .source = geometry}
     );
+  }
+
+  void Popup::handleCommit() {
+    updateBlur();
     if (!m_popup->base->initial_commit) {
       return;
     }
