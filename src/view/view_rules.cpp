@@ -217,7 +217,7 @@ namespace umbriel {
     }
     // toggleFloating unmaximizes, then re-maximizes the float; keep it owned for the alone pass.
     const bool maximizeAlreadyUndone =
-        m_aloneAction == AloneAction::Maximize && !(scheduledMaximized() && !m_maximizedToEdges);
+        m_aloneAction == AloneAction::Maximize && (!scheduledMaximized() || m_maximizedToEdges);
     if (!maximizeAlreadyUndone) {
       revertAloneRuleEffects();
       m_aloneEffectsActive = false;
