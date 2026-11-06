@@ -12,7 +12,6 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iterator>
-#include <limits>
 #include <poll.h>
 #include <sstream>
 #include <string>
@@ -422,13 +421,8 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     return;
   }
 
-<<<<<<< HEAD
+  // Keep the pipe open through EOF so remaining argument writes cannot receive SIGPIPE.
   const std::string output = readOutputWithTimeout(outputPipe[0]);
-=======
-  // Read until the child closes its end: stopping at a line count closes the pipe early and kills the
-  // child with SIGPIPE whenever its remaining writes have not reached the pipe yet.
-  const std::string output = readLinesWithTimeout(outputPipe[0], std::numeric_limits<size_t>::max());
->>>>>>> f0f636474fbae4fdedbf80d8bac7e11455201ffd
   close(outputPipe[0]);
   int status = 0;
   if (!waitForExit(child, &status)) {
