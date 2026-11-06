@@ -11,6 +11,7 @@ extern "C" {
 #include "input/seat.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "server/background_effect.h"
 #include "server/server.h"
 #include "view/popup.h"
 #include "wlr.h"
@@ -408,7 +409,15 @@ namespace umbriel {
 
   void LayerSurface::updateBlur() {
     const wlr_box box{0, 0, m_layerSurface->surface->current.width, m_layerSurface->surface->current.height};
-    m_blur.update(m_scene->tree, m_layerSurface->surface, box, box, corner_radii_none(), nullptr, blurOptions());
+    const pixman_region32_t* clientRegion = nullptr;
+    if (m_server->backgroundEffect() != nullptr) {
+      clientRegion = m_server->backgroundEffect()->region(m_layerSurface->surface);
+    }
+    // A layer surface is drawn 1:1 at its own origin, so the surface box is what the node shows.
+    m_blur.update(
+        m_scene->tree, m_layerSurface->surface, box, box, corner_radii_none(), nullptr, blurOptions(), 1.0F, nullptr,
+        ClientBlurRegion{.region = clientRegion, .source = box}
+    );
   }
 
   void LayerSurface::applyConfig() {
@@ -597,7 +606,7 @@ namespace umbriel {
     auto* popup = static_cast<wlr_xdg_popup*>(data);
     // The popup tree shares the surface origin and stacks above its shell layer's regular surfaces.
     wlr_scene_node_raise_to_top(&m_popupTree->node);
-    new Popup(popup, m_popupTree);
+    new Popup(popup, m_popupTree, nullptr, m_server);
   }
 
 } // namespace umbriel
