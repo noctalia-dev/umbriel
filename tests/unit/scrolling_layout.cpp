@@ -1290,7 +1290,7 @@ UMBRIEL_TEST(onOverflowJudgesTheSurvivorOfAClosedColumnAgainstItsReplacement) {
 // Removing the focused column can leave a lone survivor, which has no pair left to overflow against. Focus centering
 // leaves it at the strip start, so underfull_strip alone decides where it comes to rest.
 UMBRIEL_TEST(onOverflowRestsTheLoneSurvivorOfARemovedColumnWhereTheAlignmentPutsIt) {
-  for (const auto [align, rest] :
+  for (const auto& [align, rest] :
        {std::pair{UnderfullStripAlign::Start, 0}, std::pair{UnderfullStripAlign::Center, 280},
         std::pair{UnderfullStripAlign::End, 560}}) {
     Fixture fixture;
