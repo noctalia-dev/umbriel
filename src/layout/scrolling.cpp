@@ -1693,24 +1693,24 @@ namespace umbriel {
               // The pair grew, so the strip re-anchors; nothing else can keep the boundary on the pointer.
               layout.setScroll(0.0);
             }
-            return;
-          }
-          // While the strip fits, centering keeps its midpoint fixed: a boundary extent changes by two pointer
-          // pixels for each pixel the centered outer edge moves. An aligned rest keeps its anchored edge instead.
-          const double extentDelta = symmetricGrowth ? centeredPrimaryDelta(dPrimary) : dPrimary;
-          const int newExtent = std::clamp(
-              m_startPrimaryPx + static_cast<int>(std::lround(extentDelta)), columnMinPrimary(m_column),
-              columnMaxPrimary(m_column)
-          );
-          setColumnPrimaryPx(m_column, newExtent);
-          if (symmetricGrowth || endAlignedRest) {
-            // Centering keeps the midpoint; an anchored alignment re-rests on its edge (the layout refuses that
-            // boundary while it fits, see sanitizeResizeEdges, so this covers a programmatic resize).
-            layout.setScroll(0.0);
           } else {
-            layout.setScroll(
-                m_startScroll + static_cast<double>(layout.columnX(m_column, viewportPrimary) - m_startColumnX)
+            // While the strip fits, centering keeps its midpoint fixed: a boundary extent changes by two pointer
+            // pixels for each pixel the centered outer edge moves. An aligned rest keeps its anchored edge instead.
+            const double extentDelta = symmetricGrowth ? centeredPrimaryDelta(dPrimary) : dPrimary;
+            const int newExtent = std::clamp(
+                m_startPrimaryPx + static_cast<int>(std::lround(extentDelta)), columnMinPrimary(m_column),
+                columnMaxPrimary(m_column)
             );
+            setColumnPrimaryPx(m_column, newExtent);
+            if (symmetricGrowth || endAlignedRest) {
+              // Centering keeps the midpoint; an anchored alignment re-rests on its edge (the layout refuses that
+              // boundary while it fits, see sanitizeResizeEdges, so this covers a programmatic resize).
+              layout.setScroll(0.0);
+            } else {
+              layout.setScroll(
+                  m_startScroll + static_cast<double>(layout.columnX(m_column, viewportPrimary) - m_startColumnX)
+              );
+            }
           }
         } else if ((m_edges & primaryStartEdge) != 0) {
           if (m_column > 0 && !m_soloPrimary) {

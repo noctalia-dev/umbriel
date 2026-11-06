@@ -643,6 +643,35 @@ UMBRIEL_TEST(interiorTrailingBoundaryKeepsTrackingPastTheLaneMinimum) {
   CHECK_EQ(secondAfter.x + secondAfter.width, secondBefore.x + secondBefore.width);
 }
 
+UMBRIEL_TEST(endAlignedInteriorCornerResizeAlsoResizesAcrossTheAxis) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.layout.insertView(stub(0), 0);
+  fixture.layout.insertViewIntoColumn(stub(1), 0, 1);
+  fixture.layout.insertView(stub(2), 1);
+  CHECK(fixture.layout.setWidthFraction(0, 0.25));
+  CHECK(fixture.layout.setWidthFraction(1, 0.25));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstBefore = fixture.layout.targetBox(stub(0));
+  const wlr_box siblingBefore = fixture.layout.targetBox(stub(1));
+  const wlr_box nextBefore = fixture.layout.targetBox(stub(2));
+
+  // A corner drag carries both a primary and a cross delta: the pair branch must not swallow the latter.
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(40.0, 40.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box firstAfter = fixture.layout.targetBox(stub(0));
+  const wlr_box siblingAfter = fixture.layout.targetBox(stub(1));
+  const wlr_box nextAfter = fixture.layout.targetBox(stub(2));
+  CHECK_EQ(firstAfter.width, firstBefore.width + 40);
+  CHECK_EQ(nextAfter.width, nextBefore.width - 40);
+  CHECK(firstAfter.height > firstBefore.height);
+  CHECK(siblingAfter.height < siblingBefore.height);
+}
+
 UMBRIEL_TEST(centeredInteriorTrailingBoundaryStillGrowsTheStrip) {
   Fixture fixture;
   fixture.addColumns(2);
