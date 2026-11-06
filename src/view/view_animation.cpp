@@ -91,7 +91,7 @@ namespace umbriel {
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = fadeComposited() ? effective * m_fadeAlpha : effective;
-    m_decoration.setAlpha(shadowOpacity, blurAlpha());
+    m_decoration.setAlpha(shadowOpacity, surfaceBlurAlpha());
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setAlpha(chromeAlpha());
     }
