@@ -192,7 +192,7 @@ namespace umbriel {
       static const registry::Fields<A::WindowsMove> windowsMove = eventFields<A::WindowsMove>({});
       static const registry::Fields<A::WindowsResize> windowsResize = timelineFields<A::WindowsResize>({
           registry::boolean("enabled", &A::WindowsResize::enabled),
-          registry::integer("wait_timeout_ms", 0, 1000, &A::WindowsResize::waitTimeoutMs),
+          registry::boolean("wait_for_redraw", &A::WindowsResize::waitForRedraw),
       });
       static const registry::Fields<A::Workspaces> workspaces =
           eventFields<A::Workspaces>({styleField<A::Workspaces>({"slide", "reveal"})});
@@ -293,16 +293,16 @@ namespace umbriel {
           table("windows_drag", &A::windowsDrag, windowsDrag),
           // The wait replaces the size animation, so it needs the size not to animate.
           registry::step<A>([](Section& s, A& animation, registry::ReadContext&) {
-            if (animation.windowsResize.waitTimeoutMs <= 0 || !animation.enabled || !animation.windowsResize.enabled) {
+            if (!animation.windowsResize.waitForRedraw || !animation.enabled || !animation.windowsResize.enabled) {
               return;
             }
             const toml::node* resize = s.node("windows_resize");
             const toml::node* node =
-                resize != nullptr && resize->is_table() ? resize->as_table()->get("wait_timeout_ms") : nullptr;
+                resize != nullptr && resize->is_table() ? resize->as_table()->get("wait_for_redraw") : nullptr;
             if (node != nullptr) {
               warnAt(
                   node->source(), "{} has no effect while the size animates; set enabled = false",
-                  s.qualified("windows_resize.wait_timeout_ms")
+                  s.qualified("windows_resize.wait_for_redraw")
               );
             }
           }),

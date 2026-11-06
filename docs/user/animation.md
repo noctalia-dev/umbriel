@@ -81,7 +81,7 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 | `[animation.windows_in]`      | `style`, `scale`                                                    | Window opening                                             |
 | `[animation.windows_out]`     | `style`, `scale`                                                    | Window closing                                             |
 | `[animation.windows_move]`    | none                                                                | Position during moves, reflow, maximize, and restore       |
-| `[animation.windows_resize]`  | `wait_timeout_ms`, and no `effect`                                  | Size during the same changes                               |
+| `[animation.windows_resize]`  | `wait_for_redraw`, and no `effect`                                  | Size during the same changes                               |
 | `[animation.windows_opacity]` | none, and no `effect`                                               | Focus changes to window-rule opacity and backdrop blur     |
 | `[animation.workspaces]`      | `style`                                                             | Workspace switching                                        |
 | `[animation.overview]`        | `workspace_curve`                                                   | Overview opening, closing, and filmstrip movement          |
@@ -96,12 +96,12 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 
 `windows_move` moves a window while `windows_resize` changes its size, so a slow move can still resize quickly. While the size animates, the window's latest frame is stretched to fit. With `windows_resize` disabled, the size changes at once while the window still moves. When the two timelines differ, a window can briefly overlap its neighbours during a reflow.
 
-A client needs a few frames to redraw at a new size, so with `windows_resize` disabled its previous frame is briefly stretched to the new size. Set `wait_timeout_ms` to make a layout change that resizes windows a single switch instead: the screen keeps showing every window as it was, with a newly opened window not yet visible, until each resized window has redrawn, at its new size or at a nearby size it picks itself, as terminals that size to whole character cells do; then every window appears in its final place and size in the same frame, without moving there. Layout changes that only move windows still animate with `windows_move`. Resizing a tile with the mouse works the same way, one step at a time: each step waits for the resized windows to redraw before the next one follows the pointer, so the edge may trail a fast drag slightly, but no window is ever stretched or squeezed. The value, up to 1000, caps the wait for a slow or unresponsive client, after which the switch happens anyway and that window's frame is stretched until it redraws. The default `0` never waits. `wait_timeout_ms` only applies while the size does not animate: with `windows_resize` or all animation disabled.
+A client needs a few frames to redraw at a new size, so with `windows_resize` disabled its previous frame is briefly stretched to the new size. Set `wait_for_redraw = true` to make a layout change that resizes windows a single switch instead: the screen keeps showing every window as it was, with a newly opened window not yet visible, until each resized window has redrawn, at its new size or at a nearby size it picks itself, as terminals that size to whole character cells do; then every window appears in its final place and size in the same frame, without moving there. Layout changes that only move windows still animate with `windows_move`. Resizing a tile with the mouse works the same way, one step at a time: each step waits for the resized windows to redraw before the next one follows the pointer, so the edge may trail a fast drag slightly, but no window is ever stretched or squeezed. A slow or unresponsive client is waited for at most 150 ms, after which the switch happens anyway and that window's frame is stretched until it redraws. It is off by default. `wait_for_redraw` only applies while the size does not animate: with `windows_resize` or all animation disabled.
 
 ```toml
 [animation.windows_resize]
 enabled = false
-wait_timeout_ms = 150
+wait_for_redraw = true
 ```
 
 When a tiled window closes while `windows_out` is disabled, its last frame stays on screen until the switch, so the wallpaper never shows in the space it leaves.

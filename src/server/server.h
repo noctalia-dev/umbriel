@@ -117,7 +117,9 @@ namespace umbriel {
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
   // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
-  // Longest a held close snapshot stays, matching the largest windows_resize.wait_timeout_ms.
+  // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
+  inline constexpr double kRedrawWaitMs = 150.0;
+  // Longest a held close snapshot stays: a safety net well past kRedrawWaitMs, released by the switch before then.
   inline constexpr double kMaxCloseHoldMs = 1000.0;
   inline constexpr std::string_view kLaunchTokenEnvironment = "UMBRIEL_LAUNCH_TOKEN";
 

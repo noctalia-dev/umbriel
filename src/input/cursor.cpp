@@ -3721,7 +3721,7 @@ namespace umbriel {
       resetMode();
       return;
     }
-    // With windows_resize.wait_timeout_ms each step is a held switch, like any other resizing reflow: the next step
+    // With windows_resize.wait_for_redraw each step is a held switch, like any other resizing reflow: the next step
     // waits until the clients have redrawn at the last one, so no frame shows a buffer stretched to a box it was not
     // drawn for.
     const auto& animation = config().animation;

@@ -1211,29 +1211,29 @@ UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
   store.setRootPath(file.path(), true);
 
   file.write(
-      "[animation.windows_resize]\nenabled = false\nwait_timeout_ms = 150\n\n[animation.windows_out]\nenabled = false\n"
+      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
+      "false\n"
   );
   CHECK(store.reload().success);
   const auto& animation = store.config().animation;
-  CHECK_EQ(animation.windowsResize.waitTimeoutMs, 150);
   CHECK(animation.windowsResize.waitsForClient(animation.enabled));
   CHECK(animation.holdsClosedTile());
   CHECK(!containsDiagnostic(store, "has no effect"));
 
   // An animated close fills the closed tile's space itself, so it holds no frame.
-  file.write("[animation.windows_resize]\nenabled = false\nwait_timeout_ms = 150\n");
+  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
   CHECK(store.reload().success);
   CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
   CHECK(!store.config().animation.holdsClosedTile());
 
   // An animated size has nothing to wait for, so the key is reported as inert.
-  file.write("[animation.windows_resize]\nenabled = true\nwait_timeout_ms = 150\n");
+  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
   CHECK(store.reload().success);
-  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_timeout_ms has no effect"));
+  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
   CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
 
   // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
-  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_timeout_ms = 150\n");
+  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
   CHECK(store.reload().success);
   CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
   CHECK(store.config().animation.holdsClosedTile());

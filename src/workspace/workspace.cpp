@@ -800,6 +800,8 @@ namespace umbriel {
     // Outside the layout a window is never a tab; whatever presents it next finds it showing.
     m_tabs.released(view);
     releaseLayoutMotion(view);
+    std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
+    std::erase(m_motion.frozen, view);
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -1301,7 +1303,7 @@ namespace umbriel {
       });
     }
 
-    // windows_resize.wait_timeout_ms turns a reflow that resizes established members into one switch: their frames are
+    // windows_resize.wait_for_redraw turns a reflow that resizes established members into one switch: their frames are
     // frozen and openers stay hidden until every resized client has redrawn, then all land in the same frame.
     const bool wait = animate
         && animation.windowsResize.waitsForClient(animation.enabled)
@@ -1470,7 +1472,7 @@ namespace umbriel {
     for (const LayoutMotion::Opener& opener : m_motion.openers) {
       ready = ready && (!heldOpenerAlive(opener.view) || answered(opener.view));
     }
-    if (!ready && nowMsec - *m_motion.waitStartMsec < config().animation.windowsResize.waitTimeoutMs) {
+    if (!ready && nowMsec - *m_motion.waitStartMsec < kRedrawWaitMs) {
       return true;
     }
 
@@ -1488,7 +1490,7 @@ namespace umbriel {
   }
 
   bool Workspace::heldOpenerAlive(const View* view) const {
-    return view->mapped() && std::ranges::contains(m_views, view) && m_layout->columnOf(view) >= 0;
+    return std::ranges::contains(m_views, view) && view->mapped() && m_layout->columnOf(view) >= 0;
   }
 
   void Workspace::resumeHeldOpeners() {

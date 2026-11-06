@@ -731,7 +731,7 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
-    // A tiled resize grab steps through held switches (windows_resize.wait_timeout_ms) instead of stretching buffers.
+    // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
     bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.

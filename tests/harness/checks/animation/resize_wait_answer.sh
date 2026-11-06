@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# windows_resize.wait_timeout_ms ends its hold when a resized client has drawn a new buffer, at the requested size or at
+# windows_resize.wait_for_redraw ends its hold when a resized client has drawn a new buffer, at the requested size or at
 # a size of its own: a new window geometry over the old buffer keeps the hold, and a client that rounds the size to its
 # own step releases it at once instead of at the timeout.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
-readonly TIMEOUT_MS=1000
 readonly SHOTS="$UMBRIEL_RUNTIME_DIR/resize-answer"
 mkdir -p "$SHOTS"
 
@@ -39,7 +38,7 @@ curve = "linear"
 
 [animation.windows_resize]
 enabled = false
-wait_timeout_ms = $TIMEOUT_MS
+wait_for_redraw = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze

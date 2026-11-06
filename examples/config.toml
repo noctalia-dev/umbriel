@@ -440,11 +440,11 @@ action = "overview-open"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
 # Without a size animation, a resized window shows its stretched old frame until
-# it redraws. Wait up to wait_timeout_ms for redraws instead, then switch to the
+# it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
 # new layout in one frame.
 # [animation.windows_resize]
 # enabled = false
-# wait_timeout_ms = 150
+# wait_for_redraw = true
 
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
