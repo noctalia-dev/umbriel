@@ -26,11 +26,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793975061,
-        "narHash": "sha256-2R5yt7GtDVObTivdC3rFEQXyY8LF0GYxAJlDOiL2EII=",
+        "lastModified": 1793975757,
+        "narHash": "sha256-27TZy17ok3p11A5Av1X/FG5BFyvHUsHsQiYyesij250=",
         "owner": "noctalia-dev",
         "repo": "xdg-desktop-portal-umbriel",
-        "rev": "8c91091b6b13164d02d4d7e07dda659c80f55f1c",
+        "rev": "56951426eb9931db3f1c57348f226c2427fba4f3",
         "type": "github"
       },
       "original": {
