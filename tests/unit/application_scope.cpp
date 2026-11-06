@@ -69,7 +69,7 @@ namespace {
     return false;
   }
 
-  std::string readLinesWithTimeout(int descriptor, size_t minimumLines, int timeoutMs = 8000) {
+  std::string readOutputWithTimeout(int descriptor, size_t minimumLines = 0, int timeoutMs = 8000) {
     std::string output;
     for (int elapsed = 0; elapsed <= timeoutMs; elapsed += 20) {
       pollfd pollDescriptor{.fd = descriptor, .events = POLLIN, .revents = 0};
@@ -94,7 +94,7 @@ namespace {
           break;
         }
       }
-      if (static_cast<size_t>(std::count(output.begin(), output.end(), '\n')) >= minimumLines) {
+      if (minimumLines > 0 && static_cast<size_t>(std::count(output.begin(), output.end(), '\n')) >= minimumLines) {
         break;
       }
     }
@@ -421,7 +421,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 20);
+  const std::string output = readOutputWithTimeout(outputPipe[0]);
   close(outputPipe[0]);
   int status = 0;
   if (!waitForExit(child, &status)) {
@@ -575,7 +575,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 5);
+  const std::string output = readOutputWithTimeout(outputPipe[0], 5);
   std::istringstream outputStream(output);
   std::string literal;
   std::string runtime;
