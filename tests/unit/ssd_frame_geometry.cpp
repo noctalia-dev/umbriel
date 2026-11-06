@@ -52,6 +52,57 @@ UMBRIEL_TEST(omittedButtonsLeaveNoGapAndWidenTheTitle) {
   }
 }
 
+UMBRIEL_TEST(buttonSizesAndDefaultMargins) {
+  constexpr std::array heights{24, 27, 28, 30, 60, 120};
+  constexpr std::array sizes{12, 13, 14, 14, 30, 60};
+  constexpr std::array margins{6, 7, 7, 8, 15, 30};
+  for (size_t i = 0; i < heights.size(); ++i) {
+    CHECK_EQ(titleBarButtonDiameter(heights[i]), sizes[i]);
+    const auto parts = titleBarLayout(480, heights[i], TitleBarButtonSide::Right, kAll);
+    CHECK_EQ(parts.gap, 8);
+    CHECK_EQ(480 - parts.button(TitleBarButton::Close)->x - sizes[i], margins[i]);
+  }
+  CHECK_EQ(titleBarButtonDiameter(28, 12), 12);
+  CHECK_EQ(titleBarButtonDiameter(28, 13), 12);
+  CHECK_EQ(titleBarButtonDiameter(28, 1), 2);
+  CHECK_EQ(titleBarButtonDiameter(28, 0), 2);
+  CHECK_EQ(titleBarButtonDiameter(28, -1), 14);
+  CHECK_EQ(titleBarButtonDiameter(28, 100), 28);
+}
+
+UMBRIEL_TEST(explicitGeometryShrinksMarginThenGapAndMirrors) {
+  constexpr std::array order{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
+  const auto marginOnly = titleBarLayout(60, 30, TitleBarButtonSide::Left, order, 12, 8, 13);
+  CHECK_EQ(marginOnly.button(TitleBarButton::Close)->x, 8);
+  CHECK_EQ(marginOnly.gap, 8);
+  const auto right = titleBarLayout(50, 30, TitleBarButtonSide::Right, order, 12, 8, 13);
+  const auto left = titleBarLayout(50, 30, TitleBarButtonSide::Left, order, 12, 8, 13);
+  CHECK_EQ(right.button(TitleBarButton::Close)->x, 38);
+  CHECK_EQ(left.button(TitleBarButton::Close)->x, 0);
+  CHECK_EQ(right.gap, 7);
+  for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
+    const auto parts = titleBarLayout(10, 30, side, order, 12, 8, 13);
+    CHECK_EQ(parts.gap, 0);
+    CHECK_EQ(parts.button(TitleBarButton::Close)->width, 12);
+    CHECK(parts.button(TitleBarButton::Minimize).has_value());
+    CHECK_EQ(ssdFramePointAt(10, 300, 30, 2, true, side, order, 5, -15, 12, 8, 13).part, SsdFramePart::Close);
+  }
+  const auto empty = titleBarLayout(20, 30, TitleBarButtonSide::Left, kNone, 12, 8, 13);
+  CHECK_EQ(empty.gap, 8);
+  CHECK(!empty.button(TitleBarButton::Close).has_value());
+}
+
+UMBRIEL_TEST(buttonHitSpansHalfConfiguredGap) {
+  static constexpr std::array one{TitleBarButton::Close};
+  const auto hit = [](double x) {
+    return ssdFramePointAt(100, 300, 30, 2, true, TitleBarButtonSide::Right, one, x, -15, 12, 8, 13).part;
+  };
+  CHECK_EQ(hit(71), SsdFramePart::Close);
+  CHECK_EQ(hit(70), SsdFramePart::TitleBar);
+  CHECK_EQ(hit(90), SsdFramePart::Close);
+  CHECK_EQ(hit(91), SsdFramePart::TitleBar);
+}
+
 UMBRIEL_TEST(buttonsSitOnTheBarCenterAtEveryHeight) {
   for (int height = 16; height <= 128; ++height) {
     const auto parts = titleBarLayout(480, height, TitleBarButtonSide::Right, kAll);

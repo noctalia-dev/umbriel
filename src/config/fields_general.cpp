@@ -95,6 +95,9 @@ namespace umbriel {
           ),
           integer("height", 16, 128, &A::TitleBar::height),
           integer("button_corner_radius", -1, 100, &A::TitleBar::buttonCornerRadius),
+          integer("button_size", -1, 128, &A::TitleBar::buttonSize),
+          integer("button_gap", 0, 100, &A::TitleBar::buttonGap),
+          integer("button_margin", -1, 100, &A::TitleBar::buttonMargin),
           registry::choice(
               "button_glyph", &A::TitleBar::buttonGlyph,
               {

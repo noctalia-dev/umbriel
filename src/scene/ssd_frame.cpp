@@ -183,7 +183,7 @@ namespace umbriel {
       }
       return;
     }
-    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight);
+    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, config().appearance.titleBar.buttonSize);
     const float scale = std::max(1.0F, m_geometry.scale);
     // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
@@ -308,7 +308,9 @@ namespace umbriel {
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     wlr_scene_rect_set_corner_radii(m_background, corner_radii_new(zoomed(radius), zoomed(radius), 0, 0));
     const auto& style = config().appearance.titleBar;
-    const TitleBarLayout parts = titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons());
+    const TitleBarLayout parts = titleBarLayout(
+        g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonSize, style.buttonGap, style.buttonMargin
+    );
     const auto drawButton = [&](wlr_scene_rect* button, const std::optional<wlr_box>& slot) {
       if (!slot) {
         wlr_scene_node_set_enabled(&button->node, false);
@@ -366,7 +368,9 @@ namespace umbriel {
     }
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,
-        m_resizable, config().appearance.titleBar.buttonPosition, visibleButtons(), x, y
+        m_resizable, config().appearance.titleBar.buttonPosition, visibleButtons(), x, y,
+        config().appearance.titleBar.buttonSize, config().appearance.titleBar.buttonGap,
+        config().appearance.titleBar.buttonMargin
     );
   }
 

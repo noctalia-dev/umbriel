@@ -734,6 +734,9 @@ namespace umbriel {
         std::string font = "sans 10";
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
+        int buttonSize = -1;
+        int buttonGap = 8;
+        int buttonMargin = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.

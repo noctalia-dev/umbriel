@@ -8,29 +8,40 @@ extern "C" {
 }
 
 namespace umbriel {
-  int titleBarButtonDiameter(int height) {
-    const int diameter = std::max(8, (height + 1) / 2);
+  int titleBarButtonDiameter(int height, int size) {
+    const int diameter = size < 0 ? std::max(8, (height + 1) / 2) : std::clamp(size, 1, std::max(1, height));
     if ((height - diameter) % 2 == 0) {
       return diameter;
     }
-    return diameter > 8 ? diameter - 1 : diameter + 1;
+    return diameter > (size < 0 ? 8 : 1) ? diameter - 1 : diameter + 1;
   }
 
-  TitleBarLayout titleBarLayout(int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown) {
-    const int diameter = titleBarButtonDiameter(height);
-    const int inset = (height - diameter) / 2;
-    TitleBarLayout result{.title = {kTitleBarTitlePadding, 0, 0, height}};
+  TitleBarLayout titleBarLayout(
+      int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown, int size, int gap,
+      int margin
+  ) {
+    const int diameter = titleBarButtonDiameter(height, size);
+    const int verticalInset = (height - diameter) / 2;
+    int inset = margin < 0 ? verticalInset : margin;
+    const int count = static_cast<int>(shown.size());
+    // Preserve the old too-narrow behavior: the row may extend past the opposite edge.
+    if (count > 0) {
+      inset = std::max(0, std::min(inset, width - count * diameter - (count - 1) * gap));
+      if (count > 1) {
+        gap = std::max(0, std::min(gap, (width - count * diameter - inset) / (count - 1)));
+      }
+    }
+    TitleBarLayout result{.title = {kTitleBarTitlePadding, 0, 0, height}, .gap = gap};
     // Walk from the edge inward: the last listed button is outermost.
     int x = side == TitleBarButtonSide::Right ? width - inset - diameter : inset;
-    const int step =
-        side == TitleBarButtonSide::Right ? -(diameter + kTitleBarButtonGap) : diameter + kTitleBarButtonGap;
+    const int step = side == TitleBarButtonSide::Right ? -(diameter + gap) : diameter + gap;
     std::optional<int> innermost;
     for (const TitleBarButton button : std::views::reverse(shown)) {
       auto& slot = result.buttons[static_cast<size_t>(button)];
       if (slot) {
         continue;
       }
-      slot = wlr_box{x, inset, diameter, diameter};
+      slot = wlr_box{x, verticalInset, diameter, diameter};
       innermost = x;
       x += step;
     }
@@ -47,16 +58,21 @@ namespace umbriel {
 
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
-      double x, double y
+      double x, double y, int size, int gap, int margin
   ) {
     if (cw <= 0 || ch <= 0 || h < 0) {
       return {};
     }
     if (x >= 0 && x < cw && y >= -h && y < 0) {
-      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown);
-      const auto inButton = [&layout, x](TitleBarButton button) {
+      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown, size, gap, margin);
+      const auto inButton = [&layout, x, cw](TitleBarButton button) {
         const std::optional<wlr_box>& box = layout.button(button);
-        return box && x >= box->x - kTitleBarButtonGap / 2 && x < box->x + box->width + kTitleBarButtonGap / 2;
+        if (!box) {
+          return false;
+        }
+        const int left = std::max(0, box->x - layout.gap / 2);
+        const int right = std::min(cw, box->x + box->width + layout.gap / 2);
+        return x >= left && x < right;
       };
       if (inButton(TitleBarButton::Close)) {
         return {SsdFramePart::Close, 0};
