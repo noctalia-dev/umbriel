@@ -802,6 +802,10 @@ namespace umbriel {
     releaseLayoutMotion(view);
     std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
     std::erase(m_motion.frozen, view);
+    // A member that leaves can no longer be the one shown focused.
+    if (m_focusShownBeforeReflow == view) {
+      m_focusShownBeforeReflow = nullptr;
+    }
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -919,13 +923,15 @@ namespace umbriel {
     // Clearing here, rather than only in flushArrange, is what makes mixing the two safe: a direct arrange() satisfies
     // whatever was marked earlier in the frame, so the flush does not repeat it.
     m_arrangePending = false;
-    // Held close snapshots outlive this arrange only while its tiles wait for their clients.
+    // Held close snapshots outlive this arrange only while its tiles wait for their clients. A note of the focus shown
+    // before a reflow is for this arrange alone.
     struct HeldRelease {
       Workspace& workspace;
       explicit HeldRelease(Workspace& owner) : workspace(owner) {}
       HeldRelease(const HeldRelease&) = delete;
       HeldRelease& operator=(const HeldRelease&) = delete;
       ~HeldRelease() {
+        workspace.m_focusShownBeforeReflow.reset();
         if (!workspace.m_motion.waiting) {
           workspace.releaseHeldCloseSnapshots();
         }
@@ -1320,6 +1326,11 @@ namespace umbriel {
       if (!member.opening) {
         continue;
       }
+      // A held reflow hides its opener until the switch even without windows_in, which alone defers it at map: shown
+      // under the frozen frames, its shadow and any part outside them would appear before the switch.
+      if (wait) {
+        member.view->deferTiledOpening();
+      }
       if (wait && member.view->tiledOpeningDeferred()) {
         std::erase_if(m_motion.openers, [&](const LayoutMotion::Opener& held) { return held.view == member.view; });
         m_motion.openers.push_back({.view = member.view, .box = member.to});
@@ -1424,7 +1435,9 @@ namespace umbriel {
       if (wait
           && (entry.from.width != entry.to.width || entry.from.height != entry.to.height)
           && !std::ranges::contains(m_motion.frozen, entry.view)) {
-        if (const CloseSnapshotId id = entry.view->captureHeldSnapshot(); id != kInvalidCloseSnapshot) {
+        const std::optional<bool> shownFocused =
+            m_focusShownBeforeReflow ? std::optional{*m_focusShownBeforeReflow == entry.view} : std::nullopt;
+        if (const CloseSnapshotId id = entry.view->captureHeldSnapshot(shownFocused); id != kInvalidCloseSnapshot) {
           trackCloseSnapshot(id, entry.view->presentedBox());
           m_heldCloseSnapshots.push_back(id);
           m_motion.frozen.push_back(entry.view);

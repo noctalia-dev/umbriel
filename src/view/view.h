@@ -497,7 +497,9 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    CloseSnapshotId captureSnapshot(bool held);
+    // A set `shownFocused` draws the border and title bar focused or not, whatever the focus is now; `withShadow`
+    // copies the shadow.
+    CloseSnapshotId captureSnapshot(bool held, std::optional<bool> shownFocused, bool withShadow);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -663,8 +665,11 @@ namespace umbriel {
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
     [[nodiscard]] CloseSnapshotId beginCloseAnimation();
-    // A frozen copy of what this view shows now, held over it until Server::releaseCloseSnapshot.
-    [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
+    // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
+    // stays under it at the same box and keeps drawing its own shadow, so the copy takes none. A set `shownFocused`
+    // keeps the ring the screen showed before focus moved with the same held reflow, into a tile it still hides or out
+    // of one it closes.
+    [[nodiscard]] CloseSnapshotId captureHeldSnapshot(std::optional<bool> shownFocused);
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop

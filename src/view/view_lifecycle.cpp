@@ -438,6 +438,9 @@ namespace umbriel {
         activateOnMap || (!deferredActivation.value_or(false) && rule.defaultFocused.value_or(!protectsFullscreen));
     const bool hiddenScratchpad = assignedScratchpad && !m_onActiveWorkspace;
     if (!m_server->sessionLocked() && focusOnMap && !hiddenScratchpad && !launchPlacementSilent) {
+      if (m_tiled && previousFocus != nullptr && previousFocus->m_borderFocusedState) {
+        m_workspace->noteFocusShownBeforeReflow(previousFocus);
+      }
       m_server->focusView(this, activateOnMap ? FocusReason::XdgActivation : FocusReason::Startup);
     } else if (deferredActivation.has_value()) {
       setUrgent(true);
@@ -667,6 +670,10 @@ namespace umbriel {
       if (replacement != nullptr) {
         // The layout judges the pair once this column is gone, so the reveal this unblocks may only fit the survivor.
         m_workspace->noteRemovalOfFocusedColumn(m_workspace->layout().columnOf(this));
+        if (m_tiled && m_borderFocusedState) {
+          // Until a held reflow switches, the screen still shows this tile's ring focused and no survivor's.
+          m_workspace->noteFocusShownBeforeReflow(nullptr);
+        }
         if (m_workspace->active() && !m_server->sessionLocked()) {
           m_server->focusView(replacement, FocusReason::Directional);
         } else {

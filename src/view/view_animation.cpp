@@ -6,6 +6,7 @@
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/color.h"
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
@@ -1066,10 +1067,10 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(held);
+    return captureSnapshot(held, std::nullopt, true);
   }
 
-  CloseSnapshotId View::captureHeldSnapshot() {
+  CloseSnapshotId View::captureHeldSnapshot(std::optional<bool> shownFocused) {
     if (!m_mapped
         || presentationSuppressed()
         || !m_onActiveWorkspace
@@ -1077,10 +1078,10 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(true);
+    return captureSnapshot(true, shownFocused, false);
   }
 
-  CloseSnapshotId View::captureSnapshot(bool held) {
+  CloseSnapshotId View::captureSnapshot(bool held, std::optional<bool> shownFocused, bool withShadow) {
     Output* output =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
     if (output == nullptr) {
@@ -1105,12 +1106,32 @@ namespace umbriel {
       return kInvalidCloseSnapshot;
     }
 
+    // A ring shown in the other focus state than the live view's now.
+    const bool restyle = shownFocused.has_value() && *shownFocused != m_borderFocusedState;
+    const Config::Colors::Border& colors = m_decoration.borderColors();
     std::vector<BorderSnapshot> snapBorders;
     m_decoration.snapshotBorders(
-        snap, m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
+        snap, restyle ? (*shownFocused ? colors.focused : colors.unfocused) : m_borderColorAnim.current(),
+        m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
     );
+    if (restyle) {
+      // The copy takes the ring's drawn colours; repaint it with the ones it carries.
+      for (const BorderSnapshot& ring : snapBorders) {
+        float inner[4];
+        float outer[4];
+        premultiplied(inner, ring.innerColor, 1.0F);
+        premultiplied(outer, ring.outerColor, 1.0F);
+        wlr_scene_border_set_colors(ring.node, inner, outer);
+      }
+    }
     if (m_ssdFrame != nullptr && titleBarHeight() > 0) {
+      if (restyle) {
+        m_ssdFrame->setFocused(*shownFocused);
+      }
       m_ssdFrame->snapshot(snap);
+      if (restyle) {
+        m_ssdFrame->setFocused(m_borderFocusedState);
+      }
     }
 
     // Copy client surfaces. Chrome snapshots already own their label buffers.
@@ -1174,7 +1195,9 @@ namespace umbriel {
     // A close snapshot owns its windows_out lifecycle. Keep a possible interrupted windows_in effect, but do not
     // freeze windows_move into the snapshot.
     wlr_scene_node_set_animation(&snap->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
-    const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled());
+    const auto shadow = withShadow
+        ? m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled())
+        : ShadowSnapshot{};
     const CloseSnapshotId id = m_server->animateCloseSnapshot(
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
