@@ -38,7 +38,7 @@ enabled = false
 
 [layout.scrolling]
 default_extent_fraction = 0.35
-center_underfull_strip = false
+underfull_strip = "start"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

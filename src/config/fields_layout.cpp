@@ -48,6 +48,15 @@ namespace umbriel {
       return choices;
     }
 
+    const registry::Choices<UnderfullStripAlign>& underfullStripAligns() {
+      static const registry::Choices<UnderfullStripAlign> choices{
+          {.name = "start", .value = UnderfullStripAlign::Start},
+          {.name = "center", .value = UnderfullStripAlign::Center},
+          {.name = "end", .value = UnderfullStripAlign::End},
+      };
+      return choices;
+    }
+
     const registry::Choices<ClientMaximize>& clientMaximizeModes() {
       static const registry::Choices<ClientMaximize> choices{
           {.name = "column", .value = ClientMaximize::Column},
@@ -174,7 +183,7 @@ namespace umbriel {
       };
       static const Fields<Scrolling> scrolling{
           real("default_extent_fraction", 0.1, kMaxWideFraction, &Scrolling::defaultExtentFraction),
-          boolean("center_underfull_strip", &Scrolling::centerUnderfullStrip),
+          choice("underfull_strip", &Scrolling::underfullStrip, underfullStripAligns()),
           choice("center_focused", &Scrolling::centerFocused, centerFocusedModes()),
           boolean("center_on_overview_select", &Scrolling::centerOnOverviewSelect),
       };

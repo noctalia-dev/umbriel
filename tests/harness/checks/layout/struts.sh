@@ -52,14 +52,14 @@ name = "scroll-h"
 layout.mode = "scrolling"
 layout.gap = 8
 layout.scrolling.default_extent_fraction = 0.5
-layout.scrolling.center_underfull_strip = false
+layout.scrolling.underfull_strip = "start"
 
 [[workspace]]
 name = "scroll-v"
 layout.mode = "scrolling"
 layout.gap = 8
 layout.scrolling.default_extent_fraction = 0.5
-layout.scrolling.center_underfull_strip = false
+layout.scrolling.underfull_strip = "start"
 
 [[window_rule]]
 match.title = "^strut-float$"

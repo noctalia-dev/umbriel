@@ -100,7 +100,7 @@ namespace umbriel {
     std::optional<ClientMaximize> clientMaximize;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
-      std::optional<bool> centerUnderfullStrip;
+      std::optional<UnderfullStripAlign> underfullStrip;
       std::optional<CenterFocusedColumn> centerFocused;
       std::optional<bool> centerOnOverviewSelect;
       bool operator==(const Scrolling&) const = default;
@@ -162,7 +162,7 @@ namespace umbriel {
     ClientMaximize clientMaximize = ClientMaximize::Column;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
-      bool centerUnderfullStrip = true;
+      UnderfullStripAlign underfullStrip = UnderfullStripAlign::Center;
       CenterFocusedColumn centerFocused = CenterFocusedColumn::Never;
       bool centerOnOverviewSelect = false;
       // Axis-agnostic layout state is preserved when config reload changes direction.
@@ -1021,7 +1021,7 @@ namespace umbriel {
       ClientMaximize clientMaximize = ClientMaximize::Column;
       struct Scrolling {
         std::optional<double> defaultExtentFraction;
-        bool centerUnderfullStrip = true;
+        UnderfullStripAlign underfullStrip = UnderfullStripAlign::Center;
         CenterFocusedColumn centerFocused = CenterFocusedColumn::Never;
         // Center the column picked in the overview on close, like column-center, whatever centerFocused says.
         bool centerOnOverviewSelect = false;

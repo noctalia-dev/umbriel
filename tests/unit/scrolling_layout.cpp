@@ -19,6 +19,7 @@ using umbriel::LayoutConstraints;
 using umbriel::ResolvedLayoutConfig;
 using umbriel::ScrollingDirection;
 using umbriel::ScrollingLayout;
+using umbriel::UnderfullStripAlign;
 using umbriel::View;
 
 namespace {
@@ -35,7 +36,7 @@ namespace {
     config.totalGap = 12;
     config.edgePad = 10;
     config.scrolling.defaultExtentFraction = 0.5;
-    config.scrolling.centerUnderfullStrip = true;
+    config.scrolling.underfullStrip = UnderfullStripAlign::Center;
     config.extentPresets = {1.0 / 3, 0.5, 2.0 / 3};
     return config;
   }
@@ -386,13 +387,21 @@ UMBRIEL_TEST(aNarrowRowIsCentered) {
   CHECK_EQ(fixture.layout.columnX(0, kViewport), (kViewport - width) / 2);
 }
 
-UMBRIEL_TEST(disablingUnderfullCenteringLeftAlignsTheWholeStrip) {
-  Fixture fixture;
-  fixture.config.scrolling.centerUnderfullStrip = false;
-  fixture.addColumns(2);
-  CHECK(fixture.layout.setWidthFraction(0, 1.0 / 3));
-  CHECK(fixture.layout.setWidthFraction(1, 1.0 / 3));
-  CHECK_EQ(fixture.layout.columnX(0, kViewport), 0);
+UMBRIEL_TEST(aNarrowRowRestsWhereTheAlignmentPutsIt) {
+  for (const UnderfullStripAlign align :
+       {UnderfullStripAlign::Start, UnderfullStripAlign::Center, UnderfullStripAlign::End}) {
+    Fixture fixture;
+    fixture.config.scrolling.underfullStrip = align;
+    fixture.addColumns(1);
+    CHECK(fixture.layout.setWidthFraction(0, 1.0 / 3));
+    const int slack = kViewport - fixture.layout.columnWidth(0, kViewport);
+    // The leftover space leads an end-aligned strip, splits around a centered one (floored), and trails a start-aligned
+    // one.
+    const int expected = align == UnderfullStripAlign::Start ? 0
+        : align == UnderfullStripAlign::Center               ? slack / 2
+                                                             : slack;
+    CHECK_EQ(fixture.layout.columnX(0, kViewport), expected);
+  }
 }
 
 UMBRIEL_TEST(horizontalResizeRecentersAnUnderfullStripImmediately) {
@@ -507,9 +516,9 @@ UMBRIEL_TEST(resizeEdgesComeFromTileThirds) {
   CHECK_EQ(fixture.layout.resizeEdgesAt(stub(1), 700, 650), static_cast<uint32_t>(WLR_EDGE_LEFT | WLR_EDGE_BOTTOM));
 }
 
-UMBRIEL_TEST(firstColumnLeftEdgeStaysFixedWithoutCentering) {
+UMBRIEL_TEST(firstColumnLeftEdgeStaysFixedOnAStartAlignedStrip) {
   Fixture fixed;
-  fixed.config.scrolling.centerUnderfullStrip = false;
+  fixed.config.scrolling.underfullStrip = UnderfullStripAlign::Start;
   fixed.addColumns(1);
   fixed.layout.arrange(kUsable);
   CHECK_EQ(fixed.layout.resizeEdgesAt(stub(0), 60, 360), 0U);
@@ -519,6 +528,43 @@ UMBRIEL_TEST(firstColumnLeftEdgeStaysFixedWithoutCentering) {
   centered.addColumns(1);
   centered.layout.arrange(kUsable);
   CHECK_EQ(centered.layout.resizeEdgesAt(stub(0), 60, 360), static_cast<uint32_t>(WLR_EDGE_LEFT));
+}
+
+UMBRIEL_TEST(lastColumnRightEdgeStaysFixedOnAFittingEndAlignedStrip) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.addColumns(1);
+  fixture.layout.arrange(kUsable);
+  const wlr_box box = fixture.layout.targetBox(stub(0));
+  const int right = box.x + box.width;
+  CHECK_EQ(fixture.layout.resizeEdgesAt(stub(0), right - 1, 360), 0U);
+  CHECK_EQ(fixture.layout.resizeEdgesAt(stub(0), box.x + 1, 360), static_cast<uint32_t>(WLR_EDGE_LEFT));
+
+  // Once the strip overflows there is no anchored rest left, so the trailing edge resizes again.
+  CHECK(fixture.layout.setWidthFraction(0, 1.5));
+  fixture.layout.arrange(kUsable);
+  const wlr_box wide = fixture.layout.targetBox(stub(0));
+  const uint32_t edges = fixture.layout.resizeEdgesAt(stub(0), wide.x + wide.width - 1, 360);
+  CHECK((edges & WLR_EDGE_RIGHT) != 0);
+}
+
+UMBRIEL_TEST(endAlignedUnderfullLeftwardResizeKeepsTheRightEdgeFixed) {
+  Fixture fixture;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::End;
+  fixture.addColumns(1);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box before = fixture.layout.targetBox(stub(0));
+  auto resize = fixture.layout.beginResize(stub(0), WLR_EDGE_LEFT, kUsable);
+  CHECK(resize != nullptr);
+  resize->applyDelta(-100.0, 0.0, kUsable);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box after = fixture.layout.targetBox(stub(0));
+  CHECK_EQ(after.x + after.width, before.x + before.width);
+  CHECK_EQ(after.x, before.x - 100);
+  CHECK_EQ(after.width, before.width + 100);
+  CHECK_EQ(fixture.layout.scroll(), 0.0);
 }
 
 UMBRIEL_TEST(widthFractionsAreClamped) {
@@ -1117,13 +1163,15 @@ UMBRIEL_TEST(onOverflowJudgesTheSurvivorOfAClosedColumnAgainstItsReplacement) {
   CHECK(fixture.layout.centeredRest());
 }
 
-// Removing the focused column can leave a lone survivor, which has no pair left to overflow against. It rests at the
-// strip start, so center_underfull_strip alone decides whether it ends up centered or flush left.
-UMBRIEL_TEST(onOverflowRestsTheLoneSurvivorOfARemovedColumnAtTheStripStart) {
-  for (const bool centerUnderfullStrip : {false, true}) {
+// Removing the focused column can leave a lone survivor, which has no pair left to overflow against. Focus centering
+// leaves it at the strip start, so underfull_strip alone decides where it comes to rest.
+UMBRIEL_TEST(onOverflowRestsTheLoneSurvivorOfARemovedColumnWhereTheAlignmentPutsIt) {
+  for (const auto [align, rest] :
+       {std::pair{UnderfullStripAlign::Start, 0}, std::pair{UnderfullStripAlign::Center, 280},
+        std::pair{UnderfullStripAlign::End, 560}}) {
     Fixture fixture;
     fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
-    fixture.config.scrolling.centerUnderfullStrip = centerUnderfullStrip;
+    fixture.config.scrolling.underfullStrip = align;
     fixture.addColumns(2);
     for (int column = 0; column < 2; ++column) {
       CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 700));
@@ -1140,7 +1188,7 @@ UMBRIEL_TEST(onOverflowRestsTheLoneSurvivorOfARemovedColumnAtTheStripStart) {
     fixture.layout.reevaluateAfterRemoval(0, kViewport);
     CHECK_EQ(fixture.layout.scroll(), 0.0);
     CHECK(!fixture.layout.centeredRest());
-    CHECK_EQ(fixture.layout.columnX(0, kViewport), centerUnderfullStrip ? 280 : 0);
+    CHECK_EQ(fixture.layout.columnX(0, kViewport), rest);
   }
 }
 
@@ -1785,9 +1833,9 @@ UMBRIEL_TEST(verticalArrangeShiftsLanesByTheScrollOffset) {
   CHECK_EQ(scrolled.y, unscrolled.y - 100);
 }
 
-UMBRIEL_TEST(verticalFirstLaneTopEdgeStaysFixedWithoutCentering) {
+UMBRIEL_TEST(verticalFirstLaneTopEdgeStaysFixedOnAStartAlignedStrip) {
   Fixture fixture(ScrollingDirection::Vertical);
-  fixture.config.scrolling.centerUnderfullStrip = false;
+  fixture.config.scrolling.underfullStrip = UnderfullStripAlign::Start;
   fixture.addColumns(1);
   const uint32_t edges = fixture.layout.sanitizeResizeEdges(stub(0), WLR_EDGE_TOP | WLR_EDGE_LEFT);
   CHECK_EQ(edges & WLR_EDGE_TOP, uint32_t{0});

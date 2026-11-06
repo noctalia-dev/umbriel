@@ -49,7 +49,7 @@ gap = 0
 
 [layout.scrolling]
 default_extent_fraction = 0.5
-center_underfull_strip = false
+underfull_strip = "start"
 
 [output.HEADLESS-1]
 position = [0, 0]

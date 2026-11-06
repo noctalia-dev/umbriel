@@ -38,7 +38,7 @@ enabled = false
 [layout.scrolling]
 direction = "horizontal"
 center_focused = "always"
-center_underfull_strip = true
+underfull_strip = "center"
 
 [[window_rule]]
 match.title = "^F2$"

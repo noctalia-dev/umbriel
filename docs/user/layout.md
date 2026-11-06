@@ -104,17 +104,23 @@ The strip is perpendicular to the output's [workspace axis](workspaces.md#worksp
 ```toml
 [layout.scrolling]
 default_extent_fraction = 0.5
-center_underfull_strip = true
+underfull_strip = "center"
 center_focused = "never"
 center_on_overview_select = false
 ```
 
-| Key                         | Default   | Description                                                                                                                                   |
-| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default_extent_fraction`   | unset     | Initial column extent from 0.1 to 4.0 (above 1.0 spans several viewports; see [Wide columns](#wide-columns)). The packaged config uses `0.5`. |
-| `center_underfull_strip`    | `true`    | Center a strip narrower than the viewport.                                                                                                    |
-| `center_focused`            | `"never"` | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                                                     |
-| `center_on_overview_select` | `false`   | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says.                                      |
+| Key                         | Default    | Description                                                                                                                                   |
+| --------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default_extent_fraction`   | unset      | Initial column extent from 0.1 to 4.0 (above 1.0 spans several viewports; see [Wide columns](#wide-columns)). The packaged config uses `0.5`. |
+| `underfull_strip`           | `"center"` | Where a strip narrower than the viewport rests: `"start"`, `"center"`, or `"end"`.                                                            |
+| `center_focused`            | `"never"`  | Use `"never"`, `"always"`, or `"on_overflow"` to control focus centering.                                                                     |
+| `center_on_overview_select` | `false`    | Center the column picked in the overview on close, like `column-center`, whatever `center_focused` says.                                      |
+
+`underfull_strip` places a strip whose columns do not fill the viewport: `"start"` leaves all the leftover space after it, `"center"` splits the leftover space on both sides, and `"end"` leaves all of it before. The default, `"center"`, matches earlier releases that centered such strips. A strip that fills or overflows the viewport always starts at the strip start, so this key only moves the resting position of a workspace holding few or narrow windows.
+
+While an end-aligned strip fits, its trailing edge stays against the viewport and its windows resize from their leading edges: dragging the trailing edge would push the strip past the edge it is anchored to. Once the strip overflows, both edges resize as usual.
+
+On a vertical strip, which horizontal workspaces use, `"start"` is the top edge and `"end"` the bottom one.
 
 ### Horizontal and vertical scrolling
 
@@ -146,7 +152,7 @@ During an application drag-and-drop operation, holding the pointer near either e
 
 Rearranging a tiled window by dragging it (Mod+left-click or its tab) pans the strip the same way, reaching columns beyond the current scroll extent. The trigger zone, delay, and speed are set in [Drag edge scroll](input.md#drag-edge-scroll).
 
-With `center_focused = "on_overflow"`, a column is centered when it and the neighbor focus came from cannot share the viewport, and a width change that makes them fit puts the pair back side by side at the edge focus came from. Closing the focused column or sending it to another workspace runs the same rule with the column that took its place. Moving or resizing the focused column does too, as does going fullscreen or maximized to edges. A lone column has no such pair, so it never centers itself; `center_underfull_strip` decides where it rests.
+With `center_focused = "on_overflow"`, a column is centered when it and the neighbor focus came from cannot share the viewport, and a width change that makes them fit puts the pair back side by side at the edge focus came from. Closing the focused column or sending it to another workspace runs the same rule with the column that took its place. Moving or resizing the focused column does too, as does going fullscreen or maximized to edges. A lone column has no such pair, so it never centers itself; `underfull_strip` decides where it rests.
 
 Closing a focused column moves focus to the nearest surviving column. When that column contains stacked windows, Umbriel restores its most recently focused member instead of always selecting its first row.
 
@@ -161,6 +167,8 @@ With horizontal workspaces, screen directions remain literal:
 - Strip scroll actions toward up or left move toward strip start.
 
 Configurations using vertical strips usually bind wheel navigation to `window-focus-up` and `window-focus-down` instead of the default left and right actions.
+
+The earlier `center_underfull_strip` boolean was replaced by `underfull_strip` in 2026-11. Map `true` to `"center"` (the default) and `false` to `"start"`.
 
 ## Dwindle layout
 

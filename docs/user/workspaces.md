@@ -185,7 +185,7 @@ Later values replace earlier ones. Strut edges are resolved independently, so a 
 | `layout.client_maximize`                     | Choose `"column"` or `"edges"` for a tiled window's own maximize request; see [Maximize and fullscreen](layout.md#maximize-and-fullscreen). |
 | `layout.stacking.drop_zones`                 | Enable edge and corner drag previews and placement in stacking; defaults to `true`.                                                         |
 | `layout.scrolling.default_extent_fraction`   | Set the initial scrolling-column extent.                                                                                                    |
-| `layout.scrolling.center_underfull_strip`    | Center or start-align an underfull strip.                                                                                                   |
+| `layout.scrolling.underfull_strip`           | Place an underfull strip at its `"start"`, `"center"`, or `"end"`.                                                                          |
 | `layout.scrolling.center_focused`            | Control when focus changes center a column.                                                                                                 |
 | `layout.scrolling.center_on_overview_select` | Center the column picked in the overview.                                                                                                   |
 | `layout.master.position`                     | Place the master area left, right, or center.                                                                                               |

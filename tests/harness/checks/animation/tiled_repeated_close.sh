@@ -59,7 +59,7 @@ gap = 0
 [layout.scrolling]
 default_extent_fraction = 0.45
 center_focused = "never"
-center_underfull_strip = false
+underfull_strip = "start"
 
 [animation.windows_in]
 enabled = false

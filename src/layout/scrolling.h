@@ -124,7 +124,9 @@ namespace umbriel {
 
     int totalWidth(int viewportPrimary) const;
     int rawTotalWidth(int viewportPrimary) const;
-    int centeringOffset(int viewportPrimary) const;
+    int stripAlignOffset(int viewportPrimary) const;
+    // Whether the last arranged strip is narrower than its viewport, which is when the alignment positions it.
+    bool stripFitsViewport() const;
     double centeredScroll(int columnIndex, int viewportPrimary) const;
     double targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool center, bool force = false) const;
     // Which neighbor stands in for the side focus came from. A direction rather than an index: a width change is judged
