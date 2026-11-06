@@ -781,6 +781,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::WorkspaceMoveToOutput:
       input += " current WEB --output DP-1";
       break;
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      input += " DP-2 --output DP-1";
+      break;
     case ActionArgKind::Workspace:
       input += " 1";
       break;
@@ -838,6 +841,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::WorkspaceMoveToOutput:
       CHECK(umbriel::payloadIf<umbriel::WorkspaceMoveToOutputArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      CHECK(umbriel::payloadIf<umbriel::WorkspaceSwapAllOutputArg>(bind) != nullptr);
       break;
     case ActionArgKind::Workspace:
       CHECK(umbriel::payloadIf<umbriel::WorkspaceArg>(bind) != nullptr);
@@ -937,6 +943,9 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::WorkspaceMoveToOutput:
       input += " current WEB --output DP-1";
+      break;
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      input += " DP-2 --output DP-1";
       break;
     case ActionArgKind::Workspace:
       input += " 1";
@@ -1085,6 +1094,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return " 0.5";
     case ActionArgKind::WorkspaceMoveToOutput:
       return " current WEB --output DP-1";
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      return " DP-2 --output DP-1";
     case ActionArgKind::Workspace:
       return " 1";
     case ActionArgKind::WindowEffectSet:
@@ -1137,6 +1148,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<fraction>";
     case ActionArgKind::WorkspaceMoveToOutput:
       return "<destination> [<workspace>] [--output <output>]";
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      return "[<source> [--output <destination>]]";
     case ActionArgKind::Workspace:
       return "<workspace> [--output <output>]";
     case ActionArgKind::WindowEffectSet:
@@ -1193,6 +1206,7 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
     if (spec.argKind == ActionArgKind::OptionalOutput
         || spec.argKind == ActionArgKind::OptionalScratchpad
         || spec.argKind == ActionArgKind::OptionalWindowId
+        || spec.argKind == ActionArgKind::WorkspaceSwapAllOutput
         || spec.argKind == ActionArgKind::SkipConfirmation) {
       Keybind bare;
       CHECK(parseAction(spec.name, bare));
@@ -1484,6 +1498,33 @@ UMBRIEL_TEST(workspaceOutputTargetsReuseWorkspaceSelectors) {
         "workspace-move-to-output DP-2 WEB --output DP-1 --output DP-3"}) {
     Keybind bind;
     CHECK(!parseAction(input, bind));
+  }
+}
+
+UMBRIEL_TEST(workspaceSwapAllOutputParsesOptionalTargets) {
+  const struct {
+    std::string_view input;
+    umbriel::WorkspaceSwapAllOutputArg expected;
+  } cases[] = {
+      {"", {"", ""}},
+      {" DP-2", {"", "DP-2"}},
+      {" current", {"", "current"}},
+      {" DP-2 --output DP-1", {"DP-1", "DP-2"}},
+      {" --output DP-1 current", {"DP-1", "current"}},
+      {" 'Vendor Model Serial' --output 'Other Model Serial'", {"Other Model Serial", "Vendor Model Serial"}},
+  };
+  for (const auto& [input, expected] : cases) {
+    Keybind bind;
+    CHECK(parseAction("workspace-swap-all-output" + std::string(input), bind));
+    CHECK(bind.action == KeybindAction::WorkspaceSwapAllOutput);
+    const auto* arg = umbriel::payloadIf<umbriel::WorkspaceSwapAllOutputArg>(bind);
+    CHECK(arg != nullptr && *arg == expected);
+  }
+  for (const std::string_view input :
+       {" --output DP-1", " DP-2 DP-3", " DP-2 --output", " DP-2 --output DP-1 --output DP-3", " DP-2 --name WEB",
+        " ''", " DP-2 --output ''"}) {
+    Keybind bind;
+    CHECK(!parseAction("workspace-swap-all-output" + std::string(input), bind));
   }
 }
 
