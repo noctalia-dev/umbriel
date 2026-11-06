@@ -103,6 +103,17 @@ UMBRIEL_TEST(buttonHitSpansHalfConfiguredGap) {
   CHECK_EQ(hit(91), SsdFramePart::TitleBar);
 }
 
+UMBRIEL_TEST(oddGapHitSpansMeetWithoutOverlapping) {
+  const auto hit = [](TitleBarButtonSide side, double x) {
+    return ssdFramePointAt(50, 300, 30, 2, true, side, kAll, x, -15, 12, 8, 13).part;
+  };
+  // The 50px bar shrinks the configured 8px gap to 7px.
+  CHECK_EQ(hit(TitleBarButtonSide::Left, 15), SsdFramePart::Close);
+  CHECK_EQ(hit(TitleBarButtonSide::Left, 16), SsdFramePart::Maximize);
+  CHECK_EQ(hit(TitleBarButtonSide::Right, 34), SsdFramePart::Maximize);
+  CHECK_EQ(hit(TitleBarButtonSide::Right, 35), SsdFramePart::Close);
+}
+
 UMBRIEL_TEST(buttonsSitOnTheBarCenterAtEveryHeight) {
   for (int height = 16; height <= 128; ++height) {
     const auto parts = titleBarLayout(480, height, TitleBarButtonSide::Right, kAll);

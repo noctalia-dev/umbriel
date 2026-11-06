@@ -71,7 +71,7 @@ namespace umbriel {
           return false;
         }
         const int left = std::max(0, box->x - layout.gap / 2);
-        const int right = std::min(cw, box->x + box->width + layout.gap / 2);
+        const int right = std::min(cw, box->x + box->width + (layout.gap + 1) / 2);
         return x >= left && x < right;
       };
       if (inButton(TitleBarButton::Close)) {
