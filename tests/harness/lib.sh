@@ -114,6 +114,16 @@ await_window() {
   echo "missing window: $1"; return 1
 }
 
+# Compare mean RGB with three levels of tolerance for framebuffer rounding.
+assert_region_rgb() {
+  local frame=$1 region=$2 er=$3 eg=$4 eb=$5 label=${6:-$1:$2} r g b
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$frame" mean "$region")
+  if (( r < er - 3 || r > er + 3 || g < eg - 3 || g > eg + 3 || b < eb - 3 || b > eb + 3 )); then
+    echo "$label: got $r $g $b, expected $er $eg $eb"
+    return 1
+  fi
+}
+
 # Plain colours make capture pixels independent of decorations and animation.
 capture_config() {
   cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
