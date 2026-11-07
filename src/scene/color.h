@@ -3,7 +3,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace umbriel {
@@ -92,6 +94,35 @@ namespace umbriel {
     }
     result[3] = 1.0F;
     return result;
+  }
+
+  // Mean colour of packed DRM_FORMAT_ARGB8888 pixels, weighted by alpha so a transparent pixel contributes no hue.
+  // Null when there is nothing to average, or the whole strip is transparent.
+  inline std::optional<std::array<float, 4>> averageArgb(const uint32_t* pixels, size_t count) {
+    if (pixels == nullptr || count == 0) {
+      return std::nullopt;
+    }
+    double alpha = 0.0;
+    double red = 0.0;
+    double green = 0.0;
+    double blue = 0.0;
+    for (size_t index = 0; index < count; ++index) {
+      const uint32_t pixel = pixels[index];
+      const double weight = ((pixel >> 24U) & 0xFFU) / 255.0;
+      alpha += weight;
+      red += ((pixel >> 16U) & 0xFFU) / 255.0 * weight;
+      green += ((pixel >> 8U) & 0xFFU) / 255.0 * weight;
+      blue += (pixel & 0xFFU) / 255.0 * weight;
+    }
+    if (alpha <= 0.0) {
+      return std::nullopt;
+    }
+    return std::array<float, 4>{
+        static_cast<float>(red / alpha),
+        static_cast<float>(green / alpha),
+        static_cast<float>(blue / alpha),
+        static_cast<float>(alpha / static_cast<double>(count)),
+    };
   }
 
   inline std::string rgbaHex(const std::array<float, 4>& color) {

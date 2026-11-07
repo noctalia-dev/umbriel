@@ -1,6 +1,7 @@
 #include "scene/ssd_frame.h"
 
 #include "config/config.h"
+#include "scene/cairo_buffer.h"
 #include "scene/color.h"
 #include "scene/tab_label_cache.h"
 #include "scene/title_bar_icon.h"
@@ -10,7 +11,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <drm_fourcc.h>
 #include <utility>
+#include <vector>
 
 namespace umbriel {
   namespace {
@@ -65,6 +68,10 @@ namespace umbriel {
     }
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
+    if (m_averageBuffer != nullptr) {
+      wlr_buffer_drop(m_averageBuffer);
+      m_averageBuffer = nullptr;
+    }
     for (auto* buffer : m_iconBuffers) {
       if (buffer != nullptr) {
         wlr_buffer_unlock(buffer);
@@ -207,28 +214,87 @@ namespace umbriel {
     wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
   }
 
+  void SsdFrame::hideAdaptive() {
+    if (m_adaptive == nullptr) {
+      return;
+    }
+    wlr_scene_node_set_enabled(&m_adaptive->node, false);
+    // Drop the mirror as well: a node that keeps the buffer holds its lock, and the client's wl_buffer.release never
+    // arrives, which stalls a client that waits for it before drawing again.
+    releaseIgnoredLock();
+    wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
+    m_adaptiveBuffer = nullptr;
+  }
+
+  std::optional<std::array<float, 4>> SsdFrame::averageStrip(const wlr_fbox& strip) const {
+    // A readback is the only way to collapse a strip into one colour, and it is the one cost this mode cannot avoid:
+    // wlroots finishes the frame before it reads. Everything else in this class mirrors buffers instead.
+    if (m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
+      return std::nullopt;
+    }
+    const int left = static_cast<int>(std::floor(strip.x));
+    const int top = static_cast<int>(std::floor(strip.y));
+    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
+    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
+    const wlr_box box{left, top, std::max(0, right - left), std::max(0, bottom - top)};
+    if (box.width <= 0 || box.height <= 0) {
+      return std::nullopt;
+    }
+    std::vector<uint32_t> pixels(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
+    const wlr_texture_read_pixels_options options{
+        .data = pixels.data(),
+        .format = DRM_FORMAT_ARGB8888,
+        .stride = static_cast<uint32_t>(box.width) * 4U,
+        .dst_x = 0,
+        .dst_y = 0,
+        .src_box = box,
+    };
+    // Refused for a protected or external-only buffer; the palette stays painted underneath either way.
+    if (!wlr_texture_read_pixels(m_content->buffer->texture, &options)) {
+      return std::nullopt;
+    }
+    return averageArgb(pixels.data(), pixels.size());
+  }
+
+  wlr_buffer* SsdFrame::averageBufferFor(const std::array<float, 4>& color) {
+    if (m_averageBuffer != nullptr && m_averageColor == color) {
+      return m_averageBuffer;
+    }
+    // One pixel, stretched over the bar: a flat colour costs no per-frame readback once it is known.
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+    cairo_t* cr = cairo_create(surface);
+    cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    wlr_buffer* buffer = createCairoBuffer(surface);
+    if (buffer == nullptr) {
+      return nullptr;
+    }
+    if (m_averageBuffer != nullptr) {
+      wlr_buffer_drop(m_averageBuffer);
+    }
+    m_averageBuffer = buffer;
+    m_averageColor = color;
+    return m_averageBuffer;
+  }
+
   void SsdFrame::updateAdaptive(bool fromCommit) {
     // The palette colour stays painted underneath: a window whose top edge is transparent, or one that has not
     // committed a buffer yet, keeps the configured bar instead of leaving a hole.
     const auto& style = config().appearance.titleBar;
-    wlr_buffer* buffer = nullptr;
-    if (style.colorSource == TitleBarColorSource::Window
-        && m_content != nullptr
-        && m_content->buffer != nullptr
-        && m_tree->node.enabled
-        && m_background->width > 0
-        && m_background->height > 0) {
-      buffer = &m_content->buffer->base;
-    }
+    const bool average = style.colorSource == TitleBarColorSource::Average;
+    wlr_buffer* buffer = style.colorSource != TitleBarColorSource::Fixed
+            && m_content != nullptr
+            && m_content->buffer != nullptr
+            && m_tree->node.enabled
+            && m_background->width > 0
+            && m_background->height > 0
+        ? &m_content->buffer->base
+        : nullptr;
     if (buffer == nullptr) {
-      if (m_adaptive != nullptr) {
-        wlr_scene_node_set_enabled(&m_adaptive->node, false);
-        // Drop the mirror as well: a node that keeps the buffer holds its lock, and the client's wl_buffer.release
-        // never arrives, which stalls a client that waits for it before drawing again.
-        releaseIgnoredLock();
-        wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
-      }
-      m_adaptiveBuffer = nullptr;
+      hideAdaptive();
+      m_adaptiveContent = nullptr;
+      m_averageColor.reset();
       return;
     }
     if (m_adaptive == nullptr) {
@@ -270,8 +336,9 @@ namespace umbriel {
       }
     }
     // Colour management can change on a commit that carries no buffer damage, so this cannot sit behind the guard
-    // below; the setters it reaches are no-ops when nothing changed.
-    if (m_colors != nullptr) {
+    // below; the setters it reaches are no-ops when nothing changed. The averaged colour is a plain sRGB value of its
+    // own, so it is not re-described with the window's transfer function.
+    if (m_colors != nullptr && !average) {
       m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
     }
     const wlr_fbox strip = titleBarStripSourceBox(
@@ -292,9 +359,31 @@ namespace umbriel {
     const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
     const int barX = m_background->node.x;
     const int barY = m_background->node.y;
-    const bool reshaped = m_adaptiveBuffer != buffer
-        || !fboxEqual(m_adaptiveStrip, strip)
-        || m_adaptiveTransform != m_content->current.transform
+    const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
+    // The edge changed: the smear re-mirrors it, and the average reads it back and replaces its flat colour.
+    const bool restrip = touched || m_adaptiveContent != buffer || stripMoved;
+    // What the bar shows. The smear mirrors the strip itself; the average stretches one pixel, so it carries none of
+    // the window's own detail and is one uniform colour by construction.
+    wlr_buffer* shown = buffer;
+    const wlr_fbox* sourceBox = &strip;
+    wl_output_transform transform = m_content->current.transform;
+    if (average) {
+      if (restrip) {
+        m_averageColor = averageStrip(strip);
+      }
+      shown = m_averageColor.has_value() ? averageBufferFor(*m_averageColor) : nullptr;
+      if (shown == nullptr) {
+        hideAdaptive();
+        m_adaptiveContent = buffer;
+        m_adaptiveStrip = strip;
+        return;
+      }
+      sourceBox = nullptr;
+      transform = WL_OUTPUT_TRANSFORM_NORMAL;
+    }
+    const bool reshaped = m_adaptiveBuffer != shown
+        || stripMoved
+        || m_adaptiveTransform != transform
         || m_adaptiveWidth != m_background->width
         || m_adaptiveHeight != m_background->height
         || m_adaptiveOpacity != opacity
@@ -302,35 +391,40 @@ namespace umbriel {
         || m_adaptive->node.y != barY
         || !fx_corner_radii_eq(m_adaptive->corners, m_background->corners);
     // A commit that leaves the top edge alone, and changes nothing about the bar, costs nothing.
-    if (!touched && !reshaped) {
+    if (!restrip && !reshaped) {
       return;
     }
-    if (touched || m_adaptiveBuffer != buffer) {
+    if (m_adaptiveBuffer != shown || (touched && !average)) {
       // Mirror the window the same way the overview mirrors a card: the surface's committed buffer plus its damage, and
       // the explicit-sync acquire point when the client uses it, so the bar never samples a half-presented frame.
       wlr_scene_buffer_set_buffer_options options{
-          .damage = fromCommit ? &m_content->buffer_damage : nullptr,
+          .damage = fromCommit && !average ? &m_content->buffer_damage : nullptr,
           .wait_timeline = nullptr,
           .wait_point = 0,
       };
-      if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content)) {
-        options.wait_timeline = sync->acquire_timeline;
-        options.wait_point = sync->acquire_point;
+      if (!average) {
+        if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content)) {
+          options.wait_timeline = sync->acquire_timeline;
+          options.wait_point = sync->acquire_point;
+        }
       }
       releaseIgnoredLock();
-      wlr_scene_buffer_set_buffer_with_options(m_adaptive, buffer, &options);
+      wlr_scene_buffer_set_buffer_with_options(m_adaptive, shown, &options);
       // The scene holds a second lock on the client's buffer; without this wlroots cannot reuse its texture for
       // in-place shm damage and rebuilds the whole window's texture on every commit.
-      ignoreLock(buffer);
+      if (!average) {
+        ignoreLock(shown);
+      }
     }
-    m_adaptiveBuffer = buffer;
+    m_adaptiveBuffer = shown;
+    m_adaptiveContent = buffer;
     m_adaptiveStrip = strip;
-    m_adaptiveTransform = m_content->current.transform;
+    m_adaptiveTransform = transform;
     m_adaptiveWidth = m_background->width;
     m_adaptiveHeight = m_background->height;
     m_adaptiveOpacity = opacity;
-    wlr_scene_buffer_set_source_box(m_adaptive, &strip);
-    wlr_scene_buffer_set_transform(m_adaptive, m_content->current.transform);
+    wlr_scene_buffer_set_source_box(m_adaptive, sourceBox);
+    wlr_scene_buffer_set_transform(m_adaptive, transform);
     wlr_scene_buffer_set_dest_size(m_adaptive, m_background->width, m_background->height);
     wlr_scene_buffer_set_corner_radii(m_adaptive, m_background->corners);
     // Unfocus dims the window's own colour over the palette's unfocused tone rather than dropping back to it.

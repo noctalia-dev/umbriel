@@ -31,7 +31,8 @@
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
 // TOP_BAND_COLOR=<ARGB> with TOP_BAND_HEIGHT=<px> paints the top rows of the buffer in another colour, so a check can
-// tell which edge of the content a compositor sampled. A repaint recolours the band too.
+// tell which edge of the content a compositor sampled. A repaint recolours the band too. TOP_BAND_SPLIT=<ARGB> paints
+// the right half of those rows in a second colour, so a check can tell a sampled strip from its average.
 // OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
@@ -175,6 +176,7 @@ namespace {
     int tearingHint = -1;
     uint32_t fillColor = 0xFF5577AA;
     uint32_t topBandColor = 0;
+    uint32_t topBandSplit = 0;
     int topBandHeight = 0;
     std::optional<uint32_t> resizeFillColor;
     int configuredWidth = 0;
@@ -329,7 +331,11 @@ namespace {
       auto* pixels = static_cast<uint32_t*>(buffer.pixels);
       const int band = std::min(state.topBandHeight, height);
       for (int row = 0; row < band; ++row) {
-        std::fill_n(pixels + static_cast<ptrdiff_t>(row) * width, width, state.topBandColor);
+        auto* line = pixels + static_cast<ptrdiff_t>(row) * width;
+        std::fill_n(line, width, state.topBandColor);
+        if (state.topBandSplit != 0) {
+          std::fill_n(line + width / 2, width - width / 2, state.topBandSplit);
+        }
       }
     }
 
@@ -946,6 +952,13 @@ int main(int argc, char** argv) {
     const auto value = std::strtoul(band, &end, 0);
     if (end != band) {
       state.topBandColor = static_cast<uint32_t>(value);
+    }
+  }
+  if (const char* split = std::getenv("TOP_BAND_SPLIT")) {
+    char* end = nullptr;
+    const auto value = std::strtoul(split, &end, 0);
+    if (end != split) {
+      state.topBandSplit = static_cast<uint32_t>(value);
     }
   }
   if (const char* rows = std::getenv("TOP_BAND_HEIGHT")) {

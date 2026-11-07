@@ -90,6 +90,7 @@ EOF
 # Pixels in the bar crop matching a predicate.
 count() { "$UMBRIEL_PIXEL_PROBE" "$FRAME" count "$1" "$BAR"; }
 count_in() { "$UMBRIEL_PIXEL_PROBE" "$FRAME" count "$1" "$2"; }
+pixel() { "$UMBRIEL_PIXEL_PROBE" "$FRAME" pixel "$1" "$2"; }
 
 expect() {
   local predicate=$1 minimum=$2 what=$3 found
@@ -188,3 +189,34 @@ expect_in 'r > 0.6 && g > 0.6 && b > 0.6' "$BAR_FULL" 40 "the title in the bar's
 expect_in 'r > 0.6 && g < 0.15 && b < 0.15' "$BAR_FULL" 40 "the button backgrounds in the bar's close animation"
 "$UMBRIEL" clock-advance 1000 > /dev/null
 "$UMBRIEL" settle
+
+# The average takes one colour from the whole edge: a band that is green on one side and blue on the other must show the
+# same blend at both ends of the bar. The smear shows the sides. This is what tells the two modes apart, and it is what
+# keeps a tab row or a loading bar on that edge out of the colour.
+readonly LOG2="$UMBRIEL_RUNTIME_DIR/adaptive-average.log"
+configure average
+FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_SPLIT=0xFF0000FF TOP_BAND_HEIGHT=2 \
+  "$CLIENT" adaptive-bar 480 300 < /dev/null > "$LOG2" 2>&1 &
+await_lines "$LOG2" mapped 1
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+near() { (( $1 >= $2 - 12 && $1 <= $2 + 12 )); }
+if ! near "$left_g" "$right_g" || ! near "$left_b" "$right_b" || ! near "$left_r" "$right_r"; then
+  fail "an averaged bar was not uniform: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+# A blend of the green and blue halves, not either of them and not the palette.
+if (( left_g < 60 || left_b < 60 || left_r > 40 )); then
+  fail "an averaged bar did not blend the window edge: $left_r $left_g $left_b"
+fi
+
+# The same window in smear mode keeps the two sides distinct.
+configure window
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! (( left_g > 200 && left_b < 40 && right_b > 200 && right_g < 40 )); then
+  fail "a smeared bar did not keep the window edge: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi

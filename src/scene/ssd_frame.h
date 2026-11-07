@@ -66,6 +66,11 @@ namespace umbriel {
     void redraw();
     void updateColors();
     void updateAdaptive(bool fromCommit);
+    void hideAdaptive();
+    // The mean colour of the strip, read back from the window's committed texture.
+    std::optional<std::array<float, 4>> averageStrip(const wlr_fbox& strip) const;
+    // A one-pixel buffer of `color`, kept until the colour changes.
+    wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The mirrored client buffer is locked by the scene; tell wlroots to ignore that lock so it can still reuse the
     // texture for in-place shm damage, and undo it when the mirror is replaced or cleared.
     void ignoreLock(wlr_buffer* buffer);
@@ -101,6 +106,10 @@ namespace umbriel {
     // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};
+    // The client buffer the node's current contents came from, so a swap re-mirrors or re-reads it.
+    wlr_buffer* m_adaptiveContent = nullptr;
+    std::optional<std::array<float, 4>> m_averageColor;
+    wlr_buffer* m_averageBuffer = nullptr;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
     int m_adaptiveWidth = 0;
     int m_adaptiveHeight = 0;

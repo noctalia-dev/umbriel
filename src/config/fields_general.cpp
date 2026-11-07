@@ -112,6 +112,7 @@ namespace umbriel {
               {
                   {.name = "fixed", .value = TitleBarColorSource::Fixed},
                   {.name = "window", .value = TitleBarColorSource::Window},
+                  {.name = "average", .value = TitleBarColorSource::Average},
               }
           ),
           // One flat colour row up to four rows of the window's own detail; the bar stretches them over its height.

@@ -65,6 +65,7 @@ unit_tests = [
   ['cheatsheet-rows', ['unit/cheatsheet_rows.cpp'], []],
   ['shortcut-labels', ['unit/shortcut_labels.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
+  ['colour-average', ['unit/colour_average.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
   ['title-bar-icon', ['unit/title_bar_icon.cpp'], [umbriel_core_dep]],
   ['floating', ['unit/floating.cpp'], []],
