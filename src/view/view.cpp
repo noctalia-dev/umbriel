@@ -1006,10 +1006,12 @@ namespace umbriel {
     // area. The box is in root toplevel surface coordinates. The xdg scene root is positioned at the window geometry,
     // not at the surface origin.
     const wlr_box& geometry = geometryBox();
+    const wlr_box content = committedContentBox();
+    const int width = m_presentedBox.width > 0 ? std::min(m_presentedBox.width, content.width) : content.width;
     const wlr_box box{
         .x = m_tiled ? geometry.x : target.x - lx + geometry.x,
         .y = target.y - ly + geometry.y,
-        .width = m_tiled ? geometry.width : target.width,
+        .width = m_tiled ? width : target.width,
         .height = target.height,
     };
     wlr_xdg_popup_unconstrain_from_box(popup, &box);

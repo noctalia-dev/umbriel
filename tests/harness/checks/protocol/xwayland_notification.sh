@@ -55,6 +55,12 @@ start_client() {
   client_pid=$!
   await_lines "$client_log" ready 1 0.025
   send 'class steam' 'geometry 930 550 300 160'
+  # Unmapped managed ConfigureRequests still travel through XWM. Wait until
+  # the X server has applied the fixture's position before changing OR or
+  # mapping it; otherwise a stack notification can report the old 200,150
+  # position even though the compositor never placed the notification there.
+  expect_state 'map=0 .*x=930 y=550 w=300 h=160 .*'
+  sync_client positioned
 }
 
 stop_client() {
@@ -107,14 +113,17 @@ expect_notification() {
 }
 
 expect_client_geometry() {
-  local since=${1:-} history
+  local since=${1:-positioned} history
   sync_client geometry
   history=$(awk -v since="$since" '
     !since { ready = 1 }
     $0 == "synced " since { ready = 1; next }
     ready && /^configure / { print }
   ' "$client_log")
-  if [[ -z $history ]] || grep -qEv '^configure x=930 y=550 w=300 h=160 override=(true|false)$' <<< "$history"; then
+  # No configure after setup is valid too: notifications need not receive any
+  # compositor placement. expect_notification separately checks current X11
+  # geometry, and any intervening wrong configure still fails this history.
+  if [[ -n $history ]] && grep -qEv '^configure x=930 y=550 w=300 h=160 override=(true|false)$' <<< "$history"; then
     echo "notification received a compositor placement or resize: $history"
     exit 1
   fi

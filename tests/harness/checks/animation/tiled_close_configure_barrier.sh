@@ -18,6 +18,7 @@ cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [colors]
 backdrop = "#000000FF"
+background = "#FFFFFFFF"
 
 [appearance]
 border_width = 0
@@ -113,6 +114,24 @@ pattern_bounds() {
   "$UMBRIEL_PIXEL_PROBE" "$1" bbox '(b > 0.6 || g > 0.6) && r < 0.08'
 }
 
+frame_bounds() {
+  "$UMBRIEL_PIXEL_PROBE" "$1" bbox 'r > 0.6 || g > 0.6 || b > 0.6'
+}
+
+expect_stale_frame() {
+  local image=$1 x y w h
+  read -r x y w h <<< "$(pattern_bounds "$image")"
+  if ! bounds_match 3 "$x" "$y" "$w" "$h" 0 0 640 720; then
+    echo "stale content was stretched or displaced: got=$x $y $w $h"
+    exit 1
+  fi
+  read -r x y w h <<< "$(frame_bounds "$image")"
+  if ! bounds_match 3 "$x" "$y" "$w" "$h" 0 0 1280 720; then
+    echo "stale-client frame lost its layout endpoint: got=$x $y $w $h"
+    exit 1
+  fi
+}
+
 bounds_match() {
   local tolerance=$1 ax=$2 ay=$3 aw=$4 ah=$5 bx=$6 by=$7 bw=$8 bh=$9
   ((ax >= bx - tolerance && ax <= bx + tolerance \
@@ -193,7 +212,7 @@ verify_layout master
 "$UMBRIEL" msg workspace-switch 3 > /dev/null
 finish_animations
 readonly STALE_LOG="$UMBRIEL_RUNTIME_DIR/close-configure-stale-survivor.log"
-HOLD_SIZE=1 "$UMBRIEL_FRACTIONAL_CLIENT" close-configure-stale-survivor 640 720 \
+OPAQUE_BUFFER=1 HOLD_SIZE=1 "$UMBRIEL_FRACTIONAL_CLIENT" close-configure-stale-survivor 640 720 \
   > "$STALE_LOG" 2>&1 &
 for _ in $(seq 100); do
   window=$(
@@ -219,11 +238,7 @@ wait_for_log "$UMBRIEL_RUNTIME_DIR/close-configure-stale-third.log" '^unmapped$'
 wait_for_log_since "$STALE_LOG" "$stale_mark" '^mapped 640x720' "stale-size survivor did not acknowledge its target"
 "$UMBRIEL" clock-advance 1200
 grim "$SHOTS/stale-final.png"
-read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-final.png")"
-if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 0 0 1280 720; then
-  echo "completed windows_move snapped back to a stale client buffer: got=$final_x $final_y $final_w $final_h"
-  exit 1
-fi
+expect_stale_frame "$SHOTS/stale-final.png"
 
 # A later geometry-stable arrange must not discard that endpoint ownership while the client still refuses the
 # configured size. Force at least one layout replacement while keeping a lone tiled view fullscreen in both modes.
@@ -232,10 +247,6 @@ fi
 "$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 "$UMBRIEL" clock-advance 200
 grim "$SHOTS/stale-after-arrange.png"
-read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-after-arrange.png")"
-if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 0 0 1280 720; then
-  echo "stable arrange discarded the stale-client endpoint hold: got=$final_x $final_y $final_w $final_h"
-  exit 1
-fi
+expect_stale_frame "$SHOTS/stale-after-arrange.png"
 
 echo "dwindle and master started moving at once, kept the close clock running, and retained stale-client endpoints"

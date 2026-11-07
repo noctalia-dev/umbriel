@@ -122,13 +122,16 @@ def pixels(label, identifier, color, border=False):
     settle()
     w = window(identifier)
     subprocess.run(["grim", image], check=True, timeout=10)
-    x = int(w["x"] + w["w"] / 2)
-    y = int(w["y"] + w["h"] + 3 if border else w["y"] + w["h"] - 20)
+    # Retained content can be larger than its tile or smaller than its frame.
+    # Sample inside the fixture's original 260x180 content, not unused frame
+    # space or content clipped off the tile. The border belongs to the frame.
+    x = int(w["x"] + (w["w"] / 2 if border else min(w["w"], 260) / 2))
+    y = int(w["y"] + w["h"] + 3 if border else w["y"] + min(w["h"], 180) / 2)
     values = subprocess.check_output([os.environ["UMBRIEL_PIXEL_PROBE"], image, "pixel", str(x), str(y)], text=True)
     rgb = tuple(map(int, values.split()))
     target = {"red": (255, 0, 0), "green": (0, 255, 0), "blue": (0, 0, 255)}[color]
     if any(abs(value - wanted) > 20 for value, wanted in zip(rgb, target)):
-        raise SystemExit(f"{label}: pixel {rgb}, expected {color}")
+        raise SystemExit(f"{label} ({w['title']} at {x},{y}): pixel {rgb}, expected {color}")
 
 sub = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sub.connect(os.environ["UMBRIEL_SOCKET"])
@@ -147,7 +150,7 @@ def event_window(title):
     raise SystemExit(f"first-map-event: no event for {title}")
 
 def spawn(title, expected):
-    env = dict(os.environ, FILL_COLOR="0xFF0000FF", REMAP_ON_STDIN="1")
+    env = dict(os.environ, FILL_COLOR="0xFF0000FF", REMAP_ON_STDIN="1", FOLLOW_CONFIGURES="1")
     if title == "pool-history":
         env["TITLE_AFTER_MAP"] = "pool-changed"
     log = open(os.path.join(os.environ["UMBRIEL_RUNTIME_DIR"], title + ".log"), "w")

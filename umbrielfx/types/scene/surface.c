@@ -395,6 +395,13 @@ static void surface_reconfigure(struct wlr_scene_surface* scene_surface) {
   int width = state->width;
   int height = state->height;
   double scale = scene_surface->scale;
+  int dest_width = (int)round(width / scale);
+  int dest_height = (int)round(height / scale);
+  if (width <= 0 || height <= 0 || dest_width <= 0 || dest_height <= 0) {
+    wlr_scene_buffer_set_buffer(scene_buffer, NULL);
+    pixman_region32_fini(&opaque);
+    return;
+  }
 
   if (!wlr_box_empty(&scene_surface->clip)) {
     // The clip is in scene units, the surface state in surface-local units.
@@ -409,6 +416,13 @@ static void surface_reconfigure(struct wlr_scene_surface* scene_surface) {
     int buffer_height = state->buffer_height;
     width = min(clip.width, width - clip.x);
     height = min(clip.height, height - clip.y);
+    if (width <= 0 || height <= 0) {
+      wlr_scene_buffer_set_buffer(scene_buffer, NULL);
+      pixman_region32_fini(&opaque);
+      return;
+    }
+    dest_width = max(1, (int)round(width / scale));
+    dest_height = max(1, (int)round(height / scale));
 
     wlr_fbox_transform(&src_box, &src_box, state->transform, buffer_width, buffer_height);
     wlr_output_transform_coords(state->transform, &buffer_width, &buffer_height);
@@ -421,17 +435,7 @@ static void surface_reconfigure(struct wlr_scene_surface* scene_surface) {
     wlr_fbox_transform(&src_box, &src_box, wlr_output_transform_invert(state->transform), buffer_width, buffer_height);
 
     pixman_region32_translate(&opaque, -clip.x, -clip.y);
-    // A shrunk subsurface can push width or height negative; the empty
-    // check below drops the buffer, so keep pixman off the invalid rect.
-    if (width > 0 && height > 0) {
-      pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
-    }
-  }
-
-  if (width <= 0 || height <= 0) {
-    wlr_scene_buffer_set_buffer(scene_buffer, NULL);
-    pixman_region32_fini(&opaque);
-    return;
+    pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
   }
 
   enum wlr_color_encoding color_encoding = WLR_COLOR_ENCODING_NONE;
@@ -447,17 +451,24 @@ static void surface_reconfigure(struct wlr_scene_surface* scene_surface) {
     }
   }
 
-  int dest_width = width;
-  int dest_height = height;
-  if (scale != 1.0) {
-    dest_width = max(1, (int)round(width / scale));
-    dest_height = max(1, (int)round(height / scale));
-    pixman_region32_t scaled;
-    pixman_region32_init(&scaled);
-    wlr_region_scale(&scaled, &opaque, (float)(1.0 / scale));
-    pixman_region32_fini(&opaque);
-    opaque = scaled;
+  // Occlusion uses the sampling ratio, rounding inward.
+  double scale_x = (double)width / dest_width;
+  double scale_y = (double)height / dest_height;
+  pixman_region32_t scaled;
+  pixman_region32_init(&scaled);
+  int count = 0;
+  const pixman_box32_t* rects = pixman_region32_rectangles(&opaque, &count);
+  for (int i = 0; i < count; ++i) {
+    int x1 = max(0, (int)ceil(rects[i].x1 / scale_x));
+    int y1 = max(0, (int)ceil(rects[i].y1 / scale_y));
+    int x2 = min(dest_width, (int)floor(rects[i].x2 / scale_x));
+    int y2 = min(dest_height, (int)floor(rects[i].y2 / scale_y));
+    if (x2 > x1 && y2 > y1) {
+      pixman_region32_union_rect(&scaled, &scaled, x1, y1, x2 - x1, y2 - y1);
+    }
   }
+  pixman_region32_fini(&opaque);
+  opaque = scaled;
 
   wlr_scene_buffer_set_opaque_region(scene_buffer, &opaque);
   wlr_scene_buffer_set_source_box(scene_buffer, &src_box);
@@ -531,14 +542,57 @@ static void handle_scene_surface_surface_commit(struct wl_listener* listener, vo
   }
 }
 
+bool wlr_scene_surface_get_mapping(
+    const struct wlr_scene_surface* scene_surface, struct wlr_scene_surface_mapping* mapping
+) {
+  const struct wlr_scene_buffer* buffer = scene_surface->buffer;
+  const struct wlr_surface_state* state = &scene_surface->surface->current;
+  if (buffer->dst_width <= 0 || buffer->dst_height <= 0 || state->width <= 0 || state->height <= 0) {
+    return false;
+  }
+  struct wlr_fbox full;
+  wlr_surface_get_buffer_source_box(scene_surface->surface, &full);
+  struct wlr_fbox source = buffer->src_box;
+  if (wlr_fbox_empty(&source)) {
+    source = full;
+  }
+  wlr_fbox_transform(&full, &full, state->transform, state->buffer_width, state->buffer_height);
+  wlr_fbox_transform(&source, &source, state->transform, state->buffer_width, state->buffer_height);
+  if (wlr_fbox_empty(&full) || wlr_fbox_empty(&source)) {
+    return false;
+  }
+  const struct wlr_scene_surface_mapping result = {
+      .offset_x = (source.x - full.x) * state->width / full.width,
+      .offset_y = (source.y - full.y) * state->height / full.height,
+      .scale_x = source.width / buffer->dst_width * state->width / full.width,
+      .scale_y = source.height / buffer->dst_height * state->height / full.height,
+  };
+  if (!isfinite(result.offset_x)
+      || !isfinite(result.offset_y)
+      || !isfinite(result.scale_x)
+      || !isfinite(result.scale_y)
+      || result.scale_x <= 0
+      || result.scale_y <= 0) {
+    return false;
+  }
+  *mapping = result;
+  return true;
+}
+
+bool wlr_scene_surface_coords_to_surface(const struct wlr_scene_surface* scene_surface, double* sx, double* sy) {
+  struct wlr_scene_surface_mapping mapping;
+  if (!wlr_scene_surface_get_mapping(scene_surface, &mapping)) {
+    return false;
+  }
+  *sx = mapping.offset_x + *sx * mapping.scale_x;
+  *sy = mapping.offset_y + *sy * mapping.scale_y;
+  return true;
+}
+
 static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer* scene_buffer, double* sx, double* sy) {
-  struct wlr_scene_surface* scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-
-  // The hit test works in scene units; the client expects surface-local ones.
-  *sx = (*sx + scene_surface->clip.x) * scene_surface->scale;
-  *sy = (*sy + scene_surface->clip.y) * scene_surface->scale;
-
-  return wlr_surface_point_accepts_input(scene_surface->surface, *sx, *sy);
+  struct wlr_scene_surface* surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+  return wlr_scene_surface_coords_to_surface(surface, sx, sy)
+      && wlr_surface_point_accepts_input(surface->surface, *sx, *sy);
 }
 
 static void surface_addon_destroy(struct wlr_addon* addon) {

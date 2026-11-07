@@ -20,6 +20,9 @@ enabled = false
 [animation.scratchpad]
 enabled = false
 
+[colors]
+background = "#FFFFFFFF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
@@ -58,7 +61,9 @@ capture_box() {
   "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01'
 }
 
-"$CLIENT" "$TITLE" 1000 300 > "$CLIENT_LOG" 2>&1 &
+# Natural-sized content can shrink ahead of its frame; include the opaque gap
+# fill when measuring the frame's animation.
+OPAQUE_BUFFER=1 "$CLIENT" "$TITLE" 1000 300 > "$CLIENT_LOG" 2>&1 &
 wait_for_box 1000x300+100+200
 
 "$UMBRIEL" msg window-move-to-scratchpad > /dev/null
@@ -87,6 +92,15 @@ if ! ((first_x == 100 && second_x == 100
   echo "scratchpad resize did not animate: first=${first_w}x${first_h}+${first_x}+${first_y}, second=${second_w}x${second_h}+${second_x}+${second_y}"
   exit 1
 fi
+
+for name in resize-250ms resize-1250ms; do
+  impure=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/$name.png" count \
+    '!((r == 0 && g == 0 && b == 1) || (r == 0 && g == 1 && b == 0))' '100x1+110+210')
+  if ((impure != 0)); then
+    echo "$name stretched natural client columns: $impure blended pixels"
+    exit 1
+  fi
+done
 
 "$UMBRIEL" clock-advance 2000
 "$UMBRIEL" settle

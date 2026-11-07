@@ -21,6 +21,9 @@ curve = "linear"
 [animation.windows_in]
 enabled = false
 
+[colors]
+background = "#FFFFFFFF"
+
 [appearance]
 border_width = 0
 outer_border_width = 0
@@ -59,7 +62,9 @@ capture_box() {
   "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.01 || g > 0.01 || b > 0.01'
 }
 
-"$CLIENT" "$TITLE" 1000 300 > "$CLIENT_LOG" 2>&1 &
+# Opaque content and a visible gap fill let the capture measure the animated
+# frame even after the client supplies its smaller, naturally sized buffer.
+OPAQUE_BUFFER=1 "$CLIENT" "$TITLE" 1000 300 > "$CLIENT_LOG" 2>&1 &
 wait_for_box 1000x300+-900+200
 "$UMBRIEL" settle
 

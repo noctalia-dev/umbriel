@@ -1695,12 +1695,26 @@ namespace umbriel {
           visit(visit, wlr_scene_tree_from_node(node));
         } else if (node->type == WLR_SCENE_NODE_RECT) {
           auto* rect = wlr_scene_rect_from_node(node);
-          m_rects.push_back(
-              {rect,
-               {rect->color[0], rect->color[1], rect->color[2], rect->color[3]},
-               {node->x, node->y, rect->width, rect->height},
-               rect->corners.top_left}
-          );
+          Rect captured{
+              .node = rect,
+              .color = {rect->color[0], rect->color[1], rect->color[2], rect->color[3]},
+              .box = {node->x, node->y, rect->width, rect->height},
+              .radii =
+                  {rect->corners.top_left, rect->corners.top_right, rect->corners.bottom_right,
+                   rect->corners.bottom_left},
+              .clip = std::nullopt,
+          };
+          if (const pixman_region32_t* clip = wlr_scene_node_get_clip_region(node)) {
+            captured.clip.emplace();
+            int count = 0;
+            const pixman_box32_t* boxes = pixman_region32_rectangles(clip, &count);
+            for (int i = 0; i < count; ++i) {
+              captured.clip->push_back(
+                  {boxes[i].x1, boxes[i].y1, boxes[i].x2 - boxes[i].x1, boxes[i].y2 - boxes[i].y1}
+              );
+            }
+          }
+          m_rects.push_back(std::move(captured));
         } else if (node->type == WLR_SCENE_NODE_BLUR) {
           auto* blur = wlr_scene_blur_from_node(node);
           m_blurs.push_back({
@@ -1800,9 +1814,25 @@ namespace umbriel {
             rect.node, std::max(1, static_cast<int>(std::lround(rect.box.width * scaleX))),
             std::max(1, static_cast<int>(std::lround(rect.box.height * scaleY)))
         );
-        const int r = static_cast<int>(std::lround(rect.radius * std::min(scaleX, scaleY)));
-        const bool background = rect.box.y == -m_topExtension && rect.box.width == m_captured.width;
-        wlr_scene_rect_set_corner_radii(rect.node, background ? corner_radii_new(r, r, 0, 0) : corner_radii_all(r));
+        const auto radius = [&](size_t corner) {
+          return static_cast<int>(std::lround(rect.radii[corner] * std::min(scaleX, scaleY)));
+        };
+        wlr_scene_rect_set_corner_radii(rect.node, corner_radii_new(radius(0), radius(1), radius(2), radius(3)));
+        if (rect.clip) {
+          pixman_region32_t clip;
+          pixman_region32_init(&clip);
+          for (const wlr_box& box : *rect.clip) {
+            const int x1 = static_cast<int>(std::lround(box.x * scaleX));
+            const int y1 = static_cast<int>(std::lround(box.y * scaleY));
+            const int x2 = static_cast<int>(std::lround((box.x + box.width) * scaleX));
+            const int y2 = static_cast<int>(std::lround((box.y + box.height) * scaleY));
+            if (x2 > x1 && y2 > y1) {
+              pixman_region32_union_rect(&clip, &clip, x1, y1, x2 - x1, y2 - y1);
+            }
+          }
+          wlr_scene_node_set_clip_region(&rect.node->node, &clip);
+          pixman_region32_fini(&clip);
+        }
       }
       for (const Blur& blur : m_blurs) {
         wlr_scene_node_set_position(

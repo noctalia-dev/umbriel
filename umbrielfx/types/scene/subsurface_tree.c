@@ -105,7 +105,9 @@ static bool subsurface_tree_reconfigure_clip(struct wlr_scene_subsurface_tree* s
 
   if (wlr_box_empty(&subsurface_tree->clip)) {
     scene_surface_set_clip(subsurface_tree->scene_surface, NULL);
-    wlr_scene_node_set_enabled(&subsurface_tree->scene_surface->buffer->node, true);
+    int width, height;
+    wlr_scene_surface_get_size(subsurface_tree->scene_surface, &width, &height);
+    wlr_scene_node_set_enabled(&subsurface_tree->scene_surface->buffer->node, width > 0 && height > 0);
     wlr_scene_node_set_position(&subsurface_tree->scene_surface->buffer->node, 0, 0);
 
     return false;
@@ -129,7 +131,8 @@ static bool subsurface_tree_reconfigure_clip(struct wlr_scene_subsurface_tree* s
 }
 
 static void subsurface_tree_reconfigure(struct wlr_scene_subsurface_tree* subsurface_tree) {
-  bool has_clip = subsurface_tree_reconfigure_clip(subsurface_tree);
+  scene_surface_set_scale(subsurface_tree->scene_surface, subsurface_tree->scale);
+  subsurface_tree_reconfigure_clip(subsurface_tree);
 
   struct wlr_surface* surface = subsurface_tree->surface;
 
@@ -147,9 +150,8 @@ static void subsurface_tree_reconfigure(struct wlr_scene_subsurface_tree* subsur
         subsurface_tree_scene_length(subsurface_tree, subsurface->current.y)
     );
 
-    if (has_clip) {
-      subsurface_tree_reconfigure_clip(child);
-    }
+    child->scale = subsurface_tree->scale;
+    subsurface_tree_reconfigure(child);
   }
 
   if (prev != NULL) {
@@ -167,9 +169,8 @@ static void subsurface_tree_reconfigure(struct wlr_scene_subsurface_tree* subsur
         subsurface_tree_scene_length(subsurface_tree, subsurface->current.y)
     );
 
-    if (has_clip) {
-      subsurface_tree_reconfigure_clip(child);
-    }
+    child->scale = subsurface_tree->scale;
+    subsurface_tree_reconfigure(child);
   }
 }
 
@@ -217,15 +218,6 @@ scene_surface_tree_create(struct wlr_scene_tree* parent, struct wlr_surface* sur
 
 static void subsurface_tree_set_scale(struct wlr_scene_subsurface_tree* subsurface_tree, double scale) {
   subsurface_tree->scale = scale;
-  scene_surface_set_scale(subsurface_tree->scene_surface, scale);
-
-  struct wlr_subsurface* subsurface;
-  wl_list_for_each(subsurface, &subsurface_tree->surface->current.subsurfaces_below, current.link) {
-    subsurface_tree_set_scale(subsurface_tree_from_subsurface(subsurface_tree, subsurface), scale);
-  }
-  wl_list_for_each(subsurface, &subsurface_tree->surface->current.subsurfaces_above, current.link) {
-    subsurface_tree_set_scale(subsurface_tree_from_subsurface(subsurface_tree, subsurface), scale);
-  }
 
   // Subsurface positions and the clip depend on the scale.
   subsurface_tree_reconfigure(subsurface_tree);
@@ -242,14 +234,18 @@ subsurface_tree_create_subsurface(struct wlr_scene_subsurface_tree* parent, stru
   if (parent->point_accepts_input != NULL) {
     subsurface_tree_set_point_accepts_input(child, parent->point_accepts_input);
   }
-  if (parent->scale != 1.0) {
-    subsurface_tree_set_scale(child, parent->scale);
-  }
 
   wlr_addon_init(&child->surface_addon, &subsurface->surface->addons, parent, &subsurface_tree_surface_addon_impl);
 
   child->subsurface_destroy.notify = subsurface_tree_handle_subsurface_destroy;
   wl_signal_add(&subsurface->events.destroy, &child->subsurface_destroy);
+
+  child->scale = parent->scale;
+  wlr_scene_node_set_position(
+      &child->tree->node, subsurface_tree_scene_length(parent, subsurface->current.x),
+      subsurface_tree_scene_length(parent, subsurface->current.y)
+  );
+  subsurface_tree_reconfigure(child);
 
   return true;
 }

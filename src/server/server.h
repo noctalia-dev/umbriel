@@ -876,7 +876,8 @@ namespace umbriel {
         wlr_scene_rect* node = nullptr;
         std::array<float, 4> color{};
         wlr_box box{};
-        int radius = 0;
+        std::array<int, 4> radii{};
+        std::optional<std::vector<wlr_box>> clip;
       };
       std::vector<Rect> m_rects;
       struct Blur {

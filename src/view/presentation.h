@@ -12,6 +12,7 @@ struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_scene_tree;
 struct wlr_surface;
+struct fx_corner_radii;
 
 namespace umbriel {
 
@@ -52,6 +53,12 @@ namespace umbriel {
     void setBackdropBox(int x, int y, int width, int height);
     // Re-read the backdrop color after a config reload.
     void reloadBackdropColor();
+    void updateResizeBackdrop(
+        bool opaque, int width, int height, int contentWidth, int contentHeight, fx_corner_radii corners
+    );
+    void setResizeBackdropOpacity(float opacity);
+    void hideResizeBackdrop();
+    void snapshotBackdrops(wlr_scene_tree* parent) const;
     // Offsets centering a client buffer that does not match the output. Negative
     // for an oversized buffer, which crops it equally on both sides.
     int offsetX() const { return m_offsetX; }
@@ -62,8 +69,7 @@ namespace umbriel {
         bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
     );
 
-    // Present the buffer at the animated size. `content` and `surfaceClip` use surface coordinates. A scene clip
-    // alone cannot express this, because it crops 1:1 and caps the destination at the committed surface size.
+    // Scale-then-crop for built-in opening effects only. Ordinary resizing keeps natural pixels.
     void applyCrop(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& geometry, const wlr_box& content,
         const wlr_box& surfaceClip
@@ -77,6 +83,8 @@ namespace umbriel {
     AnimatedValue m_animW;
     AnimatedValue m_animH;
     wlr_scene_rect* m_backdrop = nullptr;
+    wlr_scene_rect* m_resizeBackdrop = nullptr;
+    float m_resizeBackdropOpacity = 1.0F;
     int m_offsetX = 0;
     int m_offsetY = 0;
     bool m_contentCentered = false;
