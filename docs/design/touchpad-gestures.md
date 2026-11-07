@@ -8,13 +8,13 @@ A gesture accumulates the travel libinput reports, divided by the distance one s
 
 The 16 px axis lock that decides which of those a gesture is costs travel of its own, and that travel is the gesture's first reading rather than a head start the tracker never sees. Without that, a slide jumps by the lock distance on its first frame and the swipe reads as if it caught.
 
-Past either end the position is rubber-banded rather than clamped: extra travel approaches 0.05 of a step without reaching it, so the content keeps moving under the fingers while still reading as an end.
+Past either end the position is rubber-banded rather than clamped: extra travel approaches 0.05 of a step without reaching it, so the content keeps moving under the fingers while still reading as an end. The strip uses the same damping on its scroll offset, with the viewport as one step.
 
 ## Release
 
 Nothing here is a threshold. On release the gesture feeds the tracker one zero-delta sample at the release time, which drains the speed of fingers that came to rest before letting go, and the projection decides the landing:
 
-- `SwipeTracker::projectedEndPos()` is where the travel would coast to a stop under the tracker's exponential deceleration, so distance and speed decide together. A drag that stops before the release falls back where it started; a flick of the same distance crosses.
+- `SwipeTracker::projectedEndPos()` is where the travel would coast to a stop: a curve over the release speed that starts at zero, fades in a small floor so an ordinary slow release still flips the nearest step, climbs through the middle band and saturates at a ceiling. The strip saturates at three viewports, so a hard flick stops crossing the whole strip; the other gestures divide the same projection by their step. A drag that stops before the release falls back where it started; a flick of the same distance crosses.
 - The projection is rubber-banded into the steps that exist and rounded onto one of them, which is why a release never lands between workspaces.
 - The speed the settle starts from is the release speed scaled by the rubber-band derivative at the release point, so what the settle carries is the speed that was visible, not the finger speed the damping hid.
 
