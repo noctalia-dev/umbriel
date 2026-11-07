@@ -28,7 +28,8 @@
 // FOLLOW_CONFIGURES maps at its own size, then redraws at every later configured size, as a real client would; by
 // default the window keeps its own size.
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
-// REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
+// REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer. `b` repaints the
+// body only: the top band keeps its colour and only the rows below it are damaged.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
 // TOP_BAND_COLOR=<ARGB> with TOP_BAND_HEIGHT=<px> paints the top rows of the buffer in another colour, so a check can
 // tell which edge of the content a compositor sampled. A repaint recolours the band too. TOP_BAND_SPLIT=<ARGB> paints
@@ -132,6 +133,7 @@ namespace {
     bool mapped = false;
     wl_callback* repaintFrame = nullptr;
     uint32_t repaintColor = 0;
+    bool repaintBodyOnly = false;
     bool closed = false;
     bool redrawOnClose = false;
     bool redrawOnceOnClose = false;
@@ -353,14 +355,23 @@ namespace {
     auto& state = *static_cast<State*>(data);
     wl_callback_destroy(callback);
     state.repaintFrame = nullptr;
+    const bool bodyOnly = state.repaintBodyOnly;
+    state.repaintBodyOnly = false;
     state.fillColor = state.repaintColor;
-    state.topBandColor = state.repaintColor;
+    if (!bodyOnly) {
+      state.topBandColor = state.repaintColor;
+    }
     Buffer next = createBuffer(state, state.width, state.height);
     if (next.resource == nullptr) {
       std::exit(EXIT_FAILURE);
     }
     wl_surface_attach(state.surface, next.resource, 0, 0);
-    wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    if (bodyOnly) {
+      const int band = std::min(state.topBandHeight, state.height);
+      wl_surface_damage_buffer(state.surface, 0, band, state.width, std::max(0, state.height - band));
+    } else {
+      wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    }
     wl_surface_commit(state.surface);
     destroyBuffer(state.buffer);
     state.buffer = next;
@@ -1297,8 +1308,14 @@ int main(int argc, char** argv) {
         sources[0].revents = 0;
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
-          if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
-            state.repaintColor = command == 'R' ? 0xFFFF0000 : command == 'G' ? 0xFF00FF00 : 0xFF0000FF;
+          if (repaintOnStdin
+              && state.mapped
+              && (command == 'R' || command == 'G' || command == 'B' || command == 'b')) {
+            state.repaintColor = command == 'R' ? 0xFFFF0000
+                : command == 'G'                ? 0xFF00FF00
+                : command == 'B'                ? 0xFF0000FF
+                                                : 0xFFFF8000;
+            state.repaintBodyOnly = command == 'b';
             if (state.repaintFrame == nullptr) {
               state.repaintFrame = wl_surface_frame(state.surface);
               wl_callback_add_listener(state.repaintFrame, &kRepaintListener, &state);

@@ -250,3 +250,17 @@ read -r right_r right_g right_b < <(pixel 620 84)
 if ! near "$left_r" "$right_r" || ! near "$left_b" "$right_b" || ! (( left_r > 100 && left_b > 100 && left_g < 40 )); then
   fail "an averaged bar did not follow a repaint: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
+
+# A commit that damages only the body must not read the strip back: the average is a flat colour, so a readback there
+# is pure cost, and it finishes the frame first. The compositor logs each readback, so the count is the observable.
+readbacks() { rg -c 'averaged a [0-9]+x[0-9]+ strip read back' "$UMBRIEL_RUNTIME_DIR/compositor.log" || true; }
+before=$(readbacks)
+# A zero baseline would make the comparison vacuous: the earlier phases must have sampled at least once.
+(( before > 0 )) || fail "no strip readback was logged, so the average never sampled the edge"
+printf 'b' >&4
+await_lines "$LOG2" repainted 3
+"$UMBRIEL" settle
+after=$(readbacks)
+if (( after != before )); then
+  fail "a body-only commit read the strip back: $before -> $after"
+fi

@@ -26,8 +26,6 @@ namespace umbriel {
     bool surfaceRequiresHdrOutput(wlr_surface* surface) const;
     // Register before adding surfaces. Scene destruction removes the registration.
     [[nodiscard]] bool registerScene(wlr_scene* scene);
-    // Describes `buffer` with the surface's colour state. A null surface resets it to the sRGB default, for a node
-    // that shows a compositor-drawn colour rather than surface content.
     void applySurfaceDescriptionToBuffer(wlr_surface* surface, wlr_scene_buffer* buffer) const;
     void updatePreferredDescriptions();
 

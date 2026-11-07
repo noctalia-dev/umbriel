@@ -122,11 +122,10 @@ namespace umbriel {
     if (alpha <= 0.0) {
       return std::nullopt;
     }
+    // Straight colour, clamped: malformed input that is not premultiplied could otherwise overshoot.
+    const auto straight = [alpha](double sum) { return static_cast<float>(std::clamp(sum / alpha, 0.0, 1.0)); };
     return std::array<float, 4>{
-        static_cast<float>(red / alpha),
-        static_cast<float>(green / alpha),
-        static_cast<float>(blue / alpha),
-        static_cast<float>(alpha / static_cast<double>(count)),
+        straight(red), straight(green), straight(blue), static_cast<float>(alpha / static_cast<double>(count))
     };
   }
 

@@ -19,7 +19,6 @@ struct wlr_scene_rect;
 struct wlr_buffer;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
-struct wlr_buffer;
 struct clipped_region;
 
 namespace umbriel {
@@ -68,14 +67,20 @@ namespace umbriel {
     void updateColors();
     void updateAdaptive(bool fromCommit);
     void hideAdaptive();
-    // The mean colour of the strip, read back from the window's committed texture.
-    std::optional<std::array<float, 4>> averageStrip(const wlr_fbox& strip);
+    // What one attempt at the mean colour produced: a value, a reason to try again later, or a refusal.
+    struct StripSample {
+      enum class State : uint8_t { Fresh, Deferred, Refused };
+      State state = State::Refused;
+      std::optional<std::array<float, 4>> color;
+    };
+    StripSample averageStrip(const wlr_fbox& strip);
     // A one-pixel buffer of `color`, kept until the colour changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The mirrored client buffer is locked by the scene; tell wlroots to ignore that lock so it can still reuse the
     // texture for in-place shm damage, and undo it when the mirror is replaced or cleared.
-    void ignoreLock(wlr_buffer* buffer);
-    void releaseIgnoredLock();
+    void allowInPlaceDamage(wlr_buffer* buffer);
+    void withdrawInPlaceDamage();
+    void holdLabelBuffer(wlr_buffer*& slot, wlr_buffer* buffer);
     void updateButtonIcon(
         TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible,
         const std::optional<std::array<float, 4>>& outline
@@ -99,17 +104,21 @@ namespace umbriel {
     wlr_scene_buffer* m_label = nullptr;
     // The same title in the shadow colour, one pixel down and right, so it stays readable on any bar colour.
     wlr_scene_buffer* m_labelShadow = nullptr;
+    // Consumer locks on the title and its shadow: the scene drops its own once it uploads the texture, so a snapshot
+    // that copied the node's buffer field would lose them. Taking them here keeps the close snapshot free of lookups.
+    wlr_buffer* m_labelBuffer = nullptr;
+    wlr_buffer* m_shadowBuffer = nullptr;
     // Paints the bar with the top strip of the window content; kept below the label and above the palette colour.
     wlr_scene_buffer* m_adaptive = nullptr;
     wlr_surface* m_content = nullptr;
     wlr_box m_contentGeometry{};
     // Whether the mirrored buffer carries the mark that lets wlroots reuse its texture for in-place shm damage.
     bool m_ignoredLock = false;
+    // A readback the client's explicit-sync point was not ready for: retried on the next update.
+    bool m_stripDeferred = false;
     // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};
-    // The client buffer the node's current contents came from, so a swap re-mirrors or re-reads it.
-    wlr_buffer* m_adaptiveContent = nullptr;
     std::optional<std::array<float, 4>> m_averageColor;
     // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
     std::array<float, 4> m_averageBufferColor{};

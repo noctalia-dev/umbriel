@@ -1103,13 +1103,13 @@ namespace umbriel {
     }
 
     void applySurfaceDescriptionToBuffer(wlr_surface* surface, wlr_scene_buffer* buffer) const {
-      // A null surface means "none": the sRGB defaults below are applied as they stand. Callers that own a persistent
-      // buffer use that to reset a node which no longer shows surface content.
-      if (buffer == nullptr) {
+      if (surface == nullptr || buffer == nullptr) {
         return;
       }
-      // No early return for a surface without a description: `resolveSurfaceColor` leaves the sRGB defaults in place,
-      // and a persistent mirrored buffer has to be reset to them when its surface loses its description.
+      const auto found = surfaces.find(surface);
+      if (found == surfaces.end()) {
+        return;
+      }
       wlr_scene_surface_color_state state{
           .transfer_function = static_cast<wlr_color_transfer_function>(0),
           .primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,
@@ -1118,9 +1118,7 @@ namespace umbriel {
           .luminances = {},
           .absolute_luminance = false,
       };
-      if (surface != nullptr) {
-        resolveSurfaceColor(surface, &state, const_cast<Impl*>(this));
-      }
+      resolveSurfaceColor(surface, &state, const_cast<Impl*>(this));
       wlr_scene_buffer_set_transfer_function(buffer, state.transfer_function);
       wlr_scene_buffer_set_primaries(buffer, state.primaries);
       wlr_scene_buffer_set_custom_primaries(buffer, state.custom_primaries);
