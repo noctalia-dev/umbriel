@@ -173,6 +173,10 @@ namespace umbriel {
     void layoutDetach(View* view, bool animate = false);
     // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
     void holdCloseSnapshot(CloseSnapshotId snapshot);
+    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. `shown` is the
+    // member whose ring the screen showed focused until now, or null for none. If the next arrange holds the change for
+    // its clients, it freezes every member with the ring it showed, so focus moves in the same frame as the switch.
+    void noteFocusShownBeforeReflow(const View* shown) { m_focusShownBeforeReflow = shown; }
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
@@ -358,6 +362,8 @@ namespace umbriel {
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
     std::vector<CloseSnapshotId> m_heldCloseSnapshots;
+    // See noteFocusShownBeforeReflow; cleared by the next arrange.
+    std::optional<const View*> m_focusShownBeforeReflow;
     void releaseHeldCloseSnapshots();
     // The usable area the last applyPositions pass clamped floating windows
     // against. An arrange whose area is unchanged, such as a focus reveal, must not
