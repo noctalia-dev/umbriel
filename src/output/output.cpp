@@ -29,9 +29,9 @@
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
-#include "workspace/mirror_fit.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -1236,10 +1236,13 @@ namespace umbriel {
     if (workspace == nullptr || box.width <= 0 || box.height <= 0) {
       return false;
     }
-    const wlr_box source = mirrored ? workspace->group()->output()->layoutBox() : box;
-    const std::optional<MirrorFit> fit = mirrored ? fitMirror(source, box) : MirrorFit{.x = box.x, .y = box.y};
-    if (!fit) {
-      return false;
+    std::optional<MirrorMapping> mapping;
+    if (mirrored) {
+      const WorkspaceMirror* renderer = shown->mirrorRenderer();
+      mapping = renderer != nullptr ? renderer->mapping() : std::nullopt;
+      if (!mapping) {
+        return false;
+      }
     }
     return std::ranges::any_of(workspace->allViews(), [&](const View* view) {
       if (!view->mapped()
@@ -1247,13 +1250,7 @@ namespace umbriel {
           || !(mirrored ? view->visibleViaMirror() : view->presented())) {
         return false;
       }
-      wlr_box fullscreen = view->presentedBox();
-      if (mirrored) {
-        fullscreen.x = fit->x + static_cast<int>(std::lround((fullscreen.x - source.x) * fit->scale));
-        fullscreen.y = fit->y + static_cast<int>(std::lround((fullscreen.y - source.y) * fit->scale));
-        fullscreen.width = static_cast<int>(std::lround(fullscreen.width * fit->scale));
-        fullscreen.height = static_cast<int>(std::lround(fullscreen.height * fit->scale));
-      }
+      const wlr_box fullscreen = mapping ? mapping->toReceiver(view->presentedBox()) : view->presentedBox();
       return fullscreen.x <= box.x
           && fullscreen.y <= box.y
           && fullscreen.x + fullscreen.width >= box.x + box.width

@@ -31,4 +31,27 @@ namespace umbriel {
         .y = to.y + static_cast<int>(std::lround((to.height - from.height * scale) / 2)),
     };
   }
+
+  // The mapping between a source output's layout coordinates and where a mirror presents them on its receiving output.
+  // Rendering, input and fullscreen coverage all go through it, so they agree on every pixel.
+  struct MirrorMapping {
+    wlr_box source{};
+    MirrorFit fit;
+
+    // A source layout position on the receiver, rounded as the scene places nodes.
+    int toReceiverX(int x) const { return fit.x + static_cast<int>(std::lround((x - source.x) * fit.scale)); }
+    int toReceiverY(int y) const { return fit.y + static_cast<int>(std::lround((y - source.y) * fit.scale)); }
+    int toReceiverLength(int length) const { return static_cast<int>(std::lround(length * fit.scale)); }
+    wlr_box toReceiver(const wlr_box& box) const {
+      return {toReceiverX(box.x), toReceiverY(box.y), toReceiverLength(box.width), toReceiverLength(box.height)};
+    }
+    // A receiving layout point back in the source's layout coordinates.
+    double toSourceX(double x) const { return source.x + (x - fit.x) / fit.scale; }
+    double toSourceY(double y) const { return source.y + (y - fit.y) / fit.scale; }
+  };
+
+  inline std::optional<MirrorMapping> mirrorMapping(const wlr_box& from, const wlr_box& to) {
+    const std::optional<MirrorFit> fit = fitMirror(from, to);
+    return fit ? std::optional(MirrorMapping{.source = from, .fit = *fit}) : std::nullopt;
+  }
 } // namespace umbriel

@@ -33,9 +33,9 @@
 #include "wlr.h"
 // clang-format on
 #include "wlr/util/edges.h"
-#include "workspace/mirror_fit.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
@@ -1086,18 +1086,15 @@ namespace umbriel {
     if (copy == nullptr || !copy->mirror() || copy->mirrorSource() != view->workspace()) {
       return false;
     }
-    wlr_box from{};
-    wlr_box to{};
-    wlr_output_layout_get_box(m_server->outputLayout(), view->workspace()->group()->output()->wlr(), &from);
-    wlr_output_layout_get_box(m_server->outputLayout(), receiving->wlr(), &to);
-    const std::optional<MirrorFit> fit = fitMirror(from, to);
-    if (!fit) {
+    const WorkspaceMirror* renderer = copy->mirrorRenderer();
+    const std::optional<MirrorMapping> mapping = renderer != nullptr ? renderer->mapping() : std::nullopt;
+    if (!mapping) {
       return false;
     }
-    // The inverse of the presentation: a receiving layout point back to the source's.
-    *scale = 1 / fit->scale;
-    *tx = from.x - fit->x * *scale;
-    *ty = from.y - fit->y * *scale;
+    // The inverse of the presentation, as an affine map: source = receiving * scale + translation.
+    *scale = 1 / mapping->fit.scale;
+    *tx = mapping->toSourceX(0);
+    *ty = mapping->toSourceY(0);
     return true;
   }
 

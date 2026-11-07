@@ -6,7 +6,6 @@
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
-#include "workspace/mirror_fit.h"
 #include "workspace/workspace.h"
 
 #include <algorithm>
@@ -220,13 +219,10 @@ namespace umbriel {
     wlr_scene_surface_get_size(sceneSurface, &width, &height);
     syncSurfaceMirror(entry.buffer, surface, source, width, height, m_workspace.group()->server()->colorManager());
     (void)umbrielfx_scene_node_share_capture_policy(&entry.buffer->node, &view.sceneTree()->node);
-    wlr_scene_buffer_set_dest_size(entry.buffer, std::lround(width * m_scale), std::lround(height * m_scale));
-    wlr_scene_node_set_position(
-        &entry.buffer->node, m_targetX + std::lround((x - m_sourceX) * m_scale),
-        m_targetY + std::lround((y - m_sourceY) * m_scale)
-    );
+    wlr_scene_buffer_set_dest_size(entry.buffer, m_mapping.toReceiverLength(width), m_mapping.toReceiverLength(height));
+    wlr_scene_node_set_position(&entry.buffer->node, m_mapping.toReceiverX(x), m_mapping.toReceiverY(y));
     // Conservatively mark scaled edges translucent rather than reusing an unscaled region.
-    if (m_scale != 1) {
+    if (m_mapping.fit.scale != 1) {
       pixman_region32_t empty;
       pixman_region32_init(&empty);
       wlr_scene_buffer_set_opaque_region(entry.buffer, &empty);
@@ -272,21 +268,12 @@ namespace umbriel {
       clear();
       return;
     }
-    auto* server = m_workspace.group()->server();
-    wlr_box from{};
-    wlr_box to{};
-    wlr_output_layout_get_box(server->outputLayout(), source->group()->output()->wlr(), &from);
-    wlr_output_layout_get_box(server->outputLayout(), m_workspace.group()->output()->wlr(), &to);
-    const std::optional<MirrorFit> fit = fitMirror(from, to);
-    if (!fit) {
+    const std::optional<MirrorMapping> current = mapping();
+    if (!current) {
       clear();
       return;
     }
-    m_scale = fit->scale;
-    m_sourceX = from.x;
-    m_sourceY = from.y;
-    m_targetX = fit->x;
-    m_targetY = fit->y;
+    m_mapping = *current;
     for (auto& entry : m_surfaces) {
       entry->seen = false;
     }
@@ -294,8 +281,21 @@ namespace umbriel {
     // window changes its sibling order without changing allViews().
     walkViews(&source->viewLayer(true)->node.parent->node);
     walkViews(&source->fullscreenTree()->node);
-    walkUnmanaged(&server->xwaylandUnmanagedTree()->node);
+    walkUnmanaged(&m_workspace.group()->server()->xwaylandUnmanagedTree()->node);
     std::erase_if(m_surfaces, [](const auto& entry) { return !entry->seen; });
     wlr_output_schedule_frame(m_workspace.group()->output()->wlr());
+  }
+
+  std::optional<MirrorMapping> WorkspaceMirror::mapping() const {
+    const Workspace* source = m_workspace.mirrorSource();
+    if (source == nullptr) {
+      return std::nullopt;
+    }
+    wlr_output_layout* layout = m_workspace.group()->server()->outputLayout();
+    wlr_box from{};
+    wlr_box to{};
+    wlr_output_layout_get_box(layout, source->group()->output()->wlr(), &from);
+    wlr_output_layout_get_box(layout, m_workspace.group()->output()->wlr(), &to);
+    return mirrorMapping(from, to);
   }
 } // namespace umbriel

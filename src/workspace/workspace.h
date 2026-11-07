@@ -83,6 +83,8 @@ namespace umbriel {
     const WorkspaceMirrorSource& mirrorOf() const { return m_mirrorOf; }
     Workspace* mirrorSource() const { return m_mirrorSource; }
     void setMirrorSource(Workspace* source);
+    // The renderer that presents the source on this output; null unless this is a mirror.
+    const WorkspaceMirror* mirrorRenderer() const { return m_mirrorRenderer.get(); }
     // The workspace whose layout holds the windows shown here: the source of a mirror, null while it has none.
     Workspace* layoutOwner() { return mirror() ? m_mirrorSource : this; }
     const Workspace* layoutOwner() const { return mirror() ? m_mirrorSource : this; }

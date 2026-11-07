@@ -1,6 +1,9 @@
 #pragma once
 
+#include "workspace/mirror_fit.h"
+
 #include <memory>
+#include <optional>
 #include <vector>
 
 struct wlr_scene_tree;
@@ -23,6 +26,9 @@ namespace umbriel {
     void schedule();
     static bool resolveBuffer(wlr_scene_buffer* buffer, wlr_surface** surface, View** view);
     void clear();
+    // Where this mirror presents its source on the receiving output, from the outputs' current layout boxes. Empty
+    // while the mirror has no source or an output has no size.
+    std::optional<MirrorMapping> mapping() const;
 
   private:
     struct Surface;
@@ -36,10 +42,7 @@ namespace umbriel {
     wlr_scene_tree* m_fullscreenTree;
     wl_event_source* m_idle = nullptr;
     std::vector<std::unique_ptr<Surface>> m_surfaces;
-    double m_scale = 1;
-    int m_sourceX = 0;
-    int m_sourceY = 0;
-    int m_targetX = 0;
-    int m_targetY = 0;
+    // The mapping the last sync laid the copies out with.
+    MirrorMapping m_mapping;
   };
 } // namespace umbriel
