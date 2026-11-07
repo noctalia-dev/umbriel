@@ -124,9 +124,12 @@ namespace umbriel {
 
   void View::cancelFadeAnimation() {
     // An unmap or a fresh map abandons a minimize transition: nothing is left to fade out, and the next enable must be
-    // free to act. The next presentation places the window, so the captured box is not applied here.
-    m_minimizeHiding = false;
-    m_minimizeRevealing = false;
+    // free to act. A conceal left the node and the presented box collapsed, so they go back to the resting box rather
+    // than waiting for a presentation that a re-map may never issue.
+    if (minimizeConcealing()) {
+      abandonMinimizeTransition();
+    }
+    m_minimizePhase = MinimizePhase::None;
     m_fade.snap(1.0);
     dropOpeningInset();
     setFadeAlpha(1.0F);
@@ -725,15 +728,14 @@ namespace umbriel {
   }
 
   void View::beginMinimizeConceal() {
-    if (m_minimizeHiding) {
+    if (minimizeConcealing()) {
       return;
     }
     const auto& animation = config().animation;
     const auto& minimize = animation.windowsMinimize;
     const auto [width, height] = floatingSize();
     m_minimizeResting = {layoutTargetX(), layoutTargetY(), width, height};
-    m_minimizeHiding = true;
-    m_minimizeRevealing = false;
+    m_minimizePhase = MinimizePhase::Concealing;
     animateFadeTo(0.0F, minimize.durationMs, minimize.curve);
     if (minimize.style == "popin" && width > 0 && height > 0) {
       const wlr_box collapsed =
@@ -754,7 +756,7 @@ namespace umbriel {
       abandonMinimizeTransition();
       return;
     }
-    m_minimizeHiding = false;
+    m_minimizePhase = MinimizePhase::None;
     setNodeEnabled(false);
     // Everything below runs while the node is off screen, so the hide does not snap: the window returns to its resting
     // box and full opacity for its next reveal.
@@ -765,26 +767,38 @@ namespace umbriel {
   }
 
   void View::beginMinimizeReveal() {
-    // A conceal still in flight is abandoned: the reveal owns the window from the box it is drawn at.
-    m_minimizeHiding = false;
-    m_minimizeRevealing = true;
-    setNodeEnabled(true);
     const auto& animation = config().animation;
     const auto& minimize = animation.windowsMinimize;
     const auto [width, height] = floatingSize();
-    const wlr_box resting{layoutTargetX(), layoutTargetY(), width, height};
-    setFadeAlpha(0.0F);
-    m_fade.snap(0.0);
+    // A conceal in flight already retargeted the node to its collapsed origin, so the live target is not the resting
+    // box any more; the box captured when the conceal started is.
+    const bool reversing = minimizeConcealing();
+    const wlr_box captured = reversing && m_minimizeResting.width > 0
+        ? m_minimizeResting
+        : wlr_box{layoutTargetX(), layoutTargetY(), width, height};
+    m_minimizePhase = MinimizePhase::Revealing;
+    setNodeEnabled(true);
+    const bool popin = minimize.style == "popin" && captured.width > 0 && captured.height > 0;
+    if (reversing) {
+      // Reverse from wherever the conceal has drawn the window: snapping back to the collapsed box would jump.
+      m_fade.snap(m_fadeAlpha);
+    } else {
+      // Hidden at rest, so the reveal starts from the collapsed box and grows out of the same place it left.
+      setFadeAlpha(0.0F);
+      m_fade.snap(0.0);
+      if (popin) {
+        const wlr_box collapsed = minimizeCollapseBox(captured, minimize.scale, floatingUsableArea(), minimize.anchor);
+        m_presentation.setSize(collapsed.width, collapsed.height);
+        setScenePosition(collapsed.x, collapsed.y);
+        m_posX.snap(collapsed.x);
+        m_posY.snap(collapsed.y);
+      }
+    }
     m_fade.retarget(1.0, minimize.durationMs, minimize.curve);
-    if (minimize.style == "popin" && width > 0 && height > 0) {
-      const wlr_box collapsed = minimizeCollapseBox(resting, minimize.scale, floatingUsableArea(), minimize.anchor);
-      m_presentation.setSize(collapsed.width, collapsed.height);
-      setScenePosition(collapsed.x, collapsed.y);
-      m_posX.snap(collapsed.x);
-      m_posY.snap(collapsed.y);
-      m_presentation.animateTo(width, height, minimize.durationMs, minimize.curve);
-      m_posX.retarget(resting.x, minimize.durationMs, minimize.curve);
-      m_posY.retarget(resting.y, minimize.durationMs, minimize.curve);
+    if (popin) {
+      m_presentation.animateTo(captured.width, captured.height, minimize.durationMs, minimize.curve);
+      m_posX.retarget(captured.x, minimize.durationMs, minimize.curve);
+      m_posY.retarget(captured.y, minimize.durationMs, minimize.curve);
     }
     scheduleFrame();
   }
@@ -793,9 +807,8 @@ namespace umbriel {
     if (!minimizeFadeActive()) {
       return;
     }
-    const bool wasHiding = m_minimizeHiding;
-    m_minimizeHiding = false;
-    m_minimizeRevealing = false;
+    const bool wasHiding = minimizeConcealing();
+    m_minimizePhase = MinimizePhase::None;
     m_fade.snap(1.0);
     setFadeAlpha(1.0F);
     if (!wasHiding) {
@@ -828,7 +841,7 @@ namespace umbriel {
 
   void View::animateTo(int x, int y) {
     // A conceal owns the node's position until its fade lands; a layout pass in between must not pull it back.
-    if (m_minimizeHiding) {
+    if (minimizeConcealing()) {
       return;
     }
     if (m_mapped && !m_tiled && (layoutTargetX() != x || layoutTargetY() != y)) {
@@ -1065,10 +1078,10 @@ namespace umbriel {
       active = active || m_fade.animating();
     }
     if (!m_fade.animating() && minimizeFadeActive()) {
-      if (m_minimizeHiding) {
+      if (minimizeConcealing()) {
         finishMinimizeConceal();
       } else {
-        m_minimizeRevealing = false;
+        m_minimizePhase = MinimizePhase::None;
       }
       active = true;
     }
@@ -1141,7 +1154,7 @@ namespace umbriel {
         || m_posY.animating()
         || sizeAnimating()
         || m_fade.animating()
-        || m_minimizeHiding
+        || minimizeConcealing()
         || m_borderColorAnim.animating()
         || m_outerBorderColorAnim.animating()
         || m_ruleOpacity.animating()

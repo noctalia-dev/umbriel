@@ -535,6 +535,12 @@ namespace umbriel {
       *surface = nullptr;
       return nullptr;
     }
+    // A minimize conceal keeps the node enabled until its fade lands, but the window is already minimized: it takes no
+    // pointer input on its way out, so a click cannot focus the window that is leaving.
+    if (view->minimizeConcealing()) {
+      *surface = nullptr;
+      return nullptr;
+    }
     // A window with a dialog attached gets no pointer, the way it gets no keyboard. The view is still reported so a
     // press on it focuses the dialog and a Mod-drag moves it.
     if (view->blocked()) {

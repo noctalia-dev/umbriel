@@ -461,7 +461,9 @@ namespace umbriel {
     // unmap, or a re-placement (fullscreen, maximize, output or workspace move) that makes the hide meaningless.
     void abandonMinimizeTransition();
     // True while a minimize fade runs in either direction. Neither runs a lifecycle shader.
-    bool minimizeFadeActive() const { return m_minimizeHiding || m_minimizeRevealing; }
+    bool minimizeFadeActive() const { return m_minimizePhase != MinimizePhase::None; }
+    // True only while the window is on its way out; the node has to stay enabled and the box belongs to the transition.
+    bool minimizeConcealing() const { return m_minimizePhase == MinimizePhase::Concealing; }
     const ViewPresentation& presentation() const { return m_presentation; }
     // Size/position to the full output and drop tile clips (exclusive zones do not apply).
     void applyFullscreenLayout(bool animate = false);
@@ -1060,11 +1062,15 @@ namespace umbriel {
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
     int m_openingSlide = 0;
-    // A minimize conceal owns the fade and the presented box until it lands: the node stays enabled, animateTo refuses
-    // layout retargets, and the fade binds no lifecycle shader (minimize has no effect slot). The reveal is the same
-    // timeline in reverse, so it is equally not a lifecycle transition.
-    bool m_minimizeHiding = false;
-    bool m_minimizeRevealing = false;
+    // One minimize transition at a time. A conceal owns the node, the fade and the presented box until it lands: the
+    // node stays enabled, animateTo refuses layout retargets, and the fade binds no lifecycle shader (minimize has no
+    // effect slot). The reveal is the same timeline in reverse, so it is equally not a lifecycle transition.
+    enum class MinimizePhase : uint8_t {
+      None,
+      Concealing,
+      Revealing,
+    };
+    MinimizePhase m_minimizePhase = MinimizePhase::None;
     // The resting box a conceal collapses from and returns to, captured when it starts.
     wlr_box m_minimizeResting{};
     bool m_tiled = false;
