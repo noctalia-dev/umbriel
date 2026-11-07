@@ -119,7 +119,8 @@ namespace umbriel {
     std::vector<std::unique_ptr<Connection>> m_connections;
     // Last payload broadcast per family, indexed by the bit position of the event. A family that recomputes to the
     // same JSON is dropped rather than woken through to every subscriber; a fresh subscriber gets its own initial
-    // line from the subscribe handler, so skipping a no-op broadcast can never leave anyone behind.
+    // line from the subscribe handler, which forgets a paced family's entry when that line is newer, so skipping a
+    // no-op broadcast never leaves anyone behind.
     std::array<std::string, kEventCount> m_lastBroadcast;
     EventPacer m_windowsPacer;
     EventPacer m_workspacesPacer;
