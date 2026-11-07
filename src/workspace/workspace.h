@@ -302,6 +302,8 @@ namespace umbriel {
 
   private:
     void transferTo(WorkspaceGroup& group);
+    std::vector<View*> takePinnedViews();
+    void adoptPinnedView(View& view);
     void syncFloatingLayer();
     friend class WorkspaceGroup;
 
@@ -460,6 +462,8 @@ namespace umbriel {
     Workspace* createWorkspace(const char* name);
     // Move the workspace object after the destination's active member, retaining its identity, layout, and views.
     bool transferTo(Workspace& source, WorkspaceGroup& destination, std::string* error);
+    // Exchange runtime inventories and selection history, leaving output policy and pinned views in place.
+    bool swapWith(WorkspaceGroup& other, std::string* error);
     // Acquire a temporary workspace for one absent home, including on a fixed output. Explicit names survive, while
     // anonymous workspaces use their new numeric position. Original identities keep matching names separate.
     Workspace* displacedDestination(std::shared_ptr<const DisplacedWorkspace> origin);

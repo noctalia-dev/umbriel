@@ -2000,6 +2000,81 @@ namespace umbriel {
       return swapActiveWorkspaceWindows(server, server.outputFromWlr(server.preferredOutput()), target, error);
     }
 
+    bool actionWorkspaceSwapAllOutput(Server& server, const Keybind& bind, std::string* error) {
+      const auto* arg = payloadIf<WorkspaceSwapAllOutputArg>(bind);
+      if (arg == nullptr) {
+        return reject(error, "action carries no workspace swap target");
+      }
+
+      Output* pointerOutput = server.outputFromWlr(server.preferredOutput());
+      server.noteActiveOutput(pointerOutput);
+      const auto resolve = [&server](const std::string& selector) -> std::expected<Output*, std::string> {
+        if (selector.empty() || selector == "current") {
+          Output* output = server.outputFromWlr(server.preferredOutput());
+          if (output == nullptr) {
+            return std::unexpected("no current output");
+          }
+          return output;
+        }
+        return resolveOutputSelector(server, selector);
+      };
+
+      if (arg->output.empty() && server.previousActiveOutputName().empty()) {
+        return reject(error, "no previously active output");
+      }
+
+      const auto source = resolve(arg->output.empty() ? server.previousActiveOutputName() : arg->output);
+      if (!source) {
+        return reject(error, source.error());
+      }
+      const auto target = resolve(arg->destination);
+      if (!target) {
+        return reject(error, target.error());
+      }
+      for (Output* output : {*source, *target}) {
+        if (!output->desktopEnabled() || !output->wlr()->enabled) {
+          return reject(error, "output is not available: " + std::string(output->identity().connector));
+        }
+        if (output->workspaceGroup() == nullptr) {
+          return reject(error, "output has no workspace group");
+        }
+      }
+      if (*source == *target) {
+        return true;
+      }
+
+      View* seatFocus = seatFocusedWindow(server);
+      const bool preserveScratchpadFocus = scratchpadHoldsFocus(server);
+      if (!(*source)->workspaceGroup()->swapWith(*(*target)->workspaceGroup(), error)) {
+        return false;
+      }
+      if (preserveScratchpadFocus) {
+        return true;
+      }
+
+      const bool followFocus = config().input.cursor.followsFocus;
+      if (followFocus && seatFocus != nullptr && seatFocus->mapped()) {
+        server.focusView(seatFocus, FocusReason::Gesture);
+        finishWorkspaceTransfer(server, *seatFocus);
+      } else {
+        WorkspaceGroup* group = pointerOutput != nullptr ? pointerOutput->workspaceGroup() : nullptr;
+        Workspace* workspace = group != nullptr ? group->active() : nullptr;
+        View* focused = workspace != nullptr ? workspace->focusedView() : nullptr;
+        if (focused != nullptr
+            && focused->mapped()
+            && !focused->minimized()
+            && focused->inputDelegate()->acceptsKeyboardFocus()) {
+          // Focus must not reveal a column and overwrite the scroll state that arrived with this inventory.
+          server.focusView(focused, FocusReason::Gesture);
+        } else if (server.overview() == nullptr || !server.overview()->active()) {
+          server.refocus(pointerOutput);
+        }
+        server.cursor()->invalidateHoverFocus();
+      }
+
+      return true;
+    }
+
     // Overlays
     bool actionOverviewToggle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       server.overview()->toggle();
@@ -2312,6 +2387,7 @@ namespace umbriel {
         &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_DOWN>,
         &actionWorkspaceSwapActiveOutputCycle<1>,
         &actionWorkspaceSwapActiveOutputCycle<-1>,
+        &actionWorkspaceSwapAllOutput,
         &actionModifyWidth,
         &actionWindowCenter,
         &actionWindowMoveTo,

@@ -246,6 +246,16 @@ namespace {
           return label;
         }
         return name;
+      case umbriel::ActionArgKind::WorkspaceSwapAllOutput:
+        if (const auto* arg = umbriel::payloadIf<umbriel::WorkspaceSwapAllOutputArg>(bind)) {
+          std::string label = name;
+          if (!arg->output.empty()) {
+            label += " " + arg->output;
+          }
+          appendFlag(label, "output", arg->destination);
+          return label;
+        }
+        return name;
       case umbriel::ActionArgKind::Workspace:
         if (const auto* workspace = umbriel::payloadIf<umbriel::WorkspaceArg>(bind)) {
           std::string label = name + " " + workspaceReferenceLabel(workspace->reference);
@@ -511,6 +521,7 @@ namespace {
     case A::WorkspaceSwapActiveOutputDown:
     case A::WorkspaceSwapActiveOutputNext:
     case A::WorkspaceSwapActiveOutputPrevious:
+    case A::WorkspaceSwapAllOutput:
       return Group::Workspaces;
     case A::OutputFocusLeft:
     case A::OutputFocusRight:
