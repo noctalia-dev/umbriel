@@ -320,7 +320,7 @@ namespace umbriel {
       place(button, box);
       const int buttonRadius = style.buttonCornerRadius >= 0 ? style.buttonCornerRadius : g.cornerRadius;
       wlr_scene_rect_set_corner_radius(button, std::min(zoomed(box.width) / 2, zoomed(buttonRadius)));
-      wlr_scene_node_set_enabled(&button->node, box.x >= 0 && box.x + box.width <= g.contentWidth);
+      wlr_scene_node_set_enabled(&button->node, true);
     };
     drawButton(m_close, parts.button(TitleBarButton::Close));
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));

@@ -28,8 +28,8 @@ namespace umbriel {
     int padding = geometry.padding < 0 ? verticalInset : geometry.padding;
     int gap = geometry.gap;
     const int count = static_cast<int>(shown.size());
-    // Shrink the padding, then the gap, to fit a narrow bar. Buttons keep their size, so a row that still does not fit
-    // extends past the opposite edge.
+    // Shrink the padding, then the gap, to fit a narrow bar. Buttons keep their size; the innermost ones that still do
+    // not fit get no slot, so they are neither drawn nor clickable.
     if (count > 0) {
       padding = std::max(0, std::min(padding, width - count * diameter - (count - 1) * gap));
       if (count > 1) {
@@ -45,6 +45,9 @@ namespace umbriel {
       auto& slot = result.buttons[static_cast<size_t>(button)];
       if (slot) {
         continue;
+      }
+      if (x < 0 || x + diameter > width) {
+        break;
       }
       slot = wlr_box{x, verticalInset, diameter, diameter};
       innermost = x;

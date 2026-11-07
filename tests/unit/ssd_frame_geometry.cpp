@@ -78,7 +78,7 @@ UMBRIEL_TEST(explicitSizeIsExactUpToTheBarHeight) {
   CHECK_EQ(parts.button(TitleBarButton::Close)->height, 11);
 }
 
-UMBRIEL_TEST(narrowBarsShrinkPaddingThenGapAndMirror) {
+UMBRIEL_TEST(narrowBarsShrinkPaddingThenGapThenDropInnerButtons) {
   constexpr std::array order{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
   const auto paddingOnly = titleBarLayout(60, 30, TitleBarButtonSide::Left, order, kExplicit);
   CHECK_EQ(paddingOnly.button(TitleBarButton::Close)->x, 8);
@@ -88,12 +88,20 @@ UMBRIEL_TEST(narrowBarsShrinkPaddingThenGapAndMirror) {
   CHECK_EQ(right.button(TitleBarButton::Close)->x, 38);
   CHECK_EQ(left.button(TitleBarButton::Close)->x, 0);
   CHECK_EQ(right.gap, 7);
+  // Two buttons fit; the innermost one gets no slot and its place belongs to the bar.
+  const auto partial = titleBarLayout(30, 30, TitleBarButtonSide::Right, order, kExplicit);
+  CHECK_EQ(partial.button(TitleBarButton::Close)->x, 18);
+  CHECK_EQ(partial.button(TitleBarButton::Maximize)->x, 6);
+  CHECK(!partial.button(TitleBarButton::Minimize).has_value());
   for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
     const auto parts = titleBarLayout(10, 30, side, order, kExplicit);
-    CHECK_EQ(parts.gap, 0);
-    CHECK_EQ(parts.button(TitleBarButton::Close)->width, 12);
-    CHECK(parts.button(TitleBarButton::Minimize).has_value());
+    CHECK(!parts.button(TitleBarButton::Close).has_value());
+    CHECK_EQ(ssdFramePointAt(10, 300, 30, 2, true, side, order, kExplicit, 5, -15).part, SsdFramePart::TitleBar);
   }
+  CHECK_EQ(
+      ssdFramePointAt(30, 300, 30, 2, true, TitleBarButtonSide::Right, order, kExplicit, 2, -15).part,
+      SsdFramePart::TitleBar
+  );
   const auto empty = titleBarLayout(20, 30, TitleBarButtonSide::Left, kNone, kExplicit);
   CHECK_EQ(empty.gap, 8);
   CHECK(!empty.button(TitleBarButton::Close).has_value());
