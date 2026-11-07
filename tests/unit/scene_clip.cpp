@@ -420,4 +420,30 @@ UMBRIEL_TEST(regionHoleUncoversPreviouslyOccludedContent) {
   fixture.tearDown();
 }
 
+UMBRIEL_TEST(retainedRoundedClipsPreserveInputAndUncoverSurroundingContent) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  constexpr float opaque[] = {1.F, 0.F, 0.F, 1.F};
+  auto* rect = wlr_scene_rect_create(fixture.tree, Fixture::kBufferWidth, Fixture::kBufferHeight, opaque);
+  wlr_scene_node_set_position(&rect->node, Fixture::kBufferX, Fixture::kBufferY);
+  CHECK(!fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  clipped_region clip{
+      .area = {50, 0, Fixture::kBufferWidth - 100, Fixture::kBufferHeight},
+      .corners = corner_radii_all(50),
+      .inside = true,
+  };
+  wlr_scene_rect_set_clipped_region(rect, clip);
+  CHECK(fixture.nodeAt(1300, 250) == &rect->node);
+  CHECK(fixture.nodeAt(1110, 250) == &fixture.buffer->node);
+  CHECK(fixture.onLeft.inside);
+  CHECK(fixture.onRight.inside);
+
+  clip.inside = false;
+  wlr_scene_rect_set_clipped_region(rect, clip);
+  CHECK(fixture.nodeAt(1300, 250) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1110, 250) == &rect->node);
+  fixture.tearDown();
+}
+
 int main() { return RUN_TESTS(); }

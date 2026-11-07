@@ -559,12 +559,14 @@ namespace umbriel {
                     .width = scaled(hole.area.width),
                     .height = scaled(hole.area.height),
                 },
-            .corners = {
-                .top_left = scaledCorner(hole.corners.top_left),
-                .top_right = scaledCorner(hole.corners.top_right),
-                .bottom_right = scaledCorner(hole.corners.bottom_right),
-                .bottom_left = scaledCorner(hole.corners.bottom_left),
-            },
+            .corners =
+                {
+                    .top_left = scaledCorner(hole.corners.top_left),
+                    .top_right = scaledCorner(hole.corners.top_right),
+                    .bottom_right = scaledCorner(hole.corners.bottom_right),
+                    .bottom_left = scaledCorner(hole.corners.bottom_left),
+                },
+            .inside = hole.inside,
         }
     );
   }

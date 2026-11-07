@@ -12,6 +12,7 @@ varying vec2 v_texcoord;
 #if EFFECTS
 uniform vec2 clip_size;
 uniform vec2 clip_position;
+uniform bool clip_inside;
 uniform float clip_radius_top_left;
 uniform float clip_radius_top_right;
 uniform float clip_radius_bottom_left;
@@ -26,8 +27,8 @@ void main() {
 #if EFFECTS
   // Clipping
   float clip_corner_alpha = corner_alpha(
-      clip_size - 1.0, clip_position + 0.5, true, clip_radius_top_left, clip_radius_top_right, clip_radius_bottom_left,
-      clip_radius_bottom_right
+      clip_size - 1.0, clip_position + 0.5, !clip_inside, clip_radius_top_left, clip_radius_top_right,
+      clip_radius_bottom_left, clip_radius_bottom_right
   );
 
   gl_FragColor = v_color * clip_corner_alpha;
