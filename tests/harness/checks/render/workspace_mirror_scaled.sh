@@ -48,6 +48,24 @@ if ((tx < sx * 3 / 4 - 2 || tx > sx * 3 / 4 + 2 || ty < sy * 3 / 4 + 90 - 2 || t
   echo "copy should be centered: source $sx,$sy, copy $tx,$ty"
   exit 1
 fi
+# A receiver proportionally wider than the source fits by height and centers horizontally, so nothing is cropped.
+set_receiver_mode() {
+  sed -i "s/^mode = \"$1\"\$/mode = \"$2\"/" "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+  "$UMBRIEL" settle > /dev/null
+}
+set_receiver_mode 960x720@60 1280x540@60
+grim -o HEADLESS-2 "$UMBRIEL_RUNTIME_DIR/wide.png"
+read -r wx wy ww wh < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/wide.png" bbox 'b > 0.5 && r < 0.3 && g < 0.3')
+if ((ww < sw * 3 / 4 - 2 || ww > sw * 3 / 4 + 2 || wh < sh * 3 / 4 - 2 || wh > sh * 3 / 4 + 2)); then
+  echo "copy should scale by the height ratio, 0.75: source ${sw}x${sh}, copy ${ww}x${wh}"
+  exit 1
+fi
+if ((wx < sx * 3 / 4 + 160 - 2 || wx > sx * 3 / 4 + 160 + 2 || wy < sy * 3 / 4 - 2 || wy > sy * 3 / 4 + 2)); then
+  echo "copy should be centered horizontally: source $sx,$sy, copy $wx,$wy"
+  exit 1
+fi
+set_receiver_mode 1280x540@60 960x720@60
 "$UMBRIEL" msg workspace-switch away --output HEADLESS-1 > /dev/null
 "$UMBRIEL" settle > /dev/null
 grim -o HEADLESS-2 "$UMBRIEL_RUNTIME_DIR/hidden-source.png"

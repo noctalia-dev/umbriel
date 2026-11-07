@@ -33,6 +33,7 @@
 #include "wlr.h"
 // clang-format on
 #include "wlr/util/edges.h"
+#include "workspace/mirror_fit.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 #include "xwayland/xwayland.h"
@@ -1089,13 +1090,14 @@ namespace umbriel {
     wlr_box to{};
     wlr_output_layout_get_box(m_server->outputLayout(), view->workspace()->group()->output()->wlr(), &from);
     wlr_output_layout_get_box(m_server->outputLayout(), receiving->wlr(), &to);
-    if (from.width <= 0 || to.width <= 0) {
+    const std::optional<MirrorFit> fit = fitMirror(from, to);
+    if (!fit) {
       return false;
     }
-    *scale = static_cast<double>(from.width) / to.width;
-    const double centerY = std::lround((to.height - from.height / *scale) / 2);
-    *tx = from.x - to.x * *scale;
-    *ty = from.y - (to.y + centerY) * *scale;
+    // The inverse of the presentation: a receiving layout point back to the source's.
+    *scale = 1 / fit->scale;
+    *tx = from.x - fit->x * *scale;
+    *ty = from.y - fit->y * *scale;
     return true;
   }
 
