@@ -72,8 +72,9 @@ UMBRIEL_TEST(regionNamesRoundTrip) {
        {"left", "right", "top", "bottom", "top_left", "top_right", "bottom_left", "bottom_right"}) {
     const auto region = windowRegionNamed(name);
     CHECK(region.has_value());
-    if (region)
+    if (region) {
       CHECK_EQ(windowRegionName(*region), name);
+    }
   }
   CHECK(!windowRegionNamed("top-left"));
   CHECK(!windowRegionNamed(""));

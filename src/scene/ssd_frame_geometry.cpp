@@ -1,6 +1,7 @@
 #include "scene/ssd_frame_geometry.h"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 
 extern "C" {
@@ -8,90 +9,144 @@ extern "C" {
 }
 
 namespace umbriel {
-  int titleBarButtonDiameter(int height) {
+  namespace {
+    int cornerInsetAt(int radius, int y) {
+      if (radius <= y) {
+        return 0;
+      }
+      return static_cast<int>(std::ceil(radius - std::sqrt(static_cast<double>(y) * (2 * radius - y)))) + 1;
+    }
+  } // namespace
+
+  int titleBarButtonDiameter(int height, int size) {
+    if (size >= 0) {
+      return std::clamp(size, 1, std::max(1, height));
+    }
     const int diameter = std::max(8, (height + 1) / 2);
-    if ((height - diameter) % 2 == 0)
+    if ((height - diameter) % 2 == 0) {
       return diameter;
+    }
     return diameter > 8 ? diameter - 1 : diameter + 1;
   }
 
-  TitleBarLayout titleBarLayout(int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown) {
-    const int diameter = titleBarButtonDiameter(height);
-    const int inset = (height - diameter) / 2;
-    TitleBarLayout result{.title = {kTitleBarTitlePadding, 0, 0, height}};
+  TitleBarLayout titleBarLayout(
+      int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
+      const TitleBarButtonGeometry& geometry, int radius, int titleHeight
+  ) {
+    const int diameter = titleBarButtonDiameter(height, geometry.size);
+    const int verticalInset = (height - diameter) / 2;
+    // Keep the complete button box inside the top arc, including its antialiased edge.
+    const int cornerInset = cornerInsetAt(radius, verticalInset);
+    int padding = geometry.padding < 0 ? verticalInset : geometry.padding;
+    padding = std::max(padding, cornerInset);
+    int gap = geometry.gap;
+    const int count = static_cast<int>(shown.size());
+    // Shrink the padding, then the gap, to fit a narrow bar. Buttons keep their size; the innermost ones that still do
+    // not fit get no slot, so they are neither drawn nor clickable.
+    if (count > 0) {
+      padding = std::max(cornerInset, std::min(padding, width - cornerInset - count * diameter - (count - 1) * gap));
+      if (count > 1) {
+        gap = std::max(0, std::min(gap, (width - cornerInset - count * diameter - padding) / (count - 1)));
+      }
+    }
+    const int titlePadding =
+        std::max(kTitleBarTitlePadding, cornerInsetAt(radius, std::max(0, (height - titleHeight) / 2)));
+    TitleBarLayout result{.title = {titlePadding, 0, 0, height}, .gap = gap};
     // Walk from the edge inward: the last listed button is outermost.
-    int x = side == TitleBarButtonSide::Right ? width - inset - diameter : inset;
-    const int step =
-        side == TitleBarButtonSide::Right ? -(diameter + kTitleBarButtonGap) : diameter + kTitleBarButtonGap;
+    int x = side == TitleBarButtonSide::Right ? width - padding - diameter : padding;
+    const int step = side == TitleBarButtonSide::Right ? -(diameter + gap) : diameter + gap;
     std::optional<int> innermost;
     for (const TitleBarButton button : std::views::reverse(shown)) {
       auto& slot = result.buttons[static_cast<size_t>(button)];
       if (slot) {
         continue;
       }
-      slot = wlr_box{x, inset, diameter, diameter};
+      if (x < cornerInset || x + diameter > width - cornerInset) {
+        break;
+      }
+      slot = wlr_box{x, verticalInset, diameter, diameter};
       innermost = x;
       x += step;
     }
     if (side == TitleBarButtonSide::Right) {
-      result.title.width = std::max(0, innermost.value_or(width) - 2 * kTitleBarTitlePadding);
+      const int right = std::min(width - titlePadding, innermost.value_or(width) - kTitleBarTitlePadding);
+      result.title.width = std::max(0, right - result.title.x);
     } else {
       if (innermost) {
-        result.title.x = *innermost + diameter + kTitleBarTitlePadding;
+        result.title.x = std::max(titlePadding, *innermost + diameter + kTitleBarTitlePadding);
       }
-      result.title.width = std::max(0, width - result.title.x - kTitleBarTitlePadding);
+      result.title.width = std::max(0, width - result.title.x - titlePadding);
     }
     return result;
   }
 
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
-      double x, double y
+      const TitleBarButtonGeometry& geometry, double x, double y, int radius
   ) {
-    if (cw <= 0 || ch <= 0 || h < 0)
+    if (cw <= 0 || ch <= 0 || h < 0) {
       return {};
+    }
     if (x >= 0 && x < cw && y >= -h && y < 0) {
-      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown);
-      const auto inButton = [&layout, x](TitleBarButton button) {
+      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown, geometry, radius);
+      const auto inButton = [&layout, x, cw](TitleBarButton button) {
         const std::optional<wlr_box>& box = layout.button(button);
-        return box && x >= box->x - kTitleBarButtonGap / 2 && x < box->x + box->width + kTitleBarButtonGap / 2;
+        if (!box) {
+          return false;
+        }
+        const int left = std::max(0, box->x - layout.gap / 2);
+        const int right = std::min(cw, box->x + box->width + (layout.gap + 1) / 2);
+        return x >= left && x < right;
       };
-      if (inButton(TitleBarButton::Close))
+      if (inButton(TitleBarButton::Close)) {
         return {SsdFramePart::Close, 0};
-      if (inButton(TitleBarButton::Maximize))
+      }
+      if (inButton(TitleBarButton::Maximize)) {
         return {SsdFramePart::Maximize, 0};
-      if (inButton(TitleBarButton::Minimize))
+      }
+      if (inButton(TitleBarButton::Minimize)) {
         return {SsdFramePart::Minimize, 0};
+      }
       return {SsdFramePart::TitleBar, 0};
     }
     if (!resizable
         || x < -b - kSsdResizeBand
         || x >= cw + b + kSsdResizeBand
         || y < -h - b - kSsdResizeBand
-        || y >= ch + b + kSsdResizeBand)
+        || y >= ch + b + kSsdResizeBand) {
       return {};
+    }
     uint32_t edges = 0;
-    if (x < 0)
+    if (x < 0) {
       edges |= WLR_EDGE_LEFT;
-    if (x >= cw)
+    }
+    if (x >= cw) {
       edges |= WLR_EDGE_RIGHT;
-    if (y < -h)
+    }
+    if (y < -h) {
       edges |= WLR_EDGE_TOP;
-    if (y >= ch)
+    }
+    if (y >= ch) {
       edges |= WLR_EDGE_BOTTOM;
-    if (edges == 0)
+    }
+    if (edges == 0) {
       return {};
+    }
     if ((edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0) {
-      if (y < -h - b + kSsdResizeCorner)
+      if (y < -h - b + kSsdResizeCorner) {
         edges |= WLR_EDGE_TOP;
-      if (y >= ch + b - kSsdResizeCorner)
+      }
+      if (y >= ch + b - kSsdResizeCorner) {
         edges |= WLR_EDGE_BOTTOM;
+      }
     }
     if ((edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) != 0) {
-      if (x < -b + kSsdResizeCorner)
+      if (x < -b + kSsdResizeCorner) {
         edges |= WLR_EDGE_LEFT;
-      if (x >= cw + b - kSsdResizeCorner)
+      }
+      if (x >= cw + b - kSsdResizeCorner) {
         edges |= WLR_EDGE_RIGHT;
+      }
     }
     return {SsdFramePart::Resize, edges};
   }

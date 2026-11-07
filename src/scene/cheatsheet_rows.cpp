@@ -555,16 +555,21 @@ namespace {
     bool useMod;
 
     bool operator<(const MergeKey& other) const {
-      if (submap != other.submap)
+      if (submap != other.submap) {
         return submap < other.submap;
-      if (submapAfter != other.submapAfter)
+      }
+      if (submapAfter != other.submapAfter) {
         return submapAfter < other.submapAfter;
-      if (action != other.action)
+      }
+      if (action != other.action) {
         return action < other.action;
-      if (actionLabel != other.actionLabel)
+      }
+      if (actionLabel != other.actionLabel) {
         return actionLabel < other.actionLabel;
-      if (modifiers != other.modifiers)
+      }
+      if (modifiers != other.modifiers) {
         return modifiers < other.modifiers;
+      }
       return useMod < other.useMod;
     }
   };
@@ -732,21 +737,26 @@ namespace umbriel {
         uint32_t modifiers;
         bool useMod;
         bool operator<(const RunKey& o) const {
-          if (submap != o.submap)
+          if (submap != o.submap) {
             return submap < o.submap;
-          if (submapAfter != o.submapAfter)
+          }
+          if (submapAfter != o.submapAfter) {
             return submapAfter < o.submapAfter;
-          if (modifiers != o.modifiers)
+          }
+          if (modifiers != o.modifiers) {
             return modifiers < o.modifiers;
+          }
           return useMod < o.useMod;
         }
       };
       std::map<RunKey, std::vector<size_t>> groups;
       for (size_t i = 0; i < rows.size(); ++i) {
-        if (rows[i].actionType != wsAction)
+        if (rows[i].actionType != wsAction) {
           continue;
-        if (!rows[i].submap.empty())
+        }
+        if (!rows[i].submap.empty()) {
           continue; // submaps handled separately
+        }
         RunKey rk{rows[i].submap, rows[i].submapAfter, rows[i].modifiers, rows[i].useMod};
         groups[rk].push_back(i);
       }
@@ -775,27 +785,32 @@ namespace umbriel {
           modPrefix = "Mod";
         }
         if ((rk.modifiers & WLR_MODIFIER_LOGO) != 0) {
-          if (!modPrefix.empty())
+          if (!modPrefix.empty()) {
             modPrefix += '+';
+          }
           modPrefix += "Super";
         }
         if ((rk.modifiers & WLR_MODIFIER_CTRL) != 0) {
-          if (!modPrefix.empty())
+          if (!modPrefix.empty()) {
             modPrefix += '+';
+          }
           modPrefix += "Ctrl";
         }
         if ((rk.modifiers & WLR_MODIFIER_ALT) != 0) {
-          if (!modPrefix.empty())
+          if (!modPrefix.empty()) {
             modPrefix += '+';
+          }
           modPrefix += "Alt";
         }
         if ((rk.modifiers & WLR_MODIFIER_SHIFT) != 0) {
-          if (!modPrefix.empty())
+          if (!modPrefix.empty()) {
             modPrefix += '+';
+          }
           modPrefix += "Shift";
         }
-        if (!modPrefix.empty())
+        if (!modPrefix.empty()) {
           modPrefix += '+';
+        }
 
         // Find the action spec name.
         std::string_view specName;

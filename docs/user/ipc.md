@@ -154,7 +154,7 @@ The connection first receives the current state of each family, then a new snaps
 | `layers`          | Layer-shell surfaces appearing, mapping, closing, moving, resizing, or taking and losing the keyboard                                             |
 | `outputs`         | Outputs appearing or leaving, enablement, power, mode, position, scale, transform, variable refresh, HDR, usable area, focus, or active workspace |
 
-Payloads are full snapshots rather than deltas. Replace local state with the newest event instead of trying to merge increments. Identical consecutive payloads are omitted.
+Payloads are full snapshots rather than deltas. Replace local state with the newest event instead of trying to merge increments. Identical consecutive payloads are omitted. `windows`, `workspaces`, `layers`, and `outputs` send at most one snapshot every 16 ms, so a burst of changes skips intermediate states and always ends with the newest one.
 
 Floating-window moves and windows carried by `xdg-toplevel-drag-v1` are reported while the drag is still held; `x` and `y` follow the drag position, including when a carried window normally belongs to the tiled layout. Outside a drag, positions report layout targets rather than animation progress. Size updates follow committed client geometry, including mouse and keyboard resizes.
 

@@ -1205,6 +1205,41 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
+UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
+      "false\n"
+  );
+  CHECK(store.reload().success);
+  const auto& animation = store.config().animation;
+  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
+  CHECK(animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+
+  // An animated close fills the closed tile's space itself, so it holds no frame.
+  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(!store.config().animation.holdsClosedTile());
+
+  // An animated size has nothing to wait for, so the key is reported as inert.
+  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
+  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+
+  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
+  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(store.config().animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+}
+
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
   const TempConfigTree tree;
   tree.write("wipe.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
@@ -4867,6 +4902,30 @@ minimize_glyph_hover = {}
   CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
+UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
+  const TempConfig file;
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[appearance.title_bar]\nheight = 28\nbutton_size = 12\nbutton_gap = 10\nbutton_padding = 15\n");
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().appearance.titleBar.buttonSize, 12);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGap, 10);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, 15);
+
+  file.write("[appearance.title_bar]\nheight = 24\nbutton_size = 30\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonSize, 24);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_size"));
+
+  file.write("[appearance.title_bar]\nbutton_gap = -5\nbutton_padding = -5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGap, 0);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, -1);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_gap"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_padding"));
+}
+
 UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
   const TempConfig file;
   auto& store = umbriel::configStore();
@@ -4880,10 +4939,11 @@ UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
     CHECK(store.reload().success);
     CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, expected);
     CHECK(!containsDiagnostic(store, "unknown key"));
-    if (value == "-2")
+    if (value == "-2") {
       CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
-    else
+    } else {
       CHECK(store.diagnostics().empty());
+    }
   }
   for (const std::string_view value : {"\"round\"", "0.5"}) {
     file.write(std::format("[appearance.title_bar]\nbutton_corner_radius = {}\n", value));
@@ -4925,6 +4985,58 @@ UMBRIEL_TEST(titleBarModesUseStrictVocabulary) {
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);
   CHECK(containsDiagnostic(store, "unknown key appearance.title_bar.enabled"));
+}
+
+UMBRIEL_TEST(windowRuleLayoutAcceptsNamesAndArraysAndRejectsInvalidSelectors) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.layout = "stacking"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["scrolling", "dwindle", "master"]
+title_bar = "off"
+[[window_rule]]
+match.layout = []
+opacity = 0.5
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().windowRules.size(), size_t{3});
+  CHECK(store.config().windowRules[0].matchLayouts == std::vector{LayoutMode::Stacking});
+  CHECK(
+      store.config().windowRules[1].matchLayouts
+      == (std::vector{LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master})
+  );
+  CHECK(store.config().windowRules[2].matchLayouts.empty());
+  file.write(R"(
+[[window_rule]]
+match.layout = "unknown"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["stacking", "invalid"]
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["stacking", true]
+title_bar = "forced"
+[[window_rule]]
+match.layout = 1
+title_bar = "forced"
+[[window_rule]]
+match.layout = { mode = "stacking" }
+title_bar = "forced"
+[[window_rule]]
+match.layout = "Stacking"
+title_bar = "forced"
+)");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  for (int index = 0; index < 6; ++index) {
+    CHECK(containsDiagnostic(store, "window_rule[" + std::to_string(index) + "].match.layout"));
+  }
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(titleBarRuleChoicesAreStrict) {
@@ -5172,6 +5284,65 @@ UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
   file.write("[[window_rule]]\nmatch.app_id = \"^wide$\"\ndefault_scrolling_extent = 1.5\n");
   CHECK(store.reload().success);
   CHECK(store.config().windowRules[0].defaultScrollingExtent.value_or(0.0) == 1.5);
+}
+
+UMBRIEL_TEST(dimBehindRulesMergeAndValidate) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.app_id = "^launcher$"
+dim_behind = 0.5
+[[window_rule]]
+match.app_id = "^launcher$"
+blur = true
+[[window_rule]]
+match.app_id = "^launcher$"
+match.is_focused = false
+dim_behind = 0.0
+[[layer_rule]]
+match.namespace = "^launcher$"
+dim_behind = 0.6
+[[layer_rule]]
+match.namespace = "^launcher$"
+blur = true
+[[layer_rule]]
+match.namespace = "^launcher$"
+match.layer = "bottom"
+dim_behind = 0.0
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  umbriel::WindowRuleState state;
+  state.focused = true;
+  const auto window = [&](const char* appId) {
+    return umbriel::resolveWindowRules(store.config(), appId, "title", std::nullopt, ContentType::None, state, 0);
+  };
+  CHECK(window("launcher").dimBehind == 0.5);
+  CHECK(!window("other").dimBehind.has_value());
+  state.focused = false;
+  CHECK(window("launcher").dimBehind == 0.0);
+  using Layer = umbriel::LayerShellLayer;
+  CHECK(umbriel::resolveLayerRules(store.config(), "launcher", Layer::Overlay, 0).dimBehind == 0.6);
+  CHECK(umbriel::resolveLayerRules(store.config(), "launcher", Layer::Bottom, 0).dimBehind == 0.0);
+  CHECK(!umbriel::resolveLayerRules(store.config(), "other", Layer::Overlay, 0).dimBehind.has_value());
+  auto changedWindow = store.config().windowRules[0];
+  changedWindow.dimBehind = 0.25;
+  CHECK(changedWindow != store.config().windowRules[0]);
+  auto changedLayer = store.config().layerRules[0];
+  changedLayer.dimBehind = 0.25;
+  CHECK(changedLayer != store.config().layerRules[0]);
+  file.write("[[window_rule]]\ndim_behind = 2.0\n[[layer_rule]]\ndim_behind = -1.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].dimBehind == 1.0);
+  CHECK(store.config().layerRules[0].dimBehind == 0.0);
+  CHECK(containsDiagnostic(store, "dim_behind"));
+  file.write("[[window_rule]]\ndim_behind = true\n[[layer_rule]]\ndim_behind = \"dark\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].dimBehind.has_value());
+  CHECK(!store.config().layerRules[0].dimBehind.has_value());
+  CHECK(containsDiagnostic(store, "dim_behind"));
 }
 
 int main() { return RUN_TESTS(); }

@@ -34,10 +34,12 @@ vec4 gradient(
   float at = float(ind) * smooth_fac;
 
   vec4 color = colors[ind];
-  if (ind > 0)
+  if (ind > 0) {
     color = mix(colors[ind - 1], color, smoothstep(at - smooth_fac, at, step));
-  if (ind <= count - 1)
+  }
+  if (ind <= count - 1) {
     color = mix(color, colors[ind + 1], smoothstep(at, at + smooth_fac, step));
+  }
 
   return color;
 }

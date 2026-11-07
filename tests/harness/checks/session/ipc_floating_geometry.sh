@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Floating geometry must reach subscribers during a held move or resize,
-# before releasing the grab can trigger unrelated focus or layout updates.
+# Floating geometry must reach subscribers during a held move or resize, before releasing the grab can trigger
+# unrelated focus or layout updates. tests/unit/event_pacer.cpp pins how often they hear about it.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -84,4 +84,14 @@ pointer_release
 "$UMBRIEL" settle > /dev/null
 await_box keyboard-resize 313 169 640 440
 
-echo 'floating moves, anchored resizes, and keyboard resizes reached windows subscribers'
+# A burst of motions merges into paced snapshots, and the last one still carries the final position.
+sweep=()
+for x in $(seq 414 713); do
+  sweep+=(move "$x" 259)
+done
+pointer_hold 1280 720 move 413 259 mod logo press 272 -- "${sweep[@]}" mark swept hold release 272 mod none
+pointer_step swept
+await_box swept-move 613 169 640 440
+pointer_release
+
+echo 'floating moves, anchored resizes, keyboard resizes, and motion bursts reached windows subscribers'

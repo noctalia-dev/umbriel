@@ -398,6 +398,7 @@ namespace umbriel {
     bool dialog = false;
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
+    std::optional<LayoutMode> layout = std::nullopt;
 
     bool operator==(const WindowRuleState& other) const = default;
   };
@@ -426,6 +427,7 @@ namespace umbriel {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximizedToEdges;
@@ -472,6 +474,7 @@ namespace umbriel {
     // true forces async preference, and false vetoes it.
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity; // 0.0-1.0
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -500,6 +503,7 @@ namespace umbriel {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximizedToEdges == other.matchMaximizedToEdges
@@ -539,6 +543,7 @@ namespace umbriel {
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
+          && dimBehind == other.dimBehind
           && opacity == other.opacity
           && blur == other.blur
           && blurPopups == other.blurPopups
@@ -589,6 +594,7 @@ namespace umbriel {
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -622,6 +628,7 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
 
@@ -632,6 +639,7 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && blur == other.blur
           && blurPopups == other.blurPopups
+          && dimBehind == other.dimBehind
           && ignoreAlpha == other.ignoreAlpha
           && optimized == other.optimized;
     }
@@ -640,6 +648,7 @@ namespace umbriel {
   struct ResolvedLayerRule {
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
     bool operator==(const ResolvedLayerRule&) const = default;
@@ -738,10 +747,16 @@ namespace umbriel {
         std::string font = "sans 10";
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
+        int buttonSize = -1;
+        int buttonGap = 8;
+        int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
+        TitleBarButtonGeometry buttonGeometry() const {
+          return {.size = buttonSize, .gap = buttonGap, .padding = buttonPadding};
+        }
         bool operator==(const TitleBar&) const = default;
       } titleBar;
       int borderWidth = 2;
@@ -811,6 +826,9 @@ namespace umbriel {
       AnimationCurve curve{.easing = Easing::EaseOutCubic};
       std::map<std::string, BezierCurve> beziers;
       std::map<std::string, SpringConfig> springs;
+      // While windows_resize.wait_for_redraw holds the tiles that fill a closed tile's space, an instant close keeps
+      // the closed tile's last frame there until they have redrawn and landed.
+      bool holdsClosedTile() const { return windowsResize.waitsForClient(enabled) && !(enabled && windowsOut.enabled); }
 
       struct WindowsIn {
         std::string effect;
@@ -846,6 +864,10 @@ namespace umbriel {
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
+        // While the size does not animate, a reflow that resizes tiles keeps showing their frames, and hides openers,
+        // until every resized client has redrawn (or kRedrawWaitMs passes), then lands in one frame.
+        bool waitForRedraw = false;
+        bool waitsForClient(bool animationEnabled) const { return waitForRedraw && !(animationEnabled && enabled); }
         bool operator==(const WindowsResize&) const = default;
       } windowsResize;
 

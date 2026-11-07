@@ -584,8 +584,9 @@ static bool test_persistent_scene(struct fixture* fixture) {
       fbos == NULL || (fbos->output.animation_buffers[0] == NULL && fbos->output.in_place_source == NULL),
       "effect buffers are released without effects"
   );
-  if (plain != NULL)
+  if (plain != NULL) {
     wlr_buffer_unlock(plain);
+  }
   wlr_output_state_finish(&again);
 
   // Scene teardown finishes the root's effect state before the nodes that
@@ -2696,8 +2697,9 @@ static bool test_audio_spectrum(struct fixture* fixture) {
   if (buffer != NULL) {
     for (int i = 0; i < FX_AUDIO_BANDS + 2; ++i) {
       int low = i == 0 ? 0 : i - 1;
-      if (low >= FX_AUDIO_BANDS)
+      if (low >= FX_AUDIO_BANDS) {
         low = FX_AUDIO_BANDS - 1;
+      }
       int high = i < FX_AUDIO_BANDS ? i : FX_AUDIO_BANDS - 1;
       float interpolated = i == 0 ? audio[0] : (audio[low] + audio[high]) * 0.5f;
       uint8_t pixel[4];

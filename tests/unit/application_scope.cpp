@@ -69,7 +69,7 @@ namespace {
     return false;
   }
 
-  std::string readLinesWithTimeout(int descriptor, size_t minimumLines, int timeoutMs = 8000) {
+  std::string readOutputWithTimeout(int descriptor, size_t minimumLines = 0, int timeoutMs = 8000) {
     std::string output;
     for (int elapsed = 0; elapsed <= timeoutMs; elapsed += 20) {
       pollfd pollDescriptor{.fd = descriptor, .events = POLLIN, .revents = 0};
@@ -94,7 +94,7 @@ namespace {
           break;
         }
       }
-      if (static_cast<size_t>(std::count(output.begin(), output.end(), '\n')) >= minimumLines) {
+      if (minimumLines > 0 && static_cast<size_t>(std::count(output.begin(), output.end(), '\n')) >= minimumLines) {
         break;
       }
     }
@@ -421,7 +421,8 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 20);
+  // Keep the pipe open through EOF so remaining argument writes cannot receive SIGPIPE.
+  const std::string output = readOutputWithTimeout(outputPipe[0]);
   close(outputPipe[0]);
   int status = 0;
   if (!waitForExit(child, &status)) {
@@ -445,6 +446,7 @@ UMBRIEL_TEST(systemdRunReceivesExactScopeArguments) {
           + "--expand-environment=no\n"
           + "--slice=app.slice\n"
           + "--description=Umbriel application\n"
+          + "--property=TimeoutStopSec=5s\n"
           + "--unit=app-umbriel-arguments.scope\n"
           + "--property=PartOf=umbriel-session.target\n"
           + "--property=BindsTo=umbriel.service\n"
@@ -574,7 +576,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
     return;
   }
 
-  const std::string output = readLinesWithTimeout(outputPipe[0], 5);
+  const std::string output = readOutputWithTimeout(outputPipe[0], 5);
   std::istringstream outputStream(output);
   std::string literal;
   std::string runtime;
@@ -594,6 +596,7 @@ UMBRIEL_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
   CHECK_EQ(systemctlProperty(systemctl, unit, "Slice"), "app.slice");
   CHECK_EQ(systemctlProperty(systemctl, unit, "CollectMode"), "inactive-or-failed");
   CHECK_EQ(systemctlProperty(systemctl, unit, "Description"), "Umbriel application");
+  CHECK_EQ(systemctlProperty(systemctl, unit, "TimeoutStopUSec"), "5s");
   const std::string partOf = systemctlProperty(systemctl, unit, "PartOf");
   CHECK(containsWord(partOf, "umbriel-session.target"));
   const std::string bindsTo = systemctlProperty(systemctl, unit, "BindsTo");

@@ -1641,7 +1641,7 @@ namespace umbriel {
   Server::CloseSnapshot::CloseSnapshot(
       Server& server, CloseSnapshotId id, Output* output, wlr_scene_tree* tree, wlr_scene_tree* content,
       std::vector<BorderSnapshot> borders, const wlr_box& box, int durationMs, const AnimationCurve& curve,
-      std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension
+      std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension, bool held
   )
       : m_server(&server), m_id(id), m_tree(tree), m_content(content != nullptr ? content : tree), m_output(output),
         m_captured(box), m_canvasX(tree->node.x), m_canvasY(tree->node.y), m_borders(std::move(borders)),
@@ -1714,6 +1714,10 @@ namespace umbriel {
     };
     captureNodes(captureNodes, m_tree);
     m_alpha.snap(1.0);
+    if (held) {
+      m_held = true;
+      return;
+    }
     m_alpha.retarget(0.0, durationMs, curve);
 
     if (effectRegistry().animationEffect(event) == nullptr) {
@@ -1887,6 +1891,13 @@ namespace umbriel {
   }
 
   bool Server::CloseSnapshot::tickAnimations(double nowMsec) {
+    if (m_held) {
+      if (!m_heldSinceMsec) {
+        m_heldSinceMsec = nowMsec;
+      }
+      m_held = nowMsec - *m_heldSinceMsec < kMaxCloseHoldMs;
+      return m_held;
+    }
     const bool movedAlpha = m_alpha.tick(nowMsec);
     const bool movedSlide = m_slide.tick(nowMsec);
     bindAnimationEffect(&m_tree->node, m_event, m_alpha, -1.0F);
@@ -1906,12 +1917,14 @@ namespace umbriel {
     }
     for (const Rect& rect : m_rects) {
       auto color = rect.color;
-      for (float& channel : color)
+      for (float& channel : color) {
         channel *= alpha;
+      }
       wlr_scene_rect_set_color(rect.node, color.data());
     }
-    for (const Blur& blur : m_blurs)
+    for (const Blur& blur : m_blurs) {
       wlr_scene_blur_set_alpha(blur.node, blur.baseAlpha * alpha);
+    }
     for (auto& border : m_borders) {
       float innerColor[4];
       float outerColor[4];
@@ -2137,7 +2150,7 @@ namespace umbriel {
     std::string style = "fade";
     double scale = 0.8;
     if (overrides) {
-      durationMs = overrides->durationMs;
+      durationMs = overrides->held ? 1 : overrides->durationMs;
       curve = overrides->curve;
       style = overrides->style;
       scale = overrides->scale;
@@ -2167,7 +2180,7 @@ namespace umbriel {
     const CloseSnapshotId id = m_nextCloseSnapshotId++;
     auto snapshot = std::make_unique<CloseSnapshot>(
         *this, id, output, tree, content, std::move(borders), box, durationMs, curve, style, scale,
-        overrides ? overrides->event : AnimationEvent::WindowsOut, shadow, topExtension
+        overrides ? overrides->event : AnimationEvent::WindowsOut, shadow, topExtension, overrides && overrides->held
     );
     registerAnimatable(snapshot.get());
     m_closeSnapshots.push_back(std::move(snapshot));
@@ -2178,6 +2191,15 @@ namespace umbriel {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
         snapshot->present(canvasX, canvasY, visible);
+        return;
+      }
+    }
+  }
+
+  void Server::releaseCloseSnapshot(CloseSnapshotId id) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->release();
         return;
       }
     }

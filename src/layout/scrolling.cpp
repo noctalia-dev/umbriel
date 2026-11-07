@@ -908,13 +908,18 @@ namespace umbriel {
     return {std::clamp(x, 0.0, max), std::clamp(x + width - viewport, 0.0, max)};
   }
 
-  void ScrollingLayout::clampScroll(int viewportPrimary) {
+  std::array<double, 2> ScrollingLayout::scrollBounds(int viewportPrimary) const {
     double low = 0.0;
     auto high = static_cast<double>(maxScroll(viewportPrimary));
     if (m_centeredRest && !m_columns.empty() && viewportPrimary > 0) {
       low = std::min(low, centeredScroll(0, viewportPrimary));
       high = std::max(high, centeredScroll(static_cast<int>(m_columns.size()) - 1, viewportPrimary));
     }
+    return {low, high};
+  }
+
+  void ScrollingLayout::clampScroll(int viewportPrimary) {
+    const auto [low, high] = scrollBounds(viewportPrimary);
     m_scroll = std::clamp(m_scroll, low, high);
   }
 

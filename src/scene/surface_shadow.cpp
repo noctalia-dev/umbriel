@@ -77,7 +77,7 @@ namespace umbriel {
     }
 
     const fx_corner_radii corners = corner_radii_new(cornerRadius, cornerRadius, cornerRadius, cornerRadius);
-    wlr_scene_shadow_set_clipped_region(m_node, clipped_region{.area = hole, .corners = corners});
+    wlr_scene_shadow_set_clipped_region(m_node, clipped_region{.area = hole, .corners = corners, .inside = false});
 
     wlr_scene_node_set_enabled(&m_node->node, true);
   }
