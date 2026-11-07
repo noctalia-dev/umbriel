@@ -1,0 +1,465 @@
+#!/usr/bin/env bash
+# harness: outputs=1
+# A window that still deforms must not outlive the workspace it lives in. The
+# drag physics keeps a released sheet displaced past the drop, and the deferred
+# re-home leaves the view under the shared drag tree — outside every workspace
+# layer, so the workspace's slide offset and clip never reach it: the window
+# hangs at its old screen position after its workspace has gone. It must travel
+# (and hide) with its workspace, come back with it, and do the same under a
+# gesture, whose trees move before the outgoing workspace is deactivated.
+#
+# A window the drag presents is its payload: switching workspace must not steal
+# it. That ownership outlives the grab — the settle keeps the sheet and its
+# dialogs under the drag tree until the spring lands — so a switch during the
+# settle must not hide them either (Phase 5).
+#
+# Accepted limit, unpinned: opening the overview mid-settle flushes every waiting
+# re-home (its cards need the home trees), so the drawing these phases preserve is
+# deliberately sacrificed there; a regression to "overview flushes nothing" passes.
+set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
+
+readonly BTN_LEFT=272
+readonly OUTPUT_W=1280
+readonly OUTPUT_H=720
+readonly TITLE=stuck-sheet
+readonly IMAGE="$UMBRIEL_RUNTIME_DIR/switch.png"
+readonly REGION="${OUTPUT_W}x${OUTPUT_H}+0+0"
+# A quarter of the 400x300 sheet: proof the window is drawn, not a stray edge.
+readonly FLOOR=20000
+
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[layout]
+mode = "floating"
+
+[input.focus]
+follows_mouse = false
+
+[colors]
+backdrop = "#000000FF"
+[appearance]
+border_width = 0
+outer_border_width = 0
+corner_radius = 0
+drag_opacity = 1.0
+[appearance.shadow]
+enabled = false
+[animation]
+duration_ms = 1
+[animation.windows_in]
+enabled = false
+[animation.windows_out]
+enabled = false
+# A slow spring keeps the sheet displaced far past the workspace slide, so every
+# sample below lands while the deform is still running.
+[animation.windows_drag]
+physics = true
+stiffness = 1.0
+damping = 1.0
+max_displacement_px = 200
+# A linear slide makes duration_ms meaningful (the default curve is a spring and
+# ignores it) and puts the halfway sample at half the travel.
+[animation.workspaces]
+enabled = true
+duration_ms = 300
+curve = "linear"
+
+# Static workspaces: a dynamic inventory would prune the emptied workspace and
+# move the window instead of leaving it where the check put it.
+[output.HEADLESS-1]
+position = [0, 0]
+workspaces = ["ONE", "TWO"]
+
+[[window_rule]]
+match.title = "^stuck-sheet$"
+default_floating = true
+default_floating_size_px = { width = 400, height = 300 }
+
+# An unattached dialog keeps its own scene node inside its parent's tree, so a
+# workspace hiding it is visible on screen rather than riding the parent's node.
+[[window_rule]]
+match.title = "^settle-child$"
+default_floating = true
+attach_to_parent = false
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+
+FILL_COLOR=0xFF00FF00 "$UMBRIEL_UNMAP_CLIENT" "$TITLE" 400 300 > "$UMBRIEL_RUNTIME_DIR/$TITLE.log" 2>&1 &
+for _ in $(seq 80); do
+  "$UMBRIEL" windows --json | jq -e --arg title "$TITLE" 'any(.[]; .title == $title)' > /dev/null && break
+  sleep 0.025
+done
+"$UMBRIEL" settle > /dev/null
+
+box() { "$UMBRIEL" windows --json | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | "\(.x) \(.y) \(.w) \(.h)"'; }
+home() { "$UMBRIEL" windows --json | jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .workspace'; }
+# The window reports the canonical "<output>:<serial>" id; the assertions speak names.
+home_name() {
+  local id
+  id=$(home)
+  "$UMBRIEL" workspaces --json | jq -r --arg id "$id" '.[] | select(.id == $id) | .name'
+}
+active() { "$UMBRIEL" workspaces --json | jq -r '.[] | select(.active) | .name'; }
+capture() { grim -o HEADLESS-1 "$IMAGE"; }
+green() { capture; "$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'g > 0.8 && r < 0.2 && b < 0.2'; }
+red() { capture; "$UMBRIEL_PIXEL_PROBE" "$IMAGE" count 'r > 0.8 && g < 0.2 && b < 0.2'; }
+box_of() { "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | "\(.x) \(.y) \(.w) \(.h)"'; }
+window_count() { "$UMBRIEL" windows --json | jq 'length'; }
+bbox() { capture; "$UMBRIEL_PIXEL_PROBE" "$IMAGE" bbox 'g > 0.8 && r < 0.2 && b < 0.2'; }
+
+# The drawn sheet must have travelled with its workspace: still drawn, and moved
+# along whichever axis this output arranges workspaces on by a large share of the
+# slide, or clipped at the edge it left through. A view parked under the shared
+# drag tree keeps drawing at its own coordinates.
+assert_travelled() { # $1 label, $2 box "x y w h", $3 drawn bbox, $4 minimum shift
+  local label=$1 bxx bxy bxw bxh drx dry drw drh
+  read -r bxx bxy bxw bxh <<< "$2"
+  read -r drx dry drw drh <<< "$3"
+  local dx=$((drx - bxx)) dy=$((dry - bxy))
+  ((dx < 0)) && dx=$((-dx))
+  ((dy < 0)) && dy=$((-dy))
+  local moved=$((dx > dy ? dx : dy))
+  if ((moved >= $4)); then
+    return 0
+  fi
+  # Clipped against the edge it travelled out through, and drawn smaller than its
+  # own box: the sheet really moved out, it did not just change shape. Requiring
+  # the box to have started at least the minimum away rejects a window that
+  # already sat on the edge.
+  local drawn_area=$((drw * drh))
+  local box_area=$((bxw * bxh))
+  if ((((drx <= 1 && bxx >= $4) || (dry <= 1 && bxy >= $4)) && drawn_area < box_area)); then
+    return 0
+  fi
+  echo "$label: the deforming window did not travel with its workspace (drawn at ${drx},${dry}, box ${bxx},${bxy})"
+  exit 1
+}
+
+# The frame must keep moving on ordered ticks while the spring rings: every other
+# animation in this config is 1 ms, so a static window means the deform never
+# engaged and the deferral under test was never taken.
+require_deforming() {
+  local label=$1 _ changed
+  capture
+  cp "$IMAGE" "$UMBRIEL_RUNTIME_DIR/deform-before.png"
+  "$UMBRIEL" clock-advance 200 > /dev/null
+  capture
+  read -r _ changed < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/deform-before.png" diff "$IMAGE" "$REGION")
+  if ((changed == 0)); then
+    echo "$label: the released sheet is not deforming (no pixel moved in 200 ms), the wait was never taken"
+    exit 1
+  fi
+}
+
+# Drags the window by 120 px and releases it, leaving the spring ringing.
+drag_and_release() {
+  local wx wy ww wh
+  read -r wx wy ww wh < <(box)
+  local gx=$((wx + ww / 2)) gy=$((wy + wh / 2))
+  pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+    move "$gx" "$gy" mod super press "$BTN_LEFT" \
+    move $((gx + 40)) "$gy" move $((gx + 80)) "$gy" move $((gx + 120)) "$gy" \
+    -- release "$BTN_LEFT" mod none
+}
+
+# Grabs the window and holds it, leaving the sheet displaced under the cursor.
+grab_and_hold() {
+  local wx wy ww wh
+  read -r wx wy ww wh < <(box)
+  local gx=$((wx + ww / 2)) gy=$((wy + wh / 2))
+  pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+    move "$gx" "$gy" mod super press "$BTN_LEFT" \
+    move $((gx + 40)) "$gy" move $((gx + 80)) "$gy" move $((gx + 120)) "$gy"
+}
+
+read -r wx wy ww wh < <(box)
+# The drawn resting extent is the baseline the settled deform must return to;
+# the client's surface and the presented box are not the same rectangle.
+read -r bx by bw bh < <(bbox)
+if ((bw < ww / 2 || bh < wh / 2)); then
+  echo "scenario never engaged: the window draws ${bw}x${bh} in a ${ww}x${wh} box"
+  exit 1
+fi
+
+# Phase 1 — a gesture switch. A swipe moves the base workspace's tree before the
+# outgoing workspace is deactivated, so nothing but an explicit flush can land
+# the released sheet's wait in time.
+drag_and_release
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+pre=$(green)
+pointer_release
+"$UMBRIEL" clock-advance 16 > /dev/null
+require_deforming "gesture"
+read -r wx wy ww wh < <(box)
+# The active workspace axis decides which delta travels; send the same travel on
+# both so the swipe works whichever axis this output arranges.
+# A cancelled swipe comes back; a committed one takes the window with it.
+"$UMBRIEL" swipe-test begin 1000 > /dev/null
+"$UMBRIEL" swipe-test update 1016 -80 -80 > /dev/null
+"$UMBRIEL" clock-advance 16 > /dev/null
+gesture_count=$(green)
+read -r gx gy gw gh < <(bbox)
+"$UMBRIEL" swipe-test end 1032 1 > /dev/null
+"$UMBRIEL" clock-advance 600 > /dev/null
+returned=$(green)
+returned_workspace=$(active)
+
+"$UMBRIEL" swipe-test begin 2000 > /dev/null
+"$UMBRIEL" swipe-test update 2016 -80 -80 > /dev/null
+"$UMBRIEL" clock-advance 16 > /dev/null
+committed=$(green)
+read -r cx cy cw ch < <(bbox)
+# Carry the step past the halfway point so the release commits it.
+"$UMBRIEL" swipe-test update 2032 -220 -220 > /dev/null
+"$UMBRIEL" swipe-test end 2048 0 > /dev/null
+"$UMBRIEL" clock-advance 800 > /dev/null
+committed_away=$(green)
+committed_workspace=$(active)
+"$UMBRIEL" clock-resume
+"$UMBRIEL" settle > /dev/null
+"$UMBRIEL" msg workspace-switch ONE > /dev/null
+"$UMBRIEL" settle > /dev/null
+
+if ((pre < FLOOR)); then
+  echo "scenario never engaged: the deformed sheet does not draw before the swipe (green=$pre)"
+  exit 1
+fi
+if ((gesture_count < FLOOR)); then
+  echo "the deforming window left the slide instead of travelling with it (green=$gesture_count)"
+  exit 1
+fi
+assert_travelled "into a gesture" "$wx $wy $ww $wh" "$gx $gy $gw $gh" 120
+if [[ $returned_workspace != ONE || $returned -lt $FLOOR ]]; then
+  echo "a cancelled swipe did not leave the window on its workspace (workspace $returned_workspace, green=$returned)"
+  exit 1
+fi
+if ((committed < FLOOR)); then
+  echo "the window left the committed slide instead of travelling with it (green=$committed)"
+  exit 1
+fi
+assert_travelled "into a committed swipe" "$wx $wy $ww $wh" "$cx $cy $cw $ch" 120
+if [[ $committed_workspace != TWO ]]; then
+  echo "the committed swipe did not switch workspace: on '$committed_workspace', want TWO"
+  exit 1
+fi
+if ((committed_away >= FLOOR)); then
+  echo "the window stayed on screen after its workspace left (green=$committed_away)"
+  exit 1
+fi
+
+# Phase 2 — an activate switch. The window keeps living on ONE: it must slide out
+# with it, not hang at its old spot.
+drag_and_release
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+held=$(green)
+pointer_release
+"$UMBRIEL" clock-advance 16 > /dev/null
+require_deforming "switch"
+
+if [[ $(home_name) != ONE || $(active) != ONE ]]; then
+  echo "scenario never engaged: window on '$(home_name)', active '$(active)', want ONE/ONE"
+  exit 1
+fi
+if ((held < FLOOR)); then
+  echo "scenario never engaged: the deformed sheet does not draw before the switch (green=$held)"
+  exit 1
+fi
+read -r wx wy ww wh < <(box)
+
+"$UMBRIEL" msg workspace-switch TWO > /dev/null
+"$UMBRIEL" clock-advance 60 > /dev/null
+mid=$(green)
+read -r mx my mw mh < <(bbox)
+"$UMBRIEL" clock-advance 400 > /dev/null
+away=$(green)
+active_after=$(active)
+
+if [[ $active_after != TWO ]]; then
+  echo "the switch never happened: on workspace '$active_after', want TWO"
+  exit 1
+fi
+if [[ $(home_name) != ONE ]]; then
+  echo "the release moved the window off its workspace: '$(home_name)', want ONE"
+  exit 1
+fi
+if ((mid < FLOOR)); then
+  echo "the deforming window left the slide instead of travelling with it (green=$mid halfway)"
+  exit 1
+fi
+assert_travelled "mid-slide" "$wx $wy $ww $wh" "$mx $my $mw $mh" 120
+if ((away >= FLOOR)); then
+  echo "the deforming window stayed on screen after its workspace left (green=$away)"
+  exit 1
+fi
+
+# Switching back presents it again, at rest on its committed box once the slow
+# spring has run out; the clock stays frozen so that settle is ordered here.
+"$UMBRIEL" msg workspace-switch ONE > /dev/null
+"$UMBRIEL" clock-advance 300 > /dev/null
+"$UMBRIEL" clock-advance 6000 > /dev/null
+back=$(green)
+read -r rx ry rw rh < <(bbox)
+"$UMBRIEL" clock-resume
+"$UMBRIEL" settle > /dev/null
+if ((back < FLOOR)); then
+  echo "the window did not come back with its workspace (green=$back)"
+  exit 1
+fi
+if (((rw - bw) > 2 || (bw - rw) > 2 || (rh - bh) > 2 || (bh - rh) > 2)); then
+  echo "the deform left a residue once it settled: drawn ${rw}x${rh}, resting ${bw}x${bh}"
+  exit 1
+fi
+
+# Phase 3 — the window is still held by the cursor when the workspace switches.
+# The drag owns its presentation: it must stay drawn for the whole slide, then
+# land on the workspace it is dropped on.
+grab_and_hold
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+"$UMBRIEL" msg workspace-switch TWO > /dev/null
+"$UMBRIEL" clock-advance 450 > /dev/null
+grabbed=$(green)
+"$UMBRIEL" clock-resume
+pointer_release
+"$UMBRIEL" settle > /dev/null
+posed=$(green)
+dropped=$(home_name)
+
+if ((grabbed < FLOOR)); then
+  echo "the held window vanished with the workspace it was dragged from (green=$grabbed)"
+  exit 1
+fi
+if [[ $dropped != TWO ]]; then
+  echo "the drop did not land the window on the visible workspace: '$dropped', want TWO"
+  exit 1
+fi
+if ((posed < FLOOR)); then
+  echo "the dropped window is not presented on its own workspace (green=$posed)"
+  exit 1
+fi
+"$UMBRIEL" msg workspace-switch ONE > /dev/null
+"$UMBRIEL" settle > /dev/null
+left_behind=$(green)
+if ((left_behind >= FLOOR)); then
+  echo "the dropped window stayed on screen after its workspace left (green=$left_behind)"
+  exit 1
+fi
+# Phase 4 — a dragged window carries its transient child into the drag tree. A
+# workspace switch must not disable a dialog the drag elevated with its parent.
+readonly CHILD_FLOOR=5000
+mapped=$(window_count)
+EXPORT_TOPLEVEL=1 "$UMBRIEL_SEAT_LOG_CLIENT" settle-parent > "$UMBRIEL_RUNTIME_DIR/settle-parent.log" 2>&1 &
+for _ in $(seq 80); do
+  [[ $(window_count) -eq $((mapped + 1)) ]] && break
+  sleep 0.05
+done
+handle=
+for _ in $(seq 60); do
+  handle=$(sed -n 's/^exported handle=//p' "$UMBRIEL_RUNTIME_DIR/settle-parent.log")
+  [[ -n $handle ]] && break
+  sleep 0.05
+done
+if [[ -z $handle ]]; then
+  echo "scenario never engaged: the parent never exported its toplevel: $(cat "$UMBRIEL_RUNTIME_DIR/settle-parent.log")"
+  exit 1
+fi
+TRANSIENT_FOREIGN_HANDLE=$handle FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" settle-child 200 150 \
+  > "$UMBRIEL_RUNTIME_DIR/settle-child.log" 2>&1 &
+for _ in $(seq 80); do
+  [[ $(window_count) -eq $((mapped + 2)) ]] && break
+  sleep 0.05
+done
+"$UMBRIEL" settle > /dev/null
+
+read -r px py pw ph < <(box_of settle-parent)
+# Grab the parent well away from the dialog the compositor centered over it.
+gx=$((px + pw / 4))
+gy=$((py + ph * 3 / 4))
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+  move "$gx" "$gy" mod super press "$BTN_LEFT" \
+  move $((gx + 40)) "$gy" move $((gx + 80)) "$gy"
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+child_held=$(red)
+"$UMBRIEL" msg workspace-switch TWO > /dev/null
+"$UMBRIEL" clock-advance 450 > /dev/null
+child_across=$(red)
+"$UMBRIEL" clock-resume
+pointer_release
+"$UMBRIEL" settle > /dev/null
+
+if ((child_held < CHILD_FLOOR)); then
+  echo "scenario never engaged: the dialog does not draw with its parent's drag (red=$child_held)"
+  exit 1
+fi
+if ((child_across < CHILD_FLOOR)); then
+  echo "the drag's child dialog was hidden with the workspace (red=$child_held -> $child_across)"
+  exit 1
+fi
+
+# Phase 5 — the ride outlives the grab. A pinned release parks its wait on the
+# output's pinned root, so the sheet settles under the drag tree while its dialog
+# rides it, and every flush skips a pinned view: only the ride can keep it shown.
+id_of() { "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'; }
+workspace_name_of() {
+  local id
+  id=$("$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .workspace')
+  "$UMBRIEL" workspaces --json | jq -r --arg id "$id" '.[] | select(.id == $id) | .name'
+}
+child_ws=$(workspace_name_of settle-child)
+"$UMBRIEL" msg window-focus "$(id_of settle-parent)" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace "$child_ws" > /dev/null
+"$UMBRIEL" msg workspace-switch "$child_ws" > /dev/null
+"$UMBRIEL" settle > /dev/null
+if [[ $(workspace_name_of settle-parent) != "$child_ws" ]]; then
+  echo "scenario never engaged: the parent did not join the dialog on '$child_ws'"
+  exit 1
+fi
+if [[ $child_ws == ONE ]]; then other_ws=TWO; else other_ws=ONE; fi
+"$UMBRIEL" msg window-focus "$(id_of settle-parent)" > /dev/null
+"$UMBRIEL" msg window-toggle-pinned > /dev/null
+"$UMBRIEL" settle > /dev/null
+if [[ $("$UMBRIEL" windows --json | jq -r --arg title settle-parent '.[] | select(.title == $title) | .pinned') != true ]]; then
+  echo "scenario never engaged: the parent did not pin"
+  exit 1
+fi
+read -r px py pw ph < <(box_of settle-parent)
+gx=$((px + pw / 4))
+gy=$((py + ph * 3 / 4))
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+  move "$gx" "$gy" mod super press "$BTN_LEFT" \
+  move $((gx + 40)) "$gy" move $((gx + 80)) "$gy"
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+pinned_held=$(red)
+pointer_release
+"$UMBRIEL" clock-advance 16 > /dev/null
+require_deforming "pinned settle"
+pinned_settling=$(red)
+"$UMBRIEL" msg workspace-switch "$other_ws" > /dev/null
+"$UMBRIEL" clock-advance 450 > /dev/null
+pinned_across=$(red)
+"$UMBRIEL" clock-resume
+"$UMBRIEL" settle > /dev/null
+pinned_landed=$(red)
+
+if ((pinned_held < CHILD_FLOOR)); then
+  echo "scenario never engaged: the pinned parent's drag does not carry the dialog (red=$pinned_held)"
+  exit 1
+fi
+if ((pinned_settling < CHILD_FLOOR)); then
+  echo "scenario never engaged: the dialog does not draw while the pinned sheet settles (red=$pinned_settling)"
+  exit 1
+fi
+if ((pinned_across < CHILD_FLOOR)); then
+  echo "the settling drag's dialog was hidden with the workspace (red=$pinned_settling -> $pinned_across)"
+  exit 1
+fi
+if ((pinned_landed < CHILD_FLOOR)); then
+  echo "the dialog stayed hidden after the pinned sheet landed (red=$pinned_across -> $pinned_landed)"
+  exit 1
+fi
+echo "a deforming window travels and hides with its workspace, a held one stays with the cursor, and its dialogs ride along"
