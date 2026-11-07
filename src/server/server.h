@@ -394,15 +394,15 @@ namespace umbriel {
     void notifyKeyboardLayoutIpc();
     void notifyOverviewChanged();
     void notifySubmapChanged();
-    // Coalesced windows-event notification: at most one idle callback per frame
-    // regardless of how many window-list-relevant changes happened.
+    // Paced windows-event notification: one snapshot per interval (see EventPacer), however many window-list-relevant
+    // changes happened.
     void scheduleIpcWindowsEvent();
-    // Same coalescing for the workspace list: layout mode, activation, names and membership all land in one payload,
+    // Same pacing for the workspace list: layout mode, activation, names and membership all land in one payload,
     // so a switch that renames, reindexes and reactivates emits once.
     void scheduleIpcWorkspacesEvent();
-    // Same coalescing for the layer-shell surface list.
+    // Same pacing for the layer-shell surface list.
     void scheduleIpcLayersEvent();
-    // Same coalescing for the output list.
+    // Same pacing for the output list.
     void scheduleIpcOutputsEvent();
 
     // Focus lives in FocusManager; these forward so call sites that already
@@ -596,10 +596,6 @@ namespace umbriel {
     void armBackgroundRenderTimer();
     static int onStartupRulesTimer(void* data);
     static int onTerminateSignal(int signal, void* data);
-    static void onIpcWindowsIdle(void* data);
-    static void onIpcWorkspacesIdle(void* data);
-    static void onIpcLayersIdle(void* data);
-    static void onIpcOutputsIdle(void* data);
     static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
@@ -962,12 +958,6 @@ namespace umbriel {
     wl_event_source* m_backgroundRenderTimer = nullptr;
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
-    // Non-null while a windows-event idle callback is pending. The idle source
-    // removes itself when it runs, so a non-null pointer means "already queued".
-    wl_event_source* m_ipcWindowsIdle = nullptr;
-    wl_event_source* m_ipcWorkspacesIdle = nullptr;
-    wl_event_source* m_ipcLayersIdle = nullptr;
-    wl_event_source* m_ipcOutputsIdle = nullptr;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     wl_event_source* m_suspensionSyncIdle = nullptr;

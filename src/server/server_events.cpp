@@ -2267,76 +2267,28 @@ namespace umbriel {
   }
 
   void Server::scheduleIpcWindowsEvent() {
-    if (m_ipc == nullptr || m_ipcWindowsIdle != nullptr) {
-      return;
-    }
-    m_ipcWindowsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWindowsIdle, this);
-    if (m_ipcWindowsIdle == nullptr) {
-      kLog.error("failed to register IPC windows idle source");
-    }
-  }
-
-  void Server::onIpcWindowsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWindowsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWindowsChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyWindowsChanged();
     }
   }
 
   void Server::scheduleIpcWorkspacesEvent() {
     // Outputs report their active workspace and focus, which move with the workspace list.
     scheduleIpcOutputsEvent();
-    if (m_ipc == nullptr || m_ipcWorkspacesIdle != nullptr) {
-      return;
-    }
-    m_ipcWorkspacesIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWorkspacesIdle, this);
-    if (m_ipcWorkspacesIdle == nullptr) {
-      kLog.error("failed to register IPC workspaces idle source");
-    }
-  }
-
-  void Server::onIpcWorkspacesIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWorkspacesIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWorkspacesChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyWorkspacesChanged();
     }
   }
 
   void Server::scheduleIpcLayersEvent() {
-    if (m_ipc == nullptr || m_ipcLayersIdle != nullptr) {
-      return;
-    }
-    m_ipcLayersIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcLayersIdle, this);
-    if (m_ipcLayersIdle == nullptr) {
-      kLog.error("failed to register IPC layers idle source");
-    }
-  }
-
-  void Server::onIpcLayersIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcLayersIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyLayersChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyLayersChanged();
     }
   }
 
   void Server::scheduleIpcOutputsEvent() {
-    if (m_ipc == nullptr || m_ipcOutputsIdle != nullptr) {
-      return;
-    }
-    m_ipcOutputsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcOutputsIdle, this);
-    if (m_ipcOutputsIdle == nullptr) {
-      kLog.error("failed to register IPC outputs idle source");
-    }
-  }
-
-  void Server::onIpcOutputsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcOutputsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyOutputsChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyOutputsChanged();
     }
   }
 
