@@ -130,6 +130,33 @@ namespace umbriel {
     // counts as company.
     bool sharesWorkspace(const View* view) { return view != nullptr && view->mapped() && !view->pinned(); }
 
+    // The sole non-empty column, or null while the layout holds no column or more than one.
+    const Column* onlyTiledColumn(const Layout& layout) {
+      const Column* only = nullptr;
+      for (const Column& column : layout.columns()) {
+        if (column.views.empty()) {
+          continue;
+        }
+        if (only != nullptr) {
+          return nullptr;
+        }
+        only = &column;
+      }
+      return only;
+    }
+
+    // The column whose members are alone together; master and dwindle only match their sole tiled window.
+    const Column* aloneColumn(const Layout& layout) {
+      const Column* only = onlyTiledColumn(layout);
+      if (only == nullptr) {
+        return nullptr;
+      }
+      if (layout.mode() != LayoutMode::Scrolling && only->views.size() > 1) {
+        return nullptr;
+      }
+      return only;
+    }
+
     bool displacedLayoutCurrent(const DisplacedWorkspace& origin) {
       return origin.transferredLayout ? origin.configGeneration >= configStore().workspaceLayoutGeneration()
                                       : origin.configGeneration == configStore().generation();
@@ -428,6 +455,7 @@ namespace umbriel {
     if (reconcile) {
       m_group->reconcileDynamic();
     }
+    view->refreshStateRuleEffects();
   }
 
   bool Workspace::occupied() const { return std::ranges::any_of(m_views, sharesWorkspace); }
@@ -468,11 +496,8 @@ namespace umbriel {
     if (std::erase(m_views, view) > 0) {
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
-    if (view == m_lastAloneSoleView) {
-      // The window we remembered as the only one is gone: forget it, so another window that replaces it is still
-      // noticed as new.
-      m_lastAloneSoleView = nullptr;
-    }
+    // Drop the cached holders, so a replacement window is still noticed as new.
+    std::erase(m_lastAloneViews, view);
     if (view == m_lastOnlyWindowView) {
       m_lastOnlyWindowView = nullptr;
     }
@@ -522,6 +547,32 @@ namespace umbriel {
       }
     }
     return true;
+  }
+
+  bool Workspace::isAloneInLayout(const View* view) const {
+    const Column* only = aloneColumn(*m_layout);
+    return only != nullptr && std::ranges::find(only->views, view) != only->views.end();
+  }
+
+  bool Workspace::wouldBeAloneInLayout(
+      const View* view, std::string_view namedScrollingColumn, std::optional<int> order
+  ) const {
+    const Column* only = aloneColumn(*m_layout);
+    if (only == nullptr) {
+      // No column yet: the view starts the only one. More than one column means it cannot become alone.
+      return std::ranges::none_of(m_layout->columns(), [](const Column& column) { return !column.views.empty(); });
+    }
+    if (std::ranges::find(only->views, view) != only->views.end()) {
+      return true;
+    }
+    const ScrollingLayout* scrolling = scrollingLayout();
+    if (scrolling == nullptr || namedScrollingColumn.empty()) {
+      return false;
+    }
+    const std::optional<NamedScrollingColumnPlacement> placement =
+        namedScrollingColumnPlacement(*scrolling, view, namedScrollingColumn, order);
+    const auto index = static_cast<size_t>(only - m_layout->columns().data());
+    return placement.has_value() && placement->column == index;
   }
 
   bool Workspace::isOnlyVisibleView(const View* view) const {
@@ -791,6 +842,8 @@ namespace umbriel {
   }
 
   void Workspace::detachFromLayout(View* view) {
+    // Release the column-wide effect while the window still owns its column.
+    view->releaseColumnWideAloneEffect();
     ScrollingLayout* scrolling = scrollingLayout();
     // Measured before the removal, because it depends on where the column is.
     const double shift = scrolling != nullptr
@@ -802,6 +855,8 @@ namespace umbriel {
     releaseLayoutMotion(view);
     std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
     std::erase(m_motion.frozen, view);
+    // Outside the layout it no longer waits for an arrange.
+    view->applyDeferredBorderFocus();
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -825,6 +880,24 @@ namespace umbriel {
     }
   }
 
+  void Workspace::deferFocusChrome() {
+    const auto& animation = config().animation;
+    m_focusChromeDeferred = animation.windowsResize.waitsForClient(animation.enabled);
+  }
+
+  bool Workspace::defersFocusChrome(const View* view) const {
+    return (m_focusChromeDeferred && m_layout->columnOf(view) >= 0)
+        || (m_motion.waiting && std::ranges::contains(m_motion.frozen, view));
+  }
+
+  void Workspace::applyDeferredFocusChrome() {
+    for (View* view : m_views) {
+      if (view != nullptr && !defersFocusChrome(view)) {
+        view->applyDeferredBorderFocus();
+      }
+    }
+  }
+
   void Workspace::releaseHeldCloseSnapshots() {
     if (m_heldCloseSnapshots.empty() || m_group == nullptr) {
       return;
@@ -845,26 +918,17 @@ namespace umbriel {
   }
 
   // Tells every window whether it is alone, and whether it is the workspace's only window, but only when one of those
-  // answers changed. It compares each answer's count and holder, and the config version, so every change is noticed
-  // (even one window replaced by another at the same time). The guard stops the window handlers from triggering another
-  // pass.
+  // answers changed. Alone follows the membership of the alone column; the other question compares its count and
+  // holder. The config version is part of both answers, so a reload is noticed even when no window moved and a window
+  // replaced by another at the same time is still seen as new. The guard stops the window handlers from triggering
+  // another pass.
   void Workspace::refreshAloneRuleStates() {
     if (m_refreshingAloneRules) {
       return;
     }
-    View* soleTiled = nullptr;
-    size_t tiledViewCount = 0;
-    for (const Column& column : m_layout->columns()) {
-      for (View* view : column.views) {
-        ++tiledViewCount;
-        if (tiledViewCount == 1) {
-          soleTiled = view;
-        }
-      }
-    }
-    if (tiledViewCount != 1) {
-      soleTiled = nullptr;
-    }
+    const Column* only = aloneColumn(*m_layout);
+    const bool aloneChanged =
+        only != nullptr ? !std::ranges::equal(m_lastAloneViews, only->views) : !m_lastAloneViews.empty();
     View* soleVisible = nullptr;
     size_t visibleViewCount = 0;
     for (View* other : m_views) {
@@ -880,15 +944,17 @@ namespace umbriel {
       soleVisible = nullptr;
     }
     const uint64_t generation = configStore().generation();
-    if (tiledViewCount == m_lastAloneViewCount
-        && soleTiled == m_lastAloneSoleView
+    if (!aloneChanged
         && visibleViewCount == m_lastOnlyWindowCount
         && soleVisible == m_lastOnlyWindowView
         && generation == m_lastAloneGeneration) {
       return;
     }
-    m_lastAloneViewCount = tiledViewCount;
-    m_lastAloneSoleView = soleTiled;
+    if (only != nullptr) {
+      m_lastAloneViews = only->views;
+    } else {
+      m_lastAloneViews.clear();
+    }
     m_lastOnlyWindowCount = visibleViewCount;
     m_lastOnlyWindowView = soleVisible;
     m_lastAloneGeneration = generation;
@@ -919,13 +985,16 @@ namespace umbriel {
     // Clearing here, rather than only in flushArrange, is what makes mixing the two safe: a direct arrange() satisfies
     // whatever was marked earlier in the frame, so the flush does not repeat it.
     m_arrangePending = false;
-    // Held close snapshots outlive this arrange only while its tiles wait for their clients.
+    // Held close snapshots outlive this arrange only while its tiles wait for their clients. Focus chrome deferred for
+    // this arrange lands at its end, except on the members it froze.
     struct HeldRelease {
       Workspace& workspace;
       explicit HeldRelease(Workspace& owner) : workspace(owner) {}
       HeldRelease(const HeldRelease&) = delete;
       HeldRelease& operator=(const HeldRelease&) = delete;
       ~HeldRelease() {
+        workspace.m_focusChromeDeferred = false;
+        workspace.applyDeferredFocusChrome();
         if (!workspace.m_motion.waiting) {
           workspace.releaseHeldCloseSnapshots();
         }
@@ -960,7 +1029,7 @@ namespace umbriel {
       }
     }
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
-    // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
+    // Re-emit now that the layout boxes are settled; the event pacer caps this at one per interval.
     m_group->server()->scheduleIpcWindowsEvent();
     struct ResizeRequest {
       View* view;
@@ -1320,7 +1389,10 @@ namespace umbriel {
       if (!member.opening) {
         continue;
       }
-      if (wait && member.view->tiledOpeningDeferred()) {
+      // A held reflow hides its opener until the switch even without windows_in, which alone defers it at map: shown
+      // under the frozen frames, its shadow and any part outside them would appear before the switch.
+      if (wait) {
+        member.view->deferTiledOpening();
         std::erase_if(m_motion.openers, [&](const LayoutMotion::Opener& held) { return held.view == member.view; });
         m_motion.openers.push_back({.view = member.view, .box = member.to});
         continue;
@@ -1495,6 +1567,8 @@ namespace umbriel {
 
   void Workspace::resumeHeldOpeners() {
     m_motion.frozen.clear();
+    // A frozen frame showed its member's focus as it was; the live member takes the focus it was given meanwhile.
+    applyDeferredFocusChrome();
     for (const LayoutMotion::Opener& opener : std::exchange(m_motion.openers, {})) {
       if (!heldOpenerAlive(opener.view)) {
         continue;
@@ -2049,6 +2123,10 @@ namespace umbriel {
   }
 
   bool Workspace::expelFocused(int direction) {
+    // Expel splits the window out inside the layout, without a detach, so release the column-wide effect here.
+    if (m_focusedView != nullptr) {
+      m_focusedView->releaseColumnWideAloneEffect();
+    }
     if (!m_layout->expel(m_focusedView, direction)) {
       return false;
     }
@@ -2716,6 +2794,9 @@ namespace umbriel {
       if (m_focusedView != nullptr) {
         scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
       }
+    }
+    for (View* view : m_views) {
+      view->refreshStateRuleEffects();
     }
     markArrange();
     refreshDropZonePreview(*m_group->server());

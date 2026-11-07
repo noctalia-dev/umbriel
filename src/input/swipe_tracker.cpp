@@ -48,7 +48,20 @@ namespace umbriel {
 
   double SwipeTracker::projectedEndPos() const {
     const double vel = velocity();
-    return m_pos - vel / (1000.0 * std::log(kDecelerationTouchpad));
+    const double speed = std::abs(vel);
+    if (speed <= 0.0) {
+      return m_pos;
+    }
+
+    // Asymmetric S-curve over the release speed. A bare sigmoid would already project half a page at zero speed, so
+    // subtract its value at zero and renormalize: a slow release projects nothing, hard flicks saturate at the ceiling.
+    const double width = (speed < kCoastMidSpeed ? kCoastWidthSlow : kCoastWidthFast);
+    const double base = 1.0 / (1.0 + std::exp(kCoastMidSpeed / kCoastWidthSlow));
+    const double curve = 1.0 / (1.0 + std::exp(-(speed - kCoastMidSpeed) / width));
+    // The floor fades in with speed, so a dead stop still projects nothing.
+    const double floor = kCoastFloorPx * (1.0 - std::exp(-speed / kCoastFloorSpeed));
+    const double projection = floor + kCoastMaxPx * (curve - base) / (1.0 - base);
+    return m_pos + std::copysign(projection, vel);
   }
 
   void SwipeTracker::trimHistory(uint32_t nowMsec) {

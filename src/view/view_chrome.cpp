@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "core/log.h"
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/seat.h"
@@ -11,6 +12,8 @@
 #include "server/background_effect.h"
 #include "server/server.h"
 #include "view/view.h"
+
+#include <algorithm>
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
@@ -26,6 +29,10 @@ extern "C" {
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
+  namespace {
+    constexpr Logger kLog("view");
+  } // namespace
+
   int View::titleBarHeight() const {
     if (!wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode))
         || scheduledFullscreen()
@@ -157,6 +164,11 @@ namespace umbriel {
   }
 
   void View::setBorderFocused(bool focused) {
+    if (m_workspace != nullptr && m_workspace->defersFocusChrome(this)) {
+      m_deferredBorderFocus = focused;
+      return;
+    }
+    m_deferredBorderFocus.reset();
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
     if (m_chromeAttachment != nullptr) {
@@ -184,6 +196,12 @@ namespace umbriel {
       applyDynamicRules();
     } else {
       updateBorderColor(focusChanged);
+    }
+  }
+
+  void View::applyDeferredBorderFocus() {
+    if (const std::optional<bool> focused = std::exchange(m_deferredBorderFocus, std::nullopt)) {
+      setBorderFocused(*focused);
     }
   }
 
@@ -240,7 +258,7 @@ namespace umbriel {
   }
 
   void View::applyCornerRadius() {
-    // Every buffer under the toplevel's surface tree is rounded against one box, the window's content box, so the arc
+    // Every buffer under the toplevel's surface tree is rounded against the complete frame, so the arc
     // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
     // surface is its own root.
     const int radius = surfaceRadius();
@@ -256,6 +274,7 @@ namespace umbriel {
       int radius;
       int contentWidth;
       int contentHeight;
+      int titleHeight;
       int treeX;
       int treeY;
     } ctx{
@@ -263,6 +282,7 @@ namespace umbriel {
         radius,
         usePresentedSize ? m_presentation.width() : geometry.width,
         usePresentedSize ? m_presentation.height() : geometry.height,
+        titleBarHeight(),
         m_contentTree->node.x,
         m_contentTree->node.y,
     };
@@ -281,20 +301,31 @@ namespace umbriel {
           // which puts the content box at the tree origin, and the corner box is node-relative.
           const wlr_box cornerBox{
               ctx->treeX - sx,
-              ctx->treeY - sy,
+              ctx->treeY - sy - ctx->titleHeight,
               ctx->contentWidth,
-              ctx->contentHeight,
+              ctx->contentHeight + ctx->titleHeight,
           };
           // Always set, zeros included: a window that lost its radius must lose the box with it.
-          wlr_scene_buffer_set_corner_radii(
-              buffer,
-              ctx->view->titleBarHeight() > 0 ? corner_radii_new(0, 0, ctx->radius, ctx->radius)
-                                              : corner_radii_all(ctx->radius)
-          );
+          wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
           wlr_scene_buffer_set_corner_box(buffer, ctx->radius > 0 ? &cornerBox : nullptr);
         },
         &ctx
     );
+  }
+
+  void View::updateDimBehind() {
+    if (m_sceneTree == nullptr) {
+      return;
+    }
+    Output* out = currentOutput();
+    const bool overview = m_server->overview() != nullptr && m_server->overview()->active();
+    const float alpha = m_mapped && out != nullptr && !overview
+        ? static_cast<float>(resolvedRules().dimBehind.value_or(0.0)) * m_fadeAlpha
+        : 0.0F;
+    const wlr_box box = out != nullptr ? out->layoutBox() : wlr_box{};
+    if (!wlr_scene_node_set_dim_behind(&m_sceneTree->node, &box, std::clamp(alpha, 0.0F, 1.0F))) {
+      kLog.error("failed to allocate window dim backdrop");
+    }
   }
 
   void View::updateBlur() {

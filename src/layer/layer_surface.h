@@ -47,6 +47,7 @@ namespace umbriel {
     // Push the owning output's scale to every surface of this layer surface
     // (fractional-scale + preferred buffer scale, popups included).
     void notifyOutputScale();
+    void updateDimBehind();
     Output* output() const;
 
     AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }

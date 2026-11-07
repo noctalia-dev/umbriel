@@ -147,6 +147,12 @@ namespace umbriel {
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
     bool isOnlyTiledView(const View* view) const;
+    // True when `view` is alone in its layout: a member of the sole scrolling column, or the only tiled window in
+    // master and dwindle. A floating window never is.
+    bool isAloneInLayout(const View* view) const;
+    // The opening form of isAloneInLayout. An empty layout leaves the view in its own new column; otherwise only a
+    // named scrolling column can join the existing one.
+    bool wouldBeAloneInLayout(const View* view, std::string_view namedScrollingColumn, std::optional<int> order) const;
     // True when `view` is the only window sharing this workspace: no other tile and no other float. A pinned or
     // scratchpad window neither holds the workspace nor takes it.
     bool isOnlyVisibleView(const View* view) const;
@@ -167,6 +173,12 @@ namespace umbriel {
     void layoutDetach(View* view, bool animate = false);
     // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
     void holdCloseSnapshot(CloseSnapshotId snapshot);
+    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. With
+    // windows_resize.wait_for_redraw, members keep drawing the focus they show now until the next arrange ends; a
+    // member that arrange freezes for its clients keeps it until the switch, so focus lands with the new layout.
+    void deferFocusChrome();
+    // Whether `view` records focus changes instead of drawing them; see deferFocusChrome.
+    bool defersFocusChrome(const View* view) const;
     void arrange(bool animate = true);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
@@ -352,6 +364,10 @@ namespace umbriel {
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
     std::vector<CloseSnapshotId> m_heldCloseSnapshots;
+    // See deferFocusChrome; cleared by the arrange that ends it.
+    bool m_focusChromeDeferred = false;
+    // Draw the focus each member was given while deferred, except where it is still deferred.
+    void applyDeferredFocusChrome();
     void releaseHeldCloseSnapshots();
     // The usable area the last applyPositions pass clamped floating windows
     // against. An arrange whose area is unchanged, such as a focus reveal, must not
@@ -361,8 +377,7 @@ namespace umbriel {
     // Remembers the last state each occupancy question was answered in, so the answers are only recomputed when they
     // changed.
     bool m_refreshingAloneRules = false;
-    size_t m_lastAloneViewCount = 0;
-    View* m_lastAloneSoleView = nullptr;
+    std::vector<View*> m_lastAloneViews;
     size_t m_lastOnlyWindowCount = 0;
     View* m_lastOnlyWindowView = nullptr;
     uint64_t m_lastAloneGeneration = 0;

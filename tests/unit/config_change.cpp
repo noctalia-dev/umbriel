@@ -828,6 +828,11 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   changedAloneMatcher.windowRules[0].matchAlone = true;
   CHECK(ConfigEffects::between(forcedByRule, changedAloneMatcher).tearingPolicy);
 
+  Config changedLayoutMatcher = forcedByRule;
+  changedLayoutMatcher.windowRules[0].matchLayouts = {umbriel::LayoutMode::Stacking};
+  CHECK(ConfigChange::between(forcedByRule, changedLayoutMatcher).windowRules);
+  CHECK(ConfigEffects::between(forcedByRule, changedLayoutMatcher).tearingPolicy);
+
   Config changedOnlyWindowMatcher = forcedByRule;
   changedOnlyWindowMatcher.windowRules[0].matchOnlyWindow = true;
   CHECK(ConfigEffects::between(forcedByRule, changedOnlyWindowMatcher).tearingPolicy);

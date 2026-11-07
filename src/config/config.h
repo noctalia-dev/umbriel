@@ -398,6 +398,7 @@ namespace umbriel {
     bool dialog = false;
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
+    std::optional<LayoutMode> layout = std::nullopt;
 
     bool operator==(const WindowRuleState& other) const = default;
   };
@@ -426,6 +427,7 @@ namespace umbriel {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximizedToEdges;
@@ -459,6 +461,8 @@ namespace umbriel {
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    // Multiplies touchpad scrolling sent to matching windows, on top of `[input.touchpad] scroll_factor`.
+    std::optional<double> touchpadScrollFactor;
     // Whether matching windows may activate client-requested keyboard shortcut inhibition (true by default).
     std::optional<bool> allowShortcutsInhibit;
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
@@ -470,6 +474,7 @@ namespace umbriel {
     // true forces async preference, and false vetoes it.
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity; // 0.0-1.0
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -498,6 +503,7 @@ namespace umbriel {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximizedToEdges == other.matchMaximizedToEdges
@@ -530,12 +536,14 @@ namespace umbriel {
           && focusOnActivate == other.focusOnActivate
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
+          && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
           && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
+          && dimBehind == other.dimBehind
           && opacity == other.opacity
           && blur == other.blur
           && blurPopups == other.blurPopups
@@ -579,12 +587,14 @@ namespace umbriel {
     std::optional<bool> focusOnActivate;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -618,6 +628,7 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
 
@@ -628,6 +639,7 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && blur == other.blur
           && blurPopups == other.blurPopups
+          && dimBehind == other.dimBehind
           && ignoreAlpha == other.ignoreAlpha
           && optimized == other.optimized;
     }
@@ -636,6 +648,7 @@ namespace umbriel {
   struct ResolvedLayerRule {
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
     bool operator==(const ResolvedLayerRule&) const = default;
@@ -734,10 +747,16 @@ namespace umbriel {
         std::string font = "sans 10";
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
+        int buttonSize = -1;
+        int buttonGap = 8;
+        int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
+        TitleBarButtonGeometry buttonGeometry() const {
+          return {.size = buttonSize, .gap = buttonGap, .padding = buttonPadding};
+        }
         bool operator==(const TitleBar&) const = default;
       } titleBar;
       int borderWidth = 2;

@@ -167,7 +167,7 @@ Omitted values preserve the device's libinput defaults. Explicit unsupported set
 scroll_factor = { horizontal = 2.0, vertical = 1.5 }
 ```
 
-This factor changes continuous two-finger application scrolling. Overview navigation uses the factors documented in [Workspaces Overview](workspaces-overview.md#settings-and-behavior).
+This factor changes continuous two-finger application scrolling. The [`touchpad_scroll_factor`](window-rules.md#settings-updated-while-a-window-is-open) window rule scales it further for matching windows. Overview navigation uses the factors documented in [Workspaces Overview](workspaces-overview.md#settings-and-behavior).
 
 ### Mouse
 

@@ -101,6 +101,7 @@ namespace umbriel {
     bool configureOutstanding() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
+    void updateDimBehind();
     // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
     // schedule it through Server::scheduleSuspensionSync.
     void syncSuspendedState();
@@ -152,6 +153,7 @@ namespace umbriel {
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
     bool confinePointer();
+    double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
@@ -162,6 +164,7 @@ namespace umbriel {
     bool tiled() const { return m_tiled; }
     bool floating() const { return !m_tiled; }
     bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
+    // In the workspace's only tiled column, whatever the number of windows that column holds.
     bool isAloneInLayout() const;
     bool isOnlyWindowOnWorkspace() const;
     const std::optional<std::string>& namedScrollingColumnName() const { return m_namedScrollingColumnName; }
@@ -250,7 +253,10 @@ namespace umbriel {
     void deferActivation(bool trusted);
     // Focus ring only. Public alongside setForeignActivated because both are
     // activation chrome the focus manager drives from outside.
+    // While the workspace defers focus chrome, a layout member records `focused` instead of drawing it.
     void setBorderFocused(bool focused);
+    // Draw the focus a deferred setBorderFocused recorded, if any.
+    void applyDeferredBorderFocus();
     // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
@@ -498,7 +504,8 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    CloseSnapshotId captureSnapshot(bool held);
+    // `withShadow` copies the shadow.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -669,7 +676,8 @@ namespace umbriel {
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
     [[nodiscard]] CloseSnapshotId beginCloseAnimation();
-    // A frozen copy of what this view shows now, held over it until Server::releaseCloseSnapshot.
+    // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
+    // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
     [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
@@ -847,9 +855,13 @@ namespace umbriel {
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Releases a maximize or scrolling extent this window owns on a shared column before it leaves the layout.
+    void releaseColumnWideAloneEffect();
     // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
     // window did not open alone after all.
     void settleOpeningAloneState();
+    // Adopts a named scrolling column that only the alone rules select, before the opening attach looks for it.
+    void registerOpeningAloneColumn();
     // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
     // rules. A transition that also moved focus has already refreshed them, so this is a no-op there. Also keeps the
     // minimized state and the client's minimize capability in line with the new state.
@@ -887,10 +899,12 @@ namespace umbriel {
     AloneAction m_aloneAction = AloneAction::None;
     ResolvedWindowRule m_lastAloneDelta;
     std::optional<double> m_aloneSavedWidthFrac;
-    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect.
+    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect and
+    // drop it if the window does not end up alone (or, for the two output-covering states, sole in its column).
     enum class AloneSeed : uint8_t {
       None,
       Fullscreen,
+      MaximizeToEdges,
       Maximize,
     };
     AloneSeed m_aloneOpeningSeed = AloneSeed::None;
@@ -1082,6 +1096,7 @@ namespace umbriel {
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
+    std::optional<bool> m_deferredBorderFocus;
     bool m_focusDimInitialized = false;
     // Opening identity can settle independently. The first title and first
     // non-none content type each get one chance to add one-shot rule effects.

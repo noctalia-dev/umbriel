@@ -394,6 +394,18 @@ namespace umbriel {
     wlr_xdg_popup_unconstrain_from_box(popup, &box);
   }
 
+  void LayerSurface::updateDimBehind() {
+    if (m_scene == nullptr) {
+      return;
+    }
+    Output* out = output();
+    const wlr_box box = out != nullptr ? out->layoutBox() : wlr_box{};
+    const float alpha = m_mapped ? static_cast<float>(m_rule.dimBehind.value_or(0.0) * m_fade.current()) : 0.0F;
+    if (!wlr_scene_node_set_dim_behind(&m_scene->tree->node, &box, std::clamp(alpha, 0.0F, 1.0F))) {
+      kLog.error("failed to allocate layer dim backdrop");
+    }
+  }
+
   void LayerSurface::updateBlur() {
     const wlr_box box{0, 0, m_layerSurface->surface->current.width, m_layerSurface->surface->current.height};
     const pixman_region32_t* clientRegion = nullptr;
@@ -411,6 +423,7 @@ namespace umbriel {
     m_rule = resolveLayerRules(
         config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
     );
+    updateDimBehind();
     updateBlur();
   }
 

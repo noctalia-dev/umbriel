@@ -1066,7 +1066,7 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(held);
+    return captureSnapshot(held, true);
   }
 
   CloseSnapshotId View::captureHeldSnapshot() {
@@ -1077,10 +1077,10 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(true);
+    return captureSnapshot(true, false);
   }
 
-  CloseSnapshotId View::captureSnapshot(bool held) {
+  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow) {
     Output* output =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
     if (output == nullptr) {
@@ -1174,7 +1174,9 @@ namespace umbriel {
     // A close snapshot owns its windows_out lifecycle. Keep a possible interrupted windows_in effect, but do not
     // freeze windows_move into the snapshot.
     wlr_scene_node_set_animation(&snap->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
-    const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled());
+    const auto shadow = withShadow
+        ? m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled())
+        : ShadowSnapshot{};
     const CloseSnapshotId id = m_server->animateCloseSnapshot(
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
