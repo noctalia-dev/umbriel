@@ -27,8 +27,8 @@ namespace umbriel {
       return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
     }
 
-    // An adaptive bar carries any colour the window paints, so text and symbols keep a dark edge under them. The edge
-    // takes its alpha from the glyph it backs, so a transparent or faded symbol does not leave a ghost of itself.
+    // The bar can be any colour the window paints, so text and symbols keep a dark edge: scaled by their own alpha, so
+    // an invisible symbol leaves no ghost.
     const std::array<float, 4> kAdaptiveShadowColor{0.0F, 0.0F, 0.0F, 0.55F};
     std::optional<std::array<float, 4>> adaptiveOutline(float glyphAlpha) {
       if (glyphAlpha <= 0.0F) {
@@ -185,9 +185,7 @@ namespace umbriel {
       return;
     }
     m_ignoredLock = false;
-    // Ask the scene buffer which buffer it holds instead of remembering the client buffer: once the client releases
-    // it, the scene drops its lock and the client buffer can be freed, which would leave a remembered pointer
-    // dangling. Nothing to undo when the scene has already let go.
+    // Ask the scene buffer which buffer it holds: a remembered client buffer would dangle once the client frees it.
     if (m_adaptive != nullptr && m_adaptive->buffer != nullptr) {
       umbrielfx_scene_buffer_drop_ignored_client_lock(wlr_client_buffer_get(m_adaptive->buffer));
     }
@@ -245,22 +243,19 @@ namespace umbriel {
       return;
     }
     wlr_scene_node_set_enabled(&m_adaptive->node, false);
-    // Drop the mirror as well: a node that keeps the buffer holds its lock, and the client's wl_buffer.release never
-    // arrives, which stalls a client that waits for it before drawing again.
+    // Drop the mirror too: its lock would withhold the client's wl_buffer.release and stall a client that waits on it.
     withdrawInPlaceDamage();
     wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
     m_adaptiveBuffer = nullptr;
   }
 
   SsdFrame::StripSample SsdFrame::averageStrip(const wlr_fbox& strip) {
-    // A readback is the only way to collapse a strip into one colour, and it is the one cost this mode cannot avoid:
-    // wlroots finishes the frame before it reads. Everything else in this class mirrors buffers instead.
-    // A preview shows whatever the window it copies is showing: reading back per card would multiply the cost.
+    // The only readback in this class, and the only cost average mode cannot avoid: wlroots finishes the frame first.
+    // A preview shows what its window resolved, so reading back per card would only multiply that cost.
     if (m_preview || m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
       return {StripSample::State::Refused, std::nullopt};
     }
-    // An explicit-sync client's pixels are not finished when it commits; the mirror waits on the point at render time,
-    // and a readback here would sample a half-rendered frame. Defer instead, and try again on the next update.
+    // An explicit-sync client's frame is not finished at commit time; reading now would sample a half-rendered frame.
     if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content);
         sync != nullptr && sync->acquire_timeline != nullptr) {
       bool signalled = false;
@@ -276,8 +271,7 @@ namespace umbriel {
     if (box.width <= 0 || box.height <= 0) {
       return {StripSample::State::Refused, std::nullopt};
     }
-    // Ask for the format this renderer can read rather than assuming BGRA: an implementation without
-    // EXT_read_format_bgra refuses it, and the mode would silently never work there.
+    // Ask which format the renderer can read: assuming BGRA silently disables the mode without EXT_read_format_bgra.
     const uint32_t format = wlr_texture_preferred_read_format(m_content->buffer->texture);
     std::optional<PixelOrder> order;
     switch (format) {
@@ -321,12 +315,11 @@ namespace umbriel {
   }
 
   wlr_buffer* SsdFrame::averageBufferFor(const std::array<float, 4>& color) {
-    // Compare against the colour baked into the buffer, never against `m_averageColor`: that already holds the new
-    // mean by the time this is called, so comparing with it would always match and freeze the first colour.
+    // Compare against the baked colour: `m_averageColor` already holds the new mean, so it would always match.
     if (m_averageBuffer != nullptr && m_averageBufferColor == color) {
       return m_averageBuffer;
     }
-    // One pixel, stretched over the bar: a flat colour costs no per-frame readback once it is known.
+    // One pixel stretched over the bar, so no per-frame readback follows.
     cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
     cairo_t* cr = cairo_create(surface);
     cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
@@ -345,8 +338,7 @@ namespace umbriel {
   }
 
   void SsdFrame::updateAdaptive(bool fromCommit) {
-    // The palette colour stays painted underneath: a window whose top edge is transparent, or one that has not
-    // committed a buffer yet, keeps the configured bar instead of leaving a hole.
+    // The palette stays painted underneath, so a transparent edge or a missing buffer leaves no hole.
     const auto& style = config().appearance.titleBar;
     const bool average = style.colorSource == TitleBarColorSource::Average;
     wlr_buffer* buffer = style.colorSource != TitleBarColorSource::Fixed
@@ -378,8 +370,7 @@ namespace umbriel {
     const int surfaceHeight = m_content->current.height;
     wlr_fbox base{};
     wlr_surface_get_buffer_source_box(m_content, &base);
-    // The window's own geometry, not the buffer's: a client-drawn window can carry transparent shadow margins that
-    // `xdg_surface.set_window_geometry` excludes, and those margins must not become the bar's colour.
+    // The window's geometry, not the buffer's: a client-drawn window's transparent shadow margins stay out of it.
     wlr_box visible{0, 0, surfaceWidth, surfaceHeight};
     if (m_contentGeometry.width > 0 && m_contentGeometry.height > 0) {
       wlr_box clipped{};
@@ -404,9 +395,8 @@ namespace umbriel {
         sourceSurfaceHeight = std::max(1, static_cast<int>(std::lround(source.height / scaleY)));
       }
     }
-    // Colour management can change on a commit that carries no buffer damage, so this cannot sit behind the guard
-    // below; the setters it reaches are no-ops when nothing changed. The readback returns the window's own encoded
-    // values, so the flat colour is described as the window is: that is the same space the mean was taken in.
+    // Cannot sit behind the guard below: colour management can change on a commit with no buffer damage. The readback
+    // returns the window's encoded values, so the flat colour is described as the window is.
     if (m_colors != nullptr) {
       m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
     }
@@ -414,9 +404,8 @@ namespace umbriel {
         source, buffer->width, buffer->height, sourceSurfaceWidth, sourceSurfaceHeight,
         static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight
     );
-    // Only what the bar shows matters, and the damage is already in buffer coordinates, which is where the strip is.
-    // The strip is fractional at fractional scales, so round it outward: a damaged edge row still has to count. The
-    // damage belongs to the commit that produced it, so a repaint of the chrome in between does not replay it.
+    // Damage is in buffer coordinates, like the strip. Round outward: the strip is fractional at fractional scales. It
+    // belongs to the commit that produced it, so a later chrome repaint does not replay it.
     const int left = static_cast<int>(std::floor(strip.x));
     const int top = static_cast<int>(std::floor(strip.y));
     const int right = static_cast<int>(std::ceil(strip.x + strip.width));
@@ -433,13 +422,10 @@ namespace umbriel {
     const int barX = m_background->node.x;
     const int barY = m_background->node.y;
     const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
-    // A mode switch is not a commit, so it has to force the work itself: otherwise an idle window keeps the palette
-    // (or the mean of an edge that changed while the bar was smearing) until its next top-edge damage.
+    // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale colour.
     const bool modeChanged = m_adaptiveMode != style.colorSource;
-    // What the bar shows. The smear mirrors the strip itself, so it re-mirrors whenever the window attaches a buffer,
-    // even one that damages nothing (the bar would otherwise keep drawing a buffer the client may have freed). The
-    // average stretches one pixel, so it carries none of the window's own detail, and its only reason to read the edge
-    // again is that the edge itself changed: damage inside the strip, a new strip, a new mode, or a deferred read.
+    // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
+    // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
     wlr_buffer* shown = buffer;
     const wlr_fbox* sourceBox = &strip;
     wl_output_transform transform = m_content->current.transform;
@@ -476,8 +462,7 @@ namespace umbriel {
       return;
     }
     if (m_adaptiveBuffer != shown || (touched && !average)) {
-      // Mirror the window the same way the overview mirrors a card: the surface's committed buffer plus its damage, and
-      // the explicit-sync acquire point when the client uses it, so the bar never samples a half-presented frame.
+      // Mirrored like an overview card: committed buffer, its damage, and the explicit-sync point when there is one.
       wlr_scene_buffer_set_buffer_options options{
           .damage = fromCommit && !average ? &m_content->buffer_damage : nullptr,
           .wait_timeline = nullptr,
@@ -491,8 +476,7 @@ namespace umbriel {
       }
       withdrawInPlaceDamage();
       wlr_scene_buffer_set_buffer_with_options(m_adaptive, shown, &options);
-      // The scene holds a second lock on the client's buffer; without this wlroots cannot reuse its texture for
-      // in-place shm damage and rebuilds the whole window's texture on every commit.
+      // Without this wlroots rebuilds the whole texture per commit instead of reusing it for in-place shm damage.
       if (!average) {
         allowInPlaceDamage(shown);
       }
@@ -536,8 +520,7 @@ namespace umbriel {
     wlr_scene_buffer_set_corner_box(buffer, clip.inside ? &clip.area : nullptr);
   }
 
-  // The title the cache renders for a bar of this geometry, with the layout re-measured against the line's height so
-  // the text can reach into the frame's rounded corners. The live bar and its snapshot ask the same way.
+  // The title for this bar, with the layout re-measured against the line's height (the text reaches into the corners).
   const TabLabel*
   SsdFrame::measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const {
     const auto& style = config().appearance.titleBar;
@@ -745,16 +728,15 @@ namespace umbriel {
     const auto& colors = config().colors.titleBar;
     const std::array<float, 4>& textColor = m_focused ? colors.text : colors.textUnfocused;
     const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
-    // The cache is an LRU and the shadow lookup below can fill it, so take the title's buffer out of harm's way
-    // before asking for anything else. The frame keeps that lock for its snapshots too.
+    // Hold the title before the shadow lookup, which can evict it. The frame keeps this lock for its snapshots.
     holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
     const int labelWidth = label != nullptr ? label->width : 0;
     const int labelHeight = label != nullptr ? label->height : 0;
-    // A window-coloured bar can be lighter or darker than the palette, so the title keeps a dark edge under it.
+    // A window-coloured bar needs a dark edge under the title.
     const bool shadowed = style.colorSource != TitleBarColorSource::Fixed;
     const TabLabel* shadow = nullptr;
     if (shadowed && m_labelBuffer != nullptr && textColor[3] > 0.0F) {
-      // The shadow re-measures the same layout; keep the title's copy intact for the text below it.
+      // Re-measures the same layout without disturbing the title's copy.
       TitleBarLayout shadowParts = parts;
       shadow = measureTitle(kAdaptiveShadowColor, textColor[3], shadowParts, radius);
     }
@@ -848,11 +830,9 @@ namespace umbriel {
       wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     };
-    // The live tree stacks palette, fill, buttons, text: copy in that order, or the fill covers the button
-    // backgrounds for the length of the animation.
+    // Palette, fill, buttons, text: the live order, or the fill covers the buttons for the whole animation.
     copyRect(m_background);
-    // A scene buffer drops its CPU-side buffer once the renderer has uploaded the texture, so a live chrome node can
-    // still be drawing while its buffer field is null: fall back to a buffer this frame still holds a lock on.
+    // The scene drops its buffer field once the texture is uploaded, so fall back to a buffer this frame still locks.
     const auto copyBuffer = [&](const wlr_scene_buffer* source, wlr_buffer* fallback) {
       if (source == nullptr || !source->node.enabled) {
         return;
@@ -872,8 +852,7 @@ namespace umbriel {
       wlr_scene_buffer_set_corner_box(copy, &source->corner_box);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     };
-    // The adaptive fill sits above the palette rects and below the text, exactly as in the live tree: creating it last
-    // would stack it over the title and the buttons for the length of the close animation.
+    // Above the palette rects and below the text, as in the live tree.
     if (m_adaptive != nullptr && m_adaptive->node.enabled && m_adaptive->buffer != nullptr) {
       auto* copy = wlr_scene_buffer_create(tree, m_adaptive->buffer);
       if (copy != nullptr) {
@@ -892,12 +871,11 @@ namespace umbriel {
     copyRect(m_close);
     copyRect(m_maximize);
     copyRect(m_minimize);
-    // The live bar already holds the title and its shadow, so a snapshot needs neither a cache lookup nor a re-render:
-    // `fixed` mode copies exactly what it copied before this feature existed.
+    // The live bar already holds both, so a snapshot needs no lookup: `fixed` copies exactly what it always did.
     copyBuffer(m_labelShadow, m_shadowBuffer);
     copyBuffer(m_label, m_labelBuffer);
     for (size_t index = 0; index < m_icons.size(); ++index) {
-      // The icon's own buffer has been released too; `m_iconBuffers` holds a consumer lock for exactly this copy.
+      // `m_iconBuffers` holds a lock for exactly this copy.
       copyBuffer(m_icons[index], m_iconBuffers[index]);
     }
   }
@@ -916,8 +894,7 @@ namespace umbriel {
       frame->setMaximized(m_maximized);
       frame->setFocused(m_focused);
       frame->setBlurOptions(m_blurOptions);
-      // A card shows the same bar, so it needs the same window to take its colour from, and the colour that window
-      // already resolved: reading back once per card would multiply the cost of one window by the number of cards.
+      // The card shows the same bar and takes the colour its window already resolved, not a per-card readback.
       frame->setContentSurface(m_content, m_contentGeometry);
       frame->m_averageColor = m_averageColor;
       frame->m_stripDeferred = m_stripDeferred;

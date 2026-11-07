@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# With `[appearance.title_bar] color_source = "window"` the bar paints itself with the top strip of the window it
-# belongs to instead of `[colors.title_bar] background`, and it follows the window when the application repaints that
-# edge, without a config reload. Setting the key back to "fixed" restores the palette colour. The window paints its
-# first row green over a red body, so a bar that sampled anything but that edge, or read more of it than it should,
-# would show red.
+# `color_source` takes the bar's fill from the window instead of the palette: "window" mirrors its top rows, "average"
+# paints their mean. The window paints its first row green over a red body, so a bar sampling anything else shows red.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -13,8 +10,7 @@ readonly FRAME="$UMBRIEL_RUNTIME_DIR/adaptive-bar.png"
 # The floating window is 480x300 at 173,109, so its 28 px bar covers 173..653 by 81..109. The title text is drawn
 # transparent and the buttons paint nothing, so this crop inside the bar reads the fill alone.
 readonly BAR="120x10+233+87"
-# The whole bar: x 173..653 by y 81..109, inset by a pixel. Covers the title and every button slot, so it can assert
-# what the bar may *not* show (a ghost, a fill over the text).
+# The whole bar: x 173..653 by y 81..109, inset by a pixel, covering the title and every button slot.
 readonly BAR_FULL="474x26+175+82"
 
 fail() {
@@ -172,8 +168,7 @@ grim "$FRAME"
 expect "$magenta" 1000 "the palette colour after switching back to fixed"
 expect_none "$red" "the window colour survived color_source = \"fixed\""
 
-# The bar's own close animation draws the title above the window-coloured fill, the way the live tree does. A
-# snapshot that stacks the fill over the text turns the bar into a flat smear for the whole animation.
+# The close animation draws the title above the fill: a snapshot that stacks the fill over it shows a flat smear.
 window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "adaptive-bar") | .id')
 [[ -n $window_id && $window_id != null ]] || fail "the adaptive-bar window is gone before the close animation"
 configure window "#FFFFFFFF" closing buttons

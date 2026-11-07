@@ -76,8 +76,8 @@ namespace umbriel {
     StripSample averageStrip(const wlr_fbox& strip);
     // A one-pixel buffer of `color`, kept until the colour changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
-    // The mirrored client buffer is locked by the scene; tell wlroots to ignore that lock so it can still reuse the
-    // texture for in-place shm damage, and undo it when the mirror is replaced or cleared.
+    // Let wlroots keep reusing the mirrored client buffer's texture for in-place shm damage, and withdraw that when the
+    // mirror is replaced or cleared.
     void allowInPlaceDamage(wlr_buffer* buffer);
     void withdrawInPlaceDamage();
     void holdLabelBuffer(wlr_buffer*& slot, wlr_buffer* buffer);
@@ -86,8 +86,7 @@ namespace umbriel {
         const std::optional<std::array<float, 4>>& outline
     );
     std::span<const TitleBarButton> visibleButtons() const;
-    // The title as the cache renders it, with `color`'s alpha scaled by `alpha`, re-measuring `parts` against the
-    // line's height. The live draw and the close snapshot share this so both ask for the same label.
+    // The title with `color`'s alpha scaled by `alpha`, re-measuring `parts` against the line's height.
     const TabLabel*
     measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const;
     void updateBlur();
@@ -104,8 +103,7 @@ namespace umbriel {
     wlr_scene_buffer* m_label = nullptr;
     // The same title in the shadow colour, one pixel down and right, so it stays readable on any bar colour.
     wlr_scene_buffer* m_labelShadow = nullptr;
-    // Consumer locks on the title and its shadow: the scene drops its own once it uploads the texture, so a snapshot
-    // that copied the node's buffer field would lose them. Taking them here keeps the close snapshot free of lookups.
+    // Consumer locks on the title and shadow: the scene drops its own after uploading, and snapshots copy these.
     wlr_buffer* m_labelBuffer = nullptr;
     wlr_buffer* m_shadowBuffer = nullptr;
     // Paints the bar with the top strip of the window content; kept below the label and above the palette colour.
@@ -116,16 +114,16 @@ namespace umbriel {
     bool m_ignoredLock = false;
     // A readback the client's explicit-sync point was not ready for: retried on the next update.
     bool m_stripDeferred = false;
-    // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
+    // What the strip node last mirrored, so an unrelated commit costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};
     std::optional<std::array<float, 4>> m_averageColor;
     // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
     std::array<float, 4> m_averageBufferColor{};
     wlr_buffer* m_averageBuffer = nullptr;
-    // Scratch for one strip readback, kept so a repainting window does not allocate per commit.
+    // Scratch for one strip readback, kept to avoid allocating per repaint.
     std::vector<uint32_t> m_strip;
-    // The mode the node's contents were built for: a switch is not a commit, so it has to force the work.
+    // The mode the contents were built for: a switch is not a commit, so it must force the work.
     TitleBarColorSource m_adaptiveMode = TitleBarColorSource::Fixed;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
     int m_adaptiveWidth = 0;

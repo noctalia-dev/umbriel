@@ -27,8 +27,7 @@ UMBRIEL_TEST(averagePixelsIsTheMeanOfAnOpaqueStrip) {
 }
 
 UMBRIEL_TEST(averagePixelsReadsPremultipliedPixelsOnce) {
-  // A Wayland buffer stores premultiplied values: half-transparent red is (128, 0, 0, 128), and its colour is still
-  // red. Weighting the components by alpha a second time would return half red.
+  // Premultiplied half-transparent red is (128, 0, 0, 128) and is still red; a second alpha weighting would halve it.
   const std::array<uint32_t, 2> strip{argb(128, 0, 0, 128), argb(128, 0, 0, 128)};
   const auto mean = averagePixels(strip.data(), strip.size(), PixelOrder::Argb);
   CHECK(mean.has_value());
@@ -37,7 +36,7 @@ UMBRIEL_TEST(averagePixelsReadsPremultipliedPixelsOnce) {
 }
 
 UMBRIEL_TEST(averagePixelsIgnoresTransparentPixels) {
-  // Premultiplied transparency is zero, so a cleared pixel adds no hue and only its own alpha to the total.
+  // A cleared (premultiplied zero) pixel adds no hue, only its alpha.
   const std::array<uint32_t, 3> strip{argb(0, 0, 0, 0), argb(0, 255, 0, 255), argb(0, 255, 0, 255)};
   const auto mean = averagePixels(strip.data(), strip.size(), PixelOrder::Argb);
   CHECK(mean.has_value());
@@ -47,7 +46,7 @@ UMBRIEL_TEST(averagePixelsIgnoresTransparentPixels) {
 }
 
 UMBRIEL_TEST(averagePixelsFollowsTheReadOrder) {
-  // The renderer may hand back ABGR, and the X variants carry no alpha at all.
+  // The renderer may hand back ABGR; the X variants carry no alpha.
   // In ABGR the red byte sits lowest, so opaque red packs as 0xFF0000FF.
   const std::array<uint32_t, 1> abgr{0xFF0000FFU};
   const auto abgrMean = averagePixels(abgr.data(), abgr.size(), PixelOrder::Abgr);

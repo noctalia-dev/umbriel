@@ -173,15 +173,12 @@ namespace umbriel {
         || surfaceHeight <= 0) {
       return {};
     }
-    // Where the visible part of the buffer sits once upright. The surface's own coordinate system stretches over
-    // exactly this box, so its top edge is the box's top edge whatever the rotation.
+    // Where the visible buffer sits once upright; the surface's coordinates stretch over exactly this box.
     wlr_fbox visible = source;
     if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
       wlr_fbox_transform(&visible, &source, rotation, bufferWidth, bufferHeight);
     }
-    // A viewport can make the visible source shorter than one buffer pixel, so take the minimum last: otherwise
-    // std::clamp gets a lower bound above its upper bound, which is undefined and can ask for a strip taller than
-    // what the window shows.
+    // Minimum last: a viewport can make the source shorter than a buffer pixel, which would invert clamp's bounds.
     const double scale = visible.height / static_cast<double>(surfaceHeight);
     const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scale));
     const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
@@ -189,8 +186,7 @@ namespace umbriel {
     if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
       wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(rotation), uprightWidth, uprightHeight);
     }
-    // Fractional scales and half turns land on sub-pixel edges: the scene refuses a negative origin, and a box that
-    // reaches past the buffer samples outside it.
+    // Keep the box inside the buffer: the scene refuses a negative origin, and overshoot samples outside it.
     const double right = std::min(inBuffer.x + inBuffer.width, static_cast<double>(bufferWidth));
     const double bottom = std::min(inBuffer.y + inBuffer.height, static_cast<double>(bufferHeight));
     inBuffer.x = std::clamp(inBuffer.x, 0.0, static_cast<double>(bufferWidth));

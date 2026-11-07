@@ -99,9 +99,8 @@ namespace umbriel {
   // Byte order of a packed 32-bit pixel. The X variants carry no alpha and are read as opaque.
   enum class PixelOrder : uint8_t { Argb, Abgr, Xrgb, Xbgr };
 
-  // Mean colour of packed 32-bit pixels, as Wayland buffers store them: premultiplied. The sums are therefore already
-  // weighted by alpha, so dividing by the alpha total recovers the straight colour, and a transparent pixel adds
-  // nothing to the hue. Null when there is nothing to average, or the whole strip is transparent.
+  // Mean of packed 32-bit pixels as Wayland stores them: premultiplied, so the sums are already alpha-weighted and
+  // dividing by the alpha total gives the straight colour. Null when nothing is left to show.
   inline std::optional<std::array<float, 4>> averagePixels(const uint32_t* pixels, size_t count, PixelOrder order) {
     if (pixels == nullptr || count == 0) {
       return std::nullopt;

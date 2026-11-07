@@ -342,8 +342,7 @@ UMBRIEL_TEST(stripSourceBoxScalesWithTheBuffer) {
 }
 
 UMBRIEL_TEST(stripSourceBoxKeepsASubPixelEdgeInsideTheBuffer) {
-  // A viewport can map less than one buffer pixel onto the whole surface. The strip must stay inside the buffer: the
-  // scene refuses a negative source origin, which a strip taller than the visible source used to produce.
+  // A viewport can map less than one buffer pixel onto the surface; the strip must stay inside the buffer.
   const wlr_fbox halfTurn = titleBarStripSourceBox({0.0, 0.0, 100.0, 0.5}, 100, 10, 100, 1, WL_OUTPUT_TRANSFORM_180, 5);
   CHECK_EQ(halfTurn.x, 0.0);
   CHECK_EQ(halfTurn.y, 0.0);
