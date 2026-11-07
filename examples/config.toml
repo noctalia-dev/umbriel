@@ -351,6 +351,12 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Show title bars only when the window's workspace uses the stacking layout.
+# Keep [appearance.title_bar] mode = "off" for other layouts.
+# [[window_rule]]
+# match.layout = "stacking"
+# title_bar = "on"
+
 # Keep compositor shortcuts available while a virtual machine window is focused.
 # [[window_rule]]
 # match.app_id = "^virt-manager$"
