@@ -103,6 +103,7 @@ namespace umbriel {
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
     EventPacer snapshotPacer(uint16_t event, nlohmann::json (*buildEvent)(Server&));
+    std::string& lastBroadcast(uint16_t event);
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);
     void refreshScreenCastActive();
     void dropAudioOwner();

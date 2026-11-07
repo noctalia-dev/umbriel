@@ -637,6 +637,14 @@ namespace umbriel {
         }
         response += event.dump();
       };
+      // A change waiting for its pacing interval makes this snapshot newer than the cache. If that change is undone
+      // before the interval ends, the emission would match the cache, so forget it to reach this subscriber.
+      auto appendPaced = [this, &append](uint16_t event, const nlohmann::json& snapshot) {
+        append(snapshot);
+        if (std::string& last = lastBroadcast(event); last != snapshot.dump() + '\n') {
+          last.clear();
+        }
+      };
       if ((requested & Ipc::EventTheme) != 0) {
         append(themeEvent());
       }
@@ -649,10 +657,10 @@ namespace umbriel {
         }
       }
       if ((requested & Ipc::EventWindows) != 0) {
-        append(windowsEvent(*m_server));
+        appendPaced(Ipc::EventWindows, windowsEvent(*m_server));
       }
       if ((requested & Ipc::EventWorkspaces) != 0) {
-        append(workspacesEvent(*m_server));
+        appendPaced(Ipc::EventWorkspaces, workspacesEvent(*m_server));
       }
       if ((requested & Ipc::EventSubmap) != 0) {
         append(submapEvent(*m_server));
@@ -661,10 +669,10 @@ namespace umbriel {
         append(screenCastEvent(*m_server));
       }
       if ((requested & Ipc::EventLayers) != 0) {
-        append(layersEvent(*m_server));
+        appendPaced(Ipc::EventLayers, layersEvent(*m_server));
       }
       if ((requested & Ipc::EventOutputs) != 0) {
-        append(outputsEvent(*m_server));
+        appendPaced(Ipc::EventOutputs, outputsEvent(*m_server));
       }
       return response;
     }
@@ -729,12 +737,16 @@ namespace umbriel {
             }};
   }
 
+  std::string& Ipc::lastBroadcast(uint16_t event) {
+    return m_lastBroadcast.at(static_cast<size_t>(std::countr_zero(event)));
+  }
+
   void Ipc::broadcastEvent(uint16_t event, const nlohmann::json& payload) {
     std::string update = payload.dump() + '\n';
     // Pacing bounds how often a family is rebuilt; this bounds what leaves the compositor. An arrange that ends
     // where it started, or a window field the payload does not carry, produces the same bytes as last time and is
     // dropped here instead of waking every subscriber's JSON parser.
-    std::string& last = m_lastBroadcast.at(static_cast<size_t>(std::countr_zero(event)));
+    std::string& last = lastBroadcast(event);
     if (last == update) {
       return;
     }

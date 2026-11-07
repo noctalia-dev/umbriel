@@ -135,4 +135,61 @@ await_state layers 'length == 1 and (.[0].focused | not)' "the panel kept the ke
 kill "$panel_pid"
 await_state layers 'length == 0' "the destroyed panel stayed in the layer list"
 
+# A subscriber that joins while a change waits for its pacing interval, and that change is then undone, must still see
+# the state settle. The steps below run inside the interval opened by the event the first subscriber reads; a run too
+# slow to fit only misses the race, so this cannot fail spuriously.
+action window-focus "$other"
+await_state windows ".[] | select(.id == \"$other\") | .active" "focusing the unrelated window"
+python3 - "$parent" "$other" <<'PY'
+import json, os, select, socket, sys, time
+
+parent, other = sys.argv[1:]
+path = os.environ.get("UMBRIEL_SOCKET") or f"{os.environ['XDG_RUNTIME_DIR']}/umbriel-{os.environ['WAYLAND_DISPLAY']}.sock"
+
+
+def connect():
+    sock = socket.socket(socket.AF_UNIX)
+    sock.connect(path)
+    return sock
+
+
+def focus(window):
+    sock = connect()
+    sock.sendall(json.dumps({"cmd": "action", "action": "window-focus", "window": window}).encode() + b"\n")
+    sock.recv(4096)
+    sock.close()
+
+
+class Subscriber:
+    def __init__(self):
+        self.sock, self.buffer = connect(), b""
+        self.sock.sendall(b'{"cmd":"subscribe","events":["windows"]}\n')
+
+    def await_active(self, window):
+        deadline = time.monotonic() + 2
+        while True:
+            while b"\n" in self.buffer:
+                line, self.buffer = self.buffer.split(b"\n", 1)
+                if any(entry["id"] == window and entry["active"] for entry in json.loads(line)["data"]):
+                    return True
+            if not select.select([self.sock], [], [], max(deadline - time.monotonic(), 0))[0]:
+                return False
+            self.buffer += self.sock.recv(1 << 16)
+
+
+first = Subscriber()
+if not first.await_active(other):
+    raise SystemExit("the first subscriber did not start with the unrelated window active")
+focus(parent)
+if not first.await_active(parent):
+    raise SystemExit("focusing the parent reached no subscriber")
+focus(other)
+late = Subscriber()
+if not late.await_active(other):
+    raise SystemExit("the late subscriber's initial state missed the pending focus change")
+focus(parent)
+if not late.await_active(parent):
+    raise SystemExit("a change undone during the pacing interval left the late subscriber stale")
+PY
+
 echo "window, workspace, and layer state is listed and pushed to subscribers"
