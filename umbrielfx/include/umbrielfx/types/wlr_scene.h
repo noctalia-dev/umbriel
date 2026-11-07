@@ -994,6 +994,14 @@ void wlr_scene_buffer_set_buffer_with_options(
 );
 
 /**
+ * Marks a client buffer as safe for in-place shm damage even though another scene buffer keeps a lock on it, the way
+ * wlr_scene_surface marks its own lock, and returns the client buffer to undo the mark with. Returns NULL when
+ * `buffer` is not a client buffer, or is a single-pixel buffer whose colour the scene caches.
+ */
+struct wlr_client_buffer* umbrielfx_scene_buffer_ignore_client_lock(struct wlr_buffer* buffer);
+void umbrielfx_scene_buffer_drop_ignored_client_lock(struct wlr_client_buffer* buffer);
+
+/**
  * Sets the buffer's opaque region. This is an optimization hint used to
  * determine if buffers which reside under this one need to be rendered or not.
  */

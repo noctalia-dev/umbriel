@@ -1,24 +1,51 @@
 #include "scene/ssd_frame.h"
 
 #include "config/config.h"
+#include "core/log.h"
+#include "scene/cairo_buffer.h"
 #include "scene/color.h"
 #include "scene/tab_label_cache.h"
 #include "scene/title_bar_icon.h"
+#include "server/color_manager.h"
 #include "view/border_ring.h"
 #include "wlr.h"
 
 #include <algorithm>
 #include <cmath>
+#include <drm_fourcc.h>
 #include <utility>
+#include <vector>
 
 namespace umbriel {
   namespace {
     bool rejectInput(wlr_scene_buffer*, double*, double*) { return false; }
+
+    // An unfocused window keeps its own bar colour, dimmed over the palette's unfocused tone.
+    constexpr float kAdaptiveUnfocusedOpacity = 0.65F;
+
+    bool fboxEqual(const wlr_fbox& a, const wlr_fbox& b) {
+      return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+    }
+
+    // The bar can be any colour the window paints, so text and symbols keep a dark edge: scaled by their own alpha, so
+    // an invisible symbol leaves no ghost.
+    const std::array<float, 4> kAdaptiveShadowColor{0.0F, 0.0F, 0.0F, 0.55F};
+    std::optional<std::array<float, 4>> adaptiveOutline(float glyphAlpha) {
+      if (glyphAlpha <= 0.0F) {
+        return std::nullopt;
+      }
+      std::array<float, 4> outline = kAdaptiveShadowColor;
+      outline[3] *= glyphAlpha;
+      return outline;
+    }
   } // namespace
 
-  SsdFrame::SsdFrame(wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent)
+  SsdFrame::SsdFrame(
+      wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent, ColorManager* colors
+  )
       : m_tree(wlr_scene_tree_create(parent)),
-        m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_labels(std::move(labels)) {
+        m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_colors(colors),
+        m_labels(std::move(labels)) {
     if (inputParent != nullptr && parent->node.parent == inputParent) {
       // Client surfaces and popups keep input priority over invisible resize grips.
       wlr_scene_node_place_below(&m_gripTree->node, &parent->node);
@@ -36,11 +63,21 @@ namespace umbriel {
   }
 
   SsdFrame::~SsdFrame() {
+    withdrawInPlaceDamage();
     if (m_blur != nullptr) {
       wlr_scene_node_destroy(&m_blur->node);
     }
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
+    if (m_averageBuffer != nullptr) {
+      wlr_buffer_unlock(m_averageBuffer);
+      m_averageBuffer = nullptr;
+    }
+    for (wlr_buffer* buffer : {m_labelBuffer, m_shadowBuffer}) {
+      if (buffer != nullptr) {
+        wlr_buffer_unlock(buffer);
+      }
+    }
     for (auto* buffer : m_iconBuffers) {
       if (buffer != nullptr) {
         wlr_buffer_unlock(buffer);
@@ -126,6 +163,33 @@ namespace umbriel {
     m_blurLive = live;
     updateBlur();
   }
+  void SsdFrame::setContentSurface(wlr_surface* surface, const wlr_box& geometry) {
+    if (m_content == surface && wlr_box_equal(&m_contentGeometry, &geometry)) {
+      return;
+    }
+    m_content = surface;
+    m_contentGeometry = geometry;
+    updateAdaptive(false);
+  }
+  void SsdFrame::syncContent(const wlr_box& geometry) {
+    m_contentGeometry = geometry;
+    updateAdaptive(true);
+  }
+
+  void SsdFrame::allowInPlaceDamage(wlr_buffer* buffer) {
+    m_ignoredLock = umbrielfx_scene_buffer_ignore_client_lock(buffer) != nullptr;
+  }
+
+  void SsdFrame::withdrawInPlaceDamage() {
+    if (!m_ignoredLock) {
+      return;
+    }
+    m_ignoredLock = false;
+    // Ask the scene buffer which buffer it holds: a remembered client buffer would dangle once the client frees it.
+    if (m_adaptive != nullptr && m_adaptive->buffer != nullptr) {
+      umbrielfx_scene_buffer_drop_ignored_client_lock(wlr_client_buffer_get(m_adaptive->buffer));
+    }
+  }
 
   void SsdFrame::updateBlur() {
     const auto& cfg = config().appearance.blur;
@@ -164,6 +228,264 @@ namespace umbriel {
     wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
   }
 
+  void SsdFrame::holdLabelBuffer(wlr_buffer*& slot, wlr_buffer* buffer) {
+    if (slot == buffer) {
+      return;
+    }
+    wlr_buffer* previous = std::exchange(slot, buffer != nullptr ? wlr_buffer_lock(buffer) : nullptr);
+    if (previous != nullptr) {
+      wlr_buffer_unlock(previous);
+    }
+  }
+
+  void SsdFrame::hideAdaptive() {
+    if (m_adaptive == nullptr) {
+      return;
+    }
+    wlr_scene_node_set_enabled(&m_adaptive->node, false);
+    // Drop the mirror too: its lock would withhold the client's wl_buffer.release and stall a client that waits on it.
+    withdrawInPlaceDamage();
+    wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
+    m_adaptiveBuffer = nullptr;
+  }
+
+  SsdFrame::StripSample SsdFrame::averageStrip(const wlr_fbox& strip) {
+    // The only readback in this class, and the only cost average mode cannot avoid: wlroots finishes the frame first.
+    // A preview shows what its window resolved, so reading back per card would only multiply that cost.
+    if (m_preview || m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
+      return {StripSample::State::Refused, std::nullopt};
+    }
+    // An explicit-sync client's frame is not finished at commit time; reading now would sample a half-rendered frame.
+    if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content);
+        sync != nullptr && sync->acquire_timeline != nullptr) {
+      bool signalled = false;
+      if (!wlr_drm_syncobj_timeline_check(sync->acquire_timeline, sync->acquire_point, 0, &signalled) || !signalled) {
+        return {StripSample::State::Deferred, std::nullopt};
+      }
+    }
+    const int left = static_cast<int>(std::floor(strip.x));
+    const int top = static_cast<int>(std::floor(strip.y));
+    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
+    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
+    const wlr_box box{left, top, std::max(0, right - left), std::max(0, bottom - top)};
+    if (box.width <= 0 || box.height <= 0) {
+      return {StripSample::State::Empty, std::nullopt};
+    }
+    // Ask which format the renderer can read: assuming BGRA silently disables the mode without EXT_read_format_bgra.
+    const uint32_t format = wlr_texture_preferred_read_format(m_content->buffer->texture);
+    std::optional<PixelOrder> order;
+    switch (format) {
+    case DRM_FORMAT_ARGB8888:
+      order = PixelOrder::Argb;
+      break;
+    case DRM_FORMAT_XRGB8888:
+      order = PixelOrder::Xrgb;
+      break;
+    case DRM_FORMAT_ABGR8888:
+      order = PixelOrder::Abgr;
+      break;
+    case DRM_FORMAT_XBGR8888:
+      order = PixelOrder::Xbgr;
+      break;
+    default:
+      break;
+    }
+    if (!order.has_value()) {
+      return {StripSample::State::Refused, std::nullopt};
+    }
+    m_strip.resize(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
+    const wlr_texture_read_pixels_options options{
+        .data = m_strip.data(),
+        .format = format,
+        .stride = static_cast<uint32_t>(box.width) * 4U,
+        .dst_x = 0,
+        .dst_y = 0,
+        .src_box = box,
+    };
+    // Refused for a protected or external-only buffer; the last colour, or the palette, stays.
+    if (!wlr_texture_read_pixels(m_content->buffer->texture, &options)) {
+      return {StripSample::State::Refused, std::nullopt};
+    }
+    auto mean = averagePixels(m_strip.data(), m_strip.size(), *order);
+    if (!mean.has_value()) {
+      return {StripSample::State::Empty, std::nullopt};
+    }
+    logDebug("[title_bar] averaged a {}x{} strip read back from the window", box.width, box.height);
+    return {StripSample::State::Fresh, mean};
+  }
+
+  wlr_buffer* SsdFrame::averageBufferFor(const std::array<float, 4>& color) {
+    // Compare against the baked colour: `m_averageColor` already holds the new mean, so it would always match.
+    if (m_averageBuffer != nullptr && m_averageBufferColor == color) {
+      return m_averageBuffer;
+    }
+    // One pixel stretched over the bar, so no per-frame readback follows.
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+    cairo_t* cr = cairo_create(surface);
+    cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    wlr_buffer* created = createCairoBuffer(surface);
+    if (created == nullptr) {
+      return nullptr;
+    }
+    // Hold the mean ourselves: once the scene has uploaded it, the scene drops its own lock, which would clear its
+    // buffer and leave `snapshot()` with nothing to copy and a rebuilt renderer with no buffer to upload again.
+    wlr_buffer* held = wlr_buffer_lock(created);
+    wlr_buffer_drop(created);
+    if (m_averageBuffer != nullptr) {
+      wlr_buffer_unlock(m_averageBuffer);
+    }
+    m_averageBuffer = held;
+    m_averageBufferColor = color;
+    return m_averageBuffer;
+  }
+
+  void SsdFrame::updateAdaptive(bool fromCommit) {
+    // The palette stays painted underneath, so a transparent edge or a missing buffer leaves no hole.
+    const auto& style = config().appearance.titleBar;
+    const bool average = style.colorSource == TitleBarColorSource::Average;
+    wlr_buffer* buffer = style.colorSource != TitleBarColorSource::Fixed
+            && m_content != nullptr
+            && m_content->buffer != nullptr
+            && m_tree->node.enabled
+            && m_background->width > 0
+            && m_background->height > 0
+        ? &m_content->buffer->base
+        : nullptr;
+    if (buffer == nullptr) {
+      hideAdaptive();
+      m_adaptiveMode = TitleBarColorSource::Fixed;
+      m_averageColor.reset();
+      m_stripDeferred = false;
+      m_strip.clear();
+      m_strip.shrink_to_fit();
+      return;
+    }
+    if (m_adaptive == nullptr) {
+      m_adaptive = wlr_scene_buffer_create(m_tree, nullptr);
+      if (m_adaptive == nullptr) {
+        return;
+      }
+      m_adaptive->point_accepts_input = rejectInput;
+      wlr_scene_node_place_above(&m_adaptive->node, &m_background->node);
+    }
+    wlr_fbox base{};
+    wlr_surface_get_buffer_source_box(m_content, &base);
+    // Cannot sit behind the guard below: colour management can change on a commit with no buffer damage. The readback
+    // returns the window's encoded values, so the flat colour is described as the window is.
+    if (m_colors != nullptr) {
+      m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
+    }
+    // The window's geometry, not the buffer's: a client-drawn window's transparent shadow margins stay out of the
+    // strip, and the crop happens upright so a quarter turn does not take its offset off the wrong buffer axis.
+    const wlr_fbox strip = titleBarStripSourceBox(
+        base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width, m_content->current.height,
+        static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight
+    );
+    // Damage is in buffer coordinates, like the strip. Round outward: the strip is fractional at fractional scales. It
+    // belongs to the commit that produced it, so a later chrome repaint does not replay it.
+    const int left = static_cast<int>(std::floor(strip.x));
+    const int top = static_cast<int>(std::floor(strip.y));
+    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
+    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
+    pixman_region32_t stripRegion;
+    pixman_region32_init_rect(&stripRegion, left, top, std::max(0, right - left), std::max(0, bottom - top));
+    // `pixman_region32_intersect` reports success, not emptiness: a disjoint strip and damage still returns true.
+    bool touched = false;
+    if (fromCommit && pixman_region32_intersect(&stripRegion, &stripRegion, &m_content->buffer_damage)) {
+      touched = !pixman_region32_empty(&stripRegion);
+    }
+    pixman_region32_fini(&stripRegion);
+    const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
+    const int barX = m_background->node.x;
+    const int barY = m_background->node.y;
+    // The fill is the bar's top edge, so it takes the same rounded corners as the palette it covers.
+    const clipped_region clip = frameClip(barX, barY);
+    const wlr_box clipBox = clip.inside ? clip.area : wlr_box{};
+    const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
+    // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale colour.
+    const bool modeChanged = m_adaptiveMode != style.colorSource;
+    // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
+    // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
+    wlr_buffer* shown = buffer;
+    const wlr_fbox* sourceBox = &strip;
+    wl_output_transform transform = m_content->current.transform;
+    bool restrip = touched || modeChanged || stripMoved || m_stripDeferred;
+    if (average) {
+      if (restrip) {
+        const StripSample sample = averageStrip(strip);
+        m_stripDeferred = sample.state == StripSample::State::Deferred;
+        if (sample.color.has_value()) {
+          m_averageColor = sample.color;
+        } else if (sample.state == StripSample::State::Empty) {
+          // A readable edge with no colour in it (transparent, or a strip with no area): the palette shows, as it does
+          // for the mirrored mode. An unreadable buffer keeps the last colour instead, since its content is unknown.
+          m_averageColor.reset();
+        }
+      }
+      shown = m_averageColor.has_value() ? averageBufferFor(*m_averageColor) : nullptr;
+      if (shown == nullptr) {
+        hideAdaptive();
+        m_adaptiveMode = style.colorSource;
+        m_adaptiveStrip = strip;
+        return;
+      }
+      sourceBox = nullptr;
+      transform = WL_OUTPUT_TRANSFORM_NORMAL;
+    }
+    const bool reshaped = m_adaptiveBuffer != shown
+        || stripMoved
+        || m_adaptiveTransform != transform
+        || m_adaptiveWidth != m_background->width
+        || m_adaptiveHeight != m_background->height
+        || m_adaptiveOpacity != opacity
+        || m_adaptive->node.x != barX
+        || m_adaptive->node.y != barY
+        || !fx_corner_radii_eq(m_adaptive->corners, clip.corners)
+        || !wlr_box_equal(&m_adaptive->corner_box, &clipBox);
+    // A commit that leaves the top edge alone, and changes nothing about the bar, costs nothing.
+    if (!restrip && !reshaped) {
+      return;
+    }
+    if (m_adaptiveBuffer != shown || (touched && !average)) {
+      // Mirrored like an overview card: committed buffer, its damage, and the explicit-sync point when there is one.
+      wlr_scene_buffer_set_buffer_options options{
+          .damage = fromCommit && !average ? &m_content->buffer_damage : nullptr,
+          .wait_timeline = nullptr,
+          .wait_point = 0,
+      };
+      if (!average) {
+        if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content)) {
+          options.wait_timeline = sync->acquire_timeline;
+          options.wait_point = sync->acquire_point;
+        }
+      }
+      withdrawInPlaceDamage();
+      wlr_scene_buffer_set_buffer_with_options(m_adaptive, shown, &options);
+      // Without this wlroots rebuilds the whole texture per commit instead of reusing it for in-place shm damage.
+      if (!average) {
+        allowInPlaceDamage(shown);
+      }
+    }
+    m_adaptiveBuffer = shown;
+    m_adaptiveMode = style.colorSource;
+    m_adaptiveStrip = strip;
+    m_adaptiveTransform = transform;
+    m_adaptiveWidth = m_background->width;
+    m_adaptiveHeight = m_background->height;
+    m_adaptiveOpacity = opacity;
+    wlr_scene_buffer_set_source_box(m_adaptive, sourceBox);
+    wlr_scene_buffer_set_transform(m_adaptive, transform);
+    wlr_scene_buffer_set_dest_size(m_adaptive, m_background->width, m_background->height);
+    wlr_scene_buffer_set_corner_radii(m_adaptive, clip.corners);
+    wlr_scene_buffer_set_corner_box(m_adaptive, clip.inside ? &clip.area : nullptr);
+    // Unfocus dims the window's own colour over the palette's unfocused tone rather than dropping back to it.
+    wlr_scene_buffer_set_opacity(m_adaptive, opacity);
+    wlr_scene_node_set_position(&m_adaptive->node, barX, barY);
+    wlr_scene_node_set_enabled(&m_adaptive->node, true);
+  }
+
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
 
   clipped_region SsdFrame::frameClip(int x, int y) const {
@@ -186,6 +508,33 @@ namespace umbriel {
     wlr_scene_buffer_set_corner_box(buffer, clip.inside ? &clip.area : nullptr);
   }
 
+  // The title for this bar, with the layout re-measured against the line's height (the text reaches into the corners).
+  const TabLabel*
+  SsdFrame::measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const {
+    const auto& style = config().appearance.titleBar;
+    TabLabelRequest request{
+        .text = m_title,
+        .color = color,
+        .font = style.font,
+        .maxWidth = parts.title.width,
+        .scale = std::max(1.0, std::ceil(static_cast<double>(m_geometry.scale))),
+    };
+    request.color[3] *= alpha;
+    const TabLabel* label = m_labels->label(request);
+    if (label != nullptr) {
+      // The line's measured height determines how far the arc reaches into its horizontal space.
+      parts = titleBarLayout(
+          m_geometry.contentWidth, m_geometry.titleBarHeight, style.buttonPosition, visibleButtons(),
+          style.buttonGeometry(), radius, label->height
+      );
+      if (label->width > parts.title.width) {
+        request.maxWidth = parts.title.width;
+        label = m_labels->label(request);
+      }
+    }
+    return label;
+  }
+
   std::span<const TitleBarButton> SsdFrame::visibleButtons() const {
     const auto& style = config().appearance.titleBar;
     return style.buttonGlyph != TitleBarButtonGlyph::Never || style.buttonBackground
@@ -193,7 +542,10 @@ namespace umbriel {
         : std::span<const TitleBarButton>();
   }
 
-  void SsdFrame::updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible) {
+  void SsdFrame::updateButtonIcon(
+      TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible,
+      const std::optional<std::array<float, 4>>& outline
+  ) {
     const auto index = static_cast<size_t>(button);
     auto*& icon = m_icons[index];
     const std::array<wlr_scene_rect*, kTitleBarButtonCount> backgrounds{m_minimize, m_maximize, m_close};
@@ -210,8 +562,11 @@ namespace umbriel {
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
     // symbol half a pixel off center. Twice the resolution makes it resample symmetrically instead.
     const int pixels = static_cast<int>(std::ceil(size * scale)) * (scale == std::floor(scale) ? 1 : 2);
-    if (icon == nullptr || m_iconSizes[index] != pixels || m_iconColors[index] != color) {
-      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color);
+    if (icon == nullptr
+        || m_iconSizes[index] != pixels
+        || m_iconColors[index] != color
+        || m_iconOutlines[index] != outline) {
+      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color, outline);
       if (icon == nullptr) {
         icon = wlr_scene_buffer_create(m_tree, buffer);
         if (icon != nullptr) {
@@ -230,6 +585,7 @@ namespace umbriel {
       wlr_buffer_drop(buffer);
       m_iconSizes[index] = pixels;
       m_iconColors[index] = color;
+      m_iconOutlines[index] = outline;
     }
     wlr_scene_buffer_set_dest_size(icon, background->width, background->height);
     wlr_scene_buffer_set_opacity(icon, alpha);
@@ -270,7 +626,10 @@ namespace umbriel {
       const auto& glyphColor = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
       const bool glyphVisible = style.buttonGlyph == TitleBarButtonGlyph::Always
           || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
-      updateButtonIcon(which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible);
+      updateButtonIcon(
+          which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible,
+          style.colorSource != TitleBarColorSource::Fixed ? adaptiveOutline(glyphColor[3]) : std::nullopt
+      );
     };
     button(
         m_close, colors.close, colors.closeGlyph, colors.closeGlyphHover, SsdFramePart::Close, true,
@@ -287,6 +646,10 @@ namespace umbriel {
     if (m_label != nullptr) {
       wlr_scene_buffer_set_opacity(m_label, m_alpha);
     }
+    if (m_labelShadow != nullptr) {
+      wlr_scene_buffer_set_opacity(m_labelShadow, m_alpha);
+    }
+    updateAdaptive(false);
     updateBlur();
   }
 
@@ -298,6 +661,7 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_tree->node, shown);
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
+      updateAdaptive(false);
       updateBlur();
       return;
     }
@@ -323,6 +687,7 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
     }
     if (!shown) {
+      updateAdaptive(false);
       updateBlur();
       return;
     }
@@ -349,40 +714,59 @@ namespace umbriel {
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
     const auto& colors = config().colors.titleBar;
-    TabLabelRequest request{
-        .text = m_title,
-        .color = m_focused ? colors.text : colors.textUnfocused,
-        .font = style.font,
-        .maxWidth = parts.title.width,
-        .scale = std::max(1.0, std::ceil(static_cast<double>(g.scale))),
-    };
-    const TabLabel* label = m_labels->label(request);
-    if (label != nullptr) {
-      // The line's measured height determines how far the arc reaches into its horizontal space.
-      parts = titleBarLayout(
-          g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry(), radius, label->height
-      );
-      if (label->width > parts.title.width) {
-        request.maxWidth = parts.title.width;
-        label = m_labels->label(request);
-      }
+    const std::array<float, 4>& textColor = m_focused ? colors.text : colors.textUnfocused;
+    const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
+    // Hold the title before the shadow lookup, which can evict it. The frame keeps this lock for its snapshots.
+    holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
+    const int labelWidth = label != nullptr ? label->width : 0;
+    const int labelHeight = label != nullptr ? label->height : 0;
+    // A window-coloured bar needs a dark edge under the title.
+    const bool shadowed = style.colorSource != TitleBarColorSource::Fixed;
+    const TabLabel* shadow = nullptr;
+    if (shadowed && m_labelBuffer != nullptr && textColor[3] > 0.0F) {
+      // Re-measures the same layout without disturbing the title's copy.
+      TitleBarLayout shadowParts = parts;
+      shadow = measureTitle(kAdaptiveShadowColor, textColor[3], shadowParts, radius);
     }
-    if (label == nullptr) {
+    holdLabelBuffer(m_shadowBuffer, shadow != nullptr ? shadow->buffer : nullptr);
+    if (m_labelBuffer == nullptr) {
       if (m_label != nullptr) {
         wlr_scene_node_destroy(&m_label->node);
         m_label = nullptr;
       }
     } else {
       if (m_label == nullptr) {
-        m_label = wlr_scene_buffer_create(m_tree, label->buffer);
+        m_label = wlr_scene_buffer_create(m_tree, m_labelBuffer);
         m_label->point_accepts_input = rejectInput;
-        wlr_scene_node_place_above(&m_label->node, &m_background->node);
+        wlr_scene_node_place_above(&m_label->node, m_adaptive != nullptr ? &m_adaptive->node : &m_background->node);
       } else {
-        wlr_scene_buffer_set_buffer(m_label, label->buffer);
+        wlr_scene_buffer_set_buffer(m_label, m_labelBuffer);
       }
-      wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(label->width)), std::max(1, zoomed(label->height)));
-      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - label->height) / 2));
+      wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(labelWidth)), std::max(1, zoomed(labelHeight)));
+      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - labelHeight) / 2));
       clipBuffer(m_label);
+    }
+    if (shadow == nullptr) {
+      if (m_labelShadow != nullptr) {
+        wlr_scene_node_destroy(&m_labelShadow->node);
+        m_labelShadow = nullptr;
+      }
+    } else {
+      const int offset = std::max(1, zoomed(1));
+      if (m_labelShadow == nullptr) {
+        m_labelShadow = wlr_scene_buffer_create(m_tree, shadow->buffer);
+        m_labelShadow->point_accepts_input = rejectInput;
+        wlr_scene_node_place_below(&m_labelShadow->node, m_label != nullptr ? &m_label->node : &m_background->node);
+      } else {
+        wlr_scene_buffer_set_buffer(m_labelShadow, shadow->buffer);
+      }
+      wlr_scene_buffer_set_dest_size(
+          m_labelShadow, std::max(1, zoomed(shadow->width)), std::max(1, zoomed(shadow->height))
+      );
+      wlr_scene_node_set_position(
+          &m_labelShadow->node, zoomed(parts.title.x) + offset, zoomed(-h + (h - shadow->height) / 2) + offset
+      );
+      clipBuffer(m_labelShadow);
     }
     updateColors();
   }
@@ -424,21 +808,31 @@ namespace umbriel {
         wlr_scene_node_set_position(&copy->node, m_blur->node.x, m_blur->node.y);
       }
     }
-    for (const auto* source : {m_background, m_close, m_maximize, m_minimize}) {
+    const auto copyRect = [&](const wlr_scene_rect* source) {
       if (!source->node.enabled) {
-        continue;
+        return;
       }
       auto* copy = wlr_scene_rect_create(tree, source->width, source->height, source->color);
       copy->accepts_input = false;
       wlr_scene_rect_set_corner_radii(copy, source->corners);
       wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
-    }
-    const auto copyBuffer = [&](const wlr_scene_buffer* source) {
-      if (source == nullptr || !source->node.enabled || source->buffer == nullptr) {
+    };
+    // Palette, fill, buttons, text: the live order, or the fill covers the buttons for the whole animation.
+    copyRect(m_background);
+    // The scene drops its buffer field once the texture is uploaded, so fall back to a buffer this frame still locks.
+    const auto copyBuffer = [&](const wlr_scene_buffer* source, wlr_buffer* fallback) {
+      if (source == nullptr || !source->node.enabled) {
         return;
       }
-      auto* copy = wlr_scene_buffer_create(tree, source->buffer);
+      wlr_buffer* buffer = source->buffer != nullptr ? source->buffer : fallback;
+      if (buffer == nullptr) {
+        return;
+      }
+      auto* copy = wlr_scene_buffer_create(tree, buffer);
+      if (copy == nullptr) {
+        return;
+      }
       copy->point_accepts_input = rejectInput;
       wlr_scene_buffer_set_dest_size(copy, source->dst_width, source->dst_height);
       wlr_scene_buffer_set_opacity(copy, source->opacity);
@@ -446,13 +840,36 @@ namespace umbriel {
       wlr_scene_buffer_set_corner_box(copy, &source->corner_box);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     };
-    copyBuffer(m_label);
-    for (const auto* icon : m_icons) {
-      copyBuffer(icon);
+    // Above the palette rects and below the text, as in the live tree.
+    if (m_adaptive != nullptr && m_adaptive->node.enabled && m_adaptive->buffer != nullptr) {
+      auto* copy = wlr_scene_buffer_create(tree, m_adaptive->buffer);
+      if (copy != nullptr) {
+        copy->point_accepts_input = rejectInput;
+        wlr_scene_buffer_set_source_box(copy, &m_adaptive->src_box);
+        wlr_scene_buffer_set_transform(copy, m_adaptive->transform);
+        wlr_scene_buffer_set_dest_size(copy, m_adaptive->dst_width, m_adaptive->dst_height);
+        wlr_scene_buffer_set_corner_radii(copy, m_adaptive->corners);
+        wlr_scene_buffer_set_corner_box(copy, &m_adaptive->corner_box);
+        wlr_scene_buffer_set_opacity(copy, m_adaptive->opacity);
+        wlr_scene_buffer_copy_color(copy, m_adaptive);
+        wlr_scene_node_set_position(
+            &copy->node, m_tree->node.x + m_adaptive->node.x, m_tree->node.y + m_adaptive->node.y
+        );
+      }
+    }
+    copyRect(m_close);
+    copyRect(m_maximize);
+    copyRect(m_minimize);
+    // The live bar already holds both, so a snapshot needs no lookup: `fixed` copies exactly what it always did.
+    copyBuffer(m_labelShadow, m_shadowBuffer);
+    copyBuffer(m_label, m_labelBuffer);
+    for (size_t index = 0; index < m_icons.size(); ++index) {
+      // `m_iconBuffers` holds a lock for exactly this copy.
+      copyBuffer(m_icons[index], m_iconBuffers[index]);
     }
   }
   std::unique_ptr<ViewChromeAttachment> SsdFrame::makePreview(wlr_scene_tree* parent) const {
-    auto preview = std::make_unique<SsdFrame>(parent, m_labels);
+    auto preview = std::make_unique<SsdFrame>(parent, m_labels, nullptr, m_colors);
     preview->m_preview = true;
     syncPreview(*preview);
     return preview;
@@ -466,6 +883,10 @@ namespace umbriel {
       frame->setMaximized(m_maximized);
       frame->setFocused(m_focused);
       frame->setBlurOptions(m_blurOptions);
+      // The card shows the same bar and takes the colour its window already resolved, not a per-card readback.
+      frame->setContentSurface(m_content, m_contentGeometry);
+      frame->m_averageColor = m_averageColor;
+      frame->m_stripDeferred = m_stripDeferred;
       frame->reloadConfig();
     }
   }
