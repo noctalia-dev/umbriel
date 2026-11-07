@@ -219,6 +219,8 @@ namespace umbriel {
     // than under the view's own frame. Overview cards mirror it so they match the window they swap with.
     const wlr_scene_shadow* shadowNode() const { return m_decoration.shadowNode(); }
     bool shadowPooled() const { return m_decoration.shadowPooled(); }
+    // Blur options after this window's rules, as the live surface uses them; previews blur with the same ones.
+    SurfaceBlurOptions blurOptions() const;
     // Border colors after this window's rule overrides; overview cards draw with the same ones.
     const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
     // Border widths and corner_radius after this window's rule overrides; overview cards draw with the same ones.
@@ -518,7 +520,6 @@ namespace umbriel {
     friend class Popup;
     // Size and place a maximized float in `box`, sliding there when `animate`, and remember it as its maximized box.
     void placeFloatingMaximized(const wlr_box& box, bool animate);
-    friend class Overview;
     friend class Workspace;
     friend class XwaylandWindow;
 
@@ -651,7 +652,6 @@ namespace umbriel {
     void refreshConfigChrome();
     void updateBlur();
     void updateBlur(int contentWidth, int contentHeight);
-    SurfaceBlurOptions blurOptions() const;
     float blurAlpha() const;
     SurfaceBlurOptions popupBlurOptions() const { return m_decoration.popupBlurOptions(); }
     void updateShadow();

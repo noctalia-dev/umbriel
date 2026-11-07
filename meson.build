@@ -818,6 +818,7 @@ core_sources = files(
   'src/input/gestures.cpp',
   'src/input/cursor_constraint.cpp',
   'src/view/view.cpp',
+  'src/view/view_preview.cpp',
   'src/view/decoration.cpp',
   'src/view/effects.cpp',
   'src/view/presentation.cpp',
