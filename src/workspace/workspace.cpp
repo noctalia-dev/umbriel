@@ -252,6 +252,11 @@ namespace umbriel {
   }
 
   void Workspace::transferTo(WorkspaceGroup& group) {
+    // Land the deferred resting re-homes before the trees travel. A released
+    // sheet parked under the shared drag tree is outside them: its remembered
+    // position would be rewritten in the old output's coordinate space mid-spring,
+    // and the settle would then re-home it a second time.
+    flushDeferredRehomes();
     endSwitchTransition();
     endLayoutMotion();
     discardCloseSnapshots();
@@ -3578,6 +3583,14 @@ namespace umbriel {
     m_slide = {};
   }
 
+  void WorkspaceGroup::flushSlideRehomes() {
+    for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
+      if (workspace != nullptr) {
+        workspace->flushDeferredRehomes();
+      }
+    }
+  }
+
   bool WorkspaceGroup::slideBegin(bool includePrev, bool includeNext) {
     if (m_active == nullptr) {
       return false;
@@ -3608,11 +3621,7 @@ namespace umbriel {
     // re-home would keep its view under the shared drag tree, outside the trees
     // that travel, and glue the window to the screen for the whole swipe. Land
     // the waits while the trees are still at rest.
-    for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
-      if (workspace != nullptr) {
-        workspace->flushDeferredRehomes();
-      }
-    }
+    flushSlideRehomes();
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
       m_slide.previous->beginSwitchTransition();
@@ -3784,6 +3793,9 @@ namespace umbriel {
     } else {
       m_slide.previous = workspace;
     }
+    // The trees travel before the outgoing workspace deactivates on this path:
+    // land the deferred waits while they are still at rest.
+    flushSlideRehomes();
     m_slide.base->beginSwitchTransition();
     workspace->beginSwitchTransition();
     slideApply(0.0);
@@ -3860,6 +3872,11 @@ namespace umbriel {
       return reject("output already has a workspace with that name");
     }
 
+    // Both groups' trees travel next; land the deferred resting re-homes while
+    // they are still at rest. A sheet parked under the shared drag tree is
+    // outside every tree this transfer moves.
+    flushSlideRehomes();
+    destination.flushSlideRehomes();
     slideFinish();
     destination.slideFinish();
     const size_t sourceIndex = workspace->index();

@@ -518,6 +518,8 @@ namespace umbriel {
     size_t storedWorkspaceCount() const { return m_workspaces.size() + m_reservedWorkspaces.size(); }
 
     void beginReveal();
+    // Land every member's deferred resting re-home on the trees a slide travels.
+    void flushSlideRehomes();
     // The workspace a reveal at `progress` shows coming in; the previous one when progress is held at the base.
     Workspace* revealIncoming(double progress) const;
 
