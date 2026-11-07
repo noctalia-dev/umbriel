@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "core/log.h"
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/seat.h"
@@ -10,6 +11,8 @@
 #include "scene/surface_blur.h"
 #include "server/server.h"
 #include "view/view.h"
+
+#include <algorithm>
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
@@ -25,6 +28,10 @@ extern "C" {
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
+  namespace {
+    constexpr Logger kLog("view");
+  } // namespace
+
   int View::titleBarHeight() const {
     if (!wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode))
         || scheduledFullscreen()
@@ -303,6 +310,21 @@ namespace umbriel {
         },
         &ctx
     );
+  }
+
+  void View::updateDimBehind() {
+    if (m_sceneTree == nullptr) {
+      return;
+    }
+    Output* out = currentOutput();
+    const bool overview = m_server->overview() != nullptr && m_server->overview()->active();
+    const float alpha = m_mapped && out != nullptr && !overview
+        ? static_cast<float>(resolvedRules().dimBehind.value_or(0.0)) * m_fadeAlpha
+        : 0.0F;
+    const wlr_box box = out != nullptr ? out->layoutBox() : wlr_box{};
+    if (!wlr_scene_node_set_dim_behind(&m_sceneTree->node, &box, std::clamp(alpha, 0.0F, 1.0F))) {
+      kLog.error("failed to allocate window dim backdrop");
+    }
   }
 
   void View::updateBlur() {

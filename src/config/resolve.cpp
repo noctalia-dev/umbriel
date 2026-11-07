@@ -371,6 +371,9 @@ namespace umbriel {
       if (rule.opacity) {
         resolved.opacity = rule.opacity;
       }
+      if (rule.dimBehind) {
+        resolved.dimBehind = rule.dimBehind;
+      }
       if (rule.blur) {
         resolved.blur = rule.blur;
       }
@@ -433,6 +436,9 @@ namespace umbriel {
       }
       if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < kStartupRuleDurationMs)) {
         continue;
+      }
+      if (rule.dimBehind) {
+        resolved.dimBehind = rule.dimBehind;
       }
       if (rule.blur) {
         resolved.blur = rule.blur;
