@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Floating geometry must reach subscribers during a held move or resize,
-# before releasing the grab can trigger unrelated focus or layout updates.
+# Floating geometry must reach subscribers during a held move or resize, before releasing the grab can trigger
+# unrelated focus or layout updates, without a snapshot for every pointer motion.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -84,4 +84,23 @@ pointer_release
 "$UMBRIEL" settle > /dev/null
 await_box keyboard-resize 313 169 640 440
 
-echo 'floating moves, anchored resizes, and keyboard resizes reached windows subscribers'
+# Each motion is its own event-loop pass. The bound holds under any load, since a slower run only widens the window.
+readonly MIN_EVENT_INTERVAL_MS=16
+sweep=()
+for x in $(seq 414 713); do
+  sweep+=(move "$x" 259)
+done
+pointer_hold 1280 720 move 413 259 mod logo press 272 -- "${sweep[@]}" mark swept hold release 272 mod none
+events_before=$(wc -l < "$EVENTS")
+sweep_start_ms=$(date +%s%3N)
+pointer_step swept
+await_box paced-move 613 169 640 440
+sweep_ms=$(($(date +%s%3N) - sweep_start_ms))
+sweep_events=$(($(wc -l < "$EVENTS") - events_before))
+if ((sweep_events > sweep_ms / MIN_EVENT_INTERVAL_MS + 2)); then
+  echo "300 motions sent $sweep_events windows events in $sweep_ms ms"
+  exit 1
+fi
+pointer_release
+
+echo 'floating moves, anchored resizes, and keyboard resizes reached windows subscribers at a paced rate'

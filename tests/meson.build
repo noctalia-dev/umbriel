@@ -22,6 +22,7 @@ unit_tests = [
   ['output-enable-overrides', ['unit/output_enable_overrides.cpp'], []],
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
+  ['event-pacer', ['unit/event_pacer.cpp'], [wayland_server_dep]],
   ['keyboard-leds', ['unit/keyboard_leds.cpp'], [wayland_server_dep]],
   ['keyboard-state', ['unit/keyboard_state.cpp'], [wayland_server_dep]],
   ['input-capture-geometry', ['unit/input_capture_geometry.cpp'], []],

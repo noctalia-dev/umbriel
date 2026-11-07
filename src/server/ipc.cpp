@@ -31,6 +31,8 @@ namespace umbriel {
     constexpr size_t kMaxRequestSize = 65536;
     // A subscriber that stops reading must not grow the compositor's heap without bound.
     constexpr size_t kMaxOutboundBacklog = 256 * 1024;
+    // About one 60 Hz frame, so a brief subscriber pause during a drag stays under kMaxOutboundBacklog.
+    constexpr int kSnapshotEventIntervalMs = 16;
     constexpr int kConnectionTimeoutMs = 1000;
     constexpr size_t kMaxAudioRequestSize = 4096;
     constexpr int kAudioFreshnessMs = 250;
@@ -162,7 +164,11 @@ namespace umbriel {
     }
   } // namespace
 
-  Ipc::Ipc(Server& server, const std::string& waylandSocketName) : m_server(&server) {
+  Ipc::Ipc(Server& server, const std::string& waylandSocketName)
+      : m_server(&server), m_windowsPacer(snapshotPacer(EventWindows, windowsEvent)),
+        m_workspacesPacer(snapshotPacer(EventWorkspaces, workspacesEvent)),
+        m_layersPacer(snapshotPacer(EventLayers, layersEvent)),
+        m_outputsPacer(snapshotPacer(EventOutputs, outputsEvent)) {
     const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
     if (runtimeDir == nullptr || runtimeDir[0] == '\0') {
       kLog.error("XDG_RUNTIME_DIR not set, IPC socket disabled");
@@ -717,9 +723,15 @@ namespace umbriel {
     return spec->handle(*m_server, args).dump();
   }
 
+  EventPacer Ipc::snapshotPacer(uint16_t event, nlohmann::json (*buildEvent)(Server&)) {
+    return {wl_display_get_event_loop(m_server->display()), kSnapshotEventIntervalMs, [this, event, buildEvent] {
+              broadcastEvent(event, buildEvent(*m_server));
+            }};
+  }
+
   void Ipc::broadcastEvent(uint16_t event, const nlohmann::json& payload) {
     std::string update = payload.dump() + '\n';
-    // Coalescing bounds how often a family is rebuilt; this bounds what leaves the compositor. An arrange that ends
+    // Pacing bounds how often a family is rebuilt; this bounds what leaves the compositor. An arrange that ends
     // where it started, or a window field the payload does not carry, produces the same bytes as last time and is
     // dropped here instead of waking every subscriber's JSON parser.
     std::string& last = m_lastBroadcast.at(static_cast<size_t>(std::countr_zero(event)));
@@ -763,16 +775,8 @@ namespace umbriel {
     }
   }
 
-  void Ipc::notifyWindowsChanged() { broadcastEvent(EventWindows, windowsEvent(*m_server)); }
-
-  void Ipc::notifyWorkspacesChanged() { broadcastEvent(EventWorkspaces, workspacesEvent(*m_server)); }
-
   void Ipc::notifySubmapChanged() { broadcastEvent(EventSubmap, submapEvent(*m_server)); }
 
   void Ipc::notifyScreenCastChanged() { broadcastEvent(EventScreenCast, screenCastEvent(*m_server)); }
-
-  void Ipc::notifyLayersChanged() { broadcastEvent(EventLayers, layersEvent(*m_server)); }
-
-  void Ipc::notifyOutputsChanged() { broadcastEvent(EventOutputs, outputsEvent(*m_server)); }
 
 } // namespace umbriel
