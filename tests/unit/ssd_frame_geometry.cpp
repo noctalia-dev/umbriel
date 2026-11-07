@@ -377,12 +377,16 @@ UMBRIEL_TEST(stripSourceBoxCropsTheWindowGeometryUpright) {
   CHECK_EQ(straight.width, 380.0);
   CHECK_EQ(straight.height, 5.0);
 
+  // Every transform, flips included, and an off-centre geometry: a crop mirrored about the buffer centre would pass a
+  // symmetric one, and a dropped flip bit only shows up once the offset is off-centre.
   for (const wl_output_transform transform :
-       {WL_OUTPUT_TRANSFORM_90, WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270}) {
-    const bool quarterTurn = transform == WL_OUTPUT_TRANSFORM_90 || transform == WL_OUTPUT_TRANSFORM_270;
+       {WL_OUTPUT_TRANSFORM_90, WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270, WL_OUTPUT_TRANSFORM_FLIPPED,
+        WL_OUTPUT_TRANSFORM_FLIPPED_90, WL_OUTPUT_TRANSFORM_FLIPPED_180, WL_OUTPUT_TRANSFORM_FLIPPED_270}) {
+    const auto rotation = static_cast<wl_output_transform>(transform & 3U);
+    const bool quarterTurn = rotation == WL_OUTPUT_TRANSFORM_90 || rotation == WL_OUTPUT_TRANSFORM_270;
     const int surfaceWidth = quarterTurn ? 300 : 400;
     const int surfaceHeight = quarterTurn ? 400 : 300;
-    const wlr_box geometry = quarterTurn ? wlr_box{10, 20, 280, 380} : wlr_box{10, 20, 380, 260};
+    const wlr_box geometry = quarterTurn ? wlr_box{10, 20, 100, 380} : wlr_box{10, 20, 100, 260};
     const wlr_fbox strip = titleBarStripSourceBox(full, 400, 300, geometry, surfaceWidth, surfaceHeight, transform, 5);
     const wlr_fbox upright = uprightOf(strip, transform, 400, 300);
     CHECK_NEAR(upright.x, 10.0, 0.001);

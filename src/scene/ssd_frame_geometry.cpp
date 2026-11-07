@@ -160,6 +160,9 @@ namespace umbriel {
       const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
       int surfaceHeight, uint32_t transform, int logicalHeight
   ) {
+    // The whole transform, flip bit included: a flip moves which buffer pixels the geometry maps to, while only a
+    // quarter turn swaps the buffer's dimensions.
+    const auto full = static_cast<wl_output_transform>(transform);
     const auto rotation = static_cast<wl_output_transform>(transform & 3U);
     const bool quarterTurn = rotation == WL_OUTPUT_TRANSFORM_90 || rotation == WL_OUTPUT_TRANSFORM_270;
     // The whole buffer as it shows upright on screen: a quarter turn swaps its dimensions.
@@ -176,8 +179,8 @@ namespace umbriel {
     // Upright first: the window geometry is in surface coordinates, and a quarter turn puts surface x on buffer y, so
     // cropping the buffer box before the turn would take the offset off the wrong axis.
     wlr_fbox visible = source;
-    if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
-      wlr_fbox_transform(&visible, &source, rotation, bufferWidth, bufferHeight);
+    if (full != WL_OUTPUT_TRANSFORM_NORMAL) {
+      wlr_fbox_transform(&visible, &source, full, bufferWidth, bufferHeight);
     }
     // The surface's coordinates stretch over exactly `visible`, so the geometry scales into it. A window geometry that
     // is empty, or that misses the visible part, leaves the whole surface visible.
@@ -196,8 +199,8 @@ namespace umbriel {
     const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scaleY));
     const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
     wlr_fbox inBuffer = strip;
-    if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
-      wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(rotation), uprightWidth, uprightHeight);
+    if (full != WL_OUTPUT_TRANSFORM_NORMAL) {
+      wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(full), uprightWidth, uprightHeight);
     }
     // Keep the box inside the buffer: the scene refuses a negative origin, and overshoot samples outside it.
     const double right = std::min(inBuffer.x + inBuffer.width, static_cast<double>(bufferWidth));
