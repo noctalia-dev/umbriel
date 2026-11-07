@@ -1068,6 +1068,8 @@ namespace umbriel {
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen before the layout attach, so the client
     // never sees a transient column-sized configure. Cleared when fullscreen is left by any other path.
     bool m_refullscreenOnTile = false;
+    // Set when a maximized tile leaves the layout, and by maximize toggles while it floats: re-tiling maximizes again.
+    bool m_remaximizeOnTile = false;
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;
