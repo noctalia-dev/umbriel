@@ -9,11 +9,14 @@ extern "C" {
 
 namespace umbriel {
   int titleBarButtonDiameter(int height, int size) {
-    const int diameter = size < 0 ? std::max(8, (height + 1) / 2) : std::clamp(size, 1, std::max(1, height));
+    if (size >= 0) {
+      return std::clamp(size, 1, std::max(1, height));
+    }
+    const int diameter = std::max(8, (height + 1) / 2);
     if ((height - diameter) % 2 == 0) {
       return diameter;
     }
-    return diameter > (size < 0 ? 8 : 1) ? diameter - 1 : diameter + 1;
+    return diameter > 8 ? diameter - 1 : diameter + 1;
   }
 
   TitleBarLayout titleBarLayout(

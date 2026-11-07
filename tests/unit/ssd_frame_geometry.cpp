@@ -65,11 +65,17 @@ UMBRIEL_TEST(derivedSizeAndPaddingFollowTheBarHeight) {
     CHECK_EQ(parts.gap, 8);
     CHECK_EQ(480 - parts.button(TitleBarButton::Close)->x - sizes[i], paddings[i]);
   }
-  CHECK_EQ(titleBarButtonDiameter(28, 12), 12);
-  CHECK_EQ(titleBarButtonDiameter(28, 13), 12);
-  CHECK_EQ(titleBarButtonDiameter(28, 1), 2);
-  CHECK_EQ(titleBarButtonDiameter(28, -1), 14);
+}
+
+UMBRIEL_TEST(explicitSizeIsExactUpToTheBarHeight) {
+  for (const int size : {1, 11, 12, 13}) {
+    CHECK_EQ(titleBarButtonDiameter(28, size), size);
+  }
   CHECK_EQ(titleBarButtonDiameter(28, 100), 28);
+  // An odd remainder leaves the extra pixel below the button.
+  const auto parts = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, {.size = 11, .gap = 8, .padding = 4});
+  CHECK_EQ(parts.button(TitleBarButton::Close)->y, 8);
+  CHECK_EQ(parts.button(TitleBarButton::Close)->height, 11);
 }
 
 UMBRIEL_TEST(narrowBarsShrinkPaddingThenGapAndMirror) {
