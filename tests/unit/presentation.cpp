@@ -63,19 +63,21 @@ UMBRIEL_TEST(minimizeCollapseScalesAboutTheConfiguredAnchor) {
   CHECK_EQ(centered.x + centered.width / 2, resting.x + resting.width / 2);
   CHECK_EQ(centered.y + centered.height / 2, resting.y + resting.height / 2);
 
-  // Top-left: the corner stays put.
-  const wlr_box corner = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::TopLeft);
-  CHECK_EQ(corner.x, resting.x);
-  CHECK_EQ(corner.y, resting.y);
-  CHECK_EQ(corner.width, 200);
-  CHECK_EQ(corner.height, 150);
+  const wlr_box left = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::Left);
+  CHECK_EQ(left.x, usable.x);
+  CHECK_EQ(left.y + left.height / 2, usable.y + usable.height / 2);
 
-  // Bottom center: the scaled box sits on the bottom edge of the usable area, centred on it.
+  const wlr_box right = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::Right);
+  CHECK_EQ(right.x + right.width, usable.x + usable.width);
+  CHECK_EQ(right.y + right.height / 2, usable.y + usable.height / 2);
+
+  const wlr_box top = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::TopCenter);
+  CHECK_EQ(top.y, usable.y);
+  CHECK_EQ(top.x + top.width / 2, usable.x + usable.width / 2);
+
   const wlr_box bottom = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::BottomCenter);
-  CHECK_EQ(bottom.width, 200);
-  CHECK_EQ(bottom.height, 150);
-  CHECK_EQ(bottom.x + bottom.width / 2, usable.x + usable.width / 2);
   CHECK_EQ(bottom.y + bottom.height, usable.y + usable.height);
+  CHECK_EQ(bottom.x + bottom.width / 2, usable.x + usable.width / 2);
 }
 
 UMBRIEL_TEST(minimizeCollapseIsIdentityAtFullScaleAndNeverEmpty) {
@@ -91,7 +93,7 @@ UMBRIEL_TEST(minimizeCollapseIsIdentityAtFullScaleAndNeverEmpty) {
   const wlr_box tiny = umbriel::minimizeCollapseBox(resting, 0.0, usable, umbriel::MinimizeAnchor::Center);
   CHECK_EQ(tiny.width, 1);
   CHECK_EQ(tiny.height, 1);
-  const wlr_box over = umbriel::minimizeCollapseBox(resting, 4.0, usable, umbriel::MinimizeAnchor::TopLeft);
+  const wlr_box over = umbriel::minimizeCollapseBox(resting, 4.0, usable, umbriel::MinimizeAnchor::Left);
   CHECK_EQ(over.width, resting.width);
   CHECK_EQ(over.height, resting.height);
 }

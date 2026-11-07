@@ -41,9 +41,8 @@ namespace umbriel {
   }
 
   bool View::fadeComposited() const {
-    // A minimize fade is not a lifecycle transition: it has no effect slot, so it composites the plain alpha instead of
-    // borrowing whatever the opening did. That must hold in both directions, or the reveal would fade the client
-    // through the opening program while the border and title bar snapped to full opacity.
+    // A minimize fade has no effect slot, so it composites plain alpha in both directions: borrowing the opening
+    // program would fade the client through it while the border and title bar snapped to full opacity.
     if (!m_fade.animating() || minimizeFadeActive()) {
       return false;
     }
@@ -123,9 +122,8 @@ namespace umbriel {
   }
 
   void View::cancelFadeAnimation() {
-    // An unmap or a fresh map abandons a minimize transition: nothing is left to fade out, and the next enable must be
-    // free to act. A conceal left the node and the presented box collapsed, so they go back to the resting box rather
-    // than waiting for a presentation that a re-map may never issue.
+    // An unmap or a fresh map abandons a minimize transition. A conceal left the node and box collapsed, and a re-map
+    // may never issue the presentation that would put them back.
     if (minimizeConcealing()) {
       abandonMinimizeTransition();
     }
@@ -751,15 +749,14 @@ namespace umbriel {
 
   void View::finishMinimizeConceal() {
     if (!m_minimized) {
-      // A restore overtook the conceal without cancelling it. Nothing is being hidden any more, so the window goes back
-      // to its resting box at full opacity instead of disappearing under a state that says it is visible.
+      // A restore overtook the conceal: nothing is being hidden, so the window goes back to its resting box instead of
+      // disappearing while it reports itself visible.
       abandonMinimizeTransition();
       return;
     }
     m_minimizePhase = MinimizePhase::None;
     setNodeEnabled(false);
-    // Everything below runs while the node is off screen, so the hide does not snap: the window returns to its resting
-    // box and full opacity for its next reveal.
+    // Below runs off screen, so the window returns to its resting box and full opacity without a visible snap.
     setPosition(m_minimizeResting.x, m_minimizeResting.y);
     finishSizeAnimation();
     m_fade.snap(1.0);
@@ -770,22 +767,21 @@ namespace umbriel {
     const auto& animation = config().animation;
     const auto& minimize = animation.windowsMinimize;
     const auto [width, height] = floatingSize();
-    // A conceal in flight already retargeted the node to its collapsed origin, so the live target is not the resting
-    // box any more; the box captured when the conceal started is.
+    // A conceal already retargeted the live box to its collapsed origin, so the resting box is the one it captured.
     const bool reversing = minimizeConcealing();
     const wlr_box captured = reversing && m_minimizeResting.width > 0
         ? m_minimizeResting
         : wlr_box{layoutTargetX(), layoutTargetY(), width, height};
     m_minimizePhase = MinimizePhase::Revealing;
     setNodeEnabled(true);
-    // A reversal always has to retarget the box: a conceal that moved it did so under the style in force at the time,
-    // so a config reload to `fade` mid-flight must not skip the tweens back to the resting box.
+    // A reversal always retargets the box: the conceal moved it, so a reload to `fade` mid-flight must not skip the
+    // tweens back.
     const bool popin = captured.width > 0 && captured.height > 0 && (minimize.style == "popin" || reversing);
     if (reversing) {
-      // Reverse from wherever the conceal has drawn the window: snapping back to the collapsed box would jump.
+      // Reverse from where the window is drawn; snapping to the collapsed box would jump.
       m_fade.snap(m_fadeAlpha);
     } else {
-      // Hidden at rest, so the reveal starts from the collapsed box and grows out of the same place it left.
+      // Hidden at rest: grow out of the box it left.
       setFadeAlpha(0.0F);
       m_fade.snap(0.0);
       if (popin) {
@@ -816,8 +812,8 @@ namespace umbriel {
     if (!wasHiding) {
       return;
     }
-    // The conceal moved the node and the presented box; put both back before whatever asked takes over. The node may
-    // still be enabled here, so the restore has to go through the cancel path rather than leaving a stale tween behind.
+    // Put the node and the presented box back before the caller takes over, through the cancel path so no stale tween
+    // outlives it.
     setPosition(m_minimizeResting.x, m_minimizeResting.y);
     cancelSizeAnimation();
   }
@@ -842,7 +838,7 @@ namespace umbriel {
   }
 
   void View::animateTo(int x, int y) {
-    // A conceal owns the node's position until its fade lands; a layout pass in between must not pull it back.
+    // A conceal owns the node's position until its fade lands.
     if (minimizeConcealing()) {
       return;
     }
@@ -908,7 +904,7 @@ namespace umbriel {
       m_effects.detach();
       return;
     }
-    // A minimize transition deforms its own box, so a `windows_move` preset must not warp the picture on top of it.
+    // A minimize transition deforms its own box, so no `windows_move` preset warps it on top.
     if (minimizeFadeActive()) {
       clearAnimationEffect(&target->node, AnimationEvent::WindowsMove);
     } else if (m_posX.animating() || m_posY.animating() || m_presentation.animating()) {

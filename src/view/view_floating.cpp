@@ -333,7 +333,7 @@ namespace umbriel {
     if (attached()) {
       return;
     }
-    // A new placement (output or workspace move, a changed usable area) supersedes a minimize collapse in flight.
+    // A new placement moots a minimize collapse in flight.
     abandonMinimizeTransition();
     const wlr_box usable = floatingUsableArea();
 

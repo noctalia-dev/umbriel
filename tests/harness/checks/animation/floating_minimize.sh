@@ -122,8 +122,8 @@ if (( before_width < 300 || before_count < 100000 )); then
   exit 1
 fi
 
-# A quarter of the way out the window is smaller but still on screen; the same instant of the reveal shows the mirrored
-# box, which is the whole point of animating the live view instead of hiding it in one frame.
+# A quarter of the way out the window is smaller but still on screen, and the same instant of the reveal shows the
+# mirrored box.
 "$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$HIDING"
@@ -201,8 +201,8 @@ fi
 expect_no_lifecycle_shader "$REVEALED" "revealed"
 
 
-# `windows_in.style = "slide"` brightens a lifecycle fade with sqrt(). A minimize fade follows its own curve, so with
-# the same 25 % instant the window must sit at the linear 0.75 alpha, not at 0.87.
+# `windows_in.style = "slide"` brightens a lifecycle fade with sqrt(); at the same 25 % instant the minimize fade must
+# sit at the linear 0.75 alpha, not 0.87.
 sed -i 's/^effect = "minimize_anim_green"$//' "$UMBRIEL_CONFIG"
 sed -i '/^\[animation\.windows_in\]$/,/^\[/ s/^curve = "linear"$/curve = "linear"\nstyle = "slide"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -224,9 +224,8 @@ set_minimize_enabled() {
   "$UMBRIEL" msg config-reload > /dev/null
 }
 
-# An animated restore that lands mid-conceal must end at the resting box. The conceal has already retargeted the live
-# box to its collapsed origin, so a reveal that reads its destination from the live target grows back off-centre and
-# small. The taskbar path shows the window without focusing it, so no arrange follows to repair the geometry.
+# An animated restore mid-conceal must end at the resting box: the conceal already moved the live box to its collapsed
+# origin. The taskbar path shows the window without focusing it, so no arrange repairs the geometry.
 "$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
 "$UMBRIEL" clock-advance 500
 "$FOREIGN_TOPLEVEL" minimize-anim "$(field_of minimize-anim output)" unminimize > /dev/null
@@ -249,8 +248,7 @@ if [[ $(field_of minimize-anim minimized) != false ]]; then
   exit 1
 fi
 
-# The conceal leaves the node enabled so the window can be seen leaving, but it is already minimized: a click on the
-# fading remnant must fall through instead of focusing and unminimizing the window underneath it.
+# The fading window is already minimized, so a click on the remnant must fall through.
 pointer move 0 0
 "$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
 "$UMBRIEL" clock-advance 500
@@ -274,9 +272,8 @@ pointer move 0 0
 "$UMBRIEL" msg window-restore-minimized > /dev/null
 "$UMBRIEL" clock-advance 2000
 
-# A restore that will not animate (the block is off) while a conceal is still fading must cancel the conceal. A
-# taskbar unminimize shows the window without focusing it, so no arrange follows to paper over a finish that hides a
-# window which is no longer minimized.
+# A restore that will not animate while a conceal is still fading must cancel it. The taskbar path shows the window
+# without focusing it, so no arrange papers over a finish that hides a window no longer minimized.
 "$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
 "$UMBRIEL" clock-advance 300
 set_minimize_enabled false
@@ -367,9 +364,8 @@ fi
 sed -i '/^\[animation\.windows_minimize\]$/,/^\[/ s/^style = "fade"$/style = "popin"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
-# The decorated frame is enabled for the fade too, so its title bar and resize border must refuse the same input as the
-# content: a press there would focus the view, and focusing a minimized view restores it. The check above runs
-# undecorated so its pixel maths stays simple; this leg turns the frame back on for the hit test alone.
+# The decorated frame is enabled for the fade too and must refuse the same input: a press on the title bar would focus
+# the view, and focusing a minimized view restores it. This leg turns the frame back on for the hit test alone.
 sed -i 's/^border_width = 0$/border_width = 2/' "$UMBRIEL_CONFIG"
 sed -i '/^\[appearance\.title_bar\]$/,/^\[/ s/^mode = "off"$/mode = "on"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null

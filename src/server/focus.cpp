@@ -470,8 +470,7 @@ namespace umbriel {
         return std::nullopt;
       }
       auto* view = static_cast<View*>(tag);
-      // A minimize conceal keeps the decorated frame enabled until its fade lands, but the window is already
-      // minimized: its title bar and resize border take no pointer input on the way out.
+      // A concealing window is already minimized, so its fading frame takes no pointer input either.
       if (!view->mapped()
           || view->minimizeConcealing()
           || (!view->pinned() && !view->onActiveWorkspace())
@@ -538,8 +537,7 @@ namespace umbriel {
       *surface = nullptr;
       return nullptr;
     }
-    // A minimize conceal keeps the node enabled until its fade lands, but the window is already minimized: it takes no
-    // pointer input on its way out, so a click cannot focus the window that is leaving.
+    // A concealing window is already minimized: a click must not focus the remnant and restore it.
     if (view->minimizeConcealing()) {
       *surface = nullptr;
       return nullptr;

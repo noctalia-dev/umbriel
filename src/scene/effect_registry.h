@@ -129,8 +129,8 @@ namespace umbriel {
   void
   bindAnimationEffect(wlr_scene_node* node, AnimationEvent event, const AnimatedValue& value, float direction = 0.0F);
   void bindAnimationEffect(wlr_scene_node* node, AnimationEvent event, const AnimatedColor& value, float direction);
-  // Unbind `event`'s slot on `node`. A transition with no effect slot of its own (minimize) uses this so a program a
-  // previous event bound to the same node cannot run for it.
+  // Unbind `event`'s slot on `node`, so a program an earlier event bound cannot run for a transition that has no slot
+  // of its own (minimize).
   void clearAnimationEffect(wlr_scene_node* node, AnimationEvent event);
 
   // Seconds elapsed from `epochMsec` to `nowMsec`, computed in double precision so the result keeps

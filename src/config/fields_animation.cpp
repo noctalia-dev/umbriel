@@ -180,7 +180,9 @@ namespace umbriel {
     const registry::Choices<MinimizeAnchor>& minimizeAnchors() {
       static const registry::Choices<MinimizeAnchor> choices{
           {.name = "center", .value = MinimizeAnchor::Center},
-          {.name = "top_left", .value = MinimizeAnchor::TopLeft},
+          {.name = "left", .value = MinimizeAnchor::Left},
+          {.name = "right", .value = MinimizeAnchor::Right},
+          {.name = "top_center", .value = MinimizeAnchor::TopCenter},
           {.name = "bottom_center", .value = MinimizeAnchor::BottomCenter},
       };
       return choices;
