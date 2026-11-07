@@ -683,9 +683,9 @@ namespace umbriel {
       entry["xwayland"] = view.xwayland();
       // -1 whenever the owning process is unknown: an X11 client that publishes no _NET_WM_PID.
       entry["pid"] = view.pid();
-      // Tiled windows report their layout slot, which the layout computes even for hidden workspaces; floats report
-      // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
-      // (dwindle) regardless of visibility or in-flight animations.
+      // Tiled windows report their layout slot, or the output box they cover while fullscreen, which the layout
+      // computes even for hidden workspaces; floats report their own position. Ordering a listing by these positions
+      // then matches the strip (scrolling) or tile tree (dwindle) regardless of visibility or in-flight animations.
       if (Workspace* workspace = view.workspace(); workspace != nullptr && workspace->layout().columnOf(&view) >= 0) {
         // Preview stale targets without applying client configures, rules, or bindings.
         const Layout* layout = &workspace->layout();
@@ -698,7 +698,8 @@ namespace umbriel {
             layout = entry->second.get();
           }
         }
-        const wlr_box box = workspace->presentedTiledBox(&view, layout);
+        const wlr_box box = view.layoutFullscreen() ? workspace->fullscreenTargetBox(&view, layout)
+                                                    : workspace->presentedTiledBox(&view, layout);
         entry["x"] = box.x;
         entry["y"] = box.y;
       } else if (
