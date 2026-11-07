@@ -737,6 +737,14 @@ namespace umbriel {
             }};
   }
 
+#ifdef UMBRIEL_HARNESS
+  void Ipc::setEventPacingHeld(bool held) {
+    for (EventPacer* pacer : {&m_windowsPacer, &m_workspacesPacer, &m_layersPacer, &m_outputsPacer}) {
+      pacer->setIntervalHeld(held);
+    }
+  }
+#endif
+
   std::string& Ipc::lastBroadcast(uint16_t event) {
     return m_lastBroadcast.at(static_cast<size_t>(std::countr_zero(event)));
   }

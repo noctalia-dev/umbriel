@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Floating geometry must reach subscribers during a held move or resize, before releasing the grab can trigger
-# unrelated focus or layout updates, without a snapshot for every pointer motion.
+# unrelated focus or layout updates. tests/unit/event_pacer.cpp pins how often they hear about it.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -84,23 +84,14 @@ pointer_release
 "$UMBRIEL" settle > /dev/null
 await_box keyboard-resize 313 169 640 440
 
-# Each motion is its own event-loop pass. The bound holds under any load, since a slower run only widens the window.
-readonly MIN_EVENT_INTERVAL_MS=16
+# A burst of motions merges into paced snapshots, and the last one still carries the final position.
 sweep=()
 for x in $(seq 414 713); do
   sweep+=(move "$x" 259)
 done
 pointer_hold 1280 720 move 413 259 mod logo press 272 -- "${sweep[@]}" mark swept hold release 272 mod none
-events_before=$(wc -l < "$EVENTS")
-sweep_start_ms=$(date +%s%3N)
 pointer_step swept
-await_box paced-move 613 169 640 440
-sweep_ms=$(($(date +%s%3N) - sweep_start_ms))
-sweep_events=$(($(wc -l < "$EVENTS") - events_before))
-if ((sweep_events > sweep_ms / MIN_EVENT_INTERVAL_MS + 2)); then
-  echo "300 motions sent $sweep_events windows events in $sweep_ms ms"
-  exit 1
-fi
+await_box swept-move 613 169 640 440
 pointer_release
 
-echo 'floating moves, anchored resizes, and keyboard resizes reached windows subscribers at a paced rate'
+echo 'floating moves, anchored resizes, keyboard resizes, and motion bursts reached windows subscribers'

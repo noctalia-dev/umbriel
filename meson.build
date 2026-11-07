@@ -709,7 +709,6 @@ pure_sources = files(
   'src/input/shortcuts_inhibit.cpp',
   'src/input/shortcut_keysym.cpp',
   'src/input/xcursor_matcher.cpp',
-  'src/server/event_pacer.cpp',
   'src/layout/layout.cpp',
   'src/scene/ssd_frame_geometry.cpp',
   'src/layout/layout_motion.cpp',
@@ -860,6 +859,7 @@ core_sources = files(
   'src/workspace/scratchpad.cpp',
   'src/cli/ipc_client.cpp',
   'src/server/action_request.cpp',
+  'src/server/event_pacer.cpp',
   'src/server/ipc.cpp',
   'src/server/ipc_commands.cpp',
 )

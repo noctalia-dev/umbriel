@@ -17,12 +17,18 @@ namespace umbriel {
     EventPacer& operator=(const EventPacer&) = delete;
 
     void schedule();
+#ifdef UMBRIEL_HARNESS
+    // A hold opens an interval and keeps it past its timer, so a change waits for the release however long a check
+    // takes. The release ends the interval.
+    void setIntervalHeld(bool held);
+#endif
 
   private:
     static void onIdle(void* data);
     static int onIntervalEnd(void* data);
 
     void emit();
+    void endInterval();
 
     wl_event_loop* m_loop;
     int m_intervalMs;
@@ -31,6 +37,9 @@ namespace umbriel {
     wl_event_source* m_interval = nullptr;
     bool m_inInterval = false;
     bool m_changedInInterval = false;
+#ifdef UMBRIEL_HARNESS
+    bool m_intervalHeld = false;
+#endif
   };
 
 } // namespace umbriel

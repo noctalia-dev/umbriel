@@ -58,6 +58,9 @@ namespace umbriel {
     void notifyWorkspacesChanged() { m_workspacesPacer.schedule(); }
     void notifyLayersChanged() { m_layersPacer.schedule(); }
     void notifyOutputsChanged() { m_outputsPacer.schedule(); }
+#ifdef UMBRIEL_HARNESS
+    void setEventPacingHeld(bool held);
+#endif
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
     // A window committed. A window off screen draws no frame when it commits its configure, so while a settle waits,
