@@ -9,7 +9,15 @@
 # gesture, whose trees move before the outgoing workspace is deactivated.
 #
 # A window still held by the cursor is the drag's payload: switching workspace
-# must not steal its presentation from the drag.
+# must not steal its presentation from the drag. That ownership outlives the
+# grab: the settle keeps the sheet (and the dialogs riding it) under the drag
+# tree until the spring lands, so a switch during the settle must not hide them
+# either — see Phase 5.
+#
+# Accepted limit, unpinned: opening the overview mid-settle flushes every
+# registered waiting re-home (the overview's cards need the home tree), so the
+# cross-edge drawing these phases preserve is deliberately sacrificed there. A
+# regression to "overview flushes nothing" would pass this check.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -391,6 +399,71 @@ if ((child_held < CHILD_FLOOR)); then
 fi
 if ((child_across < CHILD_FLOOR)); then
   echo "the drag's child dialog was hidden with the workspace (red=$child_held -> $child_across)"
+  exit 1
+fi
+
+# Phase 5 — the ride outlives the grab. A pinned window's release parks its wait
+# on the output's pinned root, so the sheet keeps settling under the drag tree
+# while its dialog rides it. A switch in that window must not hide the dialog:
+# the pinned view is skipped by every flush, so only the ride's own ownership of
+# visibility can keep it presented.
+id_of() { "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'; }
+workspace_name_of() {
+  local id
+  id=$("$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .workspace')
+  "$UMBRIEL" workspaces --json | jq -r --arg id "$id" '.[] | select(.id == $id) | .name'
+}
+child_ws=$(workspace_name_of settle-child)
+"$UMBRIEL" msg window-focus "$(id_of settle-parent)" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace "$child_ws" > /dev/null
+"$UMBRIEL" msg workspace-switch "$child_ws" > /dev/null
+"$UMBRIEL" settle > /dev/null
+if [[ $(workspace_name_of settle-parent) != "$child_ws" ]]; then
+  echo "scenario never engaged: the parent did not join the dialog on '$child_ws'"
+  exit 1
+fi
+if [[ $child_ws == ONE ]]; then other_ws=TWO; else other_ws=ONE; fi
+"$UMBRIEL" msg window-focus "$(id_of settle-parent)" > /dev/null
+"$UMBRIEL" msg window-toggle-pinned > /dev/null
+"$UMBRIEL" settle > /dev/null
+if [[ $("$UMBRIEL" windows --json | jq -r --arg title settle-parent '.[] | select(.title == $title) | .pinned') != true ]]; then
+  echo "scenario never engaged: the parent did not pin"
+  exit 1
+fi
+read -r px py pw ph < <(box_of settle-parent)
+gx=$((px + pw / 4))
+gy=$((py + ph * 3 / 4))
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" \
+  move "$gx" "$gy" mod super press "$BTN_LEFT" \
+  move $((gx + 40)) "$gy" move $((gx + 80)) "$gy"
+"$UMBRIEL" clock-freeze
+"$UMBRIEL" clock-advance 16 > /dev/null
+pinned_held=$(red)
+pointer_release
+"$UMBRIEL" clock-advance 16 > /dev/null
+require_deforming "pinned settle"
+pinned_settling=$(red)
+"$UMBRIEL" msg workspace-switch "$other_ws" > /dev/null
+"$UMBRIEL" clock-advance 450 > /dev/null
+pinned_across=$(red)
+"$UMBRIEL" clock-resume
+"$UMBRIEL" settle > /dev/null
+pinned_landed=$(red)
+
+if ((pinned_held < CHILD_FLOOR)); then
+  echo "scenario never engaged: the pinned parent's drag does not carry the dialog (red=$pinned_held)"
+  exit 1
+fi
+if ((pinned_settling < CHILD_FLOOR)); then
+  echo "scenario never engaged: the dialog does not draw while the pinned sheet settles (red=$pinned_settling)"
+  exit 1
+fi
+if ((pinned_across < CHILD_FLOOR)); then
+  echo "the settling drag's dialog was hidden with the workspace (red=$pinned_settling -> $pinned_across)"
+  exit 1
+fi
+if ((pinned_landed < CHILD_FLOOR)); then
+  echo "the dialog stayed hidden after the pinned sheet landed (red=$pinned_across -> $pinned_landed)"
   exit 1
 fi
 echo "a deforming window travels and hides with its workspace, a held one stays with the cursor, and its dialogs ride along"

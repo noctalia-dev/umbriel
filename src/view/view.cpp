@@ -675,13 +675,19 @@ namespace umbriel {
 
   bool View::dragPresentationOwnsVisibility() const {
     const Cursor* cursor = m_server->cursor();
-    if (cursor == nullptr) {
-      return false;
-    }
+    wlr_scene_tree* dragTree = m_server->dragTree();
     // A dragged window carries its transient children into the drag tree
-    // (syncTransientSceneParent), so the drag owns their presentation too.
+    // (syncTransientSceneParent), so the drag owns their presentation too. The
+    // ride outlives the grab: a released sheet stays under the shared drag tree
+    // until its spring settles, and a pinned release lands under the output's
+    // pinned root after that. Key on where the view rests — it or a transient
+    // ancestor under the drag tree — so every phase of the presentation owns
+    // visibility, not just the held one.
     for (const View* view = this; view != nullptr; view = view->transientParent()) {
-      if (cursor->isDraggingView(view)) {
+      if (view->m_sceneTree != nullptr && view->m_sceneTree->node.parent == dragTree) {
+        return true;
+      }
+      if (cursor != nullptr && cursor->isDraggingView(view)) {
         return true;
       }
     }
@@ -898,7 +904,14 @@ namespace umbriel {
     const auto views = m_server->registry().all();
     return std::ranges::any_of(std::views::reverse(views), [this](const auto& view) {
       View* other = view.get();
-      return other != nullptr && other != this && other->m_sceneTree->node.parent == m_server->dragTree();
+      // Registry membership outlives the scene node by construction (removal
+      // precedes node teardown on every path); assert it so a reordering fails
+      // here instead of dereferencing a dead node.
+      assert(other == nullptr || other->m_sceneTree != nullptr);
+      return other != nullptr
+          && other != this
+          && other->m_sceneTree != nullptr
+          && other->m_sceneTree->node.parent == m_server->dragTree();
     });
   }
 

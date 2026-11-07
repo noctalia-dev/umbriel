@@ -1013,7 +1013,10 @@ namespace umbriel {
     // The deferred resting re-home lands in the same tick the spring settles —
     // a later tick may never come — or earlier while an overview is open and
     // its cards need the home tree. This tick is also the backstop that closes
-    // the release's say over where the view rests.
+    // the release's say over where the view rests. It cannot starve: a displaced
+    // view always animates on at least one output (animatesOn falls back to its
+    // workspace's output, or to currentOutput() when it has none), so a frame is
+    // always scheduled even when the sheet has left every output's box.
     m_releaseRehomeArmed = false;
     if (m_pendingHomeParent != nullptr
         && (!dragSheetDisplaced() || (m_server->overview() != nullptr && m_server->overview()->active()))) {
