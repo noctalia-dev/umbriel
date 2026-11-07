@@ -114,6 +114,8 @@ namespace umbriel {
                   {.name = "window", .value = TitleBarColorSource::Window},
               }
           ),
+          // One flat colour row up to four rows of the window's own detail; the bar stretches them over its height.
+          integer("color_source_height", 1, 4, &A::TitleBar::colorSourceHeight),
           registry::text("font", &A::TitleBar::font),
           registry::choice(
               "button_position", &A::TitleBar::buttonPosition,

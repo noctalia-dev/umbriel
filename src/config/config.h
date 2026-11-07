@@ -758,6 +758,9 @@ namespace umbriel {
         // "window" paints the bar with the top strip of the window's own content instead of the palette colour; the
         // palette colour stays underneath as the fallback for a transparent strip.
         TitleBarColorSource colorSource = TitleBarColorSource::Fixed;
+        // How many logical pixels of the window's top edge that strip takes. The bar stretches them over its whole
+        // height, so a thinner strip reads as one flat colour and a thicker one keeps more of the window's own detail.
+        int colorSourceHeight = 1;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
         TitleBarButtonGeometry buttonGeometry() const {

@@ -2,8 +2,8 @@
 # With `[appearance.title_bar] color_source = "window"` the bar paints itself with the top strip of the window it
 # belongs to instead of `[colors.title_bar] background`, and it follows the window when the application repaints that
 # edge, without a config reload. Setting the key back to "fixed" restores the palette colour. The window paints its
-# first five rows green over a red body, so a bar that sampled anything but that edge, or read more of it than it
-# should, would show red.
+# first row green over a red body, so a bar that sampled anything but that edge, or read more of it than it should,
+# would show red.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -23,9 +23,9 @@ fail() {
 }
 
 # $1 color_source, $2 title colour (default transparent), $3 "closing" to enable a fade-out the checks can
-# sample, $4 "buttons" to paint the button backgrounds.
+# sample, $4 "buttons" to paint the button backgrounds, $5 rows of the window's edge to sample.
 configure() {
-  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-}
+  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-} rows=${5:-1}
   {
     cat <<EOF
 [general]
@@ -60,6 +60,7 @@ corner_radius = 0
 mode = "forced"
 height = 28
 color_source = "$source"
+color_source_height = $rows
 button_background = $(if [[ $buttons == buttons ]]; then echo true; else echo false; fi)
 button_glyph = "never"
 
@@ -132,7 +133,7 @@ magenta='r > 0.9 && b > 0.9 && g < 0.1'
 configure window
 
 mkfifo "$UMBRIEL_RUNTIME_DIR/adaptive-bar.fifo"
-FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_HEIGHT=5 REPAINT_ON_STDIN=1 \
+FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_HEIGHT=1 REPAINT_ON_STDIN=1 \
   "$CLIENT" adaptive-bar 480 300 < "$UMBRIEL_RUNTIME_DIR/adaptive-bar.fifo" > "$LOG" 2>&1 &
 exec 3> "$UMBRIEL_RUNTIME_DIR/adaptive-bar.fifo"
 send() { printf '%s' "$1" >&3; }
@@ -144,6 +145,16 @@ grim "$FRAME"
 expect "$green" 1000 "a window-coloured bar"
 expect_none "$red" "the bar sampled the window body instead of its top edge"
 expect_none "$magenta" "the palette colour stayed on a window-coloured bar"
+
+# The sample height is live: one row is the green edge, three rows reach into the red body.
+configure window "#00000000" "" "" 3
+"$UMBRIEL" settle
+grim "$FRAME"
+expect_in "$red" "$BAR_FULL" 1000 "a three-row sample reaching into the window body"
+configure window
+"$UMBRIEL" settle
+grim "$FRAME"
+expect_none "$red" "the one-row sample kept to the window's top edge"
 
 # The application repaints the whole window; the bar follows with no reload in between.
 send B

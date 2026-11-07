@@ -276,7 +276,7 @@ namespace umbriel {
     }
     const wlr_fbox strip = titleBarStripSourceBox(
         source, buffer->width, buffer->height, sourceSurfaceWidth, sourceSurfaceHeight,
-        static_cast<uint32_t>(m_content->current.transform), kTitleBarStripHeight
+        static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight
     );
     // Only what the bar shows matters, and the damage is already in buffer coordinates, which is where the strip is.
     // The strip is fractional at fractional scales, so round it outward: a damaged edge row still has to count. The

@@ -56,8 +56,10 @@ namespace umbriel {
       const TitleBarButtonGeometry& geometry, double x, double y, int radius = 0
   );
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
-  // Height of the window-content strip an adaptive title bar shows, in logical pixels.
-  inline constexpr int kTitleBarStripHeight = 5;
+  // How many logical pixels of the window's top edge an adaptive title bar can take: one flat colour row up to a few
+  // rows of the window's own detail.
+  inline constexpr int kTitleBarStripHeightMin = 1;
+  inline constexpr int kTitleBarStripHeightMax = 4;
   // The slice of a surface's buffer that appears as the top `logicalHeight` pixels of the window content.
   // `source` is the visible part of the buffer in buffer coordinates, `bufferWidth`/`bufferHeight` its full size,
   // `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels, and `transform` its buffer
