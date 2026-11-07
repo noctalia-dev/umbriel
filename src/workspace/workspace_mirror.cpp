@@ -1,10 +1,12 @@
 #include "workspace/workspace_mirror.h"
 
+#include "config/config.h"
 #include "output/output.h"
 #include "scene/node.h"
 #include "scene/surface_mirror.h"
 #include "server/server.h"
 #include "view/view.h"
+#include "view/view_preview.h"
 #include "wlr.h"
 #include "workspace/workspace.h"
 
@@ -12,9 +14,8 @@
 #include <cmath>
 
 namespace umbriel {
-  struct WorkspaceMirror::Surface : SceneNode {
+  struct WorkspaceMirror::Surface : PreviewSurfaceNode {
     WorkspaceMirror* owner;
-    wlr_surface* surface;
     wlr_scene_buffer* buffer;
     bool seen = false;
     wl_listener commit{};
@@ -22,8 +23,8 @@ namespace umbriel {
     wl_listener sample{};
     wl_listener frame{};
 
-    Surface(WorkspaceMirror& renderer, wlr_surface* original)
-        : SceneNode(SceneNodeKind::MirrorSurface), owner(&renderer), surface(original) {
+    Surface(WorkspaceMirror& renderer, wlr_surface* original) : owner(&renderer) {
+      surface = original;
       buffer = wlr_scene_buffer_create(renderer.m_tree, nullptr);
       wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
       buffer->node.data = sceneNodeData(this);
@@ -101,22 +102,8 @@ namespace umbriel {
     }
   };
 
-  bool WorkspaceMirror::resolveBuffer(wlr_scene_buffer* buffer, wlr_surface** surface, View** view) {
-    auto* tag = sceneNodeFrom(buffer->node.data);
-    if (tag == nullptr || tag->kind != SceneNodeKind::MirrorSurface) {
-      return false;
-    }
-    auto* entry = static_cast<Surface*>(tag);
-    *surface = entry->surface;
-    *view = View::fromSurface(entry->surface);
-    if (*view != nullptr && (*view)->blocked()) {
-      *surface = nullptr;
-    }
-    return true;
-  }
-
   WorkspaceMirror::WorkspaceMirror(Workspace& workspace, wlr_scene_tree* parent)
-      : m_workspace(workspace), m_tree(wlr_scene_tree_create(parent)),
+      : m_workspace(workspace), m_tree(wlr_scene_tree_create(parent)), m_shadowPool(wlr_scene_tree_create(m_tree)),
         m_fullscreenTree(wlr_scene_tree_create(workspace.fullscreenTree())) {}
 
   WorkspaceMirror::~WorkspaceMirror() {
@@ -128,7 +115,25 @@ namespace umbriel {
     wlr_scene_node_destroy(&m_fullscreenTree->node);
   }
 
-  void WorkspaceMirror::clear() { m_surfaces.clear(); }
+  void WorkspaceMirror::clear() {
+    m_previews.clear();
+    m_surfaces.clear();
+  }
+
+  void WorkspaceMirror::forget(View* view) { m_previews.erase(view); }
+
+  void WorkspaceMirror::refreshAttachments(View* view) {
+    const auto found = m_previews.find(view);
+    if (found == m_previews.end()) {
+      return;
+    }
+    found->second.preview->dropAttachedSurfaces();
+    found->second.preview->syncSurfaces();
+    if (m_workspace.active()) {
+      (void)layoutPreview(*view, *found->second.preview);
+    }
+    schedule();
+  }
 
   void WorkspaceMirror::schedule() {
     if (m_idle == nullptr) {
@@ -143,11 +148,22 @@ namespace umbriel {
     self.sync();
   }
 
+  wlr_scene_tree* WorkspaceMirror::targetFor(const View& view) const {
+    const auto* fullscreen = &m_workspace.mirrorSource()->fullscreenTree()->node;
+    for (auto* current = &view.sceneTree()->node; current != nullptr;
+         current = current->parent != nullptr ? &current->parent->node : nullptr) {
+      if (current == fullscreen) {
+        return m_fullscreenTree;
+      }
+    }
+    return m_tree;
+  }
+
   void WorkspaceMirror::walkViews(wlr_scene_node* node) {
     if (auto* tag = sceneNodeFrom(node->data); tag != nullptr && tag->kind == SceneNodeKind::View) {
       auto* view = static_cast<View*>(tag);
       if (view->mapped() && !view->pinned() && !view->presentationSuppressed()) {
-        walk(node, *view, true);
+        present(*view);
       }
       return;
     }
@@ -159,19 +175,90 @@ namespace umbriel {
     wl_list_for_each(child, &tree->children, link) { walkViews(child); }
   }
 
-  void WorkspaceMirror::walk(wlr_scene_node* node, View& view, bool root, wlr_scene_tree* target) {
-    if (target == nullptr) {
-      target = m_tree;
-      // Preserve the original scene layer, including dialogs and floats raised over fullscreen.
-      const auto* fullscreen = &m_workspace.mirrorSource()->fullscreenTree()->node;
-      for (auto* current = &view.sceneTree()->node; current != nullptr;
-           current = current->parent != nullptr ? &current->parent->node : nullptr) {
-        if (current == fullscreen) {
-          target = m_fullscreenTree;
-          break;
-        }
+  void WorkspaceMirror::present(View& view) {
+    wlr_scene_tree* target = targetFor(view);
+    // A fullscreen window draws no frame, and its buffer may sit centered in the output with a backdrop around it: the
+    // live scene places it, so copy what it shows.
+    if (view.currentFullscreen()) {
+      m_previews.erase(&view);
+      copySurfaces(&view.sceneTree()->node, view, target, nullptr, true);
+      return;
+    }
+    Presented& entry = m_previews[&view];
+    if (entry.seen) {
+      return;
+    }
+    Server& server = *m_workspace.group()->server();
+    if (entry.preview == nullptr) {
+      // Lay the refreshed buffers out before the next frame, then let the idle sync pick up any move or restack.
+      entry.preview = ViewPreview::create(
+          server, &view, target,
+          [this, presented = &view] {
+            if (const auto found = m_previews.find(presented); found != m_previews.end() && m_workspace.active()) {
+              (void)layoutPreview(*presented, *found->second.preview);
+            }
+            schedule();
+          },
+          true
+      );
+      if (entry.preview == nullptr) {
+        m_previews.erase(&view);
+        return;
       }
     }
+    entry.seen = true;
+    ViewPreview& preview = *entry.preview;
+    if (preview.tree()->node.parent != target) {
+      wlr_scene_node_reparent(&preview.tree()->node, target);
+    }
+    // The walk meets views in stacking order, so each raise keeps the window above those below it.
+    wlr_scene_node_raise_to_top(&preview.tree()->node);
+    if (layoutPreview(view, preview)) {
+      copySurfaces(&view.sceneTree()->node, view, target, &preview, true);
+    }
+  }
+
+  bool WorkspaceMirror::layoutPreview(View& view, ViewPreview& preview) {
+    const double scale = m_mapping.fit.scale;
+    const ViewPreview::EffectContext effects{
+        .gate =
+            {
+                .focused = view.borderFocused(),
+                .allowUnfocused = config().effects.borderUnfocused,
+                .urgent = view.urgent(),
+                .fullscreen = view.scheduledFullscreen(),
+            },
+        .output = m_workspace.group()->output(),
+        .scale = static_cast<float>(scale),
+    };
+    if (!preview.prepare(effects)) {
+      return false;
+    }
+    // The scene node, not presentedBox(), holds where a window moved without a presentation sync, as a floating one
+    // does while its workspace shows only through the mirror.
+    int x = 0;
+    int y = 0;
+    (void)wlr_scene_node_coords(&view.sceneTree()->node, &x, &y);
+    const wlr_box content = preview.contentSize(scale);
+    preview.layout({
+        .box =
+            {.x = m_mapping.toReceiverX(x),
+             .y = m_mapping.toReceiverY(y),
+             .width = content.width,
+             .height = content.height},
+        .zoom = scale,
+        .opacity = 1.0F,
+        .innerBorderColor = view.currentBorderColor(),
+        .shadowAlpha = 1.0F,
+        .shadowPool = m_shadowPool,
+        .effects = effects,
+    });
+    return true;
+  }
+
+  void WorkspaceMirror::copySurfaces(
+      wlr_scene_node* node, View& view, wlr_scene_tree* target, const ViewPreview* preview, bool root
+  ) {
     if (!root && !node->enabled) {
       auto* tag = sceneNodeFrom(node->data);
       if (tag == nullptr || tag->kind != SceneNodeKind::View) {
@@ -185,7 +272,7 @@ namespace umbriel {
     if (node->type == WLR_SCENE_NODE_TREE) {
       auto* tree = wlr_scene_tree_from_node(node);
       wlr_scene_node* child;
-      wl_list_for_each(child, &tree->children, link) { walk(child, view, false, target); }
+      wl_list_for_each(child, &tree->children, link) { copySurfaces(child, view, target, preview, false); }
       return;
     }
     if (node->type != WLR_SCENE_NODE_BUFFER) {
@@ -197,6 +284,11 @@ namespace umbriel {
       return;
     }
     auto* surface = sceneSurface->surface;
+    if (preview != nullptr && std::ranges::any_of(preview->surfaces(), [surface](const auto& shown) {
+          return shown->surface == surface;
+        })) {
+      return;
+    }
     auto found = std::ranges::find_if(m_surfaces, [&](const auto& entry) { return entry->surface == surface; });
     if (found == m_surfaces.end()) {
       m_surfaces.push_back(std::make_unique<Surface>(*this, surface));
@@ -255,7 +347,7 @@ namespace umbriel {
     for (unsigned depth = 0; parent != nullptr && depth < 64; ++depth, parent = parent->parent) {
       for (View* view : m_workspace.mirrorSource()->allViews()) {
         if (view != nullptr && view->mapped() && !view->presentationSuppressed() && view->xwaylandSurface() == parent) {
-          walk(node, *view);
+          copySurfaces(node, *view, targetFor(*view), nullptr, false);
           return;
         }
       }
@@ -277,12 +369,16 @@ namespace umbriel {
     for (auto& entry : m_surfaces) {
       entry->seen = false;
     }
+    for (auto& [view, entry] : m_previews) {
+      entry.seen = false;
+    }
     // Follow scene stacking, not insertion order: focusing an older floating
     // window changes its sibling order without changing allViews().
     walkViews(&source->viewLayer(true)->node.parent->node);
     walkViews(&source->fullscreenTree()->node);
     walkUnmanaged(&m_workspace.group()->server()->xwaylandUnmanagedTree()->node);
     std::erase_if(m_surfaces, [](const auto& entry) { return !entry->seen; });
+    std::erase_if(m_previews, [](const auto& entry) { return !entry.second.seen; });
     wlr_output_schedule_frame(m_workspace.group()->output()->wlr());
   }
 

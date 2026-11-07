@@ -1098,7 +1098,7 @@ namespace umbriel {
     applyCornerRadius();
     // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.
-    if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
+    if (m_mapped && m_tiled && m_workspace != nullptr && (m_workspace->active() || m_workspace->visibleViaMirror())) {
       m_workspace->syncViewPresentation(this);
     } else if (m_mapped && !m_tiled) {
       if (scheduledFullscreen() && m_onActiveWorkspace) {

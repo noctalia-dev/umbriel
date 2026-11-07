@@ -11,10 +11,10 @@
 #include "scene/ssd_frame.h"
 #include "server/server.h"
 #include "view/view.h"
+#include "view/view_preview.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
-#include "workspace/workspace_mirror.h"
 
 #include <algorithm>
 
@@ -513,7 +513,7 @@ namespace umbriel {
 
     wlr_scene_buffer* sceneBuffer = wlr_scene_buffer_from_node(node);
     View* mirroredView = nullptr;
-    if (WorkspaceMirror::resolveBuffer(sceneBuffer, surface, &mirroredView)) {
+    if (ViewPreview::resolveBuffer(sceneBuffer, surface, &mirroredView)) {
       if (m_server.sessionLocked()) {
         *surface = nullptr;
         return nullptr;

@@ -2,13 +2,15 @@
 
 #include <cstdint>
 
+struct wlr_surface;
+
 namespace umbriel {
 
   enum class SceneNodeKind : uint8_t {
     View,
     LayerSurface,
     LockSurface,
-    MirrorSurface,
+    PreviewSurface,
   };
 
   // Stored in wlr_scene_node::data so hit-testing can tell views from layers
@@ -39,5 +41,14 @@ namespace umbriel {
     }
     return node;
   }
+
+  // Tags a scene buffer that shows a window's surface away from the window, in an interactive preview or a mirror's
+  // copy, so pointer hits on it resolve to that surface. A mirror's copy keeps its tag and a null surface once the
+  // surface is gone; a preview drops the buffer with it.
+  struct PreviewSurfaceNode : SceneNode {
+    PreviewSurfaceNode() : SceneNode(SceneNodeKind::PreviewSurface) {}
+
+    wlr_surface* surface = nullptr;
+  };
 
 } // namespace umbriel

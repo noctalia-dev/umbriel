@@ -832,6 +832,10 @@ namespace umbriel {
     if (m_xsurface != nullptr) {
       syncXwaylandConfigure();
     }
+    // A move need not commit or re-present, so the mirrors that show this window follow it here.
+    if (m_workspace != nullptr) {
+      m_workspace->scheduleMirrors();
+    }
   }
 
   int View::layoutX() const {

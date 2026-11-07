@@ -132,7 +132,7 @@ namespace umbriel {
     // content tree (surfaces, borders, backdrop, blur, and animation effects) sits at (0, 0) inside it, above the
     // shadow.
     wlr_scene_tree* sceneTree() const { return m_sceneTree; }
-    // Refreshes the animation and persistent effect slots on the view's own trees, or on an overview card's `target`,
+    // Refreshes the animation and persistent effect slots on the view's own trees, or on a preview's `target`,
     // `border`, and `surface`, gated by `gate` and driven by `cardOutput`.
     void syncAnimationEffects(
         wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr, wlr_scene_node* surface = nullptr,
@@ -211,19 +211,22 @@ namespace umbriel {
     wlr_box committedContentBox() const;
     int presentedWidth(const wlr_box& target) const;
     int presentedHeight(const wlr_box& target) const;
-    // Canonical box currently presented by this view. The normal scene and overview cards both project this state, so
-    // position and size transitions cannot diverge between the two render paths.
+    // Canonical box currently presented by this view. The normal scene and every preview of it project this state, so
+    // position and size transitions cannot diverge between the render paths.
     const wlr_box& presentedBox() const { return m_presentedBox; }
     float presentedOpacity() const { return effectiveOpacity(); }
     // The drop shadow the scene draws for this view, and whether it sits in the workspace's tile shadow layer rather
-    // than under the view's own frame. Overview cards mirror it so they match the window they swap with.
+    // than under the view's own frame. Previews mirror it so they match the window they swap with.
     const wlr_scene_shadow* shadowNode() const { return m_decoration.shadowNode(); }
     bool shadowPooled() const { return m_decoration.shadowPooled(); }
     // Blur options after this window's rules, as the live surface uses them; previews blur with the same ones.
     SurfaceBlurOptions blurOptions() const;
-    // Border colors after this window's rule overrides; overview cards draw with the same ones.
+    // Border colors after this window's rule overrides; previews draw with the same ones.
     const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
-    // Border widths and corner_radius after this window's rule overrides; overview cards draw with the same ones.
+    // The inner border color as animated now, and whether the border wears its focused state.
+    const std::array<float, 4>& currentBorderColor() const { return m_borderColorAnim.current(); }
+    bool borderFocused() const { return m_borderFocusedState; }
+    // Border widths and corner_radius after this window's rule overrides; previews draw with the same ones.
     void setXdgDecorationPreference(std::optional<bool> serverSide);
     void setLegacyDecorationPreference(std::optional<bool> serverSide);
     int titleBarHeight() const;
@@ -672,6 +675,8 @@ namespace umbriel {
     // The lifecycle fade runs through a whole-window shader, so buffers and borders stay opaque under it.
     bool fadeComposited() const;
     void applyEffectiveOpacity();
+    // Has the mirrors of this window bind their effects again when what they bind from changed.
+    void scheduleMirrorEffects();
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
@@ -1111,6 +1116,17 @@ namespace umbriel {
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
     std::optional<bool> m_deferredBorderFocus;
+    // What the mirrors of this window last bound their effects from, so an unchanged window schedules none of them.
+    struct MirrorEffectState {
+      bool animating = false;
+      bool focused = false;
+      bool urgent = false;
+      bool fullscreen = false;
+      float seconds = 0.0F;
+      std::array<float, 4> border{};
+      bool operator==(const MirrorEffectState&) const = default;
+    };
+    MirrorEffectState m_mirrorEffectState;
     bool m_focusDimInitialized = false;
     // Opening identity can settle independently. The first title and first
     // non-none content type each get one chance to add one-shot rule effects.

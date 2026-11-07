@@ -22,8 +22,24 @@ extern "C" {
 namespace umbriel {
 
   namespace {
-    // Previews are pure output: the owner hit-tests off its own boxes, so scene input must never land on them.
+    // A preview that is not interactive is pure output: its owner hit-tests off its own boxes.
     bool rejectInput(wlr_scene_buffer* /*buffer*/, double* /*sx*/, double* /*sy*/) { return false; }
+
+    // Maps a hit on the preview's buffer, in its destination pixels, to the surface-local point it shows.
+    bool acceptInput(wlr_scene_buffer* buffer, double* sx, double* sy) {
+      auto* entry = static_cast<ViewPreview::Surface*>(sceneNodeFrom(buffer->node.data));
+      if (entry == nullptr || entry->surface == nullptr || buffer->dst_width <= 0 || buffer->dst_height <= 0) {
+        return false;
+      }
+      const double x = entry->crop.x + *sx * entry->crop.width / buffer->dst_width;
+      const double y = entry->crop.y + *sy * entry->crop.height / buffer->dst_height;
+      if (!wlr_surface_point_accepts_input(entry->surface, x, y)) {
+        return false;
+      }
+      *sx = x;
+      *sy = y;
+      return true;
+    }
 
     // The size `surface` is shown at in its view, through the view's scene buffer `source`. It differs from the surface
     // size when the view draws the surface scaled.
@@ -61,9 +77,11 @@ namespace umbriel {
   ViewPreview::ViewPreview(Server& server, View* view, std::function<void()> onChanged)
       : m_server(&server), m_view(view), m_onChanged(std::move(onChanged)) {}
 
-  std::unique_ptr<ViewPreview>
-  ViewPreview::create(Server& server, View* view, wlr_scene_tree* parent, std::function<void()> onChanged) {
+  std::unique_ptr<ViewPreview> ViewPreview::create(
+      Server& server, View* view, wlr_scene_tree* parent, std::function<void()> onChanged, bool interactive
+  ) {
     std::unique_ptr<ViewPreview> preview(new ViewPreview(server, view, std::move(onChanged)));
+    preview->m_interactive = interactive;
     preview->m_tree = wlr_scene_tree_create(parent);
     if (preview->m_tree == nullptr) {
       return nullptr;
@@ -81,6 +99,19 @@ namespace umbriel {
     }
     preview->forEachSurface(addSurface);
     return preview;
+  }
+
+  bool ViewPreview::resolveBuffer(wlr_scene_buffer* buffer, wlr_surface** surface, View** view) {
+    auto* tag = sceneNodeFrom(buffer->node.data);
+    if (tag == nullptr || tag->kind != SceneNodeKind::PreviewSurface) {
+      return false;
+    }
+    *surface = static_cast<PreviewSurfaceNode*>(tag)->surface;
+    *view = *surface != nullptr ? View::fromSurface(*surface) : nullptr;
+    if (*view != nullptr && (*view)->blocked()) {
+      *surface = nullptr;
+    }
+    return true;
   }
 
   ViewPreview::~ViewPreview() {
@@ -222,6 +253,9 @@ namespace umbriel {
             std::max(1, static_cast<int>(std::lround(surface->current.width * fx))),
             std::max(1, static_cast<int>(std::lround(surface->current.height * fy))),
         };
+        entry->crop = {
+            0.0, 0.0, static_cast<double>(surface->current.width), static_cast<double>(surface->current.height)
+        };
         wlr_scene_node_set_enabled(&entry->buffer->node, true);
         wlr_scene_node_set_position(&entry->buffer->node, sub.x - placement.box.x, sub.y - placement.box.y);
         wlr_scene_buffer_set_dest_size(entry->buffer, sub.width, sub.height);
@@ -253,6 +287,10 @@ namespace umbriel {
         wlr_scene_node_set_enabled(&entry->buffer->node, false);
         continue;
       }
+      // In surface-local units, which a scaled X11 surface does not share with its scene size.
+      const double ux = base.width / surface->current.width;
+      const double uy = base.height / surface->current.height;
+      entry->crop = {(src.x - base.x) / ux, (src.y - base.y) / uy, src.width / ux, src.height / uy};
       wlr_scene_node_set_enabled(&entry->buffer->node, true);
       wlr_scene_node_set_position(&entry->buffer->node, 0, 0);
       wlr_scene_buffer_set_source_box(entry->buffer, &src);
@@ -463,7 +501,12 @@ namespace umbriel {
     entry->sy = sy + walk->dy;
     entry->isRoot = surface == preview->m_view->rootSurface();
     wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
-    buffer->point_accepts_input = rejectInput;
+    if (preview->m_interactive) {
+      buffer->node.data = sceneNodeData(entry.get());
+      buffer->point_accepts_input = acceptInput;
+    } else {
+      buffer->point_accepts_input = rejectInput;
+    }
     entry->commit.notify = onSurfaceCommit;
     wl_signal_add(&surface->events.commit, &entry->commit);
     entry->destroy.notify = onSurfaceDestroy;
@@ -526,8 +569,8 @@ namespace umbriel {
     Surface* entry;
     entry = wl_container_of(listener, entry, commit);
     ViewPreview* preview = entry->preview;
-    // The source scene surface reconfigures on every commit. Refresh the passive buffer mirrors; the owner then
-    // re-derives their crop and scale.
+    // The source scene surface reconfigures on every commit. Refresh the buffer copies; the owner then lays them out
+    // again, before the next frame shows them uncropped.
     preview->syncSurfaces();
     // A copy, so the owner may destroy the preview from it.
     if (const std::function<void()> onChanged = preview->m_onChanged) {

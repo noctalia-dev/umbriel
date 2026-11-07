@@ -91,6 +91,10 @@ namespace umbriel {
     // The mirrors that currently show this workspace.
     const std::vector<Workspace*>& mirrors() const { return m_mirrors; }
     void scheduleMirrors();
+    // `view` leaves this workspace or its mirrors' sight: their previews of it go before it can die.
+    void forgetMirroredView(View* view);
+    // A dialog attached to or left `view`: the mirrors show the dialogs over it again.
+    void refreshMirroredAttachments(View* view);
     bool visibleViaMirror() const;
     bool active() const { return m_active; }
     const std::shared_ptr<const DisplacedWorkspace>& displacedWorkspace() const { return m_displacedWorkspace; }

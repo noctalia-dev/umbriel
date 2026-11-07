@@ -294,6 +294,22 @@ namespace umbriel {
     }
   }
 
+  void Workspace::forgetMirroredView(View* view) {
+    for (Workspace* copy : m_mirrors) {
+      if (copy->m_mirrorRenderer != nullptr) {
+        copy->m_mirrorRenderer->forget(view);
+      }
+    }
+  }
+
+  void Workspace::refreshMirroredAttachments(View* view) {
+    for (Workspace* copy : m_mirrors) {
+      if (copy->m_mirrorRenderer != nullptr) {
+        copy->m_mirrorRenderer->refreshAttachments(view);
+      }
+    }
+  }
+
   bool Workspace::visibleViaMirror() const {
     return std::ranges::any_of(m_mirrors, [](Workspace* copy) { return copy->active(); });
   }
@@ -545,6 +561,7 @@ namespace umbriel {
     if (view == nullptr) {
       return nullptr;
     }
+    forgetMirroredView(view);
     if (!view->pinned()) {
       const bool fs = view->currentFullscreen() || view->scheduledFullscreen();
       view->setSceneParent(fs ? m_group->server()->fullscreenTree() : m_group->server()->xdgTree());

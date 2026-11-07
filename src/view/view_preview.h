@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scene/node.h"
 #include "scene/surface_blur.h"
 #include "view/chrome_attachment.h"
 #include "view/effects.h"
@@ -31,18 +32,21 @@ namespace umbriel {
   // The scene buffer inside `node` that shows `surface`, or null.
   wlr_scene_buffer* sourceBufferForSurface(wlr_scene_node* node, wlr_surface* surface);
 
-  // One scaled, input-rejecting presentation of one view under a caller-given parent tree: the window's surfaces, its
-  // border, shadow, blur, corners, chrome, and effect bindings. The caller decides where and how large it is.
+  // One scaled presentation of one view under a caller-given parent tree: the window's surfaces, its border, shadow,
+  // blur, corners, chrome, and effect bindings. The caller decides where and how large it is. It rejects pointer input
+  // unless created interactive, when its surfaces resolve to the real ones.
   class ViewPreview {
   public:
-    // A surface of the view, or of a dialog attached to it, mirrored by one scene buffer of the preview.
-    struct Surface {
+    // A surface of the view, or of a dialog attached to it, mirrored by one scene buffer of the preview. The base's
+    // `surface` is the mirrored one.
+    struct Surface : PreviewSurfaceNode {
       ViewPreview* preview = nullptr;
       // The window whose surface tree holds `surface`: the preview's own, or a dialog attached to it.
       View* view = nullptr;
-      wlr_surface* surface = nullptr;
       wlr_scene_buffer* sourceBuffer = nullptr;
       wlr_scene_buffer* buffer = nullptr;
+      // The part of the surface, in surface coordinates, that `buffer` shows over its destination size.
+      wlr_fbox crop{};
       int sx = 0;
       int sy = 0;
       bool isRoot = false;
@@ -83,8 +87,12 @@ namespace umbriel {
     // Builds the preview under `parent`, or returns null when its scene nodes cannot be created. `onChanged` runs after
     // a surface commit has refreshed the preview's surfaces, so the owner can lay it out again; it may destroy the
     // preview.
-    static std::unique_ptr<ViewPreview>
-    create(Server& server, View* view, wlr_scene_tree* parent, std::function<void()> onChanged);
+    static std::unique_ptr<ViewPreview> create(
+        Server& server, View* view, wlr_scene_tree* parent, std::function<void()> onChanged, bool interactive = false
+    );
+    // Resolves a scene buffer that shows a surface of a preview or a mirror to that surface and its window, which is
+    // null for a surface of no window; `surface` is null when that window takes no pointer. False for any other buffer.
+    static bool resolveBuffer(wlr_scene_buffer* buffer, wlr_surface** surface, View** view);
     ~ViewPreview();
     ViewPreview(const ViewPreview&) = delete;
     ViewPreview& operator=(const ViewPreview&) = delete;
@@ -142,6 +150,7 @@ namespace umbriel {
 
     Server* m_server = nullptr;
     View* m_view = nullptr;
+    bool m_interactive = false;
     std::function<void()> m_onChanged;
     wlr_scene_tree* m_tree = nullptr;
     // Parent of every surface buffer, at the preview origin: the window and overlay effect slots live here, as they

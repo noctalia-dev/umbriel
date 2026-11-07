@@ -811,12 +811,39 @@ namespace umbriel {
     scheduleFrame();
   }
 
+  void View::scheduleMirrorEffects() {
+    if (m_workspace == nullptr || m_workspace->mirrors().empty()) {
+      return;
+    }
+    const Output* output = currentOutput();
+    const MirrorEffectState state{
+        .animating = m_posX.animating()
+            || m_posY.animating()
+            || m_presentation.animating()
+            || m_layoutMotion
+            || m_fade.animating()
+            || m_focusDim.animating()
+            || m_borderColorAnim.animating(),
+        .focused = m_borderFocusedState,
+        .urgent = m_urgent,
+        .fullscreen = scheduledFullscreen(),
+        .seconds = m_effects.configured() && output != nullptr ? output->effectSeconds() : 0.0F,
+        .border = m_borderColorAnim.current(),
+    };
+    if (!state.animating && state == m_mirrorEffectState) {
+      return;
+    }
+    m_mirrorEffectState = state;
+    m_workspace->scheduleMirrors();
+  }
+
   void View::syncAnimationEffects(
       wlr_scene_tree* target, wlr_scene_node* border, wlr_scene_node* surface, const BorderEffectGate* gate,
       Output* cardOutput, float scale
   ) {
     const bool ownTrees = target == nullptr;
     if (ownTrees) {
+      scheduleMirrorEffects();
       target = m_contentTree;
       if (m_decoration.borderTree() != nullptr) {
         border = &m_decoration.borderTree()->node;
