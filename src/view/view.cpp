@@ -624,13 +624,16 @@ namespace umbriel {
       flushReleaseRehome();
     }
     // A hidden tab or a minimized window stays hidden when its workspace comes back.
+    // A held window (or a child riding its drag) is the drag's payload: its node
+    // and its shadow belong to the drag tree, not to a workspace it was carried
+    // out of, so a deactivation must leave both exactly as the drag set them.
     const bool shown = active && !m_tabHidden && !m_minimized;
-    if (m_sceneTree != nullptr && !dragPresentationOwnsVisibility()) {
-      // A held window is the drag's payload; its presentation belongs to the
-      // drag tree, not to a workspace it was carried out of.
-      wlr_scene_node_set_enabled(&m_sceneTree->node, shown);
+    if (!dragPresentationOwnsVisibility()) {
+      if (m_sceneTree != nullptr) {
+        wlr_scene_node_set_enabled(&m_sceneTree->node, shown);
+      }
+      m_decoration.setShadowEnabled(shown);
     }
-    m_decoration.setShadowEnabled(shown);
     m_server->scheduleSuspensionSync();
     if (!m_mapped) {
       return;
@@ -672,7 +675,17 @@ namespace umbriel {
 
   bool View::dragPresentationOwnsVisibility() const {
     const Cursor* cursor = m_server->cursor();
-    return cursor != nullptr && cursor->isDraggingView(this);
+    if (cursor == nullptr) {
+      return false;
+    }
+    // A dragged window carries its transient children into the drag tree
+    // (syncTransientSceneParent), so the drag owns their presentation too.
+    for (const View* view = this; view != nullptr; view = view->transientParent()) {
+      if (cursor->isDraggingView(view)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void View::setNodeEnabled(bool enabled) {
