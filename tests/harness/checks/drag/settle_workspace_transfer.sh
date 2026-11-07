@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 # harness: outputs=2
 # Moving a workspace to another output while one of its windows still deforms
-# must land the released sheet's deferred re-home first. The sheet is parked
-# under the shared drag tree — outside every workspace tree — so a transfer that
-# travels the trees without landing it leaves the sheet drawn at its old SCREEN
-# position on the source output, and rewrites its remembered position in the old
-# output's coordinate space, so the settle lands it a second time somewhere
-# else. The sheet must leave with its workspace and appear on the destination.
+# must land the released sheet's re-home first. The sheet is parked under the
+# shared drag tree, outside every workspace tree, so a transfer that travels them
+# without landing it draws the sheet at its old SCREEN position and rewrites its
+# position in the old output's coordinates, so the settle lands it twice.
 #
-# The transfer also deactivates the workspace, which lands the wait on its own —
-# this check pins that ordering as much as the explicit flush before the trees
-# travel: a path that defers the deactivation (as gestures do) would break it.
+# The transfer also deactivates the workspace, which lands the wait on its own:
+# this pins the user-visible result and the ordering, not the flush alone.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
