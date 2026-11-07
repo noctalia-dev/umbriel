@@ -149,7 +149,7 @@ With effects selected:
 
 ## Animation slots
 
-An `animation` preset can drive every animation event except `windows_drag`, whose slot runs the built-in deformation program. Configuration and authoring details are in [Animation](../user/animation.md#custom-effects).
+An `animation` preset can drive every animation event except `windows_drag`, whose slot runs the built-in deformation program, and `windows_minimize`, which has no slot of its own. Configuration and authoring details are in [Animation](../user/animation.md#custom-effects).
 
 ### Configuration and compilation
 
@@ -157,7 +157,7 @@ Animation events bind a preset by name: `[animation.<event>] effect = "<name>"` 
 
 `EffectRegistry` (`src/scene/effect_registry.cpp`) caches one program per referenced preset, kind, exact source, and renderer. Startup and any reload that changes `[animation]` or `[effects]` prepare programs before rendering. A reload while a transition is running keeps that transition's program but rebinds its uniforms from the new configuration, so a program reading `umbriel_time` or the palette can see them reset for the rest of that transition. Failures are cached too, avoiding per-frame compiler retries. UmbrielFX supplies a GLSL ES 1.00 wrapper around `vec4 animation(vec2 uv)`, normalized target sampling, target-local previous-result sampling, a stable four-channel random seed, logical target size, eased and linear progress, and transition direction. Compiler diagnostics retain source line numbers and the label: the shader file path, or `effects.preset.<name>` when the preset has no file.
 
-Without an effect, `windows_in` and `windows_out` bind a built-in fade program through `EffectRegistry::lifecycleEffect`, except for the `slide` style, whose opacity curve differs from its progress. The window, its subsurfaces, and its border are composited once and faded as a group, so overlapping surfaces never show through each other mid-fade. `View::fadeComposited` and the close snapshot keep buffer and border opacity at 1 while such a program runs. The built-in program is marked shape-preserving, so its window keeps the analytic shadow, which the view fades itself. Scratchpad and layer fades stay per buffer, because they can start from a partial alpha that normalized progress does not carry.
+Without an effect, `windows_in` and `windows_out` bind a built-in fade program through `EffectRegistry::lifecycleEffect`, except for the `slide` style, whose opacity curve differs from its progress. A minimize fade in either direction is not a lifecycle transition: `View` clears the opening slot with `clearAnimationEffect` and drives the opacity itself, so a preset selected for `windows_in` never runs on a window leaving or returning from the taskbar. The window, its subsurfaces, and its border are composited once and faded as a group, so overlapping surfaces never show through each other mid-fade. `View::fadeComposited` and the close snapshot keep buffer and border opacity at 1 while such a program runs. The built-in program is marked shape-preserving, so its window keeps the analytic shadow, which the view fades itself. Scratchpad and layer fades stay per buffer, because they can start from a partial alpha that normalized progress does not carry.
 
 ### Scene processing
 
