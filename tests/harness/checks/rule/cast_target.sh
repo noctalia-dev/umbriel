@@ -63,7 +63,7 @@ wait_mapped() {
 }
 
 start_client() {
-  foot --config=/dev/null --app-id="$1" --override=colors.background=000000 sh -c 'sleep 120' \
+  foot --config=/dev/null --app-id="$1" --override=colors-dark.background=000000 sh -c 'sleep 120' \
     > /dev/null 2>&1 &
   client_pid=$!
   wait_mapped "$1"
