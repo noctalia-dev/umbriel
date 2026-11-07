@@ -1230,7 +1230,7 @@ namespace umbriel {
       if (edges != 0) {
         resolvedEdges = layout.resolveResizeEdges(view, edges, grabX(), grabY());
       } else {
-        resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
+        resolvedEdges = tiledResizeEdges(view, grabX(), grabY());
       }
       if (resolvedEdges == 0) {
         revealClickedTile(view);
@@ -2067,7 +2067,8 @@ namespace umbriel {
       // Defer the grab until the pointer leaves the slop: a grab would drop the
       // maximize state the second click reads. Edges are snapshotted at the
       // press point; a press proposing none is a plain click.
-      const uint32_t edges = view->tiled() ? tiledResizeEdges(view, m_cursor->x, m_cursor->y) : floatResizeEdges(view);
+      const auto [px, py] = pointerFor(view);
+      const uint32_t edges = view->tiled() ? tiledResizeEdges(view, px, py) : floatResizeEdges(view);
       if (edges != 0) {
         m_grab = PendingResizeGrab{
             .view = view,
@@ -3611,6 +3612,14 @@ namespace umbriel {
     }
   }
 
+  Cursor::Point Cursor::pointerFor(View* view) const {
+    double scale = 1;
+    double tx = 0;
+    double ty = 0;
+    (void)mirrorTransform(view, &scale, &tx, &ty);
+    return {m_cursor->x * scale + tx, m_cursor->y * scale + ty};
+  }
+
   uint32_t Cursor::floatResizeEdges(View* view) const {
     if (view == nullptr || view->sceneTree() == nullptr) {
       return WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
@@ -3619,7 +3628,8 @@ namespace umbriel {
     const int x = view->layoutX() + geo.x;
     const int y = view->layoutY() + geo.y;
     const wlr_box box{.x = x, .y = y, .width = geo.width, .height = geo.height};
-    return resizeEdgesForPoint(box, m_cursor->x, m_cursor->y);
+    const auto [px, py] = pointerFor(view);
+    return resizeEdgesForPoint(box, px, py);
   }
 
   uint32_t Cursor::hoverResizeEdges(View* view) const {
@@ -3628,6 +3638,7 @@ namespace umbriel {
     }
     // Only advertise resize when the pointer is near the edge that would be grabbed.
     constexpr double kHoverSlop = 28.0;
+    const auto [px, py] = pointerFor(view);
 
     if (view->floating()) {
       if (view->sceneTree() == nullptr) {
@@ -3638,10 +3649,10 @@ namespace umbriel {
       const double top = view->layoutY() + geo.y;
       const double right = left + geo.width;
       const double bottom = top + geo.height;
-      const double distLeft = std::abs(m_cursor->x - left);
-      const double distRight = std::abs(m_cursor->x - right);
-      const double distTop = std::abs(m_cursor->y - top);
-      const double distBottom = std::abs(m_cursor->y - bottom);
+      const double distLeft = std::abs(px - left);
+      const double distRight = std::abs(px - right);
+      const double distTop = std::abs(py - top);
+      const double distBottom = std::abs(py - bottom);
       const double nearestH = std::min(distLeft, distRight);
       const double nearestV = std::min(distTop, distBottom);
       if (std::min(nearestH, nearestV) > kHoverSlop) {
@@ -3665,8 +3676,7 @@ namespace umbriel {
         return 0;
       }
     }
-    uint32_t edges =
-        workspace->layout().sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, m_cursor->x, m_cursor->y));
+    uint32_t edges = workspace->layout().sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, px, py));
     // Advertise an edge that extends past the output from the reachable
     // output boundary, since the pointer cannot approach the real edge.
     const double left = reachable.x;
@@ -3674,13 +3684,13 @@ namespace umbriel {
     const double top = reachable.y;
     const double bottom = reachable.y + reachable.height;
     if ((edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0) {
-      const double dist = (edges & WLR_EDGE_LEFT) != 0 ? std::abs(m_cursor->x - left) : std::abs(m_cursor->x - right);
+      const double dist = (edges & WLR_EDGE_LEFT) != 0 ? std::abs(px - left) : std::abs(px - right);
       if (dist > kHoverSlop) {
         edges &= ~(WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
       }
     }
     if ((edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) != 0) {
-      const double dist = (edges & WLR_EDGE_TOP) != 0 ? std::abs(m_cursor->y - top) : std::abs(m_cursor->y - bottom);
+      const double dist = (edges & WLR_EDGE_TOP) != 0 ? std::abs(py - top) : std::abs(py - bottom);
       if (dist > kHoverSlop) {
         edges &= ~(WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
       }

@@ -287,6 +287,12 @@ namespace umbriel {
 
   private:
     bool mirrorTransform(View* view, double* scale, double* tx, double* ty) const;
+    struct Point {
+      double x;
+      double y;
+    };
+    // The pointer in `view`'s layout coordinates: through the mirror on the pointer's output that shows it, if any.
+    Point pointerFor(View* view) const;
     void captureGrabTransform(View* view);
     double grabX() const;
     double grabY() const;

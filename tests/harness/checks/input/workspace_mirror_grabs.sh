@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=2
-# Client-authorized move and resize grabs operate in source coordinates, not receiving pixels.
+# Client-authorized move and resize grabs operate in source coordinates, not receiving pixels, and so does the edge a
+# compositor resize picks from where the pointer is in the copy.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 cat >> "$UMBRIEL_CONFIG" <<'TOML'
@@ -22,6 +23,8 @@ mirror = { output = "HEADLESS-1", name = "source" }
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
+[input]
+mod_right_double_click = "none"
 [[window_rule]]
 match.title = "^mirror-grab$"
 default_output = "HEADLESS-1"
@@ -31,8 +34,9 @@ default_floating_size_px = { width = 400, height = 300 }
 default_position = { x = 100, y = 100, anchor = "top_left" }
 TOML
 "$UMBRIEL" msg config-reload > /dev/null
+# Starts the client in mode $1 (none for a compositor-driven grab) and shows its workspace only through the copy.
 start_client() {
-  "$UMBRIEL_SEAT_LOG_CLIENT" mirror-grab "$1" > "$UMBRIEL_RUNTIME_DIR/$1.log" 2>&1 &
+  "$UMBRIEL_SEAT_LOG_CLIENT" mirror-grab ${1:+"$1"} > "$UMBRIEL_RUNTIME_DIR/${1:-plain}.log" 2>&1 &
   client_pid=$!
   await_window mirror-grab
   "$UMBRIEL" msg workspace-switch source --output HEADLESS-2 > /dev/null
@@ -58,12 +62,15 @@ printf '\n' >&"$move_fd"
 wait "$pointer_pid"
 "$UMBRIEL" settle > /dev/null
 assert_window '.x == 200 and .y == 160 and .output == "HEADLESS-1"'
-kill "$client_pid"
-wait "$client_pid" || true
-for _ in $(seq 80); do
-  [[ $("$UMBRIEL" windows --json | jq length) == 0 ]] && break
-  sleep 0.025
-done
+stop_client() {
+  kill "$client_pid"
+  wait "$client_pid" || true
+  for _ in $(seq 80); do
+    [[ $("$UMBRIEL" windows --json | jq length) == 0 ]] && break
+    sleep 0.025
+  done
+}
+stop_client
 start_client resize-on-press
 mkfifo "$UMBRIEL_RUNTIME_DIR/resize.control"
 exec {resize_fd}<> "$UMBRIEL_RUNTIME_DIR/resize.control"
@@ -75,4 +82,10 @@ wait "$pointer_pid"
 "$UMBRIEL" settle > /dev/null
 assert_window '.w == 500 and .x == 100 and .output == "HEADLESS-1"'
 "$UMBRIEL" workspaces --json | jq -e 'any(.[]; .output == "HEADLESS-1" and .name == "away" and .active)' > /dev/null
-echo '75 receiving pixels move or resize the original by 100 logical pixels without changing its workspace.'
+# Mod+right-drag from near the copy's left edge resizes the left edge: (1370,240) is 20 source pixels inside it.
+stop_client
+start_client
+"$UMBRIEL_POINTER_CLIENT" 2240 720 mod logo move 1370 240 press 273 move 1445 240 release 273 mod none
+"$UMBRIEL" settle > /dev/null
+assert_window '.x == 200 and .w == 300 and .output == "HEADLESS-1"'
+echo '75 receiving pixels move or resize the original by 100 logical pixels, on the edge picked in the copy.'
