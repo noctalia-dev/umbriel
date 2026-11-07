@@ -67,9 +67,12 @@ namespace umbriel {
     void updateColors();
     void updateAdaptive(bool fromCommit);
     void hideAdaptive();
-    // What one attempt at the mean colour produced: a value, a reason to try again later, or a refusal.
+    // What one attempt at the mean colour produced: a value, a reason to try again later, a refusal, or a readable
+    // edge with nothing to average.
     struct StripSample {
-      enum class State : uint8_t { Fresh, Deferred, Refused };
+      // `Empty` means the strip was read and holds no colour (a transparent edge), so the palette is the honest
+      // answer; `Refused` means it could not be read (protected or external-only), so the last colour still stands.
+      enum class State : uint8_t { Fresh, Deferred, Refused, Empty };
       State state = State::Refused;
       std::optional<std::array<float, 4>> color;
     };

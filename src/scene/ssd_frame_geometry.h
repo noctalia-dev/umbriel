@@ -62,10 +62,11 @@ namespace umbriel {
   inline constexpr int kTitleBarStripHeightMax = 4;
   // The slice of a surface's buffer that appears as the top `logicalHeight` pixels of the window content.
   // `source` is the visible part of the buffer in buffer coordinates, `bufferWidth`/`bufferHeight` its full size,
-  // `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels, and `transform` its buffer
-  // transform. A box with no area means the caller has no usable buffer.
+  // `geometry` the window geometry in surface-local coordinates (an empty box means the whole surface, and its
+  // margins stay out of the strip), `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels,
+  // and `transform` its buffer transform. A box with no area means the caller has no usable buffer.
   wlr_fbox titleBarStripSourceBox(
-      const wlr_fbox& source, int bufferWidth, int bufferHeight, int surfaceWidth, int surfaceHeight,
-      uint32_t transform, int logicalHeight
+      const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
+      int surfaceHeight, uint32_t transform, int logicalHeight
   );
 } // namespace umbriel

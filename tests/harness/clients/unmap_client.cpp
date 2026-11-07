@@ -29,7 +29,9 @@
 // default the window keeps its own size.
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer. `b` repaints the
-// body only: the top band keeps its colour and only the rows below it are damaged.
+// body only: the top band keeps its colour and only the rows below it are damaged. `t` repaints the top band fully
+// transparent and leaves the body alone, so a check can tell a readable edge with no colour in it from one that could
+// not be read.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
 // TOP_BAND_COLOR=<ARGB> with TOP_BAND_HEIGHT=<px> paints the top rows of the buffer in another colour, so a check can
 // tell which edge of the content a compositor sampled. A repaint recolours the band too. TOP_BAND_SPLIT=<ARGB> paints
@@ -134,6 +136,7 @@ namespace {
     wl_callback* repaintFrame = nullptr;
     uint32_t repaintColor = 0;
     bool repaintBodyOnly = false;
+    bool repaintBandOnly = false;
     bool closed = false;
     bool redrawOnClose = false;
     bool redrawOnceOnClose = false;
@@ -180,6 +183,8 @@ namespace {
     uint32_t topBandColor = 0;
     uint32_t topBandSplit = 0;
     int topBandHeight = 0;
+    // A transparent band is a colour of its own, so the band cannot be keyed off a non-zero colour.
+    bool topBandEnabled = false;
     std::optional<uint32_t> resizeFillColor;
     int configuredWidth = 0;
     int configuredHeight = 0;
@@ -329,7 +334,7 @@ namespace {
       return buffer;
     }
     std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
-    if (state.topBandColor != 0 && state.topBandHeight > 0) {
+    if (state.topBandEnabled && state.topBandHeight > 0) {
       auto* pixels = static_cast<uint32_t*>(buffer.pixels);
       const int band = std::min(state.topBandHeight, height);
       for (int row = 0; row < band; ++row) {
@@ -356,8 +361,12 @@ namespace {
     wl_callback_destroy(callback);
     state.repaintFrame = nullptr;
     const bool bodyOnly = state.repaintBodyOnly;
+    const bool bandOnly = state.repaintBandOnly;
     state.repaintBodyOnly = false;
-    state.fillColor = state.repaintColor;
+    state.repaintBandOnly = false;
+    if (!bandOnly) {
+      state.fillColor = state.repaintColor;
+    }
     if (!bodyOnly) {
       state.topBandColor = state.repaintColor;
     }
@@ -963,6 +972,7 @@ int main(int argc, char** argv) {
     const auto value = std::strtoul(band, &end, 0);
     if (end != band) {
       state.topBandColor = static_cast<uint32_t>(value);
+      state.topBandEnabled = true;
     }
   }
   if (const char* split = std::getenv("TOP_BAND_SPLIT")) {
@@ -1310,12 +1320,19 @@ int main(int argc, char** argv) {
         if (read(STDIN_FILENO, &command, 1) > 0) {
           if (repaintOnStdin
               && state.mapped
-              && (command == 'R' || command == 'G' || command == 'B' || command == 'b')) {
+              && (command == 'R' || command == 'G' || command == 'B' || command == 'b' || command == 't')) {
             state.repaintColor = command == 'R' ? 0xFFFF0000
                 : command == 'G'                ? 0xFF00FF00
                 : command == 'B'                ? 0xFF0000FF
+                : command == 't'                ? 0x00000000
                                                 : 0xFFFF8000;
             state.repaintBodyOnly = command == 'b';
+            if (command == 't') {
+              state.repaintBandOnly = true;
+              state.topBandEnabled = true;
+              // A split band would repaint half of it in its second colour, so the whole band has to go clear.
+              state.topBandSplit = 0;
+            }
             if (state.repaintFrame == nullptr) {
               state.repaintFrame = wl_surface_frame(state.surface);
               wl_callback_add_listener(state.repaintFrame, &kRepaintListener, &state);

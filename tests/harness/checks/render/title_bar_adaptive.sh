@@ -259,3 +259,12 @@ after=$(readbacks)
 if (( after != before )); then
   fail "a body-only commit read the strip back: $before -> $after"
 fi
+
+# A transparent edge is a readable edge with no colour in it, so the palette comes back. A buffer that cannot be read
+# at all is the other case: it keeps the last colour the window gave. The two must not share a path.
+printf 't' >&4
+await_lines "$LOG2" repainted 4
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$magenta" 1000 "the palette colour under a transparent averaged edge"
+expect_none 'g > 0.4 && g < 0.6 && b > 0.4 && b < 0.6' "the averaged colour survived a transparent edge"

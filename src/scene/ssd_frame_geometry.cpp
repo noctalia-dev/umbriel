@@ -157,8 +157,8 @@ namespace umbriel {
   }
 
   wlr_fbox titleBarStripSourceBox(
-      const wlr_fbox& source, int bufferWidth, int bufferHeight, int surfaceWidth, int surfaceHeight,
-      uint32_t transform, int logicalHeight
+      const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
+      int surfaceHeight, uint32_t transform, int logicalHeight
   ) {
     const auto rotation = static_cast<wl_output_transform>(transform & 3U);
     const bool quarterTurn = rotation == WL_OUTPUT_TRANSFORM_90 || rotation == WL_OUTPUT_TRANSFORM_270;
@@ -173,14 +173,27 @@ namespace umbriel {
         || surfaceHeight <= 0) {
       return {};
     }
-    // Where the visible buffer sits once upright; the surface's coordinates stretch over exactly this box.
+    // Upright first: the window geometry is in surface coordinates, and a quarter turn puts surface x on buffer y, so
+    // cropping the buffer box before the turn would take the offset off the wrong axis.
     wlr_fbox visible = source;
     if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
       wlr_fbox_transform(&visible, &source, rotation, bufferWidth, bufferHeight);
     }
+    // The surface's coordinates stretch over exactly `visible`, so the geometry scales into it. A window geometry that
+    // is empty, or that misses the visible part, leaves the whole surface visible.
+    const double scaleX = visible.width / static_cast<double>(surfaceWidth);
+    const double scaleY = visible.height / static_cast<double>(surfaceHeight);
+    if (geometry.width > 0 && geometry.height > 0) {
+      const double left = std::max(visible.x, visible.x + geometry.x * scaleX);
+      const double top = std::max(visible.y, visible.y + geometry.y * scaleY);
+      const double right = std::min(visible.x + visible.width, visible.x + (geometry.x + geometry.width) * scaleX);
+      const double bottom = std::min(visible.y + visible.height, visible.y + (geometry.y + geometry.height) * scaleY);
+      if (right > left && bottom > top) {
+        visible = {left, top, right - left, bottom - top};
+      }
+    }
     // Minimum last: a viewport can make the source shorter than a buffer pixel, which would invert clamp's bounds.
-    const double scale = visible.height / static_cast<double>(surfaceHeight);
-    const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scale));
+    const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scaleY));
     const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
     wlr_fbox inBuffer = strip;
     if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {

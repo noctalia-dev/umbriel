@@ -269,7 +269,7 @@ namespace umbriel {
     const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
     const wlr_box box{left, top, std::max(0, right - left), std::max(0, bottom - top)};
     if (box.width <= 0 || box.height <= 0) {
-      return {StripSample::State::Refused, std::nullopt};
+      return {StripSample::State::Empty, std::nullopt};
     }
     // Ask which format the renderer can read: assuming BGRA silently disables the mode without EXT_read_format_bgra.
     const uint32_t format = wlr_texture_preferred_read_format(m_content->buffer->texture);
@@ -308,7 +308,7 @@ namespace umbriel {
     }
     auto mean = averagePixels(m_strip.data(), m_strip.size(), *order);
     if (!mean.has_value()) {
-      return {StripSample::State::Refused, std::nullopt};
+      return {StripSample::State::Empty, std::nullopt};
     }
     logDebug("[title_bar] averaged a {}x{} strip read back from the window", box.width, box.height);
     return {StripSample::State::Fresh, mean};
@@ -366,42 +366,17 @@ namespace umbriel {
       m_adaptive->point_accepts_input = rejectInput;
       wlr_scene_node_place_above(&m_adaptive->node, &m_background->node);
     }
-    const int surfaceWidth = m_content->current.width;
-    const int surfaceHeight = m_content->current.height;
     wlr_fbox base{};
     wlr_surface_get_buffer_source_box(m_content, &base);
-    // The window's geometry, not the buffer's: a client-drawn window's transparent shadow margins stay out of it.
-    wlr_box visible{0, 0, surfaceWidth, surfaceHeight};
-    if (m_contentGeometry.width > 0 && m_contentGeometry.height > 0) {
-      wlr_box clipped{};
-      wlr_box_intersection(&clipped, &m_contentGeometry, &visible);
-      if (clipped.width > 0 && clipped.height > 0) {
-        visible = clipped;
-      }
-    }
-    const double scaleX = surfaceWidth > 0 ? base.width / static_cast<double>(surfaceWidth) : 0.0;
-    const double scaleY = surfaceHeight > 0 ? base.height / static_cast<double>(surfaceHeight) : 0.0;
-    wlr_fbox source = base;
-    int sourceSurfaceWidth = surfaceWidth;
-    int sourceSurfaceHeight = surfaceHeight;
-    if (scaleX > 0.0 && scaleY > 0.0 && base.width > 0.0 && base.height > 0.0) {
-      const double left = std::max(base.x, base.x + visible.x * scaleX);
-      const double top = std::max(base.y, base.y + visible.y * scaleY);
-      const double right = std::min(base.x + base.width, base.x + (visible.x + visible.width) * scaleX);
-      const double bottom = std::min(base.y + base.height, base.y + (visible.y + visible.height) * scaleY);
-      if (right > left && bottom > top) {
-        source = {left, top, right - left, bottom - top};
-        sourceSurfaceWidth = std::max(1, static_cast<int>(std::lround(source.width / scaleX)));
-        sourceSurfaceHeight = std::max(1, static_cast<int>(std::lround(source.height / scaleY)));
-      }
-    }
     // Cannot sit behind the guard below: colour management can change on a commit with no buffer damage. The readback
     // returns the window's encoded values, so the flat colour is described as the window is.
     if (m_colors != nullptr) {
       m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
     }
+    // The window's geometry, not the buffer's: a client-drawn window's transparent shadow margins stay out of the
+    // strip, and the crop happens upright so a quarter turn does not take its offset off the wrong buffer axis.
     const wlr_fbox strip = titleBarStripSourceBox(
-        source, buffer->width, buffer->height, sourceSurfaceWidth, sourceSurfaceHeight,
+        base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width, m_content->current.height,
         static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight
     );
     // Damage is in buffer coordinates, like the strip. Round outward: the strip is fractional at fractional scales. It
@@ -436,6 +411,10 @@ namespace umbriel {
         m_stripDeferred = sample.state == StripSample::State::Deferred;
         if (sample.color.has_value()) {
           m_averageColor = sample.color;
+        } else if (sample.state == StripSample::State::Empty) {
+          // A readable edge with no colour in it (transparent, or a strip with no area): the palette shows, as it does
+          // for the mirrored mode. An unreadable buffer keeps the last colour instead, since its content is unknown.
+          m_averageColor.reset();
         }
       }
       shown = m_averageColor.has_value() ? averageBufferFor(*m_averageColor) : nullptr;
