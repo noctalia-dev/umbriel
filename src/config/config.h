@@ -36,6 +36,9 @@ namespace umbriel {
 
   enum class TitleBarButtonGlyph : uint8_t { Always, Hover, Never };
 
+  // Where a title bar takes its fill from: the palette, or the top of the window it belongs to.
+  enum class TitleBarColorSource : uint8_t { Fixed, Window };
+
   enum class ModifierKey {
     Super,
     Alt,
@@ -752,6 +755,9 @@ namespace umbriel {
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
+        // "window" paints the bar with the top strip of the window's own content instead of the palette colour; the
+        // palette colour stays underneath as the fallback for a transparent strip.
+        TitleBarColorSource colorSource = TitleBarColorSource::Fixed;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
         TitleBarButtonGeometry buttonGeometry() const {

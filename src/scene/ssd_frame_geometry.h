@@ -56,4 +56,14 @@ namespace umbriel {
       const TitleBarButtonGeometry& geometry, double x, double y, int radius = 0
   );
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
+  // Height of the window-content strip an adaptive title bar shows, in logical pixels.
+  inline constexpr int kTitleBarStripHeight = 5;
+  // The slice of a surface's buffer that appears as the top `logicalHeight` pixels of the window content.
+  // `source` is the visible part of the buffer in buffer coordinates, `bufferWidth`/`bufferHeight` its full size,
+  // `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels, and `transform` its buffer
+  // transform. A box with no area means the caller has no usable buffer.
+  wlr_fbox titleBarStripSourceBox(
+      const wlr_fbox& source, int bufferWidth, int bufferHeight, int surfaceWidth, int surfaceHeight,
+      uint32_t transform, int logicalHeight
+  );
 } // namespace umbriel

@@ -6,6 +6,7 @@
 
 extern "C" {
 #include <wlr/util/edges.h>
+#include <wlr/util/transform.h>
 }
 
 namespace umbriel {
@@ -153,5 +154,39 @@ namespace umbriel {
 
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight) {
     return {tile.x, tile.y + titleBarHeight, tile.width, std::max(1, tile.height - titleBarHeight)};
+  }
+
+  wlr_fbox titleBarStripSourceBox(
+      const wlr_fbox& source, int bufferWidth, int bufferHeight, int surfaceWidth, int surfaceHeight,
+      uint32_t transform, int logicalHeight
+  ) {
+    const auto rotation = static_cast<wl_output_transform>(transform & 3U);
+    const bool quarterTurn = rotation == WL_OUTPUT_TRANSFORM_90 || rotation == WL_OUTPUT_TRANSFORM_270;
+    // The whole buffer as it shows upright on screen: a quarter turn swaps its dimensions.
+    const double uprightWidth = quarterTurn ? bufferHeight : bufferWidth;
+    const double uprightHeight = quarterTurn ? bufferWidth : bufferHeight;
+    if (source.width <= 0.0
+        || source.height <= 0.0
+        || uprightWidth <= 0.0
+        || uprightHeight <= 0.0
+        || surfaceWidth <= 0
+        || surfaceHeight <= 0) {
+      return source;
+    }
+    // Where the visible part of the buffer sits once upright. The surface's own coordinate system stretches over
+    // exactly this box, so its top edge is the box's top edge whatever the rotation.
+    wlr_fbox visible = source;
+    if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
+      wlr_fbox_transform(&visible, &source, rotation, bufferWidth, bufferHeight);
+    }
+    const double scale = visible.height / static_cast<double>(surfaceHeight);
+    const double thickness = std::clamp(static_cast<double>(logicalHeight) * scale, 1.0, visible.height);
+    const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
+    if (rotation == WL_OUTPUT_TRANSFORM_NORMAL) {
+      return strip;
+    }
+    wlr_fbox inBuffer{};
+    wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(rotation), uprightWidth, uprightHeight);
+    return inBuffer;
   }
 } // namespace umbriel

@@ -30,6 +30,8 @@
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
+// TOP_BAND_COLOR=<ARGB> with TOP_BAND_HEIGHT=<px> paints the top rows of the buffer in another colour, so a check can
+// tell which edge of the content a compositor sampled. A repaint recolours the band too.
 // OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
@@ -172,6 +174,8 @@ namespace {
     bool titleUpdated = false;
     int tearingHint = -1;
     uint32_t fillColor = 0xFF5577AA;
+    uint32_t topBandColor = 0;
+    int topBandHeight = 0;
     std::optional<uint32_t> resizeFillColor;
     int configuredWidth = 0;
     int configuredHeight = 0;
@@ -321,6 +325,13 @@ namespace {
       return buffer;
     }
     std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
+    if (state.topBandColor != 0 && state.topBandHeight > 0) {
+      auto* pixels = static_cast<uint32_t*>(buffer.pixels);
+      const int band = std::min(state.topBandHeight, height);
+      for (int row = 0; row < band; ++row) {
+        std::fill_n(pixels + static_cast<ptrdiff_t>(row) * width, width, state.topBandColor);
+      }
+    }
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
     const uint32_t format = std::getenv("OPAQUE_BUFFER") != nullptr ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888;
@@ -337,6 +348,7 @@ namespace {
     wl_callback_destroy(callback);
     state.repaintFrame = nullptr;
     state.fillColor = state.repaintColor;
+    state.topBandColor = state.repaintColor;
     Buffer next = createBuffer(state, state.width, state.height);
     if (next.resource == nullptr) {
       std::exit(EXIT_FAILURE);
@@ -928,6 +940,16 @@ int main(int argc, char** argv) {
       std::println(stderr, "unmap-client: TEARING_HINT must be async or vsync");
       return EXIT_FAILURE;
     }
+  }
+  if (const char* band = std::getenv("TOP_BAND_COLOR")) {
+    char* end = nullptr;
+    const auto value = std::strtoul(band, &end, 0);
+    if (end != band) {
+      state.topBandColor = static_cast<uint32_t>(value);
+    }
+  }
+  if (const char* rows = std::getenv("TOP_BAND_HEIGHT")) {
+    state.topBandHeight = static_cast<int>(std::strtol(rows, nullptr, 10));
   }
   if (const char* fill = std::getenv("FILL_COLOR")) {
     char* end = nullptr;

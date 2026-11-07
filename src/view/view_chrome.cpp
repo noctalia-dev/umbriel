@@ -112,7 +112,8 @@ namespace umbriel {
       m_server->scheduleIpcWindowsEvent();
     }
     if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
-      m_ssdFrame = std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree);
+      m_ssdFrame =
+          std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree, m_server->colorManager());
     }
     if (m_ssdFrame == nullptr) {
       return;
@@ -131,6 +132,7 @@ namespace umbriel {
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
+    m_ssdFrame->setContentSurface(rootSurface());
     const wlr_box content =
         m_presentedBox.width > 0 && m_presentedBox.height > 0 ? m_presentedBox : committedContentBox();
     layoutChromeAttachment(content.width, content.height);

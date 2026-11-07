@@ -132,6 +132,7 @@ button_padding = -1
 button_corner_radius = -1
 button_glyph = "hover"
 button_background = true
+color_source = "fixed"
 
 [colors.title_bar]
 background = "#292933FF"
@@ -175,6 +176,8 @@ Buttons show a drawn X for close, an outlined square for maximize, and an unders
 The `close`, `maximize`, and `minimize` colors control button backgrounds. Each button has independent `*_glyph` and `*_glyph_hover` colors for its idle and hovered or pressed symbol. All six glyph colors default to `"#141419FF"`, with no color difference on hover. These colors apply with or without backgrounds, support alpha, and are not adjusted automatically. For symbols alone on a dark title bar, choose lighter glyph colors. Disabled buttons keep their idle glyph color and appear dimmed. Backgrounds retain their hover and pressed feedback.
 
 `button_corner_radius` uses logical pixels, from `0` to `100`. Its default, `-1`, follows the window's `corner_radius`, including window rules. Use `0` for square buttons or a small positive value for rounded squares. The radius is capped at half the button size, producing circles at larger values. Buttons and symbols scale with the output and overview zoom, and update on reload. The maximize button is disabled for fixed-size windows. The minimize button shows only while the window can [minimize](layout.md#minimize), so tiled and pinned windows do not have one. `background` and `text` apply to the focused window; their `_unfocused` variants apply to other windows. Colors and title bar settings reload live.
+
+`color_source = "window"` paints the bar with the top 5 logical pixels of the window's own content instead of `background`, so the bar takes on the application's colour and follows it as the application repaints that edge. A window whose top edge is transparent keeps the configured `background` there, because the bar colour stays painted underneath, and the values in `[colors.title_bar]` remain the fallback for applications that draw nothing. Unfocused windows keep their own colour, dimmed over `background_unfocused`. Because the bar can be any colour the application paints, the title and the button symbols carry a dark edge, so they stay readable on light and dark windows alike. The bar mirrors the window's own buffer instead of reading pixels back, so it costs no extra work per frame beyond drawing that strip.
 
 The title bar follows its window's `blur`, `blur_optimized`, and `blur_ignore_alpha` rules, together with the global [blur settings](#blur). Give `background` and `background_unfocused` some transparency, such as `"#292933CC"`, to see the blurred backdrop. The alpha threshold applies to the title bar's own background color, independently of the application's content. Opaque title bar backgrounds remain opaque with blur enabled, including after leaving overview or switching focus between windows. No layer rule is needed. Dragging, overview previews, and close animations keep the blur with the window.
 

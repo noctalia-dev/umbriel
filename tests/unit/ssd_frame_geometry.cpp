@@ -287,4 +287,54 @@ UMBRIEL_TEST(contentBoxInTileRemovesTitleBar) {
   CHECK_EQ(contentBoxInTile({8, 8, 1264, 704}, 0).height, 704);
 }
 
+UMBRIEL_TEST(stripSourceBoxTakesTheVisibleTopEdge) {
+  const wlr_fbox full{0.0, 0.0, 400.0, 300.0};
+  // No rotation: the buffer's own top rows. A half turn shows the bottom rows instead; a quarter turn shows a
+  // vertical band, which is the buffer's left edge at 90 and its right edge at 270.
+  const wlr_fbox none = titleBarStripSourceBox(full, 400, 300, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(none.x, 0.0);
+  CHECK_EQ(none.y, 0.0);
+  CHECK_EQ(none.width, 400.0);
+  CHECK_EQ(none.height, 5.0);
+  const wlr_fbox half = titleBarStripSourceBox(full, 400, 300, 400, 300, WL_OUTPUT_TRANSFORM_180, 5);
+  CHECK_EQ(half.x, 0.0);
+  CHECK_EQ(half.y, 295.0);
+  CHECK_EQ(half.width, 400.0);
+  CHECK_EQ(half.height, 5.0);
+  const wlr_fbox left = titleBarStripSourceBox(full, 400, 300, 300, 400, WL_OUTPUT_TRANSFORM_90, 5);
+  CHECK_EQ(left.x, 0.0);
+  CHECK_EQ(left.y, 0.0);
+  CHECK_EQ(left.width, 5.0);
+  CHECK_EQ(left.height, 300.0);
+  const wlr_fbox right = titleBarStripSourceBox(full, 400, 300, 300, 400, WL_OUTPUT_TRANSFORM_270, 5);
+  CHECK_EQ(right.x, 395.0);
+  CHECK_EQ(right.y, 0.0);
+  CHECK_EQ(right.width, 5.0);
+  CHECK_EQ(right.height, 300.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxFollowsTheVisibleCrop) {
+  // A cropped window shows the middle of its buffer, so the strip starts where the visible part does.
+  const wlr_fbox crop =
+      titleBarStripSourceBox({100.0, 120.0, 800.0, 400.0}, 1000, 800, 800, 400, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(crop.x, 100.0);
+  CHECK_EQ(crop.y, 120.0);
+  CHECK_EQ(crop.width, 800.0);
+  CHECK_EQ(crop.height, 5.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxScalesWithTheBuffer) {
+  // A surface rendered at an output scale keeps 5 logical pixels as a longer run of buffer pixels.
+  const wlr_fbox scaled =
+      titleBarStripSourceBox({0.0, 0.0, 800.0, 600.0}, 800, 600, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(scaled.height, 10.0);
+  CHECK_EQ(scaled.width, 800.0);
+  // A window shorter than the strip still yields a real box.
+  const wlr_fbox tiny = titleBarStripSourceBox({0.0, 0.0, 40.0, 3.0}, 40, 3, 40, 3, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(tiny.height, 3.0);
+  // Nothing usable: the caller's own buffer box comes back untouched.
+  const wlr_fbox empty = titleBarStripSourceBox({0.0, 0.0, 0.0, 0.0}, 0, 0, 0, 0, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(empty.width, 0.0);
+}
+
 int main() { return RUN_TESTS(); }

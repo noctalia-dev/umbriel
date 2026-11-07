@@ -6,6 +6,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -13,17 +14,22 @@
 
 struct wlr_scene_node;
 struct wlr_scene_rect;
+struct wlr_buffer;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
 struct wlr_buffer;
 struct clipped_region;
 
 namespace umbriel {
+  class ColorManager;
   class TabLabelCache;
 
   class SsdFrame final : public ViewChromeAttachment {
   public:
-    SsdFrame(wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent = nullptr);
+    SsdFrame(
+        wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent = nullptr,
+        ColorManager* colors = nullptr
+    );
     ~SsdFrame() override;
     void layout(const ViewChromeGeometry& geometry) override;
     void setFocused(bool focused) override;
@@ -41,6 +47,10 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
+    // The window content an adaptive bar takes its colour from. Borrowed: the view owns the surface.
+    void setContentSurface(wlr_surface* surface);
+    // Re-reads the strip after the window committed.
+    void syncContent();
     bool maximizeEnabled() const { return m_maximizeEnabled; }
     int titleBarHeight() const { return m_geometry.titleBarHeight; }
     bool contains(const wlr_scene_node* node) const;
@@ -52,7 +62,11 @@ namespace umbriel {
   private:
     void redraw();
     void updateColors();
-    void updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible);
+    void updateAdaptive();
+    void updateButtonIcon(
+        TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible,
+        const std::optional<std::array<float, 4>>& outline
+    );
     std::span<const TitleBarButton> visibleButtons() const;
     void updateBlur();
     clipped_region frameClip(int x, int y) const;
@@ -66,6 +80,19 @@ namespace umbriel {
     SurfaceBlurOptions m_blurOptions;
     bool m_blurLive = false;
     wlr_scene_buffer* m_label = nullptr;
+    // The same title in the shadow colour, one pixel down and right, so it stays readable on any bar colour.
+    wlr_scene_buffer* m_labelShadow = nullptr;
+    // Paints the bar with the top strip of the window content; kept below the label and above the palette colour.
+    wlr_scene_buffer* m_adaptive = nullptr;
+    wlr_surface* m_content = nullptr;
+    // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
+    wlr_buffer* m_adaptiveBuffer = nullptr;
+    wlr_fbox m_adaptiveStrip{};
+    wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
+    int m_adaptiveWidth = 0;
+    int m_adaptiveHeight = 0;
+    float m_adaptiveOpacity = 0.0F;
+    ColorManager* m_colors = nullptr;
     wlr_scene_rect* m_close = nullptr;
     wlr_scene_rect* m_maximize = nullptr;
     wlr_scene_rect* m_minimize = nullptr;
@@ -73,6 +100,7 @@ namespace umbriel {
     // Keep a consumer lock for snapshots and renderer recovery after the scene uploads an icon's texture.
     std::array<wlr_buffer*, kTitleBarButtonCount> m_iconBuffers{};
     std::array<std::array<float, 4>, kTitleBarButtonCount> m_iconColors{};
+    std::array<std::optional<std::array<float, 4>>, kTitleBarButtonCount> m_iconOutlines{};
     std::array<int, kTitleBarButtonCount> m_iconSizes{};
     std::vector<TitleBarButton> m_buttons;
     std::array<wlr_scene_rect*, 4> m_grips{};

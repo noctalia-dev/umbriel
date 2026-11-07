@@ -107,6 +107,13 @@ namespace umbriel {
               }
           ),
           boolean("button_background", &A::TitleBar::buttonBackground),
+          registry::choice(
+              "color_source", &A::TitleBar::colorSource,
+              {
+                  {.name = "fixed", .value = TitleBarColorSource::Fixed},
+                  {.name = "window", .value = TitleBarColorSource::Window},
+              }
+          ),
           registry::text("font", &A::TitleBar::font),
           registry::choice(
               "button_position", &A::TitleBar::buttonPosition,
