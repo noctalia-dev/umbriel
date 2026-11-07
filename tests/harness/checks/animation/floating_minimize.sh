@@ -30,7 +30,7 @@ expect_no_lifecycle_shader() {
   local green
   green=$(green_count "$1")
   if (( green > 10 )); then
-    echo "$2: the windows_in program ran during a minimize transition (green=$green)"
+    echo "$2: a lifecycle effect program ran during a minimize transition (green=$green)"
     exit 1
   fi
 }
@@ -319,6 +319,87 @@ fi
 grim "$INSTANT"
 if (( $(red_count "$INSTANT") > 10 )); then
   echo "a disabled windows_minimize still drew the window mid-hide: count=$(red_count "$INSTANT")"
+  exit 1
+fi
+
+set_minimize_enabled true
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
+
+# A minimize collapse is geometry and plain alpha: a `windows_move` preset must not warp the picture on top of it.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[animation.windows_move]
+enabled = true
+duration_ms = 2000
+effect = "minimize_anim_green"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+grim "$HIDING"
+expect_no_lifecycle_shader "$HIDING" "collapsing with a windows_move preset"
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 500
+grim "$REVEALING"
+expect_no_lifecycle_shader "$REVEALING" "revealing with a windows_move preset"
+"$UMBRIEL" clock-advance 2000
+sed -i '/^\[animation\.windows_move\]$/,/^effect = "minimize_anim_green"$/d' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
+# A style reloaded to `fade` mid-conceal must not skip the tweens back: the conceal already moved the box, so the
+# restore still has to land on the resting box instead of the collapsed origin.
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+sed -i '/^\[animation\.windows_minimize\]$/,/^\[/ s/^style = "popin"$/style = "fade"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
+grim "$REVEALED"
+read -r faded_x faded_y faded_w faded_h <<< "$(red_bbox "$REVEALED")"
+if (( faded_w == 0 || faded_x < before_x - 4 || faded_x > before_x + 4 || faded_y < before_y - 4
+      || faded_y > before_y + 4 || faded_w < before_bw - 4 || faded_w > before_bw + 4 )); then
+  echo "a style reloaded to fade mid-conceal moved the restored box off its resting position:" \
+    "before=[$before_x $before_y $before_bw $before_bh] after=[$faded_x $faded_y $faded_w $faded_h]"
+  exit 1
+fi
+sed -i '/^\[animation\.windows_minimize\]$/,/^\[/ s/^style = "fade"$/style = "popin"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
+# The decorated frame is enabled for the fade too, so its title bar and resize border must refuse the same input as the
+# content: a press there would focus the view, and focusing a minimized view restores it. The check above runs
+# undecorated so its pixel maths stays simple; this leg turns the frame back on for the hit test alone.
+sed -i 's/^border_width = 0$/border_width = 2/' "$UMBRIEL_CONFIG"
+sed -i '/^\[appearance\.title_bar\]$/,/^\[/ s/^mode = "off"$/mode = "on"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" clock-advance 2000
+read -r box_x box_y box_w box_h <<< "$("$UMBRIEL" windows --json \
+  | jq -r '.[] | select(.title == "minimize-anim") | "\(.x) \(.y) \(.w) \(.h)"')"
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+# The live box is 7/8 of the resting one at this instant and centred on it, so its top edge sits box_h/16 below; the
+# decorated frame's title bar is drawn above that edge and does not shrink with the presented box.
+pointer move 0 0
+pointer move "$(( box_x + box_w / 2 ))" "$(( box_y + box_h / 16 - 8 ))"
+pointer click "$BTN_LEFT"
+"$UMBRIEL" clock-advance 2000
+pointer move 0 0
+if [[ $(field_of minimize-anim minimized) != true ]]; then
+  echo "a press on the fading title bar unminimized the window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if [[ $(field_of minimize-anim focused) != false ]]; then
+  echo "a press on the fading title bar focused the window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if [[ $("$UMBRIEL" windows --json | jq 'length') -ne 1 ]]; then
+  echo "a press on the fading title bar closed the window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if [[ $(field_of minimize-anim x) != "$box_x" || $(field_of minimize-anim y) != "$box_y" ]]; then
+  echo "a press on the fading title bar moved the window: was [$box_x $box_y], now" \
+    "[$(field_of minimize-anim x) $(field_of minimize-anim y)]"
   exit 1
 fi
 

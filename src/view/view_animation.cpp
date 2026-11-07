@@ -778,7 +778,9 @@ namespace umbriel {
         : wlr_box{layoutTargetX(), layoutTargetY(), width, height};
     m_minimizePhase = MinimizePhase::Revealing;
     setNodeEnabled(true);
-    const bool popin = minimize.style == "popin" && captured.width > 0 && captured.height > 0;
+    // A reversal always has to retarget the box: a conceal that moved it did so under the style in force at the time,
+    // so a config reload to `fade` mid-flight must not skip the tweens back to the resting box.
+    const bool popin = captured.width > 0 && captured.height > 0 && (minimize.style == "popin" || reversing);
     if (reversing) {
       // Reverse from wherever the conceal has drawn the window: snapping back to the collapsed box would jump.
       m_fade.snap(m_fadeAlpha);
@@ -906,7 +908,10 @@ namespace umbriel {
       m_effects.detach();
       return;
     }
-    if (m_posX.animating() || m_posY.animating() || m_presentation.animating()) {
+    // A minimize transition deforms its own box, so a `windows_move` preset must not warp the picture on top of it.
+    if (minimizeFadeActive()) {
+      clearAnimationEffect(&target->node, AnimationEvent::WindowsMove);
+    } else if (m_posX.animating() || m_posY.animating() || m_presentation.animating()) {
       const auto& movement = m_posX.animating() ? m_posX : (m_posY.animating() ? m_posY : m_presentation.animation());
       bindAnimationEffect(&target->node, AnimationEvent::WindowsMove, movement);
     } else if (

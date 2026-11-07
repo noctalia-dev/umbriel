@@ -470,7 +470,10 @@ namespace umbriel {
         return std::nullopt;
       }
       auto* view = static_cast<View*>(tag);
+      // A minimize conceal keeps the decorated frame enabled until its fade lands, but the window is already
+      // minimized: its title bar and resize border take no pointer input on the way out.
       if (!view->mapped()
+          || view->minimizeConcealing()
           || (!view->pinned() && !view->onActiveWorkspace())
           || view->ssdFrame() == nullptr
           || !view->ssdFrame()->contains(node)) {
