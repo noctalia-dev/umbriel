@@ -318,6 +318,8 @@ namespace umbriel {
     void resumeScrollHoverFocus() { m_scrollHoverFocusDeferred = false; }
 
   private:
+    // A grab started through this mirror ends before the mirror changes source, hides, or goes away.
+    void endMirrorGrab() const;
     void transferTo(WorkspaceGroup& group);
     void syncFloatingLayer();
     friend class WorkspaceGroup;

@@ -88,4 +88,38 @@ start_client
 "$UMBRIEL_POINTER_CLIENT" 2240 720 mod logo move 1370 240 press 273 move 1445 240 release 273 mod none
 "$UMBRIEL" settle > /dev/null
 assert_window '.x == 200 and .w == 300 and .output == "HEADLESS-1"'
-echo '75 receiving pixels move or resize the original by 100 logical pixels, on the edge picked in the copy.'
+# A move held through the copy ends when a reload turns the copy into an ordinary workspace, instead of going on with
+# the gone copy's coordinates.
+stop_client
+start_client move-on-press
+mkfifo "$UMBRIEL_RUNTIME_DIR/gone.control"
+exec {gone_fd}<> "$UMBRIEL_RUNTIME_DIR/gone.control"
+"$UMBRIEL_POINTER_CLIENT" 2240 720 move 1445 240 press 272 hold move 1520 285 release 272 <&"$gone_fd" &
+pointer_pid=$!
+await_grab "$UMBRIEL_RUNTIME_DIR/move-on-press.log"
+sed -i '/^mirror = { output = "HEADLESS-1", name = "source" }$/d' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" workspaces --json | jq -e 'any(.[]; .output == "HEADLESS-2" and .name == "source" and (.mirror | not))' > /dev/null
+printf '\n' >&"$gone_fd"
+wait "$pointer_pid"
+"$UMBRIEL" settle > /dev/null
+assert_window '.x == 100 and .y == 100 and .output == "HEADLESS-1"'
+# The same move also ends when the source output leaves the layout while the copy stays: the copy has no mapping left.
+sed -i '/^name = "source"$/a mirror = { output = "HEADLESS-1", name = "source" }' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+stop_client
+start_client move-on-press
+mkfifo "$UMBRIEL_RUNTIME_DIR/off.control"
+exec {off_fd}<> "$UMBRIEL_RUNTIME_DIR/off.control"
+"$UMBRIEL_POINTER_CLIENT" 2240 720 move 1445 240 press 272 hold move 1700 500 release 272 <&"$off_fd" &
+pointer_pid=$!
+await_grab "$UMBRIEL_RUNTIME_DIR/move-on-press.log"
+sed -i '/^\[output.HEADLESS-1\]$/a enabled = false' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle > /dev/null
+rehomed=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "mirror-grab") | {x, y, output}')
+printf '\n' >&"$off_fd"
+wait "$pointer_pid"
+"$UMBRIEL" settle > /dev/null
+assert_window "{x, y, output} == $rehomed"
+echo '75 receiving pixels move or resize the original by 100 logical pixels, on the edge picked in the copy, until the copy goes.'

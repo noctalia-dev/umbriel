@@ -366,9 +366,21 @@ namespace umbriel {
     }
   }
 
-  void Cursor::handleOutputLayoutChange() const {
+  namespace {
+    std::optional<MirrorMapping> mappingOf(const Workspace* copy) {
+      const WorkspaceMirror* renderer = copy != nullptr ? copy->mirrorRenderer() : nullptr;
+      return renderer != nullptr ? renderer->mapping() : std::nullopt;
+    }
+  } // namespace
+
+  void Cursor::handleOutputLayoutChange() {
     m_server->effects().forgetPointerOutput();
     forwardEffectPointer();
+    // A grab started through a mirror has no coordinates once an output leaves the layout and the mirror loses its
+    // mapping: it ends rather than carrying on in receiving coordinates.
+    if (m_grabMirror != nullptr && !mappingOf(m_grabMirror)) {
+      forgetMirror(m_grabMirror);
+    }
   }
 
   int Cursor::onHideTimer(void* data) {
@@ -1073,19 +1085,17 @@ namespace umbriel {
     return workspace != nullptr && grab != nullptr && grab->workspace == workspace;
   }
 
-  std::optional<MirrorMapping> Cursor::mirrorFor(const View* view) const {
+  const Workspace* Cursor::mirrorShowing(const View* view) const {
     if (view == nullptr || view->workspace() == nullptr) {
-      return std::nullopt;
+      return nullptr;
     }
     auto* receiving =
         m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
     const Workspace* copy = receiving != nullptr ? receiving->workspaceGroup()->active() : nullptr;
-    if (copy == nullptr || !copy->mirror() || copy->mirrorSource() != view->workspace()) {
-      return std::nullopt;
-    }
-    const WorkspaceMirror* renderer = copy->mirrorRenderer();
-    return renderer != nullptr ? renderer->mapping() : std::nullopt;
+    return copy != nullptr && copy->mirror() && copy->mirrorSource() == view->workspace() ? copy : nullptr;
   }
+
+  std::optional<MirrorMapping> Cursor::mirrorFor(const View* view) const { return mappingOf(mirrorShowing(view)); }
 
   bool Cursor::mirrorTransform(View* view, double* scale, double* tx, double* ty) const {
     const std::optional<MirrorMapping> mapping = mirrorFor(view);
@@ -1105,11 +1115,36 @@ namespace umbriel {
   bool Cursor::interactive(const View& view) const { return view.onActiveWorkspace() || mirrorFor(&view).has_value(); }
 
   void Cursor::captureGrabTransform(View* view) {
-    m_grabViaMirror = mirrorTransform(view, &m_grabInputScale, &m_grabTranslateX, &m_grabTranslateY);
+    const Workspace* copy = mirrorShowing(view);
+    m_grabMirror = mappingOf(copy) ? copy : nullptr;
   }
 
-  double Cursor::grabX() const { return m_cursor->x * m_grabInputScale + m_grabTranslateX; }
-  double Cursor::grabY() const { return m_cursor->y * m_grabInputScale + m_grabTranslateY; }
+  void Cursor::forgetMirror(const Workspace* copy) {
+    if (copy == nullptr || copy != m_grabMirror) {
+      return;
+    }
+    if (std::holds_alternative<MoveGrab>(m_grab)
+        || std::holds_alternative<FloatingResizeGrab>(m_grab)
+        || std::holds_alternative<TiledResizeGrab>(m_grab)) {
+      resetMode();
+    } else {
+      // Left over from a grab that never started; whatever holds the pointer now did not come through this mirror.
+      m_grabMirror = nullptr;
+    }
+  }
+
+  double Cursor::grabX() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? mapping->toSourceX(m_cursor->x) : m_cursor->x;
+  }
+  double Cursor::grabY() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? mapping->toSourceY(m_cursor->y) : m_cursor->y;
+  }
+  double Cursor::grabInputScale() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? 1 / mapping->fit.scale : 1;
+  }
 
   bool Cursor::beginMove(View* view, uint32_t button, bool deferUntilThreshold) {
     if (view == nullptr || !view->mapped() || button == 0) {
@@ -1455,10 +1490,7 @@ namespace umbriel {
     m_toplevelDrag = false;
     m_grab = PassthroughGrab{};
     m_grabButton = 0;
-    m_grabInputScale = 1;
-    m_grabTranslateX = 0;
-    m_grabTranslateY = 0;
-    m_grabViaMirror = false;
+    m_grabMirror = nullptr;
     if (restoreDragPresentation && view != nullptr) {
       view->restoreHomePresentation();
       // A drag abandoned outside its drop path (session lock mid-drag, the
@@ -3100,7 +3132,7 @@ namespace umbriel {
     );
     if (grab->physics) {
       grab->view->moveDragPhysics(
-          (m_cursor->x - grab->lastX) * m_grabInputScale, (m_cursor->y - grab->lastY) * m_grabInputScale
+          (m_cursor->x - grab->lastX) * grabInputScale(), (m_cursor->y - grab->lastY) * grabInputScale()
       );
       grab->lastX = m_cursor->x;
       grab->lastY = m_cursor->y;
@@ -3113,7 +3145,7 @@ namespace umbriel {
     if (view == nullptr) {
       return;
     }
-    if (m_grabViaMirror) {
+    if (m_grabMirror != nullptr) {
       view->applyDragPresentation();
       if (view->workspace() != nullptr) {
         view->workspace()->scheduleMirrors();
@@ -3188,7 +3220,7 @@ namespace umbriel {
       return;
     }
 
-    Workspace* workspace = m_grabViaMirror ? grab->view->workspace() : output->workspaceGroup()->active();
+    Workspace* workspace = m_grabMirror != nullptr ? grab->view->workspace() : output->workspaceGroup()->active();
     grab->drop = computeDropTarget(
         *workspace, grabX(), grabY(), grab->view,
         DropTargetOptions{
@@ -3332,7 +3364,7 @@ namespace umbriel {
     // into the layout rather than staying detached.
     Output* destination =
         m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY()));
-    Workspace* workspace = m_grabViaMirror
+    Workspace* workspace = m_grabMirror != nullptr
         ? view->workspace()
         : (destination != nullptr ? destination->workspaceGroup()->activeOwn() : nullptr);
     if (grab->target == DragTarget::Tiled && workspace != nullptr && workspace->layoutMode() == LayoutMode::Stacking) {
@@ -3408,12 +3440,12 @@ namespace umbriel {
     }
 
     wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY());
-    Output* output = m_grabViaMirror && view->workspace() != nullptr ? view->workspace()->group()->output()
-                                                                     : m_server->outputFromWlr(wlrOutput);
+    Output* output = m_grabMirror != nullptr && view->workspace() != nullptr ? view->workspace()->group()->output()
+                                                                             : m_server->outputFromWlr(wlrOutput);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
       scratchpad->finishMove(view, output);
-    } else if (!m_grabViaMirror && output != nullptr && output->workspaceGroup() != nullptr) {
+    } else if (m_grabMirror == nullptr && output != nullptr && output->workspaceGroup() != nullptr) {
       if (Workspace* target = output->workspaceGroup()->activeOwn(); view->workspace() != target) {
         view->moveToWorkspace(target);
         target->exitFullscreenForIncomingView(view);

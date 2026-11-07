@@ -217,6 +217,7 @@ namespace umbriel {
   }
 
   Workspace::~Workspace() {
+    endMirrorGrab();
     m_mirrorRenderer.reset();
     setMirrorSource(nullptr);
     // A mirror whose source dies looks for the next one at idle: a refuge is pruned only once the windows are home.
@@ -262,6 +263,7 @@ namespace umbriel {
     if (m_mirrorSource == source) {
       return;
     }
+    endMirrorGrab();
     if (m_mirrorSource != nullptr) {
       std::erase(m_mirrorSource->m_mirrors, this);
     }
@@ -273,6 +275,14 @@ namespace umbriel {
     if (m_mirrorRenderer != nullptr) {
       m_mirrorRenderer->clear();
       m_mirrorRenderer->schedule();
+    }
+  }
+
+  void Workspace::endMirrorGrab() const {
+    // At exit the views are freed before the outputs, so there is no grab left worth resetting.
+    Server* server = m_group->server();
+    if (Cursor* cursor = mirror() && !server->stopping() ? server->cursor() : nullptr) {
+      cursor->forgetMirror(this);
     }
   }
 
@@ -351,6 +361,9 @@ namespace umbriel {
   void Workspace::setActive(bool active) {
     if (m_active == active) {
       return;
+    }
+    if (!active) {
+      endMirrorGrab();
     }
     m_active = active;
     if (m_mirrorRenderer != nullptr) {

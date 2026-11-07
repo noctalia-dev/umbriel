@@ -168,8 +168,8 @@ namespace umbriel {
     wlr_cursor* wlr() const { return m_cursor; }
     bool visible() const { return !m_cursorHidden; }
     // Re-sends the pointer to the cursor effect after outputs were added, moved or removed. wlr_cursor must have
-    // clamped the pointer onto the new layout first.
-    void handleOutputLayoutChange() const;
+    // clamped the pointer onto the new layout first. Ends a grab whose mirror lost its mapping.
+    void handleOutputLayoutChange();
     wlr_xcursor_manager* xcursorManager() const { return m_xcursorManager; }
     bool isPassthrough() const;
     bool canCaptureInput() const;
@@ -216,6 +216,8 @@ namespace umbriel {
     // A view is going away: drop the click-pair record that references it. The
     // grab reset paths cover any deferred or promoted press.
     void forgetView(const View* view);
+    // A mirror is about to change source, hide, or go away: end a grab that started through it.
+    void forgetMirror(const Workspace* copy);
     void resetMode();
     // Warp the cursor to a layout position and run the motion pipeline (pointer focus, xcursor, pointer-output
     // tracking, idle) without letting pointer crossing replace an explicit keyboard-focus choice. Output actions use it
@@ -288,7 +290,9 @@ namespace umbriel {
 
   private:
     bool mirrorTransform(View* view, double* scale, double* tx, double* ty) const;
-    // The mapping of the mirror on the pointer's output that shows `view`'s workspace, if any.
+    // The active mirror on the pointer's output that shows `view`'s workspace, if any.
+    const Workspace* mirrorShowing(const View* view) const;
+    // Its mapping, when it has one.
     std::optional<MirrorMapping> mirrorFor(const View* view) const;
     // Whether `view` takes pointer input where the pointer is: on its active workspace, or through such a mirror.
     bool interactive(const View& view) const;
@@ -298,13 +302,13 @@ namespace umbriel {
     };
     // The pointer in `view`'s layout coordinates: through the mirror on the pointer's output that shows it, if any.
     Point pointerFor(View* view) const;
+    // A grab started through a mirror keeps that mirror, and reads its current mapping on every motion.
     void captureGrabTransform(View* view);
     double grabX() const;
     double grabY() const;
-    double m_grabInputScale = 1;
-    double m_grabTranslateX = 0;
-    double m_grabTranslateY = 0;
-    bool m_grabViaMirror = false;
+    // Source layout units per receiving pixel of the grab's mirror; 1 without one.
+    double grabInputScale() const;
+    const Workspace* m_grabMirror = nullptr;
     static void onMotion(wl_listener* listener, void* data);
     static void onMotionAbsolute(wl_listener* listener, void* data);
     static void onButton(wl_listener* listener, void* data);
