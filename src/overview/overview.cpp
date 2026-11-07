@@ -1762,8 +1762,8 @@ namespace umbriel {
     }
 
     m_active = true;
-    // Cards need their home trees now; land deferred release re-homes without
-    // waiting for the next tick.
+    // Cards need their home trees now, so land deferred release re-homes here
+    // instead of waiting for the tick.
     const auto overviewViews = m_server->registry().all();
     for (const auto& entry : overviewViews) {
       if (View* v = entry.get(); v != nullptr) {

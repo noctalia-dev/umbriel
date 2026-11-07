@@ -252,10 +252,9 @@ namespace umbriel {
   }
 
   void Workspace::transferTo(WorkspaceGroup& group) {
-    // Land the deferred resting re-homes before the trees travel. A released
-    // sheet parked under the shared drag tree is outside them: its remembered
-    // position would be rewritten in the old output's coordinate space mid-spring,
-    // and the settle would then re-home it a second time.
+    // Land deferred re-homes before the trees travel: a sheet parked under the
+    // shared drag tree is outside them, and its position would be rewritten in the
+    // old output's coordinates mid-spring.
     flushDeferredRehomes();
     endSwitchTransition();
     endLayoutMotion();
@@ -2637,8 +2636,8 @@ namespace umbriel {
 
   void Workspace::showSwitchViews() {
     for (View* view : m_switchViews) {
-      // A held window is presented by the drag tree; revealing it with this
-      // workspace would place it back under a workspace that just went away.
+      // The drag tree presents this window; revealing it here would put it back
+      // under a workspace that just went away.
       if (!m_active && !view->dragPresentationOwnsVisibility()) {
         view->setNodeEnabled(true);
       }
@@ -3616,11 +3615,9 @@ namespace umbriel {
     const size_t idx = m_active->index();
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
-    // A gesture moves these trees while the outgoing workspace is still active:
-    // deactivation only happens when the gesture commits. A deferred release
-    // re-home would keep its view under the shared drag tree, outside the trees
-    // that travel, and glue the window to the screen for the whole swipe. Land
-    // the waits while the trees are still at rest.
+    // A gesture moves these trees while the outgoing workspace is still active (it
+    // deactivates at commit), and a wait left parked under the drag tree would glue
+    // its window to the screen for the whole swipe. Land them before they travel.
     flushSlideRehomes();
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
@@ -3793,8 +3790,7 @@ namespace umbriel {
     } else {
       m_slide.previous = workspace;
     }
-    // The trees travel before the outgoing workspace deactivates on this path:
-    // land the deferred waits while they are still at rest.
+    // The trees travel before the outgoing workspace deactivates: land the waits first.
     flushSlideRehomes();
     m_slide.base->beginSwitchTransition();
     workspace->beginSwitchTransition();
@@ -3872,9 +3868,8 @@ namespace umbriel {
       return reject("output already has a workspace with that name");
     }
 
-    // Both groups' trees travel next; land the deferred resting re-homes while
-    // they are still at rest. A sheet parked under the shared drag tree is
-    // outside every tree this transfer moves.
+    // Both groups' trees travel next; land the re-homes while they are at rest. A
+    // sheet parked under the shared drag tree is outside every tree this moves.
     flushSlideRehomes();
     destination.flushSlideRehomes();
     slideFinish();

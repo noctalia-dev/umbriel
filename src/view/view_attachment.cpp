@@ -161,10 +161,9 @@ namespace umbriel {
 
     m_attachedTo = parent;
     parent->m_attachments.push_back(this);
-    // The attach re-parent supersedes any deferred resting re-home. Going through
-    // setSceneParent runs the leaving-drag-tree bookkeeping the raw reparent
-    // skipped: riders of this view follow it, and the drag tree demotes when this
-    // was its last occupant.
+    // The attach re-parent supersedes any deferred re-home. setSceneParent also runs
+    // the leaving-drag-tree bookkeeping a raw reparent skips: riders follow this
+    // view, and the drag tree demotes once it has no occupant left.
     m_pendingHomeParent = nullptr;
     m_releaseRehomeArmed = false;
     setSceneParent(parent->m_attachmentTree);

@@ -301,8 +301,8 @@ namespace umbriel {
     // A member of a tabbed column other than the one it shows. It keeps its layout slot and stays mapped and configured
     // at that size, but its frame stays disabled whatever else asks to enable it.
     void setTabHidden(bool hidden);
-    // True while the cursor holds this view: the drag's own scene tree owns the
-    // node's presentation, so a workspace must not enable or disable it.
+    // True while the drag tree presents this view or a transient ancestor (held,
+    // settling, or landed on a pinned root): a workspace must not show or hide it.
     [[nodiscard]] bool dragPresentationOwnsVisibility() const;
     bool tabHidden() const { return m_tabHidden; }
     // Minimized: hidden, but keeping its workspace, floating box, stacking slot, and taskbar entries. Focusing the

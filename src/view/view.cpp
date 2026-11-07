@@ -616,17 +616,14 @@ namespace umbriel {
     }
     m_onActiveWorkspace = active;
     if (!active) {
-      // The deferred resting re-home exists only to keep visible displaced
-      // pixels out of the output clip. Once the workspace stops presenting the
-      // view there is nothing left to preserve, and a view parked under the
-      // shared drag tree cannot travel or hide with its workspace: it hangs on
-      // screen until the spring settles. Land the resting tree first.
+      // The deferral only protects visible displaced pixels. A view parked under
+      // the shared drag tree cannot travel or hide with its workspace, so land it
+      // before the workspace stops presenting it.
       flushReleaseRehome();
     }
     // A hidden tab or a minimized window stays hidden when its workspace comes back.
-    // A held window (or a child riding its drag) is the drag's payload: its node
-    // and its shadow belong to the drag tree, not to a workspace it was carried
-    // out of, so a deactivation must leave both exactly as the drag set them.
+    // A window the drag tree presents belongs to it, not to the workspace it was
+    // carried out of, so leave its node and shadow exactly as the drag set them.
     const bool shown = active && !m_tabHidden && !m_minimized;
     if (!dragPresentationOwnsVisibility()) {
       if (m_sceneTree != nullptr) {
@@ -676,13 +673,10 @@ namespace umbriel {
   bool View::dragPresentationOwnsVisibility() const {
     const Cursor* cursor = m_server->cursor();
     wlr_scene_tree* dragTree = m_server->dragTree();
-    // A dragged window carries its transient children into the drag tree
-    // (syncTransientSceneParent), so the drag owns their presentation too. The
-    // ride outlives the grab: a released sheet stays under the shared drag tree
-    // until its spring settles, and a pinned release lands under the output's
-    // pinned root after that. Key on where the view rests — it or a transient
-    // ancestor under the drag tree — so every phase of the presentation owns
-    // visibility, not just the held one.
+    // A dragged window carries its transient children into the drag tree, and the
+    // ride outlives the grab: the sheet rests there until its spring settles, and a
+    // pinned release lands under the output's pinned root. Key on where the view
+    // rests, not on who holds it, so every phase owns its visibility.
     for (const View* view = this; view != nullptr; view = view->transientParent()) {
       if (view->m_sceneTree != nullptr && view->m_sceneTree->node.parent == dragTree) {
         return true;
@@ -837,13 +831,10 @@ namespace umbriel {
   bool View::dragSheetDisplaced() const { return m_dragPhysics.active() || m_dragPhysics.grabbed(); }
 
   void View::setSceneParent(wlr_scene_tree* parent) {
-    // A released sheet stays displaced past a home tree's output clip while the
-    // spring settles; the release's resting re-homes wait for it (the invisible
-    // part is only correct when the window is settled). The wait covers every
-    // reparent the release issues, including a transfer's park + re-home; a
-    // later state change (fullscreen, pin, scratchpad) applies immediately and
-    // drops it, and a repeated request for the tree already waiting is
-    // absorbed. closeReleaseRehomeWindow() ends the release's say.
+    // A released sheet stays displaced past its home tree's clip while the spring
+    // settles, so the release's re-homes wait for it; a later state change
+    // (fullscreen, pin, scratchpad) applies immediately and drops the wait.
+    // closeReleaseRehomeWindow() ends the release's say over where the view rests.
     const bool waitingForThisTree = m_pendingHomeParent != nullptr && m_pendingHomeParent == parent;
     const bool displacedInDragTree =
         parent != m_server->dragTree() && m_sceneTree->node.parent == m_server->dragTree() && dragSheetDisplaced();
@@ -862,11 +853,9 @@ namespace umbriel {
     if (leavingDragTree) {
       // Transient children elevated with this view follow it home.
       syncTransientChildren();
-      // The drag tree's elevation over pinned/fullscreen serves the whole drag
-      // presentation, not just the departing view: a settling release or an
-      // elevated transient child unmapping must not demote a drag that is still
-      // in progress. The elevation drops when the last drag-presented view
-      // leaves (the insert hint is not one).
+      // The elevation serves the whole drag presentation, not just the departing
+      // view: a settling release or an unmapping rider must not demote a drag still
+      // in progress. It drops when the last drag-presented view leaves.
       if (!dragTreeOccupied()) {
         wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
       }
@@ -904,9 +893,8 @@ namespace umbriel {
     const auto views = m_server->registry().all();
     return std::ranges::any_of(std::views::reverse(views), [this](const auto& view) {
       View* other = view.get();
-      // Registry membership outlives the scene node by construction (removal
-      // precedes node teardown on every path); assert it so a reordering fails
-      // here instead of dereferencing a dead node.
+      // Registry removal precedes node teardown on every path; assert it so a
+      // reordering fails here instead of reading a dead node.
       assert(other == nullptr || other->m_sceneTree != nullptr);
       return other != nullptr
           && other != this
