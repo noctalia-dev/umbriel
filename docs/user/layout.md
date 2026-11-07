@@ -325,6 +325,8 @@ Without a taskbar, `window-restore-minimized` restores the most recently minimiz
 
 `window-toggle-fullscreen` fills the complete output, ignoring struts and panel exclusive zones. A floating window keeps its normal size and position when moved through a tiled workspace while fullscreen and back to a stacking workspace. Leaving fullscreen then restores that original floating box. Entering fullscreen during a resize still restores the requested size afterward.
 
+`window-toggle-windowed-fullscreen` tells the application it is fullscreen without changing the window's size, position, borders, or place in the layout. A video player or browser then shows its fullscreen view inside the tile, so a video can fill a column next to other windows. Umbriel treats the window as windowed throughout: it does not cover panels, and window rules, VRR, and HDR see it as not fullscreen. While it is on, the application's own fullscreen button keeps the window in its tile, and leaving fullscreen from the application (for example pressing Escape in a video player) turns it off. `window-toggle-fullscreen` replaces it with real fullscreen, and leaving that returns the window to its tile.
+
 Visible floating windows above fullscreen require composition on that output. Once fullscreen covers them again, direct scanout can resume if the fullscreen buffer meets the other scanout requirements.
 
 `window-toggle-maximize` fills the layout area. Tiled columns keep struts and gaps; floating windows fill the output's usable area inside the same margin, and follow it when the gap, borders, struts, or usable area change.

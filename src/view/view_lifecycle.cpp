@@ -639,6 +639,8 @@ namespace umbriel {
     clearRegionState();
     m_restorePinnedAfterFullscreen = false;
     m_xCompositorFullscreen = false;
+    m_windowedFullscreen = false;
+    m_windowedFullscreenExitPending = false;
     if (m_pinned) {
       m_pinned = false;
       m_restoreTiledAfterUnpin = false;
@@ -863,6 +865,9 @@ namespace umbriel {
 
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
+    if (m_windowedFullscreenExitPending && m_toplevel != nullptr && !m_toplevel->current.fullscreen) {
+      m_windowedFullscreenExitPending = false;
+    }
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
