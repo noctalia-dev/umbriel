@@ -248,6 +248,7 @@ The bar is hidden while its window is fullscreen or maximized to the edges. Titl
 ```toml
 [appearance.blur]
 enabled = true
+client_requests = true
 optimized = true
 passes = 2
 radius = 5
@@ -259,10 +260,13 @@ saturation = 1.1
 
 `enabled` is the master switch. Individual surfaces still opt in through [window rules](window-rules.md) or [layer rules](layer-rules.md). Blur appears only where a surface is transparent.
 
-| Key          | Default | Description                                                    |
-| ------------ | ------- | -------------------------------------------------------------- |
-| `enabled`    | `true`  | Enable blur rendering.                                         |
-| `optimized`  | `true`  | Share one cached background blur across surfaces on an output. |
+Applications that draw their own backdrop blur can ask for it instead: Umbriel advertises `ext_background_effect_v1`, so a client names the part of its surface that should be blurred. A request turns blur on for that surface and limits it to the requested area, which combines with a rule rather than replacing it: an empty region means no blur. `client_requests = false` keeps the protocol advertised but ignores requests, so a client cannot opt itself in.
+
+| Key               | Default | Description                                                    |
+| ----------------- | ------- | -------------------------------------------------------------- |
+| `enabled`         | `true`  | Enable blur rendering.                                         |
+| `client_requests` | `true`  | Honor blur regions that clients request for their own surface. |
+| `optimized`       | `true`  | Share one cached background blur across surfaces on an output. |
 | `passes`     | `2`     | Blur passes from 0 to 8.                                       |
 | `radius`     | `5`     | Blur radius from 0 to 100.                                     |
 | `noise`      | `0.02`  | Noise overlay from 0.0 to 1.0.                                 |

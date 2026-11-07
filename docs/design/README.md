@@ -6,6 +6,7 @@ Start with the user guide when a detail affects configuration or normal use. Use
 
 - [Configuration reload](configuration-reload.md)
 - [Effects](effects.md)
+- [Client-requested background blur](background-effect.md)
 - [Audio shader input](audio-shader-input.md)
 - [Workspace lifecycle](workspace-lifecycle.md)
 - [Live workspace reveal](workspace-reveal.md)
