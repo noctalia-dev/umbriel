@@ -333,6 +333,8 @@ namespace umbriel {
     if (attached()) {
       return;
     }
+    // A new placement moots a minimize collapse in flight.
+    abandonMinimizeTransition();
     const wlr_box usable = floatingUsableArea();
 
     const bool automatic = !placementSize

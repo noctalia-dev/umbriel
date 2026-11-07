@@ -1175,6 +1175,39 @@ UMBRIEL_TEST(overviewWorkspaceCurveLoadsAndFallsBackToItsSpring) {
   CHECK_EQ(store.config().animation.overview.workspaceCurve.spring.stiffness, 1000.0);
 }
 
+UMBRIEL_TEST(windowsMinimizeParsesEveryStyleAndAnchor) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  // Defaults: a popin shrink toward the window's own centre.
+  file.write("[animation]\n");
+  CHECK(store.reload().success);
+  const auto& defaults = store.config().animation.windowsMinimize;
+  CHECK(defaults.enabled);
+  CHECK(defaults.style == "popin");
+  CHECK(defaults.anchor == umbriel::MinimizeAnchor::Center);
+  CHECK_EQ(defaults.scale, 0.5);
+
+  for (const auto& [name, expected] :
+       {std::pair{"center", umbriel::MinimizeAnchor::Center}, std::pair{"left", umbriel::MinimizeAnchor::Left},
+        std::pair{"right", umbriel::MinimizeAnchor::Right}, std::pair{"top_center", umbriel::MinimizeAnchor::TopCenter},
+        std::pair{"bottom_center", umbriel::MinimizeAnchor::BottomCenter}}) {
+    file.write(std::format("[animation.windows_minimize]\nanchor = \"{}\"\n", name));
+    CHECK(store.reload().success);
+    CHECK(store.config().animation.windowsMinimize.anchor == expected);
+  }
+  file.write("[animation.windows_minimize]\nstyle = \"fade\"\nscale = 0.25\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsMinimize.style == "fade");
+  CHECK_EQ(store.config().animation.windowsMinimize.scale, 0.25);
+  file.write("[animation.windows_minimize]\nstyle = \"zoom\"\n");
+  CHECK(store.reload().success);
+  // An unknown style keeps the default and names the accepted set.
+  CHECK(store.config().animation.windowsMinimize.style == "popin");
+  CHECK(containsDiagnostic(store, "windows_minimize.style \"zoom\" (expected \"popin\" or \"fade\")"));
+}
+
 UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

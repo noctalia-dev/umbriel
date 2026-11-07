@@ -450,6 +450,19 @@ namespace umbriel {
     void cancelPositionAnimation();
     void snapPosition(int x, int y);
     void animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve);
+    // Fade the window out and, for `popin`, collapse it toward the configured anchor. The node stays enabled until the
+    // fade lands, so the window is seen leaving; the reveal plays the same timeline in reverse.
+    void beginMinimizeConceal();
+    void beginMinimizeReveal();
+    // Land a conceal: disable the node and restore the resting presentation while it is off screen.
+    void finishMinimizeConceal();
+    // End a transition early and put the window back at its resting box: a restore that will not animate, an unmap, or
+    // a re-placement that makes the hide meaningless.
+    void abandonMinimizeTransition();
+    // True while a minimize fade runs in either direction. Neither runs a lifecycle shader.
+    bool minimizeFadeActive() const { return m_minimizePhase != MinimizePhase::None; }
+    // True only while the window is on its way out: the node stays enabled and the box belongs to the transition.
+    bool minimizeConcealing() const { return m_minimizePhase == MinimizePhase::Concealing; }
     const ViewPresentation& presentation() const { return m_presentation; }
     // Size/position to the full output and drop tile clips (exclusive zones do not apply).
     void applyFullscreenLayout(bool animate = false);
@@ -1048,6 +1061,16 @@ namespace umbriel {
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
     int m_openingSlide = 0;
+    // One minimize transition at a time. A conceal owns the node, the fade and the presented box until it lands; the
+    // reveal is the same timeline in reverse, so neither is a lifecycle transition.
+    enum class MinimizePhase : uint8_t {
+      None,
+      Concealing,
+      Revealing,
+    };
+    MinimizePhase m_minimizePhase = MinimizePhase::None;
+    // The resting box a conceal collapses from and returns to, captured when it starts.
+    wlr_box m_minimizeResting{};
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
     bool m_floatedByStackingLayout = false;

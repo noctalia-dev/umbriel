@@ -113,6 +113,7 @@ namespace umbriel {
       apply(animation.windowsResize.durationMs, animation.windowsResize.curve);
       apply(animation.workspaces.durationMs, animation.workspaces.curve);
       apply(animation.overview.durationMs, animation.overview.curve);
+      apply(animation.windowsMinimize.durationMs, animation.windowsMinimize.curve);
       apply(animation.scratchpad.durationMs, animation.scratchpad.curve);
       apply(animation.dialogs.durationMs, animation.dialogs.curve);
       apply(animation.border.durationMs, animation.border.curve);
@@ -176,6 +177,17 @@ namespace umbriel {
       return registry::choice("style", &E::style, std::move(choices));
     }
 
+    const registry::Choices<MinimizeAnchor>& minimizeAnchors() {
+      static const registry::Choices<MinimizeAnchor> choices{
+          {.name = "center", .value = MinimizeAnchor::Center},
+          {.name = "left", .value = MinimizeAnchor::Left},
+          {.name = "right", .value = MinimizeAnchor::Right},
+          {.name = "top_center", .value = MinimizeAnchor::TopCenter},
+          {.name = "bottom_center", .value = MinimizeAnchor::BottomCenter},
+      };
+      return choices;
+    }
+
     const registry::Fields<Config::Animation>& animationFields() {
       using registry::boolean;
       using registry::real;
@@ -201,6 +213,12 @@ namespace umbriel {
         fields.push_back(curveField("workspace_curve", &A::Overview::workspaceCurve));
         return fields;
       }();
+      static const registry::Fields<A::WindowsMinimize> windowsMinimize = timelineFields<A::WindowsMinimize>({
+          boolean("enabled", &A::WindowsMinimize::enabled),
+          real("scale", 0.1, 1.0, &A::WindowsMinimize::scale),
+          styleField<A::WindowsMinimize>({"popin", "fade"}),
+          registry::choice("anchor", &A::WindowsMinimize::anchor, minimizeAnchors()),
+      });
       static const registry::Fields<A::Scratchpad> scratchpad = eventFields<A::Scratchpad>({
           real("dim", 0.0, 1.0, &A::Scratchpad::dim),
           boolean("blur", &A::Scratchpad::blur),
@@ -284,6 +302,7 @@ namespace umbriel {
           table("windows_resize", &A::windowsResize, windowsResize),
           table("workspaces", &A::workspaces, workspaces),
           table("overview", &A::overview, overview),
+          table("windows_minimize", &A::windowsMinimize, windowsMinimize),
           table("scratchpad", &A::scratchpad, scratchpad),
           table("dialogs", &A::dialogs, dialogs),
           table("border", &A::border, border),

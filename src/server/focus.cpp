@@ -470,7 +470,9 @@ namespace umbriel {
         return std::nullopt;
       }
       auto* view = static_cast<View*>(tag);
+      // A concealing window is already minimized, so its fading frame takes no pointer input either.
       if (!view->mapped()
+          || view->minimizeConcealing()
           || (!view->pinned() && !view->onActiveWorkspace())
           || view->ssdFrame() == nullptr
           || !view->ssdFrame()->contains(node)) {
@@ -532,6 +534,11 @@ namespace umbriel {
     // Workspace transitions and scratchpad fade-outs keep an inactive view's scene enabled until the animation
     // finishes. They are visual snapshots, not interactive windows.
     if (!view->pinned() && !view->onActiveWorkspace()) {
+      *surface = nullptr;
+      return nullptr;
+    }
+    // A concealing window is already minimized: a click must not focus the remnant and restore it.
+    if (view->minimizeConcealing()) {
       *surface = nullptr;
       return nullptr;
     }

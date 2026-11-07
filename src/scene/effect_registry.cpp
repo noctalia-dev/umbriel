@@ -451,4 +451,11 @@ vec4 animation(vec2 uv) {
     bind(node, event, value, static_cast<float>(evaluateCurve(value.curve(), value.progress())), direction);
   }
 
+  void clearAnimationEffect(wlr_scene_node* node, AnimationEvent event) {
+    if (node == nullptr) {
+      return;
+    }
+    wlr_scene_node_set_animation(node, static_cast<unsigned>(event), nullptr, nullptr);
+  }
+
 } // namespace umbriel
