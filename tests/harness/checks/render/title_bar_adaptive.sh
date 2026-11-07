@@ -13,15 +13,20 @@ readonly FRAME="$UMBRIEL_RUNTIME_DIR/adaptive-bar.png"
 # The floating window is 480x300 at 173,109, so its 28 px bar covers 173..653 by 81..109. The title text is drawn
 # transparent and the buttons paint nothing, so this crop inside the bar reads the fill alone.
 readonly BAR="120x10+233+87"
+# The whole bar: x 173..653 by y 81..109, inset by a pixel. Covers the title and every button slot, so it can assert
+# what the bar may *not* show (a ghost, a fill over the text).
+readonly BAR_FULL="474x26+175+82"
 
 fail() {
   echo "$1"
   exit 1
 }
 
-# $1 color_source.
+# $1 color_source, $2 title colour (default transparent), $3 "closing" to enable a fade-out the checks can sample.
 configure() {
-  cat > "$UMBRIEL_CONFIG" <<EOF
+  local source=$1 text=${2:-"#00000000"} closing=${3:-}
+  {
+    cat <<EOF
 [general]
 xwayland = false
 show_cheatsheet = false
@@ -31,7 +36,19 @@ autostart = []
 scale = 1.0
 
 [animation]
-enabled = false
+EOF
+    if [[ $closing == closing ]]; then
+      cat <<'EOF'
+duration_ms = 1000
+curve = "linear"
+
+[animation.windows_out]
+style = "fade"
+EOF
+    else
+      echo 'enabled = false'
+    fi
+    cat <<EOF
 
 [appearance]
 border_width = 0
@@ -41,7 +58,7 @@ corner_radius = 0
 [appearance.title_bar]
 mode = "forced"
 height = 28
-color_source = "$1"
+color_source = "$source"
 button_background = false
 button_glyph = "never"
 
@@ -54,8 +71,8 @@ enabled = false
 [colors.title_bar]
 background = "#FF00FFFF"
 background_unfocused = "#FF00FFFF"
-text = "#00000000"
-text_unfocused = "#00000000"
+text = "$text"
+text_unfocused = "$text"
 
 [[window_rule]]
 match.title = "^adaptive-bar\$"
@@ -63,11 +80,13 @@ default_floating = true
 default_floating_size_px = { width = 480, height = 300 }
 default_position = { x = 173, y = 109, anchor = "top_left" }
 EOF
+  } > "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload > /dev/null
 }
 
 # Pixels in the bar crop matching a predicate.
 count() { "$UMBRIEL_PIXEL_PROBE" "$FRAME" count "$1" "$BAR"; }
+count_in() { "$UMBRIEL_PIXEL_PROBE" "$FRAME" count "$1" "$2"; }
 
 expect() {
   local predicate=$1 minimum=$2 what=$3 found
@@ -82,6 +101,22 @@ expect_none() {
   found=$(count "$predicate")
   if ((found != 0)); then
     fail "$what: $found pixels still match '$predicate'"
+  fi
+}
+
+expect_none_in() {
+  local predicate=$1 crop=$2 what=$3 found
+  found=$(count_in "$predicate" "$crop")
+  if ((found != 0)); then
+    fail "$what: $found pixels match '$predicate' inside $crop"
+  fi
+}
+
+expect_in() {
+  local predicate=$1 crop=$2 minimum=$3 what=$4 found
+  found=$(count_in "$predicate" "$crop")
+  if ((found < minimum)); then
+    fail "$what: only $found pixels match '$predicate' inside $crop"
   fi
 }
 
@@ -122,3 +157,19 @@ configure fixed
 grim "$FRAME"
 expect "$magenta" 1000 "the palette colour after switching back to fixed"
 expect_none "$red" "the window colour survived color_source = \"fixed\""
+
+# The bar's own close animation draws the title above the window-coloured fill, the way the live tree does. A
+# snapshot that stacks the fill over the text turns the bar into a flat smear for the whole animation.
+window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "adaptive-bar") | .id')
+[[ -n $window_id && $window_id != null ]] || fail "the adaptive-bar window is gone before the close animation"
+configure window "#FFFFFFFF" closing
+"$UMBRIEL" settle
+grim "$FRAME"
+expect_in 'r > 0.9 && g > 0.9 && b > 0.9' "$BAR_FULL" 40 "the title over the window-coloured fill"
+"$UMBRIEL" clock-freeze > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
+"$UMBRIEL" clock-advance 250 > /dev/null
+grim "$FRAME"
+expect_in 'r > 0.6 && g > 0.6 && b > 0.6' "$BAR_FULL" 40 "the title in the bar's close animation"
+"$UMBRIEL" clock-advance 1000 > /dev/null
+"$UMBRIEL" settle

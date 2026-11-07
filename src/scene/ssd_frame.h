@@ -22,6 +22,7 @@ struct clipped_region;
 
 namespace umbriel {
   class ColorManager;
+  struct TabLabel;
   class TabLabelCache;
 
   class SsdFrame final : public ViewChromeAttachment {
@@ -68,6 +69,10 @@ namespace umbriel {
         const std::optional<std::array<float, 4>>& outline
     );
     std::span<const TitleBarButton> visibleButtons() const;
+    // The title as the cache renders it, with `color`'s alpha scaled by `alpha`, re-measuring `parts` against the
+    // line's height. The live draw and the close snapshot share this so both ask for the same label.
+    const TabLabel*
+    measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const;
     void updateBlur();
     clipped_region frameClip(int x, int y) const;
     void clipBuffer(wlr_scene_buffer* buffer) const;

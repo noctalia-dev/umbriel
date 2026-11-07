@@ -23,9 +23,17 @@ namespace umbriel {
       return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
     }
 
-    // An adaptive bar carries any colour the window paints, so text and symbols keep a dark edge under them.
+    // An adaptive bar carries any colour the window paints, so text and symbols keep a dark edge under them. The edge
+    // takes its alpha from the glyph it backs, so a transparent or faded symbol does not leave a ghost of itself.
     const std::array<float, 4> kAdaptiveShadowColor{0.0F, 0.0F, 0.0F, 0.55F};
-    std::optional<std::array<float, 4>> adaptiveOutline() { return kAdaptiveShadowColor; }
+    std::optional<std::array<float, 4>> adaptiveOutline(float glyphAlpha) {
+      if (glyphAlpha <= 0.0F) {
+        return std::nullopt;
+      }
+      std::array<float, 4> outline = kAdaptiveShadowColor;
+      outline[3] *= glyphAlpha;
+      return outline;
+    }
   } // namespace
 
   SsdFrame::SsdFrame(
@@ -203,6 +211,9 @@ namespace umbriel {
     if (buffer == nullptr) {
       if (m_adaptive != nullptr) {
         wlr_scene_node_set_enabled(&m_adaptive->node, false);
+        // Drop the mirror as well: a node that keeps the buffer holds its lock, and the client's wl_buffer.release
+        // never arrives, which stalls a client that waits for it before drawing again.
+        wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
       }
       m_adaptiveBuffer = nullptr;
       return;
@@ -217,6 +228,11 @@ namespace umbriel {
     }
     wlr_fbox source{};
     wlr_surface_get_buffer_source_box(m_content, &source);
+    // Colour management can change on a commit that carries no buffer damage, so this cannot sit behind the guard
+    // below; the setters it reaches are no-ops when nothing changed.
+    if (m_colors != nullptr) {
+      m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
+    }
     const wlr_fbox strip = titleBarStripSourceBox(
         source, buffer->width, buffer->height, m_content->current.width, m_content->current.height,
         static_cast<uint32_t>(m_content->current.transform), kTitleBarStripHeight
@@ -227,12 +243,17 @@ namespace umbriel {
     const bool touched = pixman_region32_intersect(&stripRegion, &stripRegion, &m_content->buffer_damage);
     pixman_region32_fini(&stripRegion);
     const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
+    const int barX = m_background->node.x;
+    const int barY = m_background->node.y;
     const bool reshaped = m_adaptiveBuffer != buffer
         || !fboxEqual(m_adaptiveStrip, strip)
         || m_adaptiveTransform != m_content->current.transform
         || m_adaptiveWidth != m_background->width
         || m_adaptiveHeight != m_background->height
-        || m_adaptiveOpacity != opacity;
+        || m_adaptiveOpacity != opacity
+        || m_adaptive->node.x != barX
+        || m_adaptive->node.y != barY
+        || !fx_corner_radii_eq(m_adaptive->corners, m_background->corners);
     // A commit that leaves the top edge alone, and changes nothing about the bar, costs nothing.
     if (!touched && !reshaped) {
       return;
@@ -263,10 +284,7 @@ namespace umbriel {
     wlr_scene_buffer_set_corner_radii(m_adaptive, m_background->corners);
     // Unfocus dims the window's own colour over the palette's unfocused tone rather than dropping back to it.
     wlr_scene_buffer_set_opacity(m_adaptive, opacity);
-    if (m_colors != nullptr) {
-      m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
-    }
-    wlr_scene_node_set_position(&m_adaptive->node, m_background->node.x, m_background->node.y);
+    wlr_scene_node_set_position(&m_adaptive->node, barX, barY);
     wlr_scene_node_set_enabled(&m_adaptive->node, true);
   }
 
@@ -290,6 +308,34 @@ namespace umbriel {
     const auto clip = frameClip(buffer->node.x, buffer->node.y);
     wlr_scene_buffer_set_corner_radii(buffer, clip.corners);
     wlr_scene_buffer_set_corner_box(buffer, clip.inside ? &clip.area : nullptr);
+  }
+
+  // The title the cache renders for a bar of this geometry, with the layout re-measured against the line's height so
+  // the text can reach into the frame's rounded corners. The live bar and its snapshot ask the same way.
+  const TabLabel*
+  SsdFrame::measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const {
+    const auto& style = config().appearance.titleBar;
+    TabLabelRequest request{
+        .text = m_title,
+        .color = color,
+        .font = style.font,
+        .maxWidth = parts.title.width,
+        .scale = std::max(1.0, std::ceil(static_cast<double>(m_geometry.scale))),
+    };
+    request.color[3] *= alpha;
+    const TabLabel* label = m_labels->label(request);
+    if (label != nullptr) {
+      // The line's measured height determines how far the arc reaches into its horizontal space.
+      parts = titleBarLayout(
+          m_geometry.contentWidth, m_geometry.titleBarHeight, style.buttonPosition, visibleButtons(),
+          style.buttonGeometry(), radius, label->height
+      );
+      if (label->width > parts.title.width) {
+        request.maxWidth = parts.title.width;
+        label = m_labels->label(request);
+      }
+    }
+    return label;
   }
 
   std::span<const TitleBarButton> SsdFrame::visibleButtons() const {
@@ -385,7 +431,7 @@ namespace umbriel {
           || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
       updateButtonIcon(
           which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible,
-          style.colorSource == TitleBarColorSource::Window ? adaptiveOutline() : std::nullopt
+          style.colorSource == TitleBarColorSource::Window ? adaptiveOutline(glyphColor[3]) : std::nullopt
       );
     };
     button(
@@ -472,48 +518,39 @@ namespace umbriel {
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
     const auto& colors = config().colors.titleBar;
     const std::array<float, 4>& textColor = m_focused ? colors.text : colors.textUnfocused;
-    TabLabelRequest request{
-        .text = m_title,
-        .color = textColor,
-        .font = style.font,
-        .maxWidth = parts.title.width,
-        .scale = std::max(1.0, std::ceil(static_cast<double>(g.scale))),
-    };
-    const TabLabel* label = m_labels->label(request);
-    if (label != nullptr) {
-      // The line's measured height determines how far the arc reaches into its horizontal space.
-      parts = titleBarLayout(
-          g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry(), radius, label->height
-      );
-      if (label->width > parts.title.width) {
-        request.maxWidth = parts.title.width;
-        label = m_labels->label(request);
-      }
-    }
+    const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
+    // The cache is an LRU and the shadow lookup below can evict the entry `label` points at, so hold the buffer and
+    // remember the size now.
+    wlr_buffer* labelBuffer = label != nullptr ? wlr_buffer_lock(label->buffer) : nullptr;
+    const int labelWidth = label != nullptr ? label->width : 0;
+    const int labelHeight = label != nullptr ? label->height : 0;
     // A window-coloured bar can be lighter or darker than the palette, so the title keeps a dark edge under it.
     const bool shadowed = style.colorSource == TitleBarColorSource::Window;
     const TabLabel* shadow = nullptr;
-    if (shadowed && label != nullptr) {
-      TabLabelRequest shadowRequest = request;
-      shadowRequest.color = kAdaptiveShadowColor;
-      shadow = m_labels->label(shadowRequest);
+    if (shadowed && labelBuffer != nullptr && textColor[3] > 0.0F) {
+      // The shadow re-measures the same layout; keep the title's copy intact for the text below it.
+      TitleBarLayout shadowParts = parts;
+      shadow = measureTitle(kAdaptiveShadowColor, textColor[3], shadowParts, radius);
     }
-    if (label == nullptr) {
+    if (labelBuffer == nullptr) {
       if (m_label != nullptr) {
         wlr_scene_node_destroy(&m_label->node);
         m_label = nullptr;
       }
     } else {
       if (m_label == nullptr) {
-        m_label = wlr_scene_buffer_create(m_tree, label->buffer);
+        m_label = wlr_scene_buffer_create(m_tree, labelBuffer);
         m_label->point_accepts_input = rejectInput;
         wlr_scene_node_place_above(&m_label->node, m_adaptive != nullptr ? &m_adaptive->node : &m_background->node);
       } else {
-        wlr_scene_buffer_set_buffer(m_label, label->buffer);
+        wlr_scene_buffer_set_buffer(m_label, labelBuffer);
       }
-      wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(label->width)), std::max(1, zoomed(label->height)));
-      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - label->height) / 2));
+      wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(labelWidth)), std::max(1, zoomed(labelHeight)));
+      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - labelHeight) / 2));
       clipBuffer(m_label);
+    }
+    if (labelBuffer != nullptr) {
+      wlr_buffer_unlock(labelBuffer);
     }
     if (shadow == nullptr) {
       if (m_labelShadow != nullptr) {
@@ -586,11 +623,21 @@ namespace umbriel {
       wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     }
-    const auto copyBuffer = [&](const wlr_scene_buffer* source) {
-      if (source == nullptr || !source->node.enabled || source->buffer == nullptr) {
+    // A scene buffer drops its CPU-side buffer once the renderer has uploaded the texture, so a live chrome node can
+    // still be drawing while its buffer field is null. Re-ask the cache for the title and re-rasterize a symbol whose
+    // buffer has been released, or the snapshot loses the text and the glyphs.
+    const auto copyBuffer = [&](const wlr_scene_buffer* source, wlr_buffer* fallback) {
+      if (source == nullptr || !source->node.enabled) {
         return;
       }
-      auto* copy = wlr_scene_buffer_create(tree, source->buffer);
+      wlr_buffer* buffer = source->buffer != nullptr ? source->buffer : fallback;
+      if (buffer == nullptr) {
+        return;
+      }
+      auto* copy = wlr_scene_buffer_create(tree, buffer);
+      if (copy == nullptr) {
+        return;
+      }
       copy->point_accepts_input = rejectInput;
       wlr_scene_buffer_set_dest_size(copy, source->dst_width, source->dst_height);
       wlr_scene_buffer_set_opacity(copy, source->opacity);
@@ -598,10 +645,8 @@ namespace umbriel {
       wlr_scene_buffer_set_corner_box(copy, &source->corner_box);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     };
-    copyBuffer(m_label);
-    for (const auto* icon : m_icons) {
-      copyBuffer(icon);
-    }
+    // The adaptive fill sits above the palette rects and below the text, exactly as in the live tree: creating it last
+    // would stack it over the title and the buttons for the length of the close animation.
     if (m_adaptive != nullptr && m_adaptive->node.enabled && m_adaptive->buffer != nullptr) {
       auto* copy = wlr_scene_buffer_create(tree, m_adaptive->buffer);
       if (copy != nullptr) {
@@ -615,6 +660,42 @@ namespace umbriel {
         wlr_scene_node_set_position(
             &copy->node, m_tree->node.x + m_adaptive->node.x, m_tree->node.y + m_adaptive->node.y
         );
+      }
+    }
+    const auto& style = config().appearance.titleBar;
+    const auto& colors = config().colors.titleBar;
+    const std::array<float, 4>& textColor = m_focused ? colors.text : colors.textUnfocused;
+    const int radius = nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset);
+    TitleBarLayout parts = titleBarLayout(
+        m_geometry.contentWidth, m_geometry.titleBarHeight, style.buttonPosition, visibleButtons(),
+        style.buttonGeometry(), radius
+    );
+    const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
+    // The cache is an LRU and the shadow lookup below can evict the entry `label` points at, so hold the buffer.
+    wlr_buffer* labelBuffer = label != nullptr ? wlr_buffer_lock(label->buffer) : nullptr;
+    wlr_buffer* shadow = nullptr;
+    if (style.colorSource == TitleBarColorSource::Window && textColor[3] > 0.0F) {
+      TitleBarLayout shadowParts = parts;
+      if (const TabLabel* rendered = measureTitle(kAdaptiveShadowColor, textColor[3], shadowParts, radius)) {
+        shadow = rendered->buffer;
+      }
+    }
+    copyBuffer(m_labelShadow, shadow);
+    copyBuffer(m_label, labelBuffer);
+    if (labelBuffer != nullptr) {
+      wlr_buffer_unlock(labelBuffer);
+    }
+    for (size_t index = 0; index < m_icons.size(); ++index) {
+      const wlr_scene_buffer* icon = m_icons[index];
+      wlr_buffer* rendered = nullptr;
+      if (icon != nullptr && icon->node.enabled && icon->buffer == nullptr) {
+        rendered = renderTitleBarIcon(
+            static_cast<TitleBarButton>(index), m_iconSizes[index], m_iconColors[index], m_iconOutlines[index]
+        );
+      }
+      copyBuffer(icon, rendered);
+      if (rendered != nullptr) {
+        wlr_buffer_drop(rendered);
       }
     }
   }
