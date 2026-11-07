@@ -610,9 +610,19 @@ namespace umbriel {
       return;
     }
     m_onActiveWorkspace = active;
+    if (!active) {
+      // The deferred resting re-home exists only to keep visible displaced
+      // pixels out of the output clip. Once the workspace stops presenting the
+      // view there is nothing left to preserve, and a view parked under the
+      // shared drag tree cannot travel or hide with its workspace: it hangs on
+      // screen until the spring settles. Land the resting tree first.
+      flushReleaseRehome();
+    }
     // A hidden tab or a minimized window stays hidden when its workspace comes back.
     const bool shown = active && !m_tabHidden && !m_minimized;
-    if (m_sceneTree != nullptr) {
+    if (m_sceneTree != nullptr && !dragPresentationOwnsVisibility()) {
+      // A held window is the drag's payload; its presentation belongs to the
+      // drag tree, not to a workspace it was carried out of.
       wlr_scene_node_set_enabled(&m_sceneTree->node, shown);
     }
     m_decoration.setShadowEnabled(shown);
@@ -653,6 +663,11 @@ namespace umbriel {
       overview->onViewPresentationChanged(this);
     }
     m_server->scheduleIpcWindowsEvent();
+  }
+
+  bool View::dragPresentationOwnsVisibility() const {
+    const Cursor* cursor = m_server->cursor();
+    return cursor != nullptr && cursor->isDraggingView(this);
   }
 
   void View::setNodeEnabled(bool enabled) {
