@@ -2677,7 +2677,7 @@ namespace umbriel {
       // Persistent resting state: an inactive workspace keeps its nodes disabled so the shared scene never renders them
       // on any output. Active (and in-transition) views are enabled + clipped to their home output by
       // syncViewPresentation (arrange / slide).
-      if (!m_active && !m_inSwitchTransition) {
+      if (!m_active && !m_inSwitchTransition && !view->dragPresentationOwnsVisibility()) {
         view->setNodeEnabled(false);
       }
     }
@@ -2710,7 +2710,9 @@ namespace umbriel {
 
   void Workspace::showSwitchViews() {
     for (View* view : m_switchViews) {
-      if (!m_active) {
+      // A held window is presented by the drag tree; revealing it with this
+      // workspace would place it back under a workspace that just went away.
+      if (!m_active && !view->dragPresentationOwnsVisibility()) {
         view->setNodeEnabled(true);
       }
     }
