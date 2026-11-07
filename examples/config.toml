@@ -453,6 +453,15 @@ action = "overview-open"
 # curve = "spring:1,900"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
+# A minimizing floating window fades out and, with `popin`, shrinks toward its
+# anchor; the restore plays the same timeline back. `fade` keeps the geometry.
+# [animation.windows_minimize]
+# enabled = true
+# curve = "spring:1,1200"
+# style = "popin"           # Or "fade"
+# scale = 0.5
+# anchor = "center"         # Or "left", "right", "top_center", "bottom_center"
+
 # Without a size animation, a resized window shows its stretched old frame until
 # it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
 # new layout in one frame.
