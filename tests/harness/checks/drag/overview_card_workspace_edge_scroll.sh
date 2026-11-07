@@ -46,7 +46,7 @@ count=0
 for ws in 2 3 1; do
   "$UMBRIEL" msg workspace-switch "$ws" > /dev/null
   colour=$([[ $ws == 3 ]] && echo 800000 || echo 222222)
-  foot --title="card-wsedge-$ws" -o "colors.background=$colour" sh -c 'sleep 120' > /dev/null 2>&1 &
+  foot --title="card-wsedge-$ws" -o "colors-dark.background=$colour" sh -c 'sleep 120' > /dev/null 2>&1 &
   count=$((count + 1))
   for _ in $(seq 60); do
     [[ $("$UMBRIEL" windows --json | jq 'length') -eq $count ]] && break
