@@ -165,4 +165,33 @@ name = "three"
 mirror = { output = "HEADLESS-1", name = "three" }'
 expect_names HEADLESS-2 "own three" "mirror of a removed entry is dropped from the list"
 
-echo "mirrors take their declared place, report their origin, and never receive windows"
+# A reload that changes only what a mirror shows, or whether the entry is a mirror at all, reaches the live inventory.
+mirror_config() {
+  local rule=$1
+  write_config '[output.HEADLESS-1]
+position = [0, 0]
+workspaces = ["one", "three"]
+[output.HEADLESS-2]
+position = [1280, 0]
+workspaces = ["own", "three"]'"$rule"
+}
+mirror_config '
+[[workspace]]
+output = "HEADLESS-2"
+name = "three"
+mirror = { output = "HEADLESS-1", name = "one" }'
+expect_field HEADLESS-2 three mirror_of "$(workspace_field HEADLESS-1 one id)" "a source change alone retargets the mirror"
+
+mirror_config ''
+expect_field HEADLESS-2 three mirror false "removing the mirror rule turns the entry into an ordinary workspace"
+expect_field HEADLESS-2 three mirror_of null "an ordinary workspace shows nothing"
+
+mirror_config '
+[[workspace]]
+output = "HEADLESS-2"
+name = "three"
+mirror = { output = "HEADLESS-1", name = "three" }'
+expect_field HEADLESS-2 three mirror true "adding a mirror rule turns an ordinary workspace into a mirror"
+expect_field HEADLESS-2 three mirror_of "$(workspace_field HEADLESS-1 three id)" "the new mirror shows its source"
+
+echo "mirrors take their declared place, report their origin, follow reloads, and never receive windows"

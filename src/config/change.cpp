@@ -173,7 +173,11 @@ namespace umbriel {
 
         const WorkspaceConfig& lhs = before.workspaceRules[beforeIndex++];
         const WorkspaceConfig& rhs = after.workspaceRules[afterIndex++];
-        if (lhs.name != rhs.name || !outputNamesEqual(lhs.output, rhs.output)) {
+        // A mirror rule's source decides which workspace the entry shows, so it is part of the inventory too.
+        if (lhs.name != rhs.name
+            || !outputNamesEqual(lhs.output, rhs.output)
+            || !outputNamesEqual(lhs.mirror.output, rhs.mirror.output)
+            || lhs.mirror.name != rhs.mirror.name) {
           return false;
         }
       }
