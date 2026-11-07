@@ -854,10 +854,8 @@ namespace umbriel {
     releaseLayoutMotion(view);
     std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
     std::erase(m_motion.frozen, view);
-    // A member that leaves can no longer be the one shown focused.
-    if (m_focusShownBeforeReflow == view) {
-      m_focusShownBeforeReflow = nullptr;
-    }
+    // Outside the layout it no longer waits for an arrange.
+    view->applyDeferredBorderFocus();
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -878,6 +876,24 @@ namespace umbriel {
   void Workspace::holdCloseSnapshot(CloseSnapshotId snapshot) {
     if (snapshot != kInvalidCloseSnapshot && config().animation.holdsClosedTile()) {
       m_heldCloseSnapshots.push_back(snapshot);
+    }
+  }
+
+  void Workspace::deferFocusChrome() {
+    const auto& animation = config().animation;
+    m_focusChromeDeferred = animation.windowsResize.waitsForClient(animation.enabled);
+  }
+
+  bool Workspace::defersFocusChrome(const View* view) const {
+    return (m_focusChromeDeferred && m_layout->columnOf(view) >= 0)
+        || (m_motion.waiting && std::ranges::contains(m_motion.frozen, view));
+  }
+
+  void Workspace::applyDeferredFocusChrome() {
+    for (View* view : m_views) {
+      if (view != nullptr && !defersFocusChrome(view)) {
+        view->applyDeferredBorderFocus();
+      }
     }
   }
 
@@ -968,15 +984,16 @@ namespace umbriel {
     // Clearing here, rather than only in flushArrange, is what makes mixing the two safe: a direct arrange() satisfies
     // whatever was marked earlier in the frame, so the flush does not repeat it.
     m_arrangePending = false;
-    // Held close snapshots outlive this arrange only while its tiles wait for their clients. A note of the focus shown
-    // before a reflow is for this arrange alone.
+    // Held close snapshots outlive this arrange only while its tiles wait for their clients. Focus chrome deferred for
+    // this arrange lands at its end, except on the members it froze.
     struct HeldRelease {
       Workspace& workspace;
       explicit HeldRelease(Workspace& owner) : workspace(owner) {}
       HeldRelease(const HeldRelease&) = delete;
       HeldRelease& operator=(const HeldRelease&) = delete;
       ~HeldRelease() {
-        workspace.m_focusShownBeforeReflow.reset();
+        workspace.m_focusChromeDeferred = false;
+        workspace.applyDeferredFocusChrome();
         if (!workspace.m_motion.waiting) {
           workspace.releaseHeldCloseSnapshots();
         }
@@ -1478,9 +1495,7 @@ namespace umbriel {
       if (wait
           && (entry.from.width != entry.to.width || entry.from.height != entry.to.height)
           && !std::ranges::contains(m_motion.frozen, entry.view)) {
-        const std::optional<bool> shownFocused =
-            m_focusShownBeforeReflow ? std::optional{*m_focusShownBeforeReflow == entry.view} : std::nullopt;
-        if (const CloseSnapshotId id = entry.view->captureHeldSnapshot(shownFocused); id != kInvalidCloseSnapshot) {
+        if (const CloseSnapshotId id = entry.view->captureHeldSnapshot(); id != kInvalidCloseSnapshot) {
           trackCloseSnapshot(id, entry.view->presentedBox());
           m_heldCloseSnapshots.push_back(id);
           m_motion.frozen.push_back(entry.view);
@@ -1551,6 +1566,8 @@ namespace umbriel {
 
   void Workspace::resumeHeldOpeners() {
     m_motion.frozen.clear();
+    // A frozen frame showed its member's focus as it was; the live member takes the focus it was given meanwhile.
+    applyDeferredFocusChrome();
     for (const LayoutMotion::Opener& opener : std::exchange(m_motion.openers, {})) {
       if (!heldOpenerAlive(opener.view)) {
         continue;

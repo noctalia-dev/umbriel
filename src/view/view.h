@@ -250,7 +250,10 @@ namespace umbriel {
     void deferActivation(bool trusted);
     // Focus ring only. Public alongside setForeignActivated because both are
     // activation chrome the focus manager drives from outside.
+    // While the workspace defers focus chrome, a layout member records `focused` instead of drawing it.
     void setBorderFocused(bool focused);
+    // Draw the focus a deferred setBorderFocused recorded, if any.
+    void applyDeferredBorderFocus();
     // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
@@ -498,9 +501,8 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    // A set `shownFocused` draws the border and title bar focused or not, whatever the focus is now; `withShadow`
-    // copies the shadow.
-    CloseSnapshotId captureSnapshot(bool held, std::optional<bool> shownFocused, bool withShadow);
+    // `withShadow` copies the shadow.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -667,10 +669,8 @@ namespace umbriel {
     void clearViewSurfaceWatches();
     [[nodiscard]] CloseSnapshotId beginCloseAnimation();
     // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
-    // stays under it at the same box and keeps drawing its own shadow, so the copy takes none. A set `shownFocused`
-    // keeps the ring the screen showed before focus moved with the same held reflow, into a tile it still hides or out
-    // of one it closes.
-    [[nodiscard]] CloseSnapshotId captureHeldSnapshot(std::optional<bool> shownFocused);
+    // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
+    [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop
@@ -1088,6 +1088,7 @@ namespace umbriel {
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
+    std::optional<bool> m_deferredBorderFocus;
     bool m_focusDimInitialized = false;
     // Opening identity can settle independently. The first title and first
     // non-none content type each get one chance to add one-shot rule effects.

@@ -156,6 +156,11 @@ namespace umbriel {
   }
 
   void View::setBorderFocused(bool focused) {
+    if (m_workspace != nullptr && m_workspace->defersFocusChrome(this)) {
+      m_deferredBorderFocus = focused;
+      return;
+    }
+    m_deferredBorderFocus.reset();
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
     if (m_chromeAttachment != nullptr) {
@@ -183,6 +188,12 @@ namespace umbriel {
       applyDynamicRules();
     } else {
       updateBorderColor(focusChanged);
+    }
+  }
+
+  void View::applyDeferredBorderFocus() {
+    if (const std::optional<bool> focused = std::exchange(m_deferredBorderFocus, std::nullopt)) {
+      setBorderFocused(*focused);
     }
   }
 
