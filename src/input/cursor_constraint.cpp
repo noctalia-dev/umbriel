@@ -74,7 +74,7 @@ namespace umbriel {
     View* view = View::fromSurface(root);
     return view != nullptr
         && view->mapped()
-        && view->onActiveWorkspace()
+        && interactive(*view)
         && (!ruleConstraintApplies(*view) || ruleConstraintEligible(*view));
   }
 
@@ -116,7 +116,7 @@ namespace umbriel {
 
   bool Cursor::ruleConstraintEligible(View& view) const {
     return view.mapped()
-        && view.onActiveWorkspace()
+        && interactive(view)
         && !m_server->sessionLocked()
         && isPassthrough()
         && !m_server->overview()->active()
@@ -134,14 +134,21 @@ namespace umbriel {
       return;
     }
     // Scene coordinates include workspace movement; presented size excludes decorations and shadows.
-    // Match the output's scene-root clipping at shared monitor edges.
+    // Match the output's scene-root clipping at shared monitor edges. Through a mirror the source may be hidden, so
+    // its scene position still holds although the scene does not draw it there.
+    const std::optional<MirrorMapping> mirror = mirrorFor(view);
     wlr_box bounds = view->presentedBox();
-    if (!wlr_scene_node_coords(&view->sceneTree()->node, &bounds.x, &bounds.y)) {
+    if (!wlr_scene_node_coords(&view->sceneTree()->node, &bounds.x, &bounds.y) && !mirror) {
       return;
     }
     const wlr_box outputBox = output->layoutBox();
-    if (!wlr_box_intersection(&bounds, &bounds, &outputBox)
-        || !wlr_box_contains_point(&bounds, m_cursor->x, m_cursor->y)) {
+    if (!wlr_box_intersection(&bounds, &bounds, &outputBox)) {
+      return;
+    }
+    if (mirror) {
+      bounds = mirror->toReceiver(bounds);
+    }
+    if (!wlr_box_contains_point(&bounds, m_cursor->x, m_cursor->y)) {
       return;
     }
     // An obscured window must not capture input belonging to a layer surface or another window.

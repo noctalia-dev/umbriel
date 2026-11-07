@@ -1073,22 +1073,26 @@ namespace umbriel {
     return workspace != nullptr && grab != nullptr && grab->workspace == workspace;
   }
 
-  bool Cursor::mirrorTransform(View* view, double* scale, double* tx, double* ty) const {
-    *scale = 1;
-    *tx = 0;
-    *ty = 0;
+  std::optional<MirrorMapping> Cursor::mirrorFor(const View* view) const {
     if (view == nullptr || view->workspace() == nullptr) {
-      return false;
+      return std::nullopt;
     }
     auto* receiving =
         m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
-    Workspace* copy = receiving != nullptr ? receiving->workspaceGroup()->active() : nullptr;
+    const Workspace* copy = receiving != nullptr ? receiving->workspaceGroup()->active() : nullptr;
     if (copy == nullptr || !copy->mirror() || copy->mirrorSource() != view->workspace()) {
-      return false;
+      return std::nullopt;
     }
     const WorkspaceMirror* renderer = copy->mirrorRenderer();
-    const std::optional<MirrorMapping> mapping = renderer != nullptr ? renderer->mapping() : std::nullopt;
+    return renderer != nullptr ? renderer->mapping() : std::nullopt;
+  }
+
+  bool Cursor::mirrorTransform(View* view, double* scale, double* tx, double* ty) const {
+    const std::optional<MirrorMapping> mapping = mirrorFor(view);
     if (!mapping) {
+      *scale = 1;
+      *tx = 0;
+      *ty = 0;
       return false;
     }
     // The inverse of the presentation, as an affine map: source = receiving * scale + translation.
@@ -1097,6 +1101,8 @@ namespace umbriel {
     *ty = mapping->toSourceY(0);
     return true;
   }
+
+  bool Cursor::interactive(const View& view) const { return view.onActiveWorkspace() || mirrorFor(&view).has_value(); }
 
   void Cursor::captureGrabTransform(View* view) {
     m_grabViaMirror = mirrorTransform(view, &m_grabInputScale, &m_grabTranslateX, &m_grabTranslateY);

@@ -2,6 +2,7 @@
 #include "layout/drop_target.h"
 #include "scene/ssd_frame_geometry.h"
 #include "view/window_region.h"
+#include "workspace/mirror_fit.h"
 
 #include <cstdint>
 #include <memory>
@@ -287,6 +288,10 @@ namespace umbriel {
 
   private:
     bool mirrorTransform(View* view, double* scale, double* tx, double* ty) const;
+    // The mapping of the mirror on the pointer's output that shows `view`'s workspace, if any.
+    std::optional<MirrorMapping> mirrorFor(const View* view) const;
+    // Whether `view` takes pointer input where the pointer is: on its active workspace, or through such a mirror.
+    bool interactive(const View& view) const;
     struct Point {
       double x;
       double y;
