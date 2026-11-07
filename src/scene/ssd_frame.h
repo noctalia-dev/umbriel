@@ -103,7 +103,8 @@ namespace umbriel {
     wlr_scene_buffer* m_adaptive = nullptr;
     wlr_surface* m_content = nullptr;
     wlr_box m_contentGeometry{};
-    wlr_client_buffer* m_ignoredBuffer = nullptr;
+    // Whether the mirrored buffer carries the mark that lets wlroots reuse its texture for in-place shm damage.
+    bool m_ignoredLock = false;
     // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};

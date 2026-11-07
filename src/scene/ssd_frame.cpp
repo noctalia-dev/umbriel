@@ -170,11 +170,21 @@ namespace umbriel {
     updateAdaptive(true);
   }
 
-  void SsdFrame::ignoreLock(wlr_buffer* buffer) { m_ignoredBuffer = umbrielfx_scene_buffer_ignore_client_lock(buffer); }
+  void SsdFrame::ignoreLock(wlr_buffer* buffer) {
+    m_ignoredLock = umbrielfx_scene_buffer_ignore_client_lock(buffer) != nullptr;
+  }
 
   void SsdFrame::releaseIgnoredLock() {
-    umbrielfx_scene_buffer_drop_ignored_client_lock(m_ignoredBuffer);
-    m_ignoredBuffer = nullptr;
+    if (!m_ignoredLock) {
+      return;
+    }
+    m_ignoredLock = false;
+    // Ask the scene buffer which buffer it holds instead of remembering the client buffer: once the client releases
+    // it, the scene drops its lock and the client buffer can be freed, which would leave a remembered pointer
+    // dangling. Nothing to undo when the scene has already let go.
+    if (m_adaptive != nullptr && m_adaptive->buffer != nullptr) {
+      umbrielfx_scene_buffer_drop_ignored_client_lock(wlr_client_buffer_get(m_adaptive->buffer));
+    }
   }
 
   void SsdFrame::updateBlur() {
