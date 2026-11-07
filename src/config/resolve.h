@@ -38,6 +38,8 @@ namespace umbriel {
   // Return the sole fixed-output inventory containing this exact workspace
   // name. Null means no fixed owner or an ambiguous owner.
   const OutputRule* uniqueFixedWorkspaceOwner(const Config& config, std::string_view name);
+  // The [[workspace]] mirror rule for workspace `name` on the output rule `output`, or null when it is not a mirror.
+  const WorkspaceConfig* findWorkspaceMirror(const Config& config, std::string_view output, std::string_view name);
   // Descriptor-specific output sections override connector fallbacks.
   const OutputRule* findOutputRule(const Config& config, const OutputIdentity& identity);
   // Direction the output arranges its workspaces along; vertical when no rule matches.

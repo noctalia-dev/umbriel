@@ -26,8 +26,7 @@ namespace umbriel {
       return it != loaded.outputs.end() ? &*it : nullptr;
     }
 
-    // A count, a list of names, or "dynamic". A list entry "<name>@<output>" declares a mirror of that output's
-    // workspace of the same name; it holds the list position and the name, and the mirror is recorded beside it.
+    // A count, a list of names, or "dynamic".
     void parseOutputWorkspaces(const toml::node& node, const std::string& path, OutputRule& rule) {
       if (const auto count = node.value<std::int64_t>()) {
         if (*count < 1 || *count > static_cast<std::int64_t>(kMaxWorkspaces)) {
@@ -44,7 +43,6 @@ namespace umbriel {
           valid = false;
         }
         std::vector<std::string> parsed;
-        std::vector<OutputRule::WorkspaceMirror> mirrors;
         parsed.reserve(names->size());
         for (const auto& item : *names) {
           const auto value = item.value<std::string>();
@@ -53,26 +51,15 @@ namespace umbriel {
             valid = false;
             continue;
           }
-          std::string name = *value;
-          if (const size_t at = value->rfind('@'); at != std::string::npos) {
-            if (at == 0 || at + 1 == value->size()) {
-              errorAt(item.source(), R"({} entry '{}' must be "<name>@<output>")", path, *value);
-              valid = false;
-              continue;
-            }
-            mirrors.push_back({.name = value->substr(0, at), .origin = value->substr(at + 1)});
-            name = mirrors.back().name;
-          }
-          if (std::ranges::find(parsed, name) != parsed.end()) {
-            errorAt(item.source(), "{} contains duplicate name '{}'", path, name);
+          if (std::ranges::find(parsed, *value) != parsed.end()) {
+            errorAt(item.source(), "{} contains duplicate name '{}'", path, *value);
             valid = false;
             continue;
           }
-          parsed.push_back(std::move(name));
+          parsed.push_back(*value);
         }
         if (valid) {
           rule.workspaces = std::move(parsed);
-          rule.mirrors = std::move(mirrors);
         }
         return;
       }
@@ -204,26 +191,12 @@ namespace umbriel {
                     || reference.context == "output." + existing.name + ".screen_cast_effect");
           });
         });
-        std::erase_if(context.mirrorReferences, [&](const WorkspaceMirrorReference& reference) {
-          return outputNamesEqual(reference.output, name);
-        });
         std::erase_if(loaded.outputs, [&](const OutputRule& existing) {
           return outputNamesEqual(existing.name, name);
         });
       }
       if (const toml::node* minNode = keys.node("min_workspaces"); minNode != nullptr && rule.workspaces) {
         errorAt(minNode->source(), "{} requires dynamic workspaces", keys.qualified("min_workspaces"));
-      }
-      if (const toml::node* listNode = keys.node("workspaces"); listNode != nullptr && listNode->is_array()) {
-        for (const auto& item : *listNode->as_array()) {
-          const auto entry = item.value<std::string>();
-          const size_t at = entry ? entry->rfind('@') : std::string::npos;
-          if (at != std::string::npos && at > 0 && at + 1 < entry->size()) {
-            context.mirrorReferences.push_back(
-                {.output = name, .name = entry->substr(0, at), .origin = entry->substr(at + 1), .source = item.source()}
-            );
-          }
-        }
       }
       loaded.outputs.push_back(std::move(rule));
       recordRuleEffect(context, keys, "screen_effect", EffectKind::Screen, [&loaded, name] {
@@ -242,52 +215,6 @@ namespace umbriel {
 
   registry::Field<Config> outputTable() {
     return registry::namedTables<Config>("output", outputFields(), acceptOutput);
-  }
-
-  void validateWorkspaceMirrors(const Config& loaded, const std::vector<WorkspaceMirrorReference>& references) {
-    for (const WorkspaceMirrorReference& reference : references) {
-      const auto origin = std::ranges::find_if(loaded.outputs, [&](const OutputRule& rule) {
-        return outputNamesEqual(rule.name, reference.origin);
-      });
-      if (origin == loaded.outputs.end()) {
-        errorAt(
-            reference.source, "workspace mirror '{}@{}': unknown output '{}'", reference.name, reference.origin,
-            reference.origin
-        );
-        continue;
-      }
-      if (outputNamesEqual(origin->name, reference.output)) {
-        errorAt(reference.source, "workspace mirror '{}@{}' mirrors its own output", reference.name, reference.origin);
-        continue;
-      }
-      const auto* names = origin->workspaces ? std::get_if<std::vector<std::string>>(&*origin->workspaces) : nullptr;
-      if (names == nullptr || std::ranges::find(*names, reference.name) == names->end()) {
-        errorAt(
-            reference.source, "workspace mirror '{}@{}': output '{}' has no workspace '{}'", reference.name,
-            reference.origin, reference.origin, reference.name
-        );
-        continue;
-      }
-      if (origin->findMirror(reference.name) != nullptr) {
-        errorAt(
-            reference.source, "workspace mirror '{}@{}': '{}' on '{}' is itself a mirror", reference.name,
-            reference.origin, reference.name, reference.origin
-        );
-      }
-    }
-    // Windows open on an output's own workspaces: an output that lists only mirrors would have nowhere to put them.
-    for (const OutputRule& rule : loaded.outputs) {
-      const auto* names = rule.workspaces ? std::get_if<std::vector<std::string>>(&*rule.workspaces) : nullptr;
-      if (rule.mirrors.empty() || names == nullptr || rule.mirrors.size() < names->size()) {
-        continue;
-      }
-      const auto first = std::ranges::find_if(references, [&](const WorkspaceMirrorReference& reference) {
-        return outputNamesEqual(reference.output, rule.name);
-      });
-      if (first != references.end()) {
-        errorAt(first->source, "output '{}' lists only mirrors: it needs at least one workspace of its own", rule.name);
-      }
-    }
   }
 
 } // namespace umbriel

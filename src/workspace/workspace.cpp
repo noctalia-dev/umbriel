@@ -164,10 +164,10 @@ namespace umbriel {
 
   Workspace::Workspace(
       WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
-      bool named, ResolvedLayoutConfig layoutConfig, std::string mirrorOrigin
+      bool named, ResolvedLayoutConfig layoutConfig, WorkspaceMirrorSource mirrorOf
   )
       : m_group(&group), m_handle(handle), m_id(std::move(id)), m_name(std::move(name)), m_index(index), m_named(named),
-        m_mirrorOrigin(std::move(mirrorOrigin)), m_layout(createLayout(layoutConfig.mode)),
+        m_mirrorOf(std::move(mirrorOf)), m_layout(createLayout(layoutConfig.mode)),
         m_layoutConfig(std::move(layoutConfig)), m_layoutMode(m_layoutConfig.mode) {
     m_launchAnchor->workspace = this;
     m_layout->setConfig(&m_layoutConfig);
@@ -2723,7 +2723,7 @@ namespace umbriel {
     m_server->scheduleIpcWorkspacesEvent();
     return std::make_unique<Workspace>(
         *this, handle, std::move(id), std::move(workspace.name), index, workspace.named, std::move(workspace.layout),
-        std::move(workspace.mirrorOf)
+        std::move(workspace.mirror)
     );
   }
 
@@ -2962,7 +2962,7 @@ namespace umbriel {
             && workspace != nullptr
             && workspace->named()
             && workspace->name() == resolved[i].name
-            && workspace->mirrorOrigin() == resolved[i].mirrorOf;
+            && workspace->mirrorOf() == resolved[i].mirror;
       });
       if (match != old.end()) {
         next[i] = std::move(*match);
@@ -2975,7 +2975,7 @@ namespace umbriel {
           && i < old.size()
           && old[i] != nullptr
           && !old[i]->mirror()
-          && resolved[i].mirrorOf.empty()) {
+          && resolved[i].mirror.output.empty()) {
         next[i] = std::move(old[i]);
       }
       if (next[i] != nullptr) {
@@ -3873,17 +3873,17 @@ namespace umbriel {
   }
 
   namespace {
-    // The workspace a mirror shows: the one of its name on the output its origin names, or, once that output is gone,
-    // the refuge its windows were evacuated to. Never a workspace of the mirror's own output.
+    // The workspace a mirror shows: the one `mirrorOf()` names, or, once that output is gone, the refuge its windows
+    // were evacuated to. Never a workspace of the mirror's own output.
     Workspace* mirrorSourceFor(Server& server, const Workspace& mirror) {
       for (const auto& candidate : server.outputs()) {
         WorkspaceGroup* group = candidate->workspaceGroup();
         if (group == nullptr
             || group == mirror.group()
-            || outputNameMatch(candidate->identity(), mirror.mirrorOrigin()) == OutputNameMatch::None) {
+            || outputNameMatch(candidate->identity(), mirror.mirrorOf().output) == OutputNameMatch::None) {
           continue;
         }
-        if (Workspace* source = group->workspaceNamed(mirror.name())) {
+        if (Workspace* source = group->workspaceNamed(mirror.mirrorOf().name)) {
           return source;
         }
       }
@@ -3898,8 +3898,8 @@ namespace umbriel {
           if (origin
               && refuge->named()
               && !refuge->mirror()
-              && refuge->name() == mirror.name()
-              && outputNameMatch(origin->identity(), mirror.mirrorOrigin()) != OutputNameMatch::None) {
+              && refuge->name() == mirror.mirrorOf().name
+              && outputNameMatch(origin->identity(), mirror.mirrorOf().output) != OutputNameMatch::None) {
             return refuge;
           }
         }

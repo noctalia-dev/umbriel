@@ -205,7 +205,9 @@ namespace umbriel {
     const OutputRule* owner = nullptr;
     for (const OutputRule& output : config.outputs) {
       const auto* names = output.workspaces ? std::get_if<std::vector<std::string>>(&*output.workspaces) : nullptr;
-      if (names == nullptr || std::ranges::find(*names, name) == names->end() || output.findMirror(name) != nullptr) {
+      if (names == nullptr
+          || std::ranges::find(*names, name) == names->end()
+          || findWorkspaceMirror(config, output.name, name) != nullptr) {
         continue;
       }
       if (owner != nullptr) {
@@ -214,6 +216,13 @@ namespace umbriel {
       owner = &output;
     }
     return owner;
+  }
+
+  const WorkspaceConfig* findWorkspaceMirror(const Config& config, std::string_view output, std::string_view name) {
+    const auto rule = std::ranges::find_if(config.workspaceRules, [&](const WorkspaceConfig& candidate) {
+      return candidate.mirrors() && candidate.name == name && outputNamesEqual(candidate.output, output);
+    });
+    return rule != config.workspaceRules.end() ? &*rule : nullptr;
   }
 
   const OutputRule* findOutputRule(const Config& config, const OutputIdentity& identity) {
@@ -603,10 +612,10 @@ namespace umbriel {
     result.workspaces.reserve(names.size());
     for (size_t index = 0; index < names.size(); ++index) {
       const auto& name = names[index];
-      const OutputRule::WorkspaceMirror* mirror = rule != nullptr ? rule->findMirror(name) : nullptr;
+      const WorkspaceConfig* mirror = rule != nullptr ? findWorkspaceMirror(config, rule->name, name) : nullptr;
       result.workspaces.push_back(
           {name, true, resolveWorkspaceLayout(config, identity, name, index),
-           mirror != nullptr ? mirror->origin : std::string{}}
+           mirror != nullptr ? mirror->mirror : WorkspaceMirrorSource{}}
       );
     }
     return result;

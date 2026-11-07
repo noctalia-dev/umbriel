@@ -58,7 +58,7 @@ namespace umbriel {
 
     Workspace(
         WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
-        bool named, ResolvedLayoutConfig layoutConfig, std::string mirrorOrigin
+        bool named, ResolvedLayoutConfig layoutConfig, WorkspaceMirrorSource mirrorOf
     );
     ~Workspace();
 
@@ -76,11 +76,11 @@ namespace umbriel {
     bool named() const { return m_named; }
     bool transferred() const { return m_transferred; }
     size_t index() const { return m_index; }
-    // A mirror shows another workspace's windows and owns none. `mirrorOrigin` is the configured output name it was
-    // declared against; `mirrorSource` is the workspace it currently shows, null while that output is absent. The
-    // source stays the same workspace when it moves to another output.
-    bool mirror() const { return !m_mirrorOrigin.empty(); }
-    const std::string& mirrorOrigin() const { return m_mirrorOrigin; }
+    // A mirror shows another workspace's windows and owns none. `mirrorOf` is the configured workspace it shows,
+    // `mirrorOf().name` on the output rule `mirrorOf().output`; `mirrorSource` is the workspace it currently shows,
+    // null while that output is absent. The source stays the same workspace when it moves to another output.
+    bool mirror() const { return !m_mirrorOf.output.empty(); }
+    const WorkspaceMirrorSource& mirrorOf() const { return m_mirrorOf; }
     Workspace* mirrorSource() const { return m_mirrorSource; }
     void setMirrorSource(Workspace* source);
     // The workspace whose layout holds the windows shown here: the source of a mirror, null while it has none.
@@ -341,7 +341,7 @@ namespace umbriel {
     size_t m_index = 0;
     bool m_named = false;
     bool m_transferred = false;
-    std::string m_mirrorOrigin;
+    WorkspaceMirrorSource m_mirrorOf;
     Workspace* m_mirrorSource = nullptr;
     std::vector<Workspace*> m_mirrors;
     bool m_active = false;

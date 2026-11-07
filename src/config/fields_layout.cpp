@@ -236,10 +236,10 @@ namespace umbriel {
     }
 
     // A non-empty string a workspace rule selects by; anything else is an error.
-    registry::Field<WorkspaceConfig> workspaceSelector(std::string_view key, std::string WorkspaceConfig::* member) {
-      return registry::custom<WorkspaceConfig>(
+    template <typename T> registry::Field<T> nonEmptyString(std::string_view key, std::string T::* member) {
+      return registry::custom<T>(
           key, registry::KeyDescription("string"),
-          [member](const toml::node& node, const std::string& path, WorkspaceConfig& target, registry::ReadContext&) {
+          [member](const toml::node& node, const std::string& path, T& target, registry::ReadContext&) {
             if (const auto value = node.value<std::string>()) {
               if (value->empty()) {
                 errorAt(node.source(), "{} must not be empty", path);
@@ -253,10 +253,18 @@ namespace umbriel {
       );
     }
 
+    const registry::Fields<WorkspaceMirrorSource>& mirrorFields() {
+      static const registry::Fields<WorkspaceMirrorSource> fields{
+          nonEmptyString("output", &WorkspaceMirrorSource::output),
+          nonEmptyString("name", &WorkspaceMirrorSource::name),
+      };
+      return fields;
+    }
+
     const registry::Fields<WorkspaceConfig>& workspaceFields() {
       static const registry::Fields<WorkspaceConfig> fields{
-          workspaceSelector("name", &WorkspaceConfig::name),
-          workspaceSelector("output", &WorkspaceConfig::output),
+          nonEmptyString("name", &WorkspaceConfig::name),
+          nonEmptyString("output", &WorkspaceConfig::output),
           registry::custom<WorkspaceConfig>(
               "index", registry::KeyDescription("int").withRange(1, kMaxWorkspaces),
               [](const toml::node& node, const std::string& path, WorkspaceConfig& target, registry::ReadContext&) {
@@ -269,8 +277,19 @@ namespace umbriel {
               }
           ),
           registry::table("layout", &WorkspaceConfig::layout, layoutFields<WorkspaceLayoutOverrides>()),
+          registry::table("mirror", &WorkspaceConfig::mirror, mirrorFields()),
       };
       return fields;
+    }
+
+    const std::vector<std::string>* workspaceNames(const Config& loaded, std::string_view output) {
+      const auto rule = std::ranges::find_if(loaded.outputs, [&](const OutputRule& candidate) {
+        return outputNamesEqual(candidate.name, output);
+      });
+      if (rule == loaded.outputs.end() || !rule->workspaces) {
+        return nullptr;
+      }
+      return std::get_if<std::vector<std::string>>(&*rule->workspaces);
     }
 
     void readWorkspaces(Section& root, Config& loaded, registry::ReadContext& read) {
@@ -288,6 +307,9 @@ namespace umbriel {
         WorkspaceConfig ws;
         toml::source_region source;
         int arrayIndex;
+        // The table has a `mirror` or `layout` key, even one that failed to read.
+        bool hasMirror;
+        bool hasLayout;
       };
       std::vector<ParsedEntry> entries;
       entries.reserve(workspaces->size());
@@ -307,13 +329,15 @@ namespace umbriel {
           Section keys(*section, context, configStore().mutableDiagnostics());
           registry::readFields(keys, workspaceFields(), ws, read);
         }
+        const bool hasMirror = section->contains("mirror");
         const bool hasName = !ws.name.empty();
         const bool hasIndex = ws.index.has_value();
-        if (hasName == hasIndex) {
+        // A mirror rule reports its own selector error below.
+        if (hasName == hasIndex && !hasMirror) {
           errorAt(entry.source(), "{} must set exactly one of name or index", context);
         }
 
-        entries.push_back({std::move(ws), entry.source(), entryIndex});
+        entries.push_back({std::move(ws), entry.source(), entryIndex, hasMirror, section->contains("layout")});
         ++entryIndex;
       }
 
@@ -348,6 +372,68 @@ namespace umbriel {
           } else {
             errorAt(current.source, "{}: {} does not exist on output '{}'", context, selector, ws.output);
           }
+        }
+      }
+
+      // A mirror rule names a receiving workspace on a static output and the workspace it shows on another output.
+      for (const ParsedEntry& current : entries) {
+        if (!current.hasMirror) {
+          continue;
+        }
+        const WorkspaceConfig& ws = current.ws;
+        const std::string context = std::format("workspace[{}]", current.arrayIndex);
+        const std::vector<std::string>* sourceNames = nullptr;
+        if (ws.output.empty() || ws.name.empty() || ws.index) {
+          errorAt(current.source, "{}: a mirror rule needs output and name, and no index", context);
+        } else if (ws.mirror.output.empty() || ws.mirror.name.empty()) {
+          errorAt(current.source, "{}: mirror must set both output and name", context);
+        } else if (current.hasLayout) {
+          errorAt(current.source, "{}: a mirror takes its layout from its source, remove layout", context);
+        } else if (workspaceNames(loaded, ws.output) == nullptr) {
+          errorAt(current.source, "{}: mirror needs output '{}' to list its workspaces by name", context, ws.output);
+        } else if (std::ranges::none_of(loaded.outputs, [&](const OutputRule& rule) {
+                     return outputNamesEqual(rule.name, ws.mirror.output);
+                   })) {
+          errorAt(current.source, "{}: mirror output '{}' is unknown", context, ws.mirror.output);
+        } else if (outputNamesEqual(ws.mirror.output, ws.output)) {
+          errorAt(current.source, "{}: a workspace cannot mirror its own output", context);
+        } else if (
+            sourceNames = workspaceNames(loaded, ws.mirror.output);
+            sourceNames == nullptr || std::ranges::find(*sourceNames, ws.mirror.name) == sourceNames->end()
+        ) {
+          errorAt(current.source, "{}: output '{}' has no workspace '{}'", context, ws.mirror.output, ws.mirror.name);
+        } else if (std::ranges::any_of(entries, [&](const ParsedEntry& other) {
+                     return other.hasMirror
+                         && other.ws.name == ws.mirror.name
+                         && outputNamesEqual(other.ws.output, ws.mirror.output);
+                   })) {
+          errorAt(current.source, "{}: '{}' on '{}' is itself a mirror", context, ws.mirror.name, ws.mirror.output);
+        }
+      }
+
+      // Windows launched while a mirror has no source land on one of the output's own workspaces.
+      for (const OutputRule& rule : loaded.outputs) {
+        const auto* names = rule.workspaces ? std::get_if<std::vector<std::string>>(&*rule.workspaces) : nullptr;
+        if (names == nullptr || names->empty()) {
+          continue;
+        }
+        const ParsedEntry* first = nullptr;
+        const bool onlyMirrors = std::ranges::all_of(*names, [&](const std::string& name) {
+          const auto mirror = std::ranges::find_if(entries, [&](const ParsedEntry& entry) {
+            return entry.hasMirror && entry.ws.name == name && outputNamesEqual(entry.ws.output, rule.name);
+          });
+          if (mirror == entries.end()) {
+            return false;
+          }
+          if (first == nullptr) {
+            first = &*mirror;
+          }
+          return true;
+        });
+        if (onlyMirrors) {
+          errorAt(
+              first->source, "output '{}' lists only mirrors: it needs at least one workspace of its own", rule.name
+          );
         }
       }
 

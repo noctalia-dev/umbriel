@@ -2255,54 +2255,140 @@ UMBRIEL_TEST(outputMinWorkspacesLoadsAndRequiresDynamicWorkspaces) {
   CHECK(!containsDiagnostic(store, "unknown key output.DP-1.min_workspaces"));
 }
 
-UMBRIEL_TEST(outputWorkspaceMirrorsLoadInPlaceAndValidateTheirOrigin) {
+UMBRIEL_TEST(workspaceMirrorRulesLoadAndValidateTheirSource) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
-  using Mirror = umbriel::OutputRule::WorkspaceMirror;
+  constexpr std::string_view outputs = "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n"
+                                       "[output.DP-2]\nworkspaces = [\"own\", \"web\"]\n";
+  const auto withOutputs = [&](std::string_view rules) { return std::string(outputs) + std::string(rules); };
 
-  // The origin may be declared after the output that mirrors it.
-  file.write("[output.DP-2]\nworkspaces = [\"own\", \"b@DP-1\"]\n[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n");
+  // The source keeps its own name, which may differ from the receiving one; the receiving list is unchanged.
+  file.write(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n")
+  );
   CHECK(store.reload().success);
-  const auto receiving =
-      std::ranges::find_if(store.config().outputs, [](const umbriel::OutputRule& rule) { return rule.name == "DP-2"; });
-  CHECK(receiving != store.config().outputs.end());
-  if (receiving != store.config().outputs.end()) {
-    const auto* names =
-        receiving->workspaces ? std::get_if<std::vector<std::string>>(&*receiving->workspaces) : nullptr;
-    CHECK(names != nullptr && *names == std::vector<std::string>({"own", "b"}));
-    CHECK(receiving->mirrors == std::vector<Mirror>({{.name = "b", .origin = "DP-1"}}));
+  CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
+  if (store.config().workspaceRules.size() == 1) {
+    const umbriel::WorkspaceConfig& rule = store.config().workspaceRules[0];
+    CHECK(rule.mirror == (umbriel::WorkspaceMirrorSource{.output = "DP-1", .name = "b"}));
   }
+  CHECK_EQ(
+      store.config().outputs[1].workspaces,
+      std::optional<umbriel::OutputRule::WorkspaceInventory>(std::vector<std::string>{"own", "web"})
+  );
 
-  const auto rejects = [&](const char* config, const char* diagnostic) {
+  // `@` has no meaning in a workspace name.
+  file.write("[output.DP-1]\nworkspaces = [\"me@home\"]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().workspaceRules.empty());
+
+  const auto rejects = [&](const std::string& config, const char* diagnostic) {
     file.write(config);
     CHECK(!store.reload().success);
     CHECK(containsDiagnostic(store, diagnostic));
   };
   rejects(
-      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-9\"]\n",
-      "unknown output 'DP-9'"
+      withOutputs("[[workspace]]\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"),
+      "a mirror rule needs output and name, and no index"
   );
   rejects(
-      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"missing@DP-1\"]\n",
-      "has no workspace 'missing'"
-  );
-  rejects("[output.DP-1]\nworkspaces = 3\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-1\"]\n", "has no workspace 'a'");
-  rejects(
-      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@DP-1\"]\n"
-      "[output.DP-3]\nworkspaces = [\"own\", \"a@DP-2\"]\n",
-      "is itself a mirror"
-  );
-  rejects("[output.DP-1]\nworkspaces = [\"a\", \"a@DP-1\"]\n", "duplicate name 'a'");
-  rejects("[output.DP-1]\nworkspaces = [\"own\", \"a@DP-1\"]\n", "mirrors its own output");
-  rejects(
-      "[output.DP-1]\nworkspaces = [\"a\"]\n[output.DP-2]\nworkspaces = [\"own\", \"a@\"]\n",
-      R"(must be "<name>@<output>")"
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nindex = 2\nmirror = { output = \"DP-1\", name = \"b\" }\n"),
+      "a mirror rule needs output and name, and no index"
   );
   rejects(
-      "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"a@DP-1\", \"b@DP-1\"]\n",
-      "needs at least one workspace of its own"
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\" }\n"),
+      "mirror must set both output and name"
   );
+  rejects(
+      withOutputs(
+          "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"
+          "layout.gap = 4\n"
+      ),
+      "a mirror takes its layout from its source, remove layout"
+  );
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\"]\n"
+      "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"a\" }\n",
+      "mirror needs output 'DP-2' to list its workspaces by name"
+  );
+  rejects(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-9\", name = \"b\" }\n"),
+      "mirror output 'DP-9' is unknown"
+  );
+  rejects(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-2\", name = \"own\" }\n"),
+      "a workspace cannot mirror its own output"
+  );
+  rejects(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"c\" }\n"),
+      "output 'DP-1' has no workspace 'c'"
+  );
+  rejects(
+      "[output.DP-1]\nworkspaces = 3\n[output.DP-2]\nworkspaces = [\"own\", \"web\"]\n"
+      "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"a\" }\n",
+      "output 'DP-1' has no workspace 'a'"
+  );
+  rejects(
+      withOutputs(
+          "[output.DP-3]\nworkspaces = [\"own\", \"copy\"]\n"
+          "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"
+          "[[workspace]]\noutput = \"DP-3\"\nname = \"copy\"\nmirror = { output = \"DP-2\", name = \"web\" }\n"
+      ),
+      "'web' on 'DP-2' is itself a mirror"
+  );
+  rejects(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nname = \"gone\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"),
+      "name 'gone' does not exist on output 'DP-2'"
+  );
+  rejects(
+      "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"a\", \"b\"]\n"
+      "[[workspace]]\noutput = \"DP-2\"\nname = \"a\"\nmirror = { output = \"DP-1\", name = \"a\" }\n"
+      "[[workspace]]\noutput = \"DP-2\"\nname = \"b\"\nmirror = { output = \"DP-1\", name = \"b\" }\n",
+      "output 'DP-2' lists only mirrors: it needs at least one workspace of its own"
+  );
+  rejects(
+      withOutputs(
+          "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nlayout.gap = 4\n"
+          "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"
+      ),
+      "duplicates workspace rule 0"
+  );
+  // One fault, one diagnostic: the generic selector error stays quiet for a mirror rule.
+  rejects(
+      withOutputs("[[workspace]]\noutput = \"DP-2\"\nmirror = { output = \"DP-1\", name = \"b\" }\n"),
+      "a mirror rule needs output and name, and no index"
+  );
+  CHECK(!containsDiagnostic(store, "must set exactly one of name or index"));
+}
+
+// Workspace rules collect across files and a duplicate selector is an error wherever it comes from, while an
+// output's `workspaces` list from one file replaces the other's as a whole.
+UMBRIEL_TEST(workspaceMirrorRulesFollowIncludeSemantics) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const std::string include = "[include]\nfiles = [\"" + file.includeName() + "\"]\n";
+  const std::string mirrorRule =
+      "[[workspace]]\noutput = \"DP-2\"\nname = \"web\"\nmirror = { output = \"DP-1\", name = \"b\" }\n";
+
+  file.writeInclude(mirrorRule);
+  file.write(include + "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"own\", \"web\"]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().workspaceRules.size(), size_t{1});
+
+  file.write(
+      include
+      + "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"own\", \"web\"]\n"
+      + mirrorRule
+  );
+  CHECK(!store.reload().success);
+  CHECK(containsDiagnostic(store, "duplicates workspace rule 0"));
+
+  file.writeInclude("[output.DP-2]\nworkspaces = [\"own\", \"web\"]\n" + mirrorRule);
+  file.write(include + "[output.DP-1]\nworkspaces = [\"a\", \"b\"]\n[output.DP-2]\nworkspaces = [\"own\"]\n");
+  CHECK(!store.reload().success);
+  CHECK(containsDiagnostic(store, "name 'web' does not exist on output 'DP-2'"));
 }
 
 // The wrap switch is an ordinary per-output boolean: it defaults off, survives a
