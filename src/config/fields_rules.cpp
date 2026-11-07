@@ -227,7 +227,7 @@ namespace umbriel {
           boolean("focus_on_activate", &W::focusOnActivate),
           boolean("attach_to_parent", &W::attachToParent),
           boolean("confine_pointer", &W::confinePointer),
-          real("scroll_factor", 0.1, 10.0, &W::scrollFactor),
+          real("touchpad_scroll_factor", 0.1, 10.0, &W::touchpadScrollFactor),
           boolean("allow_shortcuts_inhibit", &W::allowShortcutsInhibit),
           boolean("background_render", &W::backgroundRender),
           boolean("block_capture", &W::blockCapture),
