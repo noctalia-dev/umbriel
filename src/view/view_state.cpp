@@ -802,9 +802,9 @@ namespace umbriel {
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
         if (m_workspace->scrollingLayout() != nullptr && column >= 0) {
-          ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          const Column& tile = m_workspace->scrollingLayout()->columns()[static_cast<size_t>(column)];
           m_savedScrollingExtentPx.reset();
-          m_savedScrollingExtent = scrolling->widthFraction(column);
+          m_savedScrollingExtent = tile.savedWidthFrac > 0 ? tile.savedWidthFrac : tile.widthFrac;
         }
         if (column >= 0 && m_workspace->layout().isFullWidth(column)) {
           m_workspace->layout().clearFullWidthState(column);
