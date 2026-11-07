@@ -2069,6 +2069,12 @@ namespace umbriel {
       return true;
     }
 
+    template <KeybindAction Action>
+    bool actionOverviewZoom(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      server.overview()->changeZoom(Action);
+      return true;
+    }
+
     bool actionOverviewClose(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       server.overview()->close();
       return true;
@@ -2328,6 +2334,9 @@ namespace umbriel {
         &actionOverviewToggle,
         &actionOverviewOpen,
         &actionOverviewClose,
+        &actionOverviewZoom<KeybindAction::OverviewZoomIn>,
+        &actionOverviewZoom<KeybindAction::OverviewZoomOut>,
+        &actionOverviewZoom<KeybindAction::OverviewZoomCycle>,
         &actionCheatsheetToggle,
         &actionCheatsheetOpen,
         &actionCheatsheetClose,

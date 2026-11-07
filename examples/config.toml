@@ -452,6 +452,12 @@ blur_optimized = false
 
 # ==============================================================================
 # Overview
+# To zoom with Mod+wheel, replace its focus binds in [keybinds] with:
+# "Mod+WheelUp" = "overview-zoom-in"
+# "Mod+WheelDown" = "overview-zoom-out"
+# [overview]
+# zoom_presets = [0.5, 0.25, 0.1]
+#
 # Built-in overview and animation values are used. The top-left hot corner opens
 # the overview after a short delay.
 # Overview: https://docs.noctalia.dev/umbriel/workspaces-overview/

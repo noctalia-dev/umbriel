@@ -1433,6 +1433,24 @@ UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
   CHECK_EQ(store.config().animation.workspaces.style, "slide");
 }
 
+UMBRIEL_TEST(overviewZoomPresetsValidateAndPreserveOrder) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[overview]\nzoom_presets = [0.25, 0.75, 0.1, 0.25]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().overview.zoomPresets, (std::vector<double>{0.25, 0.75, 0.1}));
+  file.write("[overview]\nzoom_presets = []\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().overview.zoomPresets.empty());
+  for (const auto* const value : {"0.5", "[0.5, 0.0]", "[0.8]", "[nan]", "[inf]", "[0.25, \"small\"]"}) {
+    file.write(std::string{"[overview]\nzoom_presets = "} + value + "\n");
+    CHECK(store.reload().success);
+    CHECK_EQ(store.config().overview.zoomPresets, (std::vector<double>{0.5, 0.25, 0.1}));
+    CHECK(containsDiagnostic(store, "overview.zoom_presets"));
+  }
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

@@ -285,7 +285,7 @@ namespace umbriel {
       m_output = group != nullptr ? group->output() : nullptr;
       // Previews are drawn at the settled zoom, so travel over one covers that much more of the content below it.
       if (m_output == nullptr
-          || !beginScroll(workspace, 1.0 / Overview::settledZoom(), ScrollSource::OverviewPointer)) {
+          || !beginScroll(workspace, 1.0 / overview->settledZoom(), ScrollSource::OverviewPointer)) {
         m_output = nullptr;
         return false;
       }

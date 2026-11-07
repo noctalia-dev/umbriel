@@ -61,6 +61,8 @@ namespace umbriel {
 
     void toggle();
     void open();
+    // Preset actions apply to every output, and can open or close the overview.
+    void changeZoom(KeybindAction action);
     // Zoom back into each output's active workspace, restoring normal focus.
     void close();
     // Activate `workspace` (no slide, the real trees are hidden), focus `focus`
@@ -132,7 +134,7 @@ namespace umbriel {
     Workspace* pointerScrollWorkspace(double lx, double ly);
     // The scale previews rest at once open. Gesture travel maps onto the settled layout, so it must not depend on
     // how far the zoom has come.
-    static double settledZoom();
+    double settledZoom() const;
     bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
     bool cardDragging() const { return m_dragCard != nullptr; }
     // A middle-press pointer-scroll pan owns the motion while it runs (handleMotion routes it ahead of the card
@@ -336,7 +338,7 @@ namespace umbriel {
     // The workspace preview's box in layout coordinates.
     static wlr_box previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
 
-    bool beginPresentation();
+    bool beginPresentation(double initialZoom = 0.0);
     void buildState();
     void populateCards(OutputState& state);
     Card* createCard(OutputState& state, View* view, size_t workspaceIndex);
@@ -438,6 +440,11 @@ namespace umbriel {
     double m_targetProgress = 0;
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
+    // Preset changes have their own timeline: opening/closing progress also controls backdrop and chrome opacity.
+    AnimatedValue m_presetAnim;
+    double m_presetZoom = 0.5;
+    double m_presetFrom = 0.5;
+    double m_presetTarget = 0.5;
     View* m_pendingFocus = nullptr;
     bool m_pendingCursorWarp = false;
     bool m_cardPresentationDirty = false;

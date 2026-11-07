@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <ranges>
@@ -239,6 +240,29 @@ namespace umbriel {
       using O = Config::Overview;
       static const registry::Fields<O> fields{
           real("zoom", 0.1, 0.75, &O::zoom),
+          registry::custom<O>(
+              "zoom_presets", registry::KeyDescription("float_array").withRange(0.1, 0.75),
+              [](const toml::node& node, const std::string& path, O& target, registry::ReadContext&) {
+                const auto* values = node.as_array();
+                if (values == nullptr) {
+                  warnAt(node.source(), "ignoring {} (expected an array of zoom levels)", path);
+                  return;
+                }
+                std::vector<double> presets;
+                for (const auto& entry : *values) {
+                  const auto value = entry.value<double>();
+                  if (!value || !std::isfinite(*value) || *value < 0.1 || *value > 0.75) {
+                    warnAt(entry.source(), "ignoring {} (zoom levels must be finite numbers from 0.1 to 0.75)", path);
+                    return;
+                  }
+                  if (std::ranges::find(presets, *value) == presets.end()) {
+                    presets.push_back(*value);
+                  }
+                }
+                target.zoomPresets = std::move(presets);
+              },
+              [](const O& defaults) { return nlohmann::ordered_json(defaults.zoomPresets); }
+          ),
           real("scroll_factor_horizontal", 0.1, 10.0, &O::scrollFactorHorizontal),
           real("scroll_factor_vertical", 0.1, 10.0, &O::scrollFactorVertical),
           boolean("background_blur", &O::backgroundBlur),

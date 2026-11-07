@@ -249,11 +249,14 @@ Selector resolution, including forced numeric names and `--output` qualifiers, i
 
 Dragging windows between previews and creating workspaces by dropping into a gap are described in [Overview](workspaces-overview.md).
 
-| Action            | Effect                               |
-| ----------------- | ------------------------------------ |
-| `overview-close`  | Close the workspace overview         |
-| `overview-open`   | Open the workspace overview          |
-| `overview-toggle` | Open or close the workspace overview |
+| Action                | Effect                                         |
+| --------------------- | ---------------------------------------------- |
+| `overview-close`      | Close the workspace overview                   |
+| `overview-open`       | Open the workspace overview                    |
+| `overview-toggle`     | Open or close the workspace overview           |
+| `overview-zoom-cycle` | Cycle overview zoom presets, opening if closed |
+| `overview-zoom-in`    | Zoom in one preset, closing past the largest   |
+| `overview-zoom-out`   | Zoom out one preset, opening if closed         |
 
 ## System
 

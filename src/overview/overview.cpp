@@ -33,6 +33,7 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <linux/input-event-codes.h>
 #include <format>
@@ -194,9 +195,11 @@ namespace umbriel {
     teardown();
   }
 
-  double Overview::settledZoom() { return std::clamp(config().overview.zoom, 0.1, 0.75); }
+  double Overview::settledZoom() const {
+    return m_active ? m_presetTarget : std::clamp(config().overview.zoom, 0.1, 0.75);
+  }
 
-  double Overview::zoom() const { return 1.0 - m_progress * (1.0 - settledZoom()); }
+  double Overview::zoom() const { return 1.0 - m_progress * (1.0 - m_presetZoom); }
 
   float Overview::desktopChromeAlpha() const {
     return static_cast<float>(std::clamp(1.0 - m_progress / kDesktopChromeFade, 0.0, 1.0));
@@ -1720,7 +1723,7 @@ namespace umbriel {
 
   // -: open/close
 
-  bool Overview::beginPresentation() {
+  bool Overview::beginPresentation(double initialZoom) {
     UMBRIEL_ZONE("Overview::beginPresentation");
     if (m_active) {
       return true;
@@ -1754,6 +1757,10 @@ namespace umbriel {
       switchPick.group->activate(switchPick.target, false);
     }
 
+    m_presetZoom = initialZoom > 0.0 ? initialZoom : std::clamp(config().overview.zoom, 0.1, 0.75);
+    m_presetFrom = m_presetZoom;
+    m_presetTarget = m_presetZoom;
+    m_presetAnim.snap(1.0);
     buildState();
     if (m_outputs.empty()) {
       return false;
@@ -1837,6 +1844,76 @@ namespace umbriel {
     startAnimation(1.0, false);
   }
 
+  void Overview::changeZoom(KeybindAction action) {
+    const auto& presets = config().overview.zoomPresets;
+    if (presets.empty() || dragging() || m_server->sessionLocked()) {
+      return;
+    }
+    const bool zoomIn = action == KeybindAction::OverviewZoomIn;
+    const bool cycle = action == KeybindAction::OverviewZoomCycle;
+    const bool reopening = !interactive();
+    if (reopening) {
+      if (zoomIn) {
+        return;
+      }
+      const double target = cycle ? presets.front() : std::ranges::max(presets);
+      if (!m_active) {
+        if (beginPresentation(target)) {
+          startAnimation(1.0, false);
+        }
+        return;
+      }
+      // Reopening during a close starts from the currently presented geometry.
+      open();
+    }
+
+    double target = m_presetTarget;
+    if (reopening) {
+      target = cycle ? presets.front() : std::ranges::max(presets);
+    } else if (cycle) {
+      const auto current = std::ranges::find(presets, target);
+      target = current == presets.end() || std::next(current) == presets.end() ? presets.front() : *std::next(current);
+    } else {
+      std::optional<double> next;
+      for (const double preset : presets) {
+        if ((zoomIn && preset > target && (!next || preset < *next))
+            || (!zoomIn && preset < target && (!next || preset > *next))) {
+          next = preset;
+        }
+      }
+      if (!next) {
+        if (zoomIn) {
+          close();
+        }
+        return;
+      }
+      target = *next;
+    }
+    if (target == m_presetTarget) {
+      return;
+    }
+    cancelNavigation();
+    m_pressCard = nullptr;
+    m_pressWorkspace = nullptr;
+    m_presetFrom = m_presetZoom;
+    m_presetTarget = target;
+    const auto& animation = config().animation;
+    const auto& overview = animation.overview;
+    if (!animation.enabled || !overview.enabled || m_presetFrom == target) {
+      m_presetAnim.snap(1.0);
+      m_presetZoom = target;
+      applyProgress();
+      return;
+    }
+    m_presetAnim.snap(0.0);
+    if (overview.curve.easing == Easing::Spring) {
+      m_presetAnim.settleSpring(1.0, overview.curve.spring);
+    } else {
+      m_presetAnim.retarget(1.0, overview.durationMs, overview.curve);
+    }
+    scheduleFrames();
+  }
+
   void Overview::toggle() {
     if (m_active && !m_closing) {
       close();
@@ -1891,6 +1968,8 @@ namespace umbriel {
         animateRow(*state, static_cast<double>(group->active()->index()));
       }
     }
+    m_presetAnim.snap(1.0);
+    m_presetTarget = m_presetZoom;
     startAnimation(0.0, true, releaseVelocity);
   }
 
@@ -1959,6 +2038,21 @@ namespace umbriel {
 
   bool Overview::tickAnimations(double nowMsec) {
     bool active = m_dropHint != nullptr && m_dropHint->tickAnimations(nowMsec);
+    const bool presetTicked = m_presetAnim.tick(nowMsec);
+    if (presetTicked) {
+      double extent = 0.0;
+      for (const auto& state : m_outputs) {
+        wlr_box box{};
+        wlr_output_layout_get_box(m_server->outputLayout(), state->output->wlr(), &box);
+        extent = std::max(extent, static_cast<double>(std::max(box.width, box.height)));
+      }
+      // At the minimum scale more distant rows become visible. Bound their travel as well as the centered row.
+      constexpr double rowFactor = 0.5 / 0.1 + 1.0 + kPreviewRowGapFraction;
+      static_cast<void>(
+          m_presetAnim.finishSpringTail(std::ceil(std::abs(m_presetTarget - m_presetFrom) * extent * rowFactor))
+      );
+      m_presetZoom = std::clamp(m_presetFrom + (m_presetTarget - m_presetFrom) * m_presetAnim.current(), 0.1, 0.75);
+    }
     const bool zoomTicked = m_zoomAnim.tick(nowMsec);
     if (zoomTicked && m_zoomAnim.animating() && m_zoomAnim.curve().easing == Easing::Spring) {
       static_cast<void>(m_zoomAnim.finishSpringTail(zoomPixelsPerUnit()));
@@ -1981,7 +2075,7 @@ namespace umbriel {
       rowTicked = ticked || rowTicked;
       active = active || state->rowScroll.animating();
     }
-    if (zoomTicked || rowTicked || m_cardPresentationDirty) {
+    if (zoomTicked || presetTicked || rowTicked || m_cardPresentationDirty) {
       applyProgress();
     }
     m_cardPresentationDirty = false;
@@ -1992,18 +2086,22 @@ namespace umbriel {
     }
     for (const auto& state : m_outputs) {
       bindAnimationEffect(
-          &state->tree->node, AnimationEvent::Overview, m_zoomAnim.animating() ? m_zoomAnim : state->rowScroll,
+          &state->tree->node, AnimationEvent::Overview,
+          m_zoomAnim.animating()         ? m_zoomAnim
+              : m_presetAnim.animating() ? m_presetAnim
+                                         : state->rowScroll,
           m_closing ? -1.0F : 1.0F
       );
     }
     if (zoomTicked && !m_zoomAnim.animating()) {
       finishAnimation();
     }
-    return m_zoomAnim.animating() || active;
+    return m_zoomAnim.animating() || m_presetAnim.animating() || active;
   }
 
   bool Overview::hasActiveAnimations() const {
     return m_zoomAnim.animating()
+        || m_presetAnim.animating()
         || std::ranges::any_of(m_outputs, [](const auto& state) { return state->rowScroll.animating(); })
         || (m_dropHint != nullptr && m_dropHint->hasActiveAnimations());
   }
@@ -2067,6 +2165,7 @@ namespace umbriel {
   }
 
   void Overview::teardown() {
+    m_presetAnim.snap(1.0);
     m_server->cursor()->resetWheelAccumulation();
     cancelNavigation();
     clearMiddlePress();

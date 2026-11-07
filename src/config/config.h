@@ -1027,6 +1027,8 @@ namespace umbriel {
     struct Overview {
       // Workspace scale when fully zoomed out.
       double zoom = 0.5;
+      // Runtime zoom steps, in cycling order. An empty list disables zoom actions.
+      std::vector<double> zoomPresets{0.5, 0.25, 0.1};
       // Touchpad travel and wheel accumulation in the overview, by the physical direction of the movement rather
       // than the output's workspace axis. Independent of an input device's own scroll_factor.
       double scrollFactorHorizontal = 1.0;

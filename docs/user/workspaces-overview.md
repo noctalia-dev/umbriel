@@ -7,6 +7,7 @@ The overview displays every workspace and lets you navigate, focus, close, and m
 ```toml
 [overview]
 zoom = 0.5
+zoom_presets = [0.5, 0.25, 0.1]
 scroll_factor_horizontal = 1.0
 scroll_factor_vertical = 1.0
 background_blur = true
@@ -15,15 +16,16 @@ shortcuts = true
 shortcut_keys = "1234567890"
 ```
 
-| Key                        | Default        | Description                                                  |
-| -------------------------- | -------------- | ------------------------------------------------------------ |
-| `zoom`                     | `0.5`          | Workspace preview scale from 0.1 to 0.75.                    |
-| `scroll_factor_horizontal` | `1.0`          | Horizontal gesture and wheel sensitivity.                    |
-| `scroll_factor_vertical`   | `1.0`          | Vertical gesture and wheel sensitivity.                      |
-| `background_blur`          | `true`         | Blur the desktop behind the overview.                        |
-| `workspace_wallpaper`      | `true`         | Show each output's background inside its workspace previews. |
-| `shortcuts`                | `true`         | Show and accept keyboard shortcut badges.                    |
-| `shortcut_keys`            | `"1234567890"` | Preferred keys for shortcut badges.                          |
+| Key                        | Default            | Description                                                                               |
+| -------------------------- | ------------------ | ----------------------------------------------------------------------------------------- |
+| `zoom`                     | `0.5`              | Workspace preview scale from 0.1 to 0.75.                                                 |
+| `zoom_presets`             | `[0.5, 0.25, 0.1]` | Zoom levels in cycling order, each from 0.1 to 0.75. An empty list disables zoom actions. |
+| `scroll_factor_horizontal` | `1.0`              | Horizontal gesture and wheel sensitivity.                                                 |
+| `scroll_factor_vertical`   | `1.0`              | Vertical gesture and wheel sensitivity.                                                   |
+| `background_blur`          | `true`             | Blur the desktop behind the overview.                                                     |
+| `workspace_wallpaper`      | `true`             | Show each output's background inside its workspace previews.                              |
+| `shortcuts`                | `true`             | Show and accept keyboard shortcut badges.                                                 |
+| `shortcut_keys`            | `"1234567890"`     | Preferred keys for shortcut badges.                                                       |
 
 Background blur uses `[appearance.blur]`. Preview backgrounds use `colors.overview.workspace_background` when wallpaper mirroring is disabled or no background surface is available.
 
@@ -56,6 +58,23 @@ Normal `[keybinds]` remain active in the overview. Directional focus actions sel
 Shortcut badges provide direct, unmodified key sequences for visible window cards. When there are more cards than keys, Umbriel creates multi-key labels. Backspace removes the last key from a pending sequence. Escape clears the sequence first and closes the overview when no sequence is pending.
 
 Set `shortcuts = false` to disable badges. A normal keybind takes precedence over a badge. `shortcut_keys` must contain at least two unique printable ASCII characters.
+
+### Zoom in and out
+
+Bind `overview-zoom-in` and `overview-zoom-out` to step through `zoom_presets` by size. Zoom-out opens a closed overview at the largest preset; zoom-in past the largest preset closes it. Zoom-out stops at the smallest preset. `overview-zoom-cycle` follows the configured list order and wraps, opening at the first preset when closed. Duplicate levels are ignored.
+
+For example, these bindings replace the default Mod+wheel focus actions:
+
+```toml
+[keybinds]
+"Mod+WheelUp" = "overview-zoom-in"
+"Mod+WheelDown" = "overview-zoom-out"
+"Mod+Shift+O" = "overview-zoom-cycle"
+```
+
+Zoom changes apply to every output and use `[animation.overview]` timing. They preserve the selected workspace and window. Ordinary wheel and touchpad navigation continues at the new scale. Zoom actions are ignored during a window drag or middle-button navigation.
+
+Opening with `overview-open`, `overview-toggle`, or a four-finger swipe starts at `overview.zoom`. Closing uses the currently displayed scale, including when a zoom animation is interrupted.
 
 ### Move windows
 
