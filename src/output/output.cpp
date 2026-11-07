@@ -616,7 +616,8 @@ namespace umbriel {
       wlr_output_state_set_enabled(&state, enabled);
     }
 
-    const bool hdrWasActive = hdrActive();
+    const bool hdrWasActive =
+        hdrActive() || m_server->connectorHdrState().mayHoldHdr(m_output->backend, m_output->name);
     const bool hdrRequested = this->hdrRequested();
 
     // Stage geometry.
@@ -937,8 +938,14 @@ namespace umbriel {
       anyCommitted = wlr_output_commit_state(m_output, &state);
     }
 
+    const bool imageDescriptionCommitted = (state.committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) != 0;
     wlr_output_state_finish(&state);
     m_hdrTransition.recordCommit(enabled, hdrRequested, anyCommitted);
+    if (anyCommitted) {
+      m_server->connectorHdrState().recordCommit(
+          m_output->backend, m_output->name, imageDescriptionCommitted, hdrActive()
+      );
+    }
     if (hdrRejected) {
       m_hdrAvailable = false;
     }
