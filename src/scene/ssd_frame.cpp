@@ -70,7 +70,7 @@ namespace umbriel {
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
     if (m_averageBuffer != nullptr) {
-      wlr_buffer_drop(m_averageBuffer);
+      wlr_buffer_unlock(m_averageBuffer);
       m_averageBuffer = nullptr;
     }
     for (wlr_buffer* buffer : {m_labelBuffer, m_shadowBuffer}) {
@@ -325,14 +325,18 @@ namespace umbriel {
     cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
     cairo_paint(cr);
     cairo_destroy(cr);
-    wlr_buffer* buffer = createCairoBuffer(surface);
-    if (buffer == nullptr) {
+    wlr_buffer* created = createCairoBuffer(surface);
+    if (created == nullptr) {
       return nullptr;
     }
+    // Hold the mean ourselves: once the scene has uploaded it, the scene drops its own lock, which would clear its
+    // buffer and leave `snapshot()` with nothing to copy and a rebuilt renderer with no buffer to upload again.
+    wlr_buffer* held = wlr_buffer_lock(created);
+    wlr_buffer_drop(created);
     if (m_averageBuffer != nullptr) {
-      wlr_buffer_drop(m_averageBuffer);
+      wlr_buffer_unlock(m_averageBuffer);
     }
-    m_averageBuffer = buffer;
+    m_averageBuffer = held;
     m_averageBufferColor = color;
     return m_averageBuffer;
   }

@@ -268,3 +268,23 @@ await_lines "$LOG2" repainted 4
 grim "$FRAME"
 expect "$magenta" 1000 "the palette colour under a transparent averaged edge"
 expect_none 'g > 0.4 && g < 0.6 && b > 0.4 && b < 0.6' "the averaged colour survived a transparent edge"
+
+# The mean has to outlive the scene's upload, which drops the scene's own lock once a texture exists: a bar that does
+# not hold its own would snapshot nothing and fade the palette instead of the mean. The repaint also proves the mean
+# comes back after a transparent edge dropped it.
+printf 'B' >&4
+await_lines "$LOG2" repainted 5
+"$UMBRIEL" settle
+window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "adaptive-bar") | .id')
+[[ -n $window_id && $window_id != null ]] || fail "the adaptive-bar window is gone before the average close animation"
+configure average "#00000000" closing
+"$UMBRIEL" settle
+"$UMBRIEL" clock-freeze > /dev/null
+"$UMBRIEL" msg window-close "$window_id" > /dev/null
+"$UMBRIEL" clock-advance 250 > /dev/null
+grim "$FRAME"
+# A quarter of a 1000 ms linear fade: the blue mean at 0.75, not the palette's magenta at 0.75.
+expect_in 'b > 0.6 && b < 0.9 && r < 0.15 && g < 0.15' "$BAR" 1000 "the mean in the average bar's close animation"
+expect_none_in 'r > 0.6 && b > 0.6' "$BAR" "the palette replaced the mean in the close animation"
+"$UMBRIEL" clock-advance 1000 > /dev/null
+"$UMBRIEL" settle

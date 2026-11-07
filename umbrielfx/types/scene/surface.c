@@ -230,7 +230,10 @@ struct wlr_client_buffer* umbrielfx_scene_buffer_ignore_client_lock(struct wlr_b
     return NULL;
   }
   struct wlr_client_buffer* client = wlr_client_buffer_get(buffer);
-  if (client == NULL || wlr_single_pixel_buffer_v1_try_from_buffer(buffer) != NULL) {
+  // The wrapper's own impl is the client-buffer one; the single-pixel check needs the source the client committed,
+  // and a wrapper can carry none. Same shape as scene_surface_set_buffer() below.
+  if (client == NULL
+      || (client->source != NULL && wlr_single_pixel_buffer_v1_try_from_buffer(client->source) != NULL)) {
     return NULL;
   }
   client_buffer_mark_next_can_damage(client);
