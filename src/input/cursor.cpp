@@ -1306,8 +1306,6 @@ namespace umbriel {
     wlr_seat_pointer_notify_clear_focus(m_server->seat()->wlr());
   }
 
-  void Cursor::warpTo(double lx, double ly) { warpTo(lx, ly, true); }
-
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
   bool Cursor::warpToView(View& view) {
