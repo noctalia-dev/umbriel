@@ -450,6 +450,15 @@ namespace umbriel {
     void cancelPositionAnimation();
     void snapPosition(int x, int y);
     void animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve);
+    // Hide the window for a minimize with `[animation.windows_minimize]`: fade and, for `popin`, collapse the presented
+    // box toward the configured anchor. The node stays enabled until the fade lands, then finishes hidden. A reveal
+    // plays the same timeline in reverse from the collapsed box.
+    void beginMinimizeConceal();
+    void beginMinimizeReveal();
+    // Land a conceal: disable the node and restore the resting presentation while it is off screen.
+    void finishMinimizeConceal();
+    // True while a minimize conceal is still fading the window out; the node stays enabled through it.
+    bool minimizeConcealing() const { return m_minimizeHiding; }
     const ViewPresentation& presentation() const { return m_presentation; }
     // Size/position to the full output and drop tile clips (exclusive zones do not apply).
     void applyFullscreenLayout(bool animate = false);
@@ -1048,6 +1057,12 @@ namespace umbriel {
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
     int m_openingSlide = 0;
+    // A minimize conceal owns the fade and the presented box until it lands: the node stays enabled, animateTo refuses
+    // layout retargets, and the fade binds no lifecycle shader (minimize has no effect slot).
+    bool m_minimizeHiding = false;
+    bool m_fadeLifecycle = true;
+    // The resting box a conceal collapses from and returns to, captured when it starts.
+    wlr_box m_minimizeResting{};
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
     bool m_floatedByStackingLayout = false;

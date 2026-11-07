@@ -41,7 +41,9 @@ namespace umbriel {
   }
 
   bool View::fadeComposited() const {
-    if (!m_fade.animating()) {
+    // A minimize fade is not a lifecycle transition: it has no effect slot, so it composites the plain alpha instead of
+    // borrowing whatever the opening did.
+    if (!m_fade.animating() || !m_fadeLifecycle) {
       return false;
     }
     return m_customFade || (!m_inScratchpad && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr);
@@ -120,6 +122,9 @@ namespace umbriel {
   }
 
   void View::cancelFadeAnimation() {
+    // An unmap or a fresh map abandons a conceal: nothing is left to fade out, and the next enable must be free to act.
+    m_minimizeHiding = false;
+    m_fadeLifecycle = true;
     m_fade.snap(1.0);
     dropOpeningInset();
     setFadeAlpha(1.0F);
@@ -717,6 +722,67 @@ namespace umbriel {
     syncAnimationEffects();
   }
 
+  void View::beginMinimizeConceal() {
+    if (m_minimizeHiding) {
+      return;
+    }
+    const auto& animation = config().animation;
+    const auto& minimize = animation.windowsMinimize;
+    const auto [width, height] = floatingSize();
+    m_minimizeResting = {layoutTargetX(), layoutTargetY(), width, height};
+    m_minimizeHiding = true;
+    // Minimize has no effect slot, so the fade must not composite a windows_in shader a previous open left bound.
+    m_fadeLifecycle = false;
+    animateFadeTo(0.0F, minimize.durationMs, minimize.curve);
+    if (minimize.style == "popin" && width > 0 && height > 0) {
+      const wlr_box collapsed =
+          minimizeCollapseBox(m_minimizeResting, minimize.scale, floatingUsableArea(), minimize.anchor);
+      // The size tween makes the presentation layout-owned, so an arrange mid-flight cannot snap it back to the resting
+      // box; the position tween carries the node to the collapsed origin.
+      m_presentation.animateTo(collapsed.width, collapsed.height, minimize.durationMs, minimize.curve);
+      m_posX.retarget(collapsed.x, minimize.durationMs, minimize.curve);
+      m_posY.retarget(collapsed.y, minimize.durationMs, minimize.curve);
+    }
+    scheduleFrame();
+  }
+
+  void View::finishMinimizeConceal() {
+    m_minimizeHiding = false;
+    m_fadeLifecycle = true;
+    setNodeEnabled(false);
+    // Everything below runs while the node is off screen, so the hide does not snap: the window returns to its resting
+    // box and full opacity for its next reveal.
+    setPosition(m_minimizeResting.x, m_minimizeResting.y);
+    finishSizeAnimation();
+    m_fade.snap(1.0);
+    setFadeAlpha(1.0F);
+  }
+
+  void View::beginMinimizeReveal() {
+    // A conceal still in flight is abandoned: the reveal owns the window from the box it is drawn at.
+    m_minimizeHiding = false;
+    m_fadeLifecycle = true;
+    setNodeEnabled(true);
+    const auto& animation = config().animation;
+    const auto& minimize = animation.windowsMinimize;
+    const auto [width, height] = floatingSize();
+    const wlr_box resting{layoutTargetX(), layoutTargetY(), width, height};
+    setFadeAlpha(0.0F);
+    m_fade.snap(0.0);
+    m_fade.retarget(1.0, minimize.durationMs, minimize.curve);
+    if (minimize.style == "popin" && width > 0 && height > 0) {
+      const wlr_box collapsed = minimizeCollapseBox(resting, minimize.scale, floatingUsableArea(), minimize.anchor);
+      m_presentation.setSize(collapsed.width, collapsed.height);
+      setScenePosition(collapsed.x, collapsed.y);
+      m_posX.snap(collapsed.x);
+      m_posY.snap(collapsed.y);
+      m_presentation.animateTo(width, height, minimize.durationMs, minimize.curve);
+      m_posX.retarget(resting.x, minimize.durationMs, minimize.curve);
+      m_posY.retarget(resting.y, minimize.durationMs, minimize.curve);
+    }
+    scheduleFrame();
+  }
+
   void View::animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve) {
     m_customFade = m_inScratchpad && effectRegistry().animationEffect(AnimationEvent::Scratchpad) != nullptr;
     m_fade.snap(m_fadeAlpha);
@@ -737,6 +803,10 @@ namespace umbriel {
   }
 
   void View::animateTo(int x, int y) {
+    // A conceal owns the node's position until its fade lands; a layout pass in between must not pull it back.
+    if (m_minimizeHiding) {
+      return;
+    }
     if (m_mapped && !m_tiled && (layoutTargetX() != x || layoutTargetY() != y)) {
       m_server->scheduleIpcWindowsEvent();
     }
@@ -834,7 +904,13 @@ namespace umbriel {
       m_dragSlotBound = false;
     }
     bindAnimationEffect(&target->node, AnimationEvent::DimUnfocused, m_focusDim);
-    bindAnimationEffect(&target->node, m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn, m_fade);
+    const AnimationEvent fadeEvent = m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn;
+    if (m_fadeLifecycle || m_inScratchpad) {
+      bindAnimationEffect(&target->node, fadeEvent, m_fade);
+    } else {
+      // Drop a shader an earlier open bound to this node; minimize has no effect slot of its own.
+      clearAnimationEffect(&target->node, fadeEvent);
+    }
     wlr_scene_node_set_animation(
         &target->node, static_cast<unsigned>(m_inScratchpad ? AnimationEvent::WindowsIn : AnimationEvent::Scratchpad),
         nullptr, nullptr
@@ -917,6 +993,10 @@ namespace umbriel {
       }
     }
 
+    if (m_minimizeHiding && !m_fade.animating()) {
+      finishMinimizeConceal();
+      active = true;
+    }
     if (m_fade.tick(nowMsec)) {
       m_customFade = m_customFade
           && m_fade.animating()
@@ -1032,6 +1112,7 @@ namespace umbriel {
         || m_posY.animating()
         || sizeAnimating()
         || m_fade.animating()
+        || m_minimizeHiding
         || m_borderColorAnim.animating()
         || m_outerBorderColorAnim.animating()
         || m_ruleOpacity.animating()

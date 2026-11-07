@@ -295,7 +295,20 @@ namespace umbriel {
     if (minimized) {
       m_minimizeSerial = ++gNextMinimizeSerial;
     }
-    if (m_sceneTree != nullptr) {
+    // A conceal animates the live window out before the node goes; a reveal grows it back from the same box. Both are
+    // skipped where nothing is on screen to animate, leaving the plain hide/show below.
+    const auto& animation = config().animation;
+    const bool animateMinimize = animation.enabled
+        && animation.windowsMinimize.enabled
+        && m_sceneTree != nullptr
+        && m_mapped
+        && m_onActiveWorkspace
+        && minimizable();
+    if (minimized && animateMinimize) {
+      beginMinimizeConceal();
+    } else if (!minimized && animateMinimize) {
+      beginMinimizeReveal();
+    } else if (m_sceneTree != nullptr) {
       setNodeEnabled(!minimized && m_mapped && m_onActiveWorkspace);
     }
     if (m_foreign != nullptr) {

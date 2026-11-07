@@ -661,7 +661,8 @@ namespace umbriel {
   }
 
   void View::setNodeEnabled(bool enabled) {
-    enabled = enabled && !presentationSuppressed();
+    // A minimize conceal keeps the node up until its fade lands, so the window can be seen leaving.
+    enabled = enabled && (!presentationSuppressed() || m_minimizeHiding);
     wlr_scene_node_set_enabled(&m_sceneTree->node, enabled);
     m_decoration.setShadowEnabled(enabled);
     m_server->updateIdleInhibit();

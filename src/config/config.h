@@ -902,6 +902,20 @@ namespace umbriel {
         bool operator==(const Scratchpad&) const = default;
       } scratchpad;
 
+      // Hiding and showing a minimized floating window. Unlike a close, the window keeps its surface, box and stacking
+      // slot, so the live view animates in place instead of a snapshot. `popin` shrinks the presented box toward
+      // `anchor` while it fades; `fade` leaves the geometry alone. No effect key: minimize has no effect slot, so the
+      // built-in style alone drives it.
+      struct WindowsMinimize {
+        bool enabled = true;
+        int durationMs = 250;
+        AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 1200.0}};
+        std::string style = "popin";
+        double scale = 0.5;
+        MinimizeAnchor anchor = MinimizeAnchor::Center;
+        bool operator==(const WindowsMinimize&) const = default;
+      } windowsMinimize;
+
       // The shade over a window while a modal dialog is attached to it. `dim` stays without the fade when disabled.
       struct Dialogs {
         bool enabled = true;

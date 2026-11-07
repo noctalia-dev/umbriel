@@ -74,6 +74,14 @@ namespace umbriel {
     bool operator==(const SpringConfig&) const = default;
   };
 
+  // Where a minimizing window collapses to: its own centre, its top-left corner, or the bottom centre of the output's
+  // usable area. Spelled out in config as "center", "top_left", and "bottom_center".
+  enum class MinimizeAnchor : uint8_t {
+    Center,
+    TopLeft,
+    BottomCenter,
+  };
+
   struct AnimationCurve {
     Easing easing = Easing::EaseOutCubic;
     BezierCurve bezier{};
