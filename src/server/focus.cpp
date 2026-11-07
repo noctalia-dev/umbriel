@@ -556,6 +556,12 @@ namespace umbriel {
       *surface = nullptr;
       return nullptr;
     }
+    // A minimize conceal keeps the node enabled until its fade lands, but the window is already minimized: it takes no
+    // pointer input on its way out, so a click cannot focus the window that is leaving.
+    if (view->minimizeConcealing()) {
+      *surface = nullptr;
+      return nullptr;
+    }
     // A modal scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
     if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr
         && !view->pinned()

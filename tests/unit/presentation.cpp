@@ -70,10 +70,12 @@ UMBRIEL_TEST(minimizeCollapseScalesAboutTheConfiguredAnchor) {
   CHECK_EQ(corner.width, 200);
   CHECK_EQ(corner.height, 150);
 
-  // Bottom center: the scaled box centres on the bottom edge of the usable area.
+  // Bottom center: the scaled box sits on the bottom edge of the usable area, centred on it.
   const wlr_box bottom = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::BottomCenter);
+  CHECK_EQ(bottom.width, 200);
+  CHECK_EQ(bottom.height, 150);
   CHECK_EQ(bottom.x + bottom.width / 2, usable.x + usable.width / 2);
-  CHECK_EQ(bottom.y + bottom.height / 2, usable.y + usable.height);
+  CHECK_EQ(bottom.y + bottom.height, usable.y + usable.height);
 }
 
 UMBRIEL_TEST(minimizeCollapseIsIdentityAtFullScaleAndNeverEmpty) {

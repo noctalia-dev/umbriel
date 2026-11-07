@@ -5,6 +5,8 @@ set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly FOREIGN_TOPLEVEL="${UMBRIEL_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/tests/foreign-toplevel-client}"
+readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
+readonly BTN_LEFT=272 # evdev BTN_LEFT
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/minimize-anim-before.png"
 readonly HIDING="$UMBRIEL_RUNTIME_DIR/minimize-anim-hiding.png"
 readonly HIDDEN="$UMBRIEL_RUNTIME_DIR/minimize-anim-hidden.png"
@@ -35,6 +37,12 @@ expect_no_lifecycle_shader() {
 
 # The bounding box of the window's pixels, so a shrink is measured as geometry rather than brightness.
 red_width() { "$UMBRIEL_PIXEL_PROBE" "$1" bbox "$RED" | awk '{ print $3 }'; }
+
+# The whole pixel box "x y w h", so a reveal that lands off its resting position is caught as geometry.
+red_bbox() { "$UMBRIEL_PIXEL_PROBE" "$1" bbox "$RED"; }
+
+# The headless backend has no pointer, so clicks go through zwlr_virtual_pointer_v1 on the real input path.
+pointer() { "$POINTER" 1280 720 "$@"; }
 
 # The opening program paints the whole window green. A minimize fade must not borrow it in either direction, so any
 # green at a mid-flight sample means the lifecycle slot leaked into the minimize timeline.
@@ -108,6 +116,7 @@ WINDOW=$(field_of minimize-anim id)
 grim "$BEFORE"
 before_width=$(red_width "$BEFORE")
 before_count=$(red_count "$BEFORE")
+read -r before_x before_y before_bw before_bh <<< "$(red_bbox "$BEFORE")"
 if (( before_width < 300 || before_count < 100000 )); then
   echo "the window was not drawn before minimizing: width=$before_width count=$before_count"
   exit 1
@@ -214,6 +223,56 @@ set_minimize_enabled() {
   sed -i "/^\[animation\.windows_minimize\]$/,/^\[/ s/^enabled = .*/enabled = $1/" "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload > /dev/null
 }
+
+# An animated restore that lands mid-conceal must end at the resting box. The conceal has already retargeted the live
+# box to its collapsed origin, so a reveal that reads its destination from the live target grows back off-centre and
+# small. The taskbar path shows the window without focusing it, so no arrange follows to repair the geometry.
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+"$FOREIGN_TOPLEVEL" minimize-anim "$(field_of minimize-anim output)" unminimize > /dev/null
+"$UMBRIEL" clock-advance 2000
+grim "$REVEALED"
+read -r restore_x restore_y restore_w restore_h <<< "$(red_bbox "$REVEALED")"
+if (( restore_w == 0 )); then
+  echo "a restore during a conceal left the window hidden: bbox=$(red_bbox "$REVEALED")"
+  exit 1
+fi
+if (( restore_x < before_x - 4 || restore_x > before_x + 4 || restore_y < before_y - 4 || restore_y > before_y + 4
+      || restore_w < before_bw - 4 || restore_w > before_bw + 4 || restore_h < before_bh - 4 || restore_h > before_bh + 4 ))
+then
+  echo "a restore during a conceal did not return to the resting box: before=[$before_x $before_y $before_bw $before_bh]" \
+    "after=[$restore_x $restore_y $restore_w $restore_h]"
+  exit 1
+fi
+if [[ $(field_of minimize-anim minimized) != false ]]; then
+  echo "an animated restore during a conceal did not report the window restored: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+# The conceal leaves the node enabled so the window can be seen leaving, but it is already minimized: a click on the
+# fading remnant must fall through instead of focusing and unminimizing the window underneath it.
+pointer move 0 0
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+pointer move "$(( before_x + before_bw / 2 ))" "$(( before_y + before_bh / 2 ))"
+pointer click "$BTN_LEFT"
+"$UMBRIEL" clock-advance 2000
+grim "$REVEALED"
+if [[ $(field_of minimize-anim minimized) != true ]]; then
+  echo "a click during a conceal unminimized the fading window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if [[ $(field_of minimize-anim focused) != false ]]; then
+  echo "a click during a conceal focused the fading window: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+if (( $(red_count "$REVEALED") > 10 )); then
+  echo "a click during a conceal kept the window on screen: count=$(red_count "$REVEALED")"
+  exit 1
+fi
+pointer move 0 0
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
 
 # A restore that will not animate (the block is off) while a conceal is still fading must cancel the conceal. A
 # taskbar unminimize shows the window without focusing it, so no arrange follows to paper over a finish that hides a
