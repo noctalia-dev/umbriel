@@ -100,6 +100,7 @@ uniform float radius_bottom_right;
 
 uniform vec2 clip_size;
 uniform vec2 clip_position;
+uniform bool clip_inside;
 uniform float clip_radius_top_left;
 uniform float clip_radius_top_right;
 uniform float clip_radius_bottom_left;
@@ -156,8 +157,8 @@ void main() {
       size - 0.5, position + 0.25, false, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right
   );
   float clip_corner_alpha = corner_alpha(
-      clip_size - 1.0, clip_position + 0.5, true, clip_radius_top_left, clip_radius_top_right, clip_radius_bottom_left,
-      clip_radius_bottom_right
+      clip_size - 1.0, clip_position + 0.5, !clip_inside, clip_radius_top_left, clip_radius_top_right,
+      clip_radius_bottom_left, clip_radius_bottom_right
   );
   gl_FragColor = color * alpha * quad_corner_alpha * clip_corner_alpha;
 #else

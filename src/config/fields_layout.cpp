@@ -18,17 +18,17 @@
 
 namespace umbriel {
 
-  namespace {
+  const registry::Choices<LayoutMode>& layoutModes() {
+    static const registry::Choices<LayoutMode> choices{
+        {.name = "scrolling", .value = LayoutMode::Scrolling},
+        {.name = "dwindle", .value = LayoutMode::Dwindle},
+        {.name = "master", .value = LayoutMode::Master},
+        {.name = "stacking", .value = LayoutMode::Stacking},
+    };
+    return choices;
+  }
 
-    const registry::Choices<LayoutMode>& layoutModes() {
-      static const registry::Choices<LayoutMode> choices{
-          {.name = "scrolling", .value = LayoutMode::Scrolling},
-          {.name = "dwindle", .value = LayoutMode::Dwindle},
-          {.name = "master", .value = LayoutMode::Master},
-          {.name = "stacking", .value = LayoutMode::Stacking},
-      };
-      return choices;
-    }
+  namespace {
 
     const registry::Choices<MasterPosition>& masterPositions() {
       static const registry::Choices<MasterPosition> choices{

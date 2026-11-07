@@ -355,4 +355,25 @@ for side in left right; do
   expect_content_corner "$side overview seam" 0 "$preview_x" "$preview_y"
   "$UMBRIEL" msg overview-close >/dev/null
 done
+
+# The frame's top arc can extend below the title bar into transparent content. Both blur nodes must follow it.
+sed -i 's/^corner_radius = 16$/corner_radius = 50/; s/^border_width = 2$/border_width = 0/; s/#0000FFFF/#00000040/g' "$UMBRIEL_CONFIG"
+for scale in 1 1.25; do
+  sed -i "s/^scale = .*$/scale = $scale/" "$UMBRIEL_CONFIG"
+  reload
+  for side in left right; do
+    if [[ $side == left ]]; then
+      pattern_x=106 corner_x=101
+    else
+      pattern_x=374 corner_x=578
+    fi
+    echo "child-move large-$side-$scale $pattern_x 28" >&"$wallpaper_fd"
+    await_lines "$UMBRIEL_RUNTIME_DIR/wallpaper.log" "done large-$side-$scale" 1
+    pixel_x=$(awk -v x="$corner_x" -v scale="$scale" 'BEGIN { printf "%d", x * scale }')
+    for y in 114 129; do
+      pixel_y=$(awk -v y="$y" -v scale="$scale" 'BEGIN { printf "%d", y * scale }')
+      expect_content_corner "$side large frame at y=$y scale=$scale" 1 "$pixel_x" "$pixel_y"
+    done
+  done
+done
 echo "title bar blur follows window rules, scaling, dragging, overview, close animations, and transparent content corners"

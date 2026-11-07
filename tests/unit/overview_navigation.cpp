@@ -56,8 +56,9 @@ UMBRIEL_TEST(releaseAfterPauseDoesNotRetainFlickVelocity) {
 UMBRIEL_TEST(filmstripReleaseLandsByDistanceAndSpeedTogether) {
   // 0.625 of a row released gently settles on the next row, not the one after.
   CHECK_EQ(landingRow(250, 1000), 1);
-  // The same distance flicked hard carries across several rows.
-  CHECK(landingRow(250, 3500) > 2);
+  // The same distance flicked hard carries across several rows. The projection curve needs a release that is fast on
+  // the accelerated scale gestures report, now that the projection is an S-curve over it rather than a linear one.
+  CHECK(landingRow(250, 8000) > 2);
   // No release speed carries the filmstrip past its last row.
   CHECK_EQ(landingRow(1000, 20000), 5);
 }
@@ -69,9 +70,9 @@ UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
     CHECK_EQ(OverviewNavigation::travelScale(1.0, 1.0, 1.0, travel.workspace) * travel.workspace, 1.0);
     for (const double extent : {720.0, 1280.0, 2160.0, 3840.0}) {
       const double scale = OverviewNavigation::travelScale(extent, 1.0, 1.0, travel.viewport);
-      CHECK(std::abs(scale * travel.viewport - extent) < 0.000001);
+      CHECK_NEAR(scale * travel.viewport, extent, 0.000001);
       // Half the factor, twice the travel for the same distance.
-      CHECK(std::abs(OverviewNavigation::travelScale(extent, 1.0, 0.5, travel.viewport) * 2.0 - scale) < 0.000001);
+      CHECK_NEAR(OverviewNavigation::travelScale(extent, 1.0, 0.5, travel.viewport) * 2.0, scale, 0.000001);
     }
   }
   // Accelerated swipe deltas and unaccelerated scroll units are not the same distance.

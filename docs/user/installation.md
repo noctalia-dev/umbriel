@@ -203,6 +203,28 @@ If you generate the config from Nix, you can reference the package directly inst
 "${config.programs.umbriel.package}/share/umbriel/effects/border/pulse/effect.toml"
 ```
 
+## Void Linux
+
+Umbriel is provided by the third-party repository [`UniversalRepository`](https://universalrepo.pages.dev).
+
+### Install repository
+
+```bash
+echo 'repository=https://universalrepo.pages.dev/void' | sudo tee /etc/xbps.d/10-universalrepository.conf
+```
+
+### Sync and import the signing key
+
+```bash
+sudo xbps-install -S
+```
+
+### Install Umbriel
+
+```bash
+sudo xbps-install -S umbriel
+```
+
 ## Manual build
 
 Manual installations have no automatic upgrade path. Prefer a distribution package when one is available.

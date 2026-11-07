@@ -10,24 +10,27 @@ default_workspace = 2
 
 ## Matching
 
-| Selector                      | Description                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------- |
-| `match.app_id`                | Match the application ID with a regular expression.                             |
-| `match.title`                 | Match the window title.                                                         |
-| `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                        |
-| `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                              |
-| `match.is_focused`            | Match current focus state.                                                      |
-| `match.is_floating`           | Match current floating state.                                                   |
-| `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                         |
-| `match.is_pinned`             | Match current pinned state.                                                     |
-| `match.is_scratchpad`         | Match current scratchpad state.                                                 |
-| `match.is_alone`              | Match whether this is the only tiled window.                                    |
-| `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included. |
-| `match.is_dialog`             | Match whether the application named a parent window for it.                     |
-| `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                |
-| `match.at_startup`            | Match during or after the first 60 seconds.                                     |
+| Selector                      | Description                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `match.app_id`                | Match the application ID with a regular expression.                                           |
+| `match.title`                 | Match the window title.                                                                       |
+| `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                                      |
+| `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                                            |
+| `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
+| `match.is_focused`            | Match current focus state.                                                                    |
+| `match.is_floating`           | Match current floating state.                                                                 |
+| `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                                       |
+| `match.is_pinned`             | Match current pinned state.                                                                   |
+| `match.is_scratchpad`         | Match current scratchpad state.                                                               |
+| `match.is_alone`              | Match whether this is alone in its workspace's tiled layout.                                  |
+| `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included.               |
+| `match.is_dialog`             | Match whether the application named a parent window for it.                                   |
+| `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                              |
+| `match.at_startup`            | Match during or after the first 60 seconds.                                                   |
 
 Selectors are optional. A rule with none matches every window. Regular expressions match any part of a value, so use `^` and `$` for an exact match.
+
+`match.layout` takes one layout name or an array of names. Any one matching is enough; an empty array places no constraint. It follows the workspace layout, including for floating windows, and refreshes when the layout changes or the window moves to another workspace. A window without a workspace does not match a non-empty layout selector, so use layout matching for settings that update while the window is open, not its initial placement.
 
 The `app_id`, `title`, and `xdg_tag` selectors take either one pattern or an array of them. Any one of them matching is enough, and an empty array places no constraint:
 
@@ -243,6 +246,16 @@ border_color_unfocused = "#5C4A2AFF"
 
 ### Decoration
 
+To show title bars only in the stacking layout, keep `[appearance.title_bar] mode = "off"` and add:
+
+```toml
+[[window_rule]]
+match.layout = "stacking"
+title_bar = "on"
+```
+
+This also covers manually floating windows in stacking, without enabling bars on floating windows in other layouts.
+
 An omitted `title_bar` inherits `[appearance.title_bar] mode`. An explicit `title_bar = "on"` follows the client's decoration preference, or shows Umbriel's bar if no preference is known. Use `"negotiated"` to show it only when Wayland decoration negotiation selects server-side decorations, `"forced"` to force a bar, or `"off"` to hide it. Both `"on"` and `"negotiated"` follow managed Xwayland windows' decoration hints. Rules override every global mode: `"forced"` can enable a bar with global `"off"`, and `"on"` can honor CSD requests with global `"forced"`. A later matching `"on"` or `"negotiated"` rule replaces an earlier override with its corresponding decoration policy. Changes apply to existing windows, including state-based rules and config reloads. Fullscreen and tiled tab groups still suppress the bar.
 
 ```toml
@@ -293,9 +306,9 @@ window_effect = "scanlines"
 
 Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind. See [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
-## The only tiled window
+## The only tiled column
 
-`match.is_alone` reacts when a window becomes the only tiled window on its workspace:
+`match.is_alone` reacts while a window is alone in its workspace's tiled layout:
 
 ```toml
 [[window_rule]]
@@ -303,7 +316,9 @@ match.is_alone = true
 default_maximize = true
 ```
 
-It can apply fullscreen, maximize-to-edges, maximize, or a scrolling extent. The effect is removed when another tiled window appears and restored when the window becomes alone again. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
+In scrolling layouts, a column can hold several windows, stacked or shown as tabs, and they are all in the alone state together. `default_maximize` and `default_scrolling_extent` act on the column, so they stay applied while its windows share it. Master and dwindle layouts have no scrolling columns, so there `match.is_alone` still means the window is the only tiled window. Fullscreen and maximize-to-edges cover the whole output instead, so they only apply while the window is also the only tiled window; any other tiled window removes them.
+
+The effect is removed when another column appears or when its window leaves the column, and restored when the window returns to the only column. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
 
 Combine it with other selectors when only one application should receive the behavior:
 
@@ -316,7 +331,7 @@ default_scrolling_extent = 0.8
 
 ## The only window on the workspace
 
-`match.is_alone` counts tiled windows only, which is what fullscreen, maximize, and scrolling extents want: a float beside a window does not shrink it. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
+`match.is_alone` asks about the tiled layout, so a float beside a window does not take the match away: fullscreen, maximize, and scrolling extents keep following the tiled layout. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
 
 ```toml
 [[window_rule]]
@@ -325,7 +340,7 @@ border_width = 0
 outer_border_width = 0
 ```
 
-A pinned window floats above the workspace rather than on it, and a scratchpad window has left it, so neither one takes the match away. The rule follows the window as company comes and goes. It does not drive the fullscreen, maximize, and extent effects above; those keep following `match.is_alone`.
+A pinned window floats above the workspace rather than on it, and a scratchpad window has left it, so neither one takes the match away. The rule follows the window as company comes and goes. It does not drive the fullscreen, maximize, and extent effects above; those keep following `match.is_alone`, with fullscreen and maximize-to-edges also requiring the window to be the only tile.
 
 ## The window being shared
 

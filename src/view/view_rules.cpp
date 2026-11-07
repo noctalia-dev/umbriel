@@ -54,13 +54,8 @@ namespace umbriel {
   using view_detail::windowRuleWorkspace;
   using view_detail::windowRuleWorkspaceGroup;
 
-  // True when this is the only tiled window in the workspace.
-  bool View::isAloneInLayout() const {
-    return m_tiled
-        && m_workspace != nullptr
-        && m_workspace->layout().columnOf(this) >= 0
-        && m_workspace->isOnlyTiledView(this);
-  }
+  // True when this window is in the workspace's only tiled column.
+  bool View::isAloneInLayout() const { return m_tiled && m_workspace != nullptr && m_workspace->isAloneInLayout(this); }
 
   // True when nothing else occupies the workspace, a float counting as much as a tile.
   bool View::isOnlyWindowOnWorkspace() const { return m_workspace != nullptr && m_workspace->isOnlyVisibleView(this); }
@@ -110,7 +105,7 @@ namespace umbriel {
       return true;
     }
     if (delta.defaultMaximizeToEdges && *delta.defaultMaximizeToEdges) {
-      if (m_maximizedToEdges || scheduledFullscreen()) {
+      if ((m_maximizedToEdges && m_aloneOpeningSeed != AloneSeed::MaximizeToEdges) || scheduledFullscreen()) {
         return false;
       }
       setMaximizedToEdges(true);
@@ -205,17 +200,52 @@ namespace umbriel {
     m_aloneAction = AloneAction::None;
   }
 
-  // Called by the workspace whenever what occupies it changes, or on a config reload. The dynamic rules come first, so
-  // `match.is_only_window` lands with them. If the window is no longer alone, the applied effect is undone. While
-  // alone, the four settings are only re-applied when they changed.
+  void View::releaseColumnWideAloneEffect() {
+    if (!m_aloneEffectsActive || m_workspace == nullptr) {
+      return;
+    }
+    if (m_aloneAction != AloneAction::Maximize && m_aloneAction != AloneAction::Width) {
+      return;
+    }
+    const int column = m_workspace->layout().columnOf(this);
+    if (column < 0) {
+      return;
+    }
+    const auto& views = m_workspace->layout().columns()[static_cast<size_t>(column)].views;
+    if (views.size() <= 1) {
+      return;
+    }
+    // toggleFloating unmaximizes, then re-maximizes the float; keep it owned for the alone pass.
+    const bool maximizeAlreadyUndone =
+        m_aloneAction == AloneAction::Maximize && (!scheduledMaximized() || m_maximizedToEdges);
+    if (!maximizeAlreadyUndone) {
+      revertAloneRuleEffects();
+      m_aloneEffectsActive = false;
+      m_lastAloneDelta = {};
+    }
+    // The column survives, so its peers can reapply their own effects.
+    for (View* other : views) {
+      if (other != this) {
+        other->m_lastAloneDelta = {};
+      }
+    }
+  }
+
+  // Called by the workspace whenever the tiled columns change, or on a config reload. The dynamic rules come first, so
+  // `match.is_only_window` lands with them. If the window leaves the only column, the applied effect is undone. While
+  // alone, the settings are only re-applied when the effective ones changed; gaining or losing a peer in the column
+  // changes them too, because fullscreen and maximize-to-edges stop being applicable.
   bool View::notifyAloneStateChanged() {
     if (!m_mapped || m_workspace == nullptr) {
       return false;
     }
     refreshStateRuleEffects();
     const bool alone = isAloneInLayout();
+    const bool soleTiled = m_workspace->isOnlyTiledView(this);
     if (!alone) {
       if (!m_aloneEffectsActive) {
+        // The window may become alone again with the same rules, so the old answer must not suppress that pass.
+        m_lastAloneDelta = ResolvedWindowRule{};
         return false;
       }
       revertAloneRuleEffects();
@@ -224,7 +254,13 @@ namespace umbriel {
       m_workspace->ensureFocusedVisible();
       return true;
     }
-    const ResolvedWindowRule delta = aloneRuleDiff(resolvedRules(), resolveRulesWithAlone(false));
+    ResolvedWindowRule delta = aloneRuleDiff(resolvedRules(), resolveRulesWithAlone(false));
+    // A column can hold several windows. Fullscreen and maximize-to-edges cover the output, so they still need the
+    // window to be the only tile; maximize and the scrolling extent belong to the whole column and stay applicable.
+    if (!soleTiled) {
+      delta.defaultFullscreen.reset();
+      delta.defaultMaximizeToEdges.reset();
+    }
     if (delta == m_lastAloneDelta) {
       return false;
     }
@@ -234,30 +270,58 @@ namespace umbriel {
       changed = true;
     }
     const bool applied = applyAloneRuleEffects(delta);
-    m_lastAloneDelta = delta;
+    m_lastAloneDelta = std::move(delta);
     m_aloneEffectsActive = applied;
     return changed || applied;
   }
 
-  // The opening configure states a window that would be the only tiled one from its alone rules, before the view is
-  // in the layout. Now that it is, notifyAloneStateChanged hands that state to the alone effect, so leaving alone
+  // The alone rules can name the column the window opens in, and the attach must know that name before it looks for
+  // the column, so a peer opening through the same name finds this window.
+  void View::registerOpeningAloneColumn() {
+    if (m_workspace == nullptr || !m_tiled || m_workspace->layoutMode() == LayoutMode::Stacking) {
+      return;
+    }
+    const ResolvedWindowRule alone = resolveRulesWithAlone(true);
+    if (m_workspace->wouldBeAloneInLayout(
+            this, alone.defaultScrollingColumn.value_or(""), alone.defaultScrollingColumnOrder
+        )) {
+      m_namedScrollingColumnName = alone.defaultScrollingColumn;
+      m_namedScrollingColumnOrder = alone.defaultScrollingColumnOrder;
+    }
+  }
+
+  // The opening configure states a window that will be in the only tiled column from its alone rules, before the view
+  // is in the layout. Now that it is, notifyAloneStateChanged hands that state to the alone effect, so leaving alone
   // undoes it again. The seed is single-use: a later pass must not take over a state the user or the client chose.
   void View::settleOpeningAloneState() {
     // Restored maximize only steals alone ownership when the compositor honors it. Otherwise the alone rule owns the
     // state like any other window, and the client's session flag is ignored.
+    const bool maximizedSeed =
+        m_aloneOpeningSeed == AloneSeed::MaximizeToEdges || m_aloneOpeningSeed == AloneSeed::Maximize;
     const bool clientRequested = m_aloneOpeningSeed == AloneSeed::Fullscreen
         ? requestedFullscreen()
-        : m_aloneOpeningSeed == AloneSeed::Maximize && requestedMaximized() && config().general.honorRestoredMaximize;
+        : maximizedSeed && requestedMaximized() && config().general.honorRestoredMaximize;
+    const bool soleTiled = m_workspace != nullptr && m_workspace->isOnlyTiledView(this);
     if (clientRequested) {
       // The client has asked for the state itself since the opening configure, so it owns it.
       m_aloneOpeningSeed = AloneSeed::None;
     } else if (!isAloneInLayout()) {
-      // Another window reached the workspace first, so nothing owns the seeded state: neither the client nor the
+      // Another column reached the workspace first, so nothing owns the seeded state: neither the client nor the
       // window's not-alone rules. The arrange the attach marked carries the tiled size.
       if (m_aloneOpeningSeed == AloneSeed::Fullscreen) {
         setFullscreen(false, FullscreenExitLayout::DeferToCaller);
+      } else if (m_aloneOpeningSeed == AloneSeed::MaximizeToEdges) {
+        setMaximizedToEdges(false);
       } else if (m_aloneOpeningSeed == AloneSeed::Maximize) {
         setMaximized(false);
+      }
+    } else if (!soleTiled) {
+      // Another window joined the column. The output-covering states no longer apply, while a maximized column and
+      // its extent do.
+      if (m_aloneOpeningSeed == AloneSeed::Fullscreen) {
+        setFullscreen(false, FullscreenExitLayout::DeferToCaller);
+      } else if (m_aloneOpeningSeed == AloneSeed::MaximizeToEdges) {
+        setMaximizedToEdges(false);
       }
     }
     notifyAloneStateChanged();
@@ -587,6 +651,7 @@ namespace umbriel {
         .onlyWindow = isOnlyWindowOnWorkspace(),
         .dialog = shellParent() != nullptr,
         .castTarget = m_server->viewCaptured(*this),
+        .layout = m_workspace != nullptr ? std::optional{m_workspace->layoutMode()} : std::nullopt,
     };
   }
 

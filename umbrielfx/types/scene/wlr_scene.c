@@ -846,7 +846,16 @@ static void scene_node_opaque_region(
       struct wlr_box* clipped = &scene_rect->clipped_region.area;
       pixman_region32_t clipped_region;
       pixman_region32_init_rect(&clipped_region, clipped->x + x, clipped->y + y, clipped->width, clipped->height);
-      pixman_region32_subtract(opaque, opaque, &clipped_region);
+      if (scene_rect->clipped_region.inside) {
+        pixman_region32_intersect(opaque, opaque, &clipped_region);
+        pixman_region32_t corners = create_corner_location_region(
+            scene_rect->clipped_region.corners, clipped->x + x, clipped->y + y, clipped->width, clipped->height
+        );
+        pixman_region32_subtract(opaque, opaque, &corners);
+        pixman_region32_fini(&corners);
+      } else {
+        pixman_region32_subtract(opaque, opaque, &clipped_region);
+      }
       pixman_region32_fini(&clipped_region);
     }
     return;
@@ -2129,6 +2138,7 @@ void wlr_scene_border_set_geometry(
 ) {
   assert(width >= 0 && height >= 0);
   assert(inner_width >= 0 && outer_width >= 0);
+  assert(!clipped_region.inside);
   if (border->width == width
       && border->height == height
       && border->inner_width == inner_width
@@ -2241,7 +2251,8 @@ void wlr_scene_rect_set_corner_radii(struct wlr_scene_rect* rect, struct fx_corn
 }
 
 void wlr_scene_rect_set_clipped_region(struct wlr_scene_rect* rect, struct clipped_region clipped_region) {
-  if (fx_corner_radii_eq(rect->clipped_region.corners, clipped_region.corners)
+  if (rect->clipped_region.inside == clipped_region.inside
+      && fx_corner_radii_eq(rect->clipped_region.corners, clipped_region.corners)
       && wlr_box_equal(&rect->clipped_region.area, &clipped_region.area)) {
     return;
   }
@@ -2311,7 +2322,8 @@ void wlr_scene_shadow_set_color(struct wlr_scene_shadow* shadow, const float col
 }
 
 void wlr_scene_shadow_set_clipped_region(struct wlr_scene_shadow* shadow, struct clipped_region clipped_region) {
-  if (fx_corner_radii_eq(shadow->clipped_region.corners, clipped_region.corners)
+  if (shadow->clipped_region.inside == clipped_region.inside
+      && fx_corner_radii_eq(shadow->clipped_region.corners, clipped_region.corners)
       && wlr_box_equal(&shadow->clipped_region.area, &clipped_region.area)) {
     return;
   }
@@ -2444,7 +2456,8 @@ void wlr_scene_blur_set_strength(struct wlr_scene_blur* blur, float strength) {
 }
 
 void wlr_scene_blur_set_clipped_region(struct wlr_scene_blur* blur, struct clipped_region clipped_region) {
-  if (fx_corner_radii_eq(blur->clipped_region.corners, clipped_region.corners)
+  if (blur->clipped_region.inside == clipped_region.inside
+      && fx_corner_radii_eq(blur->clipped_region.corners, clipped_region.corners)
       && wlr_box_equal(&blur->clipped_region.area, &clipped_region.area)) {
     return;
   }
@@ -3226,9 +3239,10 @@ scene_node_at_iterator(struct wlr_scene_node* node, int lx, int ly, const pixman
     if (!rect->accepts_input) {
       return false;
     } else if (
-        !wlr_box_empty(&rect->clipped_region.area) && wlr_box_contains_point(&rect->clipped_region.area, rx, ry)
+        !wlr_box_empty(&rect->clipped_region.area)
+        && wlr_box_contains_point(&rect->clipped_region.area, rx, ry) != rect->clipped_region.inside
     ) {
-      // Inside clipped region
+      // The retained side of the clip also owns input.
       return false;
     }
   } else if (
@@ -3397,6 +3411,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .clipped_region = {
             .area = rect_clipped_region_box,
             .corners = fx_corner_radii_scale(rect_clipped_corners, data->scale),
+            .inside = scene_rect->clipped_region.inside,
         },
     };
 
@@ -3710,8 +3725,9 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
             {
                 .area = shadow_clipped_region_box,
                 .corners = fx_corner_radii_scale(shadow_clipped_corners, data->scale),
+                .inside = scene_shadow->clipped_region.inside,
             },
-        .blur_sigma = scene_shadow->blur_sigma,
+        .blur_sigma = scene_shadow->blur_sigma * data->scale,
         .corner_radius = scene_shadow->corner_radius * data->scale,
         .color =
             {
@@ -3774,6 +3790,12 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
     struct fx_corner_radii blur_corners = blur->corners;
     fx_corner_radii_transform(node_transform, &blur_corners);
+    struct wlr_box blur_clip_box = blur->clipped_region.area;
+    struct fx_corner_radii blur_clip_corners = blur->clipped_region.corners;
+    blur_clip_box.x += x;
+    blur_clip_box.y += y;
+    transform_output_box(&blur_clip_box, data);
+    fx_corner_radii_transform(node_transform, &blur_clip_corners);
 
     struct fx_render_blur_pass_options blur_options = {
         .tex_options =
@@ -3797,6 +3819,11 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .blur_data = &scene->blur_data,
         .ignore_alpha = mask != NULL ? blur->ignore_alpha : 0.0f,
         .blur_strength = blur->strength,
+        .clipped_region = {
+            .area = blur_clip_box,
+            .corners = fx_corner_radii_scale(blur_clip_corners, data->scale),
+            .inside = blur->clipped_region.inside,
+        },
     };
     fx_render_pass_add_blur(fx_pass, &blur_options);
     break;

@@ -108,7 +108,7 @@ namespace umbriel {
       const char* systemdRun, const char* unitArgument, const char* partOfProperty, const char* bindsToProperty,
       const char* afterProperty, const ApplicationScopeEnvironmentArguments& environmentArguments, const char* command
   ) {
-    std::array<char*, 21> arguments{};
+    std::array<char*, 22> arguments{};
     size_t argumentCount = 0;
     const auto append = [&arguments, &argumentCount](const char* argument) {
       arguments[argumentCount++] = const_cast<char*>(argument);
@@ -122,6 +122,9 @@ namespace umbriel {
     append("--expand-environment=no");
     append("--slice=app.slice");
     append("--description=Umbriel application");
+    // Bound the SIGTERM grace period so an unresponsive application cannot stall logout for the user manager's
+    // default stop timeout; systemd sends SIGKILL once it expires.
+    append("--property=TimeoutStopSec=5s");
     append(unitArgument);
     append(partOfProperty);
     append(bindsToProperty);

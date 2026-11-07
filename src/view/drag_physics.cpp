@@ -138,10 +138,12 @@ namespace umbriel {
       for (int y = 0; y < 4; ++y) {
         for (int x = 0; x < 4; ++x) {
           const int i = y * 4 + x;
-          if (x < 3)
+          if (x < 3) {
             horizontal = std::max(horizontal, std::abs(m_displacement[i + 1][axis] - m_displacement[i][axis]));
-          if (y < 3)
+          }
+          if (y < 3) {
             vertical = std::max(vertical, std::abs(m_displacement[i + 4][axis] - m_displacement[i][axis]));
+          }
         }
       }
       ratio[axis] = std::max(ratio[axis], 3 * (horizontal + vertical) / (extent * kContraction));

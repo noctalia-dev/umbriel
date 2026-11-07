@@ -1205,6 +1205,41 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
+UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
+      "false\n"
+  );
+  CHECK(store.reload().success);
+  const auto& animation = store.config().animation;
+  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
+  CHECK(animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+
+  // An animated close fills the closed tile's space itself, so it holds no frame.
+  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(!store.config().animation.holdsClosedTile());
+
+  // An animated size has nothing to wait for, so the key is reported as inert.
+  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
+  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+
+  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
+  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
+  CHECK(store.config().animation.holdsClosedTile());
+  CHECK(!containsDiagnostic(store, "has no effect"));
+}
+
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
   const TempConfigTree tree;
   tree.write("wipe.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
@@ -3993,6 +4028,39 @@ UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
   }
 }
 
+// The cast selector takes screen presets and pools like effects.screen; an output can name its own or opt out with
+// "off", and a selector of the wrong kind is dropped instead of running a border shader over a shared screen.
+UMBRIEL_TEST(screenCastSelectorsLoad) {
+  const TempConfigTree tree;
+  tree.write("s.glsl", "vec4 screen(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("b.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects]\nscreen_cast = \"casts\"\n"
+      "[effects.preset.wisps]\nkind = \"screen\"\nshader = \"s.glsl\"\n"
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"b.glsl\"\n"
+      "[effects.pool.casts]\nkind = \"screen\"\nchoose = [\"wisps\"]\n"
+      "[output.\"HEADLESS-1\"]\nscreen_cast_effect = \"wisps\"\n"
+      "[output.\"HEADLESS-2\"]\nscreen_cast_effect = \"off\"\n"
+      "[output.\"HEADLESS-3\"]\nscreen_cast_effect = \"ring\"\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.effects.screenCast, std::string("casts"));
+  CHECK_EQ(config.outputs.size(), size_t{3});
+  if (config.outputs.size() != 3) {
+    return;
+  }
+  CHECK(config.outputs[0].screenCastEffect == "wisps");
+  CHECK(config.outputs[1].screenCastEffect == "off");
+  CHECK(!config.outputs[2].screenCastEffect);
+  CHECK(containsDiagnostic(
+      store, "ignoring output.HEADLESS-3.screen_cast_effect (effect 'ring' is a border preset, not a screen preset)"
+  ));
+}
+
 UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {
   const TempConfigTree tree;
   tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
@@ -4834,6 +4902,30 @@ minimize_glyph_hover = {}
   CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
+UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
+  const TempConfig file;
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[appearance.title_bar]\nheight = 28\nbutton_size = 12\nbutton_gap = 10\nbutton_padding = 15\n");
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().appearance.titleBar.buttonSize, 12);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGap, 10);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, 15);
+
+  file.write("[appearance.title_bar]\nheight = 24\nbutton_size = 30\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonSize, 24);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_size"));
+
+  file.write("[appearance.title_bar]\nbutton_gap = -5\nbutton_padding = -5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGap, 0);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, -1);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_gap"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_padding"));
+}
+
 UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
   const TempConfig file;
   auto& store = umbriel::configStore();
@@ -4847,10 +4939,11 @@ UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
     CHECK(store.reload().success);
     CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, expected);
     CHECK(!containsDiagnostic(store, "unknown key"));
-    if (value == "-2")
+    if (value == "-2") {
       CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
-    else
+    } else {
       CHECK(store.diagnostics().empty());
+    }
   }
   for (const std::string_view value : {"\"round\"", "0.5"}) {
     file.write(std::format("[appearance.title_bar]\nbutton_corner_radius = {}\n", value));
@@ -4892,6 +4985,58 @@ UMBRIEL_TEST(titleBarModesUseStrictVocabulary) {
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);
   CHECK(containsDiagnostic(store, "unknown key appearance.title_bar.enabled"));
+}
+
+UMBRIEL_TEST(windowRuleLayoutAcceptsNamesAndArraysAndRejectsInvalidSelectors) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.layout = "stacking"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["scrolling", "dwindle", "master"]
+title_bar = "off"
+[[window_rule]]
+match.layout = []
+opacity = 0.5
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().windowRules.size(), size_t{3});
+  CHECK(store.config().windowRules[0].matchLayouts == std::vector{LayoutMode::Stacking});
+  CHECK(
+      store.config().windowRules[1].matchLayouts
+      == (std::vector{LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master})
+  );
+  CHECK(store.config().windowRules[2].matchLayouts.empty());
+  file.write(R"(
+[[window_rule]]
+match.layout = "unknown"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["stacking", "invalid"]
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["stacking", true]
+title_bar = "forced"
+[[window_rule]]
+match.layout = 1
+title_bar = "forced"
+[[window_rule]]
+match.layout = { mode = "stacking" }
+title_bar = "forced"
+[[window_rule]]
+match.layout = "Stacking"
+title_bar = "forced"
+)");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  for (int index = 0; index < 6; ++index) {
+    CHECK(containsDiagnostic(store, "window_rule[" + std::to_string(index) + "].match.layout"));
+  }
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(titleBarRuleChoicesAreStrict) {

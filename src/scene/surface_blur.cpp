@@ -109,13 +109,25 @@ namespace umbriel {
     if (m_node->width != drawBox.width || m_node->height != drawBox.height) {
       wlr_scene_blur_set_size(m_node, drawBox.width, drawBox.height);
     }
-    if (!fx_corner_radii_eq(m_node->corners, corners)) {
-      wlr_scene_blur_set_corner_radii(m_node, corners);
-    }
     if (m_node->alpha != m_alpha) {
       wlr_scene_blur_set_alpha(m_node, m_alpha);
     }
     wlr_scene_buffer* shapeSource = wlr_scene_blur_get_transparency_mask_source(m_node);
+    clipped_region frame{};
+    if (shapeSource != nullptr && !wlr_box_empty(&shapeSource->corner_box)) {
+      frame = {.area = shapeSource->corner_box, .corners = shapeSource->corners, .inside = true};
+      int sourceX = 0;
+      int sourceY = 0;
+      int blurX = 0;
+      int blurY = 0;
+      wlr_scene_node_coords(&shapeSource->node, &sourceX, &sourceY);
+      wlr_scene_node_coords(&m_node->node, &blurX, &blurY);
+      frame.area.x += sourceX - blurX;
+      frame.area.y += sourceY - blurY;
+      corners = corner_radii_none();
+    }
+    wlr_scene_blur_set_corner_radii(m_node, corners);
+    wlr_scene_blur_set_clipped_region(m_node, frame);
     const pixman_region32_t* shape =
         shapeSource != nullptr ? wlr_scene_node_get_clip_region(&shapeSource->node) : nullptr;
     if (shape != nullptr) {

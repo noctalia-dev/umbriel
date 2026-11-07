@@ -21,8 +21,9 @@ namespace umbriel {
   };
 
   constexpr FloatingPoint keepTitleBarReachable(FloatingPoint origin, int titleBarHeight, const wlr_box& usable) {
-    if (titleBarHeight > 0 && origin.y < usable.y + titleBarHeight)
+    if (titleBarHeight > 0 && origin.y < usable.y + titleBarHeight) {
       origin.y = usable.y + titleBarHeight;
+    }
     return origin;
   }
 

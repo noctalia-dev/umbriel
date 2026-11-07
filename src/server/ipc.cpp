@@ -631,33 +631,33 @@ namespace umbriel {
         }
         response += event.dump();
       };
-      if ((requested & Ipc::kEventTheme) != 0) {
+      if ((requested & Ipc::EventTheme) != 0) {
         append(themeEvent());
       }
-      if ((requested & Ipc::kEventOverview) != 0) {
+      if ((requested & Ipc::EventOverview) != 0) {
         append(overviewEvent(*m_server));
       }
-      if ((requested & Ipc::kEventKeyboardLayout) != 0) {
+      if ((requested & Ipc::EventKeyboardLayout) != 0) {
         if (const auto event = keyboardLayoutEvent(*m_server)) {
           append(*event);
         }
       }
-      if ((requested & Ipc::kEventWindows) != 0) {
+      if ((requested & Ipc::EventWindows) != 0) {
         append(windowsEvent(*m_server));
       }
-      if ((requested & Ipc::kEventWorkspaces) != 0) {
+      if ((requested & Ipc::EventWorkspaces) != 0) {
         append(workspacesEvent(*m_server));
       }
-      if ((requested & Ipc::kEventSubmap) != 0) {
+      if ((requested & Ipc::EventSubmap) != 0) {
         append(submapEvent(*m_server));
       }
-      if ((requested & Ipc::kEventScreenCast) != 0) {
+      if ((requested & Ipc::EventScreenCast) != 0) {
         append(screenCastEvent(*m_server));
       }
-      if ((requested & Ipc::kEventLayers) != 0) {
+      if ((requested & Ipc::EventLayers) != 0) {
         append(layersEvent(*m_server));
       }
-      if ((requested & Ipc::kEventOutputs) != 0) {
+      if ((requested & Ipc::EventOutputs) != 0) {
         append(outputsEvent(*m_server));
       }
       return response;
@@ -753,26 +753,26 @@ namespace umbriel {
     }
   }
 
-  void Ipc::notifyThemeChanged() { broadcastEvent(kEventTheme, themeEvent()); }
+  void Ipc::notifyThemeChanged() { broadcastEvent(EventTheme, themeEvent()); }
 
-  void Ipc::notifyOverviewChanged() { broadcastEvent(kEventOverview, overviewEvent(*m_server)); }
+  void Ipc::notifyOverviewChanged() { broadcastEvent(EventOverview, overviewEvent(*m_server)); }
 
   void Ipc::notifyKeyboardLayoutChanged() {
     if (const auto event = keyboardLayoutEvent(*m_server)) {
-      broadcastEvent(kEventKeyboardLayout, *event);
+      broadcastEvent(EventKeyboardLayout, *event);
     }
   }
 
-  void Ipc::notifyWindowsChanged() { broadcastEvent(kEventWindows, windowsEvent(*m_server)); }
+  void Ipc::notifyWindowsChanged() { broadcastEvent(EventWindows, windowsEvent(*m_server)); }
 
-  void Ipc::notifyWorkspacesChanged() { broadcastEvent(kEventWorkspaces, workspacesEvent(*m_server)); }
+  void Ipc::notifyWorkspacesChanged() { broadcastEvent(EventWorkspaces, workspacesEvent(*m_server)); }
 
-  void Ipc::notifySubmapChanged() { broadcastEvent(kEventSubmap, submapEvent(*m_server)); }
+  void Ipc::notifySubmapChanged() { broadcastEvent(EventSubmap, submapEvent(*m_server)); }
 
-  void Ipc::notifyScreenCastChanged() { broadcastEvent(kEventScreenCast, screenCastEvent(*m_server)); }
+  void Ipc::notifyScreenCastChanged() { broadcastEvent(EventScreenCast, screenCastEvent(*m_server)); }
 
-  void Ipc::notifyLayersChanged() { broadcastEvent(kEventLayers, layersEvent(*m_server)); }
+  void Ipc::notifyLayersChanged() { broadcastEvent(EventLayers, layersEvent(*m_server)); }
 
-  void Ipc::notifyOutputsChanged() { broadcastEvent(kEventOutputs, outputsEvent(*m_server)); }
+  void Ipc::notifyOutputsChanged() { broadcastEvent(EventOutputs, outputsEvent(*m_server)); }
 
 } // namespace umbriel

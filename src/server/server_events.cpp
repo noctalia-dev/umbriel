@@ -191,8 +191,9 @@ namespace umbriel {
         return;
       }
       watch->pendingMode = resolvedDecorationMode(watch->decoration);
-      if (View* view = View::fromSurface(surface->surface))
+      if (View* view = View::fromSurface(surface->surface)) {
         view->setXdgDecorationPreference(watch->pendingMode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+      }
       // set_mode schedules a configure; that asserts unless the xdg_surface is ready.
       if (surface->initialized) {
         clearDecorationCommit(watch);
@@ -217,8 +218,9 @@ namespace umbriel {
       watch = wl_container_of(listener, watch, destroy);
       if (watch->decoration != nullptr) {
         if (watch->decoration->toplevel != nullptr && watch->decoration->toplevel->base != nullptr) {
-          if (View* view = View::fromSurface(watch->decoration->toplevel->base->surface))
+          if (View* view = View::fromSurface(watch->decoration->toplevel->base->surface)) {
             view->setXdgDecorationPreference(std::nullopt);
+          }
         }
         watch->decoration->data = nullptr;
       }
@@ -235,8 +237,9 @@ namespace umbriel {
     };
 
     void applyLegacyDecorationMode(wlr_server_decoration* decoration) {
-      if (View* view = View::fromSurface(decoration->surface))
+      if (View* view = View::fromSurface(decoration->surface)) {
         view->setLegacyDecorationPreference(decoration->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+      }
     }
 
     void onLegacyDecorationMode(wl_listener* listener, void*) {
@@ -248,8 +251,9 @@ namespace umbriel {
     void onLegacyDecorationDestroy(wl_listener* listener, void*) {
       LegacyDecorationWatch* watch;
       watch = wl_container_of(listener, watch, destroy);
-      if (View* view = View::fromSurface(watch->decoration->surface))
+      if (View* view = View::fromSurface(watch->decoration->surface)) {
         view->setLegacyDecorationPreference(std::nullopt);
+      }
       wl_list_remove(&watch->mode.link);
       wl_list_remove(&watch->destroy.link);
       delete watch;
@@ -1495,6 +1499,7 @@ namespace umbriel {
     self->m_imageCopySessions.push_back(std::move(watch));
     self->scheduleSuspensionSync();
     self->refreshCaptureRuleEffects(session->source);
+    self->refreshScreenCastEffect(self->m_imageCopySessions.back()->output);
   }
 
   // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
@@ -1503,6 +1508,7 @@ namespace umbriel {
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
     wlr_ext_image_capture_source_v1* source = watch->session->source;
+    wlr_output* captured = watch->output;
     wl_list_remove(&watch->destroy.link);
     std::erase_if(server->m_imageCopySessions, [watch](const std::unique_ptr<ImageCopySessionWatch>& entry) {
       return entry.get() == watch;
@@ -1512,6 +1518,21 @@ namespace umbriel {
     }
     server->scheduleSuspensionSync();
     server->refreshCaptureRuleEffects(source);
+    server->refreshScreenCastEffect(captured);
+  }
+
+  // `effects.screen_cast` follows the sessions on an output source; only that output rebinds.
+  void Server::refreshScreenCastEffect(wlr_output* output) {
+    Output* target = outputFromWlr(output);
+    if (target == nullptr) {
+      return;
+    }
+    const std::string before(target->screenEffectSlot().effectiveName());
+    resolveOutputEffect(*target);
+    if (target->screenEffectSlot().effectiveName() != before) {
+      kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
+      target->applyOutputEffects();
+    }
   }
 
   // `match.is_cast_target` follows the sessions on a window's source. Output sources match no view and change nothing.

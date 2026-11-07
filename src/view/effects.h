@@ -16,6 +16,7 @@ namespace umbriel {
 
   struct BorderEffectGate {
     bool focused = false;
+    bool allowUnfocused = false;
     bool decorated = false;
     bool urgent = false;
     bool fullscreen = false;

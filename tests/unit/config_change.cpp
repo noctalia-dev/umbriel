@@ -758,6 +758,18 @@ UMBRIEL_TEST(descriptorRuleWithoutSelectorInvalidatesDisplacedScreenOverride) {
   CHECK(!ConfigEffects::between(before, after).effects);
 }
 
+// A per-output cast selector is read only when a capture starts, so a reload must rebind effects to pick the edit up.
+UMBRIEL_TEST(outputScreenCastEffectEditRebindsEffects) {
+  Config before;
+  OutputRule output;
+  output.name = "HEADLESS-1";
+  before.outputs.push_back(output);
+  Config after = before;
+  after.outputs.front().screenCastEffect = "wisps";
+  CHECK(ConfigEffects::between(before, after).effects);
+  CHECK(!ConfigEffects::between(after, after).effects);
+}
+
 UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config before;
   OutputRule output;
@@ -815,6 +827,11 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config changedAloneMatcher = forcedByRule;
   changedAloneMatcher.windowRules[0].matchAlone = true;
   CHECK(ConfigEffects::between(forcedByRule, changedAloneMatcher).tearingPolicy);
+
+  Config changedLayoutMatcher = forcedByRule;
+  changedLayoutMatcher.windowRules[0].matchLayouts = {umbriel::LayoutMode::Stacking};
+  CHECK(ConfigChange::between(forcedByRule, changedLayoutMatcher).windowRules);
+  CHECK(ConfigEffects::between(forcedByRule, changedLayoutMatcher).tearingPolicy);
 
   Config changedOnlyWindowMatcher = forcedByRule;
   changedOnlyWindowMatcher.windowRules[0].matchOnlyWindow = true;

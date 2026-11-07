@@ -22,15 +22,15 @@ namespace umbriel {
     // One bit per subscribable event name; the subscribe request ORs the bits it asked for into the connection. Keep
     // the names below in sync with the event builders in ipc.cpp.
     enum : uint16_t {
-      kEventTheme = 1 << 0,
-      kEventOverview = 1 << 1,
-      kEventKeyboardLayout = 1 << 2,
-      kEventWindows = 1 << 3,
-      kEventWorkspaces = 1 << 4,
-      kEventSubmap = 1 << 5,
-      kEventScreenCast = 1 << 6,
-      kEventLayers = 1 << 7,
-      kEventOutputs = 1 << 8,
+      EventTheme = 1 << 0,
+      EventOverview = 1 << 1,
+      EventKeyboardLayout = 1 << 2,
+      EventWindows = 1 << 3,
+      EventWorkspaces = 1 << 4,
+      EventSubmap = 1 << 5,
+      EventScreenCast = 1 << 6,
+      EventLayers = 1 << 7,
+      EventOutputs = 1 << 8,
     };
     // Number of bits above; sizes the last-broadcast cache.
     static constexpr size_t kEventCount = 9;
