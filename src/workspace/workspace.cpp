@@ -1719,14 +1719,15 @@ namespace umbriel {
     return contentBoxInTile(target, view->titleBarHeight());
   }
 
-  wlr_box Workspace::fullscreenTargetBox(const View* view) const {
+  wlr_box Workspace::fullscreenTargetBox(const View* view, const Layout* layout) const {
     wlr_box outputBox{};
     if (m_group == nullptr || m_group->output() == nullptr) {
       return outputBox;
     }
     wlr_output_layout_get_box(m_group->server()->outputLayout(), m_group->output()->wlr(), &outputBox);
-    const ScrollingLayout* scrolling = scrollingLayout();
-    const int column = m_layout->columnOf(view);
+    const Layout& source = layout != nullptr ? *layout : *m_layout;
+    const auto* scrolling = scrollingLayout() != nullptr ? static_cast<const ScrollingLayout*>(&source) : nullptr;
+    const int column = source.columnOf(view);
     if (scrolling == nullptr || column < 0) {
       return outputBox;
     }

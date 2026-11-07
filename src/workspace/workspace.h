@@ -100,7 +100,7 @@ namespace umbriel {
     wlr_box presentedTiledBox(const View* view, const Layout* layout = nullptr) const;
     // Output box a fullscreen view rests in. A member of the scrolling strip keeps its column's position, so scrolling
     // still carries it off-screen.
-    wlr_box fullscreenTargetBox(const View* view) const;
+    wlr_box fullscreenTargetBox(const View* view, const Layout* layout = nullptr) const;
     // Primary extent the strip scrolls within, less edge padding on both sides.
     // At least 1, so callers can divide by it.
     int scrollViewportExtent() const;
