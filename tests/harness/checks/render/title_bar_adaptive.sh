@@ -195,8 +195,11 @@ expect_in 'r > 0.6 && g < 0.15 && b < 0.15' "$BAR_FULL" 40 "the button backgroun
 # keeps a tab row or a loading bar on that edge out of the colour.
 readonly LOG2="$UMBRIEL_RUNTIME_DIR/adaptive-average.log"
 configure average
-FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_SPLIT=0xFF0000FF TOP_BAND_HEIGHT=2 \
-  "$CLIENT" adaptive-bar 480 300 < /dev/null > "$LOG2" 2>&1 &
+# A fresh pipe: the first client's write end is closed with it.
+mkfifo "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo"
+FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_SPLIT=0xFF0000FF TOP_BAND_HEIGHT=2 REPAINT_ON_STDIN=1 \
+  "$CLIENT" adaptive-bar 480 300 < "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo" > "$LOG2" 2>&1 &
+exec 4> "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo"
 await_lines "$LOG2" mapped 1
 "$UMBRIEL" settle
 grim "$FRAME"
@@ -219,4 +222,31 @@ read -r left_r left_g left_b < <(pixel 200 84)
 read -r right_r right_g right_b < <(pixel 620 84)
 if ! (( left_g > 200 && left_b < 40 && right_b > 200 && right_g < 40 )); then
   fail "a smeared bar did not keep the window edge: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+
+# Repaint while the bar is smearing, so the mean cached before this point is out of date.
+printf 'B' >&4
+await_lines "$LOG2" repainted 1
+"$UMBRIEL" settle
+
+# Switching to average is live on its own: an idle window must not wait for its next commit, and the mean must be the
+# edge as it is now, not the one the bar last averaged.
+configure average
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! near "$left_g" "$right_g" || ! (( left_b > 200 && left_g < 40 )); then
+  fail "an averaged bar was stale after switching live: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+
+# And the mean follows further repaints rather than freezing on the colour it was first baked with.
+printf 'R' >&4
+await_lines "$LOG2" repainted 2
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! near "$left_r" "$right_r" || ! near "$left_b" "$right_b" || ! (( left_r > 100 && left_b > 100 && left_g < 40 )); then
+  fail "an averaged bar did not follow a repaint: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi

@@ -226,7 +226,7 @@ namespace umbriel {
     m_adaptiveBuffer = nullptr;
   }
 
-  std::optional<std::array<float, 4>> SsdFrame::averageStrip(const wlr_fbox& strip) const {
+  std::optional<std::array<float, 4>> SsdFrame::averageStrip(const wlr_fbox& strip) {
     // A readback is the only way to collapse a strip into one colour, and it is the one cost this mode cannot avoid:
     // wlroots finishes the frame before it reads. Everything else in this class mirrors buffers instead.
     if (m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
@@ -240,10 +240,33 @@ namespace umbriel {
     if (box.width <= 0 || box.height <= 0) {
       return std::nullopt;
     }
-    std::vector<uint32_t> pixels(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
+    // Ask for the format this renderer can read rather than assuming BGRA: an implementation without
+    // EXT_read_format_bgra refuses it, and the mode would silently never work there.
+    const uint32_t format = wlr_texture_preferred_read_format(m_content->buffer->texture);
+    std::optional<PixelOrder> order;
+    switch (format) {
+    case DRM_FORMAT_ARGB8888:
+      order = PixelOrder::Argb;
+      break;
+    case DRM_FORMAT_XRGB8888:
+      order = PixelOrder::Xrgb;
+      break;
+    case DRM_FORMAT_ABGR8888:
+      order = PixelOrder::Abgr;
+      break;
+    case DRM_FORMAT_XBGR8888:
+      order = PixelOrder::Xbgr;
+      break;
+    default:
+      break;
+    }
+    if (!order.has_value()) {
+      return std::nullopt;
+    }
+    m_strip.resize(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
     const wlr_texture_read_pixels_options options{
-        .data = pixels.data(),
-        .format = DRM_FORMAT_ARGB8888,
+        .data = m_strip.data(),
+        .format = format,
         .stride = static_cast<uint32_t>(box.width) * 4U,
         .dst_x = 0,
         .dst_y = 0,
@@ -253,11 +276,13 @@ namespace umbriel {
     if (!wlr_texture_read_pixels(m_content->buffer->texture, &options)) {
       return std::nullopt;
     }
-    return averageArgb(pixels.data(), pixels.size());
+    return averagePixels(m_strip.data(), m_strip.size(), *order);
   }
 
   wlr_buffer* SsdFrame::averageBufferFor(const std::array<float, 4>& color) {
-    if (m_averageBuffer != nullptr && m_averageColor == color) {
+    // Compare against the colour baked into the buffer, never against `m_averageColor`: that already holds the new
+    // mean by the time this is called, so comparing with it would always match and freeze the first colour.
+    if (m_averageBuffer != nullptr && m_averageBufferColor == color) {
       return m_averageBuffer;
     }
     // One pixel, stretched over the bar: a flat colour costs no per-frame readback once it is known.
@@ -274,7 +299,7 @@ namespace umbriel {
       wlr_buffer_drop(m_averageBuffer);
     }
     m_averageBuffer = buffer;
-    m_averageColor = color;
+    m_averageBufferColor = color;
     return m_averageBuffer;
   }
 
@@ -294,6 +319,7 @@ namespace umbriel {
     if (buffer == nullptr) {
       hideAdaptive();
       m_adaptiveContent = nullptr;
+      m_adaptiveMode = TitleBarColorSource::Fixed;
       m_averageColor.reset();
       return;
     }
@@ -337,9 +363,9 @@ namespace umbriel {
     }
     // Colour management can change on a commit that carries no buffer damage, so this cannot sit behind the guard
     // below; the setters it reaches are no-ops when nothing changed. The averaged colour is a plain sRGB value of its
-    // own, so it is not re-described with the window's transfer function.
-    if (m_colors != nullptr && !average) {
-      m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
+    // own, so a null surface resets the node to sRGB rather than inheriting the window's transfer function.
+    if (m_colors != nullptr) {
+      m_colors->applySurfaceDescriptionToBuffer(average ? nullptr : m_content, m_adaptive);
     }
     const wlr_fbox strip = titleBarStripSourceBox(
         source, buffer->width, buffer->height, sourceSurfaceWidth, sourceSurfaceHeight,
@@ -360,8 +386,11 @@ namespace umbriel {
     const int barX = m_background->node.x;
     const int barY = m_background->node.y;
     const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
+    // A mode switch is not a commit, so it has to force the work itself: otherwise an idle window keeps the palette
+    // (or the mean of an edge that changed while the bar was smearing) until its next top-edge damage.
+    const bool modeChanged = m_adaptiveMode != style.colorSource;
     // The edge changed: the smear re-mirrors it, and the average reads it back and replaces its flat colour.
-    const bool restrip = touched || m_adaptiveContent != buffer || stripMoved;
+    const bool restrip = touched || modeChanged || m_adaptiveContent != buffer || stripMoved;
     // What the bar shows. The smear mirrors the strip itself; the average stretches one pixel, so it carries none of
     // the window's own detail and is one uniform colour by construction.
     wlr_buffer* shown = buffer;
@@ -375,6 +404,7 @@ namespace umbriel {
       if (shown == nullptr) {
         hideAdaptive();
         m_adaptiveContent = buffer;
+        m_adaptiveMode = style.colorSource;
         m_adaptiveStrip = strip;
         return;
       }
@@ -418,6 +448,7 @@ namespace umbriel {
     }
     m_adaptiveBuffer = shown;
     m_adaptiveContent = buffer;
+    m_adaptiveMode = style.colorSource;
     m_adaptiveStrip = strip;
     m_adaptiveTransform = transform;
     m_adaptiveWidth = m_background->width;
@@ -576,7 +607,7 @@ namespace umbriel {
           || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
       updateButtonIcon(
           which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible,
-          style.colorSource == TitleBarColorSource::Window ? adaptiveOutline(glyphColor[3]) : std::nullopt
+          style.colorSource != TitleBarColorSource::Fixed ? adaptiveOutline(glyphColor[3]) : std::nullopt
       );
     };
     button(
@@ -670,7 +701,7 @@ namespace umbriel {
     const int labelWidth = label != nullptr ? label->width : 0;
     const int labelHeight = label != nullptr ? label->height : 0;
     // A window-coloured bar can be lighter or darker than the palette, so the title keeps a dark edge under it.
-    const bool shadowed = style.colorSource == TitleBarColorSource::Window;
+    const bool shadowed = style.colorSource != TitleBarColorSource::Fixed;
     const TabLabel* shadow = nullptr;
     if (shadowed && labelBuffer != nullptr && textColor[3] > 0.0F) {
       // The shadow re-measures the same layout; keep the title's copy intact for the text below it.
@@ -821,7 +852,7 @@ namespace umbriel {
     // The cache is an LRU and the shadow lookup below can evict the entry `label` points at, so hold the buffer.
     wlr_buffer* labelBuffer = label != nullptr ? wlr_buffer_lock(label->buffer) : nullptr;
     wlr_buffer* shadow = nullptr;
-    if (style.colorSource == TitleBarColorSource::Window && textColor[3] > 0.0F) {
+    if (style.colorSource != TitleBarColorSource::Fixed && textColor[3] > 0.0F) {
       TitleBarLayout shadowParts = parts;
       if (const TabLabel* rendered = measureTitle(kAdaptiveShadowColor, textColor[3], shadowParts, radius)) {
         shadow = rendered->buffer;

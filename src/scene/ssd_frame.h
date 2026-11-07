@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/config.h"
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
 #include "view/chrome_attachment.h"
@@ -68,7 +69,7 @@ namespace umbriel {
     void updateAdaptive(bool fromCommit);
     void hideAdaptive();
     // The mean colour of the strip, read back from the window's committed texture.
-    std::optional<std::array<float, 4>> averageStrip(const wlr_fbox& strip) const;
+    std::optional<std::array<float, 4>> averageStrip(const wlr_fbox& strip);
     // A one-pixel buffer of `color`, kept until the colour changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The mirrored client buffer is locked by the scene; tell wlroots to ignore that lock so it can still reuse the
@@ -109,7 +110,13 @@ namespace umbriel {
     // The client buffer the node's current contents came from, so a swap re-mirrors or re-reads it.
     wlr_buffer* m_adaptiveContent = nullptr;
     std::optional<std::array<float, 4>> m_averageColor;
+    // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
+    std::array<float, 4> m_averageBufferColor{};
     wlr_buffer* m_averageBuffer = nullptr;
+    // Scratch for one strip readback, kept so a repainting window does not allocate per commit.
+    std::vector<uint32_t> m_strip;
+    // The mode the node's contents were built for: a switch is not a commit, so it has to force the work.
+    TitleBarColorSource m_adaptiveMode = TitleBarColorSource::Fixed;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
     int m_adaptiveWidth = 0;
     int m_adaptiveHeight = 0;

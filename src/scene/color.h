@@ -96,23 +96,28 @@ namespace umbriel {
     return result;
   }
 
-  // Mean colour of packed DRM_FORMAT_ARGB8888 pixels, weighted by alpha so a transparent pixel contributes no hue.
-  // Null when there is nothing to average, or the whole strip is transparent.
-  inline std::optional<std::array<float, 4>> averageArgb(const uint32_t* pixels, size_t count) {
+  // Byte order of a packed 32-bit pixel. The X variants carry no alpha and are read as opaque.
+  enum class PixelOrder : uint8_t { Argb, Abgr, Xrgb, Xbgr };
+
+  // Mean colour of packed 32-bit pixels, as Wayland buffers store them: premultiplied. The sums are therefore already
+  // weighted by alpha, so dividing by the alpha total recovers the straight colour, and a transparent pixel adds
+  // nothing to the hue. Null when there is nothing to average, or the whole strip is transparent.
+  inline std::optional<std::array<float, 4>> averagePixels(const uint32_t* pixels, size_t count, PixelOrder order) {
     if (pixels == nullptr || count == 0) {
       return std::nullopt;
     }
+    const bool opaque = order == PixelOrder::Xrgb || order == PixelOrder::Xbgr;
+    const bool redLow = order == PixelOrder::Abgr || order == PixelOrder::Xbgr;
     double alpha = 0.0;
     double red = 0.0;
     double green = 0.0;
     double blue = 0.0;
     for (size_t index = 0; index < count; ++index) {
       const uint32_t pixel = pixels[index];
-      const double weight = ((pixel >> 24U) & 0xFFU) / 255.0;
-      alpha += weight;
-      red += ((pixel >> 16U) & 0xFFU) / 255.0 * weight;
-      green += ((pixel >> 8U) & 0xFFU) / 255.0 * weight;
-      blue += (pixel & 0xFFU) / 255.0 * weight;
+      alpha += opaque ? 1.0 : ((pixel >> 24U) & 0xFFU) / 255.0;
+      red += (redLow ? (pixel & 0xFFU) : ((pixel >> 16U) & 0xFFU)) / 255.0;
+      green += ((pixel >> 8U) & 0xFFU) / 255.0;
+      blue += (redLow ? ((pixel >> 16U) & 0xFFU) : (pixel & 0xFFU)) / 255.0;
     }
     if (alpha <= 0.0) {
       return std::nullopt;
