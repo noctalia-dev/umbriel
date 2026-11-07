@@ -372,6 +372,10 @@ struct wlr_ext_image_capture_source_v1* wlr_ext_image_capture_source_v1_create_w
   source->backend.buffer_caps = WLR_BUFFER_CAP_DMABUF | WLR_BUFFER_CAP_SHM;
 
   wlr_output_init(&source->output, &source->backend, &output_impl, event_loop, NULL);
+  // The synthetic output's `data` must stay NULL (the calloc above): shells
+  // resolve their own output binding through `wlr_output::data` and treat
+  // data-less outputs as capture mirrors — excluded from client presentation
+  // hints.
 
   size_t output_num = ++last_output_num;
   char name[64];

@@ -126,6 +126,13 @@ namespace umbriel {
     int configuredBitDepth() const;
     const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
     bool configuredDirectScanoutEnabled() const;
+    // The scale clients are asked to render at: the rule's render_scale, or the
+    // logical scale when it is unset.
+    double clientRenderScale() const;
+    // The scale hint for `surface`: clientRenderScale(), except for windows
+    // that skip the supersample (see View::supersampled) and stay at the
+    // logical scale. Surfaces outside a window always follow the output.
+    double surfaceRenderScale(wlr_surface* surface) const;
     bool configuredTearingAllowed() const;
     // Whether a workspace step wraps around the ends of this output's inventory.
     bool configuredCyclicWorkspaces() const;

@@ -862,6 +862,10 @@ namespace umbriel {
       // Scale may have changed; every surface must hear about it or scale-aware
       // clients keep mapping input with the stale scale.
       refreshSurfaceScales();
+      // Output size, scale, or forced X11 render scale may have changed.
+      if (m_xwayland != nullptr) {
+        m_xwayland->handleOutputLayoutChange();
+      }
     }
     if (effects.tearingPolicy) {
       for (const auto& output : m_outputs) {

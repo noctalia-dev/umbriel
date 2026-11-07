@@ -339,6 +339,7 @@ namespace umbriel {
           ),
           boolean("xwayland", &G::xwayland),
           boolean("xwayland_native_resolution", &G::xwaylandNativeResolution),
+          boolean("force_x11_supersample", &G::forceX11Supersample),
           boolean("xwayland_xsettings", &G::xwaylandXsettings),
           registry::text("xwayland_primary_output", &G::xwaylandPrimaryOutput),
           boolean("nvidia_sync_workaround", &G::nvidiaSyncWorkaround),

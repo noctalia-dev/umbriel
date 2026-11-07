@@ -90,9 +90,15 @@ namespace {
 UMBRIEL_TEST(logicalScreenIsTheLayoutMovedToTheOrigin) {
   Fixture fixture;
   CHECK(fixture.setUp(kMixedScales));
-  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, false);
+  int renderScaleCalls = 0;
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, false, [&](const wlr_output*) {
+    ++renderScaleCalls;
+    return 2.5;
+  });
 
   const umbriel::XwaylandRegion main = outputs.region(fixture.outputs[0], 0, 0);
+  CHECK_EQ(renderScaleCalls, 0);
+  CHECK_EQ(outputs.scale(), 1.0);
   CHECK_EQ(main.x.x, 0);
   CHECK_EQ(main.x.y, 1440);
   CHECK_EQ(main.x.width, 3072);
@@ -182,6 +188,36 @@ UMBRIEL_TEST(primarySelectorFollowsIdentityAndLayoutMembership) {
   CHECK(wlr_output_layout_add(fixture.layout, main, 0, 0) != nullptr);
   CHECK_EQ(outputs.primaryOutput(kIdentity).value_or("unmanaged"), main->name);
   CHECK_EQ(outputs.primaryOutput("missing").value_or("unmanaged"), "");
+}
+
+UMBRIEL_TEST(nativeScreenPublishesTheRenderScale) {
+  Fixture fixture;
+  CHECK(fixture.setUp(kMixedScales));
+  // A forced render scale beyond the logical one lets X11 clients supersample.
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, true, [](const wlr_output* output) {
+    return static_cast<double>(output->scale) * 2.0;
+  });
+
+  const umbriel::XwaylandRegion main = outputs.region(fixture.outputs[0], 0, 0);
+  CHECK_EQ(main.scale, 2.5);
+  CHECK_EQ(main.toXWidth(1000), 2500);
+  CHECK_EQ(main.toLayoutWidth(2500), 1000);
+
+  // The whole-output mapping must agree with the coordinate mapping: a
+  // fullscreen X window is configured to the X rectangle and drawn through the
+  // same scale. The rectangle measures render-scale pixels (3072 logical x
+  // 2.5), not the physical mode.
+  CHECK_EQ(main.x.width, 7680);
+  CHECK_EQ(main.x.height, 4320);
+  CHECK_EQ(main.toXWidth(main.layout.width), main.x.width);
+  CHECK_EQ(main.toX(main.layout.x + main.layout.width), main.x.x + main.x.width);
+  CHECK_EQ(main.toLayoutWidth(main.x.width), main.layout.width);
+
+  // Multi-output positions spread by the same factor as the rectangles, so
+  // the right neighbour still starts where the scaled output ends.
+  const umbriel::XwaylandRegion right = outputs.region(fixture.outputs[2], 0, 0);
+  CHECK_EQ(right.x.x, main.x.x + main.x.width);
+  CHECK_EQ(right.x.y, main.x.y);
 }
 
 int main() { return RUN_TESTS(); }

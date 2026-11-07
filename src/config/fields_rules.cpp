@@ -232,6 +232,7 @@ namespace umbriel {
           boolean("background_render", &W::backgroundRender),
           boolean("block_capture", &W::blockCapture),
           boolean("tearing", &W::allowTearing),
+          boolean("supersample", &W::supersample),
           boolean("blur", &W::blur),
           boolean("blur_popups", &W::blurPopups),
           boolean("blur_optimized", &W::blurOptimized),

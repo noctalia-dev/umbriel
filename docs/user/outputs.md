@@ -37,28 +37,29 @@ Locking the session or switching away from its active VT revokes outstanding lea
 
 ## Settings
 
-| Key                                        | Type                              | Default      | Description                                                                                          |
-| ------------------------------------------ | --------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------- |
-| `enabled`                                  | bool                              | `true`       | Turn the monitor on or off.                                                                          |
-| `focus_at_startup`                         | bool                              | `false`      | Move the mouse cursor to this monitor on startup.                                                    |
-| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`.                                     |
-| `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                            |
-| `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                       |
-| `transform`                                | string                            | `"normal"`   | Rotation or reflection.                                                                              |
-| `vrr`                                      | string                            | `"disabled"` | Variable refresh rate policy.                                                                        |
-| `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                    |
-| `direct_scanout`                           | bool                              | `true`       | Allow eligible fullscreen buffers to bypass composition.                                             |
-| `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                               |
-| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                                    |
-| `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                             |
-| `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                        |
-| `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                                 |
-| `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                  |
-| `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                              |
-| `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                          |
-| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                          |
-| `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.      |
-| `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output. |
+| Key                                        | Type                              | Default      | Description                                                                                           |
+| ------------------------------------------ | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| `enabled`                                  | bool                              | `true`       | Turn the monitor on or off.                                                                           |
+| `focus_at_startup`                         | bool                              | `false`      | Move the mouse cursor to this monitor on startup.                                                     |
+| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`.                                      |
+| `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                             |
+| `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                        |
+| `render_scale`                             | float                             | unset        | Scale clients render at (0.25 to 4.0); unset follows `scale`. The compositor samples down to `scale`. |
+| `transform`                                | string                            | `"normal"`   | Rotation or reflection.                                                                               |
+| `vrr`                                      | string                            | `"disabled"` | Variable refresh rate policy.                                                                         |
+| `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                     |
+| `direct_scanout`                           | bool                              | `true`       | Allow eligible fullscreen buffers to bypass composition.                                              |
+| `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                                |
+| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                                     |
+| `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                              |
+| `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                         |
+| `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                                  |
+| `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                   |
+| `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                               |
+| `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                           |
+| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                           |
+| `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.       |
+| `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output.  |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply the configured mode, it uses the preferred advertised mode and logs a warning. Backend tests include the 8-bit SDR fallback, so a rejected swapchain can reach the preferred mode. On that mode, Umbriel retries the configured HDR and bit-depth preferences. A temporary rendering failure after an accepted backend test retries the current candidate instead of changing modes.
 
@@ -127,6 +128,24 @@ screen_cast_effect = "wisps"
 Positions use logical coordinates after scale and transform. A `3840x2160` output at scale `1.25` occupies `3072x1728` logical units. An output immediately to its right therefore starts at x = 3072.
 
 Omit `position` to place outputs automatically from left to right. Explicitly positioned outputs must touch or overlap for the pointer to move between them.
+
+### Supersampling with `render_scale`
+
+`render_scale` separates what things look like from what Wayland clients render at, the way macOS handles HiDPI. With `scale = 1.35` and `render_scale = 2.0`, clients are asked to render at 2.0 and the compositor samples their buffers down to the output's `scale` raster, which smooths text and fine detail on low-ppi and non-RGB-subpixel panels. Logical geometry is unchanged: windows keep their `scale` sizes, and the output still advertises `scale` so client interfaces size as before.
+
+Native-resolution X11 applications use the physical output scale by default. To opt them into `render_scale`, see [`force_x11_supersample`](configuration.md#general).
+
+Fullscreen windows and windows whose [content type](window-rules.md) is `game` or `video` are asked to render at `scale` instead, so a fullscreen buffer matches the output's physical mode and stays eligible for direct scanout. Supersampling a game or a video only costs GPU time, since both draw at a resolution of their own. The `supersample` window rule overrides this in either direction, for example to exempt a game that sends no content type:
+
+```toml
+[[window_rule]]
+match.app_id = "^my-game$"
+supersample = false
+```
+
+Applications that ignore the scale hints render as they always have. Values below `scale` are honored but undersample, which looks blurry. The configuration warning compares `render_scale` against the configured `scale` (1.0 when `scale` is unset), so it cannot see an auto-detected output scale. Hint-following buffers sized at `render_scale` no longer match the output mode while `render_scale` differs from `scale`, so they do not qualify for [direct scanout](#direct-scanout); fullscreen windows are exempt by default, as described above.
+
+Larger client buffers cost memory and sampling work: at `render_scale = 2.0` with `scale = 1.35` they hold about 2.2 times as many pixels as at `scale` alone, growing with the square of the ratio. Prefer whole or half-integer values for crisp buffer ratios.
 
 ### Transform values
 
