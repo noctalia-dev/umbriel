@@ -3,6 +3,7 @@
 #include "check.h"
 #include "config/keybind_parse.h"
 #include "server/action_request.h"
+#include "server/color_description.h"
 
 #include <cstdio>
 #include <limits>
@@ -60,6 +61,12 @@ namespace {
         {"transfer_function", "none"},
         {"primaries", "none"},
         {"sdr_white", 203.0},
+        {"sdr_transfer", "gamma22"},
+        {"color_profile", "none"},
+        {"sdr_gamut", "native"},
+        {"sdr_gamut_staged", false},
+        {"panel_primaries", nullptr},
+        {"panel_transfer", nullptr},
         {"bit_depth", 8},
         {"bit_depth_active", false},
         {"bit_depth_fallback_reason", ""},
@@ -186,6 +193,78 @@ UMBRIEL_TEST(colorHumanShowsCommittedHdrOutputMetadata) {
       })
   );
   CHECK(out.contains("output metadata: 0.005 to 400 cd/m2; MaxCLL: 400; MaxFALL: 200"));
+}
+
+UMBRIEL_TEST(colorHumanReportsCharacterizationFields) {
+  const umbriel::IpcCommandSpec* spec = umbriel::findIpcCommand("color");
+  CHECK(spec != nullptr && spec->printHuman != nullptr);
+  if (spec == nullptr || spec->printHuman == nullptr) {
+    return;
+  }
+
+  const std::string inert = captureHumanOutput(*spec, colorPayload(nlohmann::json::object()));
+  CHECK(inert.contains("color profile: none, SDR gamut: native"));
+  CHECK(inert.contains("panel primaries: none; panel transfer: none"));
+
+  const std::string characterized = captureHumanOutput(
+      *spec,
+      colorPayload({
+          {"color_profile", "edid"},
+          {"sdr_gamut", "srgb"},
+          {"panel_primaries",
+           {
+               {"red", {{"x", 0.68}, {"y", 0.32}}},
+               {"green", {{"x", 0.265}, {"y", 0.69}}},
+               {"blue", {{"x", 0.15}, {"y", 0.06}}},
+               {"white", {{"x", 0.3127}, {"y", 0.329}}},
+           }},
+          {"panel_transfer", "gamma22"},
+      })
+  );
+  CHECK(characterized.contains("color profile: edid, SDR gamut: srgb"));
+  CHECK(characterized.contains(
+      "panel primaries: r 0.6800,0.3200 g 0.2650,0.6900 b 0.1500,0.0600 w 0.3127,0.3290; panel transfer: gamma22"
+  ));
+}
+
+UMBRIEL_TEST(colorHumanLabelsFittedPowerTransferForSurfaces) {
+  const umbriel::IpcCommandSpec* spec = umbriel::findIpcCommand("color");
+  CHECK(spec != nullptr && spec->printHuman != nullptr);
+  if (spec == nullptr || spec->printHuman == nullptr) {
+    return;
+  }
+
+  // A client-ICC description with a power-fit TRC has no named transfer
+  // function; the report shows the fitted exponent instead of "none".
+  nlohmann::json payload = colorPayload(nlohmann::json::object());
+  payload["surfaces"] = nlohmann::json::array({
+      {
+          {"id", ""},
+          {"app_id", "color-feedback-client"},
+          {"title", "color-feedback-client"},
+          {"transfer_function", "power 1.8"},
+          {"primaries", "custom"},
+          {"max_cll", 0},
+          {"max_fall", 0},
+          {"mastering_display_primaries", nullptr},
+          {"mastering_luminance", nullptr},
+      },
+  });
+  const std::string out = captureHumanOutput(*spec, payload);
+  CHECK(out.contains("power 1.8"));
+  CHECK(!out.contains("unspecified"));
+}
+
+UMBRIEL_TEST(surfaceTransferLabelSeparatesNamedPowerAndBare) {
+  CHECK(umbriel::surfaceTransferLabel(nullptr) == "none");
+  umbriel::ColorDescription named{};
+  named.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+  CHECK(umbriel::surfaceTransferLabel(&named) == "gamma 2.2");
+  umbriel::ColorDescription powered{};
+  powered.tfPower = 1.8F;
+  CHECK(umbriel::surfaceTransferLabel(&powered) == "power 1.8");
+  umbriel::ColorDescription bare{};
+  CHECK(umbriel::surfaceTransferLabel(&bare) == "unspecified");
 }
 
 namespace {

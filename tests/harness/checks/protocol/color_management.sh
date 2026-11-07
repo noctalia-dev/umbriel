@@ -61,6 +61,10 @@ if ! jq -e '
   and .outputs[0].transfer_function == "none"
   and .outputs[0].primaries == "none"
   and .outputs[0].sdr_white == 203
+  and .outputs[0].color_profile == "none"
+  and .outputs[0].sdr_gamut == "native"
+  and .outputs[0].panel_primaries == null
+  and .outputs[0].panel_transfer == null
   and (.outputs[0].supported_transfer_functions | type) == "array"
   and (.outputs[0].supported_primaries | type) == "array"
   and (.surfaces | length) == 1
@@ -78,6 +82,8 @@ fi
 
 color_human=$("$UMBRIEL" color)
 if ! grep -F "fallback: display does not advertise PQ" <<< "$color_human" > /dev/null \
+    || ! grep -F "color profile: none, SDR gamut: native" <<< "$color_human" > /dev/null \
+    || ! grep -F "panel primaries: none; panel transfer: none" <<< "$color_human" > /dev/null \
     || ! grep -F "surface " <<< "$color_human" > /dev/null \
     || ! grep -F "mastering luminance: unset; MaxCLL: 0; MaxFALL: 0" <<< "$color_human" > /dev/null; then
   echo "unexpected human-readable color diagnostics: $color_human"
