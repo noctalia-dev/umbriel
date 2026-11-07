@@ -21,7 +21,7 @@ default_workspace = 2
 | `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                         |
 | `match.is_pinned`             | Match current pinned state.                                                     |
 | `match.is_scratchpad`         | Match current scratchpad state.                                                 |
-| `match.is_alone`              | Match whether this is the only tiled window.                                    |
+| `match.is_alone`              | Match whether this is alone in its workspace's tiled layout.                    |
 | `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included. |
 | `match.is_dialog`             | Match whether the application named a parent window for it.                     |
 | `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                |
@@ -293,9 +293,9 @@ window_effect = "scanlines"
 
 Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind. See [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
-## The only tiled window
+## The only tiled column
 
-`match.is_alone` reacts when a window becomes the only tiled window on its workspace:
+`match.is_alone` reacts while a window is alone in its workspace's tiled layout:
 
 ```toml
 [[window_rule]]
@@ -303,7 +303,9 @@ match.is_alone = true
 default_maximize = true
 ```
 
-It can apply fullscreen, maximize-to-edges, maximize, or a scrolling extent. The effect is removed when another tiled window appears and restored when the window becomes alone again. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
+In scrolling layouts, a column can hold several windows, stacked or shown as tabs, and they are all in the alone state together. `default_maximize` and `default_scrolling_extent` act on the column, so they stay applied while its windows share it. Master and dwindle layouts have no scrolling columns, so there `match.is_alone` still means the window is the only tiled window. Fullscreen and maximize-to-edges cover the whole output instead, so they only apply while the window is also the only tiled window; any other tiled window removes them.
+
+The effect is removed when another column appears or when its window leaves the column, and restored when the window returns to the only column. A window that opens with `default_pinned = true` opens floating, so it never opens in the alone state.
 
 Combine it with other selectors when only one application should receive the behavior:
 
@@ -316,7 +318,7 @@ default_scrolling_extent = 0.8
 
 ## The only window on the workspace
 
-`match.is_alone` counts tiled windows only, which is what fullscreen, maximize, and scrolling extents want: a float beside a window does not shrink it. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
+`match.is_alone` asks about the tiled layout, so a float beside a window does not take the match away: fullscreen, maximize, and scrolling extents keep following the tiled layout. `match.is_only_window` is the stricter question, and the one the [settings updated while a window is open](#settings-updated-while-a-window-is-open) ask. Nothing else may occupy the workspace, a float as much as a tile, so a tiled window and a float next to it both stop matching it:
 
 ```toml
 [[window_rule]]
@@ -325,7 +327,7 @@ border_width = 0
 outer_border_width = 0
 ```
 
-A pinned window floats above the workspace rather than on it, and a scratchpad window has left it, so neither one takes the match away. The rule follows the window as company comes and goes. It does not drive the fullscreen, maximize, and extent effects above; those keep following `match.is_alone`.
+A pinned window floats above the workspace rather than on it, and a scratchpad window has left it, so neither one takes the match away. The rule follows the window as company comes and goes. It does not drive the fullscreen, maximize, and extent effects above; those keep following `match.is_alone`, with fullscreen and maximize-to-edges also requiring the window to be the only tile.
 
 ## The window being shared
 

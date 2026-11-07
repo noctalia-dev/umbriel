@@ -161,6 +161,7 @@ namespace umbriel {
     bool tiled() const { return m_tiled; }
     bool floating() const { return !m_tiled; }
     bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
+    // In the workspace's only tiled column, whatever the number of windows that column holds.
     bool isAloneInLayout() const;
     bool isOnlyWindowOnWorkspace() const;
     const std::optional<std::string>& namedScrollingColumnName() const { return m_namedScrollingColumnName; }
@@ -841,9 +842,13 @@ namespace umbriel {
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Releases a maximize or scrolling extent this window owns on a shared column before it leaves the layout.
+    void releaseColumnWideAloneEffect();
     // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
     // window did not open alone after all.
     void settleOpeningAloneState();
+    // Adopts a named scrolling column that only the alone rules select, before the opening attach looks for it.
+    void registerOpeningAloneColumn();
     // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
     // rules. A transition that also moved focus has already refreshed them, so this is a no-op there. Also keeps the
     // minimized state and the client's minimize capability in line with the new state.
@@ -881,10 +886,12 @@ namespace umbriel {
     AloneAction m_aloneAction = AloneAction::None;
     ResolvedWindowRule m_lastAloneDelta;
     std::optional<double> m_aloneSavedWidthFrac;
-    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect.
+    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect and
+    // drop it if the window does not end up alone (or, for the two output-covering states, sole in its column).
     enum class AloneSeed : uint8_t {
       None,
       Fullscreen,
+      MaximizeToEdges,
       Maximize,
     };
     AloneSeed m_aloneOpeningSeed = AloneSeed::None;
