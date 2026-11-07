@@ -1330,8 +1330,6 @@ namespace umbriel {
       // under the frozen frames, its shadow and any part outside them would appear before the switch.
       if (wait) {
         member.view->deferTiledOpening();
-      }
-      if (wait && member.view->tiledOpeningDeferred()) {
         std::erase_if(m_motion.openers, [&](const LayoutMotion::Opener& held) { return held.view == member.view; });
         m_motion.openers.push_back({.view = member.view, .box = member.to});
         continue;
