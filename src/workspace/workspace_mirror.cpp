@@ -6,6 +6,7 @@
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
+#include "workspace/mirror_fit.h"
 #include "workspace/workspace.h"
 
 #include <algorithm>
@@ -276,15 +277,16 @@ namespace umbriel {
     wlr_box to{};
     wlr_output_layout_get_box(server->outputLayout(), source->group()->output()->wlr(), &from);
     wlr_output_layout_get_box(server->outputLayout(), m_workspace.group()->output()->wlr(), &to);
-    if (from.width <= 0 || to.width <= 0) {
+    const std::optional<MirrorFit> fit = fitMirror(from, to);
+    if (!fit) {
       clear();
       return;
     }
-    m_scale = static_cast<double>(to.width) / from.width;
+    m_scale = fit->scale;
     m_sourceX = from.x;
     m_sourceY = from.y;
-    m_targetX = to.x;
-    m_targetY = to.y + std::lround((to.height - from.height * m_scale) / 2);
+    m_targetX = fit->x;
+    m_targetY = fit->y;
     for (auto& entry : m_surfaces) {
       entry->seen = false;
     }
