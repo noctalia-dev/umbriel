@@ -28,6 +28,10 @@ extern "C" {
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
+  namespace {
+    constexpr Logger kLog("view");
+  } // namespace
+
   int View::titleBarHeight() const {
     if (!wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode))
         || scheduledFullscreen()
@@ -321,7 +325,7 @@ namespace umbriel {
         : 0.0F;
     const wlr_box box = out != nullptr ? out->layoutBox() : wlr_box{};
     if (!wlr_scene_node_set_dim_behind(&m_sceneTree->node, &box, std::clamp(alpha, 0.0F, 1.0F))) {
-      Logger("view").error("failed to allocate window dim backdrop");
+      kLog.error("failed to allocate window dim backdrop");
     }
   }
 
