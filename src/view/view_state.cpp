@@ -104,6 +104,10 @@ namespace umbriel {
   }
 
   void View::setMaximized(bool maximized, bool animate) {
+    if (maximized) {
+      // A maximize re-places the window in a state it has to be seen in, so a conceal in flight is dropped.
+      abandonMinimizeTransition();
+    }
     if (m_tiled && m_workspace != nullptr) {
       m_floatingMaximized = false;
       if (m_maximizedToEdges) {
@@ -303,13 +307,20 @@ namespace umbriel {
         && m_sceneTree != nullptr
         && m_mapped
         && m_onActiveWorkspace
-        && minimizable();
+        && minimizable()
+        && !scheduledFullscreen()
+        && !currentFullscreen();
     if (minimized && animateMinimize) {
       beginMinimizeConceal();
     } else if (!minimized && animateMinimize) {
       beginMinimizeReveal();
-    } else if (m_sceneTree != nullptr) {
-      setNodeEnabled(!minimized && m_mapped && m_onActiveWorkspace);
+    } else {
+      // A transition already running has no better ending than this branch's: the window is not leaving, so put it back
+      // at its resting box rather than letting a pending finish hide it after it was restored.
+      abandonMinimizeTransition();
+      if (m_sceneTree != nullptr) {
+        setNodeEnabled(!minimized && m_mapped && m_onActiveWorkspace);
+      }
     }
     if (m_foreign != nullptr) {
       wlr_foreign_toplevel_handle_v1_set_minimized(m_foreign, minimized);
@@ -982,6 +993,10 @@ namespace umbriel {
 
   void View::setFullscreen(bool fullscreen, FullscreenExitLayout exitLayout) {
     assert(!attached());
+    if (fullscreen) {
+      // Fullscreen re-places the window and must be visible, so a conceal in flight is dropped.
+      abandonMinimizeTransition();
+    }
     m_deferredUnfullscreen.clear();
     const bool refreshHoverFocus = !fullscreen
         && m_mapped

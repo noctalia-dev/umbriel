@@ -4,6 +4,7 @@
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
+readonly FOREIGN_TOPLEVEL="${UMBRIEL_FOREIGN_TOPLEVEL_CLIENT:-./build-debug/tests/foreign-toplevel-client}"
 readonly BEFORE="$UMBRIEL_RUNTIME_DIR/minimize-anim-before.png"
 readonly HIDING="$UMBRIEL_RUNTIME_DIR/minimize-anim-hiding.png"
 readonly HIDDEN="$UMBRIEL_RUNTIME_DIR/minimize-anim-hidden.png"
@@ -20,8 +21,28 @@ field_of() {
 
 red_count() { "$UMBRIEL_PIXEL_PROBE" "$1" count "$RED" | awk '{ print $1 }'; }
 
+green_count() { "$UMBRIEL_PIXEL_PROBE" "$1" count 'g>0.3&&r<0.1&&b<0.1' | awk '{ print $1 }'; }
+
+# The opening program must never drive a minimize fade: green means a windows_in slot ran.
+expect_no_lifecycle_shader() {
+  local green
+  green=$(green_count "$1")
+  if (( green > 10 )); then
+    echo "$2: the windows_in program ran during a minimize transition (green=$green)"
+    exit 1
+  fi
+}
+
 # The bounding box of the window's pixels, so a shrink is measured as geometry rather than brightness.
 red_width() { "$UMBRIEL_PIXEL_PROBE" "$1" bbox "$RED" | awk '{ print $3 }'; }
+
+# The opening program paints the whole window green. A minimize fade must not borrow it in either direction, so any
+# green at a mid-flight sample means the lifecycle slot leaked into the minimize timeline.
+cat > "$UMBRIEL_RUNTIME_DIR/minimize-anim-green.glsl" <<'GLSL'
+vec4 animation(vec2 uv) {
+    return vec4(0.0, 1.0, 0.0, 1.0);
+}
+GLSL
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
@@ -32,8 +53,15 @@ mode = "stacking"
 enabled = true
 duration_ms = 2000
 
+[effects.preset.minimize_anim_green]
+kind = "animation"
+shader = "minimize-anim-green.glsl"
+
 [animation.windows_in]
-enabled = false
+enabled = true
+duration_ms = 2000
+curve = "linear"
+effect = "minimize_anim_green"
 
 [animation.windows_minimize]
 enabled = true
@@ -100,6 +128,12 @@ if (( hiding_width >= before_width )); then
   echo "the window did not shrink while hiding: before=$before_width hiding=$hiding_width"
   exit 1
 fi
+expect_no_lifecycle_shader "$HIDING" "hiding"
+# The plain alpha is what fades here, so the shadow-free border and the content leave together.
+if (( hiding_count >= before_count )); then
+  echo "the window did not fade while hiding: before=$before_count hiding=$hiding_count"
+  exit 1
+fi
 # Linear 1.0 -> 0.5 at a quarter of the timeline is 0.875 of the resting width.
 expected_hiding=$(( before_width * 7 / 8 ))
 if (( hiding_width < expected_hiding - 20 || hiding_width > expected_hiding + 20 )); then
@@ -124,6 +158,7 @@ fi
 "$UMBRIEL" msg window-restore-minimized > /dev/null
 "$UMBRIEL" clock-advance 500
 grim "$REVEALING"
+expect_no_lifecycle_shader "$REVEALING" "revealing"
 revealing_width=$(red_width "$REVEALING")
 if (( revealing_width == 0 )); then
   echo "the window appeared only after the whole reveal: mid-reveal frame is empty"
@@ -133,6 +168,15 @@ if (( revealing_width >= before_width )); then
   echo "the window did not grow back over the reveal: before=$before_width revealing=$revealing_width"
   exit 1
 fi
+# The reveal is the conceal reversed, so the same instant of a 300 -> 600 px tween is 375 px.
+expected_revealing=$(( before_width * 5 / 8 ))
+if (( revealing_width < expected_revealing - 20 || revealing_width > expected_revealing + 20 )); then
+  echo "the reveal is not the conceal reversed: expected ~$expected_revealing, got $revealing_width"
+  exit 1
+fi
+expect_no_lifecycle_shader "$REVEALING" "revealing"
+expect_no_lifecycle_shader "$BEFORE" "resting"
+
 
 "$UMBRIEL" clock-advance 2000
 grim "$REVEALED"
@@ -145,11 +189,72 @@ if [[ $(field_of minimize-anim minimized) != false || $(field_of minimize-anim v
   echo "restore did not report its state: $("$UMBRIEL" windows --json)"
   exit 1
 fi
+expect_no_lifecycle_shader "$REVEALED" "revealed"
 
-# Disabling the block restores the plain one-frame hide, which is the switch users get.
-# Flip the block's own `enabled` rather than adding a second key to the table.
-sed -i '/^\[animation\.windows_minimize\]$/,/^\[/ s/^enabled = true$/enabled = false/' "$UMBRIEL_CONFIG"
+
+# `windows_in.style = "slide"` brightens a lifecycle fade with sqrt(). A minimize fade follows its own curve, so with
+# the same 25 % instant the window must sit at the linear 0.75 alpha, not at 0.87.
+sed -i 's/^effect = "minimize_anim_green"$//' "$UMBRIEL_CONFIG"
+sed -i '/^\[animation\.windows_in\]$/,/^\[/ s/^curve = "linear"$/curve = "linear"\nstyle = "slide"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 500
+grim "$HIDING"
+bright=$("$UMBRIEL_PIXEL_PROBE" "$HIDING" count 'r>0.85&&g<0.1&&b<0.1' | awk '{ print $1 }')
+mid=$("$UMBRIEL_PIXEL_PROBE" "$HIDING" count 'r>0.6&&r<0.85&&g<0.1&&b<0.1' | awk '{ print $1 }')
+if (( bright > 1000 || mid == 0 )); then
+  echo "a slide opening style warped the minimize opacity: bright=$bright mid=$mid"
+  exit 1
+fi
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
+
+set_minimize_enabled() {
+  sed -i "/^\[animation\.windows_minimize\]$/,/^\[/ s/^enabled = .*/enabled = $1/" "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+}
+
+# A restore that will not animate (the block is off) while a conceal is still fading must cancel the conceal. A
+# taskbar unminimize shows the window without focusing it, so no arrange follows to paper over a finish that hides a
+# window which is no longer minimized.
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 300
+set_minimize_enabled false
+"$FOREIGN_TOPLEVEL" minimize-anim "$(field_of minimize-anim output)" unminimize > /dev/null
+"$UMBRIEL" clock-advance 2000
+grim "$REVEALED"
+if (( $(red_count "$REVEALED") == 0 )); then
+  echo "an unminimize during a conceal left the window hidden: count=$(red_count "$REVEALED")"
+  exit 1
+fi
+if [[ $(field_of minimize-anim minimized) != false ]]; then
+  echo "an unminimize during a conceal did not report the window restored: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+# The same sequence through the focus path, which does arrange afterwards.
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 2000
+set_minimize_enabled true
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
+"$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
+"$UMBRIEL" clock-advance 300
+set_minimize_enabled false
+"$UMBRIEL" msg window-restore-minimized > /dev/null
+"$UMBRIEL" clock-advance 2000
+grim "$REVEALED"
+if (( $(red_count "$REVEALED") == 0 )); then
+  echo "a restore during a conceal left the window hidden: count=$(red_count "$REVEALED")"
+  exit 1
+fi
+if [[ $(field_of minimize-anim minimized) != false ]]; then
+  echo "a restore during a conceal did not report the window restored: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+# The block is still off, so the hide is the plain one-frame switch users get.
 "$UMBRIEL" msg window-minimize "$WINDOW" > /dev/null
 "$UMBRIEL" clock-advance 1
 grim "$INSTANT"
