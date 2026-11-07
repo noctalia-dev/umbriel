@@ -8,16 +8,14 @@
 # (and hide) with its workspace, come back with it, and do the same under a
 # gesture, whose trees move before the outgoing workspace is deactivated.
 #
-# A window still held by the cursor is the drag's payload: switching workspace
-# must not steal its presentation from the drag. That ownership outlives the
-# grab: the settle keeps the sheet (and the dialogs riding it) under the drag
-# tree until the spring lands, so a switch during the settle must not hide them
-# either — see Phase 5.
+# A window the drag presents is its payload: switching workspace must not steal
+# it. That ownership outlives the grab — the settle keeps the sheet and its
+# dialogs under the drag tree until the spring lands — so a switch during the
+# settle must not hide them either (Phase 5).
 #
-# Accepted limit, unpinned: opening the overview mid-settle flushes every
-# registered waiting re-home (the overview's cards need the home tree), so the
-# cross-edge drawing these phases preserve is deliberately sacrificed there. A
-# regression to "overview flushes nothing" would pass this check.
+# Accepted limit, unpinned: opening the overview mid-settle flushes every waiting
+# re-home (its cards need the home trees), so the drawing these phases preserve is
+# deliberately sacrificed there; a regression to "overview flushes nothing" passes.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -402,11 +400,9 @@ if ((child_across < CHILD_FLOOR)); then
   exit 1
 fi
 
-# Phase 5 — the ride outlives the grab. A pinned window's release parks its wait
-# on the output's pinned root, so the sheet keeps settling under the drag tree
-# while its dialog rides it. A switch in that window must not hide the dialog:
-# the pinned view is skipped by every flush, so only the ride's own ownership of
-# visibility can keep it presented.
+# Phase 5 — the ride outlives the grab. A pinned release parks its wait on the
+# output's pinned root, so the sheet settles under the drag tree while its dialog
+# rides it, and every flush skips a pinned view: only the ride can keep it shown.
 id_of() { "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'; }
 workspace_name_of() {
   local id
