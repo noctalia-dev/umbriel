@@ -2390,6 +2390,14 @@ namespace umbriel {
     }
   }
 
+  void Workspace::flushDeferredRehomes() {
+    for (View* view : m_views) {
+      if (!view->pinned()) {
+        view->flushReleaseRehome();
+      }
+    }
+  }
+
   bool Workspace::isSwitchTransitionView(const View* view) const {
     return std::ranges::find(m_switchViews, view) != m_switchViews.end();
   }
@@ -3385,6 +3393,16 @@ namespace umbriel {
     const size_t idx = m_active->index();
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
+    // A gesture moves these trees while the outgoing workspace is still active:
+    // deactivation only happens when the gesture commits. A deferred release
+    // re-home would keep its view under the shared drag tree, outside the trees
+    // that travel, and glue the window to the screen for the whole swipe. Land
+    // the waits while the trees are still at rest.
+    for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
+      if (workspace != nullptr) {
+        workspace->flushDeferredRehomes();
+      }
+    }
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
       m_slide.previous->beginSwitchTransition();

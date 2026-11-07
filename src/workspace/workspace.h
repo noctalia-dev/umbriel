@@ -247,6 +247,9 @@ namespace umbriel {
     void snapVisible(const View* view);
     double scrollFractionToReveal(const View* view) const;
     void applyVisibility();
+    // Lands every view's deferred release re-home: the wait is only correct
+    // while this workspace's trees rest, not once they start travelling.
+    void flushDeferredRehomes();
     void beginSwitchTransition();
     void showSwitchViews();
     void endSwitchTransition();
