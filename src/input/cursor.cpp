@@ -1348,7 +1348,11 @@ namespace umbriel {
   }
 
   void Cursor::warpTo(double lx, double ly, bool allowFocusChange) {
-    noteActivity();
+    // A compositor warp is not pointer activity: a cursor hidden by typing or inactivity stays hidden at its new
+    // position until the user touches a pointing device.
+    if (!m_cursorHidden) {
+      noteActivity();
+    }
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);

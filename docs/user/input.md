@@ -294,7 +294,7 @@ hide_timeout_ms = 0
 
 Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout.
 
-`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Pointer-driven focus, gestures, and automatic replacement focus do not move it. `window-focus-warp <id>` always moves the cursor regardless of this setting. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
+`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Pointer-driven focus, gestures, and automatic replacement focus do not move it. `window-focus-warp <id>` always moves the cursor regardless of this setting. A cursor hidden by `hide_when_typing` or `hide_timeout_ms` stays hidden through these moves and reappears at its new position on the next pointer activity. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
 
 ### Drag edge scroll
 
