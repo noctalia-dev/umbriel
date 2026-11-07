@@ -736,11 +736,14 @@ namespace umbriel {
         int buttonCornerRadius = -1;
         int buttonSize = -1;
         int buttonGap = 8;
-        int buttonMargin = -1;
+        int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
+        TitleBarButtonGeometry buttonGeometry() const {
+          return {.size = buttonSize, .gap = buttonGap, .padding = buttonPadding};
+        }
         bool operator==(const TitleBar&) const = default;
       } titleBar;
       int borderWidth = 2;

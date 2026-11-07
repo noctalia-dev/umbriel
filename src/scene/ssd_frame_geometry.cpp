@@ -17,24 +17,25 @@ namespace umbriel {
   }
 
   TitleBarLayout titleBarLayout(
-      int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown, int size, int gap,
-      int margin
+      int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
+      const TitleBarButtonGeometry& geometry
   ) {
-    const int diameter = titleBarButtonDiameter(height, size);
+    const int diameter = titleBarButtonDiameter(height, geometry.size);
     const int verticalInset = (height - diameter) / 2;
-    int inset = margin < 0 ? verticalInset : margin;
+    int padding = geometry.padding < 0 ? verticalInset : geometry.padding;
+    int gap = geometry.gap;
     const int count = static_cast<int>(shown.size());
-    // Shrink the margin, then the gap, to fit a narrow bar. Buttons keep their size, so a row that still does not fit
+    // Shrink the padding, then the gap, to fit a narrow bar. Buttons keep their size, so a row that still does not fit
     // extends past the opposite edge.
     if (count > 0) {
-      inset = std::max(0, std::min(inset, width - count * diameter - (count - 1) * gap));
+      padding = std::max(0, std::min(padding, width - count * diameter - (count - 1) * gap));
       if (count > 1) {
-        gap = std::max(0, std::min(gap, (width - count * diameter - inset) / (count - 1)));
+        gap = std::max(0, std::min(gap, (width - count * diameter - padding) / (count - 1)));
       }
     }
     TitleBarLayout result{.title = {kTitleBarTitlePadding, 0, 0, height}, .gap = gap};
     // Walk from the edge inward: the last listed button is outermost.
-    int x = side == TitleBarButtonSide::Right ? width - inset - diameter : inset;
+    int x = side == TitleBarButtonSide::Right ? width - padding - diameter : padding;
     const int step = side == TitleBarButtonSide::Right ? -(diameter + gap) : diameter + gap;
     std::optional<int> innermost;
     for (const TitleBarButton button : std::views::reverse(shown)) {
@@ -59,13 +60,13 @@ namespace umbriel {
 
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
-      double x, double y, int size, int gap, int margin
+      const TitleBarButtonGeometry& geometry, double x, double y
   ) {
     if (cw <= 0 || ch <= 0 || h < 0) {
       return {};
     }
     if (x >= 0 && x < cw && y >= -h && y < 0) {
-      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown, size, gap, margin);
+      const TitleBarLayout layout = titleBarLayout(cw, h, side, shown, geometry);
       const auto inButton = [&layout, x, cw](TitleBarButton button) {
         const std::optional<wlr_box>& box = layout.button(button);
         if (!box) {

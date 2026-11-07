@@ -308,9 +308,8 @@ namespace umbriel {
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     wlr_scene_rect_set_corner_radii(m_background, corner_radii_new(zoomed(radius), zoomed(radius), 0, 0));
     const auto& style = config().appearance.titleBar;
-    const TitleBarLayout parts = titleBarLayout(
-        g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonSize, style.buttonGap, style.buttonMargin
-    );
+    const TitleBarLayout parts =
+        titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry());
     const auto drawButton = [&](wlr_scene_rect* button, const std::optional<wlr_box>& slot) {
       if (!slot) {
         wlr_scene_node_set_enabled(&button->node, false);
@@ -366,11 +365,10 @@ namespace umbriel {
     if (m_preview || m_geometry.suppressed || (!m_tree->node.enabled && !m_gripTree->node.enabled)) {
       return {};
     }
+    const auto& style = config().appearance.titleBar;
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,
-        m_resizable, config().appearance.titleBar.buttonPosition, visibleButtons(), x, y,
-        config().appearance.titleBar.buttonSize, config().appearance.titleBar.buttonGap,
-        config().appearance.titleBar.buttonMargin
+        m_resizable, style.buttonPosition, visibleButtons(), style.buttonGeometry(), x, y
     );
   }
 

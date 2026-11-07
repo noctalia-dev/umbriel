@@ -4906,24 +4906,24 @@ UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
   const TempConfig file;
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
-  file.write("[appearance.title_bar]\nheight = 28\nbutton_size = 12\nbutton_gap = 10\nbutton_margin = 15\n");
+  file.write("[appearance.title_bar]\nheight = 28\nbutton_size = 12\nbutton_gap = 10\nbutton_padding = 15\n");
   CHECK(store.reload().success);
   CHECK(store.diagnostics().empty());
   CHECK_EQ(store.config().appearance.titleBar.buttonSize, 12);
   CHECK_EQ(store.config().appearance.titleBar.buttonGap, 10);
-  CHECK_EQ(store.config().appearance.titleBar.buttonMargin, 15);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, 15);
 
   file.write("[appearance.title_bar]\nheight = 24\nbutton_size = 30\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.buttonSize, 24);
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_size"));
 
-  file.write("[appearance.title_bar]\nbutton_gap = -5\nbutton_margin = -5\n");
+  file.write("[appearance.title_bar]\nbutton_gap = -5\nbutton_padding = -5\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.buttonGap, 0);
-  CHECK_EQ(store.config().appearance.titleBar.buttonMargin, -1);
+  CHECK_EQ(store.config().appearance.titleBar.buttonPadding, -1);
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_gap"));
-  CHECK(containsDiagnostic(store, "appearance.title_bar.button_margin"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_padding"));
 }
 
 UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
