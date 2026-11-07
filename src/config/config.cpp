@@ -105,8 +105,8 @@ namespace umbriel {
           const int used = std::clamp(titleBar.buttonSize, 1, titleBar.height);
           warnAt(
               result.merged.at_path("appearance.title_bar.button_size").node()->source(),
-              "appearance.title_bar.button_size = {} must be -1 or 1..height ({}), clamped to {}", titleBar.buttonSize,
-              titleBar.height, used
+              "appearance.title_bar.button_size = {} out of range (-1 or 1 to height {}), clamped to {}",
+              titleBar.buttonSize, titleBar.height, used
           );
           titleBar.buttonSize = used;
         }

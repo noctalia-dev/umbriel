@@ -24,7 +24,8 @@ namespace umbriel {
     const int verticalInset = (height - diameter) / 2;
     int inset = margin < 0 ? verticalInset : margin;
     const int count = static_cast<int>(shown.size());
-    // Preserve the old too-narrow behavior: the row may extend past the opposite edge.
+    // Shrink the margin, then the gap, to fit a narrow bar. Buttons keep their size, so a row that still does not fit
+    // extends past the opposite edge.
     if (count > 0) {
       inset = std::max(0, std::min(inset, width - count * diameter - (count - 1) * gap));
       if (count > 1) {

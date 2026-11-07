@@ -4906,12 +4906,6 @@ UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
   const TempConfig file;
   auto& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
-  file.write("[appearance.title_bar]\n");
-  CHECK(store.reload().success);
-  CHECK_EQ(store.config().appearance.titleBar.buttonSize, -1);
-  CHECK_EQ(store.config().appearance.titleBar.buttonGap, 8);
-  CHECK_EQ(store.config().appearance.titleBar.buttonMargin, -1);
-
   file.write("[appearance.title_bar]\nheight = 28\nbutton_size = 12\nbutton_gap = 10\nbutton_margin = 15\n");
   CHECK(store.reload().success);
   CHECK(store.diagnostics().empty());

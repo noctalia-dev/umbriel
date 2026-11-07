@@ -33,7 +33,8 @@ namespace umbriel {
     uint32_t edges = 0;
   };
 
-  // About half the bar height, with the bar's parity so the margins above and below are whole and equal pixels.
+  // A negative `size` derives about half the bar height; otherwise `size` is capped at the height. Either way the
+  // result takes the bar's parity so the margins above and below are whole and equal pixels.
   int titleBarButtonDiameter(int height, int size = -1);
   // `shown` lists the buttons from the title outward, so the last one sits at the bar's edge on `side`.
   TitleBarLayout titleBarLayout(

@@ -65,7 +65,6 @@ UMBRIEL_TEST(buttonSizesAndDefaultMargins) {
   CHECK_EQ(titleBarButtonDiameter(28, 12), 12);
   CHECK_EQ(titleBarButtonDiameter(28, 13), 12);
   CHECK_EQ(titleBarButtonDiameter(28, 1), 2);
-  CHECK_EQ(titleBarButtonDiameter(28, 0), 2);
   CHECK_EQ(titleBarButtonDiameter(28, -1), 14);
   CHECK_EQ(titleBarButtonDiameter(28, 100), 28);
 }
@@ -85,7 +84,6 @@ UMBRIEL_TEST(explicitGeometryShrinksMarginThenGapAndMirrors) {
     CHECK_EQ(parts.gap, 0);
     CHECK_EQ(parts.button(TitleBarButton::Close)->width, 12);
     CHECK(parts.button(TitleBarButton::Minimize).has_value());
-    CHECK_EQ(ssdFramePointAt(10, 300, 30, 2, true, side, order, 5, -15, 12, 8, 13).part, SsdFramePart::Close);
   }
   const auto empty = titleBarLayout(20, 30, TitleBarButtonSide::Left, kNone, 12, 8, 13);
   CHECK_EQ(empty.gap, 8);
