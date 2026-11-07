@@ -185,22 +185,23 @@ namespace umbriel {
     wlr_box collapsed = resting;
     collapsed.width = std::max(1, static_cast<int>(std::lround(resting.width * factor)));
     collapsed.height = std::max(1, static_cast<int>(std::lround(resting.height * factor)));
-    // The anchor is a point the scaled box centres on, except for `top_left`, which keeps the resting corner still.
-    int anchorX = resting.x + resting.width / 2;
-    int anchorY = resting.y + resting.height / 2;
-    if (anchor == MinimizeAnchor::TopLeft) {
-      anchorX = resting.x;
-      anchorY = resting.y;
+    switch (anchor) {
+    case MinimizeAnchor::TopLeft:
+      // The resting top-left corner stays still, so the box shrinks into it.
       collapsed.x = resting.x;
       collapsed.y = resting.y;
-      return collapsed;
+      break;
+    case MinimizeAnchor::BottomCenter:
+      // The scaled box's bottom edge rests on the usable bottom, centred horizontally.
+      collapsed.x = usable.x + (usable.width - collapsed.width) / 2;
+      collapsed.y = usable.y + usable.height - collapsed.height;
+      break;
+    case MinimizeAnchor::Center:
+      // The scaled box keeps the resting centre.
+      collapsed.x = resting.x + (resting.width - collapsed.width) / 2;
+      collapsed.y = resting.y + (resting.height - collapsed.height) / 2;
+      break;
     }
-    if (anchor == MinimizeAnchor::BottomCenter) {
-      anchorX = usable.x + usable.width / 2;
-      anchorY = usable.y + usable.height;
-    }
-    collapsed.x = anchorX - collapsed.width / 2;
-    collapsed.y = anchorY - collapsed.height / 2;
     return collapsed;
   }
 
