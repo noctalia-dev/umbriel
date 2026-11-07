@@ -239,6 +239,7 @@ namespace umbriel {
           boolean("background_blur", &O::backgroundBlur),
           boolean("workspace_wallpaper", &O::workspaceWallpaper),
           boolean("shortcuts", &O::shortcuts),
+          boolean("right_button_pan", &O::rightButtonPan),
           registry::custom<O>(
               "shortcut_keys", registry::KeyDescription("string"),
               [](const toml::node& node, const std::string& path, O& target, registry::ReadContext&) {
