@@ -51,10 +51,11 @@ if ! jq -e --argjson tab_y "$tab_y" '
   exit 1
 fi
 
-# Mod+right-drags tab-b's bottom edge, which is the group's, to `$1`.
+# Mod+right-drags tab-b's bottom edge, which is the group's, to `$1`. The press stays close to the edge: the group's
+# minimum height follows the client's font, and only the bottom third of the tile selects its bottom edge.
 drag_edge_to() {
   local edge x y
-  edge='.[] | select(.title == "tab-b") | "\(.x + 100) \(.y + .h - 5)"'
+  edge='.[] | select(.title == "tab-b") | "\(.x + 100) \(.y + .h - 2)"'
   read -r x y <<< "$("$UMBRIEL" windows --json | jq -r "$edge")"
   "$UMBRIEL_POINTER_CLIENT" 1280 720 mod logo move "$x" "$y" press "$BTN_RIGHT" move "$x" "$1" release "$BTN_RIGHT" \
     mod none
@@ -65,7 +66,7 @@ drag_edge_to() {
 expect_drag_follows() {
   local bottom
   bottom=$(bottom_of tab-b)
-  drag_edge_to "$((bottom + 35))"
+  drag_edge_to "$((bottom + 38))"
   if [[ $(bottom_of tab-b) != "$((bottom + 40))" ]]; then
     echo "$1: expected tab-b's bottom to follow the drag from $bottom to $((bottom + 40)): $("$UMBRIEL" windows --json)"
     exit 1

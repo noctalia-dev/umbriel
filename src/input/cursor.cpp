@@ -82,10 +82,11 @@ namespace umbriel {
       return workspace != nullptr ? workspace->tabs().tabAt(lx, ly) : std::nullopt;
     }
 
-    // `[input.touchpad] scroll_factor` (overridden per direction by `horizontal`/`vertical`) scales a touchpad's smooth
-    // scroll delta, never the discrete value120 notches. Read per event so a reload applies on the next axis;
-    // non-touchpads and unset values stay at 1.0.
-    double touchpadScrollFactor(wlr_pointer* pointer, bool vertical) {
+    // `[input.touchpad] scroll_factor` (overridden per direction by `horizontal`/`vertical`), times the
+    // `touchpad_scroll_factor` rule of the window under the pointer, scales a touchpad's smooth scroll delta, never the
+    // discrete value120 notches. Read per event so a reload applies on the next axis; non-touchpads and unset values
+    // stay at 1.0.
+    double touchpadScrollFactor(wlr_pointer* pointer, bool vertical, View* view) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
         return 1.0;
       }
@@ -94,7 +95,8 @@ namespace umbriel {
         return 1.0;
       }
       const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
-      return factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0;
+      const double windowFactor = view != nullptr ? view->touchpadScrollFactor() : 1.0;
+      return windowFactor * (factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0);
     }
 
     // `scale` is the surface-local units per layout unit in `target`.
@@ -2119,7 +2121,9 @@ namespace umbriel {
     }
     if (!armed) {
       m_wheelAccum[orientation] = 0;
-      const double scale = touchpadScrollFactor(event->pointer, isVertical);
+      wlr_surface* focused = m_server->seat()->wlr()->pointer_state.focused_surface;
+      View* view = focused != nullptr ? View::fromSurface(wlr_surface_get_root_surface(focused)) : nullptr;
+      const double scale = touchpadScrollFactor(event->pointer, isVertical, view);
       wlr_seat_pointer_notify_axis(
           m_server->seat()->wlr(), event->time_msec, event->orientation, event->delta * scale, event->delta_discrete,
           event->source, event->relative_direction

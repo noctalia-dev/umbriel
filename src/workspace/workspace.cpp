@@ -1034,7 +1034,7 @@ namespace umbriel {
       }
     }
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
-    // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
+    // Re-emit now that the layout boxes are settled; the event pacer caps this at one per interval.
     m_group->server()->scheduleIpcWindowsEvent();
     struct ResizeRequest {
       View* view;
