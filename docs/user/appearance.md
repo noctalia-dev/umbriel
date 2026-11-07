@@ -126,6 +126,9 @@ height = 28
 font = "sans 10"
 button_position = "right"
 buttons = ["minimize", "maximize", "close"]
+button_size = -1
+button_gap = 8
+button_padding = -1
 button_corner_radius = -1
 button_glyph = "hover"
 button_background = true
@@ -156,6 +159,8 @@ Choose a title bar mode:
 | `"forced"`     | Show regardless of client preference.                                                      |
 
 `height` is 16 to 128 logical pixels, and `font` is a Pango font description. `button_position` accepts `"left"` or `"right"`. `buttons` lists the buttons to show, from the title outward: the last one sits at the bar's edge, so the default puts close outermost on either side. Leave a name out to hide that button, or use `[]` for a bar without buttons; each of `"minimize"`, `"maximize"`, and `"close"` may appear once.
+
+Button geometry is independent of `height`. `button_size` is the button diameter or side in logical pixels, from `1` up to `height`; its default, `-1`, derives the size from `height`. An explicit size is drawn exactly; when it and `height` differ in parity, the button sits one pixel closer to the top than to the bottom. `button_gap` is the space between neighbouring buttons, from `0` to `100`. `button_padding` is the space between the button row and the bar's left or right edge, from `0` to `100`; its default, `-1`, matches the space above the buttons. On narrow windows the padding and then the gap shrink to fit; buttons keep their size, and the innermost buttons that still do not fit are left out, so their place drags the window like the rest of the bar. These settings follow `button_position`, scale with the output and overview zoom, and update on reload.
 
 Buttons show a drawn X for close, an outlined square for maximize, and an underscore for minimize. `button_glyph` controls when those symbols appear:
 

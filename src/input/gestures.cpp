@@ -210,6 +210,9 @@ namespace umbriel {
     m_scrollWorkspace = workspace;
     m_viewportPrimary = workspace->scrollViewportExtent();
     m_scrollStart = scrolling->scroll();
+    const auto bounds = scrolling->scrollBounds(m_viewportPrimary);
+    m_scrollLow = bounds[0];
+    m_scrollHigh = bounds[1];
     m_scrollTracker.reset();
     m_scrollStartCentered = scrolling->centeredRest();
     m_scrollScale = scale;
@@ -236,7 +239,11 @@ namespace umbriel {
       return;
     }
     m_scrollTracker.push(delta, timeMsec);
-    scrolling->setScroll(m_scrollStart - m_scrollTracker.pos() * m_scrollScale);
+    // Damp travel past either strip end: with no column to scroll to there is only the spring-back, and following the
+    // fingers one-to-one makes that snap look violent.
+    const double limit = GesturePhysics::kOverscrollLimit * std::max(1, m_viewportPrimary);
+    const double raw = m_scrollStart - m_scrollTracker.pos() * m_scrollScale;
+    scrolling->setScroll(GesturePhysics::rubberBand(raw, m_scrollLow, m_scrollHigh, limit));
     m_scrollWorkspace->markArrange(false);
   }
 
@@ -464,8 +471,8 @@ namespace umbriel {
     }
 
     case State::Scroll: {
-      // Natural: fingers move against the strip axis → content follows them. The strip runs
-      // unclamped, past its edges included; the release resolves the overscroll.
+      // Natural: fingers move against the strip axis → content follows them. Past either edge the strip is
+      // rubber-banded rather than clamped; the release resolves the overscroll.
       updateScroll(m_scrollVertical ? event->dy : event->dx, event->time_msec);
       return;
     }
@@ -620,8 +627,12 @@ namespace umbriel {
     m_scrollTracker.push(0.0, timeMsec);
 
     const double currentScroll = scrolling->scroll();
-    // Where the swipe would coast to a stop under deceleration.
-    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * m_scrollScale;
+    // Where the swipe would coast to a stop, damped the same way as the travel so a release past the strip end settles
+    // on the end column instead of reading as a miss.
+    const double limit = GesturePhysics::kOverscrollLimit * std::max(1, m_viewportPrimary);
+    const double projected = GesturePhysics::rubberBand(
+        m_scrollStart - m_scrollTracker.projectedEndPos() * m_scrollScale, m_scrollLow, m_scrollHigh, limit
+    );
 
     const auto columnCount = static_cast<int>(scrolling->columns().size());
 

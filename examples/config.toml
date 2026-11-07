@@ -90,6 +90,9 @@ radius = 3
 # font = "sans 10"
 # button_position = "right" # or "left"
 # buttons = ["minimize", "maximize", "close"] # From the title outward; leave one out to hide it.
+# button_size = -1 # Diameter or side in logical pixels, 1 up to height; -1 derives it from height.
+# button_gap = 8 # Space between neighbouring buttons.
+# button_padding = -1 # Space between the button row and the bar edge: -1 matches the space above and below.
 # button_corner_radius = -1 # Follow the window's corner_radius; 0 makes square buttons.
 # button_glyph = "hover" # X, square, and underscore symbols: "always", "hover" (while hovered or pressed), or "never".
 # button_background = true # Show colored backgrounds behind the symbols.
@@ -438,6 +441,13 @@ action = "overview-open"
 # enabled = true
 # curve = "spring:1,900"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
+
+# Without a size animation, a resized window shows its stretched old frame until
+# it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
+# new layout in one frame.
+# [animation.windows_resize]
+# enabled = false
+# wait_for_redraw = true
 
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.

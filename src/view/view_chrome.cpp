@@ -38,18 +38,22 @@ namespace umbriel {
   }
 
   bool View::wantsTitleBar(TitleBarMode mode) const {
-    if (mode == TitleBarMode::Off)
+    if (mode == TitleBarMode::Off) {
       return false;
-    if (mode == TitleBarMode::Forced)
+    }
+    if (mode == TitleBarMode::Forced) {
       return true;
-    if (m_xsurface != nullptr)
+    }
+    if (m_xsurface != nullptr) {
       return m_xsurface->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
+    }
     return m_xdgDecorationPreference.value_or(m_legacyDecorationPreference.value_or(mode == TitleBarMode::On));
   }
 
   void View::refreshTitleBar() {
-    if (!m_mapped)
+    if (!m_mapped) {
       return;
+    }
     updateBorderGeometry();
     applyCornerRadius();
     updateBlur();
@@ -58,15 +62,17 @@ namespace umbriel {
   }
 
   void View::setXdgDecorationPreference(std::optional<bool> serverSide) {
-    if (m_xdgDecorationPreference == serverSide)
+    if (m_xdgDecorationPreference == serverSide) {
       return;
+    }
     m_xdgDecorationPreference = serverSide;
     refreshTitleBar();
   }
 
   void View::setLegacyDecorationPreference(std::optional<bool> serverSide) {
-    if (m_legacyDecorationPreference == serverSide)
+    if (m_legacyDecorationPreference == serverSide) {
       return;
+    }
     m_legacyDecorationPreference = serverSide;
     refreshTitleBar();
   }
@@ -79,29 +85,34 @@ namespace umbriel {
   void View::handleSetDecorations() { refreshTitleBar(); }
 
   SsdFramePoint View::ssdFramePointAt(double lx, double ly) const {
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return {};
+    }
     int x = 0;
     int y = 0;
-    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y))
+    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y)) {
       return {};
+    }
     return m_ssdFrame->pointAt(lx - x, ly - y);
   }
 
   void View::syncSsdFrame() {
-    if (!m_mapped)
+    if (!m_mapped) {
       return;
+    }
     const int previousHeight = m_ssdFrame != nullptr ? m_ssdFrame->titleBarHeight() : 0;
     if (previousHeight != titleBarHeight()) {
-      if (m_workspace != nullptr)
+      if (m_workspace != nullptr) {
         m_workspace->markArrange();
+      }
       m_server->scheduleIpcWindowsEvent();
     }
     if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
       m_ssdFrame = std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree);
     }
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return;
+    }
     const SizeHints hints = sizeHints();
     const bool fixed = hints.maxWidth > 0
         && hints.maxWidth == hints.minWidth
@@ -123,8 +134,9 @@ namespace umbriel {
   }
 
   void View::syncTitleBarButtons() {
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return;
+    }
     const std::vector<TitleBarButton>& configured =
         m_titleBarButtons ? *m_titleBarButtons : config().appearance.titleBar.buttons;
     const bool canMinimize = minimizable();
@@ -147,13 +159,19 @@ namespace umbriel {
   }
 
   void View::setBorderFocused(bool focused) {
+    if (m_workspace != nullptr && m_workspace->defersFocusChrome(this)) {
+      m_deferredBorderFocus = focused;
+      return;
+    }
+    m_deferredBorderFocus.reset();
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setFocused(focused);
     }
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setFocused(focused);
+    }
 
     const auto& animation = config().animation;
     const auto& dim = animation.dimUnfocused;
@@ -173,6 +191,12 @@ namespace umbriel {
       applyDynamicRules();
     } else {
       updateBorderColor(focusChanged);
+    }
+  }
+
+  void View::applyDeferredBorderFocus() {
+    if (const std::optional<bool> focused = std::exchange(m_deferredBorderFocus, std::nullopt)) {
+      setBorderFocused(*focused);
     }
   }
 
@@ -419,17 +443,20 @@ namespace umbriel {
         .scale = output != nullptr ? output->wlr()->scale : 1.0F,
         .suppressed = !m_mapped || scheduledFullscreen() || currentFullscreen(),
     };
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->layout(geometry);
+    }
     geometry.suppressed = geometry.suppressed || m_maximizedToEdges;
-    if (m_chromeAttachment != nullptr)
+    if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->layout(geometry);
+    }
   }
 
   void View::refreshConfigChrome() {
     syncSsdFrame();
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->reloadConfig();
+    }
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->reloadConfig();
     }

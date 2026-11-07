@@ -3834,7 +3834,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 .area = shadow_clipped_region_box,
                 .corners = fx_corner_radii_scale(shadow_clipped_corners, data->scale),
             },
-        .blur_sigma = scene_shadow->blur_sigma,
+        .blur_sigma = scene_shadow->blur_sigma * data->scale,
         .corner_radius = scene_shadow->corner_radius * data->scale,
         .color =
             {

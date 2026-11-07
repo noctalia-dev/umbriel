@@ -103,6 +103,9 @@ namespace umbriel {
     Workspace* m_scrollWorkspace = nullptr;
     double m_scrollStart = 0;
     bool m_scrollStartCentered = false;
+    // Resting range of the strip at the gesture start, so travel past either end is damped instead of hitting a wall.
+    double m_scrollLow = 0;
+    double m_scrollHigh = 0;
     int m_viewportPrimary = 0;
     double m_scrollScale = 1.0;
     bool m_scrollVertical = false;

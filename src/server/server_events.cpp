@@ -191,8 +191,9 @@ namespace umbriel {
         return;
       }
       watch->pendingMode = resolvedDecorationMode(watch->decoration);
-      if (View* view = View::fromSurface(surface->surface))
+      if (View* view = View::fromSurface(surface->surface)) {
         view->setXdgDecorationPreference(watch->pendingMode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+      }
       // set_mode schedules a configure; that asserts unless the xdg_surface is ready.
       if (surface->initialized) {
         clearDecorationCommit(watch);
@@ -217,8 +218,9 @@ namespace umbriel {
       watch = wl_container_of(listener, watch, destroy);
       if (watch->decoration != nullptr) {
         if (watch->decoration->toplevel != nullptr && watch->decoration->toplevel->base != nullptr) {
-          if (View* view = View::fromSurface(watch->decoration->toplevel->base->surface))
+          if (View* view = View::fromSurface(watch->decoration->toplevel->base->surface)) {
             view->setXdgDecorationPreference(std::nullopt);
+          }
         }
         watch->decoration->data = nullptr;
       }
@@ -235,8 +237,9 @@ namespace umbriel {
     };
 
     void applyLegacyDecorationMode(wlr_server_decoration* decoration) {
-      if (View* view = View::fromSurface(decoration->surface))
+      if (View* view = View::fromSurface(decoration->surface)) {
         view->setLegacyDecorationPreference(decoration->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+      }
     }
 
     void onLegacyDecorationMode(wl_listener* listener, void*) {
@@ -248,8 +251,9 @@ namespace umbriel {
     void onLegacyDecorationDestroy(wl_listener* listener, void*) {
       LegacyDecorationWatch* watch;
       watch = wl_container_of(listener, watch, destroy);
-      if (View* view = View::fromSurface(watch->decoration->surface))
+      if (View* view = View::fromSurface(watch->decoration->surface)) {
         view->setLegacyDecorationPreference(std::nullopt);
+      }
       wl_list_remove(&watch->mode.link);
       wl_list_remove(&watch->destroy.link);
       delete watch;
