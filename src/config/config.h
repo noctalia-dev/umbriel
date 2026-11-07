@@ -398,6 +398,7 @@ namespace umbriel {
     bool dialog = false;
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
+    std::optional<LayoutMode> layout = std::nullopt;
 
     bool operator==(const WindowRuleState& other) const = default;
   };
@@ -426,6 +427,7 @@ namespace umbriel {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximizedToEdges;
@@ -499,6 +501,7 @@ namespace umbriel {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximizedToEdges == other.matchMaximizedToEdges

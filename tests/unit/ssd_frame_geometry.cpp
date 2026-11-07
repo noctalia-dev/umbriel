@@ -40,6 +40,93 @@ UMBRIEL_TEST(leftButtonsMirror) {
   CHECK_EQ(parts.title.width, 399);
 }
 
+UMBRIEL_TEST(largeFrameCornersInsetButtonsAndTitle) {
+  const auto right = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived, 50, 14);
+  const auto left = titleBarLayout(480, 28, TitleBarButtonSide::Left, kAll, kDerived, 50, 14);
+  CHECK_EQ(left.button(TitleBarButton::Close)->x, 26);
+  CHECK_EQ(right.button(TitleBarButton::Close)->x, 440);
+  CHECK_EQ(left.button(TitleBarButton::Close)->width, 14);
+  CHECK_EQ(right.title.x, 26);
+  CHECK_EQ(left.title.width, right.title.width);
+  CHECK_EQ(left.title.x + left.title.width, 454);
+  const auto padded =
+      titleBarLayout(480, 28, TitleBarButtonSide::Left, kAll, {.size = -1, .gap = 8, .padding = 60}, 50);
+  CHECK_EQ(padded.button(TitleBarButton::Close)->x, 60);
+  for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
+    const auto bare = titleBarLayout(480, 28, side, kNone, kDerived, 50, 14);
+    CHECK_EQ(bare.title.x, 26);
+    CHECK_EQ(bare.title.width, 428);
+  }
+}
+
+UMBRIEL_TEST(titleInsetsFollowTheTextHeightAndKeepSmallRadiiAtNormalPadding) {
+  const auto low = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived, 12, 17);
+  CHECK_EQ(low.title.x, kTitleBarTitlePadding);
+  CHECK_EQ(low.button(TitleBarButton::Close)->x, 459);
+  const auto normal = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived, 50, 17);
+  const auto tall = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived, 50, 24);
+  CHECK_EQ(normal.title.x, 30);
+  CHECK(normal.title.x < 50);
+  CHECK(tall.title.x > normal.title.x);
+}
+
+UMBRIEL_TEST(tallTitlesRespectBothCornersWithSmallButtons) {
+  constexpr std::array one{TitleBarButton::Close};
+  for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
+    const auto parts = titleBarLayout(480, 28, side, one, {.size = 1, .gap = 0, .padding = 0}, 50, 28);
+    CHECK_EQ(parts.title.x, 51);
+    CHECK_EQ(parts.title.width, 378);
+  }
+}
+
+UMBRIEL_TEST(buttonBoxesStayInsideTheCornerArc) {
+  for (const int radius : {20, 50, 100}) {
+    for (const int height : {16, 28, 40}) {
+      for (const int size : {-1, height}) {
+        for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
+          const auto parts = titleBarLayout(480, height, side, kAll, {.size = size, .gap = 8, .padding = 0}, radius);
+          const auto box = *parts.button(TitleBarButton::Close);
+          const int x = side == TitleBarButtonSide::Left ? box.x : 480 - box.x - box.width;
+          if (box.y < radius && x < radius) {
+            const int dx = radius - x;
+            const int dy = radius - box.y;
+            CHECK(dx * dx + dy * dy < radius * radius);
+          }
+          CHECK_EQ(box.width, titleBarButtonDiameter(height, size));
+        }
+      }
+    }
+  }
+}
+
+UMBRIEL_TEST(narrowRoundedBarsDropControlsBeforeCrossingTheArc) {
+  for (const auto side : {TitleBarButtonSide::Left, TitleBarButtonSide::Right}) {
+    const auto parts = titleBarLayout(70, 28, side, kAll, kDerived, 50, 17);
+    CHECK(parts.button(TitleBarButton::Close).has_value());
+    CHECK(!parts.button(TitleBarButton::Maximize).has_value());
+    CHECK(!parts.button(TitleBarButton::Minimize).has_value());
+    CHECK_EQ(parts.title.width, 0);
+    const auto tiny = titleBarLayout(50, 28, side, kAll, kDerived, 50, 17);
+    CHECK(!tiny.button(TitleBarButton::Close).has_value());
+    CHECK_EQ(tiny.title.width, 0);
+  }
+}
+
+UMBRIEL_TEST(roundedButtonHitTargetsFollowTheirInset) {
+  CHECK_EQ(
+      ssdFramePointAt(480, 300, 28, 0, true, TitleBarButtonSide::Right, kAll, kDerived, 447, -14, 50).part,
+      SsdFramePart::Close
+  );
+  CHECK_EQ(
+      ssdFramePointAt(480, 300, 28, 0, true, TitleBarButtonSide::Right, kAll, kDerived, 466, -14, 50).part,
+      SsdFramePart::TitleBar
+  );
+  CHECK_EQ(
+      ssdFramePointAt(480, 300, 28, 0, true, TitleBarButtonSide::Left, kAll, kDerived, 33, -14, 50).part,
+      SsdFramePart::Close
+  );
+}
+
 UMBRIEL_TEST(omittedButtonsLeaveNoGapAndWidenTheTitle) {
   constexpr std::array order{TitleBarButton::Close, TitleBarButton::Minimize};
   const auto parts = titleBarLayout(480, 28, TitleBarButtonSide::Right, order, kDerived);

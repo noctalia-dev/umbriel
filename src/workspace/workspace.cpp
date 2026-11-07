@@ -455,6 +455,7 @@ namespace umbriel {
     if (reconcile) {
       m_group->reconcileDynamic();
     }
+    view->refreshStateRuleEffects();
   }
 
   bool Workspace::occupied() const { return std::ranges::any_of(m_views, sharesWorkspace); }
@@ -2793,6 +2794,9 @@ namespace umbriel {
       if (m_focusedView != nullptr) {
         scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
       }
+    }
+    for (View* view : m_views) {
+      view->refreshStateRuleEffects();
     }
     markArrange();
     refreshDropZonePreview(*m_group->server());

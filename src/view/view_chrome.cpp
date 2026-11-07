@@ -257,7 +257,7 @@ namespace umbriel {
   }
 
   void View::applyCornerRadius() {
-    // Every buffer under the toplevel's surface tree is rounded against one box, the window's content box, so the arc
+    // Every buffer under the toplevel's surface tree is rounded against the complete frame, so the arc
     // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
     // surface is its own root.
     const int radius = surfaceRadius();
@@ -273,6 +273,7 @@ namespace umbriel {
       int radius;
       int contentWidth;
       int contentHeight;
+      int titleHeight;
       int treeX;
       int treeY;
     } ctx{
@@ -280,6 +281,7 @@ namespace umbriel {
         radius,
         usePresentedSize ? m_presentation.width() : geometry.width,
         usePresentedSize ? m_presentation.height() : geometry.height,
+        titleBarHeight(),
         m_contentTree->node.x,
         m_contentTree->node.y,
     };
@@ -298,16 +300,12 @@ namespace umbriel {
           // which puts the content box at the tree origin, and the corner box is node-relative.
           const wlr_box cornerBox{
               ctx->treeX - sx,
-              ctx->treeY - sy,
+              ctx->treeY - sy - ctx->titleHeight,
               ctx->contentWidth,
-              ctx->contentHeight,
+              ctx->contentHeight + ctx->titleHeight,
           };
           // Always set, zeros included: a window that lost its radius must lose the box with it.
-          wlr_scene_buffer_set_corner_radii(
-              buffer,
-              ctx->view->titleBarHeight() > 0 ? corner_radii_new(0, 0, ctx->radius, ctx->radius)
-                                              : corner_radii_all(ctx->radius)
-          );
+          wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
           wlr_scene_buffer_set_corner_box(buffer, ctx->radius > 0 ? &cornerBox : nullptr);
         },
         &ctx
