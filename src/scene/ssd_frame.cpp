@@ -400,6 +400,9 @@ namespace umbriel {
     const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
     const int barX = m_background->node.x;
     const int barY = m_background->node.y;
+    // The fill is the bar's top edge, so it takes the same rounded corners as the palette it covers.
+    const clipped_region clip = frameClip(barX, barY);
+    const wlr_box clipBox = clip.inside ? clip.area : wlr_box{};
     const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
     // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale colour.
     const bool modeChanged = m_adaptiveMode != style.colorSource;
@@ -439,7 +442,8 @@ namespace umbriel {
         || m_adaptiveOpacity != opacity
         || m_adaptive->node.x != barX
         || m_adaptive->node.y != barY
-        || !fx_corner_radii_eq(m_adaptive->corners, m_background->corners);
+        || !fx_corner_radii_eq(m_adaptive->corners, clip.corners)
+        || !wlr_box_equal(&m_adaptive->corner_box, &clipBox);
     // A commit that leaves the top edge alone, and changes nothing about the bar, costs nothing.
     if (!restrip && !reshaped) {
       return;
@@ -474,7 +478,8 @@ namespace umbriel {
     wlr_scene_buffer_set_source_box(m_adaptive, sourceBox);
     wlr_scene_buffer_set_transform(m_adaptive, transform);
     wlr_scene_buffer_set_dest_size(m_adaptive, m_background->width, m_background->height);
-    wlr_scene_buffer_set_corner_radii(m_adaptive, m_background->corners);
+    wlr_scene_buffer_set_corner_radii(m_adaptive, clip.corners);
+    wlr_scene_buffer_set_corner_box(m_adaptive, clip.inside ? &clip.area : nullptr);
     // Unfocus dims the window's own colour over the palette's unfocused tone rather than dropping back to it.
     wlr_scene_buffer_set_opacity(m_adaptive, opacity);
     wlr_scene_node_set_position(&m_adaptive->node, barX, barY);
@@ -844,6 +849,7 @@ namespace umbriel {
         wlr_scene_buffer_set_transform(copy, m_adaptive->transform);
         wlr_scene_buffer_set_dest_size(copy, m_adaptive->dst_width, m_adaptive->dst_height);
         wlr_scene_buffer_set_corner_radii(copy, m_adaptive->corners);
+        wlr_scene_buffer_set_corner_box(copy, &m_adaptive->corner_box);
         wlr_scene_buffer_set_opacity(copy, m_adaptive->opacity);
         wlr_scene_buffer_copy_color(copy, m_adaptive);
         wlr_scene_node_set_position(

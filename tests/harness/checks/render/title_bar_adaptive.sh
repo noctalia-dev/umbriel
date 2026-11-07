@@ -21,7 +21,7 @@ fail() {
 # $1 color_source, $2 title colour (default transparent), $3 "closing" to enable a fade-out the checks can
 # sample, $4 "buttons" to paint the button backgrounds, $5 rows of the window's edge to sample.
 configure() {
-  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-} rows=${5:-1}
+  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-} rows=${5:-1} radius=${6:-0}
   {
     cat <<EOF
 [general]
@@ -50,7 +50,7 @@ EOF
 [appearance]
 border_width = 0
 outer_border_width = 0
-corner_radius = 0
+corner_radius = $radius
 
 [appearance.title_bar]
 mode = "forced"
@@ -161,6 +161,21 @@ grim "$FRAME"
 expect "$blue" 1000 "a bar following a repaint"
 expect_none "$green" "the bar kept the previous window colour"
 
+# The fill is clipped to the frame's rounded corner, like the palette it covers: an unclipped fill squares that corner
+# off and paints the window's colour over the desktop. The window starts at 173,109, so (174,82) is the bar's first
+# pixel and lies outside a 12 px arc. The band is blue at this point, so the fill is blue and the desktop is black.
+configure window "" "" "" 1 12
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r corner_r corner_g corner_b < <(pixel 174 82)
+if (( corner_r < 32 && corner_g < 32 && corner_b > 128 )); then
+  fail "the window-coloured fill squared off the rounded corner: $corner_r $corner_g $corner_b"
+fi
+configure window
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$blue" 1000 "the window-coloured bar after the radius returns to zero"
+
 # The palette colour is still the fixed choice, and the switch works live.
 configure fixed
 "$UMBRIEL" settle
@@ -180,7 +195,10 @@ expect_in 'r > 0.9 && g > 0.9 && b > 0.9' "$BAR_FULL" 40 "the title over the win
 "$UMBRIEL" clock-advance 250 > /dev/null
 grim "$FRAME"
 expect_in 'r > 0.6 && g > 0.6 && b > 0.6' "$BAR_FULL" 40 "the title in the bar's close animation"
-# The button backgrounds are painted under the fill in the live bar; the snapshot has to keep that order too.
+# The fill sits under the buttons in the live bar, so the snapshot has to keep that order: buttons over fill, and the
+# fill itself present rather than faded to the palette.
+expect_in 'b > 0.6 && b < 0.9 && r < 0.15 && g < 0.15' "$BAR_FULL" 1000 \
+  "the window-coloured fill in the bar's close animation"
 expect_in 'r > 0.6 && g < 0.15 && b < 0.15' "$BAR_FULL" 40 "the button backgrounds in the bar's close animation"
 "$UMBRIEL" clock-advance 1000 > /dev/null
 "$UMBRIEL" settle
@@ -231,7 +249,7 @@ configure average
 grim "$FRAME"
 read -r left_r left_g left_b < <(pixel 200 84)
 read -r right_r right_g right_b < <(pixel 620 84)
-if ! near "$left_g" "$right_g" || ! (( left_b > 200 && left_g < 40 )); then
+if ! near "$left_g" "$right_g" || ! (( left_b > 200 && left_g < 40 && left_r < 40 )); then
   fail "an averaged bar was stale after switching live: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
 
@@ -242,7 +260,8 @@ await_lines "$LOG2" repainted 2
 grim "$FRAME"
 read -r left_r left_g left_b < <(pixel 200 84)
 read -r right_r right_g right_b < <(pixel 620 84)
-if ! near "$left_r" "$right_r" || ! near "$left_b" "$right_b" || ! (( left_r > 100 && left_b > 100 && left_g < 40 )); then
+if ! near "$left_r" "$right_r" || ! near "$left_b" "$right_b" \
+   || ! (( left_r > 100 && left_r < 200 && left_b > 100 && left_b < 200 && left_g < 40 )); then
   fail "an averaged bar did not follow a repaint: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
 
