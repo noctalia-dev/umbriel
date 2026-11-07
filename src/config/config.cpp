@@ -138,13 +138,11 @@ namespace umbriel {
         loaded.keybinds = defaultKeybinds();
       }
       std::vector<EffectReference> effectReferences;
-      std::vector<WorkspaceMirrorReference> mirrorReferences;
       {
         Section root(result.merged, "", store.mutableDiagnostics());
         registry::ReadContext context{
             .loaded = loaded,
             .effectReferences = effectReferences,
-            .mirrorReferences = mirrorReferences,
             .presetDeclarations = result.presets,
             .poolDeclarations = result.pools
         };
@@ -178,7 +176,6 @@ namespace umbriel {
         }
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);
-        validateWorkspaceMirrors(loaded, mirrorReferences);
         auto& workspaces = loaded.animation.workspaces;
         if (workspaces.style == "reveal") {
           const auto* preset = findEffectPreset(loaded.effects, workspaces.effect);

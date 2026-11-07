@@ -12,7 +12,11 @@ position = [0, 0]
 workspaces = ["source", "away"]
 [output.HEADLESS-2]
 position = [1280, 0]
-workspaces = ["own", "source@HEADLESS-1"]
+workspaces = ["own", "source"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "source"
+mirror = { output = "HEADLESS-1", name = "source" }
 [[window_rule]]
 match.title = "^xwayland-popup-parent$"
 default_output = "HEADLESS-1"

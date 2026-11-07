@@ -34,10 +34,14 @@ position = [0, 0]
 workspaces = ["a", "b"]
 [output.HEADLESS-2]
 position = [1280, 0]
-workspaces = ["own", "b@HEADLESS-1"]
+workspaces = ["own", "b"]
 [output.HEADLESS-3]
 position = [2560, 0]
 workspaces = ["far"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "b"
+mirror = { output = "HEADLESS-1", name = "b" }
 [[window_rule]]
 match.title = "^follow-view$"
 default_output = "HEADLESS-1"

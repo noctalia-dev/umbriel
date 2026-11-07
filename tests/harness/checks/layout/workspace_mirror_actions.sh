@@ -15,7 +15,11 @@ workspaces = ["source", "away"]
 [output.HEADLESS-2]
 mode = "960x720@60"
 position = [1280, 0]
-workspaces = ["own", "source@HEADLESS-1"]
+workspaces = ["own", "source"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "source"
+mirror = { output = "HEADLESS-1", name = "source" }
 [layout.scrolling]
 default_extent_fraction = 0.3
 [keybinds]

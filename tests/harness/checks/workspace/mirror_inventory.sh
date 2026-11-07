@@ -47,7 +47,15 @@ position = [0, 0]
 workspaces = ["one", "two", "three"]
 [output.HEADLESS-2]
 position = [1280, 0]
-workspaces = ["own", "two@HEADLESS-1", "three@HEADLESS-1"]'
+workspaces = ["own", "two", "three"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "two"
+mirror = { output = "HEADLESS-1", name = "two" }
+[[workspace]]
+output = "HEADLESS-2"
+name = "three"
+mirror = { output = "HEADLESS-1", name = "three" }'
 
 expect_names HEADLESS-1 "one two three" "origin inventory"
 expect_names HEADLESS-2 "own two three" "mirrors sit at their declared positions"
@@ -74,8 +82,16 @@ position = [0, 0]
 workspaces = ["one", "two", "three"]
 [output.HEADLESS-2]
 position = [1280, 0]
-workspaces = ["three@HEADLESS-1", "own", "two@HEADLESS-1"]
+workspaces = ["three", "own", "two"]
 mode = "960x720"
+[[workspace]]
+output = "HEADLESS-2"
+name = "three"
+mirror = { output = "HEADLESS-1", name = "three" }
+[[workspace]]
+output = "HEADLESS-2"
+name = "two"
+mirror = { output = "HEADLESS-1", name = "two" }
 [layout.scrolling]
 default_extent_fraction = 0.5
 [[window_rule]]
@@ -142,7 +158,11 @@ position = [0, 0]
 workspaces = ["one", "three"]
 [output.HEADLESS-2]
 position = [1280, 0]
-workspaces = ["own", "three@HEADLESS-1"]'
+workspaces = ["own", "three"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "three"
+mirror = { output = "HEADLESS-1", name = "three" }'
 expect_names HEADLESS-2 "own three" "mirror of a removed entry is dropped from the list"
 
 echo "mirrors take their declared place, report their origin, and never receive windows"

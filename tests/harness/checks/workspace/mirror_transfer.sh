@@ -16,11 +16,19 @@ workspaces = ["source", "away"]
 [output.HEADLESS-2]
 mode = "960x720@60"
 position = [1280, 0]
-workspaces = ["own", "source@HEADLESS-1", "target@HEADLESS-3"]
+workspaces = ["own", "source", "target"]
 [output.HEADLESS-3]
 mode = "1280x720@60"
 position = [0, 720]
 workspaces = ["target", "away"]
+[[workspace]]
+output = "HEADLESS-2"
+name = "source"
+mirror = { output = "HEADLESS-1", name = "source" }
+[[workspace]]
+output = "HEADLESS-2"
+name = "target"
+mirror = { output = "HEADLESS-3", name = "target" }
 [[window_rule]]
 match.title = "^mirror-transfer-"
 default_output = "HEADLESS-1"
