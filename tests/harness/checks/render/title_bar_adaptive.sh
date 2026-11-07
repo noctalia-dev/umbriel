@@ -22,9 +22,10 @@ fail() {
   exit 1
 }
 
-# $1 color_source, $2 title colour (default transparent), $3 "closing" to enable a fade-out the checks can sample.
+# $1 color_source, $2 title colour (default transparent), $3 "closing" to enable a fade-out the checks can
+# sample, $4 "buttons" to paint the button backgrounds.
 configure() {
-  local source=$1 text=${2:-"#00000000"} closing=${3:-}
+  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-}
   {
     cat <<EOF
 [general]
@@ -59,7 +60,7 @@ corner_radius = 0
 mode = "forced"
 height = 28
 color_source = "$source"
-button_background = false
+button_background = $(if [[ $buttons == buttons ]]; then echo true; else echo false; fi)
 button_glyph = "never"
 
 [appearance.shadow]
@@ -73,6 +74,7 @@ background = "#FF00FFFF"
 background_unfocused = "#FF00FFFF"
 text = "$text"
 text_unfocused = "$text"
+$(if [[ $buttons == buttons ]]; then printf 'close = "#FF0000FF"\nmaximize = "#FF0000FF"\nminimize = "#FF0000FF"'; fi)
 
 [[window_rule]]
 match.title = "^adaptive-bar\$"
@@ -162,7 +164,7 @@ expect_none "$red" "the window colour survived color_source = \"fixed\""
 # snapshot that stacks the fill over the text turns the bar into a flat smear for the whole animation.
 window_id=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "adaptive-bar") | .id')
 [[ -n $window_id && $window_id != null ]] || fail "the adaptive-bar window is gone before the close animation"
-configure window "#FFFFFFFF" closing
+configure window "#FFFFFFFF" closing buttons
 "$UMBRIEL" settle
 grim "$FRAME"
 expect_in 'r > 0.9 && g > 0.9 && b > 0.9' "$BAR_FULL" 40 "the title over the window-coloured fill"
@@ -171,5 +173,7 @@ expect_in 'r > 0.9 && g > 0.9 && b > 0.9' "$BAR_FULL" 40 "the title over the win
 "$UMBRIEL" clock-advance 250 > /dev/null
 grim "$FRAME"
 expect_in 'r > 0.6 && g > 0.6 && b > 0.6' "$BAR_FULL" 40 "the title in the bar's close animation"
+# The button backgrounds are painted under the fill in the live bar; the snapshot has to keep that order too.
+expect_in 'r > 0.6 && g < 0.15 && b < 0.15' "$BAR_FULL" 40 "the button backgrounds in the bar's close animation"
 "$UMBRIEL" clock-advance 1000 > /dev/null
 "$UMBRIEL" settle

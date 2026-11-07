@@ -171,7 +171,7 @@ namespace umbriel {
         || uprightHeight <= 0.0
         || surfaceWidth <= 0
         || surfaceHeight <= 0) {
-      return source;
+      return {};
     }
     // Where the visible part of the buffer sits once upright. The surface's own coordinate system stretches over
     // exactly this box, so its top edge is the box's top edge whatever the rotation.
@@ -179,14 +179,24 @@ namespace umbriel {
     if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
       wlr_fbox_transform(&visible, &source, rotation, bufferWidth, bufferHeight);
     }
+    // A viewport can make the visible source shorter than one buffer pixel, so take the minimum last: otherwise
+    // std::clamp gets a lower bound above its upper bound, which is undefined and can ask for a strip taller than
+    // what the window shows.
     const double scale = visible.height / static_cast<double>(surfaceHeight);
-    const double thickness = std::clamp(static_cast<double>(logicalHeight) * scale, 1.0, visible.height);
+    const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scale));
     const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
-    if (rotation == WL_OUTPUT_TRANSFORM_NORMAL) {
-      return strip;
+    wlr_fbox inBuffer = strip;
+    if (rotation != WL_OUTPUT_TRANSFORM_NORMAL) {
+      wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(rotation), uprightWidth, uprightHeight);
     }
-    wlr_fbox inBuffer{};
-    wlr_fbox_transform(&inBuffer, &strip, wlr_output_transform_invert(rotation), uprightWidth, uprightHeight);
+    // Fractional scales and half turns land on sub-pixel edges: the scene refuses a negative origin, and a box that
+    // reaches past the buffer samples outside it.
+    const double right = std::min(inBuffer.x + inBuffer.width, static_cast<double>(bufferWidth));
+    const double bottom = std::min(inBuffer.y + inBuffer.height, static_cast<double>(bufferHeight));
+    inBuffer.x = std::clamp(inBuffer.x, 0.0, static_cast<double>(bufferWidth));
+    inBuffer.y = std::clamp(inBuffer.y, 0.0, static_cast<double>(bufferHeight));
+    inBuffer.width = std::max(0.0, right - inBuffer.x);
+    inBuffer.height = std::max(0.0, bottom - inBuffer.y);
     return inBuffer;
   }
 } // namespace umbriel

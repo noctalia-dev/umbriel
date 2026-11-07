@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+struct wlr_client_buffer;
 struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_buffer;
@@ -48,10 +49,11 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
-    // The window content an adaptive bar takes its colour from. Borrowed: the view owns the surface.
-    void setContentSurface(wlr_surface* surface);
-    // Re-reads the strip after the window committed.
-    void syncContent();
+    // The window content an adaptive bar takes its colour from, and that window's geometry in surface-local
+    // coordinates. Borrowed: the view owns the surface.
+    void setContentSurface(wlr_surface* surface, const wlr_box& geometry);
+    // Re-reads the strip after the window committed, with the geometry the commit left behind.
+    void syncContent(const wlr_box& geometry);
     bool maximizeEnabled() const { return m_maximizeEnabled; }
     int titleBarHeight() const { return m_geometry.titleBarHeight; }
     bool contains(const wlr_scene_node* node) const;
@@ -63,7 +65,11 @@ namespace umbriel {
   private:
     void redraw();
     void updateColors();
-    void updateAdaptive();
+    void updateAdaptive(bool fromCommit);
+    // The mirrored client buffer is locked by the scene; tell wlroots to ignore that lock so it can still reuse the
+    // texture for in-place shm damage, and undo it when the mirror is replaced or cleared.
+    void ignoreLock(wlr_buffer* buffer);
+    void releaseIgnoredLock();
     void updateButtonIcon(
         TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible,
         const std::optional<std::array<float, 4>>& outline
@@ -90,6 +96,8 @@ namespace umbriel {
     // Paints the bar with the top strip of the window content; kept below the label and above the palette colour.
     wlr_scene_buffer* m_adaptive = nullptr;
     wlr_surface* m_content = nullptr;
+    wlr_box m_contentGeometry{};
+    wlr_client_buffer* m_ignoredBuffer = nullptr;
     // What the strip node last mirrored, so a commit that leaves the top edge alone costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};

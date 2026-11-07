@@ -59,6 +59,7 @@ namespace umbriel {
   }
 
   SsdFrame::~SsdFrame() {
+    releaseIgnoredLock();
     if (m_blur != nullptr) {
       wlr_scene_node_destroy(&m_blur->node);
     }
@@ -149,14 +150,25 @@ namespace umbriel {
     m_blurLive = live;
     updateBlur();
   }
-  void SsdFrame::setContentSurface(wlr_surface* surface) {
-    if (m_content == surface) {
+  void SsdFrame::setContentSurface(wlr_surface* surface, const wlr_box& geometry) {
+    if (m_content == surface && wlr_box_equal(&m_contentGeometry, &geometry)) {
       return;
     }
     m_content = surface;
-    updateAdaptive();
+    m_contentGeometry = geometry;
+    updateAdaptive(false);
   }
-  void SsdFrame::syncContent() { updateAdaptive(); }
+  void SsdFrame::syncContent(const wlr_box& geometry) {
+    m_contentGeometry = geometry;
+    updateAdaptive(true);
+  }
+
+  void SsdFrame::ignoreLock(wlr_buffer* buffer) { m_ignoredBuffer = umbrielfx_scene_buffer_ignore_client_lock(buffer); }
+
+  void SsdFrame::releaseIgnoredLock() {
+    umbrielfx_scene_buffer_drop_ignored_client_lock(m_ignoredBuffer);
+    m_ignoredBuffer = nullptr;
+  }
 
   void SsdFrame::updateBlur() {
     const auto& cfg = config().appearance.blur;
@@ -195,7 +207,7 @@ namespace umbriel {
     wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
   }
 
-  void SsdFrame::updateAdaptive() {
+  void SsdFrame::updateAdaptive(bool fromCommit) {
     // The palette colour stays painted underneath: a window whose top edge is transparent, or one that has not
     // committed a buffer yet, keeps the configured bar instead of leaving a hole.
     const auto& style = config().appearance.titleBar;
@@ -213,6 +225,7 @@ namespace umbriel {
         wlr_scene_node_set_enabled(&m_adaptive->node, false);
         // Drop the mirror as well: a node that keeps the buffer holds its lock, and the client's wl_buffer.release
         // never arrives, which stalls a client that waits for it before drawing again.
+        releaseIgnoredLock();
         wlr_scene_buffer_set_buffer(m_adaptive, nullptr);
       }
       m_adaptiveBuffer = nullptr;
@@ -226,21 +239,55 @@ namespace umbriel {
       m_adaptive->point_accepts_input = rejectInput;
       wlr_scene_node_place_above(&m_adaptive->node, &m_background->node);
     }
-    wlr_fbox source{};
-    wlr_surface_get_buffer_source_box(m_content, &source);
+    const int surfaceWidth = m_content->current.width;
+    const int surfaceHeight = m_content->current.height;
+    wlr_fbox base{};
+    wlr_surface_get_buffer_source_box(m_content, &base);
+    // The window's own geometry, not the buffer's: a client-drawn window can carry transparent shadow margins that
+    // `xdg_surface.set_window_geometry` excludes, and those margins must not become the bar's colour.
+    wlr_box visible{0, 0, surfaceWidth, surfaceHeight};
+    if (m_contentGeometry.width > 0 && m_contentGeometry.height > 0) {
+      wlr_box clipped{};
+      wlr_box_intersection(&clipped, &m_contentGeometry, &visible);
+      if (clipped.width > 0 && clipped.height > 0) {
+        visible = clipped;
+      }
+    }
+    const double scaleX = surfaceWidth > 0 ? base.width / static_cast<double>(surfaceWidth) : 0.0;
+    const double scaleY = surfaceHeight > 0 ? base.height / static_cast<double>(surfaceHeight) : 0.0;
+    wlr_fbox source = base;
+    int sourceSurfaceWidth = surfaceWidth;
+    int sourceSurfaceHeight = surfaceHeight;
+    if (scaleX > 0.0 && scaleY > 0.0 && base.width > 0.0 && base.height > 0.0) {
+      const double left = std::max(base.x, base.x + visible.x * scaleX);
+      const double top = std::max(base.y, base.y + visible.y * scaleY);
+      const double right = std::min(base.x + base.width, base.x + (visible.x + visible.width) * scaleX);
+      const double bottom = std::min(base.y + base.height, base.y + (visible.y + visible.height) * scaleY);
+      if (right > left && bottom > top) {
+        source = {left, top, right - left, bottom - top};
+        sourceSurfaceWidth = std::max(1, static_cast<int>(std::lround(source.width / scaleX)));
+        sourceSurfaceHeight = std::max(1, static_cast<int>(std::lround(source.height / scaleY)));
+      }
+    }
     // Colour management can change on a commit that carries no buffer damage, so this cannot sit behind the guard
     // below; the setters it reaches are no-ops when nothing changed.
     if (m_colors != nullptr) {
       m_colors->applySurfaceDescriptionToBuffer(m_content, m_adaptive);
     }
     const wlr_fbox strip = titleBarStripSourceBox(
-        source, buffer->width, buffer->height, m_content->current.width, m_content->current.height,
+        source, buffer->width, buffer->height, sourceSurfaceWidth, sourceSurfaceHeight,
         static_cast<uint32_t>(m_content->current.transform), kTitleBarStripHeight
     );
     // Only what the bar shows matters, and the damage is already in buffer coordinates, which is where the strip is.
+    // The strip is fractional at fractional scales, so round it outward: a damaged edge row still has to count. The
+    // damage belongs to the commit that produced it, so a repaint of the chrome in between does not replay it.
+    const int left = static_cast<int>(std::floor(strip.x));
+    const int top = static_cast<int>(std::floor(strip.y));
+    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
+    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
     pixman_region32_t stripRegion;
-    pixman_region32_init_rect(&stripRegion, strip.x, strip.y, strip.width, strip.height);
-    const bool touched = pixman_region32_intersect(&stripRegion, &stripRegion, &m_content->buffer_damage);
+    pixman_region32_init_rect(&stripRegion, left, top, std::max(0, right - left), std::max(0, bottom - top));
+    const bool touched = fromCommit && pixman_region32_intersect(&stripRegion, &stripRegion, &m_content->buffer_damage);
     pixman_region32_fini(&stripRegion);
     const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
     const int barX = m_background->node.x;
@@ -262,7 +309,7 @@ namespace umbriel {
       // Mirror the window the same way the overview mirrors a card: the surface's committed buffer plus its damage, and
       // the explicit-sync acquire point when the client uses it, so the bar never samples a half-presented frame.
       wlr_scene_buffer_set_buffer_options options{
-          .damage = &m_content->buffer_damage,
+          .damage = fromCommit ? &m_content->buffer_damage : nullptr,
           .wait_timeline = nullptr,
           .wait_point = 0,
       };
@@ -270,7 +317,11 @@ namespace umbriel {
         options.wait_timeline = sync->acquire_timeline;
         options.wait_point = sync->acquire_point;
       }
+      releaseIgnoredLock();
       wlr_scene_buffer_set_buffer_with_options(m_adaptive, buffer, &options);
+      // The scene holds a second lock on the client's buffer; without this wlroots cannot reuse its texture for
+      // in-place shm damage and rebuilds the whole window's texture on every commit.
+      ignoreLock(buffer);
     }
     m_adaptiveBuffer = buffer;
     m_adaptiveStrip = strip;
@@ -452,7 +503,7 @@ namespace umbriel {
     if (m_labelShadow != nullptr) {
       wlr_scene_buffer_set_opacity(m_labelShadow, m_alpha);
     }
-    updateAdaptive();
+    updateAdaptive(false);
     updateBlur();
   }
 
@@ -464,7 +515,7 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_tree->node, shown);
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
-      updateAdaptive();
+      updateAdaptive(false);
       updateBlur();
       return;
     }
@@ -490,7 +541,7 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
     }
     if (!shown) {
-      updateAdaptive();
+      updateAdaptive(false);
       updateBlur();
       return;
     }
@@ -613,19 +664,21 @@ namespace umbriel {
         wlr_scene_node_set_position(&copy->node, m_blur->node.x, m_blur->node.y);
       }
     }
-    for (const auto* source : {m_background, m_close, m_maximize, m_minimize}) {
+    const auto copyRect = [&](const wlr_scene_rect* source) {
       if (!source->node.enabled) {
-        continue;
+        return;
       }
       auto* copy = wlr_scene_rect_create(tree, source->width, source->height, source->color);
       copy->accepts_input = false;
       wlr_scene_rect_set_corner_radii(copy, source->corners);
       wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
-    }
+    };
+    // The live tree stacks palette, fill, buttons, text: copy in that order, or the fill covers the button
+    // backgrounds for the length of the animation.
+    copyRect(m_background);
     // A scene buffer drops its CPU-side buffer once the renderer has uploaded the texture, so a live chrome node can
-    // still be drawing while its buffer field is null. Re-ask the cache for the title and re-rasterize a symbol whose
-    // buffer has been released, or the snapshot loses the text and the glyphs.
+    // still be drawing while its buffer field is null: fall back to a buffer this frame still holds a lock on.
     const auto copyBuffer = [&](const wlr_scene_buffer* source, wlr_buffer* fallback) {
       if (source == nullptr || !source->node.enabled) {
         return;
@@ -680,23 +733,17 @@ namespace umbriel {
         shadow = rendered->buffer;
       }
     }
+    copyRect(m_close);
+    copyRect(m_maximize);
+    copyRect(m_minimize);
     copyBuffer(m_labelShadow, shadow);
     copyBuffer(m_label, labelBuffer);
     if (labelBuffer != nullptr) {
       wlr_buffer_unlock(labelBuffer);
     }
     for (size_t index = 0; index < m_icons.size(); ++index) {
-      const wlr_scene_buffer* icon = m_icons[index];
-      wlr_buffer* rendered = nullptr;
-      if (icon != nullptr && icon->node.enabled && icon->buffer == nullptr) {
-        rendered = renderTitleBarIcon(
-            static_cast<TitleBarButton>(index), m_iconSizes[index], m_iconColors[index], m_iconOutlines[index]
-        );
-      }
-      copyBuffer(icon, rendered);
-      if (rendered != nullptr) {
-        wlr_buffer_drop(rendered);
-      }
+      // The icon's own buffer has been released too; `m_iconBuffers` holds a consumer lock for exactly this copy.
+      copyBuffer(m_icons[index], m_iconBuffers[index]);
     }
   }
   std::unique_ptr<ViewChromeAttachment> SsdFrame::makePreview(wlr_scene_tree* parent) const {
@@ -715,7 +762,7 @@ namespace umbriel {
       frame->setFocused(m_focused);
       frame->setBlurOptions(m_blurOptions);
       // A card shows the same bar, so it needs the same window to take its colour from.
-      frame->setContentSurface(m_content);
+      frame->setContentSurface(m_content, m_contentGeometry);
       frame->reloadConfig();
     }
   }

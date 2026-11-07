@@ -132,7 +132,7 @@ namespace umbriel {
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
-    m_ssdFrame->setContentSurface(rootSurface());
+    m_ssdFrame->setContentSurface(rootSurface(), geometryBox());
     const wlr_box content =
         m_presentedBox.width > 0 && m_presentedBox.height > 0 ? m_presentedBox : committedContentBox();
     layoutChromeAttachment(content.width, content.height);

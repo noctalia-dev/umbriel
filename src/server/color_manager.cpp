@@ -1106,10 +1106,8 @@ namespace umbriel {
       if (surface == nullptr || buffer == nullptr) {
         return;
       }
-      const auto found = surfaces.find(surface);
-      if (found == surfaces.end()) {
-        return;
-      }
+      // No early return for a surface without a description: `resolveSurfaceColor` leaves the sRGB defaults in place,
+      // and a persistent mirrored buffer has to be reset to them when its surface loses its description.
       wlr_scene_surface_color_state state{
           .transfer_function = static_cast<wlr_color_transfer_function>(0),
           .primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,

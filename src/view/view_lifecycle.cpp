@@ -1167,7 +1167,7 @@ namespace umbriel {
     }
     // An adaptive title bar shows the top of this surface, so a repaint of that edge has to reach it with no reload.
     if (m_ssdFrame != nullptr) {
-      m_ssdFrame->syncContent();
+      m_ssdFrame->syncContent(geometryBox());
     }
     if (Ipc* ipc = m_server->ipc()) {
       ipc->notifyWindowCommitted();
