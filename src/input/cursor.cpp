@@ -1352,7 +1352,6 @@ namespace umbriel {
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
-    m_server->notifyIdleActivity();
     processMotion(monotonicMsec(), oldX, oldY, allowFocusChange);
   }
 
