@@ -11,6 +11,7 @@
 #include "scene/effect_selection.h"
 #include "server/action_request.h"
 #include "server/focus.h"
+#include "server/ipc.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
@@ -1314,6 +1315,14 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::eventPacingHold(Server& server, IpcArgs args) {
+    if (!onOrOff(args)) {
+      return nlohmann::json{{"err", "expected on or off"}};
+    }
+    server.ipc()->setEventPacingHeld(args.front() == "on");
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::rendererRecover(Server& server, IpcArgs /*args*/) {
     server.emitRendererLostForTest();
     server.emitRendererLostForTest();
@@ -1424,6 +1433,8 @@ namespace umbriel {
       {"blur-composite-split", "<on|off>",
        "composite backdrop blur through an effect buffer and wait until every output has drawn it (harness only)",
        IpcCommandGroup::Harness, true, &IpcCommands::blurCompositeSplit, nullptr, 35},
+      {"event-pacing-hold", "<on|off>", "hold paced IPC events back until off (harness only)", IpcCommandGroup::Harness,
+       true, &IpcCommands::eventPacingHold, nullptr},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", IpcCommandGroup::Harness, false,
        &IpcCommands::rendererRecover, nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",

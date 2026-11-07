@@ -107,6 +107,7 @@ namespace umbriel {
     std::string cursor;
     int maxFps = 0; // 0-240, 0 follows the refresh rate
     bool inCapture = false;
+    bool borderUnfocused = false;
     bool operator==(const Effects&) const = default;
   };
 

@@ -33,8 +33,14 @@
 // OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
-// LOG_SUSPENDED binds xdg-shell at version 6 and prints "suspended" and "resumed" whenever the toplevel's suspended
-// state changes.
+// RESIZE_ON_STDIN, with FOLLOW_CONFIGURES or RESIZE_FILL_COLOR, leaves a mapped window's resize configure unanswered
+// and prints "resize-pending <width>x<height>" until an `r` on stdin acknowledges it, redraws at that size, and prints
+// "resized <width>x<height>", the way a slow client lags its tile.
+// RESIZE_STEP=<px> follows a configure at its size rounded down to a multiple of px, the way a cell-sized terminal
+// does. GEOMETRY_AHEAD, with RESIZE_ON_STDIN, acknowledges that configure at once and commits the new window geometry
+// over its old buffer, the way a client whose frames are presented from another thread can; `r` then redraws at that
+// size. LOG_SUSPENDED binds xdg-shell at version 6 and prints "suspended" and "resumed" whenever the toplevel's
+// suspended state changes.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
@@ -57,6 +63,7 @@
 #include <print>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 #include <wayland-client.h>
 
 namespace {
@@ -138,6 +145,11 @@ namespace {
     bool suspended = false;
     xdg_toplevel* parentOnFirstConfigure = nullptr;
     bool followConfigures = false;
+    bool resizeOnStdin = false;
+    bool geometryAhead = false;
+    int resizeStep = 1;
+    bool pendingResizeAcked = false;
+    std::optional<uint32_t> pendingResizeSerial;
     bool requestFullscreen = false;
     bool fullscreenRequested = false;
     bool requestHdr = false;
@@ -459,17 +471,31 @@ namespace {
 
   void xdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
-    xdg_surface_ack_configure(xdgSurface, serial);
     const bool followSize = (state.resizeFillColor || (state.followConfigures && state.mapped))
         && state.configuredWidth > 0
         && state.configuredHeight > 0
         && (state.configuredWidth != state.width || state.configuredHeight != state.height);
+    if (state.mapped && state.resizeOnStdin && (followSize || state.pendingResizeSerial)) {
+      if (state.geometryAhead) {
+        xdg_surface_ack_configure(xdgSurface, serial);
+        xdg_surface_set_window_geometry(xdgSurface, 0, 0, state.configuredWidth, state.configuredHeight);
+        wl_surface_commit(state.surface);
+        state.pendingResizeAcked = true;
+      }
+      state.pendingResizeSerial = serial;
+      std::println("resize-pending {}x{}", state.configuredWidth, state.configuredHeight);
+      std::fflush(stdout);
+      return;
+    }
+    if (!std::exchange(state.pendingResizeAcked, false)) {
+      xdg_surface_ack_configure(xdgSurface, serial);
+    }
     if (followSize) {
       if (state.mapped && state.resizeFillColor) {
         state.fillColor = *state.resizeFillColor;
       }
-      state.width = state.configuredWidth;
-      state.height = state.configuredHeight;
+      state.width = std::max(state.resizeStep, state.configuredWidth / state.resizeStep * state.resizeStep);
+      state.height = std::max(state.resizeStep, state.configuredHeight / state.resizeStep * state.resizeStep);
       state.buffer = createBuffer(state, state.width, state.height);
     }
     if (state.mapped) {
@@ -858,7 +884,8 @@ int main(int argc, char** argv) {
       || updatedTitle != nullptr
       || maximizeOnStdin
       || minimizeOnStdin
-      || fullscreenOnStdin;
+      || fullscreenOnStdin
+      || std::getenv("RESIZE_ON_STDIN") != nullptr;
   if (parseContentType(initialContentType) < 0 || parseContentType(updatedContentType) < 0) {
     std::println(stderr, "unmap-client: CONTENT_TYPE values must be none, photo, video, or game");
     return EXIT_FAILURE;
@@ -875,6 +902,16 @@ int main(int argc, char** argv) {
   state.logSuspended = std::getenv("LOG_SUSPENDED") != nullptr;
   state.logWmCapabilities = std::getenv("LOG_WM_CAPABILITIES") != nullptr;
   state.followConfigures = std::getenv("FOLLOW_CONFIGURES") != nullptr;
+  state.resizeOnStdin = std::getenv("RESIZE_ON_STDIN") != nullptr;
+  state.geometryAhead = std::getenv("GEOMETRY_AHEAD") != nullptr;
+  if (const char* step = std::getenv("RESIZE_STEP")) {
+    const auto parsed = harness::parseInts<int, 1>(step, ',');
+    if (!parsed || (*parsed)[0] < 1) {
+      std::println(stderr, "unmap-client: RESIZE_STEP must be a positive integer");
+      return EXIT_FAILURE;
+    }
+    state.resizeStep = (*parsed)[0];
+  }
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
   state.requestHdr = std::getenv("COLOR_HDR") != nullptr;
   state.requestWindowsScrgb = std::getenv("COLOR_WINDOWS_SCRGB") != nullptr;
@@ -1232,6 +1269,15 @@ int main(int argc, char** argv) {
               wl_callback_add_listener(state.repaintFrame, &kRepaintListener, &state);
               wl_surface_commit(state.surface);
             }
+          } else if (state.resizeOnStdin && command == 'r' && state.pendingResizeSerial) {
+            const uint32_t serial = *state.pendingResizeSerial;
+            state.pendingResizeSerial.reset();
+            state.resizeOnStdin = false;
+            xdgSurfaceConfigure(&state, state.xdgSurface, serial);
+            state.resizeOnStdin = true;
+            wl_display_flush(state.display);
+            std::println("resized {}x{}", state.width, state.height);
+            std::fflush(stdout);
           } else if (command == 'a') {
             if (!activateFromFile(state, state.activationTokenFile)) {
               return EXIT_FAILURE;

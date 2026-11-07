@@ -191,14 +191,16 @@ namespace {
     for (Group grp : fixedGroupOrder()) {
       std::vector<const CheatsheetRow*> groupRows;
       for (const auto& row : rows) {
-        if (!row.submap.empty())
+        if (!row.submap.empty()) {
           continue;
+        }
         if (groupForAction(row.actionType) == grp) {
           groupRows.push_back(&row);
         }
       }
-      if (groupRows.empty())
+      if (groupRows.empty()) {
         continue;
+      }
 
       ++groupId;
       pushHeader(lines, groupId, groupTitle(grp), palette);
@@ -228,8 +230,9 @@ namespace {
           groupRows.push_back(&row);
         }
       }
-      if (groupRows.empty())
+      if (groupRows.empty()) {
         continue;
+      }
 
       ++groupId;
       pushHeader(lines, groupId, "Submap: " + smName, palette);
@@ -570,13 +573,15 @@ namespace umbriel {
 
     // Helper to add a text buffer to the scene tree.
     auto addBuffer = [this](TextBufferResult& result, int x, int y) {
-      if (result.buffer == nullptr)
+      if (result.buffer == nullptr) {
         return;
+      }
       wlr_scene_buffer* sceneBuf = wlr_scene_buffer_create(m_tree, result.buffer);
       wlr_buffer_drop(result.buffer);
       result.buffer = nullptr;
-      if (sceneBuf == nullptr)
+      if (sceneBuf == nullptr) {
         return;
+      }
       wlr_scene_buffer_set_dest_size(sceneBuf, result.logicalWidth, result.logicalHeight);
       sceneBuf->point_accepts_input = [](wlr_scene_buffer*, double*, double*) -> bool { return false; };
       wlr_scene_node_set_position(&sceneBuf->node, x, y);

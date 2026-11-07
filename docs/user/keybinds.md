@@ -183,7 +183,7 @@ Any non-modifier key or mouse button closes it. Normal bound actions still run.
 "Mod+Escape" = "spawn noctalia msg panel-toggle session"
 ```
 
-## Example: direct primary extents
+## Example: resizing the focused window
 
 ```toml
 "Mod+A" = "window-set-primary-extent 0.333"
@@ -192,7 +192,13 @@ Any non-modifier key or mouse button closes it. Normal bound actions still run.
 "Mod+F" = "window-set-primary-extent 1.0"
 "Mod+R" = "window-cycle-primary-extent"
 "Mod+Shift+R" = "window-cycle-primary-extent-back"
+"Mod+Minus" = "window-modify-primary-extent -0.02"
+"Mod+Equal" = "window-modify-primary-extent +0.02"
+"Mod+Ctrl+Minus" = "window-modify-secondary-extent -0.02"
+"Mod+Ctrl+Equal" = "window-modify-secondary-extent +0.02"
 ```
+
+The `window-modify-*` delta is a fraction of the viewport (of the usable area for floating windows). It may start with `+`, must not be zero, and runs from `-0.9` to `0.9`. See [Sizing behavior](layout.md#sizing-behavior) for what primary and secondary mean in each layout.
 
 ## Example: scroll-wheel navigation
 

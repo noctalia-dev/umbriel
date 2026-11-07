@@ -12,7 +12,7 @@ readonly OVERVIEW_X=320
 readonly OVERVIEW_Y=180
 
 spawn_client() {
-  foot --config=/dev/null --override=colors.background=000000 \
+  foot --config=/dev/null --override=colors-dark.background=000000 \
     --title="left-hint-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 

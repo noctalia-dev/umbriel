@@ -272,10 +272,11 @@ namespace {
       org_kde_kwin_server_decoration_release(state.legacyDecoration);
       state.legacyDecoration = nullptr;
     } else if (command.starts_with("xdg ") && state.decoration != nullptr) {
-      if (command == "xdg unset")
+      if (command == "xdg unset") {
         zxdg_toplevel_decoration_v1_unset_mode(state.decoration);
-      else
+      } else {
         zxdg_toplevel_decoration_v1_set_mode(state.decoration, command == "xdg server" ? 2 : 1);
+      }
     } else if (command.starts_with("legacy ") && state.legacyDecoration != nullptr) {
       const uint32_t mode = command == "legacy server" ? 2 : (command == "legacy none" ? 0 : 1);
       org_kde_kwin_server_decoration_request_mode(state.legacyDecoration, mode);
@@ -439,8 +440,9 @@ int main(int argc, char** argv) {
     state.legacyDecoration = org_kde_kwin_server_decoration_manager_create(state.legacyManager, state.surface);
     org_kde_kwin_server_decoration_add_listener(state.legacyDecoration, &kLegacyListener, &state);
     org_kde_kwin_server_decoration_request_mode(state.legacyDecoration, strcmp(mode, "server") == 0 ? 2 : 1);
-    if (wl_display_roundtrip(state.display) < 0)
+    if (wl_display_roundtrip(state.display) < 0) {
       return 1;
+    }
   }
 
   state.xdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.surface);
@@ -468,19 +470,24 @@ int main(int argc, char** argv) {
   const bool controlled = std::getenv("DECORATION_CONTROL") != nullptr;
   while (state.running) {
     if (!controlled) {
-      if (wl_display_dispatch(state.display) < 0)
+      if (wl_display_dispatch(state.display) < 0) {
         break;
+      }
       continue;
     }
-    if (wl_display_dispatch_pending(state.display) < 0 || wl_display_flush(state.display) < 0)
+    if (wl_display_dispatch_pending(state.display) < 0 || wl_display_flush(state.display) < 0) {
       break;
+    }
     pollfd fds[]{{wl_display_get_fd(state.display), POLLIN, 0}, {STDIN_FILENO, POLLIN, 0}};
-    if (poll(fds, 2, -1) < 0)
+    if (poll(fds, 2, -1) < 0) {
       break;
-    if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0)
+    }
+    if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(state.display) < 0) {
       break;
-    if ((fds[1].revents & (POLLIN | POLLHUP)) != 0)
+    }
+    if ((fds[1].revents & (POLLIN | POLLHUP)) != 0) {
       readDecorationCommands(state);
+    }
   }
   wl_display_disconnect(state.display);
   return 0;

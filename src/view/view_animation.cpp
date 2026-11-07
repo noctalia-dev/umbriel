@@ -95,8 +95,9 @@ namespace umbriel {
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setAlpha(chromeAlpha());
     }
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    }
   }
 
   void View::setOverviewOpacity(float opacity) {
@@ -346,7 +347,14 @@ namespace umbriel {
 
   bool View::sizeGrabTracksPointer() const {
     const Cursor* cursor = m_server->cursor();
-    return cursor != nullptr && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace));
+    return cursor != nullptr
+        && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace))
+        && !tiledResizeWaitsForClient();
+  }
+
+  bool View::tiledResizeWaitsForClient() const {
+    const auto& animation = config().animation;
+    return m_tiled && animation.windowsResize.waitsForClient(animation.enabled);
   }
 
   void View::enterDragPresentation() {
@@ -354,8 +362,9 @@ namespace umbriel {
     m_dragOpacity = config().appearance.dragOpacity;
     // The insert hint sits below the dragged window, out of reach of the cached background blur.
     m_decoration.setBlurLive(true);
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setBlurLive(true);
+    }
     setFadeAlpha(m_fadeAlpha);
     if (m_pinned) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->pinnedTree()->node);
@@ -471,8 +480,9 @@ namespace umbriel {
     resetPresentedSurface();
     m_dragOpacity = 1.0F;
     m_decoration.setBlurLive(false);
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setBlurLive(false);
+    }
     setFadeAlpha(m_fadeAlpha);
     wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
@@ -630,11 +640,16 @@ namespace umbriel {
   }
 
   void View::requestTiledSize(int width, int height) {
+    const wlr_box content = committedContentBox();
+    const wlr_surface* surface = rootSurface();
     m_tiledSizeRequest = TiledSizeRequest{
         .serial = configureSize(width, height),
         .width = width,
         .height = height,
-        .base = currentSize(),
+        .base = {.width = content.width, .height = content.height},
+        .baseBuffer = surface != nullptr
+            ? ClientSize{.width = surface->current.width, .height = surface->current.height}
+            : ClientSize{},
     };
   }
 
@@ -648,10 +663,16 @@ namespace umbriel {
     }
     const wlr_box content = committedContentBox();
     const bool exact = content.width == request.width && content.height == request.height;
-    // An X11 client with resize increments answers with the nearest size it accepts.
-    const bool answered =
-        m_xsurface != nullptr && (content.width != request.base.width || content.height != request.base.height);
-    if (!exact && !answered) {
+    // A client may settle on a size of its own inside the request (cell-sized terminals, resize increments, rounding).
+    const bool changed = content.width != request.base.width || content.height != request.base.height;
+    // A new window geometry over the buffer drawn for the old size is not a redraw.
+    const wlr_surface* surface = rootSurface();
+    const bool unchanged = request.width == request.base.width && request.height == request.base.height;
+    const bool redrawn = unchanged
+        || surface == nullptr
+        || surface->current.width != request.baseBuffer.width
+        || surface->current.height != request.baseBuffer.height;
+    if (!redrawn || (!exact && !changed)) {
       return false;
     }
     m_tiledSizeRequest.reset();
@@ -829,6 +850,7 @@ namespace umbriel {
       }
       const BorderEffectGate ownGate{
           .focused = m_borderFocusedState,
+          .allowUnfocused = config().effects.borderUnfocused,
           .decorated = decorated(),
           .urgent = m_urgent,
           .fullscreen = scheduledFullscreen(),
@@ -856,7 +878,10 @@ namespace umbriel {
     // Disable sibling size animations during a tiled resize, so they do not
     // trail the pointer while clients acknowledge successive configures.
     const Cursor* cursor = m_server->cursor();
-    if (cursor != nullptr && cursor->isResizingWorkspace(m_workspace) && sizeAnimating()) {
+    if (cursor != nullptr
+        && cursor->isResizingWorkspace(m_workspace)
+        && !tiledResizeWaitsForClient()
+        && sizeAnimating()) {
       cancelSizeAnimation();
     }
 
@@ -1032,16 +1057,30 @@ namespace umbriel {
 
   CloseSnapshotId View::beginCloseAnimation() {
     const auto& animation = config().animation;
+    const bool held = m_tiled && m_workspace != nullptr && animation.holdsClosedTile();
     if (!m_mapped
         || presentationSuppressed()
         || !m_onActiveWorkspace
-        || !animation.enabled
-        || !animation.windowsOut.enabled
+        || (!held && (!animation.enabled || !animation.windowsOut.enabled))
         || m_server->sessionLocked()
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
+    return captureSnapshot(held, true);
+  }
 
+  CloseSnapshotId View::captureHeldSnapshot() {
+    if (!m_mapped
+        || presentationSuppressed()
+        || !m_onActiveWorkspace
+        || m_server->sessionLocked()
+        || (m_server->overview() != nullptr && m_server->overview()->active())) {
+      return kInvalidCloseSnapshot;
+    }
+    return captureSnapshot(true, false);
+  }
+
+  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow) {
     Output* output =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
     if (output == nullptr) {
@@ -1070,8 +1109,9 @@ namespace umbriel {
     m_decoration.snapshotBorders(
         snap, m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity(), snapBorders
     );
-    if (m_ssdFrame != nullptr && titleBarHeight() > 0)
+    if (m_ssdFrame != nullptr && titleBarHeight() > 0) {
       m_ssdFrame->snapshot(snap);
+    }
 
     // Copy client surfaces. Chrome snapshots already own their label buffers.
     struct CopyCtx {
@@ -1134,9 +1174,12 @@ namespace umbriel {
     // A close snapshot owns its windows_out lifecycle. Keep a possible interrupted windows_in effect, but do not
     // freeze windows_move into the snapshot.
     wlr_scene_node_set_animation(&snap->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
-    const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled());
+    const auto shadow = withShadow
+        ? m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled())
+        : ShadowSnapshot{};
     const CloseSnapshotId id = m_server->animateCloseSnapshot(
-        output, snap, content, std::move(snapBorders), m_presentedBox, std::nullopt, shadow, titleBarHeight()
+        output, snap, content, std::move(snapBorders), m_presentedBox,
+        held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
     wlr_output_schedule_frame(output->wlr());
     return id;

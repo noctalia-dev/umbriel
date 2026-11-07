@@ -49,17 +49,21 @@ namespace {
       words >> action;
       if (action == "tap" || action == "press" || action == "release") {
         uint32_t code = 0;
-        if (!(words >> code))
+        if (!(words >> code)) {
           throw std::runtime_error("key command requires a code");
-        if (action != "release")
+        }
+        if (action != "release") {
           key(code, WL_KEYBOARD_KEY_STATE_PRESSED);
-        if (action != "press")
+        }
+        if (action != "press") {
           key(code, WL_KEYBOARD_KEY_STATE_RELEASED);
+        }
       } else if (action == "move" || action == "at") {
         double x = 0;
         double y = 0;
-        if (!(words >> x >> y))
+        if (!(words >> x >> y)) {
           throw std::runtime_error("motion command requires x and y");
+        }
         if (action == "at") {
           x -= m_server.cursor()->wlr()->x;
           y -= m_server.cursor()->wlr()->y;
@@ -77,8 +81,9 @@ namespace {
       } else if (action == "absolute") {
         double x = 0;
         double y = 0;
-        if (!(words >> x >> y))
+        if (!(words >> x >> y)) {
           throw std::runtime_error("absolute motion requires normalized x and y");
+        }
         wlr_pointer_motion_absolute_event event{
             .pointer = &m_pointer,
             .time_msec = ++m_time,
@@ -90,8 +95,9 @@ namespace {
       } else if (action == "button") {
         uint32_t code = 0;
         int pressed = 0;
-        if (!(words >> code >> pressed))
+        if (!(words >> code >> pressed)) {
           throw std::runtime_error("button command requires code and state");
+        }
         wlr_pointer_button_event event{
             .pointer = &m_pointer,
             .time_msec = ++m_time,
@@ -103,8 +109,9 @@ namespace {
       } else if (action == "scroll") {
         double delta = 0;
         int32_t discrete = 0;
-        if (!(words >> delta >> discrete))
+        if (!(words >> delta >> discrete)) {
           throw std::runtime_error("scroll requires delta and discrete value");
+        }
         wlr_pointer_axis_event event{
             .pointer = &m_pointer,
             .time_msec = ++m_time,
@@ -159,8 +166,9 @@ namespace {
         } else if (count < 0 && errno == EINTR) {
           continue;
         } else {
-          if (count == 0)
+          if (count == 0) {
             self.m_server.stop();
+          }
           return 0;
         }
       }
@@ -197,17 +205,20 @@ int main(int argc, char** argv) {
   try {
     umbriel::loadConfig(argv[1]);
     umbriel::Server server;
-    if (!server.start())
+    if (!server.start()) {
       return 1;
+    }
     PhysicalInput input(server);
     const int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    if (flags < 0 || fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK) != 0)
+    if (flags < 0 || fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK) != 0) {
       return 1;
+    }
     wl_event_source* source = wl_event_loop_add_fd(
         wl_display_get_event_loop(server.display()), STDIN_FILENO, WL_EVENT_READABLE, PhysicalInput::readable, &input
     );
-    if (source == nullptr)
+    if (source == nullptr) {
       return 1;
+    }
     std::println("ready display={} socket={}", std::getenv("WAYLAND_DISPLAY"), std::getenv("UMBRIEL_SOCKET"));
     server.run();
     wl_event_source_remove(source);

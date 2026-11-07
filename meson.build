@@ -859,6 +859,7 @@ core_sources = files(
   'src/workspace/scratchpad.cpp',
   'src/cli/ipc_client.cpp',
   'src/server/action_request.cpp',
+  'src/server/event_pacer.cpp',
   'src/server/ipc.cpp',
   'src/server/ipc_commands.cpp',
 )

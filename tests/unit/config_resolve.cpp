@@ -1067,6 +1067,44 @@ UMBRIEL_TEST(windowRulesMatchEmptyIdentityOnlyWhenTheClientSetIt) {
   CHECK(!emptyTitleOnly.defaultMaximize);
 }
 
+UMBRIEL_TEST(windowRulesMatchLayout) {
+  Config config;
+  WindowRule all;
+  all.opacity = 0.8;
+  config.windowRules.push_back(all);
+  WindowRule stacking;
+  stacking.matchLayouts = {LayoutMode::Stacking};
+  stacking.titleBar = umbriel::TitleBarMode::Forced;
+  stacking.opacity = 0.5;
+  config.windowRules.push_back(stacking);
+  WindowRule tiled;
+  tiled.matchLayouts = {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master};
+  tiled.titleBar = umbriel::TitleBarMode::Off;
+  config.windowRules.push_back(tiled);
+
+  const auto resolve = [&](std::optional<LayoutMode> layout, bool floating) {
+    return umbriel::resolveWindowRules(
+        config, "app", std::nullopt, std::nullopt, ContentType::None, {.floating = floating, .layout = layout}, 0
+    );
+  };
+  for (const bool floating : {false, true}) {
+    for (const auto mode : {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master}) {
+      const auto rule = resolve(mode, floating);
+      CHECK_EQ(rule.titleBar, umbriel::TitleBarMode::Off);
+      CHECK_EQ(rule.opacity, 0.8);
+    }
+    const auto rule = resolve(LayoutMode::Stacking, floating);
+    CHECK_EQ(rule.titleBar, umbriel::TitleBarMode::Forced);
+    CHECK_EQ(rule.opacity, 0.5);
+  }
+  const auto unassigned = resolve(std::nullopt, false);
+  CHECK(!unassigned.titleBar);
+  CHECK_EQ(unassigned.opacity, 0.8);
+
+  config.windowRules.back().matchLayouts.clear();
+  CHECK_EQ(resolve(LayoutMode::Stacking, true).titleBar, umbriel::TitleBarMode::Off);
+}
+
 UMBRIEL_TEST(windowRulesMatchIsAlone) {
   Config config;
 
