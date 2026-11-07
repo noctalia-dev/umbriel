@@ -148,6 +148,10 @@ struct tex_shader {
   GLint discard_transparent;
   GLint sample_bounds;
 
+  // Only used for the downsample (box) variants
+  GLint taps;
+  GLint tap_step;
+
   // Only used for the effects shader
   struct {
     GLint size;
@@ -160,7 +164,9 @@ struct tex_shader {
   } effects;
 };
 
-bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp);
+bool link_tex_program(
+    struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool downsample
+);
 
 struct output_shader {
   GLuint program;

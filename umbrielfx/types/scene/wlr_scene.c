@@ -3605,6 +3605,23 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       snapped_src_box.height = src_dst_height;
     }
 
+    // Downsample policy: a minified source is sampled with the scene's
+    // configured method unless the buffer pins nearest, which stays exact.
+    // The box grid spans ceil(ratio) texels per axis (ratio when the 4-tap cap
+    // steps it down), which exceeds one output pixel only for non-integer
+    // ratios — the exact case where the damage path already expands by one.
+    const bool minifying = (src_dst_width > 0 && snapped_src_box.width > src_dst_width)
+        || (src_dst_height > 0 && snapped_src_box.height > src_dst_height);
+    bool downsample_box = false;
+    enum wlr_scale_filter_mode filter_mode = scene_buffer->filter_mode;
+    if (minifying && filter_mode != WLR_SCALE_FILTER_NEAREST) {
+      if (data->output->scene->downsample_mode == WLR_SCENE_DOWNSAMPLE_BOX) {
+        downsample_box = true;
+      } else if (data->output->scene->downsample_mode == WLR_SCENE_DOWNSAMPLE_NEAREST) {
+        filter_mode = WLR_SCALE_FILTER_NEAREST;
+      }
+    }
+
     // Adopting a one-texel-larger destination extent deliberately reaches
     // past the source region so that sampling stays exactly texel-centered
     // and the final row or column duplicates the edge texel. Whether that
@@ -3625,6 +3642,12 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
               && sample_box.y + sample_box.height < texture->height);
     }
     if (!crosses_crop_edge) {
+      // Box taps at non-integer ratios reach up to half a texel past the
+      // single-tap footprint, so a cropped minified source needs the clamp
+      // for its whole footprint too.
+      crosses_crop_edge = downsample_box && !wlr_fbox_empty(&sample_box);
+    }
+    if (!crosses_crop_edge) {
       sample_box = (struct wlr_fbox){0};
     }
 
@@ -3637,7 +3660,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 .transform = transform,
                 .clip = &render_region, // Render with the smaller region, clipping CSD
                 .alpha = &scene_buffer->opacity,
-                .filter_mode = scene_buffer->filter_mode,
+                .filter_mode = filter_mode,
                 .blend_mode = !data->output->scene->calculate_visibility || !pixman_region32_empty(&opaque)
                     ? WLR_RENDER_BLEND_MODE_PREMULTIPLIED
                     : WLR_RENDER_BLEND_MODE_NONE,
@@ -3653,6 +3676,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .corners = fx_corner_radii_scale(buffer_corners, data->scale),
         .clipped_region = {0},
         .sample_box = sample_box,
+        .downsample_box = downsample_box,
         .luminances = scene_buffer->luminances.reference > 0.0f ? &scene_buffer->luminances : NULL,
         .map_hdr_to_sdr = !data->hdr
             && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
@@ -4404,6 +4428,17 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene* scene, struct wlr_color_ma
 
   scene->color_manager_v1_destroy.notify = scene_handle_color_manager_v1_destroy;
   wl_signal_add(&manager->events.destroy, &scene->color_manager_v1_destroy);
+}
+
+void wlr_scene_set_preferred_scale_provider(
+    struct wlr_scene* scene, double (*get)(struct wlr_output* output, void* data), void* data
+) {
+  scene->preferred_scale_provider = get;
+  scene->preferred_scale_provider_data = data;
+}
+
+void wlr_scene_set_downsample_mode(struct wlr_scene* scene, enum wlr_scene_downsample_mode mode) {
+  scene->downsample_mode = mode;
 }
 
 static void scene_output_handle_destroy(struct wlr_addon* addon) {

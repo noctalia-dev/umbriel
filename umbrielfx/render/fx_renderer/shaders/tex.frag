@@ -1,12 +1,13 @@
 #define SOURCE % d
 #define EFFECTS % d
 #define SAMPLE_CLAMP % d
+#define DOWNSAMPLE % d
 
 #define SOURCE_TEXTURE_RGBA 1
 #define SOURCE_TEXTURE_RGBX 2
 #define SOURCE_TEXTURE_EXTERNAL 3
 
-#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP)
+#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP) || !defined(DOWNSAMPLE)
 #error "Missing shader preamble"
 #endif
 
@@ -68,15 +69,27 @@ uniform float discard_transparent;
 // every other draw keeps the exact fetch drivers already handle well.
 uniform vec4 sample_bounds;
 #define SAMPLE_UV clamp(v_texcoord, sample_bounds.xy, sample_bounds.zw)
+#define SAMPLE_AT(uv) clamp((uv), sample_bounds.xy, sample_bounds.zw)
 #else
 #define SAMPLE_UV v_texcoord
+#define SAMPLE_AT(uv) (uv)
 #endif
 
-vec4 sample_texture() {
+#if DOWNSAMPLE
+// Area (box) average for a minified source: taps.x times taps.y samples at
+// ratio/K texel steps, weighted evenly, tiling the fragment's whole footprint
+// (texel centers exactly while integer ratios fit the grid). The grid is
+// constant-bounded and skips entries past the per-axis tap counts, which the
+// pass derives from the minification ratio (clamped to 4).
+uniform vec2 taps;
+uniform vec2 tap_step;
+#endif
+
+vec4 sample_texel(vec2 uv) {
 #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
-  return texture2D(tex, SAMPLE_UV);
+  return texture2D(tex, SAMPLE_AT(uv));
 #elif SOURCE == SOURCE_TEXTURE_RGBX
-  return vec4(texture2D(tex, SAMPLE_UV).rgb, 1.0);
+  return vec4(texture2D(tex, SAMPLE_AT(uv)).rgb, 1.0);
 #endif
 }
 
@@ -131,11 +144,9 @@ vec3 hdr_to_sdr(vec3 color) {
   return color * (mapped_peak / peak);
 }
 
-vec4 convert_color(vec4 color) {
-  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
-    return color;
-  }
-
+// Premultiplied source color to premultiplied linear light, before any
+// luminance, primaries or target encoding is applied.
+vec4 decode_color(vec4 color) {
   float color_alpha = color.a;
   vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
   // Extended-linear negative channels carry colors outside the source gamut.
@@ -154,6 +165,14 @@ vec4 convert_color(vec4 color) {
     rgb = bt1886_color_to_linear(rgb);
   }
 
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
+// Premultiplied linear light from decode_color() to the pass's target.
+vec4 encode_color(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+
   rgb *= lum_multiplier;
   rgb = primaries_matrix * rgb;
   if (map_hdr_to_sdr) {
@@ -168,6 +187,58 @@ vec4 convert_color(vec4 color) {
   return vec4(rgb * color_alpha, color_alpha);
 }
 
+vec4 convert_color(vec4 color) {
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    return color;
+  }
+  return encode_color(decode_color(color));
+}
+
+#if DOWNSAMPLE
+// Passthrough passes have no transfer function to decode with: treat their
+// content as gamma 2.2, like the default sdr_transfer, so the box still
+// averages light instead of encoded values.
+vec4 sample_linear(vec2 uv) {
+  vec4 color = sample_texel(uv);
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    float color_alpha = color.a;
+    vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : max(color.rgb / color_alpha, vec3(0.0));
+    return vec4(pow(rgb, vec3(2.2)) * color_alpha, color_alpha);
+  }
+  return decode_color(color);
+}
+
+vec4 encode_linear(vec4 color) {
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    float color_alpha = color.a;
+    vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+    return vec4(linear_color_to_gamma22(rgb) * color_alpha, color_alpha);
+  }
+  return encode_color(color);
+}
+#endif
+
+// Source color converted for the pass. Downsampling averages the box in linear
+// light: averaging encoded values darkens every partially covered pixel, which
+// thins light text on dark backgrounds and fattens dark text on light ones.
+vec4 sample_converted() {
+#if DOWNSAMPLE
+  vec4 acc = vec4(0.0);
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      if (float(x) >= taps.x || float(y) >= taps.y) {
+        continue;
+      }
+      vec2 offset = (vec2(float(x), float(y)) + 0.5 - taps * 0.5) * tap_step;
+      acc += sample_linear(v_texcoord + offset);
+    }
+  }
+  return encode_linear(acc / (taps.x * taps.y));
+#else
+  return convert_color(sample_texel(SAMPLE_UV));
+#endif
+}
+
 #if EFFECTS
 float corner_alpha(
     vec2 size, vec2 position, bool is_cutout, float radius_tl, float radius_tr, float radius_bl, float radius_br
@@ -175,7 +246,7 @@ float corner_alpha(
 #endif
 
 void main() {
-  vec4 color = convert_color(sample_texture());
+  vec4 color = sample_converted();
 #if EFFECTS
   float quad_corner_alpha = corner_alpha(
       size - 0.5, position + 0.25, false, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right

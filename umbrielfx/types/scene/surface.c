@@ -17,15 +17,23 @@
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 
-static double get_surface_preferred_buffer_scale(struct wlr_surface* surface) {
-  double scale = 1;
+static double get_surface_preferred_buffer_scale(struct wlr_scene* scene, struct wlr_surface* surface) {
+  double scale = 0;
   struct wlr_surface_output* surface_output;
   wl_list_for_each(surface_output, &surface->current_outputs, link) {
-    if (surface_output->output->scale > scale) {
-      scale = surface_output->output->scale;
+    double outputScale = surface_output->output->scale;
+    if (scene->preferred_scale_provider != NULL) {
+      outputScale = scene->preferred_scale_provider(surface_output->output, scene->preferred_scale_provider_data);
+    }
+    // A provider answer of 0 or below excludes the output: a capture mirror's
+    // synthetic output shares the surface but must not drive its hints. A
+    // render scale below 1 is legal and must survive the max.
+    if (outputScale > scale) {
+      scale = outputScale;
     }
   }
-  return scale;
+  // Nothing derivable left keeps the neutral scale.
+  return scale > 0 ? scale : 1;
 }
 
 // Output used for frame pacing (surface frame callbacks, presentation
@@ -144,9 +152,15 @@ static void handle_scene_buffer_outputs_update(struct wl_listener* listener, voi
     wlr_surface_send_enter(surface->surface, event->active[i]->output);
   }
 
-  double scale = get_surface_preferred_buffer_scale(surface->surface);
-  wlr_fractional_scale_v1_notify_scale(surface->surface, scale);
-  wlr_surface_set_preferred_buffer_scale(surface->surface, ceil(scale));
+  // A render-only mirror scene (window capture) wraps the same client surfaces
+  // on a synthetic output and shares the membership bookkeeping above for
+  // capture frame pacing — but the client does not render FOR the mirror, so
+  // the mirror must not publish presentation hints.
+  if (scene->preferred_scale_provider != NULL) {
+    double scale = get_surface_preferred_buffer_scale(scene, surface->surface);
+    wlr_fractional_scale_v1_notify_scale(surface->surface, scale);
+    wlr_surface_set_preferred_buffer_scale(surface->surface, ceil(scale));
+  }
 
   if (scene->color_manager_v1 != NULL) {
     struct wlr_image_description_v1_data img_desc = {0};

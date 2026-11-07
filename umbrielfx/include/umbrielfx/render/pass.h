@@ -135,6 +135,11 @@ struct fx_render_texture_options {
   // Compress HDR highlights into the SDR range before blending this content.
   // Intermediate textures leave this unset so a scene is not mapped twice.
   bool map_hdr_to_sdr;
+  // Area (box) averaging for a minified source instead of the single-tap
+  // fetch. The pass derives the per-axis tap grid from the source and
+  // destination extents; taps land on texel centers so integer minification
+  // ratios average exactly. Only set when the draw is actually minifying.
+  bool downsample_box;
 };
 
 struct fx_render_rect_options {

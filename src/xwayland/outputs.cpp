@@ -53,8 +53,10 @@ namespace umbriel {
     return wlr_box_equal(&layout, &other.layout) && wlr_box_equal(&x, &other.x) && scale == other.scale;
   }
 
-  XwaylandOutputs::XwaylandOutputs(wl_display* display, wlr_output_layout* layout, bool nativeResolution)
-      : m_layout(layout), m_nativeResolution(nativeResolution) {
+  XwaylandOutputs::XwaylandOutputs(
+      wl_display* display, wlr_output_layout* layout, bool nativeResolution, RenderScale renderScale
+  )
+      : m_layout(layout), m_nativeResolution(nativeResolution), m_renderScale(std::move(renderScale)) {
     m_global = wl_global_create(display, &zxdg_output_manager_v1_interface, kVersion, this, bind);
     update();
   }
@@ -110,8 +112,15 @@ namespace umbriel {
       }
       XwaylandRegion region{.layout = box, .x = {.x = 0, .y = 0, .width = box.width, .height = box.height}};
       if (m_nativeResolution) {
-        region.scale = output->scale;
+        // X11 clients render at the output's render scale, like Wayland clients.
+        region.scale = m_renderScale != nullptr ? m_renderScale(output) : static_cast<double>(output->scale);
+        // X coordinates measure render-scale pixels, so the X rectangle must
+        // too: scale the physical resolution by the same factor the mapping
+        // uses. A render scale that follows the logical one has factor 1 and
+        // keeps the physical size exactly.
         wlr_output_transformed_resolution(output, &region.x.width, &region.x.height);
+        region.x.width = scaled(region.x.width, region.scale / output->scale);
+        region.x.height = scaled(region.x.height, region.scale / output->scale);
       }
       positionScale = std::max(positionScale, region.scale);
       regions.push_back({.output = output, .region = region});
