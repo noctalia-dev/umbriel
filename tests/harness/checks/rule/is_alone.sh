@@ -298,6 +298,15 @@ if ((column_restored != column_alone)); then
   exit 1
 fi
 
+# Expelling the owner splits it out inside the layout, without a detach. The column it leaves must not keep its width.
+"$UMBRIEL" msg window-focus "$column_wide_id" > /dev/null
+"$UMBRIEL" msg window-consume-or-expel-right > /dev/null
+column_expelled=$(width_of column-peer)
+if ((column_expelled >= column_alone)); then
+  echo "the alone width outlived its owner being expelled: alone=$column_alone peer=$column_expelled"
+  exit 1
+fi
+
 kill "$column_peer_pid" "$column_wide_pid"
 wait_gone column-peer
 wait_gone column-wide

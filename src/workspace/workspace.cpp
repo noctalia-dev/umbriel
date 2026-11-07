@@ -1965,6 +1965,10 @@ namespace umbriel {
   }
 
   bool Workspace::expelFocused(int direction) {
+    // Expel splits the window out inside the layout, without a detach, so release the column-wide effect here.
+    if (m_focusedView != nullptr) {
+      m_focusedView->releaseColumnWideAloneEffect();
+    }
     if (!m_layout->expel(m_focusedView, direction)) {
       return false;
     }
