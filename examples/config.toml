@@ -80,8 +80,9 @@ files = []
 # https://docs.noctalia.dev/umbriel/appearance/
 #
 # [appearance]
-# How content that shrinks is sampled: "box" averages the source texel
-# footprint, "bilinear" and "nearest" fetch a single texel per pixel.
+# How content that shrinks is sampled: "box" averages each destination pixel's
+# source footprint, "bilinear" takes one interpolated sample per pixel, and
+# "nearest" the closest texel.
 # downsample = "box"
 
 [appearance.blur]

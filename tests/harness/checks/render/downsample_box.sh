@@ -4,8 +4,8 @@
 # alternating per-texel columns, shrunk 3:1, makes the methods distinguishable
 # by pixel: box averages the fragment's whole texel footprint and preserves the
 # pattern's 2:1 coverage ratio per output pixel, while bilinear point-samples
-# and invents an even 50/50 mix. The method is a scene policy, so flipping it
-# on a reload must re-render.
+# and reports one texel pure. The method is a scene policy, so flipping it on a
+# reload must re-render.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
