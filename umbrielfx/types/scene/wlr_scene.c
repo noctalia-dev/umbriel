@@ -3644,8 +3644,11 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     if (!crosses_crop_edge) {
       // Box taps at non-integer ratios reach up to half a texel past the
       // single-tap footprint, so a cropped minified source needs the clamp
-      // for its whole footprint too.
-      crosses_crop_edge = downsample_box && !wlr_fbox_empty(&sample_box);
+      // for its whole footprint too. A whole-buffer source does not: taps that
+      // leave it land in the texture's own edge, which GL_CLAMP_TO_EDGE
+      // already duplicates, and the clamp variant on every minified draw is
+      // the configuration that flickered on NVIDIA.
+      crosses_crop_edge = downsample_box && !wlr_fbox_empty(&scene_buffer->src_box);
     }
     if (!crosses_crop_edge) {
       sample_box = (struct wlr_fbox){0};
