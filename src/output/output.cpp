@@ -1364,8 +1364,22 @@ namespace umbriel {
     }
     // The hints carry the render scale alone: the scene samples the larger
     // buffers down to the output's `scale` raster, and logical geometry is
-    // untouched. Must match the scene's preferred scale provider (server.cpp).
-    const double renderScale = self->surfaceRenderScale(surface);
+    // untouched. Derive the same max the scene's provider does across every
+    // output presenting the surface: a state change seen through one output
+    // must not lower a hint the scene raises through another, and a window
+    // straddling two outputs with different render scales follows the larger.
+    double renderScale = 0;
+    wlr_surface_output* entered = nullptr;
+    wl_list_for_each(entered, &surface->current_outputs, link) {
+      if (const Output* output = self->m_server->outputFromWlr(entered->output)) {
+        renderScale = std::max(renderScale, output->surfaceRenderScale(surface));
+      }
+    }
+    if (renderScale <= 0) {
+      // Not entered anywhere yet (a popup before its first commit): answer for
+      // the output asking.
+      renderScale = self->surfaceRenderScale(surface);
+    }
     wlr_fractional_scale_v1_notify_scale(surface, renderScale);
     wlr_surface_set_preferred_buffer_scale(surface, static_cast<int32_t>(std::ceil(renderScale)));
   }
