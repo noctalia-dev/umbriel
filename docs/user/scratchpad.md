@@ -159,7 +159,7 @@ A dialog parented to a visible scratchpad window joins that scratchpad unless a 
 
 Backdrop dim and blur affect only the output showing the scratchpad.
 
-Showing a scratchpad never moves its windows: a member stays where it was left, including a floating window hanging off an output edge as far as a floating window may. Only a scratchpad that moves to another output repositions its members, which keep their position relative to that output.
+Showing a scratchpad never moves a floating window it holds: the window stays where it was left, including hanging off an output edge as far as a floating window may. A window moves only with the output it belongs to. A pad that moves to another output carries its members proportionally and pulls an overhanging one back inside the destination, a window joining a pad that already shows on another output joins that output, an output whose usable area changes refits its members, and a maximized member is refitted to the output each time the pad is shown.
 
 ## Restoring windows
 
