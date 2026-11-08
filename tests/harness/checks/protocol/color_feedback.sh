@@ -170,6 +170,19 @@ done
 for mode in named-raw raw-named raw-raw luminances-twice invalid-maximum invalid-reference degenerate unsupported-srgb; do
   "$CLIENT" "params-$mode" > "$UMBRIEL_RUNTIME_DIR/native-params-$mode.log" 2>&1
 done
+# set_tf_power: only exponents that are exactly a named curve are admitted. The
+# gamma 2.2 curve is canonicalized to the named transfer; 1.8 has no named
+# equivalent and must fail the description, not render as gamma 2.2.
+if ! "$CLIENT" params-power-22 > "$UMBRIEL_RUNTIME_DIR/native-params-power-22.log" 2>&1 \
+    || ! grep -Fq '{"event":"power_ready","cause":0}' "$UMBRIEL_RUNTIME_DIR/native-params-power-22.log"; then
+  echo "set_tf_power 2.2 did not produce a ready description: $(cat "$UMBRIEL_RUNTIME_DIR/native-params-power-22.log")"
+  exit 1
+fi
+if ! "$CLIENT" params-power-18 > "$UMBRIEL_RUNTIME_DIR/native-params-power-18.log" 2>&1 \
+    || ! grep -Fq '{"event":"power_failed","cause":1}' "$UMBRIEL_RUNTIME_DIR/native-params-power-18.log"; then
+  echo "set_tf_power 1.8 did not fail gracefully with unsupported: $(cat "$UMBRIEL_RUNTIME_DIR/native-params-power-18.log")"
+  exit 1
+fi
 "$CLIENT" duplicate > "$UMBRIEL_RUNTIME_DIR/native-duplicate.log" 2>&1
 "$CLIENT" inert > "$UMBRIEL_RUNTIME_DIR/native-inert.log" 2>&1
 

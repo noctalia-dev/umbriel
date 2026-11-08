@@ -227,42 +227,11 @@ UMBRIEL_TEST(colorHumanReportsCharacterizationFields) {
   ));
 }
 
-UMBRIEL_TEST(colorHumanLabelsFittedPowerTransferForSurfaces) {
-  const umbriel::IpcCommandSpec* spec = umbriel::findIpcCommand("color");
-  CHECK(spec != nullptr && spec->printHuman != nullptr);
-  if (spec == nullptr || spec->printHuman == nullptr) {
-    return;
-  }
-
-  // A client-ICC description with a power-fit TRC has no named transfer
-  // function; the report shows the fitted exponent instead of "none".
-  nlohmann::json payload = colorPayload(nlohmann::json::object());
-  payload["surfaces"] = nlohmann::json::array({
-      {
-          {"id", ""},
-          {"app_id", "color-feedback-client"},
-          {"title", "color-feedback-client"},
-          {"transfer_function", "power 1.8"},
-          {"primaries", "custom"},
-          {"max_cll", 0},
-          {"max_fall", 0},
-          {"mastering_display_primaries", nullptr},
-          {"mastering_luminance", nullptr},
-      },
-  });
-  const std::string out = captureHumanOutput(*spec, payload);
-  CHECK(out.contains("power 1.8"));
-  CHECK(!out.contains("unspecified"));
-}
-
-UMBRIEL_TEST(surfaceTransferLabelSeparatesNamedPowerAndBare) {
+UMBRIEL_TEST(surfaceTransferLabelSeparatesNamedAndBare) {
   CHECK(umbriel::surfaceTransferLabel(nullptr) == "none");
   umbriel::ColorDescription named{};
   named.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
   CHECK(umbriel::surfaceTransferLabel(&named) == "gamma 2.2");
-  umbriel::ColorDescription powered{};
-  powered.tfPower = 1.8F;
-  CHECK(umbriel::surfaceTransferLabel(&powered) == "power 1.8");
   umbriel::ColorDescription bare{};
   CHECK(umbriel::surfaceTransferLabel(&bare) == "unspecified");
 }

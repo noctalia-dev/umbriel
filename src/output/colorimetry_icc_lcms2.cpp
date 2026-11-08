@@ -333,7 +333,12 @@ namespace umbriel {
     const std::vector<float> redDecode = evaluateCurve(redTrc, result.warnings);
     if (!sameCurve(redDecode, evaluateCurve(greenTrc, result.warnings))
         || !sameCurve(redDecode, evaluateCurve(blueTrc, result.warnings))) {
-      result.warnings.emplace_back("per-channel TRCs differ; using the red channel curve");
+      // One curve is applied to all three channels, so accepting a profile
+      // whose channels differ would render (and advertise back through
+      // icc_file) a calibration it does not have — a gray-axis cast. Refuse it
+      // instead of silently substituting the red curve.
+      result.error = "per-channel TRCs differ (one curve cannot render all three channels)";
+      return result;
     }
 
     if (matchesDecode(redDecode, srgbDecodeSample)) {

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fcntl.h>
+#include <memory>
 #include <new>
 #include <string>
 #include <sys/mman.h>
@@ -92,38 +93,58 @@ namespace umbriel {
       wl_resource* resource = nullptr;
       ColorDescription description;
       bool informationAllowed = false;
-      // ICC bytes this description retains for one client, against that
-      // client's budget, released when the resource goes away.
-      wl_client* iccClient = nullptr;
-      size_t iccBytes = 0;
     };
 
     struct ParametricCreator {
       Impl* manager = nullptr;
       wl_resource* resource = nullptr;
       ColorDescription description;
+      // set_tf_power exponent until create() canonicalizes it to a named curve
+      // or refuses the description; 0 when unset.
+      float tfPower = 0.0F;
       bool transferFunctionSet = false;
       bool primariesSet = false;
     };
 
-    struct IccCreator {
+    // Per-client ICC accounting behind the two caps above. A budget outlives
+    // its client while payloads it was charged for are still alive, but the
+    // map entry goes away with the client so a reused wl_client address starts
+    // empty instead of inheriting charges it never made.
+    struct IccBudget {
+      size_t creators = 0;
+      size_t bytes = 0;
       Impl* manager = nullptr;
       wl_client* client = nullptr;
+      wl_listener clientDestroy{};
+    };
+
+    // One staged or retained profile's charge. Released by its last owner: the
+    // creator while the bytes are only staged, the payload store afterwards.
+    // Holds the budget itself, not the client pointer, so a stale address
+    // cannot charge a later client.
+    struct IccCharge {
+      IccCharge(std::shared_ptr<IccBudget> budget_, size_t bytes_) : budget(std::move(budget_)), bytes(bytes_) {}
+      ~IccCharge() { budget->bytes -= std::min(budget->bytes, bytes); }
+      IccCharge(const IccCharge&) = delete;
+      IccCharge& operator=(const IccCharge&) = delete;
+      IccCharge(IccCharge&&) = delete;
+      IccCharge& operator=(IccCharge&&) = delete;
+      std::shared_ptr<IccBudget> budget;
+      size_t bytes = 0;
+    };
+
+    struct IccCreator {
+      Impl* manager = nullptr;
       wl_resource* resource = nullptr;
+      std::shared_ptr<IccBudget> budget;
       std::vector<uint8_t> iccBytes;
-      size_t stagedBytes = 0;
+      // The staged charge; create() hands it to the payload store.
+      std::shared_ptr<IccCharge> charge;
       bool iccSet = false;
       // An OS-level read failure rides to create() as
       // wp_image_description_v1.failed('operating_system') (set_icc_file's
       // contract), so it is remembered instead of posted immediately.
       bool readFailed = false;
-    };
-
-    // Per-client ICC accounting behind the two caps above: entries appear with
-    // the first creator and disappear once nothing is staged or retained.
-    struct IccBudget {
-      size_t creators = 0;
-      size_t bytes = 0;
     };
 
     struct SurfaceState {
@@ -218,6 +239,11 @@ namespace umbriel {
       while (!feedbacks.empty()) {
         auto* feedback = *feedbacks.begin();
         destroySurfaceFeedback(feedback, true);
+      }
+      // Payload charges outlive the client, so their budgets can still be in
+      // the map here; the listeners must not fire once this manager is gone.
+      for (auto& entry : iccBudgets) {
+        wl_list_remove(&entry.second->clientDestroy.link);
       }
     }
 
@@ -478,10 +504,9 @@ namespace umbriel {
           .state_size = sizeof(SurfaceState),
           .init_state = [](void* state) { new (state) SurfaceState{}; },
           .finish_state = [](void* state) { static_cast<SurfaceState*>(state)->description.iccProfile.reset(); },
-          .move_state =
-              [](void* dst, void* src) {
-                *static_cast<SurfaceState*>(dst) = std::move(*static_cast<SurfaceState*>(src));
-              },
+          .move_state = [](
+                            void* dst, void* src
+                        ) { *static_cast<SurfaceState*>(dst) = std::move(*static_cast<SurfaceState*>(src)); },
           .commit = nullptr,
       };
       if (!wlr_surface_synced_init(
@@ -669,8 +694,8 @@ namespace umbriel {
 
     static void handleCreateIccCreator(wl_client* client, wl_resource* managerResource, uint32_t id) {
       auto* manager = static_cast<Impl*>(wl_resource_get_user_data(managerResource));
-      const auto budgeted = manager->iccBudgets.find(client);
-      if (budgeted != manager->iccBudgets.end() && budgeted->second.creators >= kMaxIccCreatorsPerClient) {
+      auto budget = manager->iccBudgetFor(client);
+      if (budget->creators >= kMaxIccCreatorsPerClient) {
         // The error enum has no resource-limit entry, so the closest defined
         // contract is this request's own "not supported" error; any protocol
         // error disconnects the client, which is the sanction for trying to
@@ -682,7 +707,7 @@ namespace umbriel {
       }
       auto* creator = new IccCreator{};
       creator->manager = manager;
-      creator->client = client;
+      creator->budget = std::move(budget);
       creator->resource = wl_resource_create(
           client, &wp_image_description_creator_icc_v1_interface, wl_resource_get_version(managerResource), id
       );
@@ -691,7 +716,7 @@ namespace umbriel {
         wl_client_post_no_memory(client);
         return;
       }
-      ++manager->iccBudgets[client].creators;
+      ++creator->budget->creators;
       wl_resource_set_implementation(
           creator->resource, &iccCreatorImplementation(), creator, handleIccCreatorResourceDestroy
       );
@@ -700,7 +725,10 @@ namespace umbriel {
     static void handleIccCreatorResourceDestroy(wl_resource* resource) {
       auto* creator = static_cast<IccCreator*>(wl_resource_get_user_data(resource));
       if (creator != nullptr) {
-        creator->manager->releaseIccCharge(creator->client, creator->stagedBytes, 1);
+        if (creator->budget != nullptr) {
+          creator->budget->creators -= std::min<size_t>(creator->budget->creators, 1);
+        }
+        // Destroys a staged charge the payload store never took.
         delete creator;
       }
     }
@@ -752,8 +780,7 @@ namespace umbriel {
       // Every refusal above is a request-contract protocol error; past them the
       // profile counts as set even if the read below fails, because create()
       // must answer a read failure with 'operating_system', not incomplete_set.
-      const auto budgeted = creator->manager->iccBudgets.find(creator->client);
-      const size_t outstanding = budgeted != creator->manager->iccBudgets.end() ? budgeted->second.bytes : 0;
+      const size_t outstanding = creator->budget->bytes;
       if (outstanding + length > kMaxIccBytesPerClient) {
         // bad_size is the enum's "too much data" contract. The XML scopes it
         // to the 32 MB per-file ceiling; the same refusal covers the per-client
@@ -786,8 +813,10 @@ namespace umbriel {
       close(fd);
       if (!creator->readFailed) {
         creator->iccBytes = std::move(bytes);
-        creator->stagedBytes = creator->iccBytes.size();
-        creator->manager->iccBudgets[creator->client].bytes += creator->stagedBytes;
+        // Charge the staged bytes now; the charge moves into the payload store
+        // at create(), so the budget is held for as long as the bytes live.
+        creator->charge = std::make_shared<IccCharge>(creator->budget, creator->iccBytes.size());
+        creator->budget->bytes += creator->iccBytes.size();
       }
     }
 
@@ -808,7 +837,13 @@ namespace umbriel {
         wl_resource_destroy(resource);
         return;
       }
-      ClientIccDescription result = clientIccDescription(creator->iccBytes);
+      // The payload store inherits the staged charge: the budget is released
+      // when the last copy of the bytes dies — surface states and cached
+      // commits copy the store — not when this resource does. If the profile is
+      // rejected, the release closure dies with the call and the charge drops
+      // here.
+      ClientIccDescription result =
+          clientIccDescription(creator->iccBytes, [charge = std::move(creator->charge)] { (void)charge; });
       if (result.description
           && result.description->data.primaries_named == 0
           && !supportedPrimaries(result.description->customPrimaries)) {
@@ -832,16 +867,7 @@ namespace umbriel {
       // creators; the client's bytes stay on the description for identity and
       // change detection only. The info-side icc_file mandate applies to
       // descriptions that do allow get_information (output/preferred).
-      auto* imageDescription = creator->manager->createReadyImageDescription(resource, id, *result.description, false);
-      if (imageDescription != nullptr && imageDescription->description.iccProfile != nullptr) {
-        // The description's copy of the profile replaces the staged bytes
-        // within the same budget, so create loops cannot multiply retained
-        // copies past the per-client cap.
-        imageDescription->manager = creator->manager;
-        imageDescription->iccClient = creator->client;
-        imageDescription->iccBytes = creator->stagedBytes;
-        creator->stagedBytes = 0;
-      }
+      creator->manager->createReadyImageDescription(resource, id, *result.description, false);
       wl_resource_destroy(resource);
     }
 
@@ -884,6 +910,26 @@ namespace umbriel {
         );
         wl_resource_destroy(resource);
         return;
+      }
+      if (creator->tfPower > 0.0F) {
+        // set_tf_power admits any exponent in [1, 10], but the renderer paints
+        // client content through named curves only. The two curves that are
+        // exactly a power (linear, gamma 2.2) are canonicalized to their named
+        // value; everything else is refused instead of being substituted by a
+        // neighbouring curve.
+        const uint32_t named = namedTransferForPower(creator->tfPower);
+        if (named == 0) {
+          creator->manager->createFailedImageDescription(
+              resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED,
+              "the power transfer curve has no named equivalent"
+          );
+          wl_resource_destroy(resource);
+          return;
+        }
+        creator->description.data.tf_named = named;
+        if (!creator->description.customLuminances) {
+          creator->description.luminances = defaultColorLuminances(named);
+        }
       }
       if (creator->description.customLuminances
           && creator->description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
@@ -940,7 +986,7 @@ namespace umbriel {
         );
         return;
       }
-      creator->description.tfPower = exponent;
+      creator->tfPower = exponent;
       if (!creator->description.customLuminances) {
         creator->description.luminances = defaultColorLuminances(creator->description.data.tf_named);
       }
@@ -1105,8 +1151,8 @@ namespace umbriel {
         wl_resource* parent, uint32_t id, const ColorDescription& description, bool informationAllowed,
         uint64_t identity = 0
     ) {
-      // tf_named == 0 marks a fitted power transfer function (tfPower), which
-      // has no named protocol value to version-gate.
+      // tf_named == 0 stays reserved for a description with no transfer
+      // characteristic to version-gate.
       const uint32_t version = wl_resource_get_version(parent);
       if (description.data.tf_named != 0
           && !wp_color_manager_v1_transfer_function_is_valid(
@@ -1301,9 +1347,6 @@ namespace umbriel {
 
     static void handleImageDescriptionResourceDestroy(wl_resource* resource) {
       auto* imageDescription = static_cast<ImageDescription*>(wl_resource_get_user_data(resource));
-      if (imageDescription != nullptr && imageDescription->iccBytes != 0 && imageDescription->manager != nullptr) {
-        imageDescription->manager->releaseIccCharge(imageDescription->iccClient, imageDescription->iccBytes, 0);
-      }
       delete imageDescription;
     }
 
@@ -1466,15 +1509,31 @@ namespace umbriel {
       wlr_scene_buffer_set_luminance_multiplier(buffer, state.luminance_multiplier);
     }
 
-    void releaseIccCharge(wl_client* client, size_t bytes, size_t creators) {
+    std::shared_ptr<IccBudget> iccBudgetFor(wl_client* client) {
       const auto found = iccBudgets.find(client);
-      if (found == iccBudgets.end()) {
-        return;
+      if (found != iccBudgets.end()) {
+        return found->second;
       }
-      found->second.bytes -= std::min(found->second.bytes, bytes);
-      found->second.creators -= std::min(found->second.creators, creators);
-      if (found->second.bytes == 0 && found->second.creators == 0) {
-        iccBudgets.erase(found);
+      auto budget = std::make_shared<IccBudget>();
+      budget->manager = this;
+      budget->client = client;
+      budget->clientDestroy.notify = handleIccBudgetClientDestroy;
+      wl_client_add_destroy_listener(client, &budget->clientDestroy);
+      iccBudgets.emplace(client, budget);
+      return budget;
+    }
+
+    static void handleIccBudgetClientDestroy(wl_listener* listener, void*) {
+      IccBudget* budget;
+      budget = wl_container_of(listener, budget, clientDestroy);
+      wl_list_remove(&budget->clientDestroy.link);
+      // The map entry goes away with the client, so a later client at the same
+      // wl_client address starts with an empty budget. Charges still held by
+      // live payloads keep this budget alive through their shared_ptr and are
+      // released when those payloads die.
+      const auto found = budget->manager->iccBudgets.find(budget->client);
+      if (found != budget->manager->iccBudgets.end() && found->second.get() == budget) {
+        budget->manager->iccBudgets.erase(found);
       }
     }
 
@@ -1487,7 +1546,7 @@ namespace umbriel {
     std::unordered_set<SurfaceFeedback*> feedbacks;
     std::unordered_set<ManagedOutput*> outputs;
     std::unordered_map<wlr_scene*, std::unique_ptr<ManagedScene>> scenes;
-    std::unordered_map<wl_client*, IccBudget> iccBudgets;
+    std::unordered_map<wl_client*, std::shared_ptr<IccBudget>> iccBudgets;
   };
 
   ColorManager::ColorManager(Server& server) : m_impl(std::make_unique<Impl>(server)) {}

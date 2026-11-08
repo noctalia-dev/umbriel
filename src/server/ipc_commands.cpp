@@ -760,19 +760,15 @@ namespace umbriel {
 
   } // namespace
 
-  // Surface transfer label: a fitted power curve (tfPower) has no named
-  // protocol value. Report the fitted exponent instead. "none" means no
-  // description at all; a description that carries no curve is "unspecified",
-  // which the renderer resolves through the output's SDR transfer policy.
+  // Surface transfer label: the named protocol curve, "unspecified" for a
+  // description without one, and "none" for no description at all. A curve the
+  // renderer cannot paint is refused at creation, so no other label exists.
   std::string surfaceTransferLabel(const ColorDescription* description) {
     if (description == nullptr) {
       return "none";
     }
     if (description->data.tf_named != 0) {
       return protocolTransferFunctionName(description->data.tf_named);
-    }
-    if (description->tfPower > 0.0F) {
-      return std::format("power {:.4g}", description->tfPower);
     }
     return "unspecified";
   }

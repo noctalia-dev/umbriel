@@ -104,13 +104,16 @@ enabled = false
 CONFIG
 }
 
-# Builds the matrix-shaper ICC v2 display profile the color checks pin: Display-P3-like colorants with a gamma 1.8 TRC,
-# wide enough to desaturate pure red under "srgb" and far enough from any named curve for the power-fit path. An optional
-# second argument inflates the file with a 'pad ' tag of that many MiB, kept inside the profile so the header size and
-# the tag table still describe the whole file: clients must budget retained bytes for the file exactly as received.
+# Builds the matrix-shaper ICC v2 display profile the color checks pin: Display-P3-like colorants with a gamma 1.8 TRC
+# (the default), wide enough to desaturate pure red under "srgb" and far enough from any named curve to exercise the
+# panel's sampled-curve path. A third argument selects another gamma: 2.2 makes the profile usable for client
+# create_icc, which accepts only curves the renderer paints exactly (sRGB and gamma 2.2), and 1.8 there proves the
+# refusal. The optional second argument inflates the file with a 'pad ' tag of that many MiB, kept inside the profile so
+# the header size and the tag table still describe the whole file: clients must budget retained bytes for the file
+# exactly as received.
 write_icc_matrix_profile() {
-  local path=$1 pad_mib=${2:-0}
-  python3 - "$path" "$pad_mib" <<'PY'
+  local path=$1 pad_mib=${2:-0} gamma=${3:-1.8}
+  python3 - "$path" "$pad_mib" "$gamma" <<'PY'
 import struct
 import sys
 
@@ -175,7 +178,7 @@ for index, name in enumerate(('rXYZ', 'gXYZ', 'bXYZ')):
     column = mulv(to_pcs, [weights[index] * value for value in unit[index]])
     blobs[name.encode()] = b'XYZ ' + b'\0' * 4 + s15(column[0]) + s15(column[1]) + s15(column[2])
 blobs[b'wtpt'] = b'XYZ ' + b'\0' * 4 + s15(white[0]) + s15(white[1]) + s15(white[2])
-curve = b'curv' + b'\0' * 4 + struct.pack('>I', 1) + struct.pack('>H', round(1.8 * 256))
+curve = b'curv' + b'\0' * 4 + struct.pack('>I', 1) + struct.pack('>H', round(float(sys.argv[3]) * 256))
 for name in ('rTRC', 'gTRC', 'bTRC'):
     blobs[name.encode()] = curve
 pad_mib = int(sys.argv[2])

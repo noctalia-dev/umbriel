@@ -24,7 +24,7 @@ namespace umbriel {
     bool valid() const;
     wl_global* global() const;
     // The surface's whole committed description: its protocol data plus the
-    // fitted power transfer (tfPower) the bare data cannot carry.
+    // custom primaries and ICC payload the bare data cannot carry.
     const ColorDescription* surfaceDescription(wlr_surface* surface) const;
     bool surfaceRequiresHdrOutput(wlr_surface* surface) const;
     // Register before adding surfaces. Scene destruction removes the registration.

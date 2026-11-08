@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -140,10 +141,18 @@ namespace umbriel {
   // data.
   using IccProfileStore = std::shared_ptr<const std::vector<uint8_t>>;
 
+  // Runs when the last copy of a store's payload dies. Client-created
+  // descriptions attach one so their byte-budget charge follows the payload
+  // itself: surface states and cached commits copy the store, so the client
+  // resource's lifetime is the wrong proxy for the memory's. Empty for stores
+  // that are not budgeted.
+  using IccPayloadRelease = std::function<void()>;
+
   // File characterization: the store keeps the exact bytes the parser accepted
   // (the profile as written on disk, never a reserialization). Empty input
-  // stores nothing.
-  [[nodiscard]] IccProfileStore iccStoreForFileProfile(std::span<const uint8_t> fileBytes);
+  // stores nothing. A release hook runs once, with the last copy.
+  [[nodiscard]] IccProfileStore
+  iccStoreForFileProfile(std::span<const uint8_t> fileBytes, IccPayloadRelease release = {});
 
   // Panel-only (EDID) characterization: the store synthesizes a matrix-shaper
   // ICC (colorants + white + TRC) matching the panel colorimetry. A null panel

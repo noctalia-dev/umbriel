@@ -70,7 +70,6 @@ namespace umbriel {
     const auto& a = left.data;
     const auto& b = right.data;
     return a.tf_named == b.tf_named
-        && left.tfPower == right.tfPower
         && a.primaries_named == b.primaries_named
         && (a.primaries_named != 0 || primariesEqual(left.customPrimaries, right.customPrimaries))
         && a.has_mastering_display_primaries == b.has_mastering_display_primaries
@@ -171,7 +170,7 @@ namespace umbriel {
     return description;
   }
 
-  ClientIccDescription clientIccDescription(std::span<const uint8_t> iccBytes) {
+  ClientIccDescription clientIccDescription(std::span<const uint8_t> iccBytes, IccPayloadRelease release) {
     // Wire-level set_icc_file enforces the size contract first (bad_size);
     // repeating it here keeps the validation vocabulary whole for callers that
     // hand bytes over without the request, and pins the limit in unit tests.
@@ -213,14 +212,33 @@ namespace umbriel {
       description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
       break;
     case TransferFit::Kind::Power:
-      description.tfPower = fit.exponent;
-      break;
+      // The fit is an approximation of a curve with no named equivalent, and
+      // the renderer cannot paint an arbitrary exponent. Advertising the
+      // nearest named curve would misrepresent the profile to the client, so
+      // the profile is refused ('unsupported') instead.
+      return {
+          .description = std::nullopt,
+          .error = "unsupported transfer curve (only sRGB and gamma 2.2 are representable)",
+      };
     }
     description.luminances = defaultColorLuminances(description.data.tf_named);
     // The client's exact bytes, never a reserialization: get_information's
     // icc_file event must hand back precisely what set_icc_file received.
-    description.iccProfile = iccStoreForFileProfile(iccBytes);
+    description.iccProfile = iccStoreForFileProfile(iccBytes, std::move(release));
     return {.description = std::move(description), .error = {}};
+  }
+
+  uint32_t namedTransferForPower(float exponent) {
+    // 1e-3 matches the exact-match tolerance fitTransfer uses for named
+    // curves, so a curve accepted here and the same curve fitted there agree.
+    constexpr float kTolerance = 1e-3F;
+    if (std::abs(exponent - 1.0F) <= kTolerance) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+    }
+    if (std::abs(exponent - 2.2F) <= kTolerance) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+    }
+    return 0;
   }
 
   wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description) {
@@ -243,26 +261,11 @@ namespace umbriel {
       // The IEC 61966-2-1 curve under either protocol name.
       return WLR_COLOR_TRANSFER_FUNCTION_SRGB;
     default:
-      break;
-    }
-    if (description.tfPower <= 0.0F) {
       // A named curve the buffer setter cannot express (or no curve at all)
       // stays unspecified: the renderer resolves it to the output's SDR
       // transfer policy instead of guessing.
       return static_cast<wlr_color_transfer_function>(0);
     }
-    // A fitted power curve has no buffer-side representation — the setter
-    // takes only the named wlr_color_transfer_function values — so it renders
-    // through the nearest named EOTF exponent (ext_linear 1.0, gamma22 2.2,
-    // bt1886 2.4), midpoint-bounded. This is an approximation: faithful
-    // non-representable TRCs need per-buffer 3D LUTs (see fitTransfer).
-    if (description.tfPower <= 1.6F) {
-      return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
-    }
-    if (description.tfPower <= 2.3F) {
-      return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
-    }
-    return WLR_COLOR_TRANSFER_FUNCTION_BT1886;
   }
 
 } // namespace umbriel

@@ -72,16 +72,6 @@ namespace {
     const cmsFloat64Number params[5] = {2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045};
     return cmsBuildParametricToneCurve(nullptr, 4, params);
   }
-
-  cmsToneCurve* tabulatedGamma24Curve() {
-    constexpr size_t size = 256;
-    std::vector<uint16_t> values(size);
-    for (size_t index = 0; index < size; ++index) {
-      const double encoded = static_cast<double>(index) / (size - 1);
-      values[index] = static_cast<uint16_t>(std::lround(std::pow(encoded, 2.4) * 65535.0));
-    }
-    return cmsBuildTabulatedToneCurve16(nullptr, static_cast<cmsUInt32Number>(size), values.data());
-  }
 #endif
 
 } // namespace
@@ -520,7 +510,6 @@ UMBRIEL_TEST(clientIccDescriptionsFitColorimetryAndKeepExactBytes) {
     }
     const umbriel::ColorDescription& description = *result.description;
     CHECK_EQ(description.data.tf_named, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22);
-    CHECK_EQ(description.tfPower, 0.0F);
     CHECK_EQ(description.data.primaries_named, 0U);
     CHECK(closeTo(description.customPrimaries.red.x, 0.64));
     CHECK(closeTo(description.customPrimaries.green.y, 0.60));
@@ -545,22 +534,20 @@ UMBRIEL_TEST(clientIccDescriptionsFitColorimetryAndKeepExactBytes) {
     CHECK(result.description.has_value());
     if (result.description) {
       CHECK_EQ(result.description->data.tf_named, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB);
-      CHECK_EQ(result.description->tfPower, 0.0F);
     }
   }
 
-  // A non-representable TRC is approximated by a power fit (gamma 2.4 here),
-  // reported in the set_tf_power/tf_power vocabulary rather than a named TF.
-  {
-    cmsToneCurve* curve = tabulatedGamma24Curve();
+  // A TRC with no exactly representable named curve is refused, not
+  // approximated by the nearest one: the renderer paints named curves only, so
+  // substituting would show the client a profile it did not send.
+  for (const auto& [gamma, label] : {std::pair{1.8, "gamma 1.8"}, std::pair{2.4, "gamma 2.4"}}) {
+    cmsToneCurve* curve = cmsBuildGamma(nullptr, gamma);
     CHECK(curve != nullptr);
     const std::vector<uint8_t> bytes = matrixShaperProfile({curve, curve, curve});
     cmsFreeToneCurve(curve);
     const umbriel::ClientIccDescription result = umbriel::clientIccDescription(bytes);
-    CHECK(result.description.has_value());
-    if (result.description) {
-      CHECK_EQ(result.description->data.tf_named, 0U);
-      CHECK(closeTo(result.description->tfPower, 2.4, 0.02));
+    if (result.description.has_value() || result.error.empty()) {
+      umbriel::test::reportFailure(__FILE__, __LINE__, std::format("{} was accepted instead of refused", label));
     }
   }
 #endif
@@ -658,7 +645,7 @@ UMBRIEL_TEST(clientIccValidationRejectsWithoutProtocolErrors) {
 #endif
 }
 
-UMBRIEL_TEST(bufferTransferFunctionsMapPowerFitsToNamedCurves) {
+UMBRIEL_TEST(bufferTransferFunctionsMapNamedCurvesOnly) {
   umbriel::ColorDescription description;
   description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
   CHECK(umbriel::bufferTransferFunction(description) == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
@@ -668,29 +655,32 @@ UMBRIEL_TEST(bufferTransferFunctionsMapPowerFitsToNamedCurves) {
   CHECK(umbriel::bufferTransferFunction(description) == WLR_COLOR_TRANSFER_FUNCTION_SRGB);
   description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ;
   CHECK(umbriel::bufferTransferFunction(description) == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ);
+  description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_BT1886;
+  CHECK(umbriel::bufferTransferFunction(description) == WLR_COLOR_TRANSFER_FUNCTION_BT1886);
+  description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+  CHECK(umbriel::bufferTransferFunction(description) == WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR);
   // Named curves the buffer setter cannot express never abort (the wlroots
   // converter would) and stay unspecified for the renderer to resolve.
   description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA28;
   CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
-
-  // A fitted power curve renders through the nearest named EOTF exponent
-  // (1.0 ext_linear, 2.2 gamma22, 2.4 bt1886) — the documented approximation.
   description.data.tf_named = 0;
-  for (const auto& [exponent, expected] : {
-           std::pair{1.0F, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR},
-           std::pair{1.4F, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR},
-           std::pair{1.8F, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22},
-           std::pair{2.2F, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22},
-           std::pair{2.4F, WLR_COLOR_TRANSFER_FUNCTION_BT1886},
-           std::pair{2.8F, WLR_COLOR_TRANSFER_FUNCTION_BT1886},
-       }) {
-    description.tfPower = exponent;
-    CHECK(umbriel::bufferTransferFunction(description) == expected);
-  }
-
-  // No transfer characteristic at all stays unspecified for the renderer.
-  description.tfPower = 0.0F;
   CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
+}
+
+UMBRIEL_TEST(powerCurvesAreCanonicalizedOnlyWhenExact) {
+  // Only the curves that are exactly a power are representable: ext_linear is
+  // 1.0 and gamma 2.2 is 2.2. BT.1886 carries the BT.2035 luminance offset, so
+  // even a plain 2.4 is not it, and no other exponent has a named curve.
+  CHECK_EQ(
+      umbriel::namedTransferForPower(1.0F), static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR)
+  );
+  CHECK_EQ(umbriel::namedTransferForPower(2.2F), static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22));
+  CHECK_EQ(
+      umbriel::namedTransferForPower(2.2005F), static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22)
+  );
+  for (const float exponent : {1.01F, 1.4F, 1.8F, 2.4F, 2.8F, 10.0F}) {
+    CHECK_EQ(umbriel::namedTransferForPower(exponent), 0U);
+  }
 }
 
 UMBRIEL_TEST(clientIccDegeneratePrimariesFailGracefully) {

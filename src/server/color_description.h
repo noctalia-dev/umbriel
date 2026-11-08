@@ -25,11 +25,6 @@ namespace umbriel {
   struct ColorDescription {
     wlr_image_description_v1_data data{};
     wlr_color_primaries customPrimaries{};
-    // Fitted power transfer characteristic: the EOTF exponent of a power curve
-    // in the protocol's set_tf_power/tf_power vocabulary, 0 when unset. Named
-    // transfer functions live in data.tf_named; exactly one of the two is set
-    // for every client-visible description.
-    float tfPower = 0.0F;
     // Raw ICC bytes get_information advertises via its icc_file event ("ICC
     // profile matching the image description"). Empty when the description has
     // no matching profile: inert or HDR/PQ descriptions. Output descriptions
@@ -87,8 +82,9 @@ namespace umbriel {
   // wp_image_description_v1.failed ('unsupported') by the caller — never a
   // protocol error. On success the description carries the client's exact
   // bytes in iccProfile plus the colorimetry the renderer can express:
-  // custom primaries from the colorants and either a named transfer function
-  // (sRGB / gamma 2.2 exact fast paths) or a fitted power curve in tfPower.
+  // custom primaries from the colorants and one of the two exactly
+  // representable transfer curves (sRGB, gamma 2.2). Any other TRC is refused
+  // rather than approximated by a different named curve.
   struct ClientIccDescription {
     std::optional<ColorDescription> description;
     // Rejection reason, empty on success.
@@ -97,15 +93,20 @@ namespace umbriel {
   // set_icc_file's size limit (color-management-v1.xml: "The maximum size of
   // the ICC profile is 32 MB").
   inline constexpr size_t kClientIccSizeLimit = 32ULL * 1024ULL * 1024ULL;
-  [[nodiscard]] ClientIccDescription clientIccDescription(std::span<const uint8_t> iccBytes);
+  [[nodiscard]] ClientIccDescription
+  clientIccDescription(std::span<const uint8_t> iccBytes, IccPayloadRelease release = {});
+
+  // The named transfer function whose curve is exactly the power curve for
+  // `exponent`, or 0. The renderer paints client content through named curves
+  // only (wlr_scene_buffer_set_transfer_function takes no exponent), so only
+  // ext_linear (1.0) and gamma 2.2 are exact: BT.1886 carries the BT.2035
+  // luminance offset and is not a plain power, and every other exponent has no
+  // named equivalent at all.
+  [[nodiscard]] uint32_t namedTransferForPower(float exponent);
 
   // Buffer-side transfer function for a description. Named transfer functions
-  // map directly; a fitted power curve resolves to the nearest named EOTF
-  // exponent because wlr_scene_buffer_set_transfer_function takes only
-  // wlr_color_transfer_function values (no arbitrary power curves). The
-  // mapping is an approximation — faithful rendering of non-representable
-  // TRCs needs per-buffer 3D LUTs (see fitTransfer). A description with no
-  // transfer function at all stays unspecified (0).
+  // map directly; a name the setter cannot express stays unspecified (0), and
+  // the renderer resolves it through the output's SDR transfer policy.
   [[nodiscard]] wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description);
 
 } // namespace umbriel

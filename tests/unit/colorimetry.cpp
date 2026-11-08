@@ -684,6 +684,24 @@ UMBRIEL_TEST(iccStoreForFileProfileKeepsExactBytes) {
   CHECK(umbriel::iccStoreForFileProfile({}) == nullptr);
 }
 
+UMBRIEL_TEST(iccStoreReleaseFollowsThePayloadNotTheFirstCopy) {
+  // A client's ICC charge is released through the payload: it must survive
+  // every copy (a surface state copies the description) and fire exactly once
+  // when the last one dies.
+  int releases = 0;
+  const std::vector<uint8_t> bytes{0x00, 0x11, 0x22, 0x33};
+  umbriel::IccProfileStore store = umbriel::iccStoreForFileProfile(bytes, [&releases] { ++releases; });
+  CHECK(store != nullptr);
+  {
+    umbriel::IccProfileStore copy = store;
+    CHECK(releases == 0);
+    CHECK(*copy == bytes);
+  }
+  CHECK(releases == 0);
+  store.reset();
+  CHECK(releases == 1);
+}
+
 UMBRIEL_TEST(inertCharacterizationStoresNoIccProfile) {
   CHECK(umbriel::iccStoreForPanel(nullptr) == nullptr);
 #if !UMBRIEL_HAS_LCMS2
@@ -1311,10 +1329,13 @@ UMBRIEL_TEST(iccOddParametricCurvesStayFiniteMonotoneAndBounded) {
 #endif
 }
 
-UMBRIEL_TEST(iccPerChannelTrcDifferencesWarnAndUseTheRedCurve) {
+UMBRIEL_TEST(iccPerChannelTrcDifferencesAreRejected) {
 #if !UMBRIEL_HAS_LCMS2
   std::println("skip: built without lcms2");
 #else
+  // One curve renders all three channels, so a profile whose channels differ
+  // cannot be honoured exactly; it is refused rather than rendered with the
+  // red curve (a gray-axis cast the client never asked for).
   std::array<cmsToneCurve*, 3> curves{cmsBuildGamma(nullptr, 2.2), tabulatedGamma24Curve(), srgbDecodeCurve()};
   const std::vector<uint8_t> bytes = matrixShaperProfile(
       xyY(0.3127, 0.329), {.Red = xyY(0.64, 0.33), .Green = xyY(0.30, 0.60), .Blue = xyY(0.15, 0.06)}, curves
@@ -1324,11 +1345,12 @@ UMBRIEL_TEST(iccPerChannelTrcDifferencesWarnAndUseTheRedCurve) {
   }
   CHECK(!bytes.empty());
   const umbriel::IccParse parsed = umbriel::parseIccProfile(bytes);
-  CHECK(parsed.colorimetry.has_value());
-  CHECK(std::ranges::any_of(parsed.warnings, [](const std::string& warning) { return warning.contains("differ"); }));
-  if (parsed.colorimetry) {
-    CHECK(parsed.colorimetry->transfer.kind == umbriel::PanelTransfer::Kind::Gamma22);
-  }
+  CHECK(!parsed.colorimetry.has_value());
+  CHECK(parsed.error.contains("TRC"));
+  // The same profile also fails the client-facing description, which is what
+  // turns it into wp_image_description_v1.failed('unsupported').
+  const umbriel::ClientIccDescription client = umbriel::clientIccDescription(bytes);
+  CHECK(!client.description.has_value());
 #endif
 }
 
@@ -1336,11 +1358,14 @@ UMBRIEL_TEST(iccGreenBlueTrcRepairsAreReported) {
 #if !UMBRIEL_HAS_LCMS2
   std::println("skip: built without lcms2");
 #else
-  // A repaired green/blue TRC must surface its warning; it used to be
-  // collected into a per-channel vector that was never merged anywhere.
+  // A repaired TRC must surface its warning; it used to be collected into a
+  // per-channel vector that was never merged anywhere. Every channel carries
+  // the same non-monotone table, so the profile itself stays acceptable.
   const cmsUInt16Number values[5] = {0, 20000, 10000, 30000, 65535};
   std::array<cmsToneCurve*, 3> curves{
-      cmsBuildGamma(nullptr, 2.2), cmsBuildTabulatedToneCurve16(nullptr, 5, values), cmsBuildGamma(nullptr, 2.2)
+      cmsBuildTabulatedToneCurve16(nullptr, 5, values),
+      cmsBuildTabulatedToneCurve16(nullptr, 5, values),
+      cmsBuildTabulatedToneCurve16(nullptr, 5, values),
   };
   const std::vector<uint8_t> bytes = matrixShaperProfile(
       xyY(0.3127, 0.329), {.Red = xyY(0.64, 0.33), .Green = xyY(0.30, 0.60), .Blue = xyY(0.15, 0.06)}, curves
@@ -1622,8 +1647,7 @@ UMBRIEL_TEST(iccMutationFuzzRejectsOrParsesSanely) {
       const umbriel::ColorDescription& description = *client.description;
       const bool finite = std::isfinite(description.customPrimaries.red.x)
           && std::isfinite(description.customPrimaries.green.y)
-          && std::isfinite(description.customPrimaries.blue.x)
-          && std::isfinite(description.tfPower);
+          && std::isfinite(description.customPrimaries.blue.x);
       if (!finite) {
         umbriel::test::reportFailure(
             __FILE__, __LINE__, std::format("fuzz iteration {} client description has non-finite fields", iteration)

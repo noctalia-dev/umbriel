@@ -692,6 +692,67 @@ int main(int argc, char** argv) {
       std::println(stderr, "color-feedback-client: the retained ICC budget did not refuse the third description");
       return 1;
     }
+    if (std::strcmp(mode, "surface-retained") == 0) {
+      // The byte budget must cover what the compositor still retains, not only
+      // what the client still references: a committed surface state copies the
+      // description, so the profile outlives wp_image_description_v1.destroy.
+      // Two committed profiles must therefore leave no room for a third.
+      std::array<wl_surface*, 2> surfaces{};
+      std::array<wp_color_management_surface_v1*, 2> colorSurfaces{};
+      for (size_t index = 0; index < 3; ++index) {
+        const int profile = open(argv[2], O_RDONLY);
+        if (profile < 0) {
+          std::println(stderr, "color-feedback-client: cannot open ICC budget fixture {}", argv[2]);
+          return 1;
+        }
+        const off_t length = lseek(profile, 0, SEEK_END);
+        lseek(profile, 0, SEEK_SET);
+        auto* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+        wp_image_description_creator_icc_v1_set_icc_file(creator, profile, 0, static_cast<uint32_t>(length));
+        close(profile);
+        if (expectProtocolError(
+                state, &wp_image_description_creator_icc_v1_interface,
+                WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE
+            )) {
+          std::println(
+              R"({{"event":"icc_surface_retain","code":{},"iteration":{}}})",
+              static_cast<uint32_t>(WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE), index
+          );
+          wl_display_disconnect(state.display);
+          return 2;
+        }
+        if (index >= surfaces.size()) {
+          std::println(stderr, "color-feedback-client: the retained surface budget did not refuse a third profile");
+          return 1;
+        }
+        auto* description = wp_image_description_creator_icc_v1_create(creator);
+        DescriptionResult result;
+        wp_image_description_v1_add_listener(description, &kResultListener, &result);
+        while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+        }
+        if (!result.ready) {
+          std::println(stderr, "color-feedback-client: budget fixture did not parse (cause {})", result.cause);
+          return 1;
+        }
+        surfaces[index] = wl_compositor_create_surface(state.compositor);
+        colorSurfaces[index] = wp_color_manager_v1_get_surface(state.manager, surfaces[index]);
+        state.surface = surfaces[index];
+        state.colorSurface = colorSurfaces[index];
+        state.selectedDescription = description;
+        state.tagged = true;
+        if (!present(state)) {
+          std::println(stderr, "color-feedback-client: cannot present the retained surface");
+          return 1;
+        }
+        wp_image_description_v1_destroy(description);
+        if (wl_display_roundtrip(state.display) < 0) {
+          std::println(stderr, "color-feedback-client: the display died while retaining the profile");
+          return 1;
+        }
+      }
+      std::println(stderr, "color-feedback-client: the retained surface profiles did not fill the byte budget");
+      return 1;
+    }
     if (argc != 3) {
       std::println(stderr, "color-feedback-client: icc mode {} needs a profile argument", mode);
       return 1;
@@ -752,8 +813,7 @@ int main(int argc, char** argv) {
         return 1;
       }
       state.surface = wl_compositor_create_surface(state.compositor);
-      state.colorSurface =
-          wp_color_manager_v1_get_surface(state.manager, state.surface);
+      state.colorSurface = wp_color_manager_v1_get_surface(state.manager, state.surface);
       state.selectedDescription = description;
       state.tagged = true;
       if (!present(state)) {
@@ -810,6 +870,35 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::strncmp(argv[1], "params-", 7) == 0) {
     const char* mode = argv[1] + 7;
     auto* params = wp_color_manager_v1_create_parametric_creator(state.manager);
+    if (std::strncmp(mode, "power-", 6) == 0) {
+      // set_tf_power only reaches the renderer when the exponent is exactly a
+      // named curve (1.0 linear, 2.2); any other exponent must fail the
+      // description rather than be substituted by a neighbouring curve.
+      const bool representable = std::strcmp(mode, "power-22") == 0;
+      wp_image_description_creator_params_v1_set_tf_power(params, representable ? 22000 : 18000);
+      wp_image_description_creator_params_v1_set_primaries_named(params, WP_COLOR_MANAGER_V1_PRIMARIES_SRGB);
+      auto* description = wp_image_description_creator_params_v1_create(params);
+      DescriptionResult result;
+      wp_image_description_v1_add_listener(description, &kResultListener, &result);
+      while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+      }
+      if (representable) {
+        if (!result.ready) {
+          std::println(stderr, "color-feedback-client: the gamma 2.2 power curve was not representable");
+          return 1;
+        }
+        std::println(R"({{"event":"power_ready","cause":0}})");
+      } else {
+        if (!result.failed || result.cause != WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED) {
+          std::println(stderr, "color-feedback-client: the gamma 1.8 power curve did not fail gracefully");
+          return 1;
+        }
+        std::println(R"({{"event":"power_failed","cause":{}}})", result.cause);
+      }
+      wp_image_description_v1_destroy(description);
+      wl_display_disconnect(state.display);
+      return 0;
+    }
     const bool unsupportedSrgb = std::strcmp(mode, "unsupported-srgb") == 0;
     wp_image_description_creator_params_v1_set_tf_named(
         params,

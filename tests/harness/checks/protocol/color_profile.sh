@@ -12,6 +12,7 @@ readonly CLIENT="${UMBRIEL_COLOR_FEEDBACK_CLIENT:?color feedback client path is 
 readonly BASELINE=$(< "$UMBRIEL_CONFIG")
 readonly RUNTIME="$UMBRIEL_RUNTIME_DIR"
 readonly PROFILE="$RUNTIME/color-profile.icc"
+readonly CLIENT_PROFILE="$RUNTIME/color-profile-client.icc"
 readonly TRUNCATED="$PROFILE.truncated"
 readonly WRONG_VERSION="$PROFILE.wrongversion"
 readonly DUMP="$RUNTIME/icc-dump"
@@ -20,11 +21,15 @@ readonly SHOT="$RUNTIME/color-profile.png"
 # A matrix-shaper ICC v2 display profile built byte for byte at check time (no
 # fixture files), from the shared generator: Display-P3-like colorants with a
 # gamma 1.8 TRC — wide enough to desaturate pure red under "srgb", far enough
-# from any named curve for the power-fit path. The generator prints the
+# from any named curve that the panel has to sample it. The generator prints the
 # colorants it wrote so checks can assert a round-trip against its own values
 # instead of restating them. The truncated and wrong-version copies drive the
 # graceful create_icc failure contract.
 read -r -a FIXTURE_XY <<<"$(write_icc_matrix_profile "$PROFILE")"
+# Client-created descriptions accept only curves the renderer paints exactly
+# (sRGB and gamma 2.2), so the create_icc legs use a gamma 2.2 twin of the same
+# profile; the 1.8 original is the refusal fixture.
+write_icc_matrix_profile "$CLIENT_PROFILE" 0 2.2 > /dev/null
 head -c 200 "$PROFILE" > "$TRUNCATED"
 python3 - "$PROFILE" "$WRONG_VERSION" <<'PY'
 import sys
@@ -243,14 +248,14 @@ run_icc_mode() {
   echo "$rc"
 }
 
-rc=$(run_icc_mode ready "$PROFILE" valid)
+rc=$(run_icc_mode ready "$CLIENT_PROFILE" valid)
 if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_ready"' "$RUNTIME/icc-ready-valid.log"; then
   echo "create_icc did not reach ready for the valid profile: rc=$rc $(cat "$RUNTIME/icc-ready-valid.log")"
   exit 1
 fi
 # The synchronized surface state copies the description, so the description resource and the color-management
 # surface must be destroyable in that order without freeing ICC bytes a cached commit still points at.
-rc=$(run_icc_mode surface-destroy "$PROFILE" valid)
+rc=$(run_icc_mode surface-destroy "$CLIENT_PROFILE" valid)
 if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_surface_destroy"' "$RUNTIME/icc-surface-destroy-valid.log"; then
   echo "destroying a tagged surface after its description crashed or failed: rc=$rc" \
     "$(cat "$RUNTIME/icc-surface-destroy-valid.log")"
@@ -260,9 +265,18 @@ if ! "$UMBRIEL" windows --json > /dev/null 2>&1; then
   echo "the compositor did not survive destroying a tagged surface"
   exit 1
 fi
-rc=$(run_icc_mode denied "$PROFILE" valid)
+rc=$(run_icc_mode denied "$CLIENT_PROFILE" valid)
 if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_info_denied"' "$RUNTIME/icc-denied-valid.log"; then
   echo "get_information on a client-created description was not denied: rc=$rc $(cat "$RUNTIME/icc-denied-valid.log")"
+  exit 1
+fi
+# A TRC the renderer cannot paint exactly is refused ('unsupported') rather than
+# substituted by the nearest named curve: the gamma 1.8 profile has no named
+# equivalent.
+rc=$(run_icc_mode failed "$PROFILE" power)
+if [[ $rc != 0 ]] \
+    || ! grep -Fq '{"event":"icc_failed","cause":1,"information_denied":"not_ready"}' "$RUNTIME/icc-failed-power.log"; then
+  echo "a non-representable transfer curve did not fail gracefully: rc=$rc $(cat "$RUNTIME/icc-failed-power.log")"
   exit 1
 fi
 for variant in truncated wrongversion; do
@@ -280,7 +294,7 @@ for variant in truncated wrongversion; do
 done
 # bad_size is a request-contract protocol error: it kills exactly this client
 # invocation (exit 2 after observing it) and nothing compositor-side.
-rc=$(run_icc_mode oversize "$PROFILE" over)
+rc=$(run_icc_mode oversize "$CLIENT_PROFILE" over)
 if [[ $rc != 2 ]] || ! grep -Fq '{"event":"icc_bad_size"' "$RUNTIME/icc-oversize-over.log"; then
   echo "oversized set_icc_file did not raise bad_size for the client: rc=$rc $(cat "$RUNTIME/icc-oversize-over.log")"
   exit 1
@@ -293,7 +307,7 @@ fi
 # bad_fd is the request-contract error for an fd that is not a seekable,
 # readable regular file: a directory fd must be refused at set_icc_file
 # instead of surfacing later as a read failure.
-rc=$(run_icc_mode nonregular "$PROFILE" nonreg)
+rc=$(run_icc_mode nonregular "$CLIENT_PROFILE" nonreg)
 if [[ $rc != 2 ]] || ! grep -Fq '{"event":"icc_bad_fd"' "$RUNTIME/icc-nonregular-nonreg.log"; then
   echo "directory fd did not raise bad_fd for the client: rc=$rc $(cat "$RUNTIME/icc-nonregular-nonreg.log")"
   exit 1

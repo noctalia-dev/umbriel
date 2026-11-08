@@ -332,13 +332,22 @@ namespace umbriel {
     return pipeline;
   }
 
-  IccProfileStore iccStoreForFileProfile(std::span<const uint8_t> fileBytes) {
+  IccProfileStore iccStoreForFileProfile(std::span<const uint8_t> fileBytes, IccPayloadRelease release) {
     if (fileBytes.empty()) {
       return {};
     }
     // The store is the file exactly as read: get_information advertises the
     // profile the user configured, quirks and all.
-    return std::make_shared<const std::vector<uint8_t>>(fileBytes.begin(), fileBytes.end());
+    IccProfileStore payload = std::make_shared<const std::vector<uint8_t>>(fileBytes.begin(), fileBytes.end());
+    if (!release) {
+      return payload;
+    }
+    // This copy shares the bytes but owns the charge: the deleter lives in the
+    // control block, so it runs when the last copy dies no matter who kept it
+    // alive, and the captured payload keeps the bytes valid meanwhile.
+    return IccProfileStore(payload.get(), [payload, release = std::move(release)](const std::vector<uint8_t>*) {
+      release();
+    });
   }
 
   std::optional<PanelColorimetry>

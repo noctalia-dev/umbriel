@@ -16,7 +16,8 @@ readonly SPARSE="$RUNTIME/icc-sparse.bin"
 readonly STORM=64
 
 write_icc_matrix_profile "$PROFILE" > /dev/null
-write_icc_matrix_profile "$PADDED" 12 > /dev/null
+# Client create_icc accepts only exactly representable curves, so the padded fixture is gamma 2.2.
+write_icc_matrix_profile "$PADDED" 12 2.2 > /dev/null
 truncate -s $((32 * 1024 * 1024)) "$SPARSE"
 
 printf '%s\n\n[animation]\nenabled = false\n[output.HEADLESS-1]\ncolor_profile = "%s"\n' "$BASELINE" "$PROFILE" \
@@ -88,9 +89,24 @@ if [[ $rc != 2 ]] \
   exit 1
 fi
 
+# --- per-client byte budget: bytes retained by committed surface states -----
+rc=$(run_icc_mode surface-retained icc-surface-retained "$PADDED")
+if [[ $rc != 2 ]] \
+    || ! grep -Fq '{"event":"icc_surface_retain","code":3,"iteration":2}' "$RUNTIME/icc-surface-retained.log"; then
+  echo "the byte budget released a profile a committed surface still retains: rc=$rc $(cat "$RUNTIME/icc-surface-retained.log")"
+  exit 1
+fi
+
+# --- the budget is per client: a later client must not inherit the charges ---
+rc=$(run_icc_mode post-surface-ready icc-ready "$PADDED")
+if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_ready"' "$RUNTIME/icc-post-surface-ready.log"; then
+  echo "a later client inherited the previous client's retained ICC charges: rc=$rc $(cat "$RUNTIME/icc-post-surface-ready.log")"
+  exit 1
+fi
+
 if ! "$UMBRIEL" color --json | jq -e '.color_manager == true' > /dev/null; then
   echo "the compositor did not survive the budget clients: $( "$UMBRIEL" color --json)"
   exit 1
 fi
 
-echo "icc_file fd stability, the creator budget and the staged/retained byte budgets verified live"
+echo "icc_file fd stability, the creator budget and the staged/retained/surface-retained byte budgets verified live"
