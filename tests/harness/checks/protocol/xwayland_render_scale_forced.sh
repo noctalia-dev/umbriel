@@ -6,4 +6,6 @@ export UMBRIEL_X11_EXPECT_RED_WIDTH=250 UMBRIEL_X11_EXPECT_RED_HEIGHT=150
 export UMBRIEL_X11_EXPECT_RED_PIXELS=30000 UMBRIEL_X11_EXPECT_GDK_SCALE=2
 export UMBRIEL_X11_EXPECT_XFT_DPI=245760
 export UMBRIEL_X11_EXPECT_OUTPUT_WIDTH=2560 UMBRIEL_X11_EXPECT_OUTPUT_HEIGHT=1920
+# A render_scale-only reload must reach Xwayland without a mode or scale commit.
+export UMBRIEL_X11_RELOAD_TARGET=2.0
 source "$UMBRIEL_REPO/tests/harness/checks/protocol/xwayland_render_scale.sh"

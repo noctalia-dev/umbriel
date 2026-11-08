@@ -115,6 +115,35 @@ if [[ $EXPECT_SCALE == 1.25 ]]; then
   expect_state
 fi
 
+if [[ -n ${UMBRIEL_X11_RELOAD_TARGET:-} ]]; then
+  # Only render_scale changes: the mode and the logical scale stay put, so no
+  # output commit forces a layout refresh. The X rectangles must still follow.
+  sed -i "s/^render_scale = .*/render_scale = $UMBRIEL_X11_RELOAD_TARGET/" "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+  want_w=$(awk -v w=1280 -v s="$UMBRIEL_X11_RELOAD_TARGET" 'BEGIN { printf "%d", w * s / 1.25 }')
+  want_h=$(awk -v h=960 -v s="$UMBRIEL_X11_RELOAD_TARGET" 'BEGIN { printf "%d", h * s / 1.25 }')
+  for _ in $(seq 80); do
+    outputs=$("$UMBRIEL_XWAYLAND_OUTPUT_CLIENT") || true
+    jq -e --argjson w "$want_w" --argjson h "$want_h" \
+      'any(.outputs[]; .name == "HEADLESS-1" and .w == $w and .h == $h)' <<< "$outputs" > /dev/null && break
+    sleep 0.025
+  done
+  if ! jq -e --argjson w "$want_w" --argjson h "$want_h" \
+    'any(.outputs[]; .name == "HEADLESS-1" and .w == $w and .h == $h)' <<< "$outputs" > /dev/null; then
+    echo "X11 output size did not follow a render_scale-only reload (want ${want_w}x${want_h}): $outputs"
+    exit 1
+  fi
+  # The fixed-pixel X window keeps its X size; its logical size follows the mapping.
+  win_w=$(awk -v w=240 -v s="$UMBRIEL_X11_RELOAD_TARGET" 'BEGIN { printf "%d", w * 1.25 / s }')
+  win_h=$(awk -v h=160 -v s="$UMBRIEL_X11_RELOAD_TARGET" 'BEGIN { printf "%d", h * 1.25 / s }')
+  window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "x11-render-scale")')
+  read -r got_w got_h < <(jq -r '"\\(.w) \\(.h)"' <<< "$window")
+  if ((got_w != win_w || got_h != win_h)); then
+    echo "X11 window is ${got_w}x${got_h} logical after the reload; expected ${win_w}x${win_h}"
+    exit 1
+  fi
+fi
+
 printf 'quit\n' >&"$client_fd"
 wait "$client_pid"
 exec {client_fd}>&-

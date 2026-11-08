@@ -94,4 +94,32 @@ presented=$(next_presentation "$PLAIN_LOG" "$before_plain")
 echo "plain window with supersample = false: $presented"
 expect "$presented" "scale 150/120" "supersample = false did not keep the window at the logical scale"
 
-echo "fullscreen and game windows skip the supersample, rules override both ways"
+# A content type can change after mapping: a browser or media player becomes
+# `video` when playback starts in an existing window. That path never sees a new
+# initial commit, so only View::syncContentType can move the hint.
+readonly DYNAMIC_LOG="$UMBRIEL_RUNTIME_DIR/render-scale-dynamic.log"
+readonly DYNAMIC_FIFO="$UMBRIEL_RUNTIME_DIR/render-scale-dynamic.fifo"
+mkfifo "$DYNAMIC_FIFO"
+exec {dynamic}<> "$DYNAMIC_FIFO"
+CONTENT_TYPE_CONTROL=1 "$CLIENT" rs-dynamic 400 300 <&"$dynamic" > "$DYNAMIC_LOG" 2>&1 &
+presented=$(next_presentation "$DYNAMIC_LOG" 0)
+echo "dynamic content window: $presented"
+expect "$presented" "scale 240/120" "a plain window was not supersampled"
+
+set_content_type() { # type, expected hint, message
+  local before
+  before=$(grep -c '^mapped ' "$DYNAMIC_LOG")
+  printf 'content-type %s\n' "$1" >&"$dynamic"
+  local presented
+  presented=$(next_presentation "$DYNAMIC_LOG" "$before")
+  echo "content-type $1 on a mapped window: $presented"
+  expect "$presented" "$2" "$3"
+}
+# Alternate exempt and normal so every toggle changes the hint; a same-value
+# re-notify is deduped below the wire and would assert nothing.
+set_content_type game "scale 150/120" "a game content type set after mapping did not exempt the window"
+set_content_type none "scale 240/120" "clearing the content type did not supersample again"
+set_content_type video "scale 150/120" "a video content type set after mapping did not exempt the window"
+set_content_type none "scale 240/120" "clearing the video content type did not supersample again"
+
+echo "fullscreen and game windows skip the supersample, rules override both ways, and a later content type follows"

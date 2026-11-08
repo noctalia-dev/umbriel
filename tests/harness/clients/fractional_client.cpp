@@ -51,6 +51,7 @@ namespace {
     wp_viewporter* viewporter = nullptr;
     wp_fractional_scale_manager_v1* scaleManager = nullptr;
     wp_content_type_manager_v1* contentTypeManager = nullptr;
+    wp_content_type_v1* contentType = nullptr;
     wl_surface* surface = nullptr;
     wp_viewport* viewport = nullptr;
     xdg_surface* xdgSurface = nullptr;
@@ -291,6 +292,15 @@ namespace {
       present(state);
     } else if (command.starts_with("title ")) {
       xdg_toplevel_set_title(state.toplevel, std::string(command.substr(6)).c_str());
+    } else if (command.starts_with("content-type ") && state.contentType != nullptr) {
+      const std::string_view type = command.substr(13);
+      const uint32_t value = type == "game" ? WP_CONTENT_TYPE_V1_TYPE_GAME
+          : type == "video"                 ? WP_CONTENT_TYPE_V1_TYPE_VIDEO
+                                            : WP_CONTENT_TYPE_V1_TYPE_NONE;
+      wp_content_type_v1_set_content_type(state.contentType, value);
+      // The compositor sees the new type on commit, and re-sends the scale hint for
+      // the window it exempts.
+      wl_surface_commit(state.surface);
     } else {
       std::println(stderr, "fractional-client: unknown decoration command {}", command);
       state.running = false;
@@ -347,7 +357,8 @@ namespace {
           wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1)
       );
     } else if (
-        strcmp(interface, wp_content_type_manager_v1_interface.name) == 0 && std::getenv("CONTENT_TYPE") != nullptr
+        strcmp(interface, wp_content_type_manager_v1_interface.name) == 0
+        && (std::getenv("CONTENT_TYPE") != nullptr || std::getenv("CONTENT_TYPE_CONTROL") != nullptr)
     ) {
       state.contentTypeManager = static_cast<wp_content_type_manager_v1*>(
           wl_registry_bind(registry, name, &wp_content_type_manager_v1_interface, 1)
@@ -419,16 +430,19 @@ int main(int argc, char** argv) {
   wp_fractional_scale_v1* fractionalScale =
       wp_fractional_scale_manager_v1_get_fractional_scale(state.scaleManager, state.surface);
   wp_fractional_scale_v1_add_listener(fractionalScale, &kFractionalScaleListener, &state);
-  if (const char* type = std::getenv("CONTENT_TYPE"); type != nullptr) {
+  const char* type = std::getenv("CONTENT_TYPE");
+  const bool contentTypeControl = std::getenv("CONTENT_TYPE_CONTROL") != nullptr;
+  if (type != nullptr || contentTypeControl) {
     if (state.contentTypeManager == nullptr) {
       std::println(stderr, "fractional-client: content type manager unavailable");
       return 1;
     }
-    wp_content_type_v1* contentType =
-        wp_content_type_manager_v1_get_surface_content_type(state.contentTypeManager, state.surface);
-    wp_content_type_v1_set_content_type(
-        contentType, strcmp(type, "video") == 0 ? WP_CONTENT_TYPE_V1_TYPE_VIDEO : WP_CONTENT_TYPE_V1_TYPE_GAME
-    );
+    state.contentType = wp_content_type_manager_v1_get_surface_content_type(state.contentTypeManager, state.surface);
+    if (type != nullptr) {
+      wp_content_type_v1_set_content_type(
+          state.contentType, strcmp(type, "video") == 0 ? WP_CONTENT_TYPE_V1_TYPE_VIDEO : WP_CONTENT_TYPE_V1_TYPE_GAME
+      );
+    }
   }
 
   // Legacy clients can select decorations before assigning the xdg role.
@@ -467,7 +481,7 @@ int main(int argc, char** argv) {
   }
   wl_surface_commit(state.surface);
 
-  const bool controlled = std::getenv("DECORATION_CONTROL") != nullptr;
+  const bool controlled = std::getenv("DECORATION_CONTROL") != nullptr || contentTypeControl;
   while (state.running) {
     if (!controlled) {
       if (wl_display_dispatch(state.display) < 0) {
