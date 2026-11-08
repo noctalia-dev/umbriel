@@ -229,6 +229,7 @@ if build_tests
     'optimized-blur-encoded-cache',
     'optimized-blur-size-change',
     'optimized-blur-copy-failure',
+    'box-downsample-curves',
     'gamma22-to-srgb',
     'pq-roundtrip',
     'bt2020-to-srgb',

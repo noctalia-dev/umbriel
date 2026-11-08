@@ -198,17 +198,16 @@ vec4 convert_color(vec4 color) {
 }
 
 #if DOWNSAMPLE
-// The box averages in linear light, so a passthrough pass still needs a curve: its content is already in the pass's
-// own target space, which `box_tf` names. An encoded target (an SDR swapchain) needs its curve; a linear one
-// (extended linear, behind colour management) needs none, because treating linear values as encoded over-brightens
-// every mixed pixel.
+// The box averages in linear light, so a passthrough draw still needs a curve: its content is already in the pass's
+// own target space, which `box_tf` names. That space is only ever an SDR swapchain, which the compositor writes
+// sRGB-encoded, or extended linear, which is already linear and needs no curve (treating it as encoded
+// over-brightens every mixed pixel). The output's gamma 2.2 SDR transfer is not the swapchain curve, so it never
+// reaches a passthrough draw.
 vec4 passthrough_to_linear(vec4 color) {
   float color_alpha = color.a;
   vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
   if (box_tf == TRANSFER_FUNCTION_SRGB) {
     rgb = srgb_color_to_linear(max(rgb, vec3(0.0)));
-  } else if (box_tf == TRANSFER_FUNCTION_GAMMA22) {
-    rgb = pow(max(rgb, vec3(0.0)), vec3(2.2));
   }
   return vec4(rgb * color_alpha, color_alpha);
 }
@@ -218,8 +217,6 @@ vec4 linear_to_passthrough(vec4 color) {
   vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
   if (box_tf == TRANSFER_FUNCTION_SRGB) {
     rgb = linear_color_to_srgb(max(rgb, vec3(0.0)));
-  } else if (box_tf == TRANSFER_FUNCTION_GAMMA22) {
-    rgb = linear_color_to_gamma22(rgb);
   }
   return vec4(rgb * color_alpha, color_alpha);
 }

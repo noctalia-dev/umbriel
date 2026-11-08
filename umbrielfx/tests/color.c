@@ -938,6 +938,111 @@ static bool test_implicit_srgb_target(struct fixture* fixture) {
   return ok;
 }
 
+// The box downsample averages in linear light, so a passthrough draw must decode
+// with the curve of the space it is already in: an SDR swapchain (sRGB) or
+// extended linear behind colour management, where the values are already
+// linear. Each pair of texels is chosen to separate the two SDR curves.
+static bool render_box_pair(
+    struct fixture* fixture, const uint8_t texels[2][4], enum wlr_color_transfer_function input_tf,
+    struct wlr_color_transform* output_transform, uint8_t out[4]
+) {
+  struct wlr_color_primaries srgb;
+  wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+  struct wlr_texture* texture = wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, 8, 2, 1, texels);
+  if (!check(texture != NULL, "create box input texture")) {
+    return false;
+  }
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, 1, 1);
+  bool ok = check(output != NULL, "allocate box output buffer");
+  struct wlr_render_pass* pass = NULL;
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, 0, 0, 1, 1);
+  if (ok) {
+    pass = wlr_renderer_begin_buffer_pass(
+        fixture->renderer, output, &(struct wlr_buffer_pass_options){.color_transform = output_transform}
+    );
+    ok = check(pass != NULL, "begin box render pass");
+  }
+  if (ok) {
+    // Two texels into one pixel: ratio 2, so two taps land on the texel
+    // centres and the box averages them exactly.
+    const struct wlr_box box = {.width = 1, .height = 1};
+    fx_render_pass_add_texture(
+        fx_get_render_pass(pass),
+        &(struct fx_render_texture_options){
+            .base =
+                (struct wlr_render_texture_options){
+                    .texture = texture,
+                    .dst_box = box,
+                    .clip = &region,
+                    .transform = WL_OUTPUT_TRANSFORM_NORMAL,
+                    .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                    .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+                    .transfer_function = input_tf,
+                    .primaries = &srgb,
+                },
+            .downsample_box = true,
+        }
+    );
+    ok = check(wlr_render_pass_submit(pass), "submit box render pass");
+  }
+  if (ok) {
+    ok = check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, 4, out), "read box output buffer");
+  }
+  pixman_region32_fini(&region);
+  if (output != NULL) {
+    wlr_buffer_drop(output);
+  }
+  wlr_texture_destroy(texture);
+  return ok;
+}
+
+static bool check_box_grey(const uint8_t pixel[4], int expected, const char* name) {
+  for (size_t channel = 0; channel < 3; channel++) {
+    if (abs((int)pixel[channel] - expected) > 1) {
+      fprintf(stderr, "%s: shows %u, expected %d\n", name, pixel[channel], expected);
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool test_box_downsample_curves(struct fixture* fixture) {
+  // 0 and 16 encode to 9 through the sRGB curve and 12 through gamma 2.2, so
+  // the pair pins which curve an SDR passthrough draw decodes with.
+  static const uint8_t dark_pair[2][4] = {{0, 0, 0, 255}, {16, 16, 16, 255}};
+  // 0 and 200 are linear values here: their average (0.392) encodes to 168,
+  // while decoding them as sRGB first would report 158.
+  static const uint8_t bright_pair[2][4] = {{0, 0, 0, 255}, {200, 200, 200, 255}};
+  uint8_t pixel[4] = {0};
+
+  const int sd = to_u8(linear_to_srgb((srgb_to_linear(0.0f) + srgb_to_linear(16.0f / 255.0f)) / 2.0f));
+  const int gamma22 = to_u8(powf(powf(16.0f / 255.0f, 2.2f) / 2.0f, 1.0f / 2.2f));
+  bool ok = check(abs(sd - gamma22) > 1, "the texel pair separates the SDR curves")
+      && render_box_pair(fixture, dark_pair, WLR_COLOR_TRANSFER_FUNCTION_SRGB, NULL, pixel)
+      && check_box_grey(pixel, sd, "SDR passthrough box average");
+
+  // Extended linear content (a compositor-internal buffer) is already linear, so
+  // the box averages the values unchanged; the pass encodes at submit.
+  struct wlr_color_transform* transform =
+      wlr_color_transform_init_linear_to_inverse_eotf(WLR_COLOR_TRANSFER_FUNCTION_SRGB);
+  const int linear_average = to_u8(linear_to_srgb(200.0f / 255.0f / 2.0f));
+  const int decoded_average = to_u8(linear_to_srgb((srgb_to_linear(0.0f) + srgb_to_linear(200.0f / 255.0f)) / 2.0f));
+  ok = ok
+      && check(transform != NULL, "create extended-linear output transform")
+      && check(abs(linear_average - decoded_average) > 1, "the texel pair separates linear from encoded")
+      && render_box_pair(fixture, bright_pair, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR, transform, pixel)
+      && check_box_grey(pixel, linear_average, "extended-linear passthrough box average");
+  wlr_color_transform_unref(transform);
+
+  // Content that has to be converted keeps using the full decode/encode path.
+  const int converted = to_u8(linear_to_srgb(powf(16.0f / 255.0f, 2.2f) / 2.0f));
+  ok = ok
+      && render_box_pair(fixture, dark_pair, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22, NULL, pixel)
+      && check_box_grey(pixel, converted, "gamma 2.2 content box average");
+  return ok;
+}
+
 static bool test_gamma22_to_srgb(struct fixture* fixture) {
   const uint8_t dark_input[4] = {24, 24, 49, 255};
   const uint8_t dark_expected[4] = {17, 17, 45, 255};
@@ -3266,6 +3371,8 @@ int main(int argc, char* argv[]) {
     ok = test_optimized_blur_size_change(&fixture);
   } else if (strcmp(argv[1], "optimized-blur-copy-failure") == 0) {
     ok = test_optimized_blur_copy_failure(&fixture);
+  } else if (strcmp(argv[1], "box-downsample-curves") == 0) {
+    ok = test_box_downsample_curves(&fixture);
   } else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
     ok = test_gamma22_to_srgb(&fixture);
   } else if (strcmp(argv[1], "pq-roundtrip") == 0) {
