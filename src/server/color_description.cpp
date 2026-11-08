@@ -211,14 +211,16 @@ namespace umbriel {
     case TransferFit::Kind::Gamma22:
       description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
       break;
-    case TransferFit::Kind::Power:
-      // The fit is an approximation of a curve with no named equivalent, and
-      // the renderer cannot paint an arbitrary exponent. Advertising the
-      // nearest named curve would misrepresent the profile to the client, so
-      // the profile is refused ('unsupported') instead.
+    case TransferFit::Kind::Linear:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+      break;
+    case TransferFit::Kind::Unsupported:
+      // A curve with no exact named equivalent: the renderer cannot paint it,
+      // and substituting the nearest curve would misrepresent the profile to
+      // the client, so the profile is refused ('unsupported') instead.
       return {
           .description = std::nullopt,
-          .error = "unsupported transfer curve (only sRGB and gamma 2.2 are representable)",
+          .error = "unsupported transfer curve (only linear, sRGB and gamma 2.2 are representable)",
       };
     }
     description.luminances = defaultColorLuminances(description.data.tf_named);

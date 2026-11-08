@@ -744,6 +744,14 @@ int main(int argc, char** argv) {
           std::println(stderr, "color-feedback-client: cannot present the retained surface");
           return 1;
         }
+        // A client sets the description once and then commits frames. The
+        // second commit must not drop what the surface state retains.
+        state.tagged = false;
+        if (!present(state)) {
+          std::println(stderr, "color-feedback-client: cannot commit the retained surface again");
+          return 1;
+        }
+        state.tagged = true;
         wp_image_description_v1_destroy(description);
         if (wl_display_roundtrip(state.display) < 0) {
           std::println(stderr, "color-feedback-client: the display died while retaining the profile");

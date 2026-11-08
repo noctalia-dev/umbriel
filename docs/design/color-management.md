@@ -8,7 +8,8 @@ Implementation notes for the color-management protocol and the `color_profile`/`
 
 - A configured ICC file is parsed by `parseIccProfile` (`src/output/colorimetry_icc_lcms2.cpp`). An EDID is parsed by `panelColorimetryFromEdid`; `iccStoreForPanel` then synthesizes the matrix-shaper profile that `get_information` advertises, so EDID characterization still answers `icc_file`.
 - The parser undoes the profile's D50 adaptation (`chad`, or a measured `wtpt`) before reporting colorants, so the reported primaries are the measured ones rather than PCS-relative ones.
-- `fitTransfer` (`src/output/colorimetry.cpp`) decides the panel transfer. It probes the sampled curve against the named shapes first (including the shadow toe with geometric probes) and only then performs a minimax power fit for the LUT path. The fit exists for the *output* stage, where the sampled curve is rendered exactly by a LUT — never for client content.
+- The parser picks the panel transfer: `PanelTransfer::Kind::Srgb` or `Gamma22` when the TRC matches a named curve, `Kind::Curve` otherwise. `Kind::Curve` is sampled into a 3x1D LUT by `buildSdrGamutTransform` and rendered exactly, so output characterization does not approximate curves.
+- `fitTransfer` (`src/output/colorimetry.cpp`) is the client-description classification only, not an output-path step: it probes a parsed curve against linear, sRGB and gamma 2.2 (including the shadow toe, with geometric probes) and reports `Unsupported` for anything else, which `clientIccDescription` turns into `failed('unsupported')`.
 
 ## What a client description can carry
 

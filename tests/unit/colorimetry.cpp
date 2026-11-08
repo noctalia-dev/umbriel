@@ -693,9 +693,11 @@ UMBRIEL_TEST(iccStoreReleaseFollowsThePayloadNotTheFirstCopy) {
   umbriel::IccProfileStore store = umbriel::iccStoreForFileProfile(bytes, [&releases] { ++releases; });
   CHECK(store != nullptr);
   {
-    umbriel::IccProfileStore copy = store;
+    // A second owner — a surface state copies the description — keeps the
+    // charge alive after the first one goes away.
+    const auto secondOwner = [payload = store, &bytes] { return *payload == bytes; };
+    CHECK(secondOwner());
     CHECK(releases == 0);
-    CHECK(*copy == bytes);
   }
   CHECK(releases == 0);
   store.reset();
@@ -794,11 +796,9 @@ UMBRIEL_TEST(synthesizedCurveTrcRoundTripsThroughTheIccParser) {
 #endif
 }
 
-UMBRIEL_TEST(fitTransferFitsNamedFastPathsAndPowerCurves) {
-  // Exact named shapes stay named; only genuinely non-representable TRCs fall
-  // back to the parametric power fit (fitTransfer's approximation contract).
-  // Sampled fixtures follow the documented encode-table contract: value i sits
-  // at the linear input (i / (size - 1))².
+UMBRIEL_TEST(fitTransferClassifiesOnlyRepresentableCurves) {
+  // Classification decides whether a client-created description is admitted:
+  // only shapes the buffer setter can paint exactly are representable.
   auto srgbEncode = [](float linear) -> float {
     return linear >= 1.0F ? 1.0F
                           : (linear <= 0.0031308F ? 12.92F * linear : 1.055F * std::pow(linear, 1.0F / 2.4F) - 0.055F);
@@ -813,7 +813,7 @@ UMBRIEL_TEST(fitTransferFitsNamedFastPathsAndPowerCurves) {
       == umbriel::TransferFit::Kind::Gamma22
   );
 
-  // Sampled curves re-detect the named shapes before fitting anything.
+  // Sampled curves re-detect the named shapes.
   const umbriel::TransferFit sampledSrgb =
       umbriel::fitTransfer({.kind = umbriel::PanelTransfer::Kind::Curve, .encode = sampledCurve(1024, srgbEncode)});
   CHECK(sampledSrgb.kind == umbriel::TransferFit::Kind::Srgb);
@@ -823,21 +823,23 @@ UMBRIEL_TEST(fitTransferFitsNamedFastPathsAndPowerCurves) {
   );
   CHECK(sampledGamma22.kind == umbriel::TransferFit::Kind::Gamma22);
 
-  // Odd curves fit to their power exponent within tolerance.
-  for (const float exponent : {1.8F, 2.4F, 2.8F}) {
+  // An empty sampled table is the identity encode, i.e. exactly linear.
+  const umbriel::TransferFit linear = umbriel::fitTransfer({.kind = umbriel::PanelTransfer::Kind::Curve, .encode = {}});
+  CHECK(linear.kind == umbriel::TransferFit::Kind::Linear);
+  const umbriel::TransferFit sampledLinear = umbriel::fitTransfer(
+      {.kind = umbriel::PanelTransfer::Kind::Curve, .encode = sampledCurve(1024, [](float x) -> float { return x; })}
+  );
+  CHECK(sampledLinear.kind == umbriel::TransferFit::Kind::Linear);
+
+  // Every other power is not a named curve, so it is not representable.
+  for (const float exponent : {1.4F, 1.8F, 2.4F, 2.8F}) {
     const float shape = exponent;
     const umbriel::TransferFit fit = umbriel::fitTransfer(
         {.kind = umbriel::PanelTransfer::Kind::Curve,
          .encode = sampledCurve(1024, [shape](float x) -> float { return std::pow(x, 1.0F / shape); })}
     );
-    CHECK(fit.kind == umbriel::TransferFit::Kind::Power);
-    CHECK(closeTo(fit.exponent, exponent, 0.01));
+    CHECK(fit.kind == umbriel::TransferFit::Kind::Unsupported);
   }
-
-  // An empty sampled table is the identity encode, i.e. linear.
-  const umbriel::TransferFit linear = umbriel::fitTransfer({.kind = umbriel::PanelTransfer::Kind::Curve, .encode = {}});
-  CHECK(linear.kind == umbriel::TransferFit::Kind::Power);
-  CHECK(closeTo(linear.exponent, 1.0));
 }
 
 UMBRIEL_TEST(iccClassScopeAdmitsColorSpaceProfilesForClientIcc) {
@@ -1409,51 +1411,6 @@ UMBRIEL_TEST(iccDegeneratePrimariesAreRejected) {
   const umbriel::IccParse zeroedParse = umbriel::parseIccProfile(zeroed);
   CHECK(!zeroedParse.colorimetry.has_value());
   CHECK(!zeroedParse.error.empty());
-#endif
-}
-
-UMBRIEL_TEST(fitTransferFitsSrgbLikeCurveWithBoundedError) {
-#if !UMBRIEL_HAS_LCMS2
-  std::println("skip: built without lcms2");
-#else
-  // sRGB-like: the sRGB power part with a linear toe, deliberately far enough
-  // from every named decode (the toe differs from sRGB's by ~1.5x the named
-  // match tolerance) to fall through to the power fit. The fit must stay close
-  // to the curve in linear light despite the toe's shadow leverage, and the
-  // fitted exponent must stay near the power part.
-  const cmsFloat64Number params[5] = {2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 5.0, 0.012};
-  cmsToneCurve* curve = cmsBuildParametricToneCurve(nullptr, 4, params);
-  CHECK(curve != nullptr);
-  if (curve == nullptr) {
-    return;
-  }
-  std::array<cmsToneCurve*, 3> curves{curve, curve, curve};
-  const std::vector<uint8_t> bytes = matrixShaperProfile(
-      xyY(0.3127, 0.329), {.Red = xyY(0.64, 0.33), .Green = xyY(0.30, 0.60), .Blue = xyY(0.15, 0.06)}, curves
-  );
-  cmsFreeToneCurve(curve);
-  const umbriel::IccParse parsed = umbriel::parseIccProfile(bytes);
-  CHECK(parsed.colorimetry.has_value());
-  if (!parsed.colorimetry) {
-    return;
-  }
-  const umbriel::PanelTransfer& transfer = parsed.colorimetry->transfer;
-  CHECK(transfer.kind == umbriel::PanelTransfer::Kind::Curve);
-  const umbriel::TransferFit fit = umbriel::fitTransfer(transfer);
-  CHECK(fit.kind == umbriel::TransferFit::Kind::Power);
-  if (fit.kind != umbriel::TransferFit::Kind::Power) {
-    return;
-  }
-  double worst = 0.0;
-  for (int probe = 0; probe <= 20000; ++probe) {
-    const double linear = probe == 0 ? 1e-6 : probe / 20000.0;
-    const double approx = std::pow(linear, 1.0 / fit.exponent);
-    const double curveValue = umbriel::panelEncodeSample(transfer, static_cast<float>(linear));
-    worst = std::max(worst, std::abs(approx - curveValue) * 255.0);
-  }
-  std::println("sRGB-like power fit exponent {:.3f}, worst error {:.3f} 8-bit codes", fit.exponent, worst);
-  CHECK(fit.exponent > 1.9F && fit.exponent < 2.6F);
-  CHECK(worst < 10.5);
 #endif
 }
 

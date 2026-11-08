@@ -82,9 +82,9 @@ namespace umbriel {
   // wp_image_description_v1.failed ('unsupported') by the caller — never a
   // protocol error. On success the description carries the client's exact
   // bytes in iccProfile plus the colorimetry the renderer can express:
-  // custom primaries from the colorants and one of the two exactly
-  // representable transfer curves (sRGB, gamma 2.2). Any other TRC is refused
-  // rather than approximated by a different named curve.
+  // custom primaries from the colorants and one of the exactly representable
+  // transfer curves (linear, sRGB, gamma 2.2). Any other TRC is refused rather
+  // than approximated by a different named curve.
   struct ClientIccDescription {
     std::optional<ColorDescription> description;
     // Rejection reason, empty on success.

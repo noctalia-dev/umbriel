@@ -500,13 +500,16 @@ namespace umbriel {
       // wlroots memcpys a synchronized state when `move_state` is null (types/wlr_compositor.c, the cached-commit
       // path) and frees cached states itself, so `finish_state` releases the payload without ending the object;
       // pending and current are surface members whose destructors run afterwards.
+      //
+      // `move_state` copies rather than moves: wlroots reuses `surface->pending` across commits (it moves pending
+      // into current and never re-initializes the synced member), so emptying the source would drop the payload on
+      // the next commit. The copy's reference keeps both states owning valid bytes until finish_state releases one.
       static const wlr_surface_synced_impl syncedImplementation{
           .state_size = sizeof(SurfaceState),
           .init_state = [](void* state) { new (state) SurfaceState{}; },
           .finish_state = [](void* state) { static_cast<SurfaceState*>(state)->description.iccProfile.reset(); },
-          .move_state = [](
-                            void* dst, void* src
-                        ) { *static_cast<SurfaceState*>(dst) = std::move(*static_cast<SurfaceState*>(src)); },
+          .move_state = [](void* dst,
+                           void* src) { *static_cast<SurfaceState*>(dst) = *static_cast<const SurfaceState*>(src); },
           .commit = nullptr,
       };
       if (!wlr_surface_synced_init(

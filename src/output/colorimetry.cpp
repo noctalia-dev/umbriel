@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <limits>
 #include <memory>
 
 extern "C" {
@@ -134,33 +133,6 @@ namespace umbriel {
     return transfer.encode[lower] + (transfer.encode[upper] - transfer.encode[lower]) * fraction;
   }
 
-  namespace {
-
-    // Probe set for the power fit: uniform light levels plus the geometric
-    // shadow floor, where transfer curves separate most.
-    std::vector<float> powerFitProbes() {
-      std::vector<float> probes;
-      for (int index = 1; index <= 512; ++index) {
-        probes.push_back(static_cast<float>(index) / 512.0F);
-      }
-      for (int index = 1; index <= 96; ++index) {
-        probes.push_back(std::pow(2.0F, -static_cast<float>(index) / 8.0F));
-      }
-      probes.push_back(1e-6F);
-      return probes;
-    }
-
-    double powerFitWorst(const PanelTransfer& transfer, const std::vector<float>& probes, float exponent) {
-      double worst = 0.0;
-      for (const float linear : probes) {
-        const double approximated = std::pow(static_cast<double>(linear), 1.0 / static_cast<double>(exponent));
-        worst = std::max(worst, std::abs(approximated - static_cast<double>(panelEncodeSample(transfer, linear))));
-      }
-      return worst;
-    }
-
-  } // namespace
-
   TransferFit fitTransfer(const PanelTransfer& transfer) {
     switch (transfer.kind) {
     case PanelTransfer::Kind::Srgb:
@@ -170,20 +142,21 @@ namespace umbriel {
     case PanelTransfer::Kind::Curve:
       break;
     }
-    if (transfer.encode.size() < 2) {
-      // An empty sampled table is the identity encode, i.e. a linear EOTF.
-      return {.kind = TransferFit::Kind::Power, .exponent = 1.0F};
-    }
-    // Named fast paths first: an exact match is reported as the named curve,
-    // never as an approximating power fit. Geometric probes reach the shadow
-    // toes a uniform probe grid cannot see, where named curves differ most.
+    // A sampled curve (including the empty identity table) is classified only
+    // against shapes the buffer setter can paint exactly. Geometric probes
+    // reach the shadow toes a uniform probe grid cannot see, where the named
+    // curves differ most.
     constexpr float kMatchTolerance = 1e-3F;
+    bool matchesLinear = true;
     bool matchesSrgb = true;
     bool matchesGamma22 = true;
     for (int probe = 0; probe <= 384; ++probe) {
       const float linear =
           probe <= 256 ? static_cast<float>(probe) / 256.0F : std::pow(2.0F, -static_cast<float>(probe - 256) / 8.0F);
       const float encoded = panelEncodeSample(transfer, linear);
+      if (std::abs(encoded - linear) > kMatchTolerance) {
+        matchesLinear = false;
+      }
       if (std::abs(encoded - srgbEncode(linear)) > kMatchTolerance) {
         matchesSrgb = false;
       }
@@ -191,40 +164,16 @@ namespace umbriel {
         matchesGamma22 = false;
       }
     }
+    if (matchesLinear) {
+      return {.kind = TransferFit::Kind::Linear};
+    }
     if (matchesSrgb) {
       return {.kind = TransferFit::Kind::Srgb};
     }
     if (matchesGamma22) {
       return {.kind = TransferFit::Kind::Gamma22};
     }
-    // The exponent is fitted to the worst-case linear-light error — the error
-    // the panel actually renders. A log-domain least squares is
-    // shadow-weighted: the deep samples of a linear toe drag the exponent away
-    // from the power region and cost whole 8-bit codes at the top of the
-    // range. Minimax over a coarse grid with a fine refinement is
-    // deterministic and reaches the protocol vocabulary's shape.
-    const std::vector<float> probes = powerFitProbes();
-    auto worstAt = [&](float exponent) { return powerFitWorst(transfer, probes, exponent); };
-    float bestExponent = 1.0F;
-    double bestWorst = std::numeric_limits<double>::infinity();
-    for (int step = 2; step <= 80; ++step) {
-      const float candidate = static_cast<float>(step) * 0.25F;
-      const double worst = worstAt(candidate);
-      if (worst < bestWorst) {
-        bestWorst = worst;
-        bestExponent = candidate;
-      }
-    }
-    const float coarse = bestExponent;
-    for (int step = -50; step <= 50; ++step) {
-      const float candidate = std::max(0.05F, coarse + static_cast<float>(step) * 0.005F);
-      const double worst = worstAt(candidate);
-      if (worst < bestWorst) {
-        bestWorst = worst;
-        bestExponent = candidate;
-      }
-    }
-    return {.kind = TransferFit::Kind::Power, .exponent = bestExponent};
+    return {.kind = TransferFit::Kind::Unsupported};
   }
 
   void sdrGamutMatrix(const wlr_color_primaries& panel, float wideness, float matrix[9]) {

@@ -48,27 +48,24 @@ namespace umbriel {
   // encode table is linearly interpolated.
   [[nodiscard]] float panelEncodeSample(const PanelTransfer& transfer, float linear);
 
-  // Fitted transfer characteristic of a parsed profile
-  // (wp_image_description_creator_icc_v1). Srgb and Gamma22 are exact named
-  // fast paths; Power is a parametric power fit in the protocol's
-  // set_tf_power/tf_power vocabulary: the EOTF exponent e with
-  // optical = electrical^e, fitted to minimize the worst-case linear-light
-  // error (the request's valid range is 1.0..10.0; a fit outside it is kept
-  // as fitted and only clamped by the buffer mapping).
+  // Classification of a parsed TRC against the curves the renderer can paint
+  // for client content (wp_image_description_creator_icc_v1). Only exact
+  // matches are representable: wlr_scene_buffer_set_transfer_function takes a
+  // named curve, so Unsupported means the caller must refuse the description.
+  // Output characterization does not use this: it keeps the sampled curve and
+  // renders it exactly through a 3x1D LUT.
   struct TransferFit {
     enum class Kind {
       Srgb,
+      Linear,
       Gamma22,
-      Power,
+      Unsupported,
     };
     Kind kind = Kind::Srgb;
-    // Kind::Power only: the fitted EOTF exponent.
-    float exponent = 0.0F;
   };
 
-  // Fit a transfer curve to what the renderer can express. Non-representable
-  // TRCs are approximated by a power fit — faithful rendering of those needs
-  // per-buffer 3D LUTs (a new render transform type).
+  // Classify a transfer curve against the three exactly representable shapes:
+  // linear, sRGB, and gamma 2.2.
   [[nodiscard]] TransferFit fitTransfer(const PanelTransfer& transfer);
 
   // Output-side SDR gamut mapping matrix, generic over `wideness` in [0, 1]
