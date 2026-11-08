@@ -276,6 +276,9 @@ namespace umbriel {
       m_mirrorRenderer->clear();
       m_mirrorRenderer->schedule();
     }
+    if (Overview* overview = m_group->server()->overview(); overview != nullptr && overview->active()) {
+      overview->onWorkspaceMirrorChanged(this);
+    }
   }
 
   void Workspace::endMirrorGrab() const {

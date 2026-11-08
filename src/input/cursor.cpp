@@ -550,10 +550,12 @@ namespace umbriel {
     // A held card aims at the row under the drag pointer (its drop target, the same row the finger-pan path
     // resolves through navigationWorkspace()), so the strip it must reveal is that workspace's, not the active
     // one's. A card over an insertion gap has no row to slide. Data drags and tiled moves keep the active
-    // workspace. The shared edge ramp runs on the target workspace's real usable-area edges.
-    Workspace* workspace = cardDrag ? overview->dragTargetWorkspace() : active;
+    // workspace. The shared edge ramp runs on the target workspace's real usable-area edges. A mirror row owns no
+    // strip: the ramp keeps the row's own edges, and the strip it slides is the one the mirror shows.
+    Workspace* row = cardDrag ? overview->dragTargetWorkspace() : nullptr;
+    Workspace* workspace = cardDrag ? (row != nullptr ? row->layoutOwner() : nullptr) : active;
 
-    const wlr_box area = workspace != nullptr ? workspace->usableArea() : active->usableArea();
+    const wlr_box area = row != nullptr ? row->usableArea() : active->usableArea();
     // The shared edge ramp: signed screen px/s from the pointer's depth into the trigger zone at either end of
     // the usable area along `verticalAxis`.
     const auto edgeSpeed = [&](bool verticalAxis, double* speed) {

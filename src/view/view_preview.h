@@ -100,6 +100,8 @@ namespace umbriel {
     // Hides the shadow. When the view has nothing to present, also hides the preview, binds its effects, and returns
     // false; otherwise enables the root tree.
     bool prepare(const EffectContext& effects);
+    // Hides the preview and binds its effects.
+    void hide(const EffectContext& effects);
     // The scaled size of the view's presented box at `zoom`.
     wlr_box contentSize(double zoom) const;
     // Lays the preview out at `placement`; follows a true prepare().
@@ -143,7 +145,6 @@ namespace umbriel {
     static void syncBuffer(Surface& entry);
     static void removeListeners(Surface& entry);
 
-    void hide(const EffectContext& effects);
     // Lays the chrome copy over `world`, the view's presented box, or drops it with the view's chrome.
     void layoutChrome(const wlr_box& world, int borderInset, double zoom, float alpha, Output* output);
     void layoutShadow(const Placement& placement);

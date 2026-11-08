@@ -42,6 +42,7 @@ extern "C" {
 // clang-format on
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 namespace umbriel {
 
@@ -68,6 +69,12 @@ namespace umbriel {
 
     bool boxContains(const wlr_box& box, double x, double y) {
       return x >= box.x && y >= box.y && x < box.x + box.width && y < box.y + box.height;
+    }
+
+    // The mapping a mirror row places its source's windows with; empty while it has no source or no output size.
+    std::optional<MirrorMapping> mirrorRowMapping(const Workspace& row) {
+      const WorkspaceMirror* renderer = row.mirrorRenderer();
+      return renderer != nullptr ? renderer->mapping() : std::nullopt;
     }
 
     // A scene buffer's opaque region is in its destination coordinates, so a scaled copy of a surface needs the
@@ -223,17 +230,51 @@ namespace umbriel {
     };
   }
 
-  void Overview::layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget) {
+  std::optional<MirrorMapping> Overview::cardMapping(const Card& card) {
+    return card.row->mirror() ? mirrorRowMapping(*card.row) : std::nullopt;
+  }
+
+  double Overview::cardFit(const Card& card) {
+    const std::optional<MirrorMapping> mapping = cardMapping(card);
+    return mapping ? mapping->fit.scale : 1.0;
+  }
+
+  void Overview::layoutCard(
+      Card& card, const PreviewMetrics& metrics, double workspaceScroll, const LiveTarget& liveTarget
+  ) {
     View* view = card.view;
     ViewPreview& preview = *card.preview;
     const bool dragged = &card == m_dragCard;
+    // The lifted window moves with the pointer on one card; its other cards would stay behind at stale positions.
+    const auto hideCard = [&] {
+      preview.hide(cardEffects(card));
+      preview.releaseShadow();
+      if (card.badge != nullptr) {
+        wlr_scene_node_set_enabled(&card.badge->node, false);
+      }
+    };
+    if (m_dragCard != nullptr && card.view == m_dragCard->view && !dragged) {
+      hideCard();
+      return;
+    }
+    // A mirror row draws the window where its mirror places it on the receiving output, smaller by the mirror's fit.
+    wlr_box world = view->presentedBox();
+    double fit = 1.0;
+    if (card.row->mirror()) {
+      const std::optional<MirrorMapping> mapping = cardMapping(card);
+      if (!mapping) {
+        hideCard();
+        return;
+      }
+      world = mapping->toReceiver(world);
+      fit = mapping->fit.scale;
+    }
     const ViewPreview::EffectContext effects = cardEffects(card);
     if (!preview.prepare(effects)) {
       return;
     }
 
-    const double z = metrics.zoom;
-    const wlr_box& world = view->presentedBox();
+    const double z = metrics.zoom * fit;
     const wlr_box content = preview.contentSize(z);
     const int contentW = content.width;
     const int contentH = content.height;
@@ -244,8 +285,8 @@ namespace umbriel {
     } else {
       const wlr_box previewArea = previewBox(metrics, workspaceScroll, card.workspaceIndex);
       card.box = {
-          .x = previewArea.x + static_cast<int>(std::lround((world.x - metrics.outputBox.x) * z)),
-          .y = previewArea.y + static_cast<int>(std::lround((world.y - metrics.outputBox.y) * z)),
+          .x = previewArea.x + static_cast<int>(std::lround((world.x - metrics.outputBox.x) * metrics.zoom)),
+          .y = previewArea.y + static_cast<int>(std::lround((world.y - metrics.outputBox.y) * metrics.zoom)),
           .width = contentW,
           .height = contentH,
       };
@@ -371,9 +412,9 @@ namespace umbriel {
       }
     }
 
-    const View* liveTarget = liveTargetView();
+    const LiveTarget live = liveTarget();
     for (const auto& card : state.cards) {
-      layoutCard(*card, metrics, state.rowScroll.current(), liveTarget);
+      layoutCard(*card, metrics, state.rowScroll.current(), live);
     }
   }
 
@@ -384,13 +425,13 @@ namespace umbriel {
     }
   }
 
-  View* Overview::liveTargetView() const {
-    const Workspace* workspace = preferredWorkspace();
-    return workspace != nullptr ? workspace->focusedView() : nullptr;
+  Overview::LiveTarget Overview::liveTarget() const {
+    const Workspace* row = preferredWorkspace();
+    return {.view = row != nullptr ? row->focusedView() : nullptr, .row = row};
   }
 
   void Overview::activateLiveTarget() {
-    if (View* target = liveTargetView()) {
+    if (View* target = liveTarget().view) {
       target->placementRoot()->inputDelegate()->applySeatFocus(false, false);
     } else {
       m_server->deactivateViews();
@@ -409,7 +450,7 @@ namespace umbriel {
                 .fullscreen = view->scheduledFullscreen(),
             },
         .output = card.owner->output,
-        .scale = static_cast<float>(zoom()),
+        .scale = static_cast<float>(zoom() * cardFit(card)),
     };
   }
 
@@ -429,15 +470,17 @@ namespace umbriel {
     }
   }
 
-  std::array<float, 4> Overview::cardBorderColor(const Card& card, const View* liveTarget) const {
+  std::array<float, 4> Overview::cardBorderColor(const Card& card, const LiveTarget& liveTarget) const {
     const auto& border = card.view != nullptr ? card.view->borderColors() : config().colors.border;
     const Workspace* workspace = card.view != nullptr ? card.view->workspace() : nullptr;
     if (workspace == nullptr || workspace->focusedView() != card.view || &card == m_dragCard) {
       return border.unfocused;
     }
     // No window holds the seat while the overview is up, so exactly one card wears the focused color: the one a focus
-    // or close action would act on. Every other row still marks the card it would land on, with a weaker mix.
-    if (card.view == liveTarget) {
+    // or close action would act on, on the row it would act from. A mirror row shows the same window as its source, so
+    // only the row of the active workspace on the pointer's output wears it. Every other row still marks the card it
+    // would land on, with a weaker mix.
+    if (card.view == liveTarget.view && card.row == liveTarget.row) {
       return border.focused;
     }
     return mixColor(border.unfocused, border.focused, kLandingTargetBlend);
@@ -703,7 +746,7 @@ namespace umbriel {
 
   // -: cards
 
-  Overview::Card* Overview::createCard(OutputState& state, View* view, size_t workspaceIndex) {
+  Overview::Card* Overview::createCard(OutputState& state, View* view, Workspace& row) {
     // An attached dialog shows over its parent's card instead of on one of its own.
     if (view == nullptr || !view->mapped() || view->pinned() || view->attached()) {
       return nullptr;
@@ -715,7 +758,8 @@ namespace umbriel {
     auto card = std::make_unique<Card>();
     card->owner = &state;
     card->view = view;
-    card->workspaceIndex = workspaceIndex;
+    card->row = &row;
+    card->workspaceIndex = row.index();
     Card* raw = card.get();
     card->preview = ViewPreview::create(*m_server, view, state.tree, [this, raw] {
       // A surface commit refreshes the preview's surfaces; re-derive their crop and scale.
@@ -724,7 +768,7 @@ namespace umbriel {
       }
       PreviewMetrics metrics{};
       if (previewMetrics(*raw->owner, *m_server, zoom(), metrics)) {
-        layoutCard(*raw, metrics, raw->owner->rowScroll.current(), liveTargetView());
+        layoutCard(*raw, metrics, raw->owner->rowScroll.current(), liveTarget());
         wlr_output_schedule_frame(raw->owner->output->wlr());
       }
     });
@@ -817,7 +861,7 @@ namespace umbriel {
       snapshotBorder(
           snapshot, *border, cardTree->node.x + border->node.x, cardTree->node.y + border->node.y, &border->node,
           {
-              .innerColor = cardBorderColor(card, liveTargetView()),
+              .innerColor = cardBorderColor(card, liveTarget()),
               .outerColor = card.view->borderColors().outer,
               .innerWidth = card.view->decorationBorderWidth(),
               .outerWidth = card.view->decorationOuterBorderWidth(),
@@ -845,33 +889,84 @@ namespace umbriel {
     m_server->scheduleSuspensionSync();
   }
 
-  void Overview::dropCard(View* view) {
+  void Overview::dropCardsWhere(const std::function<bool(const Card&)>& match) {
+    // The held card may be one of those dropped: the drag ends here, before the cards go.
+    if (m_dragCard != nullptr && match(*m_dragCard)) {
+      abandonDrag(/*closing=*/false);
+    }
     for (const auto& state : m_outputs) {
-      const auto it =
-          std::ranges::find_if(state->cards, [view](const std::unique_ptr<Card>& card) { return card->view == view; });
-      if (it == state->cards.end()) {
-        continue;
-      }
-      destroyCard(it->get());
-      state->cards.erase(it);
-      m_shortcutsDirty = true;
-      return;
+      std::erase_if(state->cards, [&](const std::unique_ptr<Card>& card) {
+        if (!match(*card)) {
+          return false;
+        }
+        if (m_pressCard == card.get()) {
+          m_pressCard = nullptr;
+        }
+        if (m_middlePressCard == card.get()) {
+          m_middlePressCard = nullptr;
+        }
+        destroyCard(card.get());
+        m_shortcutsDirty = true;
+        return true;
+      });
     }
   }
 
-  void Overview::rebuildCard(View* view) {
-    dropCard(view);
-    Workspace* workspace = view->workspace();
-    if (workspace == nullptr || !view->mapped()) {
-      return;
+  void Overview::abandonDrag(bool closing) {
+    if (!m_dragTabGroup.tabs.empty()) {
+      landTabGroup(*m_dragCard->view, std::exchange(m_dragTabGroup, {}), closing);
     }
-    OutputState* state = stateForWorkspace(workspace);
-    if (state == nullptr) {
-      return;
+    hideDropHint();
+    m_dragCard = nullptr;
+    m_dragSourceWorkspace = nullptr;
+    m_dragSourceWidth.reset();
+    m_drop = {};
+    m_dropWorkspaceGroup = nullptr;
+    m_server->cursor()->overrideCursor(nullptr);
+  }
+
+  void Overview::dropCards(const View* view, bool mirrorRowsOnly) {
+    dropCardsWhere([view, mirrorRowsOnly](const Card& card) {
+      return card.view == view && (!mirrorRowsOnly || card.row->mirror());
+    });
+  }
+
+  void Overview::rebuildCards(View* view) {
+    std::vector<OutputState*> touched;
+    addOwners(touched, view);
+    dropCards(view);
+    if (view->mapped()) {
+      createCards(view);
     }
-    createCard(*state, view, workspace->index());
-    layoutOutput(*state);
-    wlr_output_schedule_frame(state->output->wlr());
+    addOwners(touched, view);
+    relayout(std::move(touched));
+  }
+
+  size_t Overview::createCards(View* view) {
+    size_t created = 0;
+    for (Workspace* row : rowsShowing(view)) {
+      if (findCard(row, view) == nullptr && createCard(*stateForWorkspace(row), view, *row) != nullptr) {
+        ++created;
+      }
+    }
+    return created;
+  }
+
+  void Overview::addOwners(std::vector<OutputState*>& states, const View* view) {
+    for (const Card* card : cardsOf(view)) {
+      states.push_back(card->owner);
+    }
+  }
+
+  void Overview::relayout(std::vector<OutputState*> states) {
+    std::ranges::sort(states);
+    states.erase(std::ranges::unique(states).begin(), states.end());
+    for (OutputState* state : states) {
+      if (state != nullptr) {
+        layoutOutput(*state);
+        wlr_output_schedule_frame(state->output->wlr());
+      }
+    }
   }
 
   Overview::OutputState* Overview::stateFor(const Output* output) {
@@ -888,15 +983,44 @@ namespace umbriel {
     return stateFor(workspace->group()->output());
   }
 
-  Overview::Card* Overview::findCard(const View* view) {
+  std::vector<Overview::Card*> Overview::cardsOf(const View* view) {
+    std::vector<Card*> cards;
     for (const auto& state : m_outputs) {
       for (const auto& card : state->cards) {
         if (card->view == view) {
+          cards.push_back(card.get());
+        }
+      }
+    }
+    return cards;
+  }
+
+  Overview::Card* Overview::findCard(const Workspace* row, const View* view) {
+    for (const auto& state : m_outputs) {
+      for (const auto& card : state->cards) {
+        if (card->row == row && card->view == view) {
           return card.get();
         }
       }
     }
     return nullptr;
+  }
+
+  std::vector<Workspace*> Overview::rowsShowing(const View* view) {
+    std::vector<Workspace*> rows;
+    Workspace* home = view->workspace();
+    if (home == nullptr) {
+      return rows;
+    }
+    if (stateForWorkspace(home) != nullptr) {
+      rows.push_back(home);
+    }
+    for (Workspace* copy : home->mirrors()) {
+      if (stateForWorkspace(copy) != nullptr) {
+        rows.push_back(copy);
+      }
+    }
+    return rows;
   }
 
   bool Overview::presentsLive(const View* view) const {
@@ -1062,10 +1186,18 @@ namespace umbriel {
               || card->view->tabHidden()) {
             continue;
           }
-          const int x =
-              preview.x + static_cast<int>(std::lround((card->view->layoutTargetX() - metrics.outputBox.x) * z));
-          const int y =
-              preview.y + static_cast<int>(std::lround((card->view->layoutTargetY() - metrics.outputBox.y) * z));
+          int worldX = card->view->layoutTargetX();
+          int worldY = card->view->layoutTargetY();
+          if (card->row->mirror()) {
+            const std::optional<MirrorMapping> mapping = cardMapping(*card);
+            if (!mapping) {
+              continue;
+            }
+            worldX = mapping->toReceiverX(worldX);
+            worldY = mapping->toReceiverY(worldY);
+          }
+          const int x = preview.x + static_cast<int>(std::lround((worldX - metrics.outputBox.x) * z));
+          const int y = preview.y + static_cast<int>(std::lround((worldY - metrics.outputBox.y) * z));
           previewCards.push_back({.card = card.get(), .x = x, .y = y});
         }
         std::ranges::stable_sort(
@@ -1142,29 +1274,36 @@ namespace umbriel {
     }
   }
 
+  void Overview::populateRow(OutputState& state, Workspace& row) {
+    // A mirror owns no windows: its row shows its source's.
+    Workspace* owner = row.layoutOwner();
+    if (owner == nullptr) {
+      return;
+    }
+    // Tiled, then floating, then fullscreen: mirrors the per-workspace scene
+    // layer split so overlapping cards stack the way the real windows do.
+    for (int pass = 0; pass < 3; ++pass) {
+      for (View* view : owner->allViews()) {
+        if (view == nullptr || !view->mapped() || view->pinned()) {
+          continue;
+        }
+        const bool fullscreen = view->currentFullscreen();
+        const int layer = fullscreen ? 2 : (view->tiled() ? 0 : 1);
+        if (layer == pass) {
+          createCard(state, view, row);
+        }
+      }
+    }
+  }
+
   void Overview::populateCards(OutputState& state) {
     WorkspaceGroup* group = state.output->workspaceGroup();
     if (group == nullptr) {
       return;
     }
     for (size_t row = 0; row < group->workspaceCount(); ++row) {
-      Workspace* workspace = group->workspaceAt(row);
-      if (workspace == nullptr) {
-        continue;
-      }
-      // Tiled, then floating, then fullscreen: mirrors the per-workspace scene
-      // layer split so overlapping cards stack the way the real windows do.
-      for (int pass = 0; pass < 3; ++pass) {
-        for (View* view : workspace->allViews()) {
-          if (view == nullptr || !view->mapped() || view->pinned()) {
-            continue;
-          }
-          const bool fullscreen = view->currentFullscreen();
-          const int layer = fullscreen ? 2 : (view->tiled() ? 0 : 1);
-          if (layer == pass) {
-            createCard(state, view, row);
-          }
-        }
+      if (Workspace* workspace = group->workspaceAt(row)) {
+        populateRow(state, *workspace);
       }
     }
   }
@@ -1654,12 +1793,7 @@ namespace umbriel {
       onViewAttachmentsChanged(view->placementRoot());
       return;
     }
-    Workspace* workspace = view->workspace();
-    OutputState* state = stateForWorkspace(workspace);
-    if (state == nullptr || findCard(view) != nullptr) {
-      return;
-    }
-    if (createCard(*state, view, workspace->index()) == nullptr) {
+    if (createCards(view) == 0) {
       return;
     }
     assignShortcuts();
@@ -1669,15 +1803,15 @@ namespace umbriel {
     if (!m_active || parent == nullptr) {
       return;
     }
-    Card* card = findCard(parent->placementRoot());
-    if (card == nullptr || card->owner == nullptr) {
-      return;
+    View* root = parent->placementRoot();
+    for (Card* card : cardsOf(root)) {
+      // The card's own surfaces stay; the dialogs' are mirrored again from the current attachments.
+      card->preview->dropAttachedSurfaces();
+      card->preview->syncSurfaces();
     }
-    // The card's own surfaces stay; the dialogs' are mirrored again from the current attachments.
-    card->preview->dropAttachedSurfaces();
-    card->preview->syncSurfaces();
-    layoutOutput(*card->owner);
-    wlr_output_schedule_frame(card->owner->output->wlr());
+    std::vector<OutputState*> touched;
+    addOwners(touched, root);
+    relayout(std::move(touched));
   }
 
   void Overview::onViewPinnedChanged(View* view) {
@@ -1686,46 +1820,38 @@ namespace umbriel {
     }
     // A pinned window shows through the overview only at the desktop chrome's alpha; a card mirrors full opacity.
     view->setOverviewOpacity(view->pinned() ? desktopChromeAlpha() : 1.0F);
-    Card* card = findCard(view);
-    OutputState* state = card != nullptr ? card->owner : stateForWorkspace(view->workspace());
+    const std::vector<Card*> cards = cardsOf(view);
+    std::vector<OutputState*> touched{stateForWorkspace(view->workspace())};
+    addOwners(touched, view);
     if (view->pinned()) {
-      if (card == nullptr) {
+      if (cards.empty()) {
         return;
-      }
-      if (m_pressCard == card) {
-        m_pressCard = nullptr;
-      }
-      if (m_middlePressCard == card) {
-        clearMiddlePress();
       }
       if (m_drop.view == view) {
         m_drop.view = nullptr;
         m_drop.edge = 0;
         hideDropHint();
       }
-      if (m_dragCard == card) {
-        if (!m_dragTabGroup.tabs.empty()) {
-          landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
+      for (Card* card : cards) {
+        if (m_pressCard == card) {
+          m_pressCard = nullptr;
         }
-        hideDropHint();
-        m_dragCard = nullptr;
-        m_dragSourceWorkspace = nullptr;
-        m_dragSourceWidth.reset();
-        m_drop = {};
-        m_dropWorkspaceGroup = nullptr;
-        m_server->cursor()->overrideCursor(nullptr);
+        if (m_middlePressCard == card) {
+          clearMiddlePress();
+        }
+        if (m_dragCard == card) {
+          abandonDrag(/*closing=*/false);
+        }
       }
       std::erase_if(m_shortcutAssignments, [view](const ShortcutAssignment& assignment) {
         return assignment.view == view;
       });
-      dropCard(view);
-    } else if (card == nullptr && state != nullptr && view->workspace() != nullptr) {
-      createCard(*state, view, view->workspace()->index());
+      dropCards(view);
+    } else {
+      createCards(view);
+      addOwners(touched, view);
     }
-    if (state != nullptr) {
-      layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
-    }
+    relayout(std::move(touched));
     assignShortcuts();
   }
 
@@ -1733,9 +1859,9 @@ namespace umbriel {
     if (!m_active || view == nullptr || !view->mapped() || view->pinned()) {
       return;
     }
-    // Cards stack tiled, then floating (populateCards): rebuild so this one
+    // Cards stack tiled, then floating (populateRow): rebuild so each one
     // moves to its new layer instead of keeping its old spot.
-    rebuildCard(view);
+    rebuildCards(view);
     assignShortcuts();
   }
 
@@ -1768,22 +1894,18 @@ namespace umbriel {
       std::erase(m_dragTabGroup.tabs, view);
     }
     if (m_dragCard != nullptr && m_dragCard->view == view) {
-      if (!m_dragTabGroup.tabs.empty()) {
-        landTabGroup(*view, std::exchange(m_dragTabGroup, {}), /*closing=*/true);
-      }
-      hideDropHint();
-      m_dragCard = nullptr;
-      m_dragSourceWorkspace = nullptr;
-      m_drop = {};
-      m_dropWorkspaceGroup = nullptr;
-      m_server->cursor()->overrideCursor(nullptr);
+      abandonDrag(/*closing=*/true);
     }
     Workspace* workspace = view->workspace();
-    OutputState* state = stateForWorkspace(workspace);
-    if (Card* card = findCard(view); card != nullptr && animateClose) {
-      snapshotCardForClose(*card);
+    std::vector<OutputState*> touched{stateForWorkspace(workspace)};
+    addOwners(touched, view);
+    if (animateClose) {
+      // Every row showing the window animates it out, each with its own geometry.
+      for (Card* card : cardsOf(view)) {
+        snapshotCardForClose(*card);
+      }
     }
-    dropCard(view);
+    dropCards(view);
     // The overview keeps the focus chrome while it owns the seat, so a closed focused window hands focus to the nearest
     // survivor now rather than at zoom-out. Ask before layout detachment so the closing view still identifies its row
     // and column; the replacement is its predecessor, or the next neighbor at the leading edge.
@@ -1801,10 +1923,7 @@ namespace umbriel {
         workspace->setFocusedView(nullptr);
       }
     }
-    if (state != nullptr) {
-      layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
-    }
+    relayout(std::move(touched));
     assignShortcuts();
   }
 
@@ -1817,69 +1936,55 @@ namespace umbriel {
       return;
     }
 
-    Card* card = findCard(view);
     Workspace* workspace = view->workspace();
     OutputState* target = stateForWorkspace(workspace);
-    if (card == nullptr) {
-      if (target != nullptr) {
-        createCard(*target, view, workspace->index());
-        layoutOutput(*target);
-        wlr_output_schedule_frame(target->output->wlr());
+    std::vector<OutputState*> touched{target};
+    addOwners(touched, view);
+    // The mirrors of the old workspace are not those of the new one: their cards go, and the new mirrors' are made
+    // below. The card on the view's own row is kept and moved.
+    dropCards(view, /*mirrorRowsOnly=*/true);
+    const std::vector<Card*> own = cardsOf(view);
+    if (!own.empty() && target == nullptr) {
+      dropCards(view);
+    } else if (!own.empty()) {
+      Card* card = own.front();
+      card->row = workspace;
+      card->workspaceIndex = workspace->index();
+      if (OutputState* source = card->owner; source != target) {
+        const auto it = std::ranges::find_if(source->cards, [card](const std::unique_ptr<Card>& candidate) {
+          return candidate.get() == card;
+        });
+        std::unique_ptr<Card> moved = std::move(*it);
+        source->cards.erase(it);
+        // A hidden card may skip shadow layout; release its source-output shadow before changing owners.
+        moved->preview->releaseShadow();
+        moved->owner = target;
+        wlr_scene_node_reparent(&moved->preview->tree()->node, target->tree);
+        target->cards.push_back(std::move(moved));
       }
-      assignShortcuts();
-      return;
     }
+    createCards(view);
+    addOwners(touched, view);
+    relayout(std::move(touched));
+    assignShortcuts();
+  }
 
-    OutputState* source = card->owner;
-    if (target == nullptr) {
-      if (m_pressCard == card) {
-        m_pressCard = nullptr;
-      }
-      if (m_middlePressCard == card) {
-        m_middlePressCard = nullptr;
-      }
-      dropCard(view);
-      if (source != nullptr) {
-        layoutOutput(*source);
-        wlr_output_schedule_frame(source->output->wlr());
-      }
-      assignShortcuts();
+  void Overview::onWorkspaceMirrorChanged(Workspace* mirror) {
+    if (!m_active || mirror == nullptr) {
       return;
     }
-
-    card->workspaceIndex = workspace->index();
-    if (source == target) {
-      layoutOutput(*target);
-      wlr_output_schedule_frame(target->output->wlr());
-      assignShortcuts();
+    if (m_dragCard != nullptr && m_dragCard->row == mirror) {
+      endDrag(false);
+    }
+    dropCardsWhere([mirror](const Card& card) { return card.row == mirror; });
+    OutputState* state = stateForWorkspace(mirror);
+    if (state == nullptr) {
       return;
     }
-    if (source == nullptr) {
-      rebuildCard(view);
-      assignShortcuts();
-      return;
-    }
-
-    const auto it = std::ranges::find_if(source->cards, [card](const std::unique_ptr<Card>& candidate) {
-      return candidate.get() == card;
-    });
-    if (it == source->cards.end()) {
-      rebuildCard(view);
-      assignShortcuts();
-      return;
-    }
-
-    std::unique_ptr<Card> moved = std::move(*it);
-    source->cards.erase(it);
-    // A hidden card may skip shadow layout; release its source-output shadow before changing owners.
-    moved->preview->releaseShadow();
-    moved->owner = target;
-    wlr_scene_node_reparent(&moved->preview->tree()->node, target->tree);
-    target->cards.push_back(std::move(moved));
-    layoutOutput(*source);
-    layoutOutput(*target);
-    wlr_output_schedule_frame(source->output->wlr());
-    wlr_output_schedule_frame(target->output->wlr());
+    populateRow(*state, *mirror);
+    relayout({state});
+    // An ordinary card held over this row now hovers the windows of another source.
+    refreshDragTarget();
     assignShortcuts();
   }
 
@@ -1910,10 +2015,12 @@ namespace umbriel {
     if (!m_active) {
       return;
     }
-    if (OutputState* state = stateForWorkspace(workspace)) {
-      layoutOutput(*state);
-      wlr_output_schedule_frame(state->output->wlr());
+    // The mirrors of the workspace show its windows where it just placed them.
+    std::vector<OutputState*> states{stateForWorkspace(workspace)};
+    for (const Workspace* copy : workspace->mirrors()) {
+      states.push_back(stateForWorkspace(copy));
     }
+    relayout(std::move(states));
   }
 
   void Overview::onWorkspaceInventoryChanged(WorkspaceGroup* group) {
@@ -1929,6 +2036,11 @@ namespace umbriel {
       hideDropHint();
       m_drop = {};
     }
+    // A row that was pruned left its cards behind, and a mirror row moved to another output left its cards on the old
+    // one: they go, and the output that has the row builds its own.
+    dropCardsWhere([this](const Card& card) {
+      return !workspaceRowAlive(card.row) || stateForWorkspace(card.row) != card.owner;
+    });
     OutputState* state = stateFor(group->output());
     if (state == nullptr) {
       return;
@@ -1941,6 +2053,15 @@ namespace umbriel {
       state->rowScroll.translate(delta);
     }
     syncWorkspaceRows(*state, *group);
+    // A mirror row that has no cards yet, such as one a new workspace just made, shows its source's windows.
+    for (size_t index = 0; index < group->workspaceCount(); ++index) {
+      Workspace* row = group->workspaceAt(index);
+      if (row != nullptr && row->mirror() && std::ranges::none_of(state->cards, [row](const auto& card) {
+            return card->row == row;
+          })) {
+        populateRow(*state, *row);
+      }
+    }
     layoutOutput(*state);
     wlr_output_schedule_frame(state->output->wlr());
     assignShortcuts();
@@ -1999,15 +2120,7 @@ namespace umbriel {
       m_dropWorkspaceGroup = nullptr;
     }
     if (m_dragCard != nullptr && m_dragCard->owner == it->get()) {
-      if (!m_dragTabGroup.tabs.empty()) {
-        landTabGroup(*m_dragCard->view, std::exchange(m_dragTabGroup, {}), /*closing=*/false);
-      }
-      hideDropHint();
-      m_dragCard = nullptr;
-      m_dragSourceWorkspace = nullptr;
-      m_drop = {};
-      m_dropWorkspaceGroup = nullptr;
-      m_server->cursor()->overrideCursor(nullptr);
+      abandonDrag(/*closing=*/false);
     }
     if (m_pressCard != nullptr && m_pressCard->owner == it->get()) {
       m_pressCard = nullptr;
@@ -2281,7 +2394,7 @@ namespace umbriel {
       m_pressWorkspace = nullptr;
       m_pressTab = nullptr;
       if (card != nullptr && card->view != nullptr && card->view->mapped()) {
-        closeToWorkspace(card->view->workspace(), card->view);
+        closeToWorkspace(card->row, card->view);
       } else if (workspace != nullptr) {
         closeToWorkspace(workspace, tab != nullptr ? tab : workspace->focusedView());
       }
@@ -2292,7 +2405,7 @@ namespace umbriel {
     if (button == BTN_MIDDLE) {
       m_middlePressCard = card;
       Workspace* workspace = card != nullptr && card->view != nullptr
-          ? card->view->workspace()
+          ? card->row
           : workspaceAtPoint(lx, ly, nullptr, nullptr, false, false);
       m_middleOutput = workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : nullptr;
       m_middlePressX = lx;
@@ -2810,6 +2923,29 @@ namespace umbriel {
     refreshShortcutMatches();
   }
 
+  Overview::Card* Overview::shortcutTarget(const std::string& label) {
+    // The label is shared by every card of a view: it picks the one on the pointer's output, else the view's own row.
+    const Output* pointer = m_server->outputFromWlr(m_server->preferredOutput());
+    Card* best = nullptr;
+    for (const auto& state : m_outputs) {
+      for (const auto& card : state->cards) {
+        if (card->shortcut.size() != label.size()
+            || !shortcutStartsWith(card->shortcut, label)
+            || card->view == nullptr
+            || !card->view->mapped()) {
+          continue;
+        }
+        if (state->output == pointer) {
+          return card.get();
+        }
+        if (best == nullptr || card->row == card->view->workspace()) {
+          best = card.get();
+        }
+      }
+    }
+    return best;
+  }
+
   bool Overview::handleShortcutKey(uint32_t keysym) {
     if (!config().overview.shortcuts || dragging()) {
       return false;
@@ -2833,16 +2969,9 @@ namespace umbriel {
 
     std::string candidate = m_shortcutInput + character;
     for (int attempt = 0; attempt < 2; ++attempt) {
-      for (const auto& state : m_outputs) {
-        for (const auto& card : state->cards) {
-          if (card->shortcut.size() == candidate.size()
-              && shortcutStartsWith(card->shortcut, candidate)
-              && card->view != nullptr
-              && card->view->mapped()) {
-            closeToWorkspace(card->view->workspace(), card->view, true);
-            return true;
-          }
-        }
+      if (Card* card = shortcutTarget(candidate)) {
+        closeToWorkspace(card->row, card->view, true);
+        return true;
       }
       for (const auto& state : m_outputs) {
         for (const auto& card : state->cards) {
@@ -2980,9 +3109,12 @@ namespace umbriel {
     }
     wlr_scene_node_reparent(&card->preview->tree()->node, m_tree);
     wlr_scene_node_raise_to_top(&card->preview->tree()->node);
-    PreviewMetrics metrics{};
-    if (card->owner != nullptr && previewMetrics(*card->owner, *m_server, zoom(), metrics)) {
-      layoutCard(*card, metrics, card->owner->rowScroll.current(), liveTargetView());
+    // The window's other cards, on its own row and the mirrors of it, leave with the lift.
+    for (Card* other : cardsOf(view)) {
+      PreviewMetrics metrics{};
+      if (other->owner != nullptr && previewMetrics(*other->owner, *m_server, zoom(), metrics)) {
+        layoutCard(*other, metrics, other->owner->rowScroll.current(), liveTarget());
+      }
     }
     m_server->cursor()->overrideCursor("grabbing");
   }
@@ -3075,33 +3207,55 @@ namespace umbriel {
       hideDropHint();
       return;
     }
-    // Map the pointer out of the thumbnail and back into workspace world space.
+    // Map the pointer out of the thumbnail and back into workspace world space. A mirror row shows another workspace
+    // through its mapping, so the pointer maps on into that workspace's own space and a drop lands in it.
     const wlr_box preview = previewBox(metrics, state->rowScroll.current(), workspacePosition);
-    const double worldX = metrics.outputBox.x + (lx - preview.x) / metrics.zoom;
-    const double worldY = metrics.outputBox.y + (ly - preview.y) / metrics.zoom;
+    double worldX = metrics.outputBox.x + (lx - preview.x) / metrics.zoom;
+    double worldY = metrics.outputBox.y + (ly - preview.y) / metrics.zoom;
+    Workspace* layout = workspace;
+    std::optional<MirrorMapping> mapping;
+    if (workspace->mirror()) {
+      mapping = mirrorRowMapping(*workspace);
+      layout = workspace->layoutOwner();
+      if (layout == nullptr || !mapping) {
+        hideDropHint();
+        scheduleFrames();
+        return;
+      }
+      worldX = mapping->toSourceX(worldX);
+      worldY = mapping->toSourceY(worldY);
+    }
 
     if (card->view->tiled()) {
       // The overview applies its own projection after target selection. Keep
       // strip hints attached to content that is outside the normal viewport but
       // visible in the overview margin. Other layouts retain their normal
       // usable-area bounds.
-      const bool scrolling = workspace->scrollingLayout() != nullptr;
+      const bool scrolling = layout->scrollingLayout() != nullptr;
       m_drop = computeDropTarget(
-          *workspace, worldX, worldY, card->view,
+          *layout, worldX, worldY, card->view,
           DropTargetOptions{
               .clipHintToUsable = !scrolling,
               .reserveScrollingViewportEdges = false,
               .endpointGapsOutsideColumns = scrolling,
           }
       );
+      // The target keeps the row under the pointer; endDrag resolves the workspace it shows.
+      if (m_drop.workspace == layout) {
+        m_drop.workspace = workspace;
+      }
     } else {
       m_drop = {
           .workspace = workspace,
-          .column = static_cast<int>(workspace->layout().columns().size()),
+          .column = static_cast<int>(layout->layout().columns().size()),
       };
     }
-    if (m_drop.hintBox.width > 0 && m_drop.hintBox.height > 0) {
-      showDropHint(m_drop.hintBox, metrics, state->rowScroll.current(), workspacePosition, state->output);
+    wlr_box hint = m_drop.hintBox;
+    if (mapping) {
+      hint = mapping->toReceiver(hint);
+    }
+    if (hint.width > 0 && hint.height > 0) {
+      showDropHint(hint, metrics, state->rowScroll.current(), workspacePosition, state->output);
     } else {
       hideDropHint();
     }
@@ -3121,10 +3275,16 @@ namespace umbriel {
     }
     View* view = card->view;
     WorkspaceGroup* insertionGroup = drop ? m_dropWorkspaceGroup : nullptr;
-    Workspace* target = drop ? m_drop.workspace : nullptr;
+    // A mirror row drops into the workspace it shows, never into the mirror.
+    Workspace* dropRow = drop ? m_drop.workspace : nullptr;
+    Workspace* target = dropRow != nullptr ? dropRow->layoutOwner() : nullptr;
+    if (dropRow != nullptr && dropRow->mirror() && !mirrorRowMapping(*dropRow)) {
+      target = nullptr;
+    }
     DropTarget targetDrop = m_drop;
+    targetDrop.workspace = target;
     const wlr_box cardBox = card->box;
-    OutputState* dropState = target != nullptr ? stateForWorkspace(target) : nullptr;
+    OutputState* dropState = target != nullptr ? stateForWorkspace(dropRow) : nullptr;
 
     m_dragCard = nullptr;
     m_drop = {};
@@ -3142,6 +3302,7 @@ namespace umbriel {
     bool insertedWorkspace = false;
     if (insertionGroup != nullptr) {
       target = insertionGroup->insertDynamicWorkspace(m_dropWorkspaceIndex);
+      dropRow = target;
       dropState = target != nullptr ? stateForWorkspace(target) : nullptr;
       if (target != nullptr && dropState != nullptr) {
         targetDrop = {
@@ -3173,9 +3334,14 @@ namespace umbriel {
       // Floating: map the card origin back out of the thumbnail.
       PreviewMetrics metrics{};
       if (previewMetrics(*dropState, *m_server, zoom(), metrics)) {
-        const wlr_box preview = previewBox(metrics, dropState->rowScroll.current(), target->index());
-        const int x = metrics.outputBox.x + static_cast<int>(std::lround((cardBox.x - preview.x) / metrics.zoom));
-        const int y = metrics.outputBox.y + static_cast<int>(std::lround((cardBox.y - preview.y) / metrics.zoom));
+        const wlr_box preview = previewBox(metrics, dropState->rowScroll.current(), dropRow->index());
+        int x = metrics.outputBox.x + static_cast<int>(std::lround((cardBox.x - preview.x) / metrics.zoom));
+        int y = metrics.outputBox.y + static_cast<int>(std::lround((cardBox.y - preview.y) / metrics.zoom));
+        if (const std::optional<MirrorMapping> mapping =
+                dropRow->mirror() ? mirrorRowMapping(*dropRow) : std::nullopt) {
+          x = static_cast<int>(std::lround(mapping->toSourceX(x)));
+          y = static_cast<int>(std::lround(mapping->toSourceY(y)));
+        }
         if (view->workspace() != target) {
           view->moveToWorkspace(target);
           target->exitFullscreenForIncomingView(view);
@@ -3219,7 +3385,7 @@ namespace umbriel {
     m_dragSourceWidth.reset();
     // The card moved rows and scene parents; rebuilding is cheaper to reason
     // about than rebinding its surface listeners in place.
-    rebuildCard(view);
+    rebuildCards(view);
     applyProgress();
     settleRowsOnActiveWorkspace();
   }
@@ -3257,9 +3423,7 @@ namespace umbriel {
       syncDesktopMirrors(state);
     }
     for (const auto& card : state.cards) {
-      if (card->view != nullptr && card->view->workspace() != nullptr) {
-        card->workspaceIndex = card->view->workspace()->index();
-      }
+      card->workspaceIndex = card->row->index();
     }
   }
 
