@@ -102,6 +102,9 @@ namespace umbriel {
     wlr_scene_tree* createCloseSnapshotLayer(Output* output);
     // Hand a reparented snapshot to the manager; it drops the layer once the server reaps the snapshot.
     void trackCloseSnapshot(CloseSnapshotId id, Output* output, wlr_scene_tree* layer);
+    // Drop the wrapper layer of a snapshot the server has just reaped. Called synchronously from the reap so the
+    // tracked list never outlives its snapshot.
+    void forgetCloseSnapshot(CloseSnapshotId id);
 
   private:
     struct PendingSpawn {

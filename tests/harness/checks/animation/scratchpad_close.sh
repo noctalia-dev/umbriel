@@ -14,6 +14,11 @@ sample_blue() {
   "$UMBRIEL_PIXEL_PROBE" "$1" mean 40x40+240+160 | awk '{ print int($3) }'
 }
 
+# Inside the 300x200 dialog centred on its 100x100 parent, and outside the parent itself.
+sample_dialog() {
+  "$UMBRIEL_PIXEL_PROBE" "$1" mean 40x40+170+120 | awk '{ print int($3) }'
+}
+
 window_id() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'
 }
@@ -88,6 +93,13 @@ match.title = "^close-"
 default_floating = true
 default_floating_size_px = { width = 400, height = 240 }
 default_position = { x = 40, y = 40, anchor = "top_left" }
+
+# The dialog leg's parent: the child dialog is centred on it and is bigger than it.
+[[window_rule]]
+match.title = "^transient-parent$"
+default_floating = true
+default_floating_size_px = { width = 100, height = 100 }
+default_position = { x = 40, y = 40, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze
@@ -138,6 +150,8 @@ if ((member_after > 5)); then
   echo "scratchpad close snapshot outlived its timeline: control=$control_after member=$member_after"
   exit 1
 fi
+# The reaped snapshot must not keep the compositor "animating" on the frozen clock.
+"$UMBRIEL" settle
 
 # Leave the pad hidden so the next leg can show it again.
 "$UMBRIEL" msg scratchpad-toggle > /dev/null
@@ -165,5 +179,39 @@ if ((hiding_after > 5)); then
   exit 1
 fi
 "$UMBRIEL" clock-advance "$CLOSE_MS"
+"$UMBRIEL" settle
 
-echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after"
+# A dialog of a member is attached to its parent, and that link is released while the window closes. It must still be
+# captured into the pad.
+TRANSIENT_SUITE=mapped-together TRANSIENT_MODAL=1 TRANSIENT_PARENT_SIZE=100x100 \
+  "$CLIENT" pad-dialog 300 200 > "$UMBRIEL_RUNTIME_DIR/pad-dialog.log" 2>&1 &
+await_log "$UMBRIEL_RUNTIME_DIR/pad-dialog.log" mapped
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+"$UMBRIEL" msg window-focus "$(window_id transient-parent)" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad > /dev/null
+"$UMBRIEL" msg scratchpad-toggle > /dev/null
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+grim "$SHOTS/dialog-before.png"
+dialog_before=$(sample_dialog "$SHOTS/dialog-before.png")
+if ((dialog_before < 120)); then
+  echo "scratchpad dialog was not visible before its close: blue=$dialog_before"
+  exit 1
+fi
+close_window pad-dialog
+"$UMBRIEL" clock-advance "$MID_ADVANCE"
+grim "$SHOTS/dialog-mid.png"
+dialog_mid=$(sample_dialog "$SHOTS/dialog-mid.png")
+if ((dialog_mid < control_mid - 20 || dialog_mid > control_mid + 20)); then
+  echo "scratchpad dialog close snapshot was attenuated by the pad: control=$control_mid dialog=$dialog_mid"
+  exit 1
+fi
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+grim "$SHOTS/dialog-after.png"
+dialog_after=$(sample_dialog "$SHOTS/dialog-after.png")
+if ((dialog_after > 5)); then
+  echo "scratchpad dialog close snapshot outlived its timeline: blue=$dialog_after"
+  exit 1
+fi
+"$UMBRIEL" settle
+
+echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after, dialog $dialog_before -> $dialog_mid -> $dialog_after"
