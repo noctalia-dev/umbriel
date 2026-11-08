@@ -246,7 +246,7 @@ namespace umbriel {
         .sceneDownsample = before.appearance.downsample != after.appearance.downsample,
         // [colors] owns the border, backdrop, insert-hint, and shadow colors, so
         // any color edit refreshes window chrome.
-        .viewChrome = before.appearance != after.appearance
+        .viewChrome = !before.appearance.chromeEquals(after.appearance)
             || before.colors != after.colors
             || before.windowRules != after.windowRules
             || focusAppearance,

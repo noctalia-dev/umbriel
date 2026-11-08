@@ -403,6 +403,10 @@ UMBRIEL_TEST(downsampleMethodChangeRefreshesSceneSampling) {
   after.appearance.downsample = umbriel::DownsampleMode::Nearest;
   const ConfigEffects effects = ConfigEffects::between(before, after);
   CHECK(effects.sceneDownsample);
+  // A sampling reload repaints; it must not read as a chrome rebuild, which
+  // would refresh every decoration and close an open overview.
+  CHECK(!effects.viewChrome);
+  CHECK(!effects.invalidatesOverview());
   CHECK(!ConfigEffects::between(before, before).sceneDownsample);
 }
 

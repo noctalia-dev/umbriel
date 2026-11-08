@@ -804,12 +804,21 @@ namespace umbriel {
 
       // Sampling method for sources the scene shrinks into their destination:
       // the render_scale supersample downsample, scaled-down windows, and
-      // thumbnails. Box averages the source's texel footprint; the others
-      // point- or linear-sample a single texel.
+      // thumbnails. Box averages the source's texel footprint on a fixed 4x4
+      // grid; the others take one sample per pixel.
       DownsampleMode downsample = DownsampleMode::Box;
 
       int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
       bool operator==(const Appearance&) const = default;
+
+      // Whether a change to the decoration itself separates these two: the
+      // sampling method is a scene policy, refreshed by a frame, and must not
+      // read as a chrome rebuild that dismisses the overview.
+      bool chromeEquals(const Appearance& other) const {
+        Appearance lhs = *this;
+        lhs.downsample = other.downsample;
+        return lhs == other;
+      }
     } appearance;
 
     struct Animation {
