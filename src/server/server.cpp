@@ -1999,13 +1999,21 @@ namespace umbriel {
 
     // A snapshot only exists while fading out, so a settled one is finished.
     // Erasing destroys its scene tree and unregisters it.
+    m_reapedSnapshotsScratch.clear();
     std::erase_if(m_closeSnapshots, [this](const std::unique_ptr<CloseSnapshot>& snap) {
       if (snap->hasActiveAnimations()) {
         return false;
       }
+      m_reapedSnapshotsScratch.push_back(snap->id());
       unregisterAnimatable(snap.get());
       return true;
     });
+    // The erased snapshots destroyed their own trees, so an owner's wrapper layer is empty by now.
+    if (m_scratchpadManager != nullptr) {
+      for (const CloseSnapshotId id : m_reapedSnapshotsScratch) {
+        m_scratchpadManager->forgetCloseSnapshot(id);
+      }
+    }
     return active;
   }
 

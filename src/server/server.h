@@ -907,6 +907,8 @@ namespace umbriel {
     // values would move them out from under it on reallocation.
     std::vector<std::unique_ptr<CloseSnapshot>> m_closeSnapshots;
     CloseSnapshotId m_nextCloseSnapshotId = 1;
+    // Ids reaped in the current pass, so an owner can drop its wrapper layer after the snapshot's trees are gone.
+    std::vector<CloseSnapshotId> m_reapedSnapshotsScratch;
     std::vector<Animatable*> m_animatables;
     std::vector<Animatable*> m_animatablesScratch;
 

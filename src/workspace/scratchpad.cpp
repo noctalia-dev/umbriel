@@ -87,17 +87,6 @@ namespace umbriel {
       }
     }
 
-    // The server reaps finished snapshots after this pass, so a dead id here means its tree is already gone and only
-    // the wrapper is left. An output release reaps through the same path.
-    std::erase_if(m_trackedCloseSnapshots, [this](const TrackedCloseSnapshot& tracked) {
-      if (m_server->closeSnapshotAlive(tracked.id)) {
-        return false;
-      }
-      if (tracked.layer != nullptr) {
-        wlr_scene_node_destroy(&tracked.layer->node);
-      }
-      return true;
-    });
     for (const TrackedCloseSnapshot& tracked : m_trackedCloseSnapshots) {
       const auto fade = m_backdropFades.find(tracked.output);
       m_server->setCloseSnapshotFade(
@@ -831,6 +820,18 @@ namespace umbriel {
     m_server->setCloseSnapshotFade(
         id, fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F
     );
+  }
+
+  void ScratchpadManager::forgetCloseSnapshot(CloseSnapshotId id) {
+    std::erase_if(m_trackedCloseSnapshots, [id](const TrackedCloseSnapshot& tracked) {
+      if (tracked.id != id) {
+        return false;
+      }
+      if (tracked.layer != nullptr) {
+        wlr_scene_node_destroy(&tracked.layer->node);
+      }
+      return true;
+    });
   }
 
   void ScratchpadManager::releaseOutput(Output* output) {

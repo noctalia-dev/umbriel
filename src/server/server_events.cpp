@@ -2728,13 +2728,20 @@ namespace umbriel {
       m_insertHint->hideImmediate();
     }
     // Dropping the snapshot unregisters it and destroys its scene tree.
+    m_reapedSnapshotsScratch.clear();
     std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
       if (!snap->animatesOn(output)) {
         return false;
       }
+      m_reapedSnapshotsScratch.push_back(snap->id());
       unregisterAnimatable(snap.get());
       return true;
     });
+    if (m_scratchpadManager != nullptr) {
+      for (const CloseSnapshotId id : m_reapedSnapshotsScratch) {
+        m_scratchpadManager->forgetCloseSnapshot(id);
+      }
+    }
     // wlroots 0.20 does not track output lifetime for layer surfaces, so their wlr_output pointer would dangle once the
     // output is freed. Destroy them now while the wlr_output is still valid.
     {

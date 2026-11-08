@@ -582,6 +582,9 @@ namespace umbriel {
   }
 
   void View::handleUnmap(bool animateClose) {
+    // Attaching is what resolves this window to its pad, and the links below are released before the close capture.
+    Output* scratchpadOutput =
+        m_server->scratchpadManager() != nullptr ? m_server->scratchpadManager()->outputFor(this) : nullptr;
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
@@ -647,9 +650,6 @@ namespace umbriel {
         setOnActiveWorkspace(m_workspace->active());
       }
     }
-    // remove() drops the entry, so the close snapshot's output is read while the window still belongs to its pad.
-    Output* scratchpadOutput =
-        m_server->scratchpadManager() != nullptr ? m_server->scratchpadManager()->outputFor(this) : nullptr;
     if (m_server->scratchpadManager() != nullptr) {
       m_server->scratchpadManager()->remove(this);
     }
