@@ -634,6 +634,7 @@ namespace umbriel {
 
     setUrgent(false);
     m_floatingMaximized = false;
+    m_remaximizeOnTile = false;
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
     clearRegionState();

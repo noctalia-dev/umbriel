@@ -153,6 +153,7 @@ namespace umbriel {
         setMaximizedState(false);
       }
       m_floatingMaximized = false;
+      m_remaximizeOnTile = false;
       m_maximizedToEdges = false;
       m_restoreMaximizedToEdges = false;
       m_aloneOpeningSeed = AloneSeed::None;

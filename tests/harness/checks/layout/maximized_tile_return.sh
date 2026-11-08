@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # A maximized tile sent to the scratchpad or pinned comes back maximized, and unmaximizing restores its normal width.
+# A float resized out of maximize is no longer maximized, so it re-tiles at its normal width.
 set -euo pipefail
 
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -27,7 +28,7 @@ expect() {
   fi
 }
 
-for detach in scratchpad pin; do
+for detach in scratchpad pin resize; do
   title="maximized-tile-$detach"
   foot --title="$title" sh -c 'sleep 120' > /dev/null 2>&1 &
   for _ in $(seq 60); do
@@ -36,6 +37,16 @@ for detach in scratchpad pin; do
   done
   "$UMBRIEL" settle
   normal=$(state "$title")
+
+  if [[ $detach == resize ]]; then
+    act window-toggle-floating
+    act window-toggle-maximize
+    act window-modify-width-right -0.1
+    act window-toggle-floating
+    expect "$normal" "re-tiled float"
+    act window-close
+    continue
+  fi
 
   act window-toggle-maximize
   maximized=$(state "$title")

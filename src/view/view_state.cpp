@@ -449,6 +449,7 @@ namespace umbriel {
     const bool wasEdges = m_maximizedToEdges;
     m_maximizedToEdges = false;
     m_floatingMaximized = false;
+    m_remaximizeOnTile = false;
     m_restoreMaximizedToEdges = false;
     m_hasMaximizeRestoreBox = false;
     setMaximizedState(false);
@@ -960,7 +961,7 @@ namespace umbriel {
       }
     }
     if (remaximize && !wantFullscreen && placement == TilePlacement::Layout) {
-      setMaximized(true, false);
+      setMaximized(true);
     }
     updateForeignState();
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
