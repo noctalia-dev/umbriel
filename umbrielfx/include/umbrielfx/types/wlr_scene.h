@@ -628,6 +628,21 @@ void wlr_scene_set_preferred_scale_provider(
 void wlr_scene_set_downsample_mode(struct wlr_scene* scene, enum wlr_scene_downsample_mode mode);
 
 /**
+ * Whether a source box samples less than the whole buffer, i.e. has a crop
+ * edge that box taps could reach past. A scene surface always carries a source
+ * box — wlr_surface_get_buffer_source_box() reports the full buffer when the
+ * client set no viewport — so this compares extents instead of testing for an
+ * empty box. A whole-buffer source needs no sampling clamp: taps that leave it
+ * land in the texture's own edge, which GL_CLAMP_TO_EDGE already duplicates.
+ */
+static inline bool wlr_scene_source_box_is_cropped(const struct wlr_fbox* box, int texture_width, int texture_height) {
+  if (wlr_fbox_empty(box)) {
+    return false;
+  }
+  return box->x > 0.0 || box->y > 0.0 || box->width < texture_width || box->height < texture_height;
+}
+
+/**
  * Add a node displaying nothing but its children.
  */
 struct wlr_scene_tree* wlr_scene_tree_create(struct wlr_scene_tree* parent);

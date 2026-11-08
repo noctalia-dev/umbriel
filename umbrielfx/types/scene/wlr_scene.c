@@ -3648,7 +3648,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       // leave it land in the texture's own edge, which GL_CLAMP_TO_EDGE
       // already duplicates, and the clamp variant on every minified draw is
       // the configuration that flickered on NVIDIA.
-      crosses_crop_edge = downsample_box && !wlr_fbox_empty(&scene_buffer->src_box);
+      crosses_crop_edge =
+          downsample_box && wlr_scene_source_box_is_cropped(&scene_buffer->src_box, texture->width, texture->height);
     }
     if (!crosses_crop_edge) {
       sample_box = (struct wlr_fbox){0};

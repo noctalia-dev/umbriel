@@ -272,6 +272,22 @@ if build_tests
     suite: 'umbrielfx',
   )
 
+  umbrielfx_downsample_test = executable(
+    'umbrielfx-downsample-test',
+    'tests/downsample.c',
+    c_args: umbrielfx_c_args,
+    dependencies: umbrielfx_deps,
+    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
+    link_with: umbrielfx_lib,
+    build_by_default: false,
+  )
+
+  test(
+    'downsample',
+    umbrielfx_downsample_test,
+    suite: 'umbrielfx',
+  )
+
   umbrielfx_scale_hints_test = executable(
     'umbrielfx-scale-hints-test',
     'tests/scale_hints.c',
