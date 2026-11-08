@@ -220,4 +220,45 @@ UMBRIEL_TEST(nativeScreenPublishesTheRenderScale) {
   CHECK_EQ(right.x.y, main.x.y);
 }
 
+UMBRIEL_TEST(nativeScreenKeepsNeighboursAdjacentWithAMixedRenderScale) {
+  Fixture fixture;
+  CHECK(fixture.setUp(kMixedScales));
+  // The largest render scale sits on the RIGHT output, so scaling every origin
+  // by it would open a strip between the other two. Each rectangle is sized by
+  // its own factor: neighbours that touch in the layout must touch in X.
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, true, [&fixture](const wlr_output* output) {
+    return output == fixture.outputs[2] ? 5.0 : static_cast<double>(output->scale);
+  });
+
+  const wlr_box main = outputs.region(fixture.outputs[0], 0, 0).x;
+  const wlr_box above = outputs.region(fixture.outputs[1], 0, 0).x;
+  const wlr_box right = outputs.region(fixture.outputs[2], 0, 0).x;
+  CHECK_EQ(main.width, 3840);
+  CHECK_EQ(right.x, main.x + main.width);
+  CHECK_EQ(right.y, main.y);
+  CHECK_EQ(main.y, above.y + above.height);
+  wlr_box overlap{};
+  CHECK(!wlr_box_intersection(&overlap, &main, &right));
+  CHECK(!wlr_box_intersection(&overlap, &main, &above));
+}
+
+UMBRIEL_TEST(nativeScreenKeepsARealLayoutGap) {
+  Fixture fixture;
+  // An 80 px hole between two 1080p outputs is deliberate; the X screen must
+  // keep it, measured at the largest render scale.
+  CHECK(fixture.setUp({
+      {.width = 1920, .height = 1080, .scale = 1.0F, .x = 0, .y = 0},
+      {.width = 1920, .height = 1080, .scale = 1.0F, .x = 2000, .y = 0},
+  }));
+  const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, true, [&fixture](const wlr_output* output) {
+    return output == fixture.outputs[1] ? 2.0 : 1.0;
+  });
+
+  const wlr_box left = outputs.region(fixture.outputs[0], 0, 0).x;
+  const wlr_box right = outputs.region(fixture.outputs[1], 0, 0).x;
+  CHECK_EQ(left.width, 1920);
+  CHECK_EQ(right.width, 3840);
+  CHECK_EQ(right.x - (left.x + left.width), 160);
+}
+
 int main() { return RUN_TESTS(); }

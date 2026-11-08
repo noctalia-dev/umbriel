@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
+#include <optional>
 
 namespace umbriel {
 
@@ -125,10 +127,53 @@ namespace umbriel {
       positionScale = std::max(positionScale, region.scale);
       regions.push_back({.output = output, .region = region});
     }
-    // The largest scale spreads the outputs at least as far apart as any of them grew.
-    for (OutputRegion& entry : regions) {
-      entry.region.x.x = scaled(entry.region.layout.x - extents.x, positionScale);
-      entry.region.x.y = scaled(entry.region.layout.y - extents.y, positionScale);
+    // The largest scale spreads the outputs at least as far apart as any of them
+    // grew, but each rectangle is sized by its own factor, so scaling every
+    // origin by that factor leaves a hole wherever a narrow neighbour sits next
+    // to a wide one. Place each rectangle against its nearest neighbour on each
+    // axis instead: outputs that touch in the layout touch in X, and a real
+    // layout gap keeps its width at the largest scale.
+    const auto overlaps = [](int start, int length, int otherStart, int otherLength) {
+      return start < otherStart + otherLength && otherStart < start + length;
+    };
+    // Position of one region measured from the nearest region before it on one
+    // axis that shares space on the other; nullopt when nothing precedes it.
+    const auto nearestBefore = [&](const OutputRegion& entry, bool horizontal) -> std::optional<int> {
+      const wlr_box& layout = entry.region.layout;
+      const int lead = horizontal ? layout.x : layout.y;
+      const int cross = horizontal ? layout.y : layout.x;
+      const int crossSpan = horizontal ? layout.height : layout.width;
+      std::optional<int> position;
+      int nearestEdge = std::numeric_limits<int>::min();
+      for (const OutputRegion& candidate : regions) {
+        const wlr_box& other = candidate.region.layout;
+        const int edge = (horizontal ? other.x : other.y) + (horizontal ? other.width : other.height);
+        const int otherCross = horizontal ? other.y : other.x;
+        const int otherCrossSpan = horizontal ? other.height : other.width;
+        if (edge > lead || edge < nearestEdge || !overlaps(cross, crossSpan, otherCross, otherCrossSpan)) {
+          continue;
+        }
+        nearestEdge = edge;
+        const wlr_box& placed = candidate.region.x;
+        position = (horizontal ? placed.x : placed.y)
+            + (horizontal ? placed.width : placed.height)
+            + scaled(lead - edge, positionScale);
+      }
+      return position;
+    };
+    std::vector<size_t> order(regions.size());
+    std::ranges::iota(order, 0);
+    std::ranges::sort(order, {}, [&](size_t index) { return regions[index].region.layout.x; });
+    for (size_t index : order) {
+      const OutputRegion& entry = regions[index];
+      regions[index].region.x.x =
+          nearestBefore(entry, true).value_or(scaled(entry.region.layout.x - extents.x, positionScale));
+    }
+    std::ranges::sort(order, {}, [&](size_t index) { return regions[index].region.layout.y; });
+    for (size_t index : order) {
+      const OutputRegion& entry = regions[index];
+      regions[index].region.x.y =
+          nearestBefore(entry, false).value_or(scaled(entry.region.layout.y - extents.y, positionScale));
     }
     const XwaylandRegion fallback{.layout = {.x = extents.x, .y = extents.y, .width = 0, .height = 0}};
     const bool changed = regions != m_regions || fallback != m_fallback;
