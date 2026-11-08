@@ -1155,6 +1155,9 @@ namespace umbriel {
       // double-click window does. "none" keeps Mod+right-click a pure resize
       // drag.
       ModRightDoubleClick modRightDoubleClick = ModRightDoubleClick::None;
+      // X11 application names allowed to emulate desktop input through XTest
+      // without a permission prompt.
+      std::vector<std::string> x11InputAllow;
 
       struct Keyboard {
         // Comma-separated XKB layout list ("us,de"); the first entry is active at startup. `options` carries XKB option

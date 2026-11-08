@@ -389,7 +389,8 @@ namespace umbriel {
 
   void Server::requestInputEmulation(uint64_t id, std::string_view name) {
     const std::string application(name);
-    if (m_allowedInputNames.contains(application) && !sessionLocked()) {
+    if ((m_allowedInputNames.contains(application) || std::ranges::contains(config().input.x11InputAllow, application))
+        && !sessionLocked()) {
       m_eisInput->authorizeClient(id, true);
       return;
     }

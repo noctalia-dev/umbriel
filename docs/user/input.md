@@ -343,3 +343,10 @@ X11 windows marked `_NET_WM_WINDOW_TYPE_NOTIFICATION` do not take keyboard focus
 ### Controller desktop input
 
 Steam's desktop controller mappings can control native Wayland windows through Umbriel's X11 input emulation. Umbriel asks for permission on the first request and remembers the decision for the current session. See [X11 desktop input](security.md#x11-desktop-input) for consent and lock-screen behavior.
+
+To allow an application without the prompt, list its name in `x11_input_allow`:
+
+```toml
+[input]
+x11_input_allow = ["steam"]
+```

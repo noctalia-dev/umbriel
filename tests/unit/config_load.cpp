@@ -1476,6 +1476,20 @@ UMBRIEL_TEST(middleClickPasteLoadsAndDefaultsEnabled) {
   CHECK(store.config().input.middleClickPaste);
 }
 
+UMBRIEL_TEST(x11InputAllowLoadsNamesAndDefaultsEmpty) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[input]\nx11_input_allow = [\"steam\", \"xdotool\"]\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().input.x11InputAllow, (std::vector<std::string>{"steam", "xdotool"}));
+
+  file.write("[input]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.x11InputAllow.empty());
+}
+
 UMBRIEL_TEST(windowDragToggleReadsItsVocabularyAndDefaultsOff) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

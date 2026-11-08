@@ -156,6 +156,7 @@ radius = 3
 # https://docs.noctalia.dev/umbriel/input/
 #
 # [input]
+# x11_input_allow = ["steam"] # Skip the desktop control prompt for these X11 applications.
 #
 [input.keyboard]
 numlock_toggle = true

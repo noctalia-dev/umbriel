@@ -12,6 +12,8 @@ X11 applications can request control of the pointer and keyboard through XTest. 
 
 Press Enter to allow the requesting application for the current Umbriel session. Any other non-modifier key or pointer click denies it. Allow and deny decisions last until Umbriel restarts. Input received through this XTest emulation path cannot approve another permission prompt.
 
+Applications named in `[input] x11_input_allow` are allowed without a prompt, including after a restart. Use the name shown in the prompt, such as `steam`. X11 applications report this name themselves, so any X11 application running as your user can claim a listed name.
+
 While the session is locked, Umbriel releases held emulated keys and buttons and discards further emulated input. That input is not replayed after unlock. Physical input devices continue to work on the lock screen.
 
 This requires Xwayland built with libei support. No Steam preload library, device permission change, or RemoteDesktop portal implementation is required for this XTest input path.
