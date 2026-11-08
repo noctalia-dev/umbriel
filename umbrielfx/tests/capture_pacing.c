@@ -137,6 +137,19 @@ int main(void) {
   extents = pixman_region32_extents(&capture_output->pending_commit_damage);
   CHECK((extents->x2 - extents->x1) * (extents->y2 - extents->y1) == 24 * 24);
   capture->transform = WL_OUTPUT_TRANSFORM_NORMAL;
+  // A sampling-policy change must damage the scene's own outputs: a capture
+  // source renders only when its scene output has damage, so a live mirror
+  // would otherwise keep the old method until the client's next frame.
+  pixman_region32_clear(&capture_output->pending_commit_damage);
+  pixman_region32_clear(&desktop_output->pending_commit_damage);
+  wlr_scene_set_downsample_mode(mirror, WLR_SCENE_DOWNSAMPLE_BOX);
+  CHECK(!pixman_region32_empty(&capture_output->pending_commit_damage));
+  CHECK(pixman_region32_empty(&desktop_output->pending_commit_damage));
+  // Setting the mode the scene already holds changes nothing, so it must not
+  // ask for a repaint.
+  pixman_region32_clear(&capture_output->pending_commit_damage);
+  wlr_scene_set_downsample_mode(mirror, WLR_SCENE_DOWNSAMPLE_BOX);
+  CHECK(pixman_region32_empty(&capture_output->pending_commit_damage));
 
   wl_signal_emit_mutable(&surface.events.destroy, &surface);
   wlr_scene_node_destroy(&desktop->tree.node);

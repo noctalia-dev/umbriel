@@ -4441,7 +4441,16 @@ void wlr_scene_set_preferred_scale_provider(
 }
 
 void wlr_scene_set_downsample_mode(struct wlr_scene* scene, enum wlr_scene_downsample_mode mode) {
+  if (scene->downsample_mode == mode) {
+    return;
+  }
   scene->downsample_mode = mode;
+
+  // The choice changes how every output of this scene builds its next frame,
+  // and a mirror's last frame is not otherwise invalidated: a window-capture
+  // source renders only when its scene output has damage.
+  struct wlr_scene_output* scene_output;
+  wl_list_for_each(scene_output, &scene->outputs, link) { scene_output_damage_whole(scene_output); }
 }
 
 static void scene_output_handle_destroy(struct wlr_addon* addon) {

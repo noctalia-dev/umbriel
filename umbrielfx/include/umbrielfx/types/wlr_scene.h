@@ -620,6 +620,8 @@ void wlr_scene_set_preferred_scale_provider(
 /**
  * Chooses how minified scene buffers are sampled. Sources that are not
  * minified and buffers that pin WLR_SCALE_FILTER_NEAREST are unaffected.
+ * Changing the mode damages every output of the scene, because a mirror such
+ * as a window-capture source renders only when its scene has damage.
  * Defaults to WLR_SCENE_DOWNSAMPLE_BILINEAR in the library; Umbriel's shell
  * sets the mode from `appearance.downsample`, which defaults to box.
  */
