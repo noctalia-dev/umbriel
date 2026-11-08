@@ -257,6 +257,14 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
   }
 
+  View::ClientSize View::chromeContentSize() const {
+    if (m_mapped && m_presentation.width() > 0 && m_presentation.height() > 0) {
+      return {.width = m_presentation.width(), .height = m_presentation.height()};
+    }
+    const wlr_box content = committedContentBox();
+    return {.width = content.width, .height = content.height};
+  }
+
   void View::applyCornerRadius() {
     // Every buffer under the toplevel's surface tree is rounded against the complete frame, so the arc
     // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
@@ -264,11 +272,7 @@ namespace umbriel {
     const int radius = surfaceRadius();
     // Layout targets, resize animations, and pending floating restores can lead committed geometry. Round the
     // presented frame while the client redraws.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (m_tiled || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
+    const ClientSize size = chromeContentSize();
     struct Ctx {
       View* view;
       int radius;
@@ -278,13 +282,7 @@ namespace umbriel {
       int treeX;
       int treeY;
     } ctx{
-        this,
-        radius,
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height,
-        titleBarHeight(),
-        m_contentTree->node.x,
-        m_contentTree->node.y,
+        this, radius, size.width, size.height, titleBarHeight(), m_contentTree->node.x, m_contentTree->node.y,
     };
     wlr_scene_node_for_each_buffer(
         &m_contentTree->node,
@@ -329,17 +327,8 @@ namespace umbriel {
   }
 
   void View::updateBlur() {
-    // Blur follows the presented frame, like the shadow: an unacked configure or a resize animation shows a size the
-    // committed content box does not describe.
-    const wlr_box content = committedContentBox();
-    const bool usePresentedSize =
-        (m_tiled || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
-    updateBlur(
-        usePresentedSize ? m_presentation.width() : content.width,
-        usePresentedSize ? m_presentation.height() : content.height
-    );
+    const ClientSize size = chromeContentSize();
+    updateBlur(size.width, size.height);
   }
 
   SurfaceBlurOptions View::blurOptions() const {
@@ -425,15 +414,8 @@ namespace umbriel {
       return;
     }
     // Shadows follow the presented frame through layout changes, animations, and pending floating restores.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (m_tiled || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
-    updateShadow(
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height
-    );
+    const ClientSize size = chromeContentSize();
+    updateShadow(size.width, size.height);
   }
 
   void View::updateShadow(int contentWidth, int contentHeight) {
@@ -455,8 +437,8 @@ namespace umbriel {
   }
 
   void View::updateBorderGeometry() {
-    const wlr_box content = committedContentBox();
-    updateBorderGeometry(content.width, content.height);
+    const ClientSize size = chromeContentSize();
+    updateBorderGeometry(size.width, size.height);
   }
 
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {

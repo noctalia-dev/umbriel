@@ -416,13 +416,74 @@ namespace umbriel {
   }
 
   void View::requestFloatingSize(int width, int height) {
-    if (m_xsurface != nullptr) {
-      m_xFloatingRequestBase = currentSize();
+    if (m_floating.pendingSize() == std::optional{std::array{width, height}}) {
+      return;
     }
-    m_floating.recordSizeRequest(width, height, configureSize(width, height));
+    m_floating.setPendingSize(width, height);
+
+    // Replace queued pointer targets without flooding a client retaining its buffer.
+    if (m_floatingSizeConfigure && m_floatingSizeConfigure->throttled) {
+      return;
+    }
+    sendFloatingSize(width, height);
+  }
+
+  void View::sendFloatingSize(int width, int height) {
+    const wlr_box content = committedContentBox();
+    const wlr_surface* surface = rootSurface();
+    const Cursor* cursor = m_server->cursor();
+    const bool pointerResize = !m_tiled && cursor != nullptr && cursor->isResizingView(this);
+    m_xwaylandResizeConfigurePending = pointerResize && m_xsurface != nullptr;
+    const uint32_t serial = configureSize(width, height);
+    m_floating.recordSizeRequest(width, height, serial);
+    m_floatingSizeConfigure = FloatingSizeConfigure{
+        .size = {width, height},
+        .base = {content.width, content.height},
+        .serial = serial,
+        .surfaceSeq = surface != nullptr ? surface->current.seq : 0,
+        .supplied = false,
+        .throttled = pointerResize && (width != content.width || height != content.height),
+    };
+  }
+
+  void View::commitFloatingSize() {
+    if (!m_floatingSizeConfigure || !configureSettled(m_floatingSizeConfigure->serial)) {
+      return;
+    }
+    FloatingSizeConfigure& sent = *m_floatingSizeConfigure;
+    const wlr_surface* surface = rootSurface();
+    if (m_toplevel != nullptr
+        && surface != nullptr
+        && surface->current.seq != sent.surfaceSeq
+        && (surface->current.committed & WLR_SURFACE_STATE_BUFFER) != 0
+        && surface->buffer != nullptr) {
+      // A same-sized buffer answers a constrained resize only after an acknowledged configure serial. Xwayland can
+      // still commit buffers at the old size while its new X pixmap is being created.
+      sent.supplied = true;
+    }
+    const wlr_box content = committedContentBox();
+    if (!sent.throttled || !floatingSizeResponseUsable({content.width, content.height}, sent.base, sent.supplied)) {
+      return;
+    }
+    sent.throttled = false;
+    if (const auto pending = m_floating.pendingSize(); pending && *pending != sent.size) {
+      sendFloatingSize((*pending)[0], (*pending)[1]);
+    } else if (m_xsurface != nullptr) {
+      syncXwaylandConfigure();
+    }
+  }
+
+  void View::clearFloatingSizeRequest() {
+    m_floating.clearSizeRequest();
+    m_floatingSizeConfigure.reset();
+    m_openingFloatingSize.reset();
+    m_xwaylandResizeConfigurePending = false;
   }
 
   std::array<int, 2> View::floatingSize() const {
+    if (openingAnimationActive() && m_openingFloatingSize) {
+      return *m_openingFloatingSize;
+    }
     if (const auto& pending = m_floating.pendingSize()) {
       return *pending;
     }
@@ -508,17 +569,25 @@ namespace umbriel {
   }
 
   void View::beginFloatingResize(uint32_t edges) {
+    releaseOpeningPresentation(false, true);
     clearRegionState();
-    const wlr_box& geo = geometryBox();
-    m_floating.beginResize(
-        {.x = layoutX() + geo.x, .y = layoutY() + geo.y, .width = geo.width, .height = geo.height}, edges
-    );
-    syncFloatingResizePosition();
+    cancelPositionAnimation();
+    const wlr_box box{layoutX(), layoutY(), m_presentation.width(), m_presentation.height()};
+    m_floating.beginResize(box, edges);
+    resizeFloating(box);
   }
 
-  void View::resizeFloating(int width, int height) {
-    syncFloatingResizePosition();
-    requestFloatingSize(width, height);
+  void View::resizeFloating(const wlr_box& box) {
+    m_deferXwaylandConfigure = true;
+    requestFloatingSize(box.width, box.height);
+    m_presentation.setRegion(box.width, box.height);
+    setPosition(box.x, box.y);
+    presentBox(box);
+    m_deferXwaylandConfigure = false;
+    if (m_xsurface != nullptr) {
+      syncXwaylandConfigure();
+    }
+    scheduleFrame();
   }
 
   void View::resizeFloatingEdge(uint32_t edges, double delta) {
@@ -545,10 +614,9 @@ namespace umbriel {
     // A pending size and the position animation target form one logical box.
     // Anchor that box rather than the in-flight scene node, so repeated actions
     // keep the same far edge while the previous resize is still animating.
-    const wlr_box& geo = geometryBox();
     const wlr_box anchor{
-        .x = layoutTargetX() + geo.x,
-        .y = layoutTargetY() + geo.y,
+        .x = layoutTargetX(),
+        .y = layoutTargetY(),
         .width = basisWidth,
         .height = basisHeight,
     };
@@ -571,37 +639,60 @@ namespace umbriel {
     dropMaximizedForResize();
     requestFloatingSize(width, height);
     beginResizeAnimation(width, height);
-    animateTo(anchoredOrigin.x - geo.x, anchoredOrigin.y - geo.y);
+    animateTo(anchoredOrigin.x, anchoredOrigin.y);
     clampFloatingPositionForSize(width, height);
     finishFloatingResize();
   }
 
-  void View::finishFloatingResize() { m_floating.endResize(); }
+  void View::finishFloatingResize() {
+    m_floating.endResize();
+    const auto pending = m_floating.pendingSize();
+    const bool queued = m_floatingSizeConfigure
+        && m_floatingSizeConfigure->throttled
+        && pending
+        && *pending != m_floatingSizeConfigure->size;
+    if (m_floatingSizeConfigure) {
+      m_floatingSizeConfigure->throttled = false;
+    }
+    if (m_mapped && queued) {
+      // A client may redraw only after release. Flush the final target once.
+      sendFloatingSize((*pending)[0], (*pending)[1]);
+      m_floatingSizeConfigure->throttled = false;
+    }
+    if (m_mapped && m_xsurface != nullptr) {
+      syncXwaylandConfigure();
+    }
+    m_xwaylandResizeConfigurePending = false;
+  }
 
   void View::syncFloatingResizePosition() {
     // An attached dialog resizes around its centre, which its parent's layoutAttachments() keeps.
     if (!m_floating.anchor() || attached()) {
       return;
     }
-    const wlr_box& geo = geometryBox();
-    const FloatingPoint content = anchoredContentOrigin(*m_floating.anchor(), m_floating.edges(), geo);
-    const int x = content.x - geo.x;
-    const int y = content.y - geo.y;
-    // A keybind resize animates the origin with the size, so a commit implying a different origin retargets that
-    // animation (a matching target is left alone). A pointer drag places the origin directly to follow the cursor.
-    if ((m_posX.animating() || m_posY.animating()) && !sizeGrabActive()) {
-      if (layoutTargetX() != x || layoutTargetY() != y) {
-        animateTo(x, y);
-      }
+    if (sizeGrabActive() || sizeAnimating() || m_posX.animating() || m_posY.animating()) {
+      // Client commits cannot reposition a pointer box or retarget its trajectory.
       return;
     }
-    setPosition(x, y);
+    const auto [width, height] = floatingSize();
+    const FloatingPoint content =
+        anchoredContentOrigin(*m_floating.anchor(), m_floating.edges(), {0, 0, width, height});
+    setPosition(content.x, content.y);
   }
 
   void View::adoptFloatingClientSize() {
-    if (m_tiled || !m_mapped || scheduledFullscreen() || scheduledMaximized() || m_region) {
+    if (m_tiled
+        || !m_mapped
+        || scheduledFullscreen()
+        || scheduledMaximized()
+        || m_region
+        || sizeGrabTracksPointer()
+        || openingAnimationActive()) {
       return;
     }
+    const auto requested = m_floating.pendingSize();
+    const auto anchor = m_floating.anchor();
+    const uint32_t edges = m_floating.edges();
     if (!retireFloatingSizeRequest()) {
       return;
     }
@@ -609,16 +700,33 @@ namespace umbriel {
     if (geo.width <= 0 || geo.height <= 0) {
       return;
     }
+    const auto openingSize = m_openingFloatingSize;
+    m_openingFloatingSize.reset();
+    if ((requested && (geo.width != (*requested)[0] || geo.height != (*requested)[1]))
+        || (openingSize && (geo.width != (*openingSize)[0] || geo.height != (*openingSize)[1]))) {
+      beginResizeAnimation(geo.width, geo.height);
+      if (anchor && !attached()) {
+        const FloatingPoint origin = anchoredContentOrigin(*anchor, edges, geo);
+        animateTo(origin.x, origin.y);
+      }
+    }
     if (scheduledSize().width != geo.width || scheduledSize().height != geo.height) {
       // Once the latest compositor size request is committed, a floating
       // client owns its size. Direct assignment avoids an echo configure.
       adoptScheduledSize(geo.width, geo.height);
       const wlr_box usable = floatingUsableArea();
-      if (m_workspace != nullptr
+      if (!requested
+          && !openingSize
+          && m_workspace != nullptr
           && m_workspace->layoutMode() == LayoutMode::Stacking
           && !m_floating.restoredOrigin(usable)
           && transientParent() == nullptr) {
         placeInUsableArea();
+      } else if (openingSize) {
+        if (const auto clamped =
+                floatingClampTarget({layoutTargetX(), layoutTargetY()}, geo.width, geo.height, false)) {
+          animateTo(clamped->x, clamped->y);
+        }
       } else {
         clampFloatingPosition();
       }

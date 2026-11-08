@@ -100,7 +100,7 @@ namespace umbriel {
     wlr_box presentedTiledBox(const View* view, const Layout* layout = nullptr) const;
     // Output box a fullscreen view rests in. A member of the scrolling strip keeps its column's position, so scrolling
     // still carries it off-screen.
-    wlr_box fullscreenTargetBox(const View* view) const;
+    wlr_box fullscreenTargetBox(const View* view, const Layout* layout = nullptr) const;
     // Primary extent the strip scrolls within, less edge padding on both sides.
     // At least 1, so callers can divide by it.
     int scrollViewportExtent() const;
@@ -305,8 +305,7 @@ namespace umbriel {
     void syncFloatingLayer();
     friend class WorkspaceGroup;
 
-    // `resized` lists the members whose assigned size this arrange changed.
-    void applyPositions(bool animate, std::span<View* const> resized);
+    void applyPositions(bool animate);
     wlr_box tiledTargetBox(const View* view, const wlr_box& usable, const Layout* layout = nullptr) const;
     std::unique_ptr<Layout> previewLayout() const;
     int layoutAttachIndex(const View* view) const;
@@ -331,7 +330,7 @@ namespace umbriel {
     // Take `view` out of the layout while holding visible lanes still.
     void detachFromLayout(View* view);
     // Snap or animate every tiled member of the layout into its slot from wherever it is presented now.
-    void applyTiledMotion(const wlr_box& usable, bool animate, std::span<View* const> resized);
+    void applyTiledMotion(const wlr_box& usable, bool animate);
     void startLayoutTimelines(double positionSpeed, double sizeSpeed);
     // Advances a motion held by windows_resize.wait_for_redraw; true while it still holds.
     bool tickLayoutMotionWait(double nowMsec);
