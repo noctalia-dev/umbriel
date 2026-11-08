@@ -2121,6 +2121,12 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
       fx_options->luminances != NULL ? fx_options->luminances->max : 100.0F
   );
   glUniform1i(shader->target_tf, color_passthrough ? 0 : target_tf);
+  if (use_box) {
+    // A passthrough pass converts nothing, so its content already sits in the pass's target space: encoded for an
+    // SDR swapchain, linear behind colour management. The box average needs that curve, which the collapsed
+    // source_tf no longer carries.
+    glUniform1i(shader->box_tf, color_passthrough ? (GLint)target_tf : 0);
+  }
   glUniform1i(shader->map_hdr_to_sdr, fx_options->map_hdr_to_sdr);
 
   glUniform1f(shader->discard_transparent, fx_options->discard_transparent);

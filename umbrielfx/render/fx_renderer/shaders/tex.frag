@@ -83,6 +83,9 @@ uniform vec4 sample_bounds;
 // pass derives from the minification ratio (clamped to 4).
 uniform vec2 taps;
 uniform vec2 tap_step;
+// The curve a passthrough pass's content is in (0 when the pass converts). A passthrough draw converts nothing, so
+// `source_tf` says the pass is passthrough and `box_tf` says whether its content is encoded or already linear.
+uniform int box_tf;
 #endif
 
 vec4 sample_texel(vec2 uv) {
@@ -195,24 +198,43 @@ vec4 convert_color(vec4 color) {
 }
 
 #if DOWNSAMPLE
-// Passthrough passes have no transfer function to decode with: treat their
-// content as gamma 2.2, like the default sdr_transfer, so the box still
-// averages light instead of encoded values.
+// The box averages in linear light, so a passthrough pass still needs a curve: its content is already in the pass's
+// own target space, which `box_tf` names. An encoded target (an SDR swapchain) needs its curve; a linear one
+// (extended linear, behind colour management) needs none, because treating linear values as encoded over-brightens
+// every mixed pixel.
+vec4 passthrough_to_linear(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+  if (box_tf == TRANSFER_FUNCTION_SRGB) {
+    rgb = srgb_color_to_linear(max(rgb, vec3(0.0)));
+  } else if (box_tf == TRANSFER_FUNCTION_GAMMA22) {
+    rgb = pow(max(rgb, vec3(0.0)), vec3(2.2));
+  }
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
+vec4 linear_to_passthrough(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+  if (box_tf == TRANSFER_FUNCTION_SRGB) {
+    rgb = linear_color_to_srgb(max(rgb, vec3(0.0)));
+  } else if (box_tf == TRANSFER_FUNCTION_GAMMA22) {
+    rgb = linear_color_to_gamma22(rgb);
+  }
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
 vec4 sample_linear(vec2 uv) {
   vec4 color = sample_texel(uv);
   if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
-    float color_alpha = color.a;
-    vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : max(color.rgb / color_alpha, vec3(0.0));
-    return vec4(pow(rgb, vec3(2.2)) * color_alpha, color_alpha);
+    return passthrough_to_linear(color);
   }
   return decode_color(color);
 }
 
 vec4 encode_linear(vec4 color) {
   if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
-    float color_alpha = color.a;
-    vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
-    return vec4(linear_color_to_gamma22(rgb) * color_alpha, color_alpha);
+    return linear_to_passthrough(color);
   }
   return encode_color(color);
 }

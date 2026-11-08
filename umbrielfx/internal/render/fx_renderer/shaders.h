@@ -151,6 +151,7 @@ struct tex_shader {
   // Only used for the downsample (box) variants
   GLint taps;
   GLint tap_step;
+  GLint box_tf;
 
   // Only used for the effects shader
   struct {

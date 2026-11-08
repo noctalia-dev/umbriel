@@ -303,6 +303,7 @@ bool link_tex_program(
   shader->sample_bounds = sample_clamp ? glGetUniformLocation(prog, "sample_bounds") : -1;
   shader->taps = downsample ? glGetUniformLocation(prog, "taps") : -1;
   shader->tap_step = downsample ? glGetUniformLocation(prog, "tap_step") : -1;
+  shader->box_tf = downsample ? glGetUniformLocation(prog, "box_tf") : -1;
 
   if (!effects) {
     return true;
