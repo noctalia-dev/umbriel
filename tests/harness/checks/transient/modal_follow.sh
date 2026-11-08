@@ -19,7 +19,7 @@ output_x() {
 
 # The dialog shares every placement fact of the parent, and while the parent shows it sits centred on it and holds the
 # keyboard. Scrolling frames are vertically centred on the 720px output even when IPC reports a shorter client buffer.
-# floats keep their committed size.
+# Floats keep their committed size.
 readonly FOLLOWS='
   (.[] | select(.title == "transient-parent")) as $p | (.[] | select(.title == "modal-dialog")) as $d |
   $d.workspace == $p.workspace and $d.output == $p.output and $d.scratchpad == $p.scratchpad
