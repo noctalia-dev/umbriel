@@ -1929,10 +1929,9 @@ namespace umbriel {
   void Server::CloseSnapshot::applyOpacity() {
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
     const float rawAlpha = std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
-    // A lifecycle shader fades the whole snapshot at once, so its buffers and borders stay opaque under it. An owner's
-    // multiplier still attenuates them individually inside that composite: the shader API has no group-opacity
-    // uniform, so a pad hide fades each node's contribution instead of the composed frame. A single-surface window
-    // reads the same either way; an SSD frame, border or subsurfaces blend at the multiplier inside the frozen frame.
+    // A lifecycle shader fades the whole snapshot, so its nodes stay opaque under it. An owner's multiplier still
+    // attenuates them individually inside that composite: the shader API has no group-opacity uniform, so a pad hide
+    // fades each node's contribution rather than the composed frame (equal for a single surface, visible on seams).
     const bool composited = effectRegistry().lifecycleEffect(m_event) != nullptr;
     const bool builtInSlide = !composited && m_slide.target() != m_slide.from();
     // Keep the moving snapshot visible long enough for slide to read as motion. Fade keeps the configured timeline.
@@ -2011,7 +2010,7 @@ namespace umbriel {
       unregisterAnimatable(snap.get());
       return true;
     });
-    // The erased snapshots destroyed their own trees, so an owner's wrapper layer is empty by now.
+    // The erased snapshots destroyed their own trees, so an owner's wrapper layer is empty.
     if (m_scratchpadManager != nullptr) {
       for (const CloseSnapshotId id : m_reapedSnapshotsScratch) {
         m_scratchpadManager->forgetCloseSnapshot(id);

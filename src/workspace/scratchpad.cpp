@@ -680,7 +680,7 @@ namespace umbriel {
     if (output == nullptr || m_server == nullptr) {
       return;
     }
-    // A mid-fade close snapshot is clipped to its capture output's box, which a layout move or resize changes.
+    // A mid-fade wrapper is clipped to its capture output's box, which a layout change moves.
     if (!m_trackedCloseSnapshots.empty()) {
       wlr_box outputBox{};
       wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
@@ -810,8 +810,7 @@ namespace umbriel {
     if (layer == nullptr) {
       return nullptr;
     }
-    // The snapshot keeps its canvas coordinates, so the wrapper sits at the origin and clips to this output's box in
-    // the same global space.
+    // The snapshot keeps canvas coordinates, so the wrapper sits at the origin and clips in the same global space.
     wlr_box box{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
     wlr_scene_node_set_position(&layer->node, 0, 0);
@@ -830,7 +829,7 @@ namespace umbriel {
   void ScratchpadManager::syncTrackedCloseSnapshots() {
     for (const TrackedCloseSnapshot& tracked : m_trackedCloseSnapshots) {
       const auto fade = m_backdropFades.find(tracked.output);
-      // A pad with no fade entry is fully hidden, so its snapshots go with it.
+      // A pad with no fade entry is fully hidden.
       m_server->setCloseSnapshotFade(
           tracked.id, fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F
       );
@@ -889,7 +888,7 @@ namespace umbriel {
         fade.snap(visibleOn(output) ? 1.0 : 0.0);
         updateDimAndBlur(output);
       }
-      // The snap skips the tick that would have pushed the new value to a fading close snapshot.
+      // The snap skips the tick that would have pushed the new value.
       syncTrackedCloseSnapshots();
       for (const Entry& entry : m_entries) {
         if (entry.view == nullptr) {

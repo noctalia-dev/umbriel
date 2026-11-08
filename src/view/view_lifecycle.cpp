@@ -582,7 +582,7 @@ namespace umbriel {
   }
 
   void View::handleUnmap(bool animateClose) {
-    // Attaching is what resolves this window to its pad, and the links below are released before the close capture.
+    // Read before the links below are released: they are what resolve this window to its pad.
     Output* scratchpadOutput =
         m_server->scratchpadManager() != nullptr ? m_server->scratchpadManager()->outputFor(this) : nullptr;
     m_server->seat()->toplevelDrags().unmapped(this);

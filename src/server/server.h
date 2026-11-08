@@ -525,8 +525,7 @@ namespace umbriel {
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
-    // Attenuate a snapshot by an owner's own fade (a scratchpad's backdrop), on top of its lifecycle alpha. The owner
-    // must keep the id alive; a reaped one is a no-op.
+    // Fold an owner's fade (a scratchpad's backdrop) into a snapshot's opacity. A reaped id is a no-op.
     void setCloseSnapshotFade(CloseSnapshotId id, float multiplier);
     // End a held snapshot; it is reaped at the end of the current animation tick.
     void releaseCloseSnapshot(CloseSnapshotId id);
@@ -844,7 +843,7 @@ namespace umbriel {
     private:
       void applyPresentation();
       void applyShrink(int width, int height);
-      // Push the composed opacity (lifecycle alpha times the owner's fade multiplier) into every captured node.
+      // Push lifecycle alpha times the owner's fade into every captured node.
       void applyOpacity();
 
       Server* m_server = nullptr;
@@ -900,14 +899,14 @@ namespace umbriel {
       int m_shadowWidth = 0;
       int m_shadowHeight = 0;
       wlr_box m_shadowHole{};
-      // An owner-driven fade (scratchpad backdrop) the snapshot fades along with, independent of its own timeline.
+      // An owner's fade (a scratchpad backdrop), independent of the snapshot's own timeline.
       float m_fadeMultiplier = 1.0F;
     };
     // unique_ptr because the registry holds raw pointers to these: a vector of
     // values would move them out from under it on reallocation.
     std::vector<std::unique_ptr<CloseSnapshot>> m_closeSnapshots;
     CloseSnapshotId m_nextCloseSnapshotId = 1;
-    // Ids reaped in the current pass, so an owner can drop its wrapper layer after the snapshot's trees are gone.
+    // Ids reaped this pass, so an owner can drop its wrapper layer once the snapshot's trees are gone.
     std::vector<CloseSnapshotId> m_reapedSnapshotsScratch;
     std::vector<Animatable*> m_animatables;
     std::vector<Animatable*> m_animatablesScratch;

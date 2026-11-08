@@ -1081,7 +1081,7 @@ namespace umbriel {
   }
 
   CloseSnapshotId View::captureSnapshot(bool held, bool withShadow, Output* scratchpadOutput) {
-    // A member was removed from its pad before the capture, so the owner passes its output in.
+    // A member's pad entry is gone by now, so its output comes from the owner.
     Output* output = scratchpadOutput != nullptr
         ? scratchpadOutput
         : (m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output()
@@ -1184,14 +1184,14 @@ namespace umbriel {
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
-    // A scratchpad draws its members above its own dim rect and blur, so a fading member has to leave the output root
-    // for the pad tree. Keeping the capture in the output root would dim it twice and let the pad's fade miss it.
+    // The pad draws members above its dim rect and blur, so a fading member moves into the pad tree; in the output
+    // root it would be dimmed twice and miss the pad's fade.
     if (id != kInvalidCloseSnapshot && scratchpadOutput != nullptr && m_server->scratchpadManager() != nullptr) {
       if (wlr_scene_tree* layer = m_server->scratchpadManager()->createCloseSnapshotLayer(output)) {
         if (shadow.tree != nullptr) {
           wlr_scene_node_reparent(&shadow.tree->node, layer);
         }
-        // Last, so the snapshot copies draw above its shadow in the new layer.
+        // Last, so the copies draw above the shadow.
         wlr_scene_node_reparent(&snap->node, layer);
         m_server->scratchpadManager()->trackCloseSnapshot(id, output, layer);
       }

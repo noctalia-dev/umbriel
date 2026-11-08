@@ -503,7 +503,7 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    // `withShadow` copies the shadow. A `scratchpadOutput` reparents the snapshot into that pad's tree, above its dim.
+    // `withShadow` copies the shadow; `scratchpadOutput` reparents the snapshot into that pad's tree.
     CloseSnapshotId captureSnapshot(bool held, bool withShadow, Output* scratchpadOutput = nullptr);
     friend class Cursor;
     friend class ScratchpadManager;
@@ -669,7 +669,7 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    // `scratchpadOutput` is the pad the closing member was drawn in, or nullptr for an ordinary window.
+    // `scratchpadOutput` is the pad the closing member was drawn in, or nullptr for a plain window.
     [[nodiscard]] CloseSnapshotId beginCloseAnimation(Output* scratchpadOutput);
     // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
     // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
