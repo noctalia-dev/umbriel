@@ -1268,10 +1268,16 @@ namespace umbriel {
       if (group == nullptr) {
         return false;
       }
-      // The tabs split the group's extent evenly, so the column keeps its other rows where they were.
+      // The tabs split the group's extent evenly, so the column keeps its other rows where they were. A group alone in
+      // its column has no other rows, so its tabs weigh 1 like a new row and the column's free space scales to match.
       const size_t first = group->first;
       const size_t count = group->count;
-      const double share = std::max(kMinHeightWeight, column.heightWeights[first]) / static_cast<double>(count);
+      double share = std::max(kMinHeightWeight, column.heightWeights[first]) / static_cast<double>(count);
+      if (column.tabs.unitCount(column.views.size()) == 1) {
+        column.topGapWeight /= share;
+        column.bottomGapWeight /= share;
+        share = 1.0;
+      }
       column.tabs.dissolve(row);
       for (size_t member = first; member < first + count; ++member) {
         column.heightWeights[member] = share;

@@ -442,6 +442,38 @@ UMBRIEL_TEST(untabbingRestoresTheStackedRows) {
   CHECK(sameBox(fixture.layout.targetBox(stub(1)), stacked));
 }
 
+UMBRIEL_TEST(untabbingAfterClosingTabsSplitsTheColumnEvenly) {
+  ScrollingFixture fixture;
+  fixture.stack(3);
+  fixture.layout.setTabbed(stub(0), true);
+  fixture.layout.removeView(stub(1));
+  fixture.layout.removeView(stub(2));
+  fixture.layout.setTabbed(stub(0), false);
+  fixture.layout.insertView(stub(3), 1);
+  fixture.layout.consume(stub(3), -1);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 0.5, 1e-9);
+}
+
+UMBRIEL_TEST(untabbingKeepsTheColumnsProportions) {
+  // Alone in its column, a shrunk group's tabs keep the free space it left.
+  ScrollingFixture alone;
+  alone.stack(2);
+  alone.layout.setTabbed(stub(0), true);
+  CHECK(alone.layout.setHeightFraction(stub(0), 0.5));
+  alone.layout.setTabbed(stub(0), false);
+  CHECK_NEAR(alone.layout.heightFraction(stub(0)), 0.25, 1e-9);
+  CHECK_NEAR(alone.layout.heightFraction(stub(1)), 0.25, 1e-9);
+  // Beside another row, the group's tabs split its extent and that row keeps its own.
+  ScrollingFixture beside;
+  beside.stack(3);
+  beside.layout.setTabbed(stub(0), true);
+  CHECK(beside.layout.moveViewVertical(stub(2), 1));
+  beside.layout.removeView(stub(1));
+  const double below = beside.layout.heightFraction(stub(2));
+  beside.layout.setTabbed(stub(0), false);
+  CHECK_NEAR(beside.layout.heightFraction(stub(2)), below, 1e-9);
+}
+
 UMBRIEL_TEST(aVerticalStripTabsALaneAcrossItsTop) {
   ScrollingFixture fixture(ScrollingDirection::Vertical);
   fixture.stack(2);

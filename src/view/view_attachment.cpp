@@ -145,6 +145,7 @@ namespace umbriel {
       m_displacedHome.reset();
       if (m_tiled) {
         m_tiled = false;
+        m_tiledSizeRequest.reset();
         setTiledState(
             config().appearance.preferNoCsd ? WLR_EDGE_TOP | WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT : 0
         );
@@ -267,8 +268,8 @@ namespace umbriel {
     const int restX = layoutTargetX();
     const int restY = layoutTargetY();
     for (View* attachment : m_attachments) {
-      const wlr_box& geometry = attachment->geometryBox();
-      const wlr_box sized{.x = 0, .y = 0, .width = geometry.width, .height = geometry.height};
+      const auto [width, height] = attachment->floatingSize();
+      const wlr_box sized{.x = 0, .y = 0, .width = width, .height = height};
       const int inset = attachment->borderInset();
       const int x =
           attachmentOffset(restX, m_presentedBox.width, attachment->presentedWidth(sized), area.x, area.width, inset);
@@ -279,8 +280,8 @@ namespace umbriel {
       attachment->applyPresentation({
           .x = m_presentedBox.x + x,
           .y = m_presentedBox.y + y,
-          .width = geometry.width,
-          .height = geometry.height,
+          .width = width,
+          .height = height,
       });
     }
   }
