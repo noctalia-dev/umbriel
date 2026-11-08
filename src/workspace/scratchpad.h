@@ -97,13 +97,12 @@ namespace umbriel {
     void reconcileConfig();
     // Return entries to the output they were parked on. Entries whose output is still gone park on `fallback`.
     size_t restoreDisplaced(Output* fallback);
-    // A close snapshot of a member fades with the pad's own backdrop fade, so it must draw above the dim rect and blur.
-    // Returns the layer to reparent the snapshot (and its shadow) into, or nullptr to leave it where it was captured.
+    // A member's close snapshot draws above the pad's dim and blur, in a layer of the pad tree. Nullptr leaves the
+    // capture where it is.
     wlr_scene_tree* createCloseSnapshotLayer(Output* output);
-    // Hand a reparented snapshot to the manager; it drops the layer once the server reaps the snapshot.
+    // The manager drops the layer once the server reaps the snapshot.
     void trackCloseSnapshot(CloseSnapshotId id, Output* output, wlr_scene_tree* layer);
-    // Drop the wrapper layer of a snapshot the server has just reaped. Called synchronously from the reap so the
-    // tracked list never outlives its snapshot.
+    // Drop a just-reaped snapshot's wrapper layer, called from the reap itself.
     void forgetCloseSnapshot(CloseSnapshotId id);
 
   private:
@@ -175,7 +174,7 @@ namespace umbriel {
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
-    // Push every tracked snapshot's current backdrop fade, for changes a tick would otherwise be the only witness of.
+    // Push each tracked snapshot's current backdrop fade.
     void syncTrackedCloseSnapshots();
     wlr_scene_rect* dimRectFor(Output* output);
     wlr_scene_blur* blurNodeFor(Output* output);
