@@ -261,4 +261,44 @@ UMBRIEL_TEST(nativeScreenKeepsARealLayoutGap) {
   CHECK_EQ(right.x - (left.x + left.width), 160);
 }
 
+UMBRIEL_TEST(nativeScreenPlacementIgnoresOutputRegistrationOrder) {
+  // Two uneven monitors stacked to the left of a tall one: both end at layout
+  // x = 1920, but the 2.0-scale one ends at X 3840 while the 1.0-scale one ends
+  // at 1920. A tie in the layout edge must not depend on which was registered
+  // first, and the tall output must start past the wider of them.
+  const std::vector<OutputSpec> touching = {
+      {.width = 1920, .height = 1080, .scale = 1.0F, .x = 0, .y = 0},
+      {.width = 3840, .height = 2160, .scale = 2.0F, .x = 0, .y = 1080},
+      {.width = 1920, .height = 2160, .scale = 1.0F, .x = 1920, .y = 0},
+  };
+  const std::vector<OutputSpec> reversed = {touching[1], touching[2], touching[0]};
+
+  const auto place = [](const std::vector<OutputSpec>& specs) {
+    Fixture fixture;
+    CHECK(fixture.setUp(specs));
+    const umbriel::XwaylandOutputs outputs(fixture.display, fixture.layout, true, [](const wlr_output* output) {
+      return static_cast<double>(output->scale);
+    });
+    std::vector<wlr_box> boxes;
+    boxes.reserve(fixture.outputs.size());
+    for (wlr_output* output : fixture.outputs) {
+      boxes.push_back(outputs.region(output, 0, 0).x);
+    }
+    for (size_t a = 0; a < boxes.size(); ++a) {
+      for (size_t b = a + 1; b < boxes.size(); ++b) {
+        wlr_box overlap{};
+        CHECK(!wlr_box_intersection(&overlap, &boxes[a], &boxes[b]));
+      }
+    }
+    const auto tall =
+        std::ranges::find_if(specs, [](const OutputSpec& spec) { return spec.width == 1920 && spec.height == 2160; });
+    return boxes[static_cast<size_t>(std::distance(specs.begin(), tall))].x;
+  };
+
+  const int first = place(touching);
+  const int second = place(reversed);
+  CHECK_EQ(first, 3840);
+  CHECK_EQ(first, second);
+}
+
 int main() { return RUN_TESTS(); }

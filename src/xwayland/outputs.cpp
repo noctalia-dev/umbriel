@@ -150,14 +150,18 @@ namespace umbriel {
         const int edge = (horizontal ? other.x : other.y) + (horizontal ? other.width : other.height);
         const int otherCross = horizontal ? other.y : other.x;
         const int otherCrossSpan = horizontal ? other.height : other.width;
-        if (edge > lead || edge < nearestEdge || !overlaps(cross, crossSpan, otherCross, otherCrossSpan)) {
+        if (edge > lead || !overlaps(cross, crossSpan, otherCross, otherCrossSpan)) {
           continue;
         }
-        nearestEdge = edge;
         const wlr_box& placed = candidate.region.x;
-        position = (horizontal ? placed.x : placed.y)
-            + (horizontal ? placed.width : placed.height)
-            + scaled(lead - edge, positionScale);
+        const int reach =
+            (horizontal ? placed.x + placed.width : placed.y + placed.height) + scaled(lead - edge, positionScale);
+        // Predecessors that share the nearest layout edge can still differ in X;
+        // keep the furthest of them so the result never depends on list order.
+        if (edge > nearestEdge || (edge == nearestEdge && reach > position.value_or(std::numeric_limits<int>::min()))) {
+          nearestEdge = edge;
+          position = reach;
+        }
       }
       return position;
     };
