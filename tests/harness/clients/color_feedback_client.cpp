@@ -761,6 +761,85 @@ int main(int argc, char** argv) {
       std::println(stderr, "color-feedback-client: the retained surface profiles did not fill the byte budget");
       return 1;
     }
+    if (std::strcmp(mode, "surface-unset") == 0) {
+      // Unsetting a description must release the ICC payload it held: a client
+      // that sets, commits, unsets and commits again must not accumulate dead
+      // charges against its budget.
+      std::array<wl_surface*, 2> surfaces{};
+      std::array<wp_color_management_surface_v1*, 2> colorSurfaces{};
+      for (size_t index = 0; index < surfaces.size(); ++index) {
+        const int profile = open(argv[2], O_RDONLY);
+        if (profile < 0) {
+          std::println(stderr, "color-feedback-client: cannot open ICC budget fixture {}", argv[2]);
+          return 1;
+        }
+        const off_t length = lseek(profile, 0, SEEK_END);
+        lseek(profile, 0, SEEK_SET);
+        auto* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+        wp_image_description_creator_icc_v1_set_icc_file(creator, profile, 0, static_cast<uint32_t>(length));
+        close(profile);
+        auto* description = wp_image_description_creator_icc_v1_create(creator);
+        DescriptionResult result;
+        wp_image_description_v1_add_listener(description, &kResultListener, &result);
+        while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+        }
+        if (!result.ready) {
+          std::println(stderr, "color-feedback-client: budget fixture did not parse (cause {})", result.cause);
+          return 1;
+        }
+        surfaces[index] = wl_compositor_create_surface(state.compositor);
+        colorSurfaces[index] = wp_color_manager_v1_get_surface(state.manager, surfaces[index]);
+        state.surface = surfaces[index];
+        state.colorSurface = colorSurfaces[index];
+        state.selectedDescription = description;
+        state.tagged = true;
+        if (!present(state)) {
+          std::println(stderr, "color-feedback-client: cannot present the unset surface");
+          return 1;
+        }
+        wp_color_management_surface_v1_unset_image_description(state.colorSurface);
+        state.tagged = false;
+        if (!present(state)) {
+          std::println(stderr, "color-feedback-client: cannot commit the unset surface");
+          return 1;
+        }
+        wp_image_description_v1_destroy(description);
+        if (wl_display_roundtrip(state.display) < 0) {
+          std::println(stderr, "color-feedback-client: the display died while unsetting the description");
+          return 1;
+        }
+      }
+      // Nothing is set any more, so a third profile has to be admitted.
+      const int profile = open(argv[2], O_RDONLY);
+      if (profile < 0) {
+        std::println(stderr, "color-feedback-client: cannot open ICC budget fixture {}", argv[2]);
+        return 1;
+      }
+      const off_t length = lseek(profile, 0, SEEK_END);
+      lseek(profile, 0, SEEK_SET);
+      auto* creator = wp_color_manager_v1_create_icc_creator(state.manager);
+      wp_image_description_creator_icc_v1_set_icc_file(creator, profile, 0, static_cast<uint32_t>(length));
+      close(profile);
+      if (expectProtocolError(
+              state, &wp_image_description_creator_icc_v1_interface, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE
+          )) {
+        std::println(stderr, "color-feedback-client: an unset description kept its ICC bytes charged");
+        return 1;
+      }
+      auto* description = wp_image_description_creator_icc_v1_create(creator);
+      DescriptionResult result;
+      wp_image_description_v1_add_listener(description, &kResultListener, &result);
+      while (!result.ready && !result.failed && wl_display_dispatch(state.display) >= 0) {
+      }
+      if (!result.ready) {
+        std::println(stderr, "color-feedback-client: the profile after the unsets did not become ready");
+        return 1;
+      }
+      std::println(R"({{"event":"icc_unset_released","iterations":2}})");
+      wp_image_description_v1_destroy(description);
+      wl_display_disconnect(state.display);
+      return 0;
+    }
     if (argc != 3) {
       std::println(stderr, "color-feedback-client: icc mode {} needs a profile argument", mode);
       return 1;

@@ -582,6 +582,10 @@ namespace umbriel {
         return;
       }
       surface->pending.set = false;
+      // Readers gate on `set`, but the payload would otherwise stay charged to
+      // the client's budget until something overwrote it: a client cycling
+      // set/unset would run out of budget with no bytes in use.
+      surface->pending.description = {};
     }
 
     static void handleSurfaceCommit(wl_listener* listener, void*) {

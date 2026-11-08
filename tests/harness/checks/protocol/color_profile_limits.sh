@@ -97,6 +97,13 @@ if [[ $rc != 2 ]] \
   exit 1
 fi
 
+# --- unsetting a description releases the bytes it retained -----------------
+rc=$(run_icc_mode surface-unset icc-surface-unset "$PADDED")
+if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_unset_released"' "$RUNTIME/icc-surface-unset.log"; then
+  echo "unsetting descriptions kept their ICC bytes charged: rc=$rc $(cat "$RUNTIME/icc-surface-unset.log")"
+  exit 1
+fi
+
 # --- the budget is per client: a later client must not inherit the charges ---
 rc=$(run_icc_mode post-surface-ready icc-ready "$PADDED")
 if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_ready"' "$RUNTIME/icc-post-surface-ready.log"; then
@@ -109,4 +116,4 @@ if ! "$UMBRIEL" color --json | jq -e '.color_manager == true' > /dev/null; then
   exit 1
 fi
 
-echo "icc_file fd stability, the creator budget and the staged/retained/surface-retained byte budgets verified live"
+echo "icc_file fd stability, the creator budget and the staged/retained/unset byte budgets verified live"
