@@ -428,7 +428,6 @@ namespace umbriel {
       state->active = false;
     }
     Output* output = state->output;
-    const wlr_box targetArea = usableArea(*m_server, output);
     const auto& animation = config().animation;
     const auto& scratchpad = animation.scratchpad;
     const bool animate = animateTransition && output != nullptr && animation.enabled && scratchpad.enabled;
@@ -445,22 +444,8 @@ namespace umbriel {
         std::erase(m_hidingViews, view);
         view->cancelPositionAnimation();
         view->setNodeEnabled(true);
-        const int width = view->presentation().width();
-        const int height = view->presentation().height();
-        if (width > 0 && height > 0 && targetArea.width > 0 && targetArea.height > 0) {
-          const int centerX = view->layoutX() + width / 2;
-          const int centerY = view->layoutY() + height / 2;
-          const bool centerOnTarget = centerX >= targetArea.x
-              && centerX < targetArea.x + targetArea.width
-              && centerY >= targetArea.y
-              && centerY < targetArea.y + targetArea.height;
-          if (!centerOnTarget) {
-            view->snapPosition(
-                targetArea.x + std::max(0, (targetArea.width - width) / 2),
-                targetArea.y + std::max(0, (targetArea.height - height) / 2)
-            );
-          }
-        }
+        // A show never reframes a member: the floating margin keeps a window grabbable wherever it was left, and a pad
+        // that changes output remaps its members in moveScratchpad().
         if (animate) {
           view->animateFadeTo(1.0F, scratchpad.durationMs, scratchpad.curve);
         } else {
@@ -551,8 +536,9 @@ namespace umbriel {
       if (clearDisplacement) {
         entry.displacedPosition.reset();
       }
-      if ((previous != nullptr || proportionalSize)
-          && output != nullptr
+      // A pad with no output keeps the last area it was sized against, so members land on the output that replaces it
+      // instead of keeping coordinates that belong to the dead one.
+      if (output != nullptr
           && previousArea.width > 0
           && previousArea.height > 0
           && targetArea.width > 0
