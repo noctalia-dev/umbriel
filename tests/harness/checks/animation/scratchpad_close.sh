@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# harness: outputs=2
 # A scratchpad member's close snapshot fades at the same rate as a plain floating window's: the pad draws its members
 # above its own dim rect, so the snapshot has to live in the pad's tree rather than under the output root. It must also
 # follow the pad's own backdrop fade, so hiding the pad mid-close takes the snapshot with it.
@@ -214,4 +215,28 @@ if ((dialog_after > 5)); then
 fi
 "$UMBRIEL" settle
 
-echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after, dialog $dialog_before -> $dialog_mid -> $dialog_after"
+# An unplugged output reaps its snapshots; the pad must drop the wrapper layers in the same pass, or its tracked list
+# keeps the compositor permanently "animating".
+# The dialog leg left the pad shown, so the member appears without another toggle.
+spawn close-hotplug
+"$UMBRIEL" msg window-focus "$(window_id close-hotplug)" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad > /dev/null
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+hotplug_before=$(shot hotplug-before)
+if ((hotplug_before < 120)); then
+  echo "scratchpad member was not visible before the hot-unplug leg: blue=$hotplug_before"
+  exit 1
+fi
+# Unplug the output the pad is actually on; the other one keeps the instance alive.
+hotplug_output=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "close-hotplug") | .output')
+if [[ -z $hotplug_output || $hotplug_output == null ]]; then
+  echo "hot-unplug leg lost its pad member's output"
+  exit 1
+fi
+close_window close-hotplug
+"$UMBRIEL" clock-advance 100
+"$UMBRIEL" output-destroy "$hotplug_output" > /dev/null
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+"$UMBRIEL" settle
+
+echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after, dialog $dialog_before -> $dialog_mid -> $dialog_after, hot-unplug $hotplug_before"
