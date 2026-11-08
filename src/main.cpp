@@ -217,8 +217,10 @@ namespace {
 #ifdef UMBRIEL_USE_JEMALLOC
 // Read by jemalloc before its first allocation. Few arenas and fast dirty/muzzy decay bound fragmentation and return
 // freed pages to the OS promptly. The background thread runs decay even while the compositor is idle, otherwise pages
-// freed by a burst would wait for the next allocation to be returned.
-const char* malloc_conf = "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12";
+// freed by a burst would wait for the next allocation to be returned. thp:never keeps the kernel from backing the
+// sparse heap with 2 MiB pages when transparent huge pages are set to `always`, which grew anonymous RSS by a quarter.
+const char* malloc_conf =
+    "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12,thp:never";
 
 #define UMBRIEL_STRINGIFY_HELPER(x) #x
 #define UMBRIEL_STRINGIFY(x) UMBRIEL_STRINGIFY_HELPER(x)
