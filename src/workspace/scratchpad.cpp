@@ -376,9 +376,15 @@ namespace umbriel {
     }
     view->setSceneParent(m_root);
     view->setInScratchpad(true);
-    // A pad already showing on another output carries the arriving window into its own basis, the same remap a member
-    // gets when the pad changes output, instead of keeping coordinates that belong to the output it arrived on.
-    if (arrivalOutput != nullptr && arrivalOutput != output) {
+    // A pad already showing on another output carries a window the user moves into it into the pad's own basis, the
+    // same remap a member gets when the pad changes output, instead of keeping coordinates that belong to the output
+    // it arrived on. Only an interactive admission qualifies: a window that is still opening is placed afterwards by
+    // View::handleMap against the pad's output, and a rule admission is followed by its own summon back to the rule's
+    // output, so remapping either would scale or clamp the window twice.
+    if (admission == Admission::Interactive
+        && view->positioned()
+        && arrivalOutput != nullptr
+        && arrivalOutput != output) {
       remapViewGeometry(
           view, usableArea(*m_server, arrivalOutput), usableArea(*m_server, output), usesProportionalSize(name), true
       );
