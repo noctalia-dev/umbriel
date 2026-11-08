@@ -744,6 +744,33 @@ int main(int argc, char** argv) {
       wl_display_disconnect(state.display);
       return 0;
     }
+    if (std::strcmp(mode, "surface-destroy") == 0) {
+      // The synchronized surface state copies the description, so destroying the description resource and then the
+      // color-management surface must not leave a cached commit pointing at freed ICC bytes.
+      if (!result.ready) {
+        std::println(stderr, "color-feedback-client: the profile did not parse (cause {})", result.cause);
+        return 1;
+      }
+      state.surface = wl_compositor_create_surface(state.compositor);
+      state.colorSurface =
+          wp_color_manager_v1_get_surface(state.manager, state.surface);
+      state.selectedDescription = description;
+      state.tagged = true;
+      if (!present(state)) {
+        std::println(stderr, "color-feedback-client: cannot present the tagged surface");
+        return 1;
+      }
+      wp_image_description_v1_destroy(description);
+      wp_color_management_surface_v1_destroy(state.colorSurface);
+      state.colorSurface = nullptr;
+      if (wl_display_roundtrip(state.display) < 0) {
+        std::println(stderr, "color-feedback-client: the display died while destroying the tagged surface");
+        return 1;
+      }
+      std::println(R"({{"event":"icc_surface_destroy","ok":true}})");
+      wl_display_disconnect(state.display);
+      return 0;
+    }
     if (std::strcmp(mode, "denied") == 0) {
       // The create contract: "The resulting image description object does not
       // allow get_information request" — no_information, never ICC bytes.

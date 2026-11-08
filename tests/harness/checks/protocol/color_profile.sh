@@ -248,6 +248,18 @@ if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_ready"' "$RUNTIME/icc-ready-valid
   echo "create_icc did not reach ready for the valid profile: rc=$rc $(cat "$RUNTIME/icc-ready-valid.log")"
   exit 1
 fi
+# The synchronized surface state copies the description, so the description resource and the color-management
+# surface must be destroyable in that order without freeing ICC bytes a cached commit still points at.
+rc=$(run_icc_mode surface-destroy "$PROFILE" valid)
+if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_surface_destroy"' "$RUNTIME/icc-surface-destroy-valid.log"; then
+  echo "destroying a tagged surface after its description crashed or failed: rc=$rc" \
+    "$(cat "$RUNTIME/icc-surface-destroy-valid.log")"
+  exit 1
+fi
+if ! "$UMBRIEL" windows --json > /dev/null 2>&1; then
+  echo "the compositor did not survive destroying a tagged surface"
+  exit 1
+fi
 rc=$(run_icc_mode denied "$PROFILE" valid)
 if [[ $rc != 0 ]] || ! grep -Fq '{"event":"icc_info_denied"' "$RUNTIME/icc-denied-valid.log"; then
   echo "get_information on a client-created description was not denied: rc=$rc $(cat "$RUNTIME/icc-denied-valid.log")"
