@@ -102,6 +102,18 @@ static inline void free_shaders(struct fx_renderer* renderer) {
   glDeleteProgram(renderer->shaders.tex_clamp_effects_rgba.program);
   glDeleteProgram(renderer->shaders.tex_clamp_effects_rgbx.program);
   glDeleteProgram(renderer->shaders.tex_clamp_effects_ext.program);
+  glDeleteProgram(renderer->shaders.tex_box_rgba.program);
+  glDeleteProgram(renderer->shaders.tex_box_rgbx.program);
+  glDeleteProgram(renderer->shaders.tex_box_ext.program);
+  glDeleteProgram(renderer->shaders.tex_box_effects_rgba.program);
+  glDeleteProgram(renderer->shaders.tex_box_effects_rgbx.program);
+  glDeleteProgram(renderer->shaders.tex_box_effects_ext.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_rgba.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_rgbx.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_ext.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_effects_rgba.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_effects_rgbx.program);
+  glDeleteProgram(renderer->shaders.tex_box_clamp_effects_ext.program);
   glDeleteProgram(renderer->shaders.output.program);
   glDeleteProgram(renderer->shaders.box_shadow.program);
   glDeleteProgram(renderer->shaders.blur1.program);
