@@ -62,6 +62,24 @@ namespace umbriel {
     return nlohmann::json{{"ok", true}};
   }
 
+  nlohmann::json IpcCommands::x11InputPermissions(Server& server, IpcArgs /*args*/) {
+    auto result = nlohmann::json::array();
+    for (const auto& application : server.x11InputPermissions().list()) {
+      result.push_back(application);
+    }
+    return nlohmann::json{{"ok", std::move(result)}};
+  }
+
+  nlohmann::json IpcCommands::x11InputRevoke(Server& server, IpcArgs args) {
+    if (args.size() != 1 || args.front().empty()) {
+      return nlohmann::json{{"err", "usage: x11-input-revoke <name|all>"}};
+    }
+    if (!server.revokeX11Input(args.front())) {
+      return nlohmann::json{{"err", "unable to revoke X11 input permission (invalid name or state write failed)"}};
+    }
+    return nlohmann::json{{"ok", true}};
+  }
+
   std::optional<EffectAudio> IpcCommands::parseAudioSpectrum(const nlohmann::json& request) {
     if (!request.is_object()
         || request.size() != 3
@@ -252,6 +270,12 @@ namespace umbriel {
     }
 
     void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
+
+    void printNames(const nlohmann::json& ok) {
+      for (const auto& name : ok) {
+        std::println("{}", name.get<std::string>());
+      }
+    }
 
     const char* transformName(wl_output_transform transform) {
       switch (transform) {
@@ -1395,6 +1419,10 @@ namespace umbriel {
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
        IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+      {"x11-input-permissions", "", "list X11 applications remembered for desktop input", IpcCommandGroup::Inspect,
+       false, &IpcCommands::x11InputPermissions, &printNames},
+      {"x11-input-revoke", "<name|all>", "forget a remembered X11 desktop input application", IpcCommandGroup::Control,
+       true, &IpcCommands::x11InputRevoke, nullptr},
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,

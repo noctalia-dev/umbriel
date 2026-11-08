@@ -19,6 +19,8 @@ namespace umbriel {
   struct IpcCommands {
     static nlohmann::json keyboardLayouts(Server& server, IpcArgs args);
     static nlohmann::json inputCapturePermissions(Server& server, IpcArgs args);
+    static nlohmann::json x11InputPermissions(Server& server, IpcArgs args);
+    static nlohmann::json x11InputRevoke(Server& server, IpcArgs args);
     static nlohmann::json inputCaptureRevoke(Server& server, IpcArgs args);
     static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, IpcArgs args);

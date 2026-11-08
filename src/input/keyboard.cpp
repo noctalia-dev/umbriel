@@ -381,17 +381,19 @@ namespace umbriel {
         }
       }
       // Modal confirmation consumes non-modifier presses before binds or clients.
-      // Enter or a matching action confirms; input capture can also offer R to
-      // remember approval. Modifier-only presses keep held chords intact.
+      // Enter or a matching action confirms; input capture and X11 input emulation
+      // can also offer R to remember approval. Modifier-only presses keep held chords intact.
       bool confirmationConsumed = false;
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible() && !modifierOnly) {
         bool confirmed = false;
-        bool rememberCapture = false;
+        bool remember = false;
+        const bool canRemember =
+            (!m_virtual && confirm->canRememberInputCapture()) || confirm->kind() == QuitConfirm::Kind::InputEmulation;
         for (int i = 0; i < nsyms; ++i) {
           confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
-          if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
+          if (canRemember && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
             confirmed = true;
-            rememberCapture = true;
+            remember = true;
           }
         }
         // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
@@ -415,9 +417,9 @@ namespace umbriel {
           if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
             m_server->requestSessionExit();
           } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
-            m_server->confirmInputEmulation();
+            m_server->confirmInputEmulation(remember);
           } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
-            m_server->confirmInputCapture(rememberCapture);
+            m_server->confirmInputCapture(remember);
           } else {
             m_server->confirmScreenCastDynamic();
           }

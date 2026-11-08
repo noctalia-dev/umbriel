@@ -818,6 +818,7 @@ core_sources = files(
   'src/input/eis.cpp',
   'src/input/input_capture.cpp',
   'src/input/input_capture_permissions.cpp',
+  'src/input/x11_input_permissions.cpp',
   'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
   'src/xwayland/unmanaged.cpp',

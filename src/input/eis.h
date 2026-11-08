@@ -31,6 +31,8 @@ namespace umbriel {
     void setAuthorize(AuthorizationRequest authorize);
     void setAuthorizationCancelled(AuthorizationCancelled cancelled);
     void authorizeClient(uint64_t id, bool allowed);
+    // Disconnects approved clients with this name, or every approved client for `all`.
+    void disconnectApproved(std::string_view name);
     void applyConfig();
     void updateOutputs();
     void updateModifiers(const wlr_keyboard_modifiers& modifiers);

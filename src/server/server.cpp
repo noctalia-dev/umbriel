@@ -389,7 +389,9 @@ namespace umbriel {
 
   void Server::requestInputEmulation(uint64_t id, std::string_view name) {
     const std::string application(name);
-    if ((m_allowedInputNames.contains(application) || std::ranges::contains(config().input.x11InputAllow, application))
+    if ((m_allowedInputNames.contains(application)
+         || std::ranges::contains(config().input.x11InputAllow, application)
+         || m_x11InputPermissions.contains(application))
         && !sessionLocked()) {
       m_eisInput->authorizeClient(id, true);
       return;
@@ -413,7 +415,7 @@ namespace umbriel {
     m_quitConfirm->showInputEmulation(displayName);
   }
 
-  void Server::confirmInputEmulation() {
+  void Server::confirmInputEmulation(bool remember) {
     if (m_pendingInputId == 0 || m_eisInput == nullptr || sessionLocked()) {
       dismissConfirmation();
       return;
@@ -421,9 +423,33 @@ namespace umbriel {
     const auto id = std::exchange(m_pendingInputId, 0);
     m_allowedInputNames.insert(m_pendingInputName);
     kLog.info("input permission granted id={} app='{}'", id, m_pendingInputName);
+    if (remember) {
+      if (m_x11InputPermissions.remember(m_pendingInputName)) {
+        kLog.info("input permission remembered app='{}'", m_pendingInputName);
+      } else {
+        kLog.warn("failed to remember input permission app='{}'", m_pendingInputName);
+      }
+    }
     m_pendingInputName.clear();
     m_quitConfirm->hide();
     m_eisInput->authorizeClient(id, true);
+  }
+
+  bool Server::revokeX11Input(std::string_view application) {
+    if (!m_x11InputPermissions.revoke(application)) {
+      return false;
+    }
+    if (application == "all") {
+      m_allowedInputNames.clear();
+      m_deniedInputNames.clear();
+    } else {
+      m_allowedInputNames.erase(std::string(application));
+      m_deniedInputNames.erase(std::string(application));
+    }
+    if (m_eisInput != nullptr) {
+      m_eisInput->disconnectApproved(application);
+    }
+    return true;
   }
 
   void Server::cancelInputEmulation(uint64_t id) {

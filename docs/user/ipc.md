@@ -25,6 +25,8 @@ Replies use `{"ok": ...}` or `{"err": "..."}`. Commands that take arguments send
 | `{"cmd":"outputs"}`                              | `umbriel outputs --json`                   |
 | `{"cmd":"input-capture-permissions"}`            | `umbriel input-capture-permissions --json` |
 | `{"cmd":"input-capture-revoke","args":["<id>"]}` | `umbriel input-capture-revoke <id>`        |
+| `{"cmd":"x11-input-permissions"}`                | `umbriel x11-input-permissions --json`     |
+| `{"cmd":"x11-input-revoke","args":["<name>"]}`   | `umbriel x11-input-revoke <name>`          |
 
 ## Actions
 
@@ -127,6 +129,12 @@ Inspection never picks, compiles, or binds an effect. Use `effects`, not `output
 `input-capture-permissions` lists remembered grants with `id`, `application`, `capabilities`, and `persist_mode`. Application identifiers can be empty and are not verified display names. The reply never contains restore credentials.
 
 `input-capture-revoke <id>` forgets a grant and stops its live capture sessions. `input-capture-revoke all` forgets every grant. Revoking an already forgotten valid ID succeeds. A state-write error is reported even though matching live capture sessions are stopped. See [Input capture](security.md#input-capture) for approval lifetimes and the state file location.
+
+## X11 input permissions
+
+`x11-input-permissions` lists the X11 application names remembered with R on the desktop control prompt. Names from `[input] x11_input_allow` are not listed.
+
+`x11-input-revoke <name>` forgets a remembered name, clears the session's allow or deny decision for it, and disconnects it. `x11-input-revoke all` does this for every name. See [X11 desktop input](security.md#x11-desktop-input).
 
 ## Event stream
 
