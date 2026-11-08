@@ -1079,15 +1079,15 @@ namespace umbriel {
       }
       return;
     }
-    const wlr_box& geometry = view->geometryBox();
-    if (geometry.width <= 0 || geometry.height <= 0) {
+    const auto [width, height] = view->floatingSize();
+    if (width <= 0 || height <= 0) {
       return;
     }
     view->applyPresentation({
         .x = view->layoutX(),
         .y = view->layoutY(),
-        .width = geometry.width,
-        .height = geometry.height,
+        .width = width,
+        .height = height,
     });
   }
 

@@ -1039,7 +1039,6 @@ namespace umbriel {
     // Plan size requests before presenting the new layout. A close barrier may need to retain both the old box and the
     // old client buffer until windows_out finishes. A client whose committed geometry never matches a stable configure
     // (Chromium CSD) must not replay its resize on every focus arrange.
-    std::vector<View*> resized;
     std::vector<ResizeRequest> resizeRequests;
     for (View* view : m_views) {
       if (view == nullptr || !view->mapped() || !view->tiled()) {
@@ -1067,7 +1066,6 @@ namespace umbriel {
       const int height = view->maximizedToEdges() ? target.height : clampHeight(target.height, hints);
       const View::ClientSize scheduled = view->scheduledSize();
       if (scheduled.width != width || scheduled.height != height) {
-        resized.push_back(view);
         resizeRequests.push_back({.view = view, .width = width, .height = height});
       }
     }
@@ -1083,9 +1081,10 @@ namespace umbriel {
 
     // One positioning path for every layout: targets already include any
     // layout-specific offset, and each view animates or snaps itself.
-    applyPositions(animate, resized);
+    applyPositions(animate);
     for (const ResizeRequest& request : resizeRequests) {
       request.view->requestTiledSize(request.width, request.height);
+      syncViewPresentation(request.view);
     }
     if (overviewActive) {
       overview->onWorkspaceArranged(this);
@@ -1123,10 +1122,9 @@ namespace umbriel {
     const bool normallyVisible = view->pinned() || m_active || m_inSwitchTransition;
 
     if (view->pinned()) {
-      // Pinned views sit outside the workspace, so no slide offset applies, and
-      // they are sized from committed geometry rather than the presented size.
-      const wlr_box& geometry = view->geometryBox();
-      target = {nodeX, nodeY, geometry.width, geometry.height};
+      // Pinned views have no workspace slide, but retain pending resize targets.
+      const auto [width, height] = view->floatingSize();
+      target = {nodeX, nodeY, width, height};
     } else {
       if (!normallyVisible && !overviewActive) {
         return;
@@ -1161,7 +1159,7 @@ namespace umbriel {
     view->applyPresentation(target);
   }
 
-  void Workspace::applyPositions(bool animate, std::span<View* const> resized) {
+  void Workspace::applyPositions(bool animate) {
     const Overview* overview = m_group != nullptr ? m_group->server()->overview() : nullptr;
     const bool overviewActive = overview != nullptr && overview->active();
     if ((!m_active && !m_inSwitchTransition && !overviewActive) || m_group == nullptr || m_group->output() == nullptr) {
@@ -1217,7 +1215,7 @@ namespace umbriel {
         syncViewPresentation(view);
       }
     }
-    applyTiledMotion(usable, animate, resized);
+    applyTiledMotion(usable, animate);
   }
 
   namespace {
@@ -1289,7 +1287,7 @@ namespace umbriel {
 
   } // namespace
 
-  void Workspace::applyTiledMotion(const wlr_box& usable, bool animate, std::span<View* const> resized) {
+  void Workspace::applyTiledMotion(const wlr_box& usable, bool animate) {
     const Overview* overview = m_group->server()->overview();
     const bool overviewActive = overview != nullptr && overview->active();
 
@@ -1327,19 +1325,7 @@ namespace umbriel {
       const wlr_box from = openingLayoutBox.value_or(
           wlr_box{.x = view->layoutX(), .y = view->layoutY(), .width = presented.width, .height = presented.height}
       );
-      // A positioned member animates its size only when this pass reconfigured it or a motion already carries it;
-      // otherwise it keeps the size it presents, which stays inside the slot.
-      wlr_box to = slot;
-      if (positioned
-          && !opening
-          && !openingLayoutBox.has_value()
-          && !std::ranges::contains(resized, view)
-          && std::ranges::none_of(m_motion.views, [view](const LayoutMotion::ViewEntry& entry) {
-               return entry.view == view;
-             })) {
-        to.width = std::min(presented.width, slot.width);
-        to.height = std::min(presented.height, slot.height);
-      }
+      const wlr_box to = slot;
       members.push_back({
           .view = view,
           .from = positioned ? from : wlr_box{},
