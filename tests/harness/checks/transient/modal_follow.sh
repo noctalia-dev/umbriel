@@ -18,13 +18,14 @@ output_x() {
 }
 
 # The dialog shares every placement fact of the parent, and while the parent shows it sits centred on it and holds the
-# keyboard.
+# keyboard. Scrolling frames are vertically centred on the 720px output even when IPC reports a shorter client buffer.
+# Floats keep their committed size.
 readonly FOLLOWS='
   (.[] | select(.title == "transient-parent")) as $p | (.[] | select(.title == "modal-dialog")) as $d |
   $d.workspace == $p.workspace and $d.output == $p.output and $d.scratchpad == $p.scratchpad
   and $d.pinned == $p.pinned and $d.visible == $p.visible
   and (($p.visible | not) or ($d.active and ($p.fullscreen or (($d.x + $d.w / 2 - $p.x - $p.w / 2 | fabs) <= 1
-    and ($d.y + $d.h / 2 - $p.y - $p.h / 2 | fabs) <= 1))))'
+    and ($d.y + $d.h / 2 - (if $p.floating then $p.y + $p.h / 2 else 360 end) | fabs) <= 1))))'
 
 # expect <label> <jq condition on the parent $p>
 expect() {
