@@ -1868,11 +1868,16 @@ namespace umbriel {
       return;
     }
 
-    // Scene hit testing lets covered chrome stay covered by windows and panels.
+    // Scene hit testing lets covered chrome stay covered by windows and panels. Mod+left and Mod+right on the frame
+    // grab the window as they do on its content.
+    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
+    const bool modGrab = modHeld && (button == BTN_LEFT || button == BTN_RIGHT);
     if (m_server->exclusiveKeyboardLayer() == nullptr
         && isPassthrough()
         && !wlr_seat_pointer_has_grab(m_server->seat()->wlr())) {
-      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y)) {
+      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y); hit && modGrab) {
+        view = hit->view;
+      } else if (hit) {
         View* target = hit->view;
         clearPointerFocus();
         if (button == BTN_LEFT && hit->part == SsdFramePart::Resize) {
@@ -1939,7 +1944,6 @@ namespace umbriel {
       return;
     }
 
-    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       if (beginMove(view, button)) {
