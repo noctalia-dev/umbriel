@@ -120,5 +120,12 @@ if [[ $presented != *"buffer 400x300"* || $presented != *"scale 120/120"* ]]; th
   echo "an unset render_scale followed a sub-1 logical scale into the client hint ($presented)"
   exit 1
 fi
+# The floor belongs to the hint alone: the configured value other consumers see
+# (IPC, the startup/reload log, the X11 mapping) still follows `scale`.
+reported=$("$UMBRIEL" outputs --json | jq -r '.[] | select(.name == "HEADLESS-1") | .render_scale')
+if ! awk -v value="$reported" 'BEGIN { delta = value - 0.8; exit !(delta < 0.001 && delta > -0.001) }'; then
+  echo "outputs reports render_scale $reported for an unset key on a 0.8 output"
+  exit 1
+fi
 
 echo "render_scale drives the client hints and falls back to the logical scale on reload"

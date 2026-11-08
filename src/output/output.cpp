@@ -477,21 +477,19 @@ namespace umbriel {
     // Subsurfaces and popups answer for their window, so a game or video
     // drawing into a subsurface stays with the rest of its window.
     View* view = surface != nullptr ? View::fromSurface(wlr_surface_get_root_surface(surface)) : nullptr;
-    if (view != nullptr && !view->supersampled()) {
-      return static_cast<double>(m_output->scale);
-    }
-    return clientRenderScale();
+    const OutputRule* rule = findOutputRule(config(), identity());
+    const bool configured = rule != nullptr && rule->renderScale.has_value();
+    const double scale =
+        view != nullptr && !view->supersampled() ? static_cast<double>(m_output->scale) : clientRenderScale();
+    // Hints keep the neutral floor the derivation this feature replaces had, so
+    // a legal sub-1 logical scale still asks clients for logical-size buffers.
+    // An explicit render_scale, a sub-1 one included, is honoured as given.
+    return configured ? scale : std::max(scale, 1.0);
   }
 
   double Output::clientRenderScale() const {
     const OutputRule* rule = findOutputRule(config(), identity());
-    if (rule != nullptr && rule->renderScale.has_value()) {
-      return *rule->renderScale;
-    }
-    // Unset follows `scale`, floored at 1 as the derivation it replaces did: a
-    // legal sub-1 logical scale keeps its old hint instead of silently shrinking
-    // client buffers. An explicit render_scale below 1 is honoured as given.
-    return std::max(static_cast<double>(m_output->scale), 1.0);
+    return rule != nullptr && rule->renderScale.has_value() ? *rule->renderScale : static_cast<double>(m_output->scale);
   }
 
   bool Output::configuredTearingAllowed() const {
