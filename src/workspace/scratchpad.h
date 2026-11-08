@@ -175,6 +175,8 @@ namespace umbriel {
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
+    // Push every tracked snapshot's current backdrop fade, for changes a tick would otherwise be the only witness of.
+    void syncTrackedCloseSnapshots();
     wlr_scene_rect* dimRectFor(Output* output);
     wlr_scene_blur* blurNodeFor(Output* output);
     void updateDimAndBlur(Output* output);
