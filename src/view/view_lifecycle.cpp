@@ -647,6 +647,9 @@ namespace umbriel {
         setOnActiveWorkspace(m_workspace->active());
       }
     }
+    // remove() drops the entry, so the close snapshot's output is read while the window still belongs to its pad.
+    Output* scratchpadOutput =
+        m_server->scratchpadManager() != nullptr ? m_server->scratchpadManager()->outputFor(this) : nullptr;
     if (m_server->scratchpadManager() != nullptr) {
       m_server->scratchpadManager()->remove(this);
     }
@@ -654,7 +657,7 @@ namespace umbriel {
       overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
-    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
+    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation(scratchpadOutput) : kInvalidCloseSnapshot;
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
     if (m_minimized) {

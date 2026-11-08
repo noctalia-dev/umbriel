@@ -87,6 +87,24 @@ namespace umbriel {
       }
     }
 
+    // The server reaps finished snapshots after this pass, so a dead id here means its tree is already gone and only
+    // the wrapper is left. An output release reaps through the same path.
+    std::erase_if(m_trackedCloseSnapshots, [this](const TrackedCloseSnapshot& tracked) {
+      if (m_server->closeSnapshotAlive(tracked.id)) {
+        return false;
+      }
+      if (tracked.layer != nullptr) {
+        wlr_scene_node_destroy(&tracked.layer->node);
+      }
+      return true;
+    });
+    for (const TrackedCloseSnapshot& tracked : m_trackedCloseSnapshots) {
+      const auto fade = m_backdropFades.find(tracked.output);
+      m_server->setCloseSnapshotFade(
+          tracked.id, fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F
+      );
+    }
+
     if (m_hidingViews.empty()) {
       return movedBackdrop;
     }
@@ -102,6 +120,7 @@ namespace umbriel {
 
   bool ScratchpadManager::hasActiveAnimations() const {
     return !m_hidingViews.empty()
+        || !m_trackedCloseSnapshots.empty()
         || std::ranges::any_of(m_backdropFades, [](const auto& entry) { return entry.second.animating(); });
   }
 
@@ -784,6 +803,34 @@ namespace umbriel {
         wlr_scene_node_set_enabled(&blur->node, true);
       }
     }
+  }
+
+  wlr_scene_tree* ScratchpadManager::createCloseSnapshotLayer(Output* output) {
+    if (output == nullptr) {
+      return nullptr;
+    }
+    wlr_scene_tree* layer = wlr_scene_tree_create(m_root);
+    if (layer == nullptr) {
+      return nullptr;
+    }
+    // The snapshot keeps its canvas coordinates, so the wrapper sits at the origin and clips to this output's box in
+    // the same global space.
+    wlr_box box{};
+    wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
+    wlr_scene_node_set_position(&layer->node, 0, 0);
+    wlr_scene_tree_set_clip(layer, &box);
+    return layer;
+  }
+
+  void ScratchpadManager::trackCloseSnapshot(CloseSnapshotId id, Output* output, wlr_scene_tree* layer) {
+    if (id == kInvalidCloseSnapshot) {
+      return;
+    }
+    m_trackedCloseSnapshots.push_back({.id = id, .output = output, .layer = layer});
+    const auto fade = m_backdropFades.find(output);
+    m_server->setCloseSnapshotFade(
+        id, fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F
+    );
   }
 
   void ScratchpadManager::releaseOutput(Output* output) {

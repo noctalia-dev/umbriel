@@ -525,6 +525,9 @@ namespace umbriel {
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
+    // Attenuate a snapshot by an owner's own fade (a scratchpad's backdrop), on top of its lifecycle alpha. The owner
+    // must keep the id alive; a reaped one is a no-op.
+    void setCloseSnapshotFade(CloseSnapshotId id, float multiplier);
     // End a held snapshot; it is reaped at the end of the current animation tick.
     void releaseCloseSnapshot(CloseSnapshotId id);
 
@@ -831,6 +834,7 @@ namespace umbriel {
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
+      void setFadeMultiplier(float multiplier);
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
@@ -840,6 +844,8 @@ namespace umbriel {
     private:
       void applyPresentation();
       void applyShrink(int width, int height);
+      // Push the composed opacity (lifecycle alpha times the owner's fade multiplier) into every captured node.
+      void applyOpacity();
 
       Server* m_server = nullptr;
       CloseSnapshotId m_id = kInvalidCloseSnapshot;
@@ -894,6 +900,8 @@ namespace umbriel {
       int m_shadowWidth = 0;
       int m_shadowHeight = 0;
       wlr_box m_shadowHole{};
+      // An owner-driven fade (scratchpad backdrop) the snapshot fades along with, independent of its own timeline.
+      float m_fadeMultiplier = 1.0F;
     };
     // unique_ptr because the registry holds raw pointers to these: a vector of
     // values would move them out from under it on reallocation.

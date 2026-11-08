@@ -1905,13 +1905,36 @@ namespace umbriel {
     if (!movedAlpha && !movedSlide) {
       return false;
     }
+    applyOpacity();
+
+    applyPresentation();
+    if (m_blurBackground && m_output != nullptr) {
+      m_output->markBlurBackgroundDirty();
+    }
+    return m_alpha.animating() || m_slide.animating();
+  }
+
+  void Server::CloseSnapshot::setFadeMultiplier(float multiplier) {
+    const float clamped = std::clamp(multiplier, 0.0F, 1.0F);
+    if (clamped == m_fadeMultiplier) {
+      return;
+    }
+    m_fadeMultiplier = clamped;
+    // A held snapshot shows its captured frame unchanged.
+    if (!m_held) {
+      applyOpacity();
+    }
+  }
+
+  void Server::CloseSnapshot::applyOpacity() {
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
     const float rawAlpha = std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
     // A lifecycle shader fades the whole snapshot at once, so its buffers and borders stay opaque under it.
     const bool composited = effectRegistry().lifecycleEffect(m_event) != nullptr;
     const bool builtInSlide = !composited && m_slide.target() != m_slide.from();
     // Keep the moving snapshot visible long enough for slide to read as motion. Fade keeps the configured timeline.
-    const float alpha = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+    const float lifecycle = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+    const float alpha = lifecycle * m_fadeMultiplier;
     for (const Buffer& buffer : m_buffers) {
       wlr_scene_buffer_set_opacity(buffer.node, std::clamp(buffer.baseOpacity * alpha, 0.0F, 1.0F));
     }
@@ -1935,15 +1958,9 @@ namespace umbriel {
 
     if (m_shadow.node != nullptr) {
       auto color = m_shadow.color;
-      color[3] *= builtInSlide ? alpha : rawAlpha;
+      color[3] *= (builtInSlide ? lifecycle : rawAlpha) * m_fadeMultiplier;
       wlr_scene_shadow_set_color(m_shadow.node, color.data());
     }
-
-    applyPresentation();
-    if (m_blurBackground && m_output != nullptr) {
-      m_output->markBlurBackgroundDirty();
-    }
-    return m_alpha.animating() || m_slide.animating();
   }
 
   void Server::registerAnimatable(Animatable* animatable) {
@@ -2191,6 +2208,15 @@ namespace umbriel {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
         snapshot->present(canvasX, canvasY, visible);
+        return;
+      }
+    }
+  }
+
+  void Server::setCloseSnapshotFade(CloseSnapshotId id, float multiplier) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->setFadeMultiplier(multiplier);
         return;
       }
     }
