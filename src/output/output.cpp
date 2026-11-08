@@ -485,7 +485,13 @@ namespace umbriel {
 
   double Output::clientRenderScale() const {
     const OutputRule* rule = findOutputRule(config(), identity());
-    return rule != nullptr && rule->renderScale.has_value() ? *rule->renderScale : static_cast<double>(m_output->scale);
+    if (rule != nullptr && rule->renderScale.has_value()) {
+      return *rule->renderScale;
+    }
+    // Unset follows `scale`, floored at 1 as the derivation it replaces did: a
+    // legal sub-1 logical scale keeps its old hint instead of silently shrinking
+    // client buffers. An explicit render_scale below 1 is honoured as given.
+    return std::max(static_cast<double>(m_output->scale), 1.0);
   }
 
   bool Output::configuredTearingAllowed() const {

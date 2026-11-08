@@ -101,4 +101,24 @@ if [[ $presented != *"scale 60/120"* ]]; then
   echo "the scene re-derivation dropped the below-logical render scale ($presented)"
   exit 1
 fi
+# A legal logical scale below 1 keeps the hint the pre-feature derivation gave
+# it: an unset render_scale follows `scale` but never shrinks client buffers, so
+# the hint stays at the neutral 1.0 (120/120) rather than following 0.8.
+sed -i '/render_scale/d' "$UMBRIEL_CONFIG"
+sed -i 's/^scale = 1\.25$/scale = 0.8/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+readonly SUB1_LOG="$UMBRIEL_RUNTIME_DIR/render-scale-sub1-client.log"
+# Same title as the first client so the window rule that sizes it applies.
+"$CLIENT" render-scale 400 300 > "$SUB1_LOG" 2>&1 &
+for _ in $(seq 60); do
+  grep -q '^mapped ' "$SUB1_LOG" && break
+  sleep 0.05
+done
+presented=$(grep '^mapped ' "$SUB1_LOG" | tail -1)
+echo "presented at a sub-1 logical scale: $presented"
+if [[ $presented != *"buffer 400x300"* || $presented != *"scale 120/120"* ]]; then
+  echo "an unset render_scale followed a sub-1 logical scale into the client hint ($presented)"
+  exit 1
+fi
+
 echo "render_scale drives the client hints and falls back to the logical scale on reload"
