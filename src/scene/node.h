@@ -5,12 +5,14 @@
 struct wlr_surface;
 
 namespace umbriel {
+  class View;
 
   enum class SceneNodeKind : uint8_t {
     View,
     LayerSurface,
     LockSurface,
     PreviewSurface,
+    PreviewRoot,
   };
 
   // Stored in wlr_scene_node::data so hit-testing can tell views from layers
@@ -49,6 +51,14 @@ namespace umbriel {
     PreviewSurfaceNode() : SceneNode(SceneNodeKind::PreviewSurface) {}
 
     wlr_surface* surface = nullptr;
+  };
+
+  // Tags the root tree of an interactive preview, so a pointer hit on its compositor-drawn chrome resolves to the
+  // window it shows.
+  struct PreviewRootNode : SceneNode {
+    PreviewRootNode() : SceneNode(SceneNodeKind::PreviewRoot) {}
+
+    View* view = nullptr;
   };
 
 } // namespace umbriel

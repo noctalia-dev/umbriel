@@ -15,6 +15,7 @@
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 #include <algorithm>
 
@@ -478,6 +479,11 @@ namespace umbriel {
       if (tag == nullptr) {
         continue;
       }
+      // Under a preview root only the title bar copy's rects take the pointer besides surfaces, which are not frame.
+      if (tag->kind == SceneNodeKind::PreviewRoot) {
+        return node->type == WLR_SCENE_NODE_RECT ? mirroredFrameAt(static_cast<PreviewRootNode*>(tag)->view, lx, ly)
+                                                 : std::nullopt;
+      }
       if (tag->kind != SceneNodeKind::View) {
         return std::nullopt;
       }
@@ -495,6 +501,31 @@ namespace umbriel {
       return SsdFrameHit{view, point.part, point.edges};
     }
     return std::nullopt;
+  }
+
+  std::optional<SsdFrameHit> FocusManager::mirroredFrameAt(View* view, double lx, double ly) const {
+    // The frame's parts belong to the live window: map the point through the mirror on this output that shows it.
+    Output* output = m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly));
+    const Workspace* copy = output != nullptr ? output->workspaceGroup()->active() : nullptr;
+    if (view == nullptr
+        || !view->mapped()
+        || view->ssdFrame() == nullptr
+        || copy == nullptr
+        || !copy->mirror()
+        || copy->mirrorSource() != view->workspace()
+        || copy->mirrorRenderer() == nullptr) {
+      return std::nullopt;
+    }
+    const std::optional<MirrorMapping> mapping = copy->mirrorRenderer()->mapping();
+    if (!mapping) {
+      return std::nullopt;
+    }
+    const auto point = view->ssdFramePointAt(mapping->toSourceX(lx), mapping->toSourceY(ly), false);
+    // The copy draws no resize grips: an edge strip that maps past the frame is still title bar, not a resize.
+    if (point.part == SsdFramePart::None || point.part == SsdFramePart::Resize) {
+      return std::nullopt;
+    }
+    return SsdFrameHit{view, point.part, point.edges};
   }
 
   View*

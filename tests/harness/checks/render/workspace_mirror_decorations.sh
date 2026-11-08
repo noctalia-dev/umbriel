@@ -31,6 +31,7 @@ height = 40
 [colors.title_bar]
 background = "#FF0000FF"
 background_unfocused = "#FF0000FF"
+close = "#FFFF00FF"
 [colors.border]
 focused = "#FF00FFFF"
 unfocused = "#FF00FFFF"
@@ -82,4 +83,34 @@ if ((mx < tx + 148 || mx > tx + 152)); then
   echo "the mirrored title bar stayed at x=$mx after the window moved 200 pixels, expected about $((tx + 150))"
   exit 1
 fi
-echo 'The mirror scales the source window title bar and border with its surface, in place, and follows a move.'
+# The copied title bar takes the pointer for the real window: dragging it 75 receiving pixels moves the window 100. The
+# grab starts on a multiple of 3 receiving pixels so 0.75 maps it to a whole source pixel.
+window_x() { "$UMBRIEL" windows --json | jq -r '.[] | select(.title == "mirror-decorated") | .x'; }
+before=$(window_x)
+grab_x=$((1280 + (mx + tw / 2) / 3 * 3))
+grab_y=$((ty + 15))
+"$UMBRIEL_POINTER_CLIENT" 2240 720 move "$grab_x" "$grab_y" press 272 move $((grab_x + 75)) "$grab_y" release 272
+"$UMBRIEL" settle > /dev/null
+after=$(window_x)
+if ((after != before + 100)); then
+  echo "dragging the mirrored title bar moved the window from x=$before to x=$after, expected $((before + 100))"
+  exit 1
+fi
+"$UMBRIEL" workspaces --json | jq -e 'any(.[]; .output == "HEADLESS-1" and .name == "away" and .active)' > /dev/null
+# Its close button closes the real window.
+grim -o HEADLESS-2 "$UMBRIEL_RUNTIME_DIR/buttons.png"
+read -r cx cy cw ch < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/buttons.png" bbox 'r > 0.8 && g > 0.8 && b < 0.2')
+if ((cw == 0)); then
+  echo "the mirrored title bar shows no close button"
+  exit 1
+fi
+"$UMBRIEL_POINTER_CLIENT" 2240 720 move $((1280 + cx + cw / 2)) $((cy + ch / 2)) click 272
+for _ in $(seq 80); do
+  [[ -z $("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "mirror-decorated") | .id') ]] && break
+  sleep 0.025
+done
+if [[ -n $("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "mirror-decorated") | .id') ]]; then
+  echo "clicking the mirrored close button left the window open"
+  exit 1
+fi
+echo 'The mirror scales the source window frame in place and follows a move; its title bar moves and closes the window.'

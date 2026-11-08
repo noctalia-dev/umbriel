@@ -34,7 +34,7 @@ namespace umbriel {
 
   // One scaled presentation of one view under a caller-given parent tree: the window's surfaces, its border, shadow,
   // blur, corners, chrome, and effect bindings. The caller decides where and how large it is. It rejects pointer input
-  // unless created interactive, when its surfaces resolve to the real ones.
+  // unless created interactive, when its surfaces resolve to the real ones and its title bar takes the pointer.
   class ViewPreview {
   public:
     // A surface of the view, or of a dialog attached to it, mirrored by one scene buffer of the preview. The base's
@@ -153,6 +153,8 @@ namespace umbriel {
     bool m_interactive = false;
     std::function<void()> m_onChanged;
     wlr_scene_tree* m_tree = nullptr;
+    // The root tree's tag while interactive.
+    PreviewRootNode m_rootTag;
     // Parent of every surface buffer, at the preview origin: the window and overlay effect slots live here, as they
     // live on the view's surface tree.
     wlr_scene_tree* m_surfaceTree = nullptr;

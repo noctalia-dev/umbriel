@@ -86,6 +86,10 @@ namespace umbriel {
     if (preview->m_tree == nullptr) {
       return nullptr;
     }
+    if (interactive) {
+      preview->m_rootTag.view = view;
+      preview->m_tree->node.data = sceneNodeData(&preview->m_rootTag);
+    }
     preview->m_surfaceTree = wlr_scene_tree_create(preview->m_tree);
     (void)umbrielfx_scene_node_share_capture_policy(&preview->m_tree->node, &view->sceneTree()->node);
     if (preview->m_surfaceTree == nullptr) {
@@ -330,6 +334,10 @@ namespace umbriel {
       }
       if (preview == nullptr) {
         preview = live->makePreview(m_tree);
+        // An interactive preview's title bar takes the pointer, which resolves to the live frame's parts.
+        if (auto* frame = dynamic_cast<SsdFrame*>(preview.get()); frame != nullptr && m_interactive) {
+          frame->acceptPreviewInput();
+        }
       }
       if (preview == nullptr) {
         return;

@@ -92,6 +92,8 @@ namespace umbriel {
   private:
     [[nodiscard]] bool retainCurrentKeyboardFocus();
     void refocusFallback(Output* preferred);
+    // The live frame part a hit on a mirror's copy of `view`'s title bar stands for.
+    std::optional<SsdFrameHit> mirroredFrameAt(View* view, double lx, double ly) const;
 
     Server& m_server;
     // The last raise decision focusView made. retainCurrentKeyboardFocus replays it, so a focus kept through a

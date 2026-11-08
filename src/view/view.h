@@ -231,7 +231,9 @@ namespace umbriel {
     void setLegacyDecorationPreference(std::optional<bool> serverSide);
     int titleBarHeight() const;
     void syncSsdFrame();
-    SsdFramePoint ssdFramePointAt(double lx, double ly) const;
+    // The part of the server-side frame at a layout point. `shownOnly` false also answers while the window's scene is
+    // hidden, for a point mapped from a mirror that shows it.
+    SsdFramePoint ssdFramePointAt(double lx, double ly, bool shownOnly = true) const;
     SsdFrame* ssdFrame() const { return m_ssdFrame.get(); }
     int decorationBorderWidth() const { return m_decoration.borderWidth(); }
     int decorationOuterBorderWidth() const { return m_decoration.outerBorderWidth(); }
