@@ -157,7 +157,7 @@ Showing a populated scratchpad focuses its most recently focused member. Hiding 
 
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
-Backdrop dim and blur affect only the output showing the scratchpad.
+Backdrop dim and blur affect only the output showing the scratchpad. A member that closes while its scratchpad is shown fades like any other window, over the backdrop rather than under it, and a scratchpad hidden mid-close takes the closing window with it.
 
 ## Restoring windows
 
