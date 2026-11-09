@@ -176,3 +176,45 @@ fi
 expect_frame redrawn 100 50
 
 echo "a slow floating client kept its drawn frame through resize and release, then landed with anchored edges"
+
+# A client may acknowledge a smaller size by committing the new window geometry over its old buffer. The buffer is
+# cropped to that geometry; drawing it whole leaves pixels outside the frame that later frames never repaint.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[[window_rule]]
+match.title = "^floating-resize-ahead$"
+default_floating = true
+default_floating_size_px = { width = 200, height = 100 }
+default_position = { x = 20, y = 20, anchor = "top_left" }
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+readonly AHEAD_LOG="$UMBRIEL_RUNTIME_DIR/floating-resize-ahead.log"
+ahead_fifo="$UMBRIEL_RUNTIME_DIR/floating-resize-ahead-control"
+mkfifo "$ahead_fifo"
+exec {ahead_fd}<>"$ahead_fifo"
+FILL_COLOR=0xFFFFFF00 FOLLOW_CONFIGURES=1 RESIZE_ON_STDIN=1 GEOMETRY_AHEAD=1 \
+  "$UMBRIEL_UNMAP_CLIENT" floating-resize-ahead 200 100 <&"$ahead_fd" > "$AHEAD_LOG" 2>&1 &
+await_window floating-resize-ahead
+"$UMBRIEL" settle
+
+content_box() {
+  local image="$UMBRIEL_RUNTIME_DIR/ahead-$1.png"
+  grim "$image"
+  "$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.9 && g > 0.9 && b < 0.1'
+}
+
+pointer_hold 1280 720 move 210 110 mod logo press 273 move 160 110 -- release 273 mod none
+await_lines "$AHEAD_LOG" 'resize-pending 150x100' 1 0.025
+ahead_w=
+for _ in $(seq 40); do
+  read -r _ _ ahead_w _ < <(content_box acked)
+  ((ahead_w == 150)) && break
+  sleep 0.025
+done
+pointer_release
+if ((ahead_w != 150)); then
+  echo "a 200px buffer under 150px acknowledged geometry was drawn ${ahead_w}px wide"
+  exit 1
+fi
+
+echo "a buffer under smaller acknowledged geometry was cropped to it"

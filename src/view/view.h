@@ -956,6 +956,8 @@ namespace umbriel {
     bool m_deferXwaylandConfigure = false;
     bool m_xwaylandResizeConfigurePending = false;
     bool m_pointerResizeSettling = false;
+    // applyPresentedCrop programmed the buffer; the surface clip alone no longer describes it.
+    bool m_presentedCropActive = false;
     std::optional<std::string> m_xdgTag;
     ContentType m_contentType = ContentType::None;
     wlr_scene_tree* m_sceneTree = nullptr;
