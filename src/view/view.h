@@ -840,6 +840,19 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
+    // What to do to each transient descendant: re-home it under the tree its parent
+    // lives in, or do that and stack it over its siblings.
+    enum class TransientWalk { SyncSceneParent, RaiseToTop };
+    // The one owner of the transient traversal. Nothing it calls recurses.
+    void walkTransientTree(TransientWalk action);
+    // Absorbs a re-home into the release's wait while the sheet is displaced:
+    // true when the node must stay where it is.
+    bool deferRehome(wlr_scene_tree* target);
+    // Moves this view's node, with the shadow and X11 state that follow it. No
+    // policy and no traversal: setSceneParent() owns both.
+    void reparentSceneNode(wlr_scene_tree* parent);
+    // Lowers the drag tree under its icons once no drag-presented view is left.
+    void demoteDragTreeIfIdle();
     void syncTransientSceneParent();
     void raiseTransientTree();
     void updateForeignIdentity();
