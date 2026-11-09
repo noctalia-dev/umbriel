@@ -337,8 +337,12 @@ namespace umbriel {
   void Workspace::setFocusedView(View* view, bool raise, bool settleLayers) {
     if (view == nullptr || view->workspace() == this) {
       if (m_focusedView != view) {
+        View* previous = m_focusedView;
         m_focusedView = view;
         m_group->server()->scheduleIpcWorkspacesEvent();
+        if (previous != nullptr && previous->workspace() == this) {
+          previous->syncTransientSceneParent();
+        }
       }
       if (view == nullptr) {
         m_floatingLayerActive = false;
@@ -387,6 +391,16 @@ namespace umbriel {
     return m_floatingLayer != nullptr && m_floatingLayer->node.parent == m_fullscreenTree;
   }
 
+  bool Workspace::liftedAboveFullscreen(const View* view) const {
+    return view == m_focusedView && view->tiled() && !view->scheduledFullscreen() && hasFullscreenView();
+  }
+
+  bool Workspace::hasFullscreenView() const {
+    return std::ranges::any_of(m_views, [](const View* view) {
+      return view->mapped() && !view->pinned() && view->scheduledFullscreen();
+    });
+  }
+
   void Workspace::syncFloatingLayer() {
     if (m_floatingLayerActive && std::ranges::none_of(m_views, [](const View* view) {
           return view->mapped() && view->floating() && !view->pinned() && !view->scheduledFullscreen();
@@ -395,13 +409,13 @@ namespace umbriel {
       // must establish floating focus itself rather than inherit the previous floating episode.
       m_floatingLayerActive = false;
     }
-    const bool fullscreen = std::ranges::any_of(m_views, [](const View* view) {
-      return view->mapped() && !view->pinned() && view->scheduledFullscreen();
-    });
-    wlr_scene_tree* target = m_floatingLayerActive && fullscreen ? m_fullscreenTree : m_tree;
+    wlr_scene_tree* target = m_floatingLayerActive && hasFullscreenView() ? m_fullscreenTree : m_tree;
     if (m_floatingLayer->node.parent != target) {
       // Both workspace roots carry the same slide offset and output clip.
       wlr_scene_node_reparent(&m_floatingLayer->node, target);
+    }
+    if (m_focusedView != nullptr) {
+      m_focusedView->syncTransientSceneParent();
     }
   }
 
