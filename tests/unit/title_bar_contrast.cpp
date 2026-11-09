@@ -49,7 +49,8 @@ UMBRIEL_TEST(contrastAdjustedFlipsOnlyBelowTheThreshold) {
   const auto text = colour(0.0F, 0.0F, 0.0F, 1.0F);
   const float justUnder = umbriel::kTitleContrastThreshold - 0.01F;
   const float justOver = umbriel::kTitleContrastThreshold + 0.01F;
-  CHECK_EQ(umbriel::contrastAdjusted(text, colour(justUnder, justUnder, justUnder))[0], 1.0F);
+  const auto reversed = umbriel::contrastAdjusted(text, colour(justUnder, justUnder, justUnder));
+  CHECK_EQ(reversed[0], 1.0F);
   CHECK(umbriel::contrastAdjusted(text, colour(justOver, justOver, justOver)) == text);
 }
 
