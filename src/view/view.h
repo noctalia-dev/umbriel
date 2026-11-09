@@ -763,9 +763,7 @@ namespace umbriel {
     // release handler ends, flush lands the wait immediately.
     void closeReleaseRehomeWindow();
     void flushReleaseRehome();
-    // Re-points transient children at the trees this view now lives under.
-    void syncTransientChildren();
-    // True while another view still rests under the drag tree.
+    // True while a view rests under the drag tree.
     [[nodiscard]] bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
@@ -840,20 +838,34 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
-    // What to do to each transient descendant: re-home it under the tree its parent
+    // What to do to a transient descendant: re-home it under the tree its parent
     // lives in, or do that and stack it over its siblings.
-    enum class TransientWalk { SyncSceneParent, RaiseToTop };
-    // The one owner of the transient traversal. Nothing it calls recurses.
-    void walkTransientTree(TransientWalk action);
+    enum class TransientWalkAction { SyncSceneParent, RaiseToTop };
+    // What one step did to a descendant.
+    struct TransientStep {
+      bool descend = true; // the descendant's own subtree follows the walk
+      bool leftDragTree = false;
+    };
+    TransientStep applyTransientStep(TransientWalkAction action);
+    // The one owner of the transient traversal: applies `action` depth-first to
+    // every descendant, newest registry entry first. Returns true when any of them
+    // left the drag tree.
+    bool walkTransientTree(TransientWalkAction action);
     // Absorbs a re-home into the release's wait while the sheet is displaced:
     // true when the node must stay where it is.
-    bool deferRehome(wlr_scene_tree* target);
-    // Moves this view's node, with the shadow and X11 state that follow it. No
-    // policy and no traversal: setSceneParent() owns both.
+    [[nodiscard]] bool deferRehome(wlr_scene_tree* target);
+    // True when moving this node to `parent` takes it out of the drag tree.
+    [[nodiscard]] bool leavesDragTree(wlr_scene_tree* parent) const;
+    // Applies one node's re-home: the release's wait, then the move. Returns true
+    // when the node left the drag tree. The caller owns the subtree.
+    bool applySceneParent(wlr_scene_tree* parent);
+    // Moves this view's node with the shadow and X11 state that follow it.
     void reparentSceneNode(wlr_scene_tree* parent);
     // Lowers the drag tree under its icons once no drag-presented view is left.
     void demoteDragTreeIfIdle();
-    void syncTransientSceneParent();
+    // Re-homes this node under the tree its transient parent lives in. Returns
+    // true when it left the drag tree.
+    bool syncTransientSceneParent();
     void raiseTransientTree();
     void updateForeignIdentity();
     void updateForeignState();

@@ -162,9 +162,9 @@ namespace umbriel {
 
     m_attachedTo = parent;
     parent->m_attachments.push_back(this);
-    // The attach re-parent supersedes any deferred re-home, and setSceneParent
-    // also runs the leaving-drag-tree bookkeeping (riders follow, then the tree
-    // demotes) that a raw reparent would skip. It syncs the shadow pool itself.
+    // The attach re-parent supersedes any deferred re-home and carries the
+    // leaving-drag-tree bookkeeping (riders follow, then the tree demotes); it
+    // syncs the shadow pool too.
     m_pendingHomeParent = nullptr;
     m_releaseRehomeArmed = false;
     setSceneParent(parent->m_attachmentTree);
