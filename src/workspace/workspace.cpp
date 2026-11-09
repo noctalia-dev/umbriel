@@ -252,10 +252,8 @@ namespace umbriel {
   }
 
   void Workspace::transferTo(WorkspaceGroup& group) {
-    // Land deferred re-homes before the trees travel: a sheet parked under the
-    // shared drag tree is outside them, and its position would be rewritten in the
-    // old output's coordinates mid-spring.
-    flushDeferredRehomes();
+    // The waits are already landed: transferTo()'s caller deactivates this
+    // workspace before it gets here, and deactivation flushes every member.
     endSwitchTransition();
     endLayoutMotion();
     discardCloseSnapshots();
@@ -2589,14 +2587,6 @@ namespace umbriel {
     }
   }
 
-  void Workspace::flushDeferredRehomes() {
-    for (View* view : m_views) {
-      if (!view->pinned()) {
-        view->flushReleaseRehome();
-      }
-    }
-  }
-
   bool Workspace::isSwitchTransitionView(const View* view) const {
     return std::ranges::find(m_switchViews, view) != m_switchViews.end();
   }
@@ -2604,7 +2594,11 @@ namespace umbriel {
   void Workspace::beginSwitchTransition() {
     // This workspace's trees start travelling here, and a wait parked under the
     // shared drag tree is outside them: land it while everything still rests.
-    flushDeferredRehomes();
+    for (View* view : m_views) {
+      if (!view->pinned()) {
+        view->flushReleaseRehome();
+      }
+    }
     m_inSwitchTransition = true;
     wlr_box clip{};
     if (m_group != nullptr && m_group->output() != nullptr) {
@@ -3849,9 +3843,8 @@ namespace umbriel {
       return reject("output already has a workspace with that name");
     }
 
-    // This workspace's tree is reparented to the destination below, and both
-    // groups' slides end here: land its waits while it still rests.
-    workspace->flushDeferredRehomes();
+    // Both groups' slides end here, and the deactivation below lands the moving
+    // workspace's parked waits before its tree is reparented.
     slideFinish();
     destination.slideFinish();
     const size_t sourceIndex = workspace->index();
