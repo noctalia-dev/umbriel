@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "input/cursor.h"
+#include "input/seat.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
@@ -48,6 +49,12 @@ namespace umbriel {
     bool overviewOpen(Server& server) {
       const Overview* overview = server.overview();
       return overview != nullptr && overview->active();
+    }
+
+    // A pad's `[[scratchpad]]` definition, or null when it has none, as the implicit pad does.
+    const ScratchpadConfig* definitionFor(std::string_view name) {
+      const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
+      return definition != config().scratchpads.end() ? &*definition : nullptr;
     }
   } // namespace
 
@@ -606,8 +613,8 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::usesProportionalSize(std::string_view name) const {
-    const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
-    return definition != config().scratchpads.end() && definition->proportionalSize;
+    const ScratchpadConfig* definition = definitionFor(name);
+    return definition != nullptr && definition->proportionalSize;
   }
 
   void ScratchpadManager::remapViewGeometry(
@@ -903,8 +910,8 @@ namespace umbriel {
     scratchpad->active = true;
     refocusActive(invokingOutput);
     if (!hasEntries(name) && (!scratchpad->pendingSpawn || !scratchpad->pendingSpawn->live())) {
-      const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
-      if (definition != config().scratchpads.end() && !definition->spawnWhenEmpty.empty()) {
+      const ScratchpadConfig* definition = definitionFor(name);
+      if (definition != nullptr && !definition->spawnWhenEmpty.empty()) {
         scratchpad->pendingSpawn = PendingSpawn{.expiresAt = std::chrono::steady_clock::now() + kSpawnTimeout};
         m_server->spawn(definition->spawnWhenEmpty.c_str(), "scratchpad.spawn_when_empty", true);
       }
@@ -1339,6 +1346,19 @@ namespace umbriel {
     // Without its shown window, a pad showing one window hides rather than revealing all the others.
     if (scratchpad != nullptr && wasSolo && scratchpad->visible) {
       setVisible(name, false);
+    }
+    // A hide_when_empty pad hides once its last member leaves, handing that member's keyboard focus back.
+    const ScratchpadConfig* definition = definitionFor(name);
+    if (scratchpad != nullptr
+        && scratchpad->visible
+        && definition != nullptr
+        && definition->hideWhenEmpty
+        && !hasEntries(name)) {
+      const bool heldFocus = m_server->seat()->wlr()->keyboard_state.focused_surface == view->rootSurface();
+      setVisible(name, false);
+      if (heldFocus) {
+        m_server->refocus(scratchpad->output);
+      }
     }
   }
 

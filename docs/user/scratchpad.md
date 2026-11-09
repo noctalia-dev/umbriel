@@ -76,7 +76,7 @@ Opening a scratchpad makes it the launch destination on that output, even when i
 
 The destination is recorded at launch. Hiding the pad before the application maps leaves its new window hidden in that pad. Replacing it with another pad does not redirect the pending launch or give its arriving window focus. Focusing a workspace window or clicking the exposed workspace background makes subsequent launches use the workspace again, while the scratchpad stays visible.
 
-Closing the last member leaves the empty pad open. Toggle it to dismiss it. Restoring the last member to its workspace hides the pad. A pad showing one window at a time also hides when that selected window closes.
+Closing the last member leaves the empty pad open. Toggle it to dismiss it, or set [`hide_when_empty`](#hiding-an-emptied-scratchpad) to hide it automatically. Restoring the last member to its workspace hides the pad. A pad showing one window at a time also hides when that selected window closes.
 
 Explicit output, workspace, scratchpad, or enabled pinning rules take priority over the captured scratchpad destination. Unrelated windows without a launch token keep their normal placement. Activating an existing application window does not move it into the scratchpad.
 
@@ -114,6 +114,19 @@ The launched application's first new window joins the scratchpad through its lau
 Toggling while the launch is still pending hides the pad: the window still joins the scratchpad when it appears, but stays hidden until the next toggle. Reopening within 10 seconds does not launch a duplicate command. If the pad remains empty after that interval, opening it can run the command again. Once the scratchpad holds a window, toggling only shows and hides it.
 
 The implicit `default` scratchpad has no definition and therefore no `spawn_when_empty`.
+
+### Hiding an emptied scratchpad
+
+Set `hide_when_empty` on a named scratchpad to hide it when its last window closes or hides itself, so the next toggle shows it and runs `spawn_when_empty` in one press:
+
+```toml
+[[scratchpad]]
+name = "terminal"
+spawn_when_empty = "foot"
+hide_when_empty = true
+```
+
+Only losing the last window hides the pad. An empty pad you open explicitly stays open while its application starts, and closing one of several windows leaves the pad open. A hidden pad stays hidden. If the closing window had keyboard focus, focus returns to the workspace. A window that later joins the pad, such as one from a pending launch, arrives hidden. The setting does not need `spawn_when_empty`.
 
 ## Actions
 
