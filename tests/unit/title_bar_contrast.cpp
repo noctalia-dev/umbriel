@@ -1,5 +1,6 @@
-#include "check.h"
 #include "scene/title_bar_contrast.h"
+
+#include "check.h"
 
 #include <array>
 
