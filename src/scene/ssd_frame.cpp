@@ -174,11 +174,12 @@ namespace umbriel {
   }
   void SsdFrame::syncContent(const wlr_box& geometry) {
     m_contentGeometry = geometry;
-    // A new edge colour can flip the title, which is a label re-measure. It has to be redrawn from here: redraw() calls
-    // updateAdaptive(), so the flip cannot request its own repaint from inside it.
-    const std::array<float, 4> before = resolvedTitleColor();
+    // A new edge colour can flip the title (which is a label re-measure) or a symbol. Both follow the fill the contrast
+    // rule reads, so that is what is compared, and the repaint has to come from here: redraw() calls updateAdaptive(),
+    // so the flip cannot request its own.
+    const auto before = barFillColor();
     updateAdaptive(true);
-    if (!(resolvedTitleColor() == before)) {
+    if (!(barFillColor() == before)) {
       redraw();
     }
   }
@@ -331,9 +332,12 @@ namespace umbriel {
     case TitleBarColorSource::Average:
       return m_averageColor.value_or(palette);
     case TitleBarColorSource::Window:
-      // Mirrored pixels, not a colour: without the sample there is nothing to judge the title against, and the palette
-      // is not what is on screen.
-      return m_contrastSample;
+      // Mirrored pixels, not a colour: with no sample there is nothing to judge the title against, and the palette is
+      // not what is on screen. An edge read as empty is the exception, since the palette is what shows through it.
+      if (m_contrastSample.has_value()) {
+        return m_contrastSample;
+      }
+      return m_contrastSampleEmpty ? std::optional<std::array<float, 4>>(palette) : std::nullopt;
     case TitleBarColorSource::Fixed:
       break;
     }
@@ -392,6 +396,7 @@ namespace umbriel {
       m_adaptiveMode = TitleBarColorSource::Fixed;
       m_averageColor.reset();
       m_contrastSample.reset();
+      m_contrastSampleEmpty = false;
       m_stripDeferred = false;
       m_strip.clear();
       m_strip.shrink_to_fit();
@@ -445,6 +450,16 @@ namespace umbriel {
     const bool sampling = style.titleContrast && style.titleContrastSample;
     const bool samplingChanged = m_contrastSampling != sampling;
     m_contrastSampling = sampling;
+    if (!sampling) {
+      // Nothing judges the title in "window" mode any more, and a kept sample would keep reversing it against an edge
+      // the mirror no longer implies. A deferral left over from a sample that is no longer taken would hold `restrip`
+      // true forever; in "average" mode the flag belongs to a readback that still runs.
+      m_contrastSample.reset();
+      m_contrastSampleEmpty = false;
+      if (!average) {
+        m_stripDeferred = false;
+      }
+    }
     // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
     // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
     wlr_buffer* shown = buffer;
@@ -479,10 +494,11 @@ namespace umbriel {
       m_stripDeferred = sample.state == StripSample::State::Deferred;
       if (sample.color.has_value()) {
         m_contrastSample = sample.color;
+        m_contrastSampleEmpty = false;
       } else if (sample.state == StripSample::State::Empty) {
-        // A readable edge with nothing in it leaves the palette showing, which is then what the title sits on.
-        m_contrastSample =
-            m_focused ? config().colors.titleBar.background : config().colors.titleBar.backgroundUnfocused;
+        // A readable edge with nothing in it leaves the palette showing, which is what the title then sits on.
+        m_contrastSample.reset();
+        m_contrastSampleEmpty = true;
       }
     }
     const bool reshaped = m_adaptiveBuffer != shown

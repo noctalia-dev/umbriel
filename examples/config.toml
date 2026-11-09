@@ -99,8 +99,8 @@ radius = 3
 # color_source = "fixed" # "window" paints the bar with the top of the window's own content; "average" with its mean colour.
 # color_source_height = 1 # Rows of that edge it takes, 1 (one flat colour) to 4.
 # title_shadow = true # Dark edge under the title and around the symbols, on any bar colour.
-# title_contrast = true # Reverse the title to black or white when its colour vanishes into the bar.
-# title_contrast_sample = false # "window" only: read the edge back so the title can reverse there too.
+# title_contrast = true # Reverse the title and the symbols to black or white when their colour vanishes into the bar.
+# title_contrast_sample = false # "window" only, needs title_contrast: read the edge back so the title can reverse there.
 
 # Optional button palette. Glyph colors also apply when button backgrounds are off.
 # [colors.title_bar]

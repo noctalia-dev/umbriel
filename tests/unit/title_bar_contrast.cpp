@@ -45,7 +45,8 @@ UMBRIEL_TEST(contrastAdjustedReversesIntoADarkBar) {
 }
 
 UMBRIEL_TEST(contrastAdjustedFlipsOnlyBelowTheThreshold) {
-  // Just under the threshold reverses; exactly at it, and above, the configured colour stands.
+  // Just under the threshold reverses; just above it the configured colour stands. The boundary itself is not pinned:
+  // both sides of it are computed luminances, so no case sits exactly on it.
   const auto text = colour(0.0F, 0.0F, 0.0F, 1.0F);
   const float justUnder = umbriel::kTitleContrastThreshold - 0.01F;
   const float justOver = umbriel::kTitleContrastThreshold + 0.01F;
@@ -59,6 +60,12 @@ UMBRIEL_TEST(contrastAdjustedLeavesAnInvisibleTitleAlone) {
   // composite, which the renderer cannot mask away.
   const auto hidden = colour(0.1F, 0.1F, 0.1F, 0.0F);
   CHECK(umbriel::contrastAdjusted(hidden, colour(0.1F, 0.1F, 0.1F)) == hidden);
+}
+
+UMBRIEL_TEST(contrastAdjustedLeavesATitleAloneOnNoBackground) {
+  // A bar with no alpha is not what shows, so its colour says nothing about what the title sits on.
+  const auto text = colour(0.1F, 0.1F, 0.1F, 1.0F);
+  CHECK(umbriel::contrastAdjusted(text, colour(0.1F, 0.1F, 0.1F, 0.0F)) == text);
 }
 
 int main() { return RUN_TESTS(); }

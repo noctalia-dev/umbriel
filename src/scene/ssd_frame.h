@@ -129,6 +129,9 @@ namespace umbriel {
     // `color_source = "window"` has no colour of its own to judge the title against. With title_contrast_sample on, the
     // same strip readback that serves "average" runs here too, once per edge change, and lands in this.
     std::optional<std::array<float, 4>> m_contrastSample;
+    // A read that found an edge with no colour in it. The palette is what shows then, and it is read live rather than
+    // copied here, so a focus change or a reload is not judged against the palette of the moment the read happened.
+    bool m_contrastSampleEmpty = false;
     // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
     std::array<float, 4> m_averageBufferColor{};
     wlr_buffer* m_averageBuffer = nullptr;
