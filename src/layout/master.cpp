@@ -451,9 +451,9 @@ namespace umbriel {
       column.widthFrac = area == &m_master ? masterFrac() : sideFrac;
       if (area->tabs.tabbed()) {
         column.tabs.form(0, area->views.size(), area->tabs.active(), area->tabs.bar());
-        // Export the group's total extent without changing the rows restored by untabbing.
+        // Export the group as one row of its rows' average extent without changing the rows restored by untabbing.
         const double weight = std::accumulate(area->weights.begin(), area->weights.end(), 0.0);
-        column.heightWeights.assign(area->views.size(), weight);
+        column.heightWeights.assign(area->views.size(), weight / static_cast<double>(area->views.size()));
       } else {
         column.heightWeights = area->weights;
       }

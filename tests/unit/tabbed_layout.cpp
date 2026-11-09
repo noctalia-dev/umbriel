@@ -474,6 +474,14 @@ UMBRIEL_TEST(untabbingKeepsTheColumnsProportions) {
   CHECK_NEAR(beside.layout.heightFraction(stub(2)), below, 1e-9);
 }
 
+UMBRIEL_TEST(tabbingKeepsTheColumnsFreeSpace) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  CHECK(fixture.layout.setBottomGapWeight(0, 1.0));
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 2.0 / 3.0, 1e-9);
+}
+
 UMBRIEL_TEST(aVerticalStripTabsALaneAcrossItsTop) {
   ScrollingFixture fixture(ScrollingDirection::Vertical);
   fixture.stack(2);
@@ -845,7 +853,7 @@ UMBRIEL_TEST(replacingDefaultTabsAllowsIndependentRowWeights) {
   CHECK(target.layout.targetBox(stub(1)).height < target.layout.targetBox(stub(2)).height);
 }
 
-UMBRIEL_TEST(masterGroupsExportTotalWeightAndKeepUntabbedProportions) {
+UMBRIEL_TEST(masterGroupsExportAverageWeightAndKeepUntabbedProportions) {
   MasterFixture source;
   source.addViews(3);
   View* first = source.layout.columns()[1].views[0];
@@ -854,10 +862,11 @@ UMBRIEL_TEST(masterGroupsExportTotalWeightAndKeepUntabbedProportions) {
   source.layout.arrange(kUsable);
   const wlr_box firstBox = source.layout.targetBox(first);
   const wlr_box lastBox = source.layout.targetBox(last);
-  const double totalWeight = source.layout.columns()[1].heightWeights[0] + source.layout.columns()[1].heightWeights[1];
+  const double averageWeight =
+      (source.layout.columns()[1].heightWeights[0] + source.layout.columns()[1].heightWeights[1]) / 2.0;
   CHECK(source.layout.setTabbed(first, true));
-  CHECK_NEAR(source.layout.columns()[1].heightWeights[0], totalWeight, 1e-9);
-  CHECK_NEAR(source.layout.columns()[1].heightWeights[1], totalWeight, 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[0], averageWeight, 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[1], averageWeight, 1e-9);
   CHECK(source.layout.setTabbed(first, false));
   source.layout.arrange(kUsable);
   CHECK(sameBox(source.layout.targetBox(first), firstBox));
