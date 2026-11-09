@@ -398,6 +398,8 @@ namespace umbriel {
     void scheduleFrames() const;
 
     Card* cardAt(double lx, double ly);
+    // The tab under a point on a preview's tab bar.
+    View* tabAt(double lx, double ly);
     // Hit-test a workspace preview. `extendScrollingAxis` widens the boxes over the whole output along the
     // scrolling axis (overhanging cards must stay targetable there). `extendFilmstripEnds` is drop-targeting
     // only: the rows at either end of the filmstrip claim the space out to the output edge along the workspace
