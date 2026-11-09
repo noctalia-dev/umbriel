@@ -62,17 +62,12 @@ GLSL
 "$UMBRIEL" msg config-reload > /dev/null
 
 FILL_COLOR=0xFF00FF00 "$UMBRIEL_UNMAP_CLIENT" ring-cut 400 300 > "$UMBRIEL_RUNTIME_DIR/ring-cut.log" 2>&1 &
-for _ in $(seq 80); do
-  [[ -n $("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "ring-cut")') ]] && break
-  sleep 0.025
-done
+await_window ring-cut
 "$UMBRIEL" settle > /dev/null
 
-home=$("$UMBRIEL" windows --json | jq -r '.[0].workspace' | cut -d: -f1)
+home=$(window_by_title ring-cut | jq -r '.workspace' | cut -d: -f1)
 if [[ $home == HEADLESS-1 ]]; then neighbour=HEADLESS-2; else neighbour=HEADLESS-1; fi
-read -r wx wy ww wh < <(
-  "$UMBRIEL" windows --json | jq -r '.[0] | "\(.x) \(.y) \(.w) \(.h)"'
-)
+read -r wx wy ww wh < <(window_by_title ring-cut | jq -r '"\(.x) \(.y) \(.w) \(.h)"')
 # Park the window straddling the shared edge: 200px on each side of x=1280.
 gx=$((wx + 40))
 gy=$((wy + 40))

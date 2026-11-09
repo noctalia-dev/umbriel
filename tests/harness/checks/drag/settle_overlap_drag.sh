@@ -57,21 +57,11 @@ default_position = { x = 800, y = 120, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-wait_for_window() {
-  local title=$1
-  for _ in $(seq 80); do
-    "$UMBRIEL" windows --json | jq -e --arg title "$title" 'any(.[]; .title == $title)' > /dev/null && return 0
-    sleep 0.025
-  done
-  echo "window $title did not map: $("$UMBRIEL" windows --json)"
-  return 1
-}
-
 map_window() {
   local title=$1 w=$2 h=$3 color=$4
   FILL_COLOR=$color "$UMBRIEL_UNMAP_CLIENT" "$title" "$w" "$h" \
     > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
-  wait_for_window "$title"
+  await_window "$title"
   "$UMBRIEL" settle > /dev/null
 }
 
