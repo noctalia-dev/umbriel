@@ -317,6 +317,12 @@ namespace umbriel {
     return std::ranges::any_of(m_mirrors, [](Workspace* copy) { return copy->active(); });
   }
 
+  bool Workspace::visibleViaMirrorOn(const Output* output) const {
+    return output != nullptr && std::ranges::any_of(m_mirrors, [output](const Workspace* copy) {
+             return copy->active() && copy->group() != nullptr && copy->group()->output() == output;
+           });
+  }
+
   void Workspace::invalidateLaunchReservations() {
     m_launchAnchor->workspace = nullptr;
     m_launchAnchor = std::make_shared<WorkspaceLaunchAnchor>();

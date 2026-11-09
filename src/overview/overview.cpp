@@ -1477,6 +1477,10 @@ namespace umbriel {
     if (!m_active || m_closing) {
       return;
     }
+    // A card of a mirror row focuses its window through that mirror's output, whichever output holds the pointer.
+    m_closeOutput = workspace != nullptr && workspace->mirror() && workspace->group() != nullptr
+        ? workspace->group()->output()
+        : nullptr;
     if (workspace != nullptr && workspace->group() != nullptr && workspace->group()->active() != workspace) {
       // No slide: the real trees are hidden, the filmstrip is the transition.
       workspace->group()->activate(workspace, false);
@@ -1485,7 +1489,7 @@ namespace umbriel {
       // Overview focus keeps keyboard input withheld, but it updates the workspace and starts any scrolling-column
       // reveal. Begin it before the closing zoom so both animations receive their first tick together. finishAnimation
       // repeats the focus after teardown to deliver keyboard focus once the real trees own input again.
-      m_server->focusView(focus, FocusReason::PointerPress);
+      m_server->focusViewOn(focus, FocusReason::PointerPress, m_closeOutput);
       if (focus->workspace() != nullptr && focus->workspace()->layoutConfig().scrolling.centerOnOverviewSelect) {
         focus->workspace()->centerFocusedColumn();
       }
@@ -1681,10 +1685,11 @@ namespace umbriel {
 
   void Overview::restoreFocus(View* focus) {
     if (focus != nullptr && focus->mapped()) {
-      m_server->focusView(focus, FocusReason::PointerPress);
+      m_server->focusViewOn(focus, FocusReason::PointerPress, m_closeOutput);
     } else {
       m_server->refocus();
     }
+    m_closeOutput = nullptr;
     // Focus chrome changed while the windows were hidden (the live target moved during the overview, focus returned
     // during the close or just now), so they reappear with the settled result.
     for (const auto& view : m_server->registry().all()) {

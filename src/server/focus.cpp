@@ -51,9 +51,14 @@ namespace umbriel {
     }
   } // namespace
 
-  void FocusManager::focusView(View* view, FocusReason reason) {
+  void FocusManager::focusView(View* view, FocusReason reason) { focusViewOn(view, reason, nullptr); }
+
+  void FocusManager::focusViewOn(View* view, FocusReason reason, const Output* actingOutput) {
     if (view == nullptr || m_server.sessionLocked()) {
       return;
+    }
+    if (actingOutput == nullptr) {
+      actingOutput = m_server.outputFromWlr(m_server.preferredOutput());
     }
     // Focus policy (workspace, MRU, reveal) belongs to the window that holds the placement; the keyboard goes to the
     // dialog attached on top of it, if any.
@@ -79,9 +84,19 @@ namespace umbriel {
       view->setMinimized(false);
     }
 
-    if (Workspace* workspace = view->workspace()) {
+    // A window shown by a mirror is focused in place, without switching its own output, when the mirror is on the
+    // acting output or when the window already holds the keyboard through it. Anywhere else the window's own output
+    // shows its workspace.
+    Workspace* workspace = view->workspace();
+    bool focusedViaMirror = false;
+    if (workspace != nullptr && !view->pinned() && workspace->visibleViaMirror()) {
+      const View* holder = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
+      focusedViaMirror = workspace->visibleViaMirrorOn(actingOutput)
+          || (holder != nullptr && holder->placementRoot() == view && view->visibleViaMirror());
+    }
+    if (workspace != nullptr) {
       if (WorkspaceGroup* group = workspace->group();
-          group != nullptr && !view->pinned() && !workspace->active() && !view->visibleViaMirror()) {
+          group != nullptr && !view->pinned() && !workspace->active() && !focusedViaMirror) {
         const char* appId = view->appId() != nullptr ? view->appId() : "";
         // A group without a live output still has to activate; only the log's output name degrades.
         const Output* output = group->output();
@@ -95,7 +110,7 @@ namespace umbriel {
         group->activate(workspace);
       }
     }
-    if (!view->onShownWorkspace() && !view->pinned()) {
+    if (!view->onShownWorkspace() && !focusedViaMirror && !view->pinned()) {
       return;
     }
     if (m_server.scratchpadManager() != nullptr) {
@@ -131,7 +146,6 @@ namespace umbriel {
     } else {
       seatTarget->applySeatFocus(!overviewActive, raise);
     }
-    Workspace* workspace = view->workspace();
     if (workspace != nullptr && (!view->pinned() || workspace->active())) {
       workspace->setFocusedView(view, raise, !followsPointer);
     }
@@ -394,7 +408,7 @@ namespace umbriel {
           && focused->onShownWorkspace()
           && !focused->minimized()
           && focused->inputDelegate()->acceptsKeyboardFocus()) {
-        focusView(focused);
+        focusViewOn(focused, FocusReason::Startup, output);
         return true;
       }
       for (const auto& entry : m_server.registry().placementRoots()) {

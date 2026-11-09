@@ -104,7 +104,8 @@ Interaction:
 
 Where actions go:
 
-- Window and layout actions address the source while a mirror is active, even when the source is hidden: focus, reordering, maximize, fullscreen, resizing, floating, and the layout's own actions act on the real windows. The source output does not switch workspace.
+- Window and layout actions run from the receiving output address the source while a mirror is active, even when the source is hidden: focus, reordering, maximize, fullscreen, resizing, floating, and the layout's own actions act on the real windows. The source output does not switch workspace.
+- Focusing a window shown by a mirror while the pointer is on the receiving output focuses it there, and the source output keeps its workspace. Focusing it while the pointer is on another output, with `window-focus`, `window-focus-last`, or an activation request from a notification or a panel, switches its own output to its workspace, as for any hidden workspace.
 - Workspace navigation stays on the receiving output.
 - New windows launched from a mirror join the source workspace and appear in the mirror. Explicit placement rules take priority. Pinned windows and scratchpads keep their local placement. While a mirror has no source, new windows go to the receiving output's own workspace.
 - Moving a window or column to a mirror inserts it into the source layout and selects the mirror, without switching the source output. Moving to a mirror of the workspace the window already sits on does nothing. A mirror without a source cannot receive a transfer.
