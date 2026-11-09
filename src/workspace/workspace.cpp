@@ -392,7 +392,11 @@ namespace umbriel {
   }
 
   bool Workspace::liftedAboveFullscreen(const View* view) const {
-    return view == m_focusedView && view->tiled() && !view->scheduledFullscreen() && hasFullscreenView();
+    return m_layoutMode == LayoutMode::Scrolling
+        && view == m_focusedView
+        && view->tiled()
+        && !view->scheduledFullscreen()
+        && hasFullscreenView();
   }
 
   bool Workspace::hasFullscreenView() const {
@@ -2434,6 +2438,7 @@ namespace umbriel {
     if (!target->pinned()
         && !target->scheduledFullscreen()
         && !(target->floating() && floatingLayerRaised())
+        && !liftedAboveFullscreen(target)
         && m_group != nullptr
         && m_group->output() != nullptr) {
       const wlr_box outputBox = m_group->output()->layoutBox();

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A tile focused under a fullscreen window in its column is drawn above it, and goes back under the fullscreen window,
 # and under floats once fullscreen ends, when focus leaves it. Untabbing a group with a fullscreen hidden tab shows the
-# focused tab the same way.
+# focused tab the same way, and toggling fullscreen there fullscreens that tab.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -75,6 +75,12 @@ msg column-focus-tab 3
 msg column-toggle-tabbed
 if [[ $(shown "$GREEN") == 0x0 ]]; then
   echo "the focused tab stayed hidden under a fullscreen tab after untabbing: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+msg window-toggle-fullscreen
+if [[ $(shown "$GREEN") != 1280x720 ]]; then
+  echo "toggling fullscreen did not fullscreen the focused window shown above: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 

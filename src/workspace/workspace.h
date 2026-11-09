@@ -119,7 +119,8 @@ namespace umbriel {
     wlr_scene_tree* tileShadowLayer() const { return m_tileShadowLayer; }
     wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
     bool floatingLayerRaised() const;
-    // The focused tile is drawn above a fullscreen window, as a focused float is.
+    // In scrolling, where a fullscreen window covers only its own column, the focused tile is drawn above it, as a
+    // focused float is.
     bool liftedAboveFullscreen(const View* view) const;
     bool switchTransitionActive() const { return m_inSwitchTransition; }
     bool isSwitchTransitionView(const View* view) const;
