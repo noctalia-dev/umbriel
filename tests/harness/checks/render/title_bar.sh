@@ -68,6 +68,17 @@ done
 sed -i '/^button_corner_radius = 3$/d' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
+# A centered title sits on the middle of the whole bar, not of the space beside the buttons.
+sed -i '/^height = 28$/a title_align = "center"' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle > /dev/null
+grim -o HEADLESS-1 "$image"
+read -r text_x _ text_w _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.7 && g > 0.7 && b > 0.7' 480x28+173+81)
+if ((text_w == 0 || (2 * text_x + text_w - 2 * 413) ** 2 > 36)); then
+  echo "centered title spans x=$text_x width=$text_w, expected its middle at 413"
+  exit 1
+fi
+
 # Explicit client-side decoration keeps client controls; no preference uses the default.
 env XDG_DECORATION=client "$UMBRIEL_FRACTIONAL_CLIENT" ssd-csd-render 300 200 > "$UMBRIEL_RUNTIME_DIR/csd.log" 2>&1 &
 title_bar_wait_field ssd-csd-render title_bar false

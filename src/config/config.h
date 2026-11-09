@@ -73,12 +73,6 @@ namespace umbriel {
     Shrink,
   };
 
-  enum class TitleAlign : uint8_t {
-    Left,
-    Center,
-    Right,
-  };
-
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -745,6 +739,7 @@ namespace umbriel {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
         std::string font = "sans 10";
+        TitleAlign titleAlign = TitleAlign::Left;
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
         int buttonSize = -1;

@@ -88,6 +88,7 @@ radius = 3
 # Use "forced" to always show bars, or "off" to hide them. Window rules can override this.
 # height = 28
 # font = "sans 10"
+# title_align = "left" # "left", "center" (on the whole bar, clear of the buttons), or "right".
 # button_position = "right" # or "left"
 # buttons = ["minimize", "maximize", "close"] # From the title outward; leave one out to hide it.
 # button_size = -1 # Diameter or side in logical pixels, 1 up to height; -1 derives it from height.
