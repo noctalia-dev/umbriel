@@ -69,4 +69,28 @@ for scale in 1 1.25 1.5 1.75 2; do
     fi
   done
 done
-echo "button symbols stay centered at integer and fractional scales, and buttons on the bar at integer scales"
+
+# button_glyph_size and button_glyph_width resize the symbol inside an unchanged button, and reload live.
+sed -i "s/^scale = .*/scale = 1/; s/^height = .*/height = 32/" "$UMBRIEL_CONFIG"
+sed -i '/^button_glyph = /a button_size = 24\nbutton_glyph_size = -1\nbutton_glyph_width = -1' "$UMBRIEL_CONFIG"
+glyph_extent() {
+  sed -i "s/^button_glyph_size = .*/button_glyph_size = $1/; s/^button_glyph_width = .*/button_glyph_width = $2/" \
+    "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+  "$UMBRIEL" settle > /dev/null
+  grim -o HEADLESS-1 "$image"
+  read -r x y w h < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'g > 0.5 && r < 0.5 && b < 0.5')
+  read -r _ _ button_w _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'b > 0.4' "${w}x${h}+${x}+${y}")
+  read -r _ _ glyph_w _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.5' "${w}x${h}+${x}+${y}")
+  echo "$button_w $glyph_w $("$UMBRIEL_PIXEL_PROBE" "$image" count 'r > 0.5' "${w}x${h}+${x}+${y}")"
+}
+read -r derived_button derived_w derived_ink < <(glyph_extent -1 -1)
+read -r small_button small_w _ < <(glyph_extent 8 -1)
+read -r _ _ thick_ink < <(glyph_extent -1 4)
+((derived_button == 24 && small_button == 24)) || { echo "glyph settings changed the button: $derived_button, $small_button"; exit 1; }
+# The derived X spans half the button; an 8 px one spans 8 px. Round caps add up to the stroke width.
+((derived_w >= 12 && derived_w <= 15 && small_w >= 8 && small_w <= 11)) \
+  || { echo "symbol widths: derived $derived_w, button_glyph_size = 8 gave $small_w"; exit 1; }
+# Doubling the derived 2 px stroke; the crossing and caps overlap, so ink grows by less than double.
+((thick_ink * 2 > derived_ink * 3)) || { echo "button_glyph_width = 4 drew $thick_ink pixels, derived $derived_ink"; exit 1; }
+echo "button symbols stay centered at integer and fractional scales, and buttons on the bar at integer scales; glyph size and width resize the symbol"

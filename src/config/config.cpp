@@ -110,6 +110,23 @@ namespace umbriel {
           );
           titleBar.buttonSize = used;
         }
+        if (titleBar.buttonGlyphSize == 0) {
+          warnAt(
+              result.merged.at_path("appearance.title_bar.button_glyph_size").node()->source(),
+              "appearance.title_bar.button_glyph_size = 0 out of range (-1 or 1 to 128), clamped to 1"
+          );
+          titleBar.buttonGlyphSize = 1;
+        }
+        // A thinner stroke antialiases to nothing visible at scale 1.
+        constexpr double kMinGlyphWidth = 0.5;
+        if (titleBar.buttonGlyphWidth != -1.0 && titleBar.buttonGlyphWidth < kMinGlyphWidth) {
+          warnAt(
+              result.merged.at_path("appearance.title_bar.button_glyph_width").node()->source(),
+              "appearance.title_bar.button_glyph_width = {} out of range (-1 or {} to 16), clamped to {}",
+              titleBar.buttonGlyphWidth, kMinGlyphWidth, kMinGlyphWidth
+          );
+          titleBar.buttonGlyphWidth = kMinGlyphWidth;
+        }
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);
         auto& workspaces = loaded.animation.workspaces;

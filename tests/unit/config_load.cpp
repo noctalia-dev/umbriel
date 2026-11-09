@@ -4924,6 +4924,26 @@ UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
   CHECK_EQ(store.config().appearance.titleBar.buttonPadding, -1);
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_gap"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_padding"));
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 8\nbutton_glyph_width = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 8);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphWidth, 1.5);
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 0\nbutton_glyph_width = 0.1\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 1);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphWidth, 0.5);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_size"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_width"));
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 200\nbutton_glyph_width = 20.0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 128);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphWidth, 16.0);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_size"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_width"));
 }
 
 UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {
