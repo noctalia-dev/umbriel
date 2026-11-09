@@ -555,6 +555,9 @@ UMBRIEL_TEST(iccTabulatedTrcBakesEncodeCurve) {
   CHECK(transfer.encode.size() > 2);
   CHECK(closeTo(transfer.encode.front(), 0.0, 1e-3));
   CHECK(closeTo(transfer.encode.back(), 1.0, 1e-3));
+  // A power TRC reports its exponent so the output description can restate the
+  // same curve as tf_power instead of claiming a named one.
+  CHECK(closeTo(transfer.exponent, 2.4, 2e-3));
   // The tabulated TRC is gamma 2.4 evaluated; the baked encode must invert it.
   CHECK(closeTo(umbriel::panelEncodeSample(transfer, 0.5F), std::pow(0.5, 1.0 / 2.4), 0.005));
 #endif

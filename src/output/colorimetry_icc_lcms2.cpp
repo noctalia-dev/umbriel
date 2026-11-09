@@ -84,6 +84,34 @@ namespace umbriel {
       return true;
     }
 
+    // A 16-bit tabulated curve is quantized to 1/65535, so an exact power
+    // reads back with that much error; a genuinely different curve misses by
+    // orders of magnitude more.
+    constexpr float kPowerMatchTolerance = 2e-4F;
+
+    // The exponent of a decode curve that is exactly a power (linear =
+    // encoded^gamma), 0 when it is not. The ICC wire step is u8Fixed8, so a
+    // "gamma 1.8" profile really carries 1.8008: reading the exponent back
+    // keeps tf_power equal to the file instead of restating its nominal value.
+    float powerExponent(const std::vector<float>& decode) {
+      const size_t middle = decode.size() / 2;
+      const float encoded = static_cast<float>(middle) / static_cast<float>(decode.size() - 1);
+      if (decode[middle] <= 0.0F || decode[middle] >= 1.0F) {
+        return 0.0F;
+      }
+      const float exponent = std::log(decode[middle]) / std::log(encoded);
+      if (!std::isfinite(exponent) || exponent < 1.0F) {
+        return 0.0F;
+      }
+      for (size_t index = 1; index < decode.size(); ++index) {
+        const float linear = std::pow(static_cast<float>(index) / static_cast<float>(decode.size() - 1), exponent);
+        if (std::abs(decode[index] - linear) > kPowerMatchTolerance) {
+          return 0.0F;
+        }
+      }
+      return exponent;
+    }
+
     bool sameCurve(const std::vector<float>& first, const std::vector<float>& second) {
       for (size_t index = 0; index < first.size(); ++index) {
         if (std::abs(first[index] - second[index]) > kCurveMatchTolerance) {
@@ -347,6 +375,7 @@ namespace umbriel {
       panel.transfer.kind = PanelTransfer::Kind::Gamma22;
     } else {
       panel.transfer.kind = PanelTransfer::Kind::Curve;
+      panel.transfer.exponent = powerExponent(redDecode);
       panel.transfer.encode = invertDecodeCurve(redDecode);
     }
 

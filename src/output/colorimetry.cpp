@@ -338,6 +338,7 @@ namespace umbriel {
       panel.transfer.kind = PanelTransfer::Kind::Gamma22;
     } else if (std::isfinite(gamma) && gamma >= 1.0F && gamma <= 4.0F) {
       panel.transfer.kind = PanelTransfer::Kind::Curve;
+      panel.transfer.exponent = gamma;
       panel.transfer.encode =
           samplesFromEncode([](float linear, float shape) { return std::pow(linear, 1.0F / shape); }, gamma);
     } else {

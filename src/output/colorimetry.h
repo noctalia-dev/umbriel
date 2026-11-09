@@ -30,6 +30,11 @@ namespace umbriel {
       Curve,
     };
     Kind kind = Kind::Srgb;
+    // Kind::Curve only: the EOTF exponent when the sampled curve is exactly a
+    // power (an ICC gamma or EDID gamma reaches us that way), 0 otherwise. It
+    // lets the output description state the curve as the protocol's tf_power
+    // instead of claiming a named curve the panel does not have.
+    float exponent = 0.0F;
     // Kind::Curve only: encode((i / (size - 1))²) for linear inputs in [0, 1].
     // The input grid clusters at zero because encode curves rise steeply
     // there; a uniform grid keeps several 8-bit codes of lerp error in the

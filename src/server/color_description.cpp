@@ -70,6 +70,7 @@ namespace umbriel {
     const auto& a = left.data;
     const auto& b = right.data;
     return a.tf_named == b.tf_named
+        && left.tfPower == right.tfPower
         && a.primaries_named == b.primaries_named
         && (a.primaries_named != 0 || primariesEqual(left.customPrimaries, right.customPrimaries))
         && a.has_mastering_display_primaries == b.has_mastering_display_primaries
@@ -155,17 +156,29 @@ namespace umbriel {
   }
 
   ColorDescription characterizedOutputDescription(
-      ColorDescription description, const wlr_color_primaries* panelPrimaries, uint32_t sdrTransferTfNamed,
-      IccProfileStore iccProfile
+      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile
   ) {
     // HDR (PQ) descriptions keep their BT.2020 encoding contract, including
     // the automatic-HDR offer; only SDR descriptions reflect the panel.
-    if (panelPrimaries == nullptr || description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
+    if (panel == nullptr || description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
       return description;
     }
     description.data.primaries_named = 0;
-    description.customPrimaries = *panelPrimaries;
-    description.data.tf_named = sdrTransferTfNamed;
+    description.customPrimaries = panel->primaries;
+    description.data.tf_named = 0;
+    switch (panel->transfer.kind) {
+    case PanelTransfer::Kind::Srgb:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+      break;
+    case PanelTransfer::Kind::Gamma22:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+      break;
+    case PanelTransfer::Kind::Curve:
+      // The profile states the curve exactly; tf_power restates it only when
+      // it is a power, so the two representations never disagree.
+      description.tfPower = panel->transfer.exponent;
+      break;
+    }
     description.iccProfile = std::move(iccProfile);
     return description;
   }
@@ -263,11 +276,26 @@ namespace umbriel {
       // The IEC 61966-2-1 curve under either protocol name.
       return WLR_COLOR_TRANSFER_FUNCTION_SRGB;
     default:
-      // A named curve the buffer setter cannot express (or no curve at all)
-      // stays unspecified: the renderer resolves it to the output's SDR
-      // transfer policy instead of guessing.
-      return static_cast<wlr_color_transfer_function>(0);
+      break;
     }
+    if (description.tfPower > 0.0F) {
+      // An output description's power curve has no buffer-side representation
+      // (the setter takes named curves only), so tagged content is decoded
+      // through the nearest named EOTF. The output stage still renders the
+      // panel's real curve; this approximation only affects conversion into
+      // the compositor's working space.
+      if (description.tfPower <= 1.6F) {
+        return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+      }
+      if (description.tfPower <= 2.3F) {
+        return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+      }
+      return WLR_COLOR_TRANSFER_FUNCTION_BT1886;
+    }
+    // A named curve the buffer setter cannot express (or no curve at all)
+    // stays unspecified: the renderer resolves it to the output's SDR
+    // transfer policy instead of guessing.
+    return static_cast<wlr_color_transfer_function>(0);
   }
 
 } // namespace umbriel

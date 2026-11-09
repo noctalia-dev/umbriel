@@ -1248,6 +1248,10 @@ namespace umbriel {
         wp_image_description_info_v1_send_tf_named(
             information, colorTransferFunctionToWire(description.data.tf_named, wl_resource_get_version(information))
         );
+      } else if (description.tfPower > 0.0F) {
+        wp_image_description_info_v1_send_tf_power(
+            information, static_cast<uint32_t>(std::lround(description.tfPower * 10000.0F))
+        );
       }
       wp_image_description_info_v1_send_luminances(
           information, static_cast<uint32_t>(std::lround(description.luminances.min * 10000.0F)),
@@ -1361,22 +1365,16 @@ namespace umbriel {
       const Output* managedOutput = server.outputFromWlr(output);
       const float sdrWhite = managedOutput != nullptr ? managedOutput->sdrWhite() : kDefaultSdrWhite;
       const bool automaticHdr = managedOutput != nullptr && managedOutput->automaticHdrAvailable();
-      // While an ICC/EDID characterization is active the
-      // description reflects the panel's real colorimetry (custom primaries),
-      // independently of the sdr_gamut policy — so tagged clients convert
-      // accurately and their pixels can change even under sdr_gamut = "native"
-      // — while untagged content stays untouched unless sdr_gamut = "srgb"
-      // stages the mapping. The named transfer keeps coming from the
-      // sdr_transfer policy.
-      const PanelColorimetry* panel = managedOutput != nullptr ? managedOutput->panelColorimetry() : nullptr;
-      const uint32_t sdrTransfer =
-          managedOutput != nullptr && managedOutput->configuredSdrTransfer() == SdrTransfer::Srgb
-          ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB
-          : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+      // The description must name the encoding the frame is actually written
+      // in. Only a staged gamut mapping makes the panel that encoding:
+      // without one the renderer composes into sRGB and stages nothing, so the
+      // panel characterization stays out of the description — advertising it
+      // would make a client convert into an encoding we never produce.
+      const bool panelDestination = managedOutput != nullptr && managedOutput->stagedSdrGamutTransform() != nullptr;
       return characterizedOutputDescription(
           outputColorDescription(output->image_description, sdrWhite, automaticHdr),
-          panel != nullptr ? &panel->primaries : nullptr, sdrTransfer,
-          managedOutput != nullptr ? managedOutput->iccProfileStore() : IccProfileStore{}
+          panelDestination ? managedOutput->panelColorimetry() : nullptr,
+          panelDestination ? managedOutput->iccProfileStore() : IccProfileStore{}
       );
     }
 

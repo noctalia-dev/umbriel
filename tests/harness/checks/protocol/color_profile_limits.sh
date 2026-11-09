@@ -20,8 +20,10 @@ write_icc_matrix_profile "$PROFILE" > /dev/null
 write_icc_matrix_profile "$PADDED" 12 2.2 > /dev/null
 truncate -s $((32 * 1024 * 1024)) "$SPARSE"
 
-printf '%s\n\n[animation]\nenabled = false\n[output.HEADLESS-1]\ncolor_profile = "%s"\n' "$BASELINE" "$PROFILE" \
-  > "$UMBRIEL_CONFIG"
+# "srgb" stages the gamut transform, which is what carries the characterization's
+# profile onto the advertised descriptions — without it icc_storm has no fd to leak.
+printf '%s\n\n[animation]\nenabled = false\n[output.HEADLESS-1]\ncolor_profile = "%s"\nsdr_gamut = "srgb"\n' \
+  "$BASELINE" "$PROFILE" > "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" settle > /dev/null
 

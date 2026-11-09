@@ -591,9 +591,10 @@ namespace umbriel {
     m_panelColorimetry = std::move(panel);
 
     // "native" stages no SDR output transform at all: pixels stay bit-identical
-    // to an uncharacterized output even with a profile configured. The
-    // characterization above still feeds protocol descriptions, independently
-    // of the sdr_gamut policy.
+    // to an uncharacterized output even with a profile configured. The protocol
+    // descriptions follow the same rule — they name the sRGB destination the
+    // renderer writes, so a client that tags with them renders identically too
+    // (see ColorManager::descriptionForOutput).
     if (gamut == SdrGamut::Native) {
       m_server->updateColorPreferences();
       return;

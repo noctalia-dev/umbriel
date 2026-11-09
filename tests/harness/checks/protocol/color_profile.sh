@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# A real ICC characterization drives the SDR gamut policy end to end: panel
-# fields and custom-preferred descriptions on the wire, the exact profile bytes
-# through get_information's icc_file, edid inert on headless, and the create_icc
-# contract (ready, graceful failure, information denial, bad_size, bad_fd). The pixel
-# pin is the feature's point: "native" stays bit-identical while "srgb" maps
-# untagged red into the profiled wide gamut.
+# A real ICC characterization drives the SDR gamut policy end to end: the
+# advertised destination (sRGB while "native" stages nothing, the panel's
+# custom primaries and tf_power under "srgb"), the exact profile bytes through
+# get_information's icc_file, edid inert on headless, and the create_icc
+# contract (ready, graceful failure, information denial, bad_size, bad_fd). The
+# pixel pins are the feature's point: "native" stays bit-identical even for a
+# client that tags with the output description, and "srgb" maps untagged red
+# into the profiled wide gamut.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -41,10 +43,12 @@ PY
 
 readonly ICC_SIZE=$(wc -c < "$PROFILE")
 readonly ICC_HEAD=$(od -An -tx1 -N8 "$PROFILE" | tr -d ' \n')
+ICC_TF_POWER=$(icc_curve_tf_power "$PROFILE")
+readonly ICC_TF_POWER
 
-# The untagged phase runs a backgrounded client fed through a FIFO. Any exit
-# between starting it and the phase's own teardown must still reap the client
-# and close the FIFO writer, so an induced failure leaves nothing behind.
+# The client phases run a backgrounded client fed through a FIFO. Any exit
+# between starting one and its teardown must still reap the client and close
+# the FIFO writer, so an induced failure leaves nothing behind.
 client_pid=
 CLIENT_FD=
 cleanup() {
@@ -63,6 +67,32 @@ trap cleanup EXIT
 write_config() {
   printf '%s\n\n[animation]\nenabled = false\n[output.HEADLESS-1]\n%s\n' "$BASELINE" "$1" > "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload > /dev/null
+  "$UMBRIEL" settle > /dev/null
+}
+
+# One client per pixel phase: `output-desc` snapshots the output description
+# when the client starts, so a client that must follow the characterization has
+# to be started after it is live.
+start_client() {
+  local name=$1
+  shift
+  CLIENT_LOG="$RUNTIME/color-profile-$name.log"
+  mkfifo "$RUNTIME/color-profile-$name.fifo"
+  "$CLIENT" "$@" < "$RUNTIME/color-profile-$name.fifo" > "$CLIENT_LOG" 2>&1 &
+  client_pid=$!
+  exec {CLIENT_FD}> "$RUNTIME/color-profile-$name.fifo"
+  await_lines "$CLIENT_LOG" '{"event":"mapped"}' 1
+}
+
+stop_client() {
+  cleanup
+  "$UMBRIEL" settle > /dev/null
+}
+
+# Solid fill plus its snapshot event, so the next capture is fully painted.
+fill() {
+  printf 'color %s\n' "$1" >&"$CLIENT_FD"
+  await_lines "$CLIENT_LOG" "{\"event\":\"snapshot\",\"label\":\"color $1\"" 1
   "$UMBRIEL" settle > /dev/null
 }
 
@@ -126,6 +156,14 @@ assert_mapped() {
   fi
 }
 
+# Center pixel of the captured output, read once the frame has settled.
+sample_center() {
+  local size
+  grim "$SHOT"
+  size=$("$UMBRIEL_PIXEL_PROBE" "$SHOT" size)
+  "$UMBRIEL_PIXEL_PROBE" "$SHOT" pixel "$((${size%x*} / 2))" "$((${size#*x} / 2))"
+}
+
 # --- baseline: no characterization ------------------------------------------
 write_config ''
 if ! fields_are none native false false; then
@@ -133,15 +171,10 @@ if ! fields_are none native false false; then
   exit 1
 fi
 
-CLIENT_LOG="$RUNTIME/color-profile-surface.log"
-mkfifo "$RUNTIME/color-profile-surface.fifo"
-"$CLIENT" untagged < "$RUNTIME/color-profile-surface.fifo" > "$CLIENT_LOG" 2>&1 &
-client_pid=$!
-exec {CLIENT_FD}> "$RUNTIME/color-profile-surface.fifo"
-await_lines "$CLIENT_LOG" '{"event":"mapped"}' 1
-printf 'color FFFF0000\n' >&"$CLIENT_FD"
-await_lines "$CLIENT_LOG" '{"event":"snapshot","label":"color FFFF0000"' 1
+start_client baseline untagged
+fill FFFF0000
 assert_pass_through 'baseline'
+stop_client
 
 # --- ICC file, sdr_gamut = "native": characterized, pixels untouched ---------
 write_config "color_profile = \"$PROFILE\"
@@ -159,38 +192,46 @@ if ! jq -e '
   echo "panel characterization did not surface in color --json: $color"
   exit 1
 fi
+
+# `output-desc` makes `tag` apply the output's own description, so this client
+# compares a client that follows the advertisement with one that ignores it.
+start_client native untagged output-desc
+fill FFFF0000
 assert_pass_through 'profile with native gamut'
 
-# Output and preferred descriptions carry the panel's custom primaries and the
-# exact profile bytes on icc_file. The primaries assertion is a round-trip
-# contract against the generator's own colorants (the daemon must report the
-# file as written); the parser math itself is pinned by tests/unit/colorimetry.cpp.
-INFO_LOG="$RUNTIME/color-profile-info.log"
+# With no staged mapping the renderer composes into sRGB, so that is what the
+# output advertises: the panel's colorimetry must stay out of the description
+# (and out of icc_file) or a client would convert into an encoding we never
+# produce.
+INFO_LOG="$RUNTIME/color-profile-native-probe.log"
 if ! UMBRIEL_ICC_DUMP="$DUMP" "$CLIENT" v1 probe > "$INFO_LOG" 2>&1; then
   echo "the color feedback client did not collect output/preferred descriptions: $(cat "$INFO_LOG")"
   exit 1
 fi
-if ! jq -se --argjson size "$ICC_SIZE" --arg head "$ICC_HEAD" --arg ex "${FIXTURE_XY[*]}" '
-  def near($a; $b): (($a - $b) | if . < 0 then -. else . end) <= 30;
-  ($ex | split(" ") | map(tonumber * 1000000)) as $want
-  | . as $log
+if ! jq -se '
+  . as $log
   | ["output", "preferred"] | all(. as $source
     | ([$log[] | select(.event == "description" and .source == $source)] | last) as $d
-    | $d.tf == 2 and $d.primaries == 0 and $d.icc_size == $size and $d.icc_head == $head
-      and near($d.primaries_xy[0]; $want[0]) and near($d.primaries_xy[1]; $want[1])
-      and near($d.primaries_xy[2]; $want[2]) and near($d.primaries_xy[3]; $want[3])
-      and near($d.primaries_xy[4]; $want[4]) and near($d.primaries_xy[5]; $want[5])
-      and near($d.primaries_xy[6]; $want[6]) and near($d.primaries_xy[7]; $want[7]))
+    | $d.tf == 9 and $d.primaries == 1 and $d.icc_size == 0)
 ' "$INFO_LOG" > /dev/null; then
-  echo "characterized descriptions lacked custom primaries or icc_file bytes: $(cat "$INFO_LOG")"
+  echo "native output advertised something other than its sRGB destination: $(cat "$INFO_LOG")"
   exit 1
 fi
-for source in output preferred preferred_parametric; do
-  if ! cmp -s "$PROFILE" "$DUMP.$source.0"; then
-    echo "icc_file bytes for $source did not match the configured profile exactly"
-    exit 1
-  fi
-done
+
+# The pixel contract behind that advertisement: tagging the buffer with the
+# output's own description must not move a single pixel.
+fill FF807060
+untagged_pixel=$(sample_center)
+printf 'tag\n' >&"$CLIENT_FD"
+await_lines "$CLIENT_LOG" '{"event":"snapshot","label":"tag"' 1
+"$UMBRIEL" settle > /dev/null
+tagged_pixel=$(sample_center)
+if [[ $untagged_pixel != "128 112 96" || $tagged_pixel != "$untagged_pixel" ]]; then
+  echo "the native output description did not match its rendering:" \
+    "untagged [$untagged_pixel] tagged [$tagged_pixel]"
+  exit 1
+fi
+stop_client
 
 # --- sdr_gamut = "srgb": the opt-in mapping, pinned live ---------------------
 write_config "color_profile = \"$PROFILE\"
@@ -199,7 +240,43 @@ if ! fields_are "$PROFILE" srgb true true; then
   echo "srgb policy did not stage the gamut transform: $( "$UMBRIEL" color --json)"
   exit 1
 fi
+start_client srgb untagged
+fill FFFF0000
 assert_mapped
+
+# Now the panel is the destination, so the output and preferred descriptions
+# carry its custom primaries, its exact transfer curve as tf_power (the profile
+# itself states it, and the two must not disagree), and the profile bytes on
+# icc_file. The primaries assertion is a round-trip contract against the
+# generator's own colorants (the daemon must report the file as written); the
+# parser math itself is pinned by tests/unit/colorimetry.cpp.
+INFO_LOG="$RUNTIME/color-profile-srgb-probe.log"
+if ! UMBRIEL_ICC_DUMP="$DUMP" "$CLIENT" v1 probe > "$INFO_LOG" 2>&1; then
+  echo "the color feedback client did not collect output/preferred descriptions: $(cat "$INFO_LOG")"
+  exit 1
+fi
+if ! jq -se --argjson size "$ICC_SIZE" --arg head "$ICC_HEAD" --argjson power "$ICC_TF_POWER" --arg ex "${FIXTURE_XY[*]}" '
+  def near($a; $b): (($a - $b) | if . < 0 then -. else . end) <= 30;
+  ($ex | split(" ") | map(tonumber * 1000000)) as $want
+  | . as $log
+  | ["output", "preferred"] | all(. as $source
+    | ([$log[] | select(.event == "description" and .source == $source)] | last) as $d
+    | $d.tf == 0 and $d.tf_power == $power and $d.primaries == 0
+      and $d.icc_size == $size and $d.icc_head == $head
+      and near($d.primaries_xy[0]; $want[0]) and near($d.primaries_xy[1]; $want[1])
+      and near($d.primaries_xy[2]; $want[2]) and near($d.primaries_xy[3]; $want[3])
+      and near($d.primaries_xy[4]; $want[4]) and near($d.primaries_xy[5]; $want[5])
+      and near($d.primaries_xy[6]; $want[6]) and near($d.primaries_xy[7]; $want[7]))
+' "$INFO_LOG" > /dev/null; then
+  echo "staged descriptions lacked custom primaries, tf_power or icc_file bytes: $(cat "$INFO_LOG")"
+  exit 1
+fi
+for source in output preferred preferred_parametric; do
+  if ! cmp -s "$PROFILE" "$DUMP.$source.0"; then
+    echo "icc_file bytes for $source did not match the configured profile exactly"
+    exit 1
+  fi
+done
 
 # --- re-apply must not re-read an unchanged profile (cache key contract) -----
 # The key carries the profile's mtime; content changed behind an unchanged
@@ -230,13 +307,7 @@ if ! fields_are edid srgb false false; then
   exit 1
 fi
 assert_pass_through 'edid fallback'
-
-kill -TERM "$client_pid"
-wait "$client_pid" 2>/dev/null || true
-exec {CLIENT_FD}>&-
-client_pid=
-CLIENT_FD=
-"$UMBRIEL" settle > /dev/null
+stop_client
 
 # --- create_icc wire contract ----------------------------------------------
 run_icc_mode() {

@@ -225,6 +225,30 @@ print(' '.join(f'{value:.6g}' for name in ('rXYZ', 'gXYZ', 'bXYZ', 'wtpt') for v
 PY
 }
 
+# The tf_power a curve-only profile must advertise: the u8Fixed8 gamma stored in
+# its TRC tags, restated in the protocol's ten-thousandths. Fails unless all
+# three TRCs share one gamma, so a fixture edit cannot silently weaken a pin.
+icc_curve_tf_power() {
+  python3 - "$1" <<'PY'
+import struct
+import sys
+
+data = open(sys.argv[1], 'rb').read()
+count = struct.unpack_from('>I', data, 128)[0]
+tags = {}
+for index in range(count):
+    name, offset, size = struct.unpack_from('>4sII', data, 132 + 12 * index)
+    tags[name] = data[offset:offset + size]
+curves = set()
+for name in (b'rTRC', b'gTRC', b'bTRC'):
+    curve = tags[name]
+    assert curve[:4] == b'curv' and struct.unpack_from('>I', curve, 8)[0] == 1, name
+    curves.add(struct.unpack_from('>H', curve, 12)[0])
+assert len(curves) == 1, curves
+print(round(curves.pop() / 256 * 10000))
+PY
+}
+
 # Query a mapped window by its exact title; wait for it before reading its state.
 window_by_title() { "$UMBRIEL" windows --json | jq -ce --arg title "$1" '.[] | select(.title == $title)'; }
 await_window() {

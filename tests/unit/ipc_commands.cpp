@@ -232,6 +232,10 @@ UMBRIEL_TEST(surfaceTransferLabelSeparatesNamedAndBare) {
   umbriel::ColorDescription named{};
   named.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
   CHECK(umbriel::surfaceTransferLabel(&named) == "gamma 2.2");
+  // An output description's panel power curve has no named protocol value.
+  umbriel::ColorDescription powered{};
+  powered.tfPower = 1.8F;
+  CHECK(umbriel::surfaceTransferLabel(&powered) == "power 1.8");
   umbriel::ColorDescription bare{};
   CHECK(umbriel::surfaceTransferLabel(&bare) == "unspecified");
 }

@@ -32,6 +32,7 @@ namespace {
     uint64_t identity = 0;
     uint32_t readyVersion = 0;
     uint32_t transferFunction = 0;
+    uint32_t transferPower = 0;
     uint32_t primaries = 0;
     uint32_t minimum = 0;
     uint32_t maximum = 0;
@@ -82,6 +83,9 @@ namespace {
     bool tagged = true;
     bool compound = false;
     bool probe = false;
+    // Tag with the description the compositor advertises for the output,
+    // instead of a parametric one the client builds itself.
+    bool useOutputDescription = false;
     bool custom = false;
     bool contentLight = false;
     std::array<wp_image_description_v1*, 5> customDescriptions{};
@@ -102,13 +106,13 @@ namespace {
     }
     std::println(
         "{{\"event\":\"description\",\"source\":\"{}\",\"generation\":{},\"identity\":{},\"ready_version\":{},"
-        "\"tf\":{},\"primaries\":{},"
+        "\"tf\":{},\"tf_power\":{},\"primaries\":{},"
         "\"min\":{},\"max\":{},\"reference\":{},\"target_min\":{},\"target_max\":{},\"max_cll\":{},\"max_fall\":{},"
         "\"icc_size\":{},\"icc_head\":\"{}\",\"primaries_xy\":{}}}",
         description.source, description.generation, description.identity, description.readyVersion,
-        description.transferFunction, description.primaries, description.minimum, description.maximum,
-        description.reference, description.targetMinimum, description.targetMaximum, description.maxCll,
-        description.maxFall, description.iccSize, description.iccHead, primariesJson
+        description.transferFunction, description.transferPower, description.primaries, description.minimum,
+        description.maximum, description.reference, description.targetMinimum, description.targetMaximum,
+        description.maxCll, description.maxFall, description.iccSize, description.iccHead, primariesJson
     );
     std::fflush(stdout);
     wp_image_description_info_v1_destroy(information);
@@ -161,7 +165,9 @@ namespace {
   void informationPrimariesNamed(void* data, wp_image_description_info_v1*, uint32_t primaries) {
     static_cast<Description*>(data)->primaries = primaries;
   }
-  void informationTransferPower(void*, wp_image_description_info_v1*, uint32_t) {}
+  void informationTransferPower(void* data, wp_image_description_info_v1*, uint32_t eexp) {
+    static_cast<Description*>(data)->transferPower = eexp;
+  }
   void informationTransferNamed(void* data, wp_image_description_info_v1*, uint32_t transferFunction) {
     static_cast<Description*>(data)->transferFunction = transferFunction;
   }
@@ -504,6 +510,8 @@ int main(int argc, char** argv) {
       state.fillColor = 0xFF101010U;
     } else if (std::strcmp(argv[i], "probe") == 0) {
       state.probe = true;
+    } else if (std::strcmp(argv[i], "output-desc") == 0) {
+      state.useOutputDescription = true;
     } else if (std::strcmp(argv[i], "untagged") == 0) {
       state.tagged = false;
     } else if (std::strcmp(argv[i], "subsurface") == 0 || std::strcmp(argv[i], "subsurface-desync") == 0) {
@@ -1086,22 +1094,40 @@ int main(int argc, char** argv) {
       state, wp_color_management_surface_feedback_v1_get_preferred_parametric(state.feedback), "preferred_parametric", 0
   );
   state.colorSurface = wp_color_manager_v1_get_surface(state.manager, state.colorTarget);
-  wp_image_description_creator_params_v1* params = wp_color_manager_v1_create_parametric_creator(state.manager);
-  const auto compoundTransfer = state.managerVersion == 1 ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB
-                                                          : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
-  wp_image_description_creator_params_v1_set_tf_named(
-      params, state.compound ? compoundTransfer : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
-  );
-  wp_image_description_creator_params_v1_set_primaries_named(
-      params, state.compound ? WP_COLOR_MANAGER_V1_PRIMARIES_SRGB : WP_COLOR_MANAGER_V1_PRIMARIES_BT2020
-  );
-  state.surfaceDescription = wp_image_description_creator_params_v1_create(params);
-  state.selectedDescription = state.surfaceDescription;
-  wp_image_description_v1_add_listener(state.surfaceDescription, &kSurfaceDescriptionListener, &state);
-  while (!state.ready && !state.failed && wl_display_dispatch(state.display) >= 0) {
-  }
-  if (!state.ready) {
-    return 1;
+  wp_image_description_creator_params_v1* params = nullptr;
+  if (state.useOutputDescription) {
+    // The output's own description is the encoding a color-managed client
+    // converts into, so tagging with it must render the same pixels the same
+    // buffer renders untagged whenever the compositor advertises what it does.
+    state.ready = false;
+    state.failed = false;
+    state.surfaceDescription = wp_color_management_output_v1_get_image_description(state.colorOutput);
+    wp_image_description_v1_add_listener(state.surfaceDescription, &kSurfaceDescriptionListener, &state);
+    while (!state.ready && !state.failed && wl_display_dispatch(state.display) >= 0) {
+    }
+    if (!state.ready) {
+      std::println(stderr, "color-feedback-client: the output description was not ready");
+      return 1;
+    }
+    state.selectedDescription = state.surfaceDescription;
+  } else {
+    params = wp_color_manager_v1_create_parametric_creator(state.manager);
+    const auto compoundTransfer = state.managerVersion == 1 ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB
+                                                            : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
+    wp_image_description_creator_params_v1_set_tf_named(
+        params, state.compound ? compoundTransfer : WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
+    );
+    wp_image_description_creator_params_v1_set_primaries_named(
+        params, state.compound ? WP_COLOR_MANAGER_V1_PRIMARIES_SRGB : WP_COLOR_MANAGER_V1_PRIMARIES_BT2020
+    );
+    state.surfaceDescription = wp_image_description_creator_params_v1_create(params);
+    state.selectedDescription = state.surfaceDescription;
+    wp_image_description_v1_add_listener(state.surfaceDescription, &kSurfaceDescriptionListener, &state);
+    while (!state.ready && !state.failed && wl_display_dispatch(state.display) >= 0) {
+    }
+    if (!state.ready) {
+      return 1;
+    }
   }
   if (state.compound) {
     state.ready = false;

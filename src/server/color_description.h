@@ -25,6 +25,11 @@ namespace umbriel {
   struct ColorDescription {
     wlr_image_description_v1_data data{};
     wlr_color_primaries customPrimaries{};
+    // Output/preferred descriptions only: the EOTF exponent when the panel's
+    // transfer is exactly a power with no named protocol value, reported as
+    // the protocol's tf_power. Client-created descriptions never set it — the
+    // renderer paints their curves through named transfer functions.
+    float tfPower = 0.0F;
     // Raw ICC bytes get_information advertises via its icc_file event ("ICC
     // profile matching the image description"). Empty when the description has
     // no matching profile: inert or HDR/PQ descriptions. Output descriptions
@@ -58,21 +63,16 @@ namespace umbriel {
       const wlr_output_image_description* outputDescription, float effectiveSdrWhite, bool automaticHdrAvailable = false
   );
 
-  // Characterized-panel override for output descriptions. While
-  // an ICC/EDID characterization is active the description reflects the
-  // panel's real colorimetry (custom primaries) so tagged clients convert
-  // accurately — their pixels can change even under sdr_gamut = "native" —
-  // while untagged content stays untouched unless sdr_gamut = "srgb" stages
-  // the mapping. Independent of the sdr_gamut policy; the named transfer keeps
-  // coming from the sdr_transfer policy (`sdrTransferTfNamed`), and HDR (PQ)
-  // descriptions keep their encoding contract untouched. The characterization's
-  // ICC byte store rides along for get_information's icc_file advertising under
-  // the same gate — the profile matches exactly these described SDR outputs,
-  // never inert or PQ descriptions. Inert without a characterization
-  // (`panelPrimaries == nullptr`).
+  // Characterized-panel override for the output description of a panel that a
+  // staged SDR gamut mapping writes into: its custom primaries, its transfer
+  // curve (named when one matches exactly, tf_power when it is a power, and
+  // nothing otherwise — the ICC file then carries it), and the profile
+  // get_information advertises through icc_file. Callers pass the panel only
+  // when that mapping is staged; without one the renderer composes into sRGB
+  // and the description must keep saying so. A null panel changes nothing, and
+  // HDR (PQ) descriptions keep their BT.2020 encoding contract untouched.
   [[nodiscard]] ColorDescription characterizedOutputDescription(
-      ColorDescription description, const wlr_color_primaries* panelPrimaries, uint32_t sdrTransferTfNamed,
-      IccProfileStore iccProfile
+      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile
   );
 
   // Client-provided ICC descriptions
@@ -105,8 +105,10 @@ namespace umbriel {
   [[nodiscard]] uint32_t namedTransferForPower(float exponent);
 
   // Buffer-side transfer function for a description. Named transfer functions
-  // map directly; a name the setter cannot express stays unspecified (0), and
-  // the renderer resolves it through the output's SDR transfer policy.
+  // map directly and tf_power maps to the nearest named EOTF (an input-side
+  // approximation — the setter takes no exponent); a name the setter cannot
+  // express stays unspecified (0), and the renderer resolves it through the
+  // output's SDR transfer policy.
   [[nodiscard]] wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description);
 
 } // namespace umbriel

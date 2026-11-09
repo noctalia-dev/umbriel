@@ -40,6 +40,22 @@ namespace {
     return std::abs(actual - expected) < tolerance;
   }
 
+  // Display-P3-like panel the characterization tests share; each test varies
+  // only the transfer.
+  umbriel::PanelColorimetry wideGamutPanel(umbriel::PanelTransfer transfer) {
+    return {
+        .primaries =
+            {
+                .red = {.x = 0.68F, .y = 0.32F},
+                .green = {.x = 0.265F, .y = 0.69F},
+                .blue = {.x = 0.15F, .y = 0.06F},
+                .white = {.x = 0.3127F, .y = 0.329F},
+            },
+        .white = {0.3127F, 0.329F},
+        .transfer = std::move(transfer),
+    };
+  }
+
 #if UMBRIEL_HAS_LCMS2
   std::vector<uint8_t> saveProfile(cmsHPROFILE profile) {
     cmsUInt32Number size = 0;
@@ -385,28 +401,27 @@ UMBRIEL_TEST(preferredDescriptionComparisonIncludesReferenceWhiteAndTargetMetada
   }
 }
 
-UMBRIEL_TEST(characterizedPanelReportsCustomPrimariesAndPolicyTransfer) {
-  const wlr_color_primaries panel{
-      .red = {.x = 0.68F, .y = 0.32F},
-      .green = {.x = 0.265F, .y = 0.69F},
-      .blue = {.x = 0.15F, .y = 0.06F},
-      .white = {.x = 0.3127F, .y = 0.329F},
-  };
+UMBRIEL_TEST(characterizedPanelReportsItsOwnPrimariesAndTransfer) {
+  const umbriel::PanelColorimetry panel = wideGamutPanel({.kind = umbriel::PanelTransfer::Kind::Srgb, .encode = {}});
   const umbriel::ColorDescription base = umbriel::outputColorDescription(nullptr, 203.0F);
 
-  for (const uint32_t transfer : {
-           static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB),
-           static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22),
+  for (const auto& [transfer, expected] : {
+           std::pair{umbriel::PanelTransfer::Kind::Srgb, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB},
+           std::pair{umbriel::PanelTransfer::Kind::Gamma22, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22},
        }) {
+    umbriel::PanelColorimetry characterizedPanel = panel;
+    characterizedPanel.transfer.kind = transfer;
     const umbriel::ColorDescription characterized =
-        umbriel::characterizedOutputDescription(base, &panel, transfer, nullptr);
+        umbriel::characterizedOutputDescription(base, &characterizedPanel, nullptr);
     CHECK_EQ(characterized.data.primaries_named, 0U);
     CHECK_EQ(characterized.customPrimaries.red.x, 0.68F);
     CHECK_EQ(characterized.customPrimaries.green.y, 0.69F);
     CHECK_EQ(characterized.customPrimaries.blue.x, 0.15F);
     CHECK_EQ(characterized.customPrimaries.white.y, 0.329F);
-    // The named transfer keeps coming from the sdr_transfer policy, not the panel TRC.
-    CHECK_EQ(characterized.data.tf_named, transfer);
+    // The transfer describes the panel, not the sdr_transfer policy: an
+    // ICC-backed description must not claim a curve the profile does not have.
+    CHECK_EQ(characterized.data.tf_named, expected);
+    CHECK_EQ(characterized.tfPower, 0.0F);
     // A characterization change must be visible to the description refresh comparison.
     CHECK(!umbriel::colorDescriptionsEqual(base, characterized));
     // Untouched HDR metadata and luminance model.
@@ -415,10 +430,29 @@ UMBRIEL_TEST(characterizedPanelReportsCustomPrimariesAndPolicyTransfer) {
   }
 }
 
+UMBRIEL_TEST(sampledPanelTransferReportsAPowerOnlyWhenItIsOne) {
+  const umbriel::PanelColorimetry panel =
+      wideGamutPanel({.kind = umbriel::PanelTransfer::Kind::Curve, .exponent = 1.8008F, .encode = {0.0F, 1.0F}});
+  const umbriel::ColorDescription base = umbriel::outputColorDescription(nullptr, 203.0F);
+
+  const umbriel::ColorDescription power = umbriel::characterizedOutputDescription(base, &panel, nullptr);
+  CHECK_EQ(power.data.tf_named, 0U);
+  CHECK(closeTo(power.tfPower, 1.8008F, 1e-4));
+
+  // A sampled curve that is not a power states no curve at all: the ICC file
+  // is the only exact representation, so claiming one would be a guess.
+  umbriel::PanelColorimetry curved = panel;
+  curved.transfer.exponent = 0.0F;
+  const umbriel::ColorDescription sampled = umbriel::characterizedOutputDescription(base, &curved, nullptr);
+  CHECK_EQ(sampled.data.tf_named, 0U);
+  CHECK_EQ(sampled.tfPower, 0.0F);
+  // The two differ, so a profile swap between them still refreshes the description.
+  CHECK(!umbriel::colorDescriptionsEqual(power, sampled));
+}
+
 UMBRIEL_TEST(inertCharacterizationKeepsNamedPrimaries) {
   const umbriel::ColorDescription base = umbriel::outputColorDescription(nullptr, 203.0F);
-  const umbriel::ColorDescription inert =
-      umbriel::characterizedOutputDescription(base, nullptr, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB, nullptr);
+  const umbriel::ColorDescription inert = umbriel::characterizedOutputDescription(base, nullptr, nullptr);
 
   CHECK(umbriel::colorDescriptionsEqual(base, inert));
   CHECK_EQ(inert.data.primaries_named, WP_COLOR_MANAGER_V1_PRIMARIES_SRGB);
@@ -426,21 +460,14 @@ UMBRIEL_TEST(inertCharacterizationKeepsNamedPrimaries) {
 }
 
 UMBRIEL_TEST(hdrDescriptionsKeepTheirEncodingUnderCharacterization) {
-  const wlr_color_primaries panel{
-      .red = {.x = 0.68F, .y = 0.32F},
-      .green = {.x = 0.265F, .y = 0.69F},
-      .blue = {.x = 0.15F, .y = 0.06F},
-      .white = {.x = 0.3127F, .y = 0.329F},
-  };
+  const umbriel::PanelColorimetry panel = wideGamutPanel({.kind = umbriel::PanelTransfer::Kind::Gamma22, .encode = {}});
   const wlr_output_image_description output = hdrOutputDescription();
   const umbriel::ColorDescription hdr = umbriel::outputColorDescription(&output, 203.0F);
   const umbriel::ColorDescription automatic = umbriel::outputColorDescription(nullptr, 203.0F, true);
-  const uint32_t transfer = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
 
-  const umbriel::ColorDescription characterizedHdr =
-      umbriel::characterizedOutputDescription(hdr, &panel, transfer, nullptr);
+  const umbriel::ColorDescription characterizedHdr = umbriel::characterizedOutputDescription(hdr, &panel, nullptr);
   const umbriel::ColorDescription characterizedAutomatic =
-      umbriel::characterizedOutputDescription(automatic, &panel, transfer, nullptr);
+      umbriel::characterizedOutputDescription(automatic, &panel, nullptr);
 
   CHECK(umbriel::colorDescriptionsEqual(hdr, characterizedHdr));
   CHECK(umbriel::colorDescriptionsEqual(automatic, characterizedAutomatic));
@@ -450,12 +477,7 @@ UMBRIEL_TEST(hdrDescriptionsKeepTheirEncodingUnderCharacterization) {
 }
 
 UMBRIEL_TEST(characterizedDescriptionCarriesOnlyItsMatchingIccProfile) {
-  const wlr_color_primaries panel{
-      .red = {.x = 0.68F, .y = 0.32F},
-      .green = {.x = 0.265F, .y = 0.69F},
-      .blue = {.x = 0.15F, .y = 0.06F},
-      .white = {.x = 0.3127F, .y = 0.329F},
-  };
+  const umbriel::PanelColorimetry panel = wideGamutPanel({.kind = umbriel::PanelTransfer::Kind::Srgb, .encode = {}});
   const umbriel::ColorDescription base = umbriel::outputColorDescription(nullptr, 203.0F);
   const std::array<uint8_t, 4> profileBytes{0x0A, 0x0B, 0x0C, 0x0D};
   const umbriel::IccProfileStore store = umbriel::iccStoreForFileProfile(profileBytes);
@@ -466,28 +488,24 @@ UMBRIEL_TEST(characterizedDescriptionCarriesOnlyItsMatchingIccProfile) {
 
   // The characterized SDR description carries the store get_information
   // advertises via its icc_file event.
-  const umbriel::ColorDescription characterized =
-      umbriel::characterizedOutputDescription(base, &panel, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB, store);
+  const umbriel::ColorDescription characterized = umbriel::characterizedOutputDescription(base, &panel, store);
   CHECK(characterized.iccProfile == store);
 
   // Inert descriptions carry no profile even when a store is passed.
-  const umbriel::ColorDescription inert =
-      umbriel::characterizedOutputDescription(base, nullptr, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB, store);
+  const umbriel::ColorDescription inert = umbriel::characterizedOutputDescription(base, nullptr, store);
   CHECK(inert.iccProfile == nullptr);
 
   // HDR/PQ descriptions never advertise the panel's SDR profile: it does not
   // match their encoding ("ICC profile matching the image description").
   const wlr_output_image_description output = hdrOutputDescription();
   const umbriel::ColorDescription hdr = umbriel::outputColorDescription(&output, 203.0F);
-  const umbriel::ColorDescription characterizedHdr =
-      umbriel::characterizedOutputDescription(hdr, &panel, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22, store);
+  const umbriel::ColorDescription characterizedHdr = umbriel::characterizedOutputDescription(hdr, &panel, store);
   CHECK(characterizedHdr.iccProfile == nullptr);
 
   // A profile swap with identical colorimetry is still a description change.
   const std::array<uint8_t, 4> swappedBytes{0x0A, 0x0B, 0x0C, 0x0E};
   const umbriel::IccProfileStore swapped = umbriel::iccStoreForFileProfile(swappedBytes);
-  const umbriel::ColorDescription reswapped =
-      umbriel::characterizedOutputDescription(base, &panel, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB, swapped);
+  const umbriel::ColorDescription reswapped = umbriel::characterizedOutputDescription(base, &panel, swapped);
   CHECK(!umbriel::colorDescriptionsEqual(characterized, reswapped));
 }
 
@@ -665,6 +683,18 @@ UMBRIEL_TEST(bufferTransferFunctionsMapNamedCurvesOnly) {
   CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
   description.data.tf_named = 0;
   CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
+
+  // An output description's power curve (tf_power) has no buffer-side value;
+  // tagged content is decoded through the nearest named EOTF while the output
+  // stage still renders the panel's real curve.
+  for (const auto& [exponent, expected] : {
+           std::pair{1.0F, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR},
+           std::pair{1.8F, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22},
+           std::pair{2.4F, WLR_COLOR_TRANSFER_FUNCTION_BT1886},
+       }) {
+    description.tfPower = exponent;
+    CHECK(umbriel::bufferTransferFunction(description) == expected);
+  }
 }
 
 UMBRIEL_TEST(powerCurvesAreCanonicalizedOnlyWhenExact) {
