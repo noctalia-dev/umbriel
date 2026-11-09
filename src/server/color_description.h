@@ -104,6 +104,14 @@ namespace umbriel {
   // named equivalent at all.
   [[nodiscard]] uint32_t namedTransferForPower(float exponent);
 
+  // True when get_information can describe the description with parametric
+  // events: color-management-v1.xml requires at least one of tf_power and
+  // tf_named for a parametric description. A sampled panel curve that is not a
+  // power has neither, so only the ICC profile states it — and
+  // get_preferred_parametric, which promises a parametric description, has no
+  // honest answer.
+  [[nodiscard]] bool parametricDescription(const ColorDescription& description);
+
   // Buffer-side transfer function for a description. Named transfer functions
   // map directly and tf_power maps to the nearest named EOTF (an input-side
   // approximation — the setter takes no exponent); a name the setter cannot

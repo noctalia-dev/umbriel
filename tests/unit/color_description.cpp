@@ -476,6 +476,19 @@ UMBRIEL_TEST(hdrDescriptionsKeepTheirEncodingUnderCharacterization) {
   CHECK_EQ(characterizedAutomatic.data.tf_named, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ);
 }
 
+UMBRIEL_TEST(parametricDescriptionNeedsATransferCurve) {
+  umbriel::ColorDescription named{};
+  named.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+  CHECK(umbriel::parametricDescription(named));
+
+  umbriel::ColorDescription power{};
+  power.tfPower = 1.8F;
+  CHECK(umbriel::parametricDescription(power));
+
+  // A sampled panel curve that is no power has neither: only its ICC profile states it.
+  CHECK(!umbriel::parametricDescription(umbriel::ColorDescription{}));
+}
+
 UMBRIEL_TEST(characterizedDescriptionCarriesOnlyItsMatchingIccProfile) {
   const umbriel::PanelColorimetry panel = wideGamutPanel({.kind = umbriel::PanelTransfer::Kind::Srgb, .encode = {}});
   const umbriel::ColorDescription base = umbriel::outputColorDescription(nullptr, 203.0F);

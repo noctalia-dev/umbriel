@@ -321,7 +321,7 @@ namespace umbriel {
       static const struct wp_color_management_surface_feedback_v1_interface implementation = {
           .destroy = handleResourceDestroy,
           .get_preferred = handleFeedbackGetPreferred,
-          .get_preferred_parametric = handleFeedbackGetPreferred,
+          .get_preferred_parametric = handleFeedbackGetPreferredParametric,
       };
       return implementation;
     }
@@ -672,6 +672,27 @@ namespace umbriel {
       auto* feedback = static_cast<SurfaceFeedback*>(wl_resource_get_user_data(resource));
       if (feedback == nullptr) {
         wl_resource_post_error(resource, WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT, "surface is inert");
+        return;
+      }
+      feedback->manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);
+    }
+
+    // get_preferred_parametric promises a parametric description, and the info
+    // batch of a parametric description must carry tf_power or tf_named. A
+    // sampled panel curve that is not a power has neither: the ICC profile is
+    // the exact statement, so the parametric request fails rather than
+    // advertising a curve we do not paint.
+    static void handleFeedbackGetPreferredParametric(wl_client*, wl_resource* resource, uint32_t id) {
+      auto* feedback = static_cast<SurfaceFeedback*>(wl_resource_get_user_data(resource));
+      if (feedback == nullptr) {
+        wl_resource_post_error(resource, WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT, "surface is inert");
+        return;
+      }
+      if (!parametricDescription(feedback->preferred)) {
+        createFailedImageDescription(
+            resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED,
+            "the panel's transfer curve has no parametric form; use the ICC profile"
+        );
         return;
       }
       feedback->manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);

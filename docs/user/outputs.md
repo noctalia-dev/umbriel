@@ -307,7 +307,7 @@ sdr_gamut = "srgb"      # "native" (default) or "srgb"
 - `"none"` and `"edid"` are reserved keywords. A file literally named `edid` (or `none`) must be spelled `./edid` (`./none`) or given as an absolute path.
 - The path must resolve to a readable regular file. Directories, FIFOs, and device files are rejected.
 
-Failures fall back down the chain and never fail the output. An invalid value, or a path that no longer resolves to a readable regular file, falls back to `"edid"` with a warning; an ICC profile that cannot be parsed falls back the same way. Nested and headless outputs have no EDID, so they end up uncharacterized and gamut mapping stays inactive. Saving the profile file triggers the config reload that re-reads it.
+Failures fall back down the chain and never fail the output. An invalid value, or a path that no longer resolves to a readable regular file, falls back to `"edid"` with a warning; an ICC profile that cannot be parsed falls back the same way. Nested and headless outputs have no EDID, so they end up uncharacterized and gamut mapping stays inactive. Saving the profile file triggers the config reload that re-reads it; the re-read is keyed on the file's mtime, so replace the profile with a file whose timestamp actually changed (`cp -p` and archive extraction often keep the old one, and the previous characterization then stays live).
 
 `sdr_gamut` decides what happens to untagged SDR while a characterization is active:
 
@@ -320,7 +320,7 @@ ICC import accepts matrix-shaper profiles whose three color channels share one t
 
 While a mapping is staged, direct scanout is disabled (`color_profile = "none"` restores it) and SDR frames leave the 8-bit fast path for FP16 composition with a per-damage re-encode. That increases composition and encoding work on redraws and may increase GPU power use. Screenshots and recordings show the on-screen mapped result.
 
-Clients may also import their own ICC profiles through the color-management protocol. Only the three exactly renderable curves are accepted; anything else fails that description instead of rendering an approximation. A client that stages or retains more ICC bytes than its budget allows, opens too many descriptions at once, or passes an unusable file descriptor gets a protocol error and is disconnected rather than a graceful failure. See the [color-management design note](../design/color-management.md) for the request contract and the limits.
+Clients may also import their own ICC profiles through the color-management protocol. Only the three exactly renderable curves are accepted; anything else fails that description instead of rendering an approximation. A client that stages or retains more ICC bytes than its budget allows, holds too many descriptions at once, or passes an unusable file descriptor gets a protocol error and is disconnected rather than a graceful failure. See the [color-management design note](../design/color-management.md) for the request contract and the limits.
 
 Run `umbriel color` to inspect the resolved state: `color_profile`, `sdr_gamut`, whether a mapping is staged (`sdr_gamut_staged`), and the panel's `panel_primaries` and `panel_transfer`. The JSON form (`umbriel color --json`) adds per-output details such as the active bit depth.
 

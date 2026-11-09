@@ -108,12 +108,13 @@ CONFIG
 # (the default), wide enough to desaturate pure red under "srgb" and far enough from any named curve to exercise the
 # panel's sampled-curve path. A third argument selects another gamma: 2.2 makes the profile usable for client
 # create_icc, which accepts only curves the renderer paints exactly (sRGB and gamma 2.2), and 1.8 there proves the
-# refusal. The optional second argument inflates the file with a 'pad ' tag of that many MiB, kept inside the profile so
-# the header size and the tag table still describe the whole file: clients must budget retained bytes for the file
-# exactly as received.
+# refusal. The optional fourth argument "sampled" writes a tabulated TRC that is no power at all (a 1.6/2.4 mix), the
+# state in which only the profile states the curve. The optional second argument inflates the file with a 'pad ' tag of
+# that many MiB, kept inside the profile so the header size and the tag table still describe the whole file: clients
+# must budget retained bytes for the file exactly as received.
 write_icc_matrix_profile() {
-  local path=$1 pad_mib=${2:-0} gamma=${3:-1.8}
-  python3 - "$path" "$pad_mib" "$gamma" <<'PY'
+  local path=$1 pad_mib=${2:-0} gamma=${3:-1.8} shape=${4:-gamma}
+  python3 - "$path" "$pad_mib" "$gamma" "$shape" <<'PY'
 import struct
 import sys
 
@@ -178,7 +179,13 @@ for index, name in enumerate(('rXYZ', 'gXYZ', 'bXYZ')):
     column = mulv(to_pcs, [weights[index] * value for value in unit[index]])
     blobs[name.encode()] = b'XYZ ' + b'\0' * 4 + s15(column[0]) + s15(column[1]) + s15(column[2])
 blobs[b'wtpt'] = b'XYZ ' + b'\0' * 4 + s15(white[0]) + s15(white[1]) + s15(white[2])
-curve = b'curv' + b'\0' * 4 + struct.pack('>I', 1) + struct.pack('>H', round(float(sys.argv[3]) * 256))
+if sys.argv[4] == 'sampled':
+    # Tabulated curv: 1024 samples of 0.5*x^1.6 + 0.5*x^2.4, monotone with no power.
+    samples = [0.5 * (i / 1023) ** 1.6 + 0.5 * (i / 1023) ** 2.4 for i in range(1024)]
+    curve = b'curv' + b'\0' * 4 + struct.pack('>I', len(samples))
+    curve += struct.pack('>1024H', *[round(value * 65535) for value in samples])
+else:
+    curve = b'curv' + b'\0' * 4 + struct.pack('>I', 1) + struct.pack('>H', round(float(sys.argv[3]) * 256))
 for name in ('rTRC', 'gTRC', 'bTRC'):
     blobs[name.encode()] = curve
 pad_mib = int(sys.argv[2])

@@ -256,6 +256,10 @@ namespace umbriel {
     return 0;
   }
 
+  bool parametricDescription(const ColorDescription& description) {
+    return description.data.tf_named != 0 || description.tfPower > 0.0F;
+  }
+
   wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description) {
     // Deliberately not wlr_color_manager_v1_transfer_function_to_wlr: that
     // converter aborts on named values wlroots does not map (including the

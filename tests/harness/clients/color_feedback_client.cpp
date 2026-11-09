@@ -230,6 +230,8 @@ namespace {
   void descriptionFailed(void* data, wp_image_description_v1* proxy, uint32_t cause, const char* message) {
     const auto& description = *static_cast<Description*>(data);
     std::println(stderr, "color-feedback-client: {} description failed ({}): {}", description.source, cause, message);
+    std::println(R"({{"event":"description_failed","source":"{}","cause":{}}})", description.source, cause);
+    std::fflush(stdout);
     wp_image_description_v1_destroy(proxy);
   }
   void descriptionReady(void* data, wp_image_description_v1* proxy, uint32_t identity) {
