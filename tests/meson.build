@@ -40,6 +40,7 @@ unit_tests = [
   ['eis-socket', ['unit/eis_socket.cpp'], [umbriel_core_dep, wayland_server_dep]],
   ['surface-layouts', ['unit/surface_layouts.cpp'], []],
   ['shortcuts-inhibit', ['unit/shortcuts_inhibit.cpp'], []],
+  ['vt-switch', ['unit/vt_switch.cpp'], []],
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],

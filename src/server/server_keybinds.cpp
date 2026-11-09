@@ -4,6 +4,7 @@
 #include "input/keyboard.h"
 #include "input/seat.h"
 #include "input/text_input.h"
+#include "input/vt_switch.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -16,6 +17,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -45,27 +47,26 @@ namespace umbriel {
     if (m_session == nullptr) {
       return false;
     }
-
-    unsigned vt = 0;
-    if (keysym >= XKB_KEY_XF86Switch_VT_1 && keysym <= XKB_KEY_XF86Switch_VT_12) {
-      vt = 1 + (keysym - XKB_KEY_XF86Switch_VT_1);
-    } else if (
-        (modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) == (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)
-        && keysym >= XKB_KEY_F1
-        && keysym <= XKB_KEY_F12
-    ) {
-      vt = 1 + (keysym - XKB_KEY_F1);
+    // A window that holds the keyboard-shortcuts inhibitor expects every key,
+    // and a VM or remote-desktop client needs Ctrl+Alt+F1..F12 for the guest.
+    // The inhibitor only reaches windows whose rule allows it, so honouring it
+    // here cannot take the VT escape hatch away unless the user asked for it.
+    if (keyboardShortcutsInhibited()) {
+      return false;
     }
 
-    if (vt == 0) {
+    const bool ctrlAltHeld =
+        (modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) == (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT);
+    const std::optional<unsigned> vt = vtFromKeysym(keysym, ctrlAltHeld);
+    if (!vt.has_value()) {
       return false;
     }
 
     if (m_inputCapture != nullptr) {
       m_inputCapture->suspend();
     }
-    if (!wlr_session_change_vt(m_session, vt)) {
-      wlr_log(WLR_ERROR, "failed to switch to VT %u", vt);
+    if (!wlr_session_change_vt(m_session, *vt)) {
+      wlr_log(WLR_ERROR, "failed to switch to VT %u", *vt);
     }
     return true;
   }
