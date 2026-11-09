@@ -2602,6 +2602,9 @@ namespace umbriel {
   }
 
   void Workspace::beginSwitchTransition() {
+    // This workspace's trees start travelling here, and a wait parked under the
+    // shared drag tree is outside them: land it while everything still rests.
+    flushDeferredRehomes();
     m_inSwitchTransition = true;
     wlr_box clip{};
     if (m_group != nullptr && m_group->output() != nullptr) {
@@ -3570,14 +3573,6 @@ namespace umbriel {
     m_slide = {};
   }
 
-  void WorkspaceGroup::flushSlideRehomes() {
-    for (Workspace* workspace : {m_slide.base, m_slide.previous, m_slide.next}) {
-      if (workspace != nullptr) {
-        workspace->flushDeferredRehomes();
-      }
-    }
-  }
-
   bool WorkspaceGroup::slideBegin(bool includePrev, bool includeNext) {
     if (m_active == nullptr) {
       return false;
@@ -3604,9 +3599,7 @@ namespace umbriel {
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
     // A gesture moves these trees while the outgoing workspace is still active (it
-    // deactivates at commit), and a wait left parked under the drag tree would glue
-    // its window to the screen for the whole swipe. Land them before they travel.
-    flushSlideRehomes();
+    // deactivates at commit); beginSwitchTransition() lands any parked wait first.
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
       m_slide.previous->beginSwitchTransition();
@@ -3778,8 +3771,8 @@ namespace umbriel {
     } else {
       m_slide.previous = workspace;
     }
-    // The trees travel before the outgoing workspace deactivates: land the waits first.
-    flushSlideRehomes();
+    // The trees travel before the outgoing workspace deactivates; the transition
+    // these two enter lands the waits first.
     m_slide.base->beginSwitchTransition();
     workspace->beginSwitchTransition();
     slideApply(0.0);
@@ -3856,10 +3849,9 @@ namespace umbriel {
       return reject("output already has a workspace with that name");
     }
 
-    // Both groups' trees travel next; land the re-homes while they are at rest. A
-    // sheet parked under the shared drag tree is outside every tree this moves.
-    flushSlideRehomes();
-    destination.flushSlideRehomes();
+    // This workspace's tree is reparented to the destination below, and both
+    // groups' slides end here: land its waits while it still rests.
+    workspace->flushDeferredRehomes();
     slideFinish();
     destination.slideFinish();
     const size_t sourceIndex = workspace->index();
