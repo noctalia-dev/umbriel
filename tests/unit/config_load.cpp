@@ -4817,6 +4817,11 @@ button_position = "left"
 button_corner_radius = 4
 button_glyph = "never"
 button_background = false
+color_source = "window"
+color_source_height = 3
+title_shadow = false
+title_contrast = false
+title_contrast_sample = true
 [colors.title_bar]
 background = "#FF0000FF"
 background_unfocused = "#00FF00FF"
@@ -4843,6 +4848,11 @@ minimize_glyph_hover = "#00FFFFFF"
   CHECK_EQ(bar.buttonCornerRadius, 4);
   CHECK_EQ(bar.buttonGlyph, umbriel::TitleBarButtonGlyph::Never);
   CHECK_EQ(bar.buttonBackground, false);
+  CHECK_EQ(bar.colorSource, umbriel::TitleBarColorSource::Window);
+  CHECK_EQ(bar.colorSourceHeight, 3);
+  CHECK_EQ(bar.titleShadow, false);
+  CHECK_EQ(bar.titleContrast, false);
+  CHECK_EQ(bar.titleContrastSample, true);
   const auto& colors = store.config().colors.titleBar;
   CHECK_EQ(colors.background[0], 1.0F);
   CHECK_EQ(colors.backgroundUnfocused[1], 1.0F);
@@ -4870,6 +4880,11 @@ button_position = "middle"
 button_corner_radius = 500
 button_glyph = "sometimes"
 button_background = 1
+color_source = "adaptive"
+color_source_height = 9
+title_shadow = 1
+title_contrast = "yes"
+title_contrast_sample = []
 [colors.title_bar]
 close_glyph = true
 close_glyph_hover = 1
@@ -4887,12 +4902,22 @@ minimize_glyph_hover = {}
   CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, 100);
   CHECK_EQ(store.config().appearance.titleBar.buttonGlyph, umbriel::TitleBarButtonGlyph::Hover);
   CHECK_EQ(store.config().appearance.titleBar.buttonBackground, true);
+  CHECK_EQ(store.config().appearance.titleBar.colorSource, umbriel::TitleBarColorSource::Fixed);
+  CHECK_EQ(store.config().appearance.titleBar.colorSourceHeight, 4);
+  CHECK_EQ(store.config().appearance.titleBar.titleShadow, true);
+  CHECK_EQ(store.config().appearance.titleBar.titleContrast, true);
+  CHECK_EQ(store.config().appearance.titleBar.titleContrastSample, false);
   CHECK(containsDiagnostic(store, "appearance.title_bar.height = 500 out of range, clamped to 128"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_position"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_background"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.mode"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.color_source"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.color_source_height"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.title_shadow"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.title_contrast"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.title_contrast_sample"));
   for (const auto* key :
        {"close_glyph", "close_glyph_hover", "maximize_glyph", "maximize_glyph_hover", "minimize_glyph",
         "minimize_glyph_hover"}) {

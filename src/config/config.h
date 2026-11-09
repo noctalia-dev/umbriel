@@ -761,15 +761,13 @@ namespace umbriel {
         // How many logical pixels of the window's top edge that strip takes. The bar stretches them over its whole
         // height, so a thinner strip reads as one flat colour and a thicker one keeps more of the window's own detail.
         int colorSourceHeight = 1;
-        // A dark edge under the title and around the button symbols, so they stay readable on a bar of any colour. One
-        // switch for both, in every color_source.
+        // A dark edge under the title and around the symbols, so they read on a bar of any color, in every color_source.
         bool titleShadow = true;
-        // Reverse the title to black or white when the configured colour would sit too close to the bar it is drawn on.
-        // "fixed" and "average" already know that colour; "window" needs titleContrastSample to sample it.
+        // Reverse the title, and a symbol on the bar or on its button color, to black or white when it would sink into
+        // what is behind it.
         bool titleContrast = true;
-        // `color_source = "window"` mirrors the window's edge instead of reading it back, so it has no colour to judge
-        // contrast against. Enabling this samples that edge anyway, once per change, trading the readback for a title
-        // that can reverse itself. No effect in the other color_source values.
+        // "window" mirrors the edge instead of reading it, so it has no color to judge against. This samples the edge
+        // once per change, trading a readback for a title and symbols that can reverse. No effect on the other sources.
         bool titleContrastSample = false;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
