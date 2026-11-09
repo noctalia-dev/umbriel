@@ -3372,7 +3372,7 @@ namespace umbriel {
       }
     }
 
-    grab->view->resizeFloating({newLeft, newTop, newRight - newLeft, newBottom - newTop});
+    grab->view->resizeFloating(newRight - newLeft, newBottom - newTop);
   }
 
   void Cursor::revealClickedTile(View* view) {

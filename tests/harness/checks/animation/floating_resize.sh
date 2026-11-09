@@ -103,8 +103,9 @@ echo "floating resize animated the size with the keep-visible clamp"
 
 "$UMBRIEL" clock-resume
 
-# A slow client must not hold the displayed frame back during a top-left resize, or pull it back on release. Observe
-# the border rather than IPC geometry, which reports client content. The opposite edges stay fixed throughout.
+# A pointer resize never shows a buffer at a size it was not drawn for: the frame of a slow client stays at its drawn
+# size through the grab and release, then lands with its opposite edges fixed once the client redraws. Observe the
+# border rather than IPC geometry, which reports client content.
 sed -i '/^\[animation\]$/a enabled = false' "$UMBRIEL_CONFIG"
 sed -i 's/^border_width = 0$/border_width = 4/' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -159,13 +160,13 @@ pointer_hold 1280 720 \
   move 402 252 mod logo press 273 move 352 227 \
   -- move 302 202 mark second hold release 273 mod none
 await_lines "$SLOW_LOG" 'resize-pending 450x325' 1 0.025
-expect_frame first 50 25
+expect_frame first 0 0
 pointer_step second
-expect_frame second 100 50
+expect_frame second 0 0
 pointer_release
 # The last target is flushed even though the client has not answered the first one.
 await_lines "$SLOW_LOG" 'resize-pending 500x350' 1 0.025
-expect_frame released 100 50
+expect_frame released 0 0
 echo r >&"$control_fd"
 await_lines "$SLOW_LOG" 'resized 500x350' 1 0.025
 if ! "$UMBRIEL" settle; then
@@ -174,4 +175,4 @@ if ! "$UMBRIEL" settle; then
 fi
 expect_frame redrawn 100 50
 
-echo "a slow floating client kept its pointer-owned frame and anchored edges through resize and release"
+echo "a slow floating client kept its drawn frame through resize and release, then landed with anchored edges"

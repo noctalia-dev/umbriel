@@ -231,6 +231,10 @@ namespace umbriel {
   }
 
   int View::presentedWidth(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().width;
+      return m_tiled ? std::min(committed, target.width) : committed;
+    }
     if (sizeGrabActive()) {
       return target.width;
     }
@@ -249,6 +253,10 @@ namespace umbriel {
   void View::trackPresentedSize(int width, int height) { m_presentation.track(width, height); }
 
   int View::presentedHeight(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().height;
+      return m_tiled ? std::min(committed, target.height) : committed;
+    }
     if (sizeGrabActive()) {
       return target.height;
     }
@@ -380,6 +388,8 @@ namespace umbriel {
         && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace))
         && !tiledResizeWaitsForClient();
   }
+
+  bool View::presentsCommittedSize() const { return sizeGrabTracksPointer() || m_pointerResizeSettling; }
 
   bool View::tiledResizeWaitsForClient() const {
     const auto& animation = config().animation;
@@ -1313,10 +1323,15 @@ namespace umbriel {
     };
     setSurfaceTreeClip(&surfaceClip);
     applyCornerRadius();
-    if (layoutPresentationOwned()
+    if (presentsCommittedSize()) {
+      // The clip above crops 1:1; drop any scaling a layout motion or animation left on the buffer.
+      m_presentation.resetCrop(m_contentTree, rootSurface());
+    } else if (
+        layoutPresentationOwned()
         || sizeGrabActive()
         || m_floating.pendingSize()
-        || (openingAnimationActive() && m_openingFloatingSize)) {
+        || (openingAnimationActive() && m_openingFloatingSize)
+    ) {
       // The clip crops 1:1 in surface coordinates and caps the destination at the committed surface size, so it cannot
       // express an animated or interactive presented size. Program the buffer directly; the clip above keeps the buffer
       // node positioned at the visible box origin.
