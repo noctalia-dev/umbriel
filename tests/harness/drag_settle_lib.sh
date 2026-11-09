@@ -1,7 +1,7 @@
 # Shared by the checks that pin what a released, still-deforming sheet does while
 # its workspace moves. A released sheet rests under the shared drag tree, outside
 # every workspace layer, until its spring settles; the drag that carries a window
-# also carries its transient children. Each check adds one scenario to this desk.
+# also carries its transient children. Each check adds one scenario to this desktop.
 source "$UMBRIEL_HARNESS_LIB"
 
 readonly SETTLE_BTN_LEFT=272
@@ -11,7 +11,7 @@ readonly SETTLE_REGION="${SETTLE_OUTPUT_W}x${SETTLE_OUTPUT_H}+0+0"
 readonly SETTLE_IMAGE="$UMBRIEL_RUNTIME_DIR/settle.png"
 # A quarter of a 400x300 sheet: proof it is drawn, not a stray edge.
 readonly SETTLE_FLOOR=20000
-# A dialogs's 200x150 face is smaller than a full sheet.
+# A dialog's 200x150 face is smaller than a full sheet.
 readonly SETTLE_DIALOG_FLOOR=5000
 # Every drag below travels this far: enough to engage the spring's displacement.
 readonly SETTLE_TRAVEL=120
@@ -129,7 +129,7 @@ settle_drag_queue() { settle_drag "$1" "$2" release; }
 settle_shot() { grim -o "${1:-HEADLESS-1}" "$SETTLE_IMAGE"; }
 settle_green() { settle_shot "${1:-}"; "$UMBRIEL_PIXEL_PROBE" "$SETTLE_IMAGE" count 'g > 0.8 && r < 0.2 && b < 0.2'; }
 settle_red() { settle_shot "${1:-}"; "$UMBRIEL_PIXEL_PROBE" "$SETTLE_IMAGE" count 'r > 0.8 && g < 0.2 && b < 0.2'; }
-settle_bbox() { settle_shot "${1:-}"; "$UMBRIEL_PIXEL_PROBE" "$SETTLE_IMAGE" bbox 'g > 0.8 && r < 0.2 && b < 0.2'; }
+settle_green_bbox() { settle_shot "${1:-}"; "$UMBRIEL_PIXEL_PROBE" "$SETTLE_IMAGE" bbox 'g > 0.8 && r < 0.2 && b < 0.2'; }
 
 # Every other animation in this config is 1 ms, so a sheet that does not change
 # across an ordered tick means the deform never engaged and the deferral under
@@ -171,15 +171,16 @@ settle_assert_travelled() { # $1 label, $2 box "x y w h", $3 drawn bbox, $4 mini
   exit 1
 }
 
-# The drawn extent, after checking the sheet is drawn at all: a deform assertion
-# against a window that never mapped would pass vacuously.
-settle_drawn_extent() { # $1 sheet title
-  local w h dw dh
+# The green sheet's drawn extent, after checking it is drawn at all: a deform
+# assertion against a window that never mapped would pass vacuously. Sets
+# SETTLE_SHEET_WIDTH and SETTLE_SHEET_HEIGHT in the caller's shell, so the floor
+# below can fail the check rather than a subshell.
+settle_sheet_extent() { # $1 sheet title
+  local w h
   read -r _ _ w h <<< "$(settle_box "$1")"
-  read -r _ _ dw dh < <(settle_bbox)
-  if ((dw < w / 2 || dh < h / 2)); then
-    echo "scenario never engaged: the window draws ${dw}x${dh} in a ${w}x${h} box"
+  read -r _ _ SETTLE_SHEET_WIDTH SETTLE_SHEET_HEIGHT < <(settle_green_bbox)
+  if ((SETTLE_SHEET_WIDTH < w / 2 || SETTLE_SHEET_HEIGHT < h / 2)); then
+    echo "scenario never engaged: the window draws ${SETTLE_SHEET_WIDTH}x${SETTLE_SHEET_HEIGHT} in a ${w}x${h} box"
     exit 1
   fi
-  echo "$dw $dh"
 }
