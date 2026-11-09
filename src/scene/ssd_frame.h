@@ -79,6 +79,11 @@ namespace umbriel {
     StripSample averageStrip(const wlr_fbox& strip);
     // A one-pixel buffer of `color`, kept until the colour changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
+    // The colour the bar actually shows, which is what the title is drawn on. Empty when the bar is a mirror of the
+    // window's own pixels and was not allowed to sample them, because then its colour is genuinely unknown.
+    std::optional<std::array<float, 4>> barFillColor() const;
+    // The title's colour after the contrast rule.
+    std::array<float, 4> resolvedTitleColor() const;
     // Let wlroots keep reusing the mirrored client buffer's texture for in-place shm damage, and withdraw that when the
     // mirror is replaced or cleared.
     void allowInPlaceDamage(wlr_buffer* buffer);
@@ -121,6 +126,9 @@ namespace umbriel {
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};
     std::optional<std::array<float, 4>> m_averageColor;
+    // `color_source = "window"` has no colour of its own to judge the title against. With title_contrast_sample on, the
+    // same strip readback that serves "average" runs here too, once per edge change, and lands in this.
+    std::optional<std::array<float, 4>> m_contrastSample;
     // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
     std::array<float, 4> m_averageBufferColor{};
     wlr_buffer* m_averageBuffer = nullptr;
@@ -129,6 +137,9 @@ namespace umbriel {
     // The mode the contents were built for: a switch is not a commit, so it must force the work.
     TitleBarColorSource m_adaptiveMode = TitleBarColorSource::Fixed;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
+    // Whether the last update sampled the edge for contrast, so turning the setting on reads it without waiting for the
+    // application to repaint.
+    bool m_contrastSampling = false;
     int m_adaptiveWidth = 0;
     int m_adaptiveHeight = 0;
     float m_adaptiveOpacity = 0.0F;

@@ -5,6 +5,7 @@
 #include "scene/cairo_buffer.h"
 #include "scene/color.h"
 #include "scene/tab_label_cache.h"
+#include "scene/title_bar_contrast.h"
 #include "scene/title_bar_icon.h"
 #include "server/color_manager.h"
 #include "view/border_ring.h"
@@ -30,7 +31,7 @@ namespace umbriel {
     // The bar can be any colour the window paints, so text and symbols keep a dark edge: scaled by their own alpha, so
     // an invisible symbol leaves no ghost.
     const std::array<float, 4> kAdaptiveShadowColor{0.0F, 0.0F, 0.0F, 0.55F};
-    std::optional<std::array<float, 4>> adaptiveOutline(float glyphAlpha) {
+    std::optional<std::array<float, 4>> glyphOutline(float glyphAlpha) {
       if (glyphAlpha <= 0.0F) {
         return std::nullopt;
       }
@@ -173,7 +174,13 @@ namespace umbriel {
   }
   void SsdFrame::syncContent(const wlr_box& geometry) {
     m_contentGeometry = geometry;
+    // A new edge colour can flip the title, which is a label re-measure. It has to be redrawn from here: redraw() calls
+    // updateAdaptive(), so the flip cannot request its own repaint from inside it.
+    const std::array<float, 4> before = resolvedTitleColor();
     updateAdaptive(true);
+    if (!(resolvedTitleColor() == before)) {
+      redraw();
+    }
   }
 
   void SsdFrame::allowInPlaceDamage(wlr_buffer* buffer) {
@@ -314,6 +321,33 @@ namespace umbriel {
     return {StripSample::State::Fresh, mean};
   }
 
+  std::optional<std::array<float, 4>> SsdFrame::barFillColor() const {
+    const auto& style = config().appearance.titleBar;
+    const auto& colors = config().colors.titleBar;
+    // The palette shows when the adaptive fill has nothing to draw, so it is the fallback: a transparent edge, an
+    // unreadable buffer and `"fixed"` all land on it.
+    const std::array<float, 4>& palette = m_focused ? colors.background : colors.backgroundUnfocused;
+    switch (style.colorSource) {
+    case TitleBarColorSource::Average:
+      return m_averageColor.value_or(palette);
+    case TitleBarColorSource::Window:
+      // Mirrored pixels, not a colour: without the sample there is nothing to judge the title against, and the palette
+      // is not what is on screen.
+      return m_contrastSample;
+    case TitleBarColorSource::Fixed:
+      break;
+    }
+    return palette;
+  }
+
+  std::array<float, 4> SsdFrame::resolvedTitleColor() const {
+    const auto& style = config().appearance.titleBar;
+    const auto& colors = config().colors.titleBar;
+    const std::array<float, 4>& configured = m_focused ? colors.text : colors.textUnfocused;
+    const auto background = barFillColor();
+    return style.titleContrast && background.has_value() ? contrastAdjusted(configured, *background) : configured;
+  }
+
   wlr_buffer* SsdFrame::averageBufferFor(const std::array<float, 4>& color) {
     // Compare against the baked colour: `m_averageColor` already holds the new mean, so it would always match.
     if (m_averageBuffer != nullptr && m_averageBufferColor == color) {
@@ -357,6 +391,7 @@ namespace umbriel {
       hideAdaptive();
       m_adaptiveMode = TitleBarColorSource::Fixed;
       m_averageColor.reset();
+      m_contrastSample.reset();
       m_stripDeferred = false;
       m_strip.clear();
       m_strip.shrink_to_fit();
@@ -406,12 +441,16 @@ namespace umbriel {
     const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
     // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale colour.
     const bool modeChanged = m_adaptiveMode != style.colorSource;
+    // The contrast sample has the same problem: a reload that turns it on has nothing to wait for.
+    const bool sampling = style.titleContrast && style.titleContrastSample;
+    const bool samplingChanged = m_contrastSampling != sampling;
+    m_contrastSampling = sampling;
     // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
     // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
     wlr_buffer* shown = buffer;
     const wlr_fbox* sourceBox = &strip;
     wl_output_transform transform = m_content->current.transform;
-    bool restrip = touched || modeChanged || stripMoved || m_stripDeferred;
+    bool restrip = touched || modeChanged || stripMoved || m_stripDeferred || samplingChanged;
     if (average) {
       if (restrip) {
         const StripSample sample = averageStrip(strip);
@@ -433,6 +472,18 @@ namespace umbriel {
       }
       sourceBox = nullptr;
       transform = WL_OUTPUT_TRANSFORM_NORMAL;
+    } else if (sampling && restrip) {
+      // "window" mirrors the edge instead of reading it, so it has no colour for the title to be judged against. The
+      // sample is the same readback "average" pays, taken only when the edge changed, and only when asked for.
+      const StripSample sample = averageStrip(strip);
+      m_stripDeferred = sample.state == StripSample::State::Deferred;
+      if (sample.color.has_value()) {
+        m_contrastSample = sample.color;
+      } else if (sample.state == StripSample::State::Empty) {
+        // A readable edge with nothing in it leaves the palette showing, which is then what the title sits on.
+        m_contrastSample =
+            m_focused ? config().colors.titleBar.background : config().colors.titleBar.backgroundUnfocused;
+      }
     }
     const bool reshaped = m_adaptiveBuffer != shown
         || stripMoved
@@ -623,12 +674,18 @@ namespace umbriel {
       }
       premultiplied(color, value, backgrounds ? m_alpha * alpha : 0.0F);
       wlr_scene_rect_set_color(rect, color);
-      const auto& glyphColor = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
+      const std::array<float, 4>& configured = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
+      // A symbol sits on its own button colour when backgrounds are painted, and on the bar when they are not, so those
+      // are the two things it has to stay readable against.
+      const auto glyphBackground = backgrounds ? std::optional(value) : barFillColor();
+      const std::array<float, 4> glyphColor = style.titleContrast && glyphBackground.has_value()
+          ? contrastAdjusted(configured, *glyphBackground)
+          : configured;
       const bool glyphVisible = style.buttonGlyph == TitleBarButtonGlyph::Always
           || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
       updateButtonIcon(
           which, glyphColor, m_alpha * (enabled ? 1.0F : 0.35F), glyphVisible,
-          style.colorSource != TitleBarColorSource::Fixed ? adaptiveOutline(glyphColor[3]) : std::nullopt
+          style.titleShadow ? glyphOutline(glyphColor[3]) : std::nullopt
       );
     };
     button(
@@ -693,6 +750,9 @@ namespace umbriel {
     }
     place(m_background, {0, -h, g.contentWidth, h});
     wlr_scene_rect_set_clipped_region(m_background, frameClip(m_background->node.x, m_background->node.y));
+    // Before the title is measured, not after: the contrast rule reads the colour this leaves behind, and a fill that
+    // arrives later would make the title one frame stale.
+    updateAdaptive(false);
     const auto& style = config().appearance.titleBar;
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     TitleBarLayout parts =
@@ -713,15 +773,15 @@ namespace umbriel {
     drawButton(m_close, parts.button(TitleBarButton::Close));
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
-    const auto& colors = config().colors.titleBar;
-    const std::array<float, 4>& textColor = m_focused ? colors.text : colors.textUnfocused;
+    // The configured colour, or black or white when the bar behind it is too close to it to read.
+    const std::array<float, 4> textColor = resolvedTitleColor();
     const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
     // Hold the title before the shadow lookup, which can evict it. The frame keeps this lock for its snapshots.
     holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
     const int labelWidth = label != nullptr ? label->width : 0;
     const int labelHeight = label != nullptr ? label->height : 0;
-    // A window-coloured bar needs a dark edge under the title.
-    const bool shadowed = style.colorSource != TitleBarColorSource::Fixed;
+    // The bar can be any colour the application paints, so the title keeps a dark edge unless it is turned off.
+    const bool shadowed = style.titleShadow;
     const TabLabel* shadow = nullptr;
     if (shadowed && m_labelBuffer != nullptr && textColor[3] > 0.0F) {
       // Re-measures the same layout without disturbing the title's copy.
@@ -886,6 +946,8 @@ namespace umbriel {
       // The card shows the same bar and takes the colour its window already resolved, not a per-card readback.
       frame->setContentSurface(m_content, m_contentGeometry);
       frame->m_averageColor = m_averageColor;
+      // The sample the window paid for, reused rather than taken again per card.
+      frame->m_contrastSample = m_contrastSample;
       frame->m_stripDeferred = m_stripDeferred;
       frame->reloadConfig();
     }

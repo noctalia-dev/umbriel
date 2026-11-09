@@ -119,6 +119,9 @@ namespace umbriel {
           integer(
               "color_source_height", kTitleBarStripHeightMin, kTitleBarStripHeightMax, &A::TitleBar::colorSourceHeight
           ),
+          boolean("title_shadow", &A::TitleBar::titleShadow),
+          boolean("title_contrast", &A::TitleBar::titleContrast),
+          boolean("title_contrast_sample", &A::TitleBar::titleContrastSample),
           registry::text("font", &A::TitleBar::font),
           registry::choice(
               "button_position", &A::TitleBar::buttonPosition,
