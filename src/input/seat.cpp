@@ -114,11 +114,18 @@ namespace umbriel {
     self->handleDragDestroy();
   }
 
+  static wlr_seat_client* cursorOwner(wlr_seat* seat) {
+    if (seat->drag != nullptr && seat->drag->grab_type == WLR_DRAG_GRAB_KEYBOARD_POINTER) {
+      return seat->drag->seat_client;
+    }
+    return seat->pointer_state.focused_client;
+  }
+
   void Seat::handleRequestCursor(void* data) {
     auto* event = static_cast<wlr_seat_pointer_request_set_cursor_event*>(data);
     // Recorded even while the compositor owns the cursor, so ending that
     // override replays the client's cursor instead of making it resend one.
-    if (m_seat->pointer_state.focused_client == event->seat_client) {
+    if (cursorOwner(m_seat) == event->seat_client) {
       m_server->cursor()->setCursorSurface(
           event->surface, event->hotspot_x, event->hotspot_y, event->seat_client->client
       );
@@ -129,7 +136,7 @@ namespace umbriel {
     auto* event = static_cast<wlr_cursor_shape_manager_v1_request_set_shape_event*>(data);
     bool pointer = false;
     if (event->device_type == WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER) {
-      if (m_seat->pointer_state.focused_client != event->seat_client) {
+      if (cursorOwner(m_seat) != event->seat_client) {
         return;
       }
       pointer = true;
