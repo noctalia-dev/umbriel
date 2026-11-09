@@ -26,7 +26,7 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 settle_map "$TITLE" 400 300 0xFF00FF00
-settle_drawn_extent "$TITLE" > /dev/null
+settle_sheet_extent "$TITLE"
 
 settle_drag_hold "$TITLE" "$SPAN"
 "$UMBRIEL" clock-freeze
