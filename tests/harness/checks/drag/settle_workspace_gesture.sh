@@ -28,7 +28,7 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 settle_map "$TITLE" 400 300 0xFF00FF00
-settle_drawn_extent "$TITLE" > /dev/null
+settle_sheet_extent "$TITLE"
 
 settle_drag_queue "$TITLE" "$SPAN"
 "$UMBRIEL" clock-freeze
@@ -39,12 +39,12 @@ pointer_release
 settle_require_deforming "gesture"
 read -r wx wy ww wh < <(settle_box "$TITLE")
 
-# A cancelled swipe comes back to its workspace.
+# `swipe-test end <ms> 1` cancels the gesture; 0 commits it.
 "$UMBRIEL" swipe-test begin 1000 > /dev/null
 "$UMBRIEL" swipe-test update 1016 -80 -80 > /dev/null
 "$UMBRIEL" clock-advance 16 > /dev/null
 cancelled=$(settle_green)
-read -r cx cy cw ch < <(settle_bbox)
+read -r cx cy cw ch < <(settle_green_bbox)
 "$UMBRIEL" swipe-test end 1032 1 > /dev/null
 "$UMBRIEL" clock-advance 600 > /dev/null
 cancelled_after=$(settle_green)
@@ -55,7 +55,7 @@ cancelled_workspace=$(settle_active_workspace)
 "$UMBRIEL" swipe-test update 2016 -80 -80 > /dev/null
 "$UMBRIEL" clock-advance 16 > /dev/null
 committed=$(settle_green)
-read -r mx my mw mh < <(settle_bbox)
+read -r mx my mw mh < <(settle_green_bbox)
 "$UMBRIEL" swipe-test update 2032 -220 -220 > /dev/null
 "$UMBRIEL" swipe-test end 2048 0 > /dev/null
 "$UMBRIEL" clock-advance 800 > /dev/null

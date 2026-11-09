@@ -9,6 +9,10 @@
 #
 # The switch is an activate (not a gesture), so the workspace is deactivated at
 # once and the flight is ordered on the frozen clock.
+#
+# Accepted limit, unpinned: opening the overview mid-settle flushes every waiting
+# re-home (its cards need the home trees), so the drawing this check preserves is
+# deliberately sacrificed there; a regression to "overview flushes nothing" passes.
 set -euo pipefail
 source "$UMBRIEL_REPO/tests/harness/drag_settle_lib.sh"
 
@@ -28,7 +32,8 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
 settle_map "$TITLE" 400 300 0xFF00FF00
-read -r bw bh < <(settle_drawn_extent "$TITLE")
+settle_sheet_extent "$TITLE"
+readonly bw=$SETTLE_SHEET_WIDTH bh=$SETTLE_SHEET_HEIGHT
 
 settle_drag_queue "$TITLE" "$SPAN"
 "$UMBRIEL" clock-freeze
@@ -48,7 +53,7 @@ if ((held < SETTLE_FLOOR)); then
 fi
 read -r wx wy ww wh < <(settle_box "$TITLE")
 
-read -r px py _ _ < <(settle_bbox)
+read -r px py _ _ < <(settle_green_bbox)
 "$UMBRIEL" msg workspace-switch TWO > /dev/null
 # The switch is dispatched asynchronously, so the slide can begin after the next
 # ordered tick: advance until the sheet has travelled. This output arranges its
@@ -58,7 +63,7 @@ advanced=0
 while :; do
   "$UMBRIEL" clock-advance 16 > /dev/null
   ((advanced += 16))
-  read -r _ ny _ _ < <(settle_bbox)
+  read -r _ ny _ _ < <(settle_green_bbox)
   dy=$((ny - py))
   ((dy < 0)) && dy=$((-dy))
   ((dy >= 120)) && break
@@ -68,7 +73,7 @@ while :; do
   fi
 done
 mid=$(settle_green)
-read -r mx my mw mh < <(settle_bbox)
+read -r mx my mw mh < <(settle_green_bbox)
 "$UMBRIEL" clock-advance 400 > /dev/null
 away=$(settle_green)
 active_after=$(settle_active_workspace)
@@ -93,7 +98,7 @@ fi
 "$UMBRIEL" clock-advance 300 > /dev/null
 "$UMBRIEL" clock-advance 6000 > /dev/null
 back=$(settle_green)
-read -r _ _ rw rh < <(settle_bbox)
+read -r _ _ rw rh < <(settle_green_bbox)
 "$UMBRIEL" clock-resume
 "$UMBRIEL" settle > /dev/null
 
