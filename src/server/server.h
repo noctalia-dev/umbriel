@@ -4,9 +4,9 @@
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
+#include "input/button_state.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
-#include "input/modifier_tap.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
 #include "output/enable_overrides.h"
@@ -419,9 +419,14 @@ namespace umbriel {
     }
     std::optional<SsdFrameHit> ssdFrameAt(double lx, double ly) const { return m_focus.ssdFrameAt(lx, ly); }
     std::optional<Keybind> handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers);
-    // The bind this press would fire, without running it. Null when nothing
-    // matches (locked sessions match nothing, matching handleKeybind).
-    const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const;
+    // Match the selected trigger phase without dispatching, respecting lock and keyboard inhibition permissions.
+    const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers, bool onRelease = false) const;
+    // Mouse matching respects lock permissions but is unaffected by keyboard shortcut inhibition.
+    const Keybind* matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease = false) const;
+    bool releaseBindAllowed(const Keybind& bind) const;
+    ButtonState& buttonState() { return m_buttonState; }
+    // Dispatch only after the release has been delivered/consumed and its interactive grab has ended.
+    void executeReleaseBind(const void* source, uint32_t code);
     // Combined state across independent keyboard devices. Media and brightness
     // keys commonly come from a device separate from held modifiers. An input
     // method's mirrored keyboard is not independent and is excluded.
@@ -436,8 +441,9 @@ namespace umbriel {
     std::optional<Keybind> handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted = nullptr);
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
-    [[nodiscard]] std::optional<Keybind> releaseModifierTap(const void* source, uint32_t keycode);
-    void cancelModifierTap() { m_modifierTap.cancel(); }
+    // Preserve modifier taps' cancellation policy without cancelling explicit release bindings.
+    void cancelModifierTap() { m_buttonState.cancelForInput(); }
+    void cancelReleaseBindsForInput() { cancelModifierTap(); }
     void arrangeLayers(wlr_output* output);
     // Re-send every surface's output scale (views, layer surfaces, popups). Run after anything that changes an output's
     // scale or moves surfaces between outputs outside setWorkspace; the notifies dedup, so extra calls are cheap.
@@ -809,6 +815,7 @@ namespace umbriel {
       uint32_t modifiers = 0;
       bool useMod = false;
       bool modifierOnly = false;
+      bool onRelease = false;
       uint32_t keysym = 0;
       WheelDirection wheel{};
       uint32_t mouseButton = 0;
@@ -1029,7 +1036,7 @@ namespace umbriel {
     xkb_keymap* m_compiledKeymap = nullptr;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
-    ModifierTapState m_modifierTap;
+    ButtonState m_buttonState;
     std::vector<std::unique_ptr<PointerDevice>> m_pointers;
     std::vector<std::unique_ptr<TouchDevice>> m_touchDevices;
     std::vector<std::unique_ptr<TabletDevice>> m_tabletDevices;

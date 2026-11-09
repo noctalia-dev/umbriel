@@ -97,6 +97,21 @@ UMBRIEL_TEST(modifierOnlyBindHasNoTrailingKeysym) {
   CHECK_EQ(rows[0].chord, std::string{"Mod"});
 }
 
+UMBRIEL_TEST(releaseChordsAreLabelledAndDoNotMergeWithPressChords) {
+  const Keybind press = bind(KeybindAction::WindowClose, XKB_KEY_q);
+  Keybind release = press;
+  release.onRelease = true;
+
+  const auto rows = buildCheatsheetRows(std::vector<Keybind>{press, release});
+  CHECK_EQ(rows.size(), size_t{2});
+  CHECK(std::ranges::any_of(rows, [](const auto& row) {
+    return !row.onRelease && row.chord == "Mod+Q" && row.action != kDitto;
+  }));
+  CHECK(std::ranges::any_of(rows, [](const auto& row) {
+    return row.onRelease && row.chord == "Mod+Q (release)" && row.action != kDitto;
+  }));
+}
+
 UMBRIEL_TEST(oneRowPerBindWhenActionsDiffer) {
   const std::vector<Keybind> binds = {
       bind(KeybindAction::WindowClose, XKB_KEY_q),
@@ -198,6 +213,14 @@ UMBRIEL_TEST(perDigitWorkspaceBindsCollapseToOneRow) {
     CHECK(rows[0].chord.contains('1'));
     CHECK_EQ(rows[0].action, std::string{"workspace-switch 1-9"});
   }
+  const auto pressBinds = binds;
+  for (auto release : pressBinds) {
+    release.onRelease = true;
+    binds.push_back(std::move(release));
+  }
+  const auto mixedRows = buildCheatsheetRows(binds);
+  CHECK_EQ(mixedRows.size(), size_t{19});
+  CHECK_EQ(std::ranges::count_if(mixedRows, [](const auto& row) { return row.onRelease; }), 18);
 }
 
 UMBRIEL_TEST(numericWorkspaceNamesStayDistinctFromPositionalBinds) {

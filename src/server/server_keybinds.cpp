@@ -2,12 +2,14 @@
 #include "input/cursor.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
+#include "input/modifier_tap.h"
 #include "input/seat.h"
 #include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
+#include "scene/quit_confirm.h"
 #include "server/actions.h"
 #include "server/server.h"
 #include "view/view.h"
@@ -81,6 +83,7 @@ namespace umbriel {
           && cooldown.modifiers == bind.modifiers
           && cooldown.useMod == bind.useMod
           && cooldown.modifierOnly == bind.modifierOnly
+          && cooldown.onRelease == bind.onRelease
           && cooldown.keysym == bind.keysym
           && cooldown.wheel == bind.wheel
           && cooldown.mouseButton == bind.mouseButton;
@@ -98,6 +101,7 @@ namespace umbriel {
         .modifiers = bind.modifiers,
         .useMod = bind.useMod,
         .modifierOnly = bind.modifierOnly,
+        .onRelease = bind.onRelease,
         .keysym = bind.keysym,
         .wheel = bind.wheel,
         .mouseButton = bind.mouseButton,
@@ -169,7 +173,7 @@ namespace umbriel {
 
   void
   Server::armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers) {
-    if (m_modifierTap.cancelForKeyPress()) {
+    if (m_buttonState.cancelForInput()) {
       return;
     }
 
@@ -199,21 +203,21 @@ namespace umbriel {
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
       if (modifierTapPressMatches(modifiers, pressedModifier, expected)) {
-        m_modifierTap.arm(bind, source, keycode);
+        m_buttonState.armRelease(source, keycode, bind);
         return;
       }
     }
   }
 
-  std::optional<Keybind> Server::releaseModifierTap(const void* source, uint32_t keycode) {
-    std::optional<Keybind> bind = m_modifierTap.release(source, keycode);
-    if (bind && m_sessionLocked && !bind->allowWhenLocked) {
-      return std::nullopt;
+  void Server::executeReleaseBind(const void* source, uint32_t code) {
+    auto pending = m_buttonState.takeRelease(source, code);
+    if (!pending || !releaseBindAllowed(*pending)) {
+      return;
     }
-    if (bind && keyboardShortcutsInhibited() && !bind->allowWhenInhibited) {
-      return std::nullopt;
+    const QuitConfirm* confirm = quitConfirm();
+    if (pending->modifierOnly || confirm == nullptr || !confirm->visible()) {
+      executeAction(*pending);
     }
-    return bind;
   }
 
   bool Server::keyboardShortcutsInhibited() const {
@@ -280,7 +284,12 @@ namespace umbriel {
     return true;
   }
 
-  const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const {
+  bool Server::releaseBindAllowed(const Keybind& bind) const {
+    return (!m_sessionLocked || bind.allowWhenLocked)
+        && (bind.mouseButton != 0 || !keyboardShortcutsInhibited() || bind.allowWhenInhibited);
+  }
+
+  const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers, bool onRelease) const {
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const uint32_t lowered = xkb_keysym_to_lower(keysym);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
@@ -301,7 +310,7 @@ namespace umbriel {
       if (keyboardShortcutsInhibited() && !bind.allowWhenInhibited) {
         continue;
       }
-      if (bind.modifierOnly) {
+      if (bind.modifierOnly || bind.onRelease != onRelease) {
         continue;
       }
       if (bind.wheel != WheelDirection::None || bind.mouseButton != 0) {
@@ -371,10 +380,7 @@ namespace umbriel {
     return false;
   }
 
-  std::optional<Keybind> Server::handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted) {
-    if (actionExecuted != nullptr) {
-      *actionExecuted = false;
-    }
+  const Keybind* Server::matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease) const {
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
@@ -386,25 +392,34 @@ namespace umbriel {
         continue;
       }
       // Non-mouse binds carry 0 here, which never equals a BTN_* code.
-      if (bind.mouseButton != canonicalMouseButton(button)) {
+      if (bind.mouseButton != canonicalMouseButton(button) || bind.onRelease != onRelease) {
         continue;
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
       if (effective != expected) {
         continue;
       }
-      bool cooldownBlocked = false;
-      const bool handled = executeAction(bind, nullptr, &cooldownBlocked);
-      if (!handled && !cooldownBlocked) {
-        return std::nullopt;
-      }
-      if (actionExecuted != nullptr) {
-        *actionExecuted = handled;
-      }
-      return bind;
+      return &bind;
     }
 
-    return std::nullopt;
+    return nullptr;
+  }
+
+  std::optional<Keybind> Server::handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted) {
+    if (actionExecuted != nullptr) {
+      *actionExecuted = false;
+    }
+    const Keybind* bind = matchMouseBind(button, modifiers);
+    if (bind == nullptr) {
+      return std::nullopt;
+    }
+    const Keybind matched = *bind;
+    bool cooldownBlocked = false;
+    const bool handled = executeAction(matched, nullptr, &cooldownBlocked);
+    if (actionExecuted != nullptr) {
+      *actionExecuted = handled;
+    }
+    return handled || cooldownBlocked ? std::optional<Keybind>{matched} : std::nullopt;
   }
 
   void Server::pushSubmap(const std::string& name) {

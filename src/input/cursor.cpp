@@ -1567,12 +1567,16 @@ namespace umbriel {
     auto* event = static_cast<wlr_pointer_button_event*>(data);
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 2U) != 0) {
       m_server->notifyIdleActivity();
+      if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        m_server->buttonState().forgetPress(&event->pointer->base, event->button);
+        std::erase(m_swallowedButtons, event->button);
+      }
       if (m_server->physicalInputDevice(&event->pointer->base)) {
         capture->captureButton(event->time_msec, event->button, event->state == WL_POINTER_BUTTON_STATE_PRESSED);
       }
       return;
     }
-    processButton(event->time_msec, event->button, event->state);
+    processButton(&event->pointer->base, event->time_msec, event->button, event->state);
   }
 
   bool Cursor::canCaptureInput() const {
@@ -1595,7 +1599,6 @@ namespace umbriel {
   void Cursor::setInputCaptured(bool captured) {
     if (captured) {
       cancelHotCorner();
-      m_server->cancelModifierTap();
       clearPointerFocus();
       hideCursor();
     } else {
@@ -1634,7 +1637,14 @@ namespace umbriel {
     beginResize(grab.view, grab.edges, grab.button);
   }
 
-  void Cursor::processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
+  void Cursor::processButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
+    dispatchButton(source, timeMsec, button, state);
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_server->executeReleaseBind(source, button);
+    }
+  }
+
+  void Cursor::dispatchButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED && m_clientPointerPress && m_clientPointerPress->button == button) {
       m_clientPointerPress.reset();
     }
@@ -1646,7 +1656,7 @@ namespace umbriel {
     }
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
       cancelHotCorner();
-      m_server->cancelModifierTap();
+      m_server->cancelReleaseBindsForInput();
       // Any pointer press cancels the confirmation without being consumed; the
       // click still reaches whatever it hit.
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
@@ -1658,16 +1668,24 @@ namespace umbriel {
     // swallow their paired release so clients never see an unmatched release.
     if (state == WL_POINTER_BUTTON_STATE_PRESSED && isPassthrough()) {
       const uint32_t modifiers = m_server->keyboardModifiers();
+      const Keybind* release = m_server->matchMouseBind(button, modifiers, true);
+      const bool releaseBound = release != nullptr;
+      const bool releaseCheatsheetBind = releaseBound && isCheatsheetAction(release->action);
+      // Arm before the press action can replace configuration or change the submap.
+      if (releaseBound) {
+        m_server->buttonState().armRelease(source, button, *release);
+      }
       bool mouseBindExecuted = false;
       const std::optional<Keybind> bound = m_server->handleMouseBind(button, modifiers, &mouseBindExecuted);
-      // Any press dismisses the cheatsheet, as any key press does, except one that just ran a cheatsheet action. Unlike
-      // a key press, an unbound press is consumed: the overlay hides whatever sits under the cursor, so the click that
-      // dismisses it must not also reach that surface.
+      // Keep the cheatsheet for an executed press action or an armed release action that controls it. An unbound
+      // dismissing click is consumed: the overlay hides whatever sits under the cursor, so the click must not also
+      // reach that surface.
       if (Cheatsheet* sheet = m_server->cheatsheet(); sheet != nullptr
           && sheet->visible()
-          && !(bound.has_value() && mouseBindExecuted && isCheatsheetAction(bound->action))) {
+          && !(bound.has_value() && mouseBindExecuted && isCheatsheetAction(bound->action))
+          && !releaseCheatsheetBind) {
         sheet->hide();
-        if (!bound.has_value()) {
+        if (!bound.has_value() && !releaseBound) {
           m_swallowedButtons.push_back(button);
           return;
         }
@@ -1687,6 +1705,10 @@ namespace umbriel {
           clearPointerFocus();
           return;
         }
+        m_swallowedButtons.push_back(button);
+        return;
+      }
+      if (releaseBound) {
         m_swallowedButtons.push_back(button);
         return;
       }
@@ -2041,7 +2063,7 @@ namespace umbriel {
     } else {
       m_server->notifyInputActivity();
     }
-    m_server->cancelModifierTap();
+    m_server->cancelReleaseBindsForInput();
     cancelHotCorner();
 
     const uint32_t modifiers = m_server->keyboardModifiers();
@@ -2227,7 +2249,7 @@ namespace umbriel {
     }
     auto* event = static_cast<wlr_touch_down_event*>(data);
     m_server->notifyInputActivity();
-    m_server->cancelModifierTap();
+    m_server->cancelReleaseBindsForInput();
     m_server->remapTouches();
 
     double lx = 0;
@@ -2619,6 +2641,7 @@ namespace umbriel {
     TabletToolState* watch;
     watch = wl_container_of(listener, watch, destroy);
     Cursor* cursor = watch->cursor;
+    cursor->m_server->buttonState().forgetSource(watch->tool);
     wl_list_remove(&watch->destroy.link);
     wl_list_remove(&watch->setCursor.link);
     std::erase_if(cursor->m_tools, [watch](const std::unique_ptr<TabletToolState>& entry) {
@@ -2816,7 +2839,7 @@ namespace umbriel {
     }
     // Release a tip that was left down through emulation.
     if (state->emulating && state->tipDown) {
-      processButton(event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
+      processButton(state->tool, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
       wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
     }
     if (!state->emulating && state->v2->focused_surface != nullptr) {
@@ -2838,14 +2861,15 @@ namespace umbriel {
       m_server->notifyIdleActivity();
     }
     if (event->state == WLR_TABLET_TOOL_TIP_DOWN) {
-      m_server->cancelModifierTap();
+      m_server->cancelReleaseBindsForInput();
     }
     TabletToolState* state = toolState(event->tool);
     const bool down = event->state == WLR_TABLET_TOOL_TIP_DOWN;
     if (state->emulating) {
       state->tipDown = down;
       processButton(
-          event->time_msec, BTN_LEFT, down ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+          state->tool, event->time_msec, BTN_LEFT,
+          down ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
       );
       wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
       return;
@@ -2902,7 +2926,8 @@ namespace umbriel {
       mapped = BTN_SIDE;
     }
     processButton(
-        event->time_msec, mapped, pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+        state->tool, event->time_msec, mapped,
+        pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
     );
     wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
   }
