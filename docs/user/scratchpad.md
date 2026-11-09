@@ -159,6 +159,8 @@ A dialog parented to a visible scratchpad window joins that scratchpad unless a 
 
 Backdrop dim and blur affect only the output showing the scratchpad.
 
+A shown scratchpad sits above workspace windows and below panels. When a fullscreen window is on its output, or one of its own windows is fullscreen, the scratchpad and its backdrop draw above fullscreen windows instead. Pinned windows, overlay-layer surfaces such as notifications, and the lock screen stay above it.
+
 ## Restoring windows
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.

@@ -405,7 +405,10 @@ namespace umbriel {
       m_ssdFrame->setBlurLive(true);
     }
     setFadeAlpha(m_fadeAlpha);
-    if (m_pinned) {
+    if (m_inScratchpad) {
+      // A scratchpad raised over fullscreen sits above the drag tree's usual place; keep the member above its backdrop.
+      wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->scratchpadTree()->node);
+    } else if (m_pinned) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->pinnedTree()->node);
     } else if (m_workspace != nullptr && m_workspace->floatingLayerRaised()) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->fullscreenTree()->node);

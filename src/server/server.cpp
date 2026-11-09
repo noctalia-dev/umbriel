@@ -724,6 +724,8 @@ namespace umbriel {
     wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
 
     // Global stacking keeps scratchpads above normal windows and below drag, panels, fullscreen, overlays, and lock.
+    // ScratchpadManager::updateStacking() lifts them above fullscreen windows, still below pinned ones, while a shown
+    // pad would otherwise be hidden behind fullscreen.
     // Per-output layer trees keep normal windows below panels.
     m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);

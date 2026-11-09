@@ -1830,6 +1830,9 @@ namespace umbriel {
       m_fullscreenAboveTopLayer = above;
       m_server->refreshLayerFocus(this);
     }
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+      scratchpad->updateStacking();
+    }
   }
 
   void Output::handleFrame() {
