@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # A tab group's overview card acts as the group: its shortcut label focuses the shown tab, a click on a tab of its bar
-# focuses that tab, and a card dropped on its bar joins the group between the tabs under the pointer.
+# focuses that tab (the one pressed, even if the overview scrolls before the release), and a card dropped on its bar
+# joins the group between the tabs under the pointer.
 set -euo pipefail
 
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly FRAME="$UMBRIEL_RUNTIME_DIR/overview-tab-group-card.png"
-# The shown tab's slot is the only magenta on screen.
+# The shown tab's slot is the only magenta on the first workspace's preview.
 readonly MAGENTA='r > 0.9 && g < 0.1 && b > 0.9'
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -53,7 +54,7 @@ open_overview() {
   "$UMBRIEL" msg overview-open > /dev/null
   "$UMBRIEL" settle
   grim "$FRAME"
-  read -r slot_x slot_y slot_w slot_h < <("$UMBRIEL_PIXEL_PROBE" "$FRAME" bbox "$MAGENTA")
+  read -r slot_x slot_y slot_w slot_h < <("$UMBRIEL_PIXEL_PROBE" "$FRAME" bbox "$MAGENTA" 1280x360+0+0)
   if ((slot_w == 0 || slot_h == 0)); then
     echo "the group's card shows no tab bar"
     exit 1
@@ -103,6 +104,26 @@ open_overview
 "$UMBRIEL" settle
 if [[ $(focused_title) != tab-a ]]; then
   echo "clicking tab-a on the group's card focused $(focused_title): $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+"$UMBRIEL" msg workspace-next > /dev/null
+spawn tab-d
+spawn tab-e
+"$UMBRIEL" msg window-consume-left > /dev/null
+"$UMBRIEL" msg column-toggle-tabbed > /dev/null
+"$UMBRIEL" msg workspace-previous > /dev/null
+open_overview
+# tab-a is shown, two slots left of tab-b. A wheel notch mid-click brings the next workspace's bar under the pointer.
+tab_b_x=$((slot_x + slot_w * 5 / 2))
+pointer_hold 1280 720 move "$tab_b_x" $((slot_y + slot_h / 2)) press 272 -- notch 1 mark scrolled hold release 272
+pointer_step scrolled
+"$UMBRIEL" settle
+pointer_release
+"$UMBRIEL" settle
+focused=$("$UMBRIEL" windows --json | jq -r '[.[] | select(.focused and .active) | .title] | first // "none"')
+if [[ $focused != tab-b ]]; then
+  echo "clicking tab-b while the overview scrolled focused $focused: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 

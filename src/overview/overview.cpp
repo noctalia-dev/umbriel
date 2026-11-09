@@ -2275,6 +2275,9 @@ namespace umbriel {
     if (m_pressCard != nullptr && m_pressCard->view == view) {
       m_pressCard = nullptr;
     }
+    if (m_pressTab == view) {
+      m_pressTab = nullptr;
+    }
     if (m_middlePressCard != nullptr && m_middlePressCard->view == view) {
       m_middlePressCard = nullptr;
     }
@@ -2796,12 +2799,13 @@ namespace umbriel {
       }
       Card* card = m_pressCard;
       Workspace* workspace = m_pressWorkspace;
+      View* tab = m_pressTab;
       m_pressCard = nullptr;
       m_pressWorkspace = nullptr;
+      m_pressTab = nullptr;
       if (card != nullptr && card->view != nullptr && card->view->mapped()) {
         closeToWorkspace(card->view->workspace(), card->view);
       } else if (workspace != nullptr) {
-        View* tab = tabAt(m_pressX, m_pressY);
         closeToWorkspace(workspace, tab != nullptr ? tab : workspace->focusedView());
       }
       return true;
@@ -2833,6 +2837,7 @@ namespace umbriel {
     m_pressY = ly;
     if (card == nullptr) {
       m_pressWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, false, false);
+      m_pressTab = tabAt(lx, ly);
     }
     return true;
   }

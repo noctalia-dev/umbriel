@@ -451,6 +451,7 @@ namespace umbriel {
 
     Card* m_pressCard = nullptr;
     Workspace* m_pressWorkspace = nullptr;
+    View* m_pressTab = nullptr;
     double m_pressX = 0;
     double m_pressY = 0;
     Card* m_middlePressCard = nullptr;
