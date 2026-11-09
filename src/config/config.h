@@ -761,7 +761,7 @@ namespace umbriel {
         // How many logical pixels of the window's top edge that strip takes. The bar stretches them over its whole
         // height, so a thinner strip reads as one flat colour and a thicker one keeps more of the window's own detail.
         int colorSourceHeight = 1;
-        // A dark edge under the title and around the symbols, so they read on a bar of any color, in every color_source.
+        // Dark edge under the title and the symbols, on any bar color, in every color_source.
         bool titleShadow = true;
         // Reverse the title, and a symbol on the bar or on its button color, to black or white when it would sink into
         // what is behind it.
