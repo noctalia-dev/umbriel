@@ -1354,7 +1354,7 @@ namespace umbriel {
         && definition != nullptr
         && definition->hideWhenEmpty
         && !hasEntries(name)) {
-      const bool heldFocus = m_server->seat()->wlr()->keyboard_state.focused_surface == view->rootSurface();
+      const bool heldFocus = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == view;
       setVisible(name, false);
       if (heldFocus) {
         m_server->refocus(scratchpad->output);
