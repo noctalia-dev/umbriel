@@ -388,6 +388,8 @@ default_pinned = true
 # [[scratchpad]]
 # name = "music"
 # spawn_when_empty = "spotify"
+# Hide the scratchpad when its last window closes, so the next toggle relaunches.
+# hide_when_empty = true
 # Preserve each window's current size proportions when moving between monitors.
 # proportional_size = true
 

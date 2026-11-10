@@ -128,9 +128,8 @@ fi
 
 echo "client-requested tiled resize changed the layout and released input to its neighbor"
 
-# A client may acknowledge a configure without changing its buffer. Releasing a
-# resize must restore 1:1 sampling for it and its resized sibling without waiting
-# for another client commit.
+# A client may acknowledge a configure without changing its buffer. A resize samples it and its resized sibling 1:1
+# while held and after release, without waiting for another client commit.
 kill "$source_pid" "$target_pid"
 wait "$source_pid" "$target_pid" 2>/dev/null || true
 await_windows 0
@@ -165,9 +164,9 @@ read -r target_x target_y target_w target_h < <(window_box "$TARGET")
 for sample_x in "$((source_x + 40))" "$((target_x + 40))"; do
   held_impure=$(impure_pixels "$HELD" "$sample_x")
   released_impure=$(impure_pixels "$RELEASED" "$sample_x")
-  if (( held_impure == 0 || released_impure != 0 )); then
-    echo "resize sampling did not return to 1:1 at x=$sample_x: held=$held_impure released=$released_impure"
+  if (( held_impure != 0 || released_impure != 0 )); then
+    echo "resize sampling was not 1:1 at x=$sample_x: held=$held_impure released=$released_impure"
     exit 1
   fi
 done
-echo "resize release restored 1:1 sampling for both fixed-buffer tiles"
+echo "fixed-buffer tiles sampled 1:1 through a resize and its release"
