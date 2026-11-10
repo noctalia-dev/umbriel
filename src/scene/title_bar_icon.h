@@ -18,7 +18,6 @@ namespace umbriel {
   TitleBarGlyph titleBarGlyph(int button, int size, double width);
 
   // Rasterizes geometric button strokes into a transparent square at the requested device resolution.
-  [[nodiscard]] wlr_buffer* renderTitleBarIcon(
-      TitleBarButton button, int pixels, const std::array<float, 4>& color, const TitleBarGlyph& glyph = {}
-  );
+  [[nodiscard]] wlr_buffer*
+  renderTitleBarIcon(TitleBarButton button, int pixels, const std::array<float, 4>& color, const TitleBarGlyph& glyph);
 } // namespace umbriel
