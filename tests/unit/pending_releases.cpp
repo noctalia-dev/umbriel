@@ -1,4 +1,4 @@
-#include "input/button_state.h"
+#include "input/pending_releases.h"
 
 #include "check.h"
 
@@ -6,9 +6,9 @@
 #include <vector>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
-using umbriel::ButtonState;
 using umbriel::Keybind;
 using umbriel::KeybindAction;
+using umbriel::PendingReleases;
 
 namespace {
   Keybind releaseBind() {
@@ -54,7 +54,7 @@ namespace {
 
 UMBRIEL_TEST(releaseSnapshotsAreOneShotAndScopedToSourceAndDeliveredCode) {
   for (const auto& [bind, code, otherCode] : releaseCases()) {
-    ButtonState state;
+    PendingReleases state;
     int firstSource = 0;
     int secondSource = 0;
     int unknownSource = 0;
@@ -80,7 +80,7 @@ UMBRIEL_TEST(releaseSnapshotsAreOneShotAndScopedToSourceAndDeliveredCode) {
 
 UMBRIEL_TEST(cancellationAndReloadsDoNotReviveActions) {
   for (const auto& [bind, code, otherCode] : releaseCases()) {
-    ButtonState state;
+    PendingReleases state;
     int firstSource = 0;
     int secondSource = 0;
     state.armRelease(&firstSource, code, bind);
@@ -107,7 +107,7 @@ UMBRIEL_TEST(cancellationAndReloadsDoNotReviveActions) {
 }
 
 UMBRIEL_TEST(otherInputCancelsOnlyModifierOnlyReleaseActions) {
-  ButtonState state;
+  PendingReleases state;
   CHECK(!state.cancelForInput());
   int keyboard = 0;
   int pointer = 0;
@@ -126,7 +126,7 @@ UMBRIEL_TEST(otherInputCancelsOnlyModifierOnlyReleaseActions) {
 }
 
 UMBRIEL_TEST(forgettingAPressLeavesOtherSourcesAndCodesArmed) {
-  ButtonState state;
+  PendingReleases state;
   int pointer = 0;
   int tool = 0;
   const Keybind bind = releaseBind();

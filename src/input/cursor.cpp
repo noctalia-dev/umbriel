@@ -1568,7 +1568,7 @@ namespace umbriel {
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 2U) != 0) {
       m_server->notifyIdleActivity();
       if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        m_server->buttonState().forgetPress(&event->pointer->base, event->button);
+        m_server->pendingReleases().forgetPress(&event->pointer->base, event->button);
         std::erase(m_swallowedButtons, event->button);
       }
       if (m_server->physicalInputDevice(&event->pointer->base)) {
@@ -1673,7 +1673,7 @@ namespace umbriel {
       const bool releaseCheatsheetBind = releaseBound && isCheatsheetAction(release->action);
       // Arm before the press action can replace configuration or change the submap.
       if (releaseBound) {
-        m_server->buttonState().armRelease(source, button, *release);
+        m_server->pendingReleases().armRelease(source, button, *release);
       }
       bool mouseBindExecuted = false;
       const std::optional<Keybind> bound = m_server->handleMouseBind(button, modifiers, &mouseBindExecuted);
@@ -2641,7 +2641,7 @@ namespace umbriel {
     TabletToolState* watch;
     watch = wl_container_of(listener, watch, destroy);
     Cursor* cursor = watch->cursor;
-    cursor->m_server->buttonState().forgetSource(watch->tool);
+    cursor->m_server->pendingReleases().forgetSource(watch->tool);
     wl_list_remove(&watch->destroy.link);
     wl_list_remove(&watch->setCursor.link);
     std::erase_if(cursor->m_tools, [watch](const std::unique_ptr<TabletToolState>& entry) {

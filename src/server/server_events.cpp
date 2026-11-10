@@ -1004,7 +1004,7 @@ namespace umbriel {
       }
       if (result.change.keybinds) {
         m_bindCooldowns.clear();
-        m_buttonState.reconcileReleaseBinds(config().keybinds);
+        m_pendingReleases.reconcileReleaseBinds(config().keybinds);
       }
       if (result.change.scratchpads && m_scratchpadManager != nullptr) {
         m_scratchpadManager->reconcileConfig();
@@ -1487,7 +1487,7 @@ namespace umbriel {
     VirtualPointerDevice* device;
     device = wl_container_of(listener, device, destroy);
     // wlr_cursor detaches the device itself when the pointer is destroyed.
-    device->server->m_buttonState.forgetSource(&device->vpointer->pointer.base);
+    device->server->m_pendingReleases.forgetSource(&device->vpointer->pointer.base);
     wl_list_remove(&device->destroy.link);
     std::erase_if(device->server->m_virtualPointers, [device](const std::unique_ptr<VirtualPointerDevice>& ptr) {
       return ptr.get() == device;
@@ -1601,7 +1601,7 @@ namespace umbriel {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
-    server->m_buttonState.forgetSource(watch->device);
+    server->m_pendingReleases.forgetSource(watch->device);
     if (server->m_inputCapture != nullptr) {
       server->m_inputCapture->forgetAbsoluteDevice(watch->device);
       if ((server->m_inputCapture->capabilities() & 2U) != 0) {

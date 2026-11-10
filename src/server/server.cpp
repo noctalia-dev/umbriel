@@ -490,7 +490,7 @@ namespace umbriel {
     }
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
-    m_buttonState.clearForCapture((capabilities & 1U) != 0, (capabilities & 2U) != 0);
+    m_pendingReleases.clearForCapture((capabilities & 1U) != 0, (capabilities & 2U) != 0);
     if ((capabilities & 1U) != 0) {
       for (const auto& keyboard : m_keyboards) {
         keyboard->prepareInputCapture(!active);

@@ -11,7 +11,7 @@
 namespace umbriel {
 
   // Pending releases keyed by source and delivered key/button code.
-  class ButtonState {
+  class PendingReleases {
   public:
     void armRelease(const void* source, uint32_t code, const Keybind& bind) {
       for (auto& entry : m_releases) {

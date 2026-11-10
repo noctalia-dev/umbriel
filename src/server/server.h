@@ -4,9 +4,9 @@
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
-#include "input/button_state.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
+#include "input/pending_releases.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
 #include "output/enable_overrides.h"
@@ -424,7 +424,7 @@ namespace umbriel {
     // Mouse matching respects lock permissions but is unaffected by keyboard shortcut inhibition.
     const Keybind* matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease = false) const;
     bool releaseBindAllowed(const Keybind& bind) const;
-    ButtonState& buttonState() { return m_buttonState; }
+    PendingReleases& pendingReleases() { return m_pendingReleases; }
     // Dispatch only after the release has been delivered/consumed and its interactive grab has ended. An action that
     // would confirm the visible dialog is skipped: only presses confirm.
     void executeReleaseBind(const void* source, uint32_t code);
@@ -445,7 +445,7 @@ namespace umbriel {
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
     // Other input cancels modifier-only binds; explicit release bindings stay armed.
-    void cancelModifierTap() { m_buttonState.cancelForInput(); }
+    void cancelModifierTap() { m_pendingReleases.cancelForInput(); }
     void arrangeLayers(wlr_output* output);
     // Re-send every surface's output scale (views, layer surfaces, popups). Run after anything that changes an output's
     // scale or moves surfaces between outputs outside setWorkspace; the notifies dedup, so extra calls are cheap.
@@ -1038,7 +1038,7 @@ namespace umbriel {
     xkb_keymap* m_compiledKeymap = nullptr;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
-    ButtonState m_buttonState;
+    PendingReleases m_pendingReleases;
     std::vector<std::unique_ptr<PointerDevice>> m_pointers;
     std::vector<std::unique_ptr<TouchDevice>> m_touchDevices;
     std::vector<std::unique_ptr<TabletDevice>> m_tabletDevices;

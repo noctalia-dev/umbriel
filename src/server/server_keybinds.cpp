@@ -173,7 +173,7 @@ namespace umbriel {
 
   void
   Server::armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers) {
-    if (m_buttonState.cancelForInput()) {
+    if (m_pendingReleases.cancelForInput()) {
       return;
     }
 
@@ -203,14 +203,14 @@ namespace umbriel {
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
       if (modifierTapPressMatches(modifiers, pressedModifier, expected)) {
-        m_buttonState.armRelease(source, keycode, bind);
+        m_pendingReleases.armRelease(source, keycode, bind);
         return;
       }
     }
   }
 
   void Server::executeReleaseBind(const void* source, uint32_t code) {
-    auto pending = m_buttonState.takeRelease(source, code);
+    auto pending = m_pendingReleases.takeRelease(source, code);
     if (!pending || !releaseBindAllowed(*pending)) {
       return;
     }

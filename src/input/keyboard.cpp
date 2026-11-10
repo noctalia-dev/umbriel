@@ -352,7 +352,7 @@ namespace umbriel {
         m_consumedKeycodes.insert(event->keycode);
       } else {
         m_consumedKeycodes.erase(event->keycode);
-        m_server->buttonState().forgetPress(this, event->keycode);
+        m_server->pendingReleases().forgetPress(this, event->keycode);
       }
       return;
     }
@@ -382,7 +382,7 @@ namespace umbriel {
         m_consumedKeycodes.insert(event->keycode);
       } else {
         m_consumedKeycodes.erase(event->keycode);
-        m_server->buttonState().forgetPress(this, event->keycode);
+        m_server->pendingReleases().forgetPress(this, event->keycode);
       }
       return;
     }
@@ -410,7 +410,7 @@ namespace umbriel {
           m_consumedKeycodes.insert(event->keycode);
         } else {
           m_consumedKeycodes.erase(event->keycode);
-          m_server->buttonState().forgetPress(this, event->keycode);
+          m_server->pendingReleases().forgetPress(this, event->keycode);
         }
         if (!m_virtual) {
           capture->captureKey(event->time_msec, m_keyboard, event->keycode, pressed);
@@ -449,7 +449,7 @@ namespace umbriel {
         for (int i = 0; i < nsyms; ++i) {
           const Keybind* release = m_server->matchKeybind(syms[i], rawSym, modifiers, true);
           if (release != nullptr) {
-            m_server->buttonState().armRelease(this, event->keycode, *release);
+            m_server->pendingReleases().armRelease(this, event->keycode, *release);
             m_consumedKeycodes.insert(event->keycode);
             handled = true;
             break;
@@ -487,7 +487,7 @@ namespace umbriel {
       }
       // Non-modifier presses dismiss the cheatsheet unless a press or pending release action controls it.
       if (Cheatsheet* sheet = m_server->cheatsheet(); sheet != nullptr && sheet->visible()) {
-        const Keybind* release = m_server->buttonState().releaseBind(this, event->keycode);
+        const Keybind* release = m_server->pendingReleases().releaseBind(this, event->keycode);
         const bool cheatsheetBind = (matched.has_value() && isCheatsheetAction(matched->action))
             || (release != nullptr && isCheatsheetAction(release->action));
         if (!cheatsheetBind && !modifierOnly) {
@@ -546,7 +546,7 @@ namespace umbriel {
     m_modifiers.link.next = nullptr;
     m_key.link.next = nullptr;
     m_destroy.link.next = nullptr;
-    m_server->buttonState().forgetSource(this);
+    m_server->pendingReleases().forgetSource(this);
     m_server->removeKeyboard(this);
   }
 
