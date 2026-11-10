@@ -28,6 +28,10 @@ spawn() {
     [[ -n $(field "$title" id) ]] && break
     sleep 0.05
   done
+  if [[ -z $(field "$title" id) ]]; then
+    echo "$title never appeared in IPC: $("$UMBRIEL" windows --json) client log: $(cat "$UMBRIEL_RUNTIME_DIR/$title.log")"
+    exit 1
+  fi
   "$UMBRIEL" settle
 }
 
