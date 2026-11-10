@@ -41,8 +41,7 @@ namespace umbriel {
   }
 
   bool View::fadeComposited() const {
-    // A minimize fade has no effect slot, so it composites plain alpha in both directions: borrowing the opening
-    // program would fade the client through it while the border and title bar snapped to full opacity.
+    // A minimize fade runs no effect program in either direction, so it composites plain alpha.
     if (!m_fade.animating() || minimizeFadeActive()) {
       return false;
     }
