@@ -74,16 +74,7 @@ namespace umbriel {
     const int repeatRate = device != nullptr && device->repeatRate ? *device->repeatRate : input.keyboard.repeatRate;
     const int repeatDelay =
         device != nullptr && device->repeatDelay ? *device->repeatDelay : input.keyboard.repeatDelay;
-    xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    const xkb_rule_names rules{
-        .rules = nullptr,
-        .model = names.model.empty() ? nullptr : names.model.c_str(),
-        .layout = names.layout.empty() ? nullptr : names.layout.c_str(),
-        .variant = names.variant.empty() ? nullptr : names.variant.c_str(),
-        .options = names.options.empty() ? nullptr : names.options.c_str(),
-    };
-    xkb_keymap* keymap =
-        context == nullptr ? nullptr : xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    xkb_keymap* keymap = m_server->compileKeymap(names);
     if (keymap != nullptr) {
       // Restoring lock state emits a synthetic modifiers event. It must not
       // select an inactive keyboard as the user's current input source.
@@ -96,9 +87,6 @@ namespace umbriel {
       xkb_keymap_unref(keymap);
     } else {
       wlr_log(WLR_ERROR, "failed to create keyboard keymap");
-    }
-    if (context != nullptr) {
-      xkb_context_unref(context);
     }
     wlr_keyboard_set_repeat_info(m_keyboard, repeatRate, repeatDelay);
     // A changed keymap starts in group zero; an identical map keeps its state.
