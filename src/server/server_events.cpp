@@ -939,6 +939,8 @@ namespace umbriel {
   }
 
   void Server::applyKeyboardConfig() {
+    xkb_keymap_unref(m_compiledKeymap);
+    m_compiledKeymap = nullptr;
     m_surfaceLayouts.clear();
     for (const auto& keyboard : m_keyboards) {
       keyboard->applyConfig();
@@ -956,6 +958,31 @@ namespace umbriel {
       syncKeyboardLayout(m_keyboardLayoutSource);
       notifyKeyboardLayoutIpc();
     }
+  }
+
+  xkb_keymap* Server::compileKeymap(const XkbNames& names) {
+    if (m_compiledKeymap == nullptr || names != m_compiledKeymapNames) {
+      xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+      if (context == nullptr) {
+        return nullptr;
+      }
+      const xkb_rule_names rules{
+          .rules = nullptr,
+          .model = names.model.empty() ? nullptr : names.model.c_str(),
+          .layout = names.layout.empty() ? nullptr : names.layout.c_str(),
+          .variant = names.variant.empty() ? nullptr : names.variant.c_str(),
+          .options = names.options.empty() ? nullptr : names.options.c_str(),
+      };
+      xkb_keymap* keymap = xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+      xkb_context_unref(context);
+      if (keymap == nullptr) {
+        return nullptr;
+      }
+      xkb_keymap_unref(m_compiledKeymap);
+      m_compiledKeymap = keymap;
+      m_compiledKeymapNames = names;
+    }
+    return xkb_keymap_ref(m_compiledKeymap);
   }
 
   bool Server::refreshSystemKeymap() {

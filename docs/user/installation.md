@@ -65,6 +65,10 @@ sudo wget -O /etc/apt/sources.list.d/noctalia-unstable.sources \
 # Ubuntu 26.04
 sudo wget -O /etc/apt/sources.list.d/noctalia-resolute.sources \
   https://pkg.noctalia.dev/deb/noctalia-resolute.sources
+
+# Ubuntu 26.10
+sudo wget -O /etc/apt/sources.list.d/noctalia-stonking.sources \
+  https://pkg.noctalia.dev/deb/noctalia-stonking.sources
 ```
 
 ### Install Umbriel
@@ -77,7 +81,7 @@ sudo apt update
 # Debian Trixie
 sudo apt install -t trixie-backports umbriel
 
-# Debian Sid and Ubuntu 26.04
+# Debian Sid and Ubuntu 26.04 and 26.10
 sudo apt install umbriel
 ```
 

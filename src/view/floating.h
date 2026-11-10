@@ -138,6 +138,36 @@ namespace umbriel {
     return static_cast<int32_t>(committed - requested) >= 0;
   }
 
+  constexpr bool
+  floatingSizeResponseUsable(const std::array<int, 2>& content, const std::array<int, 2>& base, bool supplied) {
+    return content[0] > 0 && content[1] > 0 && (content != base || supplied);
+  }
+
+  struct FloatingSizeConfigure {
+    std::array<int, 2> size{};
+    std::array<int, 2> base{};
+    uint32_t serial = 0;
+    uint32_t surfaceSeq = 0;
+    bool supplied = false;
+    bool throttled = false;
+
+    bool settled(
+        uint32_t committedSerial, const std::optional<std::array<int, 2>>& target, const std::array<int, 2>& content,
+        bool pointerTracks
+    ) const {
+      if (!serialSettled(committedSerial, serial)) {
+        return false;
+      }
+
+      if (!target) {
+        return true;
+      }
+
+      return *target == size
+          && (content == *target || (!pointerTracks && floatingSizeResponseUsable(content, base, supplied)));
+    }
+  };
+
   // Center a window of the given size in `usable`. Floats keep their own size,
   // so this only ever moves them.
   constexpr FloatingPoint centeredOrigin(const wlr_box& usable, int width, int height) {
@@ -208,9 +238,8 @@ namespace umbriel {
   }
 
   // The remembered state of a window's floating identity, kept across tiled round trips so that floating a window twice
-  // puts it back where it was. It also owns the configure-serial handoff. A floating client's size is compositor-owned
-  // right up until it commits the serial we last requested; after that the client owns it and the compositor must stop
-  // echoing configures back, or the two fight and the window shivers.
+  // puts it back where it was. A pending size stays compositor-owned until FloatingSizeConfigure accepts the client's
+  // response. After handoff, adopting client geometry must not echo another configure back.
   class FloatingGeometry {
   public:
     // Remembered size and position
@@ -221,15 +250,17 @@ namespace umbriel {
     void rememberPositionFraction(FloatingPoint origin, const wlr_box& usable);
     std::optional<FloatingPoint> restoredOrigin(const wlr_box& usable) const;
 
-    // Configure-serial handoff. A fully-specified request is the pending basis
-    // resize actions accumulate against until the client commits its serial.
+    // The latest desired size is the basis resize actions accumulate against.
     void recordSizeRequest(int width, int height, uint32_t serial) {
+      setPendingSize(width, height);
+      m_sizeRequestSerial = serial;
+    }
+    void setPendingSize(int width, int height) {
       if (width > 0 && height > 0) {
         m_pendingSize = {{width, height}};
       } else {
         m_pendingSize.reset();
       }
-      m_sizeRequestSerial = serial;
     }
     const std::optional<std::array<int, 2>>& pendingSize() const { return m_pendingSize; }
     void clearSizeRequest() {

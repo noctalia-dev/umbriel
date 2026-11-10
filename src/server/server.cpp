@@ -974,6 +974,7 @@ namespace umbriel {
       wl_list_remove(&m_sessionActive.link);
     }
     m_keyboardLeds.reset();
+    xkb_keymap_unref(m_compiledKeymap);
     if (m_cursor != nullptr) {
       m_cursor->finishToplevelDrag(false);
     }
