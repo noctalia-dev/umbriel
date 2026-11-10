@@ -204,14 +204,19 @@ namespace umbriel {
       }
       return;
     }
-    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, config().appearance.titleBar.buttonSize);
+    const auto& style = config().appearance.titleBar;
+    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, style.buttonSize);
+    const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphStroke);
     const float scale = std::max(1.0F, m_geometry.scale);
     // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
     // symbol half a pixel off center. Twice the resolution makes it resample symmetrically instead.
     const int pixels = static_cast<int>(std::ceil(size * scale)) * (scale == std::floor(scale) ? 1 : 2);
-    if (icon == nullptr || m_iconSizes[index] != pixels || m_iconColors[index] != color) {
-      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color);
+    if (icon == nullptr
+        || m_iconSizes[index] != pixels
+        || m_iconColors[index] != color
+        || m_iconGlyphs[index] != glyph) {
+      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color, glyph);
       if (icon == nullptr) {
         icon = wlr_scene_buffer_create(m_tree, buffer);
         if (icon != nullptr) {
@@ -230,6 +235,7 @@ namespace umbriel {
       wlr_buffer_drop(buffer);
       m_iconSizes[index] = pixels;
       m_iconColors[index] = color;
+      m_iconGlyphs[index] = glyph;
     }
     wlr_scene_buffer_set_dest_size(icon, background->width, background->height);
     wlr_scene_buffer_set_opacity(icon, alpha);
