@@ -267,12 +267,12 @@ Applications that draw their own backdrop blur can ask for it instead: Umbriel a
 | `enabled`         | `true`  | Enable blur rendering.                                         |
 | `client_requests` | `true`  | Honor blur regions that clients request for their own surface. |
 | `optimized`       | `true`  | Share one cached background blur across surfaces on an output. |
-| `passes`     | `2`     | Blur passes from 0 to 8.                                       |
-| `radius`     | `5`     | Blur radius from 0 to 100.                                     |
-| `noise`      | `0.02`  | Noise overlay from 0.0 to 1.0.                                 |
-| `brightness` | `0.9`   | Brightness multiplier from 0.0 to 2.0.                         |
-| `contrast`   | `0.9`   | Contrast multiplier from 0.0 to 2.0.                           |
-| `saturation` | `1.1`   | Saturation multiplier from 0.0 to 2.0.                         |
+| `passes`          | `2`     | Blur passes from 0 to 8.                                       |
+| `radius`          | `5`     | Blur radius from 0 to 100.                                     |
+| `noise`           | `0.02`  | Noise overlay from 0.0 to 1.0.                                 |
+| `brightness`      | `0.9`   | Brightness multiplier from 0.0 to 2.0.                         |
+| `contrast`        | `0.9`   | Contrast multiplier from 0.0 to 2.0.                           |
+| `saturation`      | `1.1`   | Saturation multiplier from 0.0 to 2.0.                         |
 
 Optimized blur samples the background beneath the window stack. Set it to `false` when translucent surfaces should blur the surfaces directly behind them, at a higher rendering cost. The shared background cache follows background layer-shell updates, including animated map and unmap transitions. Unchanged commits that only request frame callbacks reuse the cached blur.
 
