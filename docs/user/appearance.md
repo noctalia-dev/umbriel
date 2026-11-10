@@ -132,7 +132,7 @@ button_padding = -1
 button_corner_radius = -1
 button_glyph = "hover"
 button_glyph_size = -1
-button_glyph_width = -1
+button_glyph_stroke = -1
 button_background = true
 
 [colors.title_bar]
@@ -172,7 +172,7 @@ Buttons show a drawn X for close, an outlined square for maximize, and an unders
 | `"hover"`  | Show each symbol only while its button is hovered or pressed (the default). |
 | `"never"`  | Hide the symbols and show only the colored backgrounds.                     |
 
-`button_glyph_size` is the side of the square each symbol is drawn in, in logical pixels from `1` to `128`; it never exceeds the button. `button_glyph_width` is the stroke width in logical pixels, from `0.5` to `16`. Their default, `-1`, derives each from `button_size`: the symbol spans half the button, with a stroke one twelfth of the button.
+`button_glyph_size` is the side of the square each symbol is drawn in, in logical pixels from `1` to `128`; it never exceeds the button. `button_glyph_stroke` is the width of the symbol's lines in logical pixels, from `0.5` to `16`. Their default, `-1`, derives each from `button_size`: the symbol spans half the button, with a stroke one twelfth of the button.
 
 `button_background = false` removes the colored backgrounds and leaves only the symbols. Buttons keep their click targets while their symbols are hidden, including when backgrounds are off. Setting `button_glyph = "never"` together with `button_background = false` hides the controls and returns their space to the title.
 

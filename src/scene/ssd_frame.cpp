@@ -206,7 +206,7 @@ namespace umbriel {
     }
     const auto& style = config().appearance.titleBar;
     const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, style.buttonSize);
-    const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphWidth);
+    const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphStroke);
     const float scale = std::max(1.0F, m_geometry.scale);
     // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the

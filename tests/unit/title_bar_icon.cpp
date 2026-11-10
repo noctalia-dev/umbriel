@@ -92,7 +92,7 @@ UMBRIEL_TEST(glyphSettingsDeriveFromTheButtonUntilSet) {
   CHECK(umbriel::titleBarGlyph(24, -1, -1.0) == umbriel::TitleBarGlyph{});
   const umbriel::TitleBarGlyph set = umbriel::titleBarGlyph(24, 8, 2.0);
   CHECK_EQ(set.size, 8.0 / 24.0);
-  CHECK_EQ(set.width, 2.0 / 24.0);
+  CHECK_EQ(set.stroke, 2.0 / 24.0);
   // A symbol never outgrows its button.
   CHECK_EQ(umbriel::titleBarGlyph(14, 20, -1.0).size, 1.0);
 }
@@ -121,7 +121,7 @@ UMBRIEL_TEST(glyphSizeAndWidthShapeTheSymbol) {
   };
   const Pixels standard(TitleBarButton::Close, 48);
   const Pixels small(TitleBarButton::Close, 48, {.size = 0.25});
-  const Pixels thick(TitleBarButton::Close, 48, {.width = 0.25});
+  const Pixels thick(TitleBarButton::Close, 48, {.stroke = 0.25});
   if (!standard.accessible || !small.accessible || !thick.accessible) {
     return;
   }

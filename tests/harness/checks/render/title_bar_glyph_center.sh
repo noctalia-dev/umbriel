@@ -70,11 +70,11 @@ for scale in 1 1.25 1.5 1.75 2; do
   done
 done
 
-# button_glyph_size and button_glyph_width resize the symbol inside an unchanged button, and reload live.
+# button_glyph_size and button_glyph_stroke resize the symbol inside an unchanged button, and reload live.
 sed -i "s/^scale = .*/scale = 1/; s/^height = .*/height = 32/" "$UMBRIEL_CONFIG"
-sed -i '/^button_glyph = /a button_size = 24\nbutton_glyph_size = -1\nbutton_glyph_width = -1' "$UMBRIEL_CONFIG"
+sed -i '/^button_glyph = /a button_size = 24\nbutton_glyph_size = -1\nbutton_glyph_stroke = -1' "$UMBRIEL_CONFIG"
 glyph_extent() {
-  sed -i "s/^button_glyph_size = .*/button_glyph_size = $1/; s/^button_glyph_width = .*/button_glyph_width = $2/" \
+  sed -i "s/^button_glyph_size = .*/button_glyph_size = $1/; s/^button_glyph_stroke = .*/button_glyph_stroke = $2/" \
     "$UMBRIEL_CONFIG"
   "$UMBRIEL" msg config-reload > /dev/null
   "$UMBRIEL" settle > /dev/null
@@ -92,5 +92,5 @@ read -r _ _ thick_ink < <(glyph_extent -1 4)
 ((derived_w >= 12 && derived_w <= 15 && small_w >= 8 && small_w <= 11)) \
   || { echo "symbol widths: derived $derived_w, button_glyph_size = 8 gave $small_w"; exit 1; }
 # Doubling the derived 2 px stroke; the crossing and caps overlap, so ink grows by less than double.
-((thick_ink * 2 > derived_ink * 3)) || { echo "button_glyph_width = 4 drew $thick_ink pixels, derived $derived_ink"; exit 1; }
-echo "button symbols stay centered at integer and fractional scales, and buttons on the bar at integer scales; glyph size and width resize the symbol"
+((thick_ink * 2 > derived_ink * 3)) || { echo "button_glyph_stroke = 4 drew $thick_ink pixels, derived $derived_ink"; exit 1; }
+echo "button symbols stay centered at integer and fractional scales, and buttons on the bar at integer scales; glyph size and stroke resize the symbol"

@@ -6,14 +6,14 @@
 #include <cairo.h>
 
 namespace umbriel {
-  TitleBarGlyph titleBarGlyph(int button, int size, double width) {
+  TitleBarGlyph titleBarGlyph(int button, int size, double stroke) {
     const double side = std::max(1, button);
     TitleBarGlyph glyph;
     if (size > 0) {
       glyph.size = std::min(1.0, size / side);
     }
-    if (width > 0.0) {
-      glyph.width = width / side;
+    if (stroke > 0.0) {
+      glyph.stroke = stroke / side;
     }
     return glyph;
   }
@@ -25,7 +25,7 @@ namespace umbriel {
     cairo_t* cr = cairo_create(surface);
     cairo_scale(cr, pixels, pixels);
     cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
-    cairo_set_line_width(cr, glyph.width);
+    cairo_set_line_width(cr, glyph.stroke);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
     const double lo = 0.5 - (glyph.size / 2.0);

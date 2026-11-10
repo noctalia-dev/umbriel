@@ -107,7 +107,7 @@ namespace umbriel {
               }
           ),
           integer("button_glyph_size", -1, 128, &A::TitleBar::buttonGlyphSize),
-          real("button_glyph_width", -1.0, 16.0, &A::TitleBar::buttonGlyphWidth),
+          real("button_glyph_stroke", -1.0, 16.0, &A::TitleBar::buttonGlyphStroke),
           boolean("button_background", &A::TitleBar::buttonBackground),
           registry::text("font", &A::TitleBar::font),
           registry::choice(

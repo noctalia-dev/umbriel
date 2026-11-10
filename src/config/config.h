@@ -753,7 +753,7 @@ namespace umbriel {
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         // Symbol side and stroke width in logical pixels; -1 derives each from the button size.
         int buttonGlyphSize = -1;
-        double buttonGlyphWidth = -1.0;
+        double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};

@@ -10,12 +10,12 @@ namespace umbriel {
   // A symbol's side and stroke width, each a fraction of the button it is drawn on.
   struct TitleBarGlyph {
     double size = 0.5;
-    double width = 1.0 / 12.0;
+    double stroke = 1.0 / 12.0;
     bool operator==(const TitleBarGlyph&) const = default;
   };
 
   // The glyph for a `button` logical pixels wide; a negative setting derives that dimension from the button.
-  TitleBarGlyph titleBarGlyph(int button, int size, double width);
+  TitleBarGlyph titleBarGlyph(int button, int size, double stroke);
 
   // Rasterizes geometric button strokes into a transparent square at the requested device resolution.
   [[nodiscard]] wlr_buffer*
