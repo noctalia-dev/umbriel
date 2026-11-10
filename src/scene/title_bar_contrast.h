@@ -5,7 +5,7 @@
 
 namespace umbriel {
 
-  // Perceived brightness of an encoded colour, with the weights the button hover shift already uses.
+  // Perceived brightness of an encoded colour.
   inline float luminance(const std::array<float, 4>& color) {
     return color[0] * 0.2126F + color[1] * 0.7152F + color[2] * 0.0722F;
   }

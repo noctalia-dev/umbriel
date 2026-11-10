@@ -13,7 +13,6 @@
 #include <string_view>
 #include <vector>
 
-struct wlr_client_buffer;
 struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_buffer;

@@ -24,10 +24,6 @@ namespace umbriel {
     // An unfocused window keeps its own bar color, dimmed over the palette's unfocused tone.
     constexpr float kAdaptiveUnfocusedOpacity = 0.65F;
 
-    bool fboxEqual(const wlr_fbox& a, const wlr_fbox& b) {
-      return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
-    }
-
     // Any bar can be any color the window paints, so text and symbols keep a dark edge, scaled by their own alpha so an
     // invisible one leaves no ghost.
     constexpr std::array<float, 4> kTitleShadowColor{0.0F, 0.0F, 0.0F, 0.55F};
@@ -454,7 +450,7 @@ namespace umbriel {
     // The fill is the bar's top edge, so it takes the same rounded corners as the palette it covers.
     const clipped_region clip = frameClip(barX, barY);
     const wlr_box clipBox = clip.inside ? clip.area : wlr_box{};
-    const bool stripMoved = !fboxEqual(m_adaptiveStrip, strip);
+    const bool stripMoved = !wlr_fbox_equal(&m_adaptiveStrip, &strip);
     // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale color.
     const bool modeChanged = m_adaptiveMode != style.colorSource;
     // Only "window" mirrors without reading, so only there does a sample add anything; the key has no effect elsewhere.
@@ -696,8 +692,7 @@ namespace umbriel {
     const auto& background = m_focused ? colors.background : colors.backgroundUnfocused;
     premultiplied(color, background, m_alpha);
     wlr_scene_rect_set_color(m_background, color);
-    const float contrast =
-        background[0] * 0.2126F + background[1] * 0.7152F + background[2] * 0.0722F < 0.5F ? 1.0F : 0.0F;
+    const float contrast = luminance(background) < 0.5F ? 1.0F : 0.0F;
     const auto button = [&](wlr_scene_rect* rect, const std::array<float, 4>& base,
                             const std::array<float, 4>& idleGlyph, const std::array<float, 4>& hoverGlyph,
                             SsdFramePart part, bool enabled, TitleBarButton which) {
