@@ -28,7 +28,7 @@ EOF
 settle_map "$TITLE" 400 300 0xFF00FF00
 settle_sheet_extent "$TITLE"
 
-settle_drag_hold "$TITLE" "$SPAN"
+settle_drag "$TITLE" "$SPAN" hold
 "$UMBRIEL" clock-freeze
 "$UMBRIEL" clock-advance 16 > /dev/null
 held=$(settle_green)
