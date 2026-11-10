@@ -195,7 +195,7 @@ namespace umbriel {
         visible = {left, top, right - left, bottom - top};
       }
     }
-    // Minimum last: a viewport can make the source shorter than a buffer pixel, which would invert clamp's bounds.
+    // Cap after the floor: a viewport can make the source shorter than a buffer pixel, which inverts clamp()'s bounds.
     const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scaleY));
     const wlr_fbox strip{visible.x, visible.y, visible.width, thickness};
     wlr_fbox inBuffer = strip;
