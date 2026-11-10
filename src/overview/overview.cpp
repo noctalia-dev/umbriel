@@ -1881,6 +1881,7 @@ namespace umbriel {
     hideDropHint();
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     clearMiddlePress();
     m_pendingFocus = focus;
     m_pendingCursorWarp = warpCursor && config().input.cursor.followsFocus && focus != nullptr;
@@ -2109,6 +2110,7 @@ namespace umbriel {
     m_server->notifyOverviewChanged();
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     m_dragCard = nullptr;
     m_dragSourceWorkspace = nullptr;
     m_dragSourceWidth.reset();
@@ -2833,6 +2835,7 @@ namespace umbriel {
 
     m_pressCard = card;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     m_pressX = lx;
     m_pressY = ly;
     if (card == nullptr) {
@@ -3471,6 +3474,7 @@ namespace umbriel {
     Card* card = m_pressCard;
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     if (card == nullptr || card->view == nullptr || !card->view->mapped()) {
       return;
     }
