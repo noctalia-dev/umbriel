@@ -235,7 +235,7 @@ capture_maximized_to_edges strut-base
 assert_box strut-base 1240 620 17 71
 
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-assert_size strut-base 1280 720
+assert_box strut-base 1280 720 0 0
 grim -o HEADLESS-1 "$SCREENSHOT"
 assert_client_pixel "$SCREENSHOT" 0 0
 assert_client_pixel "$SCREENSHOT" 1279 0
@@ -280,6 +280,11 @@ assert_box strut-scroll-neighbor 608 604 1288 79
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
 assert_box strut-scroll-h 608 604 25 79
 assert_box strut-scroll-neighbor 608 604 641 79
+focus_window strut-scroll-neighbor
+"$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+assert_box strut-scroll-neighbor 1280 720 0 0
+"$UMBRIEL" msg window-toggle-fullscreen > /dev/null
+assert_box strut-scroll-neighbor 608 604 641 79
 
 # Horizontally arranged workspaces turn the strip vertical for the scroll-v phase.
 write_config with-struts horizontal
@@ -308,7 +313,7 @@ write_config without-struts horizontal 1.4 1282x700
 "$UMBRIEL" msg config-reload > /dev/null
 focus_window strut-base
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-assert_size strut-base 915 500
+assert_box strut-base 915 500 0 0
 grim -o HEADLESS-1 "$SCREENSHOT"
 assert_image_size "$SCREENSHOT" 1282 700
 assert_not_backdrop_pixel "$SCREENSHOT" 1281 0

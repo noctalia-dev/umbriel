@@ -10,9 +10,9 @@ The `Dirty::LayerArrange` flag recorded alongside is the retry: `Output::arrange
 
 ## Stale window geometry
 
-`View::committedContentBox` widens a tiled view's committed window geometry towards the size the view was configured to, capped by what the surface actually holds from the geometry origin. Presentation, the surface clip, borders, blur, shadow, the resize-animation snap, and the size the `windows` IPC listing reports all read that box.
+`View::committedContentBox` widens a tiled view's committed window geometry towards the size the view was configured to, capped by what the surface actually holds from the geometry origin. Content sampling and the content dimensions in the `windows` IPC listing read that box. Borders, title bars, blur, and shadows follow the compositor-owned presented frame.
 
-Electron acks a configure and redraws at the new size while leaving `set_window_geometry` at the size it had before, permanently. Clipping to that box crops the content the client just drew and leaves the window occupying a fraction of its tile, with no resize available because the tile itself is already correct. Growing the box is bounded by the surface, so a client that genuinely refuses the configured size, a minimum-size hint for instance, is still presented at the size it committed.
+Electron acks a configure and redraws at the new size while leaving `set_window_geometry` at the size it had before, permanently. Clipping to that box crops the content the client just drew. Growing the box is bounded by the surface. The layout still owns a tiled frame even when its client commits smaller content.
 
 ## Capture readback format
 

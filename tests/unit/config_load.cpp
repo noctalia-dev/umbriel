@@ -416,6 +416,31 @@ proportional_size = "true"
   CHECK(containsDiagnostic(store, "ignoring scratchpad[3].proportional_size (expected boolean)"));
 }
 
+UMBRIEL_TEST(scratchpadHideWhenEmptyIsAnOptionalBoolean) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "term"
+hide_when_empty = true
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "invalid"
+hide_when_empty = "true"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{3});
+  CHECK(store.config().scratchpads[0].hideWhenEmpty);
+  CHECK(!store.config().scratchpads[1].hideWhenEmpty);
+  CHECK(!store.config().scratchpads[2].hideWhenEmpty);
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[2].hide_when_empty (expected boolean)"));
+}
+
 UMBRIEL_TEST(scratchpadDefinitionsRequireValidUniqueNames) {
   const TempConfig file;
   file.write("[[scratchpad]]\nname = \"kept\"\n");
