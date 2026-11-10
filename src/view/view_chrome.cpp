@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "core/log.h"
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/seat.h"
@@ -10,6 +11,8 @@
 #include "scene/surface_blur.h"
 #include "server/server.h"
 #include "view/view.h"
+
+#include <algorithm>
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
@@ -25,6 +28,10 @@ extern "C" {
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
+  namespace {
+    constexpr Logger kLog("view");
+  } // namespace
+
   int View::titleBarHeight() const {
     if (!wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode))
         || scheduledFullscreen()
@@ -35,18 +42,22 @@ namespace umbriel {
   }
 
   bool View::wantsTitleBar(TitleBarMode mode) const {
-    if (mode == TitleBarMode::Off)
+    if (mode == TitleBarMode::Off) {
       return false;
-    if (mode == TitleBarMode::Forced)
+    }
+    if (mode == TitleBarMode::Forced) {
       return true;
-    if (m_xsurface != nullptr)
+    }
+    if (m_xsurface != nullptr) {
       return m_xsurface->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
+    }
     return m_xdgDecorationPreference.value_or(m_legacyDecorationPreference.value_or(mode == TitleBarMode::On));
   }
 
   void View::refreshTitleBar() {
-    if (!m_mapped)
+    if (!m_mapped) {
       return;
+    }
     updateBorderGeometry();
     applyCornerRadius();
     updateBlur();
@@ -55,15 +66,17 @@ namespace umbriel {
   }
 
   void View::setXdgDecorationPreference(std::optional<bool> serverSide) {
-    if (m_xdgDecorationPreference == serverSide)
+    if (m_xdgDecorationPreference == serverSide) {
       return;
+    }
     m_xdgDecorationPreference = serverSide;
     refreshTitleBar();
   }
 
   void View::setLegacyDecorationPreference(std::optional<bool> serverSide) {
-    if (m_legacyDecorationPreference == serverSide)
+    if (m_legacyDecorationPreference == serverSide) {
       return;
+    }
     m_legacyDecorationPreference = serverSide;
     refreshTitleBar();
   }
@@ -76,29 +89,34 @@ namespace umbriel {
   void View::handleSetDecorations() { refreshTitleBar(); }
 
   SsdFramePoint View::ssdFramePointAt(double lx, double ly) const {
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return {};
+    }
     int x = 0;
     int y = 0;
-    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y))
+    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y)) {
       return {};
+    }
     return m_ssdFrame->pointAt(lx - x, ly - y);
   }
 
   void View::syncSsdFrame() {
-    if (!m_mapped)
+    if (!m_mapped) {
       return;
+    }
     const int previousHeight = m_ssdFrame != nullptr ? m_ssdFrame->titleBarHeight() : 0;
     if (previousHeight != titleBarHeight()) {
-      if (m_workspace != nullptr)
+      if (m_workspace != nullptr) {
         m_workspace->markArrange();
+      }
       m_server->scheduleIpcWindowsEvent();
     }
     if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
       m_ssdFrame = std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree);
     }
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return;
+    }
     const SizeHints hints = sizeHints();
     const bool fixed = hints.maxWidth > 0
         && hints.maxWidth == hints.minWidth
@@ -120,8 +138,9 @@ namespace umbriel {
   }
 
   void View::syncTitleBarButtons() {
-    if (m_ssdFrame == nullptr)
+    if (m_ssdFrame == nullptr) {
       return;
+    }
     const std::vector<TitleBarButton>& configured =
         m_titleBarButtons ? *m_titleBarButtons : config().appearance.titleBar.buttons;
     const bool canMinimize = minimizable();
@@ -144,13 +163,19 @@ namespace umbriel {
   }
 
   void View::setBorderFocused(bool focused) {
+    if (m_workspace != nullptr && m_workspace->defersFocusChrome(this)) {
+      m_deferredBorderFocus = focused;
+      return;
+    }
+    m_deferredBorderFocus.reset();
     const bool focusChanged = m_borderFocusedState != focused;
     m_borderFocusedState = focused;
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->setFocused(focused);
     }
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->setFocused(focused);
+    }
 
     const auto& animation = config().animation;
     const auto& dim = animation.dimUnfocused;
@@ -170,6 +195,12 @@ namespace umbriel {
       applyDynamicRules();
     } else {
       updateBorderColor(focusChanged);
+    }
+  }
+
+  void View::applyDeferredBorderFocus() {
+    if (const std::optional<bool> focused = std::exchange(m_deferredBorderFocus, std::nullopt)) {
+      setBorderFocused(*focused);
     }
   }
 
@@ -225,32 +256,32 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
   }
 
+  View::ClientSize View::chromeContentSize() const {
+    if (m_mapped && m_presentation.width() > 0 && m_presentation.height() > 0) {
+      return {.width = m_presentation.width(), .height = m_presentation.height()};
+    }
+    const wlr_box content = committedContentBox();
+    return {.width = content.width, .height = content.height};
+  }
+
   void View::applyCornerRadius() {
-    // Every buffer under the toplevel's surface tree is rounded against one box, the window's content box, so the arc
+    // Every buffer under the toplevel's surface tree is rounded against the complete frame, so the arc
     // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
     // surface is its own root.
     const int radius = surfaceRadius();
     // Layout targets, resize animations, and pending floating restores can lead committed geometry. Round the
     // presented frame while the client redraws.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (m_tiled || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
+    const ClientSize size = chromeContentSize();
     struct Ctx {
       View* view;
       int radius;
       int contentWidth;
       int contentHeight;
+      int titleHeight;
       int treeX;
       int treeY;
     } ctx{
-        this,
-        radius,
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height,
-        m_contentTree->node.x,
-        m_contentTree->node.y,
+        this, radius, size.width, size.height, titleBarHeight(), m_contentTree->node.x, m_contentTree->node.y,
     };
     wlr_scene_node_for_each_buffer(
         &m_contentTree->node,
@@ -267,25 +298,36 @@ namespace umbriel {
           // which puts the content box at the tree origin, and the corner box is node-relative.
           const wlr_box cornerBox{
               ctx->treeX - sx,
-              ctx->treeY - sy,
+              ctx->treeY - sy - ctx->titleHeight,
               ctx->contentWidth,
-              ctx->contentHeight,
+              ctx->contentHeight + ctx->titleHeight,
           };
           // Always set, zeros included: a window that lost its radius must lose the box with it.
-          wlr_scene_buffer_set_corner_radii(
-              buffer,
-              ctx->view->titleBarHeight() > 0 ? corner_radii_new(0, 0, ctx->radius, ctx->radius)
-                                              : corner_radii_all(ctx->radius)
-          );
+          wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(ctx->radius));
           wlr_scene_buffer_set_corner_box(buffer, ctx->radius > 0 ? &cornerBox : nullptr);
         },
         &ctx
     );
   }
 
+  void View::updateDimBehind() {
+    if (m_sceneTree == nullptr) {
+      return;
+    }
+    Output* out = currentOutput();
+    const bool overview = m_server->overview() != nullptr && m_server->overview()->active();
+    const float alpha = m_mapped && out != nullptr && !overview
+        ? static_cast<float>(resolvedRules().dimBehind.value_or(0.0)) * m_fadeAlpha
+        : 0.0F;
+    const wlr_box box = out != nullptr ? out->layoutBox() : wlr_box{};
+    if (!wlr_scene_node_set_dim_behind(&m_sceneTree->node, &box, std::clamp(alpha, 0.0F, 1.0F))) {
+      kLog.error("failed to allocate window dim backdrop");
+    }
+  }
+
   void View::updateBlur() {
-    const wlr_box content = committedContentBox();
-    updateBlur(content.width, content.height);
+    const ClientSize size = chromeContentSize();
+    updateBlur(size.width, size.height);
   }
 
   SurfaceBlurOptions View::blurOptions() const {
@@ -326,15 +368,8 @@ namespace umbriel {
       return;
     }
     // Shadows follow the presented frame through layout changes, animations, and pending floating restores.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (m_tiled || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
-    updateShadow(
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height
-    );
+    const ClientSize size = chromeContentSize();
+    updateShadow(size.width, size.height);
   }
 
   void View::updateShadow(int contentWidth, int contentHeight) {
@@ -356,8 +391,8 @@ namespace umbriel {
   }
 
   void View::updateBorderGeometry() {
-    const wlr_box content = committedContentBox();
-    updateBorderGeometry(content.width, content.height);
+    const ClientSize size = chromeContentSize();
+    updateBorderGeometry(size.width, size.height);
   }
 
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {
@@ -401,17 +436,20 @@ namespace umbriel {
         .scale = output != nullptr ? output->wlr()->scale : 1.0F,
         .suppressed = !m_mapped || scheduledFullscreen() || currentFullscreen(),
     };
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->layout(geometry);
+    }
     geometry.suppressed = geometry.suppressed || m_maximizedToEdges;
-    if (m_chromeAttachment != nullptr)
+    if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->layout(geometry);
+    }
   }
 
   void View::refreshConfigChrome() {
     syncSsdFrame();
-    if (m_ssdFrame != nullptr)
+    if (m_ssdFrame != nullptr) {
       m_ssdFrame->reloadConfig();
+    }
     if (m_chromeAttachment != nullptr) {
       m_chromeAttachment->reloadConfig();
     }

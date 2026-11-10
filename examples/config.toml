@@ -92,6 +92,9 @@ radius = 3
 # font = "sans 10"
 # button_position = "right" # or "left"
 # buttons = ["minimize", "maximize", "close"] # From the title outward; leave one out to hide it.
+# button_size = -1 # Diameter or side in logical pixels, 1 up to height; -1 derives it from height.
+# button_gap = 8 # Space between neighbouring buttons.
+# button_padding = -1 # Space between the button row and the bar edge: -1 matches the space above and below.
 # button_corner_radius = -1 # Follow the window's corner_radius; 0 makes square buttons.
 # button_glyph = "hover" # X, square, and underscore symbols: "always", "hover" (while hovered or pressed), or "never".
 # button_background = true # Show colored backgrounds behind the symbols.
@@ -142,6 +145,9 @@ radius = 3
 #
 # [effects]
 # border = "pulse"
+# Draw the border on every decorated, non-urgent, non-fullscreen window, not
+# just the focused one (overview cards included).
+# border_unfocused = true
 # For a screen effect only while an output is shared (a portal screen share or a
 # screenshot), include /usr/share/umbriel/effects/screen/vignette/effect.toml and
 # set screen_cast = "vignette" in [effects]; add in_capture = true for viewers to see it.
@@ -219,6 +225,10 @@ numlock_toggle = true
 "Mod+Ctrl+F" = { action = "window-toggle-maximize", repeat = false }
 "Mod+R" = "window-cycle-primary-extent"
 "Mod+Shift+R" = "window-cycle-primary-extent-back"
+"Mod+Minus" = "window-modify-primary-extent -0.02"
+"Mod+Equal" = "window-modify-primary-extent +0.02"
+"Mod+Ctrl+Minus" = "window-modify-secondary-extent -0.02"
+"Mod+Ctrl+Equal" = "window-modify-secondary-extent +0.02"
 "Mod+Comma" = "window-consume-left"
 "Mod+Period" = "window-consume-right"
 "Mod+Ctrl+Comma" = "window-consume-from-left"
@@ -343,6 +353,17 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Scroll more slowly on the touchpad in one application.
+# [[window_rule]]
+# match.app_id = "^chromium$"
+# touchpad_scroll_factor = 0.5
+
+# Show title bars only when the window's workspace uses the stacking layout.
+# Keep [appearance.title_bar] mode = "off" for other layouts.
+# [[window_rule]]
+# match.layout = "stacking"
+# title_bar = "on"
+
 # Keep compositor shortcuts available while a virtual machine window is focused.
 # [[window_rule]]
 # match.app_id = "^virt-manager$"
@@ -369,6 +390,8 @@ default_pinned = true
 # [[scratchpad]]
 # name = "music"
 # spawn_when_empty = "spotify"
+# Hide the scratchpad when its last window closes, so the next toggle relaunches.
+# hide_when_empty = true
 # Preserve each window's current size proportions when moving between monitors.
 # proportional_size = true
 
@@ -434,6 +457,13 @@ action = "overview-open"
 # curve = "spring:1,900"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
+# Without a size animation, a resized window shows its stretched old frame until
+# it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
+# new layout in one frame.
+# [animation.windows_resize]
+# enabled = false
+# wait_for_redraw = true
+
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
 # [animation.workspaces]
@@ -445,3 +475,9 @@ action = "overview-open"
 # Shade over a window while a modal dialog is attached to it.
 # [animation.dialogs]
 # dim = 0.3
+
+# Darken the output below a launcher while it is visible:
+# [[layer_rule]]
+# match.namespace = "^vicinae$"
+# dim_behind = 0.5
+# Window rules accept dim_behind too; see docs/user/window-rules.md.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "server/event_pacer.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -22,15 +24,15 @@ namespace umbriel {
     // One bit per subscribable event name; the subscribe request ORs the bits it asked for into the connection. Keep
     // the names below in sync with the event builders in ipc.cpp.
     enum : uint16_t {
-      kEventTheme = 1 << 0,
-      kEventOverview = 1 << 1,
-      kEventKeyboardLayout = 1 << 2,
-      kEventWindows = 1 << 3,
-      kEventWorkspaces = 1 << 4,
-      kEventSubmap = 1 << 5,
-      kEventScreenCast = 1 << 6,
-      kEventLayers = 1 << 7,
-      kEventOutputs = 1 << 8,
+      EventTheme = 1 << 0,
+      EventOverview = 1 << 1,
+      EventKeyboardLayout = 1 << 2,
+      EventWindows = 1 << 3,
+      EventWorkspaces = 1 << 4,
+      EventSubmap = 1 << 5,
+      EventScreenCast = 1 << 6,
+      EventLayers = 1 << 7,
+      EventOutputs = 1 << 8,
     };
     // Number of bits above; sizes the last-broadcast cache.
     static constexpr size_t kEventCount = 9;
@@ -49,12 +51,16 @@ namespace umbriel {
     void notifyThemeChanged();
     void notifyOverviewChanged();
     void notifyKeyboardLayoutChanged();
-    void notifyWindowsChanged();
-    void notifyWorkspacesChanged();
     void notifySubmapChanged();
     void notifyScreenCastChanged();
-    void notifyLayersChanged();
-    void notifyOutputsChanged();
+    // Paced: these families can change on every pointer motion or layer commit, and each event is a full snapshot.
+    void notifyWindowsChanged() { m_windowsPacer.schedule(); }
+    void notifyWorkspacesChanged() { m_workspacesPacer.schedule(); }
+    void notifyLayersChanged() { m_layersPacer.schedule(); }
+    void notifyOutputsChanged() { m_outputsPacer.schedule(); }
+#ifdef UMBRIEL_HARNESS
+    void setEventPacingHeld(bool held);
+#endif
     // End of an output frame: answers frame waits (settle, clock-advance) once every output has drawn a frame.
     void notifyOutputFrame(const Output& output);
     // A window committed. A window off screen draws no frame when it commits its configure, so while a settle waits,
@@ -99,6 +105,8 @@ namespace umbriel {
     dispatchRequest(Connection& connection, const nlohmann::json& request, size_t requestSize);
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
+    EventPacer snapshotPacer(uint16_t event, nlohmann::json (*buildEvent)(Server&));
+    std::string& lastBroadcast(uint16_t event);
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);
     void refreshScreenCastActive();
     void dropAudioOwner();
@@ -111,8 +119,13 @@ namespace umbriel {
     std::vector<std::unique_ptr<Connection>> m_connections;
     // Last payload broadcast per family, indexed by the bit position of the event. A family that recomputes to the
     // same JSON is dropped rather than woken through to every subscriber; a fresh subscriber gets its own initial
-    // line from the subscribe handler, so skipping a no-op broadcast can never leave anyone behind.
+    // line from the subscribe handler, which forgets a paced family's entry when that line is newer, so skipping a
+    // no-op broadcast never leaves anyone behind.
     std::array<std::string, kEventCount> m_lastBroadcast;
+    EventPacer m_windowsPacer;
+    EventPacer m_workspacesPacer;
+    EventPacer m_layersPacer;
+    EventPacer m_outputsPacer;
   };
 
 } // namespace umbriel

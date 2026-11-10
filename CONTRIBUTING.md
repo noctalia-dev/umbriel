@@ -34,89 +34,70 @@ Direct project dependencies. Transitive dependencies are owned by their providin
 
 The README covers routine builds and running Umbriel. Contributor checks and specialized builds use:
 
-| Command                          | Purpose                                                                                                                                                                                                                                                                                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `just configure <mode> [prefix]` | Create or reconfigure a build directory and symlink `compile_commands.json` to it                                                                                                                                                                                                                                                            |
-| `just asan`                      | Build with AddressSanitizer (see [AddressSanitizer](#addresssanitizer))                                                                                                                                                                                                                                                                      |
-| `just run <mode> [startup]`      | Build and run a nested session, optionally spawning a command                                                                                                                                                                                                                                                                                |
-| `just test`                      | Run the Meson test suite: unit tests plus the umbrielfx suites                                                                                                                                                                                                                                                                               |
-| `just gpu-test`                  | Run the umbrielfx renderer ownership check against this machine's DRM render nodes; it needs a GPU, so `just test` does not cover it                                                                                                                                                                                                         |
-| `just check [filter ...]`        | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check render/`, `just check drag`, `just check render/ -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check render/` |
-| `just check-stress <name> [n]`   | Run `n` copies (default 32) of one harness check at once, to expose races that load reveals                                                                                                                                                                                                                                                  |
-| `just check-names`               | List every harness check name. Builds nothing                                                                                                                                                                                                                                                                                                |
-| `just lint [file ...]`           | Build the compositor, unit tests, and harness clients, then run clang-tidy on everything or only the given files                                                                                                                                                                                                                             |
-| `just format`                    | Format code (`just format-code`: the C++ and umbrielfx C sources, tests, and GLSL shaders, including `examples/effects`) and Markdown (`just format-docs`)                                                                                                                                                                                   |
-| `just format-docs-check`         | Report tracked Markdown and MDX files that `just format-docs` would change                                                                                                                                                                                                                                                                   |
-| `just install`                   | Build a release binary and install it with `meson install`                                                                                                                                                                                                                                                                                   |
-| `just clean <mode>`              | Remove a build directory                                                                                                                                                                                                                                                                                                                     |
-| `just rebuild <mode>`            | Clean and rebuild a build directory                                                                                                                                                                                                                                                                                                          |
+| Command                          | Purpose                                                                                                                                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just configure <mode> [prefix]` | Create or reconfigure a build directory and symlink `compile_commands.json` to it                                                                          |
+| `just asan`                      | Build with AddressSanitizer (see [AddressSanitizer](#addresssanitizer))                                                                                    |
+| `just run <mode> [startup]`      | Build and run a nested session, optionally spawning a command                                                                                              |
+| `just test`                      | Run the Meson test suite: unit tests plus the umbrielfx suites                                                                                             |
+| `just gpu-test`                  | Run the umbrielfx renderer ownership check against this machine's DRM render nodes; it needs a GPU, so `just test` does not cover it                       |
+| `just check [filter ...]`        | Run the headless compositor harness (`tests/harness/check.sh`): every check, or the ones whose names contain a fragment. See [Tests](#tests)               |
+| `just check-stress <name> [n]`   | Run `n` copies (default 32) of one harness check at once, to expose races that load reveals                                                                |
+| `just check-names`               | List every harness check name. Builds nothing                                                                                                              |
+| `just lint [file ...]`           | Build the compositor, unit tests, and harness clients, then run clang-tidy on everything or only the given files                                           |
+| `just format`                    | Format code (`just format-code`: the C++ and umbrielfx C sources, tests, and GLSL shaders, including `examples/effects`) and Markdown (`just format-docs`) |
+| `just format-docs-check`         | Report tracked Markdown and MDX files that `just format-docs` would change                                                                                 |
+| `just install`                   | Build a release binary and install it with `meson install`                                                                                                 |
+| `just clean <mode>`              | Remove a build directory                                                                                                                                   |
+| `just rebuild <mode>`            | Clean and rebuild a build directory                                                                                                                        |
 
 Set installation paths with `just configure <mode> <prefix>` before building. Build and install recipes reuse Meson's stored prefix. Their automatic configure call does not forward `prefix=...` overrides. For the system-wide prefix, build as your user and install with `sudo meson install -C build-release --no-rebuild`; `just install` also runs the release build and is suitable without sudo for a writable prefix.
 
-The Nix development shell includes the clients and command-line tools used by the test suite:
+The Nix development shell (`nix develop`) includes the clients and command-line tools the test suite uses.
 
-```sh
-nix develop
-just test                 # unit and umbrielfx suites, through Meson
-just check                # every harness check
-```
-
-Select harness checks by name or name fragment:
-
-```sh
-just check protocol/color_management                  # one check
-just check protocol/color_management protocol/tearing # several
-just check overview/                                  # every check in a group
-just check protocol/color_management -v               # keep passing-check output
-just mode=asan check protocol/color_management        # use build-asan
-```
-
-Tests live in three places, and which one a change belongs in follows from what it can observe:
+## Tests
 
 ```
-tests/unit/             C++ unit tests, one binary per test, run by `just test`
-tests/meson.build       the unit test table and the harness client targets
-tests/harness/check.sh  the headless compositor harness, run by `just check`
-tests/harness/lib.sh    helpers a check sources with `source "$UMBRIEL_HARNESS_LIB"`
-tests/harness/checks/   one script per behaviour it asserts
+tests/unit/             C++ unit tests, one binary each, listed in the `unit_tests` table of tests/meson.build
+tests/harness/checks/   harness checks, one script per behavior, in topic directories
 tests/harness/clients/  Wayland helper clients the checks drive
+tests/harness/lib.sh    shared helpers; a check sources it with `source "$UMBRIEL_HARNESS_LIB"`
+tests/harness/check.sh  the harness runner; its comments document the `# harness:` header directives
 ```
 
-A unit test covers math and pure decisions (layout geometry, config classification, keybind parsing) and never needs a compositor. A harness check covers anything that only exists in a running compositor: real clients, real framebuffers, seat grabs, live reloads. Every unit test gets `umbriel_pure_dep`, and one that needs compositor code adds `umbriel_core_dep` in the third field of the `unit_tests` table in `tests/meson.build`. A test that is not in that table is not built and will rot unnoticed.
+### Before adding a test
 
-Test targets exist only where the `tests` feature option resolves to enabled. `just configure` leaves it at `auto`: unsanitized debug builds get the targets, release and asan builds get none. `just test`, `just gpu-test`, `just check`, `just check-stress`, and `just lint` switch the selected build directory to `-Dtests=enabled` when it lacks them, so they work in every mode; a plain `just build` of a release directory never compiles a test. Test binaries land in the build directory's `tests` subdir. Checks also drive IPC commands that exist only with the `harness` option (auto: debug builds, which includes asan), so `just check` and `just check-stress` also switch a release directory to `-Dharness=enabled`, and `check.sh` refuses a binary built without it.
+The harness has hundreds of checks, and every new file boots its own compositor in every future run. Reuse comes first:
 
-`check.sh` runs every script in `tests/harness/checks/` against its own dedicated compositor: one contained headless instance is booted per check, the check runs in its own process group with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` already pointing at that instance, and the harness kills the group and asserts the instance exited cleanly. Boot plus teardown costs about 80ms, so isolation is cheaper than the cleanup it replaces. That isolation is also what lets the harness run several checks at once, bounded by `-j` (default: the core count), starting the slowest first by the durations the previous run recorded. Reports stay in declaration order whatever order the checks finish in. Seven rules follow:
+1. **Pick the cheapest tier.** Anything computable without a compositor (layout arithmetic, config resolution, parse results) belongs in `tests/unit`. A harness check that re-derives a unit-tested value costs a compositor and fails twice for one bug. Keep checks for what only a live compositor shows: a real client's first configure, a reload reaching a mapped workspace, pixels landing where the geometry said.
+2. **Search.** `just check-names | grep <topic>`, then grep `tests/harness/checks/` for the IPC command, config key, or helper client the behavior involves.
+3. **Extend.** If a check already builds the scenario, add the assertion there. If a helper client almost does what you need, give it an option instead of writing a new one.
+4. **Only then add a check**, filed under the behavior it asserts rather than what it sets up (a scratchpad focus regression goes in `focus/`), and named without repeating its topic (`scratchpad/named`, not `scratchpad/named_scratchpads`). Topics: `session`, `protocol`, `layout`, `workspace`, `scratchpad`, `transient`, `rule`, `overview`, `drag`, `focus`, `input`, `output`, `render`, `effect`, `animation`.
 
-- A check must pass in a plain `just check` run, with no environment overrides.
-- A check starts from a pristine instance (no windows, overview closed, workspace 1 focused, `$UMBRIEL_CONFIG` holding the harness default) and owes nothing to whatever runs next. It appends the config it needs, spawns what it needs, and asserts. It must not restore config, close the overview, return to workspace 1, or reap its clients at exit: the harness owns all of that. A check that needs a different compositor lifecycle boots a private instance and tears it down itself, as `session/quit` does.
-- Never re-apply `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, or `-u DBUS_SESSION_BUS_ADDRESS` per command. The harness already put the body in that environment. This is containment, not convenience: only IPC subcommands honour `UMBRIEL_SOCKET`, while every helper client is a Wayland client resolving `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, so a missing prefix used to query the developer's live session instead of the instance.
-- Never retain `$!` from a backgrounded shell *function*. Bash forks a subshell, so the captured pid is the wrapper and a signal to it leaves the client running. Background the client binary directly when a pid must be kept.
-- Never time a check with the wall clock. Wait for an end state with `umbriel settle`: it replies once no animation runs, no arrange is pending, every mapped window has acknowledged and committed its latest configure, and every output has drawn a frame. Sample mid-animation on the animation clock: `umbriel clock-freeze` stops animation time, `umbriel clock-advance <ms>` moves it and replies once every output has drawn that instant, and an animation started while frozen counts from the frozen instant, so long configured durations cost nothing (`animation/builtin_window_styles` is the reference). Poll a client's log or IPC state for anything a client does. The pointer helper's `mark <label>` prints once every earlier command has been processed, and `hold` keeps buttons and modifiers pressed until a line arrives on its stdin; `pointer_hold`, `pointer_step`, and `pointer_release` in `lib.sh` wrap both, so a drag stays held across screenshots without a timed `pause` (`drag/overhanging_card`). `check.sh` refuses a fixed `sleep` of 0.2s or more outside a polling loop unless the line ends with `# real time: <reason>`, which is for compositor timers, helper-client pauses, and proofs that nothing reacts within a window. `windows --json` reports layout targets, not what is on screen, so it is not proof that motion has been drawn.
-- Analyse screenshots with `$UMBRIEL_PIXEL_PROBE` (`count`, `bbox`, `mean`, `max`, `pixel`, `size`; its source documents the predicate syntax) rather than ImageMagick. Read pixels as `grim` encodes them, which is what the compositor blended and shows: a colourspace conversion such as `magick -colorspace RGB` only moves blended values and makes thresholds harder to reason about. Pass a new or materially changed check through `just check-stress <name>` before relying on it.
-- Never depend on a machine-wide resource a sibling check could be using at the same time: a fixed port, a shared path outside `$UMBRIEL_RUNTIME_DIR`, a named process matched with `pkill`, or the wall-clock cost of a neighbour. Everything a check needs lives in its own instance and its own runtime directory.
+Checks run in parallel, so the suite takes as long as its slowest check. Extend a check while it stays within a few seconds; split it once it grows past that. A full run names every check over `CHECK_BUDGET` (default 8s).
 
-Checks live in topic directories under `tests/harness/checks/`, and a check's name is its path without `.sh`: `overview/wheel`. `just check overview/` runs a topic. The topics are `session` (IPC, config, actions, spawn and activation), `protocol` (protocol globals and session lock), `layout`, `workspace`, `scratchpad`, `transient`, `rule` (window rules), `overview`, `drag`, `focus`, `input` (keyboard, input method, pointer grabs), `output`, `render`, `effect`, and `animation` (geometry motion and window lifecycle timing). File a check under the behavior it asserts, not under what it sets up: a scratchpad focus regression belongs in `focus/`. Name it without repeating its topic: `scratchpad/named`, not `scratchpad/named_scratchpads`. Checks reach repository files through `$UMBRIEL_REPO`.
+A unit test gets `umbriel_pure_dep`, plus `umbriel_core_dep` in the third field of its `unit_tests` row when it needs compositor code. A test missing from that table is never built.
 
-A boot costs about 80ms and the pool runs checks side by side, so the suite's wall time is bounded below by its longest check: three six-second siblings finish in six seconds, and folding them into one check makes the whole suite wait eighteen. Split a check that grows past a few seconds instead of merging relatives to save a boot. After a full run the summary names the slowest checks and any over `CHECK_BUDGET` (default 8s).
+### Harness rules
 
-A harness check that asserts a value a unit test computes is coverage in the wrong tier: it costs a compositor to re-derive what `tests/unit` already pins, and it fails a second time for the same bug. Assert layout arithmetic, config resolution, and parse results in `tests/unit`, and keep the check for what only the live compositor shows: that a real client's first configure agrees with the arrangement, that a reload reaches a mapped workspace, that the pixels land where the geometry said.
+Each check runs against its own contained headless instance that starts pristine: harness default config in `$UMBRIEL_CONFIG`, no windows, overview closed, workspace 1 focused, one output, no Xwayland, no config watcher, and a keyboard-only helper connected. The harness tears the instance down afterwards.
 
-An instance has one output unless the check asks for more with a `# harness: outputs=N` directive in its header, which `output/disable`, `output/dpms`, and `output/two_output_containment` use. Output count is fixed when the compositor starts, so it cannot be a runtime config change. Single-output instances are what `session/action_dispatch` relies on to assert that directional output actions are rejected when there is nowhere to move.
+- **Pass plainly.** A check passes in a plain `just check` run with no environment overrides, and through `just check-stress <name>`.
+- **No cleanup.** Append the config you need, spawn what you need, assert. Do not restore config, close the overview, switch back to workspace 1, or reap clients. A check that needs a different compositor lifecycle boots and tears down a private instance, as `session/quit` does.
+- **Stay contained.** The check body already runs with `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` pointing at its instance; never re-apply them or `-u DBUS_SESSION_BUS_ADDRESS` per command. Never use a machine-wide resource a parallel check could share: a fixed port, a path outside `$UMBRIEL_RUNTIME_DIR`, `pkill` by name.
+- **Never keep `$!` from a backgrounded shell function.** It is the subshell's pid, not the client's. Background the client binary directly.
+- **Never wait on the wall clock.** `umbriel settle` replies once animations, arranges, configures, and frames have all settled. For mid-animation samples, `umbriel clock-freeze` and `umbriel clock-advance <ms>` drive the animation clock (`animation/builtin_window_styles`). Poll a client's log or IPC state for anything a client does. `pointer_hold`, `pointer_step`, and `pointer_release` in `lib.sh` keep input held across screenshots (`drag/overhanging_card`). `check.sh` rejects a `sleep` of 0.2s or more outside a polling loop unless the line ends with `# real time: <reason>`. `windows --json` reports layout targets, not what has been drawn.
+- **Read pixels with `$UMBRIEL_PIXEL_PROBE`** (`count`, `bbox`, `mean`, `max`, `pixel`, `size`), on the values `grim` encodes, without colourspace conversion.
+- **Declare non-default instances in the header:** `# harness: outputs=N`, `xwayland=true`, `config-watch=true`, `keyboard=none`, `xcursor-theme=true`, and the others `check.sh` documents. Without the watcher, apply config with `umbriel msg config-reload`.
 
-A check that needs deterministic Xcursor images declares `# harness: xcursor-theme=true`. The harness creates an isolated theme with distinct nominal sizes 24 and 48, exports its path and name, and writes the matching cursor configuration before the compositor starts.
+A check that stops making progress is killed after `CHECK_TIMEOUT` (default 120s). A failing check prints its whole output and keeps its runtime directory (compositor log, config, client logs); `-v` keeps the output of passing checks too. `-j N` or `CHECK_JOBS` sets parallelism, and `just mode=asan check <name>` selects another build directory.
 
-The compositor's config file watcher is off in harness instances, so a check applies a config change with `umbriel msg config-reload`. A check about automatic reloads declares `# harness: config-watch=true`, as `session/config_reload` and `effect/animation` do.
-
-A headless session starts with no keyboard, so the harness connects a keyboard-only helper to each instance before its check runs and keeps it through teardown, the way a real session always has one. Without it the seat's keyboard capability would come and go with each pointer-client run, and clients would bind `wl_keyboard` too late for the first keys. A check about how keyboards themselves arrive opts out with `# harness: keyboard=none` in its header, as `input/input_method_wheel` and `input/keyboard_keymap` do.
-
-A check that stops making progress is killed after 120 seconds, so the suite reports instead of hanging. Set `CHECK_TIMEOUT` to change the cap, and `CHECK_VERBOSE=1` (or `-v`) to keep the full output of passing checks. Passing checks emit completion messages, summarized to a single dimmed line unless verbose output is enabled. Failing checks print their whole output and keep their runtime directory (compositor log, config, and per-client logs), with its path in the report.
+Test targets exist only where the `tests` option resolves to enabled (`auto`: unsanitized debug builds), and checks need the `harness` option (`auto`: debug and asan builds). `just test`, `gpu-test`, `check`, `check-stress`, and `lint` enable `tests` on whichever build directory they select, and `check` and `check-stress` also enable `harness`, so they work in every mode.
 
 ### Writing regression checks
 
 - Before relying on a new or materially changed check, temporarily break the behavior it covers and confirm the check fails for the intended reason.
 - Prefer assertions that observe a specific transition over end-state assertions that can pass through an unrelated fallback.
-- Every file in `tests/harness/checks/` boots its own compositor in every future run. Add one only for behavior that exists solely in a running compositor and that no existing check covers; otherwise extend an existing check or a harness client.
 - Scratch probes, measurements, and bug reproductions stay out of `tests/harness/checks/`. Run them from a temporary path and delete them once they have served their purpose.
 - A check that pins wording, an implementation detail, or incidental behavior is deleted, not re-pinned to the new text.
 
@@ -170,18 +151,21 @@ The repo also includes `lefthook.yml`. Run `lefthook install` to install the pre
 
 ### Naming Conventions
 
-|                        | Convention           | Example                |
-| ---------------------- | -------------------- | ---------------------- |
-| Files                  | snake_case           | `session_lock.cpp`     |
-| Directories            | snake_case           | `input/`, `workspace/` |
-| Types / Classes        | PascalCase           | `SessionLock`          |
-| Functions / Methods    | camelCase            | `focusView()`          |
-| Variables / Parameters | camelCase            | `startupCmd`           |
-| Private members        | m_camelCase          | `m_sceneTree`          |
-| Constants              | k-prefixed constexpr | `kLayerCount`          |
-| Macros                 | SCREAMING_SNAKE_CASE | `UMBRIEL_VERSION`      |
+|                        | Convention           | Example                    |
+| ---------------------- | -------------------- | -------------------------- |
+| Files                  | snake_case           | `session_lock.cpp`         |
+| Directories            | snake_case           | `input/`, `workspace/`     |
+| Types / Classes        | PascalCase           | `SessionLock`              |
+| Functions / Methods    | camelCase            | `focusView()`              |
+| Variables / Parameters | camelCase            | `startupCmd`               |
+| Private members        | m_camelCase          | `m_sceneTree`              |
+| Constants              | k-prefixed constexpr | `kLayerCount`              |
+| Enumerators            | PascalCase           | `FocusReason::Directional` |
+| Macros                 | SCREAMING_SNAKE_CASE | `UMBRIEL_VERSION`          |
 
-Scoped enums (`enum class`) use PascalCase enumerators and an explicit `std::uint8_t` underlying type where it makes sense: `enum class FocusReason : uint8_t { Directional, PointerPress, ... }`.
+clang-format inserts braces around every control statement body and clang-tidy enforces the naming table for enumerators and private members.
+
+Scoped enums (`enum class`) use an explicit `std::uint8_t` underlying type where it makes sense.
 
 Getters are the noun, without a `get` prefix: `toplevel()`, `mapped()`, `workspace()`.
 

@@ -81,7 +81,7 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 | `[animation.windows_in]`      | `style`, `scale`                                                    | Window opening                                             |
 | `[animation.windows_out]`     | `style`, `scale`                                                    | Window closing                                             |
 | `[animation.windows_move]`    | none                                                                | Position during moves, reflow, maximize, and restore       |
-| `[animation.windows_resize]`  | none, and no `effect`                                               | Size during the same changes                               |
+| `[animation.windows_resize]`  | `wait_for_redraw`, and no `effect`                                  | Size during the same changes                               |
 | `[animation.windows_opacity]` | none, and no `effect`                                               | Focus changes to window-rule opacity and backdrop blur     |
 | `[animation.workspaces]`      | `style`                                                             | Workspace switching                                        |
 | `[animation.overview]`        | `workspace_curve`                                                   | Overview opening, closing, and filmstrip movement          |
@@ -94,7 +94,17 @@ Each event other than `windows_drag` also accepts `enabled`, `duration_ms`, and 
 
 `windows_in` accepts `popin`, `zoom`, `slide`, `fade`, or `none`. `windows_out` accepts `fade`, `slide`, `popin`, or `zoom`. `workspaces` accepts `slide` or `reveal` (see [Workspace reveal](#workspace-reveal)). `scale` applies to `popin`: an opening window grows from it to full size, and a closing window shrinks toward it, while both fade.
 
-`windows_move` moves a window while `windows_resize` changes its size, so a slow move can still resize quickly. While the size animates, the window's latest frame is stretched to fit. With `windows_resize` disabled, the size changes at once while the window still moves. When the two timelines differ, a window can briefly overlap its neighbours during a reflow.
+`windows_move` moves a window while `windows_resize` changes its size, so a slow move can still resize quickly. While the size animates, the window's latest frame is stretched to fit. With `windows_resize` disabled, the size changes at once while the window still moves. When the two timelines differ, a window can briefly overlap its neighbours during a reflow. Borders and shadows follow the layout's size even when the application has not redrawn yet; a tiled window that settles smaller than its tile, such as a terminal sized to whole character cells, leaves a transparent strip inside its border.
+
+A client needs a few frames to redraw at a new size, so with `windows_resize` disabled its previous frame is briefly stretched to the new size. Set `wait_for_redraw = true` to make a layout change that resizes windows a single switch instead: the screen keeps showing every window as it was, with a newly opened window not yet visible, until each resized window has redrawn, at its new size or at a nearby size it picks itself, as terminals that size to whole character cells do; then every window appears in its final place and size in the same frame, without moving there. Layout changes that only move windows still animate with `windows_move`. Resizing a tile with the mouse works the same way, one step at a time: each step waits for the resized windows to redraw before the next one follows the pointer, so the edge may trail a fast drag slightly, but no window is ever stretched or squeezed. A slow or unresponsive client is waited for at most 150 ms, after which the switch happens anyway and that window's frame is stretched until it redraws. It is off by default. `wait_for_redraw` only applies while the size does not animate: with `windows_resize` or all animation disabled.
+
+```toml
+[animation.windows_resize]
+enabled = false
+wait_for_redraw = true
+```
+
+When a tiled window closes while `windows_out` is disabled, its last frame stays on screen until the switch, so the wallpaper never shows in the space it leaves.
 
 `animation.overview.workspace_curve` controls filmstrip movement after wheel, keyboard, and touchpad navigation. A released touchpad gesture keeps the speed the fingers had when its curve is a spring: `[animation.workspaces]` for the three-finger switch, `[animation.overview]` for the four-finger open and close, and `workspace_curve` for the filmstrip. Any other curve starts from rest.
 

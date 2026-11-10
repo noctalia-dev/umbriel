@@ -117,6 +117,10 @@ namespace umbriel {
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
   // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
+  // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
+  inline constexpr double kRedrawWaitMs = 150.0;
+  // Longest a held close snapshot stays: a safety net well past kRedrawWaitMs, released by the switch before then.
+  inline constexpr double kMaxCloseHoldMs = 1000.0;
   inline constexpr std::string_view kLaunchTokenEnvironment = "UMBRIEL_LAUNCH_TOKEN";
 
   // The pid of the process owning a surface's Wayland connection, or -1 when the surface has no client or the kernel
@@ -388,18 +392,22 @@ namespace umbriel {
     std::optional<KeyboardLayoutState> keyboardLayoutState() const;
     // systemd-localed's keymap, for keyboards whose config sets no XKB names. Empty when unused or unavailable.
     const XkbNames& systemKeymap() const { return m_systemKeymap; }
+    // The keymap compiled from `names`, shared by every keyboard that resolves to the same names: a desk's keyboard
+    // devices (consumer control, system control, mouse-with-keys nodes) otherwise each compile and keep a copy. Returns
+    // a new reference the caller unrefs, or null when the names do not compile.
+    xkb_keymap* compileKeymap(const XkbNames& names);
     void notifyKeyboardLayoutIpc();
     void notifyOverviewChanged();
     void notifySubmapChanged();
-    // Coalesced windows-event notification: at most one idle callback per frame
-    // regardless of how many window-list-relevant changes happened.
+    // Paced windows-event notification: one snapshot per interval (see EventPacer), however many window-list-relevant
+    // changes happened.
     void scheduleIpcWindowsEvent();
-    // Same coalescing for the workspace list: layout mode, activation, names and membership all land in one payload,
+    // Same pacing for the workspace list: layout mode, activation, names and membership all land in one payload,
     // so a switch that renames, reindexes and reactivates emits once.
     void scheduleIpcWorkspacesEvent();
-    // Same coalescing for the layer-shell surface list.
+    // Same pacing for the layer-shell surface list.
     void scheduleIpcLayersEvent();
-    // Same coalescing for the output list.
+    // Same pacing for the output list.
     void scheduleIpcOutputsEvent();
 
     // Focus lives in FocusManager; these forward so call sites that already
@@ -506,6 +514,8 @@ namespace umbriel {
       std::string style = "fade";
       double scale = 0.8;
       AnimationEvent event = AnimationEvent::WindowsOut;
+      // Show the captured frame unchanged, without any lifecycle, until releaseCloseSnapshot or kMaxCloseHoldMs.
+      bool held = false;
     };
     // `content` is the subtree holding the copied buffers (pass `tree` when there is no separate content tree). A
     // positive `box` clips that subtree to the captured content extent. Returns kInvalidCloseSnapshot when the snapshot
@@ -520,6 +530,8 @@ namespace umbriel {
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
+    // End a held snapshot; it is reaped at the end of the current animation tick.
+    void releaseCloseSnapshot(CloseSnapshotId id);
 
   private:
     friend class EisInput;
@@ -589,10 +601,6 @@ namespace umbriel {
     void armBackgroundRenderTimer();
     static int onStartupRulesTimer(void* data);
     static int onTerminateSignal(int signal, void* data);
-    static void onIpcWindowsIdle(void* data);
-    static void onIpcWorkspacesIdle(void* data);
-    static void onIpcLayersIdle(void* data);
-    static void onIpcOutputsIdle(void* data);
     static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
@@ -819,18 +827,19 @@ namespace umbriel {
       CloseSnapshot(
           Server& server, CloseSnapshotId id, Output* output, wlr_scene_tree* tree, wlr_scene_tree* content,
           std::vector<BorderSnapshot> borders, const wlr_box& box, int durationMs, const AnimationCurve& curve,
-          std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension
+          std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension, bool held
       );
       ~CloseSnapshot() override;
 
       CloseSnapshotId id() const { return m_id; }
+      void release() { m_held = false; }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
-      bool hasActiveAnimations() const override { return m_alpha.animating() || m_slide.animating(); }
+      bool hasActiveAnimations() const override { return m_held || m_alpha.animating() || m_slide.animating(); }
       bool animatesOn(const Output* output) const override { return m_output == output; }
 
     private:
@@ -879,6 +888,9 @@ namespace umbriel {
       };
       std::vector<Blur> m_blurs;
       int m_topExtension = 0;
+      // A held snapshot stays as captured until released, or until kMaxCloseHoldMs after its first tick.
+      bool m_held = false;
+      std::optional<double> m_heldSinceMsec;
       std::vector<BorderSnapshot> m_borders;
       ShadowSnapshot m_shadow;
       bool m_retainedPersistent = false;
@@ -951,12 +963,6 @@ namespace umbriel {
     wl_event_source* m_backgroundRenderTimer = nullptr;
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
-    // Non-null while a windows-event idle callback is pending. The idle source
-    // removes itself when it runs, so a non-null pointer means "already queued".
-    wl_event_source* m_ipcWindowsIdle = nullptr;
-    wl_event_source* m_ipcWorkspacesIdle = nullptr;
-    wl_event_source* m_ipcLayersIdle = nullptr;
-    wl_event_source* m_ipcOutputsIdle = nullptr;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     wl_event_source* m_suspensionSyncIdle = nullptr;
@@ -1018,6 +1024,10 @@ namespace umbriel {
     ManualShortcutsInhibit m_manualShortcutsInhibit;
     SurfaceLayoutMemory m_surfaceLayouts;
     XkbNames m_systemKeymap;
+    // Last keymap compileKeymap built and the names it came from. applyKeyboardConfig drops it so a reload reads the
+    // XKB files again.
+    XkbNames m_compiledKeymapNames;
+    xkb_keymap* m_compiledKeymap = nullptr;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
     ModifierTapState m_modifierTap;

@@ -56,6 +56,8 @@ namespace umbriel {
     // Clamps the offset into [0, maxScroll]. A centered rest may lie outside that range, but only as far as centering
     // the first or last column does.
     void clampScroll(int viewportPrimary);
+    // The range clampScroll keeps the offset inside, for gesture code that damps travel past the strip ends.
+    [[nodiscard]] std::array<double, 2> scrollBounds(int viewportPrimary) const;
     void reconcileFocusedColumn(int columnIndex, int viewportPrimary);
     bool centeredRest() const { return m_centeredRest; }
     // How much to subtract from the scroll offset when `columnIndex` is about

@@ -152,6 +152,20 @@ namespace {
     constexpr std::string_view prefix = "state ";
     if (command.starts_with(prefix) && command.size() > prefix.size()) {
       reportState(state, command.substr(prefix.size()));
+    } else if (command == "geometry") {
+      // The window's root position and size as the X server holds them, which is what the client was configured to.
+      const xcb_get_geometry_cookie_t geometryCookie = xcb_get_geometry(state.connection, state.windows[0]);
+      const xcb_translate_coordinates_cookie_t rootCookie =
+          xcb_translate_coordinates(state.connection, state.windows[0], state.screen->root, 0, 0);
+      xcb_get_geometry_reply_t* geometry = xcb_get_geometry_reply(state.connection, geometryCookie, nullptr);
+      xcb_translate_coordinates_reply_t* root = xcb_translate_coordinates_reply(state.connection, rootCookie, nullptr);
+      if (geometry != nullptr && root != nullptr) {
+        std::println("geometry={} {} {} {}", root->dst_x, root->dst_y, geometry->width, geometry->height);
+      } else {
+        std::println("geometry=unavailable");
+      }
+      std::free(geometry);
+      std::free(root);
     } else if (command == "fullscreen true") {
       requestFullscreen(state, true);
     } else if (command == "fullscreen false") {

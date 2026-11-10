@@ -248,20 +248,22 @@ namespace umbriel {
   }
 
   bool View::retireFloatingSizeRequest() {
-    if (m_toplevel != nullptr) {
-      return m_floating.retireSizeRequestIfSettled(m_toplevel->base->current.configure_serial);
+    if (!m_floatingSizeConfigure) {
+      return true;
     }
-    // X11 configures carry no serial: the request is answered once the window commits the requested size, or any size
-    // other than the one it had when the request went out.
-    if (const auto& pending = m_floating.pendingSize()) {
-      const ClientSize size = currentSize();
-      const bool exact = size.width == (*pending)[0] && size.height == (*pending)[1];
-      const bool answered = size.width != m_xFloatingRequestBase.width || size.height != m_xFloatingRequestBase.height;
-      if (!exact && !answered) {
-        return false;
-      }
+    const FloatingSizeConfigure& sent = *m_floatingSizeConfigure;
+    const wlr_box content = committedContentBox();
+    const uint32_t serial = m_toplevel != nullptr ? m_toplevel->base->current.configure_serial : 0;
+    if (!sent.settled(serial, m_floating.pendingSize(), {content.width, content.height}, sizeGrabTracksPointer())) {
+      return false;
     }
-    return m_floating.retireSizeRequestIfSettled(0);
+    const bool settled = m_floating.retireSizeRequestIfSettled(sent.serial);
+    if (settled) {
+      m_floatingSizeConfigure.reset();
+      m_pointerResizeSettling = false;
+      resetPresentedSurface();
+    }
+    return settled;
   }
 
   bool View::roleInitialized() const { return m_toplevel == nullptr || m_toplevel->base->initialized; }
@@ -334,6 +336,11 @@ namespace umbriel {
     if (m_xsurface == nullptr || m_xsurface->surface == nullptr || m_contentTree == nullptr) {
       return;
     }
+    if (m_deferXwaylandConfigure
+        || (m_floatingSizeConfigure && m_floatingSizeConfigure->throttled && !m_xwaylandResizeConfigurePending)) {
+      return;
+    }
+    m_xwaylandResizeConfigurePending = false;
     const XwaylandRegion region = xwaylandRegion();
     applyXwaylandScale(region.scale);
     // The frame's position is its place in layout coordinates: a workspace slide moves the workspace tree around it
@@ -348,7 +355,13 @@ namespace umbriel {
     lx = std::clamp(lx, kMinCoordinate, kMaxCoordinate);
     ly = std::clamp(ly, kMinCoordinate, kMaxCoordinate);
     const bool moving = m_posX.animating() || m_posY.animating() || m_layoutMotion || openingInsetActive();
-    if (moving && m_xConfigured.x != INT_MIN) {
+    if (scheduledFullscreen()) {
+      // A fullscreen window is configured where its motion comes to rest, which is its column in a scrolling strip.
+      // Publishing the pre-fullscreen position with the fullscreen size while the motion animates tells Wine its window
+      // no longer covers the monitor, and Wine leaves fullscreen.
+      lx = std::clamp(region.toX(layoutTargetX()), kMinCoordinate, kMaxCoordinate);
+      ly = std::clamp(region.toY(layoutTargetY()), kMinCoordinate, kMaxCoordinate);
+    } else if (moving && m_xConfigured.x != INT_MIN) {
       lx = m_xConfigured.x;
       ly = m_xConfigured.y;
     }
@@ -490,6 +503,10 @@ namespace umbriel {
       requestFloatingSize(xToLayoutLength(width), xToLayoutLength(height));
     }
     // ICCCM expects a ConfigureNotify in reply even when the request is denied.
+    if (m_floatingSizeConfigure && m_floatingSizeConfigure->throttled) {
+      wlr_xwayland_surface_configure(m_xsurface, m_xsurface->x, m_xsurface->y, m_xsurface->width, m_xsurface->height);
+      return;
+    }
     m_xConfigured.x = INT_MIN;
     syncXwaylandConfigure();
   }

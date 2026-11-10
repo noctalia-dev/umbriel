@@ -52,6 +52,7 @@ namespace umbriel {
     static nlohmann::json swipeForTest(Server& server, IpcArgs args);
     static nlohmann::json animationCaptureFail(Server& server, IpcArgs args);
     static nlohmann::json blurCompositeSplit(Server& server, IpcArgs args);
+    static nlohmann::json eventPacingHold(Server& server, IpcArgs args);
     static nlohmann::json planeCursor(Server& server, IpcArgs args);
     static nlohmann::json effectFrames(Server& server, IpcArgs args);
     static nlohmann::json cursorState(Server& server, IpcArgs args);

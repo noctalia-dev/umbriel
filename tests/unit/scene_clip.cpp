@@ -420,4 +420,92 @@ UMBRIEL_TEST(regionHoleUncoversPreviouslyOccludedContent) {
   fixture.tearDown();
 }
 
+UMBRIEL_TEST(dimBehindTracksCoverageStackAndDoesNotInterceptInput) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  wlr_scene_node* dim = nullptr;
+  dim = wl_container_of(fixture.tree->node.link.prev, dim, link);
+  CHECK(dim->type == WLR_SCENE_NODE_RECT);
+  CHECK(dim->enabled);
+  CHECK(fixture.nodeAt(20, 20) == nullptr);
+  CHECK(fixture.nodeAt(1200, 150) == &fixture.buffer->node);
+
+  const wlr_box clippedAway{0, 0, 100, 100};
+  wlr_scene_tree_set_clip(fixture.tree, &clippedAway);
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  CHECK(!dim->enabled);
+  wlr_scene_tree_set_clip(fixture.tree, nullptr);
+  wlr_scene_node_set_enabled(&fixture.tree->node, false);
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  CHECK(!dim->enabled);
+  wlr_scene_node_set_enabled(&fixture.tree->node, true);
+
+  auto* parent = wlr_scene_tree_create(&fixture.scene->tree);
+  wlr_scene_node_reparent(&fixture.tree->node, parent);
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  CHECK(dim->parent == parent);
+  CHECK(dim->enabled);
+  CHECK(dim->link.next == &fixture.tree->node.link);
+  wlr_scene_node_set_position(&parent->node, -2000, 0);
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  CHECK(!dim->enabled);
+  // Parent destruction must also handle an owner restacked below its backdrop.
+  wlr_scene_node_lower_to_bottom(&fixture.tree->node);
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(dimBehindIsDestroyedWithOwner) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 1.0F));
+  fixture.onLeft.stop();
+  fixture.onRight.stop();
+  fixture.buffer = nullptr;
+  wlr_scene_node_destroy(&fixture.tree->node);
+  CHECK(wl_list_empty(&fixture.scene->tree.children));
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(dimBehindSharesCapturePolicyAcrossToggles) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, true));
+  CHECK(wlr_scene_node_set_dim_behind(&fixture.tree->node, &kLeftOutputBox, 0.5F));
+  wlr_scene_node* dim = nullptr;
+  dim = wl_container_of(fixture.tree->node.link.prev, dim, link);
+  CHECK(umbrielfx_scene_node_capture_excluded(dim));
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, false));
+  CHECK(!umbrielfx_scene_node_capture_excluded(dim));
+  CHECK(umbrielfx_scene_node_set_capture_excluded(&fixture.tree->node, true));
+  CHECK(umbrielfx_scene_node_capture_excluded(dim));
+  fixture.tearDown();
+}
+
+UMBRIEL_TEST(retainedRoundedClipsPreserveInputAndUncoverSurroundingContent) {
+  Fixture fixture;
+  CHECK(fixture.setUp());
+  constexpr float opaque[] = {1.F, 0.F, 0.F, 1.F};
+  auto* rect = wlr_scene_rect_create(fixture.tree, Fixture::kBufferWidth, Fixture::kBufferHeight, opaque);
+  wlr_scene_node_set_position(&rect->node, Fixture::kBufferX, Fixture::kBufferY);
+  CHECK(!fixture.onLeft.inside);
+  CHECK(!fixture.onRight.inside);
+  clipped_region clip{
+      .area = {50, 0, Fixture::kBufferWidth - 100, Fixture::kBufferHeight},
+      .corners = corner_radii_all(50),
+      .inside = true,
+  };
+  wlr_scene_rect_set_clipped_region(rect, clip);
+  CHECK(fixture.nodeAt(1300, 250) == &rect->node);
+  CHECK(fixture.nodeAt(1110, 250) == &fixture.buffer->node);
+  CHECK(fixture.onLeft.inside);
+  CHECK(fixture.onRight.inside);
+
+  clip.inside = false;
+  wlr_scene_rect_set_clipped_region(rect, clip);
+  CHECK(fixture.nodeAt(1300, 250) == &fixture.buffer->node);
+  CHECK(fixture.nodeAt(1110, 250) == &rect->node);
+  fixture.tearDown();
+}
+
 int main() { return RUN_TESTS(); }

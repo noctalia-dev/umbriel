@@ -28,8 +28,9 @@ namespace {
     }
 
     ~Pixels() {
-      if (accessible)
+      if (accessible) {
         wlr_buffer_end_data_ptr_access(buffer);
+      }
       wlr_buffer_drop(buffer);
     }
 
@@ -47,8 +48,9 @@ UMBRIEL_TEST(buttonSymbolsHaveDistinctGeometry) {
     const Pixels close(TitleBarButton::Close, size);
     const Pixels maximize(TitleBarButton::Maximize, size);
     const Pixels minimize(TitleBarButton::Minimize, size);
-    if (!close.accessible || !maximize.accessible || !minimize.accessible)
+    if (!close.accessible || !maximize.accessible || !minimize.accessible) {
       return;
+    }
     CHECK(close.alpha(size / 2, size / 2) > 0);
     CHECK_EQ(maximize.alpha(size / 2, size / 2), 0U);
     CHECK_EQ(minimize.alpha(size / 2, size / 2), 0U);
@@ -62,8 +64,9 @@ UMBRIEL_TEST(buttonSymbolsKeepTransparentAntialiasedEdges) {
   using umbriel::TitleBarButton;
   for (const auto button : {TitleBarButton::Close, TitleBarButton::Maximize, TitleBarButton::Minimize}) {
     const Pixels image(button, 28);
-    if (!image.accessible)
+    if (!image.accessible) {
       return;
+    }
     int ink = 0;
     int antialiased = 0;
     for (int y = 0; y < 28; ++y) {

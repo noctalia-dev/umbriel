@@ -13,7 +13,7 @@ readonly OVERVIEW_Y=180
 readonly OVERVIEW_RIGHT=959
 
 spawn_client() {
-  foot --config=/dev/null --override=colors.background=000000 \
+  foot --config=/dev/null --override=colors-dark.background=000000 \
     --title="right-edge-$1" sh -c 'sleep 120' > /dev/null 2>&1 &
 }
 
