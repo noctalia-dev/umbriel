@@ -12,8 +12,6 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 [animation]
 enabled = false
 
-[layout]
-mode = "scrolling"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -67,5 +65,31 @@ expect_windowed_fullscreen() {
     exit 1
   fi
 }
+
+# Each layout gets its own workspace, so the first window starts alone and every neighbour forces a retile.
+workspace=0
+for layout in dwindle master; do
+  workspace=$((workspace + 1))
+  "$UMBRIEL" msg workspace-switch "$workspace" > /dev/null
+  "$UMBRIEL" msg workspace-set-layout "$layout" > /dev/null
+  video="video-$layout"
+  spawn "$video"
+  "$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
+  expect_windowed_fullscreen "$video"
+
+  sizes=("$(field "$video" w)x$(field "$video" h)")
+  for neighbour in 1 2; do
+    spawn "$layout-neighbour-$neighbour"
+    focus "$video"
+    expect_windowed_fullscreen "$video"
+    sizes+=("$(field "$video" w)x$(field "$video" h)")
+  done
+  # The check means nothing unless a neighbour actually moved the video's tile. A second master neighbour joins the
+  # stack and may leave the master tile as it was, so only the first must resize it.
+  if [[ ${sizes[0]} == "${sizes[1]}" ]]; then
+    echo "$layout: the first neighbour did not resize the video tile: ${sizes[*]}"
+    exit 1
+  fi
+done
 
 echo "windowed fullscreen follows dwindle and master retiles"
