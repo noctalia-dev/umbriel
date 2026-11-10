@@ -844,12 +844,6 @@ namespace umbriel {
     // What to do to a transient descendant: re-home it under the tree its parent
     // lives in, or do that and stack it over its siblings.
     enum class TransientWalkAction { SyncSceneParent, RaiseToTop };
-    // What one step did to a descendant.
-    struct TransientStep {
-      bool descend = true; // the descendant's own subtree follows the walk
-      bool leftDragTree = false;
-    };
-    TransientStep applyTransientStep(TransientWalkAction action);
     // The one owner of the transient traversal: applies `action` depth-first to
     // every descendant, newest registry entry first. Returns true when any of them
     // left the drag tree.
@@ -857,13 +851,10 @@ namespace umbriel {
     // Absorbs a re-home into the release's wait while the sheet is displaced:
     // true when the node must stay where it is.
     [[nodiscard]] bool deferRehome(wlr_scene_tree* target);
-    // True when moving this node to `parent` takes it out of the drag tree.
-    [[nodiscard]] bool leavesDragTree(wlr_scene_tree* parent) const;
-    // Applies one node's re-home: the release's wait, then the move. Returns true
-    // when the node left the drag tree. The caller owns the subtree.
+    // Applies one node's re-home: the release's wait, then the move with the
+    // shadow and X11 state that follow it. Returns true when the node left the
+    // drag tree. The caller owns the subtree.
     bool applySceneParent(wlr_scene_tree* parent);
-    // Moves this view's node with the shadow and X11 state that follow it.
-    void reparentSceneNode(wlr_scene_tree* parent);
     // Lowers the drag tree under its icons once no drag-presented view is left.
     void demoteDragTreeIfIdle();
     // Re-homes this node under the tree its transient parent lives in. Returns

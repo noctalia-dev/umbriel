@@ -837,24 +837,6 @@ namespace umbriel {
     }
   }
 
-  View::TransientStep View::applyTransientStep(TransientWalkAction action) {
-    switch (action) {
-    case TransientWalkAction::SyncSceneParent: {
-      return {.leftDragTree = syncTransientSceneParent()};
-    }
-    case TransientWalkAction::RaiseToTop: {
-      // An attached dialog's subtree stacks as its parent arranged it.
-      if (attached()) {
-        return {.descend = false};
-      }
-      const bool leftDragTree = syncTransientSceneParent();
-      wlr_scene_node_raise_to_top(&m_sceneTree->node);
-      return {.leftDragTree = leftDragTree};
-    }
-    }
-    return {};
-  }
-
   bool View::walkTransientTree(TransientWalkAction action) {
     bool leftDragTree = false;
     const auto views = m_server->registry().all();
@@ -863,9 +845,24 @@ namespace umbriel {
       if (child == nullptr || child == this || child->transientParent() != this) {
         continue;
       }
-      const TransientStep step = child->applyTransientStep(action);
-      leftDragTree = step.leftDragTree || leftDragTree;
-      if (step.descend) {
+      bool descend = true;
+      switch (action) {
+      case TransientWalkAction::SyncSceneParent: {
+        leftDragTree = child->syncTransientSceneParent() || leftDragTree;
+        break;
+      }
+      case TransientWalkAction::RaiseToTop: {
+        // An attached dialog's subtree stacks as its parent arranged it.
+        if (child->attached()) {
+          descend = false;
+          break;
+        }
+        leftDragTree = child->syncTransientSceneParent() || leftDragTree;
+        wlr_scene_node_raise_to_top(&child->m_sceneTree->node);
+        break;
+      }
+      }
+      if (descend) {
         leftDragTree = child->walkTransientTree(action) || leftDragTree;
       }
     }
@@ -888,39 +885,29 @@ namespace umbriel {
     // settles, so the release's re-homes wait for it; a later state change
     // (fullscreen, pin, scratchpad) applies immediately and drops the wait.
     // closeReleaseRehomeWindow() ends the release's say over where the view rests.
-    const bool leavingDragTree = applySceneParent(parent);
-    if (!leavingDragTree) {
+    if (!applySceneParent(parent)) {
       return;
     }
     // Transient children elevated with this view follow it home; the elevation is
     // re-checked once, after the whole subtree has moved.
-    if (walkTransientTree(TransientWalkAction::SyncSceneParent) || leavingDragTree) {
-      demoteDragTreeIfIdle();
-    }
-  }
-
-  bool View::leavesDragTree(wlr_scene_tree* parent) const {
-    return m_sceneTree->node.parent == m_server->dragTree() && parent != m_server->dragTree();
+    walkTransientTree(TransientWalkAction::SyncSceneParent);
+    demoteDragTreeIfIdle();
   }
 
   bool View::applySceneParent(wlr_scene_tree* parent) {
     if (deferRehome(parent)) {
       return false;
     }
-    const bool leavingDragTree = leavesDragTree(parent);
+    const bool leavingDragTree = m_sceneTree->node.parent == m_server->dragTree() && parent != m_server->dragTree();
     m_pendingHomeParent = nullptr;
     m_releaseRehomeArmed = false;
-    reparentSceneNode(parent);
-    return leavingDragTree;
-  }
-
-  void View::reparentSceneNode(wlr_scene_tree* parent) {
     wlr_scene_node_reparent(&m_sceneTree->node, parent);
     syncShadowPool();
     // Another parent can put the window elsewhere in layout coordinates.
     if (m_xsurface != nullptr && m_mapped) {
       syncXwaylandConfigure();
     }
+    return leavingDragTree;
   }
 
   void View::closeReleaseRehomeWindow() { m_releaseRehomeArmed = false; }
