@@ -745,6 +745,9 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
+    // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
+    // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
+    bool presentsCommittedSize() const;
     // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
     bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
@@ -785,7 +788,7 @@ namespace umbriel {
     // Keep floats visually at the last requested size while client geometry lags.
     void syncFloatingSurfaceClip();
     void beginFloatingResize(uint32_t edges);
-    void resizeFloating(const wlr_box& box);
+    void resizeFloating(int width, int height);
     void finishFloatingResize();
     void sendFloatingSize(int width, int height);
     void commitFloatingSize();
@@ -958,6 +961,9 @@ namespace umbriel {
     std::optional<FloatingSizeConfigure> m_floatingSizeConfigure;
     bool m_deferXwaylandConfigure = false;
     bool m_xwaylandResizeConfigurePending = false;
+    bool m_pointerResizeSettling = false;
+    // applyPresentedCrop programmed the buffer; the surface clip alone no longer describes it.
+    bool m_presentedCropActive = false;
     std::optional<std::string> m_xdgTag;
     ContentType m_contentType = ContentType::None;
     wlr_scene_tree* m_sceneTree = nullptr;

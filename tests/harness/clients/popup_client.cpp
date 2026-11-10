@@ -2,11 +2,13 @@
 // harness can then request redundant focus for the toplevel and observe whether
 // the compositor incorrectly dismisses the popup. With --popup-on-stdin it
 // instead creates an ungrabbed popup when a line arrives on stdin, so a check
-// can open one while the toplevel is not shown. On that path an `unmap` line
-// drops the popup buffer, so a check can take a popup away without destroying
-// it, and a `sync` line answers with a `frame` once the compositor has read
-// everything sent before it. FILL_COLOR, POPUP_FILL_COLOR, POPUP_WIDTH and
-// POPUP_HEIGHT override the painted colours and the popup size.
+// can open one while the toplevel is not shown. With --unmap-on-close it unmaps
+// the toplevel on a close request and keeps its popup, so a check can unmap a
+// window while its popup holds the keyboard grab. On the popup-on-stdin path an
+// `unmap` line drops the popup buffer, so a check can take a popup away without
+// destroying it, and a `sync` line answers with a `frame` once the compositor
+// has read everything sent before it. FILL_COLOR, POPUP_FILL_COLOR, POPUP_WIDTH
+// and POPUP_HEIGHT override the painted colours and the popup size.
 
 #include "xdg-shell-client-protocol.h"
 
@@ -59,6 +61,7 @@ namespace {
     bool mapped = false;
     bool popupWanted = false;
     bool popupMapped = false;
+    bool unmapOnClose = false;
   };
 
   Buffer createBuffer(State& state, int width, int height, uint32_t color) {
@@ -259,7 +262,16 @@ namespace {
   };
 
   void toplevelConfigure(void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {}
-  void toplevelClose(void*, xdg_toplevel*) {}
+  void toplevelClose(void* data, xdg_toplevel*) {
+    auto& state = *static_cast<State*>(data);
+    if (!state.unmapOnClose) {
+      return;
+    }
+    wl_surface_attach(state.surface, nullptr, 0, 0);
+    wl_surface_commit(state.surface);
+    std::println("unmapped");
+    std::fflush(stdout);
+  }
 
   // The shell is bound at up to version 6, which sends these too; this client has no use for them.
   void toplevelConfigureBounds(void*, xdg_toplevel*, int32_t, int32_t) {}
@@ -328,6 +340,8 @@ namespace {
 
 int main(int argc, char** argv) {
   State state;
+  const bool popupOnStdin = argc > 1 && std::strcmp(argv[1], "--popup-on-stdin") == 0;
+  state.unmapOnClose = argc > 1 && std::strcmp(argv[1], "--unmap-on-close") == 0;
   state.popupWidth = envSize("POPUP_WIDTH", kPopupWidth);
   state.popupHeight = envSize("POPUP_HEIGHT", kPopupHeight);
   state.windowFill = envColor("FILL_COLOR", kWindowFill);
@@ -375,7 +389,6 @@ int main(int argc, char** argv) {
   std::println("ready");
   std::fflush(stdout);
 
-  const bool popupOnStdin = argc > 1 && std::strcmp(argv[1], "--popup-on-stdin") == 0;
   if (!popupOnStdin) {
     while (wl_display_dispatch(state.display) >= 0) {
     }

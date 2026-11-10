@@ -62,7 +62,7 @@ Nothing in that rule inspects a buffer's own destination quad, which is what mak
 - a main surface inset inside the content box, because the window geometry origin lies at a subsurface above or left of it, keeps its own corners square;
 - a full-window subsurface rounds the window's corners;
 - an interior subsurface, such as an embedded video, never touches the arc;
-- an animated or interactively resized presented size rounds where the window is drawn now, including while the client's committed buffer still lags it.
+- an animated presented size rounds where the window is drawn now, including while the client's committed buffer still lags it.
 
 An empty `corner_box` falls back to rounding the buffer's own quad, which is what the overview badge and other standalone buffers use. Overview cards apply the window rule against the card's content box, so a thumbnail rounds wherever the live window does.
 
