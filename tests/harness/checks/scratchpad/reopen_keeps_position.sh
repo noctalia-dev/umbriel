@@ -75,7 +75,9 @@ visible_pixels() {
   "$UMBRIEL_PIXEL_PROBE" "$image" count 'r < 0.45 && g > 0.28 && b > 0.55'
 }
 
-readonly BASELINE=$(< "$UMBRIEL_CONFIG")
+# A failed read must fail the check: `readonly BASELINE=$(...)` would swallow its status.
+BASELINE=$(< "$UMBRIEL_CONFIG")
+readonly BASELINE
 
 # The common body plus the outputs of the current phase, so each leg can rewrite them without duplicate tables.
 write_config() {
