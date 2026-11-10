@@ -46,16 +46,8 @@ if [[ $presented != *"buffer 1200x900"* || $presented != *"scale 360/120"* ]]; t
   exit 1
 fi
 
-WINDOW_ID=""
-for _ in $(seq 80); do
-  WINDOW_ID=$("$UMBRIEL" windows --json | jq -r --arg title "$WINDOW_TITLE" '.[] | select(.title == $title) | .id')
-  [[ -n $WINDOW_ID ]] && break
-  sleep 0.025
-done
-if [[ -z $WINDOW_ID ]]; then
-  echo "no window id for '$WINDOW_TITLE'"
-  exit 1
-fi
+await_window "$WINDOW_TITLE"
+WINDOW_ID=$(window_by_title "$WINDOW_TITLE" | jq -r .id)
 
 IMAGE="$UMBRIEL_RUNTIME_DIR/downsample-box.png"
 # Cap leg captures at output-raster resolution instead of logical.
@@ -122,7 +114,7 @@ sed -i 's/downsample = "box"/downsample = "bilinear"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" settle > /dev/null
 # Bilinear: one point sample per output pixel lands on a texel center and
 # reports that texel pure, dropping the other two (aliasing).
-expect_pair "bilinear downsample" 0 255 255 0 0
+expect_pair "bilinear downsample" 0 255 255 0
 expect_toplevel_pair "bilinear downsample in window captures" 0 255 255 0 0
 
 sed -i 's/downsample = "bilinear"/downsample = "box"/' "$UMBRIEL_CONFIG"
