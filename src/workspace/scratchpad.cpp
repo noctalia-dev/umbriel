@@ -275,8 +275,7 @@ namespace umbriel {
     const bool sameScratchpad = existing != nullptr && existing->scratchpad == name;
     const bool wasActivated = view->activated();
     Output* sourceOutput = options.focusOrigin != nullptr ? options.focusOrigin : view->currentOutput();
-    // Read before the member joins the pad: a pad already showing elsewhere keeps the window in the basis it arrived
-    // in.
+    // Read before the member joins the pad, whose output then resolves the window's own.
     Output* arrivalOutput = view->currentOutput();
     std::string previousScratchpad;
     // Set when the window leaving another scratchpad was the one that scratchpad showed on its own.
@@ -383,12 +382,9 @@ namespace umbriel {
     }
     view->setSceneParent(m_root);
     view->setInScratchpad(true);
-    // A pad already showing on another output carries a window the user moves into it into the pad's own basis, the
-    // same remap a member gets when the pad changes output, instead of keeping coordinates that belong to the output
-    // it arrived on. An interactive admission is the only shape that qualifies, and it is the scope this condition
-    // states: it is a user action on a window another path has already placed. A window that is still opening is placed
-    // afterwards by View::handleMap against the pad's output, and a rule admission is followed by its own summon back
-    // to the rule's output, so remapping either would scale or clamp the window twice.
+    // An interactive admission is the only shape that needs this: a window still opening is placed afterwards by
+    // View::handleMap against the pad's output, and a rule admission is followed by its own summon back to the rule's
+    // output, so remapping either would scale or clamp the window twice.
     if (admission == Admission::Interactive && arrivalOutput != nullptr && arrivalOutput != output) {
       remapViewGeometry(
           view, usableArea(*m_server, arrivalOutput), usableArea(*m_server, output), usesProportionalSize(name), true
