@@ -1481,12 +1481,17 @@ namespace umbriel {
     }
     updateOptimizedBlur(outputArea);
 
-    // Layer trees are output-local; pin them to the scene-output origin.
+    // Layer trees are output-local; pin them to the scene-output origin. They are clipped to the output like the
+    // content roots below, so a layer surface (or its popup) larger than its output, or pushed past an edge by its
+    // margins, never renders on, or takes input from, a neighbouring output. The clip is the rounded-up layerArea the
+    // surfaces are configured against, so at fractional scales a full-output layer still covers the last physical row.
     for (auto& m_layerTree : m_layerTrees) {
       wlr_scene_node_set_position(&m_layerTree->node, m_sceneOutput->x, m_sceneOutput->y);
+      wlr_scene_tree_set_clip(m_layerTree, &layerArea);
     }
     for (auto* popupTree : m_layerPopupTrees) {
       wlr_scene_node_set_position(&popupTree->node, m_sceneOutput->x, m_sceneOutput->y);
+      wlr_scene_tree_set_clip(popupTree, &layerArea);
     }
 
     // Content roots are clipped to this output's layout box, not repositioned: views are laid out in layout
