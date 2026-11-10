@@ -17,10 +17,11 @@ struct fx_corner_fradii fx_corner_radii_scale(struct fx_corner_radii, float scal
 struct clipped_fregion {
   struct wlr_box area;
   struct fx_corner_fradii corners;
+  bool inside;
 };
 
 static __always_inline bool clipped_fregion_is_valid(const struct clipped_fregion* fregion) {
-  return !fx_corner_fradii_is_empty(&fregion->corners) && !wlr_box_empty(&fregion->area);
+  return (fregion->inside || !fx_corner_fradii_is_empty(&fregion->corners)) && !wlr_box_empty(&fregion->area);
 };
 
 #endif

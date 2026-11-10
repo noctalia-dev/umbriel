@@ -100,6 +100,7 @@ namespace umbriel {
     bool configureOutstanding() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
+    void updateDimBehind();
     // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
     // schedule it through Server::scheduleSuspensionSync.
     void syncSuspendedState();
@@ -155,6 +156,7 @@ namespace umbriel {
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
     bool confinePointer();
+    double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
@@ -165,6 +167,7 @@ namespace umbriel {
     bool tiled() const { return m_tiled; }
     bool floating() const { return !m_tiled; }
     bool floatedByStackingLayout() const { return m_floatedByStackingLayout; }
+    // In the workspace's only tiled column, whatever the number of windows that column holds.
     bool isAloneInLayout() const;
     bool isOnlyWindowOnWorkspace() const;
     const std::optional<std::string>& namedScrollingColumnName() const { return m_namedScrollingColumnName; }
@@ -253,7 +256,10 @@ namespace umbriel {
     void deferActivation(bool trusted);
     // Focus ring only. Public alongside setForeignActivated because both are
     // activation chrome the focus manager drives from outside.
+    // While the workspace defers focus chrome, a layout member records `focused` instead of drawing it.
     void setBorderFocused(bool focused);
+    // Draw the focus a deferred setBorderFocused recorded, if any.
+    void applyDeferredBorderFocus();
     // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
@@ -501,6 +507,8 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
+    // `withShadow` copies the shadow.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -633,6 +641,7 @@ namespace umbriel {
     void handleCaptureSourceDestroy();
     void updateBorderGeometry();
     void updateBorderGeometry(int contentWidth, int contentHeight);
+    ClientSize chromeContentSize() const;
     // Lay the chrome attachment out around content of that size, which is remembered for later relayouts.
     void layoutChromeAttachment(int contentWidth, int contentHeight);
     float chromeAlpha() const { return (fadeComposited() ? 1.0F : m_fadeAlpha) * m_dragOpacity * m_overviewOpacity; }
@@ -666,6 +675,9 @@ namespace umbriel {
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
     [[nodiscard]] CloseSnapshotId beginCloseAnimation();
+    // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
+    // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
+    [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop
@@ -681,8 +693,7 @@ namespace umbriel {
     void applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip);
     // Undo applyPresentedCrop/size-anim buffer state when the animation ends.
     void resetPresentedSurface();
-    // Shared tail of a finished/cancelled size animation: settle the presented
-    // size on the committed geometry and refresh the derived chrome.
+    // Refresh a finished/cancelled resize, retaining layout and pending floating frame ownership.
     void finishSizeAnimation();
     bool sizeAnimating() const {
       return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
@@ -690,6 +701,8 @@ namespace umbriel {
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
+    // A layout size configure the client has not yet answered with a commit at that size.
+    bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
     // client's possibly stale committed geometry. A later arrange can move its cached logical box independently.
     bool tiledOpeningActive() const;
@@ -730,6 +743,11 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
+    // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
+    // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
+    bool presentsCommittedSize() const;
+    // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
+    bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
@@ -770,6 +788,11 @@ namespace umbriel {
     void beginFloatingResize(uint32_t edges);
     void resizeFloating(int width, int height);
     void finishFloatingResize();
+    void sendFloatingSize(int width, int height);
+    void commitFloatingSize();
+    void clearFloatingSizeRequest();
+    bool openingAnimationActive() const;
+    void releaseOpeningPresentation(bool completed = false, bool pointerTakeover = false);
     void syncFloatingResizePosition();
     void adoptFloatingClientSize();
     // Where `origin` has to move to satisfy the clamp, or nullopt if it already does. `resize` selects
@@ -838,9 +861,13 @@ namespace umbriel {
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Releases a maximize or scrolling extent this window owns on a shared column before it leaves the layout.
+    void releaseColumnWideAloneEffect();
     // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
     // window did not open alone after all.
     void settleOpeningAloneState();
+    // Adopts a named scrolling column that only the alone rules select, before the opening attach looks for it.
+    void registerOpeningAloneColumn();
     // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
     // rules. A transition that also moved focus has already refreshed them, so this is a no-op there. Also keeps the
     // minimized state and the client's minimize capability in line with the new state.
@@ -878,10 +905,12 @@ namespace umbriel {
     AloneAction m_aloneAction = AloneAction::None;
     ResolvedWindowRule m_lastAloneDelta;
     std::optional<double> m_aloneSavedWidthFrac;
-    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect.
+    // What the opening configure seeded from an alone-only rule, so map can hand that state to the alone effect and
+    // drop it if the window does not end up alone (or, for the two output-covering states, sole in its column).
     enum class AloneSeed : uint8_t {
       None,
       Fullscreen,
+      MaximizeToEdges,
       Maximize,
     };
     AloneSeed m_aloneOpeningSeed = AloneSeed::None;
@@ -926,9 +955,13 @@ namespace umbriel {
     // The size of the emulated RandR mode a fullscreen X11 window switched to, in X pixels, while it fills the output
     // that way.
     std::optional<ClientSize> m_xFullscreenSize;
-    // The size an X11 window had when a size request was sent. X11 clients with resize increments pick a nearby legal
-    // size, so a commit at any other size answers the request.
-    ClientSize m_xFloatingRequestBase;
+    // One delivered configure. FloatingGeometry keeps the latest desired size.
+    std::optional<FloatingSizeConfigure> m_floatingSizeConfigure;
+    bool m_deferXwaylandConfigure = false;
+    bool m_xwaylandResizeConfigurePending = false;
+    bool m_pointerResizeSettling = false;
+    // applyPresentedCrop programmed the buffer; the surface clip alone no longer describes it.
+    bool m_presentedCropActive = false;
     std::optional<std::string> m_xdgTag;
     ContentType m_contentType = ContentType::None;
     wlr_scene_tree* m_sceneTree = nullptr;
@@ -1020,7 +1053,9 @@ namespace umbriel {
       uint32_t serial = 0;
       int width = 0;
       int height = 0;
+      // The committed content and buffer size when the request went out.
       ClientSize base;
+      ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
     float m_layoutMotionDirection = 1.0F;
@@ -1028,6 +1063,7 @@ namespace umbriel {
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
+    std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
@@ -1071,6 +1107,7 @@ namespace umbriel {
     AnimatedValue m_focusDim{1.0};
     float m_fadeAlpha = 1.0F;
     bool m_borderFocusedState = false;
+    std::optional<bool> m_deferredBorderFocus;
     bool m_focusDimInitialized = false;
     // Opening identity can settle independently. The first title and first
     // non-none content type each get one chance to add one-shot rule effects.

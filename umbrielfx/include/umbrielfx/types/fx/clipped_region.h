@@ -92,6 +92,8 @@ bool fx_corner_radii_is_empty(const struct fx_corner_radii* corners);
 struct clipped_region {
   struct wlr_box area;
   struct fx_corner_radii corners;
+  // Keep the rounded interior instead of cutting it out.
+  bool inside;
 };
 
 struct clipped_region clipped_region_get_default(void);

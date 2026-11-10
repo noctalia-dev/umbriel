@@ -42,8 +42,9 @@ static bool test_workspace_reveal(struct fixture* fixture) {
       "if (umbriel_direction < 0.0) a = 1.0-a; return umbriel_sample(uv)*a; }",
       "reveal-wipe"
   );
-  if (!check(wipe != NULL, "wipe compiles"))
+  if (!check(wipe != NULL, "wipe compiles")) {
     return false;
+  }
   struct fx_animation_parameters from = {.progress = .5, .direction = -1, .transition_id = 1};
   struct fx_animation_parameters to = {.progress = .5, .direction = 1, .transition_id = 1};
   struct wlr_scene* scene = wlr_scene_create();
@@ -152,8 +153,9 @@ static bool test_workspace_pair(struct fixture* fixture) {
       "umbriel_sample_incoming(uv), umbriel_progress) * vec4(0.5, 0.5, 0.5, 1.0); }",
       "workspace-pair"
   );
-  if (!check(shader != NULL, "pair shader compiles"))
+  if (!check(shader != NULL, "pair shader compiles")) {
     return false;
+  }
   struct wlr_scene* scene = wlr_scene_create();
   struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
   wlr_scene_rect_create(&scene->tree, 16, 16, green);
@@ -181,10 +183,12 @@ static bool test_workspace_pair(struct fixture* fixture) {
     };
     const int expected[3][3] = {{64, 0, 64}, {0, 64, 64}, {64, 64, 0}};
     for (unsigned update = 0; update < 3; update++) {
-      if (update == 1)
+      if (update == 1) {
         wlr_scene_rect_set_color(outgoing, green);
-      if (update == 2)
+      }
+      if (update == 2) {
         wlr_scene_rect_set_color(incoming, red);
+      }
       struct wlr_output_state state;
       wlr_output_state_init(&state);
       bool built = wlr_scene_output_build_state(output, &state, &options);
@@ -198,13 +202,14 @@ static bool test_workspace_pair(struct fixture* fixture) {
           uint8_t pixel[4];
           bool read = fixture_read_pixel(fixture, state.buffer, xs[sample], 8, pixel);
           ok &= check(read, "pair pixel readable");
-          if (read)
+          if (read) {
             ok &= check(
                 abs(pixel[2] - colors[sample][0]) <= 3
                     && abs(pixel[1] - colors[sample][1]) <= 3
                     && abs(pixel[0] - colors[sample][2]) <= 3,
                 "one shader transforms live windows, wallpaper and shell surface"
             );
+          }
         }
       }
       wlr_output_state_finish(&state);

@@ -137,6 +137,7 @@ bool link_quad_program(struct quad_shader* shader, bool clip) {
   }
   shader->effects.clip_size = glGetUniformLocation(prog, "clip_size");
   shader->effects.clip_position = glGetUniformLocation(prog, "clip_position");
+  shader->effects.clip_inside = glGetUniformLocation(prog, "clip_inside");
   shader->effects.clip_radius.top_left = glGetUniformLocation(prog, "clip_radius_top_left");
   shader->effects.clip_radius.top_right = glGetUniformLocation(prog, "clip_radius_top_right");
   shader->effects.clip_radius.bottom_left = glGetUniformLocation(prog, "clip_radius_bottom_left");
@@ -195,6 +196,7 @@ bool link_quad_round_program(struct quad_round_shader* shader) {
 
   shader->clip_size = glGetUniformLocation(prog, "clip_size");
   shader->clip_position = glGetUniformLocation(prog, "clip_position");
+  shader->clip_inside = glGetUniformLocation(prog, "clip_inside");
   shader->clip_radius.top_left = glGetUniformLocation(prog, "clip_radius_top_left");
   shader->clip_radius.top_right = glGetUniformLocation(prog, "clip_radius_top_right");
   shader->clip_radius.bottom_left = glGetUniformLocation(prog, "clip_radius_bottom_left");
@@ -317,6 +319,7 @@ bool link_tex_program(
 
   shader->effects.clip_size = glGetUniformLocation(prog, "clip_size");
   shader->effects.clip_position = glGetUniformLocation(prog, "clip_position");
+  shader->effects.clip_inside = glGetUniformLocation(prog, "clip_inside");
   shader->effects.clip_radius.top_left = glGetUniformLocation(prog, "clip_radius_top_left");
   shader->effects.clip_radius.top_right = glGetUniformLocation(prog, "clip_radius_top_right");
   shader->effects.clip_radius.bottom_left = glGetUniformLocation(prog, "clip_radius_bottom_left");
@@ -361,6 +364,7 @@ bool link_box_shadow_program(struct box_shadow_shader* shader) {
   shader->blur_sigma = glGetUniformLocation(prog, "blur_sigma");
   shader->corner_radius = glGetUniformLocation(prog, "corner_radius");
   shader->clip_position = glGetUniformLocation(prog, "clip_position");
+  shader->clip_inside = glGetUniformLocation(prog, "clip_inside");
   shader->clip_size = glGetUniformLocation(prog, "clip_size");
   shader->clip_radius.top_left = glGetUniformLocation(prog, "clip_radius_top_left");
   shader->clip_radius.top_right = glGetUniformLocation(prog, "clip_radius_top_right");
@@ -447,6 +451,7 @@ bool link_blur2_composite_program(struct blur2_composite_shader* shader, bool ef
 
   shader->corners.clip_size = glGetUniformLocation(prog, "clip_size");
   shader->corners.clip_position = glGetUniformLocation(prog, "clip_position");
+  shader->corners.clip_inside = glGetUniformLocation(prog, "clip_inside");
   shader->corners.clip_radius.top_left = glGetUniformLocation(prog, "clip_radius_top_left");
   shader->corners.clip_radius.top_right = glGetUniformLocation(prog, "clip_radius_top_right");
   shader->corners.clip_radius.bottom_left = glGetUniformLocation(prog, "clip_radius_bottom_left");

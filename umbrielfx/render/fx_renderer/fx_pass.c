@@ -1707,10 +1707,19 @@ static float* pass_gradient_colors(struct fx_gles_render_pass* pass, const struc
 }
 
 static bool apply_clip_region(
-    pixman_region32_t* clip_region, const struct wlr_box* clipped_region_box, const struct fx_corner_fradii* corners
+    pixman_region32_t* clip_region, const struct wlr_box* clipped_region_box, const struct fx_corner_fradii* corners,
+    bool inside
 ) {
   if (wlr_box_empty(clipped_region_box)) {
     return false;
+  }
+
+  if (inside) {
+    pixman_region32_intersect_rect(
+        clip_region, clip_region, clipped_region_box->x, clipped_region_box->y, clipped_region_box->width,
+        clipped_region_box->height
+    );
+    return true;
   }
 
   // The shader owns the rounded boundary. Remove only the central cross that
@@ -2063,7 +2072,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   }
   const struct wlr_box clipped_region_box = fx_options->clipped_region.area;
   struct fx_corner_fradii clipped_region_corners = fx_options->clipped_region.corners;
-  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners);
+  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners, fx_options->clipped_region.inside);
   render_pass_mark_updated(pass, &dst_box, &clip_region);
 
   glUseProgram(shader->program);
@@ -2142,6 +2151,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     uniform_corner_radii_set(&shader->effects.radius, &corners);
 
     glUniform2f(shader->effects.clip_size, clipped_region_box.width, clipped_region_box.height);
+
+    glUniform1i(shader->effects.clip_inside, fx_options->clipped_region.inside);
     glUniform2f(shader->effects.clip_position, clipped_region_box.x, clipped_region_box.y);
     uniform_corner_radii_set(&shader->effects.clip_radius, &clipped_region_corners);
   }
@@ -2258,7 +2269,7 @@ void fx_render_pass_add_rect(struct fx_gles_render_pass* pass, const struct fx_r
       pixman_region32_init_rect(&clip_region, box.x, box.y, box.width, box.height);
     }
 
-    apply_clip_region(&clip_region, clipped_region_box, clipped_region_corners);
+    apply_clip_region(&clip_region, clipped_region_box, clipped_region_corners, fx_options->clipped_region.inside);
     render_pass_mark_updated(pass, &box, &clip_region);
 
     setup_blending(blend_mode);
@@ -2268,6 +2279,7 @@ void fx_render_pass_add_rect(struct fx_gles_render_pass* pass, const struct fx_r
     glUniform4f(shader->color, color->r, color->g, color->b, color->a);
     if (should_clip) {
       glUniform2f(shader->effects.clip_size, clipped_region_box->width, clipped_region_box->height);
+      glUniform1i(shader->effects.clip_inside, fx_options->clipped_region.inside);
       glUniform2f(shader->effects.clip_position, clipped_region_box->x, clipped_region_box->y);
       uniform_corner_radii_set(&shader->effects.clip_radius, clipped_region_corners);
     }
@@ -2373,7 +2385,7 @@ void fx_render_pass_add_rounded_rect(
   }
   const struct wlr_box* clipped_region_box = &fx_options->clipped_region.area;
   const struct fx_corner_fradii* clipped_region_corners = &fx_options->clipped_region.corners;
-  apply_clip_region(&clip_region, clipped_region_box, clipped_region_corners);
+  apply_clip_region(&clip_region, clipped_region_box, clipped_region_corners, fx_options->clipped_region.inside);
   render_pass_mark_updated(pass, &box, &clip_region);
 
   TRACY_BOTH_ZONES_START(renderer);
@@ -2405,6 +2417,7 @@ void fx_render_pass_add_rounded_rect(
   glUniform2f(shader.size, box.width, box.height);
   glUniform2f(shader.position, box.x, box.y);
   glUniform2f(shader.clip_size, clipped_region_box->width, clipped_region_box->height);
+  glUniform1i(shader.clip_inside, fx_options->clipped_region.inside);
   glUniform2f(shader.clip_position, clipped_region_box->x, clipped_region_box->y);
   uniform_corner_radii_set(&shader.clip_radius, clipped_region_corners);
 
@@ -2430,7 +2443,7 @@ void fx_render_pass_add_border(struct fx_gles_render_pass* pass, const struct fx
   } else {
     pixman_region32_init_rect(&clip_region, options->box.x, options->box.y, options->box.width, options->box.height);
   }
-  apply_clip_region(&clip_region, &options->clipped_region.area, &options->clipped_region.corners);
+  apply_clip_region(&clip_region, &options->clipped_region.area, &options->clipped_region.corners, false);
   render_pass_mark_updated(pass, &options->box, &clip_region);
 
   TRACY_BOTH_ZONES_START(renderer);
@@ -2555,7 +2568,7 @@ void fx_render_pass_add_box_shadow(
   }
   const struct wlr_box clipped_region_box = options->clipped_region.area;
   struct fx_corner_fradii clipped_region_corners = options->clipped_region.corners;
-  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners);
+  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners, options->clipped_region.inside);
   render_pass_mark_updated(pass, &box, &clip_region);
 
   TRACY_BOTH_ZONES_START(renderer);
@@ -2595,6 +2608,7 @@ void fx_render_pass_add_box_shadow(
 
   glUniform2f(renderer->shaders.box_shadow.clip_position, clipped_region_box.x, clipped_region_box.y);
   glUniform2f(renderer->shaders.box_shadow.clip_size, clipped_region_box.width, clipped_region_box.height);
+  glUniform1i(renderer->shaders.box_shadow.clip_inside, options->clipped_region.inside);
 
   render(&box, &clip_region, renderer->shaders.box_shadow.pos_attrib);
   pixman_region32_fini(&clip_region);
@@ -2901,7 +2915,7 @@ static void render_blur_composite(
   }
   const struct wlr_box clipped_region_box = fx_options->clipped_region.area;
   struct fx_corner_fradii clipped_region_corners = fx_options->clipped_region.corners;
-  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners);
+  apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners, fx_options->clipped_region.inside);
   render_pass_mark_updated(pass, &dst_box, &clip_region);
 
   struct blur_shader* blur = &shader->blur.base;
@@ -2938,6 +2952,8 @@ static void render_blur_composite(
     uniform_corner_radii_set(&shader->corners.radius, &tex_options->corners);
 
     glUniform2f(shader->corners.clip_size, clipped_region_box.width, clipped_region_box.height);
+
+    glUniform1i(shader->corners.clip_inside, fx_options->clipped_region.inside);
     glUniform2f(shader->corners.clip_position, clipped_region_box.x, clipped_region_box.y);
     uniform_corner_radii_set(&shader->corners.clip_radius, &clipped_region_corners);
   }

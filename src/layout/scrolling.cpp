@@ -908,13 +908,18 @@ namespace umbriel {
     return {std::clamp(x, 0.0, max), std::clamp(x + width - viewport, 0.0, max)};
   }
 
-  void ScrollingLayout::clampScroll(int viewportPrimary) {
+  std::array<double, 2> ScrollingLayout::scrollBounds(int viewportPrimary) const {
     double low = 0.0;
     auto high = static_cast<double>(maxScroll(viewportPrimary));
     if (m_centeredRest && !m_columns.empty() && viewportPrimary > 0) {
       low = std::min(low, centeredScroll(0, viewportPrimary));
       high = std::max(high, centeredScroll(static_cast<int>(m_columns.size()) - 1, viewportPrimary));
     }
+    return {low, high};
+  }
+
+  void ScrollingLayout::clampScroll(int viewportPrimary) {
+    const auto [low, high] = scrollBounds(viewportPrimary);
     m_scroll = std::clamp(m_scroll, low, high);
   }
 
@@ -1263,10 +1268,16 @@ namespace umbriel {
       if (group == nullptr) {
         return false;
       }
-      // The tabs split the group's extent evenly, so the column keeps its other rows where they were.
+      // The tabs split the group's extent evenly, so the column keeps its other rows where they were. A group alone in
+      // its column has no other rows, so its tabs weigh 1 like a new row and the column's free space scales to match.
       const size_t first = group->first;
       const size_t count = group->count;
-      const double share = std::max(kMinHeightWeight, column.heightWeights[first]) / static_cast<double>(count);
+      double share = std::max(kMinHeightWeight, column.heightWeights[first]) / static_cast<double>(count);
+      if (column.tabs.unitCount(column.views.size()) == 1) {
+        column.topGapWeight /= share;
+        column.bottomGapWeight /= share;
+        share = 1.0;
+      }
       column.tabs.dissolve(row);
       for (size_t member = first; member < first + count; ++member) {
         column.heightWeights[member] = share;

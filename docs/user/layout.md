@@ -265,7 +265,7 @@ A `[[workspace]]` entry's `layout.tabs` table overrides these keys for that work
 
 ## Sizing behavior
 
-Primary and secondary extent actions use `layout.extent_presets`:
+Primary and secondary extent actions resize along these axes:
 
 - Scrolling: primary changes column extent; secondary changes a row.
 - Dwindle: primary adjusts horizontal splits; secondary adjusts vertical splits.

@@ -8,6 +8,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [[window_rule]]
 match.title = "^protected$"
 block_capture = false
+dim_behind = 0.5
 default_floating = true
 default_floating_size_px = { width = 1280, height = 720 }
 default_position = { x = 0, y = 0, anchor = "top_left" }

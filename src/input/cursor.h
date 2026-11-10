@@ -98,6 +98,8 @@ namespace umbriel {
       double startY = 0;
       uint32_t edges = 0;
       std::unique_ptr<ResizeGrab> session;
+      // Pointer motion that arrived while the workspace held a switch for its clients, applied once it lands.
+      bool deferred = false;
     };
     struct ScrollDragGrab {
       uint32_t button = 0;
@@ -184,6 +186,8 @@ namespace umbriel {
     // A tiled resize updates every view in its workspace without size
     // animations trailing the pointer.
     bool isResizingWorkspace(const Workspace* workspace) const;
+    // Applies pointer motion a tiled resize on this workspace deferred while its last step waited for clients.
+    void resumeTiledResize(const Workspace* workspace);
 
     void attachInputDevice(wlr_input_device* device);
     void applyConfig();

@@ -12,6 +12,9 @@ title_bar_wait_box "$title" 480x300+173+109
 title_bar_wait_box "$title" 520x300+133+109
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 130 83 press 272 move 110 63 release 272
 title_bar_wait_box "$title" 540x320+113+89
+# Mod+right on the title bar resizes from the top edge like it does on the content.
+"$UMBRIEL_POINTER_CLIENT" 1280 720 move 383 75 mod logo press 273 move 383 55 release 273 mod none
+title_bar_wait_box "$title" 540x340+113+69
 
 read_box() {
   read -r x y w h < <(title_bar_window "$title" | jq -r '[.x, .y, .w, .h] | @tsv')

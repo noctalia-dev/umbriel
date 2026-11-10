@@ -229,6 +229,7 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
+    m_openingFloatingSize.reset();
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -303,6 +304,9 @@ namespace umbriel {
         setWorkspace(nullptr, false);
       }
       if (m_workspace != nullptr) {
+        if (!rule.defaultScratchpad) {
+          registerOpeningAloneColumn();
+        }
         m_workspace->layoutAttach(
             this, rule.defaultScrollingExtent, rule.defaultScrollingExtentPx, LayoutAttachOrigin::OpeningView
         );
@@ -438,6 +442,9 @@ namespace umbriel {
         activateOnMap || (!deferredActivation.value_or(false) && rule.defaultFocused.value_or(!protectsFullscreen));
     const bool hiddenScratchpad = assignedScratchpad && !m_onActiveWorkspace;
     if (!m_server->sessionLocked() && focusOnMap && !hiddenScratchpad && !launchPlacementSilent) {
+      if (m_tiled && m_workspace != nullptr) {
+        m_workspace->deferFocusChrome();
+      }
       m_server->focusView(this, activateOnMap ? FocusReason::XdgActivation : FocusReason::Startup);
     } else if (deferredActivation.has_value()) {
       setUrgent(true);
@@ -499,6 +506,9 @@ namespace umbriel {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
+        if (!m_tiled && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
+          m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
+        }
         setFadeAlpha(0.0F);
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
@@ -667,6 +677,9 @@ namespace umbriel {
       if (replacement != nullptr) {
         // The layout judges the pair once this column is gone, so the reveal this unblocks may only fit the survivor.
         m_workspace->noteRemovalOfFocusedColumn(m_workspace->layout().columnOf(this));
+        if (m_tiled) {
+          m_workspace->deferFocusChrome();
+        }
         if (m_workspace->active() && !m_server->sessionLocked()) {
           m_server->focusView(replacement, FocusReason::Directional);
         } else {
@@ -738,6 +751,9 @@ namespace umbriel {
     m_positioned = false;
     m_presentedTiledBox = {};
     if (m_workspace != nullptr) {
+      if (m_tiled) {
+        m_workspace->holdCloseSnapshot(snapshot);
+      }
       m_workspace->layoutDetach(this, m_tiled);
       if (focusRevealedTile) {
         // The scene may still be animating from its old geometry. Arrange now, then read the authoritative layout
@@ -777,14 +793,14 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
-    // An unmapped window keeps no layout state, so the alone effect it owned is gone with it.
+    // An unmapped window keeps no layout state. The detach released its alone effect when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
     m_lastAloneDelta = {};
     m_aloneSavedWidthFrac.reset();
     m_aloneOpeningSeed = AloneSeed::None;
     m_hasMaximizeRestoreBox = false;
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     m_pendingFloatingWidthPx.reset();
     m_pendingFloatingHeightPx.reset();
     m_pendingFloatingWidth.reset();
@@ -915,30 +931,46 @@ namespace umbriel {
           (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Stacking;
       wantTiled = wantTiled && !layoutFloats;
 
-      // A window that opens as the only tiled one on its workspace is configured in its `match.is_alone` state right
-      // away, instead of showing one frame at the size its not-alone rules give it. Alone-ness depends on the
-      // workspace those rules select, so this is a second pass, and it overrides only the four settings the alone
-      // effect owns. A state that neither the client nor the not-alone rules asked for is recorded as the alone
-      // rules' own, for map to hand to that effect.
-      if (wantTiled && (target == nullptr || target->isOnlyTiledView(this))) {
-        const ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      // A window that opens in the only tiled column is configured in its `match.is_alone` state right away, instead
+      // of showing one frame at the size its not-alone rules give it. Alone-ness depends on the workspace those rules
+      // select, so this is a second pass, and it overrides only the settings the alone effect owns. Fullscreen and
+      // maximize-to-edges still need this window to be the only tile in that column. A state that neither the client
+      // nor the not-alone rules asked for is recorded as the alone rules' own, for map to hand to that effect.
+      const bool openingSoleTiled = target == nullptr || target->isOnlyTiledView(this);
+      ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      const bool openingAlone = wantTiled
+          && (target == nullptr
+              || target->wouldBeAloneInLayout(
+                  this, alone.defaultScrollingColumn.value_or(""), alone.defaultScrollingColumnOrder
+              ));
+      if (openingAlone) {
+        if (!openingSoleTiled) {
+          alone.defaultFullscreen.reset();
+          alone.defaultMaximizeToEdges.reset();
+        }
         const bool seedFullscreen = alone.defaultFullscreen.value_or(false) && !rule.defaultFullscreen.value_or(false);
+        const bool seedMaximizeToEdges =
+            alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false);
         const bool seedMaximized =
             (alone.defaultMaximize.value_or(false) && !openingParented() && !rule.defaultMaximize.value_or(false))
-            || (alone.defaultMaximizeToEdges.value_or(false) && !rule.defaultMaximizeToEdges.value_or(false));
+            || seedMaximizeToEdges;
         // A client's restored maximize flag only blocks alone ownership when we honor it. Otherwise alone seeds as
         // usual and the restore is ignored (and consumed after map if the client re-asserts it).
         const bool clientOwnsRestoredMaximize = config().general.honorRestoredMaximize && requestedMaximized();
         if (seedFullscreen && !requestedFullscreen()) {
           m_aloneOpeningSeed = AloneSeed::Fullscreen;
         } else if (seedMaximized && !requestedFullscreen() && !clientOwnsRestoredMaximize) {
-          m_aloneOpeningSeed = AloneSeed::Maximize;
+          m_aloneOpeningSeed = seedMaximizeToEdges ? AloneSeed::MaximizeToEdges : AloneSeed::Maximize;
         }
-        rule.defaultFullscreen = alone.defaultFullscreen;
-        rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
+        if (openingSoleTiled) {
+          rule.defaultFullscreen = alone.defaultFullscreen;
+          rule.defaultMaximizeToEdges = alone.defaultMaximizeToEdges;
+        }
         rule.defaultMaximize = alone.defaultMaximize;
         rule.defaultScrollingExtentPx = alone.defaultScrollingExtentPx;
         rule.defaultScrollingExtent = alone.defaultScrollingExtent;
+        rule.defaultScrollingColumn = alone.defaultScrollingColumn;
+        rule.defaultScrollingColumnOrder = alone.defaultScrollingColumnOrder;
       }
 
       const bool wantFullscreen =
@@ -1054,38 +1086,11 @@ namespace umbriel {
         m_savedScrollingExtent = rule.defaultScrollingExtent;
       }
     }
+    commitFloatingSize();
     (void)settleTiledSizeRequest();
-    if (!sizeAnimating()) {
-      const wlr_box& geometry = geometryBox();
-      if (m_decoration.borderGeometryStale(geometry.width, geometry.height, titleBarHeight())) {
-        updateBorderGeometry();
-      }
-    }
     applyCornerRadius();
-    // Layout-assigned size changes start their presentation animation in Workspace::arrange. Client commits are not
-    // resize requests: Chromium can change its geometry while keeping the same configure, and retargeting to that
-    // geometry lets a tiled surface escape its assigned box.
-    if (m_mapped
-        && m_tiled
-        && m_onActiveWorkspace
-        && m_workspace != nullptr
-        && !scheduledFullscreen()
-        && !currentFullscreen()
-        && sizeGrabTracksPointer()) {
-      // During interactive resize, track geometry so no spurious animation
-      // replays the drag when the grab ends and mode returns to Passthrough. A
-      // move grab is not that: it retargets the size once and animates there,
-      // and the client's ack must not cut that animation short.
-      const wlr_box& geometry = geometryBox();
-      if (geometry.width > 0 && geometry.height > 0) {
-        if (sizeAnimating()) {
-          cancelSizeAnimation();
-        }
-        m_presentation.setSize(geometry.width, geometry.height);
-      }
-    }
-    // Re-apply output clip after configure ack so Super+F / resize sizes show
-    // without needing a workspace switch (clip boxes are copied, not live).
+    // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
+    // can change its geometry without changing configure, but the layout still owns its box.
     if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
       m_workspace->syncViewPresentation(this);
     } else if (m_mapped && !m_tiled) {
@@ -1096,9 +1101,6 @@ namespace umbriel {
       } else {
         syncFloatingResizePosition();
         adoptFloatingClientSize();
-        if (!sizeAnimating()) {
-          syncFloatingSurfaceClip();
-        }
         // Enable + clip through the current presentation owner.
         syncOwnedPresentation();
       }
