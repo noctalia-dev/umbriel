@@ -2,8 +2,9 @@
 // harness can then request redundant focus for the toplevel and observe whether
 // the compositor incorrectly dismisses the popup. With --popup-on-stdin it
 // instead creates an ungrabbed popup when a line arrives on stdin, so a check
-// can open one while the toplevel is not shown. With --unmap-on-close it unmaps the toplevel on a close request and
-// keeps its popup, so a check can unmap a window while its popup holds keyboard focus.
+// can open one while the toplevel is not shown. With --unmap-on-close it unmaps
+// the toplevel on a close request and keeps its popup, so a check can unmap a
+// window while its popup holds the keyboard grab.
 
 #include "xdg-shell-client-protocol.h"
 
