@@ -319,7 +319,8 @@ namespace umbriel {
 
     void warpTo(double lx, double ly, bool allowFocusChange);
     void processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange = true);
-    void processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
+    void processButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
+    void dispatchButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
     void updatePointerOutput(bool allowFocusChange = true);
     View* hoverFocus(
         View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY

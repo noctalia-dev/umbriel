@@ -890,6 +890,124 @@ UMBRIEL_TEST(modKeyIsUserConfigurable) {
   CHECK(!store.config().general.modKey.has_value());
 }
 
+UMBRIEL_TEST(pressAndReleaseBindsCoexistAndReleaseNeverRepeats) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\", repeat = true }\n"
+      "\"Mod+MouseBack\" = { action = \"spawn unmute\", release = \"spawn mute\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{4});
+  CHECK_EQ(std::ranges::count_if(store.config().keybinds, [](const auto& bind) { return bind.onRelease; }), 2);
+  for (const auto& bind : store.config().keybinds) {
+    CHECK_EQ(bind.repeat, !bind.onRelease);
+  }
+  CHECK(!containsDiagnostic(store, "duplicate keybind"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  for (const auto& bind : store.config().keybinds) {
+    if (bind.mouseButton == BTN_SIDE) {
+      CHECK_EQ(std::get<umbriel::SpawnArg>(bind.payload).command, bind.onRelease ? "mute" : "unmute");
+    } else {
+      CHECK(
+          bind.action == (bind.onRelease ? umbriel::KeybindAction::OverviewClose : umbriel::KeybindAction::OverviewOpen)
+      );
+    }
+  }
+}
+
+UMBRIEL_TEST(releaseOnlyTablesLoadForKeysMouseButtonsAndSubmaps) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"XF86AudioMute\" = { release = \"spawn mute\", repeat = true }\n"
+      "\"Mod+MouseBack\" = { release = \"spawn mute\" }\n"
+      "\"submap[resize],Mod+H\" = { release = \"submap reset\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{3});
+  for (const auto& bind : store.config().keybinds) {
+    CHECK(bind.onRelease);
+    CHECK(!bind.repeat);
+    if (bind.action == umbriel::KeybindAction::Submap) {
+      CHECK_EQ(bind.submap, std::string{"resize"});
+    }
+  }
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(pressAndReleasePhasesShareTableOptions) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\", "
+      "repeat = true, allow_when_locked = true, allow_when_inhibited = true, cooldown_ms = 150, submap = \"resize\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{2});
+  for (const auto& bind : store.config().keybinds) {
+    CHECK(bind.allowWhenLocked);
+    CHECK(bind.allowWhenInhibited);
+    CHECK_EQ(bind.cooldownMs, 150);
+    CHECK(bind.submapAfter.has_value());
+    CHECK_EQ(bind.submapAfter->name, std::string{"resize"});
+    CHECK(!bind.repeat);
+  }
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(invalidReleaseTablesDoNotInstallEitherPhase) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  for (const std::string_view entry : {
+           R"("Mod+Space" = {})",
+           R"("Mod+Space" = { action = 42, release = "overview-close" })",
+           R"("Mod+Space" = { action = "overview-open", release = true })",
+           R"("Mod+Space" = { action = "overview-open", release = "not-an-action" })",
+           R"("Mod+Space" = { action = "not-an-action", release = "overview-close" })",
+           R"("Mod+Space" = { release = "" })",
+           R"("Mod+WheelUp" = { action = "workspace-next", release = "workspace-prev" })",
+           R"("Mod" = { release = "spawn launcher" })",
+           R"("Mod" = { action = "spawn launcher", release = "spawn launcher" })",
+           R"("Mod+MouseMiddle" = { action = "layout-scroll-drag", release = "layout-scroll-drag" })",
+       }) {
+    file.write("[keybinds]\n" + std::string(entry) + "\n");
+    CHECK(store.reload().success);
+    CHECK(store.config().keybinds.empty());
+    CHECK(containsDiagnostic(store, "ignoring keybind"));
+  }
+}
+
+UMBRIEL_TEST(replacingAChordReplacesBothTriggerPhases) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  for (const std::string_view replacement : {
+           "{ release = \"overview-close\" }",
+           "{ action = \"overview-open\" }",
+           "\"overview-open\"",
+       }) {
+    file.write(
+        "[keybinds]\n"
+        "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\" }\n"
+        "\"Mod+space\" = "
+        + std::string(replacement)
+        + "\n"
+    );
+    CHECK(store.reload().success);
+    CHECK_EQ(store.config().keybinds.size(), size_t{1});
+    CHECK_EQ(store.config().keybinds[0].onRelease, replacement.contains("release"));
+    CHECK(containsDiagnostic(store, "duplicate keybind"));
+  }
+}
+
 UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
