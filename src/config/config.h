@@ -641,6 +641,9 @@ namespace umbriel {
     std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
+    // Render at the output's render_scale (true) or at its scale (false).
+    // Omitted supersamples every layer surface.
+    std::optional<bool> supersample;
 
     // See WindowRule: the regexes are derived from the patterns.
     bool operator==(const LayerRule& other) const {
@@ -651,7 +654,8 @@ namespace umbriel {
           && blurPopups == other.blurPopups
           && dimBehind == other.dimBehind
           && ignoreAlpha == other.ignoreAlpha
-          && optimized == other.optimized;
+          && optimized == other.optimized
+          && supersample == other.supersample;
     }
   };
 
@@ -661,6 +665,7 @@ namespace umbriel {
     std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
+    std::optional<bool> supersample;
     bool operator==(const ResolvedLayerRule&) const = default;
   };
 

@@ -458,6 +458,9 @@ namespace umbriel {
       if (rule.optimized) {
         resolved.optimized = rule.optimized;
       }
+      if (rule.supersample) {
+        resolved.supersample = rule.supersample;
+      }
     }
     return resolved;
   }

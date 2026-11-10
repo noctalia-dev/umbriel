@@ -411,19 +411,25 @@ namespace umbriel {
   }
 
   void LayerSurface::applyConfig() {
-    m_rule = resolveLayerRules(
-        config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
-    );
+    resolveRules();
     updateDimBehind();
     updateBlur();
   }
 
   void LayerSurface::refreshStartupRuleEffects() {
+    resolveRules();
+    if (m_mapped) {
+      updateBlur();
+    }
+  }
+
+  void LayerSurface::resolveRules() {
+    const bool wasSupersampled = supersampled();
     m_rule = resolveLayerRules(
         config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
     );
-    if (m_mapped) {
-      updateBlur();
+    if (supersampled() != wasSupersampled) {
+      notifyOutputScale();
     }
   }
 
@@ -541,9 +547,7 @@ namespace umbriel {
     }
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
-      m_rule = resolveLayerRules(
-          config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
-      );
+      resolveRules();
       updateBlur();
       reparentToLayer(m_layerSurface->current.layer);
       notifyDesktopStack();

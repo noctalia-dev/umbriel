@@ -477,10 +477,13 @@ namespace umbriel {
     // Subsurfaces and popups answer for their window, so a game or video
     // drawing into a subsurface stays with the rest of its window.
     View* view = surface != nullptr ? View::fromSurface(wlr_surface_get_root_surface(surface)) : nullptr;
+    // Layer surfaces and their popups answer for their layer surface, which a
+    // `supersample` layer rule can keep at the logical scale.
+    const LayerSurface* layer = view == nullptr && surface != nullptr ? LayerSurface::fromSurface(surface) : nullptr;
+    const bool exempt = (view != nullptr && !view->supersampled()) || (layer != nullptr && !layer->supersampled());
     const OutputRule* rule = findOutputRule(config(), identity());
     const bool configured = rule != nullptr && rule->renderScale.has_value();
-    const double scale =
-        view != nullptr && !view->supersampled() ? static_cast<double>(m_output->scale) : clientRenderScale();
+    const double scale = exempt ? static_cast<double>(m_output->scale) : clientRenderScale();
     // An unset render_scale never shrinks client buffers below the neutral
     // scale, so a legal sub-1 logical scale still asks for logical-size
     // buffers. An explicit render_scale, a sub-1 one included, is honoured.

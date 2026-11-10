@@ -47,6 +47,8 @@ namespace umbriel {
     // Push the owning output's scale to every surface of this layer surface
     // (fractional-scale + preferred buffer scale, popups included).
     void notifyOutputScale();
+    // Whether this layer surface renders at its output's render_scale. Only a `supersample` layer rule opts out.
+    bool supersampled() const { return m_rule.supersample.value_or(true); }
     void updateDimBehind();
     Output* output() const;
 
@@ -76,6 +78,8 @@ namespace umbriel {
     // Tell an open overview to re-resolve this output's mirrored background stack.
     void notifyDesktopStack();
     void updateBlur();
+    // Re-resolve the layer rules and re-send the scale hints when `supersample` flips.
+    void resolveRules();
     void applyConfig();
     void refreshStartupRuleEffects();
     void applyFadeAlpha();

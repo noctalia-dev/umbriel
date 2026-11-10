@@ -132,8 +132,9 @@ namespace umbriel {
     double clientRenderScale() const;
     // The scale hint for `surface`: the configured render scale, or the logical
     // scale for windows that skip the supersample (see View::supersampled),
-    // with the neutral 1.0 floor applied while render_scale is unset. Surfaces
-    // outside a window always follow the output.
+    // with the neutral 1.0 floor applied while render_scale is unset. Layer
+    // surfaces follow the output unless a `supersample` layer rule opts them
+    // out; other surfaces outside a window always follow it.
     double surfaceRenderScale(wlr_surface* surface) const;
     bool configuredTearingAllowed() const;
     // Whether a workspace step wraps around the ends of this output's inventory.
