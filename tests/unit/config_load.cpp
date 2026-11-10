@@ -4956,6 +4956,7 @@ UMBRIEL_TEST(titleBarConfigurationUsesTheDocumentedKeys) {
 mode = "forced"
 height = 42
 font = "sans 12"
+title_align = "center"
 button_position = "left"
 button_corner_radius = 4
 button_glyph = "never"
@@ -4982,6 +4983,7 @@ minimize_glyph_hover = "#00FFFFFF"
   CHECK_EQ(bar.mode, umbriel::TitleBarMode::Forced);
   CHECK_EQ(bar.height, 42);
   CHECK_EQ(bar.font, std::string("sans 12"));
+  CHECK_EQ(bar.titleAlign, umbriel::TitleAlign::Center);
   CHECK_EQ(bar.buttonPosition, umbriel::TitleBarButtonSide::Left);
   CHECK_EQ(bar.buttonCornerRadius, 4);
   CHECK_EQ(bar.buttonGlyph, umbriel::TitleBarButtonGlyph::Never);
@@ -5009,6 +5011,7 @@ UMBRIEL_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {
 mode = "always"
 height = 500
 font = 123
+title_align = "middle"
 button_position = "middle"
 button_corner_radius = 500
 button_glyph = "sometimes"
@@ -5026,11 +5029,13 @@ minimize_glyph_hover = {}
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);
   CHECK_EQ(store.config().appearance.titleBar.height, 128);
+  CHECK_EQ(store.config().appearance.titleBar.titleAlign, umbriel::TitleAlign::Left);
   CHECK_EQ(store.config().appearance.titleBar.buttonPosition, umbriel::TitleBarButtonSide::Right);
   CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, 100);
   CHECK_EQ(store.config().appearance.titleBar.buttonGlyph, umbriel::TitleBarButtonGlyph::Hover);
   CHECK_EQ(store.config().appearance.titleBar.buttonBackground, true);
   CHECK(containsDiagnostic(store, "appearance.title_bar.height = 500 out of range, clamped to 128"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.title_align"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_position"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph"));

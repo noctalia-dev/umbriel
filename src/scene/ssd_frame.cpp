@@ -387,7 +387,8 @@ namespace umbriel {
         wlr_scene_buffer_set_buffer(m_label, label->buffer);
       }
       wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(label->width)), std::max(1, zoomed(label->height)));
-      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - label->height) / 2));
+      const int x = titleBarLabelX(parts, g.contentWidth, label->width, style.titleAlign);
+      wlr_scene_node_set_position(&m_label->node, zoomed(x), zoomed(-h + (h - label->height) / 2));
       clipBuffer(m_label);
     }
     updateColors();

@@ -80,6 +80,20 @@ namespace umbriel {
     return result;
   }
 
+  int titleBarLabelX(const TitleBarLayout& layout, int width, int labelWidth, TitleAlign align) {
+    const wlr_box& title = layout.title;
+    const int last = title.x + std::max(0, title.width - labelWidth);
+    switch (align) {
+    case TitleAlign::Left:
+      return title.x;
+    case TitleAlign::Center:
+      return std::clamp((width - labelWidth) / 2, title.x, last);
+    case TitleAlign::Right:
+      return last;
+    }
+    return title.x;
+  }
+
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       const TitleBarButtonGeometry& geometry, double x, double y, int radius

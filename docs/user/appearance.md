@@ -124,6 +124,7 @@ Enable a simple server-side title bar on decorated windows in every layout:
 mode = "off"
 height = 28
 font = "sans 10"
+title_align = "left"
 button_position = "right"
 buttons = ["minimize", "maximize", "close"]
 button_size = -1
@@ -160,7 +161,7 @@ Choose a title bar mode:
 | `"on"`         | Follow client decoration preferences; show when no preference is known.                    |
 | `"forced"`     | Show regardless of client preference.                                                      |
 
-`height` is 16 to 128 logical pixels, and `font` is a Pango font description. `button_position` accepts `"left"` or `"right"`. `buttons` lists the buttons to show, from the title outward: the last one sits at the bar's edge, so the default puts close outermost on either side. Leave a name out to hide that button, or use `[]` for a bar without buttons; each of `"minimize"`, `"maximize"`, and `"close"` may appear once.
+`height` is 16 to 128 logical pixels, and `font` is a Pango font description. `title_align` places the title: `"left"` (the default) and `"right"` align it within the space beside the buttons, and `"center"` centers it on the whole bar, moving it aside only as far as needed to keep it clear of the buttons. `button_position` accepts `"left"` or `"right"`. `buttons` lists the buttons to show, from the title outward: the last one sits at the bar's edge, so the default puts close outermost on either side. Leave a name out to hide that button, or use `[]` for a bar without buttons; each of `"minimize"`, `"maximize"`, and `"close"` may appear once.
 
 Button geometry is independent of `height`. `button_size` is the button diameter or side in logical pixels, from `1` up to `height`; its default, `-1`, derives the size from `height`. An explicit size is drawn exactly; when it and `height` differ in parity, the button sits one pixel closer to the top than to the bottom. `button_gap` is the space between neighbouring buttons, from `0` to `100`. `button_padding` is the space between the button row and the bar's left or right edge, from `0` to `100`; its default, `-1`, matches the space above the buttons. On narrow windows the padding and then the gap shrink to fit; buttons keep their size, and the innermost buttons that still do not fit are left out, so their place drags the window like the rest of the bar. The frame's rounded corners impose a minimum inset so the title text and complete buttons stay visible; larger configured `button_padding` still applies. These settings follow `button_position`, scale with the output and overview zoom, and update on reload.
 
