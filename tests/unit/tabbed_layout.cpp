@@ -463,7 +463,7 @@ UMBRIEL_TEST(untabbingKeepsTheColumnsProportions) {
   alone.layout.setTabbed(stub(0), false);
   CHECK_NEAR(alone.layout.heightFraction(stub(0)), 0.25, 1e-9);
   CHECK_NEAR(alone.layout.heightFraction(stub(1)), 0.25, 1e-9);
-  // Beside another row, the group's tabs split its extent and that row keeps its own.
+  // Beside another row, a lone tab keeps the group's extent and that row keeps its own.
   ScrollingFixture beside;
   beside.stack(3);
   beside.layout.setTabbed(stub(0), true);
@@ -480,6 +480,19 @@ UMBRIEL_TEST(tabbingKeepsTheColumnsFreeSpace) {
   CHECK(fixture.layout.setBottomGapWeight(0, 1.0));
   CHECK(fixture.layout.setTabbed(stub(0), true));
   CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 2.0 / 3.0, 1e-9);
+}
+
+UMBRIEL_TEST(aTabGroupTakesOneRowsShareOfItsColumn) {
+  // A window stacked under a group gets as much of the column as the row beside it.
+  ScrollingFixture fixture;
+  fixture.stack(4);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.moveViewVertical(stub(3), 1));
+  fixture.layout.insertView(stub(4), 1);
+  CHECK(fixture.layout.consume(stub(4), -1));
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0 / 3.0, 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(3)), 1.0 / 3.0, 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(4)), 1.0 / 3.0, 1e-9);
 }
 
 UMBRIEL_TEST(aVerticalStripTabsALaneAcrossItsTop) {
