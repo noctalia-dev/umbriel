@@ -1,9 +1,9 @@
 // The downsample source-box predicate: a scene surface always carries a source
 // box (the full buffer when the client set no viewport), so "cropped" must be
 // judged by the extents. Only a cropped minified source takes the sampling
-// clamp variant; a whole-buffer source must not, because always clamping is the
-// configuration that flickered and tore on NVIDIA. No renderer or running
-// desktop is required.
+// clamp variant; a whole-buffer source keeps the taps that leave it inside the
+// texture's own edge, which GL_CLAMP_TO_EDGE already duplicates. No renderer or
+// running desktop is required.
 #undef NDEBUG
 #include "umbrielfx/types/wlr_scene.h"
 

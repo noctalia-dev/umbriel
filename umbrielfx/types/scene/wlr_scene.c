@@ -3784,8 +3784,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       // single-tap footprint, so a cropped minified source needs the clamp
       // for its whole footprint too. A whole-buffer source does not: taps that
       // leave it land in the texture's own edge, which GL_CLAMP_TO_EDGE
-      // already duplicates, and the clamp variant on every minified draw is
-      // the configuration that flickered on NVIDIA.
+      // already duplicates, so it keeps the fetch byte-identical to the
+      // unclamped shader.
       crosses_crop_edge =
           downsample_box && wlr_scene_source_box_is_cropped(&scene_buffer->src_box, texture->width, texture->height);
     }
