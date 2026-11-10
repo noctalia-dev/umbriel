@@ -123,7 +123,6 @@ settle_drag_corner() { # $1 title, $2 span "WxH", $3 hold|release
   settle_press "$2" $((x + w / 4)) $((y + h * 3 / 4)) "$3"
 }
 
-settle_drag_hold() { settle_drag "$1" "$2" hold; }
 settle_drag_queue() { settle_drag "$1" "$2" release; }
 
 settle_shot() { grim -o "${1:-HEADLESS-1}" "$SETTLE_IMAGE"; }
