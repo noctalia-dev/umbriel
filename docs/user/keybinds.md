@@ -84,6 +84,8 @@ Keyboard and mouse-button chords normally fire on press. Use the table's `releas
 "Mod+MouseBack" = { action = "spawn wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0", release = "spawn wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1", repeat = false }
 ```
 
+A pressed release binding stays armed until its key or button is released, even if a submap changes, the configuration reloads without changing that binding, or the session locks. On release it runs only if it is still allowed, so a locked session skips it unless it sets `allow_when_locked`. A release action never confirms a visible confirmation dialog; only a press does.
+
 ## Repeat
 
 Keyboard press bindings repeat using the configured keyboard rate and delay, including `spawn` binds, so held volume and brightness keys keep stepping. Disable repeat for one bind, such as a launcher, with the table form:

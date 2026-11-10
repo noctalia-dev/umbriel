@@ -1656,7 +1656,7 @@ namespace umbriel {
     }
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
       cancelHotCorner();
-      m_server->cancelReleaseBindsForInput();
+      m_server->cancelModifierTap();
       // Any pointer press cancels the confirmation without being consumed; the
       // click still reaches whatever it hit.
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
@@ -2063,7 +2063,7 @@ namespace umbriel {
     } else {
       m_server->notifyInputActivity();
     }
-    m_server->cancelReleaseBindsForInput();
+    m_server->cancelModifierTap();
     cancelHotCorner();
 
     const uint32_t modifiers = m_server->keyboardModifiers();
@@ -2249,7 +2249,7 @@ namespace umbriel {
     }
     auto* event = static_cast<wlr_touch_down_event*>(data);
     m_server->notifyInputActivity();
-    m_server->cancelReleaseBindsForInput();
+    m_server->cancelModifierTap();
     m_server->remapTouches();
 
     double lx = 0;
@@ -2861,7 +2861,7 @@ namespace umbriel {
       m_server->notifyIdleActivity();
     }
     if (event->state == WLR_TABLET_TOOL_TIP_DOWN) {
-      m_server->cancelReleaseBindsForInput();
+      m_server->cancelModifierTap();
     }
     TabletToolState* state = toolState(event->tool);
     const bool down = event->state == WLR_TABLET_TOOL_TIP_DOWN;

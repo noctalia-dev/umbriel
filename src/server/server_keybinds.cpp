@@ -214,10 +214,24 @@ namespace umbriel {
     if (!pending || !releaseBindAllowed(*pending)) {
       return;
     }
-    const QuitConfirm* confirm = quitConfirm();
-    if (pending->modifierOnly || confirm == nullptr || !confirm->visible()) {
+    if (!confirmsVisibleDialog(pending->action)) {
       executeAction(*pending);
     }
+  }
+
+  bool Server::confirmsVisibleDialog(KeybindAction action) const {
+    const QuitConfirm* confirm = quitConfirm();
+    if (confirm == nullptr || !confirm->visible()) {
+      return false;
+    }
+    if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+      return action == KeybindAction::SessionQuit;
+    }
+    return confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic
+        && (action == KeybindAction::ScreenCastSetOutput
+            || action == KeybindAction::ScreenCastSetWindow
+            || action == KeybindAction::ScreenCastFollowWindow
+            || action == KeybindAction::ScreenCastFollowOutput);
   }
 
   bool Server::keyboardShortcutsInhibited() const {
@@ -423,13 +437,11 @@ namespace umbriel {
   }
 
   void Server::pushSubmap(const std::string& name) {
-    cancelModifierTap();
     m_activeSubmaps.push_back(name);
     notifySubmapChanged();
   }
 
   void Server::popSubmap() {
-    cancelModifierTap();
     if (!m_activeSubmaps.empty()) {
       m_activeSubmaps.pop_back();
       notifySubmapChanged();

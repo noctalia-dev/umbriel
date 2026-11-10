@@ -425,8 +425,11 @@ namespace umbriel {
     const Keybind* matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease = false) const;
     bool releaseBindAllowed(const Keybind& bind) const;
     ButtonState& buttonState() { return m_buttonState; }
-    // Dispatch only after the release has been delivered/consumed and its interactive grab has ended.
+    // Dispatch only after the release has been delivered/consumed and its interactive grab has ended. An action that
+    // would confirm the visible dialog is skipped: only presses confirm.
     void executeReleaseBind(const void* source, uint32_t code);
+    // Whether `action` confirms the visible confirmation dialog.
+    bool confirmsVisibleDialog(KeybindAction action) const;
     // Combined state across independent keyboard devices. Media and brightness
     // keys commonly come from a device separate from held modifiers. An input
     // method's mirrored keyboard is not independent and is excluded.
@@ -441,9 +444,8 @@ namespace umbriel {
     std::optional<Keybind> handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted = nullptr);
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
-    // Preserve modifier taps' cancellation policy without cancelling explicit release bindings.
+    // Other input cancels modifier-only binds; explicit release bindings stay armed.
     void cancelModifierTap() { m_buttonState.cancelForInput(); }
-    void cancelReleaseBindsForInput() { cancelModifierTap(); }
     void arrangeLayers(wlr_output* output);
     // Re-send every surface's output scale (views, layer surfaces, popups). Run after anything that changes an output's
     // scale or moves surfaces between outputs outside setWorkspace; the notifies dedup, so extra calls are cheap.

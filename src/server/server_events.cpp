@@ -997,7 +997,6 @@ namespace umbriel {
   }
 
   void Server::handleConfigReload(const ConfigReloadResult& result) {
-    cancelModifierTap();
     if (result.success) {
       const bool systemKeymapChanged = refreshSystemKeymap();
       if (result.change.drm) {
@@ -2074,7 +2073,6 @@ namespace umbriel {
       m_sessionLocked = true;
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
-      cancelModifierTap();
       m_overview->forceClose();
       if (m_cheatsheet != nullptr) {
         m_cheatsheet->hide();
@@ -4168,7 +4166,6 @@ namespace umbriel {
         entry.output->adoptOutputManagerEnabled(entry.head->state.enabled);
       }
 
-      cancelModifierTap();
       m_cursor->cancelLayoutInteraction();
       m_gestures->cancelForLayoutChange();
       m_overview->forceClose();

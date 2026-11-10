@@ -24,17 +24,6 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("keyboard");
 
-    bool confirmsDialog(KeybindAction action, QuitConfirm::Kind kind) {
-      if (kind == QuitConfirm::Kind::SessionQuit) {
-        return action == KeybindAction::SessionQuit;
-      }
-      return kind == QuitConfirm::Kind::ScreenCastDynamic
-          && (action == KeybindAction::ScreenCastSetOutput
-              || action == KeybindAction::ScreenCastSetWindow
-              || action == KeybindAction::ScreenCastFollowWindow
-              || action == KeybindAction::ScreenCastFollowOutput);
-    }
-
     void confirmDialog(Server& server, QuitConfirm::Kind kind, bool rememberCapture = false) {
       switch (kind) {
       case QuitConfirm::Kind::SessionQuit:
@@ -342,7 +331,7 @@ namespace umbriel {
     // Match without dispatching, preserving the screencast command whose warning is visible.
     for (const uint32_t keysym : keysyms) {
       const Keybind* matched = m_server->matchKeybind(keysym, rawKeysym, modifiers);
-      if (matched != nullptr && confirmsDialog(matched->action, confirm->kind())) {
+      if (matched != nullptr && m_server->confirmsVisibleDialog(matched->action)) {
         confirmDialog(*m_server, confirm->kind());
         return true;
       }
@@ -557,7 +546,6 @@ namespace umbriel {
     m_modifiers.link.next = nullptr;
     m_key.link.next = nullptr;
     m_destroy.link.next = nullptr;
-    m_server->cancelModifierTap();
     m_server->buttonState().forgetSource(this);
     m_server->removeKeyboard(this);
   }
