@@ -1477,10 +1477,8 @@ namespace umbriel {
     if (!m_active || m_closing) {
       return;
     }
-    // A card of a mirror row focuses its window through that mirror's output, whichever output holds the pointer.
-    m_closeOutput = workspace != nullptr && workspace->mirror() && workspace->group() != nullptr
-        ? workspace->group()->output()
-        : nullptr;
+    // A card focuses its window on the output of its row, whichever output holds the pointer.
+    m_closeOutput = workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : nullptr;
     if (workspace != nullptr && workspace->group() != nullptr && workspace->group()->active() != workspace) {
       // No slide: the real trees are hidden, the filmstrip is the transition.
       workspace->group()->activate(workspace, false);

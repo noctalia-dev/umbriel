@@ -49,8 +49,9 @@ namespace umbriel {
     explicit FocusManager(Server& server) : m_server(server) {}
 
     void focusView(View* view, FocusReason reason = FocusReason::Startup);
-    // focusView with the output the user is acting on: a window shown there by a mirror is focused without switching
-    // its own output. A null `actingOutput` is the output under the pointer.
+    // focusView on behalf of the output the user acts on, the one under the pointer when `actingOutput` is null. A
+    // window whose workspace has a mirror there is focused through that mirror, and explicit requests also show that
+    // mirror there; its own output keeps its workspace.
     void focusViewOn(View* view, FocusReason reason, const Output* actingOutput);
     void xwaylandHintsChanged(View* view);
 

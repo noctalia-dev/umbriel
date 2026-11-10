@@ -84,19 +84,30 @@ namespace umbriel {
       view->setMinimized(false);
     }
 
-    // A window shown by a mirror is focused in place, without switching its own output, when the mirror is on the
-    // acting output or when the window already holds the keyboard through it. Anywhere else the window's own output
-    // shows its workspace.
+    // A window whose workspace is mirrored on the acting output is focused through that mirror, and the window's own
+    // output keeps its workspace: in place when the mirror is showing, and after showing it there when the focus was
+    // asked for explicitly. A window that already holds the keyboard through a mirror stays in place too. Anywhere else
+    // the window's own output shows its workspace.
     Workspace* workspace = view->workspace();
     bool focusedViaMirror = false;
-    if (workspace != nullptr && !view->pinned() && workspace->visibleViaMirror()) {
+    Workspace* shown = workspace;
+    if (workspace != nullptr && !view->pinned()) {
+      Workspace* copy = workspace->mirrorOn(actingOutput);
       const View* holder = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
-      focusedViaMirror = workspace->visibleViaMirrorOn(actingOutput)
-          || (holder != nullptr && holder->placementRoot() == view && view->visibleViaMirror());
+      focusedViaMirror = (copy != nullptr && copy->active())
+          || (workspace->visibleViaMirror()
+              && holder != nullptr
+              && holder->placementRoot() == view
+              && view->visibleViaMirror());
+      const bool requested = reason == FocusReason::ForeignActivation || reason == FocusReason::XdgActivation;
+      if (!focusedViaMirror && copy != nullptr && requested) {
+        shown = copy;
+        focusedViaMirror = true;
+      }
     }
-    if (workspace != nullptr) {
-      if (WorkspaceGroup* group = workspace->group();
-          group != nullptr && !view->pinned() && !workspace->active() && !focusedViaMirror) {
+    if (workspace != nullptr && !view->pinned()) {
+      if (WorkspaceGroup* group = shown->group();
+          group != nullptr && !shown->active() && (shown != workspace || !focusedViaMirror)) {
         const char* appId = view->appId() != nullptr ? view->appId() : "";
         // A group without a live output still has to activate; only the log's output name degrades.
         const Output* output = group->output();
@@ -105,9 +116,9 @@ namespace umbriel {
             group->active() != nullptr ? std::string_view(group->active()->name()) : std::string_view("<none>");
         kLog.debug(
             "workspace switch trigger=focus reason={} app_id='{}' output='{}' from='{}' to='{}'",
-            focusReasonName(reason), appId, outputName, current, workspace->name()
+            focusReasonName(reason), appId, outputName, current, shown->name()
         );
-        group->activate(workspace);
+        group->activate(shown);
       }
     }
     if (!view->onShownWorkspace() && !focusedViaMirror && !view->pinned()) {
@@ -416,7 +427,7 @@ namespace umbriel {
             && !entry->minimized()
             && entry->workspace() == workspace
             && entry->inputDelegate()->acceptsKeyboardFocus()) {
-          focusView(entry.get());
+          focusViewOn(entry.get(), FocusReason::Startup, output);
           return true;
         }
       }

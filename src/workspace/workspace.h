@@ -96,8 +96,9 @@ namespace umbriel {
     // A dialog attached to or left `view`: the mirrors show the dialogs over it again.
     void refreshMirroredAttachments(View* view);
     bool visibleViaMirror() const;
-    // An active mirror of this workspace is the active workspace of `output`.
-    bool visibleViaMirrorOn(const Output* output) const;
+    // The mirror of this workspace in `output`'s group, the showing one when there are several; null when that output
+    // holds none, or is this workspace's own.
+    Workspace* mirrorOn(const Output* output) const;
     bool active() const { return m_active; }
     const std::shared_ptr<const DisplacedWorkspace>& displacedWorkspace() const { return m_displacedWorkspace; }
     std::shared_ptr<WorkspaceLaunchAnchor> reserveForLaunch() const { return m_launchAnchor; }

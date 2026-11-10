@@ -292,7 +292,9 @@ namespace umbriel {
       if (floating) {
         view.restoreFloatingPosition();
       }
-      server.focusView(&view, FocusReason::Directional);
+      server.focusViewOn(
+          &view, FocusReason::Directional, destination.group() != nullptr ? destination.group()->output() : nullptr
+      );
       if (workspaceChanged && !destination.mirror()) {
         finishWorkspaceTransfer(server, view);
       }
@@ -396,7 +398,9 @@ namespace umbriel {
 
       target.markArrange();
       activateTransferDestination(server, destination);
-      server.focusView(focused, FocusReason::Directional);
+      server.focusViewOn(
+          focused, FocusReason::Directional, destination.group() != nullptr ? destination.group()->output() : nullptr
+      );
       if (!destination.mirror()) {
         finishWorkspaceTransfer(server, *focused);
       }

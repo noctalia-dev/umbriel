@@ -418,7 +418,7 @@ namespace umbriel {
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
     View* m_pendingFocus = nullptr;
-    // The mirror output a closing selection came from, compared by identity only; null when it came from anywhere else.
+    // The output of the row a closing selection came from, compared by identity only.
     const Output* m_closeOutput = nullptr;
     bool m_pendingCursorWarp = false;
     bool m_cardPresentationDirty = false;

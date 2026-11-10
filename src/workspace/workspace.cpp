@@ -317,10 +317,23 @@ namespace umbriel {
     return std::ranges::any_of(m_mirrors, [](Workspace* copy) { return copy->active(); });
   }
 
-  bool Workspace::visibleViaMirrorOn(const Output* output) const {
-    return output != nullptr && std::ranges::any_of(m_mirrors, [output](const Workspace* copy) {
-             return copy->active() && copy->group() != nullptr && copy->group()->output() == output;
-           });
+  Workspace* Workspace::mirrorOn(const Output* output) const {
+    Workspace* found = nullptr;
+    for (Workspace* candidate : m_mirrors) {
+      if (output == nullptr
+          || candidate->group() == nullptr
+          || candidate->group() == m_group
+          || candidate->group()->output() != output) {
+        continue;
+      }
+      if (candidate->active()) {
+        return candidate;
+      }
+      if (found == nullptr) {
+        found = candidate;
+      }
+    }
+    return found;
   }
 
   void Workspace::invalidateLaunchReservations() {
