@@ -303,7 +303,7 @@ namespace umbriel {
     void setTabHidden(bool hidden);
     // True while the drag tree presents this view or a transient ancestor (held,
     // settling, or landed on a pinned root): a workspace must not show or hide it.
-    [[nodiscard]] bool dragPresentationOwnsVisibility() const;
+    bool dragPresentationOwnsVisibility() const;
     bool tabHidden() const { return m_tabHidden; }
     // Minimized: hidden, but keeping its workspace, floating box, stacking slot, and taskbar entries. Focusing the
     // window shows it again.
@@ -761,13 +761,13 @@ namespace umbriel {
     void endDragPhysics();
     // True while the physics sheet is displaced from its resting box: grabbed,
     // or still settling after the release.
-    [[nodiscard]] bool dragSheetDisplaced() const;
+    bool dragSheetDisplaced() const;
     // The release's say over where the view rests: the window closes when the
     // release handler ends, flush lands the wait immediately.
     void closeReleaseRehomeWindow();
     void flushReleaseRehome();
     // True while a view rests under the drag tree.
-    [[nodiscard]] bool dragTreeOccupied() const;
+    bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
     struct DragFit {
