@@ -481,9 +481,9 @@ namespace umbriel {
     const bool configured = rule != nullptr && rule->renderScale.has_value();
     const double scale =
         view != nullptr && !view->supersampled() ? static_cast<double>(m_output->scale) : clientRenderScale();
-    // Hints keep the neutral floor the derivation this feature replaces had, so
-    // a legal sub-1 logical scale still asks clients for logical-size buffers.
-    // An explicit render_scale, a sub-1 one included, is honoured as given.
+    // An unset render_scale never shrinks client buffers below the neutral
+    // scale, so a legal sub-1 logical scale still asks for logical-size
+    // buffers. An explicit render_scale, a sub-1 one included, is honoured.
     return configured ? scale : std::max(scale, 1.0);
   }
 

@@ -101,9 +101,9 @@ if [[ $presented != *"scale 60/120"* ]]; then
   echo "the scene re-derivation dropped the below-logical render scale ($presented)"
   exit 1
 fi
-# A legal logical scale below 1 keeps the hint the pre-feature derivation gave
-# it: an unset render_scale follows `scale` but never shrinks client buffers, so
-# the hint stays at the neutral 1.0 (120/120) rather than following 0.8.
+# An unset render_scale follows `scale` but never shrinks client buffers, so a
+# legal logical scale below 1 keeps the hint at the neutral 1.0 (120/120)
+# rather than following 0.8.
 sed -i '/render_scale/d' "$UMBRIEL_CONFIG"
 sed -i 's/^scale = 1\.25$/scale = 0.8/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
