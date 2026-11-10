@@ -391,6 +391,10 @@ namespace umbriel {
     std::optional<KeyboardLayoutState> keyboardLayoutState() const;
     // systemd-localed's keymap, for keyboards whose config sets no XKB names. Empty when unused or unavailable.
     const XkbNames& systemKeymap() const { return m_systemKeymap; }
+    // The keymap compiled from `names`, shared by every keyboard that resolves to the same names: a desk's keyboard
+    // devices (consumer control, system control, mouse-with-keys nodes) otherwise each compile and keep a copy. Returns
+    // a new reference the caller unrefs, or null when the names do not compile.
+    xkb_keymap* compileKeymap(const XkbNames& names);
     void notifyKeyboardLayoutIpc();
     void notifyOverviewChanged();
     void notifySubmapChanged();
@@ -1028,6 +1032,10 @@ namespace umbriel {
     ManualShortcutsInhibit m_manualShortcutsInhibit;
     SurfaceLayoutMemory m_surfaceLayouts;
     XkbNames m_systemKeymap;
+    // Last keymap compileKeymap built and the names it came from. applyKeyboardConfig drops it so a reload reads the
+    // XKB files again.
+    XkbNames m_compiledKeymapNames;
+    xkb_keymap* m_compiledKeymap = nullptr;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
     ModifierTapState m_modifierTap;
