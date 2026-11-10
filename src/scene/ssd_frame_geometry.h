@@ -56,7 +56,7 @@ namespace umbriel {
       const TitleBarButtonGeometry& geometry, double x, double y, int radius = 0
   );
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
-  // How many logical pixels of the window's top edge an adaptive title bar can take: one flat colour row up to a few
+  // How many logical pixels of the window's top edge an adaptive title bar can take: one flat color row up to a few
   // rows of the window's own detail.
   inline constexpr int kTitleBarStripHeightMin = 1;
   inline constexpr int kTitleBarStripHeightMax = 4;

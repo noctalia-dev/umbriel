@@ -756,11 +756,11 @@ namespace umbriel {
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
         bool buttonBackground = true;
-        // "window" paints the bar with the top strip of the window's own content instead of the palette colour, and
-        // "average" paints it with that strip's mean colour; the palette stays underneath as the fallback.
+        // "window" paints the bar with the top strip of the window's own content instead of the palette color, and
+        // "average" paints it with that strip's mean color; the palette stays underneath as the fallback.
         TitleBarColorSource colorSource = TitleBarColorSource::Fixed;
         // How many logical pixels of the window's top edge that strip takes. The bar stretches them over its whole
-        // height, so a thinner strip reads as one flat colour and a thicker one keeps more of the window's own detail.
+        // height, so a thinner strip reads as one flat color and a thicker one keeps more of the window's own detail.
         int colorSourceHeight = 1;
         // Dark edge under the title and the symbols, on any bar color, in every color_source.
         bool titleShadow = true;

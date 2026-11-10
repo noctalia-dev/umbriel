@@ -18,7 +18,7 @@ height = 40
 button_position = "right"
 button_glyph = "hover"
 button_background = true
-# This check reads the symbol colours themselves, so neither the outline nor a contrast reversal may repaint them.
+# This check reads the symbol colors themselves, so neither the outline nor a contrast reversal may repaint them.
 title_shadow = false
 title_contrast = false
 [colors.title_bar]

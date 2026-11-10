@@ -182,37 +182,23 @@ namespace umbriel {
     m_content = surface;
     m_contentGeometry = geometry;
     // Another surface is another edge color to judge against, and only redraw() re-measures the title.
-    const auto fill = barFillColor();
-    updateAdaptive(false);
-    if (barFillColor() != fill) {
-      redraw();
-    }
+    refreshFill(false);
   }
   void SsdFrame::syncContent(const wlr_box& geometry) {
     m_contentGeometry = geometry;
     ++m_commitGeneration;
-    // Only the contrast rule turns an edge color into a repaint; the mirror follows the commit on its own. A symbol on
-    // its own button color never sees the fill, so with backgrounds painted only the title can move. The repaint has to
-    // come from here because redraw() calls updateAdaptive(), so a flip cannot request its own.
-    const bool contrast = config().appearance.titleBar.titleContrast;
-    const bool bareSymbols = !config().appearance.titleBar.buttonBackground;
-    const std::array<float, 4> title = resolvedTitleColor();
-    const auto fill = barFillColor();
-    updateAdaptive(true);
-    if (contrast && (resolvedTitleColor() != title || (bareSymbols && barFillColor() != fill))) {
-      redraw();
-    }
+    refreshFill(true);
   }
 
   void SsdFrame::allowInPlaceDamage(wlr_buffer* buffer) {
-    m_ignoredLock = umbrielfx_scene_buffer_ignore_client_lock(buffer) != nullptr;
+    m_inPlaceDamage = umbrielfx_scene_buffer_ignore_client_lock(buffer) != nullptr;
   }
 
   void SsdFrame::withdrawInPlaceDamage() {
-    if (!m_ignoredLock) {
+    if (!m_inPlaceDamage) {
       return;
     }
-    m_ignoredLock = false;
+    m_inPlaceDamage = false;
     // Ask the scene buffer which buffer it holds: a remembered client buffer would dangle once the client frees it.
     if (m_adaptive != nullptr && m_adaptive->buffer != nullptr) {
       umbrielfx_scene_buffer_drop_ignored_client_lock(wlr_client_buffer_get(m_adaptive->buffer));
@@ -228,7 +214,7 @@ namespace umbriel {
       return true;
     }
     bool signalled = false;
-    // A failed check must not withhold the bar: read the edge rather than keep a stale colour.
+    // A failed check must not withhold the bar: read the edge rather than keep a stale color.
     if (!wlr_drm_syncobj_timeline_check(sync->acquire_timeline, sync->acquire_point, 0, &signalled)) {
       return true;
     }
@@ -275,7 +261,7 @@ namespace umbriel {
     );
   }
 
-  void SsdFrame::armStripFallback() {
+  void SsdFrame::armStripFallback(std::uint32_t delayMsec) {
     if (m_loop == nullptr || m_preview) {
       return;
     }
@@ -285,7 +271,7 @@ namespace umbriel {
         return;
       }
     }
-    wl_event_source_timer_update(m_stripTimer, static_cast<int>(AdaptiveSampling::kFenceGiveUpMsec));
+    wl_event_source_timer_update(m_stripTimer, static_cast<int>(delayMsec));
   }
 
   int SsdFrame::onStripFallbackTimer(void* data) {
@@ -293,13 +279,8 @@ namespace umbriel {
     if (!self->m_stripDeferred) {
       return 0;
     }
-    // No further commit is coming, so the wait ends here: decide again, which reads the edge anyway.
-    const auto fill = self->barFillColor();
-    const auto title = self->resolvedTitleColor();
-    self->updateAdaptive(false);
-    if (self->barFillColor() != fill || self->resolvedTitleColor() != title) {
-      self->redraw();
-    }
+    // No further commit is coming, so the wait or the skip ends here and the edge is read.
+    self->refreshFill(false);
     return 0;
   }
 
@@ -397,9 +378,9 @@ namespace umbriel {
     if (!order.has_value()) {
       return {StripSample::State::Refused, std::nullopt};
     }
-    m_strip.resize(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
+    m_stripPixels.resize(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
     const wlr_texture_read_pixels_options options{
-        .data = m_strip.data(),
+        .data = m_stripPixels.data(),
         .format = format,
         .stride = static_cast<uint32_t>(box.width) * 4U,
         .dst_x = 0,
@@ -410,7 +391,7 @@ namespace umbriel {
     if (!wlr_texture_read_pixels(m_content->buffer->texture, &options)) {
       return {StripSample::State::Refused, std::nullopt};
     }
-    auto mean = averagePixels(m_strip.data(), m_strip.size(), *order);
+    auto mean = averagePixels(m_stripPixels.data(), m_stripPixels.size(), *order);
     if (!mean.has_value()) {
       return {StripSample::State::Empty, std::nullopt};
     }
@@ -475,6 +456,24 @@ namespace umbriel {
     return m_averageBuffer;
   }
 
+  bool SsdFrame::refreshFill(bool fromCommit) {
+    const std::array<float, 4> title = resolvedTitleColor();
+    const auto fill = barFillColor();
+    updateAdaptive(fromCommit);
+    // Only the contrast rule turns a resolved color into a repaint; the mirror follows the commit on its own. A symbol
+    // on its own button color never sees the fill, so with backgrounds painted only the title can move.
+    const auto& style = config().appearance.titleBar;
+    if (!style.titleContrast) {
+      return false;
+    }
+    const bool bareSymbols = !style.buttonBackground;
+    if (resolvedTitleColor() == title && (!bareSymbols || barFillColor() == fill)) {
+      return false;
+    }
+    redraw();
+    return true;
+  }
+
   void SsdFrame::updateAdaptive(bool fromCommit) {
     // The palette stays painted underneath, so a transparent edge or a missing buffer leaves no hole.
     const auto& style = config().appearance.titleBar;
@@ -498,8 +497,8 @@ namespace umbriel {
         m_stripDeferred = false;
         m_sampling.reset();
       }
-      m_strip.clear();
-      m_strip.shrink_to_fit();
+      m_stripPixels.clear();
+      m_stripPixels.shrink_to_fit();
       return;
     }
     if (m_adaptive == nullptr) {
@@ -581,12 +580,13 @@ namespace umbriel {
       m_sampling.record(action, input);
       switch (action) {
       case AdaptiveSampling::Action::Skip:
-        // Owed, not dropped: the next update reads the edge this one skipped.
+        // Owed, not dropped: the timer reads the last frame of a burst that ends on a skipped commit.
         m_stripDeferred = true;
+        armStripFallback(AdaptiveSampling::kSampleMinIntervalMsec);
         break;
       case AdaptiveSampling::Action::Wait:
         m_stripDeferred = true;
-        armStripFallback();
+        armStripFallback(AdaptiveSampling::kFenceGiveUpMsec);
         break;
       case AdaptiveSampling::Action::GiveUp:
         // This commit's fence was abandoned; a later commit brings a new one.
@@ -624,7 +624,7 @@ namespace umbriel {
       }
     }
     // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
-    // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
+    // may have freed. The average carries no detail, so only a change inside the sampled region makes it read again.
     wlr_buffer* shown = buffer;
     const wlr_fbox* sourceBox = &strip;
     wl_output_transform transform = m_content->current.transform;
@@ -801,12 +801,8 @@ namespace umbriel {
 
   void SsdFrame::updateColors() {
     // A fill that resolves here (a deferred readback, or a strip that moved) changes what the title and the symbols are
-    // judged against. Only redraw() re-measures the title, so a change is a repaint; the pass it starts settles,
-    // because the fill it held when it began is the one it keeps.
-    const auto fill = barFillColor();
-    updateAdaptive(false);
-    if (barFillColor() != fill) {
-      redraw();
+    // judged against. The repaint it starts settles, because the fill it held when it began is the one it keeps.
+    if (refreshFill(false)) {
       return;
     }
     const auto& colors = config().colors.titleBar;

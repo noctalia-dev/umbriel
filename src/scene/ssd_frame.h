@@ -53,7 +53,7 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
-    // The window content an adaptive bar takes its colour from, and that window's geometry in surface-local
+    // The window content an adaptive bar takes its color from, and that window's geometry in surface-local
     // coordinates. Borrowed: the view owns the surface.
     void setContentSurface(wlr_surface* surface, const wlr_box& geometry);
     // Re-reads the strip after the window committed, with the geometry the commit left behind.
@@ -70,31 +70,34 @@ namespace umbriel {
     void redraw();
     void updateColors();
     void updateAdaptive(bool fromCommit);
+    // Resolves the fill, then repaints when it moved what the title or the bare symbols are judged against. Returns
+    // whether it repainted, which stops a caller that would otherwise draw with what the repaint replaces.
+    bool refreshFill(bool fromCommit);
     void hideAdaptive();
     // What one readback of the edge produced: a value, a refusal, or a readable edge with nothing to average.
     struct StripSample {
-      // `Empty` means the strip was read and holds no colour (a transparent edge), so the palette is the honest
-      // answer; `Refused` means it could not be read (protected or external-only), so the last colour still stands.
+      // `Empty` means the strip was read and holds no color (a transparent edge), so the palette is the honest
+      // answer; `Refused` means it could not be read (protected or external-only), so the last color still stands.
       enum class State : uint8_t { Fresh, Refused, Empty };
       State state = State::Refused;
       std::optional<std::array<float, 4>> color;
     };
     StripSample averageStrip(const wlr_fbox& strip);
     // Whether `box` of the client buffer changed in this commit's damage. The caller gates it on a commit.
-    [[nodiscard]] bool stripTouched(const wlr_fbox& box) const;
+    bool stripTouched(const wlr_fbox& box) const;
     // Whether this commit's explicit-sync acquire point has signalled, or has no fence at all.
-    [[nodiscard]] bool stripFenceSignalled() const;
+    bool stripFenceSignalled() const;
     // The part of the edge worth sampling: the title plus a little slack, as a fraction of the visible width.
-    [[nodiscard]] double sampleWidthFraction() const;
+    double sampleWidthFraction() const;
     void cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts);
-    // Reads an edge whose fence outlived its wait: one sample, then the bar keeps it until the next commit.
-    void armStripFallback();
+    // Reads the edge once `delayMsec` has passed, for a fence that outlived its wait or a read the cadence skipped.
+    void armStripFallback(std::uint32_t delayMsec);
     static int onStripFallbackTimer(void* data);
-    // A one-pixel buffer of `color`, kept until the colour changes.
+    // A one-pixel buffer of `color`, kept until the color changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The color the bar shows, which is what the title is drawn on; empty when "window" was not allowed to sample it.
     std::optional<std::array<float, 4>> barFillColor() const;
-    // The title's colour after the contrast rule.
+    // The title's color after the contrast rule.
     std::array<float, 4> resolvedTitleColor() const;
     // Let wlroots keep reusing the mirrored client buffer's texture for in-place shm damage, and withdraw that when the
     // mirror is replaced or cleared.
@@ -121,23 +124,23 @@ namespace umbriel {
     SurfaceBlurOptions m_blurOptions;
     bool m_blurLive = false;
     wlr_scene_buffer* m_label = nullptr;
-    // The same title in the shadow colour, one pixel down and right, so it stays readable on any bar colour.
+    // The same title in the shadow color, one pixel down and right, so it stays readable on any bar color.
     wlr_scene_buffer* m_labelShadow = nullptr;
     // Consumer locks on the title and shadow: the scene drops its own after uploading, and snapshots copy these.
     wlr_buffer* m_labelBuffer = nullptr;
     wlr_buffer* m_shadowBuffer = nullptr;
-    // Paints the bar with the top strip of the window content; kept below the label and above the palette colour.
+    // Paints the bar with the top strip of the window content; kept below the label and above the palette color.
     wlr_scene_buffer* m_adaptive = nullptr;
     wlr_surface* m_content = nullptr;
     wlr_box m_contentGeometry{};
     // Whether the mirrored buffer carries the mark that lets wlroots reuse its texture for in-place shm damage.
-    bool m_ignoredLock = false;
-    // A readback the client's explicit-sync point was not ready for: retried on the next update.
+    bool m_inPlaceDamage = false;
+    // A read the cadence or an unsignalled fence held back: the fallback timer or the next update still owes it.
     bool m_stripDeferred = false;
     AdaptiveSampling m_sampling;
     // Bumped on every commit, so a fence that was read anyway is not read again until the client commits anew.
     std::uint64_t m_commitGeneration = 0;
-    // Flags the commit generation of an abandoned fence, and the timer that ends the wait without another commit.
+    // Runs the fallback for a read the loop would otherwise owe until the next commit; a preview has no loop.
     wl_event_loop* m_loop = nullptr;
     wl_event_source* m_stripTimer = nullptr;
     // Width of the title plus a little slack, in logical pixels; 0 samples the whole edge.
@@ -151,11 +154,11 @@ namespace umbriel {
     // The last read found an edge with no color in it, so the palette is what shows and `barFillColor()` returns it
     // live.
     bool m_contrastSampleEmpty = false;
-    // The colour baked into `m_averageBuffer`, which is not the same thing as the current mean.
+    // The color baked into `m_averageBuffer`, which is not the same thing as the current mean.
     std::array<float, 4> m_averageBufferColor{};
     wlr_buffer* m_averageBuffer = nullptr;
-    // Scratch for one strip readback, kept to avoid allocating per repaint.
-    std::vector<uint32_t> m_strip;
+    // Scratch for one strip readback, reused while consecutive reads cover the same area.
+    std::vector<uint32_t> m_stripPixels;
     // The mode the contents were built for: a switch is not a commit, so it must force the work.
     TitleBarColorSource m_adaptiveMode = TitleBarColorSource::Fixed;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;

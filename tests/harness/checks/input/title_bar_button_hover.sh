@@ -35,7 +35,7 @@ enabled = false
 mode = "forced"
 height = 28
 button_position = "right"
-# This check reads the button colour under the symbols, so the symbol outline is kept out of it.
+# This check reads the button color under the symbols, so the symbol outline is kept out of it.
 title_shadow = false
 [colors.title_bar]
 background = "#000000FF"

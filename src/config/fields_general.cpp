@@ -115,7 +115,7 @@ namespace umbriel {
                   {.name = "average", .value = TitleBarColorSource::Average},
               }
           ),
-          // One flat colour row up to four rows of the window's own detail; the bar stretches them over its height.
+          // One flat color row up to four rows of the window's own detail; the bar stretches them over its height.
           integer(
               "color_source_height", kTitleBarStripHeightMin, kTitleBarStripHeightMax, &A::TitleBar::colorSourceHeight
           ),

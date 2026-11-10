@@ -5,7 +5,7 @@
 
 namespace umbriel {
 
-  // Perceived brightness of an encoded colour.
+  // Perceived brightness of an encoded color.
   inline float luminance(const std::array<float, 4>& color) {
     return color[0] * 0.2126F + color[1] * 0.7152F + color[2] * 0.0722F;
   }
@@ -14,7 +14,7 @@ namespace umbriel {
   // title vanishes into the bar, which an adaptive fill makes possible.
   constexpr float kTitleContrastThreshold = 0.35F;
 
-  // `color` itself, or black or white when it would sit too close to `background` to read. A colour with no alpha is
+  // `color` itself, or black or white when it would sit too close to `background` to read. A color with no alpha is
   // left alone: there is nothing to read, and a flipped one would carry brightness the composite cannot ignore. A
   // background with no alpha is left alone too: it is not what shows, so there is nothing to judge against.
   inline std::array<float, 4>

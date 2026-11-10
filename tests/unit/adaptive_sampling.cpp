@@ -14,6 +14,10 @@ namespace {
   AdaptiveSampling::Input stateChange(std::uint64_t nowMsec) {
     return {.fromCommit = false, .fenceSignalled = true, .generation = 1, .nowMsec = nowMsec};
   }
+
+  AdaptiveSampling::Input redraw(std::uint64_t nowMsec, bool fenceSignalled = true, std::uint64_t generation = 1) {
+    return {.fromCommit = false, .fenceSignalled = fenceSignalled, .generation = generation, .nowMsec = nowMsec};
+  }
 } // namespace
 
 UMBRIEL_TEST(firstCommitOfABurstReads) {
@@ -75,10 +79,19 @@ UMBRIEL_TEST(anAbandonedFenceIsNotReadAgainForTheSameCommit) {
   const AdaptiveSampling::Input bound = commit(AdaptiveSampling::kFenceGiveUpMsec, false);
   CHECK(sampling.decide(bound) == AdaptiveSampling::Action::ReadAnyway);
   sampling.record(AdaptiveSampling::Action::ReadAnyway, bound);
-  // A timer or a redraw must not read the same unfinished commit over and over.
-  CHECK(sampling.decide(commit(AdaptiveSampling::kFenceGiveUpMsec + 40, false)) == AdaptiveSampling::Action::GiveUp);
+  // A redraw must not read the same unfinished commit over and over; only a commit starts a new generation.
+  CHECK(sampling.decide(redraw(AdaptiveSampling::kFenceGiveUpMsec + 40, false)) == AdaptiveSampling::Action::GiveUp);
   // The client's next commit brings a new fence, which gets its own wait.
   CHECK(sampling.decide(commit(AdaptiveSampling::kFenceGiveUpMsec + 50, false, 2)) == AdaptiveSampling::Action::Wait);
+}
+
+UMBRIEL_TEST(aSkippedCommitIsReadWhenTheBurstEnds) {
+  AdaptiveSampling sampling;
+  sampling.record(AdaptiveSampling::Action::Read, commit(0));
+  CHECK(sampling.decide(commit(4)) == AdaptiveSampling::Action::Skip);
+  sampling.record(AdaptiveSampling::Action::Skip, commit(4));
+  // The client stops after the skipped commit: the fallback timer's update has to read the frame the cadence owed.
+  CHECK(sampling.decide(redraw(AdaptiveSampling::kSampleMinIntervalMsec)) == AdaptiveSampling::Action::Read);
 }
 
 UMBRIEL_TEST(aFenceThatSignalsEndsTheWait) {

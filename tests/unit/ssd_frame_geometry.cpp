@@ -296,7 +296,7 @@ UMBRIEL_TEST(stripSourceBoxTakesTheVisibleTopEdge) {
   CHECK_EQ(none.y, 0.0);
   CHECK_EQ(none.width, 400.0);
   CHECK_EQ(none.height, 5.0);
-  // The thinnest sample is one logical row: the bar shows a single flat colour.
+  // The thinnest sample is one logical row: the bar shows a single flat color.
   const wlr_fbox single = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 1);
   CHECK_EQ(single.height, 1.0);
   CHECK_EQ(single.width, 400.0);

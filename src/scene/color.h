@@ -100,7 +100,7 @@ namespace umbriel {
   enum class PixelOrder : uint8_t { Argb, Abgr, Xrgb, Xbgr };
 
   // Mean of packed 32-bit pixels as Wayland stores them: premultiplied, so the sums are already alpha-weighted and
-  // dividing by the alpha total gives the straight colour. Null when nothing is left to show.
+  // dividing by the alpha total gives the straight color. Null when nothing is left to show.
   inline std::optional<std::array<float, 4>> averagePixels(const uint32_t* pixels, size_t count, PixelOrder order) {
     if (pixels == nullptr || count == 0) {
       return std::nullopt;
@@ -121,7 +121,7 @@ namespace umbriel {
     if (alpha <= 0.0) {
       return std::nullopt;
     }
-    // Straight colour, clamped: malformed input that is not premultiplied could otherwise overshoot.
+    // Straight color, clamped: malformed input that is not premultiplied could otherwise overshoot.
     const auto straight = [alpha](double sum) { return static_cast<float>(std::clamp(sum / alpha, 0.0, 1.0)); };
     return std::array<float, 4>{
         straight(red), straight(green), straight(blue), static_cast<float>(alpha / static_cast<double>(count))

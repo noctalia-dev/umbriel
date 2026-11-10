@@ -7,15 +7,15 @@ namespace umbriel {
   // When the adaptive title bar may read the window's top edge back. A readback finishes the frame, so a burst of
   // commits pays for at most one read per kSampleEveryCommits commits and per kSampleMinIntervalMsec, and an
   // acquire fence that has not signalled is waited on only until kFenceGiveUpMsec, then read anyway: a stalled client
-  // cannot strand the bar on a stale colour. Pure, so the cadence and the bound are testable without a compositor.
+  // cannot strand the bar on a stale color. Pure, so the cadence and the bound are testable without a compositor.
   class AdaptiveSampling {
   public:
     enum class Action : std::uint8_t {
-      // The cadence held this read back; the caller still owes the edge a read.
+      // The cadence held this read back: the caller owes the edge a read once the interval allows it.
       Skip,
       // The fence has not signalled yet. Retry on the next update, or when the fallback timer fires.
       Wait,
-      // This commit's fence never signalled and its wait ran out: keep what the bar shows until the next commit.
+      // This fence was already read anyway; keep what the bar shows until the client commits anew.
       GiveUp,
       Read,
       // Read even though the fence has not signalled, because the wait ran out.
@@ -56,7 +56,8 @@ namespace umbriel {
 
   inline AdaptiveSampling::Action AdaptiveSampling::decide(const Input& input) const {
     if (!input.fenceSignalled) {
-      if (input.fromCommit && m_gaveUp && m_gaveUpGeneration == input.generation) {
+      // A commit brings a new generation, so this covers the redraws and timers that follow an abandoned fence.
+      if (m_gaveUp && m_gaveUpGeneration == input.generation) {
         return Action::GiveUp;
       }
       if (m_fenceWaiting && input.nowMsec - m_fenceSinceMsec >= kFenceGiveUpMsec) {
