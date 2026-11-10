@@ -112,8 +112,10 @@ namespace umbriel {
       m_server->scheduleIpcWindowsEvent();
     }
     if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
-      m_ssdFrame =
-          std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree, m_server->colorManager());
+      m_ssdFrame = std::make_unique<SsdFrame>(
+          chromeParent(), TabLabelCache::shared(), m_sceneTree, m_server->colorManager(),
+          wl_display_get_event_loop(m_server->display())
+      );
     }
     if (m_ssdFrame == nullptr) {
       return;

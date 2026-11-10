@@ -67,6 +67,7 @@ unit_tests = [
   ['border-ring', ['unit/border_ring.cpp'], []],
   ['colour-average', ['unit/colour_average.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
+  ['adaptive-sampling', ['unit/adaptive_sampling.cpp'], []],
   ['title-bar-icon', ['unit/title_bar_icon.cpp'], [umbriel_core_dep]],
   ['title-bar-contrast', ['unit/title_bar_contrast.cpp'], []],
   ['floating', ['unit/floating.cpp'], []],

@@ -1,11 +1,13 @@
 #pragma once
 
 #include "config/config.h"
+#include "scene/adaptive_sampling.h"
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
 #include "view/chrome_attachment.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -13,6 +15,8 @@
 #include <string_view>
 #include <vector>
 
+struct wl_event_loop;
+struct wl_event_source;
 struct wlr_scene_node;
 struct wlr_scene_rect;
 struct wlr_buffer;
@@ -27,9 +31,10 @@ namespace umbriel {
 
   class SsdFrame final : public ViewChromeAttachment {
   public:
+    // `loop` only drives the fallback that reads an edge whose acquire fence never signals; a preview has none.
     SsdFrame(
         wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent = nullptr,
-        ColorManager* colors = nullptr
+        ColorManager* colors = nullptr, wl_event_loop* loop = nullptr
     );
     ~SsdFrame() override;
     void layout(const ViewChromeGeometry& geometry) override;
@@ -66,16 +71,25 @@ namespace umbriel {
     void updateColors();
     void updateAdaptive(bool fromCommit);
     void hideAdaptive();
-    // What one attempt at the mean colour produced: a value, a reason to try again later, a refusal, or a readable
-    // edge with nothing to average.
+    // What one readback of the edge produced: a value, a refusal, or a readable edge with nothing to average.
     struct StripSample {
       // `Empty` means the strip was read and holds no colour (a transparent edge), so the palette is the honest
       // answer; `Refused` means it could not be read (protected or external-only), so the last colour still stands.
-      enum class State : uint8_t { Fresh, Deferred, Refused, Empty };
+      enum class State : uint8_t { Fresh, Refused, Empty };
       State state = State::Refused;
       std::optional<std::array<float, 4>> color;
     };
     StripSample averageStrip(const wlr_fbox& strip);
+    // Whether `box` of the client buffer changed in this commit's damage. The caller gates it on a commit.
+    [[nodiscard]] bool stripTouched(const wlr_fbox& box) const;
+    // Whether this commit's explicit-sync acquire point has signalled, or has no fence at all.
+    [[nodiscard]] bool stripFenceSignalled() const;
+    // The part of the edge worth sampling: the title plus a little slack, as a fraction of the visible width.
+    [[nodiscard]] double sampleWidthFraction() const;
+    void cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts);
+    // Reads an edge whose fence outlived its wait: one sample, then the bar keeps it until the next commit.
+    void armStripFallback();
+    static int onStripFallbackTimer(void* data);
     // A one-pixel buffer of `color`, kept until the colour changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The color the bar shows, which is what the title is drawn on; empty when "window" was not allowed to sample it.
@@ -120,6 +134,14 @@ namespace umbriel {
     bool m_ignoredLock = false;
     // A readback the client's explicit-sync point was not ready for: retried on the next update.
     bool m_stripDeferred = false;
+    AdaptiveSampling m_sampling;
+    // Bumped on every commit, so a fence that was read anyway is not read again until the client commits anew.
+    std::uint64_t m_commitGeneration = 0;
+    // Flags the commit generation of an abandoned fence, and the timer that ends the wait without another commit.
+    wl_event_loop* m_loop = nullptr;
+    wl_event_source* m_stripTimer = nullptr;
+    // Width of the title plus a little slack, in logical pixels; 0 samples the whole edge.
+    int m_sampleWidth = 0;
     // What the strip node last mirrored, so an unrelated commit costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};

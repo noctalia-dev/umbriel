@@ -327,6 +327,33 @@ UMBRIEL_TEST(stripSourceBoxFollowsTheVisibleCrop) {
   CHECK_EQ(crop.height, 5.0);
 }
 
+UMBRIEL_TEST(stripSourceBoxKeepsTheLeadingWidthFraction) {
+  // A readback that covers only the title takes the leading part of the edge: the average and the contrast rule read
+  // the pixels behind the title, not the whole bar.
+  const wlr_fbox full{0.0, 0.0, 400.0, 300.0};
+  const wlr_fbox leading = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5);
+  CHECK_EQ(leading.x, 0.0);
+  CHECK_EQ(leading.width, 200.0);
+  CHECK_EQ(leading.height, 2.0);
+  // The cap follows the visible crop rather than the buffer: a window showing its middle 200 px samples 100 of them.
+  const wlr_fbox cropped =
+      titleBarStripSourceBox({100.0, 120.0, 200.0, 400.0}, 400, 600, {}, 200, 400, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5);
+  CHECK_EQ(cropped.x, 100.0);
+  CHECK_EQ(cropped.width, 100.0);
+  // Upright space caps horizontally whatever the buffer transform does to it: a half turn puts the strip's leading edge
+  // at the buffer's right end, still 200 px wide.
+  const wlr_fbox turned = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_180, 5, 0.5);
+  CHECK_EQ(turned.x, 200.0);
+  CHECK_EQ(turned.y, 295.0);
+  CHECK_EQ(turned.width, 200.0);
+  CHECK_EQ(turned.height, 5.0);
+  // No cap, and a fraction that would exceed the edge, both keep the whole strip.
+  const wlr_fbox whole = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 1.0);
+  CHECK_EQ(whole.width, 400.0);
+  const wlr_fbox over = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 2.0);
+  CHECK_EQ(over.width, 400.0);
+}
+
 UMBRIEL_TEST(stripSourceBoxScalesWithTheBuffer) {
   // A surface rendered at an output scale keeps 5 logical pixels as a longer run of buffer pixels.
   const wlr_fbox scaled =

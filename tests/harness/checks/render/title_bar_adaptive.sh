@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # `color_source` takes the bar's fill from the window instead of the palette: "window" mirrors its top rows, "average"
 # paints their mean. The window paints its first row green over a red body, so a bar sampling anything else shows red.
+# The readback cadence and the explicit-sync bound are pinned in tests/unit/adaptive_sampling.cpp: this client commits
+# twice per repaint (the frame request and the frame callback), so a readback count per repaint is not a stable
+# observable here.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -222,9 +225,17 @@ near() { (( $1 >= $2 - 12 && $1 <= $2 + 12 )); }
 if ! near "$left_g" "$right_g" || ! near "$left_b" "$right_b" || ! near "$left_r" "$right_r"; then
   fail "an averaged bar was not uniform: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
-# A blend of the green and blue halves, not either of them and not the palette.
-if (( left_g < 60 || left_b < 60 || left_r > 40 )); then
-  fail "an averaged bar did not blend the window edge: $left_r $left_g $left_b"
+# The readback covers the edge behind the title, not the whole bar, so a split edge yields the leading half rather
+# than a blend of both. Reading the whole width would blend them and drop the green.
+if ! (( left_g > 200 && left_b < 40 && left_r < 40 )); then
+  fail "an averaged bar did not take the edge behind the title: $left_r $left_g $left_b"
+fi
+# The width the compositor logs is that cap: a whole-edge read would log the bar's full 480 px.
+sample_width=$(rg -o 'averaged a [0-9]+x[0-9]+ strip' "$UMBRIEL_RUNTIME_DIR/compositor.log" | tail -1 \
+  | sed -E 's/.*averaged a ([0-9]+)x[0-9]+ strip/\1/')
+[[ -n $sample_width ]] || fail "no strip readback was logged"
+if ! (( sample_width > 0 && sample_width < 400 )); then
+  fail "the strip readback covered ${sample_width}px of the 480px edge instead of the title"
 fi
 
 # The same window in smear mode keeps the two sides distinct.
@@ -261,7 +272,7 @@ grim "$FRAME"
 read -r left_r left_g left_b < <(pixel 200 84)
 read -r right_r right_g right_b < <(pixel 620 84)
 if ! near "$left_r" "$right_r" || ! near "$left_b" "$right_b" \
-   || ! (( left_r > 100 && left_r < 200 && left_b > 100 && left_b < 200 && left_g < 40 )); then
+   || ! (( left_r > 200 && left_g < 40 && left_b < 40 )); then
   fail "an averaged bar did not follow a repaint: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
 

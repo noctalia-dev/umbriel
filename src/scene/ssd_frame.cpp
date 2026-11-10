@@ -12,6 +12,7 @@
 #include "wlr.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <drm_fourcc.h>
 #include <utility>
@@ -23,6 +24,16 @@ namespace umbriel {
 
     // An unfocused window keeps its own bar color, dimmed over the palette's unfocused tone.
     constexpr float kAdaptiveUnfocusedOpacity = 0.65F;
+    // Slack past the measured title, so a character or two more of the edge is read without the whole bar.
+    constexpr int kAdaptiveSamplePadding = 8;
+
+    // Wall clock, not the animation clock: freezing animation time must not stall the readback cadence.
+    std::uint64_t monotonicMsec() {
+      return static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+              .count()
+      );
+    }
 
     // Any bar can be any color the window paints, so text and symbols keep a dark edge, scaled by their own alpha so an
     // invisible one leaves no ghost.
@@ -38,11 +49,12 @@ namespace umbriel {
   } // namespace
 
   SsdFrame::SsdFrame(
-      wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent, ColorManager* colors
+      wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent, ColorManager* colors,
+      wl_event_loop* loop
   )
       : m_tree(wlr_scene_tree_create(parent)),
-        m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_colors(colors),
-        m_labels(std::move(labels)) {
+        m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_loop(loop),
+        m_colors(colors), m_labels(std::move(labels)) {
     if (inputParent != nullptr && parent->node.parent == inputParent) {
       // Client surfaces and popups keep input priority over invisible resize grips.
       wlr_scene_node_place_below(&m_gripTree->node, &parent->node);
@@ -60,6 +72,9 @@ namespace umbriel {
   }
 
   SsdFrame::~SsdFrame() {
+    if (m_stripTimer != nullptr) {
+      wl_event_source_remove(m_stripTimer);
+    }
     withdrawInPlaceDamage();
     if (m_blur != nullptr) {
       wlr_scene_node_destroy(&m_blur->node);
@@ -175,6 +190,7 @@ namespace umbriel {
   }
   void SsdFrame::syncContent(const wlr_box& geometry) {
     m_contentGeometry = geometry;
+    ++m_commitGeneration;
     // Only the contrast rule turns an edge color into a repaint; the mirror follows the commit on its own. A symbol on
     // its own button color never sees the fill, so with backgrounds painted only the title can move. The repaint has to
     // come from here because redraw() calls updateAdaptive(), so a flip cannot request its own.
@@ -201,6 +217,90 @@ namespace umbriel {
     if (m_adaptive != nullptr && m_adaptive->buffer != nullptr) {
       umbrielfx_scene_buffer_drop_ignored_client_lock(wlr_client_buffer_get(m_adaptive->buffer));
     }
+  }
+
+  bool SsdFrame::stripFenceSignalled() const {
+    if (m_content == nullptr) {
+      return true;
+    }
+    wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content);
+    if (sync == nullptr || sync->acquire_timeline == nullptr) {
+      return true;
+    }
+    bool signalled = false;
+    // A failed check must not withhold the bar: read the edge rather than keep a stale colour.
+    if (!wlr_drm_syncobj_timeline_check(sync->acquire_timeline, sync->acquire_point, 0, &signalled)) {
+      return true;
+    }
+    return signalled;
+  }
+
+  bool SsdFrame::stripTouched(const wlr_fbox& box) const {
+    if (m_content == nullptr) {
+      return false;
+    }
+    // Round outward: the strip is fractional at fractional scales.
+    const int left = static_cast<int>(std::floor(box.x));
+    const int top = static_cast<int>(std::floor(box.y));
+    const int right = static_cast<int>(std::ceil(box.x + box.width));
+    const int bottom = static_cast<int>(std::ceil(box.y + box.height));
+    pixman_region32_t region;
+    pixman_region32_init_rect(&region, left, top, std::max(0, right - left), std::max(0, bottom - top));
+    // `pixman_region32_intersect` reports success, not emptiness: a disjoint strip and damage still returns true.
+    bool touched = false;
+    if (pixman_region32_intersect(&region, &region, &m_content->buffer_damage)) {
+      touched = !pixman_region32_empty(&region);
+    }
+    pixman_region32_fini(&region);
+    return touched;
+  }
+
+  double SsdFrame::sampleWidthFraction() const {
+    if (m_sampleWidth <= 0 || m_geometry.contentWidth <= 0) {
+      return 1.0;
+    }
+    return std::clamp(static_cast<double>(m_sampleWidth) / static_cast<double>(m_geometry.contentWidth), 0.0, 1.0);
+  }
+
+  void SsdFrame::cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts) {
+    if (label == nullptr || m_geometry.contentWidth <= 0) {
+      m_sampleWidth = 0;
+      return;
+    }
+    // The label renders at the output scale; the layout and the strip are logical pixels.
+    const double scale = std::max(1.0, std::ceil(static_cast<double>(m_geometry.scale)));
+    const int text = static_cast<int>(std::lround(static_cast<double>(label->width) / scale));
+    m_sampleWidth = std::clamp(
+        parts.title.x + std::min(text, parts.title.width) + kAdaptiveSamplePadding, 0, m_geometry.contentWidth
+    );
+  }
+
+  void SsdFrame::armStripFallback() {
+    if (m_loop == nullptr || m_preview) {
+      return;
+    }
+    if (m_stripTimer == nullptr) {
+      m_stripTimer = wl_event_loop_add_timer(m_loop, onStripFallbackTimer, this);
+      if (m_stripTimer == nullptr) {
+        return;
+      }
+    }
+    wl_event_source_timer_update(m_stripTimer, static_cast<int>(AdaptiveSampling::kFenceGiveUpMsec));
+  }
+
+  int SsdFrame::onStripFallbackTimer(void* data) {
+    auto* self = static_cast<SsdFrame*>(data);
+    if (!self->m_stripDeferred) {
+      return 0;
+    }
+    // No further commit is coming, so the wait ends here: decide again, which reads the edge anyway.
+    const auto fill = self->barFillColor();
+    const auto title = self->resolvedTitleColor();
+    self->updateAdaptive(false);
+    if (self->barFillColor() != fill || self->resolvedTitleColor() != title) {
+      self->redraw();
+    }
+    return 0;
   }
 
   void SsdFrame::updateBlur() {
@@ -266,14 +366,6 @@ namespace umbriel {
     // A preview shows what its window resolved, so reading back per card would only multiply that cost.
     if (m_preview || m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
       return {StripSample::State::Refused, std::nullopt};
-    }
-    // An explicit-sync client's frame is not finished at commit time; reading now would sample a half-rendered frame.
-    if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(m_content);
-        sync != nullptr && sync->acquire_timeline != nullptr) {
-      bool signalled = false;
-      if (!wlr_drm_syncobj_timeline_check(sync->acquire_timeline, sync->acquire_point, 0, &signalled) || !signalled) {
-        return {StripSample::State::Deferred, std::nullopt};
-      }
     }
     const int left = static_cast<int>(std::floor(strip.x));
     const int top = static_cast<int>(std::floor(strip.y));
@@ -404,6 +496,7 @@ namespace umbriel {
         m_contrastSample.reset();
         m_contrastSampleEmpty = false;
         m_stripDeferred = false;
+        m_sampling.reset();
       }
       m_strip.clear();
       m_strip.shrink_to_fit();
@@ -430,20 +523,9 @@ namespace umbriel {
         base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width, m_content->current.height,
         static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight
     );
-    // Damage is in buffer coordinates, like the strip. Round outward: the strip is fractional at fractional scales. It
-    // belongs to the commit that produced it, so a later chrome repaint does not replay it.
-    const int left = static_cast<int>(std::floor(strip.x));
-    const int top = static_cast<int>(std::floor(strip.y));
-    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
-    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
-    pixman_region32_t stripRegion;
-    pixman_region32_init_rect(&stripRegion, left, top, std::max(0, right - left), std::max(0, bottom - top));
-    // `pixman_region32_intersect` reports success, not emptiness: a disjoint strip and damage still returns true.
-    bool touched = false;
-    if (fromCommit && pixman_region32_intersect(&stripRegion, &stripRegion, &m_content->buffer_damage)) {
-      touched = !pixman_region32_empty(&stripRegion);
-    }
-    pixman_region32_fini(&stripRegion);
+    // Damage is in buffer coordinates, like the strip, and belongs to the commit that produced it, so a later chrome
+    // repaint does not replay it.
+    const bool touched = fromCommit && stripTouched(strip);
     const float opacity = m_alpha * (m_focused ? 1.0F : kAdaptiveUnfocusedOpacity);
     const int barX = m_background->node.x;
     const int barY = m_background->node.y;
@@ -470,24 +552,83 @@ namespace umbriel {
       // The mean belongs to the mode that read it, and a read that is refused on the way back must not reuse it.
       m_averageColor.reset();
     }
+    // Both modes pay the same readback: "average" paints it, "window" judges the title against it. Only the mirror is
+    // free, so the read covers the title and a little slack instead of the whole edge. A mirror still needs all of it.
+    const double sampleFraction = sampleWidthFraction();
+    const wlr_fbox sampleBox = sampleFraction >= 1.0
+        ? strip
+        : titleBarStripSourceBox(
+              base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width,
+              m_content->current.height, static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight,
+              sampleFraction
+          );
+    const bool restrip = (average ? (fromCommit && stripTouched(sampleBox)) : touched)
+        || modeChanged
+        || stripMoved
+        || m_stripDeferred
+        || samplingChanged;
+    if (fromCommit && !restrip) {
+      m_sampling.noteQuietCommit();
+    }
+    if ((average || sampling) && restrip && !m_preview) {
+      const AdaptiveSampling::Input input{
+          .fromCommit = fromCommit,
+          .fenceSignalled = stripFenceSignalled(),
+          .generation = m_commitGeneration,
+          .nowMsec = monotonicMsec(),
+      };
+      const AdaptiveSampling::Action action = m_sampling.decide(input);
+      m_sampling.record(action, input);
+      switch (action) {
+      case AdaptiveSampling::Action::Skip:
+        // Owed, not dropped: the next update reads the edge this one skipped.
+        m_stripDeferred = true;
+        break;
+      case AdaptiveSampling::Action::Wait:
+        m_stripDeferred = true;
+        armStripFallback();
+        break;
+      case AdaptiveSampling::Action::GiveUp:
+        // This commit's fence was abandoned; a later commit brings a new one.
+        m_stripDeferred = false;
+        break;
+      case AdaptiveSampling::Action::Read:
+      case AdaptiveSampling::Action::ReadAnyway: {
+        const StripSample sample = averageStrip(sampleBox);
+        m_stripDeferred = false;
+        if (average) {
+          if (sample.color.has_value()) {
+            m_averageColor = sample.color;
+          } else if (sample.state == StripSample::State::Empty) {
+            // A readable edge with no color in it (transparent, or a strip with no area): the palette shows, as it does
+            // for the mirrored mode. An unreadable buffer keeps the last color instead, since its content is unknown.
+            m_averageColor.reset();
+          }
+        }
+        if (sampling) {
+          if (sample.color.has_value()) {
+            m_contrastSample = sample.color;
+            m_contrastSampleEmpty = false;
+          } else if (sample.state == StripSample::State::Empty) {
+            // A readable edge with nothing in it leaves the palette showing, which is what the title then sits on.
+            m_contrastSample.reset();
+            m_contrastSampleEmpty = true;
+          } else {
+            // Unreadable content is unknown rather than empty: the palette is not what shows behind it.
+            m_contrastSample.reset();
+            m_contrastSampleEmpty = false;
+          }
+        }
+        break;
+      }
+      }
+    }
     // The smear mirrors the strip, so it re-mirrors on every attach: the bar must not keep drawing a buffer the client
     // may have freed. The average carries no detail, so only a real change to the edge makes it read again.
     wlr_buffer* shown = buffer;
     const wlr_fbox* sourceBox = &strip;
     wl_output_transform transform = m_content->current.transform;
-    bool restrip = touched || modeChanged || stripMoved || m_stripDeferred || samplingChanged;
     if (average) {
-      if (restrip && !m_preview) {
-        const StripSample sample = averageStrip(strip);
-        m_stripDeferred = sample.state == StripSample::State::Deferred;
-        if (sample.color.has_value()) {
-          m_averageColor = sample.color;
-        } else if (sample.state == StripSample::State::Empty) {
-          // A readable edge with no color in it (transparent, or a strip with no area): the palette shows, as it does
-          // for the mirrored mode. An unreadable buffer keeps the last color instead, since its content is unknown.
-          m_averageColor.reset();
-        }
-      }
       shown = m_averageColor.has_value() ? averageBufferFor(*m_averageColor) : nullptr;
       if (shown == nullptr) {
         hideAdaptive();
@@ -497,23 +638,6 @@ namespace umbriel {
       }
       sourceBox = nullptr;
       transform = WL_OUTPUT_TRANSFORM_NORMAL;
-    } else if (sampling && restrip && !m_preview) {
-      // "window" mirrors the edge instead of reading it, so it has no color for the title to be judged against. The
-      // sample is the same readback "average" pays, taken only when the edge changed, and only when asked for.
-      const StripSample sample = averageStrip(strip);
-      m_stripDeferred = sample.state == StripSample::State::Deferred;
-      if (sample.color.has_value()) {
-        m_contrastSample = sample.color;
-        m_contrastSampleEmpty = false;
-      } else if (sample.state == StripSample::State::Empty) {
-        // A readable edge with nothing in it leaves the palette showing, which is what the title then sits on.
-        m_contrastSample.reset();
-        m_contrastSampleEmpty = true;
-      } else if (sample.state == StripSample::State::Refused) {
-        // Unreadable content is unknown rather than empty: the palette is not what shows behind it.
-        m_contrastSample.reset();
-        m_contrastSampleEmpty = false;
-      }
     }
     const bool reshaped = m_adaptiveBuffer != shown
         || stripMoved
@@ -755,6 +879,8 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_tree->node, shown);
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
+      // No bar to sample for: let a later redraw measure the title again before it caps a readback.
+      m_sampleWidth = 0;
       updateAdaptive(false);
       updateBlur();
       return;
@@ -781,6 +907,7 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
     }
     if (!shown) {
+      m_sampleWidth = 0;
       updateAdaptive(false);
       updateBlur();
       return;
@@ -813,6 +940,7 @@ namespace umbriel {
     // The configured color, or black or white when the bar behind it is too close to read.
     const std::array<float, 4> textColor = resolvedTitleColor();
     const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
+    cacheSampleWidth(label, parts);
     // Hold the title before the shadow lookup, which can evict it. The frame keeps this lock for its snapshots.
     holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
     const int labelWidth = label != nullptr ? label->width : 0;

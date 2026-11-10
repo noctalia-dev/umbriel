@@ -158,7 +158,7 @@ namespace umbriel {
 
   wlr_fbox titleBarStripSourceBox(
       const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
-      int surfaceHeight, uint32_t transform, int logicalHeight
+      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction
   ) {
     // The whole transform, flip bit included: a flip moves which buffer pixels the geometry maps to, while only a
     // quarter turn swaps the buffer's dimensions.
@@ -194,6 +194,11 @@ namespace umbriel {
       if (right > left && bottom > top) {
         visible = {left, top, right - left, bottom - top};
       }
+    }
+    // Only the leading part of the edge when the caller samples rather than mirrors it: the title is much narrower
+    // than the bar, and each readback pixel costs a finished frame.
+    if (widthFraction < 1.0) {
+      visible.width = std::max(0.0, visible.width * std::clamp(widthFraction, 0.0, 1.0));
     }
     // Cap after the floor: a viewport can make the source shorter than a buffer pixel, which inverts clamp()'s bounds.
     const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scaleY));

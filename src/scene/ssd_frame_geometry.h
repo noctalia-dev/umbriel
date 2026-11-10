@@ -65,8 +65,10 @@ namespace umbriel {
   // `geometry` the window geometry in surface-local coordinates (an empty box means the whole surface, and its
   // margins stay out of the strip), `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels,
   // and `transform` its buffer transform. A box with no area means the caller has no usable buffer.
+  // `widthFraction` keeps the strip to that leading part of the visible edge, 1.0 being all of it, so a readback can
+  // cover only the title instead of the whole bar.
   wlr_fbox titleBarStripSourceBox(
       const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
-      int surfaceHeight, uint32_t transform, int logicalHeight
+      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction = 1.0
   );
 } // namespace umbriel
