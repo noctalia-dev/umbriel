@@ -260,7 +260,7 @@ saturation = 1.1
 
 `enabled` is the master switch. Individual surfaces still opt in through [window rules](window-rules.md) or [layer rules](layer-rules.md). Blur appears only where a surface is transparent.
 
-Applications that draw their own backdrop blur can ask for it instead: Umbriel advertises `ext_background_effect_v1`, so a client names the part of its surface that should be blurred. A request turns blur on for that surface and limits it to the requested area, which combines with a rule rather than replacing it: an empty region means no blur. `client_requests = false` keeps the protocol advertised but ignores requests, so a client cannot opt itself in.
+Applications that draw their own backdrop blur can ask for it instead: Umbriel advertises `ext_background_effect_v1`, so a client names the part of its surface that should be blurred. A non-empty region turns blur on for that surface and limits it to that area even without a rule, an empty region means no blur, and a surface that makes no request keeps whatever its window or layer rule says. `client_requests = false` keeps the protocol advertised but ignores requests, so a client cannot opt itself in.
 
 | Key               | Default | Description                                                    |
 | ----------------- | ------- | -------------------------------------------------------------- |
