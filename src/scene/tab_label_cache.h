@@ -31,6 +31,8 @@ namespace umbriel {
 
   // Rendered tab titles, kept by what they render from and dropped least recently used first. Every tab bar shares
   // one, so a title renders once however many bars show it and however often focus moves the bar between windows.
+  // Labels a scene buffer still shows stay; the ones nothing shows are kept only up to kUnusedBudgetBytes, because
+  // titles that change often (browsers, terminals) and widths that animate otherwise fill it with stale bitmaps.
   class TabLabelCache {
   public:
     explicit TabLabelCache(size_t capacity = kDefaultCapacity);
@@ -47,6 +49,7 @@ namespace umbriel {
     static std::shared_ptr<TabLabelCache> shared();
 
     static constexpr size_t kDefaultCapacity = 256;
+    static constexpr size_t kUnusedBudgetBytes = 2 * 1024 * 1024;
 
   private:
     struct Entry {
@@ -58,6 +61,10 @@ namespace umbriel {
     // Most recently used first.
     std::list<Entry> m_entries;
     std::unordered_map<std::string, std::list<Entry>::iterator> m_index;
+
+    // Drops least recently used labels nothing shows until those fit the budget and the count fits the capacity.
+    // The most recent entry stays, since its caller has not locked it yet.
+    void trim();
   };
 
 } // namespace umbriel

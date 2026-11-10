@@ -121,8 +121,27 @@ namespace umbriel {
 
   void View::cancelFadeAnimation() {
     m_fade.snap(1.0);
-    dropOpeningInset();
     setFadeAlpha(1.0F);
+    releaseOpeningPresentation();
+  }
+
+  bool View::openingAnimationActive() const {
+    return m_mapped && !m_inScratchpad && m_fade.animating() && m_fade.target() > m_fade.from() && !sizeGrabActive();
+  }
+
+  void View::releaseOpeningPresentation(bool completed, bool pointerTakeover) {
+    if (!completed) {
+      m_openingFloatingSize.reset();
+    }
+    if (!pointerTakeover) {
+      dropOpeningInset();
+    }
+    if (completed) {
+      adoptFloatingClientSize();
+      if (m_mapped) {
+        syncOwnedPresentation();
+      }
+    }
   }
 
   bool View::tiledOpeningActive() const {
@@ -212,13 +231,20 @@ namespace umbriel {
   }
 
   int View::presentedWidth(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().width;
+      return m_tiled ? std::min(committed, target.width) : committed;
+    }
     if (sizeGrabActive()) {
       return target.width;
     }
     if (layoutPresentationOwned()) {
       return m_presentation.width();
     }
-    if (currentFullscreen()) {
+    if (currentFullscreen()
+        || m_tiled
+        || m_floating.pendingSize()
+        || (openingAnimationActive() && m_openingFloatingSize)) {
       return target.width;
     }
     return std::min(committedContentBox().width, target.width);
@@ -227,13 +253,20 @@ namespace umbriel {
   void View::trackPresentedSize(int width, int height) { m_presentation.track(width, height); }
 
   int View::presentedHeight(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().height;
+      return m_tiled ? std::min(committed, target.height) : committed;
+    }
     if (sizeGrabActive()) {
       return target.height;
     }
     if (layoutPresentationOwned()) {
       return m_presentation.height();
     }
-    if (currentFullscreen()) {
+    if (currentFullscreen()
+        || m_tiled
+        || m_floating.pendingSize()
+        || (openingAnimationActive() && m_openingFloatingSize)) {
       return target.height;
     }
     return std::min(committedContentBox().height, target.height);
@@ -250,11 +283,13 @@ namespace umbriel {
 
   void View::applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip) {
     m_presentation.applyCrop(m_contentTree, rootSurface(), geometryBox(), content, surfaceClip);
+    m_presentedCropActive = true;
     syncXwaylandShape();
   }
 
   void View::resetPresentedSurface() {
     m_presentation.resetCrop(m_contentTree, rootSurface());
+    m_presentedCropActive = false;
     // Clear the subsurface clip so the next syncViewPresentation re-applies the resting clip through a real
     // reconfigure: an unchanged clip box early-outs and would leave the animated src/dst behind.
     setSurfaceTreeClip(nullptr);
@@ -312,6 +347,11 @@ namespace umbriel {
   }
 
   void View::finishSizeAnimation() {
+    if ((!currentFullscreen() && m_tiled) || m_floating.pendingSize() || m_openingFloatingSize) {
+      resetPresentedSurface();
+      applyPresentedSize();
+      return;
+    }
     const wlr_box content = committedContentBox();
     m_presentation.setSize(content.width, content.height);
     resetPresentedSurface();
@@ -326,7 +366,6 @@ namespace umbriel {
       return;
     }
     m_layoutPresentationHeld = false;
-    m_tiledSizeRequest.reset();
     if (m_layoutMotion) {
       m_workspace->releaseLayoutMotion(this);
       m_layoutMotion = false;
@@ -351,6 +390,8 @@ namespace umbriel {
         && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace))
         && !tiledResizeWaitsForClient();
   }
+
+  bool View::presentsCommittedSize() const { return sizeGrabTracksPointer() || m_pointerResizeSettling; }
 
   bool View::tiledResizeWaitsForClient() const {
     const auto& animation = config().animation;
@@ -527,7 +568,8 @@ namespace umbriel {
     if (m_presentation.width() <= 0 || m_presentation.height() <= 0) {
       return;
     }
-    if (sizeGrabTracksPointer() || (width == m_presentation.width() && height == m_presentation.height())) {
+    if (sizeGrabTracksPointer()
+        || (!m_presentation.animating() && width == m_presentation.width() && height == m_presentation.height())) {
       return;
     }
     if (m_presentation.targeting(width, height)) {
@@ -678,8 +720,6 @@ namespace umbriel {
     m_tiledSizeRequest.reset();
     if (m_layoutPresentationHeld) {
       m_layoutPresentationHeld = false;
-      m_presentation.setSize(content.width, content.height);
-      m_presentation.setRegion(content.width, content.height);
       resetPresentedSurface();
     }
     return true;
@@ -691,9 +731,8 @@ namespace umbriel {
     }
     m_layoutMotion = false;
     m_layoutPresentationHeld = !settleTiledSizeRequest();
-    if (m_layoutPresentationHeld) {
-      presentTiledBox(target);
-    } else {
+    presentTiledBox(target);
+    if (!m_layoutPresentationHeld) {
       finishSizeAnimation();
     }
     syncAnimationEffects();
@@ -701,12 +740,10 @@ namespace umbriel {
 
   void View::endLayoutMotion() {
     if (!m_layoutMotion && !m_layoutPresentationHeld) {
-      m_tiledSizeRequest.reset();
       return;
     }
     m_layoutMotion = false;
     m_layoutPresentationHeld = false;
-    m_tiledSizeRequest.reset();
     if (tiledOpeningActive() && m_workspace != nullptr) {
       presentTiledBox(m_workspace->presentedTiledBox(this));
     } else {
@@ -874,6 +911,7 @@ namespace umbriel {
 
   bool View::tickAnimations(double nowMsec) {
     bool active = false;
+    bool openingFinished = false;
 
     // Disable sibling size animations during a tiled resize, so they do not
     // trail the pointer while clients acknowledge successive configures.
@@ -962,6 +1000,7 @@ namespace umbriel {
         }
       }
       active = active || m_fade.animating();
+      openingFinished = m_mapped && !m_inScratchpad && !m_fade.animating() && m_fade.target() > m_fade.from();
     }
     if (m_focusDim.tick(nowMsec)) {
       setFadeAlpha(m_fadeAlpha);
@@ -1006,6 +1045,10 @@ namespace umbriel {
         const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 0.0;
         active = m_dragPhysics.tick(elapsed / 1000.0, cadenceS) || active;
       }
+    }
+    if (openingFinished) {
+      releaseOpeningPresentation(true);
+      active = hasActiveAnimations() || active;
     }
     syncAnimationEffects();
     if (!active && m_mapped && m_xsurface != nullptr) {
@@ -1280,9 +1323,18 @@ namespace umbriel {
         .width = content.width,
         .height = content.height,
     };
+    const bool committedSize = presentsCommittedSize();
+    if (committedSize && m_presentedCropActive) {
+      // The clip below crops 1:1, but an unchanged clip box would keep the scaled crop programmed before.
+      resetPresentedSurface();
+    }
     setSurfaceTreeClip(&surfaceClip);
     applyCornerRadius();
-    if (layoutPresentationOwned() || sizeGrabActive()) {
+    if (!committedSize
+        && (layoutPresentationOwned()
+            || sizeGrabActive()
+            || m_floating.pendingSize()
+            || (openingAnimationActive() && m_openingFloatingSize))) {
       // The clip crops 1:1 in surface coordinates and caps the destination at the committed surface size, so it cannot
       // express an animated or interactive presented size. Program the buffer directly; the clip above keeps the buffer
       // node positioned at the visible box origin.

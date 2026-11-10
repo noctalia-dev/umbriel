@@ -1233,15 +1233,16 @@ namespace umbriel {
       view->setMaximizedToEdges(false, false);
     }
 
-    const wlr_box& geometry = view->geometryBox();
-    const double borderX = (view->layoutX() + geometry.x) + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
-    const double borderY = (view->layoutY() + geometry.y) + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
+    const wlr_box& presented = view->presentedBox();
+    const wlr_box geometry{view->layoutX(), view->layoutY(), presented.width, presented.height};
+    const double borderX = geometry.x + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
+    const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
         .offsetX = m_cursor->x - borderX,
         .offsetY = m_cursor->y - borderY,
-        .geometryX = geometry.x + view->layoutX(),
-        .geometryY = geometry.y + view->layoutY(),
+        .geometryX = geometry.x,
+        .geometryY = geometry.y,
         .geometryWidth = geometry.width,
         .geometryHeight = geometry.height,
         .edges = edges,
@@ -1405,6 +1406,7 @@ namespace umbriel {
       }
     } else if (restoreResizePresentation && view != nullptr && view->mapped()) {
       view->resetPresentedSurface();
+      view->adoptFloatingClientSize();
       view->syncOwnedPresentation();
     }
     refreshInteractiveCursor();
@@ -1864,11 +1866,16 @@ namespace umbriel {
       return;
     }
 
-    // Scene hit testing lets covered chrome stay covered by windows and panels.
+    // Scene hit testing lets covered chrome stay covered by windows and panels. Mod+left and Mod+right on the frame
+    // grab the window as they do on its content.
+    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
+    const bool modGrab = modHeld && (button == BTN_LEFT || button == BTN_RIGHT);
     if (m_server->exclusiveKeyboardLayer() == nullptr
         && isPassthrough()
         && !wlr_seat_pointer_has_grab(m_server->seat()->wlr())) {
-      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y)) {
+      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y); hit && modGrab) {
+        view = hit->view;
+      } else if (hit) {
         View* target = hit->view;
         clearPointerFocus();
         if (button == BTN_LEFT && hit->part == SsdFramePart::Resize) {
@@ -1935,7 +1942,6 @@ namespace umbriel {
       return;
     }
 
-    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       if (beginMove(view, button)) {
