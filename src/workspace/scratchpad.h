@@ -83,8 +83,8 @@ namespace umbriel {
     void syncViewPresentation(View* view, bool refreshMaximized = false);
     // Restore the manager-owned scene parents after a temporary global drag.
     void restorePresentation(View* view);
-    // Lift scratchpads above fullscreen windows, below pinned ones, while a shown pad shares its output with a
-    // fullscreen window; otherwise keep them below panels.
+    // Lift every scratchpad above fullscreen windows, below pinned ones, while any shown pad shares its output with a
+    // fullscreen window; otherwise keep them below panels. Scratchpads share one tree, so the lift is not per output.
     void updateStacking();
     void remove(View* view);
     void moveOutput(Output* from, Output* to);

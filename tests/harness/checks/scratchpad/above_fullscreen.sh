@@ -2,6 +2,7 @@
 # A scratchpad shown over a fullscreen window draws above it, backdrop included, instead of taking focus while hidden
 # beneath it. Otherwise it stays below panels, and pinned windows stay above it either way.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly SHOT="$UMBRIEL_RUNTIME_DIR/scratchpad-above-fullscreen.png"
 
@@ -49,6 +50,7 @@ cat >> "$UMBRIEL_CONFIG" << 'EOF'
 border_width = 0
 outer_border_width = 0
 corner_radius = 0
+drag_opacity = 1.0
 [appearance.shadow]
 enabled = false
 
@@ -111,6 +113,16 @@ if (( blue > 150 )); then
   exit 1
 fi
 
+# A dragged pad window stays above the pad's backdrop for the whole drag, across frames. The 400x300 pad spans
+# 440..840 x 238..538; dragging it by 60,60 puts 880,580 inside the window and outside where it started.
+pointer_hold 1280 720 move 640 300 mod super press 272 move 700 360 -- release 272 mod none
+capture
+assert_pixel 880 580 "255 0 0" "the dragged pad window fell beneath its backdrop"
+pointer_release
+capture
+assert_active pad
+assert_pixel 880 580 "255 0 0" "the dropped pad window is beneath its backdrop"
+
 # Hiding the pad shows the fullscreen window again.
 "$UMBRIEL" msg scratchpad-toggle test > /dev/null
 capture
@@ -133,6 +145,6 @@ assert_pixel 640 360 "0 255 0" "the pinned window is not on screen"
 capture
 assert_active pad
 assert_pixel 640 360 "0 255 0" "the pad covered the pinned window"
-assert_pixel 460 520 "255 0 0" "the pad is not on screen around the pinned window"
+assert_pixel 520 580 "255 0 0" "the pad is not on screen around the pinned window"
 
 echo "a scratchpad draws above a fullscreen window on its output, below panels otherwise, and below pinned windows"
