@@ -116,11 +116,7 @@ mkfifo "$FIFO"
 FILL_COLOR=0xFF202020 TOP_BAND_COLOR=0xFFF0F0F0 TOP_BAND_HEIGHT=1 REPAINT_ON_STDIN=1 \
   "$CLIENT" card-title-bar 480 300 < "$FIFO" > "$LOG" 2>&1 &
 exec 3> "$FIFO"
-for _ in $(seq 80); do
-  [[ $("$UMBRIEL" windows --json | jq length) -eq 1 ]] && break
-  sleep 0.025
-done
-[[ $("$UMBRIEL" windows --json | jq length) -eq 1 ]] || fail "the card client never mapped"
+await_window card-title-bar || fail "the card client never mapped"
 
 # The card carries the mean its window read; a card that dropped it falls back to the palette underneath.
 shoot_card
