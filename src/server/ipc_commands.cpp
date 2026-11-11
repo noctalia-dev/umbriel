@@ -900,6 +900,7 @@ namespace umbriel {
             {"index", workspace->index() + 1},
             {"output", output->wlr()->name},
             {"active", workspace->active()},
+            {"previous", workspace == group->previous()},
             {"focused", output.get() == preferred && workspace->active()},
             {"occupied", workspace->occupied()},
             {"window_count",

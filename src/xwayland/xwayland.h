@@ -51,6 +51,8 @@ namespace umbriel {
     // The cursor X clients see over their windows until they set their own. The buffer belongs to `manager`, so this
     // must run again before a replaced manager is destroyed. Also republishes the cursor theme in XSETTINGS.
     void applyCursor(wlr_xcursor_manager* manager);
+    // Disconnect the owning X11 client and destroy its resources, including windows retained after client exit.
+    [[nodiscard]] bool killClient(const wlr_xwayland_surface* xsurface);
     // Called by a window whose X11 surface was destroyed; deletes it.
     void forget(XwaylandWindow* window);
     // Mapping between layout and X coordinates.
