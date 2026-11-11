@@ -2,6 +2,8 @@
 
 #include "config/change.h"
 #include "config/config.h"
+#include "config/overrides.h"
+#include "config/store.h"
 #include "input/cursor.h"
 #include "input/input_capture.h"
 #include "layer/layer_surface.h"
@@ -253,6 +255,16 @@ namespace umbriel {
     }
 
     void printOutputName(const nlohmann::json& ok) { std::println("{}", ok.get<std::string>()); }
+
+    // A string prints bare, so `config get` output feeds shell scripts; anything else prints as JSON.
+    void printConfigValue(const nlohmann::json& ok) {
+      const nlohmann::json& value = ok["value"];
+      if (value.is_string()) {
+        std::println("{}", value.get<std::string>());
+      } else {
+        std::println("{}", value.dump());
+      }
+    }
 
     const char* transformName(wl_output_transform transform) {
       switch (transform) {
@@ -1295,6 +1307,89 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::configSet(Server& server, IpcArgs args) {
+    if (args.size() < 2) {
+      return nlohmann::json{{"err", "usage: config set <key> <value>"}};
+    }
+    std::string error;
+    const auto key = configoverrides::parseKey(args.front(), error);
+    if (!key) {
+      return nlohmann::json{{"err", error}};
+    }
+    if (key->front() == "include") {
+      return nlohmann::json{{"err", "include cannot be set at runtime"}};
+    }
+    // A value the shell split into several words, such as `[1, 2]`, is one value again.
+    std::string value;
+    for (const std::string& word : args.subspan(1)) {
+      if (!value.empty()) {
+        value += ' ';
+      }
+      value += word;
+    }
+    const auto delta = configoverrides::assignment(*key, value, error);
+    if (!delta) {
+      return nlohmann::json{{"err", error}};
+    }
+    toml::table overrides = configStore().overrides();
+    configoverrides::overlay(overrides, *delta);
+    const ConfigReloadResult result = configStore().applyOverrides(std::move(overrides), true, error);
+    if (!result.success) {
+      return nlohmann::json{{"err", error}};
+    }
+    server.handleConfigReload(result);
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
+  nlohmann::json IpcCommands::configGet(Server& /*server*/, IpcArgs args) {
+    if (args.size() != 1) {
+      return nlohmann::json{{"err", "usage: config get <key>"}};
+    }
+    std::string error;
+    const auto key = configoverrides::parseKey(args.front(), error);
+    if (!key) {
+      return nlohmann::json{{"err", error}};
+    }
+    const ConfigStore& store = configStore();
+    const nlohmann::json document = configoverrides::activeDocument(store.effective(), store.config());
+    const nlohmann::json* value = configoverrides::find(document, *key);
+    if (value == nullptr) {
+      return nlohmann::json{{"err", std::format("unknown config key: {}", args.front())}};
+    }
+    return nlohmann::json{
+        {"ok", {{"value", *value}, {"override", configoverrides::contains(store.overrides(), *key)}}}
+    };
+  }
+
+  nlohmann::json IpcCommands::configUnset(Server& server, IpcArgs args) {
+    if (args.size() != 1) {
+      return nlohmann::json{{"err", "usage: config unset <key|--all>"}};
+    }
+    std::string error;
+    toml::table overrides;
+    if (args.front() == "--all") {
+      if (configStore().overrides().empty()) {
+        return nlohmann::json{{"ok", nullptr}};
+      }
+    } else {
+      const auto key = configoverrides::parseKey(args.front(), error);
+      if (!key) {
+        return nlohmann::json{{"err", error}};
+      }
+      overrides = configStore().overrides();
+      if (!configoverrides::remove(overrides, *key)) {
+        return nlohmann::json{{"err", std::format("no runtime override at {}", args.front())}};
+      }
+    }
+    // Dropping an override can uncover a file value whose warning it hid; that is no reason to keep the override.
+    const ConfigReloadResult result = configStore().applyOverrides(std::move(overrides), false, error);
+    if (!result.success) {
+      return nlohmann::json{{"err", error}};
+    }
+    server.handleConfigReload(result);
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::settle(Server& /*server*/, IpcArgs /*args*/) { return nlohmann::json{{"ok", nullptr}}; }
 
   nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, IpcArgs /*args*/) {
@@ -1478,6 +1573,12 @@ namespace umbriel {
        &IpcCommands::outputDestroy, nullptr},
       {"config-replace", "<path>", "load and watch a different config file", IpcCommandGroup::Control, true,
        &IpcCommands::configReplace, nullptr},
+      {"config-set", "<key> <value>", "override a config value until the compositor exits", IpcCommandGroup::Config,
+       true, &IpcCommands::configSet, nullptr},
+      {"config-get", "<key>", "print the active value of a config key", IpcCommandGroup::Config, true,
+       &IpcCommands::configGet, &printConfigValue},
+      {"config-unset", "<key|--all>", "drop runtime overrides so the file or default applies again",
+       IpcCommandGroup::Config, true, &IpcCommands::configUnset, nullptr},
       {"effects", "", "inspect effect presets, pools, and owner selections", IpcCommandGroup::Inspect, false,
        &IpcCommands::effects, &printEffects},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
@@ -1533,6 +1634,14 @@ namespace umbriel {
       }
     }
     return nullptr;
+  }
+
+  std::string cliName(const IpcCommandSpec& spec) {
+    constexpr std::string_view kConfigPrefix = "config-";
+    if (spec.group == IpcCommandGroup::Config && spec.name.starts_with(kConfigPrefix)) {
+      return std::format("config {}", spec.name.substr(kConfigPrefix.size()));
+    }
+    return std::string(spec.name);
   }
 
 } // namespace umbriel

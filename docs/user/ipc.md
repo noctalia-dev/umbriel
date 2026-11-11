@@ -266,7 +266,9 @@ Disconnect, malformed or oversized input, or 250 ms without a snapshot closes th
 
 `umbriel config validate` checks a configuration and `umbriel config schema` lists the keys it accepts, both without a running compositor.
 
-`umbriel config-replace <path>` loads and watches a different configuration file in the running compositor. The path must be absolute. On success, the new file and its includes replace the previous watch set, and later reloads use the new file. A missing, unreadable, or invalid file returns an error and leaves the active configuration and watch set unchanged. Warnings do not reject a replacement.
+`umbriel config-replace <path>` loads and watches a different configuration file in the running compositor. The path must be absolute. On success, the new file and its includes replace the previous watch set, and later reloads use the new file. A missing, unreadable, or invalid file returns an error and leaves the active configuration and watch set unchanged. Warnings do not reject a replacement. [Runtime overrides](configuration.md#runtime-overrides) stay applied over the new file.
+
+`umbriel config set`, `config get`, and `config unset` manage [runtime overrides](configuration.md#runtime-overrides). Their requests are `{"cmd":"config-set","args":["<key>","<value>"]}`, `{"cmd":"config-get","args":["<key>"]}`, and `{"cmd":"config-unset","args":["<key>"]}` (or `["--all"]`).
 
 ## Virtual outputs
 
