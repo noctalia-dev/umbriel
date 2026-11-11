@@ -22,9 +22,10 @@ fail() {
 }
 
 # $1 color_source, $2 title color (default transparent), $3 "closing" to enable a fade-out the checks can
-# sample, $4 "buttons" to paint the button backgrounds, $5 rows of the window's edge to sample.
+# sample, $4 "buttons" to paint the button backgrounds, $5 rows of the window's edge to sample, $6 corner radius,
+# $7 where the title sits.
 configure() {
-  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-} rows=${5:-1} radius=${6:-0}
+  local source=$1 text=${2:-"#00000000"} closing=${3:-} buttons=${4:-} rows=${5:-1} radius=${6:-0} align=${7:-left}
   {
     cat <<EOF
 [general]
@@ -62,6 +63,7 @@ color_source = "$source"
 color_source_height = $rows
 button_background = $(if [[ $buttons == buttons ]]; then echo true; else echo false; fi)
 button_glyph = "never"
+title_align = "$align"
 
 [appearance.shadow]
 enabled = false
@@ -237,6 +239,19 @@ sample_width=$(rg -o 'averaged a [0-9]+x[0-9]+ strip' "$UMBRIEL_RUNTIME_DIR/comp
 if ! (( sample_width > 0 && sample_width < 400 )); then
   fail "the strip readback covered ${sample_width}px of the 480px edge instead of the title"
 fi
+
+# The sample follows the title rather than staying on the leading edge: right-aligned, it sits over the split's trailing
+# half, so the mean turns blue without the client repainting anything.
+configure average "" "" "" 1 0 right
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! near "$left_g" "$right_g" || ! (( right_b > 200 && right_g < 40 && right_r < 40 )); then
+  fail "a right-aligned title kept the leading sample: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+configure average
+"$UMBRIEL" settle
 
 # The same window in smear mode keeps the two sides distinct.
 configure window

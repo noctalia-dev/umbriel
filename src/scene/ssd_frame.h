@@ -91,7 +91,7 @@ namespace umbriel {
     // The part of the edge worth sampling: the title plus a little slack, as a fraction of the visible width.
     double sampleLeftFraction() const;
     double sampleWidthFraction() const;
-    void cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts, int labelX);
+    void cacheSampleWidth(const TabLabel* label, int labelX);
     // Reads the edge once `delayMsec` has passed, for a fence that outlived its wait or a read the cadence skipped.
     void armStripFallback(std::uint32_t delayMsec);
     static int onStripFallbackTimer(void* data);
@@ -148,6 +148,8 @@ namespace umbriel {
     // The title plus a little slack, in logical pixels from the bar's left edge; a width of 0 samples the whole edge.
     int m_sampleLeft = 0;
     int m_sampleWidth = 0;
+    // The region the last read covered, so a title that moves re-reads where it now sits.
+    wlr_fbox m_sampledStrip{};
     // What the strip node last mirrored, so an unrelated commit costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};

@@ -256,7 +256,7 @@ namespace umbriel {
     return std::clamp(width, 0.0, 1.0 - sampleLeftFraction());
   }
 
-  void SsdFrame::cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts, int labelX) {
+  void SsdFrame::cacheSampleWidth(const TabLabel* label, int labelX) {
     m_sampleLeft = 0;
     m_sampleWidth = 0;
     if (label == nullptr || m_geometry.contentWidth <= 0) {
@@ -266,10 +266,7 @@ namespace umbriel {
     // leading edge, so a readback from there would judge the bar against the wrong part of the window. The label and
     // the strip are both logical pixels.
     m_sampleLeft = std::clamp(labelX - kAdaptiveSamplePadding, 0, m_geometry.contentWidth);
-    const int right = std::clamp(
-        labelX + std::min(label->width, parts.title.width) + kAdaptiveSamplePadding, m_sampleLeft,
-        m_geometry.contentWidth
-    );
+    const int right = std::clamp(labelX + label->width + kAdaptiveSamplePadding, m_sampleLeft, m_geometry.contentWidth);
     m_sampleWidth = right - m_sampleLeft;
   }
 
@@ -509,6 +506,7 @@ namespace umbriel {
         m_stripDeferred = false;
         m_sampling.reset();
       }
+      m_sampledStrip = {};
       m_stripPixels.clear();
       m_stripPixels.shrink_to_fit();
       return;
@@ -574,9 +572,12 @@ namespace umbriel {
               m_content->current.height, static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight,
               sampleFraction, sampleStart
           );
+    // A title that moved takes its sample with it: where the bar reads from is part of what the read covers.
+    const bool spanMoved = (average || sampling) && !wlr_fbox_equal(&m_sampledStrip, &sampleBox);
     const bool restrip = (average ? (fromCommit && stripTouched(sampleBox)) : touched)
         || modeChanged
         || stripMoved
+        || spanMoved
         || m_stripDeferred
         || samplingChanged;
     if (fromCommit && !restrip) {
@@ -609,6 +610,7 @@ namespace umbriel {
       case AdaptiveSampling::Action::ReadAnyway: {
         const StripSample sample = averageStrip(sampleBox);
         m_stripDeferred = false;
+        m_sampledStrip = sampleBox;
         if (average) {
           if (sample.color.has_value()) {
             m_averageColor = sample.color;
@@ -961,7 +963,7 @@ namespace umbriel {
     const int labelHeight = label != nullptr ? label->height : 0;
     // Fixed here for the same reason: the shadow follows the title where it sits.
     const int labelX = titleBarLabelX(parts, g.contentWidth, labelWidth, style.titleAlign);
-    cacheSampleWidth(label, parts, labelX);
+    cacheSampleWidth(label, labelX);
     // Any bar can be any color, so the title keeps a dark edge unless it is turned off.
     const bool shadowed = style.titleShadow;
     const TabLabel* shadow = nullptr;
