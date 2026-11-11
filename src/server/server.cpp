@@ -490,7 +490,7 @@ namespace umbriel {
     }
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
-    cancelModifierTap();
+    m_pendingReleases.clearForCapture((capabilities & 1U) != 0, (capabilities & 2U) != 0);
     if ((capabilities & 1U) != 0) {
       for (const auto& keyboard : m_keyboards) {
         keyboard->prepareInputCapture(!active);
@@ -1129,19 +1129,19 @@ namespace umbriel {
     wl_display_destroy(m_display);
   }
 
-  const wlr_image_description_v1_data* Server::surfaceImageDescription(wlr_surface* surface) const {
+  const ColorDescription* Server::surfaceImageDescription(wlr_surface* surface) const {
     if (m_colorManager != nullptr) {
-      if (const wlr_image_description_v1_data* description = m_colorManager->surfaceDescription(surface)) {
+      if (const ColorDescription* description = m_colorManager->surfaceDescription(surface)) {
         return description;
       }
     }
     return nullptr;
   }
 
-  const wlr_image_description_v1_data* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
+  const ColorDescription* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
     struct Context {
       const Server* server;
-      const wlr_image_description_v1_data* description = nullptr;
+      const ColorDescription* description = nullptr;
     } context{.server = this};
 
     wlr_surface_for_each_surface(
@@ -1151,7 +1151,7 @@ namespace umbriel {
           if (context->description != nullptr) {
             return;
           }
-          const wlr_image_description_v1_data* description = context->server->surfaceImageDescription(candidate);
+          const ColorDescription* description = context->server->surfaceImageDescription(candidate);
           if (description == nullptr) {
             return;
           }

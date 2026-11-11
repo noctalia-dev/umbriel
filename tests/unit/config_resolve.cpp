@@ -186,6 +186,33 @@ UMBRIEL_TEST(outputScrollingDefaultPrecedesWorkspaceRulesAndFollowsGlobalLayout)
   CHECK_EQ(*globalDefault.scrolling.defaultExtentFraction, 0.2);
 }
 
+UMBRIEL_TEST(outputLayoutModePrecedesWorkspaceRulesAndFollowsGlobalLayout) {
+  Config config;
+  config.layout.mode = LayoutMode::Scrolling;
+
+  OutputRule output;
+  output.name = "DP-1";
+  output.layout.mode = LayoutMode::Dwindle;
+  config.outputs.push_back(std::move(output));
+
+  WorkspaceConfig globalWorkspace;
+  globalWorkspace.name = "dev";
+  globalWorkspace.layout.mode = LayoutMode::Master;
+  config.workspaceRules.push_back(std::move(globalWorkspace));
+
+  WorkspaceConfig outputWorkspace;
+  outputWorkspace.name = "dev";
+  outputWorkspace.output = "DP-1";
+  outputWorkspace.layout.mode = LayoutMode::Stacking;
+  config.workspaceRules.push_back(std::move(outputWorkspace));
+
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "dev", 0).mode == LayoutMode::Stacking);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "chat", 1).mode == LayoutMode::Dwindle);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-2"), "dev", 0).mode == LayoutMode::Master);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-2"), "chat", 1).mode == LayoutMode::Scrolling);
+  CHECK(umbriel::resolveUnnamedWorkspaceLayout(config, identity("DP-1"), 3).mode == LayoutMode::Dwindle);
+}
+
 UMBRIEL_TEST(outputSpecificWorkspaceRulesBeatLaterGlobalRules) {
   Config config;
 

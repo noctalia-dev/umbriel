@@ -23,6 +23,7 @@ namespace umbriel {
     // The keys a keybind written as a table takes besides its chord.
     struct KeybindOptions {
       std::optional<std::string> action;
+      std::optional<std::string> release;
       bool repeat = true;
       bool allowWhenLocked = false;
       bool allowWhenInhibited = false;
@@ -33,11 +34,17 @@ namespace umbriel {
     const registry::Fields<KeybindOptions>& keybindFields() {
       using K = KeybindOptions;
       static const registry::Fields<K> fields{
-          // A missing or non-string action is reported against the whole bind.
+          // Missing or non-string actions are reported against the whole bind.
           registry::custom<K>(
               "action", registry::KeyDescription("string").withFormat("action"),
               [](const toml::node& node, const std::string&, K& target, registry::ReadContext&) {
                 target.action = node.value<std::string>();
+              }
+          ),
+          registry::custom<K>(
+              "release", registry::KeyDescription("string").withFormat("action"),
+              [](const toml::node& node, const std::string&, K& target, registry::ReadContext&) {
+                target.release = node.value<std::string>();
               }
           ),
           registry::boolean("repeat", &K::repeat),
@@ -70,8 +77,18 @@ namespace umbriel {
           registry::readFields(bind, keybindFields(), options, context);
           const toml::node* submapNode = bind.node("submap");
           hasSubmapAfter = submapNode != nullptr && submapNode->is_string();
-          if (!options.action) {
-            warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
+          bool invalidAction = false;
+          for (const std::string_view field : {"action", "release"}) {
+            if (const toml::node* node = bind.node(field); node != nullptr && !node->is_string()) {
+              warnAt(node->source(), "ignoring keybind '{}' ('{}' must be a string)", chord, field);
+              invalidAction = true;
+            }
+          }
+          if (invalidAction) {
+            continue;
+          }
+          if (!options.action && !options.release) {
+            warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' or 'release' string)", chord);
             continue;
           }
         } else {
@@ -99,6 +116,10 @@ namespace umbriel {
           }
           continue;
         }
+        if (options.release && (binding.wheel != WheelDirection::None || binding.modifierOnly)) {
+          warnAt(key.source(), "ignoring keybind '{}' (release requires a keyboard key or mouse button)", chord);
+          continue;
+        }
         if (hasSubmapAfter) {
           binding.submapAfter = SubmapArg{.name = std::move(options.submap)};
         }
@@ -106,14 +127,30 @@ namespace umbriel {
         binding.allowWhenLocked = options.allowWhenLocked;
         binding.allowWhenInhibited = options.allowWhenInhibited;
         binding.cooldownMs = options.cooldownMs;
-        if (!parseAction(*options.action, binding)) {
-          warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, *options.action);
-          continue;
-        }
-
-        if (const auto invalid =
-                scratchpadSelectorError(loaded, binding).or_else([&] { return effectActionError(loaded, binding); })) {
-          warnAt(key.source(), "ignoring keybind '{}' ({})", chord, *invalid);
+        // Validate both phases before replacing an inherited entry.
+        std::vector<Keybind> phases;
+        auto addPhase = [&](const std::string& action, bool onRelease) {
+          Keybind phase = binding;
+          phase.onRelease = onRelease;
+          phase.repeat = phase.repeat && !onRelease;
+          if (!parseAction(action, phase)) {
+            warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, action);
+            return false;
+          }
+          if (onRelease && phase.action == KeybindAction::LayoutScrollDrag) {
+            warnAt(key.source(), "ignoring keybind '{}' (layout-scroll-drag requires a press binding)", chord);
+            return false;
+          }
+          if (const auto invalid =
+                  scratchpadSelectorError(loaded, phase).or_else([&] { return effectActionError(loaded, phase); })) {
+            warnAt(key.source(), "ignoring keybind '{}' ({})", chord, *invalid);
+            return false;
+          }
+          phases.push_back(std::move(phase));
+          return true;
+        };
+        if ((options.action && !addPhase(*options.action, false))
+            || (options.release && !addPhase(*options.release, true))) {
           continue;
         }
 
@@ -123,7 +160,9 @@ namespace umbriel {
         std::erase_if(configured, [&](const Keybind& existing) { return sameChord(existing, binding); });
         configured.push_back(binding);
         std::erase_if(loaded.keybinds, [&](const Keybind& existing) { return sameChord(existing, binding); });
-        loaded.keybinds.push_back(std::move(binding));
+        for (auto& phase : phases) {
+          loaded.keybinds.push_back(std::move(phase));
+        }
       }
     }
 

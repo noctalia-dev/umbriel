@@ -140,11 +140,14 @@ struct tex_shader {
   GLint tex;
   GLint alpha;
   GLint source_tf;
+  GLint source_tf_power;
   GLint primaries_matrix;
   GLint lum_multiplier;
   GLint source_luminances;
   GLint target_tf;
   GLint map_hdr_to_sdr;
+  GLint source_lut;
+  GLint source_lut_dim;
   GLint pos_attrib;
 
   GLint discard_transparent;

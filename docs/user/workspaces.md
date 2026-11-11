@@ -164,7 +164,7 @@ On dynamic outputs, `name` also creates a persistent named workspace. `index` fo
 Settings apply from least to most specific:
 
 1. Global `[layout]`
-2. Matching output scrolling extent
+2. Matching output layout defaults (`layout.mode`, `layout.scrolling.default_extent_fraction`)
 3. Matching workspace rule without `output`
 4. Matching workspace rule with `output`
 

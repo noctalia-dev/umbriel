@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/dirty.h"
+#include "output/colorimetry.h"
 #include "output/cursor_plane_pace.h"
 #include "output/direct_scanout.h"
 #include "output/frame_schedule.h"
@@ -36,11 +37,13 @@ namespace umbriel {
 
   enum class FormatTier : uint8_t;
   enum class HdrMode;
+  enum class SdrGamut;
   enum class SdrTransfer;
   class Server;
   class View;
   class WorkspaceGroup;
   struct OutputIdentity;
+  struct OutputRule;
 
   class Output {
   public:
@@ -122,6 +125,29 @@ namespace umbriel {
     float configuredSdrWhite() const;
     float sdrWhite() const;
     SdrTransfer configuredSdrTransfer() const;
+    SdrGamut configuredSdrGamut() const;
+    // Configured characterization source: "none", "edid", or an ICC file path.
+    std::string configuredColorProfile() const;
+    // Resolved characterization source: "none" when nothing characterized the
+    // output (including a configured file that fell back to an unusable EDID),
+    // "edid", or the ICC file path that was applied.
+    const std::string& resolvedColorProfile() const { return m_resolvedColorProfile; }
+    // Active panel characterization (ICC > EDID), resolved independently of
+    // sdr_gamut so diagnostics can report what was measured. Callers that put
+    // it on the wire must gate on the rendering destination first — see
+    // ColorManager::descriptionForOutput. Null when uncharacterized.
+    const PanelColorimetry* panelColorimetry() const { return m_panelColorimetry ? &*m_panelColorimetry : nullptr; }
+    // Raw ICC bytes behind get_information's icc_file advertising: the exact
+    // file bytes for file characterizations, a synthesized matrix-shaper
+    // profile for EDID ones, and nothing when inert or built without lcms2.
+    const IccProfileStore& iccProfileStore() const { return m_iccProfile; }
+    // The supplied transform frames must carry while SDR gamut mapping is
+    // staged: the frame paths' sdrGamutStaged decision, exposed for frame
+    // builders outside Output (the output-management test-frame path).
+    wlr_color_transform* stagedSdrGamutTransform() const;
+    // Content decode for a sampled panel curve, shared with the descriptions
+    // that advertise it. Null when the curve is named or an exact power.
+    const SharedColorTransform& panelDecodeTransform() const { return m_panelDecodeTransform; }
     void setRuntimeSdrWhite(float nits);
     int configuredBitDepth() const;
     const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
@@ -242,12 +268,32 @@ namespace umbriel {
     void arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive);
     void updateOptimizedBlur(const wlr_box& fullArea);
     void updateHdrAvailability(bool activationRejected = false);
+    // Characterize the panel from the configured source (ICC file > EDID) and
+    // cache the SDR gamut transform. `force` re-reads the profile; HDR
+    // transitions skip the re-read when the source is unchanged.
+    void updateSdrGamutTransform(const OutputRule* rule, bool force);
 
     Server* m_server = nullptr;
     wlr_output* m_output = nullptr;
     float m_defaultScale = 1.0F;
     std::optional<HdrStaticMetadata> m_hdrStaticMetadata;
     std::optional<float> m_runtimeSdrWhite;
+    // Cached SDR gamut transform, staged as the scene's supplied transform
+    // while a characterization is active and sdr_gamut is "srgb".
+    ColorTransformPtr m_sdrGamutTransform;
+    // Cached panel characterization feeding protocol descriptions and
+    // diagnostics. Populated for both sdr_gamut policies ("native" stages no
+    // transform at all but the panel is still characterized).
+    std::optional<PanelColorimetry> m_panelColorimetry;
+    // Raw ICC bytes advertised alongside that characterization via
+    // get_information's icc_file (see iccProfileStore()).
+    IccProfileStore m_iccProfile;
+    // Content decode for a sampled panel curve, shared with the descriptions
+    // that advertise it and held by any scene buffer tagged with one.
+    SharedColorTransform m_panelDecodeTransform;
+    std::string m_sdrGamutSource;
+    std::string m_resolvedColorProfile = "none";
+    bool m_sdrGamutResolved = false;
     wlr_scene_output* m_sceneOutput = nullptr;
     wlr_scene_tree* m_layerTrees[kLayerCount]{};
     wlr_scene_tree* m_layerPopupTrees[kLayerCount]{};

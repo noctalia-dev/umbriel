@@ -1007,7 +1007,6 @@ namespace umbriel {
   }
 
   void Server::handleConfigReload(const ConfigReloadResult& result) {
-    cancelModifierTap();
     if (result.success) {
       const bool systemKeymapChanged = refreshSystemKeymap();
       if (result.change.drm) {
@@ -1015,6 +1014,7 @@ namespace umbriel {
       }
       if (result.change.keybinds) {
         m_bindCooldowns.clear();
+        m_pendingReleases.reconcileReleaseBinds(config().keybinds);
       }
       if (result.change.scratchpads && m_scratchpadManager != nullptr) {
         m_scratchpadManager->reconcileConfig();
@@ -1497,6 +1497,7 @@ namespace umbriel {
     VirtualPointerDevice* device;
     device = wl_container_of(listener, device, destroy);
     // wlr_cursor detaches the device itself when the pointer is destroyed.
+    device->server->m_pendingReleases.forgetSource(&device->vpointer->pointer.base);
     wl_list_remove(&device->destroy.link);
     std::erase_if(device->server->m_virtualPointers, [device](const std::unique_ptr<VirtualPointerDevice>& ptr) {
       return ptr.get() == device;
@@ -1610,6 +1611,7 @@ namespace umbriel {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    server->m_pendingReleases.forgetSource(watch->device);
     if (server->m_inputCapture != nullptr) {
       server->m_inputCapture->forgetAbsoluteDevice(watch->device);
       if ((server->m_inputCapture->capabilities() & 2U) != 0) {
@@ -2081,7 +2083,6 @@ namespace umbriel {
       m_sessionLocked = true;
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
-      cancelModifierTap();
       m_overview->forceClose();
       if (m_cheatsheet != nullptr) {
         m_cheatsheet->hide();
@@ -3971,6 +3972,9 @@ namespace umbriel {
         output->markBlurBackgroundDirty();
         wlr_scene_output_state_options options{};
         options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
+        // Test frames must carry the same supplied transform as regular frames
+        // or the built state silently drops SDR gamut mapping.
+        options.color_transform = output->stagedSdrGamutTransform();
         if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
           kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
           return false;
@@ -4175,7 +4179,6 @@ namespace umbriel {
         entry.output->adoptOutputManagerEnabled(entry.head->state.enabled);
       }
 
-      cancelModifierTap();
       m_cursor->cancelLayoutInteraction();
       m_gestures->cancelForLayoutChange();
       m_overview->forceClose();

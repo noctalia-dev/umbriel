@@ -116,6 +116,9 @@ namespace {
       xkb_keysym_get_name(bind.keysym, buf, sizeof(buf));
       result += prettifyKeysym(buf);
     }
+    if (bind.onRelease) {
+      result += " (release)";
+    }
     return result;
   }
 
@@ -553,6 +556,7 @@ namespace {
     std::string actionLabel;
     uint32_t modifiers;
     bool useMod;
+    bool onRelease;
 
     bool operator<(const MergeKey& other) const {
       if (submap != other.submap) {
@@ -570,7 +574,10 @@ namespace {
       if (modifiers != other.modifiers) {
         return modifiers < other.modifiers;
       }
-      return useMod < other.useMod;
+      if (useMod != other.useMod) {
+        return useMod < other.useMod;
+      }
+      return onRelease < other.onRelease;
     }
   };
 
@@ -647,6 +654,7 @@ namespace umbriel {
       std::string workspaceName;
       uint32_t modifiers;
       bool useMod;
+      bool onRelease;
     };
 
     std::map<MergeKey, size_t> mergeIndex;
@@ -668,6 +676,7 @@ namespace umbriel {
           .actionLabel = aLabel,
           .modifiers = bind.modifiers,
           .useMod = bind.useMod,
+          .onRelease = bind.onRelease,
       };
 
       auto it = mergeIndex.find(key);
@@ -685,6 +694,7 @@ namespace umbriel {
             .workspaceName = workspaceSelectorName(bind),
             .modifiers = bind.modifiers,
             .useMod = bind.useMod,
+            .onRelease = bind.onRelease,
         });
       }
     }
@@ -724,6 +734,7 @@ namespace umbriel {
             .workspaceName = raw.workspaceName,
             .modifiers = raw.modifiers,
             .useMod = raw.useMod,
+            .onRelease = raw.onRelease,
         });
       }
     }
@@ -751,7 +762,7 @@ namespace umbriel {
       };
       std::map<RunKey, std::vector<size_t>> groups;
       for (size_t i = 0; i < rows.size(); ++i) {
-        if (rows[i].actionType != wsAction) {
+        if (rows[i].actionType != wsAction || rows[i].onRelease) {
           continue;
         }
         if (!rows[i].submap.empty()) {

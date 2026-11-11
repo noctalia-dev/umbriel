@@ -21,6 +21,7 @@ unit_tests = [
   ['lid-state', ['unit/lid_state.cpp'], []],
   ['output-enable-overrides', ['unit/output_enable_overrides.cpp'], []],
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
+  ['pending-releases', ['unit/pending_releases.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
   [
     'event-pacer',
@@ -52,7 +53,10 @@ unit_tests = [
   ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['output-gamma-transition', ['unit/output_gamma_transition.cpp'], []],
   ['hdr-metadata', ['unit/hdr_metadata.cpp'], [umbriel_core_dep]],
+  # Client-ICC cases skip at runtime when lcms2 is absent at build time.
   ['color-description', ['unit/color_description.cpp'], [umbriel_core_dep]],
+  # ICC cases skip at runtime when lcms2 is absent at build time.
+  ['colorimetry', ['unit/colorimetry.cpp'], [umbriel_core_dep]],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['sdr-format', ['unit/sdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],

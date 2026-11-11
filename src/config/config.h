@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -73,12 +74,6 @@ namespace umbriel {
     Scroll,
     // Narrow the slots until every tab fits.
     Shrink,
-  };
-
-  enum class TitleAlign : uint8_t {
-    Left,
-    Center,
-    Right,
   };
 
   struct AccelProfile {
@@ -288,6 +283,13 @@ namespace umbriel {
     Gamma22,
     Srgb,
   };
+  // SDR content policy for a characterized panel. `Native` stages no SDR
+  // output transform at all (pixels stay as they are without a profile);
+  // `Srgb` maps untagged SDR from sRGB into the panel's colorimetry.
+  enum class SdrGamut {
+    Srgb,
+    Native,
+  };
   constexpr std::string_view hdrModeName(HdrMode mode) {
     switch (mode) {
     case HdrMode::Off:
@@ -339,6 +341,14 @@ namespace umbriel {
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     SdrTransfer sdrTransfer = SdrTransfer::Gamma22;
+    // Panel characterization for SDR gamut limiting: "none", "edid", or a path
+    // to an ICC matrix-shaper display profile. The bytes are parsed at apply
+    // time and an unreadable path falls back to "edid". The mtime stamps the
+    // rule so a reload of an edited profile re-reads it (change detection and
+    // the characterization cache both key on it).
+    std::string colorProfile = "none";
+    std::int64_t colorProfileMtime = 0;
+    SdrGamut sdrGamut = SdrGamut::Native;
     std::optional<std::string> screenEffect;     // "off" disables the default
     std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
@@ -358,6 +368,8 @@ namespace umbriel {
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;
     struct Layout {
+      // Layout mode inherited by workspaces on this output.
+      std::optional<LayoutMode> mode;
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
         std::optional<double> defaultExtentFraction;
@@ -751,12 +763,16 @@ namespace umbriel {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
         std::string font = "sans 10";
+        TitleAlign titleAlign = TitleAlign::Left;
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
         int buttonSize = -1;
         int buttonGap = 8;
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        // Symbol side and stroke width in logical pixels; -1 derives each from the button size.
+        int buttonGlyphSize = -1;
+        double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};

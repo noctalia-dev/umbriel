@@ -1872,6 +1872,13 @@ namespace umbriel {
           && !candidate->minimized()
           && candidate->inputDelegate()->acceptsKeyboardFocus();
     };
+    // A hidden tab stands for the tab its group shows.
+    const auto shownTab = [this, &columns](View* candidate) {
+      const int column = m_layout->columnOf(candidate);
+      return column >= 0
+          ? unitEntry(columns[static_cast<size_t>(column)], static_cast<size_t>(m_layout->rowOf(candidate)))
+          : candidate;
+    };
 
     if (View* parent = view->shellParent(); mappedCandidate(parent) && parent->workspace() == this) {
       return parent;
@@ -1881,28 +1888,37 @@ namespace umbriel {
     // workspace, since nothing else refocuses until a destroy-time fallback that unmap-only clients never reach.
     if (columnIndex < 0 || columnIndex >= static_cast<int>(columns.size())) {
       for (const auto& entry : m_group->server()->registry().placementRoots()) {
-        if (mappedCandidate(entry.get()) && entry->workspace() == this) {
-          return entry.get();
+        if (View* candidate = shownTab(entry.get()); mappedCandidate(candidate) && candidate->workspace() == this) {
+          return candidate;
         }
       }
       return nullptr;
     }
 
-    const auto& column = columns[static_cast<size_t>(columnIndex)].views;
+    const Column& lane = columns[static_cast<size_t>(columnIndex)];
+    const auto at = static_cast<size_t>(rowIndex);
+    // A tab leaving its group hands focus to the tab the group shows next: the one before it, or after it when it was
+    // the first.
+    if (const TabGroup* group = lane.tabs.groupAt(at); group != nullptr && group->count > 1) {
+      const size_t next = group->active != at ? group->active : at > group->first ? at - 1 : at + 1;
+      if (mappedCandidate(lane.views[next])) {
+        return lane.views[next];
+      }
+    }
     for (int row = rowIndex - 1; row >= 0; --row) {
-      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+      if (View* candidate = unitEntry(lane, static_cast<size_t>(row)); mappedCandidate(candidate)) {
         return candidate;
       }
     }
-    for (int row = rowIndex + 1; row < static_cast<int>(column.size()); ++row) {
-      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+    for (int row = rowIndex + 1; row < static_cast<int>(lane.views.size()); ++row) {
+      if (View* candidate = unitEntry(lane, static_cast<size_t>(row)); mappedCandidate(candidate)) {
         return candidate;
       }
     }
     const auto recentInColumn = [&](int targetColumn) -> View* {
       const auto& members = columns[static_cast<size_t>(targetColumn)].views;
       for (const auto& entry : m_group->server()->registry().placementRoots()) {
-        View* candidate = entry.get();
+        View* candidate = shownTab(entry.get());
         if (mappedCandidate(candidate) && std::ranges::find(members, candidate) != members.end()) {
           return candidate;
         }
@@ -1940,8 +1956,11 @@ namespace umbriel {
 
   View* Workspace::cycleFocusTarget(int direction) const {
     std::vector<View*> ring;
+    // A tab group is one stop, at the tab it shows.
     for (const Column& column : m_layout->columns()) {
-      ring.insert(ring.end(), column.views.begin(), column.views.end());
+      for (size_t row = 0; row < column.views.size(); row = column.tabs.unitEnd(row)) {
+        ring.push_back(unitEntry(column, row));
+      }
     }
     std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
       return !view->minimized();

@@ -518,6 +518,10 @@ void wlr_scene_node_destroy(struct wlr_scene_node* node) {
     pixman_region32_fini(&scene_buffer->opaque_region);
     wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
     linked_node_destroy(&scene_buffer->blur);
+    if (scene_buffer->decode_transform != NULL) {
+      wlr_color_transform_unref(scene_buffer->decode_transform);
+      scene_buffer->decode_transform = NULL;
+    }
 
     assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
     assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
@@ -2890,6 +2894,35 @@ void wlr_scene_buffer_set_transfer_function(
   scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_transfer_function_power(struct wlr_scene_buffer* scene_buffer, float power) {
+  if (!isfinite(power) || power < 0.0f) {
+    power = 0.0f;
+  }
+  if (scene_buffer->transfer_function_power == power) {
+    return;
+  }
+
+  scene_buffer->transfer_function_power = power;
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
+void wlr_scene_buffer_set_decode_transform(
+    struct wlr_scene_buffer* scene_buffer, struct wlr_color_transform* transform
+) {
+  if (scene_buffer->decode_transform == transform) {
+    return;
+  }
+
+  if (transform != NULL) {
+    wlr_color_transform_ref(transform);
+  }
+  if (scene_buffer->decode_transform != NULL) {
+    wlr_color_transform_unref(scene_buffer->decode_transform);
+  }
+  scene_buffer->decode_transform = transform;
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
 void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer* scene_buffer, enum wlr_color_named_primaries primaries) {
   if (scene_buffer->primaries == primaries) {
     return;
@@ -2936,6 +2969,8 @@ void wlr_scene_buffer_set_luminances(
 
 void wlr_scene_buffer_copy_color(struct wlr_scene_buffer* dst, const struct wlr_scene_buffer* src) {
   wlr_scene_buffer_set_transfer_function(dst, src->transfer_function);
+  wlr_scene_buffer_set_transfer_function_power(dst, src->transfer_function_power);
+  wlr_scene_buffer_set_decode_transform(dst, src->decode_transform);
   wlr_scene_buffer_set_primaries(dst, src->primaries);
   wlr_scene_buffer_set_custom_primaries(dst, src->has_custom_primaries ? &src->custom_primaries : NULL);
   wlr_scene_buffer_set_luminances(dst, &src->luminances, src->absolute_luminance);
@@ -3824,6 +3859,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
             && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
                 || scene_buffer->absolute_luminance
                 || src_lum.max > src_lum.reference),
+        .transfer_function_power = scene_buffer->transfer_function_power,
+        .decode_transform = scene_buffer->decode_transform,
     };
 
     // TODO: Use the base wlr_render_pass_add_texture as a fast-path in the future
@@ -5785,6 +5822,8 @@ static bool render_capture_exclusion(struct render_data* data, const struct wlr_
 static bool scene_buffer_matches_background(struct wlr_scene_buffer* scene_buffer, const float background[static 4]) {
   if (!scene_buffer->is_single_pixel_buffer
       || scene_buffer->transfer_function != 0
+      || scene_buffer->transfer_function_power > 0.0f
+      || scene_buffer->decode_transform != NULL
       || scene_buffer->has_custom_primaries
       || scene_buffer->luminances.reference > 0.0f
       || scene_buffer->luminance_multiplier != 1.0f
@@ -5929,7 +5968,9 @@ static bool color_management_is_scanout_allowed(
   if (buffer->luminance_multiplier != 1.0f
       || buffer->has_custom_primaries
       || buffer->luminances.reference > 0.0f
-      || buffer->absolute_luminance) {
+      || buffer->absolute_luminance
+      || buffer->transfer_function_power > 0.0f
+      || buffer->decode_transform != NULL) {
     return false;
   }
 

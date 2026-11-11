@@ -123,6 +123,7 @@ namespace umbriel {
     // Record the target before cancelSizeAnimation synchronizes the current
     // presentation back through ScratchpadManager.
     m_floatingMaximized = maximized;
+    m_remaximizeOnTile = maximized;
     const ScratchpadManager* scratchpad = m_server->scratchpadManager();
     const bool visibleScratchpad = m_onActiveWorkspace && scratchpad != nullptr && scratchpad->contains(this);
     // A visible scratchpad has a manager-owned presentation even though it is
@@ -448,6 +449,7 @@ namespace umbriel {
     const bool wasEdges = m_maximizedToEdges;
     m_maximizedToEdges = false;
     m_floatingMaximized = false;
+    m_remaximizeOnTile = false;
     m_restoreMaximizedToEdges = false;
     m_hasMaximizeRestoreBox = false;
     setMaximizedState(false);
@@ -789,6 +791,7 @@ namespace umbriel {
     // via its request), so this only fires for a float episode the client still considers fullscreen.
     const bool refullscreen = !floating && !fullscreen && m_refullscreenOnTile;
     m_refullscreenOnTile = floating && m_refullscreenOnTile;
+    const bool remaximize = !floating && std::exchange(m_remaximizeOnTile, false);
 
     if (floating) {
       auto [keepWidth, keepHeight] = floatingRestoreSize();
@@ -803,9 +806,10 @@ namespace umbriel {
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
         if (m_workspace->scrollingLayout() != nullptr && column >= 0) {
-          ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          const Column& tile = m_workspace->scrollingLayout()->columns()[static_cast<size_t>(column)];
           m_savedScrollingExtentPx.reset();
-          m_savedScrollingExtent = scrolling->widthFraction(column);
+          m_savedScrollingExtent = tile.savedWidthFrac > 0 ? tile.savedWidthFrac : tile.widthFrac;
+          m_remaximizeOnTile = tile.savedWidthFrac > 0;
         }
         if (column >= 0 && m_workspace->layout().isFullWidth(column)) {
           m_workspace->layout().clearFullWidthState(column);
@@ -957,6 +961,9 @@ namespace umbriel {
         m_savedScrollingExtentPx.reset();
         m_savedScrollingExtent.reset();
       }
+    }
+    if (remaximize && !wantFullscreen && placement == TilePlacement::Layout) {
+      setMaximized(true);
     }
     updateForeignState();
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {

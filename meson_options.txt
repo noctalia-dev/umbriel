@@ -24,3 +24,9 @@ option(
   value: 'disabled',
   description: 'Compile umbrielfx\'s Tracy CPU and GPU render zones (needs a client built with TRACY_ENABLE and TRACY_ON_DEMAND)',
 )
+option(
+  'lcms2',
+  type: 'feature',
+  value: 'auto',
+  description: 'ICC profile support: output characterization for SDR gamut mapping and client ICC image descriptions (auto: build the ICC path when lcms2 is present, else the inert fallback)',
+)

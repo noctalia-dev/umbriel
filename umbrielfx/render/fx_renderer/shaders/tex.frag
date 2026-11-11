@@ -27,11 +27,14 @@ uniform sampler2D tex;
 
 uniform float alpha;
 uniform int source_tf;
+uniform float source_tf_power;
 uniform mat3 primaries_matrix;
 uniform float lum_multiplier;
 uniform vec2 source_luminances;
 uniform int target_tf;
 uniform bool map_hdr_to_sdr;
+uniform sampler2D source_lut;
+uniform float source_lut_dim;
 
 #define TRANSFER_FUNCTION_PASSTHROUGH 0
 #define TRANSFER_FUNCTION_SRGB 1
@@ -39,6 +42,8 @@ uniform bool map_hdr_to_sdr;
 #define TRANSFER_FUNCTION_EXT_LINEAR 4
 #define TRANSFER_FUNCTION_GAMMA22 8
 #define TRANSFER_FUNCTION_BT1886 16
+#define TRANSFER_FUNCTION_POWER 32
+#define TRANSFER_FUNCTION_LUT 64
 
 #if EFFECTS
 uniform vec2 size;
@@ -132,6 +137,23 @@ vec3 linear_color_to_srgb(vec3 color) {
   return vec3(linear_channel_to_srgb(color.r), linear_channel_to_srgb(color.g), linear_channel_to_srgb(color.b));
 }
 
+float unpack_source_lut(vec2 encoded) {
+  vec2 bytes = floor(encoded * 255.0 + 0.5);
+  return (bytes.x * 256.0 + bytes.y) / 65535.0;
+}
+
+// 3x1D decode for a transfer curve with no analytic form. Each channel owns a
+// row; the table is sampled with the same 16-bit packing the output LUT uses.
+float sample_source_lut(float value, float row) {
+  float position = clamp(value, 0.0, 1.0) * (source_lut_dim - 1.0);
+  float lower = floor(position);
+  float upper = min(lower + 1.0, source_lut_dim - 1.0);
+  float y = (row + 0.5) / 3.0;
+  float a = unpack_source_lut(texture2D(source_lut, vec2((lower + 0.5) / source_lut_dim, y)).ra);
+  float b = unpack_source_lut(texture2D(source_lut, vec2((upper + 0.5) / source_lut_dim, y)).ra);
+  return mix(a, b, position - lower);
+}
+
 vec3 linear_color_to_gamma22(vec3 color) { return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)); }
 
 vec3 hdr_to_sdr(vec3 color) {
@@ -159,12 +181,16 @@ vec4 decode_color(vec4 color) {
     rgb = max(rgb, vec3(0.0));
   }
 
-  if (source_tf == TRANSFER_FUNCTION_SRGB) {
+  if (source_tf == TRANSFER_FUNCTION_LUT) {
+    rgb = vec3(sample_source_lut(rgb.r, 0.0), sample_source_lut(rgb.g, 1.0), sample_source_lut(rgb.b, 2.0));
+  } else if (source_tf == TRANSFER_FUNCTION_SRGB) {
     rgb = srgb_color_to_linear(rgb);
   } else if (source_tf == TRANSFER_FUNCTION_ST2084_PQ) {
     rgb = pq_color_to_linear(rgb);
   } else if (source_tf == TRANSFER_FUNCTION_GAMMA22) {
     rgb = pow(rgb, vec3(2.2));
+  } else if (source_tf == TRANSFER_FUNCTION_POWER) {
+    rgb = pow(rgb, vec3(source_tf_power));
   } else if (source_tf == TRANSFER_FUNCTION_BT1886) {
     rgb = bt1886_color_to_linear(rgb);
   }
