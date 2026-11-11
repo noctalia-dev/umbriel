@@ -28,6 +28,8 @@ files = []
 # xwayland = false
 # Sharp X11 apps and games on scaled outputs; they see physical resolutions.
 # xwayland_native_resolution = true
+# Opt into render_scale for native X11 apps that scale their own interface.
+# force_x11_supersample = true
 # Umbriel announces the X11 interface scale and cursor theme through XSETTINGS.
 # Turn this off to run your own manager, such as xsettingsd.
 # xwayland_xsettings = false
@@ -448,6 +450,12 @@ blur_popups = true
 [[layer_rule]]
 match.namespace = "^noctalia-(notification|dock|panel|attached-panel|osd)$"
 blur_optimized = false
+
+# A screenshot overlay shows a frozen capture at its own resolution, so
+# supersampling it would scale that capture up and back down:
+# [[layer_rule]]
+# match.namespace = "^my-screenshot-overlay$"
+# supersample = false
 
 # ==============================================================================
 # Overview

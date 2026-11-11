@@ -4622,7 +4622,8 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene* scene, struct wlr_color_ma
 }
 
 void wlr_scene_set_preferred_scale_provider(
-    struct wlr_scene* scene, double (*get)(struct wlr_output* output, void* data), void* data
+    struct wlr_scene* scene, double (*get)(struct wlr_output* output, struct wlr_surface* surface, void* data),
+    void* data
 ) {
   scene->preferred_scale_provider = get;
   scene->preferred_scale_provider_data = data;

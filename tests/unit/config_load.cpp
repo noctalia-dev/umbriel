@@ -2460,6 +2460,12 @@ UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
   file.write("[[layer_rule]]\nmatch.layer = \"sideways\"\nblur = true\n");
   CHECK(store.reload().success);
   CHECK(store.config().layerRules.empty());
+
+  file.write("[[layer_rule]]\nmatch.namespace = \"^overlay$\"\nsupersample = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layerRules.size(), size_t{1});
+  CHECK(store.config().layerRules[0].supersample == false);
+  CHECK(!containsDiagnostic(store, "unknown key layer_rule.supersample"));
 }
 
 UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
@@ -2768,6 +2774,23 @@ UMBRIEL_TEST(nvidiaSyncWorkaroundReloadsAndDefaultsOn) {
   CHECK(store.config().general.nvidiaSyncWorkaround);
   CHECK(containsDiagnostic(store, "ignoring general.nvidia_sync_workaround (expected boolean)"));
   CHECK(!containsDiagnostic(store, "unknown key general.nvidia_sync_workaround"));
+}
+
+UMBRIEL_TEST(forceX11SupersampleLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[general]\nforce_x11_supersample = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.forceX11Supersample);
+  file.write("[general]\nforce_x11_supersample = \"true\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
+  CHECK(containsDiagnostic(store, "ignoring general.force_x11_supersample (expected boolean)"));
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
 }
 
 UMBRIEL_TEST(xwaylandPrimaryOutputLoadsAndCanBeRemoved) {

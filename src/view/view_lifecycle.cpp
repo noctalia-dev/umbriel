@@ -855,6 +855,8 @@ namespace umbriel {
     }
     m_contentType = next;
     m_server->scheduleIpcWindowsEvent();
+    // Game and video content skip the supersample.
+    refreshScaleHints();
     if (m_mapped) {
       if (!m_initialContentTypeRulesSettled && next != ContentType::None) {
         m_initialContentTypeRulesSettled = true;

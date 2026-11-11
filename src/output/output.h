@@ -152,9 +152,16 @@ namespace umbriel {
     int configuredBitDepth() const;
     const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
     bool configuredDirectScanoutEnabled() const;
-    // The scale clients are asked to render at: the rule's render_scale, or the
-    // logical scale when it is unset.
+    // The configured render scale: the rule's render_scale, or the logical
+    // scale when it is unset. Reported by IPC, logs and the X11 mapping, which
+    // want the configured value rather than the hint's floor.
     double clientRenderScale() const;
+    // The scale hint for `surface`: the configured render scale, or the logical
+    // scale for windows that skip the supersample (see View::supersampled),
+    // with the neutral 1.0 floor applied while render_scale is unset. Layer
+    // surfaces follow the output unless a `supersample` layer rule opts them
+    // out; other surfaces outside a window always follow it.
+    double surfaceRenderScale(wlr_surface* surface) const;
     bool configuredTearingAllowed() const;
     // Whether a workspace step wraps around the ends of this output's inventory.
     bool configuredCyclicWorkspaces() const;

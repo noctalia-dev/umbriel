@@ -104,6 +104,7 @@ autostart = ["noctalia", "kitty"]
 mod_key = "Super"
 xwayland = true
 xwayland_native_resolution = false
+force_x11_supersample = false
 xwayland_xsettings = true
 xwayland_primary_output = ""
 nvidia_sync_workaround = true
@@ -119,6 +120,7 @@ honor_restored_maximize = false
 | `mod_key`                    | string       | Super, or Alt when nested | Modifier represented by `Mod` in keybinds.                                                                                                                                           |
 | `xwayland`                   | bool         | `true`                    | Start Xwayland lazily for X11 applications. Changes require a restart.                                                                                                               |
 | `xwayland_native_resolution` | bool         | `false`                   | Show outputs to X11 applications at their physical resolution, so they render sharp on scaled outputs. Changes require a restart.                                                    |
+| `force_x11_supersample`      | bool         | `false`                   | Use `render_scale` for native-resolution X11 applications. Changes require a restart.                                                                                                |
 | `xwayland_xsettings`         | bool         | `true`                    | Announce the interface scale and cursor theme to X11 applications through XSETTINGS. Turn it off to run your own XSETTINGS manager, such as `xsettingsd`. Changes require a restart. |
 | `xwayland_primary_output`    | string       | `""`                      | Connector or monitor identity to publish as the X11 primary monitor. Applies on reload. Empty leaves primary selection unmanaged.                                                    |
 | `nvidia_sync_workaround`     | bool         | `true`                    | Wait for GPU completion on composed NVIDIA outputs without explicit synchronization. Applies on reload. See [NVIDIA synchronization](#nvidia-synchronization).                       |
@@ -131,9 +133,11 @@ honor_restored_maximize = false
 
 X11 bounding shapes clip windows to their visible regions, including holes and separate rectangles. Shape changes apply while the window is open and are preserved in overview previews, window captures, and close animations. Input shapes remain independent, so a click-through overlay can keep drawing its visible widgets.
 
-X11 applications have no per-output scale. By default they see every output at its logical size, and Umbriel upscales their windows on outputs with a scale above 1, which looks soft. With `xwayland_native_resolution = true` they see each output at its rendered size instead — its `render_scale`, or its scale when `render_scale` is unset: a `3840x2160` output at scale `1.25` appears to them as `3840x2160` rather than `3072x1728`. Their windows render at one pixel per rendered pixel and stay sharp, but X11 applications that do not scale their own interface look smaller on scaled outputs. Games benefit most.
+X11 applications have no per-output scale. By default they see every output at its logical size, and Umbriel upscales their windows on outputs with a scale above 1, which looks soft. With `xwayland_native_resolution = true` they see each output at its physical size: a `3840x2160` output at scale `1.25` appears to them as `3840x2160` rather than `3072x1728`. Their windows render at one pixel per output pixel and stay sharp, but X11 applications that do not scale their own interface look smaller on scaled outputs. Games benefit most.
 
-With `xwayland_xsettings = true`, Umbriel tells X11 applications that read XSETTINGS, such as GTK, Chromium, Electron, and Steam, the scale to draw their interface at: the largest output render scale with `xwayland_native_resolution = true`, and `1` without it. It also announces `[input.cursor]` `theme` and `size`, the size scaled the same way. At native resolution X11 has one scale for every output, so on outputs with a smaller scale these applications look larger than native ones.
+Native-resolution X11 applications use the output's `scale`, not `render_scale`, so applications that draw a fixed number of pixels keep their size when supersampling is enabled. Set `force_x11_supersample = true` to use `render_scale` for X11 as well. Applications that do not scale their interface to match can then appear smaller or larger; this setting has no effect without `xwayland_native_resolution`.
+
+With `xwayland_xsettings = true`, Umbriel tells X11 applications that read XSETTINGS, such as GTK, Chromium, Electron, and Steam, the scale to draw their interface at: the largest X11 output scale with `xwayland_native_resolution = true`, and `1` without it. It also announces `[input.cursor]` `theme` and `size`, the size scaled the same way. At native resolution X11 has one scale for every output, so on outputs with a smaller scale these applications look larger than native ones.
 
 ### X11 primary monitor
 

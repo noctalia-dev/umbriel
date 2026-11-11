@@ -185,9 +185,9 @@ struct wlr_scene {
     bool capture_policy_failed;
 
     // May be NULL: the scale clients should render at for a surface presented
-    // on a given output (its render scale). Derivation falls back to the
-    // output's own scale.
-    double (*preferred_scale_provider)(struct wlr_output* output, void* data);
+    // on a given output (its render scale, which may depend on the surface).
+    // Derivation falls back to the output's own scale.
+    double (*preferred_scale_provider)(struct wlr_output* output, struct wlr_surface* surface, void* data);
     void* preferred_scale_provider_data;
 
     // How minified scene buffers sample their source; see
@@ -627,7 +627,8 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene* scene, struct wlr_color_ma
  * for frame pacing but publishes no scale hints to its surfaces' clients.
  */
 void wlr_scene_set_preferred_scale_provider(
-    struct wlr_scene* scene, double (*get)(struct wlr_output* output, void* data), void* data
+    struct wlr_scene* scene, double (*get)(struct wlr_output* output, struct wlr_surface* surface, void* data),
+    void* data
 );
 
 /**

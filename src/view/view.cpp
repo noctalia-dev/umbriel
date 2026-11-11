@@ -983,10 +983,25 @@ namespace umbriel {
     if (m_captureSource != nullptr) {
       umbrielfx_scene_capture_source_set_scale(m_captureSource, output->wlr()->scale);
     }
-    forEachSurface(&Output::notifySurfaceScaleIter, output);
-    forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
+    refreshScaleHints();
     // Chrome that renders text follows the scale too.
     layoutChromeAttachment(m_chromeContentWidth, m_chromeContentHeight);
+  }
+
+  void View::refreshScaleHints() {
+    Output* output = currentOutput();
+    if (output == nullptr || rootSurface() == nullptr) {
+      return;
+    }
+    forEachSurface(&Output::notifySurfaceScaleIter, output);
+    forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
+  }
+
+  bool View::supersampled() {
+    if (const std::optional<bool> rule = resolvedRules().supersample) {
+      return *rule;
+    }
+    return !scheduledFullscreen() && m_contentType != ContentType::Game && m_contentType != ContentType::Video;
   }
 
   void View::unconstrainPopup(wlr_xdg_popup* popup) {

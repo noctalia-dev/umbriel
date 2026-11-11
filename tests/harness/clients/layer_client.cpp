@@ -7,6 +7,9 @@
 // `popup-color=<ARGB>` paints that menu in a premultiplied colour, so a translucent menu can show what lies below it.
 // LAYER_CONTROL enables stdin commands: frames LABEL COUNT, color LABEL AARRGGBB, child-color LABEL AARRGGBB,
 // child-move LABEL X Y, and margins LABEL TOP RIGHT BOTTOM LEFT. Each prints done after its frame callbacks arrive.
+// `log-scale` prints "scale N/120" for every preferred fractional scale the surface receives. `hold-map` creates the
+// surface without committing it and prints "held"; the control command `map` commits it, so a check can change the
+// rules the surface maps under.
 
 #include <wayland-client.h>
 
@@ -14,6 +17,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #undef namespace
 
+#include "fractional-scale-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -53,6 +57,11 @@ namespace {
     wl_shm* shm = nullptr;
     wl_subcompositor* subcompositor = nullptr;
     zwlr_layer_shell_v1* layerShell = nullptr;
+    wp_fractional_scale_manager_v1* fractionalScaleManager = nullptr;
+    wp_fractional_scale_v1* fractionalScale = nullptr;
+    bool logScale = false;
+    bool holdMap = false;
+    bool mapped = false;
     wl_seat* seat = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_pointer* pointer = nullptr;
@@ -174,6 +183,16 @@ namespace {
   }
 
   void handleCommand(State& state, const std::string& line) {
+    if (line == "map") {
+      if (state.mapped) {
+        state.failed = state.closed = true;
+        std::println(stderr, "layer-client: already mapped");
+        return;
+      }
+      state.mapped = true;
+      wl_surface_commit(state.surface);
+      return;
+    }
     std::istringstream command(line);
     std::string action;
     command >> action >> state.commandLabel;
@@ -485,6 +504,12 @@ namespace {
       .name = seatName,
   };
 
+  void preferredScale(void*, wp_fractional_scale_v1*, uint32_t scale) { std::println("scale {}/120", scale); }
+
+  const wp_fractional_scale_v1_listener kFractionalScaleListener = {
+      .preferred_scale = preferredScale,
+  };
+
   void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
     auto& state = *static_cast<State*>(data);
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
@@ -500,6 +525,10 @@ namespace {
     } else if (std::strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
       state.layerShell = static_cast<zwlr_layer_shell_v1*>(
           wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4U))
+      );
+    } else if (std::strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+      state.fractionalScaleManager = static_cast<wp_fractional_scale_manager_v1*>(
+          wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1)
       );
     } else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0) {
       state.wmBase =
@@ -530,7 +559,7 @@ int main(int argc, char** argv) {
         "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer|overlay-layer] "
         "[log-configures] "
         "[keyboard=none|on-demand|exclusive] [release-on-escape] [popup-on-click|popup-on-release] "
-        "[popup-color=<ARGB>]"
+        "[popup-color=<ARGB>] [log-scale] [hold-map]"
     );
     return EXIT_FAILURE;
   }
@@ -559,6 +588,10 @@ int main(int argc, char** argv) {
       state.keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
     } else if (option == "release-on-escape") {
       state.releaseOnEscape = true;
+    } else if (option == "log-scale") {
+      state.logScale = true;
+    } else if (option == "hold-map") {
+      state.holdMap = true;
     } else if (option == "log-configures") {
       state.logConfigures = true;
     } else if (option == "popup-on-click") {
@@ -605,6 +638,7 @@ int main(int argc, char** argv) {
       || state.shm == nullptr
       || state.layerShell == nullptr
       || ((state.popupOnClick || state.popupOnRelease) && (state.wmBase == nullptr || state.seat == nullptr))
+      || (state.logScale && state.fractionalScaleManager == nullptr)
       || selected == state.outputs.end()) {
     std::println(stderr, "layer-client: missing protocol or output '{}'", outputName);
     return EXIT_FAILURE;
@@ -636,6 +670,11 @@ int main(int argc, char** argv) {
       state.layerShell, state.surface, (*selected)->resource, layer, "umbriel-output-restore-regression"
   );
   zwlr_layer_surface_v1_add_listener(state.layerSurface, &kLayerSurfaceListener, &state);
+  if (state.logScale) {
+    state.fractionalScale =
+        wp_fractional_scale_manager_v1_get_fractional_scale(state.fractionalScaleManager, state.surface);
+    wp_fractional_scale_v1_add_listener(state.fractionalScale, &kFractionalScaleListener, &state);
+  }
   if (state.keyboardInteractivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) {
     zwlr_layer_surface_v1_set_keyboard_interactivity(state.layerSurface, state.keyboardInteractivity);
   }
@@ -656,7 +695,12 @@ int main(int argc, char** argv) {
     }
   }
   zwlr_layer_surface_v1_set_anchor(state.layerSurface, anchors);
-  wl_surface_commit(state.surface);
+  if (state.holdMap) {
+    std::println("held");
+  } else {
+    state.mapped = true;
+    wl_surface_commit(state.surface);
+  }
 
   const bool control = std::getenv("LAYER_CONTROL") != nullptr;
   while (!state.closed && wl_display_dispatch_pending(state.display) >= 0) {
@@ -703,6 +747,12 @@ int main(int argc, char** argv) {
   }
   if (state.wmBase != nullptr) {
     xdg_wm_base_destroy(state.wmBase);
+  }
+  if (state.fractionalScale != nullptr) {
+    wp_fractional_scale_v1_destroy(state.fractionalScale);
+  }
+  if (state.fractionalScaleManager != nullptr) {
+    wp_fractional_scale_manager_v1_destroy(state.fractionalScaleManager);
   }
   zwlr_layer_surface_v1_destroy(state.layerSurface);
   wl_surface_destroy(state.surface);

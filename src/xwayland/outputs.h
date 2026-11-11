@@ -47,8 +47,7 @@ namespace umbriel {
   // goes through an XwaylandRegion.
   class XwaylandOutputs {
   public:
-    // The scale X11 clients are asked to render each output at — its render
-    // scale, resolved through the shell's output binding.
+    // The X coordinate scale for each output, resolved through the shell's output binding.
     using RenderScale = std::function<double(const wlr_output*)>;
     // Empty `renderScale` publishes each output's own scale.
     XwaylandOutputs(

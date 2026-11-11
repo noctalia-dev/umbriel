@@ -710,11 +710,12 @@ namespace umbriel {
     // clients supersample while the scene samples down to the `scale` raster.
     wlr_scene_set_preferred_scale_provider(
         m_scene,
-        [](wlr_output* output, void* data) -> double {
+        [](wlr_output* output, wlr_surface* surface, void* data) -> double {
           auto* server = static_cast<Server*>(data);
           const Output* bound = server->outputFromWlr(output);
           // Unbound outputs are capture mirrors and must not drive hints.
-          return bound != nullptr ? bound->clientRenderScale() : -1.0;
+          // Same per-surface answer as Output::notifySurfaceScaleIter.
+          return bound != nullptr ? bound->surfaceRenderScale(surface) : -1.0;
         },
         this
     );
