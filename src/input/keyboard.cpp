@@ -23,6 +23,23 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("keyboard");
+
+    void confirmDialog(Server& server, QuitConfirm::Kind kind, bool rememberCapture = false) {
+      switch (kind) {
+      case QuitConfirm::Kind::SessionQuit:
+        server.requestSessionExit();
+        return;
+      case QuitConfirm::Kind::ScreenCastDynamic:
+        server.confirmScreenCastDynamic();
+        return;
+      case QuitConfirm::Kind::InputEmulation:
+        server.confirmInputEmulation();
+        return;
+      case QuitConfirm::Kind::InputCapture:
+        server.confirmInputCapture(rememberCapture);
+        return;
+      }
+    }
   } // namespace
 
   Keyboard::Keyboard(Server& server, wlr_input_device* device)
@@ -290,6 +307,43 @@ namespace umbriel {
     notifyLayoutIfChanged();
   }
 
+  bool Keyboard::handleConfirmationPress(
+      std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly
+  ) {
+    QuitConfirm* confirm = m_server->quitConfirm();
+    if (confirm == nullptr || !confirm->visible() || modifierOnly) {
+      return false;
+    }
+
+    bool enterPressed = false;
+    bool rememberCapture = false;
+    for (const uint32_t keysym : keysyms) {
+      enterPressed = enterPressed || keysym == XKB_KEY_Return || keysym == XKB_KEY_KP_Enter;
+      if (!m_virtual && confirm->canRememberInputCapture() && (keysym == XKB_KEY_r || keysym == XKB_KEY_R)) {
+        rememberCapture = true;
+      }
+    }
+    if (rememberCapture) {
+      confirmDialog(*m_server, confirm->kind(), true);
+      return true;
+    }
+
+    // Match without dispatching, preserving the screencast command whose warning is visible.
+    for (const uint32_t keysym : keysyms) {
+      const Keybind* matched = m_server->matchKeybind(keysym, rawKeysym, modifiers);
+      if (matched != nullptr && m_server->confirmsVisibleDialog(matched->action)) {
+        confirmDialog(*m_server, confirm->kind());
+        return true;
+      }
+    }
+    if (enterPressed) {
+      confirmDialog(*m_server, confirm->kind());
+      return true;
+    }
+    m_server->dismissConfirmation();
+    return true;
+  }
+
   void Keyboard::handleKey(void* data) {
     auto* event = static_cast<wlr_keyboard_key_event*>(data);
     if (InputCapture* capture = m_server->inputCapture();
@@ -298,6 +352,7 @@ namespace umbriel {
         m_consumedKeycodes.insert(event->keycode);
       } else {
         m_consumedKeycodes.erase(event->keycode);
+        m_server->pendingReleases().forgetPress(this, event->keycode);
       }
       return;
     }
@@ -318,7 +373,6 @@ namespace umbriel {
     const bool modifierOnly = nsyms > 0 && syms[0] >= XKB_KEY_Shift_L && syms[0] <= XKB_KEY_Hyper_R;
 
     bool handled = false;
-    std::optional<Keybind> modifierTap;
     // An XF86 key can arrive from a dedicated hotkey device while its modifiers are held on the main keyboard. Match
     // against the combined seat-wide state so those chords behave like keys on one device.
     uint32_t modifiers = m_server->keyboardModifiers(true);
@@ -328,6 +382,7 @@ namespace umbriel {
         m_consumedKeycodes.insert(event->keycode);
       } else {
         m_consumedKeycodes.erase(event->keycode);
+        m_server->pendingReleases().forgetPress(this, event->keycode);
       }
       return;
     }
@@ -355,6 +410,7 @@ namespace umbriel {
           m_consumedKeycodes.insert(event->keycode);
         } else {
           m_consumedKeycodes.erase(event->keycode);
+          m_server->pendingReleases().forgetPress(this, event->keycode);
         }
         if (!m_virtual) {
           capture->captureKey(event->time_msec, m_keyboard, event->keycode, pressed);
@@ -381,54 +437,24 @@ namespace umbriel {
         }
       }
       // Modal confirmation consumes non-modifier presses before binds or clients.
-      // Enter or a matching action confirms; input capture can also offer R to
-      // remember approval. Modifier-only presses keep held chords intact.
-      bool confirmationConsumed = false;
-      if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible() && !modifierOnly) {
-        bool confirmed = false;
-        bool rememberCapture = false;
-        for (int i = 0; i < nsyms; ++i) {
-          confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
-          if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
-            confirmed = true;
-            rememberCapture = true;
-          }
-        }
-        // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
-        // matchKeybind mirrors handleKeybind without running the action, so the pending screencast command remains
-        // the one whose warning is visible.
-        for (int i = 0; i < nsyms && !confirmed; ++i) {
-          const Keybind* matched = m_server->matchKeybind(syms[i], rawSym, modifiers);
-          if (matched == nullptr) {
-            continue;
-          }
-          if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-            confirmed = matched->action == KeybindAction::SessionQuit;
-          } else if (confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
-            confirmed = matched->action == KeybindAction::ScreenCastSetOutput
-                || matched->action == KeybindAction::ScreenCastSetWindow
-                || matched->action == KeybindAction::ScreenCastFollowWindow
-                || matched->action == KeybindAction::ScreenCastFollowOutput;
-          }
-        }
-        if (confirmed) {
-          if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
-            m_server->requestSessionExit();
-          } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
-            m_server->confirmInputEmulation();
-          } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
-            m_server->confirmInputCapture(rememberCapture);
-          } else {
-            m_server->confirmScreenCastDynamic();
-          }
-        } else {
-          m_server->dismissConfirmation();
-        }
-        handled = true;
-        confirmationConsumed = true;
-      }
+      // Enter or a matching press action confirms; release bindings never confirm.
+      // Input capture can also offer R to remember approval. Modifier-only presses keep held chords intact.
+      const bool confirmationConsumed = handleConfirmationPress(
+          std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), rawSym, modifiers, modifierOnly
+      );
+      handled = handled || confirmationConsumed;
       std::optional<Keybind> matched;
       if (!confirmationConsumed) {
+        // Snapshot before the press action can change focus, submap, or configuration.
+        for (int i = 0; i < nsyms; ++i) {
+          const Keybind* release = m_server->matchKeybind(syms[i], rawSym, modifiers, true);
+          if (release != nullptr) {
+            m_server->pendingReleases().armRelease(this, event->keycode, *release);
+            m_consumedKeycodes.insert(event->keycode);
+            handled = true;
+            break;
+          }
+        }
         for (int i = 0; i < nsyms; ++i) {
           // The action can move focus, and the enter it sends must already know
           // this press is consumed, or the incoming surface is handed a held key
@@ -440,7 +466,9 @@ namespace umbriel {
             handled = true;
             break;
           }
-          m_consumedKeycodes.erase(event->keycode);
+          if (!handled) {
+            m_consumedKeycodes.erase(event->keycode);
+          }
         }
       }
       if (matched.has_value()) {
@@ -457,10 +485,11 @@ namespace umbriel {
           }
         }
       }
-      // Any non-modifier key press dismisses the cheatsheet, except the key
-      // that just toggled it.
+      // Non-modifier presses dismiss the cheatsheet unless a press or pending release action controls it.
       if (Cheatsheet* sheet = m_server->cheatsheet(); sheet != nullptr && sheet->visible()) {
-        const bool cheatsheetBind = matched.has_value() && isCheatsheetAction(matched->action);
+        const Keybind* release = m_server->pendingReleases().releaseBind(this, event->keycode);
+        const bool cheatsheetBind = (matched.has_value() && isCheatsheetAction(matched->action))
+            || (release != nullptr && isCheatsheetAction(release->action));
         if (!cheatsheetBind && !modifierOnly) {
           sheet->hide();
         }
@@ -477,8 +506,7 @@ namespace umbriel {
       if (m_repeatArmed && event->keycode == m_repeatKeycode) {
         cancelRepeat();
       }
-      modifierTap = m_server->releaseModifierTap(this, event->keycode);
-      handled = m_consumedKeycodes.erase(event->keycode) > 0;
+      handled = m_consumedKeycodes.contains(event->keycode);
     }
 
     if (!handled) {
@@ -499,10 +527,11 @@ namespace umbriel {
         }
       }
     }
-    // A modifier-only action runs after its release reaches the focused
-    // client, so opening a surface cannot strand the old focus with Mod held.
-    if (modifierTap.has_value()) {
-      m_server->executeAction(*modifierTap);
+    // Every release action runs after delivery/consumption, so focus changes cannot strand a held modifier.
+    if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+      m_server->executeReleaseBind(this, event->keycode);
+      // Keep consumed keys excluded from any focus enter performed by the release action.
+      m_consumedKeycodes.erase(event->keycode);
     }
   }
 
@@ -517,7 +546,7 @@ namespace umbriel {
     m_modifiers.link.next = nullptr;
     m_key.link.next = nullptr;
     m_destroy.link.next = nullptr;
-    m_server->cancelModifierTap();
+    m_server->pendingReleases().forgetSource(this);
     m_server->removeKeyboard(this);
   }
 

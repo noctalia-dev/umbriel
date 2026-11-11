@@ -349,6 +349,10 @@ struct wlr_scene_buffer {
   struct wlr_color_luminances luminances;
   // Windows-scRGB uses absolute light on PQ outputs, independent of SDR white.
   bool absolute_luminance;
+  // Decode for a curve the named transfer function cannot express: an EOTF
+  // exponent (0 = none) or a refcounted 3x1D LUT (NULL = none).
+  float transfer_function_power;
+  struct wlr_color_transform* decode_transform;
   // Outputs whose capture composition sampled this buffer in their latest frame.
   uint64_t capture_outputs;
 };
@@ -677,6 +681,11 @@ struct wlr_scene_surface_color_state {
   const struct wlr_color_primaries* custom_primaries;
   struct wlr_color_luminances luminances;
   bool absolute_luminance;
+  // Decode for a curve the named field cannot express: an EOTF exponent
+  // (0 = none) or a 3x1D LUT transform (NULL = none). Both are exact, so a
+  // description that carries one renders without substitution.
+  float transfer_function_power;
+  struct wlr_color_transform* decode_transform;
 };
 
 typedef void (*wlr_scene_surface_color_resolver_func_t)(
@@ -1053,6 +1062,21 @@ void wlr_scene_buffer_set_corner_box(struct wlr_scene_buffer* scene_buffer, cons
  */
 void wlr_scene_buffer_set_transfer_function(
     struct wlr_scene_buffer* scene_buffer, enum wlr_color_transfer_function transfer_function
+);
+
+/**
+ * Decode a source whose curve is exactly a power when no named transfer
+ * function states it. Zero clears it; a curve with neither a name nor a power
+ * decodes through wlr_scene_buffer_set_decode_transform instead.
+ */
+void wlr_scene_buffer_set_transfer_function_power(struct wlr_scene_buffer* scene_buffer, float power);
+
+/**
+ * Decode a source through a 3x1D LUT transform, for a curve that is neither
+ * named nor a power. The buffer holds a reference; NULL releases it.
+ */
+void wlr_scene_buffer_set_decode_transform(
+    struct wlr_scene_buffer* scene_buffer, struct wlr_color_transform* transform
 );
 
 void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer* scene_buffer, enum wlr_color_named_primaries primaries);

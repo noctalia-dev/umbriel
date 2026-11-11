@@ -1574,7 +1574,10 @@ namespace umbriel {
         const wlr_box preview = previewBox(metrics, state->rowScroll.target(), index);
         std::vector<PositionedCard> previewCards;
         for (const auto& card : state->cards) {
-          if (card->workspaceIndex != index || card->view == nullptr || !card->view->mapped()) {
+          if (card->workspaceIndex != index
+              || card->view == nullptr
+              || !card->view->mapped()
+              || card->view->tabHidden()) {
             continue;
           }
           const int x =
@@ -1883,6 +1886,7 @@ namespace umbriel {
     hideDropHint();
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     clearMiddlePress();
     m_pendingFocus = focus;
     m_pendingCursorWarp = warpCursor && config().input.cursor.followsFocus && focus != nullptr;
@@ -2111,6 +2115,7 @@ namespace umbriel {
     m_server->notifyOverviewChanged();
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     m_dragCard = nullptr;
     m_dragSourceWorkspace = nullptr;
     m_dragSourceWidth.reset();
@@ -2276,6 +2281,9 @@ namespace umbriel {
     }
     if (m_pressCard != nullptr && m_pressCard->view == view) {
       m_pressCard = nullptr;
+    }
+    if (m_pressTab == view) {
+      m_pressTab = nullptr;
     }
     if (m_middlePressCard != nullptr && m_middlePressCard->view == view) {
       m_middlePressCard = nullptr;
@@ -2580,6 +2588,21 @@ namespace umbriel {
     return nullptr;
   }
 
+  View* Overview::tabAt(double lx, double ly) {
+    OutputState* state = nullptr;
+    size_t workspacePosition = 0;
+    Workspace* workspace = workspaceAtPoint(lx, ly, &state, &workspacePosition, false, false);
+    PreviewMetrics metrics{};
+    if (workspace == nullptr || !previewMetrics(*state, *m_server, zoom(), metrics)) {
+      return nullptr;
+    }
+    const wlr_box preview = previewBox(metrics, state->rowScroll.current(), workspacePosition);
+    const std::optional<TabHit> hit = workspace->tabs().tabAt(
+        metrics.outputBox.x + (lx - preview.x) / metrics.zoom, metrics.outputBox.y + (ly - preview.y) / metrics.zoom
+    );
+    return hit ? hit->tab : nullptr;
+  }
+
   Workspace* Overview::workspaceAtPoint(
       double lx, double ly, OutputState** outState, size_t* outIndex, bool extendScrollingAxis, bool extendFilmstripEnds
   ) {
@@ -2783,12 +2806,14 @@ namespace umbriel {
       }
       Card* card = m_pressCard;
       Workspace* workspace = m_pressWorkspace;
+      View* tab = m_pressTab;
       m_pressCard = nullptr;
       m_pressWorkspace = nullptr;
+      m_pressTab = nullptr;
       if (card != nullptr && card->view != nullptr && card->view->mapped()) {
         closeToWorkspace(card->view->workspace(), card->view);
       } else if (workspace != nullptr) {
-        closeToWorkspace(workspace, workspace->focusedView());
+        closeToWorkspace(workspace, tab != nullptr ? tab : workspace->focusedView());
       }
       return true;
     }
@@ -2815,10 +2840,12 @@ namespace umbriel {
 
     m_pressCard = card;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     m_pressX = lx;
     m_pressY = ly;
     if (card == nullptr) {
       m_pressWorkspace = workspaceAtPoint(lx, ly, nullptr, nullptr, false, false);
+      m_pressTab = tabAt(lx, ly);
     }
     return true;
   }
@@ -3452,6 +3479,7 @@ namespace umbriel {
     Card* card = m_pressCard;
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    m_pressTab = nullptr;
     if (card == nullptr || card->view == nullptr || !card->view->mapped()) {
       return;
     }
