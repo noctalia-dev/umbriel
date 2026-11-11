@@ -411,6 +411,66 @@ UMBRIEL_TEST(trcEncodeBakingSeparatesGamma22FromSrgb) {
   }
 }
 
+UMBRIEL_TEST(panelDecodeInvertsTheEncodeCurve) {
+  // A sampled table sits on the quadratic encode grid: encode[target] is the
+  // signal for linear (target / (N - 1))^2.
+  constexpr size_t kSamples = 1024;
+  constexpr float kGamma = 1.8F;
+  std::vector<float> encode(kSamples);
+  for (size_t index = 0; index < kSamples; ++index) {
+    const float position = static_cast<float>(index) / static_cast<float>(kSamples - 1);
+    encode[index] = std::pow(position * position, 1.0F / kGamma);
+  }
+  const umbriel::PanelTransfer sampled{
+      .kind = umbriel::PanelTransfer::Kind::Curve,
+      .exponent = 0.0F,
+      .encode = std::move(encode),
+  };
+
+  // Every table entry decodes back to its own grid linear value.
+  for (const size_t index : {size_t{0}, size_t{1}, kSamples / 4, kSamples / 2, kSamples - 2, kSamples - 1}) {
+    const float position = static_cast<float>(index) / static_cast<float>(kSamples - 1);
+    CHECK(closeTo(umbriel::panelDecodeSample(sampled, sampled.encode[index]), position * position, 2e-3));
+  }
+  // Mid-signal values interpolate instead of snapping to a table entry.
+  const float midSignal = umbriel::panelDecodeSample(sampled, 0.5F);
+  CHECK(closeTo(midSignal, std::pow(0.5F, kGamma), 1e-3));
+  // A curve that is exactly a power decodes analytically, with no table.
+  const umbriel::PanelTransfer power{
+      .kind = umbriel::PanelTransfer::Kind::Curve,
+      .exponent = kGamma,
+      .encode = {},
+  };
+  CHECK(closeTo(umbriel::panelDecodeSample(power, 0.5F), std::pow(0.5F, kGamma), 1e-6));
+
+  // The decode table exists only for the sampled form; named curves and exact
+  // powers decode on the content path.
+  const umbriel::PanelTransfer gamma22{.kind = umbriel::PanelTransfer::Kind::Gamma22, .encode = {}};
+  const umbriel::PanelTransfer srgb{.kind = umbriel::PanelTransfer::Kind::Srgb, .encode = {}};
+  for (const umbriel::PanelTransfer* named : {&gamma22, &srgb, &power}) {
+    umbriel::PanelColorimetry panel{
+        .primaries = srgbPrimaries(),
+        .white = {0.3127F, 0.329F},
+        .transfer = *named,
+    };
+    CHECK(umbriel::buildPanelDecodeTransform(panel) == nullptr);
+  }
+  umbriel::PanelColorimetry panel{
+      .primaries = srgbPrimaries(),
+      .white = {0.3127F, 0.329F},
+      .transfer = sampled,
+  };
+  wlr_color_transform* decode = umbriel::buildPanelDecodeTransform(panel);
+  CHECK(decode != nullptr);
+  if (decode != nullptr) {
+    float linear[3]{};
+    const float encoded[3]{0.5F, 0.5F, 0.5F};
+    wlr_color_transform_eval(decode, linear, encoded);
+    CHECK(closeTo(linear[0], midSignal, 2e-3));
+    wlr_color_transform_unref(decode);
+  }
+}
+
 UMBRIEL_TEST(sdrGamutStagingDecisionPreservesNativePixels) {
   using umbriel::SdrGamut;
   // No characterization: nothing to map.

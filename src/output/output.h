@@ -141,6 +141,9 @@ namespace umbriel {
     // staged: the frame paths' sdrGamutStaged decision, exposed for frame
     // builders outside Output (the output-management test-frame path).
     wlr_color_transform* stagedSdrGamutTransform() const;
+    // Content decode for a sampled panel curve, shared with the descriptions
+    // that advertise it. Null when the curve is named or an exact power.
+    const SharedColorTransform& panelDecodeTransform() const { return m_panelDecodeTransform; }
     void setRuntimeSdrWhite(float nits);
     int configuredBitDepth() const;
     const std::string& bitDepthFallbackReason() const { return m_bitDepthFallbackReason; }
@@ -278,6 +281,9 @@ namespace umbriel {
     // Raw ICC bytes advertised alongside that characterization via
     // get_information's icc_file (see iccProfileStore()).
     IccProfileStore m_iccProfile;
+    // Content decode for a sampled panel curve, shared with the descriptions
+    // that advertise it and held by any scene buffer tagged with one.
+    SharedColorTransform m_panelDecodeTransform;
     std::string m_sdrGamutSource;
     bool m_sdrGamutResolved = false;
     wlr_scene_output* m_sceneOutput = nullptr;

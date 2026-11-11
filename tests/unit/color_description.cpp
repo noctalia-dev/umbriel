@@ -697,16 +697,12 @@ UMBRIEL_TEST(bufferTransferFunctionsMapNamedCurvesOnly) {
   description.data.tf_named = 0;
   CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
 
-  // An output description's power curve (tf_power) has no buffer-side value;
-  // tagged content is decoded through the nearest named EOTF while the output
-  // stage still renders the panel's real curve.
-  for (const auto& [exponent, expected] : {
-           std::pair{1.0F, WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR},
-           std::pair{1.8F, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22},
-           std::pair{2.4F, WLR_COLOR_TRANSFER_FUNCTION_BT1886},
-       }) {
+  // An output description's power curve has no buffer-side named value; the
+  // renderer decodes it through the scene's exponent stage, so no substitution
+  // happens here.
+  for (const float exponent : {1.0F, 1.8F, 2.4F}) {
     description.tfPower = exponent;
-    CHECK(umbriel::bufferTransferFunction(description) == expected);
+    CHECK(umbriel::bufferTransferFunction(description) == static_cast<wlr_color_transfer_function>(0));
   }
 }
 

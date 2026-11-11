@@ -53,6 +53,12 @@ namespace umbriel {
   // encode table is linearly interpolated.
   [[nodiscard]] float panelEncodeSample(const PanelTransfer& transfer, float linear);
 
+  // Decode sample: panel-encoded signal -> linear light, the exact inverse of
+  // panelEncodeSample for every kind (analytic for a named curve or a power,
+  // numerically inverted for a sampled table). Content tagged with a panel
+  // description decodes through this.
+  [[nodiscard]] float panelDecodeSample(const PanelTransfer& transfer, float encoded);
+
   // Classification of a parsed TRC against the curves the renderer can paint
   // for client content (wp_image_description_creator_icc_v1). Only exact
   // matches are representable: wlr_scene_buffer_set_transfer_function takes a
@@ -92,6 +98,11 @@ namespace umbriel {
   // allocation failure.
   [[nodiscard]] wlr_color_transform* buildSdrGamutTransform(const PanelColorimetry& panel);
 
+  // The content decode for a sampled panel curve: a 3x1D LUT mapping encoded
+  // values back to linear light. NULL when the curve is named or an exact
+  // power, which the renderer decodes without a table.
+  [[nodiscard]] wlr_color_transform* buildPanelDecodeTransform(const PanelColorimetry& panel);
+
   // The staging decision, factored out of Output: stage the SDR gamut
   // transform only when a characterization is active, the policy is "srgb",
   // and no HDR image description owns the output transform. "native" stages
@@ -114,6 +125,11 @@ namespace umbriel {
     void operator()(wlr_color_transform* transform) const;
   };
   using ColorTransformPtr = std::unique_ptr<wlr_color_transform, ColorTransformDeleter>;
+
+  // Refcounted transform ownership for one that outlives the object that built
+  // it: a description handed to clients and held by a scene buffer meanwhile.
+  using SharedColorTransform = std::shared_ptr<wlr_color_transform>;
+  [[nodiscard]] SharedColorTransform shareColorTransform(wlr_color_transform* transform);
 
   // Which device classes the parser admits. Output characterization wants the
   // display profile a factory shipped; wp_image_description_creator_icc_v1

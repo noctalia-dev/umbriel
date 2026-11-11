@@ -113,6 +113,13 @@ namespace umbriel {
 
   void ColorTransformDeleter::operator()(wlr_color_transform* transform) const { wlr_color_transform_unref(transform); }
 
+  SharedColorTransform shareColorTransform(wlr_color_transform* transform) {
+    if (transform == nullptr) {
+      return nullptr;
+    }
+    return SharedColorTransform(transform, ColorTransformDeleter{});
+  }
+
   float panelEncodeSample(const PanelTransfer& transfer, float linear) {
     const float x = clampedUnit(linear);
     switch (transfer.kind) {
@@ -131,6 +138,41 @@ namespace umbriel {
     const size_t upper = std::min(lower + 1, transfer.encode.size() - 1);
     const float fraction = position - static_cast<float>(lower);
     return transfer.encode[lower] + (transfer.encode[upper] - transfer.encode[lower]) * fraction;
+  }
+
+  float panelDecodeSample(const PanelTransfer& transfer, float encoded) {
+    const float x = clampedUnit(encoded);
+    switch (transfer.kind) {
+    case PanelTransfer::Kind::Srgb:
+      // Exact piecewise inverse of srgbEncode.
+      return x <= 0.04045F ? x / 12.92F : std::pow((x + 0.055F) / 1.055F, 2.4F);
+    case PanelTransfer::Kind::Gamma22:
+      return std::pow(x, 2.2F);
+    case PanelTransfer::Kind::Curve:
+      break;
+    }
+    if (transfer.exponent > 0.0F) {
+      return std::pow(x, transfer.exponent);
+    }
+    if (transfer.encode.empty()) {
+      return x;
+    }
+    // Invert the monotone encode table on its quadratic grid: bracket the
+    // signal between two samples, then interpolate the linear position.
+    size_t lower = 0;
+    size_t upper = transfer.encode.size() - 1;
+    while (upper - lower > 1) {
+      const size_t middle = lower + (upper - lower) / 2;
+      if (transfer.encode[middle] <= x) {
+        lower = middle;
+      } else {
+        upper = middle;
+      }
+    }
+    const float span = transfer.encode[upper] - transfer.encode[lower];
+    const float fraction = span > 0.0F ? (x - transfer.encode[lower]) / span : 0.0F;
+    const float position = (static_cast<float>(lower) + fraction) / static_cast<float>(transfer.encode.size() - 1);
+    return position * position;
   }
 
   TransferFit fitTransfer(const PanelTransfer& transfer) {
@@ -279,6 +321,21 @@ namespace umbriel {
       wlr_color_transform_unref(stages[index]);
     }
     return pipeline;
+  }
+
+  wlr_color_transform* buildPanelDecodeTransform(const PanelColorimetry& panel) {
+    // A named curve and an exact power decode analytically on the content
+    // path; only a sampled table needs one here.
+    if (panel.transfer.kind != PanelTransfer::Kind::Curve || panel.transfer.exponent > 0.0F) {
+      return nullptr;
+    }
+    std::vector<uint16_t> lut(color_detail::kCurveSamples);
+    for (size_t index = 0; index < lut.size(); ++index) {
+      const float encoded = static_cast<float>(index) / static_cast<float>(lut.size() - 1);
+      lut[index] =
+          static_cast<uint16_t>(std::lround(clampedUnit(panelDecodeSample(panel.transfer, encoded)) * 65535.0F));
+    }
+    return wlr_color_transform_init_lut_3x1d(lut.size(), lut.data(), lut.data(), lut.data());
   }
 
   IccProfileStore iccStoreForFileProfile(std::span<const uint8_t> fileBytes, IccPayloadRelease release) {

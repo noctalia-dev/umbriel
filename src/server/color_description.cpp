@@ -86,6 +86,7 @@ namespace umbriel {
         && left.luminances.max == right.luminances.max
         && left.luminances.reference == right.luminances.reference
         && iccProfilesEqual(left.iccProfile, right.iccProfile)
+        && left.decodeTransform == right.decodeTransform
         && left.luminanceMultiplier == right.luminanceMultiplier
         && left.customLuminances == right.customLuminances
         && left.absoluteLuminance == right.absoluteLuminance
@@ -156,7 +157,8 @@ namespace umbriel {
   }
 
   ColorDescription characterizedOutputDescription(
-      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile
+      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile,
+      SharedColorTransform decodeTransform
   ) {
     // HDR (PQ) descriptions keep their BT.2020 encoding contract, including
     // the automatic-HDR offer; only SDR descriptions reflect the panel.
@@ -177,6 +179,7 @@ namespace umbriel {
       // The profile states the curve exactly; tf_power restates it only when
       // it is a power, so the two representations never disagree.
       description.tfPower = panel->transfer.exponent;
+      description.decodeTransform = std::move(decodeTransform);
       break;
     }
     description.iccProfile = std::move(iccProfile);
@@ -282,23 +285,9 @@ namespace umbriel {
     default:
       break;
     }
-    if (description.tfPower > 0.0F) {
-      // An output description's power curve has no buffer-side representation
-      // (the setter takes named curves only), so tagged content is decoded
-      // through the nearest named EOTF. The output stage still renders the
-      // panel's real curve; this approximation only affects conversion into
-      // the compositor's working space.
-      if (description.tfPower <= 1.6F) {
-        return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
-      }
-      if (description.tfPower <= 2.3F) {
-        return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
-      }
-      return WLR_COLOR_TRANSFER_FUNCTION_BT1886;
-    }
-    // A named curve the buffer setter cannot express (or no curve at all)
-    // stays unspecified: the renderer resolves it to the output's SDR
-    // transfer policy instead of guessing.
+    // An exponent or a sampled table decodes exactly through the scene's power
+    // and LUT stages, which the caller sets alongside this value; a named
+    // curve the setter cannot express stays unspecified (0).
     return static_cast<wlr_color_transfer_function>(0);
   }
 

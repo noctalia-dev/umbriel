@@ -679,23 +679,20 @@ namespace umbriel {
 
     // get_preferred_parametric promises a parametric description, and the info
     // batch of a parametric description must carry tf_power or tf_named. A
-    // sampled panel curve that is not a power has neither: the ICC profile is
-    // the exact statement, so the parametric request fails rather than
-    // advertising a curve we do not paint.
+    // sampled panel curve that is not a power has neither, but the request
+    // still owes an immediate ready (color-management-v1.xml inherits
+    // get_preferred's contract): answer with the sRGB working encoding the
+    // compositor converts into the characterized output. The ICC-backed
+    // description remains available through get_preferred.
     static void handleFeedbackGetPreferredParametric(wl_client*, wl_resource* resource, uint32_t id) {
       auto* feedback = static_cast<SurfaceFeedback*>(wl_resource_get_user_data(resource));
       if (feedback == nullptr) {
         wl_resource_post_error(resource, WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT, "surface is inert");
         return;
       }
-      if (!parametricDescription(feedback->preferred)) {
-        createFailedImageDescription(
-            resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED,
-            "the panel's transfer curve has no parametric form; use the ICC profile"
-        );
-        return;
-      }
-      feedback->manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);
+      const ColorDescription& preferred =
+          parametricDescription(feedback->preferred) ? feedback->preferred : workingDescription();
+      feedback->manager->createReadyImageDescription(resource, id, preferred, true, feedback->identity);
     }
 
     static void handleFeedbackSurfaceDestroy(wl_listener* listener, void*) {
@@ -1395,9 +1392,14 @@ namespace umbriel {
       return characterizedOutputDescription(
           outputColorDescription(output->image_description, sdrWhite, automaticHdr),
           panelDestination ? managedOutput->panelColorimetry() : nullptr,
-          panelDestination ? managedOutput->iccProfileStore() : IccProfileStore{}
+          panelDestination ? managedOutput->iccProfileStore() : IccProfileStore{},
+          panelDestination ? managedOutput->panelDecodeTransform() : SharedColorTransform{}
       );
     }
+
+    // The compositor's working SDR encoding: every SDR frame is composed in it
+    // and converted into the characterized output, so it is always renderable.
+    static ColorDescription workingDescription() { return outputColorDescription(nullptr, kDefaultSdrWhite); }
 
     ColorDescription preferredDescription(wlr_surface* surface) const {
       wlr_output* preferred = nullptr;
@@ -1481,6 +1483,10 @@ namespace umbriel {
       }
       const ColorDescription& description = found->second->current.description;
       state->transfer_function = bufferTransferFunction(description);
+      // The advertised curve decodes exactly: an exponent or sampled table
+      // replaces the named stage instead of being snapped to the nearest one.
+      state->transfer_function_power = description.tfPower;
+      state->decode_transform = description.decodeTransform.get();
       state->primaries = description.data.primaries_named != 0
           ? wlr_color_manager_v1_primaries_to_wlr(
                 static_cast<wp_color_manager_v1_primaries>(description.data.primaries_named)
@@ -1526,9 +1532,13 @@ namespace umbriel {
           .custom_primaries = nullptr,
           .luminances = {},
           .absolute_luminance = false,
+          .transfer_function_power = 0.0F,
+          .decode_transform = nullptr,
       };
       resolveSurfaceColor(surface, &state, const_cast<Impl*>(this));
       wlr_scene_buffer_set_transfer_function(buffer, state.transfer_function);
+      wlr_scene_buffer_set_transfer_function_power(buffer, state.transfer_function_power);
+      wlr_scene_buffer_set_decode_transform(buffer, state.decode_transform);
       wlr_scene_buffer_set_primaries(buffer, state.primaries);
       wlr_scene_buffer_set_custom_primaries(buffer, state.custom_primaries);
       wlr_scene_buffer_set_luminances(buffer, &state.luminances, state.absolute_luminance);

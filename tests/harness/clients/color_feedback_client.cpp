@@ -59,6 +59,7 @@ namespace {
     wp_color_management_surface_feedback_v1* feedback = nullptr;
     wp_color_management_surface_v1* colorSurface = nullptr;
     wp_image_description_v1* surfaceDescription = nullptr;
+    wp_image_description_v1* parametricDescription = nullptr;
     wp_image_description_v1* gammaDescription = nullptr;
     wp_image_description_v1* pqDescription = nullptr;
     wp_image_description_v1* selectedDescription = nullptr;
@@ -86,6 +87,7 @@ namespace {
     // Tag with the description the compositor advertises for the output,
     // instead of a parametric one the client builds itself.
     bool useOutputDescription = false;
+    bool useParametricDescription = false;
     bool custom = false;
     bool contentLight = false;
     std::array<wp_image_description_v1*, 5> customDescriptions{};
@@ -514,6 +516,8 @@ int main(int argc, char** argv) {
       state.probe = true;
     } else if (std::strcmp(argv[i], "output-desc") == 0) {
       state.useOutputDescription = true;
+    } else if (std::strcmp(argv[i], "parametric-desc") == 0) {
+      state.useParametricDescription = true;
     } else if (std::strcmp(argv[i], "untagged") == 0) {
       state.tagged = false;
     } else if (std::strcmp(argv[i], "subsurface") == 0 || std::strcmp(argv[i], "subsurface-desync") == 0) {
@@ -1096,6 +1100,22 @@ int main(int argc, char** argv) {
       state, wp_color_management_surface_feedback_v1_get_preferred_parametric(state.feedback), "preferred_parametric", 0
   );
   state.colorSurface = wp_color_manager_v1_get_surface(state.manager, state.colorTarget);
+  if (state.useParametricDescription) {
+    // A parametric-only client asks for the guaranteed-parametric preference
+    // and renders through it, so a check can pin that an advertised description
+    // always has a usable renderable form.
+    state.ready = false;
+    state.failed = false;
+    state.parametricDescription = wp_color_management_surface_feedback_v1_get_preferred_parametric(state.feedback);
+    wp_image_description_v1_add_listener(state.parametricDescription, &kSurfaceDescriptionListener, &state);
+    while (!state.ready && !state.failed && wl_display_dispatch(state.display) >= 0) {
+    }
+    if (!state.ready) {
+      std::println(stderr, "color-feedback-client: the parametric preferred description was not ready");
+      return 1;
+    }
+    state.selectedDescription = state.parametricDescription;
+  }
   wp_image_description_creator_params_v1* params = nullptr;
   if (state.useOutputDescription) {
     // The output's own description is the encoding a color-managed client
@@ -1296,6 +1316,16 @@ int main(int argc, char** argv) {
       } else if (std::strcmp(label, "unset") == 0) {
         state.tagged = false;
         wp_color_management_surface_v1_unset_image_description(state.colorSurface);
+        wl_surface_commit(state.colorTarget);
+        if (state.colorSubsurface != nullptr && !state.desynchronized) {
+          wl_surface_commit(state.surface);
+        }
+      } else if (state.parametricDescription != nullptr && std::strcmp(label, "parametric") == 0) {
+        state.tagged = true;
+        state.selectedDescription = state.parametricDescription;
+        wp_color_management_surface_v1_set_image_description(
+            state.colorSurface, state.selectedDescription, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL
+        );
         wl_surface_commit(state.colorTarget);
         if (state.colorSubsurface != nullptr && !state.desynchronized) {
           wl_surface_commit(state.surface);

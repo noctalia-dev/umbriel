@@ -17,9 +17,30 @@ if ! color_fields_are "$PROFILE" srgb true true; then
   exit 1
 fi
 
-color_start_client srgb untagged
+color_start_client srgb untagged output-desc
 color_fill FFFF0000
 color_assert_mapped
+
+# Content tagged with the output's own description is already in the panel's
+# encoding: it must decode through the advertised curve and land unchanged,
+# while the same untagged gray takes the sRGB -> panel conversion. A
+# substitution for the curve moves this pixel (gamma 1.8 read as 2.2 lands
+# near 110 instead of 128).
+color_fill FF808080
+untagged_gray=$(color_sample_center)
+printf 'tag\n' >&"$CLIENT_FD"
+await_lines "$CLIENT_LOG" '{"event":"snapshot","label":"tag"' 1
+"$UMBRIEL" settle > /dev/null
+tagged_gray=$(color_sample_center)
+if ! color_pixels_close "$tagged_gray" "128 128 128"; then
+  echo "content tagged with the output description did not decode through its curve:" \
+    "untagged [$untagged_gray] tagged [$tagged_gray]"
+  exit 1
+fi
+if [[ ${untagged_gray%% *} -ge 120 ]]; then
+  echo "untagged gray was not converted into the panel encoding: [$untagged_gray]"
+  exit 1
+fi
 
 # The primaries assertion is a round-trip contract against the generator's own colorants (the daemon must report the
 # file as written); the parser math itself is pinned by tests/unit/colorimetry.cpp.

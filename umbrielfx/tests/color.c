@@ -167,8 +167,8 @@ out:
 
 static size_t output_lut_count(struct fixture* fixture) {
   size_t count = 0;
-  struct fx_output_lut* lut;
-  wl_list_for_each(lut, &fx_get_renderer(fixture->renderer)->output_luts, link) { count++; }
+  struct fx_lut_texture* lut;
+  wl_list_for_each(lut, &fx_get_renderer(fixture->renderer)->lut_textures, link) { count++; }
   return count;
 }
 

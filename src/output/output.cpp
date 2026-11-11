@@ -507,6 +507,7 @@ namespace umbriel {
     m_sdrGamutSource = key;
     m_sdrGamutResolved = true;
     m_sdrGamutTransform.reset();
+    m_panelDecodeTransform.reset();
     m_panelColorimetry.reset();
     m_iccProfile.reset();
 
@@ -610,6 +611,20 @@ namespace umbriel {
       kLog.error("output '{}': failed to build the SDR gamut transform", m_output->name);
       m_server->updateColorPreferences();
       return;
+    }
+    // A sampled curve has no named or power form on the content path, so the
+    // advertised description carries a decode table. Refuse to stage the
+    // mapping without it: content tagged with the advertised description would
+    // otherwise decode through the wrong curve.
+    if (m_panelColorimetry->transfer.kind == PanelTransfer::Kind::Curve
+        && m_panelColorimetry->transfer.exponent <= 0.0F) {
+      m_panelDecodeTransform = shareColorTransform(buildPanelDecodeTransform(*m_panelColorimetry));
+      if (m_panelDecodeTransform == nullptr) {
+        wlr_color_transform_unref(transform);
+        kLog.error("output '{}': failed to build the SDR panel decode table", m_output->name);
+        m_server->updateColorPreferences();
+        return;
+      }
     }
     m_sdrGamutTransform = ColorTransformPtr(transform);
     kLog.info("output '{}': SDR gamut mapping active ({} into panel colorimetry)", m_output->name, source);

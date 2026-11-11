@@ -297,19 +297,19 @@ struct fx_renderer {
   struct wl_list buffers;           // fx_framebuffer.link
   struct wl_list textures;          // fx_texture.link
   struct wl_list offscreen_buffers; // fx_offscreen_buffers.link
-  struct wl_list output_luts;       // fx_output_lut.link
+  struct wl_list lut_textures;       // fx_lut_texture.link
 
   TRACY_FN(struct tracy_data* tracy_data;)
 };
 
-struct fx_output_lut {
+struct fx_lut_texture {
   struct wlr_addon addon;
-  struct wl_list link; // fx_renderer.output_luts
+  struct wl_list link; // fx_renderer.lut_textures
   struct fx_renderer* renderer;
   GLuint texture;
   float dim;
 };
 
-void fx_output_lut_destroy(struct fx_output_lut* lut);
+void fx_lut_texture_destroy(struct fx_lut_texture* lut);
 
 #endif

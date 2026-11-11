@@ -149,6 +149,21 @@ color_assert_mapped() {
   fi
 }
 
+# True when two sampled pixels agree within one code per channel: the FP16
+# composite path dithers, so two captures of the same frame can differ by one.
+color_pixels_close() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    split(a, x, " ")
+    split(b, y, " ")
+    for (i = 1; i <= 3; i++) {
+      d = x[i] - y[i]
+      if (d < 0) d = -d
+      if (d > 1) exit 1
+    }
+    exit 0
+  }'
+}
+
 # Center pixel of the captured output, read once the frame has settled.
 color_sample_center() {
   local size

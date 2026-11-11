@@ -38,6 +38,12 @@ namespace umbriel {
     // wp_image_description_info_v1: "if the image description contains an ICC
     // profile, it must send the icc_file event").
     IccProfileStore iccProfile;
+    // Output/preferred descriptions only: the exact content decode for a
+    // sampled panel curve, which neither a named curve nor tfPower states. The
+    // renderer applies it to a surface tagged with this description, so the
+    // advertised encoding and what it renders never disagree. Null when the
+    // named curve or tfPower above is already exact.
+    SharedColorTransform decodeTransform;
     ColorLuminances luminances;
     float luminanceMultiplier = 1.0F;
     bool customLuminances = false;
@@ -65,14 +71,16 @@ namespace umbriel {
 
   // Characterized-panel override for the output description of a panel that a
   // staged SDR gamut mapping writes into: its custom primaries, its transfer
-  // curve (named when one matches exactly, tf_power when it is a power, and
-  // nothing otherwise — the ICC file then carries it), and the profile
-  // get_information advertises through icc_file. Callers pass the panel only
-  // when that mapping is staged; without one the renderer composes into sRGB
-  // and the description must keep saying so. A null panel changes nothing, and
-  // HDR (PQ) descriptions keep their BT.2020 encoding contract untouched.
+  // curve (named when one matches exactly, tf_power when it is a power, and a
+  // decode table otherwise — the ICC file carries the curve exactly in every
+  // case), and the profile get_information advertises through icc_file.
+  // Callers pass the panel only when that mapping is staged; without one the
+  // renderer composes into sRGB and the description must keep saying so. A
+  // null panel changes nothing, and HDR (PQ) descriptions keep their BT.2020
+  // encoding contract untouched.
   [[nodiscard]] ColorDescription characterizedOutputDescription(
-      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile
+      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile,
+      SharedColorTransform decodeTransform = {}
   );
 
   // Client-provided ICC descriptions
@@ -107,16 +115,14 @@ namespace umbriel {
   // True when get_information can describe the description with parametric
   // events: color-management-v1.xml requires at least one of tf_power and
   // tf_named for a parametric description. A sampled panel curve that is not a
-  // power has neither, so only the ICC profile states it — and
-  // get_preferred_parametric, which promises a parametric description, has no
-  // honest answer.
+  // power has neither, so only the ICC profile states it; the parametric
+  // request is answered with the compositor's sRGB working encoding instead.
   [[nodiscard]] bool parametricDescription(const ColorDescription& description);
 
   // Buffer-side transfer function for a description. Named transfer functions
-  // map directly and tf_power maps to the nearest named EOTF (an input-side
-  // approximation — the setter takes no exponent); a name the setter cannot
-  // express stays unspecified (0), and the renderer resolves it through the
-  // output's SDR transfer policy.
+  // map directly; an exponent or sampled table the setter cannot express stays
+  // unspecified (0), and the caller decodes it through the scene's power or LUT
+  // stage so the advertised curve is never substituted.
   [[nodiscard]] wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description);
 
 } // namespace umbriel
