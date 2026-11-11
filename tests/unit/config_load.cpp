@@ -790,6 +790,7 @@ UMBRIEL_TEST(outputScrollingDefaultExtentUsesNarrowLayoutScope) {
 
   file.write(R"(
 [output.DP-1.layout]
+mode = "dwindle"
 gap = 12
 
 [output.DP-1.layout.scrolling]
@@ -798,6 +799,7 @@ center_focused = true
 )");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].layout.mode == LayoutMode::Dwindle);
   CHECK(store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
   if (store.config().outputs[0].layout.scrolling.defaultExtentFraction) {
     CHECK_EQ(*store.config().outputs[0].layout.scrolling.defaultExtentFraction, 0.1);
@@ -808,8 +810,14 @@ center_focused = true
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.gap"));
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.scrolling.center_focused"));
 
+  file.write("[output.DP-1.layout]\nmode = \"tiles\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].layout.mode.has_value());
+  CHECK(containsDiagnostic(store, "output.DP-1.layout.mode"));
+
   file.write("[output.DP-1]\nenabled = true\n");
   CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].layout.mode.has_value());
   CHECK(!store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
 }
 
@@ -896,6 +904,124 @@ UMBRIEL_TEST(modKeyIsUserConfigurable) {
   file.write("[general]\nmod_key = \"Meta\"\n");
   CHECK(store.reload().success);
   CHECK(!store.config().general.modKey.has_value());
+}
+
+UMBRIEL_TEST(pressAndReleaseBindsCoexistAndReleaseNeverRepeats) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\", repeat = true }\n"
+      "\"Mod+MouseBack\" = { action = \"spawn unmute\", release = \"spawn mute\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{4});
+  CHECK_EQ(std::ranges::count_if(store.config().keybinds, [](const auto& bind) { return bind.onRelease; }), 2);
+  for (const auto& bind : store.config().keybinds) {
+    CHECK_EQ(bind.repeat, !bind.onRelease);
+  }
+  CHECK(!containsDiagnostic(store, "duplicate keybind"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+  for (const auto& bind : store.config().keybinds) {
+    if (bind.mouseButton == BTN_SIDE) {
+      CHECK_EQ(std::get<umbriel::SpawnArg>(bind.payload).command, bind.onRelease ? "mute" : "unmute");
+    } else {
+      CHECK(
+          bind.action == (bind.onRelease ? umbriel::KeybindAction::OverviewClose : umbriel::KeybindAction::OverviewOpen)
+      );
+    }
+  }
+}
+
+UMBRIEL_TEST(releaseOnlyTablesLoadForKeysMouseButtonsAndSubmaps) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"XF86AudioMute\" = { release = \"spawn mute\", repeat = true }\n"
+      "\"Mod+MouseBack\" = { release = \"spawn mute\" }\n"
+      "\"submap[resize],Mod+H\" = { release = \"submap reset\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{3});
+  for (const auto& bind : store.config().keybinds) {
+    CHECK(bind.onRelease);
+    CHECK(!bind.repeat);
+    if (bind.action == umbriel::KeybindAction::Submap) {
+      CHECK_EQ(bind.submap, std::string{"resize"});
+    }
+  }
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(pressAndReleasePhasesShareTableOptions) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[keybinds]\n"
+      "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\", "
+      "repeat = true, allow_when_locked = true, allow_when_inhibited = true, cooldown_ms = 150, submap = \"resize\" }\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().keybinds.size(), size_t{2});
+  for (const auto& bind : store.config().keybinds) {
+    CHECK(bind.allowWhenLocked);
+    CHECK(bind.allowWhenInhibited);
+    CHECK_EQ(bind.cooldownMs, 150);
+    CHECK(bind.submapAfter.has_value());
+    CHECK_EQ(bind.submapAfter->name, std::string{"resize"});
+    CHECK(!bind.repeat);
+  }
+  CHECK(store.diagnostics().empty());
+}
+
+UMBRIEL_TEST(invalidReleaseTablesDoNotInstallEitherPhase) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  for (const std::string_view entry : {
+           R"("Mod+Space" = {})",
+           R"("Mod+Space" = { action = 42, release = "overview-close" })",
+           R"("Mod+Space" = { action = "overview-open", release = true })",
+           R"("Mod+Space" = { action = "overview-open", release = "not-an-action" })",
+           R"("Mod+Space" = { action = "not-an-action", release = "overview-close" })",
+           R"("Mod+Space" = { release = "" })",
+           R"("Mod+WheelUp" = { action = "workspace-next", release = "workspace-prev" })",
+           R"("Mod" = { release = "spawn launcher" })",
+           R"("Mod" = { action = "spawn launcher", release = "spawn launcher" })",
+           R"("Mod+MouseMiddle" = { action = "layout-scroll-drag", release = "layout-scroll-drag" })",
+       }) {
+    file.write("[keybinds]\n" + std::string(entry) + "\n");
+    CHECK(store.reload().success);
+    CHECK(store.config().keybinds.empty());
+    CHECK(containsDiagnostic(store, "ignoring keybind"));
+  }
+}
+
+UMBRIEL_TEST(replacingAChordReplacesBothTriggerPhases) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  for (const std::string_view replacement : {
+           "{ release = \"overview-close\" }",
+           "{ action = \"overview-open\" }",
+           "\"overview-open\"",
+       }) {
+    file.write(
+        "[keybinds]\n"
+        "\"Mod+Space\" = { action = \"overview-open\", release = \"overview-close\" }\n"
+        "\"Mod+space\" = "
+        + std::string(replacement)
+        + "\n"
+    );
+    CHECK(store.reload().success);
+    CHECK_EQ(store.config().keybinds.size(), size_t{1});
+    CHECK_EQ(store.config().keybinds[0].onRelease, replacement.contains("release"));
+    CHECK(containsDiagnostic(store, "duplicate keybind"));
+  }
 }
 
 UMBRIEL_TEST(keybindTableLoadsAllowWhenLocked) {
@@ -5037,6 +5163,7 @@ UMBRIEL_TEST(titleBarConfigurationUsesTheDocumentedKeys) {
 mode = "forced"
 height = 42
 font = "sans 12"
+title_align = "center"
 button_position = "left"
 button_corner_radius = 4
 button_glyph = "never"
@@ -5063,6 +5190,7 @@ minimize_glyph_hover = "#00FFFFFF"
   CHECK_EQ(bar.mode, umbriel::TitleBarMode::Forced);
   CHECK_EQ(bar.height, 42);
   CHECK_EQ(bar.font, std::string("sans 12"));
+  CHECK_EQ(bar.titleAlign, umbriel::TitleAlign::Center);
   CHECK_EQ(bar.buttonPosition, umbriel::TitleBarButtonSide::Left);
   CHECK_EQ(bar.buttonCornerRadius, 4);
   CHECK_EQ(bar.buttonGlyph, umbriel::TitleBarButtonGlyph::Never);
@@ -5090,6 +5218,7 @@ UMBRIEL_TEST(titleBarInvalidValuesAreClaimedAndDiagnosed) {
 mode = "always"
 height = 500
 font = 123
+title_align = "middle"
 button_position = "middle"
 button_corner_radius = 500
 button_glyph = "sometimes"
@@ -5107,11 +5236,13 @@ minimize_glyph_hover = {}
   CHECK(store.reload().success);
   CHECK_EQ(store.config().appearance.titleBar.mode, umbriel::TitleBarMode::Off);
   CHECK_EQ(store.config().appearance.titleBar.height, 128);
+  CHECK_EQ(store.config().appearance.titleBar.titleAlign, umbriel::TitleAlign::Left);
   CHECK_EQ(store.config().appearance.titleBar.buttonPosition, umbriel::TitleBarButtonSide::Right);
   CHECK_EQ(store.config().appearance.titleBar.buttonCornerRadius, 100);
   CHECK_EQ(store.config().appearance.titleBar.buttonGlyph, umbriel::TitleBarButtonGlyph::Hover);
   CHECK_EQ(store.config().appearance.titleBar.buttonBackground, true);
   CHECK(containsDiagnostic(store, "appearance.title_bar.height = 500 out of range, clamped to 128"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.title_align"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_position"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_corner_radius"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph"));
@@ -5148,6 +5279,26 @@ UMBRIEL_TEST(titleBarButtonGeometrySettingsHaveValidatedBounds) {
   CHECK_EQ(store.config().appearance.titleBar.buttonPadding, -1);
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_gap"));
   CHECK(containsDiagnostic(store, "appearance.title_bar.button_padding"));
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 8\nbutton_glyph_stroke = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 8);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphStroke, 1.5);
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 0\nbutton_glyph_stroke = 0.1\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 1);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphStroke, 0.5);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_size"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_stroke"));
+
+  file.write("[appearance.title_bar]\nbutton_glyph_size = 200\nbutton_glyph_stroke = 20.0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphSize, 128);
+  CHECK_EQ(store.config().appearance.titleBar.buttonGlyphStroke, 16.0);
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_size"));
+  CHECK(containsDiagnostic(store, "appearance.title_bar.button_glyph_stroke"));
 }
 
 UMBRIEL_TEST(titleBarButtonRadiusHasValidatedBounds) {

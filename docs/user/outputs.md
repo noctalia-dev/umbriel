@@ -58,6 +58,7 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                  |
 | `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                              |
 | `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                          |
+| `layout.mode`                              | string                            | inherited    | Layout mode for workspaces on this output: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.  |
 | `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                          |
 | `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.      |
 | `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output. |
@@ -96,6 +97,17 @@ cyclic_workspaces = true
 This applies to `workspace-next`/`previous`, `window-move-to-workspace-next`/`previous`, `window-move-to-workspace-silent-next`/`previous`, `window-move-or-workspace-up`/`down` at the column edge, and `column-move-to-workspace-next`/`previous`.
 
 On a dynamic output, the trailing empty workspace is the last one. Stepping forward from the last populated workspace enters it, and one more step wraps to the first. A static inventory wraps directly at both ends.
+
+### Layout mode
+
+Choose the layout mode for every workspace on one output, including dynamic workspaces created later:
+
+```toml
+[output.DP-1.layout]
+mode = "dwindle"
+```
+
+A matching workspace rule overrides this value. The `mode` key directly under `[output.<name>]` is the display mode, not the layout. See [Choose a layout](layout.md#choose-a-layout).
 
 ### Initial scrolling width
 

@@ -35,7 +35,7 @@ Output state and workspace inventory are independent effects.
 - Focus reconciliation after runtime effects preserves the exact focused surface when its mapped view or keyboard-interactive layer remains usable on an enabled output. This includes popup grabs. Explicit focus actions still select their requested output or workspace.
 - Changing an output's `workspaces` value reconciles its workspace inventory and refreshes workspace layout.
 - Changing only layout settings refreshes workspace geometry without reconciling the inventory or reapplying output state.
-- Changing an output's `layout.scrolling.default_extent_fraction` refreshes only resolved workspace layout configuration. Existing scrolling columns retain their stored widths; columns created after the reload use the new default.
+- Changing an output's `layout.mode` or `layout.scrolling.default_extent_fraction` refreshes only resolved workspace layout configuration. Existing scrolling columns retain their stored widths; columns created after the reload use the new default.
 - Changing total border width refreshes window decoration and workspace layout because borders contribute to resolved tile spacing.
 - Changing a window rule's decoration keys (`border_width`, `corner_radius`, `shadow`) refreshes only the windows that rule matches. The layout is not consulted: tile spacing and edge padding keep using the global border width, so a decoration rule never rearranges the workspace.
 - Changing an output or window-rule tearing policy re-evaluates eligibility, clears async recovery state, and schedules a frame. It does not reapply output state or invalidate the overview.

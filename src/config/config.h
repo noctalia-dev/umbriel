@@ -74,12 +74,6 @@ namespace umbriel {
     Shrink,
   };
 
-  enum class TitleAlign : uint8_t {
-    Left,
-    Center,
-    Right,
-  };
-
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -369,6 +363,8 @@ namespace umbriel {
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;
     struct Layout {
+      // Layout mode inherited by workspaces on this output.
+      std::optional<LayoutMode> mode;
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
         std::optional<double> defaultExtentFraction;
@@ -762,12 +758,16 @@ namespace umbriel {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
         std::string font = "sans 10";
+        TitleAlign titleAlign = TitleAlign::Left;
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
         int buttonSize = -1;
         int buttonGap = 8;
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        // Symbol side and stroke width in logical pixels; -1 derives each from the button size.
+        int buttonGlyphSize = -1;
+        double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};

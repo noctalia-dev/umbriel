@@ -508,7 +508,7 @@ namespace umbriel {
     // actions resolve against the target monitor (focus is cursor-defined).
     void warpToOutputCenter(Server& server, Output& output) {
       const wlr_box usable = output.usableArea();
-      server.cursor()->warpTo(usable.x + usable.width / 2.0, usable.y + usable.height / 2.0);
+      server.cursor()->warpToPreservingFocus(usable.x + usable.width / 2.0, usable.y + usable.height / 2.0);
     }
 
     // Session
