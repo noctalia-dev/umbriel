@@ -481,6 +481,8 @@ namespace umbriel {
     std::optional<TitleBarMode> titleBar;
     // Overrides [appearance.title_bar] buttons, read from the title outward.
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    // Overrides [appearance.title_bar] color_source for windows this rule matches.
+    std::optional<TitleBarColorSource> titleBarColorSource;
     // Overrides [colors.border] for windows this rule matches.
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
@@ -549,6 +551,7 @@ namespace umbriel {
           && blurOptimized == other.blurOptimized
           && titleBar == other.titleBar
           && titleBarButtons == other.titleBarButtons
+          && titleBarColorSource == other.titleBarColorSource
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
@@ -600,6 +603,7 @@ namespace umbriel {
     std::optional<bool> blurOptimized;
     std::optional<TitleBarMode> titleBar;
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    std::optional<TitleBarColorSource> titleBarColorSource;
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;

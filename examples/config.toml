@@ -370,6 +370,12 @@ default_pinned = true
 # match.layout = "stacking"
 # title_bar = "on"
 
+# Take the bar's colour from the window's own top edge only where that helps, keeping [appearance.title_bar]
+# color_source = "fixed" for everything else: a program with an ugly header bar, or a Wine application.
+# [[window_rule]]
+# match.app_id = "^my-wine-app$"
+# title_bar_color_source = "window"
+
 # Keep compositor shortcuts available while a virtual machine window is focused.
 # [[window_rule]]
 # match.app_id = "^virt-manager$"

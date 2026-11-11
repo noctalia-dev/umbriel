@@ -151,6 +151,14 @@ namespace umbriel {
     m_buttons.assign(buttons.begin(), buttons.end());
     redraw();
   }
+  void SsdFrame::setColorSource(std::optional<TitleBarColorSource> source) {
+    if (m_colorSourceOverride == source) {
+      return;
+    }
+    m_colorSourceOverride = source;
+    // A mode switch is not a commit, so it has to force the work: an idle window would keep the old fill.
+    redraw();
+  }
   void SsdFrame::setMaximized(bool maximized) { m_maximized = maximized; }
   void SsdFrame::setHovered(SsdFramePart part) {
     if (m_hovered == part) {
@@ -408,13 +416,16 @@ namespace umbriel {
     return {StripSample::State::Fresh, mean};
   }
 
+  TitleBarColorSource SsdFrame::colorSource() const {
+    return m_colorSourceOverride.value_or(config().appearance.titleBar.colorSource);
+  }
+
   std::optional<std::array<float, 4>> SsdFrame::barFillColor() const {
-    const auto& style = config().appearance.titleBar;
     const auto& colors = config().colors.titleBar;
     // The palette shows when the adaptive fill has nothing to draw, so it is the fallback: a transparent edge, an
     // unreadable buffer and `"fixed"` all land on it.
     const std::array<float, 4>& palette = m_focused ? colors.background : colors.backgroundUnfocused;
-    switch (style.colorSource) {
+    switch (colorSource()) {
     case TitleBarColorSource::Average:
       return m_averageColor.value_or(palette);
     case TitleBarColorSource::Window:
@@ -486,8 +497,9 @@ namespace umbriel {
   void SsdFrame::updateAdaptive(bool fromCommit) {
     // The palette stays painted underneath, so a transparent edge or a missing buffer leaves no hole.
     const auto& style = config().appearance.titleBar;
-    const bool average = style.colorSource == TitleBarColorSource::Average;
-    wlr_buffer* buffer = style.colorSource != TitleBarColorSource::Fixed
+    const TitleBarColorSource source = colorSource();
+    const bool average = source == TitleBarColorSource::Average;
+    wlr_buffer* buffer = source != TitleBarColorSource::Fixed
             && m_content != nullptr
             && m_content->buffer != nullptr
             && m_tree->node.enabled
@@ -543,10 +555,9 @@ namespace umbriel {
     const wlr_box clipBox = clip.inside ? clip.area : wlr_box{};
     const bool stripMoved = !wlr_fbox_equal(&m_adaptiveStrip, &strip);
     // A mode switch is not a commit, so it must force the work: otherwise an idle window keeps the stale color.
-    const bool modeChanged = m_adaptiveMode != style.colorSource;
+    const bool modeChanged = m_adaptiveMode != source;
     // Only "window" mirrors without reading, so only there does a sample add anything; the key has no effect elsewhere.
-    const bool sampling =
-        style.colorSource == TitleBarColorSource::Window && style.titleContrast && style.titleContrastSample;
+    const bool sampling = source == TitleBarColorSource::Window && style.titleContrast && style.titleContrastSample;
     const bool samplingChanged = m_contrastSampling != sampling;
     m_contrastSampling = sampling;
     if (!sampling) {
@@ -647,7 +658,7 @@ namespace umbriel {
       shown = m_averageColor.has_value() ? averageBufferFor(*m_averageColor) : nullptr;
       if (shown == nullptr) {
         hideAdaptive();
-        m_adaptiveMode = style.colorSource;
+        m_adaptiveMode = source;
         m_adaptiveStrip = strip;
         return;
       }
@@ -689,7 +700,7 @@ namespace umbriel {
       }
     }
     m_adaptiveBuffer = shown;
-    m_adaptiveMode = style.colorSource;
+    m_adaptiveMode = source;
     m_adaptiveStrip = strip;
     m_adaptiveTransform = transform;
     m_adaptiveWidth = m_background->width;
@@ -1132,6 +1143,7 @@ namespace umbriel {
       frame->m_contrastSample = m_contrastSample;
       frame->m_contrastSampleEmpty = m_contrastSampleEmpty;
       frame->m_stripDeferred = m_stripDeferred;
+      frame->setColorSource(m_colorSourceOverride);
       frame->setContentSurface(m_content, m_contentGeometry);
       frame->reloadConfig();
     }

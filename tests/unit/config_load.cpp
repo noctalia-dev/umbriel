@@ -5337,6 +5337,38 @@ title_bar_buttons = ["close"]
   CHECK(!resolve("other").titleBarButtons.has_value());
 }
 
+UMBRIEL_TEST(titleBarColorSourceRuleOverridesOnlyWhenSet) {
+  using umbriel::TitleBarColorSource;
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.app_id = "^video$"
+title_bar_color_source = "window"
+[[window_rule]]
+match.app_id = "^video$"
+title_bar = "forced"
+[[window_rule]]
+match.app_id = "^terminal$"
+title_bar_color_source = "fixed"
+[[window_rule]]
+match.app_id = "^typo$"
+title_bar_color_source = "averaged"
+)");
+  auto& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "title_bar_color_source \"averaged\""));
+  const auto resolve = [&](const char* appId) {
+    return umbriel::resolveWindowRules(store.config(), appId, "title", std::nullopt, umbriel::ContentType::None, {}, 0);
+  };
+  // A later rule without the key leaves the earlier override in place, and an omitted key inherits the global source.
+  CHECK(resolve("video").titleBarColorSource == TitleBarColorSource::Window);
+  CHECK(resolve("terminal").titleBarColorSource == TitleBarColorSource::Fixed);
+  CHECK(!resolve("other").titleBarColorSource.has_value());
+  // A value outside the three sources is reported and leaves the rule without one rather than guessing.
+  CHECK(!resolve("typo").titleBarColorSource.has_value());
+}
+
 UMBRIEL_TEST(stackingLayoutLoadsGloballyAndPerWorkspace) {
   const TempConfig file;
   file.write(R"(

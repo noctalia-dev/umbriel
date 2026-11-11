@@ -216,6 +216,7 @@ configure average
 # A fresh pipe: the first client's write end is closed with it.
 mkfifo "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo"
 FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF00FF00 TOP_BAND_SPLIT=0xFF0000FF TOP_BAND_HEIGHT=2 REPAINT_ON_STDIN=1 \
+  CONTENT_TYPE_AFTER_MAP=video \
   "$CLIENT" adaptive-bar 480 300 < "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo" > "$LOG2" 2>&1 &
 exec 4> "$UMBRIEL_RUNTIME_DIR/adaptive-average.fifo"
 await_lines "$LOG2" mapped 1
@@ -263,7 +264,57 @@ if ! (( left_g > 200 && left_b < 40 && right_b > 200 && right_g < 40 )); then
   fail "a smeared bar did not keep the window edge: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
 fi
 
+# A `title_bar_color_source` window rule is how the adaptive bar is given to one window: the global source stays
+# "fixed", so terminals and editors keep the palette, and only the windows a rule selects take their fill from their
+# own edge. A `match.content_type` rule reaches the bar through the dynamic rule pass on the commit that sets the hint,
+# with no layout change to carry it.
+configure fixed
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$magenta" 1000 "the palette bar while the global source is fixed"
+cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+
+[[window_rule]]
+match.content_type = "video"
+title_bar_color_source = "window"
+CONFIG
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$magenta" 1000 "the palette bar while no window matches the rule"
+printf 'u' >&4
+await_lines "$LOG2" 'content-type-updated' 1
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! (( left_g > 200 && left_b < 40 && right_b > 200 && right_g < 40 )); then
+  fail "a title_bar_color_source rule did not smear the window it matched: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+# A reload that only edits the rule is the other direction, and it has to land on an idle window with no commit: the
+# reload syncs chrome before it applies the rules, so the frame hears about the new source from the rule pass.
+sed -i 's/^title_bar_color_source = "window"$/title_bar_color_source = "fixed"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$magenta" 1000 "the palette bar after a rule exempted the window"
+sed -i 's/^title_bar_color_source = "fixed"$/title_bar_color_source = "window"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+grim "$FRAME"
+read -r left_r left_g left_b < <(pixel 200 84)
+read -r right_r right_g right_b < <(pixel 620 84)
+if ! (( left_g > 200 && left_b < 40 && right_b > 200 && right_g < 40 )); then
+  fail "a reload-only rule change did not reach an idle bar: left $left_r $left_g $left_b, right $right_r $right_g $right_b"
+fi
+configure fixed
+"$UMBRIEL" settle
+grim "$FRAME"
+expect "$magenta" 1000 "the palette bar after the rule was lifted"
+
 # Repaint while the bar is smearing, so the mean cached before this point is out of date.
+configure window
+"$UMBRIEL" settle
 printf 'B' >&4
 await_lines "$LOG2" repainted 1
 "$UMBRIEL" settle

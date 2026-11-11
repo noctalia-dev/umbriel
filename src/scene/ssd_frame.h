@@ -49,6 +49,8 @@ namespace umbriel {
     void setMaximizeEnabled(bool enabled);
     // The buttons to show, from the title outward.
     void setButtons(std::span<const TitleBarButton> buttons);
+    // Where the bar's fill comes from for this window, overriding [appearance.title_bar] color_source.
+    void setColorSource(std::optional<TitleBarColorSource> source);
     void setMaximized(bool maximized);
     void setHovered(SsdFramePart part);
     void setPressed(SsdFramePart part);
@@ -75,6 +77,8 @@ namespace umbriel {
     // whether it repainted, which stops a caller that would otherwise draw with what the repaint replaces.
     bool refreshFill(bool fromCommit);
     void hideAdaptive();
+    // The source this window resolved, or the global one when no rule set it.
+    TitleBarColorSource colorSource() const;
     // What one readback of the edge produced: a value, a refusal, or a readable edge with nothing to average.
     struct StripSample {
       // `Empty` means the strip was read and holds no color (a transparent edge), so the palette is the honest
@@ -166,6 +170,8 @@ namespace umbriel {
     std::vector<uint32_t> m_stripPixels;
     // The mode the contents were built for: a switch is not a commit, so it must force the work.
     TitleBarColorSource m_adaptiveMode = TitleBarColorSource::Fixed;
+    // A `title_bar_color_source` window rule; unset follows [appearance.title_bar].
+    std::optional<TitleBarColorSource> m_colorSourceOverride;
     wl_output_transform m_adaptiveTransform = WL_OUTPUT_TRANSFORM_NORMAL;
     // Whether the last update sampled for contrast, so turning the setting on reads the edge without a repaint.
     bool m_contrastSampling = false;

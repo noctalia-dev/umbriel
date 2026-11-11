@@ -118,14 +118,7 @@ namespace umbriel {
           integer("button_glyph_size", -1, 128, &A::TitleBar::buttonGlyphSize),
           real("button_glyph_stroke", -1.0, 16.0, &A::TitleBar::buttonGlyphStroke),
           boolean("button_background", &A::TitleBar::buttonBackground),
-          registry::choice(
-              "color_source", &A::TitleBar::colorSource,
-              {
-                  {.name = "fixed", .value = TitleBarColorSource::Fixed},
-                  {.name = "window", .value = TitleBarColorSource::Window},
-                  {.name = "average", .value = TitleBarColorSource::Average},
-              }
-          ),
+          registry::choice("color_source", &A::TitleBar::colorSource, titleBarColorSources()),
           // One flat color row up to four rows of the window's own detail; the bar stretches them over its height.
           integer(
               "color_source_height", kTitleBarStripHeightMin, kTitleBarStripHeightMax, &A::TitleBar::colorSourceHeight

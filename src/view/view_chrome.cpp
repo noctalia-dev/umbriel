@@ -125,6 +125,7 @@ namespace umbriel {
         && hints.maxWidth == hints.minWidth
         && hints.maxHeight > 0
         && hints.maxHeight == hints.minHeight;
+    m_ssdFrame->setColorSource(m_titleBarColorSource);
     m_ssdFrame->setTitle(title() != nullptr ? title() : "");
     m_ssdFrame->setResizable(!m_tiled);
     m_ssdFrame->setMaximizeEnabled(!fixed);
