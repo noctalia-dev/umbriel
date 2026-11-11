@@ -152,6 +152,7 @@ namespace umbriel {
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
     bool confinePointer();
+    bool keepFocusOnHover();
     double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its

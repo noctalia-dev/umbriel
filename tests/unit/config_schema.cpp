@@ -332,6 +332,20 @@ UMBRIEL_TEST(pointerConfinementBooleanParsesAndReloads) {
   CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) { return message.contains("confine_pointer"); }));
 }
 
+UMBRIEL_TEST(hoverFocusKeepingBooleanParsesAndReloads) {
+  const auto enabled = load(toml::parse("[[window_rule]]\nkeep_focus_on_hover = true\n"));
+  CHECK(enabled.messages.empty());
+  CHECK(enabled.config.windowRules.at(0).keepFocusOnHover.value_or(false));
+  const auto disabled = load(toml::parse("[[window_rule]]\nkeep_focus_on_hover = false\n"));
+  CHECK(disabled.messages.empty());
+  CHECK(disabled.config.windowRules != enabled.config.windowRules);
+  CHECK(!disabled.config.windowRules.at(0).keepFocusOnHover.value_or(true));
+  const auto invalid = load(toml::parse("[[window_rule]]\nkeep_focus_on_hover = \"yes\"\n"));
+  CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) {
+    return message.contains("keep_focus_on_hover");
+  }));
+}
+
 UMBRIEL_TEST(shortcutsInhibitionRuleParsesAndParticipatesInReloads) {
   const auto enabled = load(toml::parse("[[window_rule]]\nallow_shortcuts_inhibit = true\n"));
   CHECK(enabled.messages.empty());

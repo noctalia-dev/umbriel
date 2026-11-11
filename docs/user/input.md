@@ -330,6 +330,8 @@ hover_raises = true
 
 When a dialog has focus, motion within the parent window beneath the pointer keeps the dialog focused so the pointer can reach it. This applies to floating dialogs and lets tiled dialogs finish scrolling into view. Crossing back into the parent from another window, clicking it, or choosing it with a focus command still transfers focus to the parent. This behavior is the same with either value of `hover_raises`.
 
+To keep a specific window focused while the pointer moves elsewhere, use the [`keep_focus_on_hover`](window-rules.md#keeping-focus-on-hover) window rule.
+
 `hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters with `follows_mouse = true`, and defaults to `true`.
 
 While a client holds a pointer or keyboard grab, such as an open tray menu, hovering a window or crossing outputs preserves that grab and its keyboard focus. An outside click or explicit focus action can still dismiss the menu.

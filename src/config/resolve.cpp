@@ -344,6 +344,9 @@ namespace umbriel {
       if (rule.confinePointer) {
         resolved.confinePointer = rule.confinePointer;
       }
+      if (rule.keepFocusOnHover) {
+        resolved.keepFocusOnHover = rule.keepFocusOnHover;
+      }
       if (rule.touchpadScrollFactor) {
         resolved.touchpadScrollFactor = rule.touchpadScrollFactor;
       }

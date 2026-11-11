@@ -50,6 +50,20 @@ namespace umbriel {
     constexpr uint32_t kDoubleClickMsec = 300;
     constexpr double kDoubleClickSlop = 8.0;
 
+    // A focused window matched by `keep_focus_on_hover`, or one whose attached dialog has the keyboard, keeps it when
+    // the pointer hovers another window or output (null target). Clicks, keybinds, and closing still move it.
+    bool hoverFocusHeld(wlr_seat* seat, const View* target) {
+      View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
+      if (focused == nullptr || !focused->mapped()) {
+        return false;
+      }
+      View* root = focused->placementRoot();
+      if (!focused->keepFocusOnHover() && !root->keepFocusOnHover()) {
+        return false;
+      }
+      return target == nullptr || root != target->placementRoot();
+    }
+
     // Panels (top/overlay) keep working inside the overview. Background- and bottom-layer surfaces are part of the
     // inert backdrop behind the filmstrip, so their clicks belong to the overview instead.
     bool overviewPassthroughLayer(const LayerSurface* layer) {
@@ -2542,7 +2556,8 @@ namespace umbriel {
           && !wlr_seat_pointer_has_grab(seat)
           && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
-          && m_server->exclusiveKeyboardLayer() == nullptr) {
+          && m_server->exclusiveKeyboardLayer() == nullptr
+          && !hoverFocusHeld(seat, nullptr)) {
         m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
       }
     }
@@ -2560,7 +2575,8 @@ namespace umbriel {
         || m_server->sessionLocked()
         || *layer != nullptr
         || view == nullptr
-        || !view->mapped()) {
+        || !view->mapped()
+        || hoverFocusHeld(seat, view)) {
       return view;
     }
     Workspace* workspace = view->workspace();

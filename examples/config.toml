@@ -356,6 +356,12 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Keep a popup focused while the pointer moves over other windows.
+# [[window_rule]]
+# match.app_id = "^com\\.onepassword\\.OnePassword$"
+# match.title = "^Quick Access — 1Password$"
+# keep_focus_on_hover = true
+
 # Scroll more slowly on the touchpad in one application.
 # [[window_rule]]
 # match.app_id = "^chromium$"

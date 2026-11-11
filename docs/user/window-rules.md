@@ -191,6 +191,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 | `blur_ignore_alpha`       | Skip blur below an alpha threshold.                                                                                                                                                                                                                                    |
 | `blur_optimized`          | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
 | `confine_pointer`         | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
+| `keep_focus_on_hover`     | While this window has keyboard focus, hovering another window does not take focus from it (default `false`). See [Keeping focus on hover](#keeping-focus-on-hover).                                                                                                    |
 | `touchpad_scroll_factor`  | Touchpad scroll speed multiplier from 0.1 to 10.0 for this window, applied on top of [`input.touchpad.scroll_factor`](input.md#touchpad). Mouse wheels are unaffected.                                                                                                 |
 | `allow_shortcuts_inhibit` | Allow client-requested keyboard shortcut inhibition (default `true`). Set `false` to keep compositor shortcuts available. See [Keyboard shortcuts inhibition](#keyboard-shortcuts-inhibition).                                                                         |
 | `block_capture`           | Omit this window from screenshots and recordings (default `false`). See [Capture protection](#capture-protection).                                                                                                                                                     |
@@ -407,6 +408,19 @@ confine_pointer = true
 The rule applies to floating, tiled and fullscreen windows. It takes effect when that window has keyboard focus and the pointer is inside its visible content. Client-requested pointer locks still work; confinement resumes when the client releases its lock. Reloading the configuration updates existing windows, and a later matching rule can disable confinement with `confine_pointer = false`.
 
 Use a focus or workspace keybind to escape. With focus-follows-mouse enabled, small movements over the window you just left do not refocus it; leaving and re-entering it, clicking it, or explicitly focusing it allows confinement again. Compositor cursor warps remain available. Confinement is suspended during session lock, overview, compositor move/resize and client drag operations.
+
+### Keeping focus on hover
+
+With [`follows_mouse`](input.md#focus) enabled, use `keep_focus_on_hover` for popups that should keep focus while the pointer is elsewhere, such as a password manager's quick-access window:
+
+```toml
+[[window_rule]]
+match.app_id = "^com\\.onepassword\\.OnePassword$"
+match.title = "^Quick Access — 1Password$"
+keep_focus_on_hover = true
+```
+
+While a matching window, or a dialog attached to it, has keyboard focus, moving the pointer into another window or onto another output does not take focus from it. Clicks, keybinds, activation, and closing the window still move focus, and hover focus resumes once it is gone. Match on the title as well as the application ID when only one of an application's windows should keep focus.
 
 ### Keyboard shortcuts inhibition
 

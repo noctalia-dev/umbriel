@@ -474,6 +474,8 @@ namespace umbriel {
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    // While a matching window has keyboard focus, pointer hover cannot move focus to another window.
+    std::optional<bool> keepFocusOnHover;
     // Multiplies touchpad scrolling sent to matching windows, on top of `[input.touchpad] scroll_factor`.
     std::optional<double> touchpadScrollFactor;
     // Whether matching windows may activate client-requested keyboard shortcut inhibition (true by default).
@@ -549,6 +551,7 @@ namespace umbriel {
           && focusOnActivate == other.focusOnActivate
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
+          && keepFocusOnHover == other.keepFocusOnHover
           && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
@@ -600,6 +603,7 @@ namespace umbriel {
     std::optional<bool> focusOnActivate;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    std::optional<bool> keepFocusOnHover;
     std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;

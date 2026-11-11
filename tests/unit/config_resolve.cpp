@@ -1451,6 +1451,24 @@ UMBRIEL_TEST(pointerConfinementLastMatchingRuleWins) {
   CHECK(resolve(false).confinePointer.value_or(false));
 }
 
+UMBRIEL_TEST(hoverFocusKeepingLastMatchingRuleWins) {
+  Config config;
+  const auto resolve = [&] {
+    return umbriel::resolveWindowRules(config, "password", "Quick Access", std::nullopt, ContentType::None, {}, 0);
+  };
+  CHECK(!resolve().keepFocusOnHover.has_value());
+  WindowRule enabled;
+  enabled.keepFocusOnHover = true;
+  config.windowRules.push_back(enabled);
+  CHECK(resolve().keepFocusOnHover.value_or(false));
+  WindowRule disabled;
+  disabled.keepFocusOnHover = false;
+  config.windowRules.push_back(disabled);
+  CHECK(!resolve().keepFocusOnHover.value_or(true));
+  config.windowRules.emplace_back();
+  CHECK(!resolve().keepFocusOnHover.value_or(true));
+}
+
 UMBRIEL_TEST(backgroundRenderLastMatchingRuleWins) {
   Config config;
   const auto resolve = [&](std::string_view appId) {
