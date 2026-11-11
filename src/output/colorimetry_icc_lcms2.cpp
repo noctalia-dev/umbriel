@@ -150,7 +150,7 @@ namespace umbriel {
           encode[target] = 1.0F;
           continue;
         }
-        const size_t high = static_cast<size_t>(upper - decode.begin());
+        const auto high = static_cast<size_t>(upper - decode.begin());
         const size_t low = high - 1;
         const float span = decode[high] - decode[low];
         const float fraction = span > 0.0F ? (linear - decode[low]) / span : 0.0F;

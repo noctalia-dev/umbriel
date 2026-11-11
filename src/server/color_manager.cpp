@@ -971,7 +971,7 @@ namespace umbriel {
         const float maxLuminance =
             data.has_mastering_luminance ? data.mastering_luminance.max : creator->description.luminances.max;
         const auto outsideRange = [&](uint32_t level) {
-          const float value = static_cast<float>(level);
+          const auto value = static_cast<float>(level);
           return level != 0 && (value <= minLuminance || value > maxLuminance);
         };
         if (outsideRange(data.max_cll) || outsideRange(data.max_fall)) {
