@@ -81,6 +81,20 @@ namespace umbriel {
     return result;
   }
 
+  int titleBarLabelX(const TitleBarLayout& layout, int width, int labelWidth, TitleAlign align) {
+    const wlr_box& title = layout.title;
+    const int last = title.x + std::max(0, title.width - labelWidth);
+    switch (align) {
+    case TitleAlign::Left:
+      return title.x;
+    case TitleAlign::Center:
+      return std::clamp((width - labelWidth) / 2, title.x, last);
+    case TitleAlign::Right:
+      return last;
+    }
+    return title.x;
+  }
+
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       const TitleBarButtonGeometry& geometry, double x, double y, int radius
@@ -158,7 +172,7 @@ namespace umbriel {
 
   wlr_fbox titleBarStripSourceBox(
       const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
-      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction
+      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction, double startFraction
   ) {
     // The whole transform, flip bit included: a flip moves which buffer pixels the geometry maps to, while only a
     // quarter turn swaps the buffer's dimensions.
@@ -195,10 +209,12 @@ namespace umbriel {
         visible = {left, top, right - left, bottom - top};
       }
     }
-    // Only the leading part of the edge when the caller samples rather than mirrors it: the title is much narrower
-    // than the bar, and each readback pixel costs a finished frame.
-    if (widthFraction < 1.0) {
-      visible.width = std::max(0.0, visible.width * std::clamp(widthFraction, 0.0, 1.0));
+    // Only the part under the title when the caller samples rather than mirrors it: the title is much narrower than
+    // the bar, and each readback pixel costs a finished frame.
+    if (startFraction > 0.0 || widthFraction < 1.0) {
+      const double start = std::clamp(startFraction, 0.0, 1.0);
+      visible.x += visible.width * start;
+      visible.width = std::max(0.0, visible.width * std::clamp(widthFraction, 0.0, 1.0 - start));
     }
     // Cap after the floor: a viewport can make the source shorter than a buffer pixel, which inverts clamp()'s bounds.
     const double thickness = std::min(visible.height, std::max(1.0, static_cast<double>(logicalHeight) * scaleY));

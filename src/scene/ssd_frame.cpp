@@ -241,24 +241,36 @@ namespace umbriel {
     return touched;
   }
 
+  double SsdFrame::sampleLeftFraction() const {
+    if (m_sampleWidth <= 0 || m_geometry.contentWidth <= 0) {
+      return 0.0;
+    }
+    return std::clamp(static_cast<double>(m_sampleLeft) / static_cast<double>(m_geometry.contentWidth), 0.0, 1.0);
+  }
+
   double SsdFrame::sampleWidthFraction() const {
     if (m_sampleWidth <= 0 || m_geometry.contentWidth <= 0) {
       return 1.0;
     }
-    return std::clamp(static_cast<double>(m_sampleWidth) / static_cast<double>(m_geometry.contentWidth), 0.0, 1.0);
+    const double width = static_cast<double>(m_sampleWidth) / static_cast<double>(m_geometry.contentWidth);
+    return std::clamp(width, 0.0, 1.0 - sampleLeftFraction());
   }
 
-  void SsdFrame::cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts) {
+  void SsdFrame::cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts, int labelX) {
+    m_sampleLeft = 0;
+    m_sampleWidth = 0;
     if (label == nullptr || m_geometry.contentWidth <= 0) {
-      m_sampleWidth = 0;
       return;
     }
-    // The label renders at the output scale; the layout and the strip are logical pixels.
-    const double scale = std::max(1.0, std::ceil(static_cast<double>(m_geometry.scale)));
-    const int text = static_cast<int>(std::lround(static_cast<double>(label->width) / scale));
-    m_sampleWidth = std::clamp(
-        parts.title.x + std::min(text, parts.title.width) + kAdaptiveSamplePadding, 0, m_geometry.contentWidth
+    // Wherever the title sits, its own span plus a little slack: a centered or right-aligned title is not under the
+    // leading edge, so a readback from there would judge the bar against the wrong part of the window. The label and
+    // the strip are both logical pixels.
+    m_sampleLeft = std::clamp(labelX - kAdaptiveSamplePadding, 0, m_geometry.contentWidth);
+    const int right = std::clamp(
+        labelX + std::min(label->width, parts.title.width) + kAdaptiveSamplePadding, m_sampleLeft,
+        m_geometry.contentWidth
     );
+    m_sampleWidth = right - m_sampleLeft;
   }
 
   void SsdFrame::armStripFallback(std::uint32_t delayMsec) {
@@ -553,13 +565,14 @@ namespace umbriel {
     }
     // Both modes pay the same readback: "average" paints it, "window" judges the title against it. Only the mirror is
     // free, so the read covers the title and a little slack instead of the whole edge. A mirror still needs all of it.
+    const double sampleStart = sampleLeftFraction();
     const double sampleFraction = sampleWidthFraction();
-    const wlr_fbox sampleBox = sampleFraction >= 1.0
+    const wlr_fbox sampleBox = sampleStart <= 0.0 && sampleFraction >= 1.0
         ? strip
         : titleBarStripSourceBox(
               base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width,
               m_content->current.height, static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight,
-              sampleFraction
+              sampleFraction, sampleStart
           );
     const bool restrip = (average ? (fromCommit && stripTouched(sampleBox)) : touched)
         || modeChanged
@@ -761,7 +774,9 @@ namespace umbriel {
       }
       return;
     }
-    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, config().appearance.titleBar.buttonSize);
+    const auto& style = config().appearance.titleBar;
+    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, style.buttonSize);
+    const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphStroke);
     const float scale = std::max(1.0F, m_geometry.scale);
     // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
@@ -770,8 +785,9 @@ namespace umbriel {
     if (icon == nullptr
         || m_iconSizes[index] != pixels
         || m_iconColors[index] != color
-        || m_iconOutlines[index] != outline) {
-      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color, outline);
+        || m_iconOutlines[index] != outline
+        || m_iconGlyphs[index] != glyph) {
+      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color, glyph, outline);
       if (icon == nullptr) {
         icon = wlr_scene_buffer_create(m_tree, buffer);
         if (icon != nullptr) {
@@ -791,6 +807,7 @@ namespace umbriel {
       m_iconSizes[index] = pixels;
       m_iconColors[index] = color;
       m_iconOutlines[index] = outline;
+      m_iconGlyphs[index] = glyph;
     }
     wlr_scene_buffer_set_dest_size(icon, background->width, background->height);
     wlr_scene_buffer_set_opacity(icon, alpha);
@@ -876,6 +893,7 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
       // No bar to sample for: let a later redraw measure the title again before it caps a readback.
+      m_sampleLeft = 0;
       m_sampleWidth = 0;
       updateAdaptive(false);
       updateBlur();
@@ -903,6 +921,7 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
     }
     if (!shown) {
+      m_sampleLeft = 0;
       m_sampleWidth = 0;
       updateAdaptive(false);
       updateBlur();
@@ -936,11 +955,13 @@ namespace umbriel {
     // The configured color, or black or white when the bar behind it is too close to read.
     const std::array<float, 4> textColor = resolvedTitleColor();
     const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
-    cacheSampleWidth(label, parts);
-    // Hold the title before the shadow lookup, which can evict it. The frame keeps this lock for its snapshots.
+    // Held before the shadow lookup, which can evict the label. The frame keeps this lock for its snapshots.
     holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
     const int labelWidth = label != nullptr ? label->width : 0;
     const int labelHeight = label != nullptr ? label->height : 0;
+    // Fixed here for the same reason: the shadow follows the title where it sits.
+    const int labelX = titleBarLabelX(parts, g.contentWidth, labelWidth, style.titleAlign);
+    cacheSampleWidth(label, parts, labelX);
     // Any bar can be any color, so the title keeps a dark edge unless it is turned off.
     const bool shadowed = style.titleShadow;
     const TabLabel* shadow = nullptr;
@@ -964,7 +985,7 @@ namespace umbriel {
         wlr_scene_buffer_set_buffer(m_label, m_labelBuffer);
       }
       wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(labelWidth)), std::max(1, zoomed(labelHeight)));
-      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - labelHeight) / 2));
+      wlr_scene_node_set_position(&m_label->node, zoomed(labelX), zoomed(-h + (h - labelHeight) / 2));
       clipBuffer(m_label);
     }
     if (shadow == nullptr) {
@@ -985,7 +1006,7 @@ namespace umbriel {
           m_labelShadow, std::max(1, zoomed(shadow->width)), std::max(1, zoomed(shadow->height))
       );
       wlr_scene_node_set_position(
-          &m_labelShadow->node, zoomed(parts.title.x) + offset, zoomed(-h + (h - shadow->height) / 2) + offset
+          &m_labelShadow->node, zoomed(labelX) + offset, zoomed(-h + (h - shadow->height) / 2) + offset
       );
       clipBuffer(m_labelShadow);
     }

@@ -23,6 +23,15 @@ namespace umbriel {
         "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_SESSION_TYPE",
     };
 
+    const registry::Choices<TitleAlign>& titleAligns() {
+      static const registry::Choices<TitleAlign> choices{
+          {.name = "left", .value = TitleAlign::Left},
+          {.name = "center", .value = TitleAlign::Center},
+          {.name = "right", .value = TitleAlign::Right},
+      };
+      return choices;
+    }
+
     const registry::Fields<Config::Colors>& colorFields() {
       using registry::color;
       using C = Config::Colors;
@@ -106,6 +115,8 @@ namespace umbriel {
                   {.name = "never", .value = TitleBarButtonGlyph::Never},
               }
           ),
+          integer("button_glyph_size", -1, 128, &A::TitleBar::buttonGlyphSize),
+          real("button_glyph_stroke", -1.0, 16.0, &A::TitleBar::buttonGlyphStroke),
           boolean("button_background", &A::TitleBar::buttonBackground),
           registry::choice(
               "color_source", &A::TitleBar::colorSource,
@@ -123,6 +134,7 @@ namespace umbriel {
           boolean("title_contrast", &A::TitleBar::titleContrast),
           boolean("title_contrast_sample", &A::TitleBar::titleContrastSample),
           registry::text("font", &A::TitleBar::font),
+          registry::choice("title_align", &A::TitleBar::titleAlign, titleAligns()),
           registry::choice(
               "button_position", &A::TitleBar::buttonPosition,
               {
@@ -176,14 +188,7 @@ namespace umbriel {
           integer("gap", -1, 500, &A::TabBar::gap),
           integer("corner_radius", -1, 100, &A::TabBar::cornerRadius),
           registry::text("title_format", &A::TabBar::titleFormat),
-          registry::choice(
-              "title_align", &A::TabBar::titleAlign,
-              {
-                  {.name = "left", .value = TitleAlign::Left},
-                  {.name = "center", .value = TitleAlign::Center},
-                  {.name = "right", .value = TitleAlign::Right},
-              }
-          ),
+          registry::choice("title_align", &A::TabBar::titleAlign, titleAligns()),
           boolean("visible", &A::TabBar::visible),
           boolean("hide_when_single", &A::TabBar::hideWhenSingle),
           integer("max_tabs", 0, 64, &A::TabBar::maxTabs),

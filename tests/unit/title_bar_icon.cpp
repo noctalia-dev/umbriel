@@ -6,6 +6,7 @@ extern "C" {
 #include <wlr/types/wlr_buffer.h>
 }
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <drm_fourcc.h>
@@ -18,8 +19,8 @@ namespace {
     size_t stride = 0;
     bool accessible = false;
 
-    Pixels(umbriel::TitleBarButton button, int size)
-        : buffer(umbriel::renderTitleBarIcon(button, size, {1.0F, 1.0F, 1.0F, 1.0F})) {
+    Pixels(umbriel::TitleBarButton button, int size, const umbriel::TitleBarGlyph& glyph = {})
+        : buffer(umbriel::renderTitleBarIcon(button, size, {1.0F, 1.0F, 1.0F, 1.0F}, glyph)) {
       accessible = wlr_buffer_begin_data_ptr_access(buffer, WLR_BUFFER_DATA_PTR_ACCESS_READ, &data, &format, &stride);
       CHECK(accessible);
       CHECK_EQ(format, DRM_FORMAT_ARGB8888);
@@ -85,6 +86,52 @@ UMBRIEL_TEST(buttonSymbolsKeepTransparentAntialiasedEdges) {
     CHECK_EQ(image.alpha(0, 0), 0U);
     CHECK_EQ(image.alpha(27, 27), 0U);
   }
+}
+
+UMBRIEL_TEST(glyphSettingsDeriveFromTheButtonUntilSet) {
+  CHECK(umbriel::titleBarGlyph(24, -1, -1.0) == umbriel::TitleBarGlyph{});
+  const umbriel::TitleBarGlyph set = umbriel::titleBarGlyph(24, 8, 2.0);
+  CHECK_EQ(set.size, 8.0 / 24.0);
+  CHECK_EQ(set.stroke, 2.0 / 24.0);
+  // A symbol never outgrows its button.
+  CHECK_EQ(umbriel::titleBarGlyph(14, 20, -1.0).size, 1.0);
+}
+
+UMBRIEL_TEST(glyphSizeAndWidthShapeTheSymbol) {
+  using umbriel::TitleBarButton;
+  const auto inkExtent = [](const Pixels& image, int size) {
+    int first = size;
+    int last = -1;
+    for (int x = 0; x < size; ++x) {
+      if (image.alpha(x, x) > 127) {
+        first = std::min(first, x);
+        last = std::max(last, x);
+      }
+    }
+    return last - first + 1;
+  };
+  const auto ink = [](const Pixels& image, int size) {
+    int count = 0;
+    for (int y = 0; y < size; ++y) {
+      for (int x = 0; x < size; ++x) {
+        count += image.alpha(x, y) > 0;
+      }
+    }
+    return count;
+  };
+  const Pixels standard(TitleBarButton::Close, 48);
+  const Pixels small(TitleBarButton::Close, 48, {.size = 0.25});
+  const Pixels thick(TitleBarButton::Close, 48, {.stroke = 0.25});
+  if (!standard.accessible || !small.accessible || !thick.accessible) {
+    return;
+  }
+  // The X's diagonal spans the configured fraction of the button, plus its round caps.
+  CHECK(inkExtent(small, 48) < inkExtent(standard, 48));
+  CHECK(inkExtent(small, 48) <= 12 + 4);
+  CHECK(inkExtent(standard, 48) >= 24);
+  CHECK(ink(thick, 48) > ink(standard, 48) * 2);
+  CHECK(small.alpha(24, 24) > 0);
+  CHECK_EQ(small.alpha(14, 14), 0U);
 }
 
 int main() { return RUN_TESTS(); }

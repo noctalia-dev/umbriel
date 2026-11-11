@@ -76,12 +76,6 @@ namespace umbriel {
     Shrink,
   };
 
-  enum class TitleAlign : uint8_t {
-    Left,
-    Center,
-    Right,
-  };
-
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -749,12 +743,16 @@ namespace umbriel {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
         std::string font = "sans 10";
+        TitleAlign titleAlign = TitleAlign::Left;
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
         int buttonSize = -1;
         int buttonGap = 8;
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        // Symbol side and stroke width in logical pixels; -1 derives each from the button size.
+        int buttonGlyphSize = -1;
+        double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
         // "window" paints the bar with the top strip of the window's own content instead of the palette color, and
         // "average" paints it with that strip's mean color; the palette stays underneath as the fallback.

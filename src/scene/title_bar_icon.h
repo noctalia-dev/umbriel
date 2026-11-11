@@ -8,10 +8,20 @@
 struct wlr_buffer;
 
 namespace umbriel {
+  // A symbol's side and stroke width, each a fraction of the button it is drawn on.
+  struct TitleBarGlyph {
+    double size = 0.5;
+    double stroke = 1.0 / 12.0;
+    bool operator==(const TitleBarGlyph&) const = default;
+  };
+
+  // The glyph for a `button` logical pixels wide; a negative setting derives that dimension from the button.
+  TitleBarGlyph titleBarGlyph(int button, int size, double stroke);
+
   // Rasterizes geometric button strokes into a transparent square at the requested device resolution. `outline`, when
   // set, strokes the same path wider underneath, so the symbol keeps an edge over an arbitrary title bar color.
   [[nodiscard]] wlr_buffer* renderTitleBarIcon(
-      TitleBarButton button, int pixels, const std::array<float, 4>& color,
+      TitleBarButton button, int pixels, const std::array<float, 4>& color, const TitleBarGlyph& glyph,
       const std::optional<std::array<float, 4>>& outline = std::nullopt
   );
 } // namespace umbriel

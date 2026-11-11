@@ -21,6 +21,7 @@ unit_tests = [
   ['lid-state', ['unit/lid_state.cpp'], []],
   ['output-enable-overrides', ['unit/output_enable_overrides.cpp'], []],
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
+  ['pending-releases', ['unit/pending_releases.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
   [
     'event-pacer',

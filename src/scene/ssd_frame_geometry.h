@@ -12,6 +12,11 @@ extern "C" {
 
 namespace umbriel {
   enum class TitleBarButtonSide : uint8_t { Left, Right };
+  enum class TitleAlign : uint8_t {
+    Left,
+    Center,
+    Right,
+  };
   enum class TitleBarButton : uint8_t { Minimize, Maximize, Close };
   inline constexpr size_t kTitleBarButtonCount = 3;
   enum class SsdFramePart : uint8_t { None, TitleBar, Close, Maximize, Minimize, Resize };
@@ -50,6 +55,9 @@ namespace umbriel {
       int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       const TitleBarButtonGeometry& geometry, int radius = 0, int titleHeight = 0
   );
+  // Left edge of a title `labelWidth` wide in a bar `width` wide. `Center` takes the middle of the whole bar and slides
+  // toward the open side when that would put the title under the buttons.
+  int titleBarLabelX(const TitleBarLayout& layout, int width, int labelWidth, TitleAlign align);
   // Coordinates relative to client content; the title bar lies above y = 0.
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
@@ -65,10 +73,10 @@ namespace umbriel {
   // `geometry` the window geometry in surface-local coordinates (an empty box means the whole surface, and its
   // margins stay out of the strip), `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels,
   // and `transform` its buffer transform. A box with no area means the caller has no usable buffer.
-  // `widthFraction` keeps the strip to that leading part of the visible edge, 1.0 being all of it, so a readback can
-  // cover only the title instead of the whole bar.
+  // `widthFraction` of the visible edge, starting `startFraction` into it and 1.0 being all of it, keeps the strip to
+  // the part a readback needs: the title and its slack, wherever the title sits, instead of the whole bar.
   wlr_fbox titleBarStripSourceBox(
       const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
-      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction = 1.0
+      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction = 1.0, double startFraction = 0.0
   );
 } // namespace umbriel

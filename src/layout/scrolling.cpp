@@ -1268,27 +1268,20 @@ namespace umbriel {
       if (group == nullptr) {
         return false;
       }
-      // The tabs split the group's extent evenly, so the column keeps its other rows where they were. A group alone in
-      // its column has no other rows, so its tabs weigh 1 like a new row and the column's free space scales to match.
-      const size_t first = group->first;
-      const size_t count = group->count;
-      double share = std::max(kMinHeightWeight, column.heightWeights[first]) / static_cast<double>(count);
+      // Each tab becomes a row as tall as the group. Alone in its column, the tabs share the group's space and the
+      // column's free space stays.
       if (column.tabs.unitCount(column.views.size()) == 1) {
-        column.topGapWeight /= share;
-        column.bottomGapWeight /= share;
-        share = 1.0;
+        column.topGapWeight *= static_cast<double>(group->count);
+        column.bottomGapWeight *= static_cast<double>(group->count);
       }
       column.tabs.dissolve(row);
-      for (size_t member = first; member < first + count; ++member) {
-        column.heightWeights[member] = share;
-      }
       return true;
     }
     if (column.tabs.groupAt(row) != nullptr) {
       return false;
     }
-    // The run of rows standing alone around `view`, as far as the nearest tab groups, becomes one group showing it,
-    // taking the extent the run had.
+    // The run of rows standing alone around `view`, as far as the nearest tab groups, becomes one group showing it. The
+    // group counts as one row of the run's average extent; alone in its column, it keeps the space the run had.
     size_t first = row;
     while (first > 0 && column.tabs.groupAt(first - 1) == nullptr) {
       --first;
@@ -1301,8 +1294,13 @@ namespace umbriel {
     for (size_t member = first; member < end; ++member) {
       extent += std::max(kMinHeightWeight, column.heightWeights[member]);
     }
+    const auto count = static_cast<double>(end - first);
     column.tabs.form(first, end - first, row);
-    setUnitWeight(column, row, extent);
+    if (column.tabs.unitCount(column.views.size()) == 1) {
+      column.topGapWeight /= count;
+      column.bottomGapWeight /= count;
+    }
+    setUnitWeight(column, row, extent / count);
     return true;
   }
 

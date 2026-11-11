@@ -4,6 +4,7 @@
 #include "scene/adaptive_sampling.h"
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
+#include "scene/title_bar_icon.h"
 #include "view/chrome_attachment.h"
 
 #include <array>
@@ -88,8 +89,9 @@ namespace umbriel {
     // Whether this commit's explicit-sync acquire point has signalled, or has no fence at all.
     bool stripFenceSignalled() const;
     // The part of the edge worth sampling: the title plus a little slack, as a fraction of the visible width.
+    double sampleLeftFraction() const;
     double sampleWidthFraction() const;
-    void cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts);
+    void cacheSampleWidth(const TabLabel* label, const TitleBarLayout& parts, int labelX);
     // Reads the edge once `delayMsec` has passed, for a fence that outlived its wait or a read the cadence skipped.
     void armStripFallback(std::uint32_t delayMsec);
     static int onStripFallbackTimer(void* data);
@@ -143,7 +145,8 @@ namespace umbriel {
     // Runs the fallback for a read the loop would otherwise owe until the next commit; a preview has no loop.
     wl_event_loop* m_loop = nullptr;
     wl_event_source* m_stripTimer = nullptr;
-    // Width of the title plus a little slack, in logical pixels; 0 samples the whole edge.
+    // The title plus a little slack, in logical pixels from the bar's left edge; a width of 0 samples the whole edge.
+    int m_sampleLeft = 0;
     int m_sampleWidth = 0;
     // What the strip node last mirrored, so an unrelated commit costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
@@ -177,6 +180,7 @@ namespace umbriel {
     std::array<std::array<float, 4>, kTitleBarButtonCount> m_iconColors{};
     std::array<std::optional<std::array<float, 4>>, kTitleBarButtonCount> m_iconOutlines{};
     std::array<int, kTitleBarButtonCount> m_iconSizes{};
+    std::array<TitleBarGlyph, kTitleBarButtonCount> m_iconGlyphs{};
     std::vector<TitleBarButton> m_buttons;
     std::array<wlr_scene_rect*, 4> m_grips{};
     std::shared_ptr<TabLabelCache> m_labels;
