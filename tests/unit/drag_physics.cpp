@@ -2,6 +2,7 @@
 
 #include "check.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -92,6 +93,40 @@ UMBRIEL_TEST(motionTrailsOppositeToThePointer) {
   // The far corner (index 15) lags behind the motion: negative x displacement, clearly more than the near corner.
   CHECK(sheet[15][0] < -0.02F);
   CHECK_NEAR(sheet[0][0], 0.0F, 0.05F);
+}
+
+UMBRIEL_TEST(polynomialUniformsPreserveThePhysicalSheet) {
+  const auto evaluate = [](const DragPhysics::Sheet& sheet, float u, float v, int axis) {
+    u = std::clamp(u, 0.0F, 1.0F);
+    v = std::clamp(v, 0.0F, 1.0F);
+    std::array<float, 4> rows{};
+    for (int y = 0; y < 4; ++y) {
+      const int i = y * 4;
+      rows[y] = sheet[i][axis] + u * (sheet[i + 1][axis] + u * (sheet[i + 2][axis] + u * sheet[i + 3][axis]));
+    }
+    return rows[0] + v * (rows[1] + v * (rows[2] + v * rows[3]));
+  };
+  for (const auto size : {std::array{120.0F, 70.0F}, std::array{2532.0F, 1362.0F}, std::array{7680.0F, 4320.0F}}) {
+    for (const auto grab : {std::array{0.0F, 0.0F}, std::array{0.25F, 0.8F}, std::array{1.0F, 1.0F}}) {
+      DragPhysics physics;
+      physics.begin(size[0], size[1], grab[0], grab[1], 1);
+      for (int frame = 0; frame < 24; ++frame) {
+        physics.move(frame % 2 == 0 ? 700.0F : -500.0F, frame % 3 == 0 ? 400.0F : -300.0F);
+        physics.tick(1.0 / 60);
+        const auto polynomial = physics.normalizedPolynomial();
+        for (int y = -1; y <= 17; ++y) {
+          for (int x = -1; x <= 17; ++x) {
+            const float u = static_cast<float>(x) / 16.0F;
+            const float v = static_cast<float>(y) / 16.0F;
+            const auto expected = physics.displacementAt(u, v);
+            for (int axis = 0; axis < 2; ++axis) {
+              CHECK_NEAR(evaluate(polynomial, u, v, axis) * size[axis], expected[axis], 0.01F);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 UMBRIEL_TEST(displacementStaysBoundedAndTheSheetNeverFoldsUnderExtremeShaking) {

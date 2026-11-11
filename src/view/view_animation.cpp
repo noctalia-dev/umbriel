@@ -858,10 +858,10 @@ namespace umbriel {
       parameters.expand = dragPhysicsExpand();
       if (fx_uniform* sheet =
               fx_parameters_add_uniform(&parameters, "umbriel_deformation", FX_UNIFORM_VEC2, DragPhysics::kPoints)) {
-        const DragPhysics::Sheet displacement = m_dragPhysics.normalizedDisplacement();
+        const DragPhysics::Sheet coefficients = m_dragPhysics.normalizedPolynomial();
         for (int i = 0; i < DragPhysics::kPoints; ++i) {
-          sheet->floats[i * 2] = displacement[i][0];
-          sheet->floats[i * 2 + 1] = displacement[i][1];
+          sheet->floats[i * 2] = coefficients[i][0];
+          sheet->floats[i * 2 + 1] = coefficients[i][1];
         }
       }
       wlr_scene_node_set_animation(&target->node, FX_SLOT_DRAG, effectRegistry().deformationShader(), &parameters);
