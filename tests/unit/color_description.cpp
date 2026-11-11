@@ -51,7 +51,6 @@ namespace {
                 .blue = {.x = 0.15F, .y = 0.06F},
                 .white = {.x = 0.3127F, .y = 0.329F},
             },
-        .white = {0.3127F, 0.329F},
         .transfer = std::move(transfer),
     };
   }
@@ -438,6 +437,14 @@ UMBRIEL_TEST(sampledPanelTransferReportsAPowerOnlyWhenItIsOne) {
   const umbriel::ColorDescription power = umbriel::characterizedOutputDescription(base, &panel, nullptr);
   CHECK_EQ(power.data.tf_named, 0U);
   CHECK(closeTo(power.tfPower, 1.8008F, 1e-4));
+
+  // A power the protocol names is stated by that name, the same spelling the
+  // parametric creator uses, instead of restating it as tf_power.
+  umbriel::PanelColorimetry linear = panel;
+  linear.transfer.exponent = 1.0F;
+  const umbriel::ColorDescription named = umbriel::characterizedOutputDescription(base, &linear, nullptr);
+  CHECK_EQ(named.data.tf_named, static_cast<uint32_t>(WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR));
+  CHECK_EQ(named.tfPower, 0.0F);
 
   // A sampled curve that is not a power states no curve at all: the ICC file
   // is the only exact representation, so claiming one would be a guess.

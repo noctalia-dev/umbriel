@@ -144,6 +144,7 @@ namespace {
   cmsCIExyY xyY(double x, double y) { return {.x = x, .y = y, .Y = 1.0}; }
 #endif
 
+#if UMBRIEL_HAS_LCMS2
   // --- ICC byte surgery: lcms-written profiles patched into the exact
   // tag-table and curve layouts real-world profiles carry (v2 headers, shared
   // TRC tags, measured wtpt with or without chad).
@@ -238,6 +239,7 @@ namespace {
   constexpr double kMeasuredBlueY = 0.06;
   constexpr double kMeasuredWhiteX = 0.3324;
   constexpr double kMeasuredWhiteY = 0.3474;
+#endif
 
   std::array<float, 3> applyMatrix(const float matrix[9], const std::array<float, 3>& in) {
     return {
@@ -258,6 +260,7 @@ namespace {
     return values;
   }
 
+#if UMBRIEL_HAS_LCMS2
   // The sampled encode contract pins the table to the generalized inverse of
   // the monotone envelope of the TRC: the first encoded position whose
   // envelope reaches the target. Where the probe's own input cell straddles a
@@ -323,6 +326,7 @@ namespace {
       }
     }
   }
+#endif
 
 } // namespace
 
@@ -391,7 +395,6 @@ UMBRIEL_TEST(trcEncodeBakingSeparatesGamma22FromSrgb) {
   for (const umbriel::PanelTransfer* transfer : {&gamma22, &srgb}) {
     umbriel::PanelColorimetry panel{
         .primaries = srgbPrimaries(),
-        .white = {0.3127F, 0.329F},
         .transfer = *transfer,
     };
     wlr_color_transform* transform = umbriel::buildSdrGamutTransform(panel);
@@ -450,14 +453,12 @@ UMBRIEL_TEST(panelDecodeInvertsTheEncodeCurve) {
   for (const umbriel::PanelTransfer* named : {&gamma22, &srgb, &power}) {
     umbriel::PanelColorimetry panel{
         .primaries = srgbPrimaries(),
-        .white = {0.3127F, 0.329F},
         .transfer = *named,
     };
     CHECK(umbriel::buildPanelDecodeTransform(panel) == nullptr);
   }
   umbriel::PanelColorimetry panel{
       .primaries = srgbPrimaries(),
-      .white = {0.3127F, 0.329F},
       .transfer = sampled,
   };
   wlr_color_transform* decode = umbriel::buildPanelDecodeTransform(panel);
@@ -487,7 +488,6 @@ UMBRIEL_TEST(sdrGamutTransformBakesPanelEncodeCurve) {
   // the float matrix can leave behind, so the eval pins are exact here.
   umbriel::PanelColorimetry panel{
       .primaries = srgbPrimaries(),
-      .white = {0.3127F, 0.329F},
       .transfer = {.kind = umbriel::PanelTransfer::Kind::Curve, .encode = {}},
   };
   // A gamma 2.2 encode curve, sampled on the documented encode grid the way
@@ -517,8 +517,8 @@ UMBRIEL_TEST(edidColorimetryUsesColorantsGammaAndWhite) {
   }
   CHECK(closeTo(parsed->primaries.red.x, 0.68));
   CHECK(closeTo(parsed->primaries.green.y, 0.69));
-  CHECK(closeTo(parsed->white[0], 0.3127, 0.005));
-  CHECK(closeTo(parsed->white[1], 0.329, 0.005));
+  CHECK(closeTo(parsed->primaries.white.x, 0.3127, 0.005));
+  CHECK(closeTo(parsed->primaries.white.y, 0.329, 0.005));
   CHECK(parsed->transfer.kind == umbriel::PanelTransfer::Kind::Gamma22);
 }
 
@@ -554,8 +554,8 @@ UMBRIEL_TEST(iccMatrixShaperRoundTripsColorantsWhiteAndTrc) {
   CHECK(closeTo(panel.primaries.red.x, 0.64));
   CHECK(closeTo(panel.primaries.green.y, 0.60));
   CHECK(closeTo(panel.primaries.blue.x, 0.15));
-  CHECK(closeTo(panel.white[0], 0.3127, 0.005));
-  CHECK(closeTo(panel.white[1], 0.329, 0.005));
+  CHECK(closeTo(panel.primaries.white.x, 0.3127, 0.005));
+  CHECK(closeTo(panel.primaries.white.y, 0.329, 0.005));
   CHECK(panel.transfer.kind == umbriel::PanelTransfer::Kind::Gamma22);
 #endif
 }
@@ -584,8 +584,8 @@ UMBRIEL_TEST(iccChadTagRecoversMeasuredWhiteAndColorants) {
   CHECK(closeTo(panel.primaries.red.x, 0.68, 0.005));
   CHECK(closeTo(panel.primaries.green.y, 0.69, 0.005));
   CHECK(closeTo(panel.primaries.blue.y, 0.06, 0.005));
-  CHECK(closeTo(panel.white[0], 0.3324, 0.005));
-  CHECK(closeTo(panel.white[1], 0.3474, 0.005));
+  CHECK(closeTo(panel.primaries.white.x, 0.3324, 0.005));
+  CHECK(closeTo(panel.primaries.white.y, 0.3474, 0.005));
   CHECK(panel.transfer.kind == umbriel::PanelTransfer::Kind::Srgb);
 #endif
 }
@@ -656,6 +656,113 @@ UMBRIEL_TEST(iccLutProfilesAreRejected) {
   CHECK(!parsed.colorimetry.has_value());
   CHECK(parsed.error.contains("LUT"));
 #endif
+}
+
+UMBRIEL_TEST(iccPqPanelCurveIsRejected) {
+#if !UMBRIEL_HAS_LCMS2
+  std::println("skip: built without lcms2");
+#else
+  // SMPTE ST 2084 sampled the way an HDR display profile states it. The SDR
+  // gamut mapping normalises to the panel white, so staging this curve would
+  // write SDR white at 10000 cd/m2; the parser must refuse it instead.
+  constexpr size_t kPqSamples = 4096;
+  std::vector<uint16_t> values(kPqSamples);
+  for (size_t index = 0; index < kPqSamples; ++index) {
+    const double encoded = static_cast<double>(index) / (kPqSamples - 1);
+    constexpr double m1 = 2610.0 / 16384.0;
+    constexpr double m2 = 2523.0 / 4096.0 * 128.0;
+    constexpr double c1 = 3424.0 / 4096.0;
+    constexpr double c2 = 2413.0 / 4096.0 * 32.0;
+    constexpr double c3 = 2392.0 / 4096.0 * 32.0;
+    const double powered = std::pow(encoded, 1.0 / m2);
+    const double linear = std::pow(std::max(powered - c1, 0.0) / (c2 - c3 * powered), 1.0 / m1);
+    values[index] = static_cast<uint16_t>(std::lround(linear * 65535.0));
+  }
+  cmsToneCurve* pq = cmsBuildTabulatedToneCurve16(nullptr, static_cast<cmsUInt32Number>(kPqSamples), values.data());
+  CHECK(pq != nullptr);
+  if (pq == nullptr) {
+    return;
+  }
+  std::array<cmsToneCurve*, 3> curves{pq, pq, pq};
+  const cmsCIExyY white = xyY(0.3127, 0.329);
+  const cmsCIExyYTRIPLE primaries{
+      .Red = xyY(0.68, 0.32),
+      .Green = xyY(0.265, 0.69),
+      .Blue = xyY(0.15, 0.06),
+  };
+  cmsHPROFILE profile = cmsCreateRGBProfileTHR(nullptr, &white, &primaries, curves.data());
+  cmsFreeToneCurve(pq);
+  CHECK(profile != nullptr);
+  if (profile == nullptr) {
+    return;
+  }
+  const std::vector<uint8_t> bytes = saveProfile(profile);
+  cmsCloseProfile(profile);
+
+  const umbriel::IccParse parsed = umbriel::parseIccProfile(bytes);
+  CHECK(!parsed.colorimetry.has_value());
+  CHECK(parsed.error.contains("PQ"));
+#endif
+}
+
+UMBRIEL_TEST(iccWhiteOutsideTheBradfordConeIsRejected) {
+#if !UMBRIEL_HAS_LCMS2
+  std::println("skip: built without lcms2");
+#else
+  std::array<cmsToneCurve*, 3> curves{
+      cmsBuildGamma(nullptr, 2.2), cmsBuildGamma(nullptr, 2.2), cmsBuildGamma(nullptr, 2.2)
+  };
+  const cmsCIExyY white = xyY(0.3127, 0.329);
+  const cmsCIExyYTRIPLE primaries{
+      .Red = xyY(0.64, 0.33),
+      .Green = xyY(0.30, 0.60),
+      .Blue = xyY(0.15, 0.06),
+  };
+  cmsHPROFILE profile = cmsCreateRGBProfileTHR(nullptr, &white, &primaries, curves.data());
+  for (cmsToneCurve* curve : curves) {
+    cmsFreeToneCurve(curve);
+  }
+  CHECK(profile != nullptr);
+  if (profile == nullptr) {
+    return;
+  }
+  std::vector<uint8_t> bytes = saveProfile(profile);
+  cmsCloseProfile(profile);
+  // Colorants on the primary hull with a white the Bradford adaptation cannot
+  // reach: the matrix would fall back to the identity while the output still
+  // advertised the panel, so every pixel renders garbage.
+  stripTag(bytes, {'c', 'h', 'a', 'd'});
+  patchColorantTo(bytes, {'r', 'X', 'Y', 'Z'}, 0.99278, 0.00709);
+  patchColorantTo(bytes, {'g', 'X', 'Y', 'Z'}, 0.74998, 0.24999);
+  patchColorantTo(bytes, {'b', 'X', 'Y', 'Z'}, 0.52629, 0.47366);
+  patchWtptTo(bytes, 0.8999, 0.09999);
+
+  const umbriel::IccParse parsed = umbriel::parseIccProfile(bytes);
+  CHECK(!parsed.colorimetry.has_value());
+  CHECK(parsed.error.contains("white point"));
+#endif
+}
+
+UMBRIEL_TEST(adaptableWhitePointRejectsConeNegativeWhites) {
+  CHECK(umbriel::adaptableWhitePoint(0.3127F, 0.3290F));
+  CHECK(umbriel::adaptableWhitePoint(0.3457F, 0.3585F));
+  CHECK(!umbriel::adaptableWhitePoint(0.8999F, 0.09999F));
+  CHECK(!umbriel::adaptableWhitePoint(0.0F, 0.0F));
+}
+
+UMBRIEL_TEST(sdrGamutTransformRefusesAnUnadaptableWhite) {
+  umbriel::PanelColorimetry panel{
+      .primaries = srgbPrimaries(),
+      .transfer = {.kind = umbriel::PanelTransfer::Kind::Gamma22, .encode = {}},
+  };
+  panel.primaries.white = {.x = 0.8999F, .y = 0.09999F};
+  CHECK(umbriel::buildSdrGamutTransform(panel) == nullptr);
+  panel.primaries.white = {.x = 0.3127F, .y = 0.329F};
+  wlr_color_transform* transform = umbriel::buildSdrGamutTransform(panel);
+  CHECK(transform != nullptr);
+  if (transform != nullptr) {
+    wlr_color_transform_unref(transform);
+  }
 }
 
 UMBRIEL_TEST(iccVcgtIsIgnoredOnMatrixShaperProfiles) {
@@ -773,7 +880,6 @@ UMBRIEL_TEST(inertCharacterizationStoresNoIccProfile) {
   // EDID-without-lcms2 cannot synthesize a profile and stores nothing.
   const umbriel::PanelColorimetry panel{
       .primaries = displayP3Primaries(),
-      .white = {0.3127F, 0.329F},
       .transfer = {.kind = umbriel::PanelTransfer::Kind::Gamma22, .encode = {}},
   };
   CHECK(umbriel::iccStoreForPanel(&panel) == nullptr);
@@ -811,8 +917,8 @@ UMBRIEL_TEST(synthesizedEdidProfileRoundTripsThroughTheIccParser) {
   CHECK(closeTo(recovered.primaries.green.y, source->primaries.green.y, 0.005));
   CHECK(closeTo(recovered.primaries.blue.x, source->primaries.blue.x, 0.005));
   CHECK(closeTo(recovered.primaries.blue.y, source->primaries.blue.y, 0.005));
-  CHECK(closeTo(recovered.white[0], source->white[0], 0.005));
-  CHECK(closeTo(recovered.white[1], source->white[1], 0.005));
+  CHECK(closeTo(recovered.primaries.white.x, source->primaries.white.x, 0.005));
+  CHECK(closeTo(recovered.primaries.white.y, source->primaries.white.y, 0.005));
   CHECK(recovered.transfer.kind == source->transfer.kind);
 #endif
 }
@@ -825,7 +931,6 @@ UMBRIEL_TEST(synthesizedCurveTrcRoundTripsThroughTheIccParser) {
   // sampled decode curve so the parser bakes the same encode back.
   umbriel::PanelColorimetry source{
       .primaries = bt2020Primaries(),
-      .white = {0.3127F, 0.329F},
       .transfer = {.kind = umbriel::PanelTransfer::Kind::Curve, .encode = {}},
   };
   source.transfer.encode.resize(1024);
@@ -1019,9 +1124,7 @@ UMBRIEL_TEST(sdrGamutTransformKeepsWhiteIdenticalToNativePixels) {
        {std::pair{0.3127F, 0.329F}, std::pair{0.3457F, 0.3585F}, std::pair{0.3324F, 0.3474F}}) {
     panel.white = {.x = whitePoint.first, .y = whitePoint.second};
     for (const umbriel::PanelTransfer& transfer : transfers) {
-      umbriel::PanelColorimetry colorimetry{
-          .primaries = panel, .white = {panel.white.x, panel.white.y}, .transfer = transfer
-      };
+      umbriel::PanelColorimetry colorimetry{.primaries = panel, .transfer = transfer};
       wlr_color_transform* transform = umbriel::buildSdrGamutTransform(colorimetry);
       CHECK(transform != nullptr);
       if (transform == nullptr) {
@@ -1112,8 +1215,8 @@ void checkMeasuredColorimetry(const char* what, const umbriel::PanelColorimetry&
   expect(panel.primaries.green.y, kMeasuredGreenY, "green.y");
   expect(panel.primaries.blue.x, kMeasuredBlueX, "blue.x");
   expect(panel.primaries.blue.y, kMeasuredBlueY, "blue.y");
-  expect(panel.white[0], kMeasuredWhiteX, "white.x");
-  expect(panel.white[1], kMeasuredWhiteY, "white.y");
+  expect(panel.primaries.white.x, kMeasuredWhiteX, "white.x");
+  expect(panel.primaries.white.y, kMeasuredWhiteY, "white.y");
 }
 
 #endif
@@ -1194,8 +1297,8 @@ UMBRIEL_TEST(iccNoChadD50WhiteKeepsTheD50Frame) {
   CHECK(closeTo(panel.primaries.red.x, 0.64, 0.005));
   CHECK(closeTo(panel.primaries.green.y, 0.60, 0.005));
   CHECK(closeTo(panel.primaries.blue.y, 0.06, 0.005));
-  CHECK(closeTo(panel.white[0], 0.3457, 0.005));
-  CHECK(closeTo(panel.white[1], 0.3585, 0.005));
+  CHECK(closeTo(panel.primaries.white.x, 0.3457, 0.005));
+  CHECK(closeTo(panel.primaries.white.y, 0.3585, 0.005));
 #endif
 }
 
@@ -1234,7 +1337,6 @@ UMBRIEL_TEST(iccTabulatedCurveKeepsShadowAccuracyForGamma24) {
   // End to end through the staged transform the renderer consumes.
   umbriel::PanelColorimetry panel{
       .primaries = srgbPrimaries(),
-      .white = {0.3127F, 0.329F},
       .transfer = transfer,
   };
   wlr_color_transform* transform = umbriel::buildSdrGamutTransform(panel);
@@ -1638,8 +1740,8 @@ UMBRIEL_TEST(iccMutationFuzzRejectsOrParsesSanely) {
       ++accepted;
       const umbriel::PanelColorimetry& panel = *parsed.colorimetry;
       if (!umbriel::validDisplayPrimaries(panel.primaries)
-          || !std::isfinite(panel.white[0])
-          || !std::isfinite(panel.white[1])) {
+          || !std::isfinite(panel.primaries.white.x)
+          || !std::isfinite(panel.primaries.white.y)) {
         umbriel::test::reportFailure(
             __FILE__, __LINE__, std::format("fuzz iteration {} parsed invalid colorimetry", iteration)
         );

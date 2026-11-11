@@ -36,13 +36,25 @@ fi
 # The parametric request must still answer: get_preferred_parametric inherits
 # get_preferred's immediate-ready contract, so a curve with no parametric form
 # is answered with the sRGB working encoding the compositor converts into the
-# characterized output.
+# characterized output. This probe binds v1, where the wire name is srgb.
 if ! jq -se '
   ([.[] | select(.event == "description" and .source == "preferred_parametric")] | last) as $d
   | $d.tf == 9 and $d.primaries == 1 and $d.icc_size == 0
     and ([.[] | select(.event == "description_failed" and .source == "preferred_parametric")] | length) == 0
 ' "$INFO_LOG" > /dev/null; then
   echo "get_preferred_parametric did not answer with a usable parametric description: $(cat "$INFO_LOG")"
+  exit 1
+fi
+# The substituted working encoding is a different description record from the
+# ICC-backed preferred one, so the two must not share an identity (ready2: two
+# records cannot carry the same id at once).
+if ! jq -se '
+  ([.[] | select(.event == "description" and .source == "preferred")] | last) as $p
+  | ([.[] | select(.event == "description" and .source == "preferred_parametric")] | last) as $q
+  | $p.identity != 0 and $q.identity != 0 and $p.identity != $q.identity
+' "$INFO_LOG" > /dev/null; then
+  echo "get_preferred_parametric reused the preferred description's identity for a different record:" \
+    "$(jq -sc '[.[] | select(.event == "description") | {source, identity}]' "$INFO_LOG")"
   exit 1
 fi
 for source in output preferred; do

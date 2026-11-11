@@ -510,6 +510,7 @@ namespace umbriel {
     m_panelDecodeTransform.reset();
     m_panelColorimetry.reset();
     m_iccProfile.reset();
+    m_resolvedColorProfile = "none";
 
     // A changed characterization changes protocol output descriptions (the
     // panel's custom primaries), so the description refresh must re-fire here.
@@ -565,6 +566,7 @@ namespace umbriel {
         }
         if (parsed.colorimetry) {
           panel = std::move(parsed.colorimetry);
+          m_resolvedColorProfile = profilePath;
           // The advertised profile is the file exactly as configured.
           m_iccProfile = iccStoreForFileProfile(bytes);
         } else {
@@ -587,6 +589,7 @@ namespace umbriel {
       }
       // EDID characterization: the advertised profile is synthesized from the
       // panel colorimetry (nothing when built without lcms2).
+      m_resolvedColorProfile = "edid";
       m_iccProfile = iccStoreForPanel(&*panel);
     }
     m_panelColorimetry = std::move(panel);

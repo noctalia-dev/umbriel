@@ -35,6 +35,18 @@ namespace umbriel {
       return encoded <= 0.04045F ? encoded / 12.92F : std::pow((encoded + 0.055F) / 1.055F, 2.4F);
     }
 
+    // SMPTE ST 2084 EOTF, normalised to its 10000 cd/m2 peak. Only used to
+    // recognise an HDR curve offered as an SDR display characterization.
+    float pqDecodeSample(float encoded) {
+      constexpr double m1 = 2610.0 / 16384.0;
+      constexpr double m2 = 2523.0 / 4096.0 * 128.0;
+      constexpr double c1 = 3424.0 / 4096.0;
+      constexpr double c2 = 2413.0 / 4096.0 * 32.0;
+      constexpr double c3 = 2392.0 / 4096.0 * 32.0;
+      const double powered = std::pow(std::max(static_cast<double>(encoded), 0.0), 1.0 / m2);
+      return static_cast<float>(std::pow(std::max(powered - c1, 0.0) / (c2 - c3 * powered), 1.0 / m1));
+    }
+
     // Untrusted curves can evaluate to non-finite values and need not
     // increase; the inversion and the fit below require a finite monotone
     // decode, so flatten the samples onto that envelope and say so.
@@ -253,8 +265,19 @@ namespace umbriel {
         || cmsIsTag(profile.get(), cmsSigAToB2Tag)
         || cmsIsTag(profile.get(), cmsSigBToA0Tag)
         || cmsIsTag(profile.get(), cmsSigBToA1Tag)
-        || cmsIsTag(profile.get(), cmsSigBToA2Tag)) {
-      result.error = "LUT-based profiles (A2B0/B2A0) are unsupported; only matrix-shaper profiles are";
+        || cmsIsTag(profile.get(), cmsSigBToA2Tag)
+        // Version 4 multi-process-element LUTs are just as authoritative as the
+        // A2B family; reading their matrix/TRC siblings instead would advertise
+        // a transform the profile does not state.
+        || cmsIsTag(profile.get(), cmsSigDToB0Tag)
+        || cmsIsTag(profile.get(), cmsSigDToB1Tag)
+        || cmsIsTag(profile.get(), cmsSigDToB2Tag)
+        || cmsIsTag(profile.get(), cmsSigDToB3Tag)
+        || cmsIsTag(profile.get(), cmsSigBToD0Tag)
+        || cmsIsTag(profile.get(), cmsSigBToD1Tag)
+        || cmsIsTag(profile.get(), cmsSigBToD2Tag)
+        || cmsIsTag(profile.get(), cmsSigBToD3Tag)) {
+      result.error = "LUT-based profiles (A2B0/B2A0, D2B0/B2D0) are unsupported; only matrix-shaper profiles are";
       return result;
     }
     if (cmsIsTag(profile.get(), cmsSigVcgtTag)) {
@@ -330,11 +353,12 @@ namespace umbriel {
                 .blue = xyFromXyz(realBlue),
                 .white = xyFromXyz(realWhite),
             },
-        .white = {0.0F, 0.0F},
         .transfer = {},
     };
-    panel.white[0] = panel.primaries.white.x;
-    panel.white[1] = panel.primaries.white.y;
+    if (!adaptableWhitePoint(panel.primaries.white.x, panel.primaries.white.y)) {
+      result.error = "degenerate ICC white point (the Bradford adaptation cannot reach it)";
+      return result;
+    }
 
     // A collapsed colorant triangle cannot anchor a gamut mapping and would
     // send singular matrices into the transform builder. Degeneracy lives in
@@ -369,6 +393,13 @@ namespace umbriel {
       return result;
     }
 
+    if (matchesDecode(redDecode, pqDecodeSample)) {
+      // An absolute-luminance curve cannot be carried by a mapping that
+      // normalises to the panel white: staging it would write SDR white at
+      // 10000 cd/m2. Fall back like any other unusable characterization.
+      result.error = "HDR (PQ) transfer curve cannot characterize an SDR display";
+      return result;
+    }
     if (matchesDecode(redDecode, srgbDecodeSample)) {
       panel.transfer.kind = PanelTransfer::Kind::Srgb;
     } else if (matchesDecode(redDecode, [](float encoded) { return std::pow(encoded, 2.2F); })) {
@@ -391,7 +422,7 @@ namespace umbriel {
     // point and TRC. lcms2 adapts to the D50 PCS and records chad on the way;
     // the parser undoes that adaptation on read (pinned by
     // iccChadTagRecoversMeasuredWhiteAndColorants).
-    const cmsCIExyY white = {.x = panel->white[0], .y = panel->white[1], .Y = 1.0};
+    const cmsCIExyY white = {.x = panel->primaries.white.x, .y = panel->primaries.white.y, .Y = 1.0};
     const cmsCIExyYTRIPLE primaries{
         .Red = {.x = panel->primaries.red.x, .y = panel->primaries.red.y, .Y = 1.0},
         .Green = {.x = panel->primaries.green.x, .y = panel->primaries.green.y, .Y = 1.0},

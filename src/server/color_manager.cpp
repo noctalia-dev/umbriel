@@ -89,7 +89,6 @@ namespace umbriel {
 
   struct ColorManager::Impl {
     struct ImageDescription {
-      Impl* manager = nullptr;
       wl_resource* resource = nullptr;
       ColorDescription description;
       bool informationAllowed = false;
@@ -180,6 +179,9 @@ namespace umbriel {
       wl_resource* resource = nullptr;
       wlr_output* output = nullptr;
       ColorDescription description;
+      // Identity of the description record currently advertised, allocated on
+      // the first fetch so repeated fetches of one record share it.
+      uint64_t identity = 0;
       wl_listener commit{};
       wl_listener destroy{};
     };
@@ -446,8 +448,12 @@ namespace umbriel {
         createFailedImageDescription(resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_NO_OUTPUT, "output was destroyed");
         return;
       }
-      output->manager->createReadyImageDescription(
-          resource, id, output->manager->descriptionForOutput(output->output), true
+      auto* manager = output->manager;
+      if (output->identity == 0) {
+        output->identity = ++manager->lastIdentity;
+      }
+      manager->createReadyImageDescription(
+          resource, id, manager->descriptionForOutput(output->output), true, output->identity
       );
     }
 
@@ -504,10 +510,12 @@ namespace umbriel {
       // `move_state` copies rather than moves: wlroots reuses `surface->pending` across commits (it moves pending
       // into current and never re-initializes the synced member), so emptying the source would drop the payload on
       // the next commit. The copy's reference keeps both states owning valid bytes until finish_state releases one.
+      // Every owning member is released there: the states are placement-new'd and finish_state is the only hook
+      // wlroots runs before freeing the storage, so an unreleased member would never reach its destructor.
       static const wlr_surface_synced_impl syncedImplementation{
           .state_size = sizeof(SurfaceState),
           .init_state = [](void* state) { new (state) SurfaceState{}; },
-          .finish_state = [](void* state) { static_cast<SurfaceState*>(state)->description.iccProfile.reset(); },
+          .finish_state = [](void* state) { static_cast<SurfaceState*>(state)->description = {}; },
           .move_state = [](void* dst,
                            void* src) { *static_cast<SurfaceState*>(dst) = *static_cast<const SurfaceState*>(src); },
           .commit = nullptr,
@@ -690,9 +698,19 @@ namespace umbriel {
         wl_resource_post_error(resource, WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT, "surface is inert");
         return;
       }
-      const ColorDescription& preferred =
-          parametricDescription(feedback->preferred) ? feedback->preferred : workingDescription();
-      feedback->manager->createReadyImageDescription(resource, id, preferred, true, feedback->identity);
+      auto* manager = feedback->manager;
+      if (parametricDescription(feedback->preferred)) {
+        manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);
+        return;
+      }
+      // The substituted working encoding is a different description record
+      // from the preferred one, so it cannot borrow that record's identity
+      // (ready2: two records cannot share an id at once). One lazily allocated
+      // id covers every answer that hands out this record.
+      if (manager->workingIdentity == 0) {
+        manager->workingIdentity = ++manager->lastIdentity;
+      }
+      manager->createReadyImageDescription(resource, id, manager->workingDescription(), true, manager->workingIdentity);
     }
 
     static void handleFeedbackSurfaceDestroy(wl_listener* listener, void*) {
@@ -718,6 +736,17 @@ namespace umbriel {
     }
 
     static void handleCreateIccCreator(wl_client* client, wl_resource* managerResource, uint32_t id) {
+#if !UMBRIEL_HAS_LCMS2
+      // feature.icc_v2_v4 is advertised only with lcms2, and the XML pairs that
+      // advertisement with this request, so an unadvertised request owes its
+      // own error instead of a creator no profile can satisfy.
+      (void)client;
+      (void)id;
+      wl_resource_post_error(
+          managerResource, WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
+          "ICC profiles are unsupported (built without lcms2)"
+      );
+#else
       auto* manager = static_cast<Impl*>(wl_resource_get_user_data(managerResource));
       auto budget = manager->iccBudgetFor(client);
       if (budget->creators >= kMaxIccCreatorsPerClient) {
@@ -745,6 +774,7 @@ namespace umbriel {
       wl_resource_set_implementation(
           creator->resource, &iccCreatorImplementation(), creator, handleIccCreatorResourceDestroy
       );
+#endif
     }
 
     static void handleIccCreatorResourceDestroy(wl_resource* resource) {
@@ -928,6 +958,29 @@ namespace umbriel {
             resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE, "MaxFALL must not exceed MaxCLL"
         );
         return;
+      }
+      // Version 1 also bounds each content light level by the mastering
+      // luminance range; version 2 dropped that requirement (create, "In
+      // version 1, these following conditions also result in the
+      // invalid_luminance protocol error"). Without an explicit mastering
+      // range the target volume is the primary color volume.
+      if (wl_resource_get_version(resource) < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION) {
+        const auto& data = creator->description.data;
+        const float minLuminance =
+            data.has_mastering_luminance ? data.mastering_luminance.min : creator->description.luminances.min;
+        const float maxLuminance =
+            data.has_mastering_luminance ? data.mastering_luminance.max : creator->description.luminances.max;
+        const auto outsideRange = [&](uint32_t level) {
+          const float value = static_cast<float>(level);
+          return level != 0 && (value <= minLuminance || value > maxLuminance);
+        };
+        if (outsideRange(data.max_cll) || outsideRange(data.max_fall)) {
+          wl_resource_post_error(
+              resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+              "MaxCLL and MaxFALL must lie within the mastering luminance range in version 1"
+          );
+          return;
+        }
       }
       if (creator->description.data.primaries_named == 0 && !supportedPrimaries(creator->description.customPrimaries)) {
         creator->manager->createFailedImageDescription(
@@ -1433,6 +1486,7 @@ namespace umbriel {
         return;
       }
       output->description = std::move(description);
+      output->identity = 0;
       wp_color_management_output_v1_send_image_description_changed(output->resource);
       wlr_output_schedule_done(output->output);
     }
@@ -1576,6 +1630,8 @@ namespace umbriel {
     Server& server;
     wl_global* global = nullptr;
     uint64_t lastIdentity = 0;
+    // Identity of the working SDR encoding record (see the parametric answer).
+    uint64_t workingIdentity = 0;
     std::vector<wp_color_manager_v1_transfer_function> transferFunctions;
     std::vector<wp_color_manager_v1_primaries> primaries;
     std::unordered_map<wlr_surface*, Surface*> surfaces;

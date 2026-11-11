@@ -544,9 +544,11 @@ namespace umbriel {
           std::println("  fallback: {}", fallback);
         }
 
+        const std::string configuredProfile = output.value("color_profile", "none");
+        const std::string resolvedProfile = output.value("color_profile_resolved", configuredProfile);
         std::println(
-            "  color profile: {}, SDR gamut: {}", output.value("color_profile", "none"),
-            output.value("sdr_gamut", "native")
+            "  color profile: {} (resolved {}), SDR gamut: {}, mapping staged: {}", configuredProfile, resolvedProfile,
+            output.value("sdr_gamut", "native"), output.value("sdr_gamut_staged", false) ? "yes" : "no"
         );
         // A daemon that predates the characterization fields omits these keys,
         // so the printer degrades to the inert wording instead of throwing.
@@ -1057,6 +1059,7 @@ namespace umbriel {
           {"sdr_white", output->sdrWhite()},
           {"sdr_transfer", output->configuredSdrTransfer() == SdrTransfer::Srgb ? "srgb" : "gamma22"},
           {"color_profile", output->configuredColorProfile()},
+          {"color_profile_resolved", output->resolvedColorProfile()},
           {"sdr_gamut", output->configuredSdrGamut() == SdrGamut::Srgb ? "srgb" : "native"},
           // True while the characterized SDR gamut transform is staged on the
           // frame path ("native" stages nothing, pixels stay pass-through).

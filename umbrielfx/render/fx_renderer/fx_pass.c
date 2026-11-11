@@ -1894,7 +1894,7 @@ void fx_lut_texture_destroy(struct fx_lut_texture* lut) {
     pop_fx_debug(lut->renderer);
     wlr_egl_restore_context(&prev_ctx);
   } else {
-    wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying output LUT");
+    wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying an LUT texture");
   }
   free(lut);
 }
@@ -2059,6 +2059,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   struct fx_lut_texture* source_lut = NULL;
   if (fx_options->decode_transform != NULL && fx_options->decode_transform->type == COLOR_TRANSFORM_LUT_3X1D) {
     source_lut = get_or_create_lut_texture(renderer, color_transform_lut_3x1d_from_base(fx_options->decode_transform));
+  }
+  if (fx_options->decode_transform != NULL && source_lut == NULL && !renderer->content_decode_fallback_logged) {
+    renderer->content_decode_fallback_logged = true;
+    wlr_log(WLR_ERROR, "Cannot apply the content decode transform; content decodes through the frame's SDR curve");
   }
 
   glActiveTexture(GL_TEXTURE0);
@@ -2578,7 +2582,11 @@ void fx_render_pass_add_box_shadow(
   // blending will practically always be needed (unless we have a madman
   // who uses opaque shadows with zero sigma), so just enable it
   setup_blending(WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  // The shader emits straight alpha, so the colour channels scale the source
+  // by it, but the alpha channel must land as an ordinary "over": scaling it
+  // too leaves 1 - a + a^2 on an opaque destination, and the output transform
+  // unpremultiplies by that alpha (dark shadows under a staged mapping).
+  glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
   glUseProgram(renderer->shaders.box_shadow.program);
 
@@ -3336,10 +3344,11 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
       free(pass);
       return NULL;
     }
+    // The supplied transform's EOTF stage says how the frame is written, not
+    // how its content is decoded: untagged SDR is sRGB, so only a PQ
+    // destination reselects the SDR decode curve (the sdr_transfer setting).
     if (state.tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ) {
       sdr_tf = pq_sdr_transfer;
-    } else if (state.tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22) {
-      sdr_tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
     }
     struct wlr_allocator* allocator = output_buffers != NULL ? output_buffers->allocator : renderer->allocator;
     if (allocator == NULL) {

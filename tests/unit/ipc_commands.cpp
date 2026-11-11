@@ -203,7 +203,7 @@ UMBRIEL_TEST(colorHumanReportsCharacterizationFields) {
   }
 
   const std::string inert = captureHumanOutput(*spec, colorPayload(nlohmann::json::object()));
-  CHECK(inert.contains("color profile: none, SDR gamut: native"));
+  CHECK(inert.contains("color profile: none (resolved none), SDR gamut: native, mapping staged: no"));
   CHECK(inert.contains("panel primaries: none; panel transfer: none"));
 
   const std::string characterized = captureHumanOutput(
@@ -211,6 +211,7 @@ UMBRIEL_TEST(colorHumanReportsCharacterizationFields) {
       colorPayload({
           {"color_profile", "edid"},
           {"sdr_gamut", "srgb"},
+          {"sdr_gamut_staged", true},
           {"panel_primaries",
            {
                {"red", {{"x", 0.68}, {"y", 0.32}}},
@@ -221,10 +222,19 @@ UMBRIEL_TEST(colorHumanReportsCharacterizationFields) {
           {"panel_transfer", "gamma22"},
       })
   );
-  CHECK(characterized.contains("color profile: edid, SDR gamut: srgb"));
+  CHECK(characterized.contains("color profile: edid (resolved edid), SDR gamut: srgb, mapping staged: yes"));
   CHECK(characterized.contains(
       "panel primaries: r 0.6800,0.3200 g 0.2650,0.6900 b 0.1500,0.0600 w 0.3127,0.3290; panel transfer: gamma22"
   ));
+
+  // A configured profile that fell back to EDID reports both sources.
+  const std::string fellBack = captureHumanOutput(
+      *spec,
+      colorPayload(
+          {{"color_profile", "/profiles/factory.icc"}, {"color_profile_resolved", "edid"}, {"sdr_gamut", "srgb"}}
+      )
+  );
+  CHECK(fellBack.contains("color profile: /profiles/factory.icc (resolved edid), SDR gamut: srgb, mapping staged: no"));
 }
 
 UMBRIEL_TEST(surfaceTransferLabelSeparatesNamedAndBare) {

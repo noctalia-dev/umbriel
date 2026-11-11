@@ -16,16 +16,33 @@ if ! color_fields_are "$PROFILE" srgb true true; then
   echo "srgb policy did not stage the gamut transform: $("$UMBRIEL" color --json)"
   exit 1
 fi
+if ! "$UMBRIEL" color --json | jq -e --arg profile "$PROFILE" '.outputs[0].color_profile_resolved == $profile' > /dev/null; then
+  echo "the applied profile did not report itself as the resolved characterization: $("$UMBRIEL" color --json)"
+  exit 1
+fi
 
 color_start_client srgb untagged output-desc
 color_fill FFFF0000
 color_assert_mapped
 
+# Untagged SDR is sRGB, so the shadow end of the ramp is where a substituted
+# decode shows: the panel encode of the sRGB-decoded value, not of the panel's
+# (gamma 1.8 read as 2.2 lands on the code itself instead of 14 and 24).
+for pair in 16:14 32:24; do
+  code=${pair%%:*}
+  expected=${pair##*:}
+  color_fill "FF$(printf '%02X' "$code")$(printf '%02X' "$code")$(printf '%02X' "$code")"
+  measured=$(color_sample_center)
+  if ! color_pixels_close "$measured" "$expected $expected $expected"; then
+    echo "untagged code $code decoded with the wrong curve: measured [$measured], the sRGB interpretation" \
+      "gives $expected"
+    exit 1
+  fi
+done
+
 # Content tagged with the output's own description is already in the panel's
 # encoding: it must decode through the advertised curve and land unchanged,
-# while the same untagged gray takes the sRGB -> panel conversion. A
-# substitution for the curve moves this pixel (gamma 1.8 read as 2.2 lands
-# near 110 instead of 128).
+# while the same untagged gray takes the sRGB -> panel conversion.
 color_fill FF808080
 untagged_gray=$(color_sample_center)
 printf 'tag\n' >&"$CLIENT_FD"
@@ -41,6 +58,12 @@ if [[ ${untagged_gray%% *} -ge 120 ]]; then
   echo "untagged gray was not converted into the panel encoding: [$untagged_gray]"
   exit 1
 fi
+if ! color_pixels_close "$untagged_gray" "109 109 109"; then
+  echo "untagged gray did not decode as sRGB before the panel encode:" \
+    "measured [$untagged_gray], the sRGB interpretation gives 109 (a gamma 2.2 decode gives 110)"
+  exit 1
+fi
+
 
 # The primaries assertion is a round-trip contract against the generator's own colorants (the daemon must report the
 # file as written); the parser math itself is pinned by tests/unit/colorimetry.cpp.

@@ -128,6 +128,10 @@ namespace umbriel {
     SdrGamut configuredSdrGamut() const;
     // Configured characterization source: "none", "edid", or an ICC file path.
     std::string configuredColorProfile() const;
+    // Resolved characterization source: "none" when nothing characterized the
+    // output (including a configured file that fell back to an unusable EDID),
+    // "edid", or the ICC file path that was applied.
+    const std::string& resolvedColorProfile() const { return m_resolvedColorProfile; }
     // Active panel characterization (ICC > EDID), resolved independently of
     // sdr_gamut so diagnostics can report what was measured. Callers that put
     // it on the wire must gate on the rendering destination first — see
@@ -285,6 +289,7 @@ namespace umbriel {
     // that advertise it and held by any scene buffer tagged with one.
     SharedColorTransform m_panelDecodeTransform;
     std::string m_sdrGamutSource;
+    std::string m_resolvedColorProfile = "none";
     bool m_sdrGamutResolved = false;
     wlr_scene_output* m_sceneOutput = nullptr;
     wlr_scene_tree* m_layerTrees[kLayerCount]{};

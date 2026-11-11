@@ -278,6 +278,8 @@ struct fx_renderer {
   // Each effect copy failure is logged once per renderer.
   bool in_place_copy_failure_logged;
   bool effect_capture_failure_logged;
+  // A content decode transform this renderer cannot apply is logged once.
+  bool content_decode_fallback_logged;
   // Set only through the matching fx_renderer_fail_*_for_test functions.
   bool fail_target_copies_for_test;
   bool fail_effect_capture_for_test;
@@ -297,7 +299,7 @@ struct fx_renderer {
   struct wl_list buffers;           // fx_framebuffer.link
   struct wl_list textures;          // fx_texture.link
   struct wl_list offscreen_buffers; // fx_offscreen_buffers.link
-  struct wl_list lut_textures;       // fx_lut_texture.link
+  struct wl_list lut_textures;      // fx_lut_texture.link
 
   TRACY_FN(struct tracy_data* tracy_data;)
 };

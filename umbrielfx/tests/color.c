@@ -1008,9 +1008,11 @@ static bool render_sdr_on(
   return wlr_render_pass_submit(pass) && saved;
 }
 
-// Untagged SDR and compositor colors use the output's gamma 2.2 policy on PQ
-// and gamma 2.2 outputs. Explicit SDR metadata keeps its own decoding curve.
-// Both SDR capture paths encode the resulting linear values with gamma 2.2.
+// Untagged SDR and compositor colors decode as sRGB on an SDR output; on a PQ
+// output the sdr_transfer policy selects their decode curve. Explicit SDR
+// metadata keeps its own decoding curve. Both SDR capture paths encode the
+// resulting linear values with the curve the SDR content was decoded with:
+// the sdr_transfer policy on PQ, sRGB on an SDR output.
 static bool test_sdr_curve_consistency(struct fixture* fixture) {
   bool ok = true;
   const uint8_t level = 16;
@@ -1029,7 +1031,7 @@ static bool test_sdr_curve_consistency(struct fixture* fixture) {
   const int pq_piecewise = to_u8(linear_to_pq(srgb_linear * 203.0f / 10000.0f));
   const int srgb_captured = to_u8(powf(srgb_linear, 1.0f / 2.2f));
   ok = check(pq_piecewise - pq_shown >= 3, "test level separates gamma 2.2 from piecewise sRGB on PQ") && ok;
-  ok = check(srgb_captured - level >= 3, "capture separates explicit sRGB from inherited gamma 2.2") && ok;
+  ok = check(srgb_captured - level >= 3, "the test level separates sRGB from gamma 2.2 capture encoding") && ok;
   const enum wlr_color_transfer_function pq = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
   const enum wlr_color_transfer_function gamma22 = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
   const struct {
@@ -1086,9 +1088,15 @@ static bool test_sdr_curve_consistency(struct fixture* fixture) {
         ok = false;
         continue;
       }
-      const bool explicit_srgb = side == 0 && cases[i].texture_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB;
-      const int expected_capture = explicit_srgb ? srgb_captured : level;
-      const int expected = cases[i].output_tf == pq ? (explicit_srgb ? pq_piecewise : pq_shown) : expected_capture;
+      const bool tagged = side == 0 && cases[i].texture_tf != 0;
+      const bool pq_out = cases[i].output_tf == pq;
+      // An explicit description decodes with its own curve. Untagged content
+      // and compositor colors decode with the sdr_transfer policy on PQ and
+      // with sRGB everywhere else.
+      const bool gamma22_content = tagged ? cases[i].texture_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 : pq_out;
+      const float linear = gamma22_content ? gamma_linear : srgb_linear;
+      const int expected = pq_out ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f)) : to_u8(powf(linear, 1.0f / 2.2f));
+      const int expected_capture = pq_out ? to_u8(powf(linear, 1.0f / 2.2f)) : to_u8(linear_to_srgb(linear));
       if (abs((int)shown[2] - expected) > 1) {
         fprintf(stderr, "%s for %s: shows %u, expected %d\n", sides[side], cases[i].name, shown[2], expected);
         ok = false;
@@ -2686,7 +2694,11 @@ static bool check_sdr_transfer_pixels(
     enum wlr_color_transfer_function source_tf, enum wlr_color_transfer_function output_tf, const char* label
 ) {
   const float encoded = 16.0f / 255.0f;
-  const float inherited = policy == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded) : powf(encoded, 2.2f);
+  const bool pq_out = output_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+  // sdr_tf: the output's sdr_transfer policy applies only on a PQ output; an
+  // SDR output keeps the sRGB decode and sRGB SDR-capture encoding.
+  const enum wlr_color_transfer_function sdr_tf = pq_out ? policy : WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+  const float inherited = sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded) : powf(encoded, 2.2f);
   const float source = source_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded)
       : source_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22             ? powf(encoded, 2.2f)
                                                                      : inherited;
@@ -2695,12 +2707,11 @@ static bool check_sdr_transfer_pixels(
   for (size_t side = 0; side < 2; side++) {
     const int x = side == 0 ? TEST_WIDTH / 4 : TEST_WIDTH * 3 / 4, y = TEST_HEIGHT / 2;
     const float linear = side == 0 ? source : inherited;
-    const int display_expected = output_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
-        ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f))
+    const int display_expected = pq_out                 ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f))
         : output_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear))
                                                         : to_u8(powf(linear, 1.0f / 2.2f));
     const int capture_expected =
-        policy == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear)) : to_u8(powf(linear, 1.0f / 2.2f));
+        sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear)) : to_u8(powf(linear, 1.0f / 2.2f));
     uint8_t shown[4] = {0};
     ok = fixture_read_display_pixel(fixture, target, x, y, shown) && ok;
     const uint8_t capture_value = captured[(y * TEST_WIDTH + x) * 4];

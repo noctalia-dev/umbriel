@@ -40,9 +40,15 @@ namespace umbriel {
   } // namespace
 
   uint32_t colorTransferFunctionToWire(uint32_t transferFunction, uint32_t version) {
-    if (version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION
-        && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4) {
+    const bool legacy = version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION;
+    // compound_power_2_4 is the v2 name of the IEC 61966-2-1 encoding, and
+    // srgb is deprecated from v2 (color-management-v1.xml transfer_function),
+    // so the encoding is described by one name per version.
+    if (legacy && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4) {
       return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+    }
+    if (!legacy && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
     }
     return transferFunction;
   }
@@ -175,12 +181,19 @@ namespace umbriel {
     case PanelTransfer::Kind::Gamma22:
       description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
       break;
-    case PanelTransfer::Kind::Curve:
+    case PanelTransfer::Kind::Curve: {
+      // A curve that is exactly a named power is stated by name, the same
+      // spelling the parametric creator uses, so one curve never has two.
+      if (const uint32_t named = namedTransferForPower(panel->transfer.exponent); named != 0) {
+        description.data.tf_named = named;
+        break;
+      }
       // The profile states the curve exactly; tf_power restates it only when
       // it is a power, so the two representations never disagree.
       description.tfPower = panel->transfer.exponent;
       description.decodeTransform = std::move(decodeTransform);
       break;
+    }
     }
     description.iccProfile = std::move(iccProfile);
     return description;

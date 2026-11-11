@@ -10,6 +10,10 @@ if ! color_fields_are edid srgb false false; then
   echo "EDID characterization was not inert on headless: $("$UMBRIEL" color --json)"
   exit 1
 fi
+if ! "$UMBRIEL" color --json | jq -e '.outputs[0].color_profile_resolved == "none"' > /dev/null; then
+  echo "a headless output with no EDID reported a resolved characterization: $("$UMBRIEL" color --json)"
+  exit 1
+fi
 
 color_start_client edid untagged
 color_fill FFFF0000

@@ -82,7 +82,7 @@ fi
 
 color_human=$("$UMBRIEL" color)
 if ! grep -F "fallback: display does not advertise PQ" <<< "$color_human" > /dev/null \
-    || ! grep -F "color profile: none, SDR gamut: native" <<< "$color_human" > /dev/null \
+    || ! grep -F "color profile: none (resolved none), SDR gamut: native, mapping staged: no" <<< "$color_human" > /dev/null \
     || ! grep -F "panel primaries: none; panel transfer: none" <<< "$color_human" > /dev/null \
     || ! grep -F "surface " <<< "$color_human" > /dev/null \
     || ! grep -F "mastering luminance: unset; MaxCLL: 0; MaxFALL: 0" <<< "$color_human" > /dev/null; then

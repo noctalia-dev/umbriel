@@ -269,7 +269,26 @@ namespace umbriel {
     }
   }
 
+  bool adaptableWhitePoint(float x, float y) {
+    if (!std::isfinite(x) || !std::isfinite(y) || y <= 0.0F) {
+      return false;
+    }
+    // XYZ at Y = 1, so the response below matches the colorant form the scene
+    // half of the mapping uses.
+    const float coneX = x / y;
+    const float coneZ = (1.0F - x - y) / y;
+    return 0.8951F * coneX + 0.2664F - 0.1614F * coneZ > 0.000001F
+        && -0.7502F * coneX + 1.7135F + 0.0367F * coneZ > 0.000001F
+        && 0.0389F * coneX - 0.0685F + 1.0296F * coneZ > 0.000001F;
+  }
+
   wlr_color_transform* buildSdrGamutTransform(const PanelColorimetry& panel) {
+    // A white point the adaptation cannot reach would leave the matrix at the
+    // identity while the output still advertises the panel, so refuse the
+    // transform instead: without it nothing is staged and nothing is claimed.
+    if (!adaptableWhitePoint(panel.primaries.white.x, panel.primaries.white.y)) {
+      return nullptr;
+    }
     float matrix[9];
     sdrGamutMatrix(panel.primaries, 0.0F, matrix);
     wlr_color_transform* matrixStage = wlr_color_transform_init_matrix(matrix);
@@ -374,7 +393,6 @@ namespace umbriel {
 
     PanelColorimetry panel{
         .primaries = *defaultPrimaries,
-        .white = {defaultPrimaries->white.x, defaultPrimaries->white.y},
         .transfer = {},
     };
     if (const di_edid_chromaticity_coords* coords = di_edid_get_chromaticity_coords(parsed); coords != nullptr
@@ -383,10 +401,8 @@ namespace umbriel {
         && coords->white_x > 0.0F
         && coords->white_y > 0.0F
         && coords->white_x + coords->white_y <= 1.0F) {
-      panel.white[0] = coords->white_x;
-      panel.white[1] = coords->white_y;
+      panel.primaries.white = {.x = coords->white_x, .y = coords->white_y};
     }
-    panel.primaries.white = {.x = panel.white[0], .y = panel.white[1]};
 
     // EDID gamma is the decode exponent; its inverse is the panel encode.
     // Unknown/implausible values fall back to the common 2.2 convention.

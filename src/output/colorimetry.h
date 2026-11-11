@@ -43,9 +43,8 @@ namespace umbriel {
   };
 
   struct PanelColorimetry {
+    // The panel white point is primaries.white.
     wlr_color_primaries primaries;
-    // Panel white point (x, y); primaries.white mirrors it.
-    float white[2];
     PanelTransfer transfer;
   };
 
@@ -78,6 +77,11 @@ namespace umbriel {
   // Classify a transfer curve against the three exactly representable shapes:
   // linear, sRGB, and gamma 2.2.
   [[nodiscard]] TransferFit fitTransfer(const PanelTransfer& transfer);
+
+  // True when the chromaticity's Bradford cone responses are all positive. The
+  // adaptation divides by them, so a white point or colorant outside that cone
+  // cannot be adapted and yields no meaningful matrix.
+  [[nodiscard]] bool adaptableWhitePoint(float x, float y);
 
   // Output-side SDR gamut mapping matrix, generic over `wideness` in [0, 1]
   // (0 = interpret untagged SDR strictly as sRGB, 1 = as the
