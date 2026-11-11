@@ -440,6 +440,12 @@ blur_popups = true
 match.namespace = "^noctalia-(notification|dock|panel|attached-panel|osd)$"
 blur_optimized = false
 
+# A screenshot overlay shows a frozen capture at its own resolution, so
+# supersampling it would scale that capture up and back down:
+# [[layer_rule]]
+# match.namespace = "^my-screenshot-overlay$"
+# supersample = false
+
 # ==============================================================================
 # Overview
 # Built-in overview and animation values are used. The top-left hot corner opens

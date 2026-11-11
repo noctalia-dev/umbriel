@@ -7,6 +7,7 @@
 # directions.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
+source "$UMBRIEL_REPO/tests/harness/scale_lib.sh"
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
 readonly PLAIN_LOG="$UMBRIEL_RUNTIME_DIR/render-scale-plain.log"
@@ -36,17 +37,10 @@ next_presentation() {
   grep '^mapped ' "$log" | tail -1
 }
 
-expect() { # presentation, required fragment, failure message
-  if [[ $1 != *"$2"* ]]; then
-    echo "$3: $1"
-    exit 1
-  fi
-}
-
 "$CLIENT" rs-plain 400 300 > "$PLAIN_LOG" 2>&1 &
 presented=$(next_presentation "$PLAIN_LOG" 0)
 echo "plain window: $presented"
-expect "$presented" "scale 240/120" "a plain window was not supersampled"
+expect_hint "$presented" "scale 240/120" "a plain window was not supersampled"
 
 output_size=$("$UMBRIEL" outputs --json | jq -r '.[0].modes[] | select(.current) | "\(.width)x\(.height)"')
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
@@ -59,19 +53,19 @@ await_lines "$PLAIN_LOG" "mapped .*buffer $output_size " 1 0.05 > /dev/null || {
 }
 presented=$(grep '^mapped ' "$PLAIN_LOG" | grep "buffer $output_size " | tail -1)
 echo "fullscreen on a ${output_size} output: $presented"
-expect "$presented" "scale 150/120" "a fullscreen window was asked to render at render_scale"
-expect "$presented" "buffer $output_size" "a fullscreen buffer is not the output's physical mode"
+expect_hint "$presented" "scale 150/120" "a fullscreen window was asked to render at render_scale"
+expect_hint "$presented" "buffer $output_size" "a fullscreen buffer is not the output's physical mode"
 
 before=$(grep -c '^mapped ' "$PLAIN_LOG")
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
 presented=$(next_presentation "$PLAIN_LOG" "$before")
 echo "after fullscreen: $presented"
-expect "$presented" "scale 240/120" "leaving fullscreen did not supersample again"
+expect_hint "$presented" "scale 240/120" "leaving fullscreen did not supersample again"
 
 CONTENT_TYPE=game "$CLIENT" rs-game 400 300 > "$GAME_LOG" 2>&1 &
 presented=$(next_presentation "$GAME_LOG" 0)
 echo "game window: $presented"
-expect "$presented" "scale 150/120" "a game window was supersampled"
+expect_hint "$presented" "scale 150/120" "a game window was supersampled"
 
 # Rules decide outright: the game opts in, the plain window opts out.
 before_game=$(grep -c '^mapped ' "$GAME_LOG")
@@ -89,10 +83,10 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 presented=$(next_presentation "$GAME_LOG" "$before_game")
 echo "game window with supersample = true: $presented"
-expect "$presented" "scale 240/120" "supersample = true did not override the game content type"
+expect_hint "$presented" "scale 240/120" "supersample = true did not override the game content type"
 presented=$(next_presentation "$PLAIN_LOG" "$before_plain")
 echo "plain window with supersample = false: $presented"
-expect "$presented" "scale 150/120" "supersample = false did not keep the window at the logical scale"
+expect_hint "$presented" "scale 150/120" "supersample = false did not keep the window at the logical scale"
 
 # A content type can change after mapping: a browser or media player becomes
 # `video` when playback starts in an existing window. That path never sees a new
@@ -104,7 +98,7 @@ exec {dynamic}<> "$DYNAMIC_FIFO"
 CONTENT_TYPE_CONTROL=1 "$CLIENT" rs-dynamic 400 300 <&"$dynamic" > "$DYNAMIC_LOG" 2>&1 &
 presented=$(next_presentation "$DYNAMIC_LOG" 0)
 echo "dynamic content window: $presented"
-expect "$presented" "scale 240/120" "a plain window was not supersampled"
+expect_hint "$presented" "scale 240/120" "a plain window was not supersampled"
 
 set_content_type() { # type, expected hint, message
   local before
@@ -113,7 +107,7 @@ set_content_type() { # type, expected hint, message
   local presented
   presented=$(next_presentation "$DYNAMIC_LOG" "$before")
   echo "content-type $1 on a mapped window: $presented"
-  expect "$presented" "$2" "$3"
+  expect_hint "$presented" "$2" "$3"
 }
 # Alternate exempt and normal so every toggle changes the hint; a same-value
 # re-notify is deduped below the wire and would assert nothing.

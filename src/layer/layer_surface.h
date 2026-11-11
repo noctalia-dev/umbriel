@@ -78,6 +78,8 @@ namespace umbriel {
     // Tell an open overview to re-resolve this output's mirrored background stack.
     void notifyDesktopStack();
     void updateBlur();
+    // The rules `layer` matches. The constructor passes the requested layer, which the surface has not committed yet.
+    [[nodiscard]] ResolvedLayerRule resolveRule(uint32_t layer) const;
     // Re-resolve the layer rules and re-send the scale hints when `supersample` flips.
     void resolveRules();
     void applyConfig();

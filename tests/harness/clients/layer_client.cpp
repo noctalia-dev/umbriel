@@ -6,7 +6,9 @@
 // `popup-on-release` batches the release until the pointer frame and anchors its menu at the last valid position.
 // LAYER_CONTROL enables stdin commands: frames LABEL COUNT, color LABEL AARRGGBB, child-color LABEL AARRGGBB,
 // child-move LABEL X Y, and margins LABEL TOP RIGHT BOTTOM LEFT. Each prints done after its frame callbacks arrive.
-// `log-scale` prints "scale N/120" for every preferred fractional scale the surface receives.
+// `log-scale` prints "scale N/120" for every preferred fractional scale the surface receives. `hold-map` creates the
+// surface without committing it and prints "held"; the control command `map` commits it, so a check can change the
+// rules the surface maps under.
 
 #include <wayland-client.h>
 
@@ -56,6 +58,8 @@ namespace {
     wp_fractional_scale_manager_v1* fractionalScaleManager = nullptr;
     wp_fractional_scale_v1* fractionalScale = nullptr;
     bool logScale = false;
+    bool holdMap = false;
+    bool mapped = false;
     wl_seat* seat = nullptr;
     wl_keyboard* keyboard = nullptr;
     wl_pointer* pointer = nullptr;
@@ -176,6 +180,16 @@ namespace {
   }
 
   void handleCommand(State& state, const std::string& line) {
+    if (line == "map") {
+      if (state.mapped) {
+        state.failed = state.closed = true;
+        std::println(stderr, "layer-client: already mapped");
+        return;
+      }
+      state.mapped = true;
+      wl_surface_commit(state.surface);
+      return;
+    }
     std::istringstream command(line);
     std::string action;
     command >> action >> state.commandLabel;
@@ -541,7 +555,8 @@ int main(int argc, char** argv) {
     std::println(
         "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer|overlay-layer] "
         "[log-configures] "
-        "[keyboard=none|on-demand|exclusive] [release-on-escape] [popup-on-click|popup-on-release] [log-scale]"
+        "[keyboard=none|on-demand|exclusive] [release-on-escape] [popup-on-click|popup-on-release] [log-scale] "
+        "[hold-map]"
     );
     return EXIT_FAILURE;
   }
@@ -572,6 +587,8 @@ int main(int argc, char** argv) {
       state.releaseOnEscape = true;
     } else if (option == "log-scale") {
       state.logScale = true;
+    } else if (option == "hold-map") {
+      state.holdMap = true;
     } else if (option == "log-configures") {
       state.logConfigures = true;
     } else if (option == "popup-on-click") {
@@ -664,7 +681,12 @@ int main(int argc, char** argv) {
     }
   }
   zwlr_layer_surface_v1_set_anchor(state.layerSurface, anchors);
-  wl_surface_commit(state.surface);
+  if (state.holdMap) {
+    std::println("held");
+  } else {
+    state.mapped = true;
+    wl_surface_commit(state.surface);
+  }
 
   const bool control = std::getenv("LAYER_CONTROL") != nullptr;
   while (!state.closed && wl_display_dispatch_pending(state.display) >= 0) {

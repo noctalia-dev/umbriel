@@ -143,7 +143,7 @@ match.app_id = "^my-game$"
 supersample = false
 ```
 
-Layer surfaces supersample like windows. A `supersample = false` [layer rule](layer-rules.md) keeps one at `scale`, for example a screenshot overlay that shows a frozen capture of the output, which supersampling would scale up and back down:
+Layer surfaces supersample too, with no exemption of their own. A `supersample = false` [layer rule](layer-rules.md) keeps a surface and its popups at `scale`, for example a screenshot overlay that shows a frozen capture of the output, which supersampling would scale up and back down:
 
 ```toml
 [[layer_rule]]
@@ -151,7 +151,7 @@ match.namespace = "^my-screenshot-overlay$"
 supersample = false
 ```
 
-Applications that ignore the scale hints render as they always have. Values below `scale` are honored but undersample, which looks blurry. The configuration warning compares `render_scale` against the configured `scale` (1.0 when `scale` is unset), so it cannot see an auto-detected output scale. Hint-following buffers sized at `render_scale` no longer match the output mode while `render_scale` differs from `scale`, so they do not qualify for [direct scanout](#direct-scanout); fullscreen windows are exempt by default, as described above.
+Keep the default for layer surfaces that draw text or vector shapes, which gain from supersampling. A surface that already holds full-resolution pixels, such as a screenshot overlay, is the one to exempt. Applications that ignore the scale hints render as they always have. Values below `scale` are honored but undersample, which looks blurry. The configuration warning compares `render_scale` against the configured `scale` (1.0 when `scale` is unset), so it cannot see an auto-detected output scale. Hint-following buffers sized at `render_scale` no longer match the output mode while `render_scale` differs from `scale`, so they do not qualify for [direct scanout](#direct-scanout); fullscreen windows are exempt by default, as described above.
 
 Larger client buffers cost memory and sampling work: at `render_scale = 2.0` with `scale = 1.35` they hold about 2.2 times as many pixels as at `scale` alone, growing with the square of the ratio. Prefer whole or half-integer values for crisp buffer ratios.
 

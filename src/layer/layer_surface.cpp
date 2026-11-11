@@ -108,7 +108,7 @@ namespace umbriel {
     m_sceneDestroy.notify = onSceneDestroy;
     wl_signal_add(&m_scene->tree->node.events.destroy, &m_sceneDestroy);
 
-    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_), layerOf(layer), m_server->uptimeMs());
+    m_rule = resolveRule(layer);
     m_scene->tree->node.data = sceneNodeData(this);
     m_layerSurface->data = this;
 
@@ -423,11 +423,13 @@ namespace umbriel {
     }
   }
 
+  ResolvedLayerRule LayerSurface::resolveRule(uint32_t layer) const {
+    return resolveLayerRules(config(), ruleText(m_layerSurface->namespace_), layerOf(layer), m_server->uptimeMs());
+  }
+
   void LayerSurface::resolveRules() {
     const bool wasSupersampled = supersampled();
-    m_rule = resolveLayerRules(
-        config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
-    );
+    m_rule = resolveRule(m_layerSurface->current.layer);
     if (supersampled() != wasSupersampled) {
       notifyOutputScale();
     }
@@ -464,6 +466,9 @@ namespace umbriel {
   }
 
   void LayerSurface::handleMap() {
+    // A reload only reaches mapped surfaces, so this is where a rule that arrived while the surface was uncommitted
+    // lands, and where a remapped one picks the current rules up again.
+    resolveRules();
     m_mapped = true;
     syncPopupTree();
     m_server->scheduleIpcLayersEvent();
@@ -537,8 +542,15 @@ namespace umbriel {
   }
 
   void LayerSurface::handleCommit() {
+    const uint32_t committed = m_layerSurface->current.committed;
+    const bool initial = m_layerSurface->initial_commit;
+    // Only a layer change can match a different rule: everything else about the rules is settled by applyConfig and by
+    // the map, and a layer surface commits for its own animations.
+    if ((committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
+      resolveRules();
+    }
     updateBlur();
-    if (m_layerSurface->initial_commit) {
+    if (initial) {
       if (Output* out = output()) {
         out->arrangeLayers();
         out->markDirty(Dirty::LayerArrange);
@@ -546,16 +558,12 @@ namespace umbriel {
       return;
     }
 
-    if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
-      resolveRules();
-      updateBlur();
+    if ((committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
       reparentToLayer(m_layerSurface->current.layer);
       notifyDesktopStack();
     }
 
-    if ((m_layerSurface->current.committed
-         & (WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY | WLR_LAYER_SURFACE_V1_STATE_LAYER))
-        != 0) {
+    if ((committed & (WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY | WLR_LAYER_SURFACE_V1_STATE_LAYER)) != 0) {
       if (exclusiveKeyboard()) {
         focus();
       } else if (hasKeyboardFocus() && !acceptsKeyboard()) {
@@ -563,7 +571,7 @@ namespace umbriel {
       }
     }
 
-    if (m_layerSurface->current.committed != 0) {
+    if (committed != 0) {
       if (Output* out = output()) {
         out->markDirty(Dirty::LayerArrange);
       }
