@@ -15,6 +15,7 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -107,6 +108,7 @@ namespace umbriel {
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
     void requestClose();
+    [[nodiscard]] std::expected<void, std::string> killClient();
     // The client's window geometry in surface-local coordinates.
     wlr_box geometryBox() const;
     SizeHints sizeHints() const;

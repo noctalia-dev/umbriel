@@ -4,6 +4,7 @@
 // is logged. `release-on-escape` drops the interactivity to none when Escape is released. `popup-on-click` behaves like
 // a bar opening a menu: the first left press switches the layer to on-demand and opens a grabbing xdg_popup.
 // `popup-on-release` batches the release until the pointer frame and anchors its menu at the last valid position.
+// `popup-color=<ARGB>` paints that menu in a premultiplied colour, so a translucent menu can show what lies below it.
 // LAYER_CONTROL enables stdin commands: frames LABEL COUNT, color LABEL AARRGGBB, child-color LABEL AARRGGBB,
 // child-move LABEL X Y, and margins LABEL TOP RIGHT BOTTOM LEFT. Each prints done after its frame callbacks arrive.
 // `log-scale` prints "scale N/120" for every preferred fractional scale the surface receives. `hold-map` creates the
@@ -26,6 +27,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <poll.h>
 #include <print>
 #include <sstream>
@@ -92,6 +94,7 @@ namespace {
     bool closed = false;
     bool failed = false;
     uint32_t fillColor = 0xFF202020;
+    std::optional<uint32_t> popupColor;
     bool logConfigures = false;
     bool releaseOnEscape = false;
     uint32_t keyboardInteractivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
@@ -555,8 +558,8 @@ int main(int argc, char** argv) {
     std::println(
         "usage: layer-client <output> <exclusive-height-or-zero-background> [bottom-layer|overlay-layer] "
         "[log-configures] "
-        "[keyboard=none|on-demand|exclusive] [release-on-escape] [popup-on-click|popup-on-release] [log-scale] "
-        "[hold-map]"
+        "[keyboard=none|on-demand|exclusive] [release-on-escape] [popup-on-click|popup-on-release] "
+        "[popup-color=<ARGB>] [log-scale] [hold-map]"
     );
     return EXIT_FAILURE;
   }
@@ -595,6 +598,16 @@ int main(int argc, char** argv) {
       state.popupOnClick = true;
     } else if (option == "popup-on-release") {
       state.popupOnRelease = true;
+    } else if (option.starts_with("popup-color=")) {
+      const char* color = option.c_str() + std::strlen("popup-color=");
+      char* end = nullptr;
+      errno = 0;
+      const unsigned long value = std::strtoul(color, &end, 0);
+      if (*color == '\0' || end == nullptr || *end != '\0' || errno != 0 || value > 0xFFFFFFFFUL) {
+        std::println(stderr, "layer-client: popup-color must be a 32-bit ARGB value");
+        return EXIT_FAILURE;
+      }
+      state.popupColor = static_cast<uint32_t>(value);
     } else {
       std::println(stderr, "layer-client: unknown option '{}'", option);
       return EXIT_FAILURE;
@@ -635,6 +648,7 @@ int main(int argc, char** argv) {
     if (state.popupOnRelease) {
       state.fillColor = 0xFFFFAA00;
     }
+    state.fillColor = state.popupColor.value_or(state.fillColor);
     state.popupBuffer = createBuffer(state, kPopupSize, kPopupSize);
     state.fillColor = fillColor;
     if (state.popupBuffer.resource == nullptr) {

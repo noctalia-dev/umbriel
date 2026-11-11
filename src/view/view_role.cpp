@@ -10,9 +10,13 @@
 #include "xwayland/xwayland.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <unistd.h>
 
 // Every branch between the xdg-shell and the X11 role of a View lives here.
 
@@ -146,6 +150,25 @@ namespace umbriel {
     } else {
       wlr_xwayland_surface_close(m_xsurface);
     }
+  }
+
+  std::expected<void, std::string> View::killClient() {
+    if (m_xsurface != nullptr) {
+      Xwayland* xwayland = m_server->xwayland();
+      if (xwayland == nullptr || !xwayland->killClient(m_xsurface)) {
+        return std::unexpected("failed to kill X11 client");
+      }
+      return {};
+    }
+    const pid_t clientPid = pid();
+    // Nonpositive PIDs signal process groups rather than an individual client.
+    if (clientPid <= 1 || clientPid == getpid()) {
+      return std::unexpected("window has no killable client process");
+    }
+    if (kill(clientPid, SIGKILL) != 0) {
+      return std::unexpected(std::string("failed to kill window process: ") + std::strerror(errno));
+    }
+    return {};
   }
 
   wlr_box View::geometryBox() const {

@@ -35,7 +35,7 @@ Selectors are optional: a rule without them matches every layer surface, and eve
 
 Layer-shell blur is off by default. Every matching rule contributes its settings, and later values take precedence.
 
-Optimized blur samples the cached wallpaper blur, so a surface that opens over windows shows the wallpaper through it instead of the windows. Set `blur_optimized = false` on such surfaces (panels, docks, notifications) to blur the live content behind them; it costs GPU time on every frame they are visible and something behind them changes. Surfaces that only cover the wallpaper, such as a bar, keep the cheaper optimized blur.
+Optimized blur samples the cached wallpaper blur, so a surface that opens over windows shows the wallpaper through it instead of the windows. Set `blur_optimized = false` on such surfaces (panels, docks, notifications) to blur the live content behind them; it costs GPU time on every frame they are visible and something behind them changes. Surfaces that only cover the wallpaper, such as a bar, keep the cheaper optimized blur. Popups, such as a bar's menus and tooltips, always blur the live content behind them, whatever `blur_optimized` says.
 
 ## Keyboard focus
 

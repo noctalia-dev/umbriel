@@ -20,15 +20,11 @@
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
-#include <csignal>
 #include <cstdint>
-#include <cstring>
 #include <expected>
 #include <optional>
 #include <span>
 #include <string_view>
-#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -781,13 +777,8 @@ namespace umbriel {
       if (view == nullptr) {
         return true;
       }
-      const pid_t pid = view->pid();
-      // Nonpositive PIDs signal process groups, and X11 clients can supply their own PID.
-      if (pid <= 1 || pid == getpid()) {
-        return reject(error, "window has no killable client process");
-      }
-      if (kill(pid, SIGKILL) != 0) {
-        return reject(error, std::string("failed to kill window process: ") + std::strerror(errno));
+      if (auto result = view->killClient(); !result) {
+        return reject(error, std::move(result.error()));
       }
       return true;
     }
