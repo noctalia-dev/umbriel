@@ -788,6 +788,7 @@ core_sources = files(
   'src/config/fields_rules.cpp',
   'src/config/store.cpp',
   'src/config/config_merge.cpp',
+  'src/config/overrides.cpp',
   'src/config/config_watcher.cpp',
   'src/config/schema.cpp',
   'src/layout/drop_target.cpp',
