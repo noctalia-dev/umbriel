@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A tile focused under a fullscreen window in its column is drawn above it, and goes back under the fullscreen window,
 # and under floats once fullscreen ends, when focus leaves it. Untabbing a group with a fullscreen hidden tab shows the
-# focused tab the same way, and toggling fullscreen there fullscreens that tab.
+# focused tab the same way, and toggling fullscreen there fullscreens that tab. The lift ends when the workspace leaves
+# scrolling, and a tile beside a fullscreen column stays under floats.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -36,6 +37,21 @@ shown() {
   "$UMBRIEL_PIXEL_PROBE" "$SHOT" bbox "$1" | awk '{ print $3 "x" $4 }'
 }
 
+focus() {
+  msg window-focus "$("$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id')"
+}
+
+# Prints the colour where a float overlaps a tile.
+overlap_color() {
+  local x y
+  read -r x y < <("$UMBRIEL" windows --json | jq -r --arg float "$1" --arg tile "$2" '
+    (.[] | select(.title == $float)) as $f | (.[] | select(.title == $tile)) as $t
+    | "\([$f.x, $t.x] | max + 10) \([$f.y, $t.y] | max + 10)"')
+  "$UMBRIEL" settle
+  grim "$SHOT"
+  "$UMBRIEL_PIXEL_PROBE" "$SHOT" pixel "$x" "$y"
+}
+
 spawn top 0xFFFF0000
 spawn bottom 0xFF0000FF
 msg window-consume-left
@@ -55,17 +71,12 @@ fi
 msg window-toggle-fullscreen
 spawn float 0xFFFF00FF
 msg window-toggle-floating
-read -r x y < <("$UMBRIEL" windows --json | jq -r '
-  (.[] | select(.title == "float")) as $float | (.[] | select(.title == "top")) as $top
-  | "\([$float.x, $top.x] | max + 10) \([$float.y, $top.y] | max + 10)"')
-"$UMBRIEL" settle
-grim "$SHOT"
-if [[ $("$UMBRIEL_PIXEL_PROBE" "$SHOT" pixel "$x" "$y") != "255 0 255" ]]; then
+if [[ $(overlap_color float top) == "255 0 0" ]]; then
   echo "the top window stayed above a float after fullscreen ended: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 kill "$("$UMBRIEL" windows --json | jq '.[] | select(.title == "float") | .pid')"
-"$UMBRIEL" msg window-focus "$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "bottom") | .id')" > /dev/null
+focus bottom
 msg window-toggle-fullscreen
 
 spawn third 0xFF00FF00
@@ -81,6 +92,26 @@ fi
 msg window-toggle-fullscreen
 if [[ $(shown "$GREEN") != 1280x720 ]]; then
   echo "toggling fullscreen did not fullscreen the focused window shown above: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+focus top
+msg workspace-set-layout dwindle
+if [[ $(shown "$RED") != 0x0 ]]; then
+  echo "the top window stayed above the fullscreen windows after leaving scrolling: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+msg workspace-switch 2
+spawn neighbour 0xFF0000FF
+spawn tile 0xFFFF0000
+spawn tile-float 0xFFFF00FF
+msg window-toggle-floating
+focus neighbour
+msg window-toggle-fullscreen
+focus tile
+if [[ $(overlap_color tile-float tile) == "255 0 0" ]]; then
+  echo "a tile beside a fullscreen column was drawn above a float: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 

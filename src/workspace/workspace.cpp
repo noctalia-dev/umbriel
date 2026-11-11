@@ -392,17 +392,14 @@ namespace umbriel {
   }
 
   bool Workspace::liftedAboveFullscreen(const View* view) const {
-    return m_layoutMode == LayoutMode::Scrolling
-        && view == m_focusedView
-        && view->tiled()
-        && !view->scheduledFullscreen()
-        && hasFullscreenView();
-  }
-
-  bool Workspace::hasFullscreenView() const {
-    return std::ranges::any_of(m_views, [](const View* view) {
-      return view->mapped() && !view->pinned() && view->scheduledFullscreen();
-    });
+    if (m_layoutMode != LayoutMode::Scrolling || view != m_focusedView || view->scheduledFullscreen()) {
+      return false;
+    }
+    const int column = m_layout->columnOf(view);
+    return column >= 0
+        && std::ranges::any_of(m_layout->columns()[static_cast<size_t>(column)].views, [](const View* member) {
+             return member->mapped() && member->scheduledFullscreen();
+           });
   }
 
   void Workspace::syncFloatingLayer() {
@@ -413,7 +410,10 @@ namespace umbriel {
       // must establish floating focus itself rather than inherit the previous floating episode.
       m_floatingLayerActive = false;
     }
-    wlr_scene_tree* target = m_floatingLayerActive && hasFullscreenView() ? m_fullscreenTree : m_tree;
+    const bool fullscreen = std::ranges::any_of(m_views, [](const View* view) {
+      return view->mapped() && !view->pinned() && view->scheduledFullscreen();
+    });
+    wlr_scene_tree* target = m_floatingLayerActive && fullscreen ? m_fullscreenTree : m_tree;
     if (m_floatingLayer->node.parent != target) {
       // Both workspace roots carry the same slide offset and output clip.
       wlr_scene_node_reparent(&m_floatingLayer->node, target);
@@ -2805,6 +2805,8 @@ namespace umbriel {
     for (View* view : m_views) {
       view->refreshStateRuleEffects();
     }
+    // The focused tile is lifted above a fullscreen window only in scrolling.
+    syncFloatingLayer();
     markArrange();
     refreshDropZonePreview(*m_group->server());
   }
