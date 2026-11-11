@@ -184,6 +184,7 @@ UMBRIEL_TEST(jsonIsSortedAndTyped) {
   CHECK(json["revision"].is_null());
   std::string previous;
   bool sawUnsetKey = false;
+  bool sawReleaseKey = false;
   for (const auto& option : json["options"]) {
     const std::string path = option["path"];
     if (!(previous < path)) {
@@ -199,8 +200,15 @@ UMBRIEL_TEST(jsonIsSortedAndTyped) {
       sawUnsetKey = true;
       CHECK(!option.contains("default"));
     }
+    if (path == "keybinds.<name>.release") {
+      sawReleaseKey = true;
+      CHECK(option["type"] == "string");
+      CHECK(option["format"] == "action");
+      CHECK(!option.contains("default"));
+    }
   }
   CHECK(sawUnsetKey);
+  CHECK(sawReleaseKey);
 }
 
 // Every value a key lists is one its reader accepts without complaint.

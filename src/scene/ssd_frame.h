@@ -2,6 +2,7 @@
 
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
+#include "scene/title_bar_icon.h"
 #include "view/chrome_attachment.h"
 
 #include <array>
@@ -74,6 +75,7 @@ namespace umbriel {
     std::array<wlr_buffer*, kTitleBarButtonCount> m_iconBuffers{};
     std::array<std::array<float, 4>, kTitleBarButtonCount> m_iconColors{};
     std::array<int, kTitleBarButtonCount> m_iconSizes{};
+    std::array<TitleBarGlyph, kTitleBarButtonCount> m_iconGlyphs{};
     std::vector<TitleBarButton> m_buttons;
     std::array<wlr_scene_rect*, 4> m_grips{};
     std::shared_ptr<TabLabelCache> m_labels;

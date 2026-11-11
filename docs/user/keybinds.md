@@ -53,7 +53,7 @@ A modifier can be bound by itself:
 "Mod" = "spawn noctalia msg panel-toggle launcher"
 ```
 
-Modifier-only binds run on release when no other key, button, scroll, touch, or gesture input occurred while the modifier was held. Pointer motion alone does not cancel them.
+Modifier-only binds are release bindings that are cancelled by other key, button, scroll, touch, or gesture input while the modifier is held. Pointer motion alone does not cancel them. Unlike explicit release actions, they forward the modifier press and release to clients.
 
 ## Special keys
 
@@ -70,15 +70,31 @@ Mouse and wheel binds require at least one modifier:
 
 A matched bind consumes its press and release, so neither reaches the focused application. Unbound input is delivered normally.
 
+## Release bindings
+
+Keyboard and mouse-button chords normally fire on press. Use the table's `release` field to run an action once when the key or button is released. `action` is optional when `release` is set:
+
+```toml
+"Mod+Space" = { action = "overview-open", release = "overview-close", repeat = false }
+
+# Release binding inside the resize submap.
+"submap[resize],Mod+H" = { release = "submap reset" }
+
+# Push to talk: unmute on press, mute on release.
+"Mod+MouseBack" = { action = "spawn wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0", release = "spawn wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1", repeat = false }
+```
+
+A pressed release binding stays armed until its key or button is released, even if a submap changes, the configuration reloads without changing that binding, or the session locks. On release it runs only if it is still allowed, so a locked session skips it unless it sets `allow_when_locked`. A release action never confirms a visible confirmation dialog; only a press does.
+
 ## Repeat
 
-Binds repeat using the configured keyboard rate and delay, including `spawn` binds, so held volume and brightness keys keep stepping. Disable repeat for one bind, such as a launcher, with the table form:
+Keyboard press bindings repeat using the configured keyboard rate and delay, including `spawn` binds, so held volume and brightness keys keep stepping. Disable repeat for one bind, such as a launcher, with the table form:
 
 ```toml
 "Mod+Return" = { action = "spawn kitty", repeat = false }
 ```
 
-Scratchpad visibility and cycling actions never repeat. The built-in `Mod+Q` and `Mod+O` binds do not repeat either.
+Scratchpad visibility, cycling actions, release actions, and modifier-only bindings never repeat. The built-in `Mod+Q` and `Mod+O` binds do not repeat either.
 
 ## Allow when locked
 
@@ -116,6 +132,8 @@ When the client already has an allowed shortcuts inhibitor, the toggle activates
 "Mod+WheelUp" = { action = "workspace-previous", cooldown_ms = 150 }
 "Mod+WheelDown" = { action = "workspace-next", cooldown_ms = 150 }
 ```
+
+Press and release bindings on the same chord have independent cooldowns.
 
 ## Submaps
 

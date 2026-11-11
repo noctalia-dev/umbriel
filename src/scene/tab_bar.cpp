@@ -158,11 +158,11 @@ namespace umbriel {
   wlr_box TabBar::layoutBox() const {
     int frameX = 0;
     int frameY = 0;
-    if (!drawn()
-        || m_tree->node.parent == nullptr
-        || !wlr_scene_node_coords(&m_tree->node.parent->node, &frameX, &frameY)) {
+    if (!drawn() || m_tree->node.parent == nullptr) {
       return {};
     }
+    // The position holds while the window tree is hidden under the overview.
+    wlr_scene_node_coords(&m_tree->node.parent->node, &frameX, &frameY);
     const wlr_box local = localBox();
     return {.x = frameX + local.x, .y = frameY + local.y, .width = local.width, .height = local.height};
   }

@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -53,6 +54,9 @@ namespace umbriel {
     static void onDestroy(wl_listener* listener, void* data);
 
     void handleModifiers();
+    bool handleConfirmationPress(
+        std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly
+    );
     void handleKey(void* data);
     void handleDestroy();
     void setLayout(xkb_layout_index_t group);
