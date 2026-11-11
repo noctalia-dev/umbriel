@@ -167,8 +167,8 @@ out:
 
 static size_t output_lut_count(struct fixture* fixture) {
   size_t count = 0;
-  struct fx_output_lut* lut;
-  wl_list_for_each(lut, &fx_get_renderer(fixture->renderer)->output_luts, link) { count++; }
+  struct fx_lut_texture* lut;
+  wl_list_for_each(lut, &fx_get_renderer(fixture->renderer)->lut_textures, link) { count++; }
   return count;
 }
 
@@ -330,6 +330,204 @@ static bool check_matrix_near(const float actual[static 9], const float expected
     }
   }
   return true;
+}
+
+// Reference sampling for the fold pins: apply both tables in series the way the
+// stages evaluate, computed independently of the fold implementation.
+static double lut_table_eval(const uint16_t* lut, size_t dim, double x) {
+  const double position = x * (double)(dim - 1);
+  const size_t lower = (size_t)position;
+  const size_t upper = lower + 1 < dim ? lower + 1 : dim - 1;
+  const double a = lut[lower] / 65535.0;
+  const double b = lut[upper] / 65535.0;
+  return a + (b - a) * (position - (double)lower);
+}
+
+static double curve_encode_22(double x) { return pow(x, 1.0 / 2.2); }
+
+static double curve_smoothstep(double x) { return x * x * (3.0 - 2.0 * x); }
+
+static double curve_decode_20(double x) { return x * x; }
+
+static double curve_decode_24(double x) { return pow(x, 2.4); }
+
+static double curve_decode_30(double x) { return x * x * x; }
+
+struct lut_fold_case {
+  const char* name;
+  size_t first_dim;
+  size_t second_dim;
+  double (*first_curve[3])(double);
+  double (*second_curve[3])(double);
+};
+
+static void bake_curve_row(uint16_t* out, size_t dim, double (*curve)(double)) {
+  for (size_t i = 0; i < dim; i++) {
+    out[i] = (uint16_t)lround(curve((double)i / (double)(dim - 1)) * 65535.0);
+  }
+}
+
+// The folded table must land on the finer grid and equal the composed stages at
+// every node of that grid. Between nodes the bound is single-table sampling
+// error, so a fold that samples the coarser table only at its own knots cannot
+// meet it.
+static bool run_lut_fold_case(const struct lut_fold_case* fold_case) {
+  enum { kMaxDim = 129 };
+  const size_t first_dim = fold_case->first_dim;
+  const size_t second_dim = fold_case->second_dim;
+  const size_t grid = first_dim > second_dim ? first_dim : second_dim;
+  uint16_t first_rows[3][kMaxDim];
+  uint16_t second_rows[3][kMaxDim];
+  for (size_t channel = 0; channel < 3; channel++) {
+    bake_curve_row(first_rows[channel], first_dim, fold_case->first_curve[channel]);
+    bake_curve_row(second_rows[channel], second_dim, fold_case->second_curve[channel]);
+  }
+
+  struct wlr_color_transform* first =
+      wlr_color_transform_init_lut_3x1d(first_dim, first_rows[0], first_rows[1], first_rows[2]);
+  struct wlr_color_transform* second =
+      wlr_color_transform_init_lut_3x1d(second_dim, second_rows[0], second_rows[1], second_rows[2]);
+  if (!check(first != NULL && second != NULL, "build LUT stages")) {
+    return false;
+  }
+  struct wlr_color_transform* stages[] = {first, second};
+  struct wlr_color_transform* folded = NULL;
+  bool ok = check(color_transform_compose(&folded, stages, 2), "compose LUT pair");
+  const bool single_lut = folded != NULL && folded->type == COLOR_TRANSFORM_LUT_3X1D;
+  ok = check(single_lut, "folded into a single LUT stage") && ok;
+  if (single_lut) {
+    struct wlr_color_transform_lut_3x1d* lut = color_transform_lut_3x1d_from_base(folded);
+    ok = check(lut->dim == grid, "fold table keeps the finer dimension") && ok;
+    double node_max = 0.0;
+    double domain_max = 0.0;
+    for (size_t channel = 0; channel < 3; channel++) {
+      // Even samples are grid nodes, odd samples sit between them.
+      for (size_t sample = 0; sample <= 2 * (grid - 1); sample++) {
+        const double x = (double)sample / (double)(2 * (grid - 1));
+        const double reference =
+            lut_table_eval(second_rows[channel], second_dim, lut_table_eval(first_rows[channel], first_dim, x));
+        const float in[3] = {(float)x, (float)x, (float)x};
+        float out[3] = {0.0f, 0.0f, 0.0f};
+        wlr_color_transform_eval(folded, out, in);
+        const double error = fabs((double)out[channel] - reference);
+        if (sample % 2 == 0 && error > node_max) {
+          node_max = error;
+        }
+        if (error > domain_max) {
+          domain_max = error;
+        }
+      }
+    }
+    printf("fold %s: node max %.6f, domain max %.6f\n", fold_case->name, node_max, domain_max);
+    ok = check(node_max < 2e-4, "folded table matches the composed stages at every finer-grid node") && ok;
+    ok = check(domain_max < 5e-3, "folded table tracks the composed stages between nodes") && ok;
+  }
+  wlr_color_transform_unref(first);
+  wlr_color_transform_unref(second);
+  wlr_color_transform_unref(folded);
+  return ok;
+}
+
+// Two 3x1D LUTs in series fold into one stage in the composed transform: a
+// baked panel-TRC curve followed by a gamma-control ramp must stay a shape
+// consumers accept instead of arriving as two LUT stages. No renderer needed.
+static bool test_compose_lut_fold(void) {
+  enum { kDim = 5 };
+  uint16_t halve[kDim];
+  uint16_t invert[kDim];
+  for (size_t i = 0; i < kDim; i++) {
+    const uint16_t v = (uint16_t)(i * 65535 / (kDim - 1));
+    halve[i] = (uint16_t)(v / 2);
+    invert[i] = (uint16_t)(65535 - v);
+  }
+  struct wlr_color_transform* first = wlr_color_transform_init_lut_3x1d(kDim, halve, halve, halve);
+  struct wlr_color_transform* second = wlr_color_transform_init_lut_3x1d(kDim, invert, invert, invert);
+  bool ok = check(first != NULL && second != NULL, "build LUT stages");
+  struct wlr_color_transform* stages[] = {first, second};
+  struct wlr_color_transform* folded = NULL;
+  ok = check(color_transform_compose(&folded, stages, 2), "compose LUT pair") && ok;
+  ok = check(folded != NULL && folded->type == COLOR_TRANSFORM_LUT_3X1D, "folded into a single LUT stage") && ok;
+  if (folded != NULL && folded->type == COLOR_TRANSFORM_LUT_3X1D) {
+    for (int step = 0; step <= 4; step++) {
+      const float x = (float)step / 4.0f;
+      float in[3] = {x, x, x};
+      float out[3] = {0.0f, 0.0f, 0.0f};
+      wlr_color_transform_eval(folded, out, in);
+      ok = check(fabsf(out[0] - (1.0f - x / 2.0f)) < 0.01f, "folded samples match applying both LUTs in series") && ok;
+    }
+  }
+  wlr_color_transform_unref(first);
+  wlr_color_transform_unref(second);
+  wlr_color_transform_unref(folded);
+
+  const struct lut_fold_case cases[] = {
+      {
+          .name = "coarse panel TRC then fine gamma ramp",
+          .first_dim = 5,
+          .second_dim = 129,
+          .first_curve = {curve_encode_22, curve_smoothstep, curve_decode_30},
+          .second_curve = {curve_decode_20, curve_smoothstep, curve_decode_24},
+      },
+      {
+          .name = "fine panel TRC then coarse gamma ramp",
+          .first_dim = 129,
+          .second_dim = 5,
+          .first_curve = {curve_encode_22, curve_smoothstep, curve_decode_30},
+          .second_curve = {curve_decode_20, curve_smoothstep, curve_decode_24},
+      },
+      {
+          .name = "equal fine dims, nonlinear",
+          .first_dim = 129,
+          .second_dim = 129,
+          .first_curve = {curve_encode_22, curve_smoothstep, curve_decode_30},
+          .second_curve = {curve_decode_20, curve_smoothstep, curve_decode_24},
+      },
+  };
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    ok = run_lut_fold_case(&cases[i]) && ok;
+  }
+  return ok;
+}
+
+void color_transform_fail_lut_fold_alloc_for_test(bool fail);
+
+// A failed fold allocation must release every stage exactly once. A held ref
+// keeps each stage alive through cleanup, so a double release surfaces as a
+// wrong ref_count instead of a use-after-free.
+static bool test_compose_lut_fold_alloc_failure(void) {
+  enum { kDim = 5 };
+  uint16_t table[kDim];
+  for (size_t i = 0; i < kDim; i++) {
+    table[i] = (uint16_t)(i * 65535 / (kDim - 1));
+  }
+  struct wlr_color_transform* first = wlr_color_transform_init_lut_3x1d(kDim, table, table, table);
+  struct wlr_color_transform* second = wlr_color_transform_init_lut_3x1d(kDim, table, table, table);
+  if (!check(first != NULL && second != NULL, "build LUT stages for the failure path")) {
+    return false;
+  }
+  struct wlr_color_transform* held = wlr_color_transform_ref(first);
+  const int first_refs = first->ref_count;
+  const int second_refs = second->ref_count;
+  struct wlr_color_transform* stages[] = {first, second};
+  struct wlr_color_transform* folded = NULL;
+  color_transform_fail_lut_fold_alloc_for_test(true);
+  const bool composed = color_transform_compose(&folded, stages, 2);
+  color_transform_fail_lut_fold_alloc_for_test(false);
+
+  bool ok = check(!composed, "compose reports the fold allocation failure");
+  const bool refs_held = first->ref_count == first_refs && second->ref_count == second_refs;
+  ok = check(refs_held, "fold failure releases each stage exactly once") && ok;
+  if (!refs_held) {
+    fprintf(
+        stderr, "FAIL: stage ref_count after fold failure: first %d (expected %d), second %d (expected %d)\n",
+        first->ref_count, first_refs, second->ref_count, second_refs
+    );
+    return false;
+  }
+  wlr_color_transform_unref(held);
+  wlr_color_transform_unref(first);
+  wlr_color_transform_unref(second);
+  return ok;
 }
 
 // These calculations need no renderer. In particular, a uniform dimming ramp
@@ -810,9 +1008,11 @@ static bool render_sdr_on(
   return wlr_render_pass_submit(pass) && saved;
 }
 
-// Untagged SDR and compositor colors use the output's gamma 2.2 policy on PQ
-// and gamma 2.2 outputs. Explicit SDR metadata keeps its own decoding curve.
-// Both SDR capture paths encode the resulting linear values with gamma 2.2.
+// Untagged SDR and compositor colors decode as sRGB on an SDR output; on a PQ
+// output the sdr_transfer policy selects their decode curve. Explicit SDR
+// metadata keeps its own decoding curve. Both SDR capture paths encode the
+// resulting linear values with the curve the SDR content was decoded with:
+// the sdr_transfer policy on PQ, sRGB on an SDR output.
 static bool test_sdr_curve_consistency(struct fixture* fixture) {
   bool ok = true;
   const uint8_t level = 16;
@@ -831,7 +1031,7 @@ static bool test_sdr_curve_consistency(struct fixture* fixture) {
   const int pq_piecewise = to_u8(linear_to_pq(srgb_linear * 203.0f / 10000.0f));
   const int srgb_captured = to_u8(powf(srgb_linear, 1.0f / 2.2f));
   ok = check(pq_piecewise - pq_shown >= 3, "test level separates gamma 2.2 from piecewise sRGB on PQ") && ok;
-  ok = check(srgb_captured - level >= 3, "capture separates explicit sRGB from inherited gamma 2.2") && ok;
+  ok = check(srgb_captured - level >= 3, "the test level separates sRGB from gamma 2.2 capture encoding") && ok;
   const enum wlr_color_transfer_function pq = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
   const enum wlr_color_transfer_function gamma22 = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
   const struct {
@@ -888,9 +1088,15 @@ static bool test_sdr_curve_consistency(struct fixture* fixture) {
         ok = false;
         continue;
       }
-      const bool explicit_srgb = side == 0 && cases[i].texture_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB;
-      const int expected_capture = explicit_srgb ? srgb_captured : level;
-      const int expected = cases[i].output_tf == pq ? (explicit_srgb ? pq_piecewise : pq_shown) : expected_capture;
+      const bool tagged = side == 0 && cases[i].texture_tf != 0;
+      const bool pq_out = cases[i].output_tf == pq;
+      // An explicit description decodes with its own curve. Untagged content
+      // and compositor colors decode with the sdr_transfer policy on PQ and
+      // with sRGB everywhere else.
+      const bool gamma22_content = tagged ? cases[i].texture_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 : pq_out;
+      const float linear = gamma22_content ? gamma_linear : srgb_linear;
+      const int expected = pq_out ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f)) : to_u8(powf(linear, 1.0f / 2.2f));
+      const int expected_capture = pq_out ? to_u8(powf(linear, 1.0f / 2.2f)) : to_u8(linear_to_srgb(linear));
       if (abs((int)shown[2] - expected) > 1) {
         fprintf(stderr, "%s for %s: shows %u, expected %d\n", sides[side], cases[i].name, shown[2], expected);
         ok = false;
@@ -2488,7 +2694,11 @@ static bool check_sdr_transfer_pixels(
     enum wlr_color_transfer_function source_tf, enum wlr_color_transfer_function output_tf, const char* label
 ) {
   const float encoded = 16.0f / 255.0f;
-  const float inherited = policy == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded) : powf(encoded, 2.2f);
+  const bool pq_out = output_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+  // sdr_tf: the output's sdr_transfer policy applies only on a PQ output; an
+  // SDR output keeps the sRGB decode and sRGB SDR-capture encoding.
+  const enum wlr_color_transfer_function sdr_tf = pq_out ? policy : WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+  const float inherited = sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded) : powf(encoded, 2.2f);
   const float source = source_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? srgb_to_linear(encoded)
       : source_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22             ? powf(encoded, 2.2f)
                                                                      : inherited;
@@ -2497,12 +2707,11 @@ static bool check_sdr_transfer_pixels(
   for (size_t side = 0; side < 2; side++) {
     const int x = side == 0 ? TEST_WIDTH / 4 : TEST_WIDTH * 3 / 4, y = TEST_HEIGHT / 2;
     const float linear = side == 0 ? source : inherited;
-    const int display_expected = output_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
-        ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f))
+    const int display_expected = pq_out                 ? to_u8(linear_to_pq(linear * 203.0f / 10000.0f))
         : output_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear))
                                                         : to_u8(powf(linear, 1.0f / 2.2f));
     const int capture_expected =
-        policy == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear)) : to_u8(powf(linear, 1.0f / 2.2f));
+        sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB ? to_u8(linear_to_srgb(linear)) : to_u8(powf(linear, 1.0f / 2.2f));
     uint8_t shown[4] = {0};
     ok = fixture_read_display_pixel(fixture, target, x, y, shown) && ok;
     const uint8_t capture_value = captured[(y * TEST_WIDTH + x) * 4];
@@ -3226,6 +3435,11 @@ int main(int argc, char* argv[]) {
 
   if (strcmp(argv[1], "hdr-white-point-math") == 0) {
     return test_hdr_white_point_math() ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+  if (strcmp(argv[1], "compose-lut-fold") == 0) {
+    bool folded_ok = test_compose_lut_fold();
+    folded_ok = test_compose_lut_fold_alloc_failure() && folded_ok;
+    return folded_ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
   struct fixture fixture;

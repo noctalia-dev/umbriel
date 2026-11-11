@@ -1,6 +1,9 @@
 #include "server/color_description.h"
 
+#include "output/colorimetry_internal.h"
+
 #include <cmath>
+#include <utility>
 
 namespace umbriel {
 
@@ -28,12 +31,24 @@ namespace umbriel {
           || primaries.white.y != 0.0F;
     }
 
+    // A profile swap with identical colorimetry is still a description change
+    // for the clients reading it through icc_file.
+    bool iccProfilesEqual(const IccProfileStore& left, const IccProfileStore& right) {
+      return left == right || (left != nullptr && right != nullptr && *left == *right);
+    }
+
   } // namespace
 
   uint32_t colorTransferFunctionToWire(uint32_t transferFunction, uint32_t version) {
-    if (version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION
-        && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4) {
+    const bool legacy = version < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION;
+    // compound_power_2_4 is the v2 name of the IEC 61966-2-1 encoding, and
+    // srgb is deprecated from v2 (color-management-v1.xml transfer_function),
+    // so the encoding is described by one name per version.
+    if (legacy && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4) {
       return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+    }
+    if (!legacy && transferFunction == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4;
     }
     return transferFunction;
   }
@@ -61,6 +76,7 @@ namespace umbriel {
     const auto& a = left.data;
     const auto& b = right.data;
     return a.tf_named == b.tf_named
+        && left.tfPower == right.tfPower
         && a.primaries_named == b.primaries_named
         && (a.primaries_named != 0 || primariesEqual(left.customPrimaries, right.customPrimaries))
         && a.has_mastering_display_primaries == b.has_mastering_display_primaries
@@ -75,6 +91,8 @@ namespace umbriel {
         && left.luminances.min == right.luminances.min
         && left.luminances.max == right.luminances.max
         && left.luminances.reference == right.luminances.reference
+        && iccProfilesEqual(left.iccProfile, right.iccProfile)
+        && left.decodeTransform == right.decodeTransform
         && left.luminanceMultiplier == right.luminanceMultiplier
         && left.customLuminances == right.customLuminances
         && left.absoluteLuminance == right.absoluteLuminance
@@ -142,6 +160,148 @@ namespace umbriel {
     description.data.max_cll = static_cast<uint32_t>(std::lround(outputDescription->max_cll));
     description.data.max_fall = static_cast<uint32_t>(std::lround(outputDescription->max_fall));
     return description;
+  }
+
+  ColorDescription characterizedOutputDescription(
+      ColorDescription description, const PanelColorimetry* panel, IccProfileStore iccProfile,
+      SharedColorTransform decodeTransform
+  ) {
+    // HDR (PQ) descriptions keep their BT.2020 encoding contract, including
+    // the automatic-HDR offer; only SDR descriptions reflect the panel.
+    if (panel == nullptr || description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
+      return description;
+    }
+    description.data.primaries_named = 0;
+    description.customPrimaries = panel->primaries;
+    description.data.tf_named = 0;
+    switch (panel->transfer.kind) {
+    case PanelTransfer::Kind::Srgb:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+      break;
+    case PanelTransfer::Kind::Gamma22:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+      break;
+    case PanelTransfer::Kind::Curve: {
+      // A curve that is exactly a named power is stated by name, the same
+      // spelling the parametric creator uses, so one curve never has two.
+      if (const uint32_t named = namedTransferForPower(panel->transfer.exponent); named != 0) {
+        description.data.tf_named = named;
+        break;
+      }
+      // The profile states the curve exactly; tf_power restates it only when
+      // it is a power, so the two representations never disagree.
+      description.tfPower = panel->transfer.exponent;
+      description.decodeTransform = std::move(decodeTransform);
+      break;
+    }
+    }
+    description.iccProfile = std::move(iccProfile);
+    return description;
+  }
+
+  ClientIccDescription clientIccDescription(std::span<const uint8_t> iccBytes, IccPayloadRelease release) {
+    // Wire-level set_icc_file enforces the size contract first (bad_size);
+    // repeating it here keeps the validation vocabulary whole for callers that
+    // hand bytes over without the request, and pins the limit in unit tests.
+    if (iccBytes.empty()) {
+      return {.description = std::nullopt, .error = "empty ICC profile data"};
+    }
+    if (iccBytes.size() > kClientIccSizeLimit) {
+      return {.description = std::nullopt, .error = "ICC profile exceeds the 32 MB limit"};
+    }
+    // The ICC.1 profile header is 128 bytes; the version field's major
+    // version is its byte 8. The protocol admits exactly versions 2 and 4.
+    if (iccBytes.size() < 128) {
+      return {.description = std::nullopt, .error = "truncated ICC profile (header incomplete)"};
+    }
+    const uint8_t versionMajor = iccBytes[8];
+    if (versionMajor != 2 && versionMajor != 4) {
+      return {.description = std::nullopt, .error = "unsupported ICC profile version (must be 2 or 4)"};
+    }
+    // The bytes are client-supplied up to 32 MB: structural bounds are
+    // re-checked at this untrusted boundary before any parser sees them.
+    if (const std::string structureError = color_detail::iccStructureError(iccBytes); !structureError.empty()) {
+      return {.description = std::nullopt, .error = structureError};
+    }
+    const IccParse parsed = parseIccProfile(iccBytes, IccClassScope::DisplayOrColorSpace);
+    if (!parsed.colorimetry) {
+      return {.description = std::nullopt, .error = parsed.error.empty() ? "unsupported ICC profile" : parsed.error};
+    }
+    const PanelColorimetry& colorimetry = *parsed.colorimetry;
+    const TransferFit fit = fitTransfer(colorimetry.transfer);
+
+    ColorDescription description;
+    description.data.primaries_named = 0;
+    description.customPrimaries = colorimetry.primaries;
+    switch (fit.kind) {
+    case TransferFit::Kind::Srgb:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
+      break;
+    case TransferFit::Kind::Gamma22:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+      break;
+    case TransferFit::Kind::Linear:
+      description.data.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+      break;
+    case TransferFit::Kind::Unsupported:
+      // A curve with no exact named equivalent: the renderer cannot paint it,
+      // and substituting the nearest curve would misrepresent the profile to
+      // the client, so the profile is refused ('unsupported') instead.
+      return {
+          .description = std::nullopt,
+          .error = "unsupported transfer curve (only linear, sRGB and gamma 2.2 are representable)",
+      };
+    }
+    description.luminances = defaultColorLuminances(description.data.tf_named);
+    // The client's exact bytes, never a reserialization: get_information's
+    // icc_file event must hand back precisely what set_icc_file received.
+    description.iccProfile = iccStoreForFileProfile(iccBytes, std::move(release));
+    return {.description = std::move(description), .error = {}};
+  }
+
+  uint32_t namedTransferForPower(float exponent) {
+    // 1e-3 matches the exact-match tolerance fitTransfer uses for named
+    // curves, so a curve accepted here and the same curve fitted there agree.
+    constexpr float kTolerance = 1e-3F;
+    if (std::abs(exponent - 1.0F) <= kTolerance) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+    }
+    if (std::abs(exponent - 2.2F) <= kTolerance) {
+      return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
+    }
+    return 0;
+  }
+
+  bool parametricDescription(const ColorDescription& description) {
+    return description.data.tf_named != 0 || description.tfPower > 0.0F;
+  }
+
+  wlr_color_transfer_function bufferTransferFunction(const ColorDescription& description) {
+    // Deliberately not wlr_color_manager_v1_transfer_function_to_wlr: that
+    // converter aborts on named values wlroots does not map (including the
+    // deprecated-but-live WP_..._SRGB, which only maps through
+    // compound_power_2_4) and untrusted client descriptions must never reach
+    // an assert.
+    switch (description.data.tf_named) {
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_BT1886:
+      return WLR_COLOR_TRANSFER_FUNCTION_BT1886;
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22:
+      return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR:
+      return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ:
+      return WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB:
+    case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4:
+      // The IEC 61966-2-1 curve under either protocol name.
+      return WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+    default:
+      break;
+    }
+    // An exponent or a sampled table decodes exactly through the scene's power
+    // and LUT stages, which the caller sets alongside this value; a named
+    // curve the setter cannot express stays unspecified (0).
+    return static_cast<wlr_color_transfer_function>(0);
   }
 
 } // namespace umbriel
