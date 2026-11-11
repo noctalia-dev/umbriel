@@ -237,6 +237,7 @@ if build_tests
     'fp16-blur',
     'fp16-blur-effects',
     'fp16-save-restore',
+    'save-restore-region-edge',
     'sdr10-blur-buffer-format',
     'optimized-blur-format-cache',
     'shared-output-buffers',

@@ -3158,6 +3158,10 @@ bool fx_render_pass_read_to_buffer(
       .clip = &region,
       .transform = WL_OUTPUT_TRANSFORM_NORMAL,
       .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      // A 1:1 copy: bilinear taps blend in the empty texels next to a partial
+      // region at large coordinates, and on 10-bit and FP16 targets that error
+      // compounds across frames into a stripe along the region's edge.
+      .filter_mode = WLR_SCALE_FILTER_NEAREST,
       .dst_box =
           (struct wlr_box){
               .x = 0,
