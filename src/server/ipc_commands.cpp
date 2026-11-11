@@ -10,6 +10,7 @@
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
 #include "server/action_request.h"
+#include "server/color_description.h"
 #include "server/focus.h"
 #include "server/ipc.h"
 #include "server/server.h"
@@ -401,6 +402,18 @@ namespace umbriel {
       return "unknown";
     }
 
+    const char* panelTransferName(const PanelTransfer& transfer) {
+      switch (transfer.kind) {
+      case PanelTransfer::Kind::Srgb:
+        return "srgb";
+      case PanelTransfer::Kind::Gamma22:
+        return "gamma22";
+      case PanelTransfer::Kind::Curve:
+        return "curve";
+      }
+      return "unknown";
+    }
+
     const char* protocolTransferFunctionName(uint32_t value) {
       switch (value) {
       case 0:
@@ -530,6 +543,34 @@ namespace umbriel {
 
         if (!fallback.empty()) {
           std::println("  fallback: {}", fallback);
+        }
+
+        const std::string configuredProfile = output.value("color_profile", "none");
+        const std::string resolvedProfile = output.value("color_profile_resolved", configuredProfile);
+        std::println(
+            "  color profile: {} (resolved {}), SDR gamut: {}, mapping staged: {}", configuredProfile, resolvedProfile,
+            output.value("sdr_gamut", "native"), output.value("sdr_gamut_staged", false) ? "yes" : "no"
+        );
+        // A daemon that predates the characterization fields omits these keys,
+        // so the printer degrades to the inert wording instead of throwing.
+        const auto panelPrimaries = output.find("panel_primaries");
+        const auto panelTransferValue = output.find("panel_transfer");
+        const std::string panelTransfer = panelTransferValue != output.end() && panelTransferValue->is_string()
+            ? panelTransferValue->get<std::string>()
+            : "none";
+        if (panelPrimaries != output.end() && panelPrimaries->is_object()) {
+          const auto& red = panelPrimaries->at("red");
+          const auto& green = panelPrimaries->at("green");
+          const auto& blue = panelPrimaries->at("blue");
+          const auto& white = panelPrimaries->at("white");
+          std::println(
+              "  panel primaries: r {:.4f},{:.4f} g {:.4f},{:.4f} b {:.4f},{:.4f} w {:.4f},{:.4f}; panel transfer: {}",
+              red.at("x").get<double>(), red.at("y").get<double>(), green.at("x").get<double>(),
+              green.at("y").get<double>(), blue.at("x").get<double>(), blue.at("y").get<double>(),
+              white.at("x").get<double>(), white.at("y").get<double>(), panelTransfer
+          );
+        } else {
+          std::println("  panel primaries: none; panel transfer: {}", panelTransfer);
         }
 
         const int configuredDepth = output.value("bit_depth", 8);
@@ -724,6 +765,22 @@ namespace umbriel {
     }
 
   } // namespace
+
+  // Surface transfer label: the named protocol curve, a power exponent for an
+  // output description's tf_power, "unspecified" for a description without a
+  // curve, and "none" for no description at all.
+  std::string surfaceTransferLabel(const ColorDescription* description) {
+    if (description == nullptr) {
+      return "none";
+    }
+    if (description->data.tf_named != 0) {
+      return protocolTransferFunctionName(description->data.tf_named);
+    }
+    if (description->tfPower > 0.0F) {
+      return std::format("power {:.4g}", description->tfPower);
+    }
+    return "unspecified";
+  }
 
   nlohmann::json IpcCommands::windows(Server& server, IpcArgs /*args*/) {
     nlohmann::json windows = nlohmann::json::array();
@@ -990,6 +1047,7 @@ namespace umbriel {
       const wlr_output* wlrOutput = output->wlr();
       const wlr_output_image_description* description = wlrOutput->image_description;
       const bool hdrRequested = output->hdrRequested();
+      const PanelColorimetry* panel = output->panelColorimetry();
       nlohmann::json entry = {
           {"name", wlrOutput->name},
           {"enabled", wlrOutput->enabled},
@@ -1002,6 +1060,12 @@ namespace umbriel {
           {"primaries", description != nullptr ? primariesName(description->primaries) : "none"},
           {"sdr_white", output->sdrWhite()},
           {"sdr_transfer", output->configuredSdrTransfer() == SdrTransfer::Srgb ? "srgb" : "gamma22"},
+          {"color_profile", output->configuredColorProfile()},
+          {"color_profile_resolved", output->resolvedColorProfile()},
+          {"sdr_gamut", output->configuredSdrGamut() == SdrGamut::Srgb ? "srgb" : "native"},
+          // True while the characterized SDR gamut transform is staged on the
+          // frame path ("native" stages nothing, pixels stay pass-through).
+          {"sdr_gamut_staged", output->stagedSdrGamutTransform() != nullptr},
           {"bit_depth", output->configuredBitDepth()},
           {"bit_depth_active", output->bitDepthActive()},
           {"bit_depth_fallback_reason", output->bitDepthFallbackReason()},
@@ -1010,6 +1074,18 @@ namespace umbriel {
           {"max_cll", description != nullptr ? description->max_cll : 0.0},
           {"max_fall", description != nullptr ? description->max_fall : 0.0},
       };
+      // Derived panel characterization: null while inert.
+      entry["panel_primaries"] = nullptr;
+      entry["panel_transfer"] = nullptr;
+      if (panel != nullptr) {
+        entry["panel_primaries"] = {
+            {"red", xy(panel->primaries.red)},
+            {"green", xy(panel->primaries.green)},
+            {"blue", xy(panel->primaries.blue)},
+            {"white", xy(panel->primaries.white)},
+        };
+        entry["panel_transfer"] = panelTransferName(panel->transfer);
+      }
       entry["mastering_display_primaries"] = nullptr;
       entry["mastering_luminance"] = nullptr;
       if (description != nullptr) {
@@ -1038,26 +1114,27 @@ namespace umbriel {
         continue;
       }
       wlr_surface* surface = view->rootSurface();
-      const wlr_image_description_v1_data* description = server.surfaceTreeHdrDescription(surface);
+      const ColorDescription* description = server.surfaceTreeHdrDescription(surface);
       if (description == nullptr) {
         description = server.surfaceImageDescription(surface);
       }
+      const wlr_image_description_v1_data* data = description != nullptr ? &description->data : nullptr;
       nlohmann::json entry = {
           {"id", view->extForeignIdentifier() != nullptr ? view->extForeignIdentifier() : ""},
           {"app_id", view->appId() != nullptr ? view->appId() : ""},
           {"title", view->title() != nullptr ? view->title() : ""},
-          {"transfer_function", protocolTransferFunctionName(description != nullptr ? description->tf_named : 0)},
+          {"transfer_function", surfaceTransferLabel(description)},
           {"primaries",
-           description != nullptr && description->primaries_named == 0
+           data != nullptr && data->primaries_named == 0
                ? "custom"
-               : protocolPrimariesName(description != nullptr ? description->primaries_named : 0)},
-          {"max_cll", description != nullptr ? description->max_cll : 0},
-          {"max_fall", description != nullptr ? description->max_fall : 0},
+               : protocolPrimariesName(data != nullptr ? data->primaries_named : 0)},
+          {"max_cll", data != nullptr ? data->max_cll : 0},
+          {"max_fall", data != nullptr ? data->max_fall : 0},
       };
       entry["mastering_display_primaries"] = nullptr;
       entry["mastering_luminance"] = nullptr;
-      if (description != nullptr && description->has_mastering_display_primaries) {
-        const auto& primaries = description->mastering_display_primaries;
+      if (data != nullptr && data->has_mastering_display_primaries) {
+        const auto& primaries = data->mastering_display_primaries;
         entry["mastering_display_primaries"] = {
             {"red", xy(primaries.red)},
             {"green", xy(primaries.green)},
@@ -1065,10 +1142,10 @@ namespace umbriel {
             {"white", xy(primaries.white)},
         };
       }
-      if (description != nullptr && description->has_mastering_luminance) {
+      if (data != nullptr && data->has_mastering_luminance) {
         entry["mastering_luminance"] = {
-            {"min", description->mastering_luminance.min},
-            {"max", description->mastering_luminance.max},
+            {"min", data->mastering_luminance.min},
+            {"max", data->mastering_luminance.max},
         };
       }
       surfaces.push_back(std::move(entry));

@@ -291,11 +291,14 @@ bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source sourc
   shader->tex = glGetUniformLocation(prog, "tex");
   shader->alpha = glGetUniformLocation(prog, "alpha");
   shader->source_tf = glGetUniformLocation(prog, "source_tf");
+  shader->source_tf_power = glGetUniformLocation(prog, "source_tf_power");
   shader->primaries_matrix = glGetUniformLocation(prog, "primaries_matrix");
   shader->lum_multiplier = glGetUniformLocation(prog, "lum_multiplier");
   shader->source_luminances = glGetUniformLocation(prog, "source_luminances");
   shader->target_tf = glGetUniformLocation(prog, "target_tf");
   shader->map_hdr_to_sdr = glGetUniformLocation(prog, "map_hdr_to_sdr");
+  shader->source_lut = glGetUniformLocation(prog, "source_lut");
+  shader->source_lut_dim = glGetUniformLocation(prog, "source_lut_dim");
   shader->pos_attrib = glGetAttribLocation(prog, "pos");
   shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
 

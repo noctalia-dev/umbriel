@@ -387,6 +387,8 @@ void wlr_scene_surface_update_color(struct wlr_scene_surface* scene_surface) {
     resolver->resolve(scene_surface->surface, &state, resolver->data);
   }
   wlr_scene_buffer_set_transfer_function(scene_surface->buffer, state.transfer_function);
+  wlr_scene_buffer_set_transfer_function_power(scene_surface->buffer, state.transfer_function_power);
+  wlr_scene_buffer_set_decode_transform(scene_surface->buffer, state.decode_transform);
   wlr_scene_buffer_set_primaries(scene_surface->buffer, state.primaries);
   wlr_scene_buffer_set_custom_primaries(scene_surface->buffer, state.custom_primaries);
   wlr_scene_buffer_set_luminances(scene_surface->buffer, &state.luminances, state.absolute_luminance);

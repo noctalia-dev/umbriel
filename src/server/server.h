@@ -141,6 +141,7 @@ namespace umbriel {
   class InputMethodRelay;
   class Gestures;
   class ColorManager;
+  struct ColorDescription;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -202,8 +203,8 @@ namespace umbriel {
     bool outputCaptured(const wlr_output* output) const;
     wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     ColorManager* colorManager() const { return m_colorManager.get(); }
-    const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
-    const wlr_image_description_v1_data* surfaceTreeHdrDescription(wlr_surface* surface) const;
+    const ColorDescription* surfaceImageDescription(wlr_surface* surface) const;
+    const ColorDescription* surfaceTreeHdrDescription(wlr_surface* surface) const;
     void updateColorPreferences();
     wlr_scene_tree* xdgTree() const { return m_xdgTree; }
     wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }

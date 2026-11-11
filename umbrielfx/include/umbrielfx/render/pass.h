@@ -135,6 +135,12 @@ struct fx_render_texture_options {
   // Compress HDR highlights into the SDR range before blending this content.
   // Intermediate textures leave this unset so a scene is not mapped twice.
   bool map_hdr_to_sdr;
+  // Decode for a source curve with no named transfer function: an EOTF
+  // exponent (0 = none) or a 3x1D LUT transform (NULL = none). base's
+  // transfer_function still describes the luminances and is ignored for the
+  // decode when one of these is set.
+  float transfer_function_power;
+  struct wlr_color_transform* decode_transform;
 };
 
 struct fx_render_rect_options {
