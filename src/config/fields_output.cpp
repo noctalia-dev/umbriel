@@ -79,6 +79,7 @@ namespace umbriel {
           ),
       };
       static const registry::Fields<O::Layout> layout{
+          registry::choice("mode", &O::Layout::mode, layoutModes()),
           registry::table("scrolling", &O::Layout::scrolling, scrolling),
       };
       static const registry::Fields<O> fields{

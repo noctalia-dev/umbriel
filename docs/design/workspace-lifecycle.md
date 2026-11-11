@@ -103,7 +103,7 @@ Switching from a static inventory to dynamic workspaces keeps every populated wo
 Layout settings resolve in this order:
 
 1. Base `[layout]` settings.
-2. The matching output's `layout.scrolling.default_extent_fraction`.
+2. The matching output's `layout.mode` and `layout.scrolling.default_extent_fraction`.
 3. A matching global `[[workspace]]` rule.
 4. A matching output-specific `[[workspace]]` rule.
 

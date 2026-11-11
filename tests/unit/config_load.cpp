@@ -782,6 +782,7 @@ UMBRIEL_TEST(outputScrollingDefaultExtentUsesNarrowLayoutScope) {
 
   file.write(R"(
 [output.DP-1.layout]
+mode = "dwindle"
 gap = 12
 
 [output.DP-1.layout.scrolling]
@@ -790,6 +791,7 @@ center_focused = true
 )");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].layout.mode == LayoutMode::Dwindle);
   CHECK(store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
   if (store.config().outputs[0].layout.scrolling.defaultExtentFraction) {
     CHECK_EQ(*store.config().outputs[0].layout.scrolling.defaultExtentFraction, 0.1);
@@ -800,8 +802,14 @@ center_focused = true
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.gap"));
   CHECK(containsDiagnostic(store, "unknown key output.DP-1.layout.scrolling.center_focused"));
 
+  file.write("[output.DP-1.layout]\nmode = \"tiles\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].layout.mode.has_value());
+  CHECK(containsDiagnostic(store, "output.DP-1.layout.mode"));
+
   file.write("[output.DP-1]\nenabled = true\n");
   CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].layout.mode.has_value());
   CHECK(!store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
 }
 

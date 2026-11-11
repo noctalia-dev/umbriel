@@ -347,6 +347,8 @@ namespace umbriel {
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;
     struct Layout {
+      // Layout mode inherited by workspaces on this output.
+      std::optional<LayoutMode> mode;
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
         std::optional<double> defaultExtentFraction;
