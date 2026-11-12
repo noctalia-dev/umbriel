@@ -3,7 +3,8 @@
 # Moving keyboard focus from X11 to native Wayland must release X core input
 # focus and the root active window. Moving back must restore both X focus
 # signals and key delivery. Re-focusing X is the control for chrome-only
-# refreshes that must not clear either signal.
+# refreshes that must not clear either signal. Focus leaving X11 for nothing at
+# all (an empty workspace, the last window unmapping) must release both too.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"
@@ -33,6 +34,7 @@ mkfifo "$X_CONTROL"
 exec {x_control_fd}<>"$X_CONTROL"
 "$X_CLIENT" "$X_TITLE_A" <&"$x_control_fd" > "$X_LOG" 2>&1 &
 "$NATIVE_CLIENT" "$NATIVE_TITLE" > "$NATIVE_LOG" 2>&1 &
+readonly NATIVE_PID=$!
 
 wait_for_windows() {
   for _ in $(seq 60); do
@@ -145,5 +147,31 @@ await_x_state x-restored "$X_TITLE_A" "$X_TITLE_A"
 x_keys_before=$(grep -c "^key window=$X_TITLE_A .* state=pressed$" "$X_LOG" || true)
 "$KEYBOARD" 1280 720 tap 32 > /dev/null
 await_new_event "$X_LOG" "^key window=$X_TITLE_A .* state=pressed$" "$x_keys_before" "the restored X11 key"
+
+# Focus can also leave X11 with no native successor. Showing an empty workspace
+# clears seat focus while the X11 window stays mapped, and X11 must be released
+# the same way. Coming back restores it.
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+await_x_state x-left-for-empty-workspace none none
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
+focus_window "$X_ID_A" "$X_TITLE_A"
+await_x_state x-back-from-empty-workspace "$X_TITLE_A" "$X_TITLE_A"
+
+# The last window of the session closing while focused leaves nothing to take
+# the keyboard either. wlroots retires its focus record at unmap, which must not
+# leave X core focus at PointerRoot.
+kill "$NATIVE_PID"
+for _ in $(seq 60); do
+  [[ -z $(window_id "$NATIVE_TITLE") ]] && break
+  sleep 0.1
+done
+if [[ -n $(window_id "$NATIVE_TITLE") ]]; then
+  echo "the native fixture did not go away: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+focus_window "$X_ID_A" "$X_TITLE_A"
+await_x_state x-alone "$X_TITLE_A" "$X_TITLE_A"
+printf 'unmap\n' >&"$x_control_fd"
+await_x_state x-unmapped-without-successor none none
 
 echo "X11 and native keyboard focus hand off by releasing and restoring both X focus channels"

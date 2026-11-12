@@ -76,12 +76,12 @@ namespace umbriel {
       // marked the surface minimized. Reassert NormalState on activation so the client can complete its restore.
       wlr_xwayland_surface_set_minimized(m_xsurface, false);
     }
-    wlr_xwayland_surface_activate(m_xsurface, activated);
+    m_server->xwayland()->activateSurface(m_xsurface, activated);
   }
 
   void View::reclaimXwaylandFocus() {
     if (m_xsurface != nullptr) {
-      wlr_xwayland_surface_activate(m_xsurface, true);
+      m_server->xwayland()->activateSurface(m_xsurface, true);
     }
   }
 
