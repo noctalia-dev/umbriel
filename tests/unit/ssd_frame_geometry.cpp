@@ -142,6 +142,28 @@ UMBRIEL_TEST(omittedButtonsLeaveNoGapAndWidenTheTitle) {
   }
 }
 
+UMBRIEL_TEST(titleAlignPlacesTheLabelWithinTheTitleSpace) {
+  const auto parts = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived);
+  CHECK_EQ(titleBarLabelX(parts, 480, 100, TitleAlign::Left), 8);
+  CHECK_EQ(titleBarLabelX(parts, 480, 100, TitleAlign::Right), 307);
+  // Centered on the whole bar, not on the space beside the buttons.
+  CHECK_EQ(titleBarLabelX(parts, 480, 100, TitleAlign::Center), 190);
+  const auto left = titleBarLayout(480, 28, TitleBarButtonSide::Left, kAll, kDerived);
+  CHECK_EQ(titleBarLabelX(left, 480, 100, TitleAlign::Center), 190);
+  CHECK_EQ(titleBarLabelX(left, 480, 100, TitleAlign::Right), 372);
+}
+
+UMBRIEL_TEST(centeredTitlesSlideAwayFromTheButtons) {
+  const auto right = titleBarLayout(480, 28, TitleBarButtonSide::Right, kAll, kDerived);
+  CHECK_EQ(titleBarLabelX(right, 480, 380, TitleAlign::Center), 27);
+  CHECK_EQ(titleBarLabelX(right, 480, 399, TitleAlign::Center), 8);
+  const auto left = titleBarLayout(480, 28, TitleBarButtonSide::Left, kAll, kDerived);
+  CHECK_EQ(titleBarLabelX(left, 480, 380, TitleAlign::Center), 73);
+  // A label wider than its space keeps to the start, as the renderer cuts it to fit.
+  CHECK_EQ(titleBarLabelX(right, 480, 500, TitleAlign::Center), 8);
+  CHECK_EQ(titleBarLabelX(right, 480, 500, TitleAlign::Right), 8);
+}
+
 UMBRIEL_TEST(derivedSizeAndPaddingFollowTheBarHeight) {
   constexpr std::array heights{24, 27, 28, 30, 60, 120};
   constexpr std::array sizes{12, 13, 14, 14, 30, 60};

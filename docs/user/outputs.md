@@ -49,13 +49,16 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                    |
 | `direct_scanout`                           | bool                              | `true`       | Allow eligible fullscreen buffers to bypass composition.                                             |
 | `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                               |
-| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                                    |
+| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active, from 80 to 1000.                                   |
 | `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                             |
+| `color_profile`                            | string                            | `"none"`     | SDR panel characterization: `"none"`, `"edid"`, or a path to an ICC profile.                         |
+| `sdr_gamut`                                | string                            | `"native"`   | SDR gamut policy while a characterization is active: `"native"` or `"srgb"`.                         |
 | `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                        |
 | `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                                 |
 | `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                  |
 | `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                              |
 | `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                          |
+| `layout.mode`                              | string                            | inherited    | Layout mode for workspaces on this output: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.  |
 | `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                          |
 | `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.      |
 | `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output. |
@@ -94,6 +97,17 @@ cyclic_workspaces = true
 This applies to `workspace-next`/`previous`, `window-move-to-workspace-next`/`previous`, `window-move-to-workspace-silent-next`/`previous`, `window-move-or-workspace-up`/`down` at the column edge, and `column-move-to-workspace-next`/`previous`.
 
 On a dynamic output, the trailing empty workspace is the last one. Stepping forward from the last populated workspace enters it, and one more step wraps to the first. A static inventory wraps directly at both ends.
+
+### Layout mode
+
+Choose the layout mode for every workspace on one output, including dynamic workspaces created later:
+
+```toml
+[output.DP-1.layout]
+mode = "dwindle"
+```
+
+A matching workspace rule overrides this value. The `mode` key directly under `[output.<name>]` is the display mode, not the layout. See [Choose a layout](layout.md#choose-a-layout).
 
 ### Initial scrolling width
 
@@ -255,7 +269,7 @@ hdr = "on"
 sdr_transfer = "srgb"
 ```
 
-The choice applies on reload and only while that output uses HDR (PQ). It also keeps effect color controls and SDR capture encoding consistent with the chosen curve. Explicit client color descriptions keep their declared transfer function, including piecewise sRGB, gamma 2.2, PQ, and linear content. The display's PQ encoding and normal SDR rendering stay unchanged. Run `umbriel color` to inspect each output's configured `sdr_transfer` choice.
+The choice applies on reload and only while that output uses HDR (PQ). It also keeps effect color controls and SDR capture encoding consistent with the chosen curve. Explicit client color descriptions keep their declared transfer function, including piecewise sRGB, gamma 2.2, PQ, and linear content. The display's PQ encoding and normal SDR rendering stay unchanged. Run `umbriel color` to inspect each output's configured `sdr_transfer` choice, which stays inert while the output renders SDR.
 
 `sdr_white` can also be selected for one running output without editing the configuration:
 
@@ -278,7 +292,7 @@ On a native DRM output, Umbriel reads the display's CTA HDR static metadata from
 
 These display limits describe the target color volume independently of `sdr_white`, which describes SDR reference white within the HDR encoding.
 
-Run `umbriel color` to inspect the metadata in the active output description. The JSON form reports `mastering_display_primaries`, `mastering_luminance`, `max_cll`, and `max_fall` for each output. For surfaces with explicit primary coordinates, `primaries` reports `"custom"`.
+Run `umbriel color` to inspect the metadata in the active output description. The JSON form reports `mastering_display_primaries`, `mastering_luminance`, `max_cll`, and `max_fall` for each output. Its `transfer_function` and `primaries` fields describe the same HDR image description, so both read `"none"` while no HDR encoding is active. For surfaces with explicit primary coordinates, `primaries` reports `"custom"`.
 
 Shared-memory screenshots from normal screencopy and image-copy clients receive an 8-bit SDR view while HDR is active. DMA-BUF capture may retain 10-bit storage while still containing SDR values. Raw export-DMA-BUF is not advertised. Use screencopy or image-copy clients, including image-copy clients with DMA-BUF destinations.
 
@@ -287,6 +301,42 @@ Window captures, including portal window previews, honor the client's committed 
 Existing gamma-control clients, including Night Light tools, can adjust white point and brightness while HDR remains enabled. Umbriel uses each gamma ramp's white endpoint to adjust the image in linear light before PQ encoding. This retains HDR highlight headroom instead of clipping highlights to SDR white, though warming the image deliberately changes its colors and channel brightness.
 
 Custom gamma-curve calibration applies only in SDR. Umbriel keeps the client's latest full gamma table and restores it when the output returns to SDR. An HDR white-point adjustment applies to the whole display, including the cursor, and requires composition while active. SDR screenshots and recordings exclude this adjustment.
+
+### Color profile and SDR gamut
+
+A wide-gamut panel reads every signal value in its own primaries. Untagged SDR content is sRGB, so the panel renders it more saturated than it should — vivid reds and greens, and a window that looks right on an sRGB monitor looks wrong here. Umbriel can characterize the display and convert during composition:
+
+```toml
+[output.DP-1]
+color_profile = "edid"  # "none" (default), "edid", or a path to an ICC file
+sdr_gamut = "srgb"      # "native" (default) or "srgb"
+```
+
+`color_profile` selects the characterization: an ICC file (the factory measurement) takes priority, then `"edid"` derived from the display's own metadata, then `"none"`. The default is `"none"`, which stages nothing. Profile paths follow these rules:
+
+- A relative path resolves against the directory of the config file that sets it, include files included.
+- `~` and `~/` expand to `$HOME`. No other variable placeholders are expanded.
+- `"none"` and `"edid"` are reserved keywords. A file literally named `edid` (or `none`) must be spelled `./edid` (`./none`) or given as an absolute path.
+- The path must resolve to a readable regular file. Directories, FIFOs, and device files are rejected.
+
+Failures fall back down the chain and never fail the output. A value that is not a usable string (wrong type, empty, or containing a NUL byte) is ignored with a warning and the output keeps `"none"`; a path that no longer resolves to a readable regular file falls back to `"edid"` with a warning, and so does an ICC profile that cannot be parsed. Nested and headless outputs have no EDID, so they end up uncharacterized and gamut mapping stays inactive. Saving the profile file triggers the config reload that re-reads it; the re-read is keyed on the file's mtime, so replace the profile with a file whose timestamp actually changed (`cp -p` and archive extraction often keep the old one, and the previous characterization then stays live).
+
+`sdr_gamut` decides what happens to untagged SDR while a characterization is active:
+
+- `"native"` (the default) stages no transform. Pixels stay bit-identical to an uncharacterized output, so behavior only changes where you opted in.
+- `"srgb"` interprets untagged SDR as sRGB and maps it into the panel's colorimetry — the oversaturation fix. The mapping is white-preserving, so switching between the two settings does not change white.
+
+Applications with explicit color management follow the same split: while `sdr_gamut = "srgb"` is active, output and preferred descriptions advertise the panel's colorimetry so they can convert before compositing; under `"native"` they advertise the sRGB destination the compositor really writes, so a tagged client's pixels are unchanged by the profile. The advertised curve is applied without substituting a different one: a curve that matches a named transfer function is stated by name, an exact power is stated as that power, and any other curve is stated by the profile's own bytes plus a decode table on the description. A pipeline that can only use named transfer functions still receives one from `get_preferred_parametric`, and a client tagging a buffer with an advertised description gets the encoding that description states; a sampled curve is carried by a 1024-entry table whose unit-suite worst error is 0.002 of an 8-bit code. Characterization applies to SDR composition only; under HDR the PQ/BT.2020 pipeline behaves exactly as described above.
+
+ICC import accepts matrix-shaper profiles whose three color channels share one transfer curve. sRGB and gamma 2.2 map to named curves, linear and other exact powers are stated as that power, and any other curve is sampled into a lookup table, with a non-monotone table first flattened to its monotone envelope and reported. LUT-based profiles and profiles whose channel curves differ are rejected with a warning and fall back down the chain — one curve cannot render three different channels without a cast the profile does not describe. A `vcgt` tag is ignored: it is a pre-dispatch gamma ramp, not content colorimetry.
+
+While a mapping is staged, direct scanout is disabled (`color_profile = "none"` restores it) and SDR frames leave the 8-bit fast path for FP16 composition with a per-damage re-encode. That increases composition and encoding work on redraws and may increase GPU power use. Output screenshots and recordings show the on-screen mapped result. A window capture keeps the client's own colorimetry and metadata instead, so the same window can differ from the screen while a mapping is staged.
+
+Clients may also import their own ICC profiles through the color-management protocol. Only the three exactly renderable curves are accepted; anything else fails that description instead of rendering an approximation. A client that stages or retains more ICC bytes than its budget allows, holds too many ICC creators at once, or passes an unusable file descriptor gets a protocol error and is disconnected rather than a graceful failure. See the [color-management design note](../design/color-management.md) for the request contract and the limits.
+
+Run `umbriel color` to inspect the effective state: the configured `color_profile` and the source that actually characterized the output (`color_profile_resolved`, which reports `edid` after a profile fell back), `sdr_gamut`, whether a mapping is staged (`mapping staged`, the JSON's `sdr_gamut_staged`), and the panel's `panel_primaries` and `panel_transfer`. The JSON form (`umbriel color --json`) reports the same fields plus the active bit depth and fallback reason.
+
+ICC support is built with lcms2; see [PACKAGING.md](../../PACKAGING.md) for the build option and what degrades without it.
 
 ### Bit depth
 

@@ -34,6 +34,11 @@
 
 #define MAX_QUADS 86 // 4kb
 
+// Source decode selectors shared with tex.frag; they extend wlroots'
+// wlr_color_transfer_function values, which stop at BT.1886.
+#define FX_TRANSFER_FUNCTION_POWER 32
+#define FX_TRANSFER_FUNCTION_LUT 64
+
 struct fx_render_texture_options fx_render_texture_options_default(const struct wlr_render_texture_options* base) {
   struct fx_render_texture_options options = {
       .corners = {0},
@@ -1837,7 +1842,7 @@ static void log_unsupported_output_transform(void) {
   wlr_log(WLR_ERROR, "Unsupported output color transform");
 }
 
-static bool upload_output_lut_texture(const struct wlr_color_transform_lut_3x1d* lut, GLuint* texture) {
+static bool upload_lut_texture(const struct wlr_color_transform_lut_3x1d* lut, GLuint* texture) {
   GLint max_size;
   glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_size);
   if (lut->dim > (size_t)max_size || lut->dim > INT32_MAX / 6) {
@@ -1878,7 +1883,7 @@ static bool upload_output_lut_texture(const struct wlr_color_transform_lut_3x1d*
   return true;
 }
 
-void fx_output_lut_destroy(struct fx_output_lut* lut) {
+void fx_lut_texture_destroy(struct fx_lut_texture* lut) {
   wl_list_remove(&lut->link);
   wlr_addon_finish(&lut->addon);
 
@@ -1889,42 +1894,42 @@ void fx_output_lut_destroy(struct fx_output_lut* lut) {
     pop_fx_debug(lut->renderer);
     wlr_egl_restore_context(&prev_ctx);
   } else {
-    wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying output LUT");
+    wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying an LUT texture");
   }
   free(lut);
 }
 
-static void output_lut_handle_destroy(struct wlr_addon* addon) {
-  struct fx_output_lut* lut = wl_container_of(addon, lut, addon);
-  fx_output_lut_destroy(lut);
+static void lut_texture_handle_destroy(struct wlr_addon* addon) {
+  struct fx_lut_texture* lut = wl_container_of(addon, lut, addon);
+  fx_lut_texture_destroy(lut);
 }
 
-static const struct wlr_addon_interface output_lut_addon_impl = {
-    .name = "fx_output_lut",
-    .destroy = output_lut_handle_destroy,
+static const struct wlr_addon_interface lut_texture_addon_impl = {
+    .name = "fx_lut_texture",
+    .destroy = lut_texture_handle_destroy,
 };
 
-static struct fx_output_lut*
-get_or_create_output_lut(struct fx_renderer* renderer, struct wlr_color_transform_lut_3x1d* transform) {
-  struct wlr_addon* addon = wlr_addon_find(&transform->base.addons, renderer, &output_lut_addon_impl);
+static struct fx_lut_texture*
+get_or_create_lut_texture(struct fx_renderer* renderer, struct wlr_color_transform_lut_3x1d* transform) {
+  struct wlr_addon* addon = wlr_addon_find(&transform->base.addons, renderer, &lut_texture_addon_impl);
   if (addon != NULL) {
-    struct fx_output_lut* lut = NULL;
+    struct fx_lut_texture* lut = NULL;
     return wl_container_of(addon, lut, addon);
   }
 
-  struct fx_output_lut* lut = calloc(1, sizeof(*lut));
+  struct fx_lut_texture* lut = calloc(1, sizeof(*lut));
   if (lut == NULL) {
     return NULL;
   }
   lut->renderer = renderer;
   lut->dim = transform->dim;
-  if (!upload_output_lut_texture(transform, &lut->texture)) {
+  if (!upload_lut_texture(transform, &lut->texture)) {
     free(lut);
     return NULL;
   }
 
-  wlr_addon_init(&lut->addon, &transform->base.addons, renderer, &output_lut_addon_impl);
-  wl_list_insert(&renderer->output_luts, &lut->link);
+  wlr_addon_init(&lut->addon, &transform->base.addons, renderer, &lut_texture_addon_impl);
+  wl_list_insert(&renderer->lut_textures, &lut->link);
   return lut;
 }
 
@@ -2047,6 +2052,19 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   glUseProgram(shader->program);
 
+  // A curve the named enum cannot express decodes through an exponent or a
+  // 3x1D LUT. Both are resolved before the source texture binds, so a LUT
+  // upload cannot disturb unit 0.
+  const bool source_power = fx_options->transfer_function_power > 0.0F;
+  struct fx_lut_texture* source_lut = NULL;
+  if (fx_options->decode_transform != NULL && fx_options->decode_transform->type == COLOR_TRANSFORM_LUT_3X1D) {
+    source_lut = get_or_create_lut_texture(renderer, color_transform_lut_3x1d_from_base(fx_options->decode_transform));
+  }
+  if (fx_options->decode_transform != NULL && source_lut == NULL && !renderer->content_decode_fallback_logged) {
+    renderer->content_decode_fallback_logged = true;
+    wlr_log(WLR_ERROR, "Cannot apply the content decode transform; content decodes through the frame's SDR curve");
+  }
+
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(texture->target, texture->tex);
 
@@ -2077,8 +2095,12 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   }
   const enum wlr_color_transfer_function target_tf =
       pass->has_color_transform ? WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR : pass->sdr_tf;
-  const bool color_passthrough =
-      source_tf == target_tf && primaries_passthrough && lum_multiplier == 1.0F && !fx_options->map_hdr_to_sdr;
+  const bool color_passthrough = source_tf == target_tf
+      && primaries_passthrough
+      && lum_multiplier == 1.0F
+      && !fx_options->map_hdr_to_sdr
+      && !source_power
+      && source_lut == NULL;
 
   float primaries_matrix[9];
   if (primaries_passthrough) {
@@ -2088,7 +2110,16 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     color_primaries_transform_relative_colorimetric(options->primaries, &primaries_srgb, matrix);
     transpose_color_matrix(primaries_matrix, matrix);
   }
-  glUniform1i(shader->source_tf, color_passthrough ? 0 : source_tf);
+  const int decode_tf = source_power ? FX_TRANSFER_FUNCTION_POWER : source_lut != NULL ? FX_TRANSFER_FUNCTION_LUT : 0;
+  glUniform1i(shader->source_tf, color_passthrough ? 0 : decode_tf != 0 ? decode_tf : (int)source_tf);
+  glUniform1f(shader->source_tf_power, source_power ? fx_options->transfer_function_power : 1.0F);
+  if (source_lut != NULL) {
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, source_lut->texture);
+    glUniform1i(shader->source_lut, 2);
+    glUniform1f(shader->source_lut_dim, source_lut->dim);
+    glActiveTexture(GL_TEXTURE0);
+  }
   glUniformMatrix3fv(shader->primaries_matrix, 1, GL_FALSE, primaries_matrix);
   glUniform1f(shader->lum_multiplier, lum_multiplier);
   glUniform2f(
@@ -2551,7 +2582,11 @@ void fx_render_pass_add_box_shadow(
   // blending will practically always be needed (unless we have a madman
   // who uses opaque shadows with zero sigma), so just enable it
   setup_blending(WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  // The shader emits straight alpha, so the colour channels scale the source
+  // by it, but the alpha channel must land as an ordinary "over": scaling it
+  // too leaves 1 - a + a^2 on an opaque destination, and the output transform
+  // unpremultiplies by that alpha (dark shadows under a staged mapping).
+  glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
   glUseProgram(renderer->shaders.box_shadow.program);
 
@@ -3309,10 +3344,11 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
       free(pass);
       return NULL;
     }
+    // The supplied transform's EOTF stage says how the frame is written, not
+    // how its content is decoded: untagged SDR is sRGB, so only a PQ
+    // destination reselects the SDR decode curve (the sdr_transfer setting).
     if (state.tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ) {
       sdr_tf = pq_sdr_transfer;
-    } else if (state.tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22) {
-      sdr_tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
     }
     struct wlr_allocator* allocator = output_buffers != NULL ? output_buffers->allocator : renderer->allocator;
     if (allocator == NULL) {
@@ -3356,7 +3392,7 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
     memcpy(pass->output_matrix, state.matrix, sizeof(pass->output_matrix));
     pass->output_tf = state.tf;
     if (state.lut != NULL) {
-      struct fx_output_lut* lut = get_or_create_output_lut(renderer, state.lut);
+      struct fx_lut_texture* lut = get_or_create_lut_texture(renderer, state.lut);
       if (lut == NULL) {
         free(pass);
         return NULL;

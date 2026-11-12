@@ -231,6 +231,10 @@ namespace umbriel {
   }
 
   int View::presentedWidth(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().width;
+      return m_tiled ? std::min(committed, target.width) : committed;
+    }
     if (sizeGrabActive()) {
       return target.width;
     }
@@ -249,6 +253,10 @@ namespace umbriel {
   void View::trackPresentedSize(int width, int height) { m_presentation.track(width, height); }
 
   int View::presentedHeight(const wlr_box& target) const {
+    if (presentsCommittedSize()) {
+      const int committed = committedContentBox().height;
+      return m_tiled ? std::min(committed, target.height) : committed;
+    }
     if (sizeGrabActive()) {
       return target.height;
     }
@@ -275,11 +283,13 @@ namespace umbriel {
 
   void View::applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip) {
     m_presentation.applyCrop(m_contentTree, rootSurface(), geometryBox(), content, surfaceClip);
+    m_presentedCropActive = true;
     syncXwaylandShape();
   }
 
   void View::resetPresentedSurface() {
     m_presentation.resetCrop(m_contentTree, rootSurface());
+    m_presentedCropActive = false;
     // Clear the subsurface clip so the next syncViewPresentation re-applies the resting clip through a real
     // reconfigure: an unchanged clip box early-outs and would leave the animated src/dst behind.
     setSurfaceTreeClip(nullptr);
@@ -380,6 +390,8 @@ namespace umbriel {
         && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace))
         && !tiledResizeWaitsForClient();
   }
+
+  bool View::presentsCommittedSize() const { return sizeGrabTracksPointer() || m_pointerResizeSettling; }
 
   bool View::tiledResizeWaitsForClient() const {
     const auto& animation = config().animation;
@@ -1311,12 +1323,18 @@ namespace umbriel {
         .width = content.width,
         .height = content.height,
     };
+    const bool committedSize = presentsCommittedSize();
+    if (committedSize && m_presentedCropActive) {
+      // The clip below crops 1:1, but an unchanged clip box would keep the scaled crop programmed before.
+      resetPresentedSurface();
+    }
     setSurfaceTreeClip(&surfaceClip);
     applyCornerRadius();
-    if (layoutPresentationOwned()
-        || sizeGrabActive()
-        || m_floating.pendingSize()
-        || (openingAnimationActive() && m_openingFloatingSize)) {
+    if (!committedSize
+        && (layoutPresentationOwned()
+            || sizeGrabActive()
+            || m_floating.pendingSize()
+            || (openingAnimationActive() && m_openingFloatingSize))) {
       // The clip crops 1:1 in surface coordinates and caps the destination at the committed surface size, so it cannot
       // express an animated or interactive presented size. Program the buffer directly; the clip above keeps the buffer
       // node positioned at the visible box origin.

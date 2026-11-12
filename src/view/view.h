@@ -15,6 +15,7 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -107,6 +108,7 @@ namespace umbriel {
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
     void requestClose();
+    [[nodiscard]] std::expected<void, std::string> killClient();
     // The client's window geometry in surface-local coordinates.
     wlr_box geometryBox() const;
     SizeHints sizeHints() const;
@@ -739,6 +741,9 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
+    // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
+    // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
+    bool presentsCommittedSize() const;
     // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
     bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
@@ -779,7 +784,7 @@ namespace umbriel {
     // Keep floats visually at the last requested size while client geometry lags.
     void syncFloatingSurfaceClip();
     void beginFloatingResize(uint32_t edges);
-    void resizeFloating(const wlr_box& box);
+    void resizeFloating(int width, int height);
     void finishFloatingResize();
     void sendFloatingSize(int width, int height);
     void commitFloatingSize();
@@ -952,6 +957,9 @@ namespace umbriel {
     std::optional<FloatingSizeConfigure> m_floatingSizeConfigure;
     bool m_deferXwaylandConfigure = false;
     bool m_xwaylandResizeConfigurePending = false;
+    bool m_pointerResizeSettling = false;
+    // applyPresentedCrop programmed the buffer; the surface clip alone no longer describes it.
+    bool m_presentedCropActive = false;
     std::optional<std::string> m_xdgTag;
     ContentType m_contentType = ContentType::None;
     wlr_scene_tree* m_sceneTree = nullptr;
@@ -1075,6 +1083,8 @@ namespace umbriel {
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen before the layout attach, so the client
     // never sees a transient column-sized configure. Cleared when fullscreen is left by any other path.
     bool m_refullscreenOnTile = false;
+    // Set when a maximized tile leaves the layout, and by maximize toggles while it floats: re-tiling maximizes again.
+    bool m_remaximizeOnTile = false;
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;

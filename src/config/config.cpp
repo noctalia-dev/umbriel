@@ -5,6 +5,7 @@
 #include "config/config_merge.h"
 #include "config/config_registry.h"
 #include "config/fields.h"
+#include "config/overrides.h"
 #include "config/section.h"
 #include "config/store.h"
 
@@ -66,12 +67,52 @@ namespace umbriel {
       return fields;
     }
 
+    // The effect readers read only declared names. Names a runtime override introduces are declared after the file's,
+    // and a name the file already declares as the other kind is dropped, as the include merge drops a pool shadowed by
+    // a preset.
+    void declareOverrideEffects(configmerge::MergeResult& result, const toml::table& overrides) {
+      const auto* effects = overrides.get_as<toml::table>("effects");
+      if (effects == nullptr) {
+        return;
+      }
+      const auto declared = [](const std::vector<configmerge::EffectDeclaration>& declarations, std::string_view name) {
+        return std::ranges::find(declarations, name, &configmerge::EffectDeclaration::name) != declarations.end();
+      };
+      const auto declare = [&](std::string_view kind, std::vector<configmerge::EffectDeclaration>& own,
+                               const std::vector<configmerge::EffectDeclaration>& other, std::string_view otherKind) {
+        const auto* names = effects->get_as<toml::table>(kind);
+        if (names == nullptr) {
+          return;
+        }
+        for (const auto& [name, value] : *names) {
+          if (declared(other, name.str())) {
+            emitDiag(
+                ConfigDiagnostic::Severity::Warning, nullptr,
+                std::format("ignoring effects.{}.{} ({} with this name is declared)", kind, name.str(), otherKind)
+            );
+            if (auto* merged = result.merged["effects"][kind].as_table()) {
+              merged->erase(name.str());
+            }
+            continue;
+          }
+          if (!declared(own, name.str())) {
+            own.push_back({.name = std::string(name.str()), .source = {}});
+          }
+        }
+      };
+      declare("preset", result.presets, result.pools, "pool");
+      declare("pool", result.pools, result.presets, "preset");
+    }
+
   } // namespace
 
-  ConfigParseOutcome parseConfig(Config& out, const std::filesystem::path& rootPath) {
+  ConfigParseOutcome parseConfig(Config& out, toml::table& effective, const std::filesystem::path* rootPath) {
     ConfigStore& store = configStore();
     try {
-      auto result = configmerge::mergeWithIncludes(rootPath);
+      configmerge::MergeResult result;
+      if (rootPath != nullptr) {
+        result = configmerge::mergeWithIncludes(*rootPath);
+      }
       store.setMissingIncludes(result.missingIncludes);
       for (auto& diagnostic : result.diagnostics) {
         store.addDiagnostic(std::move(diagnostic));
@@ -79,6 +120,8 @@ namespace umbriel {
       for (const auto& path : result.loadedFiles) {
         store.addWatchPath(path);
       }
+      configoverrides::overlay(result.merged, store.overrides());
+      declareOverrideEffects(result, store.overrides());
       if ((result.missingIncludes || result.missingOptionalIncludes) && result.merged.contains("drm")) {
         emitDiag(
             ConfigDiagnostic::Severity::Error, nullptr, "cannot safely load DRM policy while an include is missing"
@@ -90,6 +133,10 @@ namespace umbriel {
       }
 
       Config loaded;
+      if (rootPath == nullptr) {
+        // Without a file the session runs the default binds, which overrides only add to.
+        loaded.keybinds = defaultKeybinds();
+      }
       std::vector<EffectReference> effectReferences;
       {
         Section root(result.merged, "", store.mutableDiagnostics());
@@ -109,6 +156,23 @@ namespace umbriel {
               titleBar.buttonSize, titleBar.height, used
           );
           titleBar.buttonSize = used;
+        }
+        if (titleBar.buttonGlyphSize == 0) {
+          warnAt(
+              result.merged.at_path("appearance.title_bar.button_glyph_size").node()->source(),
+              "appearance.title_bar.button_glyph_size = 0 out of range (-1 or 1 to 128), clamped to 1"
+          );
+          titleBar.buttonGlyphSize = 1;
+        }
+        // A thinner stroke antialiases to nothing visible at scale 1.
+        constexpr double kMinGlyphStroke = 0.5;
+        if (titleBar.buttonGlyphStroke != -1.0 && titleBar.buttonGlyphStroke < kMinGlyphStroke) {
+          warnAt(
+              result.merged.at_path("appearance.title_bar.button_glyph_stroke").node()->source(),
+              "appearance.title_bar.button_glyph_stroke = {} out of range (-1 or {} to 16), clamped to {}",
+              titleBar.buttonGlyphStroke, kMinGlyphStroke, kMinGlyphStroke
+          );
+          titleBar.buttonGlyphStroke = kMinGlyphStroke;
         }
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);
@@ -134,6 +198,7 @@ namespace umbriel {
       }
 
       out = std::move(loaded);
+      effective = std::move(result.merged);
       return ConfigParseOutcome::Loaded;
     } catch (const std::exception& exception) {
       emitDiag(ConfigDiagnostic::Severity::Error, nullptr, std::format("config load error: {}", exception.what()));

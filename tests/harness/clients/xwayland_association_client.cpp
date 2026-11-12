@@ -1,12 +1,15 @@
 // A real X11 client that paints only its window background. It starts unmapped,
 // and never repaints on its own, so a later frame cannot rescue a missed map.
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <poll.h>
 #include <print>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 #include <xcb/xcb.h>
 
 namespace {
@@ -45,6 +48,7 @@ int main(int argc, char** argv) {
     return 2;
   }
   setvbuf(stdout, nullptr, _IOLBF, 0);
+  setvbuf(stdin, nullptr, _IONBF, 0);
   xcb_connection_t* connection = xcb_connect(nullptr, nullptr);
   if (connection == nullptr || xcb_connection_has_error(connection) != 0) {
     std::println(stderr, "xwayland-association-client: cannot connect to DISPLAY");
@@ -70,7 +74,34 @@ int main(int argc, char** argv) {
   std::println("ready window={}", window);
 
   std::array<char, 128> line{};
-  while (std::fgets(line.data(), static_cast<int>(line.size()), stdin) != nullptr) {
+  while (xcb_connection_has_error(connection) == 0) {
+    std::array<pollfd, 2> descriptors{{
+        {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
+        {.fd = xcb_get_file_descriptor(connection), .events = POLLIN, .revents = 0},
+    }};
+    if (poll(descriptors.data(), descriptors.size(), -1) < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      std::println(stderr, "xwayland-association-client: poll failed: {}", std::strerror(errno));
+      xcb_disconnect(connection);
+      return 1;
+    }
+    if ((descriptors[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+      // Close requests remain unhandled, but losing the X11 connection ends the client.
+      while (xcb_generic_event_t* event = xcb_poll_for_event(connection)) {
+        std::free(event);
+      }
+      if (xcb_connection_has_error(connection) != 0) {
+        break;
+      }
+    }
+    if ((descriptors[0].revents & (POLLIN | POLLHUP)) == 0) {
+      continue;
+    }
+    if (std::fgets(line.data(), static_cast<int>(line.size()), stdin) == nullptr) {
+      break;
+    }
     std::string command = line.data();
     if (!command.empty() && command.back() == '\n') {
       command.pop_back();
@@ -89,6 +120,16 @@ int main(int argc, char** argv) {
       }
       xcb_flush(connection);
       std::println("{}-requested", command);
+    } else if (command == "retain") {
+      xcb_set_close_down_mode(connection, XCB_CLOSE_DOWN_RETAIN_PERMANENT);
+      xcb_flush(connection);
+      std::println("retain-requested");
+    } else if (command == "delete-protocol") {
+      const xcb_atom_t protocols = internAtom(connection, "WM_PROTOCOLS");
+      const xcb_atom_t deleteWindow = internAtom(connection, "WM_DELETE_WINDOW");
+      xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, protocols, XCB_ATOM_ATOM, 32, 1, &deleteWindow);
+      xcb_flush(connection);
+      std::println("delete-protocol-requested");
     } else if (command.starts_with("state ")) {
       xcb_get_window_attributes_reply_t* attributes =
           xcb_get_window_attributes_reply(connection, xcb_get_window_attributes(connection, window), nullptr);
