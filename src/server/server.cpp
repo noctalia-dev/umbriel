@@ -72,7 +72,7 @@ namespace umbriel {
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
     // [[security_context_rule]] widens the set for matching clients.
-    constexpr std::array<std::string_view, 32> kAllowedSecurityContextGlobals{
+    constexpr std::array<std::string_view, 33> kAllowedSecurityContextGlobals{
         "wl_shm",
         "wl_drm",
         "zwp_linux_dmabuf_v1",
@@ -83,6 +83,7 @@ namespace umbriel {
         "zwp_primary_selection_device_manager_v1",
         "wp_viewporter",
         "wp_fractional_scale_manager_v1",
+        "wp_alpha_modifier_v1",
         "wp_presentation",
         "wp_tearing_control_manager_v1",
         "wp_content_type_manager_v1",
@@ -681,6 +682,7 @@ namespace umbriel {
     updateDrmLeaseState();
     wlr_viewporter_create(m_display);
     wlr_fractional_scale_manager_v1_create(m_display, 1);
+    wlr_alpha_modifier_v1_create(m_display);
     wlr_presentation_create(m_display, m_backend, 2);
     m_tearingControlManager = wlr_tearing_control_manager_v1_create(m_display, 1);
     if (m_tearingControlManager == nullptr) {
