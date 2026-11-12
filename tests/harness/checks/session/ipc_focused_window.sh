@@ -14,7 +14,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
 enabled = false
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 

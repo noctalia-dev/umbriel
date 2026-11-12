@@ -294,7 +294,7 @@ hide_timeout_ms = 0
 
 Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout.
 
-`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Pointer-driven focus, gestures, and automatic replacement focus do not move it. `window-focus-warp <id>` always moves the cursor regardless of this setting. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
+`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Moving the focused window with a keybind, such as a move, swap, consume, or `window-move-by`, moves the cursor to the window's center. New windows, activation requests, and the replacement focus after a close do not move the cursor, so it stays on a dock, bar, or tray icon. Pointer-driven focus and gestures do not move it either. `window-focus-warp <id>` always moves the cursor regardless of this setting. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
 
 ### Drag edge scroll
 
@@ -321,16 +321,26 @@ Speed rises from zero at the inner edge of the trigger zone to `max_speed` at th
 
 ```toml
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 follows_mouse_max_scroll = 0.5
 hover_raises = true
 ```
 
-`follows_mouse = true` focuses the window that the pointer enters through real pointer motion. Scrolling or dragging a layout beneath a stationary pointer does not change focus. After explicit layout scrolling settles, the next real pointer motion can focus the window beneath it without a border crossing. Pointer motion during scrolling does not change focus. Consume and expel commands also let the next pointer motion refresh focus after rearranging windows. This follows the actual seat focus across tiled, floating, and pinned windows, including a pinned window that kept focus across a workspace switch.
+| Value    | Behavior                                                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off`    | Only clicks, keybinds, and activation move focus.                                                                                                                |
+| `sloppy` | Moving the pointer onto a window focuses it. Focus given elsewhere by a keybind, a new window, or an activation stays while the pointer remains over its window. |
+| `always` | Every pointer motion focuses the window under the pointer, and so does a scene change that leaves another window under a still pointer.                          |
+
+Scrolling or dragging a layout beneath a stationary pointer does not change focus, and neither does pointer motion during scrolling. This follows the actual seat focus across tiled, floating, and pinned windows, including a pinned window that kept focus across a workspace switch.
+
+With `sloppy`, real pointer motion onto another window focuses it, and a still pointer never changes focus. When explicit layout scrolling, a layout command such as a move, swap, consume, or expel, a workspace switch, or leaving fullscreen puts a different window beneath the pointer, the next real pointer motion focuses it without a border crossing. A window that opens or takes focus away from the pointer keeps that focus while the pointer moves within the window it was already over.
+
+With `always`, any real pointer motion focuses the window beneath it, even inside the window the pointer was already over. Once the layout settles after a workspace switch, a closed or minimized window, a layout command, layout scrolling, or leaving fullscreen, Umbriel also focuses the window under a still pointer, without scrolling the layout to reveal it. A keyboard focus change, a new window, or an activation keeps focus until the pointer next moves, unless `[input.cursor] follows_focus = true` carried the pointer to the newly focused window. If another window, such as a floating one, covers the spot where the pointer lands, the next motion focuses that window.
 
 When a dialog has focus, motion within the parent window beneath the pointer keeps the dialog focused so the pointer can reach it. This applies to floating dialogs and lets tiled dialogs finish scrolling into view. Crossing back into the parent from another window, clicking it, or choosing it with a focus command still transfers focus to the parent. This behavior is the same with either value of `hover_raises`.
 
-`hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters with `follows_mouse = true`, and defaults to `true`.
+`hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters when `follows_mouse` is not `off`, and defaults to `true`.
 
 While a client holds a pointer or keyboard grab, such as an open tray menu, hovering a window or crossing outputs preserves that grab and its keyboard focus. An outside click or explicit focus action can still dismiss the menu.
 

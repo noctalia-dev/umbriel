@@ -7,6 +7,7 @@ using umbriel::Config;
 using umbriel::ConfigChange;
 using umbriel::ConfigEffects;
 using umbriel::ContentType;
+using umbriel::FollowsMouse;
 using umbriel::Keybind;
 using umbriel::LayerRule;
 using umbriel::ModifierKey;
@@ -242,7 +243,7 @@ UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   CHECK(ConfigChange::between(before, scrolled).layout);
 
   Config focused;
-  focused.input.focus.followsMouse = !focused.input.focus.followsMouse;
+  focused.input.focus.followsMouse = FollowsMouse::Sloppy;
   CHECK(ConfigChange::between(before, focused).input);
 }
 

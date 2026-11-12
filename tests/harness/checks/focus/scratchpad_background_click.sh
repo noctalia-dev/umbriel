@@ -24,7 +24,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 
 [[scratchpad]]
 name = "background"

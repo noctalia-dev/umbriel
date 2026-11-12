@@ -16,7 +16,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 gap = 0
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 
 [input.cursor]
 follows_focus = false

@@ -40,7 +40,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 [animation]
 enabled = false
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 [output.HEADLESS-1]
 position = [0, 0]
 scale = 1
@@ -93,9 +93,9 @@ grim -o HEADLESS-2 "$UMBRIEL_RUNTIME_DIR/fullscreen.png"
 pixel=$("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/fullscreen.png" pixel 100 10)
 [[ $pixel == "51 136 204" ]] || { echo "fullscreen content missing at the top: $pixel"; exit 1; }
 
-for follows in false true; do
+for follows in off sloppy; do
   for delay in 0 75; do
-    sed -i "s/^follows_mouse = .*/follows_mouse = $follows/; s/^delay_ms = .*/delay_ms = $delay/" "$UMBRIEL_CONFIG"
+    sed -i "s/^follows_mouse = .*/follows_mouse = \"$follows\"/; s/^delay_ms = .*/delay_ms = $delay/" "$UMBRIEL_CONFIG"
     action config-reload
     for side in left right; do
       if [[ $side == left ]]; then
@@ -136,7 +136,7 @@ wait_workspace HEADLESS-2 3
 wait_field corner-middle-game fullscreen true
 
 # The destination's current regular focus wins over an older fullscreen window there.
-sed -i 's/^follows_mouse = .*/follows_mouse = false/' "$UMBRIEL_CONFIG"
+sed -i 's/^follows_mouse = .*/follows_mouse = "off"/' "$UMBRIEL_CONFIG"
 action config-reload
 action workspace-switch 1 --output HEADLESS-2
 pointer move 1792 288
