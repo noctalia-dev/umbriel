@@ -13,7 +13,7 @@ drag_opacity = 1.0
 [appearance.shadow]
 enabled = false
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 [output.HEADLESS-1]
 scale = 1
 CONFIG

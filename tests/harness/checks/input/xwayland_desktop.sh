@@ -21,7 +21,7 @@ enabled = false
 default_extent_fraction = 1.0
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 
 [output.HEADLESS-1]
 position = [-640, 0]

@@ -39,7 +39,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 enabled = false
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [layout.scrolling]
 default_extent_fraction = 1.0
