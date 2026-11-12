@@ -50,6 +50,7 @@ unit_tests = [
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['output-direct-scanout', ['unit/output_direct_scanout.cpp'], []],
   ['output-hdr-transition', ['unit/output_hdr_transition.cpp'], []],
+  ['output-connector-hdr-state', ['unit/output_connector_hdr_state.cpp'], []],
   ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['output-gamma-transition', ['unit/output_gamma_transition.cpp'], []],
   ['hdr-metadata', ['unit/hdr_metadata.cpp'], [umbriel_core_dep]],
