@@ -448,6 +448,9 @@ blur_optimized = false
 # the overview after a short delay.
 # Overview: https://docs.noctalia.dev/umbriel/workspaces-overview/
 # Animation: https://docs.noctalia.dev/umbriel/animation/
+# Pan the filmstrip with a held right-button drag, like the middle button's built-in pan.
+# [overview]
+# right_button_pan = true
 [hot_corners.top_left]
 enabled = true
 delay_ms = 500

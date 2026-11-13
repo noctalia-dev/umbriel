@@ -2778,9 +2778,10 @@ namespace umbriel {
     }
 
     if (!pressed) {
-      if (button == BTN_MIDDLE) {
+      if (button == BTN_MIDDLE || (button == BTN_RIGHT && config().overview.rightButtonPan)) {
         Card* card = m_middlePressCard;
-        const bool closeCard = m_middlePressed && !m_middleDragging;
+        // Middle keeps its close-on-release; the right button only pans.
+        const bool closeCard = button == BTN_MIDDLE && m_middlePressed && !m_middleDragging;
         if (m_middleScrolling) {
           // A release settles the strip; clearMiddlePress() cancels whatever is still running.
           m_server->gestures()->endPointerScroll(false, timeMsec);
@@ -2814,7 +2815,7 @@ namespace umbriel {
     }
 
     Card* card = cardAt(lx, ly);
-    if (button == BTN_MIDDLE) {
+    if (button == BTN_MIDDLE || (button == BTN_RIGHT && config().overview.rightButtonPan)) {
       m_middlePressCard = card;
       Workspace* workspace = card != nullptr && card->view != nullptr
           ? card->view->workspace()
