@@ -7,6 +7,7 @@
 // `popup-color=<ARGB>` paints that menu in a premultiplied colour, so a translucent menu can show what lies below it.
 // LAYER_CONTROL enables stdin commands: frames LABEL COUNT, color LABEL AARRGGBB, child-color LABEL AARRGGBB,
 // child-move LABEL X Y, and margins LABEL TOP RIGHT BOTTOM LEFT. Each prints done after its frame callbacks arrive.
+// popup-resize LABEL WIDTH HEIGHT overlaps two reposition requests and waits for its own token before redrawing.
 
 #include <wayland-client.h>
 
@@ -64,6 +65,13 @@ namespace {
     bool popupMapped = false;
     bool popupOnClick = false;
     bool popupOnRelease = false;
+    int popupAnchorX = 0;
+    int popupAnchorY = 0;
+    int popupWidth = 0;
+    int popupHeight = 0;
+    uint32_t popupToken = 0;
+    std::optional<uint32_t> popupWaitToken;
+    std::optional<uint32_t> popupConfigureToken;
     bool hasPointerPosition = false;
     int pointerX = 0;
     int pointerY = 0;
@@ -173,11 +181,20 @@ namespace {
     wl_surface_commit(state.frameSurface);
   }
 
+  xdg_positioner* popupPositioner(State& state, int width, int height, int anchorX, int anchorY) {
+    xdg_positioner* positioner = xdg_wm_base_create_positioner(state.wmBase);
+    xdg_positioner_set_size(positioner, width, height);
+    xdg_positioner_set_anchor_rect(positioner, anchorX, anchorY, 1, 1);
+    xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_BOTTOM_LEFT);
+    xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    return positioner;
+  }
+
   void handleCommand(State& state, const std::string& line) {
     std::istringstream command(line);
     std::string action;
     command >> action >> state.commandLabel;
-    if (state.commandLabel.empty() || state.frame != nullptr) {
+    if (state.commandLabel.empty() || state.frame != nullptr || state.popupWaitToken) {
       state.failed = state.closed = true;
       std::println(stderr, "layer-client: invalid or overlapping command '{}'", line);
       return;
@@ -239,6 +256,26 @@ namespace {
       int left = 0;
       command >> top >> right >> bottom >> left;
       zwlr_layer_surface_v1_set_margin(state.layerSurface, top, right, bottom, left);
+    } else if (action == "popup-resize") {
+      int width = 0;
+      int height = 0;
+      command >> width >> height;
+      if (!state.popupMapped || width <= 8 || height <= 8) {
+        command.setstate(std::ios::failbit);
+      }
+      if (!command.fail()) {
+        state.popupWaitToken = ++state.popupToken;
+        state.remainingFrames = 1;
+        state.frameSurface = state.popupSurface;
+        for (const uint32_t token : {*state.popupWaitToken, 0U}) {
+          const int inset = token == 0 ? 0 : 8;
+          xdg_positioner* positioner =
+              popupPositioner(state, width - inset, height - inset, state.popupAnchorX, state.popupAnchorY);
+          xdg_popup_reposition(state.popup, positioner, token);
+          xdg_positioner_destroy(positioner);
+        }
+        return;
+      }
     } else {
       command.setstate(std::ios::failbit);
     }
@@ -330,22 +367,53 @@ namespace {
     auto& state = *static_cast<State*>(data);
     xdg_surface_ack_configure(xdgSurface, serial);
     if (state.popupMapped) {
-      return;
+      if (state.popupWaitToken
+          || (state.popupBuffer.width == state.popupWidth && state.popupBuffer.height == state.popupHeight)) {
+        return;
+      }
+      const uint32_t fillColor = state.fillColor;
+      state.fillColor = static_cast<const uint32_t*>(state.popupBuffer.pixels)[0];
+      Buffer replacement = createBuffer(state, state.popupWidth, state.popupHeight);
+      state.fillColor = fillColor;
+      if (replacement.resource == nullptr) {
+        state.failed = state.closed = true;
+        return;
+      }
+      destroyBuffer(state.popupBuffer);
+      state.popupBuffer = replacement;
+    } else {
+      state.popupMapped = true;
+      std::println("popup-mapped");
     }
-    state.popupMapped = true;
     wl_surface_attach(state.popupSurface, state.popupBuffer.resource, 0, 0);
-    wl_surface_damage_buffer(state.popupSurface, 0, 0, kPopupSize, kPopupSize);
-    wl_surface_commit(state.popupSurface);
-    std::println("popup-mapped");
+    wl_surface_damage_buffer(state.popupSurface, 0, 0, state.popupBuffer.width, state.popupBuffer.height);
+    if (state.remainingFrames > 0 && state.frame == nullptr) {
+      requestFrame(state);
+    } else {
+      wl_surface_commit(state.popupSurface);
+    }
   }
 
   constexpr xdg_surface_listener kPopupXdgSurfaceListener = {.configure = popupSurfaceConfigure};
 
-  void popupConfigure(void*, xdg_popup*, int32_t x, int32_t y, int32_t width, int32_t height) {
+  void popupConfigure(void* data, xdg_popup*, int32_t x, int32_t y, int32_t width, int32_t height) {
+    auto& state = *static_cast<State*>(data);
+    state.popupWidth = width;
+    state.popupHeight = height;
+    if (state.popupConfigureToken) {
+      const uint32_t token = *state.popupConfigureToken;
+      std::println("popup-repositioned token={} width={} height={}", token, width, height);
+      if (state.popupWaitToken == token) {
+        state.popupWaitToken.reset();
+      }
+      state.popupConfigureToken.reset();
+    }
     std::println("popup-configure x={} y={} width={} height={}", x, y, width, height);
   }
   void popupDone(void*, xdg_popup*) { std::println("popup-done"); }
-  void popupRepositioned(void*, xdg_popup*, uint32_t) {}
+  void popupRepositioned(void* data, xdg_popup*, uint32_t token) {
+    static_cast<State*>(data)->popupConfigureToken = token;
+  }
 
   constexpr xdg_popup_listener kPopupListener = {
       .configure = popupConfigure,
@@ -363,11 +431,9 @@ namespace {
     state.popupSurface = wl_compositor_create_surface(state.compositor);
     state.popupXdgSurface = xdg_wm_base_get_xdg_surface(state.wmBase, state.popupSurface);
     xdg_surface_add_listener(state.popupXdgSurface, &kPopupXdgSurfaceListener, &state);
-    xdg_positioner* positioner = xdg_wm_base_create_positioner(state.wmBase);
-    xdg_positioner_set_size(positioner, kPopupSize, kPopupSize);
-    xdg_positioner_set_anchor_rect(positioner, anchorX, anchorY, 1, 1);
-    xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_BOTTOM_LEFT);
-    xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    state.popupAnchorX = anchorX;
+    state.popupAnchorY = anchorY;
+    xdg_positioner* positioner = popupPositioner(state, kPopupSize, kPopupSize, anchorX, anchorY);
     state.popup = xdg_surface_get_popup(state.popupXdgSurface, nullptr, positioner);
     xdg_positioner_destroy(positioner);
     xdg_popup_add_listener(state.popup, &kPopupListener, &state);
