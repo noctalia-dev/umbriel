@@ -54,8 +54,16 @@ namespace umbriel {
         {.name = "disabled", .value = VrrMode::Disabled},
         {.name = "always", .value = VrrMode::Always},
         {.name = "fullscreen", .value = VrrMode::Fullscreen},
-        {.name = "fullscreen_any", .value = VrrMode::FullscreenAny},
     };
+    return choices;
+  }
+
+  const registry::Choices<VrrMode>& outputVrrModes() {
+    static const registry::Choices<VrrMode> choices = [] {
+      registry::Choices<VrrMode> modes = vrrModes();
+      modes.push_back({.name = "fullscreen_any", .value = VrrMode::FullscreenAny});
+      return modes;
+    }();
     return choices;
   }
 
