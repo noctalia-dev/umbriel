@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -71,12 +72,6 @@ namespace umbriel {
     Scroll,
     // Narrow the slots until every tab fits.
     Shrink,
-  };
-
-  enum class TitleAlign : uint8_t {
-    Left,
-    Center,
-    Right,
   };
 
   struct AccelProfile {
@@ -148,6 +143,7 @@ namespace umbriel {
   struct ScratchpadConfig {
     std::string name;
     std::string spawnWhenEmpty;
+    bool hideWhenEmpty = false;
     bool proportionalSize = false;
     bool operator==(const ScratchpadConfig&) const = default;
   };
@@ -235,6 +231,15 @@ namespace umbriel {
     Window,
   };
 
+  // How the pointer moves keyboard focus. Sloppy focuses the window under a moving pointer only when it differs from
+  // the window the pointer was last over, so focus given elsewhere stays until the pointer reaches another window.
+  // Always focuses the window under the pointer on every motion. Neither changes focus while the pointer is still.
+  enum class FollowsMouse : uint8_t {
+    Off,
+    Sloppy,
+    Always,
+  };
+
   // How a touchpad device turns motion into scroll events: two fingers anywhere on the surface, or along
   // its edges. `none` disables scrolling. Device support varies; unset keeps the device's libinput default.
   enum class ScrollMethod : uint8_t {
@@ -285,6 +290,13 @@ namespace umbriel {
     Gamma22,
     Srgb,
   };
+  // SDR content policy for a characterized panel. `Native` stages no SDR
+  // output transform at all (pixels stay as they are without a profile);
+  // `Srgb` maps untagged SDR from sRGB into the panel's colorimetry.
+  enum class SdrGamut {
+    Srgb,
+    Native,
+  };
   constexpr std::string_view hdrModeName(HdrMode mode) {
     switch (mode) {
     case HdrMode::Off:
@@ -333,6 +345,14 @@ namespace umbriel {
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     SdrTransfer sdrTransfer = SdrTransfer::Gamma22;
+    // Panel characterization for SDR gamut limiting: "none", "edid", or a path
+    // to an ICC matrix-shaper display profile. The bytes are parsed at apply
+    // time and an unreadable path falls back to "edid". The mtime stamps the
+    // rule so a reload of an edited profile re-reads it (change detection and
+    // the characterization cache both key on it).
+    std::string colorProfile = "none";
+    std::int64_t colorProfileMtime = 0;
+    SdrGamut sdrGamut = SdrGamut::Native;
     std::optional<std::string> screenEffect;     // "off" disables the default
     std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
@@ -352,6 +372,8 @@ namespace umbriel {
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;
     struct Layout {
+      // Layout mode inherited by workspaces on this output.
+      std::optional<LayoutMode> mode;
       struct Scrolling {
         // Initial strip-axis extent inherited by workspaces on this output.
         std::optional<double> defaultExtentFraction;
@@ -398,6 +420,7 @@ namespace umbriel {
     bool dialog = false;
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
+    std::optional<LayoutMode> layout = std::nullopt;
 
     bool operator==(const WindowRuleState& other) const = default;
   };
@@ -426,6 +449,7 @@ namespace umbriel {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximizedToEdges;
@@ -459,6 +483,8 @@ namespace umbriel {
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    // Multiplies touchpad scrolling sent to matching windows, on top of `[input.touchpad] scroll_factor`.
+    std::optional<double> touchpadScrollFactor;
     // Whether matching windows may activate client-requested keyboard shortcut inhibition (true by default).
     std::optional<bool> allowShortcutsInhibit;
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
@@ -470,6 +496,7 @@ namespace umbriel {
     // true forces async preference, and false vetoes it.
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity; // 0.0-1.0
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -498,6 +525,7 @@ namespace umbriel {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximizedToEdges == other.matchMaximizedToEdges
@@ -530,12 +558,14 @@ namespace umbriel {
           && focusOnActivate == other.focusOnActivate
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
+          && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
           && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
           && hdr == other.hdr
+          && dimBehind == other.dimBehind
           && opacity == other.opacity
           && blur == other.blur
           && blurPopups == other.blurPopups
@@ -579,12 +609,14 @@ namespace umbriel {
     std::optional<bool> focusOnActivate;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
     std::optional<HdrMode> hdr;
+    std::optional<double> dimBehind;
     std::optional<double> opacity;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
@@ -618,6 +650,7 @@ namespace umbriel {
     std::optional<bool> matchAtStartup;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
 
@@ -628,6 +661,7 @@ namespace umbriel {
           && matchAtStartup == other.matchAtStartup
           && blur == other.blur
           && blurPopups == other.blurPopups
+          && dimBehind == other.dimBehind
           && ignoreAlpha == other.ignoreAlpha
           && optimized == other.optimized;
     }
@@ -636,6 +670,7 @@ namespace umbriel {
   struct ResolvedLayerRule {
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
+    std::optional<double> dimBehind;
     std::optional<double> ignoreAlpha;
     std::optional<bool> optimized;
     bool operator==(const ResolvedLayerRule&) const = default;
@@ -732,12 +767,16 @@ namespace umbriel {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
         std::string font = "sans 10";
+        TitleAlign titleAlign = TitleAlign::Left;
         TitleBarButtonSide buttonPosition = TitleBarButtonSide::Right;
         int buttonCornerRadius = -1;
         int buttonSize = -1;
         int buttonGap = 8;
         int buttonPadding = -1;
         TitleBarButtonGlyph buttonGlyph = TitleBarButtonGlyph::Hover;
+        // Symbol side and stroke width in logical pixels; -1 derives each from the button size.
+        int buttonGlyphSize = -1;
+        double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
@@ -1223,7 +1262,8 @@ namespace umbriel {
       } dragEdgeScroll;
 
       struct Focus {
-        bool followsMouse = false;
+        FollowsMouse followsMouse = FollowsMouse::Off;
+        bool followsMouseEnabled() const { return followsMouse != FollowsMouse::Off; }
         std::optional<double> followsMouseMaxScroll;
         // false narrows hover to focus alone: raising is left to clicks, keybinds, and activation, so sweeping the
         // pointer across a larger window underneath cannot bury the window above it.

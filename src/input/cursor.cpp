@@ -82,10 +82,11 @@ namespace umbriel {
       return workspace != nullptr ? workspace->tabs().tabAt(lx, ly) : std::nullopt;
     }
 
-    // `[input.touchpad] scroll_factor` (overridden per direction by `horizontal`/`vertical`) scales a touchpad's smooth
-    // scroll delta, never the discrete value120 notches. Read per event so a reload applies on the next axis;
-    // non-touchpads and unset values stay at 1.0.
-    double touchpadScrollFactor(wlr_pointer* pointer, bool vertical) {
+    // `[input.touchpad] scroll_factor` (overridden per direction by `horizontal`/`vertical`), times the
+    // `touchpad_scroll_factor` rule of the window under the pointer, scales a touchpad's smooth scroll delta, never the
+    // discrete value120 notches. Read per event so a reload applies on the next axis; non-touchpads and unset values
+    // stay at 1.0.
+    double touchpadScrollFactor(wlr_pointer* pointer, bool vertical, View* view) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
         return 1.0;
       }
@@ -94,7 +95,8 @@ namespace umbriel {
         return 1.0;
       }
       const std::optional<Config::Input::Touchpad::ScrollFactor>& factor = config().input.touchpad.scrollFactor;
-      return factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0;
+      const double windowFactor = view != nullptr ? view->touchpadScrollFactor() : 1.0;
+      return windowFactor * (factor ? (vertical ? factor->vertical : factor->horizontal).value_or(1.0) : 1.0);
     }
 
     // `scale` is the surface-local units per layout unit in `target`.
@@ -203,6 +205,9 @@ namespace umbriel {
     }
     if (m_hideTimer != nullptr) {
       wl_event_source_remove(m_hideTimer);
+    }
+    if (m_sceneRefocusIdle != nullptr) {
+      wl_event_source_remove(m_sceneRefocusIdle);
     }
     if (m_constraintDestroy.link.next != nullptr) {
       wl_list_remove(&m_constraintDestroy.link);
@@ -1231,15 +1236,16 @@ namespace umbriel {
       view->setMaximizedToEdges(false, false);
     }
 
-    const wlr_box& geometry = view->geometryBox();
-    const double borderX = (view->layoutX() + geometry.x) + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
-    const double borderY = (view->layoutY() + geometry.y) + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
+    const wlr_box& presented = view->presentedBox();
+    const wlr_box geometry{view->layoutX(), view->layoutY(), presented.width, presented.height};
+    const double borderX = geometry.x + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
+    const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
         .offsetX = m_cursor->x - borderX,
         .offsetY = m_cursor->y - borderY,
-        .geometryX = geometry.x + view->layoutX(),
-        .geometryY = geometry.y + view->layoutY(),
+        .geometryX = geometry.x,
+        .geometryY = geometry.y,
         .geometryWidth = geometry.width,
         .geometryHeight = geometry.height,
         .edges = edges,
@@ -1304,20 +1310,17 @@ namespace umbriel {
     wlr_seat_pointer_notify_clear_focus(m_server->seat()->wlr());
   }
 
-  void Cursor::warpTo(double lx, double ly) { warpTo(lx, ly, true); }
-
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
-  bool Cursor::warpToView(View& view) {
+  wlr_box Cursor::viewTargetBox(View& view) {
     Output* output = view.currentOutput();
     if (output == nullptr) {
-      return false;
+      return {};
     }
-
     wlr_box outputBox{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
     if (outputBox.width <= 0 || outputBox.height <= 0) {
-      return false;
+      return {};
     }
 
     wlr_box target = view.presentedBox();
@@ -1335,14 +1338,33 @@ namespace umbriel {
       target.x = view.layoutTargetX();
       target.y = view.layoutTargetY();
     }
-
     if (target.width <= 0 || target.height <= 0) {
       target = outputBox;
     }
-    wlr_box visible{};
-    if (!wlr_box_intersection(&visible, &target, &outputBox)) {
-      visible = outputBox;
+    return target;
+  }
+
+  namespace {
+    // The part of `target` on the view's output, where the cursor can land; the whole output when none of it is.
+    wlr_box visibleWarpBox(wlr_output_layout* layout, View& view, const wlr_box& target) {
+      wlr_box outputBox{};
+      if (const Output* output = view.currentOutput(); output != nullptr) {
+        wlr_output_layout_get_box(layout, output->wlr(), &outputBox);
+      }
+      wlr_box visible{};
+      if (!wlr_box_intersection(&visible, &target, &outputBox)) {
+        return outputBox;
+      }
+      return visible;
     }
+  } // namespace
+
+  bool Cursor::warpToView(View& view) {
+    const wlr_box target = viewTargetBox(view);
+    if (wlr_box_empty(&target)) {
+      return false;
+    }
+    const wlr_box visible = visibleWarpBox(m_server->outputLayout(), view, target);
     warpToPreservingFocus(visible.x + visible.width / 2.0, visible.y + visible.height / 2.0);
     return true;
   }
@@ -1358,6 +1380,17 @@ namespace umbriel {
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
     m_server->notifyIdleActivity();
     processMotion(monotonicMsec(), oldX, oldY, allowFocusChange);
+    if (!allowFocusChange) {
+      // The cursor was carried to a window rather than moved onto it, so the window it lands on counts as already seen.
+      wlr_surface* surface = nullptr;
+      double sx = 0;
+      double sy = 0;
+      LayerSurface* layer = nullptr;
+      View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+      if (layer == nullptr && view != nullptr) {
+        m_hoverView = view;
+      }
+    }
   }
 
   void Cursor::resetMode() {
@@ -1409,6 +1442,7 @@ namespace umbriel {
       }
     } else if (restoreResizePresentation && view != nullptr && view->mapped()) {
       view->resetPresentedSurface();
+      view->adoptFloatingClientSize();
       view->syncOwnedPresentation();
     }
     refreshInteractiveCursor();
@@ -1567,12 +1601,16 @@ namespace umbriel {
     auto* event = static_cast<wlr_pointer_button_event*>(data);
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 2U) != 0) {
       m_server->notifyIdleActivity();
+      if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        m_server->pendingReleases().forgetPress(&event->pointer->base, event->button);
+        std::erase(m_swallowedButtons, event->button);
+      }
       if (m_server->physicalInputDevice(&event->pointer->base)) {
         capture->captureButton(event->time_msec, event->button, event->state == WL_POINTER_BUTTON_STATE_PRESSED);
       }
       return;
     }
-    processButton(event->time_msec, event->button, event->state);
+    processButton(&event->pointer->base, event->time_msec, event->button, event->state);
   }
 
   bool Cursor::canCaptureInput() const {
@@ -1595,7 +1633,6 @@ namespace umbriel {
   void Cursor::setInputCaptured(bool captured) {
     if (captured) {
       cancelHotCorner();
-      m_server->cancelModifierTap();
       clearPointerFocus();
       hideCursor();
     } else {
@@ -1634,7 +1671,14 @@ namespace umbriel {
     beginResize(grab.view, grab.edges, grab.button);
   }
 
-  void Cursor::processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
+  void Cursor::processButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
+    dispatchButton(source, timeMsec, button, state);
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_server->executeReleaseBind(source, button);
+    }
+  }
+
+  void Cursor::dispatchButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED && m_clientPointerPress && m_clientPointerPress->button == button) {
       m_clientPointerPress.reset();
     }
@@ -1658,16 +1702,24 @@ namespace umbriel {
     // swallow their paired release so clients never see an unmatched release.
     if (state == WL_POINTER_BUTTON_STATE_PRESSED && isPassthrough()) {
       const uint32_t modifiers = m_server->keyboardModifiers();
+      const Keybind* release = m_server->matchMouseBind(button, modifiers, true);
+      const bool releaseBound = release != nullptr;
+      const bool releaseCheatsheetBind = releaseBound && isCheatsheetAction(release->action);
+      // Arm before the press action can replace configuration or change the submap.
+      if (releaseBound) {
+        m_server->pendingReleases().armRelease(source, button, *release);
+      }
       bool mouseBindExecuted = false;
       const std::optional<Keybind> bound = m_server->handleMouseBind(button, modifiers, &mouseBindExecuted);
-      // Any press dismisses the cheatsheet, as any key press does, except one that just ran a cheatsheet action. Unlike
-      // a key press, an unbound press is consumed: the overlay hides whatever sits under the cursor, so the click that
-      // dismisses it must not also reach that surface.
+      // Keep the cheatsheet for an executed press action or an armed release action that controls it. An unbound
+      // dismissing click is consumed: the overlay hides whatever sits under the cursor, so the click must not also
+      // reach that surface.
       if (Cheatsheet* sheet = m_server->cheatsheet(); sheet != nullptr
           && sheet->visible()
-          && !(bound.has_value() && mouseBindExecuted && isCheatsheetAction(bound->action))) {
+          && !(bound.has_value() && mouseBindExecuted && isCheatsheetAction(bound->action))
+          && !releaseCheatsheetBind) {
         sheet->hide();
-        if (!bound.has_value()) {
+        if (!bound.has_value() && !releaseBound) {
           m_swallowedButtons.push_back(button);
           return;
         }
@@ -1687,6 +1739,10 @@ namespace umbriel {
           clearPointerFocus();
           return;
         }
+        m_swallowedButtons.push_back(button);
+        return;
+      }
+      if (releaseBound) {
         m_swallowedButtons.push_back(button);
         return;
       }
@@ -1868,11 +1924,16 @@ namespace umbriel {
       return;
     }
 
-    // Scene hit testing lets covered chrome stay covered by windows and panels.
+    // Scene hit testing lets covered chrome stay covered by windows and panels. Mod+left and Mod+right on the frame
+    // grab the window as they do on its content.
+    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
+    const bool modGrab = modHeld && (button == BTN_LEFT || button == BTN_RIGHT);
     if (m_server->exclusiveKeyboardLayer() == nullptr
         && isPassthrough()
         && !wlr_seat_pointer_has_grab(m_server->seat()->wlr())) {
-      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y)) {
+      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y); hit && modGrab) {
+        view = hit->view;
+      } else if (hit) {
         View* target = hit->view;
         clearPointerFocus();
         if (button == BTN_LEFT && hit->part == SsdFramePart::Resize) {
@@ -1939,7 +2000,6 @@ namespace umbriel {
       return;
     }
 
-    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       if (beginMove(view, button)) {
@@ -2120,7 +2180,9 @@ namespace umbriel {
     }
     if (!armed) {
       m_wheelAccum[orientation] = 0;
-      const double scale = touchpadScrollFactor(event->pointer, isVertical);
+      wlr_surface* focused = m_server->seat()->wlr()->pointer_state.focused_surface;
+      View* view = focused != nullptr ? View::fromSurface(wlr_surface_get_root_surface(focused)) : nullptr;
+      const double scale = touchpadScrollFactor(event->pointer, isVertical, view);
       wlr_seat_pointer_notify_axis(
           m_server->seat()->wlr(), event->time_msec, event->orientation, event->delta * scale, event->delta_discrete,
           event->source, event->relative_direction
@@ -2457,7 +2519,7 @@ namespace umbriel {
     View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
 
     if (allowFocusChange
-        && config().input.focus.followsMouse
+        && config().input.focus.followsMouseEnabled()
         && layer == nullptr
         && view != nullptr
         && view->mapped()) {
@@ -2512,7 +2574,7 @@ namespace umbriel {
       m_server->scheduleIpcWorkspacesEvent();
       wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
-          && config().input.focus.followsMouse
+          && config().input.focus.followsMouseEnabled()
           && !wlr_seat_pointer_has_grab(seat)
           && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
@@ -2549,29 +2611,21 @@ namespace umbriel {
       }
       workspace->resumeScrollHoverFocus();
     }
+    const bool always = config().input.focus.followsMouse == FollowsMouse::Always;
+    const bool layoutMoving =
+        (workspace != nullptr && workspace->layoutMotionActive()) || m_server->gestures()->movingContent();
     // Consume the invalidation only after every hover-focus eligibility gate. PointerHover never arms it, so layout
-    // motion caused by this focus cannot turn into another focus on the next input event.
-    const bool refocus = scrollRefocus || m_hoverFocusInvalidated;
-    m_hoverFocusInvalidated = false;
+    // motion caused by this focus cannot turn into another focus on the next input event. Sloppy hover refreshes only
+    // when the scene put another window under the pointer: focus given to a window elsewhere stays while the pointer
+    // remains over the window it was already on. Always hover refocuses on any motion while the layout is at rest.
+    const bool invalidated = std::exchange(m_hoverFocusInvalidated, false);
+    const View* lastHovered = std::exchange(m_hoverView, view);
+    const bool refocus = always ? !layoutMoving : (scrollRefocus || invalidated) && view != lastHovered;
     wlr_surface* oldSurface = nullptr;
     double oldSx = 0;
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
-    // A transient can open while the pointer remains over its parent. Refreshing hover within that ancestor must
-    // leave the child focused so the pointer can reach it; crossing back into the ancestor still transfers focus.
-    bool hoveredAncestor = false;
-    const View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
-    if (!scrollRefocus && refocus && view == oldView && focused != nullptr && focused->workspace() == workspace) {
-      for (const View* parent = focused->transientParent(); parent != nullptr; parent = parent->transientParent()) {
-        if (parent == view) {
-          hoveredAncestor = true;
-          break;
-        }
-      }
-    }
-    // Keyboard focus is an escape from rule confinement. While the pointer remains inside that window, an
-    // invalidated hover must not immediately focus it again. A real re-entry (or a click) can still focus it.
-    const bool entered = view != oldView || (refocus && !hoveredAncestor && !ruleConstraintApplies(*view));
+    const bool entered = view != oldView || (refocus && !hoverKeepsFocus(*view, scrollRefocus));
     // Workspace focus is remembered independently from the seat. A pinned window that kept focus across a workspace
     // switch can own the seat while this view remains its workspace's remembered focus, so only seat-global activation
     // of the window that would take the keyboard (a dialog attached to this one) makes this handoff redundant.
@@ -2583,6 +2637,95 @@ namespace umbriel {
       view = m_server->viewAt(m_cursor->x, m_cursor->y, surface, sx, sy, layer);
     }
     return view;
+  }
+
+  bool Cursor::hoverKeepsFocus(View& view, bool afterStripScroll) const {
+    // Keyboard focus is an escape from rule confinement. While the pointer remains inside that window, hover must not
+    // immediately focus it again. A real re-entry (or a click) can still focus it.
+    if (ruleConstraintApplies(view)) {
+      return true;
+    }
+    if (afterStripScroll) {
+      return false;
+    }
+    // A transient can open while the pointer remains over its parent. Hover within that ancestor must leave the child
+    // focused so the pointer can reach it; crossing back into the ancestor still transfers focus.
+    const View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+    if (focused == nullptr || focused->workspace() != view.workspace()) {
+      return false;
+    }
+    for (const View* parent = focused->transientParent(); parent != nullptr; parent = parent->transientParent()) {
+      if (parent == &view) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Cursor::refocusAfterSceneChange() {
+    if (config().input.focus.followsMouse != FollowsMouse::Always) {
+      return;
+    }
+    m_sceneRefocusPending = true;
+    scheduleSceneRefocus();
+  }
+
+  void Cursor::scheduleSceneRefocus() {
+    if (!m_sceneRefocusPending || m_sceneRefocusIdle != nullptr) {
+      return;
+    }
+    m_sceneRefocusIdle =
+        wl_event_loop_add_idle(wl_display_get_event_loop(m_server->display()), onSceneRefocusIdle, this);
+  }
+
+  void Cursor::onSceneRefocusIdle(void* data) {
+    auto* self = static_cast<Cursor*>(data);
+    self->m_sceneRefocusIdle = nullptr;
+    self->applySceneRefocus();
+  }
+
+  void Cursor::applySceneRefocus() {
+    const Output* output =
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+    if (!m_sceneRefocusPending || config().input.focus.followsMouse != FollowsMouse::Always || output == nullptr) {
+      m_sceneRefocusPending = false;
+      return;
+    }
+    // Content still moving keeps the request: the frame that settles it schedules this again.
+    if (m_server->animationsActiveFor(output)
+        || (m_server->gestures() != nullptr && m_server->gestures()->movingContent())) {
+      return;
+    }
+    wlr_surface* surface = nullptr;
+    double sx = 0;
+    double sy = 0;
+    LayerSurface* layer = nullptr;
+    View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+    if (Workspace* workspace = view != nullptr ? view->workspace() : nullptr;
+        workspace != nullptr && (workspace->arrangePending() || workspace->layoutMotionActive())) {
+      return;
+    }
+    m_sceneRefocusPending = false;
+    // The same gates as hover: grabs, lock, exclusive layers, and the overview keep their focus.
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (!isPassthrough()
+        || seat->drag != nullptr
+        || seat->pointer_state.button_count != 0
+        || wlr_seat_pointer_has_grab(seat)
+        || wlr_seat_keyboard_has_grab(seat)
+        || m_server->sessionLocked()
+        || m_server->exclusiveKeyboardLayer() != nullptr
+        || (m_server->overview() != nullptr && m_server->overview()->active())
+        || std::ranges::any_of(m_tools, [](const auto& tool) { return tool->inProximity; })
+        || layer != nullptr
+        || view == nullptr
+        || !view->mapped()) {
+      return;
+    }
+    m_hoverView = view;
+    if (!view->placementRoot()->inputDelegate()->activated() && !hoverKeepsFocus(*view, false)) {
+      m_server->focusView(view, FocusReason::PointerScene);
+    }
   }
 
   void Cursor::onTabletToolAxis(wl_listener* listener, void* data) {
@@ -2613,6 +2756,7 @@ namespace umbriel {
     TabletToolState* watch;
     watch = wl_container_of(listener, watch, destroy);
     Cursor* cursor = watch->cursor;
+    cursor->m_server->pendingReleases().forgetSource(watch->tool);
     wl_list_remove(&watch->destroy.link);
     wl_list_remove(&watch->setCursor.link);
     std::erase_if(cursor->m_tools, [watch](const std::unique_ptr<TabletToolState>& entry) {
@@ -2717,7 +2861,7 @@ namespace umbriel {
     // Native hover.
     setToolEmulating(state, false);
     updatePointerOutput();
-    if (config().input.focus.followsMouse && layer == nullptr && view != nullptr && view->mapped()) {
+    if (config().input.focus.followsMouseEnabled() && layer == nullptr && view != nullptr && view->mapped()) {
       view = hoverFocus(view, &surface, &sx, &sy, &layer, oldX, oldY);
       if (surface == nullptr) {
         setToolEmulating(state, true);
@@ -2810,7 +2954,7 @@ namespace umbriel {
     }
     // Release a tip that was left down through emulation.
     if (state->emulating && state->tipDown) {
-      processButton(event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
+      processButton(state->tool, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
       wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
     }
     if (!state->emulating && state->v2->focused_surface != nullptr) {
@@ -2839,7 +2983,8 @@ namespace umbriel {
     if (state->emulating) {
       state->tipDown = down;
       processButton(
-          event->time_msec, BTN_LEFT, down ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+          state->tool, event->time_msec, BTN_LEFT,
+          down ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
       );
       wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
       return;
@@ -2896,7 +3041,8 @@ namespace umbriel {
       mapped = BTN_SIDE;
     }
     processButton(
-        event->time_msec, mapped, pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+        state->tool, event->time_msec, mapped,
+        pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
     );
     wlr_seat_pointer_notify_frame(m_server->seat()->wlr());
   }
@@ -3401,6 +3547,9 @@ namespace umbriel {
     if (m_ssdHoverView == view) {
       m_ssdHoverView = nullptr;
     }
+    if (m_hoverView == view) {
+      m_hoverView = nullptr;
+    }
     // A hidden tab leaves the lifted group. The dragged window keeps its place there until handleUnmap's resetMode()
     // puts the group back.
     if (auto* grab = std::get_if<MoveGrab>(&m_grab); grab != nullptr && grab->view != view) {
@@ -3585,6 +3734,8 @@ namespace umbriel {
   }
 
   void Cursor::refreshPointerContents(const Output* output) {
+    // A pending scene refocus checks for itself whether the content under the pointer has settled.
+    scheduleSceneRefocus();
     wlr_seat* seat = m_server->seat()->wlr();
     if (output == nullptr
         || m_cursorHidden

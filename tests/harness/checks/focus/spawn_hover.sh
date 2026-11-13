@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# When a new window changes focus and the scene under a stationary pointer, the next motion gets one hover refresh.
-# Both coordinates are already inside the newly exposed window, so geometric enter detection alone cannot see it.
+# Sloppy hover refreshes after a new window changes the scene under a stationary pointer: when the window beneath it
+# is one the pointer was not over before, the next motion focuses it even though both coordinates lie inside it. A new
+# window that opens away from the pointer keeps focus while the pointer stays over the window it was already on.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -53,7 +54,13 @@ duration_ms = 1
 curve = "linear"
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
+
+[[window_rule]]
+match.title = "^spawn-hover-away$"
+default_floating = true
+default_floating_size_px = { width = 300, height = 200 }
+default_position = { x = 900, y = 450, anchor = "top_left" }
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -71,4 +78,13 @@ sleep 0.1
 pointer move 65 64
 wait_for_active "spawn-hover-left"
 
-echo "motion focuses a window that appeared under the stationary pointer"
+# The pointer was already over the left tile, so a window opening elsewhere keeps the focus it takes.
+spawn_client "spawn-hover-away"
+wait_for_count 3
+wait_for_active "spawn-hover-away"
+"$UMBRIEL" settle
+pointer move 66 64
+"$UMBRIEL" settle
+wait_for_active "spawn-hover-away"
+
+echo "motion focuses a window that appeared under the stationary pointer, but not over one opened elsewhere"

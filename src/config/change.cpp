@@ -51,6 +51,9 @@ namespace umbriel {
           && lhs.hdr == rhs.hdr
           && lhs.sdrWhite == rhs.sdrWhite
           && lhs.sdrTransfer == rhs.sdrTransfer
+          && lhs.colorProfile == rhs.colorProfile
+          && lhs.colorProfileMtime == rhs.colorProfileMtime
+          && lhs.sdrGamut == rhs.sdrGamut
           && lhs.bitDepth == rhs.bitDepth;
     }
 
@@ -138,6 +141,7 @@ namespace umbriel {
             || lhs.matchPinned != rhs.matchPinned
             || lhs.matchScratchpad != rhs.matchScratchpad
             || lhs.matchAlone != rhs.matchAlone
+            || lhs.matchLayouts != rhs.matchLayouts
             || lhs.matchOnlyWindow != rhs.matchOnlyWindow
             || lhs.matchDialog != rhs.matchDialog
             || lhs.matchCastTarget != rhs.matchCastTarget

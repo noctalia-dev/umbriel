@@ -6,9 +6,10 @@
 #include "core/dirty.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
-#include "input/modifier_tap.h"
+#include "input/pending_releases.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
+#include "output/connector_hdr_state.h"
 #include "output/enable_overrides.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
@@ -141,6 +142,7 @@ namespace umbriel {
   class InputMethodRelay;
   class Gestures;
   class ColorManager;
+  struct ColorDescription;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -202,8 +204,8 @@ namespace umbriel {
     bool outputCaptured(const wlr_output* output) const;
     wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     ColorManager* colorManager() const { return m_colorManager.get(); }
-    const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
-    const wlr_image_description_v1_data* surfaceTreeHdrDescription(wlr_surface* surface) const;
+    const ColorDescription* surfaceImageDescription(wlr_surface* surface) const;
+    const ColorDescription* surfaceTreeHdrDescription(wlr_surface* surface) const;
     void updateColorPreferences();
     wlr_scene_tree* xdgTree() const { return m_xdgTree; }
     wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }
@@ -300,6 +302,7 @@ namespace umbriel {
     void hideInsertHint();
     uint64_t uptimeMs() const;
     SessionLock* sessionLock() const { return m_sessionLock.get(); }
+    ConnectorHdrState& connectorHdrState() { return m_connectorHdrState; }
     bool sessionLocked() const { return m_sessionLocked; }
     const std::string& activeSubmap() const {
       static const std::string empty;
@@ -391,18 +394,22 @@ namespace umbriel {
     std::optional<KeyboardLayoutState> keyboardLayoutState() const;
     // systemd-localed's keymap, for keyboards whose config sets no XKB names. Empty when unused or unavailable.
     const XkbNames& systemKeymap() const { return m_systemKeymap; }
+    // The keymap compiled from `names`, shared by every keyboard that resolves to the same names: a desk's keyboard
+    // devices (consumer control, system control, mouse-with-keys nodes) otherwise each compile and keep a copy. Returns
+    // a new reference the caller unrefs, or null when the names do not compile.
+    xkb_keymap* compileKeymap(const XkbNames& names);
     void notifyKeyboardLayoutIpc();
     void notifyOverviewChanged();
     void notifySubmapChanged();
-    // Coalesced windows-event notification: at most one idle callback per frame
-    // regardless of how many window-list-relevant changes happened.
+    // Paced windows-event notification: one snapshot per interval (see EventPacer), however many window-list-relevant
+    // changes happened.
     void scheduleIpcWindowsEvent();
-    // Same coalescing for the workspace list: layout mode, activation, names and membership all land in one payload,
+    // Same pacing for the workspace list: layout mode, activation, names and membership all land in one payload,
     // so a switch that renames, reindexes and reactivates emits once.
     void scheduleIpcWorkspacesEvent();
-    // Same coalescing for the layer-shell surface list.
+    // Same pacing for the layer-shell surface list.
     void scheduleIpcLayersEvent();
-    // Same coalescing for the output list.
+    // Same pacing for the output list.
     void scheduleIpcOutputsEvent();
 
     // Focus lives in FocusManager; these forward so call sites that already
@@ -415,9 +422,17 @@ namespace umbriel {
     }
     std::optional<SsdFrameHit> ssdFrameAt(double lx, double ly) const { return m_focus.ssdFrameAt(lx, ly); }
     std::optional<Keybind> handleKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers);
-    // The bind this press would fire, without running it. Null when nothing
-    // matches (locked sessions match nothing, matching handleKeybind).
-    const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers) const;
+    // Match the selected trigger phase without dispatching, respecting lock and keyboard inhibition permissions.
+    const Keybind* matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers, bool onRelease = false) const;
+    // Mouse matching respects lock permissions but is unaffected by keyboard shortcut inhibition.
+    const Keybind* matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease = false) const;
+    bool releaseBindAllowed(const Keybind& bind) const;
+    PendingReleases& pendingReleases() { return m_pendingReleases; }
+    // Dispatch only after the release has been delivered/consumed and its interactive grab has ended. An action that
+    // would confirm the visible dialog is skipped: only presses confirm.
+    void executeReleaseBind(const void* source, uint32_t code);
+    // Whether `action` confirms the visible confirmation dialog.
+    bool confirmsVisibleDialog(KeybindAction action) const;
     // Combined state across independent keyboard devices. Media and brightness
     // keys commonly come from a device separate from held modifiers. An input
     // method's mirrored keyboard is not independent and is excluded.
@@ -432,8 +447,8 @@ namespace umbriel {
     std::optional<Keybind> handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted = nullptr);
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
-    [[nodiscard]] std::optional<Keybind> releaseModifierTap(const void* source, uint32_t keycode);
-    void cancelModifierTap() { m_modifierTap.cancel(); }
+    // Other input cancels modifier-only binds; explicit release bindings stay armed.
+    void cancelModifierTap() { m_pendingReleases.cancelForInput(); }
     void arrangeLayers(wlr_output* output);
     // Re-send every surface's output scale (views, layer surfaces, popups). Run after anything that changes an output's
     // scale or moves surfaces between outputs outside setWorkspace; the notifies dedup, so extra calls are cheap.
@@ -596,10 +611,6 @@ namespace umbriel {
     void armBackgroundRenderTimer();
     static int onStartupRulesTimer(void* data);
     static int onTerminateSignal(int signal, void* data);
-    static void onIpcWindowsIdle(void* data);
-    static void onIpcWorkspacesIdle(void* data);
-    static void onIpcLayersIdle(void* data);
-    static void onIpcOutputsIdle(void* data);
     static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
@@ -809,6 +820,7 @@ namespace umbriel {
       uint32_t modifiers = 0;
       bool useMod = false;
       bool modifierOnly = false;
+      bool onRelease = false;
       uint32_t keysym = 0;
       WheelDirection wheel{};
       uint32_t mouseButton = 0;
@@ -962,12 +974,6 @@ namespace umbriel {
     wl_event_source* m_backgroundRenderTimer = nullptr;
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
-    // Non-null while a windows-event idle callback is pending. The idle source
-    // removes itself when it runs, so a non-null pointer means "already queued".
-    wl_event_source* m_ipcWindowsIdle = nullptr;
-    wl_event_source* m_ipcWorkspacesIdle = nullptr;
-    wl_event_source* m_ipcLayersIdle = nullptr;
-    wl_event_source* m_ipcOutputsIdle = nullptr;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     wl_event_source* m_suspensionSyncIdle = nullptr;
@@ -1029,9 +1035,13 @@ namespace umbriel {
     ManualShortcutsInhibit m_manualShortcutsInhibit;
     SurfaceLayoutMemory m_surfaceLayouts;
     XkbNames m_systemKeymap;
+    // Last keymap compileKeymap built and the names it came from. applyKeyboardConfig drops it so a reload reads the
+    // XKB files again.
+    XkbNames m_compiledKeymapNames;
+    xkb_keymap* m_compiledKeymap = nullptr;
     Keyboard* m_keyboardLayoutSource = nullptr;
     Keyboard* m_keyboardInputSource = nullptr;
-    ModifierTapState m_modifierTap;
+    PendingReleases m_pendingReleases;
     std::vector<std::unique_ptr<PointerDevice>> m_pointers;
     std::vector<std::unique_ptr<TouchDevice>> m_touchDevices;
     std::vector<std::unique_ptr<TabletDevice>> m_tabletDevices;
@@ -1044,6 +1054,7 @@ namespace umbriel {
     // different identified monitors. An output-policy config reload clears
     // them.
     OutputEnableOverrides m_outputEnableOverrides;
+    ConnectorHdrState m_connectorHdrState;
     Dirty m_dirty = Dirty::None;
     ViewRegistry m_registry;
     FocusManager m_focus{*this};

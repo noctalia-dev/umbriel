@@ -121,7 +121,7 @@ namespace {
         if (spec.group != group) {
           continue;
         }
-        std::string cmd{spec.name};
+        std::string cmd = umbriel::cliName(spec);
         if (!spec.argSpec.empty()) {
           cmd += ' ';
           cmd += spec.argSpec;
@@ -141,6 +141,7 @@ namespace {
     heading("Control the running compositor");
     row("msg <action> [args...]", "send an action to the compositor");
     specRows(umbriel::IpcCommandGroup::Control);
+    specRows(umbriel::IpcCommandGroup::Config);
 
     heading("Inspect the running compositor");
     specRows(umbriel::IpcCommandGroup::Inspect);
@@ -212,13 +213,61 @@ namespace {
       }
     }
   }
+
+  // Runs an IpcCommandSpec whose words start at argv[first].
+  int runSpecCommand(const umbriel::IpcCommandSpec& spec, int argc, char** argv, int first) {
+    const auto isHelpFlag = [](const char* arg) {
+      return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0;
+    };
+    if (!spec.takesArgs) {
+      bool jf = false;
+      for (int i = first; i < argc; ++i) {
+        if (isHelpFlag(argv[i])) {
+          printHelp(stdout);
+          return EXIT_SUCCESS;
+        }
+        if (isJsonFlag(argv[i])) {
+          jf = true;
+        } else {
+          printHelp(stderr);
+          return EXIT_FAILURE;
+        }
+      }
+      return umbriel::runIpcCommand(spec, {}, jf);
+    }
+
+    if (argc == first + 1 && isHelpFlag(argv[first])) {
+      std::println("Usage: umbriel {} {}", umbriel::cliName(spec), spec.argSpec);
+      std::println("");
+      std::println("{}", spec.description);
+      return EXIT_SUCCESS;
+    }
+
+    bool jf = false;
+    std::vector<std::string> args;
+    for (int i = first; i < argc; ++i) {
+      if (isJsonFlag(argv[i])) {
+        jf = true;
+      } else {
+        args.emplace_back(argv[i]);
+      }
+    }
+
+    if (args.empty()) {
+      printHelp(stderr);
+      return EXIT_FAILURE;
+    }
+    return umbriel::runIpcCommand(spec, args, jf);
+  }
 } // namespace
 
 #ifdef UMBRIEL_USE_JEMALLOC
 // Read by jemalloc before its first allocation. Few arenas and fast dirty/muzzy decay bound fragmentation and return
 // freed pages to the OS promptly. The background thread runs decay even while the compositor is idle, otherwise pages
-// freed by a burst would wait for the next allocation to be returned.
-const char* malloc_conf = "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12";
+// freed by a burst would wait for the next allocation to be returned. thp:never keeps the kernel from backing the
+// sparse heap with 2 MiB pages when transparent huge pages are set to `always`, which grew anonymous RSS by a quarter.
+const char* malloc_conf =
+    "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12,thp:never";
 
 #define UMBRIEL_STRINGIFY_HELPER(x) #x
 #define UMBRIEL_STRINGIFY(x) UMBRIEL_STRINGIFY_HELPER(x)
@@ -233,7 +282,8 @@ int main(int argc, char** argv) {
   if (argc >= 2) {
     auto isHelpFlag = [](const char* arg) { return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0; };
 
-    // Commands that read the config without a running compositor.
+    // `config validate` and `config schema` read the config without a running compositor; the other verbs are runtime
+    // overrides in the running one.
     if (std::strcmp(argv[1], "config") == 0) {
       if (argc >= 3 && std::strcmp(argv[2], "validate") == 0) {
         return validateConfig(argc, argv);
@@ -252,6 +302,12 @@ int main(int argc, char** argv) {
           json = true;
         }
         return printConfigSchema(json);
+      }
+      if (argc >= 3) {
+        const auto* spec = umbriel::findIpcCommand(std::format("config-{}", argv[2]));
+        if (spec != nullptr && spec->group == umbriel::IpcCommandGroup::Config) {
+          return runSpecCommand(*spec, argc, argv, 3);
+        }
       }
       const bool help = argc >= 3 && isHelpFlag(argv[2]);
       printHelp(help ? stdout : stderr);
@@ -332,46 +388,9 @@ int main(int argc, char** argv) {
       return umbriel::runIpcAction(words, jf);
     }
 
-    if (const auto* spec = umbriel::findIpcCommand(argv[1])) {
-      if (!spec->takesArgs) {
-        bool jf = false;
-        for (int i = 2; i < argc; ++i) {
-          if (isHelpFlag(argv[i])) {
-            printHelp(stdout);
-            return EXIT_SUCCESS;
-          }
-          if (isJsonFlag(argv[i])) {
-            jf = true;
-          } else {
-            printHelp(stderr);
-            return EXIT_FAILURE;
-          }
-        }
-        return umbriel::runIpcCommand(*spec, {}, jf);
-      }
-
-      if (argc == 3 && isHelpFlag(argv[2])) {
-        std::println("Usage: umbriel {} {}", spec->name, spec->argSpec);
-        std::println("");
-        std::println("{}", spec->description);
-        return EXIT_SUCCESS;
-      }
-
-      bool jf = false;
-      std::vector<std::string> args;
-      for (int i = 2; i < argc; ++i) {
-        if (isJsonFlag(argv[i])) {
-          jf = true;
-        } else {
-          args.emplace_back(argv[i]);
-        }
-      }
-
-      if (args.empty()) {
-        printHelp(stderr);
-        return EXIT_FAILURE;
-      }
-      return umbriel::runIpcCommand(*spec, args, jf);
+    if (const auto* spec = umbriel::findIpcCommand(argv[1]);
+        spec != nullptr && spec->group != umbriel::IpcCommandGroup::Config) {
+      return runSpecCommand(*spec, argc, argv, 2);
     }
   }
 

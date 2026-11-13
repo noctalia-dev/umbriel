@@ -217,13 +217,14 @@ namespace umbriel {
     void forgetView(const View* view);
     void resetMode();
     // Warp the cursor to a layout position and run the motion pipeline (pointer focus, xcursor, pointer-output
-    // tracking, idle). Output actions use it so focus follows the cursor onto the target monitor.
-    void warpTo(double lx, double ly);
-    // Run the same motion pipeline without letting pointer crossing replace an explicit keyboard-focus choice.
+    // tracking, idle) without letting pointer crossing replace an explicit keyboard-focus choice. Output actions use it
+    // so the cursor reaches the target monitor while the window the action focused keeps its focus.
     void warpToPreservingFocus(double lx, double ly);
     // Warp to the visible logical center of a view after flushing any pending tiled arrangement. The explicit focus
     // choice is preserved while the cursor crosses other surfaces on its way there.
     bool warpToView(View& view);
+    // Where a view rests once pending arrangement settles, in layout coordinates.
+    wlr_box viewTargetBox(View& view);
     // A layout-mode reload can replace the layout that owns a tiled resize.
     void cancelStaleTiledResize();
     // End the pointer grabs whose meaning depends on the workspace axis before a
@@ -242,6 +243,10 @@ namespace umbriel {
     // A logical focus change can leave the pointer over a different window without crossing a scene boundary. Let the
     // next eligible pointer or tablet hover re-evaluate focus once.
     void invalidateHoverFocus() { m_hoverFocusInvalidated = true; }
+    // With follows_mouse = "always", focus the window under a stationary pointer once the scene settles after a change
+    // nobody aimed at a window: a workspace switch, a close, a layout command. Any later focus choice cancels it.
+    void refocusAfterSceneChange();
+    void cancelSceneRefocus() { m_sceneRefocusPending = false; }
     // A keyboard escape from confinement must wait for an actual pointer re-entry before hover can refocus it.
     void releaseRuleConfinement(View& view);
     // Compositor-owned cursor override for grabs the Cursor does not track
@@ -320,11 +325,18 @@ namespace umbriel {
 
     void warpTo(double lx, double ly, bool allowFocusChange);
     void processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange = true);
-    void processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
+    void processButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
+    void dispatchButton(const void* source, uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
     void updatePointerOutput(bool allowFocusChange = true);
     View* hoverFocus(
         View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
     );
+    // Whether focus stays put while the pointer rests over `view`: a confinement the keyboard escaped, or a parent of
+    // the focused transient (except after an explicit strip scroll revealed the parent).
+    bool hoverKeepsFocus(View& view, bool afterStripScroll) const;
+    void scheduleSceneRefocus();
+    static void onSceneRefocusIdle(void* data);
+    void applySceneRefocus();
     void processMove();
     void presentGrabbedViewSpanning();
     // Take the window out of the layout and into the drag presentation, once
@@ -482,6 +494,11 @@ namespace umbriel {
     View* m_ssdHoverView = nullptr;
     std::vector<std::unique_ptr<TabletToolState>> m_tools;
     bool m_hoverFocusInvalidated = false;
+    // The window the pointer was over at the last hover decision. Sloppy hover refreshes only when another window is
+    // under the pointer now.
+    View* m_hoverView = nullptr;
+    bool m_sceneRefocusPending = false;
+    wl_event_source* m_sceneRefocusIdle = nullptr;
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
     std::string m_compositorCursorName;

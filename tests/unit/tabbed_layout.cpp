@@ -442,6 +442,59 @@ UMBRIEL_TEST(untabbingRestoresTheStackedRows) {
   CHECK(sameBox(fixture.layout.targetBox(stub(1)), stacked));
 }
 
+UMBRIEL_TEST(untabbingAfterClosingTabsSplitsTheColumnEvenly) {
+  ScrollingFixture fixture;
+  fixture.stack(3);
+  fixture.layout.setTabbed(stub(0), true);
+  fixture.layout.removeView(stub(1));
+  fixture.layout.removeView(stub(2));
+  fixture.layout.setTabbed(stub(0), false);
+  fixture.layout.insertView(stub(3), 1);
+  fixture.layout.consume(stub(3), -1);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 0.5, 1e-9);
+}
+
+UMBRIEL_TEST(untabbingKeepsTheColumnsProportions) {
+  // Alone in its column, a shrunk group's tabs keep the free space it left.
+  ScrollingFixture alone;
+  alone.stack(2);
+  alone.layout.setTabbed(stub(0), true);
+  CHECK(alone.layout.setHeightFraction(stub(0), 0.5));
+  alone.layout.setTabbed(stub(0), false);
+  CHECK_NEAR(alone.layout.heightFraction(stub(0)), 0.25, 1e-9);
+  CHECK_NEAR(alone.layout.heightFraction(stub(1)), 0.25, 1e-9);
+  // Beside another row, a lone tab keeps the group's extent and that row keeps its own.
+  ScrollingFixture beside;
+  beside.stack(3);
+  beside.layout.setTabbed(stub(0), true);
+  CHECK(beside.layout.moveViewVertical(stub(2), 1));
+  beside.layout.removeView(stub(1));
+  const double below = beside.layout.heightFraction(stub(2));
+  beside.layout.setTabbed(stub(0), false);
+  CHECK_NEAR(beside.layout.heightFraction(stub(2)), below, 1e-9);
+}
+
+UMBRIEL_TEST(tabbingKeepsTheColumnsFreeSpace) {
+  ScrollingFixture fixture;
+  fixture.stack(2);
+  CHECK(fixture.layout.setBottomGapWeight(0, 1.0));
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 2.0 / 3.0, 1e-9);
+}
+
+UMBRIEL_TEST(aTabGroupTakesOneRowsShareOfItsColumn) {
+  // A window stacked under a group gets as much of the column as the row beside it.
+  ScrollingFixture fixture;
+  fixture.stack(4);
+  CHECK(fixture.layout.setTabbed(stub(0), true));
+  CHECK(fixture.layout.moveViewVertical(stub(3), 1));
+  fixture.layout.insertView(stub(4), 1);
+  CHECK(fixture.layout.consume(stub(4), -1));
+  CHECK_NEAR(fixture.layout.heightFraction(stub(0)), 1.0 / 3.0, 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(3)), 1.0 / 3.0, 1e-9);
+  CHECK_NEAR(fixture.layout.heightFraction(stub(4)), 1.0 / 3.0, 1e-9);
+}
+
 UMBRIEL_TEST(aVerticalStripTabsALaneAcrossItsTop) {
   ScrollingFixture fixture(ScrollingDirection::Vertical);
   fixture.stack(2);
@@ -813,7 +866,7 @@ UMBRIEL_TEST(replacingDefaultTabsAllowsIndependentRowWeights) {
   CHECK(target.layout.targetBox(stub(1)).height < target.layout.targetBox(stub(2)).height);
 }
 
-UMBRIEL_TEST(masterGroupsExportTotalWeightAndKeepUntabbedProportions) {
+UMBRIEL_TEST(masterGroupsExportAverageWeightAndKeepUntabbedProportions) {
   MasterFixture source;
   source.addViews(3);
   View* first = source.layout.columns()[1].views[0];
@@ -822,10 +875,11 @@ UMBRIEL_TEST(masterGroupsExportTotalWeightAndKeepUntabbedProportions) {
   source.layout.arrange(kUsable);
   const wlr_box firstBox = source.layout.targetBox(first);
   const wlr_box lastBox = source.layout.targetBox(last);
-  const double totalWeight = source.layout.columns()[1].heightWeights[0] + source.layout.columns()[1].heightWeights[1];
+  const double averageWeight =
+      (source.layout.columns()[1].heightWeights[0] + source.layout.columns()[1].heightWeights[1]) / 2.0;
   CHECK(source.layout.setTabbed(first, true));
-  CHECK_NEAR(source.layout.columns()[1].heightWeights[0], totalWeight, 1e-9);
-  CHECK_NEAR(source.layout.columns()[1].heightWeights[1], totalWeight, 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[0], averageWeight, 1e-9);
+  CHECK_NEAR(source.layout.columns()[1].heightWeights[1], averageWeight, 1e-9);
   CHECK(source.layout.setTabbed(first, false));
   source.layout.arrange(kUsable);
   CHECK(sameBox(source.layout.targetBox(first), firstBox));

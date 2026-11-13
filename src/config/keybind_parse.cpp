@@ -526,7 +526,7 @@ namespace umbriel {
         {"window-focus-up", "", "Focus the next window up in the column", KeybindAction::WindowFocusUp},
         {"window-focus-warp", "<window-id>", "Focus or reveal a window and warp the cursor to it",
          KeybindAction::WindowFocusWarpId, ActionArgKind::WindowId},
-        {"window-kill", "[<window-id>]", "Kill the process owning the focused or given window",
+        {"window-kill", "[<window-id>]", "Forcefully close the focused or given window's client",
          KeybindAction::WindowKill, ActionArgKind::OptionalWindowId},
         {"window-minimize", "[<window-id>]", "Minimize the focused floating window, or the given window",
          KeybindAction::WindowMinimize, ActionArgKind::OptionalWindowId},

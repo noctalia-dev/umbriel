@@ -123,6 +123,7 @@ namespace umbriel {
     // Record the target before cancelSizeAnimation synchronizes the current
     // presentation back through ScratchpadManager.
     m_floatingMaximized = maximized;
+    m_remaximizeOnTile = maximized;
     const ScratchpadManager* scratchpad = m_server->scratchpadManager();
     const bool visibleScratchpad = m_onActiveWorkspace && scratchpad != nullptr && scratchpad->contains(this);
     // A visible scratchpad has a manager-owned presentation even though it is
@@ -139,7 +140,7 @@ namespace umbriel {
       // mid-flight from the fullscreen origin. Restoring from either would
       // strand the float at output size with no way back.
       const auto [restoreWidth, restoreHeight] = floatingSize();
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
       m_maximizeRestoreBox = {
           .x = layoutTargetX(),
           .y = layoutTargetY(),
@@ -331,6 +332,7 @@ namespace umbriel {
         m_server->refocus(workspace->group() != nullptr ? workspace->group()->output() : nullptr);
       }
     }
+    m_server->cursor()->refocusAfterSceneChange();
   }
 
   void View::syncMinimizeEligibility() {
@@ -448,6 +450,7 @@ namespace umbriel {
     const bool wasEdges = m_maximizedToEdges;
     m_maximizedToEdges = false;
     m_floatingMaximized = false;
+    m_remaximizeOnTile = false;
     m_restoreMaximizedToEdges = false;
     m_hasMaximizeRestoreBox = false;
     setMaximizedState(false);
@@ -721,6 +724,7 @@ namespace umbriel {
 
   void View::adoptStackingLayoutFloat() {
     m_tiled = false;
+    m_tiledSizeRequest.reset();
     m_floatedByStackingLayout = true;
     const bool fullscreen = scheduledFullscreen() || currentFullscreen();
     setSceneParent(fullscreen ? m_workspace->fullscreenTree() : m_workspace->viewLayer(false));
@@ -788,6 +792,7 @@ namespace umbriel {
     // via its request), so this only fires for a float episode the client still considers fullscreen.
     const bool refullscreen = !floating && !fullscreen && m_refullscreenOnTile;
     m_refullscreenOnTile = floating && m_refullscreenOnTile;
+    const bool remaximize = !floating && std::exchange(m_remaximizeOnTile, false);
 
     if (floating) {
       auto [keepWidth, keepHeight] = floatingRestoreSize();
@@ -802,9 +807,10 @@ namespace umbriel {
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
         if (m_workspace->scrollingLayout() != nullptr && column >= 0) {
-          ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          const Column& tile = m_workspace->scrollingLayout()->columns()[static_cast<size_t>(column)];
           m_savedScrollingExtentPx.reset();
-          m_savedScrollingExtent = scrolling->widthFraction(column);
+          m_savedScrollingExtent = tile.savedWidthFrac > 0 ? tile.savedWidthFrac : tile.widthFrac;
+          m_remaximizeOnTile = tile.savedWidthFrac > 0;
         }
         if (column >= 0 && m_workspace->layout().isFullWidth(column)) {
           m_workspace->layout().clearFullWidthState(column);
@@ -815,6 +821,7 @@ namespace umbriel {
       const int keepX = slot.x;
       const int keepY = slot.y;
       m_tiled = false;
+      m_tiledSizeRequest.reset();
       m_presentedTiledBox = {};
       if (m_workspace != nullptr) {
         setSceneParent(m_workspace->viewLayer(m_tiled));
@@ -822,10 +829,13 @@ namespace umbriel {
       }
       const wlr_box usable = floatingUsableArea();
       const SizeHints hints = sizeHints();
-      // The restored height leaves room in the usable area for the title bar and borders. A tab gets its title bar only
+      // The restored size leaves room in the usable area for the title bar and borders. A tab gets its title bar only
       // once it floats, so its tile height can leave no room for it.
+      const int border = m_decoration.totalBorderWidth();
+      if (usable.width > 0) {
+        keepWidth = std::min(keepWidth, clampWidth(usable.width - 2 * border, hints));
+      }
       if (usable.height > 0) {
-        const int border = m_decoration.totalBorderWidth();
         keepHeight = std::min(keepHeight, clampHeight(usable.height - 2 * border - titleBarHeight(), hints));
       }
       if (m_pendingFloatingWidthPx) {
@@ -904,7 +914,7 @@ namespace umbriel {
     }
     m_floating.rememberPositionFraction({.x = layoutTargetX(), .y = layoutTargetY()}, usable);
 
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     m_tiled = true;
     m_restorePinnedAfterFullscreen = false;
     // Restore the fullscreen the float toggle dropped BEFORE the layout attach: arrange then sizes the column to the
@@ -953,6 +963,9 @@ namespace umbriel {
         m_savedScrollingExtent.reset();
       }
     }
+    if (remaximize && !wantFullscreen && placement == TilePlacement::Layout) {
+      setMaximized(true);
+    }
     updateForeignState();
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       if (unpinning) {
@@ -971,7 +984,7 @@ namespace umbriel {
         && m_mapped
         && m_onActiveWorkspace
         && (scheduledFullscreen() || currentFullscreen())
-        && config().input.focus.followsMouse;
+        && config().input.focus.followsMouseEnabled();
     kLog.debug(
         "set_fullscreen '{}' [{}] -> {} (tiled={}, ws_active={})", appId() != nullptr ? appId() : "?",
         static_cast<const void*>(this), fullscreen, m_tiled, m_workspace != nullptr && m_workspace->active()
@@ -1008,13 +1021,14 @@ namespace umbriel {
           setOnActiveWorkspace(m_workspace->active());
         }
       }
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
     }
     // Entering fullscreen during a size animation grows from the size on screen, not from the committed one.
     const bool continuePresentation = fullscreen && sizeAnimating();
     const int presentedWidth = m_presentation.width();
     const int presentedHeight = m_presentation.height();
     cancelSizeAnimation();
+    m_tiledSizeRequest.reset();
     if (continuePresentation) {
       m_presentation.setSize(presentedWidth, presentedHeight);
     }
@@ -1110,6 +1124,7 @@ namespace umbriel {
       // invalidates hover focus. The restored scene may put another tile beneath a stationary pointer, so its next
       // eligible motion must re-run focus selection even without crossing a border.
       m_server->cursor()->invalidateHoverFocus();
+      m_server->cursor()->refocusAfterSceneChange();
     }
     refreshStateRuleEffects();
   }

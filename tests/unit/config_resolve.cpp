@@ -186,6 +186,33 @@ UMBRIEL_TEST(outputScrollingDefaultPrecedesWorkspaceRulesAndFollowsGlobalLayout)
   CHECK_EQ(*globalDefault.scrolling.defaultExtentFraction, 0.2);
 }
 
+UMBRIEL_TEST(outputLayoutModePrecedesWorkspaceRulesAndFollowsGlobalLayout) {
+  Config config;
+  config.layout.mode = LayoutMode::Scrolling;
+
+  OutputRule output;
+  output.name = "DP-1";
+  output.layout.mode = LayoutMode::Dwindle;
+  config.outputs.push_back(std::move(output));
+
+  WorkspaceConfig globalWorkspace;
+  globalWorkspace.name = "dev";
+  globalWorkspace.layout.mode = LayoutMode::Master;
+  config.workspaceRules.push_back(std::move(globalWorkspace));
+
+  WorkspaceConfig outputWorkspace;
+  outputWorkspace.name = "dev";
+  outputWorkspace.output = "DP-1";
+  outputWorkspace.layout.mode = LayoutMode::Stacking;
+  config.workspaceRules.push_back(std::move(outputWorkspace));
+
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "dev", 0).mode == LayoutMode::Stacking);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-1"), "chat", 1).mode == LayoutMode::Dwindle);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-2"), "dev", 0).mode == LayoutMode::Master);
+  CHECK(umbriel::resolveWorkspaceLayout(config, identity("DP-2"), "chat", 1).mode == LayoutMode::Scrolling);
+  CHECK(umbriel::resolveUnnamedWorkspaceLayout(config, identity("DP-1"), 3).mode == LayoutMode::Dwindle);
+}
+
 UMBRIEL_TEST(outputSpecificWorkspaceRulesBeatLaterGlobalRules) {
   Config config;
 
@@ -1061,6 +1088,44 @@ UMBRIEL_TEST(windowRulesMatchEmptyIdentityOnlyWhenTheClientSetIt) {
   CHECK(emptyTitleOnly.defaultFloating && *emptyTitleOnly.defaultFloating);
   CHECK(!emptyTitleOnly.opacity);
   CHECK(!emptyTitleOnly.defaultMaximize);
+}
+
+UMBRIEL_TEST(windowRulesMatchLayout) {
+  Config config;
+  WindowRule all;
+  all.opacity = 0.8;
+  config.windowRules.push_back(all);
+  WindowRule stacking;
+  stacking.matchLayouts = {LayoutMode::Stacking};
+  stacking.titleBar = umbriel::TitleBarMode::Forced;
+  stacking.opacity = 0.5;
+  config.windowRules.push_back(stacking);
+  WindowRule tiled;
+  tiled.matchLayouts = {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master};
+  tiled.titleBar = umbriel::TitleBarMode::Off;
+  config.windowRules.push_back(tiled);
+
+  const auto resolve = [&](std::optional<LayoutMode> layout, bool floating) {
+    return umbriel::resolveWindowRules(
+        config, "app", std::nullopt, std::nullopt, ContentType::None, {.floating = floating, .layout = layout}, 0
+    );
+  };
+  for (const bool floating : {false, true}) {
+    for (const auto mode : {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master}) {
+      const auto rule = resolve(mode, floating);
+      CHECK_EQ(rule.titleBar, umbriel::TitleBarMode::Off);
+      CHECK_EQ(rule.opacity, 0.8);
+    }
+    const auto rule = resolve(LayoutMode::Stacking, floating);
+    CHECK_EQ(rule.titleBar, umbriel::TitleBarMode::Forced);
+    CHECK_EQ(rule.opacity, 0.5);
+  }
+  const auto unassigned = resolve(std::nullopt, false);
+  CHECK(!unassigned.titleBar);
+  CHECK_EQ(unassigned.opacity, 0.8);
+
+  config.windowRules.back().matchLayouts.clear();
+  CHECK_EQ(resolve(LayoutMode::Stacking, true).titleBar, umbriel::TitleBarMode::Off);
 }
 
 UMBRIEL_TEST(windowRulesMatchIsAlone) {

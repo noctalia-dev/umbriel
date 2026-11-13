@@ -9,6 +9,7 @@ extern "C" {
 
 #include <algorithm>
 #include <format>
+#include <iterator>
 #include <utility>
 
 namespace umbriel {
@@ -44,18 +45,36 @@ namespace umbriel {
     if (rendered.buffer == nullptr) {
       return nullptr;
     }
-    if (m_entries.size() >= m_capacity) {
-      Entry& oldest = m_entries.back();
-      wlr_buffer_drop(oldest.label.buffer);
-      m_index.erase(oldest.key);
-      m_entries.pop_back();
-    }
     m_entries.push_front({
         .key = key,
         .label = {.buffer = rendered.buffer, .width = rendered.logicalWidth, .height = rendered.logicalHeight},
     });
     m_index.emplace(std::move(key), m_entries.begin());
+    trim();
     return &m_entries.front().label;
+  }
+
+  void TabLabelCache::trim() {
+    const auto bytes = [](const Entry& entry) {
+      return static_cast<size_t>(entry.label.buffer->width) * static_cast<size_t>(entry.label.buffer->height) * 4;
+    };
+    size_t unusedBytes = 0;
+    for (auto it = std::next(m_entries.begin()); it != m_entries.end(); ++it) {
+      if (it->label.buffer->n_locks == 0) {
+        unusedBytes += bytes(*it);
+      }
+    }
+    for (auto it = m_entries.end();
+         it != std::next(m_entries.begin()) && (unusedBytes > kUnusedBudgetBytes || m_entries.size() > m_capacity);) {
+      --it;
+      if (it->label.buffer->n_locks != 0) {
+        continue;
+      }
+      unusedBytes -= bytes(*it);
+      wlr_buffer_drop(it->label.buffer);
+      m_index.erase(it->key);
+      it = m_entries.erase(it);
+    }
   }
 
   std::shared_ptr<TabLabelCache> TabLabelCache::shared() {

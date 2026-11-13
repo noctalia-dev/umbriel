@@ -42,6 +42,7 @@ namespace umbriel {
     std::string workspaceName;
     uint32_t modifiers = 0;
     bool useMod = false;
+    bool onRelease = false;
   };
 
   // Group assignment.

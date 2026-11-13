@@ -21,7 +21,19 @@ unit_tests = [
   ['lid-state', ['unit/lid_state.cpp'], []],
   ['output-enable-overrides', ['unit/output_enable_overrides.cpp'], []],
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
+  ['pending-releases', ['unit/pending_releases.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
+  [
+    'event-pacer',
+    ['unit/event_pacer.cpp'],
+    [umbriel_core_dep],
+    [],
+    [
+      '-Wl,--wrap=wl_event_loop_add_timer',
+      '-Wl,--wrap=wl_event_loop_add_idle',
+      '-Wl,--wrap=wl_event_source_timer_update',
+    ],
+  ],
   ['keyboard-leds', ['unit/keyboard_leds.cpp'], [wayland_server_dep]],
   ['keyboard-state', ['unit/keyboard_state.cpp'], [wayland_server_dep]],
   ['input-capture-geometry', ['unit/input_capture_geometry.cpp'], []],
@@ -38,10 +50,14 @@ unit_tests = [
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['output-direct-scanout', ['unit/output_direct_scanout.cpp'], []],
   ['output-hdr-transition', ['unit/output_hdr_transition.cpp'], []],
+  ['output-connector-hdr-state', ['unit/output_connector_hdr_state.cpp'], []],
   ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['output-gamma-transition', ['unit/output_gamma_transition.cpp'], []],
   ['hdr-metadata', ['unit/hdr_metadata.cpp'], [umbriel_core_dep]],
+  # Client-ICC cases skip at runtime when lcms2 is absent at build time.
   ['color-description', ['unit/color_description.cpp'], [umbriel_core_dep]],
+  # ICC cases skip at runtime when lcms2 is absent at build time.
+  ['colorimetry', ['unit/colorimetry.cpp'], [umbriel_core_dep]],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
   ['sdr-format', ['unit/sdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],
@@ -189,7 +205,7 @@ drag_client = executable(
     xdg_shell_client_h, xdg_shell_client_c,
     xdg_activation_client_h, xdg_activation_client_c,
   ],
-  dependencies: [wayland_client_dep],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
 )
 
 # Harness helper that reserves an exclusive zone on a named output. Output

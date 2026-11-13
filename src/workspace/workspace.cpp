@@ -455,6 +455,7 @@ namespace umbriel {
     if (reconcile) {
       m_group->reconcileDynamic();
     }
+    view->refreshStateRuleEffects();
   }
 
   bool Workspace::occupied() const { return std::ranges::any_of(m_views, sharesWorkspace); }
@@ -1028,7 +1029,7 @@ namespace umbriel {
       }
     }
     // The map-time IPC event can fire before this arrange runs, leaving the previous window positions in the listing.
-    // Re-emit now that the layout boxes are settled; the event coalescer caps this at one per frame.
+    // Re-emit now that the layout boxes are settled; the event pacer caps this at one per interval.
     m_group->server()->scheduleIpcWindowsEvent();
     struct ResizeRequest {
       View* view;
@@ -1038,7 +1039,6 @@ namespace umbriel {
     // Plan size requests before presenting the new layout. A close barrier may need to retain both the old box and the
     // old client buffer until windows_out finishes. A client whose committed geometry never matches a stable configure
     // (Chromium CSD) must not replay its resize on every focus arrange.
-    std::vector<View*> resized;
     std::vector<ResizeRequest> resizeRequests;
     for (View* view : m_views) {
       if (view == nullptr || !view->mapped() || !view->tiled()) {
@@ -1066,7 +1066,6 @@ namespace umbriel {
       const int height = view->maximizedToEdges() ? target.height : clampHeight(target.height, hints);
       const View::ClientSize scheduled = view->scheduledSize();
       if (scheduled.width != width || scheduled.height != height) {
-        resized.push_back(view);
         resizeRequests.push_back({.view = view, .width = width, .height = height});
       }
     }
@@ -1082,9 +1081,10 @@ namespace umbriel {
 
     // One positioning path for every layout: targets already include any
     // layout-specific offset, and each view animates or snaps itself.
-    applyPositions(animate, resized);
+    applyPositions(animate);
     for (const ResizeRequest& request : resizeRequests) {
       request.view->requestTiledSize(request.width, request.height);
+      syncViewPresentation(request.view);
     }
     if (overviewActive) {
       overview->onWorkspaceArranged(this);
@@ -1122,10 +1122,9 @@ namespace umbriel {
     const bool normallyVisible = view->pinned() || m_active || m_inSwitchTransition;
 
     if (view->pinned()) {
-      // Pinned views sit outside the workspace, so no slide offset applies, and
-      // they are sized from committed geometry rather than the presented size.
-      const wlr_box& geometry = view->geometryBox();
-      target = {nodeX, nodeY, geometry.width, geometry.height};
+      // Pinned views have no workspace slide, but retain pending resize targets.
+      const auto [width, height] = view->floatingSize();
+      target = {nodeX, nodeY, width, height};
     } else {
       if (!normallyVisible && !overviewActive) {
         return;
@@ -1160,7 +1159,7 @@ namespace umbriel {
     view->applyPresentation(target);
   }
 
-  void Workspace::applyPositions(bool animate, std::span<View* const> resized) {
+  void Workspace::applyPositions(bool animate) {
     const Overview* overview = m_group != nullptr ? m_group->server()->overview() : nullptr;
     const bool overviewActive = overview != nullptr && overview->active();
     if ((!m_active && !m_inSwitchTransition && !overviewActive) || m_group == nullptr || m_group->output() == nullptr) {
@@ -1216,7 +1215,7 @@ namespace umbriel {
         syncViewPresentation(view);
       }
     }
-    applyTiledMotion(usable, animate, resized);
+    applyTiledMotion(usable, animate);
   }
 
   namespace {
@@ -1288,7 +1287,7 @@ namespace umbriel {
 
   } // namespace
 
-  void Workspace::applyTiledMotion(const wlr_box& usable, bool animate, std::span<View* const> resized) {
+  void Workspace::applyTiledMotion(const wlr_box& usable, bool animate) {
     const Overview* overview = m_group->server()->overview();
     const bool overviewActive = overview != nullptr && overview->active();
 
@@ -1326,19 +1325,7 @@ namespace umbriel {
       const wlr_box from = openingLayoutBox.value_or(
           wlr_box{.x = view->layoutX(), .y = view->layoutY(), .width = presented.width, .height = presented.height}
       );
-      // A positioned member animates its size only when this pass reconfigured it or a motion already carries it;
-      // otherwise it keeps the size it presents, which stays inside the slot.
-      wlr_box to = slot;
-      if (positioned
-          && !opening
-          && !openingLayoutBox.has_value()
-          && !std::ranges::contains(resized, view)
-          && std::ranges::none_of(m_motion.views, [view](const LayoutMotion::ViewEntry& entry) {
-               return entry.view == view;
-             })) {
-        to.width = std::min(presented.width, slot.width);
-        to.height = std::min(presented.height, slot.height);
-      }
+      const wlr_box to = slot;
       members.push_back({
           .view = view,
           .from = positioned ? from : wlr_box{},
@@ -1718,14 +1705,16 @@ namespace umbriel {
     return contentBoxInTile(target, view->titleBarHeight());
   }
 
-  wlr_box Workspace::fullscreenTargetBox(const View* view) const {
+  wlr_box Workspace::fullscreenTargetBox(const View* view, const Layout* layout) const {
     wlr_box outputBox{};
     if (m_group == nullptr || m_group->output() == nullptr) {
       return outputBox;
     }
     wlr_output_layout_get_box(m_group->server()->outputLayout(), m_group->output()->wlr(), &outputBox);
-    const ScrollingLayout* scrolling = scrollingLayout();
-    const int column = m_layout->columnOf(view);
+    const Layout& source = layout != nullptr ? *layout : *m_layout;
+    const auto* scrolling =
+        source.mode() == LayoutMode::Scrolling ? static_cast<const ScrollingLayout*>(&source) : nullptr;
+    const int column = source.columnOf(view);
     if (scrolling == nullptr || column < 0) {
       return outputBox;
     }
@@ -1883,6 +1872,13 @@ namespace umbriel {
           && !candidate->minimized()
           && candidate->inputDelegate()->acceptsKeyboardFocus();
     };
+    // A hidden tab stands for the tab its group shows.
+    const auto shownTab = [this, &columns](View* candidate) {
+      const int column = m_layout->columnOf(candidate);
+      return column >= 0
+          ? unitEntry(columns[static_cast<size_t>(column)], static_cast<size_t>(m_layout->rowOf(candidate)))
+          : candidate;
+    };
 
     if (View* parent = view->shellParent(); mappedCandidate(parent) && parent->workspace() == this) {
       return parent;
@@ -1892,28 +1888,37 @@ namespace umbriel {
     // workspace, since nothing else refocuses until a destroy-time fallback that unmap-only clients never reach.
     if (columnIndex < 0 || columnIndex >= static_cast<int>(columns.size())) {
       for (const auto& entry : m_group->server()->registry().placementRoots()) {
-        if (mappedCandidate(entry.get()) && entry->workspace() == this) {
-          return entry.get();
+        if (View* candidate = shownTab(entry.get()); mappedCandidate(candidate) && candidate->workspace() == this) {
+          return candidate;
         }
       }
       return nullptr;
     }
 
-    const auto& column = columns[static_cast<size_t>(columnIndex)].views;
+    const Column& lane = columns[static_cast<size_t>(columnIndex)];
+    const auto at = static_cast<size_t>(rowIndex);
+    // A tab leaving its group hands focus to the tab the group shows next: the one before it, or after it when it was
+    // the first.
+    if (const TabGroup* group = lane.tabs.groupAt(at); group != nullptr && group->count > 1) {
+      const size_t next = group->active != at ? group->active : at > group->first ? at - 1 : at + 1;
+      if (mappedCandidate(lane.views[next])) {
+        return lane.views[next];
+      }
+    }
     for (int row = rowIndex - 1; row >= 0; --row) {
-      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+      if (View* candidate = unitEntry(lane, static_cast<size_t>(row)); mappedCandidate(candidate)) {
         return candidate;
       }
     }
-    for (int row = rowIndex + 1; row < static_cast<int>(column.size()); ++row) {
-      if (View* candidate = column[static_cast<size_t>(row)]; mappedCandidate(candidate)) {
+    for (int row = rowIndex + 1; row < static_cast<int>(lane.views.size()); ++row) {
+      if (View* candidate = unitEntry(lane, static_cast<size_t>(row)); mappedCandidate(candidate)) {
         return candidate;
       }
     }
     const auto recentInColumn = [&](int targetColumn) -> View* {
       const auto& members = columns[static_cast<size_t>(targetColumn)].views;
       for (const auto& entry : m_group->server()->registry().placementRoots()) {
-        View* candidate = entry.get();
+        View* candidate = shownTab(entry.get());
         if (mappedCandidate(candidate) && std::ranges::find(members, candidate) != members.end()) {
           return candidate;
         }
@@ -1951,8 +1956,11 @@ namespace umbriel {
 
   View* Workspace::cycleFocusTarget(int direction) const {
     std::vector<View*> ring;
+    // A tab group is one stop, at the tab it shows.
     for (const Column& column : m_layout->columns()) {
-      ring.insert(ring.end(), column.views.begin(), column.views.end());
+      for (size_t row = 0; row < column.views.size(); row = column.tabs.unitEnd(row)) {
+        ring.push_back(unitEntry(column, row));
+      }
     }
     std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
       return !view->minimized();
@@ -2793,6 +2801,9 @@ namespace umbriel {
       if (m_focusedView != nullptr) {
         scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
       }
+    }
+    for (View* view : m_views) {
+      view->refreshStateRuleEffects();
     }
     markArrange();
     refreshDropZonePreview(*m_group->server());
@@ -3777,6 +3788,7 @@ namespace umbriel {
     activate(selected);
     m_server->cursor()->clearConstraint();
     m_server->refocus(m_output);
+    m_server->cursor()->refocusAfterSceneChange();
   }
 
   void WorkspaceGroup::deactivate(Workspace* workspace) {

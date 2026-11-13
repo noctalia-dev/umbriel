@@ -92,6 +92,17 @@ wait_field minimized true
 "$UMBRIEL" msg window-focus "$id" > /dev/null
 wait_field minimized false
 
+# Large corners move the complete controls inward, and their click targets follow the new positions.
+sed -i 's/^corner_radius = 0$/corner_radius = 50/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+expect_slots 33=green 55=yellow 77=blue
+"$UMBRIEL_POINTER_CLIENT" 1280 720 move 576 95 click 272
+wait_field minimized true
+"$UMBRIEL" msg window-focus "$id" > /dev/null
+wait_field minimized false
+sed -i 's/^corner_radius = 50$/corner_radius = 0/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
 # A tiled window cannot minimize, so its bar has no minimize button.
 "$UMBRIEL" msg window-toggle-floating > /dev/null
 wait_field floating false

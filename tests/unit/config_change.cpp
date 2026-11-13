@@ -7,6 +7,7 @@ using umbriel::Config;
 using umbriel::ConfigChange;
 using umbriel::ConfigEffects;
 using umbriel::ContentType;
+using umbriel::FollowsMouse;
 using umbriel::Keybind;
 using umbriel::LayerRule;
 using umbriel::ModifierKey;
@@ -242,7 +243,7 @@ UMBRIEL_TEST(nestedAppearanceChangesAreCaught) {
   CHECK(ConfigChange::between(before, scrolled).layout);
 
   Config focused;
-  focused.input.focus.followsMouse = !focused.input.focus.followsMouse;
+  focused.input.focus.followsMouse = FollowsMouse::Sloppy;
   CHECK(ConfigChange::between(before, focused).input);
 }
 
@@ -656,6 +657,70 @@ UMBRIEL_TEST(outputSdrTransferReloadOnlyRefreshesOutputState) {
   CHECK(!ConfigEffects::between(after, after).any());
 }
 
+UMBRIEL_TEST(outputColorProfileReloadOnlyRefreshesOutputState) {
+  Config before;
+  OutputRule original;
+  original.name = "HEADLESS-1";
+  before.outputs.push_back(original);
+
+  Config after = before;
+  after.outputs[0].colorProfile = "edid";
+  CHECK(ConfigChange::between(before, after).outputs);
+  const ConfigEffects changed = ConfigEffects::between(before, after);
+  CHECK(changed.outputState);
+  CHECK_EQ(changed.summary(), std::string{"output state"});
+  CHECK(!changed.workspaceInventory);
+  CHECK(!changed.workspaceLayout);
+
+  const ConfigEffects reset = ConfigEffects::between(after, before);
+  CHECK(reset.outputState);
+  CHECK_EQ(reset.summary(), std::string{"output state"});
+  CHECK(!ConfigEffects::between(after, after).any());
+}
+
+UMBRIEL_TEST(aRereadProfileRuleWithUnchangedFileChangesNothing) {
+  // A file profile's rule records the file identity, so re-parsing the same
+  // file must not re-apply output state and risk a flicker.
+  Config before;
+  OutputRule original;
+  original.name = "HEADLESS-1";
+  original.colorProfile = "/profiles/panel.icc";
+  original.colorProfileMtime = 1000000000;
+  before.outputs.push_back(original);
+
+  const Config after = before;
+  CHECK(!ConfigChange::between(before, after).any());
+  CHECK(!ConfigEffects::between(before, after).any());
+
+  Config edited = before;
+  edited.outputs[0].colorProfileMtime = 1000000060;
+  CHECK(ConfigChange::between(before, edited).outputs);
+  const ConfigEffects changed = ConfigEffects::between(before, edited);
+  CHECK(changed.outputState);
+  CHECK_EQ(changed.summary(), std::string{"output state"});
+}
+
+UMBRIEL_TEST(outputSdrGamutReloadOnlyRefreshesOutputState) {
+  Config before;
+  OutputRule original;
+  original.name = "HEADLESS-1";
+  before.outputs.push_back(original);
+
+  Config after = before;
+  after.outputs[0].sdrGamut = umbriel::SdrGamut::Srgb;
+  CHECK(ConfigChange::between(before, after).outputs);
+  const ConfigEffects changed = ConfigEffects::between(before, after);
+  CHECK(changed.outputState);
+  CHECK_EQ(changed.summary(), std::string{"output state"});
+  CHECK(!changed.workspaceInventory);
+  CHECK(!changed.workspaceLayout);
+
+  const ConfigEffects reset = ConfigEffects::between(after, before);
+  CHECK(reset.outputState);
+  CHECK_EQ(reset.summary(), std::string{"output state"});
+  CHECK(!ConfigEffects::between(after, after).any());
+}
+
 UMBRIEL_TEST(outputScrollingDefaultOnlyRefreshesWorkspaceLayout) {
   Config before;
   OutputRule output;
@@ -827,6 +892,11 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config changedAloneMatcher = forcedByRule;
   changedAloneMatcher.windowRules[0].matchAlone = true;
   CHECK(ConfigEffects::between(forcedByRule, changedAloneMatcher).tearingPolicy);
+
+  Config changedLayoutMatcher = forcedByRule;
+  changedLayoutMatcher.windowRules[0].matchLayouts = {umbriel::LayoutMode::Stacking};
+  CHECK(ConfigChange::between(forcedByRule, changedLayoutMatcher).windowRules);
+  CHECK(ConfigEffects::between(forcedByRule, changedLayoutMatcher).tearingPolicy);
 
   Config changedOnlyWindowMatcher = forcedByRule;
   changedOnlyWindowMatcher.windowRules[0].matchOnlyWindow = true;

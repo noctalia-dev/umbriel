@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercise the private rebuildTransferredColumn path with real client configures.
-# Unit coverage pins master's exported sum; this check verifies the transfer
+# Unit coverage pins master's exported average; this check verifies the transfer
 # restores the shared weight through a tab stepping out and a new row joining.
 set -euo pipefail
 
@@ -59,11 +59,11 @@ fi
 last_height=$(jq -r --arg id "$last" '.[] | select(.id == $id) | .h' <<< "$windows")
 incoming_height=$(jq -r '.[] | select(.title == "group-weight-incoming") | .h' <<< "$windows")
 # The source weights become 1/3 and 1 after the 0.25 resize. Its tabbed
-# unit exports their sum, 4/3; the independent incoming row has weight 1.
+# unit exports their average, 2/3; the independent incoming row has weight 1.
 # Each configured height can round by a pixel, so the scaled difference
-# has a tolerance of 3 + 4 pixels.
-scaled_difference=$((3 * last_height - 4 * incoming_height))
-if ((scaled_difference < -7 || scaled_difference > 7)); then
+# has a tolerance of 3 + 2 pixels.
+scaled_difference=$((3 * last_height - 2 * incoming_height))
+if ((scaled_difference < -5 || scaled_difference > 5)); then
   echo "transferred master tabs lost their total row weight: incoming=$incoming_height stepped-out=$last_height"
   echo "$windows"
   exit 1

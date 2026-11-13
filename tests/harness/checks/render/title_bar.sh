@@ -15,6 +15,70 @@ awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(r > 240 && g < 12 && 
 read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel 633 95)
 awk -v r="$red" -v g="$green" -v b="$blue" 'BEGIN { exit !(g > 200 && r < 64 && b < 64) }'
 
+# Frame corners preserve the complete text and controls at small and large radii.
+sed -i '/^height = 28$/a button_corner_radius = 3' "$UMBRIEL_CONFIG"
+for scale in 1 1.25; do
+  cat >> "$UMBRIEL_CONFIG" <<EOF
+[output."HEADLESS-1"]
+scale = $scale
+EOF
+  "$UMBRIEL" msg config-reload > /dev/null
+  "$UMBRIEL" settle > /dev/null
+  grim -o HEADLESS-1 "$image"
+  region=$(awk -v s="$scale" 'BEGIN { printf "%.0fx%.0f+%.0f+%.0f", 480*s, 28*s, 173*s, 81*s }')
+  read -r text_before buttons_before < <(
+    "$UMBRIEL_PIXEL_PROBE" "$image" count 'r > 0.7 && g > 0.7 && b > 0.7' 'r < 0.2 && g > 0.8 && b < 0.2' "$region" | xargs
+  )
+  read -r text_left_before _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.7 && g > 0.7 && b > 0.7' "$region")
+  for radius in 12 50; do
+    sed -i "s/^corner_radius = .*/corner_radius = $radius/" "$UMBRIEL_CONFIG"
+    "$UMBRIEL" msg config-reload > /dev/null
+    "$UMBRIEL" settle > /dev/null
+    grim -o HEADLESS-1 "$image"
+    read -r text_after buttons_after < <(
+      "$UMBRIEL_PIXEL_PROBE" "$image" count 'r > 0.7 && g > 0.7 && b > 0.7' 'r < 0.2 && g > 0.8 && b < 0.2' "$region" | xargs
+    )
+    if ((text_before == 0 || buttons_before == 0 || text_after * 100 < text_before * 95 || buttons_after * 100 < buttons_before * 95)); then
+      echo "scale=$scale radius=$radius: corners cut off the title or controls: text=$text_before/$text_after buttons=$buttons_before/$buttons_after"
+      exit 1
+    fi
+    read -r text_left_after _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.7 && g > 0.7 && b > 0.7' "$region")
+    if ((radius == 12 && text_left_after != text_left_before)); then
+      echo "scale=$scale: a small radius unnecessarily moved the title"
+      exit 1
+    fi
+    if ((radius == 50)); then
+      for point in '174 95' '174 110' '643 95'; do
+        read -r x y <<< "$point"
+        read -r px py < <(awk -v x="$x" -v y="$y" -v s="$scale" 'BEGIN { printf "%.0f %.0f\n", x*s, y*s }')
+        read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel "$px" "$py")
+        if ((red > 12 || green > 12 || blue > 12)); then
+          echo "scale=$scale: title bar, controls, or client escaped the frame corner at $x,$y: $red $green $blue"
+          exit 1
+        fi
+      done
+    fi
+    read -r px py < <(awk -v s="$scale" 'BEGIN { printf "%.0f %.0f\n", 413*s, 95*s }')
+    read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$image" pixel "$px" "$py")
+    ((red > 240 && green < 12 && blue > 240))
+  done
+  sed -i 's/^corner_radius = 50$/corner_radius = 0/' "$UMBRIEL_CONFIG"
+  sed -i '/^\[output\."HEADLESS-1"\]$/ { N; d; }' "$UMBRIEL_CONFIG"
+done
+sed -i '/^button_corner_radius = 3$/d' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
+# A centered title sits on the middle of the whole bar, not of the space beside the buttons.
+sed -i '/^height = 28$/a title_align = "center"' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle > /dev/null
+grim -o HEADLESS-1 "$image"
+read -r text_x _ text_w _ < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r > 0.7 && g > 0.7 && b > 0.7' 480x28+173+81)
+if ((text_w == 0 || (2 * text_x + text_w - 2 * 413) ** 2 > 36)); then
+  echo "centered title spans x=$text_x width=$text_w, expected its middle at 413"
+  exit 1
+fi
+
 # Explicit client-side decoration keeps client controls; no preference uses the default.
 env XDG_DECORATION=client "$UMBRIEL_FRACTIONAL_CLIENT" ssd-csd-render 300 200 > "$UMBRIEL_RUNTIME_DIR/csd.log" 2>&1 &
 title_bar_wait_field ssd-csd-render title_bar false

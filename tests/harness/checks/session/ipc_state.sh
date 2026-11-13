@@ -7,22 +7,24 @@ source "$UMBRIEL_HARNESS_LIB"
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly LAYER_CLIENT="${UMBRIEL_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 readonly EVENTS="$UMBRIEL_RUNTIME_DIR/ipc-state-events.jsonl"
+readonly UNDONE_EVENTS="$UMBRIEL_RUNTIME_DIR/ipc-state-undone-events.jsonl"
+readonly KEPT_EVENTS="$UMBRIEL_RUNTIME_DIR/ipc-state-kept-events.jsonl"
 readonly CONTROL_FIFO="$UMBRIEL_RUNTIME_DIR/ipc-state-control"
 
 "$UMBRIEL" subscribe windows,workspaces,layers > "$EVENTS" &
 
-# Waits until the newest pushed event of a family satisfies a jq predicate on its data.
+# Waits until the newest pushed event of a family satisfies a jq predicate on its data, by default in $EVENTS.
 await_state() {
-  local family=$1 predicate=$2 reason=$3
+  local family=$1 predicate=$2 reason=$3 events=${4:-$EVENTS}
   for _ in $(seq 60); do
     if jq -e -s --arg family "$family" "[.[] | select(.event == \$family)] | last | .data | $predicate" \
-      "$EVENTS" > /dev/null 2>&1; then
+      "$events" > /dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
   done
   echo "$reason: the newest $family event is $(jq -c -s --arg family "$family" \
-    '[.[] | select(.event == $family)] | last | .data' "$EVENTS" 2> /dev/null)"
+    '[.[] | select(.event == $family)] | last | .data' "$events" 2> /dev/null)"
   exit 1
 }
 
@@ -33,6 +35,10 @@ window_id() {
 action() {
   "$UMBRIEL" msg "$@" > /dev/null
 }
+
+await_state workspaces 'length > 0 and all(.[]; .previous == false)' \
+  "an output with no workspace switches reported a previous workspace"
+first_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id')
 
 # A tiled parent, a tiled unrelated window, and a floating child of the parent.
 TRANSIENT_SUITE=1 "$CLIENT" state-child > "$UMBRIEL_RUNTIME_DIR/ipc-state-suite.log" 2>&1 &
@@ -87,11 +93,22 @@ await_state windows "
 " "a workspace switch did not update visibility"
 await_state workspaces ".[] | select(.focused) | .index == 2 and (.occupied | not) and .window_count == 0" \
   "the pinned window made the active workspace occupied"
+await_state workspaces "
+  ([.[] | select(.previous) | .id] == [\"$first_workspace\"])
+  and all(.[] | select(.previous); .active | not)
+" "the workspace switch did not report the previous workspace"
+second_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id')
 await_state windows ".[] | select(.id == \"$child\") | .workspace == \"$(
   "$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id'
 )\"" "the pinned window did not follow the active workspace"
+await_state workspaces ". == $("$UMBRIEL" workspaces --json)" \
+  "the workspace listing differs from the pushed snapshot"
 action workspace-switch 1
 await_state windows 'all(.[]; .visible)' "returning to the workspace did not show its windows"
+await_state workspaces "
+  ([.[] | select(.previous) | .id] == [\"$second_workspace\"])
+  and ([.[] | select(.focused) | .id] == [\"$first_workspace\"])
+" "returning to the first workspace did not update the previous workspace"
 
 # The scrolling strip is the only layout with columns to report.
 action workspace-set-layout dwindle
@@ -134,5 +151,32 @@ action window-focus "$parent"
 await_state layers 'length == 1 and (.[0].focused | not)' "the panel kept the keyboard after a window took focus"
 kill "$panel_pid"
 await_state layers 'length == 0' "the destroyed panel stayed in the layer list"
+
+# A subscriber can join while a change waits for its pacing interval. Whether that change is then undone or kept, every
+# subscriber must end on the current state. The hold keeps the change waiting until the subscriber has joined.
+is_active() {
+  echo ".[] | select(.id == \"$1\") | .active"
+}
+
+join_during_held_change() {
+  local events=$1
+  "$UMBRIEL" event-pacing-hold on > /dev/null
+  action window-focus "$parent"
+  "$UMBRIEL" subscribe windows > "$events" &
+  await_state windows "$(is_active "$parent")" "the late subscriber's initial state missed the waiting change" "$events"
+}
+
+action window-focus "$other"
+await_state windows "$(is_active "$other")" "focusing the unrelated window"
+
+join_during_held_change "$UNDONE_EVENTS"
+action window-focus "$other"
+"$UMBRIEL" event-pacing-hold off > /dev/null
+await_state windows "$(is_active "$other")" "a change undone during the interval left the late subscriber stale" \
+  "$UNDONE_EVENTS"
+
+join_during_held_change "$KEPT_EVENTS"
+"$UMBRIEL" event-pacing-hold off > /dev/null
+await_state windows "$(is_active "$parent")" "a change kept during the interval left an existing subscriber stale"
 
 echo "window, workspace, and layer state is listed and pushed to subscribers"

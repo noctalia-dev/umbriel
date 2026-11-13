@@ -353,7 +353,12 @@ namespace umbriel {
       // column three screens away is 3.0. The upper bound here is a nonsense-catcher, not a ceiling. Below zero would
       // refuse focus even for a window already fully visible, which disables hover focus rather than limiting it.
       static const Fields<In::Focus> focus{
-          boolean("follows_mouse", &In::Focus::followsMouse),
+          choice(
+              "follows_mouse", &In::Focus::followsMouse,
+              {{.name = "off", .value = FollowsMouse::Off},
+               {.name = "sloppy", .value = FollowsMouse::Sloppy},
+               {.name = "always", .value = FollowsMouse::Always}}
+          ),
           real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, &In::Focus::followsMouseMaxScroll),
           boolean("hover_raises", &In::Focus::hoverRaises),
       };

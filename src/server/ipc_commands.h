@@ -12,6 +12,12 @@
 namespace umbriel {
 
   class Server;
+  struct ColorDescription;
+
+  // Surface transfer label for reports: a named protocol value keeps its name,
+  // a description without a curve reports "unspecified", and no description at
+  // all reports "none".
+  std::string surfaceTransferLabel(const ColorDescription* description);
 
   // A request's `args` array, one string per CLI word.
   using IpcArgs = std::span<const std::string>;
@@ -35,6 +41,9 @@ namespace umbriel {
     static nlohmann::json outputCreate(Server& server, IpcArgs args);
     static nlohmann::json outputDestroy(Server& server, IpcArgs args);
     static nlohmann::json configReplace(Server& server, IpcArgs args);
+    static nlohmann::json configSet(Server& server, IpcArgs args);
+    static nlohmann::json configGet(Server& server, IpcArgs args);
+    static nlohmann::json configUnset(Server& server, IpcArgs args);
     // The reply to a settle request. The IPC server holds the request until the compositor is settled.
     static nlohmann::json settle(Server& server, IpcArgs args);
     static nlohmann::json clockFreeze(Server& server, IpcArgs args);
@@ -46,6 +55,7 @@ namespace umbriel {
     static nlohmann::json swipeForTest(Server& server, IpcArgs args);
     static nlohmann::json animationCaptureFail(Server& server, IpcArgs args);
     static nlohmann::json blurCompositeSplit(Server& server, IpcArgs args);
+    static nlohmann::json eventPacingHold(Server& server, IpcArgs args);
     static nlohmann::json planeCursor(Server& server, IpcArgs args);
     static nlohmann::json effectFrames(Server& server, IpcArgs args);
     static nlohmann::json cursorState(Server& server, IpcArgs args);
@@ -55,6 +65,8 @@ namespace umbriel {
   // The `umbriel --help` section that lists a command.
   enum class IpcCommandGroup {
     Control,
+    // Spelled `umbriel config <verb>` on the command line; the request names it `config-<verb>`.
+    Config,
     Inspect,
     Harness,
   };
@@ -73,6 +85,8 @@ namespace umbriel {
 
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+  // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
+  std::string cliName(const IpcCommandSpec& spec);
 
   // Reads output-create's arguments: the output name and its optional mode, in the config `mode` format
   // ("WIDTHxHEIGHT[@HZ]"). Returns false with `error` set on anything else.

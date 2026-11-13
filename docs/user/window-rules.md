@@ -10,24 +10,27 @@ default_workspace = 2
 
 ## Matching
 
-| Selector                      | Description                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------- |
-| `match.app_id`                | Match the application ID with a regular expression.                             |
-| `match.title`                 | Match the window title.                                                         |
-| `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                        |
-| `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                              |
-| `match.is_focused`            | Match current focus state.                                                      |
-| `match.is_floating`           | Match current floating state.                                                   |
-| `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                         |
-| `match.is_pinned`             | Match current pinned state.                                                     |
-| `match.is_scratchpad`         | Match current scratchpad state.                                                 |
-| `match.is_alone`              | Match whether this is alone in its workspace's tiled layout.                    |
-| `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included. |
-| `match.is_dialog`             | Match whether the application named a parent window for it.                     |
-| `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                |
-| `match.at_startup`            | Match during or after the first 60 seconds.                                     |
+| Selector                      | Description                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `match.app_id`                | Match the application ID with a regular expression.                                           |
+| `match.title`                 | Match the window title.                                                                       |
+| `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                                      |
+| `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                                            |
+| `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
+| `match.is_focused`            | Match current focus state.                                                                    |
+| `match.is_floating`           | Match current floating state.                                                                 |
+| `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                                       |
+| `match.is_pinned`             | Match current pinned state.                                                                   |
+| `match.is_scratchpad`         | Match current scratchpad state.                                                               |
+| `match.is_alone`              | Match whether this is alone in its workspace's tiled layout.                                  |
+| `match.is_only_window`        | Match whether this is the only window on its workspace, floating ones included.               |
+| `match.is_dialog`             | Match whether the application named a parent window for it.                                   |
+| `match.is_cast_target`        | Match while a screencast or screenshot is capturing this window.                              |
+| `match.at_startup`            | Match during or after the first 60 seconds.                                                   |
 
 Selectors are optional. A rule with none matches every window. Regular expressions match any part of a value, so use `^` and `$` for an exact match.
+
+`match.layout` takes one layout name or an array of names. Any one matching is enough; an empty array places no constraint. It follows the workspace layout, including for floating windows, and refreshes when the layout changes or the window moves to another workspace. A window without a workspace does not match a non-empty layout selector, so use layout matching for settings that update while the window is open, not its initial placement.
 
 The `app_id`, `title`, and `xdg_tag` selectors take either one pattern or an array of them. Any one of them matching is enough, and an empty array places no constraint:
 
@@ -181,12 +184,14 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 
 | Key                       | Description                                                                                                                                                                                                                                                            |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dim_behind`              | Darken content below this window on its output; `0.0`–`1.0`, default `0.0`.                                                                                                                                                                                            |
 | `opacity`                 | Surface opacity from 0.0 to 1.0.                                                                                                                                                                                                                                       |
 | `blur`                    | Enable or disable window blur, including translucent Umbriel title bars.                                                                                                                                                                                               |
-| `blur_popups`             | Apply blur to descendant XDG popups.                                                                                                                                                                                                                                   |
+| `blur_popups`             | Apply blur to descendant XDG popups. Popups always blur the live content behind them, whatever `blur_optimized` says.                                                                                                                                                  |
 | `blur_ignore_alpha`       | Skip blur below an alpha threshold.                                                                                                                                                                                                                                    |
 | `blur_optimized`          | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
 | `confine_pointer`         | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
+| `touchpad_scroll_factor`  | Touchpad scroll speed multiplier from 0.1 to 10.0 for this window, applied on top of [`input.touchpad.scroll_factor`](input.md#touchpad). Mouse wheels are unaffected.                                                                                                 |
 | `allow_shortcuts_inhibit` | Allow client-requested keyboard shortcut inhibition (default `true`). Set `false` to keep compositor shortcuts available. See [Keyboard shortcuts inhibition](#keyboard-shortcuts-inhibition).                                                                         |
 | `block_capture`           | Omit this window from screenshots and recordings (default `false`). See [Capture protection](#capture-protection).                                                                                                                                                     |
 | `background_render`       | Keep this window drawing while hidden (default `false`). See [Background rendering](#background-rendering).                                                                                                                                                            |
@@ -242,6 +247,16 @@ border_color_unfocused = "#5C4A2AFF"
 ```
 
 ### Decoration
+
+To show title bars only in the stacking layout, keep `[appearance.title_bar] mode = "off"` and add:
+
+```toml
+[[window_rule]]
+match.layout = "stacking"
+title_bar = "on"
+```
+
+This also covers manually floating windows in stacking, without enabling bars on floating windows in other layouts.
 
 An omitted `title_bar` inherits `[appearance.title_bar] mode`. An explicit `title_bar = "on"` follows the client's decoration preference, or shows Umbriel's bar if no preference is known. Use `"negotiated"` to show it only when Wayland decoration negotiation selects server-side decorations, `"forced"` to force a bar, or `"off"` to hide it. Both `"on"` and `"negotiated"` follow managed Xwayland windows' decoration hints. Rules override every global mode: `"forced"` can enable a bar with global `"off"`, and `"on"` can honor CSD requests with global `"forced"`. A later matching `"on"` or `"negotiated"` rule replaces an earlier override with its corresponding decoration policy. Changes apply to existing windows, including state-based rules and config reloads. Fullscreen and tiled tab groups still suppress the bar.
 
@@ -440,3 +455,13 @@ Protection also covers decorations, shadows, overview cards, and closing images,
 X11 transients with a known owner inherit its protection. When an X11 popup has no reliable parent, Umbriel conservatively excludes it while any X11 window is protected; this can also hide unrelated X11 menus and notifications from capture. A protected window that changes into an unmanaged popup keeps its protection until it becomes managed again.
 
 Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.
+
+## Dim behind
+
+```toml
+[[window_rule]]
+match.app_id = "^launcher$"
+dim_behind = 0.5
+```
+
+While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.

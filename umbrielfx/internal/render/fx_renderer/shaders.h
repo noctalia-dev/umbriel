@@ -45,6 +45,7 @@ struct quad_shader {
   struct {
     GLint clip_size;
     GLint clip_position;
+    GLint clip_inside;
     struct shader_corner_radii clip_radius;
   } effects;
 };
@@ -81,6 +82,7 @@ struct quad_round_shader {
 
   GLint clip_size;
   GLint clip_position;
+  GLint clip_inside;
   struct shader_corner_radii clip_radius;
 
   GLint border_width;
@@ -138,11 +140,14 @@ struct tex_shader {
   GLint tex;
   GLint alpha;
   GLint source_tf;
+  GLint source_tf_power;
   GLint primaries_matrix;
   GLint lum_multiplier;
   GLint source_luminances;
   GLint target_tf;
   GLint map_hdr_to_sdr;
+  GLint source_lut;
+  GLint source_lut_dim;
   GLint pos_attrib;
 
   GLint discard_transparent;
@@ -156,6 +161,7 @@ struct tex_shader {
 
     GLint clip_size;
     GLint clip_position;
+    GLint clip_inside;
     struct shader_corner_radii clip_radius;
   } effects;
 };
@@ -188,6 +194,7 @@ struct box_shadow_shader {
   GLint corner_radius;
 
   GLint clip_position;
+  GLint clip_inside;
   GLint clip_size;
   struct shader_corner_radii clip_radius;
 };
@@ -233,6 +240,7 @@ struct blur2_composite_shader {
 
     GLint clip_size;
     GLint clip_position;
+    GLint clip_inside;
     struct shader_corner_radii clip_radius;
   } corners;
 };

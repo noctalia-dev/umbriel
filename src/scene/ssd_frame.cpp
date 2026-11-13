@@ -157,6 +157,7 @@ namespace umbriel {
     );
     wlr_scene_blur_set_size(m_blur, m_background->width, m_background->height);
     wlr_scene_blur_set_corner_radii(m_blur, m_background->corners);
+    wlr_scene_blur_set_clipped_region(m_blur, m_background->clipped_region);
     wlr_scene_blur_set_should_only_blur_bottom_layer(
         m_blur, m_blurOptions.optimized.value_or(cfg.optimized) && !m_blurLive
     );
@@ -164,6 +165,26 @@ namespace umbriel {
   }
 
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
+
+  clipped_region SsdFrame::frameClip(int x, int y) const {
+    const int radius = zoomed(nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset));
+    if (radius <= 0) {
+      return {};
+    }
+    return {
+        .area =
+            {-x, zoomed(-m_geometry.titleBarHeight) - y, zoomed(m_geometry.contentWidth),
+             zoomed(m_geometry.contentHeight + m_geometry.titleBarHeight)},
+        .corners = corner_radii_all(radius),
+        .inside = true,
+    };
+  }
+
+  void SsdFrame::clipBuffer(wlr_scene_buffer* buffer) const {
+    const auto clip = frameClip(buffer->node.x, buffer->node.y);
+    wlr_scene_buffer_set_corner_radii(buffer, clip.corners);
+    wlr_scene_buffer_set_corner_box(buffer, clip.inside ? &clip.area : nullptr);
+  }
 
   std::span<const TitleBarButton> SsdFrame::visibleButtons() const {
     const auto& style = config().appearance.titleBar;
@@ -183,14 +204,19 @@ namespace umbriel {
       }
       return;
     }
-    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, config().appearance.titleBar.buttonSize);
+    const auto& style = config().appearance.titleBar;
+    const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, style.buttonSize);
+    const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphStroke);
     const float scale = std::max(1.0F, m_geometry.scale);
     // At integer scales the symbol maps 1:1 onto the button. At fractional scales the button's physical size depends
     // on its position, and the renderer copies a buffer within one pixel of that size texel for texel, leaving the
     // symbol half a pixel off center. Twice the resolution makes it resample symmetrically instead.
     const int pixels = static_cast<int>(std::ceil(size * scale)) * (scale == std::floor(scale) ? 1 : 2);
-    if (icon == nullptr || m_iconSizes[index] != pixels || m_iconColors[index] != color) {
-      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color);
+    if (icon == nullptr
+        || m_iconSizes[index] != pixels
+        || m_iconColors[index] != color
+        || m_iconGlyphs[index] != glyph) {
+      wlr_buffer* buffer = renderTitleBarIcon(button, pixels, color, glyph);
       if (icon == nullptr) {
         icon = wlr_scene_buffer_create(m_tree, buffer);
         if (icon != nullptr) {
@@ -209,10 +235,12 @@ namespace umbriel {
       wlr_buffer_drop(buffer);
       m_iconSizes[index] = pixels;
       m_iconColors[index] = color;
+      m_iconGlyphs[index] = glyph;
     }
     wlr_scene_buffer_set_dest_size(icon, background->width, background->height);
     wlr_scene_buffer_set_opacity(icon, alpha);
     wlr_scene_node_set_position(&icon->node, background->node.x, background->node.y);
+    clipBuffer(icon);
     wlr_scene_node_set_enabled(&icon->node, true);
   }
 
@@ -305,11 +333,11 @@ namespace umbriel {
       return;
     }
     place(m_background, {0, -h, g.contentWidth, h});
-    const int radius = nestedRadius(g.cornerRadius, g.borderInset);
-    wlr_scene_rect_set_corner_radii(m_background, corner_radii_new(zoomed(radius), zoomed(radius), 0, 0));
+    wlr_scene_rect_set_clipped_region(m_background, frameClip(m_background->node.x, m_background->node.y));
     const auto& style = config().appearance.titleBar;
-    const TitleBarLayout parts =
-        titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry());
+    const int radius = nestedRadius(g.cornerRadius, g.borderInset);
+    TitleBarLayout parts =
+        titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry(), radius);
     const auto drawButton = [&](wlr_scene_rect* button, const std::optional<wlr_box>& slot) {
       if (!slot) {
         wlr_scene_node_set_enabled(&button->node, false);
@@ -320,19 +348,31 @@ namespace umbriel {
       place(button, box);
       const int buttonRadius = style.buttonCornerRadius >= 0 ? style.buttonCornerRadius : g.cornerRadius;
       wlr_scene_rect_set_corner_radius(button, std::min(zoomed(box.width) / 2, zoomed(buttonRadius)));
+      wlr_scene_rect_set_clipped_region(button, frameClip(button->node.x, button->node.y));
       wlr_scene_node_set_enabled(&button->node, true);
     };
     drawButton(m_close, parts.button(TitleBarButton::Close));
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
     const auto& colors = config().colors.titleBar;
-    const TabLabel* label = m_labels->label({
+    TabLabelRequest request{
         .text = m_title,
         .color = m_focused ? colors.text : colors.textUnfocused,
         .font = style.font,
         .maxWidth = parts.title.width,
         .scale = std::max(1.0, std::ceil(static_cast<double>(g.scale))),
-    });
+    };
+    const TabLabel* label = m_labels->label(request);
+    if (label != nullptr) {
+      // The line's measured height determines how far the arc reaches into its horizontal space.
+      parts = titleBarLayout(
+          g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry(), radius, label->height
+      );
+      if (label->width > parts.title.width) {
+        request.maxWidth = parts.title.width;
+        label = m_labels->label(request);
+      }
+    }
     if (label == nullptr) {
       if (m_label != nullptr) {
         wlr_scene_node_destroy(&m_label->node);
@@ -347,7 +387,9 @@ namespace umbriel {
         wlr_scene_buffer_set_buffer(m_label, label->buffer);
       }
       wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(label->width)), std::max(1, zoomed(label->height)));
-      wlr_scene_node_set_position(&m_label->node, zoomed(parts.title.x), zoomed(-h + (h - label->height) / 2));
+      const int x = titleBarLabelX(parts, g.contentWidth, label->width, style.titleAlign);
+      wlr_scene_node_set_position(&m_label->node, zoomed(x), zoomed(-h + (h - label->height) / 2));
+      clipBuffer(m_label);
     }
     updateColors();
   }
@@ -368,7 +410,8 @@ namespace umbriel {
     const auto& style = config().appearance.titleBar;
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,
-        m_resizable, style.buttonPosition, visibleButtons(), style.buttonGeometry(), x, y
+        m_resizable, style.buttonPosition, visibleButtons(), style.buttonGeometry(), x, y,
+        nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset)
     );
   }
 
@@ -382,6 +425,7 @@ namespace umbriel {
       if (copy != nullptr) {
         wlr_scene_node_lower_to_bottom(&copy->node);
         wlr_scene_blur_set_corner_radii(copy, m_blur->corners);
+        wlr_scene_blur_set_clipped_region(copy, m_blur->clipped_region);
         wlr_scene_blur_set_alpha(copy, m_blur->alpha);
         wlr_scene_blur_set_should_only_blur_bottom_layer(copy, m_blur->should_only_blur_bottom_layer);
         wlr_scene_node_set_position(&copy->node, m_blur->node.x, m_blur->node.y);
@@ -394,6 +438,7 @@ namespace umbriel {
       auto* copy = wlr_scene_rect_create(tree, source->width, source->height, source->color);
       copy->accepts_input = false;
       wlr_scene_rect_set_corner_radii(copy, source->corners);
+      wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     }
     const auto copyBuffer = [&](const wlr_scene_buffer* source) {
@@ -404,6 +449,8 @@ namespace umbriel {
       copy->point_accepts_input = rejectInput;
       wlr_scene_buffer_set_dest_size(copy, source->dst_width, source->dst_height);
       wlr_scene_buffer_set_opacity(copy, source->opacity);
+      wlr_scene_buffer_set_corner_radii(copy, source->corners);
+      wlr_scene_buffer_set_corner_box(copy, &source->corner_box);
       wlr_scene_node_set_position(&copy->node, m_tree->node.x + source->node.x, m_tree->node.y + source->node.y);
     };
     copyBuffer(m_label);

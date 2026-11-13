@@ -935,6 +935,8 @@ namespace umbriel {
   }
 
   void Server::applyKeyboardConfig() {
+    xkb_keymap_unref(m_compiledKeymap);
+    m_compiledKeymap = nullptr;
     m_surfaceLayouts.clear();
     for (const auto& keyboard : m_keyboards) {
       keyboard->applyConfig();
@@ -954,6 +956,31 @@ namespace umbriel {
     }
   }
 
+  xkb_keymap* Server::compileKeymap(const XkbNames& names) {
+    if (m_compiledKeymap == nullptr || names != m_compiledKeymapNames) {
+      xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+      if (context == nullptr) {
+        return nullptr;
+      }
+      const xkb_rule_names rules{
+          .rules = nullptr,
+          .model = names.model.empty() ? nullptr : names.model.c_str(),
+          .layout = names.layout.empty() ? nullptr : names.layout.c_str(),
+          .variant = names.variant.empty() ? nullptr : names.variant.c_str(),
+          .options = names.options.empty() ? nullptr : names.options.c_str(),
+      };
+      xkb_keymap* keymap = xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+      xkb_context_unref(context);
+      if (keymap == nullptr) {
+        return nullptr;
+      }
+      xkb_keymap_unref(m_compiledKeymap);
+      m_compiledKeymap = keymap;
+      m_compiledKeymapNames = names;
+    }
+    return xkb_keymap_ref(m_compiledKeymap);
+  }
+
   bool Server::refreshSystemKeymap() {
     XkbNames names = usesSystemXkbNames(config().input) ? querySystemKeymap() : XkbNames{};
     if (names == m_systemKeymap) {
@@ -970,7 +997,6 @@ namespace umbriel {
   }
 
   void Server::handleConfigReload(const ConfigReloadResult& result) {
-    cancelModifierTap();
     if (result.success) {
       const bool systemKeymapChanged = refreshSystemKeymap();
       if (result.change.drm) {
@@ -978,6 +1004,7 @@ namespace umbriel {
       }
       if (result.change.keybinds) {
         m_bindCooldowns.clear();
+        m_pendingReleases.reconcileReleaseBinds(config().keybinds);
       }
       if (result.change.scratchpads && m_scratchpadManager != nullptr) {
         m_scratchpadManager->reconcileConfig();
@@ -1460,6 +1487,7 @@ namespace umbriel {
     VirtualPointerDevice* device;
     device = wl_container_of(listener, device, destroy);
     // wlr_cursor detaches the device itself when the pointer is destroyed.
+    device->server->m_pendingReleases.forgetSource(&device->vpointer->pointer.base);
     wl_list_remove(&device->destroy.link);
     std::erase_if(device->server->m_virtualPointers, [device](const std::unique_ptr<VirtualPointerDevice>& ptr) {
       return ptr.get() == device;
@@ -1573,6 +1601,7 @@ namespace umbriel {
     PointerDevice* watch;
     watch = wl_container_of(listener, watch, destroy);
     Server* server = watch->server;
+    server->m_pendingReleases.forgetSource(watch->device);
     if (server->m_inputCapture != nullptr) {
       server->m_inputCapture->forgetAbsoluteDevice(watch->device);
       if ((server->m_inputCapture->capabilities() & 2U) != 0) {
@@ -2044,7 +2073,6 @@ namespace umbriel {
       m_sessionLocked = true;
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
-      cancelModifierTap();
       m_overview->forceClose();
       if (m_cheatsheet != nullptr) {
         m_cheatsheet->hide();
@@ -2267,76 +2295,28 @@ namespace umbriel {
   }
 
   void Server::scheduleIpcWindowsEvent() {
-    if (m_ipc == nullptr || m_ipcWindowsIdle != nullptr) {
-      return;
-    }
-    m_ipcWindowsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWindowsIdle, this);
-    if (m_ipcWindowsIdle == nullptr) {
-      kLog.error("failed to register IPC windows idle source");
-    }
-  }
-
-  void Server::onIpcWindowsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWindowsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWindowsChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyWindowsChanged();
     }
   }
 
   void Server::scheduleIpcWorkspacesEvent() {
     // Outputs report their active workspace and focus, which move with the workspace list.
     scheduleIpcOutputsEvent();
-    if (m_ipc == nullptr || m_ipcWorkspacesIdle != nullptr) {
-      return;
-    }
-    m_ipcWorkspacesIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWorkspacesIdle, this);
-    if (m_ipcWorkspacesIdle == nullptr) {
-      kLog.error("failed to register IPC workspaces idle source");
-    }
-  }
-
-  void Server::onIpcWorkspacesIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWorkspacesIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWorkspacesChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyWorkspacesChanged();
     }
   }
 
   void Server::scheduleIpcLayersEvent() {
-    if (m_ipc == nullptr || m_ipcLayersIdle != nullptr) {
-      return;
-    }
-    m_ipcLayersIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcLayersIdle, this);
-    if (m_ipcLayersIdle == nullptr) {
-      kLog.error("failed to register IPC layers idle source");
-    }
-  }
-
-  void Server::onIpcLayersIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcLayersIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyLayersChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyLayersChanged();
     }
   }
 
   void Server::scheduleIpcOutputsEvent() {
-    if (m_ipc == nullptr || m_ipcOutputsIdle != nullptr) {
-      return;
-    }
-    m_ipcOutputsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcOutputsIdle, this);
-    if (m_ipcOutputsIdle == nullptr) {
-      kLog.error("failed to register IPC outputs idle source");
-    }
-  }
-
-  void Server::onIpcOutputsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcOutputsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyOutputsChanged();
+    if (m_ipc != nullptr) {
+      m_ipc->notifyOutputsChanged();
     }
   }
 
@@ -3982,6 +3962,9 @@ namespace umbriel {
         output->markBlurBackgroundDirty();
         wlr_scene_output_state_options options{};
         options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
+        // Test frames must carry the same supplied transform as regular frames
+        // or the built state silently drops SDR gamut mapping.
+        options.color_transform = output->stagedSdrGamutTransform();
         if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
           kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
           return false;
@@ -4186,7 +4169,6 @@ namespace umbriel {
         entry.output->adoptOutputManagerEnabled(entry.head->state.enabled);
       }
 
-      cancelModifierTap();
       m_cursor->cancelLayoutInteraction();
       m_gestures->cancelForLayoutChange();
       m_overview->forceClose();

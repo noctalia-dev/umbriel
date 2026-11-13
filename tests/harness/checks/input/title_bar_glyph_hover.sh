@@ -33,7 +33,7 @@ maximize_glyph_hover = "#FF00FFFF"
 minimize_glyph = "#FFFF00FF"
 minimize_glyph_hover = "#00FFFFFF"
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 [output.HEADLESS-1]
 scale = 1.25
 [[window_rule]]

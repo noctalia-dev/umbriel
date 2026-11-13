@@ -432,6 +432,7 @@ namespace umbriel {
         setSceneParent(m_server->pinnedTree());
       }
       setOnActiveWorkspace(true);
+      refreshStateRuleEffects();
     }
     notifyOutputScale();
     if (m_mapped

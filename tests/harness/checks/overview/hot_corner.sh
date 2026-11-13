@@ -51,7 +51,7 @@ workspaces = 2
 enabled = false
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 
 [hot_corners.top_left]
 enabled = true

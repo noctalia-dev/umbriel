@@ -2,6 +2,7 @@
 
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
+#include "scene/title_bar_icon.h"
 #include "view/chrome_attachment.h"
 
 #include <array>
@@ -16,6 +17,7 @@ struct wlr_scene_rect;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
 struct wlr_buffer;
+struct clipped_region;
 
 namespace umbriel {
   class TabLabelCache;
@@ -54,6 +56,8 @@ namespace umbriel {
     void updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible);
     std::span<const TitleBarButton> visibleButtons() const;
     void updateBlur();
+    clipped_region frameClip(int x, int y) const;
+    void clipBuffer(wlr_scene_buffer* buffer) const;
     int zoomed(int value) const;
     wlr_scene_tree* m_tree = nullptr;
     // Invisible resize bands stay outside the window's animation capture bounds.
@@ -71,6 +75,7 @@ namespace umbriel {
     std::array<wlr_buffer*, kTitleBarButtonCount> m_iconBuffers{};
     std::array<std::array<float, 4>, kTitleBarButtonCount> m_iconColors{};
     std::array<int, kTitleBarButtonCount> m_iconSizes{};
+    std::array<TitleBarGlyph, kTitleBarButtonCount> m_iconGlyphs{};
     std::vector<TitleBarButton> m_buttons;
     std::array<wlr_scene_rect*, 4> m_grips{};
     std::shared_ptr<TabLabelCache> m_labels;

@@ -1,6 +1,6 @@
 # Layout
 
-Choose one layout mode for each workspace. Configure the default globally, then use workspace rules for exceptions.
+Choose one layout mode for each workspace. Configure the default globally, override it per output, then use workspace rules for exceptions.
 
 ## Choose a layout
 
@@ -16,7 +16,14 @@ mode = "scrolling"
 | `master`    | Primary windows beside a stack                | Keeping one or more main windows prominent                  |
 | `stacking`  | Independently positioned, overlapping windows | Moving and resizing windows freely                          |
 
-Change the current workspace at runtime with `workspace-set-layout <mode>`. See [Actions](actions.md#argument-forms) and [Workspace Rules](workspaces.md#workspace-rules).
+Set a different default for every workspace on one output, including dynamic workspaces:
+
+```toml
+[output.DP-1.layout]
+mode = "master"
+```
+
+See [Outputs](outputs.md#layout-mode). Change the current workspace at runtime with `workspace-set-layout <mode>`. See [Actions](actions.md#argument-forms) and [Workspace Rules](workspaces.md#workspace-rules).
 
 ## Stacking layout
 
@@ -150,7 +157,7 @@ With `center_focused = "on_overflow"`, a column is centered when it and the neig
 
 Closing a focused column moves focus to the nearest surviving column. When that column contains stacked windows, Umbriel restores its most recently focused member instead of always selecting its first row.
 
-With `follows_mouse = true`, closing a focused window beneath the pointer instead focuses the tiled window that occupies that position after the layout reflows. This also applies when another row in the same scrolling column expands into the stationary pointer.
+With `follows_mouse` set to `"sloppy"` or `"always"`, closing a focused window beneath the pointer instead focuses the tiled window that occupies that position after the layout reflows. This also applies when another row in the same scrolling column expands into the stationary pointer.
 
 ## Vertical strips
 

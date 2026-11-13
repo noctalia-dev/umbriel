@@ -15,6 +15,7 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -100,12 +101,14 @@ namespace umbriel {
     bool configureOutstanding() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
+    void updateDimBehind();
     // Suspends a mapped window that is neither presented nor drawn off the scene, and resumes it otherwise. Callers
     // schedule it through Server::scheduleSuspensionSync.
     void syncSuspendedState();
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
     void requestClose();
+    [[nodiscard]] std::expected<void, std::string> killClient();
     // The client's window geometry in surface-local coordinates.
     wlr_box geometryBox() const;
     SizeHints sizeHints() const;
@@ -151,6 +154,7 @@ namespace umbriel {
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
     bool confinePointer();
+    double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
@@ -635,6 +639,7 @@ namespace umbriel {
     void handleCaptureSourceDestroy();
     void updateBorderGeometry();
     void updateBorderGeometry(int contentWidth, int contentHeight);
+    ClientSize chromeContentSize() const;
     // Lay the chrome attachment out around content of that size, which is remembered for later relayouts.
     void layoutChromeAttachment(int contentWidth, int contentHeight);
     float chromeAlpha() const { return (fadeComposited() ? 1.0F : m_fadeAlpha) * m_dragOpacity * m_overviewOpacity; }
@@ -686,8 +691,7 @@ namespace umbriel {
     void applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip);
     // Undo applyPresentedCrop/size-anim buffer state when the animation ends.
     void resetPresentedSurface();
-    // Shared tail of a finished/cancelled size animation: settle the presented
-    // size on the committed geometry and refresh the derived chrome.
+    // Refresh a finished/cancelled resize, retaining layout and pending floating frame ownership.
     void finishSizeAnimation();
     bool sizeAnimating() const {
       return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
@@ -737,6 +741,9 @@ namespace umbriel {
     // itself. A move grab does not: it may retarget the size once, and the
     // presented size animates there like any other size change.
     bool sizeGrabTracksPointer() const;
+    // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
+    // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
+    bool presentsCommittedSize() const;
     // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
     bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
@@ -779,6 +786,11 @@ namespace umbriel {
     void beginFloatingResize(uint32_t edges);
     void resizeFloating(int width, int height);
     void finishFloatingResize();
+    void sendFloatingSize(int width, int height);
+    void commitFloatingSize();
+    void clearFloatingSizeRequest();
+    bool openingAnimationActive() const;
+    void releaseOpeningPresentation(bool completed = false, bool pointerTakeover = false);
     void syncFloatingResizePosition();
     void adoptFloatingClientSize();
     // Where `origin` has to move to satisfy the clamp, or nullopt if it already does. `resize` selects
@@ -941,9 +953,13 @@ namespace umbriel {
     // The size of the emulated RandR mode a fullscreen X11 window switched to, in X pixels, while it fills the output
     // that way.
     std::optional<ClientSize> m_xFullscreenSize;
-    // The size an X11 window had when a size request was sent. X11 clients with resize increments pick a nearby legal
-    // size, so a commit at any other size answers the request.
-    ClientSize m_xFloatingRequestBase;
+    // One delivered configure. FloatingGeometry keeps the latest desired size.
+    std::optional<FloatingSizeConfigure> m_floatingSizeConfigure;
+    bool m_deferXwaylandConfigure = false;
+    bool m_xwaylandResizeConfigurePending = false;
+    bool m_pointerResizeSettling = false;
+    // applyPresentedCrop programmed the buffer; the surface clip alone no longer describes it.
+    bool m_presentedCropActive = false;
     std::optional<std::string> m_xdgTag;
     ContentType m_contentType = ContentType::None;
     wlr_scene_tree* m_sceneTree = nullptr;
@@ -1045,6 +1061,7 @@ namespace umbriel {
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
+    std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
@@ -1066,6 +1083,8 @@ namespace umbriel {
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen before the layout attach, so the client
     // never sees a transient column-sized configure. Cleared when fullscreen is left by any other path.
     bool m_refullscreenOnTile = false;
+    // Set when a maximized tile leaves the layout, and by maximize toggles while it floats: re-tiling maximizes again.
+    bool m_remaximizeOnTile = false;
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;

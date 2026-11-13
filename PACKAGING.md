@@ -80,7 +80,7 @@ The archive is linked as a whole so its internal utility symbols survive distrib
 - xcb, xcb-icccm, xcb-ewmh, and xcb-shape
 - xcb-render, xcb-xfixes, xcb-xtest, and libei 1.3 or newer when the `tests` feature is enabled
 - EGL, GLES2, and GBM
-- lcms2, optional; without it `umbrielfx` rejects client ICC profiles and keeps only its parametric color transforms
+- lcms2, optional (the single `lcms2` meson feature option gates both ICC paths); without it `umbrielfx` rejects client ICC profiles and keeps only its parametric color transforms, the compositor's ICC characterization for `color_profile` falls back to a warning plus the EDID chain, and `icc_v2_v4` is not advertised
 - jemalloc on glibc, optional
 
 The canonical dependency declarations are in [`meson.build`](meson.build). Distribution package names vary.

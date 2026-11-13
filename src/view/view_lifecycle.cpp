@@ -229,6 +229,7 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
+    m_openingFloatingSize.reset();
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -505,6 +506,9 @@ namespace umbriel {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
+        if (!m_tiled && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
+          m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
+        }
         setFadeAlpha(0.0F);
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
@@ -618,7 +622,7 @@ namespace umbriel {
         && closingWorkspace->active()
         && m_tiled
         && !shellParentRequested()
-        && config().input.focus.followsMouse
+        && config().input.focus.followsMouseEnabled()
         && !m_server->sessionLocked()
         && m_server->exclusiveKeyboardLayer() == nullptr
         && (overview == nullptr || !overview->active())
@@ -634,6 +638,7 @@ namespace umbriel {
 
     setUrgent(false);
     m_floatingMaximized = false;
+    m_remaximizeOnTile = false;
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
     clearRegionState();
@@ -766,6 +771,9 @@ namespace umbriel {
     // The click pair outlives the grab machinery, so drop it here; the grab
     // reset below covers any deferred or promoted press.
     m_server->cursor()->forgetView(this);
+    if (m_onActiveWorkspace) {
+      m_server->cursor()->refocusAfterSceneChange();
+    }
     // Detaching a browser's last tab can unmap the origin while a different
     // toplevel is being carried by that same data drag.
     const View* carried = m_server->cursor()->toplevelDragView();
@@ -796,7 +804,7 @@ namespace umbriel {
     m_aloneSavedWidthFrac.reset();
     m_aloneOpeningSeed = AloneSeed::None;
     m_hasMaximizeRestoreBox = false;
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     m_pendingFloatingWidthPx.reset();
     m_pendingFloatingHeightPx.reset();
     m_pendingFloatingWidth.reset();
@@ -1082,38 +1090,11 @@ namespace umbriel {
         m_savedScrollingExtent = rule.defaultScrollingExtent;
       }
     }
+    commitFloatingSize();
     (void)settleTiledSizeRequest();
-    if (!sizeAnimating()) {
-      const wlr_box& geometry = geometryBox();
-      if (m_decoration.borderGeometryStale(geometry.width, geometry.height, titleBarHeight())) {
-        updateBorderGeometry();
-      }
-    }
     applyCornerRadius();
-    // Layout-assigned size changes start their presentation animation in Workspace::arrange. Client commits are not
-    // resize requests: Chromium can change its geometry while keeping the same configure, and retargeting to that
-    // geometry lets a tiled surface escape its assigned box.
-    if (m_mapped
-        && m_tiled
-        && m_onActiveWorkspace
-        && m_workspace != nullptr
-        && !scheduledFullscreen()
-        && !currentFullscreen()
-        && sizeGrabTracksPointer()) {
-      // During interactive resize, track geometry so no spurious animation
-      // replays the drag when the grab ends and mode returns to Passthrough. A
-      // move grab is not that: it retargets the size once and animates there,
-      // and the client's ack must not cut that animation short.
-      const wlr_box& geometry = geometryBox();
-      if (geometry.width > 0 && geometry.height > 0) {
-        if (sizeAnimating()) {
-          cancelSizeAnimation();
-        }
-        m_presentation.setSize(geometry.width, geometry.height);
-      }
-    }
-    // Re-apply output clip after configure ack so Super+F / resize sizes show
-    // without needing a workspace switch (clip boxes are copied, not live).
+    // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
+    // can change its geometry without changing configure, but the layout still owns its box.
     if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
       m_workspace->syncViewPresentation(this);
     } else if (m_mapped && !m_tiled) {
@@ -1124,9 +1105,6 @@ namespace umbriel {
       } else {
         syncFloatingResizePosition();
         adoptFloatingClientSize();
-        if (!sizeAnimating()) {
-          syncFloatingSurfaceClip();
-        }
         // Enable + clip through the current presentation owner.
         syncOwnedPresentation();
       }

@@ -198,6 +198,27 @@ namespace umbriel {
     std::erase_if(m_windows, [window](const std::unique_ptr<XwaylandWindow>& entry) { return entry.get() == window; });
   }
 
+  bool Xwayland::killClient(const wlr_xwayland_surface* xsurface) {
+    xcb_connection_t* connection = m_wlr != nullptr ? wlr_xwayland_get_xwm_connection(m_wlr) : nullptr;
+    // A zero resource ID targets every client's temporary retained resources.
+    if (connection == nullptr
+        || xsurface == nullptr
+        || xsurface->xwm != m_wlr->xwm
+        || xsurface->window_id == XCB_WINDOW_NONE
+        || xcb_connection_has_error(connection) != 0) {
+      return false;
+    }
+    // Keep the resource ID bound to its original client across both requests.
+    xcb_grab_server(connection);
+    xcb_kill_client(connection, xsurface->window_id);
+    // A live client may retain resources on disconnect; a second request frees them.
+    // Ordinary clients already lost the resource, so discard that request's error.
+    const xcb_void_cookie_t cleanup = xcb_kill_client_checked(connection, xsurface->window_id);
+    xcb_discard_reply(connection, cleanup.sequence);
+    xcb_ungrab_server(connection);
+    return xcb_flush(connection) > 0;
+  }
+
   const pixman_region32_t* Xwayland::surfaceShape(wlr_surface* surface) const { return m_shapes->shape(surface); }
 
   wl_signal* Xwayland::shapeChanged() const { return m_shapes->changed(); }

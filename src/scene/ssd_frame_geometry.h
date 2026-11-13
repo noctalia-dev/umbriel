@@ -12,6 +12,11 @@ extern "C" {
 
 namespace umbriel {
   enum class TitleBarButtonSide : uint8_t { Left, Right };
+  enum class TitleAlign : uint8_t {
+    Left,
+    Center,
+    Right,
+  };
   enum class TitleBarButton : uint8_t { Minimize, Maximize, Close };
   inline constexpr size_t kTitleBarButtonCount = 3;
   enum class SsdFramePart : uint8_t { None, TitleBar, Close, Maximize, Minimize, Resize };
@@ -44,15 +49,19 @@ namespace umbriel {
   // A negative `size` derives about half the bar height, with the bar's parity so the margins above and below are whole
   // and equal pixels. An explicit `size` is used as is, capped at the height.
   int titleBarButtonDiameter(int height, int size);
-  // `shown` lists the buttons from the title outward, so the last one sits at the bar's edge on `side`.
+  // `shown` lists the buttons from the title outward. The frame's inner radius sets a minimum inset for full
+  // visibility.
   TitleBarLayout titleBarLayout(
       int width, int height, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
-      const TitleBarButtonGeometry& geometry
+      const TitleBarButtonGeometry& geometry, int radius = 0, int titleHeight = 0
   );
+  // Left edge of a title `labelWidth` wide in a bar `width` wide. `Center` takes the middle of the whole bar and slides
+  // toward the open side when that would put the title under the buttons.
+  int titleBarLabelX(const TitleBarLayout& layout, int width, int labelWidth, TitleAlign align);
   // Coordinates relative to client content; the title bar lies above y = 0.
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
-      const TitleBarButtonGeometry& geometry, double x, double y
+      const TitleBarButtonGeometry& geometry, double x, double y, int radius = 0
   );
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
 } // namespace umbriel
