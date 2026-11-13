@@ -1738,6 +1738,10 @@ UMBRIEL_TEST(outputVrrPolicyLoadsAndDefaultsDisabled) {
   CHECK(store.reload().success);
   CHECK(store.config().outputs[0].vrr == VrrMode::Always);
 
+  file.write("[output.DP-1]\nvrr = \"fullscreen_any\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().outputs[0].vrr == VrrMode::FullscreenAny);
+
   file.write("[output.DP-1]\nvrr = \"disabled\"\n");
   CHECK(store.reload().success);
   CHECK(store.config().outputs[0].vrr == VrrMode::Disabled);
@@ -2125,6 +2129,13 @@ UMBRIEL_TEST(windowOutputPoliciesLoadAndRejectInvalidValues) {
   CHECK(store.reload().success);
   CHECK_EQ(store.config().windowRules.size(), size_t{1});
   CHECK(!store.config().windowRules[0].vrr);
+
+  // "fullscreen_any" is an output policy only; a window rule rejects it.
+  file.write("[[window_rule]]\nvrr = \"fullscreen_any\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(!store.config().windowRules[0].vrr);
+  CHECK(containsDiagnostic(store, "ignoring window_rule"));
 
   file.write("[[window_rule]]\nmatch.app_id = \"^game$\"\nhdr = \"fullscreen\"\n");
   CHECK(store.reload().success);

@@ -212,16 +212,19 @@ When it is inactive, the reason is the first condition that ruled it out:
 
 `vrr` accepts:
 
-| Value          | Behavior                                                      |
-| -------------- | ------------------------------------------------------------- |
-| `"disabled"`   | Never enable adaptive sync.                                   |
-| `"always"`     | Keep adaptive sync enabled when supported.                    |
-| `"fullscreen"` | Enable it while the active workspace has a fullscreen window. |
+| Value              | Behavior                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `"disabled"`       | Never enable adaptive sync.                                                         |
+| `"always"`         | Keep adaptive sync enabled when supported.                                          |
+| `"fullscreen"`     | Enable it while the active workspace has a fullscreen window.                       |
+| `"fullscreen_any"` | Enable it while any workspace on the output has a fullscreen window, active or not. |
 
 ```toml
 [output.DP-1]
 vrr = "fullscreen"
 ```
+
+`fullscreen_any` keeps adaptive sync on while you switch from a fullscreen game to another workspace on the same output and back, so the output changes its VRR state only when the first window there enters fullscreen and when the last one leaves it or closes. `fullscreen` turns it off as soon as the active workspace holds no fullscreen window.
 
 A focused window can override this policy through a [window rule](window-rules.md#settings-updated-while-a-window-is-open). Unsupported outputs remain at fixed refresh and produce a warning.
 
