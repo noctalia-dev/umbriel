@@ -8,6 +8,7 @@ readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly BTN_LEFT=272
 readonly KEY_L=38
+readonly KEY_A=30
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly SHOT="$UMBRIEL_RUNTIME_DIR/hide-typing-warp.png"
 
@@ -51,7 +52,7 @@ enabled = false
 default_extent_fraction = 0.5
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [input.cursor]
 follows_focus = true
@@ -104,6 +105,13 @@ if (($(cursor_pixels_at $((right_x + 3)) $((right_y + 2))) == 0)); then
   exit 1
 fi
 
+# Hide the cursor again with an unbound key, so the wheel bind starts from a hidden cursor and has to show it.
+pointer tap "$KEY_A"
+"$UMBRIEL" settle
+if ((pixels = $(cursor_pixels_at $((right_x + 3)) $((right_y + 2))))); then
+  echo "typing did not hide the cursor before the wheel bind: $pixels cursor pixels"
+  exit 1
+fi
 pointer mod logo notch -1 mod none
 wait_for_active "$left"
 "$UMBRIEL" settle
