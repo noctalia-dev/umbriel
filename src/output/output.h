@@ -308,6 +308,7 @@ namespace umbriel {
     bool m_handlingFrame = false;
     bool m_hasDeferredMode = false;
     bool m_gammaDirty = false;
+    bool m_vrrPending = false; // a VRR change waiting for the next frame commit
     bool m_softwareCursorLocked = false;
     bool m_animationRenderLocked = false;
     bool m_fullscreenAboveTopLayer = false;
