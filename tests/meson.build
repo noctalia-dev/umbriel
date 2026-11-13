@@ -205,7 +205,7 @@ drag_client = executable(
     xdg_shell_client_h, xdg_shell_client_c,
     xdg_activation_client_h, xdg_activation_client_c,
   ],
-  dependencies: [wayland_client_dep],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
 )
 
 # Harness helper that reserves an exclusive zone on a named output. Output
