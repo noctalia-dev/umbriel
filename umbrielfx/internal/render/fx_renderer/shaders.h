@@ -153,6 +153,9 @@ struct tex_shader {
   GLint discard_transparent;
   GLint sample_bounds;
 
+  GLint texel_size;
+  GLint sample_footprint;
+
   // Only used for the effects shader
   struct {
     GLint size;

@@ -276,8 +276,8 @@ bool link_quad_grad_round_program(struct quad_grad_round_shader* shader, int max
 }
 
 bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp) {
-  GLchar frag_src_part[8192];
-  GLchar frag_src[12288];
+  GLchar frag_src_part[sizeof(tex_frag_src)];
+  GLchar frag_src[sizeof(tex_frag_src) + sizeof(corner_alpha_frag_src) + 2];
   snprintf(frag_src_part, sizeof(frag_src_part), tex_frag_src, source, effects, sample_clamp);
   snprintf(frag_src, sizeof(frag_src), "%s\n%s\n", frag_src_part, effects ? corner_alpha_frag_src : "");
 
@@ -304,6 +304,8 @@ bool link_tex_program(struct tex_shader* shader, enum fx_tex_shader_source sourc
 
   shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
   shader->sample_bounds = sample_clamp ? glGetUniformLocation(prog, "sample_bounds") : -1;
+  shader->texel_size = glGetUniformLocation(prog, "texel_size");
+  shader->sample_footprint = glGetUniformLocation(prog, "sample_footprint");
 
   if (!effects) {
     return true;

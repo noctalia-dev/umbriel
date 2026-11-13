@@ -355,6 +355,7 @@ struct wlr_scene_buffer {
   struct wlr_color_transform* decode_transform;
   // Outputs whose capture composition sampled this buffer in their latest frame.
   uint64_t capture_outputs;
+  bool mitchell_downscale;
 };
 
 /** A viewport for an output in the scene-graph */
@@ -1039,6 +1040,9 @@ void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer* scene_buffer, float o
  * Sets the filter mode to use when scaling the buffer
  */
 void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer* scene_buffer, enum wlr_scale_filter_mode filter_mode);
+
+/** Enable Mitchell filtering for downscaled bilinear draws. */
+void wlr_scene_buffer_set_mitchell_downscale(struct wlr_scene_buffer* scene_buffer, bool enabled);
 
 /**
  * Sets the corner radius of all corners to round of this buffer
