@@ -1107,8 +1107,12 @@ namespace umbriel {
     if (previousIndex >= 0 && previousIndex < static_cast<int>(m_columns.size()) && previousIndex != columnIndex) {
       m_lastFocusedColumn = previousIndex;
     }
-    m_focusSide = focusSideFrom(columnIndex);
+    noteFocusedColumn(columnIndex);
     revealColumn(columnIndex, viewportPrimary, shouldCenterFocusedColumn(columnIndex, viewportPrimary, m_focusSide));
+  }
+
+  void ScrollingLayout::noteFocusedColumn(int columnIndex) {
+    m_focusSide = focusSideFrom(columnIndex);
     if (columnIndex >= 0) {
       m_lastFocusedColumn = columnIndex;
     }

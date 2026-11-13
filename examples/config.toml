@@ -170,6 +170,7 @@ numlock_toggle = true
 # [input.focus]
 # follows_mouse = "sloppy" # "off", "sloppy", or "always"; always also refocuses after layout and workspace changes.
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
+# hover_scrolls = false # Hover focuses a partly visible window without scrolling to it.
 
 # Confine touch input to one display.
 #

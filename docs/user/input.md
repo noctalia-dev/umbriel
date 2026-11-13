@@ -324,6 +324,7 @@ Speed rises from zero at the inner edge of the trigger zone to `max_speed` at th
 follows_mouse = "off"
 follows_mouse_max_scroll = 0.5
 hover_raises = true
+hover_scrolls = true
 ```
 
 | Value    | Behavior                                                                                                                                                         |
@@ -342,13 +343,15 @@ When a dialog has focus, motion within the parent window beneath the pointer kee
 
 `hover_raises = false` narrows hovering to focus alone: the entered window does not move above its neighbors, so sweeping the pointer across a larger window underneath cannot bury the window above it. Clicks, keybinds, and activation still raise. The key only matters when `follows_mouse` is not `off`, and defaults to `true`.
 
+`hover_scrolls = false` keeps a scrolling layout still while hovering: a partly visible tiled window takes focus where it sits, without scrolling into view, and `follows_mouse_max_scroll` no longer applies. Clicks, keybinds, and activation still scroll to the window they focus. The key only matters when `follows_mouse` is not `off`, and defaults to `true`.
+
 While a client holds a pointer or keyboard grab, such as an open tray menu, hovering a window or crossing outputs preserves that grab and its keyboard focus. An outside click or explicit focus action can still dismiss the menu.
 
 X11 windows that declare `Input=False` without `WM_TAKE_FOCUS`, including Steam's on-screen keyboard, receive pointer input without taking keyboard focus. Hovering or clicking the keyboard leaves typing directed at the previously focused window. These windows are also skipped when Umbriel chooses replacement focus after a window closes.
 
 X11 windows marked `_NET_WM_WINDOW_TYPE_NOTIFICATION` do not take keyboard focus, regardless of their input hints or override-redirect flag. An existing popup that becomes a notification releases keyboard focus back to the active window.
 
-`follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal that window, measured in viewport widths. `0.0` allows only fully visible windows. Omit the key for no limit.
+`follows_mouse_max_scroll` limits how far Umbriel may scroll a layout to reveal that window, measured in viewport widths. `0.0` allows only fully visible windows. Omit the key for no limit. It has no effect with `hover_scrolls = false`.
 
 ### Controller desktop input
 

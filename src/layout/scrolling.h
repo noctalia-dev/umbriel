@@ -68,6 +68,8 @@ namespace umbriel {
     double scrollShiftForColumnRemoval(int columnIndex, int viewportPrimary) const;
     void ensureVisible(int columnIndex, int viewportPrimary);
     void activateColumn(int columnIndex, int viewportPrimary, int previousIndex = -1);
+    // Records a focus move to the column without revealing it, so a later activation judges the side focus came from.
+    void noteFocusedColumn(int columnIndex);
     // Notes that the focused column is the one about to leave. Call before the detach, while the closing view still
     // names its column.
     void noteRemovalOfFocusedColumn(int columnIndex);

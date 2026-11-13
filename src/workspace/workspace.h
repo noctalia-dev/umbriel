@@ -252,6 +252,7 @@ namespace umbriel {
     const TabPresenter& tabs() const { return m_tabs; }
     void ensureFocusedVisible();
     void activateFocusedColumn();
+    void noteFocusedColumn();
     // Re-applies the centering policy after the focused column's extent changed, instead of only fitting it.
     void reevaluateFocusedColumn();
     void revealMovedFocusedColumn(int previousColumn);

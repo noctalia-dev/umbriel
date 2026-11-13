@@ -1707,6 +1707,21 @@ UMBRIEL_TEST(hoverRaisesLoadsAndDefaultsEnabled) {
   CHECK(store.config().input.focus.hoverRaises);
 }
 
+UMBRIEL_TEST(hoverScrollsLoadsAndDefaultsEnabled) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[input.focus]\nhover_scrolls = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().input.focus.hoverScrolls);
+  CHECK(!containsDiagnostic(store, "unknown key input.focus.hover_scrolls"));
+
+  file.write("[input.focus]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.focus.hoverScrolls);
+}
+
 UMBRIEL_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {
   const TempConfig file;
   file.write(R"(
