@@ -120,8 +120,10 @@ namespace umbriel {
           )
         : m_kind == Kind::InputEmulation
         ? std::format(
-              "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n"
-              "Enter allows it for this Umbriel session; any other key or click denies it.",
+              "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n\n"
+              "Enter allows it for this Umbriel session.\n"
+              "R allows it in every session until you revoke it.\n"
+              "Any other key or click denies it.",
               m_application
           )
         : m_kind == Kind::SessionQuit
@@ -130,8 +132,8 @@ namespace umbriel {
     std::string markup =
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
     markup += std::format(
-        "{}<span foreground='{}'>{}</span>", m_kind == Kind::InputCapture ? "\n\n" : "\n", textColor,
-        escapeMarkup(detail)
+        "{}<span foreground='{}'>{}</span>",
+        m_kind == Kind::InputCapture || m_kind == Kind::InputEmulation ? "\n\n" : "\n", textColor, escapeMarkup(detail)
     );
     TextBufferResult rendered = renderTextBuffer({
         .markup = std::move(markup),

@@ -552,6 +552,7 @@ start_instance() {
     "${xwayland_environment[@]}" \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+    XDG_STATE_HOME="$RUNTIME_DIR/state" \
     WLR_BACKENDS=headless \
     UMBRIEL_CONFIG_WATCH="$config_watch" \
     WLR_LIBINPUT_NO_DEVICES=1 \

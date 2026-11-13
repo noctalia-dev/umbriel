@@ -12,7 +12,9 @@ The EIS socket peer must hold the private Wayland socket that Umbriel's wlroots 
 
 Umbriel owns the listening socket and reads `SO_PEERCRED` on each accepted connection before creating a libeis client. Authenticated connections are bridged into libeis' FD backend, which is available in 1.3. This avoids the socket-backend PID API introduced in 1.5. The bridge preserves stream order and `SCM_RIGHTS` descriptors, including keyboard keymaps, with nonblocking backpressure and bounded connection, byte, packet, and descriptor queues. Disconnects release both transport endpoints and queued descriptors.
 
-Each authenticated EI connection supplies an X11 application name. The first request displays a compositor confirmation; pending clients receive no seat or devices. Approval and denial are remembered by claimed name for the compositor session. Names are not verified application identities, and the prompt states that distinction. Emulated events are dropped while any confirmation is visible, so an already authorized client cannot approve a different request. Disconnecting a pending client removes its confirmation.
+Each authenticated EI connection supplies an X11 application name. The first request displays a compositor confirmation; pending clients receive no seat or devices. Enter approves and other keys or clicks deny; both decisions are remembered by claimed name for the compositor session. Names are not verified application identities, and the prompt states that distinction. Emulated events are dropped while any confirmation is visible, so an already authorized client cannot approve a different request. Disconnecting a pending client removes its confirmation.
+
+Two sources approve a name without a prompt across restarts: `input.x11_input_allow` in the config, and names remembered with R at the prompt. `X11InputPermissions` stores remembered names in `$XDG_STATE_HOME/umbriel/x11-input-permissions.json`, written as mode 0600 through a temporary file and rename, and rereads it on each lookup so another instance's changes apply. A store that is unsafe to trust (not a regular file owned by the user, group- or world-writable, oversized, or malformed) approves nothing. Revocation forgets the stored name and the session decision and disconnects the name's approved EIS clients. Xwayland keeps an EI connection open for reuse, so without the disconnect a revoked application would keep its existing approval.
 
 ## Input lifecycle
 
@@ -24,6 +26,8 @@ Stopping emulation or disconnecting releases held keys and buttons. Locking also
 
 ## Verification
 
+`tests/unit/x11_input_permissions.cpp` covers the remembered-name store: persistence across instances, file mode, revocation, and rejection of unsafe or malformed stores.
+
 `tests/unit/eis_socket.cpp` exercises real Unix sockets and the Wayland event loop: peer credentials and rejection before backend creation, bidirectional backpressure and stream order, keymap descriptor forwarding, truncated-control rejection without descriptor leaks, and half-close draining and cleanup.
 
 The real XTest sender in `tests/harness/clients/xwayland_input_client.cpp` maps no X11 window. Its input must reach native Wayland observer windows to pass these isolated compositor checks:
@@ -31,5 +35,7 @@ The real XTest sender in `tests/harness/clients/xwayland_input_client.cpp` maps 
 - `input/xwayland_desktop`: consent, mixed output scales, negative origins, native-resolution X11 coordinates, relative motion, clicks, keyboard input, compositor shortcuts, and consent reuse.
 - `input/xwayland_permissions`: denial, prevention of emulated approval, held-input cleanup, physical lock-screen input, and discarded lock-time input without replay after unlock.
 - `input/xwayland_eis_peer`: an unrelated EI process claiming an approved name is rejected while the genuine Xwayland connection remains usable.
+- `input/xwayland_input_allow`: a name in `x11_input_allow` is approved without a prompt while other names still prompt.
+- `input/xwayland_input_remember`: R stores a name, the listing reports it, and revocation disconnects the client so its next request prompts, including after a denial.
 
 A physical Steam Controller check completes the end-to-end Steam validation; the compositor transport and permission lifecycle can be exercised without controller hardware.

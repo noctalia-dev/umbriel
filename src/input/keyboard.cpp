@@ -24,7 +24,7 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("keyboard");
 
-    void confirmDialog(Server& server, QuitConfirm::Kind kind, bool rememberCapture = false) {
+    void confirmDialog(Server& server, QuitConfirm::Kind kind, bool remember = false) {
       switch (kind) {
       case QuitConfirm::Kind::SessionQuit:
         server.requestSessionExit();
@@ -33,10 +33,10 @@ namespace umbriel {
         server.confirmScreenCastDynamic();
         return;
       case QuitConfirm::Kind::InputEmulation:
-        server.confirmInputEmulation();
+        server.confirmInputEmulation(remember);
         return;
       case QuitConfirm::Kind::InputCapture:
-        server.confirmInputCapture(rememberCapture);
+        server.confirmInputCapture(remember);
         return;
       }
     }
@@ -316,14 +316,16 @@ namespace umbriel {
     }
 
     bool enterPressed = false;
-    bool rememberCapture = false;
+    bool remember = false;
+    const bool canRemember =
+        (!m_virtual && confirm->canRememberInputCapture()) || confirm->kind() == QuitConfirm::Kind::InputEmulation;
     for (const uint32_t keysym : keysyms) {
       enterPressed = enterPressed || keysym == XKB_KEY_Return || keysym == XKB_KEY_KP_Enter;
-      if (!m_virtual && confirm->canRememberInputCapture() && (keysym == XKB_KEY_r || keysym == XKB_KEY_R)) {
-        rememberCapture = true;
+      if (canRemember && (keysym == XKB_KEY_r || keysym == XKB_KEY_R)) {
+        remember = true;
       }
     }
-    if (rememberCapture) {
+    if (remember) {
       confirmDialog(*m_server, confirm->kind(), true);
       return true;
     }
@@ -438,7 +440,8 @@ namespace umbriel {
       }
       // Modal confirmation consumes non-modifier presses before binds or clients.
       // Enter or a matching press action confirms; release bindings never confirm.
-      // Input capture can also offer R to remember approval. Modifier-only presses keep held chords intact.
+      // Input capture and X11 input emulation can also offer R to remember approval. Modifier-only presses keep
+      // held chords intact.
       const bool confirmationConsumed = handleConfirmationPress(
           std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), rawSym, modifiers, modifierOnly
       );
