@@ -62,8 +62,10 @@ namespace umbriel {
       return;
     }
     // PointerHover gate: reject focus entirely when revealing would exceed the configured max scroll fraction. Must run
-    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing.
-    if (reason == FocusReason::PointerHover && view->tiled()) {
+    // before any side effects (MRU, seat focus) so an over-limit hover focuses nothing. A hover that does not scroll
+    // has nothing to limit.
+    const bool hoverScrolls = config().input.focus.hoverScrolls;
+    if (reason == FocusReason::PointerHover && hoverScrolls && view->tiled()) {
       if (Workspace* workspace = view->workspace()) {
         const auto& maxScroll = config().input.focus.followsMouseMaxScroll;
         if (maxScroll && workspace->scrollFractionToReveal(view) > *maxScroll) {
@@ -156,9 +158,14 @@ namespace umbriel {
       return;
     }
     switch (reason) {
+    case FocusReason::PointerHover:
+      if (!hoverScrolls) {
+        workspace->noteFocusedColumn();
+        break;
+      }
+      [[fallthrough]];
     case FocusReason::Directional:
     case FocusReason::PointerPress:
-    case FocusReason::PointerHover:
     case FocusReason::DragDrop:
     case FocusReason::Startup:
     case FocusReason::XdgActivation:

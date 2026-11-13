@@ -361,6 +361,7 @@ namespace umbriel {
           ),
           real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, &In::Focus::followsMouseMaxScroll),
           boolean("hover_raises", &In::Focus::hoverRaises),
+          boolean("hover_scrolls", &In::Focus::hoverScrolls),
       };
       static const Fields<In::Device> device{
           custom<In::Device>(

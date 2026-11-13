@@ -2550,6 +2550,12 @@ namespace umbriel {
     scrolling->activateColumn(scrolling->columnOf(m_focusedView), scrollViewportExtent());
   }
 
+  void Workspace::noteFocusedColumn() {
+    if (ScrollingLayout* scrolling = scrollingLayout()) {
+      scrolling->noteFocusedColumn(scrolling->columnOf(m_focusedView));
+    }
+  }
+
   void Workspace::reevaluateFocusedColumn() {
     ScrollingLayout* scrolling = scrollingLayout();
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {

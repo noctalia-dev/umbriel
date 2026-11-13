@@ -1268,6 +1268,9 @@ namespace umbriel {
         // false narrows hover to focus alone: raising is left to clicks, keybinds, and activation, so sweeping the
         // pointer across a larger window underneath cannot bury the window above it.
         bool hoverRaises = true;
+        // false keeps the scrolling strip still on hover: a partly visible window takes focus where it is, and only
+        // focus that does not come from hovering reveals it.
+        bool hoverScrolls = true;
         bool operator==(const Focus&) const = default;
       } focus;
 
