@@ -54,6 +54,7 @@ namespace umbriel {
         {.name = "disabled", .value = VrrMode::Disabled},
         {.name = "always", .value = VrrMode::Always},
         {.name = "fullscreen", .value = VrrMode::Fullscreen},
+        {.name = "fullscreen_any", .value = VrrMode::FullscreenAny},
     };
     return choices;
   }
