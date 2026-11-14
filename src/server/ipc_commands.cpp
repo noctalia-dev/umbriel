@@ -1668,18 +1668,6 @@ namespace umbriel {
 
   namespace {
     constexpr std::array kRevokeChoices{std::string_view{"all"}};
-
-    struct ArgCompletionEntry {
-      std::string_view name;
-      IpcArgCompletion completion;
-    };
-    constexpr std::array kArgCompletionTable{
-        ArgCompletionEntry{"config-replace", IpcArgCompletion(IpcArgCompletion::Kind::Path)},
-        ArgCompletionEntry{
-            "input-capture-revoke",
-            IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices, "every remembered grant"),
-        },
-    };
   } // namespace
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -1690,13 +1678,14 @@ namespace umbriel {
       {"input-capture-permissions", "", "list remembered input capture grants", IpcCommandGroup::Inspect, false,
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
-       IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+       IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices, "every remembered grant")},
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
        &IpcCommands::outputDestroy, nullptr},
       {"config-replace", "<path>", "load and watch a different config file", IpcCommandGroup::Control, true,
-       &IpcCommands::configReplace, nullptr},
+       &IpcCommands::configReplace, nullptr, 2, IpcArgCompletion(IpcArgCompletion::Kind::Path)},
       {"config-set", "<key> <value>", "override a config value until the compositor exits", IpcCommandGroup::Config,
        true, &IpcCommands::configSet, nullptr},
       {"config-get", "<key>", "print the active value of a config key", IpcCommandGroup::Config, true,
@@ -1750,15 +1739,6 @@ namespace umbriel {
   };
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }
-
-  IpcArgCompletion ipcCommandArgCompletion(std::string_view name) {
-    for (const ArgCompletionEntry& entry : kArgCompletionTable) {
-      if (entry.name == name) {
-        return entry.completion;
-      }
-    }
-    return {};
-  }
 
   const IpcCommandSpec* findIpcCommand(std::string_view name) {
     for (const auto& spec : kIpcCommands) {

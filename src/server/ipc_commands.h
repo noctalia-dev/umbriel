@@ -74,8 +74,7 @@ namespace umbriel {
     Harness,
   };
 
-  // What shell completion offers for a command's argument words. The rules live beside the command table that owns the
-  // ids, so a renamed command cannot keep completion pointing at the old name.
+  // What shell completion offers for a command's argument words.
   struct IpcArgCompletion {
     enum class Kind : uint8_t {
       None,
@@ -89,9 +88,9 @@ namespace umbriel {
     )
         : m_kind(kind), m_choices(choices), m_description(description) {}
 
-    [[nodiscard]] Kind kind() const { return m_kind; }
-    [[nodiscard]] std::span<const std::string_view> choices() const { return m_choices; }
-    [[nodiscard]] std::string_view description() const { return m_description; }
+    Kind kind() const { return m_kind; }
+    std::span<const std::string_view> choices() const { return m_choices; }
+    std::string_view description() const { return m_description; }
 
   private:
     Kind m_kind = Kind::None;
@@ -109,11 +108,11 @@ namespace umbriel {
     void (*printHuman)(const nlohmann::json& ok);
     // How long the CLI waits for the reply.
     int replyTimeoutSec = 2;
+    // What shell completion offers for the command's argument words; `None` offers only the JSON flags.
+    IpcArgCompletion completion{IpcArgCompletion::Kind::None};
   };
 
   std::span<const IpcCommandSpec> ipcCommands();
-  // How completion finishes a command's argument words; `None` offers only the JSON flags.
-  [[nodiscard]] IpcArgCompletion ipcCommandArgCompletion(std::string_view name);
   const IpcCommandSpec* findIpcCommand(std::string_view name);
   // The Config group's request names carry this prefix and the CLI spells them as two words; `cliName` splits on it.
   inline constexpr std::string_view kConfigCommandPrefix = "config-";
