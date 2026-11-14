@@ -78,6 +78,8 @@ namespace umbriel {
     // has committed the exit. Output-wide fullscreen policies such as HDR and
     // VRR must cover both transitions.
     bool hasFullscreenView(const View* ignored = nullptr) const;
+    // Like hasFullscreenView, but across every workspace of this output, active or not.
+    bool hasFullscreenViewOnAnyWorkspace() const;
     // Fullscreen stacking and top-layer keyboard priority share the same presentation state.
     bool fullscreenAboveTopLayer() const { return m_fullscreenAboveTopLayer; }
 

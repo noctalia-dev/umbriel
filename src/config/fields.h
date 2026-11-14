@@ -62,6 +62,9 @@ namespace umbriel {
 
   // Vocabularies outputs and window rules share.
   const registry::Choices<VrrMode>& vrrModes();
+  // Outputs only: vrrModes() plus "fullscreen_any", which looks at every workspace of the output and has no
+  // per-window meaning.
+  const registry::Choices<VrrMode>& outputVrrModes();
   const registry::Choices<HdrMode>& hdrModes();
   const registry::Choices<ContentType>& contentTypes();
   const registry::Choices<LayoutMode>& layoutModes();

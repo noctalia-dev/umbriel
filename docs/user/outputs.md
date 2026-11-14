@@ -212,18 +212,21 @@ When it is inactive, the reason is the first condition that ruled it out:
 
 `vrr` accepts:
 
-| Value          | Behavior                                                      |
-| -------------- | ------------------------------------------------------------- |
-| `"disabled"`   | Never enable adaptive sync.                                   |
-| `"always"`     | Keep adaptive sync enabled when supported.                    |
-| `"fullscreen"` | Enable it while the active workspace has a fullscreen window. |
+| Value              | Behavior                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `"disabled"`       | Never enable adaptive sync.                                                         |
+| `"always"`         | Keep adaptive sync enabled when supported.                                          |
+| `"fullscreen"`     | Enable it while the active workspace has a fullscreen window.                       |
+| `"fullscreen_any"` | Enable it while any workspace on the output has a fullscreen window, active or not. |
 
 ```toml
 [output.DP-1]
 vrr = "fullscreen"
 ```
 
-A focused window can override this policy through a [window rule](window-rules.md#settings-updated-while-a-window-is-open). Unsupported outputs remain at fixed refresh and produce a warning.
+`"fullscreen_any"` keeps adaptive sync on while you switch from a fullscreen game to another workspace on the same output and back, so the output changes its VRR state only when the first window there enters fullscreen and when the last one leaves it or closes. `"fullscreen"` turns it off as soon as the active workspace holds no fullscreen window.
+
+A focused window can override this policy through a [window rule](window-rules.md#settings-updated-while-a-window-is-open). A window rule accepts `"disabled"`, `"always"`, or `"fullscreen"`, where `"fullscreen"` follows the focused window's own fullscreen state. Unsupported outputs remain at fixed refresh and produce a warning.
 
 ### Tearing
 
@@ -304,7 +307,7 @@ Custom gamma-curve calibration applies only in SDR. Umbriel keeps the client's l
 
 ### Color profile and SDR gamut
 
-A wide-gamut panel reads every signal value in its own primaries. Untagged SDR content is sRGB, so the panel renders it more saturated than it should — vivid reds and greens, and a window that looks right on an sRGB monitor looks wrong here. Umbriel can characterize the display and convert during composition:
+A wide-gamut panel reads every signal value in its own primaries. Untagged SDR content is sRGB, so the panel renders it more saturated than it should (vivid reds and greens), and a window that looks right on an sRGB monitor looks wrong here. Umbriel can characterize the display and convert during composition:
 
 ```toml
 [output.DP-1]
@@ -324,11 +327,11 @@ Failures fall back down the chain and never fail the output. A value that is not
 `sdr_gamut` decides what happens to untagged SDR while a characterization is active:
 
 - `"native"` (the default) stages no transform. Pixels stay bit-identical to an uncharacterized output, so behavior only changes where you opted in.
-- `"srgb"` interprets untagged SDR as sRGB and maps it into the panel's colorimetry — the oversaturation fix. The mapping is white-preserving, so switching between the two settings does not change white.
+- `"srgb"` interprets untagged SDR as sRGB and maps it into the panel's colorimetry: the oversaturation fix. The mapping is white-preserving, so switching between the two settings does not change white.
 
 Applications with explicit color management follow the same split: while `sdr_gamut = "srgb"` is active, output and preferred descriptions advertise the panel's colorimetry so they can convert before compositing; under `"native"` they advertise the sRGB destination the compositor really writes, so a tagged client's pixels are unchanged by the profile. The advertised curve is applied without substituting a different one: a curve that matches a named transfer function is stated by name, an exact power is stated as that power, and any other curve is stated by the profile's own bytes plus a decode table on the description. A pipeline that can only use named transfer functions still receives one from `get_preferred_parametric`, and a client tagging a buffer with an advertised description gets the encoding that description states; a sampled curve is carried by a 1024-entry table whose unit-suite worst error is 0.002 of an 8-bit code. Characterization applies to SDR composition only; under HDR the PQ/BT.2020 pipeline behaves exactly as described above.
 
-ICC import accepts matrix-shaper profiles whose three color channels share one transfer curve. sRGB and gamma 2.2 map to named curves, linear and other exact powers are stated as that power, and any other curve is sampled into a lookup table, with a non-monotone table first flattened to its monotone envelope and reported. LUT-based profiles and profiles whose channel curves differ are rejected with a warning and fall back down the chain — one curve cannot render three different channels without a cast the profile does not describe. A `vcgt` tag is ignored: it is a pre-dispatch gamma ramp, not content colorimetry.
+ICC import accepts matrix-shaper profiles whose three color channels share one transfer curve. sRGB and gamma 2.2 map to named curves, linear and other exact powers are stated as that power, and any other curve is sampled into a lookup table, with a non-monotone table first flattened to its monotone envelope and reported. LUT-based profiles and profiles whose channel curves differ are rejected with a warning and fall back down the chain: one curve cannot render three different channels without a cast the profile does not describe. A `vcgt` tag is ignored: it is a pre-dispatch gamma ramp, not content colorimetry.
 
 While a mapping is staged, direct scanout is disabled (`color_profile = "none"` restores it) and SDR frames leave the 8-bit fast path for FP16 composition with a per-damage re-encode. That increases composition and encoding work on redraws and may increase GPU power use. Output screenshots and recordings show the on-screen mapped result. A window capture keeps the client's own colorimetry and metadata instead, so the same window can differ from the screen while a mapping is staged.
 

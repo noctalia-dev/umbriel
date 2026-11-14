@@ -999,6 +999,8 @@ UMBRIEL_TEST(vrrPolicyTracksFullscreenOnlyWhenRequested) {
   CHECK(umbriel::vrrEnabled(umbriel::VrrMode::Always, true));
   CHECK(!umbriel::vrrEnabled(umbriel::VrrMode::Fullscreen, false));
   CHECK(umbriel::vrrEnabled(umbriel::VrrMode::Fullscreen, true));
+  CHECK(!umbriel::vrrEnabled(umbriel::VrrMode::FullscreenAny, false));
+  CHECK(umbriel::vrrEnabled(umbriel::VrrMode::FullscreenAny, true));
 }
 
 UMBRIEL_TEST(hdrPolicyTracksEligibilityForEachMode) {
