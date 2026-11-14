@@ -596,7 +596,7 @@ namespace umbriel {
 
     // "native" stages no SDR output transform at all: pixels stay bit-identical
     // to an uncharacterized output even with a profile configured. The protocol
-    // descriptions follow the same rule — they name the sRGB destination the
+    // descriptions follow the same rule: they name the sRGB destination the
     // renderer writes, so a client that tags with them renders identically too
     // (see ColorManager::descriptionForOutput).
     if (gamut == SdrGamut::Native) {
@@ -1305,9 +1305,8 @@ namespace umbriel {
     if (configuredVrrEnabled() == currentlyEnabled) {
       return;
     }
-    // The change rides the next frame commit: any other commit supersedes a pending page flip, wlroots then drops that
-    // flip's present event, and presentation feedback waiting on it never resolves, which stalls clients that pace on
-    // feedback (NVIDIA's Vulkan WSI).
+    // Apply with the next frame commit: a separate commit supersedes the pending page flip, and wlroots then never
+    // resolves that frame's presentation feedback, stalling clients that pace on it.
     m_vrrPending = true;
     wlr_output_schedule_frame(m_output);
   }
