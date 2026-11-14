@@ -61,7 +61,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 enabled = false
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 hover_raises = false
 
 [appearance]
@@ -143,6 +143,11 @@ assert_pixel 500 400 "0 255 0" "hovering hover-under raised it after the default
 "$UMBRIEL" msg window-focus-last > /dev/null
 wait_for_active hover-over
 
+# Sloppy hover leaves a keyboard choice alone while the pointer stays over the window it was already on.
+"$UMBRIEL_POINTER_CLIENT" 1280 720 move 201 250
+"$UMBRIEL" settle
+wait_for_active hover-over
+"$UMBRIEL_POINTER_CLIENT" 1280 720 move 1100 100
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 200 250
 wait_for_active hover-under
 "$UMBRIEL" msg window-focus-next > /dev/null

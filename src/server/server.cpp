@@ -616,6 +616,9 @@ namespace umbriel {
     if (m_backendManager == nullptr) {
       throw std::runtime_error("failed to create wlr_backend");
     }
+    m_backendManager->setDrmBackendRemovedHandler([this](const wlr_backend* backend) {
+      m_connectorHdrState.forgetBackend(backend);
+    });
     m_backend = m_backendManager->backend();
     m_session = m_backendManager->session();
 

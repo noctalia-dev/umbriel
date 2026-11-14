@@ -28,7 +28,7 @@ cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
 enabled = false
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 home_x=$("$UMBRIEL" outputs | awk '$1 == "HEADLESS-1" {found = 1; next} found && /Position:/ {split($2, p, ","); print p[1]; exit}')

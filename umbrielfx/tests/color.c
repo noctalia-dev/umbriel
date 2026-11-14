@@ -1870,6 +1870,82 @@ static bool test_fp16_save_restore(struct fixture* fixture) {
   return check(abs(actual - expected) <= 2, "FP16 save/restore round trip preserves luminance");
 }
 
+// The blur-artifact compensation restores only the padding region, so the
+// scratch buffer holds nothing outside it. The copy is a 1:1 texture draw: with
+// bilinear filtering the region's outermost column picks up a fraction of the
+// empty neighbour at large coordinates. On 8-bit targets that rounds away; in
+// the FP16 two-pass (HDR) path it survives and compounds with every frame's
+// save/restore into a visible stripe along the region's edge.
+static bool test_save_restore_region_edge(struct fixture* fixture) {
+  enum { width = 5120, height = 4, edge = 4482, copies = 64 };
+  uint32_t format = select_10bit_format(fixture);
+  if (!check(format != DRM_FORMAT_INVALID, "find 10-bit output format")) {
+    return false;
+  }
+  struct wlr_buffer* target = create_output_buffer(fixture, format, width, height);
+  if (!check(target != NULL, "allocate wide 10-bit target")) {
+    return false;
+  }
+  struct wlr_color_transform* transform =
+      create_output_transform(WLR_COLOR_NAMED_PRIMARIES_SRGB, WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ, 203.0f / 10000.0f);
+  uint32_t* pixels = calloc((size_t)width * height, sizeof(uint32_t));
+  bool ok = check(transform != NULL, "create PQ output transform") && check(pixels != NULL, "allocate readback");
+  struct wlr_render_pass* pass = NULL;
+  if (ok) {
+    pass = wlr_renderer_begin_buffer_pass(
+        fixture->renderer, target, &(struct wlr_buffer_pass_options){.color_transform = transform}
+    );
+    ok = check(pass != NULL, "begin two-pass save/restore pass");
+  }
+  if (ok) {
+    struct fx_gles_render_pass* fx_pass = fx_get_render_pass(pass);
+    ok = check(fx_pass->has_color_transform, "pass renders in two-pass mode");
+    wlr_render_pass_add_rect(
+        pass,
+        &(struct wlr_render_rect_options){
+            .box = {.width = width, .height = height},
+            .color = {.r = 0.4f, .g = 0.25f, .b = 0.5f, .a = 1.0f},
+            .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+        }
+    );
+    struct fx_framebuffer* saved = NULL;
+    ok = ok && check(fx_render_pass_init_offscreen_buffers(pass, fixture->output), "initialize save/restore buffers");
+    if (ok) {
+      saved = fx_render_pass_blur_saved_pixels_buffer(fx_pass);
+      ok = check(saved != NULL, "allocate save/restore buffer");
+    }
+    pixman_region32_t padding;
+    pixman_region32_init_rect(&padding, edge, 0, width - edge, height);
+    // One save/restore per composited frame; the scene repeats it for as long
+    // as a damaged blur node keeps the same padding region.
+    for (int copy = 0; ok && copy < copies; copy++) {
+      ok = check(fx_render_pass_read_to_buffer(fx_pass, &padding, saved, fx_pass->buffer), "save padding")
+          && check(fx_render_pass_read_to_buffer(fx_pass, &padding, fx_pass->buffer, saved), "restore padding");
+    }
+    pixman_region32_fini(&padding);
+    ok = check(wlr_render_pass_submit(pass), "submit two-pass save/restore pass") && ok;
+  }
+  wlr_color_transform_unref(transform);
+  if (ok) {
+    ok = check(read_buffer(fixture, target, format, width * sizeof(uint32_t), pixels), "read wide 10-bit target");
+  }
+  for (int y = 0; ok && y < height; y++) {
+    const uint32_t outside = pixels[y * width + edge - 1];
+    const uint32_t border = pixels[y * width + edge];
+    const uint32_t inside = pixels[y * width + edge + 1];
+    if (border != outside || inside != outside) {
+      fprintf(
+          stderr, "FAIL: row %d: columns %d/%d/%d are %08x/%08x/%08x after %d save/restore copies\n", y, edge - 1, edge,
+          edge + 1, outside, border, inside, copies
+      );
+      ok = false;
+    }
+  }
+  free(pixels);
+  wlr_buffer_drop(target);
+  return ok;
+}
+
 // An untransformed 10-bit pass must still use FP16 effect buffers for blur when
 // half-float textures can be linearly filtered. Pixel averages alone cannot
 // distinguish an 8-bit intermediate from the intended FP16 intermediate.
@@ -3496,6 +3572,8 @@ int main(int argc, char* argv[]) {
     ok = test_fp16_blur_effects(&fixture);
   } else if (strcmp(argv[1], "fp16-save-restore") == 0) {
     ok = test_fp16_save_restore(&fixture);
+  } else if (strcmp(argv[1], "save-restore-region-edge") == 0) {
+    ok = test_save_restore_region_edge(&fixture);
   } else if (strcmp(argv[1], "sdr10-blur-buffer-format") == 0) {
     ok = test_sdr10_blur_buffer_format(&fixture);
   } else if (strcmp(argv[1], "optimized-blur-format-cache") == 0) {

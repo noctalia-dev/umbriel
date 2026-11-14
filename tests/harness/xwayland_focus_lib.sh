@@ -65,7 +65,7 @@ enabled = false
 default_extent_fraction = 1.0
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [[window_rule]]
 match.title = "^focus-model-"
