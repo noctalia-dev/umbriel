@@ -270,6 +270,18 @@ UMBRIEL_TEST(spawnDelegatesToTheShell) {
   complete({"msg", "spawn", ""}, {}, &outcome);
   CHECK(outcome == CompletionOutcome::Delegate);
   CHECK(complete({"msg", "spawn", "kit"}).empty());
+
+  // A command line carries its own `--` words, which no action flag names.
+  for (const std::vector<std::string>& words : std::vector<std::vector<std::string>>{
+           {"msg", "spawn", "ls", "--color=auto", ""}, {"msg", "spawn", "kitty", "-e", "vim", ""}
+       }) {
+    CompletionOutcome delegated = CompletionOutcome::Candidates;
+    complete(words, {}, &delegated);
+    CHECK(delegated == CompletionOutcome::Delegate);
+  }
+  CompletionOutcome flagPrefix = CompletionOutcome::Candidates;
+  complete({"msg", "spawn", "--verb"}, {}, &flagPrefix);
+  CHECK(flagPrefix == CompletionOutcome::Delegate);
 }
 
 UMBRIEL_TEST(argumentsStopWhenTheActionTakesNone) {

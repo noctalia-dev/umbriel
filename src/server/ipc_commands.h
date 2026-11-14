@@ -82,15 +82,19 @@ namespace umbriel {
     };
 
     constexpr IpcArgCompletion() = default;
-    constexpr explicit IpcArgCompletion(Kind kind, std::span<const std::string_view> choices = {})
-        : m_kind(kind), m_choices(choices) {}
+    constexpr explicit IpcArgCompletion(
+        Kind kind, std::span<const std::string_view> choices = {}, std::string_view description = {}
+    )
+        : m_kind(kind), m_choices(choices), m_description(description) {}
 
     [[nodiscard]] Kind kind() const { return m_kind; }
     [[nodiscard]] std::span<const std::string_view> choices() const { return m_choices; }
+    [[nodiscard]] std::string_view description() const { return m_description; }
 
   private:
     Kind m_kind = Kind::None;
     std::span<const std::string_view> m_choices;
+    std::string_view m_description;
   };
 
   struct IpcCommandSpec {
