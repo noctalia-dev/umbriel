@@ -331,6 +331,44 @@ UMBRIEL_TEST(valuesTheWordGrammarRefusesAreNotOffered) {
   );
 }
 
+UMBRIEL_TEST(digitOnlyWorkspaceNamesCompleteOnlyByName) {
+  CompletionValues values;
+  values.workspaces = {"0", "2", "web", "--flag"};
+  // `0` is not a usable index and `--flag` is a flag word, so neither can stand where the grammar expects a selector.
+  CHECK_EQ(complete({"msg", "workspace-switch", ""}, values), (std::vector<std::string>{"2", "web"}));
+  // Ones given after `--name` are taken verbatim, so every name there is a candidate.
+  CHECK_EQ(
+      complete({"msg", "workspace-switch", "--name", ""}, values), (std::vector<std::string>{"0", "2", "web", "--flag"})
+  );
+}
+
+UMBRIEL_TEST(flagValuesKeepTheWordsAPositionalRefuses) {
+  CompletionValues values;
+  values.outputs = {"DP-1", "--x"};
+  values.windows = {"kitty:htop", "--wid"};
+  CHECK_EQ(complete({"msg", "dpms-off", ""}, values), std::vector<std::string>{"DP-1"});
+  CHECK_EQ(complete({"msg", "output-sdr-white", "--output", ""}, values), (std::vector<std::string>{"DP-1", "--x"}));
+  CHECK_EQ(
+      complete({"msg", "window-move-to", "--window", ""}, values), (std::vector<std::string>{"kitty:htop", "--wid"})
+  );
+}
+
+UMBRIEL_TEST(moveToOutputOffersTheCurrentDestination) {
+  CompletionValues values;
+  values.outputs = {"DP-1"};
+  CHECK_EQ(
+      complete({"msg", "workspace-move-to-output", ""}, values),
+      (std::vector<std::string>{"DP-1", std::string{umbriel::kCurrentOutputWord}})
+  );
+}
+
+UMBRIEL_TEST(spawnTakesAnyCommandWordAsTheCommandName) {
+  // A command name is the first completed tail word even when it begins with `--`, which no action flag names.
+  CompletionOutcome outcome = CompletionOutcome::Candidates;
+  complete({"msg", "spawn", "--json", ""}, {}, &outcome);
+  CHECK(outcome == CompletionOutcome::Delegate);
+}
+
 UMBRIEL_TEST(argumentsStopWhenTheActionTakesNone) {
   CHECK(complete({"msg", "overview-toggle", ""}).empty());
   CHECK(complete({"msg", "overview-toggle", "x"}).empty());

@@ -21,6 +21,8 @@ namespace umbriel {
   namespace {
     struct ArgState {
       std::vector<std::string_view> positional;
+      // Every complete argument word, including the flag words and values that `positional` drops.
+      size_t words = 0;
       std::string_view pendingFlag;
       unsigned seenFlags = 0;
       // A word the grammar refuses leaves no completable position, because the parser rejects the whole argument list.
@@ -31,6 +33,7 @@ namespace umbriel {
     // starting with "--" is a flag, as it is for `splitActionWords`; one the action does not accept rejects the list.
     ArgState scanArgs(std::span<const std::string> words, unsigned allowed) {
       ArgState state;
+      state.words = words.size();
       for (size_t index = 0; index < words.size(); ++index) {
         const std::string_view word{words[index]};
         if (!word.starts_with("--")) {
@@ -228,11 +231,26 @@ namespace umbriel {
     ) {
       std::vector<std::string_view> emitted;
       auto emit = uniqueSink(partial, emitted, sink);
-      // A value the word grammar would read as a flag cannot be a positional, so it is not offered.
       auto emitAll = [&](const std::vector<std::string>& list, std::string_view description) {
+        for (const std::string& value : list) {
+          emit(value, description);
+        }
+      };
+      // The word grammar reads a leading `--` as a flag, so such a value cannot stand where it expects a positional.
+      // A flag's own value is taken verbatim, so `--name --x` stays completable.
+      auto emitPositional = [&](const std::vector<std::string>& list, std::string_view description) {
         for (const std::string& value : list) {
           if (!value.starts_with("--")) {
             emit(value, description);
+          }
+        }
+      };
+      // A positional workspace word is an index when it is all digits, so a digit-only name is reachable through
+      // `--name` alone.
+      auto emitWorkspace = [&](const std::vector<std::string>& list) {
+        for (const std::string& value : list) {
+          if (!value.starts_with("--") && validWorkspaceSelector(value)) {
+            emit(value, "workspace");
           }
         }
       };
@@ -289,7 +307,8 @@ namespace umbriel {
         return CompletionOutcome::Candidates;
       case ActionArgKind::Command:
         // `spawn`'s tail is a shell command line: the first word is a command name, the rest are its arguments.
-        return args.positional.empty() ? CompletionOutcome::DelegateCommand : CompletionOutcome::Delegate;
+        // The count is every tail word, because a command name may begin with `--` as `positional` would not.
+        return args.words == 0 ? CompletionOutcome::DelegateCommand : CompletionOutcome::Delegate;
       case ActionArgKind::Submap:
         if (index == 0) {
           // A submap name must pass the parser's own validator, and one beginning with `--` is a flag word instead.
@@ -304,7 +323,7 @@ namespace umbriel {
       case ActionArgKind::Output:
       case ActionArgKind::OptionalOutput:
         if (index == 0) {
-          emitAll(values.outputs.items(), "output");
+          emitPositional(values.outputs.items(), "output");
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::OptionalScratchpad:
@@ -312,14 +331,14 @@ namespace umbriel {
           if (values.scratchpads.items().empty()) {
             emit(kImplicitScratchpad, "implicit scratchpad");
           } else {
-            emitAll(values.scratchpads.items(), "scratchpad");
+            emitPositional(values.scratchpads.items(), "scratchpad");
           }
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WindowId:
       case ActionArgKind::OptionalWindowId:
         if (index == 0) {
-          emitAll(values.windows.items(), "window");
+          emitPositional(values.windows.items(), "window");
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WindowRegion:
@@ -370,22 +389,23 @@ namespace umbriel {
         return CompletionOutcome::Candidates;
       case ActionArgKind::Workspace:
         if (index == *workspaceIndex && !workspaceByName) {
-          emitAll(values.workspaces.items(), "workspace");
+          emitWorkspace(values.workspaces.items());
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WorkspaceMoveToOutput:
         if (index == 0) {
-          emitAll(values.outputs.items(), "output");
+          emitPositional(values.outputs.items(), "output");
+          emit(kCurrentOutputWord, "the output under the pointer");
         } else if (index == *workspaceIndex && !workspaceByName) {
-          emitAll(values.workspaces.items(), "workspace");
+          emitWorkspace(values.workspaces.items());
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WindowEffectSet:
       case ActionArgKind::ScreenEffectSet:
       case ActionArgKind::CursorEffectSet:
         if (index == 0) {
-          emitAll(values.effectPresets.items(), "preset");
-          emitAll(values.effectPools.items(), "pool");
+          emitPositional(values.effectPresets.items(), "preset");
+          emitPositional(values.effectPools.items(), "pool");
           emit(kEffectOff, "suppress the slot");
         }
         return CompletionOutcome::Candidates;
@@ -393,8 +413,8 @@ namespace umbriel {
       case ActionArgKind::ScreenEffectCycle:
       case ActionArgKind::CursorEffectCycle:
         if (index == 0) {
-          emitAll(values.effectPresets.items(), "preset");
-          emitAll(values.effectPools.items(), "pool");
+          emitPositional(values.effectPresets.items(), "preset");
+          emitPositional(values.effectPools.items(), "pool");
         }
         return CompletionOutcome::Candidates;
       }

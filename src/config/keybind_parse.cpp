@@ -194,14 +194,13 @@ namespace umbriel {
         return workspace;
       }
       const std::string_view selector = split.positional.front();
-      if (std::ranges::all_of(selector, [](char value) { return value >= '0' && value <= '9'; })) {
-        size_t index = 0;
-        const auto [end, error] = std::from_chars(selector.data(), selector.data() + selector.size(), index);
-        if (error != std::errc{} || end != selector.data() + selector.size() || index < 1 || index > kMaxWorkspaces) {
-          return std::nullopt;
-        }
-        workspace.reference = WorkspaceIndex{index};
+      const std::optional<size_t> index = workspaceSelectorIndex(selector);
+      if (index) {
+        workspace.reference = WorkspaceIndex{*index};
         return workspace;
+      }
+      if (!validWorkspaceSelector(selector)) {
+        return std::nullopt;
       }
       workspace.reference = WorkspaceName{std::string(selector)};
       return workspace;
