@@ -252,6 +252,8 @@ namespace umbriel {
   }
 
   void Workspace::transferTo(WorkspaceGroup& group) {
+    // The waits are already landed: transferTo()'s caller deactivates this
+    // workspace before it gets here, and deactivation flushes every member.
     endSwitchTransition();
     endLayoutMotion();
     discardCloseSnapshots();
@@ -2598,7 +2600,7 @@ namespace umbriel {
       // Persistent resting state: an inactive workspace keeps its nodes disabled so the shared scene never renders them
       // on any output. Active (and in-transition) views are enabled + clipped to their home output by
       // syncViewPresentation (arrange / slide).
-      if (!m_active && !m_inSwitchTransition) {
+      if (!m_active && !m_inSwitchTransition && !view->dragPresentationOwnsVisibility()) {
         view->setNodeEnabled(false);
       }
     }
@@ -2609,6 +2611,13 @@ namespace umbriel {
   }
 
   void Workspace::beginSwitchTransition() {
+    // This workspace's trees start travelling here, and a wait parked under the
+    // shared drag tree is outside them: land it while everything still rests.
+    for (View* view : m_views) {
+      if (!view->pinned()) {
+        view->flushReleaseRehome();
+      }
+    }
     m_inSwitchTransition = true;
     wlr_box clip{};
     if (m_group != nullptr && m_group->output() != nullptr) {
@@ -2631,7 +2640,9 @@ namespace umbriel {
 
   void Workspace::showSwitchViews() {
     for (View* view : m_switchViews) {
-      if (!m_active) {
+      // The drag tree presents this window; revealing it here would put it back
+      // under a workspace that just went away.
+      if (!m_active && !view->dragPresentationOwnsVisibility()) {
         view->setNodeEnabled(true);
       }
     }
@@ -3600,6 +3611,8 @@ namespace umbriel {
     const size_t idx = m_active->index();
     m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
     m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
+    // A gesture moves these trees while the outgoing workspace is still active (it
+    // deactivates at commit); beginSwitchTransition() lands any parked wait first.
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
       m_slide.previous->beginSwitchTransition();
@@ -3771,6 +3784,8 @@ namespace umbriel {
     } else {
       m_slide.previous = workspace;
     }
+    // The trees travel before the outgoing workspace deactivates; the transition
+    // these two enter lands the waits first.
     m_slide.base->beginSwitchTransition();
     workspace->beginSwitchTransition();
     slideApply(0.0);
@@ -3848,6 +3863,8 @@ namespace umbriel {
       return reject("output already has a workspace with that name");
     }
 
+    // Both groups' slides end here, and the deactivation below lands the moving
+    // workspace's parked waits before its tree is reparented.
     slideFinish();
     destination.slideFinish();
     const size_t sourceIndex = workspace->index();

@@ -303,6 +303,9 @@ namespace umbriel {
     // A member of a tabbed column other than the one it shows. It keeps its layout slot and stays mapped and configured
     // at that size, but its frame stays disabled whatever else asks to enable it.
     void setTabHidden(bool hidden);
+    // True while the drag tree presents this view or a transient ancestor (held,
+    // settling, or landed on a pinned root): a workspace must not show or hide it.
+    bool dragPresentationOwnsVisibility() const;
     bool tabHidden() const { return m_tabHidden; }
     // Minimized: hidden, but keeping its workspace, floating box, stacking slot, and taskbar entries. Focusing the
     // window shows it again.
@@ -758,6 +761,15 @@ namespace umbriel {
     void setDragPhysicsGrab(double localX, double localY);
     void moveDragPhysics(double dx, double dy);
     void endDragPhysics();
+    // True while the physics sheet is displaced from its resting box: grabbed,
+    // or still settling after the release.
+    bool dragSheetDisplaced() const;
+    // The release's say over where the view rests: the window closes when the
+    // release handler ends, flush lands the wait immediately.
+    void closeReleaseRehomeWindow();
+    void flushReleaseRehome();
+    // True while a view rests under the drag tree.
+    bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
     struct DragFit {
@@ -831,7 +843,25 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
-    void syncTransientSceneParent();
+    // What to do to a transient descendant: re-home it under the tree its parent
+    // lives in, or do that and stack it over its siblings.
+    enum class TransientWalkAction { SyncSceneParent, RaiseToTop };
+    // The one owner of the transient traversal: applies `action` depth-first to
+    // every descendant, newest registry entry first. Returns true when any of them
+    // left the drag tree.
+    bool walkTransientTree(TransientWalkAction action);
+    // Absorbs a re-home into the release's wait while the sheet is displaced:
+    // true when the node must stay where it is.
+    [[nodiscard]] bool deferRehome(wlr_scene_tree* target);
+    // Applies one node's re-home: the release's wait, then the move with the
+    // shadow and X11 state that follow it. Returns true when the node left the
+    // drag tree. The caller owns the subtree.
+    bool applySceneParent(wlr_scene_tree* parent);
+    // Lowers the drag tree under its icons once no drag-presented view is left.
+    void demoteDragTreeIfIdle();
+    // Re-homes this node under the tree its transient parent lives in. Returns
+    // true when it left the drag tree.
+    bool syncTransientSceneParent();
     void raiseTransientTree();
     void updateForeignIdentity();
     void updateForeignState();
@@ -994,6 +1024,12 @@ namespace umbriel {
     ViewPresentation m_presentation;
     DragPhysics m_dragPhysics;
     double m_dragPhysicsMsec = 0; // animation clock at the sheet's last tick
+    // The resting re-home requested while the released sheet was still
+    // displaced (setSceneParent defers it); applied when the spring settles.
+    wlr_scene_tree* m_pendingHomeParent = nullptr;
+    // Armed for one release flow: setSceneParent absorbs the reparents the
+    // release issues until closeReleaseRehomeWindow() ends the flow.
+    bool m_releaseRehomeArmed = false;
     // The frame-local grab and the content tree's drawn bounds the sheet was last fitted to.
     double m_dragGrabX = 0;
     double m_dragGrabY = 0;

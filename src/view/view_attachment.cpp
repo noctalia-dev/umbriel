@@ -163,8 +163,12 @@ namespace umbriel {
 
     m_attachedTo = parent;
     parent->m_attachments.push_back(this);
-    wlr_scene_node_reparent(&m_sceneTree->node, parent->m_attachmentTree);
-    syncShadowPool();
+    // The attach re-parent supersedes any deferred re-home and carries the
+    // leaving-drag-tree bookkeeping (riders follow, then the tree demotes); it
+    // syncs the shadow pool too.
+    m_pendingHomeParent = nullptr;
+    m_releaseRehomeArmed = false;
+    setSceneParent(parent->m_attachmentTree);
     setOnActiveWorkspace(true);
     setNodeEnabled(true);
     parent->layoutAttachments();
