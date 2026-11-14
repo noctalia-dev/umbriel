@@ -190,6 +190,14 @@ namespace umbriel {
           integer("outer_border_width", 0, 100, &A::outerBorderWidth),
           integer("corner_radius", 0, 100, &A::cornerRadius),
           real("drag_opacity", 0.0, 1.0, &A::dragOpacity),
+          registry::choice(
+              "downsample", &A::downsample,
+              {
+                  {"box", DownsampleMode::Box},
+                  {"bilinear", DownsampleMode::Bilinear},
+                  {"nearest", DownsampleMode::Nearest},
+              }
+          ),
           boolean("prefer_no_csd", &A::preferNoCsd),
           boolean("opaque_fullscreen", &A::opaqueFullscreen),
           registry::table("blur", &A::blur, blur),
@@ -344,6 +352,7 @@ namespace umbriel {
           ),
           boolean("xwayland", &G::xwayland),
           boolean("xwayland_native_resolution", &G::xwaylandNativeResolution),
+          boolean("force_x11_supersample", &G::forceX11Supersample),
           boolean("xwayland_xsettings", &G::xwaylandXsettings),
           registry::text("xwayland_primary_output", &G::xwaylandPrimaryOutput),
           boolean("nvidia_sync_workaround", &G::nvidiaSyncWorkaround),

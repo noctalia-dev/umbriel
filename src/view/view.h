@@ -143,6 +143,10 @@ namespace umbriel {
     wlr_scene_tree* captureTree() const;
     bool captureBlocked() const { return m_captureBlocked; }
     void refreshCaptureProtection();
+
+    // The capture mirror scene carries its own downsample policy; keep it in
+    // step with the server's appearance.downsample.
+    void applyDownsampleMode(enum wlr_scene_downsample_mode mode);
     bool mapped() const { return m_mapped; }
     // The pid of the application process, or -1 when it is unknown (an X11 client that sets no _NET_WM_PID).
     pid_t pid() const;
@@ -153,6 +157,10 @@ namespace umbriel {
     Output* currentOutput() const;
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
+    // Whether this window renders at its output's render_scale. A `supersample` window rule decides outright;
+    // otherwise fullscreen windows and game or video content stay at the logical scale, so 3D and video skip the
+    // supersample and remain eligible for direct scanout.
+    bool supersampled();
     bool confinePointer();
     double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
@@ -781,6 +789,9 @@ namespace umbriel {
     // popups included). Scale-aware clients size and map pointer coordinates by this, so it must follow the view across
     // outputs and track scale changes.
     void notifyOutputScale();
+    // Re-send only the scale hints, after something supersampled() reads changed (fullscreen, content type, rules).
+    // The notifies dedup, so an unchanged answer costs nothing.
+    void refreshScaleHints();
     // Keep floats visually at the last requested size while client geometry lags.
     void syncFloatingSurfaceClip();
     void beginFloatingResize(uint32_t edges);
@@ -1117,6 +1128,7 @@ namespace umbriel {
     AnimatedValue m_ruleBlur{0.0};
     bool m_backgroundRender = false;
     bool m_allowShortcutsInhibit = true;
+    std::optional<bool> m_appliedSupersampleRule;
     float m_dragOpacity = 1.0F;
     float m_overviewOpacity = 1.0F;
     std::vector<std::unique_ptr<ViewSurfaceWatch>> m_viewSurfaceWatches;

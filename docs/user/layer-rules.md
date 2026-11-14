@@ -24,13 +24,14 @@ Selectors are optional: a rule without them matches every layer surface, and eve
 
 ## Effects
 
-| Key                 | Type  | Description                                                                |
-| ------------------- | ----- | -------------------------------------------------------------------------- |
-| `dim_behind`        | float | Darken content below this layer on its output; `0.0`–`1.0`, default `0.0`. |
-| `blur`              | bool  | Enable/disable blur for the layer surface.                                 |
-| `blur_popups`       | bool  | Enable/disable blur for descendant XDG popups.                             |
-| `blur_ignore_alpha` | float | Skip blur below an alpha threshold.                                        |
-| `blur_optimized`    | bool  | Override the global optimized-blur choice.                                 |
+| Key                 | Type  | Description                                                                                                                  |
+| ------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `dim_behind`        | float | Darken content below this layer on its output; `0.0`–`1.0`, default `0.0`.                                                   |
+| `blur`              | bool  | Enable/disable blur for the layer surface.                                                                                   |
+| `blur_popups`       | bool  | Enable/disable blur for descendant XDG popups.                                                                               |
+| `blur_ignore_alpha` | float | Skip blur below an alpha threshold.                                                                                          |
+| `blur_optimized`    | bool  | Override the global optimized-blur choice.                                                                                   |
+| `supersample`       | bool  | Render the surface and its popups at the output's `render_scale` (`true`) or at its `scale` (`false`); omitted supersamples. |
 
 Layer-shell blur is off by default. Every matching rule contributes its settings, and later values take precedence.
 

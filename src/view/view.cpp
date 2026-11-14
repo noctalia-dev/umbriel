@@ -199,6 +199,7 @@ namespace umbriel {
       } else {
         wlr_scene_subsurface_tree_create(&m_captureScene->tree, surface);
       }
+      applyDownsampleMode(m_server->sceneDownsampleMode());
     }
     if (m_xsurface != nullptr) {
       // Until the first configure places it, the window is drawn at the scale of the output its X position is on.
@@ -360,6 +361,12 @@ namespace umbriel {
   }
 
   wlr_scene_tree* View::captureTree() const { return m_captureScene != nullptr ? &m_captureScene->tree : nullptr; }
+
+  void View::applyDownsampleMode(enum wlr_scene_downsample_mode mode) {
+    if (m_captureScene != nullptr) {
+      wlr_scene_set_downsample_mode(m_captureScene, mode);
+    }
+  }
 
   void View::moveToWorkspace(Workspace* workspace, bool attachToLayout) {
     moveToWorkspace(workspace, attachToLayout, LayoutAttachOrigin::ExistingView);
@@ -976,10 +983,25 @@ namespace umbriel {
     if (m_captureSource != nullptr) {
       umbrielfx_scene_capture_source_set_scale(m_captureSource, output->wlr()->scale);
     }
-    forEachSurface(&Output::notifySurfaceScaleIter, output);
-    forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
+    refreshScaleHints();
     // Chrome that renders text follows the scale too.
     layoutChromeAttachment(m_chromeContentWidth, m_chromeContentHeight);
+  }
+
+  void View::refreshScaleHints() {
+    Output* output = currentOutput();
+    if (output == nullptr || rootSurface() == nullptr) {
+      return;
+    }
+    forEachSurface(&Output::notifySurfaceScaleIter, output);
+    forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
+  }
+
+  bool View::supersampled() {
+    if (const std::optional<bool> rule = resolvedRules().supersample) {
+      return *rule;
+    }
+    return !scheduledFullscreen() && m_contentType != ContentType::Game && m_contentType != ContentType::Video;
   }
 
   void View::unconstrainPopup(wlr_xdg_popup* popup) {

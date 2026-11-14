@@ -28,6 +28,8 @@ files = []
 # xwayland = false
 # Sharp X11 apps and games on scaled outputs; they see physical resolutions.
 # xwayland_native_resolution = true
+# Opt into render_scale for native X11 apps that scale their own interface.
+# force_x11_supersample = true
 # Umbriel announces the X11 interface scale and cursor theme through XSETTINGS.
 # Turn this off to run your own manager, such as xsettingsd.
 # xwayland_xsettings = false
@@ -69,6 +71,7 @@ files = []
 # mode = "2560x1440@144"
 # position = [0, 0]
 # scale = 1.25
+# render_scale = 2.0 # Supersample: clients render at 2.0, compositor samples down to `scale`.
 # vrr = "fullscreen"
 # hdr = "auto"
 # sdr_transfer = "gamma22" # Or "srgb" for piecewise SDR decoding in HDR.
@@ -80,6 +83,12 @@ files = []
 # Blur uses a smaller radius than the built-in default.
 # https://docs.noctalia.dev/umbriel/appearance/
 #
+# [appearance]
+# How content that shrinks is sampled: "box" averages each destination pixel's
+# source footprint, "bilinear" takes one interpolated sample per pixel, and
+# "nearest" the closest texel.
+# downsample = "box"
+
 [appearance.blur]
 radius = 3
 
@@ -441,6 +450,12 @@ blur_popups = true
 [[layer_rule]]
 match.namespace = "^noctalia-(notification|dock|panel|attached-panel|osd)$"
 blur_optimized = false
+
+# A screenshot overlay shows a frozen capture at its own resolution, so
+# supersampling it would scale that capture up and back down:
+# [[layer_rule]]
+# match.namespace = "^my-screenshot-overlay$"
+# supersample = false
 
 # ==============================================================================
 # Overview

@@ -77,6 +77,9 @@ namespace umbriel {
     bool workspaceInventory = false;
     bool workspaceLayout = false;
     bool sceneBlur = false;
+    // Minified-buffer sampling method ([appearance] downsample): a scene-level
+    // policy, so it needs a fresh frame rather than any object rebuild.
+    bool sceneDownsample = false;
     bool viewChrome = false;
     bool layerEffects = false;
     bool animation = false;
@@ -94,6 +97,7 @@ namespace umbriel {
           || workspaceInventory
           || workspaceLayout
           || sceneBlur
+          || sceneDownsample
           || viewChrome
           || layerEffects
           || animation

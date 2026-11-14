@@ -1950,22 +1950,35 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   // the same fetch as before the clamp existed, so a driver only ever sees
   // the extra uniform on fractionally cropped surfaces.
   bool use_clamp = !wlr_fbox_empty(&fx_options->sample_box);
+  bool use_box = fx_options->downsample_box;
   switch (texture->target) {
   case GL_TEXTURE_2D:
     if (texture->has_alpha) {
-      shader = use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_rgba : &renderer->shaders.tex_clamp_rgba)
-                         : (use_effects ? &renderer->shaders.tex_effects_rgba : &renderer->shaders.tex_rgba);
+      shader = use_box
+          ? (use_clamp
+                 ? (use_effects ? &renderer->shaders.tex_box_clamp_effects_rgba : &renderer->shaders.tex_box_clamp_rgba)
+                 : (use_effects ? &renderer->shaders.tex_box_effects_rgba : &renderer->shaders.tex_box_rgba))
+          : (use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_rgba : &renderer->shaders.tex_clamp_rgba)
+                       : (use_effects ? &renderer->shaders.tex_effects_rgba : &renderer->shaders.tex_rgba));
     } else {
-      shader = use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_rgbx : &renderer->shaders.tex_clamp_rgbx)
-                         : (use_effects ? &renderer->shaders.tex_effects_rgbx : &renderer->shaders.tex_rgbx);
+      shader = use_box
+          ? (use_clamp
+                 ? (use_effects ? &renderer->shaders.tex_box_clamp_effects_rgbx : &renderer->shaders.tex_box_clamp_rgbx)
+                 : (use_effects ? &renderer->shaders.tex_box_effects_rgbx : &renderer->shaders.tex_box_rgbx))
+          : (use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_rgbx : &renderer->shaders.tex_clamp_rgbx)
+                       : (use_effects ? &renderer->shaders.tex_effects_rgbx : &renderer->shaders.tex_rgbx));
     }
     break;
   case GL_TEXTURE_EXTERNAL_OES:
     // EGL_EXT_image_dma_buf_import_modifiers requires
     // GL_OES_EGL_image_external
     assert(renderer->exts.OES_egl_image_external);
-    shader = use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_ext : &renderer->shaders.tex_clamp_ext)
-                       : (use_effects ? &renderer->shaders.tex_effects_ext : &renderer->shaders.tex_ext);
+    shader = use_box
+        ? (use_clamp
+               ? (use_effects ? &renderer->shaders.tex_box_clamp_effects_ext : &renderer->shaders.tex_box_clamp_ext)
+               : (use_effects ? &renderer->shaders.tex_box_effects_ext : &renderer->shaders.tex_box_ext))
+        : (use_clamp ? (use_effects ? &renderer->shaders.tex_clamp_effects_ext : &renderer->shaders.tex_clamp_ext)
+                     : (use_effects ? &renderer->shaders.tex_effects_ext : &renderer->shaders.tex_ext));
     break;
   default:
     abort();
@@ -1976,6 +1989,23 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   wlr_render_texture_options_get_src_box(options, &src_fbox);
   wlr_render_texture_options_get_dst_box(options, &dst_box);
   float alpha = wlr_render_texture_options_get_alpha(options);
+
+  // Box taps tile the fragment's texel footprint: K per axis at ratio/K texel
+  // steps (exact one-texel centers while integer ratios fit the constant 4x4
+  // grid). A rotated draw swaps which destination extent each buffer axis
+  // shrinks into, so the ratios derive from the transformed extents.
+  float taps_x = 1.0f, taps_y = 1.0f;
+  float step_x = 1.0f, step_y = 1.0f;
+  if (use_box) {
+    int dst_width = dst_box.width, dst_height = dst_box.height;
+    wlr_output_transform_coords(options->transform, &dst_width, &dst_height);
+    const double ratio_x = dst_width > 0 ? src_fbox.width / dst_width : 1.0;
+    const double ratio_y = dst_height > 0 ? src_fbox.height / dst_height : 1.0;
+    taps_x = fmin(fmax(ceil(ratio_x), 1.0), 4.0);
+    taps_y = fmin(fmax(ceil(ratio_y), 1.0), 4.0);
+    step_x = fmax(ratio_x, 1.0) / taps_x;
+    step_y = fmax(ratio_y, 1.0) / taps_y;
+  }
 
   const struct wlr_box* clip_box = &dst_box;
   if (!wlr_box_empty(fx_options->clip_box)) {
@@ -2081,6 +2111,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   glUniform1i(shader->tex, 0);
   glUniform1f(shader->alpha, alpha);
+  if (use_box) {
+    glUniform2f(shader->taps, taps_x, taps_y);
+    glUniform2f(shader->tap_step, step_x / options->texture->width, step_y / options->texture->height);
+  }
 
   struct wlr_color_primaries primaries_srgb;
   wlr_color_primaries_from_named(&primaries_srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
@@ -2127,6 +2161,12 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
       fx_options->luminances != NULL ? fx_options->luminances->max : 100.0F
   );
   glUniform1i(shader->target_tf, color_passthrough ? 0 : target_tf);
+  if (use_box) {
+    // A passthrough draw converts nothing, so its content already sits in the pass's target space: an SDR
+    // swapchain, which the compositor writes sRGB-encoded, or extended linear behind colour management. The box
+    // average needs that curve, which the collapsed source_tf no longer carries.
+    glUniform1i(shader->box_tf, color_passthrough ? (GLint)target_tf : 0);
+  }
   glUniform1i(shader->map_hdr_to_sdr, fx_options->map_hdr_to_sdr);
 
   glUniform1f(shader->discard_transparent, fx_options->discard_transparent);

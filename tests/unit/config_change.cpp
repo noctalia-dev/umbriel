@@ -205,6 +205,22 @@ UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   }
 }
 
+UMBRIEL_TEST(aRenderScaleChangeReappliesOutputState) {
+  Config before;
+  before.outputs.push_back({});
+  before.outputs.back().name = "DP-1";
+  before.outputs.back().scale = 1.25;
+
+  Config after = before;
+  after.outputs[0].renderScale = 2.0;
+
+  CHECK(ConfigChange::between(before, after).outputs);
+  CHECK(ConfigEffects::between(before, after).outputState);
+  // Dropping the key again must re-notify clients back to the logical scale.
+  CHECK(ConfigChange::between(after, before).outputs);
+  CHECK(ConfigEffects::between(after, before).outputState);
+}
+
 UMBRIEL_TEST(windowOpacityTimingRefreshesPresentationWithoutLayoutChanges) {
   Config before;
   Config after = before;
@@ -382,6 +398,19 @@ UMBRIEL_TEST(identicalConfigsProduceNoRuntimeEffects) {
   CHECK(!ConfigEffects::between(before, after).any());
 }
 
+UMBRIEL_TEST(downsampleMethodChangeRefreshesSceneSampling) {
+  const Config before;
+  Config after;
+  after.appearance.downsample = umbriel::DownsampleMode::Nearest;
+  const ConfigEffects effects = ConfigEffects::between(before, after);
+  CHECK(effects.sceneDownsample);
+  // A sampling reload repaints; it must not read as a chrome rebuild, which
+  // would refresh every decoration and close an open overview.
+  CHECK(!effects.viewChrome);
+  CHECK(!effects.invalidatesOverview());
+  CHECK(!ConfigEffects::between(before, before).sceneDownsample);
+}
+
 UMBRIEL_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   const ConfigEffects effects = ConfigEffects::everything();
   CHECK(effects.outputState);
@@ -390,6 +419,7 @@ UMBRIEL_TEST(firstLoadInvalidatesEveryRuntimeConsumer) {
   CHECK(effects.workspaceInventory);
   CHECK(effects.workspaceLayout);
   CHECK(effects.sceneBlur);
+  CHECK(effects.sceneDownsample);
   CHECK(effects.viewChrome);
   CHECK(effects.layerEffects);
   CHECK(effects.animation);
