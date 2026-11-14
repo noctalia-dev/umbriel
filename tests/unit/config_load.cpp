@@ -822,6 +822,47 @@ center_focused = true
   CHECK(!store.config().outputs[0].layout.scrolling.defaultExtentFraction.has_value());
 }
 
+UMBRIEL_TEST(outputRenderScaleIsHonoredWarnedAndClamped) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(R"(
+[output.DP-1]
+scale = 1.5
+render_scale = 2.0
+
+[output.HDMI-1]
+scale = 1.5
+render_scale = 1.0
+)");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{2});
+  CHECK(store.config().outputs[0].renderScale.has_value());
+  CHECK_EQ(*store.config().outputs[0].renderScale, 2.0);
+  CHECK(store.config().outputs[1].renderScale.has_value());
+  CHECK_EQ(*store.config().outputs[1].renderScale, 1.0);
+  CHECK(containsDiagnostic(store, "output.HDMI-1.render_scale"));
+  CHECK(containsDiagnostic(store, "undersamples"));
+
+  file.write("[output.DP-1]\nscale = 1.5\nrender_scale = 9.0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(*store.config().outputs[0].renderScale, 4.0);
+  CHECK(containsDiagnostic(store, "output.DP-1.render_scale = 9"));
+
+  // Without `scale`, the warn compares against the documented default: an
+  // undersampling render_scale still warns and is still honored.
+  file.write("[output.DP-1]\nrender_scale = 0.5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(*store.config().outputs[0].renderScale, 0.5);
+  CHECK(containsDiagnostic(store, "undersamples"));
+
+  file.write("[output.DP-1]\nscale = 1.5\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].renderScale.has_value());
+  CHECK(!containsDiagnostic(store, "render_scale"));
+}
+
 UMBRIEL_TEST(outputWorkspaceAxisAcceptsOnlyItsTwoNames) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2391,6 +2432,12 @@ UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
   file.write("[[layer_rule]]\nmatch.layer = \"sideways\"\nblur = true\n");
   CHECK(store.reload().success);
   CHECK(store.config().layerRules.empty());
+
+  file.write("[[layer_rule]]\nmatch.namespace = \"^overlay$\"\nsupersample = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layerRules.size(), size_t{1});
+  CHECK(store.config().layerRules[0].supersample == false);
+  CHECK(!containsDiagnostic(store, "unknown key layer_rule.supersample"));
 }
 
 UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
@@ -2699,6 +2746,23 @@ UMBRIEL_TEST(nvidiaSyncWorkaroundReloadsAndDefaultsOn) {
   CHECK(store.config().general.nvidiaSyncWorkaround);
   CHECK(containsDiagnostic(store, "ignoring general.nvidia_sync_workaround (expected boolean)"));
   CHECK(!containsDiagnostic(store, "unknown key general.nvidia_sync_workaround"));
+}
+
+UMBRIEL_TEST(forceX11SupersampleLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[general]\nforce_x11_supersample = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.forceX11Supersample);
+  file.write("[general]\nforce_x11_supersample = \"true\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
+  CHECK(containsDiagnostic(store, "ignoring general.force_x11_supersample (expected boolean)"));
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.forceX11Supersample);
 }
 
 UMBRIEL_TEST(xwaylandPrimaryOutputLoadsAndCanBeRemoved) {

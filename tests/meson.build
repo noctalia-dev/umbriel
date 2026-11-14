@@ -218,6 +218,8 @@ layer_client = executable(
     layer_shell_client_c,
     xdg_shell_client_h,
     xdg_shell_client_c,
+    fractional_scale_client_h,
+    fractional_scale_client_c,
   ],
   dependencies: [wayland_client_dep],
 )
@@ -327,6 +329,8 @@ fractional_client = executable(
     legacy_decoration_client_c,
     xdg_decoration_client_h,
     xdg_decoration_client_c,
+    content_type_client_h,
+    content_type_client_c,
   ],
   dependencies: [wayland_client_dep],
 )

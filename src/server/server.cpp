@@ -709,6 +709,19 @@ namespace umbriel {
       throw std::runtime_error(std::string("umbrielfx scene helpers are not linked correctly: ") + mismatch);
     }
     m_scene = wlr_scene_create();
+    // Surface scale hints carry each output's render scale, not its own scale:
+    // clients supersample while the scene samples down to the `scale` raster.
+    wlr_scene_set_preferred_scale_provider(
+        m_scene,
+        [](wlr_output* output, wlr_surface* surface, void* data) -> double {
+          auto* server = static_cast<Server*>(data);
+          const Output* bound = server->outputFromWlr(output);
+          // Unbound outputs are capture mirrors and must not drive hints.
+          // Same per-surface answer as Output::notifySurfaceScaleIter.
+          return bound != nullptr ? bound->surfaceRenderScale(surface) : -1.0;
+        },
+        this
+    );
     if (linuxDmabuf != nullptr) {
       wlr_scene_set_linux_dmabuf_v1(m_scene, linuxDmabuf);
     }

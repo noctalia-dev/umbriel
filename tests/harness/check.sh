@@ -345,16 +345,20 @@ row() {
 # No autostart, no Xwayland, no cheatsheet: a check wants a bare compositor, and
 # each of those would spawn processes outside the container. A check that needs
 # X11 opts in with `# harness: xwayland=true` in its header, or with
-# `# harness: xwayland=native` for xwayland_native_resolution, which needs a restart.
+# `# harness: xwayland=native` for xwayland_native_resolution, or
+# `# harness: xwayland=native-supersample` to force X11 supersampling. Both need a restart.
 write_default_config() {
   local xwayland=$2 cursor_theme=$3
   cat > "$1" << EOF
 [general]
 xwayland = $([[ $xwayland == false ]] && echo false || echo true)
-xwayland_native_resolution = $([[ $xwayland == native ]] && echo true || echo false)
+xwayland_native_resolution = $([[ $xwayland == native || $xwayland == native-supersample ]] && echo true || echo false)
 show_cheatsheet = false
 autostart = []
 EOF
+  if [[ $xwayland == native-supersample ]]; then
+    echo "force_x11_supersample = true" >> "$1"
+  fi
   if [[ -n $cursor_theme ]]; then
     cat >> "$1" << EOF
 
@@ -382,7 +386,7 @@ check_keyboard() {
 
 check_xwayland() {
   local declared
-  declared=$(sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland=\(true\|native\)$/\1/p' | head -1)
+  declared=$(sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland=\(true\|native\|native-supersample\)$/\1/p' | head -1)
   echo "${declared:-false}"
 }
 

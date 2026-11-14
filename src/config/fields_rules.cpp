@@ -233,6 +233,7 @@ namespace umbriel {
           boolean("background_render", &W::backgroundRender),
           boolean("block_capture", &W::blockCapture),
           boolean("tearing", &W::allowTearing),
+          boolean("supersample", &W::supersample),
           boolean("blur", &W::blur),
           boolean("blur_popups", &W::blurPopups),
           boolean("blur_optimized", &W::blurOptimized),
@@ -375,6 +376,7 @@ namespace umbriel {
           registry::boolean("blur_popups", &L::blurPopups),
           registry::real("blur_ignore_alpha", 0.0, 1.0, &L::ignoreAlpha),
           registry::boolean("blur_optimized", &L::optimized),
+          registry::boolean("supersample", &L::supersample),
       };
       return fields;
     }
