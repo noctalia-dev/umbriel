@@ -1098,7 +1098,7 @@ namespace umbriel {
     return fullArea;
   }
 
-  CloseSnapshotId View::beginCloseAnimation() {
+  CloseSnapshotId View::beginCloseAnimation(Output* scratchpadOutput) {
     const auto& animation = config().animation;
     const bool held = m_tiled && m_workspace != nullptr && animation.holdsClosedTile();
     if (!m_mapped
@@ -1109,7 +1109,7 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(held, true);
+    return captureSnapshot(held, true, scratchpadOutput);
   }
 
   CloseSnapshotId View::captureHeldSnapshot() {
@@ -1123,9 +1123,12 @@ namespace umbriel {
     return captureSnapshot(true, false);
   }
 
-  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow) {
-    Output* output =
-        m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
+  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow, Output* scratchpadOutput) {
+    // A member's pad entry is gone by now, so its output comes from the owner.
+    Output* output = scratchpadOutput != nullptr
+        ? scratchpadOutput
+        : (m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output()
+                                                                     : currentOutput());
     if (output == nullptr) {
       return kInvalidCloseSnapshot;
     }
@@ -1224,6 +1227,18 @@ namespace umbriel {
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
+    // The pad draws members above its dim rect and blur, so a fading member moves into the pad tree; in the output
+    // root it would be dimmed twice and miss the pad's fade.
+    if (id != kInvalidCloseSnapshot && scratchpadOutput != nullptr && m_server->scratchpadManager() != nullptr) {
+      if (wlr_scene_tree* layer = m_server->scratchpadManager()->createCloseSnapshotLayer(output)) {
+        if (shadow.tree != nullptr) {
+          wlr_scene_node_reparent(&shadow.tree->node, layer);
+        }
+        // Last, so the copies draw above the shadow.
+        wlr_scene_node_reparent(&snap->node, layer);
+        m_server->scratchpadManager()->trackCloseSnapshot(id, output, layer);
+      }
+    }
     wlr_output_schedule_frame(output->wlr());
     return id;
   }
