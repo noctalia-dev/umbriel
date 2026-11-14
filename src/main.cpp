@@ -82,12 +82,8 @@ namespace {
       return EXIT_SUCCESS;
     }
     for (const auto& d : diags) {
-      const std::string loc = d.location();
-      if (d.severity == umbriel::ConfigDiagnostic::Severity::Error) {
-        std::println(stderr, "error: {}{}", loc.empty() ? "" : loc + ": ", d.message);
-      } else {
-        std::println(stderr, "warning: {}{}", loc.empty() ? "" : loc + ": ", d.message);
-      }
+      const char* severity = d.severity == umbriel::ConfigDiagnostic::Severity::Error ? "error" : "warning";
+      std::println(stderr, "{}: {}", severity, d.display());
     }
     std::println(stderr, "configuration invalid");
     return EXIT_FAILURE;
@@ -401,6 +397,7 @@ int main(int argc, char** argv) {
   }
 
   initLogFile();
+  umbriel::installConfigDiagnosticLogging();
   // wlroots debug output is mostly per-frame scan-out and buffer chatter, so it stays opt-in.
   const char* wlrDebug = std::getenv("UMBRIEL_WLR_DEBUG");
   const bool wlrDebugEnabled = wlrDebug != nullptr && std::strcmp(wlrDebug, "1") == 0;

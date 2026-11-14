@@ -54,6 +54,7 @@ namespace umbriel {
     // Loader-only writers follow. The read-only API remains above.
     // Keep the active config when a reload fails.
     void beginLoad(const std::vector<std::filesystem::path>& watchPaths);
+    // For merge results the include walker already recorded through `recordDiagnostic`; a new producer records instead.
     void addDiagnostic(ConfigDiagnostic diagnostic);
     // The sink the section readers append to directly.
     std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }

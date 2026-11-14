@@ -11,6 +11,7 @@ If a reload fails:
 - The last valid configuration remains active.
 - The live compositor state remains unchanged.
 - Diagnostics describe the failed attempt.
+- Every configuration diagnostic is logged as well as drawn. Producers record through `recordDiagnostic` (`src/config/config_diag.h`), which stores the diagnostic and hands it to the observer the compositor installs at startup, so a producer cannot record one without it reaching the log. `umbriel config validate` runs with no observer and prints from the store instead, so it reports each diagnostic once. A diagnostic derived from runtime state rather than from reading the file is not recorded: the Xwayland startup failure is logged where it happens.
 - Watches follow the attempted include graph. Fixing a broken included file can therefore trigger recovery without another edit to the main file.
 
 A successful reload applies only the runtime effects caused by changed sections. Saving identical content is inert: it must not reset output state, move focus, close overlays, or otherwise disturb the session.
@@ -56,6 +57,7 @@ The relevant regression coverage is in:
 - [`tests/unit/config_load.cpp`](../../tests/unit/config_load.cpp), which checks implicit promotion and fallback, failed-candidate recovery, launch-time path capture, and explicit-path pinning.
 - [`tests/unit/config_watcher.cpp`](../../tests/unit/config_watcher.cpp), which checks automatic promotion when the user config directory does not exist at startup.
 - [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks change classification and runtime effects.
+- [`tests/unit/config_section.cpp`](../../tests/unit/config_section.cpp), which checks that a recorded diagnostic reaches the observer with its source position, and that recording still stores one with no observer installed.
 - [`tests/unit/output_enable_overrides.cpp`](../../tests/unit/output_enable_overrides.cpp), which checks connector and display-identity matching for session-scoped output enablement.
 - [`tests/harness/checks/session/config_reload.sh`](../../tests/harness/checks/session/config_reload.sh), which checks inert reloads, selective layout updates, border dependencies, and recovery after an included file fails to parse.
 - [`tests/harness/checks/rule/decoration.sh`](../../tests/harness/checks/rule/decoration.sh), which checks that a window rule's decoration keys reach the window on reload without moving it.

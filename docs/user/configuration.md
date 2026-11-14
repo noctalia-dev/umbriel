@@ -25,6 +25,8 @@ Use `umbriel -c <path>` to select one exact file. Umbriel never creates or modif
 
 Configuration warnings and errors appear in a panel on the primary output. Errors keep the previous working configuration active. A warning-only panel closes after ten seconds; an error remains until the next successful reload.
 
+Every configuration diagnostic is also written to `umbriel.log` with the same file, line, and column, so a session started without a terminal still records what the panel showed after it closes.
+
 Check a file without starting the compositor:
 
 ```sh

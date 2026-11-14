@@ -144,8 +144,7 @@ namespace umbriel {
         if (!lines.empty()) {
           lines += '\n';
         }
-        const std::string location = diagnostic.location();
-        lines += location.empty() ? diagnostic.message : location + ": " + diagnostic.message;
+        lines += diagnostic.display();
       }
       return lines;
     }
@@ -283,8 +282,8 @@ namespace umbriel {
 
       for (const auto& d : diags) {
         if (d.severity == umbriel::ConfigDiagnostic::Severity::Error) {
-          const std::string loc = d.location();
-          errors += loc.empty() ? d.message : loc + ": " + d.message + "\n";
+          errors += d.display();
+          errors += '\n';
         }
       }
 
@@ -396,6 +395,16 @@ namespace umbriel {
   }
 
   void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }
+
+  void installConfigDiagnosticLogging() {
+    setDiagnosticObserver([](const ConfigDiagnostic& diagnostic) {
+      if (diagnostic.severity == ConfigDiagnostic::Severity::Error) {
+        kLog.error("{}", diagnostic.display());
+      } else {
+        kLog.warn("{}", diagnostic.display());
+      }
+    });
+  }
 
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors) {
     return configStore().replace(explicitPath, errors);

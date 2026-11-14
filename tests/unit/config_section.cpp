@@ -1,4 +1,5 @@
 #include "check.h"
+#include "config/config_diag.h"
 #include "config/section.h"
 
 #include <string>
@@ -302,6 +303,76 @@ UMBRIEL_TEST(diagnosticsCarryTheSourcePositionOfTheOffendingKey) {
   CHECK_EQ(static_cast<int>(diagnostics.size()), 1);
   // Without a position the user has to hunt for the key themselves.
   CHECK_EQ(static_cast<int>(diagnostics[0].line), 3);
+}
+
+// A diagnostic the section readers record must also reach the observer, or a session started without a terminal has no
+// record of it. The observer is a plain function pointer, so what it collects lives at file scope.
+namespace {
+
+  std::vector<ConfigDiagnostic> gObserved;
+
+  void collect(const ConfigDiagnostic& diagnostic) { gObserved.push_back(diagnostic); }
+
+  // Installs the collector for one case and clears sink and observer afterwards, so ordering cannot leak between cases.
+  struct Observed {
+    Observed() {
+      gObserved.clear();
+      umbriel::setDiagnosticObserver(collect);
+    }
+    ~Observed() {
+      umbriel::setDiagnosticObserver(nullptr);
+      gObserved.clear();
+    }
+    Observed(const Observed&) = delete;
+    Observed& operator=(const Observed&) = delete;
+  };
+
+} // namespace
+
+UMBRIEL_TEST(recordedDiagnosticsReachTheObserver) {
+  const Observed observed;
+
+  const auto table = toml::parse("\n\ntypo = 1\n");
+  std::vector<ConfigDiagnostic> diagnostics;
+  {
+    Section s(table, "demo", diagnostics);
+  }
+
+  CHECK_EQ(static_cast<int>(diagnostics.size()), 1);
+  CHECK_EQ(static_cast<int>(gObserved.size()), 1);
+  if (!gObserved.empty()) {
+    // toml::parse carries no file path here, so the position is what the observer must still see.
+    CHECK_EQ(static_cast<int>(gObserved[0].line), 3);
+    CHECK_EQ(static_cast<int>(gObserved[0].column), static_cast<int>(diagnostics[0].column));
+  }
+}
+
+// The CLI and any test that links the pure layer run with no observer installed: recording has to stay unconditional.
+UMBRIEL_TEST(recordingWithoutAnObserverStillStoresTheDiagnostic) {
+  umbriel::setDiagnosticObserver(nullptr);
+  const auto table = toml::parse("demo = 1\n");
+  std::vector<ConfigDiagnostic> diagnostics;
+  {
+    Section s(table, "outer", diagnostics);
+  }
+  CHECK(contains(diagnostics, "unknown key outer.demo"));
+}
+
+// Readers built on `Section` report through it too, so a type mismatch is observed as well as stored.
+UMBRIEL_TEST(typeMismatchIsObservedAsWellAsStored) {
+  const Observed observed;
+
+  const auto table = toml::parse("count = \"seven\"\n");
+  std::vector<ConfigDiagnostic> diagnostics;
+  int count = 0;
+  {
+    Section s(table, "demo", diagnostics);
+    s.integer("count", 0, 100, count);
+  }
+
+  CHECK(contains(diagnostics, "expected integer"));
+  CHECK_EQ(static_cast<int>(gObserved.size()), static_cast<int>(diagnostics.size()));
+  CHECK(!gObserved.empty() && gObserved[0].message.contains("expected integer"));
 }
 
 int main() { return RUN_TESTS(); }

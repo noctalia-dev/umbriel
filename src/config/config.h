@@ -1351,6 +1351,9 @@ namespace umbriel {
   }
 
   const Config& config();
+  // Send every diagnostic to the log as well as the store. The compositor calls this before loading a config; the CLI
+  // leaves it unset, so `config validate` prints each diagnostic once.
+  void installConfigDiagnosticLogging();
   void loadConfig(const char* explicitPath);
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   ConfigReloadResult reloadConfig();

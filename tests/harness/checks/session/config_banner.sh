@@ -37,6 +37,9 @@ if (( clean_warning > 0 || clean_error > 0 )); then
 fi
 
 printf '\n[appearance]\nnot_a_real_key = true\n' >> "$UMBRIEL_CONFIG"
+# The panel closes after ten seconds and a session started from a display manager has no terminal, so the same
+# diagnostic has to reach the log to be readable at all.
+LOG_MARK=$(($(wc -l < "$UMBRIEL_LOG") + 1))
 "$UMBRIEL" msg config-reload > /dev/null
 capture
 warned_warning=$(border_pixels "$WARNING")
@@ -47,6 +50,11 @@ if (( warned_warning < MIN_BORDER_PIXELS )); then
 fi
 if (( warned_error > 0 )); then
   echo "a warning drew the error border: error=$warned_error"
+  exit 1
+fi
+if ! tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -q "unknown key appearance.not_a_real_key"; then
+  echo "an unknown key reached the banner but not the log:"
+  tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | tail -n 5 | sed "s/^/    /"
   exit 1
 fi
 
