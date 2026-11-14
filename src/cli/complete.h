@@ -32,7 +32,7 @@ namespace umbriel {
     CompletionList(std::vector<std::string> items);
     explicit CompletionList(Filler filler);
 
-    // Sorted on the first read; a filler that ran is never asked again.
+    // A literal list keeps its order; a filler's list is sorted on the first read and never filled twice.
     const std::vector<std::string>& items() const;
 
   private:
@@ -52,7 +52,7 @@ namespace umbriel {
     CompletionList submaps;
   };
 
-  enum class CompletionOutcome : uint8_t {
+  enum class [[nodiscard]] CompletionOutcome : uint8_t {
     Candidates,      // zero or more sink calls; the shell offers them and nothing else
     Delegate,        // the position is a filesystem path: the shell completes paths
     DelegateCommand, // the position is a command line: the shell completes command names
@@ -62,7 +62,7 @@ namespace umbriel {
 
   // `words` are the words after the executable; the last is the word being completed and may be empty, so
   // `umbriel msg <TAB>` is `{"msg", ""}`. Names are offered in the order the tables declare them.
-  [[nodiscard]] CompletionOutcome
+  CompletionOutcome
   completeWords(std::span<const std::string> words, const CompletionValues& values, const CompletionSink& sink);
 
   std::optional<CompletionShell> completionShellNamed(std::string_view name);

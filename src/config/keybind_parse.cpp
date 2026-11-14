@@ -667,6 +667,8 @@ namespace umbriel {
     return spec != std::ranges::end(kActionSpecs) && spec->name == name ? spec : nullptr;
   }
 
+  // Each table is indexed by its enum value, and `fields_layout.cpp` builds the configuration choices from it, so the
+  // config key, the word grammar, and shell completion read the same spellings.
   std::optional<LayoutMode> layoutModeNamed(std::string_view name) {
     const std::span<const std::string_view> names = layoutModeNames();
     for (size_t index = 0; index < names.size(); ++index) {
@@ -691,6 +693,16 @@ namespace umbriel {
   std::span<const std::string_view> columnDisplayNames() {
     static constexpr std::array<std::string_view, 2> kNames{"normal", "tabbed"};
     return kNames;
+  }
+
+  std::optional<ColumnDisplay> columnDisplayNamed(std::string_view name) {
+    const std::span<const std::string_view> names = columnDisplayNames();
+    for (size_t index = 0; index < names.size(); ++index) {
+      if (name == names[index]) {
+        return static_cast<ColumnDisplay>(index);
+      }
+    }
+    return std::nullopt;
   }
 
   unsigned actionAllowedFlags(ActionArgKind kind) {
@@ -1001,12 +1013,11 @@ namespace umbriel {
       }
       case ActionArgKind::ColumnDisplay: {
         const auto word = singleWord(words);
-        const std::span<const std::string_view> names = columnDisplayNames();
-        if (!word || std::ranges::find(names, *word) == names.end()) {
+        const auto display = word ? columnDisplayNamed(*word) : std::nullopt;
+        if (!display) {
           return std::nullopt;
         }
-        const auto index = static_cast<size_t>(ColumnDisplay::Tabbed);
-        return ColumnDisplayArg{.display = *word == names[index] ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
+        return ColumnDisplayArg{.display = *display};
       }
       case ActionArgKind::TabIndex: {
         const auto word = singleWord(words);

@@ -65,6 +65,7 @@ namespace umbriel {
       ConfigWord,
       ConfigPath,
       CommandLine,
+      StartupFlag,
       CompletionsShell,
       IpcCommand,
       Nothing,
@@ -77,6 +78,8 @@ namespace umbriel {
       const IpcCommandSpec* command = nullptr;
       // Words the command's own spelling consumes before its arguments: 0 for a one-word command, 1 for `config set`.
       size_t argBase = 0;
+      // `config`'s subcommand, which its flags may follow in any order.
+      std::string_view configSub;
       ArgState args;
     };
 
@@ -140,9 +143,11 @@ namespace umbriel {
           analysis.form = Form::ConfigWord;
           return analysis;
         }
+        analysis.configSub = words[1];
         const std::string_view sub{words[1]};
         if (sub == kCliConfigValidate) {
-          analysis.form = position >= 2 && words[position - 1] == kCliConfigFlag ? Form::ConfigPath : Form::ConfigWord;
+          // `-c` takes the path that follows it; every other word leaves the flags and their order to complete.
+          analysis.form = words[position - 1] == kCliConfigFlag ? Form::ConfigPath : Form::ConfigWord;
           return analysis;
         }
         if (sub == kCliConfigSchema) {
@@ -166,6 +171,11 @@ namespace umbriel {
         return analysis;
       }
       if (const IpcCommandSpec* spec = findIpcCommand(first); spec != nullptr) {
+        // The Config group is reached as `config <sub>`; its request name alone is a line the dispatch refuses.
+        if (spec->group == IpcCommandGroup::Config) {
+          analysis.form = Form::Nothing;
+          return analysis;
+        }
         analysis.form = Form::IpcCommand;
         analysis.command = spec;
         const IpcArgCompletion& completion = spec->completion;
@@ -174,15 +184,20 @@ namespace umbriel {
         }
         return analysis;
       }
-      // The compositor's startup flags are the whole line: `-c` names a configuration file, `-s` a command line, and
-      // nothing follows either value. Any other first word leaves no position the line accepts.
-      if (position == 1 && first == kCliConfigFlag) {
-        analysis.form = Form::ConfigPath;
-      } else if (position == 1 && first == kCliSpawnFlag) {
-        analysis.form = Form::CommandLine;
-      } else {
-        analysis.form = Form::Nothing;
+      // The compositor's startup flags each take a value and come in either order; their values are the only
+      // positions the line has. Any other first word leaves no position the line accepts.
+      if (first == kCliConfigFlag || first == kCliSpawnFlag) {
+        const std::string_view previous{words[position - 1]};
+        if (previous == kCliConfigFlag) {
+          analysis.form = Form::ConfigPath;
+        } else if (previous == kCliSpawnFlag) {
+          analysis.form = Form::CommandLine;
+        } else {
+          analysis.form = Form::StartupFlag;
+        }
+        return analysis;
       }
+      analysis.form = Form::Nothing;
       return analysis;
     }
 
@@ -272,7 +287,8 @@ namespace umbriel {
       case ActionArgKind::TabIndex:
         return CompletionOutcome::Candidates;
       case ActionArgKind::Command:
-        return CompletionOutcome::DelegateCommand;
+        // `spawn`'s tail is a shell command line: the first word is a command name, the rest are its arguments.
+        return args.positional.empty() ? CompletionOutcome::DelegateCommand : CompletionOutcome::Delegate;
       case ActionArgKind::Submap:
         if (index == 0) {
           emitAll(values.submaps.items(), "submap");
@@ -453,11 +469,20 @@ namespace umbriel {
         if (partial.empty() || kCliConfigFlag.starts_with(partial)) {
           sink(kCliConfigFlag, "path to the configuration file");
         }
-        if (partial.empty() || kCliJsonFlag.starts_with(partial)) {
-          sink(kCliJsonFlag, "print diagnostics as JSON");
-        }
-      } else if (sub == kCliConfigSchema && (partial.empty() || kCliJsonFlag.starts_with(partial))) {
-        sink(kCliJsonFlag, "describe every key");
+        emitJsonFlags(partial, sink);
+      } else if (sub == kCliConfigSchema) {
+        emitJsonFlags(partial, sink);
+      }
+    }
+
+    // A startup line holds one `-c` and one `-s`, each with its value, so the flag still missing is what completes.
+    void emitStartupFlags(std::span<const std::string> words, std::string_view partial, const CompletionSink& sink) {
+      const auto used = [&words](std::string_view flag) { return std::ranges::find(words, flag) != words.end(); };
+      if (!used(kCliSpawnFlag) && kCliSpawnFlag.starts_with(partial)) {
+        sink(kCliSpawnFlag, "command to run once the session is up");
+      }
+      if (!used(kCliConfigFlag) && kCliConfigFlag.starts_with(partial)) {
+        sink(kCliConfigFlag, "path to the configuration file");
       }
     }
 
@@ -495,14 +520,15 @@ namespace umbriel {
       emitEvents(analysis.partial, sink);
       return CompletionOutcome::Candidates;
     case Form::ConfigWord:
-      emitConfigWords(
-          words.size() > 2 ? std::string_view{words[words.size() - 2]} : std::string_view{}, analysis.partial, sink
-      );
+      emitConfigWords(analysis.configSub, analysis.partial, sink);
       return CompletionOutcome::Candidates;
     case Form::ConfigPath:
       return CompletionOutcome::Delegate;
     case Form::CommandLine:
       return CompletionOutcome::DelegateCommand;
+    case Form::StartupFlag:
+      emitStartupFlags(words, analysis.partial, sink);
+      return CompletionOutcome::Candidates;
     case Form::CompletionsShell:
       for (const CompletionShellName& shell : completionShellNames()) {
         if (shell.name.starts_with(analysis.partial)) {

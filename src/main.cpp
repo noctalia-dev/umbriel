@@ -42,6 +42,8 @@ namespace {
 
   bool isJsonFlag(const char* arg) { return arg == umbriel::kCliJsonFlag || arg == umbriel::kCliJsonShortFlag; }
 
+  bool isHelpFlag(const char* arg) { return arg == umbriel::kCliHelpFlag || arg == umbriel::kCliHelpShortFlag; }
+
   int validateConfig(int argc, char** argv) {
     const char* configPath = nullptr;
     bool json = false;
@@ -230,9 +232,7 @@ namespace {
 
   // Runs an IpcCommandSpec whose words start at argv[first].
   int runSpecCommand(const umbriel::IpcCommandSpec& spec, int argc, char** argv, int first) {
-    const auto isHelpFlag = [](const char* arg) {
-      return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0;
-    };
+
     if (!spec.takesArgs) {
       bool jf = false;
       for (int i = first; i < argc; ++i) {
@@ -428,7 +428,6 @@ int main(int argc, char** argv) {
   mallopt(M_ARENA_MAX, 2);
 #endif
   if (argc >= 2) {
-    auto isHelpFlag = [](const char* arg) { return arg == umbriel::kCliHelpFlag || arg == umbriel::kCliHelpShortFlag; };
 
     // `config validate` and `config schema` read the config without a running compositor; the other verbs are runtime
     // overrides in the running one.
@@ -520,11 +519,16 @@ int main(int argc, char** argv) {
               std::println("{}\t{}", value, description);
             }
           });
-      if (outcome == umbriel::CompletionOutcome::Candidates) {
+      switch (outcome) {
+      case umbriel::CompletionOutcome::Candidates:
         return EXIT_SUCCESS;
-      }
       // The shell owns the position: 2 asks for a path, 3 for a command line.
-      return outcome == umbriel::CompletionOutcome::Delegate ? 2 : 3;
+      case umbriel::CompletionOutcome::Delegate:
+        return 2;
+      case umbriel::CompletionOutcome::DelegateCommand:
+        return 3;
+      }
+      return EXIT_SUCCESS;
     }
 
     // IPC subcommands
