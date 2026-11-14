@@ -63,6 +63,20 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 {"cmd":"action","action":"workspace-move-to-output","destination":"current","workspace":"WEB","output":"DP-1"}
 ```
 
+`workspace-swap-all-output` accepts optional source `output` and `destination` strings:
+
+- With neither field, it swaps all workspaces of the previously active output with the currently active output.
+- With only `output`, it swaps all workspaces of that source with the currently active output.
+- With both fields, it swaps all workspaces of the source `output` with `destination`.
+
+The currently active output is pointer-preferred. `destination` requires `output`.
+
+```json
+{"cmd":"action","action":"workspace-swap-all-output"}
+{"cmd":"action","action":"workspace-swap-all-output","output":"DP-1"}
+{"cmd":"action","action":"workspace-swap-all-output","destination":"DP-2","output":"DP-1"}
+```
+
 `cycle` is an array of two or more distinct layout names. Value ranges match the argument forms. For example:
 
 ```json

@@ -2395,6 +2395,7 @@ namespace umbriel {
   void Cursor::handleTouchFrame() { wlr_seat_touch_notify_frame(m_server->seat()->wlr()); }
 
   void Cursor::processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange) {
+    recordOutputMotion(oldX, oldY);
     updateHotCorner();
     forwardEffectPointer();
     if (const wlr_drag* drag = m_server->seat()->wlr()->drag; drag != nullptr && drag->dropped) {
@@ -2557,6 +2558,15 @@ namespace umbriel {
     }
     updateConstraintForSurface(surface);
     updateInteractiveCursor(view);
+  }
+
+  void Cursor::recordOutputMotion(double oldX, double oldY) {
+    // Remember monitor crossings even over empty workspaces, during grabs, or while overview owns pointer motion.
+    // Seeding from the old position also records the first monitor before the first crossing or explicit warp.
+    m_server->noteActiveOutput(
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), oldX, oldY))
+    );
+    m_server->noteActiveOutput(m_server->outputFromWlr(m_server->preferredOutput()));
   }
 
   void Cursor::updatePointerOutput(bool allowFocusChange) {
@@ -2812,6 +2822,7 @@ namespace umbriel {
 
   void
   Cursor::processTabletMotion(uint32_t timeMsec, double oldX, double oldY, TabletToolState* state, wlr_tablet* tablet) {
+    recordOutputMotion(oldX, oldY);
     wlr_tablet_v2_tablet* v2tablet = m_server->tabletV2FromWlr(tablet);
     wlr_seat* seat = m_server->seat()->wlr();
     // Emulation wholesale: no tablet-v2 handle for this device, or a compositor state (overview, grab, lock, drag) that

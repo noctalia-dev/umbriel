@@ -2769,6 +2769,23 @@ namespace umbriel {
 
   // -: input
 
+  void Overview::cancelLayoutInteraction() {
+    if (!m_active) {
+      return;
+    }
+    // A closing zoom must not replay a selection whose workspace is about to move to another output. Let its
+    // completion refocus the current output instead, including clearing focus when the incoming workspace is empty.
+    m_pendingFocus = nullptr;
+    m_pendingCursorWarp = false;
+    cancelNavigation();
+    // Clear press pointers before endDrag rebuilds the card and restores any lifted tab group.
+    m_pressCard = nullptr;
+    m_pressWorkspace = nullptr;
+    clearMiddlePress();
+    endDrag(false);
+    hideDropHint();
+  }
+
   bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec) {
     if (pressed) {
       cancelNavigation();

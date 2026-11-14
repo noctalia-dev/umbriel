@@ -242,6 +242,7 @@ Selector resolution, including forced numeric names and `--output` qualifiers, i
 | `workspace-swap-active-output-previous`                                                 | Swap active workspace windows with the previous output     |
 | `workspace-swap-active-output-right`                                                    | Swap active workspace windows with the output right        |
 | `workspace-swap-active-output-up`                                                       | Swap active workspace windows with the output above        |
+| `workspace-swap-all-output [<source> [--output <destination>]]`                         | Swap all workspaces with another output                    |
 | `workspace-switch <workspace> [--output <output>]`                                      | Switch to the selected workspace                           |
 | `workspace-toggle-show-desktop`                                                         | Minimize or restore the workspace's floating windows       |
 

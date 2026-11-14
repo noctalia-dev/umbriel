@@ -427,6 +427,8 @@ namespace {
       return {
           " DP-2", " current 3 --output DP-1", " --output DP-1 current --name 2", " 'Vendor Model Serial' 'My web'"
       };
+    case ActionArgKind::WorkspaceSwapAllOutput:
+      return {"", " DP-2", " current", " DP-2 --output DP-1", " 'Vendor Model Serial' --output current"};
     case ActionArgKind::Workspace:
       return {" 3", " --name 2 --output DP-1", " web"};
     case ActionArgKind::WindowEffectSet:
@@ -513,6 +515,31 @@ UMBRIEL_TEST(actionRequestWorkspaceTypeSelectsPositionOrName) {
   }
 }
 
+UMBRIEL_TEST(workspaceSwapAllOutputRequestsMatchSourceFirstWords) {
+  const struct {
+    std::string_view words;
+    std::string_view request;
+  } cases[] = {
+      {"workspace-swap-all-output", R"({"cmd":"action","action":"workspace-swap-all-output"})"},
+      {"workspace-swap-all-output DP-1", R"({"cmd":"action","action":"workspace-swap-all-output","output":"DP-1"})"},
+      {"workspace-swap-all-output DP-1 --output DP-2",
+       R"({"cmd":"action","action":"workspace-swap-all-output","output":"DP-1","destination":"DP-2"})"},
+  };
+  for (const auto& [words, request] : cases) {
+    umbriel::Keybind bind;
+    CHECK(umbriel::parseAction(words, bind));
+    CHECK(umbriel::actionRequest(bind) == nlohmann::json::parse(request));
+    std::string error;
+    const auto decoded = decode(request, error);
+    CHECK(decoded.has_value());
+    CHECK(error.empty());
+    if (decoded) {
+      CHECK(decoded->action == bind.action);
+      CHECK(decoded->payload == bind.payload);
+    }
+  }
+}
+
 UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
   const std::pair<std::string_view, std::string_view> cases[] = {
       {R"({"cmd":"action"})", R"(missing "action")"},
@@ -523,6 +550,20 @@ UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
       {R"({"cmd":"action","action":"window-focus","window":7})", R"("window" must be a non-empty string)"},
       {R"({"cmd":"action","action":"workspace-switch","workspace":0})", "position must be 1 to 64"},
       {R"({"cmd":"action","action":"workspace-switch","workspace":2.5})", "position number or a non-empty name"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","destination":"DP-1"})",
+       R"("destination" requires "output")"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","destination":""})",
+       R"("destination" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","destination":2})",
+       R"("destination" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","output":""})",
+       R"("output" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","output":2})", R"("output" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","destination":"DP-2","output":""})",
+       R"("output" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","destination":"DP-2","output":2})",
+       R"("output" must be a non-empty string)"},
+      {R"({"cmd":"action","action":"workspace-swap-all-output","workspace":"WEB"})", R"(unknown field "workspace")"},
       {R"({"cmd":"action","action":"window-set-primary-extent","fraction":9})", R"("fraction" must be)"},
       {R"({"cmd":"action","action":"column-focus-tab","index":0})", R"("index" must not be 0)"},
       // Unsigned JSON integers past the signed range must not wrap into an accepted value.
