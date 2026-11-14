@@ -5,12 +5,13 @@
 #include "layout/drop_target.h"
 #include "overview/navigation.h"
 #include "scene/hint_rect.h"
-#include "scene/surface_blur.h"
-#include "view/chrome_attachment.h"
+#include "view/view_preview.h"
+#include "workspace/mirror_fit.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,10 +22,8 @@ extern "C" {
 }
 
 struct wlr_scene_buffer;
-struct wlr_scene_border;
 struct wlr_scene_blur;
 struct wlr_scene_rect;
-struct wlr_scene_shadow;
 struct wlr_scene_tree;
 struct wlr_surface;
 struct wlr_pointer;
@@ -88,6 +87,8 @@ namespace umbriel {
     void onViewPinnedChanged(View* view);
     void onViewFloatingChanged(View* view);
     void onViewWorkspaceChanged(View* view);
+    // `mirror` now shows another source workspace (or none): its row shows that source's windows.
+    void onWorkspaceMirrorChanged(Workspace* mirror);
     // A dialog attached to or left `parent`: its card mirrors the dialogs over the window.
     void onViewAttachmentsChanged(View* parent);
     void onWorkspaceActivated(WorkspaceGroup* group);
@@ -177,48 +178,16 @@ namespace umbriel {
     bool m_scrollStopX = false;
     bool m_scrollStopY = false;
     uint32_t m_scrollTime = 0;
-    struct Card;
     struct OutputState;
 
-    struct CardSurface {
-      Card* card = nullptr;
-      // The window whose surface tree holds `surface`: the card's own, or a dialog attached to it.
-      View* view = nullptr;
-      wlr_surface* surface = nullptr;
-      wlr_scene_buffer* sourceBuffer = nullptr;
-      wlr_scene_buffer* buffer = nullptr;
-      int sx = 0;
-      int sy = 0;
-      bool isRoot = false;
-      // Whether the latest walk of the card's surfaces reached `surface`. A surface that left the tree keeps its entry
-      // until destroyed, and `sourceBuffer` may already be freed with its subsurface role.
-      bool inTree = true;
-      wl_listener commit{};
-      wl_listener destroy{};
-      wl_listener outputSample{};
-      wl_listener frameDone{};
-    };
-
     struct Card {
-      Overview* overview = nullptr;
       OutputState* owner = nullptr;
       View* view = nullptr;
-      size_t workspaceIndex = 0; // workspace index inside the output's group
-      wlr_scene_tree* tree = nullptr;
-      // Parent of every `surfaces` buffer, at the card origin: the card's window and overlay slots live here, as they
-      // live on the view's surface tree.
-      wlr_scene_tree* surfaceTree = nullptr;
-      wlr_scene_border* border = nullptr;
-      int borderPadding = 0; // effect padding the ring was last laid out with, scaled
-      SurfaceBlur blur;
-      // Scaled copy of the view's drop shadow. Its tree lives under `tree` or, for a view whose shadow the workspace
-      // pools below every tile, under the output's `tileShadows`.
-      wlr_scene_tree* shadowTree = nullptr;
-      wlr_scene_shadow* shadow = nullptr;
-      // Scaled copy of the chrome the view carries beside its borders, such as a tab bar, under `tree`.
-      std::unique_ptr<ViewChromeAttachment> chrome;
-      std::unique_ptr<ViewChromeAttachment> frame;
-      std::vector<std::unique_ptr<CardSurface>> surfaces;
+      // The workspace whose row shows this card: the view's own workspace, or a mirror of it, which owns no windows
+      // and shows its source's. Always alive: a mirror drops its cards when its source or the mirror itself goes.
+      Workspace* row = nullptr;
+      size_t workspaceIndex = 0; // `row`'s index inside the output's group
+      std::unique_ptr<ViewPreview> preview;
       wlr_box box{}; // content box in layout coordinates
       wlr_scene_tree* badge = nullptr;
       wlr_scene_rect* badgeRect = nullptr;
@@ -303,22 +272,6 @@ namespace umbriel {
       int gap = 0;
     };
 
-    static void onCardSurfaceCommit(wl_listener* listener, void* data);
-    static void onCardSurfaceDestroy(wl_listener* listener, void* data);
-    static void onCardBufferOutputSample(wl_listener* listener, void* data);
-    static void onCardBufferFrameDone(wl_listener* listener, void* data);
-    // One walk over a card's surfaces, for one window of it, offset from the card window's root surface.
-    struct CardWalk {
-      Card* card = nullptr;
-      View* view = nullptr;
-      int dx = 0;
-      int dy = 0;
-    };
-    // The card window's surfaces, then those of every dialog attached to it at their offset over the window.
-    static void forEachCardSurface(Card* card, void (*visit)(wlr_surface*, int, int, void*));
-    static void addCardSurface(wlr_surface* surface, int sx, int sy, void* data);
-    static void syncCardSurface(wlr_surface* surface, int sx, int sy, void* data);
-    static void syncCardSurfaces(Card* card);
     static void onDesktopSurfaceCommit(wl_listener* listener, void* data);
     static void onDesktopSurfaceDestroy(wl_listener* listener, void* data);
     static void onDesktopMirrorOutputSample(wl_listener* listener, void* data);
@@ -339,19 +292,34 @@ namespace umbriel {
     bool beginPresentation();
     void buildState();
     void populateCards(OutputState& state);
-    Card* createCard(OutputState& state, View* view, size_t workspaceIndex);
+    Card* createCard(OutputState& state, View* view, Workspace& row);
     void snapshotCardForClose(Card& card);
     void destroyCard(Card* card);
-    void layoutCardShadow(Card& card, double zoom, float alpha) const;
-    static void destroyCardShadow(Card& card);
-    // Lay the card's chrome copy over `world`, the view's presented box, at `zoom`, or drop it with the view's chrome.
-    void layoutCardChrome(Card& card, const wlr_box& world, int borderInset, double zoom, float alpha) const;
-    static void syncCardBuffer(CardSurface& entry);
-    void dropCard(View* view);
-    void rebuildCard(View* view);
+    void dropCardsWhere(const std::function<bool(const Card&)>& match);
+    // Every card of `view`, on its own row and on the mirrors of it.
+    std::vector<Card*> cardsOf(const View* view);
+    Card* findCard(const Workspace* row, const View* view);
+    // The rows of the overview that show `view`: its workspace and that workspace's mirrors.
+    std::vector<Workspace*> rowsShowing(const View* view);
+    // Cards for `view` in every row showing it that has none yet; returns how many were made.
+    size_t createCards(View* view);
+    // Drops every card of `view`, or only those on mirror rows.
+    void dropCards(const View* view, bool mirrorRowsOnly = false);
+    void rebuildCards(View* view);
+    void populateRow(OutputState& state, Workspace& row);
+    // Lays out each output once and schedules its frame.
+    void relayout(std::vector<OutputState*> states);
+    void addOwners(std::vector<OutputState*>& states, const View* view);
     OutputState* stateFor(const Output* output);
     OutputState* stateForWorkspace(const Workspace* workspace);
-    Card* findCard(const View* view);
+    // The mapping that places a mirror-row card's window on its receiving output; empty for an ordinary row and for a
+    // mirror that has none.
+    static std::optional<MirrorMapping> cardMapping(const Card& card);
+    // How much smaller than the real window the row draws it: the mirror's fit scale, else 1.
+    static double cardFit(const Card& card);
+    // The card a typed shortcut selects: the one on the pointer's output if the view has one there, else its own-row
+    // card.
+    Card* shortcutTarget(const std::string& label);
     WorkspaceBackground createWorkspaceBackground(OutputState& state) const;
     // Mapped background- and bottom-layer surfaces of `output`, in render order.
     void collectDesktopSurfaces(const Output& output, std::vector<DesktopEntry>& out) const;
@@ -367,16 +335,25 @@ namespace umbriel {
     // Applies `alpha` to every pinned window and full opacity to every other.
     void applyPinnedOpacity(float alpha) const;
     void layoutOutput(OutputState& state);
-    void layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget);
+    // The live target: the window a focus or close action would act on right now and the row it sits on, which is
+    // the one card that wears the focused color. It is the focused view of the active workspace on the output holding
+    // the cursor, null when that workspace is empty, which is also when those actions do nothing. A mirror row of the
+    // focused window is the live row when that row is the active workspace of the pointer's output, so the source's
+    // own card then shows the weaker landing marker.
+    struct LiveTarget {
+      View* view = nullptr;
+      const Workspace* row = nullptr;
+    };
+    void layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const LiveTarget& liveTarget);
+    // What drives a card's animation effects: its view's focus and urgency state, its output, and the zoom.
+    ViewPreview::EffectContext cardEffects(const Card& card) const;
     // Refreshes a card's animation and persistent effect slots from its view.
     void syncCardEffects(Card& card);
     void syncCardEffects();
-    // The window a focus or close action would act on right now: the focused view of the active workspace on the
-    // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
-    View* liveTargetView() const;
+    LiveTarget liveTarget() const;
     // The overview holds the keyboard, but the live target keeps its focus chrome and active state.
     void activateLiveTarget();
-    std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
+    std::array<float, 4> cardBorderColor(const Card& card, const LiveTarget& liveTarget) const;
     void assignShortcuts();
     void renderCardShortcut(Card& card);
     bool handleShortcutKey(uint32_t keysym);
@@ -416,6 +393,8 @@ namespace umbriel {
     void beginDrag();
     void updateDrag(double lx, double ly);
     void endDrag(bool drop);
+    // Ends the live drag without dropping: lands a lifted tab group, hides the hint, forgets the held card.
+    void abandonDrag(bool closing);
     // Edge scroll can leave a filmstrip between rows under a held card. Once the drag ends, every output's rows not
     // already headed to its active workspace animate there.
     void settleRowsOnActiveWorkspace();
@@ -439,6 +418,8 @@ namespace umbriel {
     double m_progressFrom = 0;
     AnimatedValue m_zoomAnim;
     View* m_pendingFocus = nullptr;
+    // The output of the row a closing selection came from, compared by identity only.
+    const Output* m_closeOutput = nullptr;
     bool m_pendingCursorWarp = false;
     bool m_cardPresentationDirty = false;
     bool m_gestureOpenedHere = false;

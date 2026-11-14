@@ -11,9 +11,11 @@
 #include "scene/ssd_frame.h"
 #include "server/server.h"
 #include "view/view.h"
+#include "view/view_preview.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 #include <algorithm>
 
@@ -49,9 +51,14 @@ namespace umbriel {
     }
   } // namespace
 
-  void FocusManager::focusView(View* view, FocusReason reason) {
+  void FocusManager::focusView(View* view, FocusReason reason) { focusViewOn(view, reason, nullptr); }
+
+  void FocusManager::focusViewOn(View* view, FocusReason reason, const Output* actingOutput) {
     if (view == nullptr || m_server.sessionLocked()) {
       return;
+    }
+    if (actingOutput == nullptr) {
+      actingOutput = m_server.outputFromWlr(m_server.preferredOutput());
     }
     // Focus policy (workspace, MRU, reveal) belongs to the window that holds the placement; the keyboard goes to the
     // dialog attached on top of it, if any.
@@ -77,8 +84,30 @@ namespace umbriel {
       view->setMinimized(false);
     }
 
-    if (Workspace* workspace = view->workspace()) {
-      if (WorkspaceGroup* group = workspace->group(); group != nullptr && !view->pinned() && !workspace->active()) {
+    // A window whose workspace is mirrored on the acting output is focused through that mirror, and the window's own
+    // output keeps its workspace: in place when the mirror is showing, and after showing it there when the focus was
+    // asked for explicitly. A window that already holds the keyboard through a mirror stays in place too. Anywhere else
+    // the window's own output shows its workspace.
+    Workspace* workspace = view->workspace();
+    bool focusedViaMirror = false;
+    Workspace* shown = workspace;
+    if (workspace != nullptr && !view->pinned()) {
+      Workspace* copy = workspace->mirrorOn(actingOutput);
+      const View* holder = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
+      focusedViaMirror = (copy != nullptr && copy->active())
+          || (workspace->visibleViaMirror()
+              && holder != nullptr
+              && holder->placementRoot() == view
+              && view->visibleViaMirror());
+      const bool requested = reason == FocusReason::ForeignActivation || reason == FocusReason::XdgActivation;
+      if (!focusedViaMirror && copy != nullptr && requested) {
+        shown = copy;
+        focusedViaMirror = true;
+      }
+    }
+    if (workspace != nullptr && !view->pinned()) {
+      if (WorkspaceGroup* group = shown->group();
+          group != nullptr && !shown->active() && (shown != workspace || !focusedViaMirror)) {
         const char* appId = view->appId() != nullptr ? view->appId() : "";
         // A group without a live output still has to activate; only the log's output name degrades.
         const Output* output = group->output();
@@ -87,12 +116,12 @@ namespace umbriel {
             group->active() != nullptr ? std::string_view(group->active()->name()) : std::string_view("<none>");
         kLog.debug(
             "workspace switch trigger=focus reason={} app_id='{}' output='{}' from='{}' to='{}'",
-            focusReasonName(reason), appId, outputName, current, workspace->name()
+            focusReasonName(reason), appId, outputName, current, shown->name()
         );
-        group->activate(workspace);
+        group->activate(shown);
       }
     }
-    if (!view->onActiveWorkspace() && !view->pinned()) {
+    if (!view->onShownWorkspace() && !focusedViaMirror && !view->pinned()) {
       return;
     }
     if (m_server.scratchpadManager() != nullptr) {
@@ -128,7 +157,6 @@ namespace umbriel {
     } else {
       seatTarget->applySeatFocus(!overviewActive, raise);
     }
-    Workspace* workspace = view->workspace();
     if (workspace != nullptr && (!view->pinned() || workspace->active())) {
       workspace->setFocusedView(view, raise, !followsPointer);
     }
@@ -199,7 +227,7 @@ namespace umbriel {
     m_server.cursor()->invalidateHoverFocus();
     View* seatFocused = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
     for (const auto& entry : m_server.registry().all()) {
-      if (entry->mapped() && entry->activated() && (entry->onActiveWorkspace() || entry->pinned())) {
+      if (entry->mapped() && entry->activated() && (entry->onShownWorkspace() || entry->pinned())) {
         if (entry.get() == seatFocused) {
           return;
         }
@@ -268,7 +296,7 @@ namespace umbriel {
           || !view->acceptsKeyboardFocus()
           || view->blocked()
           || view->placementRoot()->minimized()
-          || (!view->onActiveWorkspace() && !view->pinned())) {
+          || (!view->onShownWorkspace() && !view->pinned())) {
         return false;
       }
 
@@ -388,10 +416,10 @@ namespace umbriel {
       }
       if (View* focused = workspace->focusedView(); focused != nullptr
           && focused->mapped()
-          && focused->onActiveWorkspace()
+          && focused->onShownWorkspace()
           && !focused->minimized()
           && focused->inputDelegate()->acceptsKeyboardFocus()) {
-        focusView(focused);
+        focusViewOn(focused, FocusReason::Startup, output);
         return true;
       }
       for (const auto& entry : m_server.registry().placementRoots()) {
@@ -399,7 +427,7 @@ namespace umbriel {
             && !entry->minimized()
             && entry->workspace() == workspace
             && entry->inputDelegate()->acceptsKeyboardFocus()) {
-          focusView(entry.get());
+          focusViewOn(entry.get(), FocusReason::Startup, output);
           return true;
         }
       }
@@ -476,6 +504,11 @@ namespace umbriel {
       if (tag == nullptr) {
         continue;
       }
+      // Under a preview root only the title bar copy's rects take the pointer besides surfaces, which are not frame.
+      if (tag->kind == SceneNodeKind::PreviewRoot) {
+        return node->type == WLR_SCENE_NODE_RECT ? mirroredFrameAt(static_cast<PreviewRootNode*>(tag)->view, lx, ly)
+                                                 : std::nullopt;
+      }
       if (tag->kind != SceneNodeKind::View) {
         return std::nullopt;
       }
@@ -495,6 +528,31 @@ namespace umbriel {
     return std::nullopt;
   }
 
+  std::optional<SsdFrameHit> FocusManager::mirroredFrameAt(View* view, double lx, double ly) const {
+    // The frame's parts belong to the live window: map the point through the mirror on this output that shows it.
+    Output* output = m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly));
+    const Workspace* copy = output != nullptr ? output->workspaceGroup()->active() : nullptr;
+    if (view == nullptr
+        || !view->mapped()
+        || view->ssdFrame() == nullptr
+        || copy == nullptr
+        || !copy->mirror()
+        || copy->mirrorSource() != view->workspace()
+        || copy->mirrorRenderer() == nullptr) {
+      return std::nullopt;
+    }
+    const std::optional<MirrorMapping> mapping = copy->mirrorRenderer()->mapping();
+    if (!mapping) {
+      return std::nullopt;
+    }
+    const auto point = view->ssdFramePointAt(mapping->toSourceX(lx), mapping->toSourceY(ly), false);
+    // The copy draws no resize grips: an edge strip that maps past the frame is still title bar, not a resize.
+    if (point.part == SsdFramePart::None || point.part == SsdFramePart::Resize) {
+      return std::nullopt;
+    }
+    return SsdFrameHit{view, point.part, point.edges};
+  }
+
   View*
   FocusManager::viewAt(double lx, double ly, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer) {
     if (layer != nullptr) {
@@ -510,6 +568,14 @@ namespace umbriel {
     }
 
     wlr_scene_buffer* sceneBuffer = wlr_scene_buffer_from_node(node);
+    View* mirroredView = nullptr;
+    if (ViewPreview::resolveBuffer(sceneBuffer, surface, &mirroredView)) {
+      if (m_server.sessionLocked()) {
+        *surface = nullptr;
+        return nullptr;
+      }
+      return mirroredView;
+    }
     wlr_scene_surface* sceneSurface = wlr_scene_surface_try_from_buffer(sceneBuffer);
     if (sceneSurface == nullptr) {
       return nullptr;
@@ -553,12 +619,17 @@ namespace umbriel {
     return view;
   }
 
-  Workspace* activeWorkspace(Server& server) {
+  Workspace* shownWorkspace(Server& server) {
     Output* output = server.outputFromWlr(server.preferredOutput());
     if (output == nullptr || output->workspaceGroup() == nullptr) {
       return nullptr;
     }
     return output->workspaceGroup()->active();
+  }
+
+  Workspace* activeWorkspace(Server& server) {
+    Workspace* workspace = shownWorkspace(server);
+    return workspace != nullptr ? workspace->layoutOwner() : nullptr;
   }
 
   View* seatFocusedWindow(Server& server) {

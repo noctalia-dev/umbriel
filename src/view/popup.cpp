@@ -5,6 +5,7 @@
 #include "scene/node.h"
 #include "view/view.h"
 #include "wlr.h"
+#include "workspace/workspace.h"
 
 #include <cassert>
 
@@ -84,6 +85,9 @@ namespace umbriel {
       blurOptions = layer->popupBlurOptions();
     } else if (View* view = View::fromSurface(m_popup->parent)) {
       blurOptions = view->popupBlurOptions();
+      if (view->workspace() != nullptr) {
+        view->workspace()->scheduleMirrors();
+      }
     }
     m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,

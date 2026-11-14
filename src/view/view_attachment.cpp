@@ -184,6 +184,9 @@ namespace umbriel {
     if (Overview* overview = m_server->overview()) {
       overview->onViewAttachmentsChanged(parent);
     }
+    if (Workspace* home = parent->placementRoot()->workspace()) {
+      home->refreshMirroredAttachments(parent->placementRoot());
+    }
     if (takesInput) {
       m_server->focusView(placementRoot(), FocusReason::Directional);
     }
@@ -201,6 +204,9 @@ namespace umbriel {
     parent->retargetModalShade();
     if (Overview* overview = m_server->overview()) {
       overview->onViewAttachmentsChanged(parent);
+    }
+    if (Workspace* home = parent->placementRoot()->workspace()) {
+      home->refreshMirroredAttachments(parent->placementRoot());
     }
     return parent;
   }

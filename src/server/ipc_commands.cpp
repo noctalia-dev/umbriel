@@ -909,6 +909,14 @@ namespace umbriel {
             {"urgent", std::ranges::any_of(views, [](const View* view) { return view->urgent(); })},
             {"layout", std::string(layoutModeName(workspace->layoutMode()))},
             {"layout_override", workspace->layoutModeOverride().has_value()},
+            {"mirror", workspace->mirror()},
+            {"mirror_of",
+             workspace->mirrorSource() != nullptr ? nlohmann::json(workspace->mirrorSource()->id())
+                                                  : nlohmann::json(nullptr)},
+            {"mirror_output",
+             workspace->mirrorSource() != nullptr && workspace->mirrorSource()->group() != nullptr
+                 ? nlohmann::json(workspace->mirrorSource()->group()->output()->wlr()->name)
+                 : nlohmann::json(nullptr)},
         });
       }
     }

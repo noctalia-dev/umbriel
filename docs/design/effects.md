@@ -56,7 +56,7 @@ Every node carries up to 13 slots ([`effect.h`](../../umbrielfx/include/umbrielf
 | 11    | workspaces    | output workspace view root                                                    | transient  | capture           |
 | 12    | overview      | per-output overview tree                                                      | transient  | capture           |
 
-An overview card carries the view's slots, except drag, on its tree, border, and surface tree, which holds every mirrored surface buffer as the view's surface tree holds its surfaces.
+An overview card carries the view's slots, except drag, on its tree, border, and surface tree, which holds every mirrored surface buffer as the view's surface tree holds its surfaces. A window shown in a workspace mirror is presented by the same `ViewPreview`, so it carries those slots too.
 
 The live content tree also owns the server-side title bar and attached chrome, so their pixels share window lifecycle, movement, focus dimming, and drag deformation in one capture and UV domain. Chrome bypasses its per-node lifecycle fade while a shader composites that fade. Invisible title-bar resize bands stay under the outer frame, outside animation capture bounds. Closing snapshots copy the title-bar visuals once and copy only client surface buffers into their content tree; title labels are already part of the title-bar snapshot.
 

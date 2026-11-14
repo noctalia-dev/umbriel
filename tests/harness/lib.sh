@@ -75,6 +75,18 @@ await_lines() {
   return 1
 }
 
+# Waits until the seat-log client in $1 records a pointer leave after its first left-button press: an interactive
+# grab has taken the pointer. Earlier leaves, such as one from hiding the workspace, do not count.
+await_grab() {
+  for _ in $(seq 80); do
+    awk '/^pointer-button code=272 state=pressed/ { pressed = 1 } pressed && /^pointer-leave/ { grabbed = 1 }
+      END { exit !grabbed }' "$1" && return 0
+    sleep 0.025
+  done
+  echo "timed out waiting for a grab in $1: $(tr '\n' '|' < "$1")"
+  return 1
+}
+
 # Shared fixture for live workspace reveal checks.
 workspace_reveal_config() {
   cp "$UMBRIEL_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$UMBRIEL_RUNTIME_DIR/wipe.glsl"

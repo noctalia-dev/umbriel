@@ -88,13 +88,13 @@ namespace umbriel {
 
   void View::handleSetDecorations() { refreshTitleBar(); }
 
-  SsdFramePoint View::ssdFramePointAt(double lx, double ly) const {
+  SsdFramePoint View::ssdFramePointAt(double lx, double ly, bool shownOnly) const {
     if (m_ssdFrame == nullptr) {
       return {};
     }
     int x = 0;
     int y = 0;
-    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y)) {
+    if (!wlr_scene_node_coords(&m_contentTree->node, &x, &y) && shownOnly) {
       return {};
     }
     return m_ssdFrame->pointAt(lx - x, ly - y);

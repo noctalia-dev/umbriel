@@ -82,6 +82,13 @@ namespace umbriel {
     out[3] = a;
   }
 
+  // Premultiplied color for scene rects and borders, with the opacity clamped: overshooting curves push it past [0, 1].
+  inline std::array<float, 4> tint(const std::array<float, 4>& base, double opacity) {
+    std::array<float, 4> out{};
+    premultiplied(out.data(), base, static_cast<float>(std::clamp(opacity, 0.0, 1.0)));
+    return out;
+  }
+
   // Keycap surface: a subtle lift from the panel background toward the key accent.
   inline std::array<float, 4>
   keycapBackgroundColor(const std::array<float, 4>& background, const std::array<float, 4>& accent) {

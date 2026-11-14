@@ -5,6 +5,7 @@ unit_tests = [
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
   ['presented-crop', ['unit/presented_crop.cpp'], []],
+  ['mirror-fit', ['unit/mirror_fit.cpp'], []],
   ['scene-node', ['unit/scene_node.cpp'], []],
   ['scene-clip', ['unit/scene_clip.cpp'], [wayland_server_dep]],
   ['xwayland-outputs', ['unit/xwayland_outputs.cpp'], [umbriel_core_dep]],

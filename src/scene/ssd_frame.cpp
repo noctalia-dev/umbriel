@@ -315,7 +315,7 @@ namespace umbriel {
           rect, std::max(1, zoomed(box.x + box.width) - zoomed(box.x)),
           std::max(1, zoomed(box.y + box.height) - zoomed(box.y))
       );
-      rect->accepts_input = !m_preview;
+      rect->accepts_input = !m_preview || m_previewInput;
     };
     const int band = g.borderInset + kSsdResizeBand;
     const std::array<wlr_box, 4> grips{{

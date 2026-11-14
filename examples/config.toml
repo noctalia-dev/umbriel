@@ -75,6 +75,18 @@ files = []
 # color_profile = "edid" # Or a factory ICC path; with sdr_gamut = "srgb" a characterized panel describes itself to tagged clients.
 # sdr_gamut = "srgb" # Map untagged SDR into the panel gamut; "native" stages no mapping.
 
+# Show DP-1's WEB workspace, with its real windows, as a workspace of DP-2.
+# Both outputs list their workspaces by name; here DP-1 sets
+# workspaces = ["WEB", "CHAT"].
+# See docs/user/workspaces.md#mirror-another-outputs-workspace.
+# [output.DP-2]
+# workspaces = ["TERM", "WEB"]
+#
+# [[workspace]]
+# output = "DP-2"
+# name = "WEB"
+# mirror = { output = "DP-1", name = "WEB" }
+
 # ==============================================================================
 # Appearance
 # Blur uses a smaller radius than the built-in default.

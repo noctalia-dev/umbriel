@@ -38,6 +38,7 @@ namespace umbriel {
     template <wlr_direction D> bool actionOutputFocus(Server& server, const Keybind& bind, std::string* error);
     template <wlr_direction D> bool actionColumnMoveToOutput(Server& server, const Keybind& bind, std::string* error);
     void finishWorkspaceTransfer(Server& server, View& focused);
+    void warpToOutputCenter(Server& server, Output& output);
 
     std::optional<std::string_view> scratchpadName(Server& server, const Keybind& bind, std::string* error) {
       const auto* arg = payloadIf<ScratchpadArg>(bind);
@@ -107,7 +108,7 @@ namespace umbriel {
 
     // Layout-relative window actions have no workspace target while a detached
     // scratchpad owns the seat. Explicit workspace and layout actions continue
-    // to use activeWorkspace(), which intentionally follows the pointer output.
+    // to use shownWorkspace() and activeWorkspace(), which follow the pointer output.
     Workspace* windowActionWorkspace(Server& server) {
       return scratchpadHoldsFocus(server) ? nullptr : activeWorkspace(server);
     }
@@ -169,7 +170,7 @@ namespace umbriel {
       }
       case FocusSource::Recent:
         for (const auto& view : server.registry().placementRoots()) {
-          if (view->mapped() && !view->minimized() && view->onActiveWorkspace()) {
+          if (view->mapped() && !view->minimized() && view->onShownWorkspace()) {
             return view.get();
           }
         }
@@ -210,10 +211,25 @@ namespace umbriel {
       );
     }
 
+    // Activates the workspace a transfer named. A mirror shows the moved windows from its own output without switching
+    // the origin, so the cursor goes to the mirror instead of following the windows.
+    void activateTransferDestination(Server& server, Workspace& destination) {
+      destination.group()->activate(&destination);
+      Output* output = destination.mirror() ? destination.group()->output() : nullptr;
+      if (output != nullptr && output != server.outputFromWlr(server.preferredOutput())) {
+        warpToOutputCenter(server, *output);
+      }
+    }
+
     // Move `view` to `target` (possibly on another output), activate the target workspace, and focus the view. Floats
     // land proportionally via their remembered usable-area fraction. With `follow` clear the window lands on `target`
     // while the seat stays on the source workspace and the cursor stays where it was.
-    void moveViewToWorkspace(Server& server, View& view, Workspace& target, bool follow = true) {
+    void moveViewToWorkspace(Server& server, View& view, Workspace& destination, bool follow = true) {
+      Workspace* resolved = destination.layoutOwner();
+      if (resolved == nullptr) {
+        return;
+      }
+      Workspace& target = *resolved;
       Workspace* source = view.workspace();
       const bool workspaceChanged = source != &target;
       ScratchpadManager* scratchpad = server.scratchpadManager();
@@ -272,12 +288,14 @@ namespace umbriel {
         }
         return;
       }
-      target.group()->activate(&target);
+      activateTransferDestination(server, destination);
       if (floating) {
         view.restoreFloatingPosition();
       }
-      server.focusView(&view, FocusReason::Directional);
-      if (workspaceChanged) {
+      server.focusViewOn(
+          &view, FocusReason::Directional, destination.group() != nullptr ? destination.group()->output() : nullptr
+      );
+      if (workspaceChanged && !destination.mirror()) {
         finishWorkspaceTransfer(server, view);
       }
     }
@@ -348,7 +366,12 @@ namespace umbriel {
     // Move the column of the window FocusSource::Layout picks to `target` as one structural unit. Rebuild it only
     // after snapshotting because every view transfer mutates the source layout. A floating window has no column, so
     // it follows the single-window behavior used by the directional output actions.
-    void moveFocusedColumnToWorkspace(Server& server, Workspace& target) {
+    void moveFocusedColumnToWorkspace(Server& server, Workspace& destination) {
+      Workspace* resolved = destination.layoutOwner();
+      if (resolved == nullptr) {
+        return;
+      }
+      Workspace& target = *resolved;
       Workspace* source = windowActionWorkspace(server);
       View* focused = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr);
       if (source == nullptr || source == &target || focused == nullptr) {
@@ -357,7 +380,7 @@ namespace umbriel {
       const int columnIndex = source->layout().columnOf(focused);
       const auto& sourceColumns = source->layout().columns();
       if (columnIndex < 0 || columnIndex >= static_cast<int>(sourceColumns.size())) {
-        moveViewToWorkspace(server, *focused, target);
+        moveViewToWorkspace(server, *focused, destination);
         return;
       }
 
@@ -374,9 +397,13 @@ namespace umbriel {
       rebuildTransferredColumn(target, column, targetIndex);
 
       target.markArrange();
-      target.group()->activate(&target);
-      server.focusView(focused, FocusReason::Directional);
-      finishWorkspaceTransfer(server, *focused);
+      activateTransferDestination(server, destination);
+      server.focusViewOn(
+          focused, FocusReason::Directional, destination.group() != nullptr ? destination.group()->output() : nullptr
+      );
+      if (!destination.mirror()) {
+        finishWorkspaceTransfer(server, *focused);
+      }
     }
 
     // Adjacent output in `direction` from the focused (cursor) output; null with
@@ -1022,7 +1049,7 @@ namespace umbriel {
       }
       // No layout window in this direction. A detached scratchpad has no
       // layout neighbor, so retain the composite action's workspace fallback.
-      Workspace* workspace = activeWorkspace(server);
+      Workspace* workspace = shownWorkspace(server);
       WorkspaceGroup* group = workspace != nullptr ? workspace->group() : nullptr;
       if (group == nullptr) {
         return true;
@@ -1568,7 +1595,7 @@ namespace umbriel {
     }
 
     bool actionWorkspaceFocusLast(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      Workspace* workspace = activeWorkspace(server);
+      Workspace* workspace = shownWorkspace(server);
       if (workspace == nullptr) {
         return true;
       }
@@ -1659,7 +1686,7 @@ namespace umbriel {
 
     template <int Direction>
     bool actionWorkspaceAdjacent(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      Workspace* workspace = activeWorkspace(server);
+      Workspace* workspace = shownWorkspace(server);
       if (workspace == nullptr) {
         return true;
       }
@@ -1742,7 +1769,7 @@ namespace umbriel {
     }
 
     template <int Direction> bool actionWorkspaceMove(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      Workspace* workspace = activeWorkspace(server);
+      Workspace* workspace = shownWorkspace(server);
       if (workspace == nullptr || workspace->group() == nullptr) {
         return true;
       }
@@ -1878,7 +1905,7 @@ namespace umbriel {
         return reject(error, "output is not available: " + arg->destination);
       }
       const auto workspace = arg->workspace ? resolveWorkspaceSelector(server, *arg->workspace)
-                                            : std::expected<Workspace*, std::string>(activeWorkspace(server));
+                                            : std::expected<Workspace*, std::string>(shownWorkspace(server));
       return workspace ? moveWorkspaceToOutput(server, *workspace, **target, error) : reject(error, workspace.error());
     }
 
@@ -1886,7 +1913,7 @@ namespace umbriel {
     bool actionWorkspaceMoveToOutput(Server& server, const Keybind& /*bind*/, std::string* error) {
       std::string message;
       Output* target = adjacentOutput(server, D, &message);
-      return target != nullptr ? moveWorkspaceToOutput(server, activeWorkspace(server), *target, error)
+      return target != nullptr ? moveWorkspaceToOutput(server, shownWorkspace(server), *target, error)
                                : reject(error, std::move(message));
     }
 
@@ -1894,7 +1921,7 @@ namespace umbriel {
     bool actionWorkspaceMoveToOutputCycle(Server& server, const Keybind& /*bind*/, std::string* error) {
       std::string message;
       Output* target = cycledOutput(server, Step, &message);
-      return target != nullptr ? moveWorkspaceToOutput(server, activeWorkspace(server), *target, error)
+      return target != nullptr ? moveWorkspaceToOutput(server, shownWorkspace(server), *target, error)
                                : reject(error, std::move(message));
     }
 

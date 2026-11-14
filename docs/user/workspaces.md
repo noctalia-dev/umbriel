@@ -55,6 +55,71 @@ workspaces = ["WEB", "CHAT", "VIDEO"]
 
 A count creates anonymous positions. A string list creates exact names, so position 3 and the name `"3"` remain different selectors. Static workspaces are never pruned.
 
+### Mirror another output's workspace
+
+A mirror shows the workspace of another output, with that workspace's real windows, on an output of its own. Declare it with a `[[workspace]]` rule whose `mirror` table names the workspace to show. `output` and `name` select the receiving workspace, which the receiving output lists by name:
+
+```toml
+[output.DP-1]
+workspaces = ["WEB", "CHAT"]
+
+[output.HDMI-A-1]
+workspaces = ["TERM", "WEB", "SIDE"]
+
+[[workspace]]
+output = "HDMI-A-1"
+name = "WEB"
+mirror = { output = "DP-1", name = "WEB" }
+
+[[workspace]]
+output = "HDMI-A-1"
+name = "SIDE"
+mirror = { output = "DP-1", name = "CHAT" }
+```
+
+The receiving workspace may carry another name than the one it shows: `SIDE` shows `CHAT` of `DP-1`. A mirror is a workspace of the receiving output. It keeps its place in the list, appears in `umbriel workspaces` and in the ext-workspace protocol, and is selected like any other workspace, by position, by name, or from a bar. It occupies the output only while it is active, and the wallpaper stays visible around the windows.
+
+`umbriel config validate` rejects a mirror rule that breaks one of these constraints:
+
+- The rule sets `output`, `name`, and `mirror` with both `mirror.output` and `mirror.name`, neither empty, and no `index`.
+- The rule has no `layout` key: a mirror takes its layout from the workspace it shows.
+- The receiving output lists its workspaces by name, and the list contains the rule's `name`.
+- `mirror.output` is an output with a `[output.<name>]` entry, other than the receiving output.
+- `mirror.output` lists its workspaces by name, and the list contains `mirror.name`.
+- The workspace shown is not itself a mirror.
+- The receiving output lists at least one workspace that is not a mirror. Windows launched while a mirror has no source need a workspace of their own.
+
+What a mirror shows:
+
+- The windows are the originals, drawn live and scaled by the smaller of the width ratio and the height ratio of the two outputs, so the whole source output stays visible: 0.75 when a 2560x1440 output is shown on a 1920x1080 one. When the aspect ratios differ, the copy is centered on the other axis.
+- Each window keeps its title bar, border, shadow, blur, rounded corners, and effects, scaled with it. The copy is a scaled picture, so text can look soft.
+- The copy stays current while the original is hidden, while the source output is off, and while the output that shows the copy is off. An output that shows an unchanged copy is not redrawn.
+- A fullscreen window covering the receiving output draws above its top-layer panels, including while the source output shows another workspace. Leaving fullscreen, switching away from the mirror, or closing the window reveals the panels again. Overlay-layer surfaces keep their normal priority.
+
+Interaction:
+
+- Pointer, keyboard, scrolling, popups, and menus reach the real window, at the coordinates of the original. Acting on a mirror gives the real window focus without changing the workspace the source output shows.
+- Dragging the title bar of a copy moves the real window, and its buttons act on it. A window can be moved or resized from the client, and resized with `Mod`+right-drag. The frame's resize grips are not active in a copy.
+- Pointer locks and confinement hold inside the copy, including while the source output shows another workspace.
+
+Where actions go:
+
+- Window and layout actions run from the receiving output address the source while a mirror is active, even when the source is hidden: focus, reordering, maximize, fullscreen, resizing, floating, and the layout's own actions act on the real windows. The source output does not switch workspace.
+- Focusing a window through a mirror on the pointer's output focuses it in place, and the source output keeps its workspace. `window-focus`, `window-focus-last`, and activation requests from a notification or a panel also show that mirror there if it was not showing, even while the source output shows the workspace. From an output without such a mirror they switch the window's own output to its workspace, as for any hidden workspace. Other focus changes, such as a window opening or closing or a dialog appearing, never switch the receiving output.
+- Workspace navigation stays on the receiving output.
+- New windows launched from a mirror join the source workspace and appear in the mirror. Explicit placement rules take priority. Pinned windows and scratchpads keep their local placement. While a mirror has no source, new windows go to the receiving output's own workspace.
+- Moving a window or column to a mirror inserts it into the source layout and selects the mirror, without switching the source output. Moving to a mirror of the workspace the window already sits on does nothing. A mirror without a source cannot receive a transfer.
+
+The source can change while the mirror exists:
+
+- When `workspace-move-to-output` sends the source to another output, the mirror keeps showing it. A workspace cannot be moved onto an output that already holds a workspace of the same name, a mirror included.
+- When the source output is absent, the mirror follows the workspace its windows were evacuated to, and shows nothing when there is none. When the output returns and its windows go home, the mirror shows the recreated workspace again.
+- A reload that changes what a mirror shows retargets it, and one that removes its rule turns the entry into an ordinary workspace.
+
+The [overview](workspaces-overview.md#open-and-navigate) gives a mirror its own row, showing the windows of its source. Selecting one of them closes the overview onto the mirror on the receiving output without switching the source output. Dropping a window on a mirror row places it in the source workspace.
+
+`umbriel workspaces --json` marks a mirror with `"mirror": true` and reports the `id` and the output of the workspace it currently shows in `mirror_of` and `mirror_output`, or `null` while there is none.
+
 ### Change workspaces on reload
 
 Workspace changes apply on a valid configuration reload. Umbriel preserves matching names and positions where possible. Windows from a removed workspace move to the nearest remaining workspace.
@@ -159,6 +224,8 @@ layout.gap = 4
 
 On dynamic outputs, `name` also creates a persistent named workspace. `index` follows whichever workspace currently occupies that position. On static outputs, rules only customize members already present in the configured inventory.
 
+A rule with a `mirror` table instead makes the workspace its `output` and `name` select a [mirror](#mirror-another-outputs-workspace). Workspace rules from every [included file](configuration.md#include) collect together, and two rules with the same selector are an error even across files. When two files set an output's `workspaces`, the one applied last replaces the other's list.
+
 ### How settings are combined
 
 Settings apply from least to most specific:
@@ -177,6 +244,8 @@ Later values replace earlier ones. Strut edges are resolved independently, so a 
 | `name`                                       | Select an exact name and create it on matching dynamic outputs.                                                                             |
 | `index`                                      | Select a current one-based position from 1 to 64.                                                                                           |
 | `output`                                     | Restrict the rule to a connector or monitor name.                                                                                           |
+| `mirror.output`                              | On a mirror rule, the output whose workspace to show.                                                                                       |
+| `mirror.name`                                | On a mirror rule, the name of that workspace on `mirror.output`.                                                                            |
 | `layout.mode`                                | Use `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.                                                                                |
 | `layout.gap`                                 | Set the window gap.                                                                                                                         |
 | `layout.struts.{left,right,top,bottom}`      | Reserve signed logical pixels at each edge.                                                                                                 |

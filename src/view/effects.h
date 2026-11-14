@@ -28,7 +28,7 @@ namespace umbriel {
   void clearWindowEffectSlots(wlr_scene_node* node);
 
   // Persistent effects of one view. Ledger instances are keyed by the scene node carrying the slot, so the live
-  // window and its overview card track visibility and output separately.
+  // window and each of its previews track visibility and output separately.
   class ViewEffects {
   public:
     void syncNames(const Effects& effects);
@@ -58,7 +58,7 @@ namespace umbriel {
     void apply(const ApplyInput& input);
     // Ledger removal for every node this object registered; slots are cleared by the caller.
     void detach();
-    // Ledger removal for one set of nodes (an overview card being destroyed).
+    // Ledger removal for one set of nodes (a preview being destroyed).
     void detachNodes(wlr_scene_node* surface, wlr_scene_node* border);
 
   private:

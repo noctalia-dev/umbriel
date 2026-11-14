@@ -528,6 +528,53 @@ UMBRIEL_TEST(namedWorkspaceDeclarationChangesRefreshDynamicInventory) {
   CHECK(!retargetEffects.outputState);
 }
 
+UMBRIEL_TEST(workspaceMirrorRuleChangesRefreshTheInventory) {
+  Config own;
+  OutputRule origin;
+  origin.name = "DP-1";
+  origin.workspaces = std::vector<std::string>{"web", "chat"};
+  own.outputs.push_back(origin);
+  OutputRule receiving;
+  receiving.name = "DP-2";
+  receiving.workspaces = std::vector<std::string>{"term", "web"};
+  own.outputs.push_back(receiving);
+
+  Config mirrored = own;
+  WorkspaceConfig mirror;
+  mirror.output = "DP-2";
+  mirror.name = "web";
+  mirror.mirror = {.output = "DP-1", .name = "web"};
+  mirrored.workspaceRules.push_back(std::move(mirror));
+
+  const auto refreshesInventory = [](const Config& before, const Config& after) {
+    const ConfigEffects effects = ConfigEffects::between(before, after);
+    CHECK(effects.workspaceInventory);
+    CHECK(effects.workspaceLayout);
+    CHECK(!effects.outputState);
+  };
+  refreshesInventory(own, mirrored);
+  refreshesInventory(mirrored, own);
+
+  Config otherOutput = mirrored;
+  OutputRule third;
+  third.name = "DP-3";
+  third.workspaces = std::vector<std::string>{"web"};
+  otherOutput.outputs.push_back(std::move(third));
+  Config sourceOutputChanged = otherOutput;
+  sourceOutputChanged.workspaceRules[0].mirror.output = "DP-3";
+  refreshesInventory(otherOutput, sourceOutputChanged);
+
+  Config sourceNameChanged = mirrored;
+  sourceNameChanged.workspaceRules[0].mirror.name = "chat";
+  refreshesInventory(mirrored, sourceNameChanged);
+
+  // Output names compare as output identities do.
+  Config sameSource = mirrored;
+  sameSource.workspaceRules[0].mirror.output = "dp-1";
+  CHECK(!ConfigEffects::between(mirrored, sameSource).workspaceInventory);
+  CHECK(!ConfigEffects::between(mirrored, mirrored).workspaceInventory);
+}
+
 UMBRIEL_TEST(workspaceRuleLayoutAndIndexEditsDoNotRefreshDynamicInventory) {
   Config named;
   WorkspaceConfig namedRule;

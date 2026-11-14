@@ -5,6 +5,7 @@
 #include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
+#include "workspace/workspace.h"
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
@@ -64,6 +65,7 @@ namespace umbriel {
     wl_list_remove(&m_shapeChanged.link);
     releaseKeyboard();
     wlr_scene_node_destroy(&m_tree->node);
+    scheduleMirrors();
   }
 
   void XwaylandUnmanaged::onMap(wl_listener* listener, void* /*data*/) {
@@ -79,6 +81,7 @@ namespace umbriel {
   void XwaylandUnmanaged::onSetParent(wl_listener* listener, void* /*data*/) {
     XwaylandUnmanaged* self = wl_container_of(listener, self, m_setParent); // NOLINT(modernize-use-auto)
     self->refreshCaptureProtection();
+    self->scheduleMirrors();
   }
 
   void XwaylandUnmanaged::refreshCaptureProtection() {
@@ -117,6 +120,7 @@ namespace umbriel {
   void XwaylandUnmanaged::onCommit(wl_listener* listener, void* /*data*/) {
     XwaylandUnmanaged* self = wl_container_of(listener, self, m_commit); // NOLINT(modernize-use-auto)
     self->updateShape();
+    self->scheduleMirrors();
   }
 
   void XwaylandUnmanaged::onShapeChanged(wl_listener* listener, void* data) {
@@ -147,6 +151,7 @@ namespace umbriel {
     syncPosition();
     wlr_scene_node_set_enabled(&m_tree->node, true);
     wlr_scene_node_raise_to_top(&m_tree->node);
+    scheduleMirrors();
     if (!takesKeyboard(m_xsurface) || m_server.sessionLocked() || m_server.exclusiveKeyboardLayer() != nullptr) {
       return;
     }
@@ -166,6 +171,7 @@ namespace umbriel {
   void XwaylandUnmanaged::handleUnmap() {
     m_pendingXwmSync = 0;
     wlr_scene_node_set_enabled(&m_tree->node, false);
+    scheduleMirrors();
     releaseKeyboard();
   }
 
@@ -196,12 +202,25 @@ namespace umbriel {
       wlr_scene_subsurface_tree_set_scale(&m_tree->node, m_scale);
     }
     updateShape();
+    scheduleMirrors();
   }
 
   void XwaylandUnmanaged::handleRequestConfigure(const wlr_xwayland_surface_configure_event* event) {
     grantConfigureRequest(m_xsurface, event);
     // The configure setter already updates X geometry, so ConfigureNotify may report no further change.
     syncPosition();
+  }
+
+  void XwaylandUnmanaged::scheduleMirrors() {
+    auto* parent = m_xsurface->parent;
+    for (unsigned depth = 0; parent != nullptr && depth < 64; ++depth, parent = parent->parent) {
+      for (const auto& view : m_server.views()) {
+        if (view != nullptr && view->xwaylandSurface() == parent && view->workspace() != nullptr) {
+          view->workspace()->scheduleMirrors();
+          return;
+        }
+      }
+    }
   }
 
 } // namespace umbriel
