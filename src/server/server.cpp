@@ -8,6 +8,7 @@
 #include "core/fdlimit.h"
 #include "core/log.h"
 #include "core/process.h"
+#include "core/spawn_command.h"
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/eis.h"
@@ -1543,10 +1544,13 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  bool Server::spawn(const char* command, const char* description, bool withActivationToken, std::string* error) {
     if (m_socketName.empty()) {
       wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
-      return;
+      if (error != nullptr) {
+        *error = "cannot spawn before the Wayland socket exists";
+      }
+      return false;
     }
 
     const bool scopeRequired = m_applicationScopesRequired;
@@ -1556,11 +1560,28 @@ namespace umbriel {
             || m_applicationScopeBindsToProperty.empty()
             || m_applicationScopeAfterProperty.empty())) {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
-      return;
+      if (error != nullptr) {
+        *error = "cannot launch application because systemd scope isolation is unavailable";
+      }
+      return false;
     }
     const std::string scopeUnitArgument = scopeRequired
         ? "--unit=app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
         : "";
+
+    // A command the shell does not have to interpret names its program in the first word, so a program that cannot
+    // be executed is reported instead of becoming a shell error on the compositor's stderr.
+    const SpawnProgram parsed = spawnProgram(command);
+    if (!parsed.shell && resolveExecutable(parsed.program.c_str()).empty()) {
+      const bool isPath = parsed.program.contains('/');
+      const std::string message = isPath ? std::format("'{}' is not executable", parsed.program)
+                                         : std::format("cannot find '{}' on PATH", parsed.program);
+      kLog.error("cannot launch application: {}", message);
+      if (error != nullptr) {
+        *error = message;
+      }
+      return false;
+    }
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
     std::string launchTokenName;
@@ -1580,7 +1601,10 @@ namespace umbriel {
         wlr_xdg_activation_token_v1_destroy(launchToken);
       }
       wlr_log(WLR_ERROR, "fork failed");
-      return;
+      if (error != nullptr) {
+        *error = "fork failed";
+      }
+      return false;
     }
     if (pid == 0) {
       resetChildSignalState();
@@ -1632,6 +1656,7 @@ namespace umbriel {
           m_socketName.c_str()
       );
     }
+    return true;
   }
 
   void Server::updateSeatCapabilities() { m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty()); }

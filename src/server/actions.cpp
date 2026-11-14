@@ -508,9 +508,11 @@ namespace umbriel {
     }
 
     // Session
-    bool actionSpawn(Server& server, const Keybind& bind, std::string* /*error*/) {
+    bool actionSpawn(Server& server, const Keybind& bind, std::string* error) {
       const auto* arg = payloadIf<SpawnArg>(bind);
-      server.spawn(arg != nullptr ? arg->command.c_str() : "", nullptr, true);
+      // The bind matched and meant to launch something, so the chord is spent even when the launch is refused;
+      // returning false would hand the key on to the focused client. A refusal has already filled `error`.
+      server.spawn(arg != nullptr ? arg->command.c_str() : "", nullptr, true, error);
       return true;
     }
 

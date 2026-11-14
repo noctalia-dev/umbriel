@@ -353,7 +353,12 @@ namespace umbriel {
     void relayoutBanner();
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
-    void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
+    // Launches `command` through the shell, after checking that a command needing no shell names a program that
+    // exists. Returns false and fills `error` when nothing was launched.
+    bool spawn(
+        const char* command, const char* description = nullptr, bool withActivationToken = false,
+        std::string* error = nullptr
+    );
     void completeIpcLaunch(std::string_view tokenName, pid_t pid);
     void handleConfigReload(const ConfigReloadResult& result);
     // Re-evaluate application idle inhibitors after a surface's presentation
