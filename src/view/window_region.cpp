@@ -9,20 +9,17 @@ extern "C" {
 }
 
 namespace umbriel {
-  namespace {
-    constexpr std::array kNames{"left",     "right",     "top",         "bottom",
-                                "top_left", "top_right", "bottom_left", "bottom_right"};
-  }
+  std::string_view windowRegionName(WindowRegion region) { return kWindowRegionNames[static_cast<size_t>(region)]; }
 
-  std::string_view windowRegionName(WindowRegion region) { return kNames[static_cast<size_t>(region)]; }
+  std::span<const std::string_view> windowRegionNames() { return kWindowRegionNames; }
 
   std::optional<WindowRegion> windowRegionNamed(std::string_view name) {
-    for (size_t i = 0; i < kNames.size(); ++i) {
-      if (name == kNames[i]) {
-        return static_cast<WindowRegion>(i);
-      }
+    const auto& names = kWindowRegionNames;
+    const auto* found = std::ranges::find(names, name);
+    if (found == names.end()) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    return static_cast<WindowRegion>(found - names.begin());
   }
 
   wlr_box windowRegionBox(const wlr_box& area, WindowRegion region, int spacing) {
