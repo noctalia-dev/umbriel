@@ -411,7 +411,7 @@ namespace umbriel {
             || (!assignedScratchpad && m_workspace != nullptr && m_workspace->id() == m_launchWorkspaceId));
     Output* preferredOutput = m_server->outputFromWlr(m_server->preferredOutput());
     Workspace* preferredWorkspace = preferredOutput != nullptr && preferredOutput->workspaceGroup() != nullptr
-        ? preferredOutput->workspaceGroup()->active()
+        ? preferredOutput->workspaceGroup()->activeForLaunch()
         : nullptr;
     const bool launchPlacementSilent = launchPlacementUsed
         && (assignedLaunchScratchpad ? m_server->scratchpadManager()->activeOn(preferredOutput)
@@ -930,6 +930,9 @@ namespace umbriel {
       if (target == nullptr) {
         target = windowRuleWorkspace(targetGroup, rule);
       }
+      if (target != nullptr) {
+        targetGroup = target->group();
+      }
 
       const bool layoutFloats =
           (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Stacking;
@@ -1095,7 +1098,7 @@ namespace umbriel {
     applyCornerRadius();
     // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.
-    if (m_mapped && m_tiled && m_workspace != nullptr && m_workspace->active()) {
+    if (m_mapped && m_tiled && m_workspace != nullptr && (m_workspace->active() || m_workspace->visibleViaMirror())) {
       m_workspace->syncViewPresentation(this);
     } else if (m_mapped && !m_tiled) {
       if (scheduledFullscreen() && m_onActiveWorkspace) {

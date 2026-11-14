@@ -35,6 +35,7 @@
 #include "wlr/util/edges.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 #include "xwayland/xwayland.h"
 
 namespace umbriel {
@@ -365,9 +366,21 @@ namespace umbriel {
     }
   }
 
-  void Cursor::handleOutputLayoutChange() const {
+  namespace {
+    std::optional<MirrorMapping> mappingOf(const Workspace* copy) {
+      const WorkspaceMirror* renderer = copy != nullptr ? copy->mirrorRenderer() : nullptr;
+      return renderer != nullptr ? renderer->mapping() : std::nullopt;
+    }
+  } // namespace
+
+  void Cursor::handleOutputLayoutChange() {
     m_server->effects().forgetPointerOutput();
     forwardEffectPointer();
+    // A grab started through a mirror has no coordinates once an output leaves the layout and the mirror loses its
+    // mapping: it ends rather than carrying on in receiving coordinates.
+    if (m_grabMirror != nullptr && !mappingOf(m_grabMirror)) {
+      forgetMirror(m_grabMirror);
+    }
   }
 
   int Cursor::onHideTimer(void* data) {
@@ -537,10 +550,12 @@ namespace umbriel {
     // A held card aims at the row under the drag pointer (its drop target, the same row the finger-pan path
     // resolves through navigationWorkspace()), so the strip it must reveal is that workspace's, not the active
     // one's. A card over an insertion gap has no row to slide. Data drags and tiled moves keep the active
-    // workspace. The shared edge ramp runs on the target workspace's real usable-area edges.
-    Workspace* workspace = cardDrag ? overview->dragTargetWorkspace() : active;
+    // workspace. The shared edge ramp runs on the target workspace's real usable-area edges. A mirror row owns no
+    // strip: the ramp keeps the row's own edges, and the strip it slides is the one the mirror shows.
+    Workspace* row = cardDrag ? overview->dragTargetWorkspace() : nullptr;
+    Workspace* workspace = cardDrag ? (row != nullptr ? row->layoutOwner() : nullptr) : active;
 
-    const wlr_box area = workspace != nullptr ? workspace->usableArea() : active->usableArea();
+    const wlr_box area = row != nullptr ? row->usableArea() : active->usableArea();
     // The shared edge ramp: signed screen px/s from the pointer's depth into the trigger zone at either end of
     // the usable area along `verticalAxis`.
     const auto edgeSpeed = [&](bool verticalAxis, double* speed) {
@@ -1072,6 +1087,67 @@ namespace umbriel {
     return workspace != nullptr && grab != nullptr && grab->workspace == workspace;
   }
 
+  const Workspace* Cursor::mirrorShowing(const View* view) const {
+    if (view == nullptr || view->workspace() == nullptr) {
+      return nullptr;
+    }
+    auto* receiving =
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+    const Workspace* copy = receiving != nullptr ? receiving->workspaceGroup()->active() : nullptr;
+    return copy != nullptr && copy->mirror() && copy->mirrorSource() == view->workspace() ? copy : nullptr;
+  }
+
+  std::optional<MirrorMapping> Cursor::mirrorFor(const View* view) const { return mappingOf(mirrorShowing(view)); }
+
+  bool Cursor::mirrorTransform(View* view, double* scale, double* tx, double* ty) const {
+    const std::optional<MirrorMapping> mapping = mirrorFor(view);
+    if (!mapping) {
+      *scale = 1;
+      *tx = 0;
+      *ty = 0;
+      return false;
+    }
+    // The inverse of the presentation, as an affine map: source = receiving * scale + translation.
+    *scale = 1 / mapping->fit.scale;
+    *tx = mapping->toSourceX(0);
+    *ty = mapping->toSourceY(0);
+    return true;
+  }
+
+  bool Cursor::interactive(const View& view) const { return view.onActiveWorkspace() || mirrorFor(&view).has_value(); }
+
+  void Cursor::captureGrabTransform(View* view) {
+    const Workspace* copy = mirrorShowing(view);
+    m_grabMirror = mappingOf(copy) ? copy : nullptr;
+  }
+
+  void Cursor::forgetMirror(const Workspace* copy) {
+    if (copy == nullptr || copy != m_grabMirror) {
+      return;
+    }
+    if (std::holds_alternative<MoveGrab>(m_grab)
+        || std::holds_alternative<FloatingResizeGrab>(m_grab)
+        || std::holds_alternative<TiledResizeGrab>(m_grab)) {
+      resetMode();
+    } else {
+      // Left over from a grab that never started; whatever holds the pointer now did not come through this mirror.
+      m_grabMirror = nullptr;
+    }
+  }
+
+  double Cursor::grabX() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? mapping->toSourceX(m_cursor->x) : m_cursor->x;
+  }
+  double Cursor::grabY() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? mapping->toSourceY(m_cursor->y) : m_cursor->y;
+  }
+  double Cursor::grabInputScale() const {
+    const std::optional<MirrorMapping> mapping = mappingOf(m_grabMirror);
+    return mapping ? 1 / mapping->fit.scale : 1;
+  }
+
   bool Cursor::beginMove(View* view, uint32_t button, bool deferUntilThreshold) {
     if (view == nullptr || !view->mapped() || button == 0) {
       return false;
@@ -1081,6 +1157,7 @@ namespace umbriel {
     if (!isPassthrough()) {
       resetMode();
     }
+    captureGrabTransform(view);
     bool tiled = view->tiled();
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
@@ -1099,8 +1176,8 @@ namespace umbriel {
     const bool tiledUnderneath = tiled || (pinned && view->restoresTiledOnUnpin());
     MoveGrab grab{
         .view = view,
-        .offsetX = m_cursor->x - view->layoutX(),
-        .offsetY = m_cursor->y - view->layoutY(),
+        .offsetX = grabX() - view->layoutX(),
+        .offsetY = grabY() - view->layoutY(),
         .target = tiled ? DragTarget::Tiled : (pinned ? DragTarget::Pinned : DragTarget::Floating),
         .stackingLayout = !tiled
             && !pinned
@@ -1177,6 +1254,7 @@ namespace umbriel {
     if (!isPassthrough()) {
       resetMode();
     }
+    captureGrabTransform(view);
     bool tiled = view->tiled();
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && !view->attached() && scratchpad->contains(view)) {
@@ -1193,9 +1271,9 @@ namespace umbriel {
       Layout& layout = workspace->layout();
       uint32_t resolvedEdges = 0;
       if (edges != 0) {
-        resolvedEdges = layout.resolveResizeEdges(view, edges, m_cursor->x, m_cursor->y);
+        resolvedEdges = layout.resolveResizeEdges(view, edges, grabX(), grabY());
       } else {
-        resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
+        resolvedEdges = tiledResizeEdges(view, grabX(), grabY());
       }
       if (resolvedEdges == 0) {
         revealClickedTile(view);
@@ -1218,8 +1296,8 @@ namespace umbriel {
       m_grab = TiledResizeGrab{
           .view = view,
           .workspace = workspace,
-          .startX = m_cursor->x,
-          .startY = m_cursor->y,
+          .startX = grabX(),
+          .startY = grabY(),
           .edges = resolvedEdges,
           .session = std::move(session),
       };
@@ -1242,8 +1320,8 @@ namespace umbriel {
     const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
-        .offsetX = m_cursor->x - borderX,
-        .offsetY = m_cursor->y - borderY,
+        .offsetX = grabX() - borderX,
+        .offsetY = grabY() - borderY,
         .geometryX = geometry.x,
         .geometryY = geometry.y,
         .geometryWidth = geometry.width,
@@ -1414,6 +1492,7 @@ namespace umbriel {
     m_toplevelDrag = false;
     m_grab = PassthroughGrab{};
     m_grabButton = 0;
+    m_grabMirror = nullptr;
     if (restoreDragPresentation && view != nullptr) {
       view->restoreHomePresentation();
       // A drag abandoned outside its drop path (session lock mid-drag, the
@@ -2028,7 +2107,8 @@ namespace umbriel {
       // Defer the grab until the pointer leaves the slop: a grab would drop the
       // maximize state the second click reads. Edges are snapshotted at the
       // press point; a press proposing none is a plain click.
-      const uint32_t edges = view->tiled() ? tiledResizeEdges(view, m_cursor->x, m_cursor->y) : floatResizeEdges(view);
+      const auto [px, py] = pointerFor(view);
+      const uint32_t edges = view->tiled() ? tiledResizeEdges(view, px, py) : floatResizeEdges(view);
       if (edges != 0) {
         m_grab = PendingResizeGrab{
             .view = view,
@@ -3050,11 +3130,12 @@ namespace umbriel {
       return;
     }
     grab->view->setDragPosition(
-        static_cast<int>(m_cursor->x - grab->offsetX), static_cast<int>(m_cursor->y - grab->offsetY),
-        grab->stackingLayout
+        static_cast<int>(grabX() - grab->offsetX), static_cast<int>(grabY() - grab->offsetY), grab->stackingLayout
     );
     if (grab->physics) {
-      grab->view->moveDragPhysics(m_cursor->x - grab->lastX, m_cursor->y - grab->lastY);
+      grab->view->moveDragPhysics(
+          (m_cursor->x - grab->lastX) * grabInputScale(), (m_cursor->y - grab->lastY) * grabInputScale()
+      );
       grab->lastX = m_cursor->x;
       grab->lastY = m_cursor->y;
     }
@@ -3064,6 +3145,13 @@ namespace umbriel {
   void Cursor::presentGrabbedViewSpanning() {
     View* view = grabbedView();
     if (view == nullptr) {
+      return;
+    }
+    if (m_grabMirror != nullptr) {
+      view->applyDragPresentation();
+      if (view->workspace() != nullptr) {
+        view->workspace()->scheduleMirrors();
+      }
       return;
     }
     // A window dragged across a monitor boundary must span both outputs, not be
@@ -3087,7 +3175,7 @@ namespace umbriel {
       if (h > 0) {
         grab.offsetY = std::clamp(grab.offsetY, -static_cast<double>(h), -1.0);
       }
-      view->setDragPosition(m_cursor->x - grab.offsetX, m_cursor->y - grab.offsetY, grab.stackingLayout);
+      view->setDragPosition(grabX() - grab.offsetX, grabY() - grab.offsetY, grab.stackingLayout);
     }
     m_lastTitleBarClick = {};
     grab.pending = false;
@@ -3116,9 +3204,12 @@ namespace umbriel {
     if (grab->target != DragTarget::Tiled) {
       return;
     }
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
+    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY());
     Output* output = m_server->outputFromWlr(wlrOutput);
-    if (output == nullptr || output->workspaceGroup() == nullptr || output->workspaceGroup()->active() == nullptr) {
+    if (output == nullptr
+        || output->workspaceGroup() == nullptr
+        || output->workspaceGroup()->active() == nullptr
+        || output->workspaceGroup()->active()->mirror()) {
       return;
     }
 
@@ -3131,9 +3222,9 @@ namespace umbriel {
       return;
     }
 
-    Workspace* workspace = output->workspaceGroup()->active();
+    Workspace* workspace = m_grabMirror != nullptr ? grab->view->workspace() : output->workspaceGroup()->active();
     grab->drop = computeDropTarget(
-        *workspace, m_cursor->x, m_cursor->y, grab->view,
+        *workspace, grabX(), grabY(), grab->view,
         DropTargetOptions{
             .clipHintToUsable = true,
             .reserveScrollingViewportEdges = true,
@@ -3274,8 +3365,10 @@ namespace umbriel {
     // (a fullscreen window cannot be pinned) is still tiled here and drops back
     // into the layout rather than staying detached.
     Output* destination =
-        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
-    Workspace* workspace = destination != nullptr ? destination->workspaceGroup()->active() : nullptr;
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY()));
+    Workspace* workspace = m_grabMirror != nullptr
+        ? view->workspace()
+        : (destination != nullptr ? destination->workspaceGroup()->activeOwn() : nullptr);
     if (grab->target == DragTarget::Tiled && workspace != nullptr && workspace->layoutMode() == LayoutMode::Stacking) {
       view->floatForStackingLayout();
     } else {
@@ -3348,13 +3441,14 @@ namespace umbriel {
       return;
     }
 
-    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-    Output* output = m_server->outputFromWlr(wlrOutput);
+    wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), grabX(), grabY());
+    Output* output = m_grabMirror != nullptr && view->workspace() != nullptr ? view->workspace()->group()->output()
+                                                                             : m_server->outputFromWlr(wlrOutput);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(view)) {
       scratchpad->finishMove(view, output);
-    } else if (output != nullptr && output->workspaceGroup() != nullptr) {
-      if (Workspace* target = output->workspaceGroup()->active(); view->workspace() != target) {
+    } else if (m_grabMirror == nullptr && output != nullptr && output->workspaceGroup() != nullptr) {
+      if (Workspace* target = output->workspaceGroup()->activeOwn(); view->workspace() != target) {
         view->moveToWorkspace(target);
         target->exitFullscreenForIncomingView(view);
       }
@@ -3464,8 +3558,8 @@ namespace umbriel {
       resetMode();
       return;
     }
-    const double borderX = m_cursor->x - grab->offsetX;
-    const double borderY = m_cursor->y - grab->offsetY;
+    const double borderX = grabX() - grab->offsetX;
+    const double borderY = grabY() - grab->offsetY;
     int newLeft = grab->geometryX;
     int newRight = grab->geometryX + grab->geometryWidth;
     int newTop = grab->geometryY;
@@ -3558,6 +3652,14 @@ namespace umbriel {
     }
   }
 
+  Cursor::Point Cursor::pointerFor(View* view) const {
+    double scale = 1;
+    double tx = 0;
+    double ty = 0;
+    (void)mirrorTransform(view, &scale, &tx, &ty);
+    return {m_cursor->x * scale + tx, m_cursor->y * scale + ty};
+  }
+
   uint32_t Cursor::floatResizeEdges(View* view) const {
     if (view == nullptr || view->sceneTree() == nullptr) {
       return WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
@@ -3566,7 +3668,8 @@ namespace umbriel {
     const int x = view->layoutX() + geo.x;
     const int y = view->layoutY() + geo.y;
     const wlr_box box{.x = x, .y = y, .width = geo.width, .height = geo.height};
-    return resizeEdgesForPoint(box, m_cursor->x, m_cursor->y);
+    const auto [px, py] = pointerFor(view);
+    return resizeEdgesForPoint(box, px, py);
   }
 
   uint32_t Cursor::hoverResizeEdges(View* view) const {
@@ -3575,6 +3678,7 @@ namespace umbriel {
     }
     // Only advertise resize when the pointer is near the edge that would be grabbed.
     constexpr double kHoverSlop = 28.0;
+    const auto [px, py] = pointerFor(view);
 
     if (view->floating()) {
       if (view->sceneTree() == nullptr) {
@@ -3585,10 +3689,10 @@ namespace umbriel {
       const double top = view->layoutY() + geo.y;
       const double right = left + geo.width;
       const double bottom = top + geo.height;
-      const double distLeft = std::abs(m_cursor->x - left);
-      const double distRight = std::abs(m_cursor->x - right);
-      const double distTop = std::abs(m_cursor->y - top);
-      const double distBottom = std::abs(m_cursor->y - bottom);
+      const double distLeft = std::abs(px - left);
+      const double distRight = std::abs(px - right);
+      const double distTop = std::abs(py - top);
+      const double distBottom = std::abs(py - bottom);
       const double nearestH = std::min(distLeft, distRight);
       const double nearestV = std::min(distTop, distBottom);
       if (std::min(nearestH, nearestV) > kHoverSlop) {
@@ -3612,8 +3716,7 @@ namespace umbriel {
         return 0;
       }
     }
-    uint32_t edges =
-        workspace->layout().sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, m_cursor->x, m_cursor->y));
+    uint32_t edges = workspace->layout().sanitizeResizeEdges(view, resizeEdgesForPoint(reachable, px, py));
     // Advertise an edge that extends past the output from the reachable
     // output boundary, since the pointer cannot approach the real edge.
     const double left = reachable.x;
@@ -3621,13 +3724,13 @@ namespace umbriel {
     const double top = reachable.y;
     const double bottom = reachable.y + reachable.height;
     if ((edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0) {
-      const double dist = (edges & WLR_EDGE_LEFT) != 0 ? std::abs(m_cursor->x - left) : std::abs(m_cursor->x - right);
+      const double dist = (edges & WLR_EDGE_LEFT) != 0 ? std::abs(px - left) : std::abs(px - right);
       if (dist > kHoverSlop) {
         edges &= ~(WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
       }
     }
     if ((edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) != 0) {
-      const double dist = (edges & WLR_EDGE_TOP) != 0 ? std::abs(m_cursor->y - top) : std::abs(m_cursor->y - bottom);
+      const double dist = (edges & WLR_EDGE_TOP) != 0 ? std::abs(py - top) : std::abs(py - bottom);
       if (dist > kHoverSlop) {
         edges &= ~(WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
       }
@@ -3897,7 +4000,7 @@ namespace umbriel {
     }
     grab->deferred = false;
     const wlr_box usable = grab->workspace->tiledArea();
-    grab->session->applyDelta(m_cursor->x - grab->startX, m_cursor->y - grab->startY, usable);
+    grab->session->applyDelta(grabX() - grab->startX, grabY() - grab->startY, usable);
     grab->view->setMaximizedState(false);
     grab->workspace->markArrange(lockstep);
   }

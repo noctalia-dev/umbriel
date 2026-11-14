@@ -47,6 +47,7 @@ namespace umbriel {
     void handleSetGeometry();
     void handleRequestConfigure(const wlr_xwayland_surface_configure_event* event);
     void updateShape();
+    void scheduleMirrors();
     // Hand the keyboard back to the activated view when this window holds it.
     void releaseKeyboard();
 

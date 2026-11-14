@@ -33,6 +33,7 @@ namespace umbriel {
   class View;
   class Workspace;
   class WorkspaceGroup;
+  class WorkspaceMirror;
 
   // Launch tokens keep this indirection alive while a window is pending. The
   // workspace clears the pointer before destruction, so token expiry and
@@ -57,7 +58,7 @@ namespace umbriel {
 
     Workspace(
         WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
-        bool named, ResolvedLayoutConfig layoutConfig
+        bool named, ResolvedLayoutConfig layoutConfig, WorkspaceMirrorSource mirrorOf
     );
     ~Workspace();
 
@@ -75,6 +76,29 @@ namespace umbriel {
     bool named() const { return m_named; }
     bool transferred() const { return m_transferred; }
     size_t index() const { return m_index; }
+    // A mirror shows another workspace's windows and owns none. `mirrorOf` is the configured workspace it shows,
+    // `mirrorOf().name` on the output rule `mirrorOf().output`; `mirrorSource` is the workspace it currently shows,
+    // null while that output is absent. The source stays the same workspace when it moves to another output.
+    bool mirror() const { return !m_mirrorOf.output.empty(); }
+    const WorkspaceMirrorSource& mirrorOf() const { return m_mirrorOf; }
+    Workspace* mirrorSource() const { return m_mirrorSource; }
+    void setMirrorSource(Workspace* source);
+    // The renderer that presents the source on this output; null unless this is a mirror.
+    const WorkspaceMirror* mirrorRenderer() const { return m_mirrorRenderer.get(); }
+    // The workspace whose layout holds the windows shown here: the source of a mirror, null while it has none.
+    Workspace* layoutOwner() { return mirror() ? m_mirrorSource : this; }
+    const Workspace* layoutOwner() const { return mirror() ? m_mirrorSource : this; }
+    // The mirrors that currently show this workspace.
+    const std::vector<Workspace*>& mirrors() const { return m_mirrors; }
+    void scheduleMirrors();
+    // `view` leaves this workspace or its mirrors' sight: their previews of it go before it can die.
+    void forgetMirroredView(View* view);
+    // A dialog attached to or left `view`: the mirrors show the dialogs over it again.
+    void refreshMirroredAttachments(View* view);
+    bool visibleViaMirror() const;
+    // The mirror of this workspace in `output`'s group, the showing one when there are several; null when that output
+    // holds none, or is this workspace's own.
+    Workspace* mirrorOn(const Output* output) const;
     bool active() const { return m_active; }
     const std::shared_ptr<const DisplacedWorkspace>& displacedWorkspace() const { return m_displacedWorkspace; }
     std::shared_ptr<WorkspaceLaunchAnchor> reserveForLaunch() const { return m_launchAnchor; }
@@ -114,7 +138,7 @@ namespace umbriel {
     std::optional<LayoutMode> layoutModeOverride() const { return m_layoutModeOverride; }
     void overrideLayoutMode(LayoutMode mode);
     void clearLayoutModeOverride() { m_layoutModeOverride.reset(); }
-    View* focusedView() const { return m_focusedView; }
+    View* focusedView() const { return m_mirrorSource != nullptr ? m_mirrorSource->focusedView() : m_focusedView; }
     wlr_scene_tree* viewLayer(bool tiled) const { return tiled ? m_tiledLayer : m_floatingLayer; }
     wlr_scene_tree* tileShadowLayer() const { return m_tileShadowLayer; }
     wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
@@ -301,6 +325,8 @@ namespace umbriel {
     void resumeScrollHoverFocus() { m_scrollHoverFocusDeferred = false; }
 
   private:
+    // A grab started through this mirror ends before the mirror changes source, hides, or goes away.
+    void endMirrorGrab() const;
     void transferTo(WorkspaceGroup& group);
     void syncFloatingLayer();
     friend class WorkspaceGroup;
@@ -346,6 +372,9 @@ namespace umbriel {
     size_t m_index = 0;
     bool m_named = false;
     bool m_transferred = false;
+    WorkspaceMirrorSource m_mirrorOf;
+    Workspace* m_mirrorSource = nullptr;
+    std::vector<Workspace*> m_mirrors;
     bool m_active = false;
     std::shared_ptr<const DisplacedWorkspace> m_displacedWorkspace;
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchAnchor = std::make_shared<WorkspaceLaunchAnchor>();
@@ -384,6 +413,7 @@ namespace umbriel {
     int m_slideOffsetY = 0;
     std::vector<View*> m_switchViews;
     wlr_scene_tree* m_tree = nullptr;
+    std::unique_ptr<WorkspaceMirror> m_mirrorRenderer;
     wlr_scene_tree* m_tileShadowLayer = nullptr;
     wlr_scene_tree* m_tiledLayer = nullptr;
     wlr_scene_tree* m_floatingLayer = nullptr;
@@ -442,9 +472,22 @@ namespace umbriel {
     bool dynamic() const { return m_dynamic; }
     Workspace* workspaceAt(size_t index) const;
     Workspace* workspaceAtClamped(size_t index) const;
+    // Local fallback for pinned windows, focus, and moves: a mirror owns no windows.
+    Workspace* activeOwn() const;
+    // New windows follow the active copy back to its source, without activating that source.
+    Workspace* activeForLaunch() const;
+    // The first workspace that is not a mirror, and the one closest to `index` (at or after it, else before).
+    Workspace* firstOwn() const;
+    Workspace* nearestOwn(size_t index) const;
+    void rememberOwnActive(Workspace& workspace) {
+      if (!workspace.mirror()) {
+        m_lastOwn = &workspace;
+      }
+    }
     // Match an explicit name only, preferring native workspaces over temporary refugees. Multiple refugees with the
-    // same name are ambiguous and return null. Anonymous numeric labels are positions.
-    Workspace* workspaceNamed(std::string_view name) const;
+    // same name are ambiguous and return null. Anonymous numeric labels are positions. A mirror answers only to
+    // `includeMirrors`: by name it is a copy of a workspace elsewhere, never the workspace a window should land on.
+    Workspace* workspaceNamed(std::string_view name, bool includeMirrors = false) const;
     Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
     size_t workspaceCount() const { return m_workspaces.size(); }
     // Direction this output arranges its workspaces along, cached from configuration
@@ -533,6 +576,7 @@ namespace umbriel {
     wlr_ext_workspace_group_handle_v1* m_handle = nullptr;
     Workspace* m_active = nullptr;
     Workspace* m_previous = nullptr;
+    Workspace* m_lastOwn = nullptr;
     bool m_dynamic = false;
     size_t m_omittedConfiguredNames = 0;
     WorkspaceAxis m_workspaceAxis = WorkspaceAxis::Vertical;
@@ -543,5 +587,9 @@ namespace umbriel {
     AnimatedValue m_slideAnim;
     Slide m_slide;
   };
+
+  // Point every mirror at the workspace it shows: the workspace of its name on the output its origin names. A mirror
+  // that already shows a workspace keeps it, so a workspace that moves to another output carries its mirrors along.
+  void resolveWorkspaceMirrors(Server& server);
 
 } // namespace umbriel

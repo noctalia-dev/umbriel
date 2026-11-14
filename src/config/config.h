@@ -128,6 +128,13 @@ namespace umbriel {
     bool operator==(const WorkspaceLayoutOverrides&) const = default;
   };
 
+  // The workspace a [[workspace]] rule mirrors: `name` on the output rule `output`. Both empty for an ordinary rule.
+  struct WorkspaceMirrorSource {
+    std::string output;
+    std::string name;
+    bool operator==(const WorkspaceMirrorSource&) const = default;
+  };
+
   // Rule parsed from a [[workspace]] entry. Exactly one selector is set. A
   // name also declares a persistent member of matching dynamic inventories.
   struct WorkspaceConfig {
@@ -135,6 +142,9 @@ namespace umbriel {
     std::string output;       // optional output selector
     std::optional<int> index; // optional 1-based position selector
     WorkspaceLayoutOverrides layout;
+    // Set on a mirror rule, whose `output` and `name` then select the receiving workspace.
+    WorkspaceMirrorSource mirror;
+    bool mirrors() const { return !mirror.output.empty(); }
     bool operator==(const WorkspaceConfig&) const = default;
   };
 
@@ -210,6 +220,8 @@ namespace umbriel {
     std::string name;
     bool named = false;
     ResolvedLayoutConfig layout;
+    // The workspace this one mirrors; both fields empty for an ordinary workspace.
+    WorkspaceMirrorSource mirror;
     bool operator==(const ResolvedWorkspace&) const = default;
   };
   struct ResolvedWorkspaceSet {

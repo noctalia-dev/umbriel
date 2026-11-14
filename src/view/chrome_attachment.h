@@ -21,8 +21,8 @@ namespace umbriel {
     float scale = 1.0F;
     // Set while the view draws nothing around its content: unmapped, fullscreen, or maximized to the edges.
     bool suppressed = false;
-    // How much smaller than the view chrome is drawn, for a scaled preview of it such as an overview card. Every other
-    // field stays in the view's own logical units.
+    // How much smaller than the view chrome is drawn, for a scaled preview of it such as an overview card or a mirror.
+    // Every other field stays in the view's own logical units.
     double zoom = 1.0;
     bool operator==(const ViewChromeGeometry&) const = default;
   };

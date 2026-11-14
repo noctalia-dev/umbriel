@@ -34,6 +34,7 @@ Press `Mod+O` by default, or use an [overview action](actions.md#overview). Open
 - Click a window to focus it and close the overview.
 - Middle-click a window to close it.
 - Drag a window to move it to another workspace.
+- A [mirror](workspaces.md#mirror-another-outputs-workspace) has its own row, showing the windows of its source. Selecting one shows the mirror on its output without switching the source's output, and dropping a window on the row places it in the source.
 - Use the wheel to navigate vertically and Shift+wheel horizontally.
 - Use a four-finger swipe to open or close the overview.
 

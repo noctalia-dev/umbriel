@@ -75,7 +75,7 @@ namespace umbriel {
     void setFocused(bool focused) override;
     void setAlpha(float alpha) override;
     void reloadConfig() override;
-    // An overview card's copy of this bar: the same tabs, drawn at the card's zoom.
+    // A preview's copy of this bar: the same tabs, drawn at the preview's zoom.
     std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
     void syncPreview(ViewChromeAttachment& preview) const override;
 
@@ -96,8 +96,8 @@ namespace umbriel {
     int thickness() const;
     // The part of the bar from `start` along its slots, `extent` long, the bar's whole thickness across.
     wlr_box span(int start, int extent) const;
-    // Logical bar units scaled to the size the bar is drawn at: unchanged at full size, smaller on an overview card.
-    // Layout stays in logical units, so a card asks the label cache for the titles the live bar already rendered.
+    // Logical bar units scaled to the size the bar is drawn at: unchanged at full size, smaller on a preview.
+    // Layout stays in logical units, so a preview asks the label cache for the titles the live bar already rendered.
     int zoomed(int value) const;
     wlr_box zoomed(const wlr_box& box) const;
     void redraw();

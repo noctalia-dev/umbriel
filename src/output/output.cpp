@@ -31,6 +31,7 @@
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "workspace/workspace_mirror.h"
 
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -1228,21 +1229,33 @@ namespace umbriel {
   }
 
   bool Output::fullscreenCoversOutput() const {
-    const Workspace* workspace = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    const Workspace* shown = m_workspaceGroup != nullptr ? m_workspaceGroup->active() : nullptr;
+    const bool mirrored = shown != nullptr && shown->mirror();
+    const Workspace* workspace = shown != nullptr ? shown->layoutOwner() : nullptr;
     const wlr_box box = layoutBox();
-    return workspace != nullptr
-        && box.width > 0
-        && box.height > 0
-        && std::ranges::any_of(workspace->allViews(), [&box](const View* view) {
-             const wlr_box& fullscreen = view->presentedBox();
-             return view->mapped()
-                 && (view->layoutFullscreen() || view->currentFullscreen())
-                 && view->presented()
-                 && fullscreen.x <= box.x
-                 && fullscreen.y <= box.y
-                 && fullscreen.x + fullscreen.width >= box.x + box.width
-                 && fullscreen.y + fullscreen.height >= box.y + box.height;
-           });
+    if (workspace == nullptr || box.width <= 0 || box.height <= 0) {
+      return false;
+    }
+    std::optional<MirrorMapping> mapping;
+    if (mirrored) {
+      const WorkspaceMirror* renderer = shown->mirrorRenderer();
+      mapping = renderer != nullptr ? renderer->mapping() : std::nullopt;
+      if (!mapping) {
+        return false;
+      }
+    }
+    return std::ranges::any_of(workspace->allViews(), [&](const View* view) {
+      if (!view->mapped()
+          || (!view->layoutFullscreen() && !view->currentFullscreen())
+          || !(mirrored ? view->visibleViaMirror() : view->presented())) {
+        return false;
+      }
+      const wlr_box fullscreen = mapping ? mapping->toReceiver(view->presentedBox()) : view->presentedBox();
+      return fullscreen.x <= box.x
+          && fullscreen.y <= box.y
+          && fullscreen.x + fullscreen.width >= box.x + box.width
+          && fullscreen.y + fullscreen.height >= box.y + box.height;
+    });
   }
 
   bool Output::autoHdrEligible(const View* view) const {

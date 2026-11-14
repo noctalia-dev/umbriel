@@ -49,6 +49,10 @@ namespace umbriel {
     explicit FocusManager(Server& server) : m_server(server) {}
 
     void focusView(View* view, FocusReason reason = FocusReason::Startup);
+    // focusView on behalf of the output the user acts on, the one under the pointer when `actingOutput` is null. A
+    // window whose workspace has a mirror there is focused through that mirror, and explicit requests also show that
+    // mirror there; its own output keeps its workspace.
+    void focusViewOn(View* view, FocusReason reason, const Output* actingOutput);
     void xwaylandHintsChanged(View* view);
 
     // A data-device drag suppresses seat keyboard enters while its grab is
@@ -92,6 +96,8 @@ namespace umbriel {
   private:
     [[nodiscard]] bool retainCurrentKeyboardFocus();
     void refocusFallback(Output* preferred);
+    // The live frame part a hit on a mirror's copy of `view`'s title bar stands for.
+    std::optional<SsdFrameHit> mirroredFrameAt(View* view, double lx, double ly) const;
 
     Server& m_server;
     // The last raise decision focusView made. retainCurrentKeyboardFocus replays it, so a focus kept through a
@@ -99,8 +105,11 @@ namespace umbriel {
     bool m_lastRaise = true;
   };
 
-  // The pointer output's active workspace: the target of explicit workspace and
-  // layout actions, which intentionally follow the pointer.
+  // The pointer output's active workspace, a mirror included: the target of
+  // workspace navigation, which intentionally follows the pointer.
+  Workspace* shownWorkspace(Server& server);
+  // The workspace holding the windows shownWorkspace() shows, its source for a
+  // mirror: the target of window and layout actions.
   Workspace* activeWorkspace(Server& server);
 
   // The view holding the seat's keyboard focus, if any.

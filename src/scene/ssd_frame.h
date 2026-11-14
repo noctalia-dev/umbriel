@@ -48,6 +48,8 @@ namespace umbriel {
     SsdFramePoint pointAt(double x, double y) const;
     void snapshot(wlr_scene_tree* parent) const;
     std::unique_ptr<ViewChromeAttachment> makePreview(wlr_scene_tree* parent) const override;
+    // A preview's frame normally lets the pointer through; this one takes it, for its owner to resolve.
+    void acceptPreviewInput() { m_previewInput = true; }
     void syncPreview(ViewChromeAttachment& preview) const override;
 
   private:
@@ -86,6 +88,7 @@ namespace umbriel {
     bool m_maximizeEnabled = true;
     bool m_maximized = false;
     bool m_preview = false;
+    bool m_previewInput = false;
     float m_alpha = 1.0F;
     float m_blurAlpha = 1.0F;
     SsdFramePart m_hovered = SsdFramePart::None;
