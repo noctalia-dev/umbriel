@@ -179,6 +179,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-toggle-maximize`               | Toggle full width for the focused column                   |
 | `window-toggle-maximize-to-edges`      | Toggle maximize without gaps, struts, or borders           |
 | `window-toggle-pinned`                 | Pin the focused window above other windows                 |
+| `window-toggle-windowed-fullscreen`    | Tell the window it is fullscreen while it keeps its size   |
 
 Which windows minimize and how they come back is described in [Minimize](layout.md#minimize).
 

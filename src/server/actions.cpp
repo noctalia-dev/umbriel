@@ -1348,6 +1348,19 @@ namespace umbriel {
       return true;
     }
 
+    bool actionToggleWindowedFullscreen(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr);
+      if (view == nullptr) {
+        if (Workspace* workspace = activeWorkspace(server)) {
+          view = workspace->focusedView();
+        }
+      }
+      if (view != nullptr && view->mapped()) {
+        view->toggleWindowedFullscreen();
+      }
+      return true;
+    }
+
     bool actionToggleFloating(Server& server, const Keybind& bind, std::string* error) {
       if (const std::string_view id = windowIdArg(bind); !id.empty()) {
         const auto target = placementTarget(server, id);
@@ -2299,6 +2312,7 @@ namespace umbriel {
         &actionToggleMaximize,
         &actionToggleMaximizeToEdges,
         &actionToggleFullscreen,
+        &actionToggleWindowedFullscreen,
         &actionToggleFloating,
         &actionTogglePinned,
         &actionFocusCycle<1>,
