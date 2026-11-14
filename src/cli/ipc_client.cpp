@@ -5,10 +5,14 @@
 #include "server/ipc_commands.h"
 
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <poll.h>
 #include <print>
 #include <string>
 #include <sys/socket.h>
@@ -33,15 +37,23 @@ namespace umbriel {
       return {};
     }
 
-    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 with `error` set.
-    int connectSocket(std::string& error) {
+    // Milliseconds left until `deadline`, rounded up so a sub-millisecond remainder still waits, and 0 once spent.
+    int remainingMs(std::chrono::steady_clock::time_point deadline) {
+      const auto left = std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      return left.count() > 0 ? static_cast<int>(left.count()) : 0;
+    }
+
+    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 with `error` set. A caller
+    // that owes a keystroke a budget passes `deadline` and gets a connect that cannot outlast it.
+    int
+    connectSocket(std::string& error, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
       std::string socketPath = resolveSocketPath();
       if (socketPath.empty()) {
         error = "cannot find umbriel socket (is the compositor running?)";
         return -1;
       }
 
-      int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+      const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | (deadline ? SOCK_NONBLOCK : 0), 0);
       if (fd < 0) {
         error = "failed to create socket";
         return -1;
@@ -57,9 +69,32 @@ namespace umbriel {
       socketPath.copy(addr.sun_path, socketPath.size());
 
       if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        error = "cannot connect to umbriel socket (is the compositor running?)";
-        close(fd);
-        return -1;
+        // A non-blocking connect reports progress rather than failure: the socket becomes writable once it is done.
+        if (!deadline || errno != EINPROGRESS) {
+          error = "cannot connect to umbriel socket (is the compositor running?)";
+          close(fd);
+          return -1;
+        }
+        pollfd ready{fd, POLLOUT, 0};
+        int polled = 0;
+        while ((polled = poll(&ready, 1, remainingMs(*deadline))) < 0 && errno == EINTR) {
+        }
+        int connectError = 0;
+        socklen_t length = sizeof(connectError);
+        if (polled <= 0 || getsockopt(fd, SOL_SOCKET, SO_ERROR, &connectError, &length) < 0 || connectError != 0) {
+          error = "cannot connect to umbriel socket (is the compositor running?)";
+          close(fd);
+          return -1;
+        }
+      }
+      if (deadline) {
+        // The query bounds its send and receive with socket timeouts, which a non-blocking fd ignores.
+        const int flags = fcntl(fd, F_GETFL);
+        if (flags < 0 || fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) {
+          error = "cannot connect to umbriel socket (is the compositor running?)";
+          close(fd);
+          return -1;
+        }
       }
       return fd;
     }
@@ -258,31 +293,29 @@ namespace umbriel {
     return EXIT_SUCCESS;
   }
 
-  std::optional<std::string> queryIpcJson(std::string_view command, int budgetMs) {
-    // A zero timeval means no timeout at all, so the caller's exhausted budget is refused before it can block.
-    if (budgetMs <= 0) {
-      return std::nullopt;
-    }
+  std::optional<std::string> queryIpcJson(std::string_view command, std::chrono::steady_clock::time_point deadline) {
     std::string error;
-    const int fd = connectSocket(error);
+    const int fd = connectSocket(error, deadline);
     if (fd < 0) {
       return std::nullopt;
     }
 
-    // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
-    timeval tv{};
-    tv.tv_sec = budgetMs / 1000;
-    tv.tv_usec = (budgetMs % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    const auto setTimeout = [fd, deadline](int option) {
+      const int remaining = remainingMs(deadline);
+      if (remaining <= 0) {
+        return false;
+      }
+      // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
+      timeval tv{};
+      tv.tv_sec = remaining / 1000;
+      tv.tv_usec = (remaining % 1000) * 1000;
+      return setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv)) == 0;
+    };
 
     nlohmann::json request;
     request["cmd"] = command;
-    if (!sendAll(fd, request.dump() + "\n", false)) {
-      close(fd);
-      return std::nullopt;
-    }
-
-    const std::optional<std::string> line = receiveLine(fd);
+    const bool sent = setTimeout(SO_SNDTIMEO) && sendAll(fd, request.dump() + "\n", false) && setTimeout(SO_RCVTIMEO);
+    const std::optional<std::string> line = sent ? receiveLine(fd) : std::nullopt;
     close(fd);
     if (!line) {
       return std::nullopt;
