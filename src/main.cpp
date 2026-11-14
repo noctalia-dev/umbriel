@@ -301,11 +301,7 @@ namespace {
   // delay the keystroke by more than `kCompletionLiveBudgetMs` however many families the position needs.
   class LiveBudget {
   public:
-    [[nodiscard]] int remainingMs() const {
-      const auto left =
-          std::chrono::floor<std::chrono::milliseconds>(m_deadline - std::chrono::steady_clock::now()).count();
-      return left > 0 ? static_cast<int>(left) : 0;
-    }
+    [[nodiscard]] std::chrono::steady_clock::time_point deadline() const { return m_deadline; }
 
   private:
     std::chrono::steady_clock::time_point m_deadline =
@@ -322,19 +318,27 @@ namespace {
     return umbriel::config();
   }
 
+  // `section` names the array to read when the reply is an object, as `effects` wraps its presets and pools in keys.
   void collectLiveNames(
-      std::vector<std::string>& target, std::string_view command, std::string_view key, const LiveBudget& budget
+      std::vector<std::string>& target, std::string_view command, std::string_view key, const LiveBudget& budget,
+      std::string_view section = {}
   ) {
-    // Sampled once: a second read could observe an expired budget and ask for the "no timeout" timeval instead.
-    const int remaining = budget.remainingMs();
-    if (remaining == 0) {
-      return;
-    }
-    const std::optional<std::string> payload = umbriel::queryIpcJson(command, remaining);
+    // The query measures what the shared deadline has left for each system call, and issues none once it is spent.
+    const std::optional<std::string> payload = umbriel::queryIpcJson(command, budget.deadline());
     if (!payload) {
       return;
     }
-    const auto json = nlohmann::json::parse(*payload, nullptr, false);
+    nlohmann::json json = nlohmann::json::parse(*payload, nullptr, false);
+    if (!section.empty()) {
+      if (!json.is_object()) {
+        return;
+      }
+      const auto it = json.find(std::string(section));
+      if (it == json.end()) {
+        return;
+      }
+      json = *it;
+    }
     if (!json.is_array()) {
       return;
     }
@@ -385,6 +389,9 @@ namespace {
     });
     values.effectPools = umbriel::CompletionList([=](std::vector<std::string>& target) {
       configNames(target, [](const umbriel::Config& config) -> const auto& { return config.effects.pools; });
+      if (live) {
+        collectLiveNames(target, "effects", "name", *budget, "pools");
+      }
     });
     values.scratchpads = umbriel::CompletionList([=](std::vector<std::string>& target) {
       configNames(target, [](const umbriel::Config& config) -> const auto& { return config.scratchpads; });

@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <optional>
 #include <span>
 #include <string>
@@ -19,8 +20,10 @@ namespace umbriel {
   // when a name in `events` is not a subscribable family.
   int runIpcSubscribe(const std::vector<std::string>& events);
 
-  // One inspect command's `ok` payload as JSON, or nullopt when no compositor answers within `budgetMs`. Silent by
-  // design: shell completion degrades to the compiled-in vocabulary rather than printing or blocking a keystroke.
-  [[nodiscard]] std::optional<std::string> queryIpcJson(std::string_view command, int budgetMs);
+  // One inspect command's `ok` payload as JSON, or nullopt when no compositor answers before `deadline`, which bounds
+  // connect, send, and reply together. Silent by design: shell completion degrades to the compiled-in vocabulary rather
+  // than printing or blocking a keystroke.
+  [[nodiscard]] std::optional<std::string>
+  queryIpcJson(std::string_view command, std::chrono::steady_clock::time_point deadline);
 
 } // namespace umbriel
