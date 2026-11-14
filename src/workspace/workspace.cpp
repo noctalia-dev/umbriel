@@ -337,8 +337,12 @@ namespace umbriel {
   void Workspace::setFocusedView(View* view, bool raise, bool settleLayers) {
     if (view == nullptr || view->workspace() == this) {
       if (m_focusedView != view) {
+        View* previous = m_focusedView;
         m_focusedView = view;
         m_group->server()->scheduleIpcWorkspacesEvent();
+        if (previous != nullptr && previous->workspace() == this) {
+          previous->syncTransientSceneParent();
+        }
       }
       if (view == nullptr) {
         m_floatingLayerActive = false;
@@ -387,6 +391,17 @@ namespace umbriel {
     return m_floatingLayer != nullptr && m_floatingLayer->node.parent == m_fullscreenTree;
   }
 
+  bool Workspace::liftedAboveFullscreen(const View* view) const {
+    if (m_layoutMode != LayoutMode::Scrolling || view != m_focusedView || view->scheduledFullscreen()) {
+      return false;
+    }
+    const int column = m_layout->columnOf(view);
+    return column >= 0
+        && std::ranges::any_of(m_layout->columns()[static_cast<size_t>(column)].views, [](const View* member) {
+             return member->mapped() && member->scheduledFullscreen();
+           });
+  }
+
   void Workspace::syncFloatingLayer() {
     if (m_floatingLayerActive && std::ranges::none_of(m_views, [](const View* view) {
           return view->mapped() && view->floating() && !view->pinned() && !view->scheduledFullscreen();
@@ -402,6 +417,9 @@ namespace umbriel {
     if (m_floatingLayer->node.parent != target) {
       // Both workspace roots carry the same slide offset and output clip.
       wlr_scene_node_reparent(&m_floatingLayer->node, target);
+    }
+    if (m_focusedView != nullptr) {
+      m_focusedView->syncTransientSceneParent();
     }
   }
 
@@ -2439,6 +2457,7 @@ namespace umbriel {
     if (!target->pinned()
         && !target->scheduledFullscreen()
         && !(target->floating() && floatingLayerRaised())
+        && !liftedAboveFullscreen(target)
         && m_group != nullptr
         && m_group->output() != nullptr) {
       const wlr_box outputBox = m_group->output()->layoutBox();
@@ -2805,6 +2824,8 @@ namespace umbriel {
     for (View* view : m_views) {
       view->refreshStateRuleEffects();
     }
+    // The focused tile is lifted above a fullscreen window only in scrolling.
+    syncFloatingLayer();
     markArrange();
     refreshDropZonePreview(*m_group->server());
   }
