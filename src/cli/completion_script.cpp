@@ -4,7 +4,7 @@ namespace umbriel {
 
   namespace {
     // Every script defers to `umbriel complete`, so the vocabulary stays in the binary and cannot drift from the
-    // tables. Exit 2 asks the shell for its own completion: a command line for `spawn`, a path for `-c`.
+    // tables. Exit 2 asks the shell for a path, exit 3 for a command name.
     constexpr std::string_view kBash =
         R"BASH(# bash completion for umbriel: installed by `meson install`, or load it with
 #   eval "$(umbriel completions bash)"
@@ -14,6 +14,10 @@ _umbriel() {
   output=$(umbriel complete -- "${COMP_WORDS[@]:1}" 2>/dev/null) || code=$?
   if ((code == 2)); then
     compopt -o default 2>/dev/null || true
+    return 0
+  fi
+  if ((code == 3)); then
+    COMPREPLY=($(compgen -c -- "${COMP_WORDS[COMP_CWORD]}" | sort -u))
     return 0
   fi
   COMPREPLY=()
@@ -39,6 +43,10 @@ _umbriel() {
   lines=("${(@f)$(umbriel complete -- "${(@)words[2,-1]}" 2>/dev/null)}") || code=$?
   if ((code == 2)); then
     _path_files
+    return
+  fi
+  if ((code == 3)); then
+    _command_names
     return
   fi
   for line in "${lines[@]}"; do
@@ -71,6 +79,10 @@ function __umbriel_complete
     set -l code $status
     if test $code -eq 2
         __fish_complete_path $current
+        return
+    end
+    if test $code -eq 3
+        __fish_complete_command $current
         return
     end
     for line in $lines

@@ -520,7 +520,11 @@ int main(int argc, char** argv) {
               std::println("{}\t{}", value, description);
             }
           });
-      return outcome == umbriel::CompletionOutcome::Delegate ? 2 : EXIT_SUCCESS;
+      if (outcome == umbriel::CompletionOutcome::Candidates) {
+        return EXIT_SUCCESS;
+      }
+      // The shell owns the position: 2 asks for a path, 3 for a command line.
+      return outcome == umbriel::CompletionOutcome::Delegate ? 2 : 3;
     }
 
     // IPC subcommands

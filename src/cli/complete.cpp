@@ -42,6 +42,11 @@ namespace umbriel {
           state.rejected = true;
           return state;
         }
+        // A flag twice is a line the parser refuses, so the position after it has no vocabulary.
+        if ((state.seenFlags & mask) != 0) {
+          state.rejected = true;
+          return state;
+        }
         if (index + 1 >= words.size()) {
           state.pendingFlag = word;
           return state;
@@ -59,6 +64,7 @@ namespace umbriel {
       SubscribeEvent,
       ConfigWord,
       ConfigPath,
+      CommandLine,
       CompletionsShell,
       IpcCommand,
       Nothing,
@@ -166,6 +172,16 @@ namespace umbriel {
         if (completion.kind() == IpcArgCompletion::Kind::Path) {
           analysis.form = Form::ConfigPath;
         }
+        return analysis;
+      }
+      // The compositor's startup flags are the whole line: `-c` names a configuration file, `-s` a command line, and
+      // nothing follows either value. Any other first word leaves no position the line accepts.
+      if (position == 1 && first == kCliConfigFlag) {
+        analysis.form = Form::ConfigPath;
+      } else if (position == 1 && first == kCliSpawnFlag) {
+        analysis.form = Form::CommandLine;
+      } else {
+        analysis.form = Form::Nothing;
       }
       return analysis;
     }
@@ -210,10 +226,14 @@ namespace umbriel {
       const std::optional<size_t> workspaceIndex = workspacePositionalIndex(spec.argKind);
       const bool workspaceByName = (args.seenFlags & kActionFlagName) != 0;
       const bool workspaceByPosition = workspaceIndex.has_value() && args.positional.size() > *workspaceIndex;
+      // A workspace kind holds one positional per selector and nothing after it, so a surplus word rejects the line.
+      const bool tooManyPositionals = workspaceIndex.has_value() && args.positional.size() > *workspaceIndex + 1;
+      // Two workspace selectors are a line the parser refuses, so nothing after them completes.
+      const bool bothSelectors = workspaceByPosition && workspaceByName;
 
       // `spawn` hands its whole tail to the shell, so a word of it that starts with "--" is the shell's, not a flag.
       if (spec.argKind != ActionArgKind::Command) {
-        if (args.rejected) {
+        if (args.rejected || tooManyPositionals || bothSelectors) {
           return CompletionOutcome::Candidates;
         }
         // `scanArgs` only records a flag the action accepts, so a pending flag always names the family to read.
@@ -223,7 +243,7 @@ namespace umbriel {
             emitAll(values.outputs.items(), "output");
           } else if (pending == kActionFlagWindow) {
             emitAll(values.windows.items(), "window");
-          } else {
+          } else if (!workspaceByPosition) {
             emitAll(values.workspaces.items(), "workspace");
           }
           return CompletionOutcome::Candidates;
@@ -252,7 +272,7 @@ namespace umbriel {
       case ActionArgKind::TabIndex:
         return CompletionOutcome::Candidates;
       case ActionArgKind::Command:
-        return CompletionOutcome::Delegate;
+        return CompletionOutcome::DelegateCommand;
       case ActionArgKind::Submap:
         if (index == 0) {
           emitAll(values.submaps.items(), "submap");
@@ -481,6 +501,8 @@ namespace umbriel {
       return CompletionOutcome::Candidates;
     case Form::ConfigPath:
       return CompletionOutcome::Delegate;
+    case Form::CommandLine:
+      return CompletionOutcome::DelegateCommand;
     case Form::CompletionsShell:
       for (const CompletionShellName& shell : completionShellNames()) {
         if (shell.name.starts_with(analysis.partial)) {

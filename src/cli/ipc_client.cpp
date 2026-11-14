@@ -41,6 +41,20 @@ namespace umbriel {
       return left.count() > 0 ? static_cast<int>(left.count()) : 0;
     }
 
+    // Arms `option` with what `deadline` has left. False once it is spent, because a zero timeval means no timeout at
+    // all.
+    bool setTimeout(int fd, int option, std::chrono::steady_clock::time_point deadline) {
+      const int remaining = remainingMs(deadline);
+      if (remaining <= 0) {
+        return false;
+      }
+      // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
+      timeval tv{};
+      tv.tv_sec = remaining / 1000;
+      tv.tv_usec = (remaining % 1000) * 1000;
+      return setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv)) == 0;
+    }
+
     // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 with `error` set. A caller
     // that owes a keystroke a budget passes `deadline` and gets a connect that cannot outlast it.
     int
@@ -94,12 +108,17 @@ namespace umbriel {
       return fd;
     }
 
-    // One reply line, or nullopt when the peer closed without one or the receive timeout expired. The caller owns
-    // `fd` and closes it.
-    std::optional<std::string> receiveLine(int fd) {
+    // One reply line, or nullopt when the peer closed without one or the deadline passed. A timeout covers a single
+    // `recv`, so a peer that trickles the reply is re-armed against the same deadline instead of extending it. The
+    // caller owns `fd` and closes it.
+    std::optional<std::string>
+    receiveLine(int fd, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
       std::string buf;
       char chunk[4096];
       while (true) {
+        if (deadline && !setTimeout(fd, SO_RCVTIMEO, *deadline)) {
+          break;
+        }
         const ssize_t received = recv(fd, chunk, sizeof(chunk), 0);
         if (received <= 0) {
           break;
@@ -286,22 +305,10 @@ namespace umbriel {
       return std::nullopt;
     }
 
-    const auto setTimeout = [fd, deadline](int option) {
-      const int remaining = remainingMs(deadline);
-      if (remaining <= 0) {
-        return false;
-      }
-      // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
-      timeval tv{};
-      tv.tv_sec = remaining / 1000;
-      tv.tv_usec = (remaining % 1000) * 1000;
-      return setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv)) == 0;
-    };
-
     nlohmann::json request;
     request["cmd"] = command;
-    const bool sent = setTimeout(SO_SNDTIMEO) && sendAll(fd, request.dump() + "\n", false) && setTimeout(SO_RCVTIMEO);
-    const std::optional<std::string> line = sent ? receiveLine(fd) : std::nullopt;
+    const bool sent = setTimeout(fd, SO_SNDTIMEO, deadline) && sendAll(fd, request.dump() + "\n", false);
+    const std::optional<std::string> line = sent ? receiveLine(fd, deadline) : std::nullopt;
     close(fd);
     if (!line) {
       return std::nullopt;
