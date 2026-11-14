@@ -306,7 +306,7 @@ eval "$(umbriel completions zsh)"        # zsh
 umbriel completions fish | source        # fish
 ```
 
-Completion covers every action and its arguments, every IPC subcommand and its flags, `config validate` and `config schema`, `subscribe` event names, and `completions` shells. Action arguments complete the vocabulary their parser accepts: layout modes and `toggle` sequences, window regions, stacking anchors, `normal`/`tabbed`, scratchpad and submap names, effect preset and pool names, and `--output`/`--window`/`--name` flags that the action takes.
+Completion covers every action and its arguments, every IPC subcommand and its flags, the `config` subcommands (`validate`, `schema`, `set`, `get`, `unset`), `subscribe` event names, and `completions` shells. Action arguments complete the vocabulary their parser accepts: layout modes and `toggle` sequences, window regions, stacking anchors, `normal`/`tabbed`, scratchpad and submap names, effect preset and pool names, and `--output`/`--window`/`--name` flags that the action takes.
 
 Configured names (outputs, workspaces, scratchpads, submaps, effect presets and pools) come from the configuration file and need no session. Output names, window ids, and workspace names also come from the running compositor when it answers within a 120 ms budget that covers the whole request; a stopped or absent compositor simply leaves those arguments out. Set `UMBRIEL_COMPLETE_LIVE=0` to skip that query entirely. `umbriel complete -- <word>...` is the callback the scripts use: it prints `candidate<TAB>description` lines, or exits 2 to hand the position to the shell, which is how `spawn` command lines and `-c` paths complete.
 

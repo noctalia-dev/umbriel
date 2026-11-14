@@ -13,6 +13,7 @@
 #include <print>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -84,9 +85,30 @@ UMBRIEL_TEST(firstWordOffersCommandsActionsAndFlags) {
   CHECK(contains(candidates, "complete"));
   CHECK(contains(candidates, "--version"));
   for (const umbriel::IpcCommandSpec& spec : umbriel::ipcCommands()) {
+    // The Config group is reached as `config <sub>`, so its request names are not words the CLI accepts.
+    if (spec.group == umbriel::IpcCommandGroup::Config) {
+      CHECK(!contains(candidates, spec.name));
+      continue;
+    }
     CHECK(contains(candidates, spec.name));
   }
   CHECK(std::ranges::adjacent_find(candidates) == candidates.end());
+}
+
+UMBRIEL_TEST(configGroupCompletesTheWordsTheDispatchAccepts) {
+  const std::vector<std::string> words = complete({"config", ""});
+  CHECK(contains(words, "validate"));
+  CHECK(contains(words, "schema"));
+  for (const umbriel::IpcCommandSpec& spec : umbriel::ipcCommands()) {
+    if (spec.group != umbriel::IpcCommandGroup::Config) {
+      continue;
+    }
+    CHECK(contains(words, spec.name.substr(umbriel::kConfigCommandPrefix.size())));
+  }
+
+  // `config set` takes `<key> <value>`, so neither position may be completed from a family that is not a key.
+  const std::vector<std::string> unset = complete({"config", "unset", ""}, sampleValues());
+  CHECK(!contains(unset, "DP-1"));
 }
 
 UMBRIEL_TEST(firstWordFiltersOnPrefix) {
@@ -108,6 +130,15 @@ UMBRIEL_TEST(actionPrefixFilters) {
   const std::vector<std::string> candidates = complete({"msg", "workspace-sw"});
   CHECK(contains(candidates, "workspace-switch"));
   CHECK(!contains(candidates, "window-close"));
+}
+
+UMBRIEL_TEST(msgJsonFlagsComeBeforeTheAction) {
+  // `msg` takes its own `-j`/`--json` before the action, so the action word is still the one being completed.
+  CHECK(contains(complete({"msg", "-"}), "--json"));
+  CHECK(contains(complete({"msg", "-"}), "-j"));
+  CHECK(contains(complete({"msg", "--json", "workspace-sw"}), "workspace-switch"));
+  CHECK(!contains(complete({"msg", "--json", "workspace-sw"}), "window-close"));
+  CHECK_EQ(complete({"msg", "-j", "overview-toggle", ""}), (std::vector<std::string>{}));
 }
 
 UMBRIEL_TEST(argumentVocabularyParsesThroughTheGrammar) {
@@ -213,9 +244,21 @@ UMBRIEL_TEST(flagValuesCompleteFromTheMatchingFamily) {
       complete({"msg", "workspace-switch", "--output", ""}, values), (std::vector<std::string>{"DP-1", "HDMI-A-1"})
   );
   CHECK_EQ(
-      complete({"msg", "window-close", "--window", ""}, values), (std::vector<std::string>{"kitty:htop", "foot:shell"})
+      complete({"msg", "window-move-to", "--window", ""}, values),
+      (std::vector<std::string>{"kitty:htop", "foot:shell"})
   );
   CHECK_EQ(complete({"msg", "workspace-switch", "--name", ""}, values), (std::vector<std::string>{"2", "web"}));
+
+  // A flag the action's grammar refuses gets no values, so accepting a line can never produce a rejected command.
+  for (const auto& [action, flag] : std::vector<std::pair<std::string, std::string>>{
+           {"window-close", "--output"},
+           {"window-focus", "--output"},
+           {"window-set-region", "--window"},
+           {"workspace-switch", "--window"},
+       }) {
+    const std::vector<std::string> disallowed = complete({"msg", action, flag, ""}, values);
+    CHECK(disallowed.empty());
+  }
 }
 
 UMBRIEL_TEST(spawnDelegatesToTheShell) {
@@ -242,7 +285,8 @@ UMBRIEL_TEST(subscribeCompletesEventsAndKeepsTheList) {
 
 UMBRIEL_TEST(configSubcommandsAndThePathFlag) {
   const std::vector<std::string> subcommands = complete({"config", ""});
-  CHECK_EQ(subcommands, (std::vector<std::string>{"validate", "schema"}));
+  CHECK(contains(subcommands, "validate"));
+  CHECK(contains(subcommands, "schema"));
 
   CompletionOutcome outcome = CompletionOutcome::Candidates;
   complete({"config", "validate", "-c", ""}, {}, &outcome);
@@ -297,7 +341,7 @@ UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
 
 UMBRIEL_TEST(configWordsCompleteTheWordBeforeTheCursor) {
   CHECK_EQ(complete({"config", "val"}), std::vector<std::string>{"validate"});
-  CHECK_EQ(complete({"config", "s"}), std::vector<std::string>{"schema"});
+  CHECK_EQ(complete({"config", "s"}), (std::vector<std::string>{"schema", "set"}));
 
   // Every word of `config-replace` is a path, not just the first.
   CompletionOutcome outcome = CompletionOutcome::Candidates;

@@ -147,11 +147,12 @@ namespace umbriel {
           continue;
         }
         std::optional<std::string_view>* slot = nullptr;
-        if (word == kActionFlagOutputWord && (allowed & kActionFlagOutput) != 0) {
+        const unsigned mask = actionFlagMask(word);
+        if (mask == kActionFlagOutput && (allowed & kActionFlagOutput) != 0) {
           slot = &result.output;
-        } else if (word == kActionFlagWindowWord && (allowed & kActionFlagWindow) != 0) {
+        } else if (mask == kActionFlagWindow && (allowed & kActionFlagWindow) != 0) {
           slot = &result.window;
-        } else if (word == kActionFlagNameWord && (allowed & kActionFlagName) != 0) {
+        } else if (mask == kActionFlagName && (allowed & kActionFlagName) != 0) {
           slot = &result.name;
         }
         if (slot == nullptr || slot->has_value() || index + 1 >= words.size() || words[index + 1].empty()) {
@@ -711,6 +712,19 @@ namespace umbriel {
     default:
       return 0U;
     }
+  }
+
+  unsigned actionFlagMask(std::string_view word) {
+    if (word == kActionFlagOutputWord) {
+      return kActionFlagOutput;
+    }
+    if (word == kActionFlagWindowWord) {
+      return kActionFlagWindow;
+    }
+    if (word == kActionFlagNameWord) {
+      return kActionFlagName;
+    }
+    return 0U;
   }
 
   bool validActionFraction(double fraction) {

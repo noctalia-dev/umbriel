@@ -465,6 +465,8 @@ namespace umbriel {
   inline constexpr unsigned kActionFlagWindow = 1U << 1;
   inline constexpr unsigned kActionFlagName = 1U << 2;
   [[nodiscard]] unsigned actionAllowedFlags(ActionArgKind kind);
+  // The mask a flag word selects, or 0 when the word is no argument flag. The inverse of the words above.
+  [[nodiscard]] unsigned actionFlagMask(std::string_view word);
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
   bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.
