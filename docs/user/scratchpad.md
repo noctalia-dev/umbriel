@@ -172,6 +172,8 @@ A dialog parented to a visible scratchpad window joins that scratchpad unless a 
 
 Backdrop dim and blur affect only the output showing the scratchpad.
 
+Showing a scratchpad never moves a floating window it holds: the window stays where it was left, including hanging off an output edge as far as a floating window may. A window moves only with the output it belongs to. A pad that moves to another output carries its members' positions proportionally and pulls an overhanging one back inside the destination, a window joining a pad that already shows on another output joins that output, an output whose usable area changes refits its members, and a maximized member is refitted to the output each time the pad is shown.
+
 ## Restoring windows
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.
