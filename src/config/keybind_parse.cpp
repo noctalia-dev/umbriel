@@ -13,6 +13,7 @@ extern "C" {
 // clang-format on
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstddef>
@@ -680,17 +681,19 @@ namespace umbriel {
   }
 
   std::string_view layoutModeName(LayoutMode mode) {
-    switch (mode) {
-    case LayoutMode::Scrolling:
-      return "scrolling";
-    case LayoutMode::Dwindle:
-      return "dwindle";
-    case LayoutMode::Master:
-      return "master";
-    case LayoutMode::Stacking:
-      return "stacking";
-    }
-    return "scrolling";
+    const std::span<const std::string_view> names = layoutModeNames();
+    const auto index = static_cast<size_t>(mode);
+    return index < names.size() ? names[index] : std::string_view{};
+  }
+
+  std::span<const std::string_view> layoutModeNames() {
+    static constexpr std::array<std::string_view, 4> kNames{"scrolling", "dwindle", "master", "stacking"};
+    return kNames;
+  }
+
+  std::span<const std::string_view> columnDisplayNames() {
+    static constexpr std::array<std::string_view, 2> kNames{"normal", "tabbed"};
+    return kNames;
   }
 
   bool validActionFraction(double fraction) {
@@ -969,10 +972,11 @@ namespace umbriel {
       }
       case ActionArgKind::ColumnDisplay: {
         const auto word = singleWord(words);
-        if (!word || (*word != "normal" && *word != "tabbed")) {
+        const std::span<const std::string_view> names = columnDisplayNames();
+        if (!word || std::ranges::find(names, *word) == names.end()) {
           return std::nullopt;
         }
-        return ColumnDisplayArg{.display = *word == "tabbed" ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
+        return ColumnDisplayArg{.display = *word == names[1] ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
       }
       case ActionArgKind::TabIndex: {
         const auto word = singleWord(words);
@@ -988,7 +992,7 @@ namespace umbriel {
       }
       case ActionArgKind::SkipConfirmation: {
         const auto word = optionalWord(words);
-        if (!word || (!word->empty() && *word != "skip-confirmation")) {
+        if (!word || (!word->empty() && *word != kSkipConfirmationWord)) {
           return std::nullopt;
         }
         return QuitArg{.skipConfirmation = !word->empty()};

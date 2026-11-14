@@ -442,8 +442,14 @@ namespace umbriel {
   std::optional<std::vector<std::string>> splitActionString(std::string_view text);
 
   // Argument values every action encoding shares, so the word grammar and the IPC action request accept the same set.
-  std::optional<LayoutMode> layoutModeNamed(std::string_view name);
-  std::string_view layoutModeName(LayoutMode mode);
+  [[nodiscard]] std::optional<LayoutMode> layoutModeNamed(std::string_view name);
+  [[nodiscard]] std::string_view layoutModeName(LayoutMode mode);
+  // Every layout mode name in enum order, and the `column-set-display` words in `ColumnDisplay` order: the parsers and
+  // shell completion read one table each.
+  [[nodiscard]] std::span<const std::string_view> layoutModeNames();
+  [[nodiscard]] std::span<const std::string_view> columnDisplayNames();
+  // `session-quit`'s only word.
+  inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
   bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.
