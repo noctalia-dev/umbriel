@@ -1572,7 +1572,8 @@ namespace umbriel {
           if (card->workspaceIndex != index
               || card->view == nullptr
               || !card->view->mapped()
-              || card->view->tabHidden()) {
+              || card->view->tabHidden()
+              || card->view->layoutCovered()) {
             continue;
           }
           const int x =

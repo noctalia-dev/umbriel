@@ -177,7 +177,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-restore-minimized`             | Restore the latest minimized window on this workspace      |
 | `window-toggle-floating [<window-id>]` | Float or tile the focused window, or the given window      |
 | `window-toggle-fullscreen`             | Toggle fullscreen or exit a window covering the focus      |
-| `window-toggle-maximize`               | Toggle full width for the focused column                   |
+| `window-toggle-maximize`               | Toggle maximize for the focused window                     |
 | `window-toggle-maximize-to-edges`      | Toggle maximize without gaps, struts, or borders           |
 | `window-toggle-pinned`                 | Pin the focused window above other windows                 |
 
