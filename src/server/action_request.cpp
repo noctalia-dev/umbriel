@@ -187,7 +187,7 @@ namespace umbriel {
         }
         return LayoutModeArg{.mode = mode, .toggleSequence = {}};
       }
-      if (layout != "toggle") {
+      if (layout != kLayoutModeToggleWord) {
         fields.fail(std::format("unknown layout \"{}\"", layout));
         return std::nullopt;
       }
@@ -323,11 +323,12 @@ namespace umbriel {
         if (!fields.only({"display"}) || !fields.string("display", true, display)) {
           return std::nullopt;
         }
-        if (display != "normal" && display != "tabbed") {
+        const std::optional<ColumnDisplay> named = columnDisplayNamed(display);
+        if (!named) {
           fields.fail("\"display\" must be normal or tabbed");
           return std::nullopt;
         }
-        return ColumnDisplayArg{.display = display == "tabbed" ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
+        return ColumnDisplayArg{.display = *named};
       }
       case ActionArgKind::TabIndex: {
         TabIndexArg arg;

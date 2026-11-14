@@ -3,6 +3,7 @@
 // real grammar, so a name renamed in one place fails here.
 
 #include "check.h"
+#include "cli/cli_words.h"
 #include "cli/complete.h"
 #include "config/keybind_parse.h"
 #include "server/ipc.h"
@@ -284,6 +285,7 @@ UMBRIEL_TEST(flagValuesCompleteFromTheMatchingFamily) {
 }
 
 UMBRIEL_TEST(spawnDelegatesToTheShell) {
+  // The first tail word is a command name; once it is given, the rest of the line belongs to that command.
   CompletionOutcome outcome = CompletionOutcome::Candidates;
   complete({"msg", "spawn", ""}, {}, &outcome);
   CHECK(outcome == CompletionOutcome::DelegateCommand);
@@ -295,7 +297,7 @@ UMBRIEL_TEST(spawnDelegatesToTheShell) {
        }) {
     CompletionOutcome delegated = CompletionOutcome::Candidates;
     complete(words, {}, &delegated);
-    CHECK(delegated == CompletionOutcome::DelegateCommand);
+    CHECK(delegated == CompletionOutcome::Delegate);
   }
   CompletionOutcome flagPrefix = CompletionOutcome::Candidates;
   complete({"msg", "spawn", "--verb"}, {}, &flagPrefix);
@@ -310,8 +312,10 @@ UMBRIEL_TEST(topLevelFlagsOwnTheirArguments) {
   CHECK(outcome == CompletionOutcome::Delegate);
   complete({"-s", ""}, {}, &outcome);
   CHECK(outcome == CompletionOutcome::DelegateCommand);
-  CHECK(complete({"-c", "umbriel.toml", ""}).empty());
-  CHECK(complete({"-s", "kitty", ""}).empty());
+  // The two startup flags may appear in either order, each with one value, and nothing else follows them.
+  CHECK_EQ(complete({"-c", "umbriel.toml", ""}), std::vector<std::string>{"-s"});
+  CHECK_EQ(complete({"-s", "kitty", ""}), std::vector<std::string>{"-c"});
+  CHECK(complete({"-c", "umbriel.toml", "-s", "kitty", ""}).empty());
   CHECK(complete({"bogus", ""}).empty());
 }
 
@@ -339,7 +343,18 @@ UMBRIEL_TEST(configSubcommandsAndThePathFlag) {
   complete({"config", "validate", "-c", ""}, {}, &outcome);
   CHECK(outcome == CompletionOutcome::Delegate);
 
-  CHECK_EQ(complete({"config", "schema", "--"}), std::vector<std::string>{"--json"});
+  CHECK_EQ(complete({"config", "schema", "-"}), (std::vector<std::string>{"--json", "-j"}));
+}
+
+UMBRIEL_TEST(configValidateKeepsItsFlagsAfterAValue) {
+  // `validateConfig` takes `-c` and the JSON flags in any order, so every position after a value still completes.
+  CHECK(contains(complete({"config", "validate", "--json", ""}), umbriel::kCliConfigFlag));
+  CHECK(contains(complete({"config", "validate", "-c", "umbriel.toml", ""}), umbriel::kCliJsonFlag));
+  CHECK(contains(complete({"config", "validate", "-j", ""}), umbriel::kCliConfigFlag));
+
+  CompletionOutcome outcome = CompletionOutcome::Candidates;
+  complete({"config", "validate", "-c", ""}, {}, &outcome);
+  CHECK(outcome == CompletionOutcome::Delegate);
 }
 
 UMBRIEL_TEST(completionsOffersItsShells) {
@@ -354,6 +369,9 @@ UMBRIEL_TEST(ipcCommandsCompleteTheirOwnSurface) {
   CHECK(outcome == CompletionOutcome::Delegate);
 
   CHECK_EQ(complete({"input-capture-revoke", ""}), std::vector<std::string>{"all"});
+
+  // The Config group is reached as `config <sub>`; a request name on its own is a line the dispatch refuses.
+  CHECK(complete({"config-set", "--"}).empty());
 }
 
 UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
@@ -375,7 +393,7 @@ UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
 
   CompletionOutcome outcome = CompletionOutcome::Candidates;
   complete({"msg", "spawn", "kitty", ""}, values, &outcome);
-  CHECK(outcome == CompletionOutcome::DelegateCommand);
+  CHECK(outcome == CompletionOutcome::Delegate);
   CHECK(reads.empty());
 
   // A live position reads its own family, and only once however often the value is asked for.
@@ -409,10 +427,15 @@ UMBRIEL_TEST(scriptsDeferToTheBinary) {
   // zsh refuses compadd outside a completion function, so an eval must register instead of running the function body.
   CHECK(zsh.contains("[[ $funcstack[1] == _umbriel ]]"));
   CHECK(umbriel::completionScript(umbriel::CompletionShell::Fish).contains("complete -c umbriel"));
-  // The callback hands a path over with exit 2 and a command line with exit 3, so each script needs both branches.
-  CHECK(umbriel::completionScript(umbriel::CompletionShell::Bash).contains("code == 3"));
-  CHECK(zsh.contains("code == 3"));
-  CHECK(umbriel::completionScript(umbriel::CompletionShell::Fish).contains("code -eq 3"));
+  // Each delegated position must reach the shell's own completer: paths for `-c`, command names for `spawn`.
+  const std::string bash = umbriel::completionScript(umbriel::CompletionShell::Bash);
+  CHECK(bash.contains("compopt -o default"));
+  CHECK(bash.contains("compgen -c"));
+  CHECK(zsh.contains("_path_files"));
+  CHECK(zsh.contains("_command_names"));
+  const std::string fish = umbriel::completionScript(umbriel::CompletionShell::Fish);
+  CHECK(fish.contains("__fish_complete_path"));
+  CHECK(fish.contains("__fish_complete_command"));
 }
 
 UMBRIEL_TEST(shellNamesRoundTrip) {

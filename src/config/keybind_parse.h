@@ -450,6 +450,8 @@ namespace umbriel {
   // shell completion read one table each.
   std::span<const std::string_view> layoutModeNames();
   std::span<const std::string_view> columnDisplayNames();
+  // The `column-set-display` value a word names, or nullopt for anything else.
+  std::optional<ColumnDisplay> columnDisplayNamed(std::string_view name);
   // `session-quit`'s only word, and the scratchpad a wordless scratchpad action addresses.
   inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
   inline constexpr std::string_view kImplicitScratchpad = "default";
