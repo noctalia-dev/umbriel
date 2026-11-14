@@ -162,7 +162,7 @@ namespace umbriel {
       if (const IpcCommandSpec* spec = findIpcCommand(first); spec != nullptr) {
         analysis.form = Form::IpcCommand;
         analysis.command = spec;
-        const IpcArgCompletion completion = ipcCommandArgCompletion(spec->name);
+        const IpcArgCompletion& completion = spec->completion;
         if (completion.kind() == IpcArgCompletion::Kind::Path) {
           analysis.form = Form::ConfigPath;
         }
@@ -448,7 +448,7 @@ namespace umbriel {
         emitJsonFlags(partial, sink);
         return;
       }
-      const IpcArgCompletion completion = ipcCommandArgCompletion(spec.name);
+      const IpcArgCompletion& completion = spec.completion;
       if (position == 1 && completion.kind() == IpcArgCompletion::Kind::Choice) {
         for (const std::string_view choice : completion.choices()) {
           if (choice.starts_with(partial)) {

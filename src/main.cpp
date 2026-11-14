@@ -305,7 +305,7 @@ namespace {
   // delay the keystroke by more than `kCompletionLiveBudgetMs` however many families the position needs.
   class LiveBudget {
   public:
-    [[nodiscard]] std::chrono::steady_clock::time_point deadline() const { return m_deadline; }
+    std::chrono::steady_clock::time_point deadline() const { return m_deadline; }
 
   private:
     std::chrono::steady_clock::time_point m_deadline =

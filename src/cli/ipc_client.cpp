@@ -5,14 +5,12 @@
 #include "server/ipc_commands.h"
 
 #include <array>
-#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
 #include <nlohmann/json.hpp>
 #include <optional>
-#include <poll.h>
 #include <print>
 #include <string>
 #include <sys/socket.h>
@@ -68,24 +66,12 @@ namespace umbriel {
       }
       socketPath.copy(addr.sun_path, socketPath.size());
 
+      // AF_UNIX connects at once or refuses — a listener whose accept queue is full answers `EAGAIN` — so the
+      // non-blocking socket only keeps a refusal from waiting. The owner's budget covers the rest of the request.
       if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        // A non-blocking connect reports progress rather than failure: the socket becomes writable once it is done.
-        if (!deadline || errno != EINPROGRESS) {
-          error = "cannot connect to umbriel socket (is the compositor running?)";
-          close(fd);
-          return -1;
-        }
-        pollfd ready{fd, POLLOUT, 0};
-        int polled = 0;
-        while ((polled = poll(&ready, 1, remainingMs(*deadline))) < 0 && errno == EINTR) {
-        }
-        int connectError = 0;
-        socklen_t length = sizeof(connectError);
-        if (polled <= 0 || getsockopt(fd, SOL_SOCKET, SO_ERROR, &connectError, &length) < 0 || connectError != 0) {
-          error = "cannot connect to umbriel socket (is the compositor running?)";
-          close(fd);
-          return -1;
-        }
+        error = "cannot connect to umbriel socket (is the compositor running?)";
+        close(fd);
+        return -1;
       }
       if (deadline) {
         // The query bounds its send and receive with socket timeouts, which a non-blocking fd ignores.

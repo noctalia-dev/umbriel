@@ -443,12 +443,12 @@ namespace umbriel {
   std::optional<std::vector<std::string>> splitActionString(std::string_view text);
 
   // Argument values every action encoding shares, so the word grammar and the IPC action request accept the same set.
-  [[nodiscard]] std::optional<LayoutMode> layoutModeNamed(std::string_view name);
-  [[nodiscard]] std::string_view layoutModeName(LayoutMode mode);
+  std::optional<LayoutMode> layoutModeNamed(std::string_view name);
+  std::string_view layoutModeName(LayoutMode mode);
   // Every layout mode name in enum order, and the `column-set-display` words in `ColumnDisplay` order: the parsers and
   // shell completion read one table each.
-  [[nodiscard]] std::span<const std::string_view> layoutModeNames();
-  [[nodiscard]] std::span<const std::string_view> columnDisplayNames();
+  std::span<const std::string_view> layoutModeNames();
+  std::span<const std::string_view> columnDisplayNames();
   // `session-quit`'s only word, and the scratchpad a wordless scratchpad action addresses.
   inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
   inline constexpr std::string_view kImplicitScratchpad = "default";
@@ -463,9 +463,9 @@ namespace umbriel {
   inline constexpr unsigned kActionFlagOutput = 1U << 0;
   inline constexpr unsigned kActionFlagWindow = 1U << 1;
   inline constexpr unsigned kActionFlagName = 1U << 2;
-  [[nodiscard]] unsigned actionAllowedFlags(ActionArgKind kind);
+  unsigned actionAllowedFlags(ActionArgKind kind);
   // The mask a flag word selects, or 0 when the word is no argument flag. The inverse of the words above.
-  [[nodiscard]] unsigned actionFlagMask(std::string_view word);
+  unsigned actionFlagMask(std::string_view word);
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
   bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.

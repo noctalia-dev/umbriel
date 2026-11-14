@@ -19,7 +19,7 @@ namespace umbriel {
     std::string_view name;
   };
 
-  [[nodiscard]] std::span<const CompletionShellName> completionShellNames();
+  std::span<const CompletionShellName> completionShellNames();
 
   // One family of values completion cannot derive from the compiled tables. The engine reads it only where the words at
   // hand can use it, so a loader is asked at most once and a position that needs no values never pays for one.
@@ -33,7 +33,7 @@ namespace umbriel {
     explicit CompletionList(Filler filler);
 
     // Sorted on the first read; a filler that ran is never asked again.
-    [[nodiscard]] const std::vector<std::string>& items() const;
+    const std::vector<std::string>& items() const;
 
   private:
     mutable std::vector<std::string> m_items;
@@ -64,9 +64,9 @@ namespace umbriel {
   [[nodiscard]] CompletionOutcome
   completeWords(std::span<const std::string> words, const CompletionValues& values, const CompletionSink& sink);
 
-  [[nodiscard]] std::optional<CompletionShell> completionShellNamed(std::string_view name);
+  std::optional<CompletionShell> completionShellNamed(std::string_view name);
 
   // The script for a shell, printed by `umbriel completions <shell>` and installed by Meson.
-  [[nodiscard]] std::string completionScript(CompletionShell shell);
+  std::string completionScript(CompletionShell shell);
 
 } // namespace umbriel
