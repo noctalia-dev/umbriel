@@ -615,8 +615,8 @@ namespace umbriel {
       return;
     }
     m_onActiveWorkspace = active;
-    // A hidden tab or a minimized window stays hidden when its workspace comes back.
-    const bool shown = active && !m_tabHidden && !m_minimized;
+    // A hidden tab, a covered tile, or a minimized window stays hidden when its workspace comes back.
+    const bool shown = active && !m_tabHidden && !m_layoutCovered && !m_minimized;
     if (m_sceneTree != nullptr) {
       wlr_scene_node_set_enabled(&m_sceneTree->node, shown);
     }
@@ -653,6 +653,20 @@ namespace umbriel {
     if (m_sceneTree != nullptr) {
       // A revealed tab shows exactly when its workspace does.
       setNodeEnabled(!hidden && m_mapped && m_onActiveWorkspace);
+    }
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onViewPresentationChanged(this);
+    }
+    m_server->scheduleIpcWindowsEvent();
+  }
+
+  void View::setLayoutCovered(bool covered) {
+    if (m_layoutCovered == covered) {
+      return;
+    }
+    m_layoutCovered = covered;
+    if (m_sceneTree != nullptr) {
+      setNodeEnabled(m_mapped && m_onActiveWorkspace);
     }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onViewPresentationChanged(this);

@@ -32,6 +32,7 @@ namespace umbriel {
 
       std::unique_ptr<SavedNode> root;
       size_t members = 0;
+      std::optional<LayoutMemberId> maximized;
     };
 
   } // namespace
@@ -335,7 +336,8 @@ namespace umbriel {
   LayoutCapture DwindleLayout::captureState() const {
     auto snapshot = std::make_shared<DwindleSnapshot>();
     LayoutCapture capture{.snapshot = snapshot, .members = {}};
-    const auto saveNode = [&capture](auto&& self, const Node* node) -> std::unique_ptr<DwindleSnapshot::SavedNode> {
+    const auto saveNode = [&capture, &snapshot,
+                           this](auto&& self, const Node* node) -> std::unique_ptr<DwindleSnapshot::SavedNode> {
       if (node == nullptr) {
         return nullptr;
       }
@@ -347,6 +349,9 @@ namespace umbriel {
         const auto id = static_cast<LayoutMemberId>(capture.members.size());
         capture.members.push_back({.id = id, .view = node->view});
         saved->member = id;
+        if (node->view != nullptr && node->view == m_maximized) {
+          snapshot->maximized = id;
+        }
       } else {
         saved->left = self(self, node->left.get());
         saved->right = self(self, node->right.get());
@@ -406,6 +411,7 @@ namespace umbriel {
     };
 
     m_root = restoreNode(restoreNode, snapshot->root.get(), nullptr);
+    m_maximized = snapshot->maximized ? (*resolved)[static_cast<size_t>(*snapshot->maximized)] : nullptr;
     m_targets.clear();
     rebuildFlatColumns();
     return true;
@@ -565,6 +571,7 @@ namespace umbriel {
       return;
     }
     detachNode(node);
+    clearMaximized(view);
     std::erase_if(m_targets, [view](const LayoutTarget& t) { return t.view == view; });
     rebuildFlatColumns();
   }
@@ -594,6 +601,10 @@ namespace umbriel {
   }
 
   void DwindleLayout::arrangeArea(const wlr_box& area) {
+    m_areaX = area.x;
+    m_areaY = area.y;
+    m_areaW = area.width;
+    m_areaH = area.height;
     m_targets.clear();
     if (m_root != nullptr) {
       arrangeNode(m_root.get(), area);
@@ -631,13 +642,20 @@ namespace umbriel {
     if (it == m_targets.end()) {
       return {};
     }
+    if (view == m_maximized) {
+      return {.x = m_areaX, .y = m_areaY, .width = m_areaW, .height = m_areaH};
+    }
     return {.x = it->x, .y = it->y, .width = it->width, .height = it->height};
   }
 
   int DwindleLayout::leafIndexAt(double cx, double cy) const {
     for (int i = 0; i < static_cast<int>(m_targets.size()); ++i) {
-      const LayoutTarget& t = m_targets[i];
-      if (cx >= t.x && cx < t.x + t.width && cy >= t.y && cy < t.y + t.height) {
+      const wlr_box box = targetBoxByIndex(i);
+      if ((m_maximized == nullptr || m_targets[i].view == m_maximized)
+          && cx >= box.x
+          && cx < box.x + box.width
+          && cy >= box.y
+          && cy < box.y + box.height) {
         return i;
       }
     }
@@ -648,8 +666,7 @@ namespace umbriel {
     if (index < 0 || index >= static_cast<int>(m_targets.size())) {
       return {};
     }
-    const LayoutTarget& t = m_targets[static_cast<size_t>(index)];
-    return {.x = t.x, .y = t.y, .width = t.width, .height = t.height};
+    return targetBox(m_targets[static_cast<size_t>(index)].view);
   }
 
   std::optional<View*> DwindleLayout::focusHorizontalLeaf(const View* view, int direction) const {
@@ -710,45 +727,40 @@ namespace umbriel {
     );
   }
 
+  void DwindleLayout::clearMaximized(const View* view) {
+    if (view != nullptr && view == m_maximized) {
+      m_maximized = nullptr;
+    }
+  }
+
   bool DwindleLayout::toggleFullWidth(int columnIndex) {
-    Node* node = nodeAtFlatIndex(columnIndex);
-    const std::vector<Split> axisSplits = splits(node, Node::HSplit);
-    if (axisSplits.empty()) {
+    const Node* node = nodeAtFlatIndex(columnIndex);
+    if (node == nullptr || node->view == nullptr) {
       return false;
     }
-    double current = 1.0;
-    double maximum = 1.0;
-    for (const Split& split : axisSplits) {
-      current *= splitShare(split);
-      maximum *= 0.9;
-    }
-    if (current >= maximum - kFractionEpsilon) {
-      applyFraction(axisSplits, 0.5);
-      return false;
-    }
-    applyFraction(axisSplits, 1.0);
-    return true;
+    m_maximized = m_maximized == node->view ? nullptr : node->view;
+    return m_maximized != nullptr;
   }
 
   bool DwindleLayout::isFullWidth(int columnIndex) const {
-    const std::vector<Split> axisSplits = splits(nodeAtFlatIndex(columnIndex), Node::HSplit);
-    if (axisSplits.empty()) {
-      return false;
-    }
-    double current = 1.0;
-    double maximum = 1.0;
-    for (const Split& split : axisSplits) {
-      current *= splitShare(split);
-      maximum *= 0.9;
-    }
-    return current >= maximum - kFractionEpsilon;
+    const Node* node = nodeAtFlatIndex(columnIndex);
+    return node != nullptr && node->view != nullptr && node->view == m_maximized;
   }
 
   bool DwindleLayout::setWidthFraction(int columnIndex, double fraction) {
-    return applyFraction(splits(nodeAtFlatIndex(columnIndex), Node::HSplit), fraction);
+    Node* node = nodeAtFlatIndex(columnIndex);
+    if (!applyFraction(splits(node, Node::HSplit), fraction)) {
+      return false;
+    }
+    clearMaximized(node->view);
+    return true;
   }
 
-  void DwindleLayout::clearFullWidthState(int /*columnIndex*/) {}
+  void DwindleLayout::clearFullWidthState(int columnIndex) {
+    if (const Node* node = nodeAtFlatIndex(columnIndex)) {
+      clearMaximized(node->view);
+    }
+  }
 
   double DwindleLayout::widthFraction(int columnIndex) const {
     const std::vector<Split> axisSplits = splits(nodeAtFlatIndex(columnIndex), Node::HSplit);
@@ -775,7 +787,11 @@ namespace umbriel {
   }
 
   bool DwindleLayout::setHeightFraction(View* view, double fraction) {
-    return applyFraction(splits(findNode(view), Node::VSplit), fraction);
+    if (!applyFraction(splits(findNode(view), Node::VSplit), fraction)) {
+      return false;
+    }
+    clearMaximized(view);
+    return true;
   }
 
   // Drag-and-drop directional insertion
@@ -870,10 +886,12 @@ namespace umbriel {
     public:
       DwindleResizeGrab(
           DwindleLayout* layout, View* view, bool hActive, uint32_t hEdge, double hRatio, double hSpan, bool vActive,
-          uint32_t vEdge, double vRatio, double vSpan
+          uint32_t vEdge, double vRatio, double vSpan, bool clearedMaximize
       )
           : m_layout(layout), m_view(view), m_hActive(hActive), m_hEdge(hEdge), m_hRatio(hRatio), m_hSpan(hSpan),
-            m_vActive(vActive), m_vEdge(vEdge), m_vRatio(vRatio), m_vSpan(vSpan) {}
+            m_vActive(vActive), m_vEdge(vEdge), m_vRatio(vRatio), m_vSpan(vSpan), m_clearedMaximize(clearedMaximize) {}
+
+      bool unmaximizeOnBegin() const override { return m_clearedMaximize; }
 
       void applyDelta(double dx, double dy, const wlr_box& /*usable*/) override {
         if (m_hActive && m_hSpan > 0) {
@@ -897,6 +915,7 @@ namespace umbriel {
       uint32_t m_vEdge;
       double m_vRatio;
       double m_vSpan;
+      bool m_clearedMaximize;
     };
 
   } // namespace
@@ -949,8 +968,10 @@ namespace umbriel {
     if (!hActive && !vActive) {
       return nullptr;
     }
+    const bool clearedMaximize = view != nullptr && view == m_maximized;
+    clearMaximized(view);
     return std::make_unique<DwindleResizeGrab>(
-        this, view, hActive, hEdge, hRatio, hSpan, vActive, vEdge, vRatio, vSpan
+        this, view, hActive, hEdge, hRatio, hSpan, vActive, vEdge, vRatio, vSpan, clearedMaximize
     );
   }
 

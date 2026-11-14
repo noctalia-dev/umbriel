@@ -973,4 +973,116 @@ UMBRIEL_TEST(snapshotUsesMemberIdsInsteadOfCapturedViewPointers) {
   CHECK(restored.layout.targetBox(stub(11)).y < restored.layout.targetBox(stub(12)).y);
 }
 
+UMBRIEL_TEST(maximizedLeafFillsTheLayoutArea) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.toggleFullWidth(fixture.layout.columnOf(stub(1))));
+  CHECK_EQ(fixture.layout.maximizedView(), stub(1));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box box = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(box.x, kUsable.x + fixture.config.edgePad);
+  CHECK_EQ(box.y, kUsable.y + fixture.config.edgePad);
+  CHECK_EQ(box.width, kUsable.width - 2 * fixture.config.edgePad);
+  CHECK_EQ(box.height, kUsable.height - 2 * fixture.config.edgePad);
+}
+
+UMBRIEL_TEST(restoringAMaximizedLeafReturnsItsTileAndSplits) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setResizeBoundary(stub(0), WLR_EDGE_RIGHT, 0.63));
+  fixture.layout.arrange(kUsable);
+  const wlr_box tile = fixture.layout.targetBox(stub(1));
+
+  const int column = fixture.layout.columnOf(stub(1));
+  CHECK(fixture.layout.toggleFullWidth(column));
+  CHECK(!fixture.layout.toggleFullWidth(column));
+  CHECK_EQ(fixture.layout.maximizedView(), nullptr);
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box box = fixture.layout.targetBox(stub(1));
+  CHECK_EQ(box.x, tile.x);
+  CHECK_EQ(box.y, tile.y);
+  CHECK_EQ(box.width, tile.width);
+  CHECK_EQ(box.height, tile.height);
+}
+
+UMBRIEL_TEST(maximizedLeafKeepsItsNeighbors) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.toggleFullWidth(fixture.layout.columnOf(stub(1))));
+  fixture.layout.arrange(kUsable);
+
+  const auto neighbor = fixture.layout.focusHorizontalLeaf(stub(1), -1);
+  CHECK(neighbor.has_value());
+  if (neighbor.has_value()) {
+    CHECK_EQ(*neighbor, stub(0));
+  }
+}
+
+UMBRIEL_TEST(removingTheMaximizedLeafEndsTheMaximize) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.toggleFullWidth(fixture.layout.columnOf(stub(2))));
+  fixture.layout.removeView(stub(2));
+  CHECK_EQ(fixture.layout.maximizedView(), nullptr);
+}
+
+UMBRIEL_TEST(settingTheWidthEndsTheMaximize) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  const int column = fixture.layout.columnOf(stub(0));
+  CHECK(fixture.layout.toggleFullWidth(column));
+  CHECK(fixture.layout.setWidthFraction(column, 0.7));
+  CHECK_EQ(fixture.layout.maximizedView(), nullptr);
+}
+
+UMBRIEL_TEST(interactiveResizeEndsTheMaximize) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.toggleFullWidth(fixture.layout.columnOf(stub(0))));
+  const auto grab = fixture.layout.beginResize(stub(0), WLR_EDGE_RIGHT, kUsable);
+  CHECK(grab != nullptr);
+  if (grab != nullptr) {
+    CHECK(grab->unmaximizeOnBegin());
+  }
+  CHECK_EQ(fixture.layout.maximizedView(), nullptr);
+}
+
+UMBRIEL_TEST(leafIndexAtFindsOnlyTheMaximizedLeaf) {
+  Fixture fixture;
+  fixture.addLeaves(3);
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.toggleFullWidth(fixture.layout.columnOf(stub(2))));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box covered = fixture.layout.targetBox(stub(0));
+  const int index = fixture.layout.leafIndexAt(covered.x + 10.0, covered.y + 10.0);
+  CHECK_EQ(index, fixture.layout.columnOf(stub(2)));
+  const wlr_box box = fixture.layout.targetBoxByIndex(index);
+  const wlr_box maximized = fixture.layout.targetBox(stub(2));
+  CHECK_EQ(box.x, maximized.x);
+  CHECK_EQ(box.y, maximized.y);
+  CHECK_EQ(box.width, maximized.width);
+  CHECK_EQ(box.height, maximized.height);
+}
+
+UMBRIEL_TEST(snapshotKeepsTheMaximizedLeaf) {
+  Fixture source;
+  source.addLeaves(3);
+  source.layout.arrange(kUsable);
+  CHECK(source.layout.toggleFullWidth(source.layout.columnOf(stub(1))));
+  const auto capture = source.layout.captureState();
+
+  Fixture restored;
+  CHECK(restored.layout.restoreState(*capture.snapshot, capture.members));
+  CHECK_EQ(restored.layout.maximizedView(), stub(1));
+}
+
 int main() { return RUN_TESTS(); }

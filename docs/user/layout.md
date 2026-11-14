@@ -196,6 +196,8 @@ Directional moves (`window-move-left`, `window-move-right`, `window-move-up`, `w
 
 `layout-toggle-split` flips the split holding the focused tile between side by side and stacked, keeping its ratio. The flipped split stays fixed, like one made by a directional drop.
 
+`window-toggle-maximize` gives the focused tile the whole layout area, keeping struts, gaps, and borders, and hides the other tiles. Floating and pinned windows stay above it. Toggling it again returns the tile to its place with every split as it was. Focusing another tile, a tiled window arriving on the workspace, a directional move or swap, or resizing the tile ends the maximize first.
+
 Dwindle has no multi-window columns. Moving one into Dwindle places its windows as separate tiles.
 
 ## Master layout

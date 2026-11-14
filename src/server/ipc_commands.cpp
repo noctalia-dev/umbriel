@@ -695,7 +695,8 @@ namespace umbriel {
       entry["maximized_to_edges"] = view.maximizedToEdges();
       entry["pinned"] = view.pinned();
       // Pinned windows show on every workspace of their output.
-      entry["visible"] = view.pinned() || (view.onActiveWorkspace() && !view.tabHidden() && !view.minimized());
+      entry["visible"] = view.pinned()
+          || (view.onActiveWorkspace() && !view.tabHidden() && !view.layoutCovered() && !view.minimized());
       const Output* output = view.currentOutput();
       entry["output"] = output != nullptr ? output->wlr()->name : "";
       const View* parent = view.shellParent();

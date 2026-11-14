@@ -153,11 +153,18 @@ run_mode() {
   wait_for_windows 3
   finish
 
+  # Dwindle maximize hides the other tiles, and restoring draws the shrinking window over them as they reappear.
+  # A width change still moves the tiles side by side, which is what this check is about.
+  local grow=window-toggle-maximize shrink=window-toggle-maximize
+  if [[ $mode == dwindle ]]; then
+    grow=window-cycle-primary-extent
+    shrink=window-cycle-primary-extent-back
+  fi
   "$UMBRIEL" msg window-focus "$(window_id "motion-$tag-a")" > /dev/null
-  "$UMBRIEL" msg window-toggle-maximize > /dev/null
+  "$UMBRIEL" msg "$grow" > /dev/null
   "$UMBRIEL" clock-advance 300 > /dev/null
-  "$UMBRIEL" msg window-toggle-maximize > /dev/null
-  sample "$tag-maximize-interrupt"
+  "$UMBRIEL" msg "$shrink" > /dev/null
+  sample "$tag-resize-interrupt"
   finish
 
   close_all
