@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=2
 # Output actions warp the pointer to the target output's center. With follows_mouse, landing on another window there
-# must not take keyboard focus from the window the action moved or focused.
+# must not take keyboard focus from the window the action moved or focused, even after motion within that window.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -53,7 +53,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [output.HEADLESS-1]
 position = [0, 0]
@@ -114,7 +114,12 @@ expect_cover_at_center HEADLESS-1 640 360
 expect_pointer_output HEADLESS-1
 wait_for_active output-move-tiled
 
-# The pointer really is over the cover: real motion there hands it focus, as follows_mouse should.
+# The pointer was carried onto the cover rather than moved onto it, so sloppy motion within it keeps the keyboard
+# choice. Reaching the cover from another window hands it focus.
+"$POINTER" 2560 720 move 641 361
+"$UMBRIEL" settle
+wait_for_active output-move-tiled
+"$POINTER" 2560 720 move 100 100
 "$POINTER" 2560 720 move 641 361
 wait_for_active output-move-cover
 

@@ -51,6 +51,7 @@ unit_tests = [
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
   ['output-direct-scanout', ['unit/output_direct_scanout.cpp'], []],
   ['output-hdr-transition', ['unit/output_hdr_transition.cpp'], []],
+  ['output-connector-hdr-state', ['unit/output_connector_hdr_state.cpp'], []],
   ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['output-gamma-transition', ['unit/output_gamma_transition.cpp'], []],
   ['hdr-metadata', ['unit/hdr_metadata.cpp'], [umbriel_core_dep]],
@@ -205,7 +206,7 @@ drag_client = executable(
     xdg_shell_client_h, xdg_shell_client_c,
     xdg_activation_client_h, xdg_activation_client_c,
   ],
-  dependencies: [wayland_client_dep],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
 )
 
 # Harness helper that reserves an exclusive zone on a named output. Output

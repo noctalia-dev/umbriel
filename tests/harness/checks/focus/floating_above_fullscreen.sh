@@ -69,7 +69,7 @@ cat >>"$UMBRIEL_CONFIG" <<'CONFIG'
 enabled = false
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 
 [appearance]
 border_width = 0
@@ -141,7 +141,7 @@ assert_pixel 300 260 "255 0 0" "focusing a float did not reveal the stacking lay
 assert_pixel 1050 260 "255 0 255" "focusing a float did not reveal a default-focus peer"
 
 # Hover changes keyboard focus without burying floats that remain under the pointer's control.
-sed -i 's/^follows_mouse = false$/follows_mouse = true/' "$UMBRIEL_CONFIG"
+sed -i 's/^follows_mouse = "off"$/follows_mouse = "sloppy"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload >/dev/null
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 100 600
 capture
@@ -155,7 +155,7 @@ assert_active fullscreen-main
 assert_pixel 700 260 "0 0 255" "refocusing fullscreen left the focused float above it"
 assert_pixel 300 260 "0 0 255" "refocusing fullscreen left the other float above it"
 assert_pixel 1050 260 "0 0 255" "refocusing fullscreen left a default-focus peer above it"
-sed -i 's/^follows_mouse = true$/follows_mouse = false/' "$UMBRIEL_CONFIG"
+sed -i 's/^follows_mouse = "sloppy"$/follows_mouse = "off"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload >/dev/null
 
 float_id=$(windows | jq -r '.[] | select(.title == "focused-float") | .id')

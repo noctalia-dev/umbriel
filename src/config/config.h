@@ -231,6 +231,15 @@ namespace umbriel {
     Window,
   };
 
+  // How the pointer moves keyboard focus. Sloppy focuses the window under a moving pointer only when it differs from
+  // the window the pointer was last over, so focus given elsewhere stays until the pointer reaches another window.
+  // Always focuses the window under the pointer on every motion. Neither changes focus while the pointer is still.
+  enum class FollowsMouse : uint8_t {
+    Off,
+    Sloppy,
+    Always,
+  };
+
   // How a touchpad device turns motion into scroll events: two fingers anywhere on the surface, or along
   // its edges. `none` disables scrolling. Device support varies; unset keeps the device's libinput default.
   enum class ScrollMethod : uint8_t {
@@ -1257,7 +1266,8 @@ namespace umbriel {
       } dragEdgeScroll;
 
       struct Focus {
-        bool followsMouse = false;
+        FollowsMouse followsMouse = FollowsMouse::Off;
+        bool followsMouseEnabled() const { return followsMouse != FollowsMouse::Off; }
         std::optional<double> followsMouseMaxScroll;
         // false narrows hover to focus alone: raising is left to clicks, keybinds, and activation, so sweeping the
         // pointer across a larger window underneath cannot bury the window above it.

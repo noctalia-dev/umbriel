@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
+#include <xkbcommon/xkbcommon.h>
 
 namespace {
 
@@ -90,6 +91,12 @@ namespace {
     uint32_t dragSerial = 0;
     const char* title = "drag-target";
     bool targetMode = false;
+    bool modifierMode = false;
+    wl_keyboard* keyboard = nullptr;
+    xkb_context* xkb = nullptr;
+    xkb_keymap* keymap = nullptr;
+    xkb_state* keyState = nullptr;
+    bool ctrl = false, shift = false, alt = false;
     bool tearOffMode = false;
     bool ready = false;
     bool detachedMapped = false;
@@ -215,6 +222,70 @@ namespace {
     state.offers.push_back(std::move(offer));
   }
 
+  void reportModifiers(const State& state) {
+    std::println("modifiers ctrl={} shift={} alt={}", state.ctrl, state.shift, state.alt);
+    std::fflush(stdout);
+  }
+
+  void keyboardKeymap(void* data, wl_keyboard*, uint32_t format, int32_t fd, uint32_t size) {
+    auto& state = *static_cast<State*>(data);
+    if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || size == 0) {
+      close(fd);
+      state.failed = true;
+      return;
+    }
+    void* mapping = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (mapping == MAP_FAILED) {
+      state.failed = true;
+      return;
+    }
+    if (state.keyState != nullptr) {
+      xkb_state_unref(state.keyState);
+    }
+    if (state.keymap != nullptr) {
+      xkb_keymap_unref(state.keymap);
+    }
+    state.keymap = xkb_keymap_new_from_buffer(
+        state.xkb, static_cast<const char*>(mapping), size, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS
+    );
+    munmap(mapping, size);
+    state.keyState = state.keymap != nullptr ? xkb_state_new(state.keymap) : nullptr;
+    state.failed = state.failed || state.keyState == nullptr;
+  }
+
+  void keyboardEnter(void* data, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {
+    auto& state = *static_cast<State*>(data);
+    if (state.activeOffer != nullptr) {
+      state.failed = true;
+      std::println("unexpected-keyboard-enter");
+      std::fflush(stdout);
+    }
+  }
+  void keyboardLeave(void*, wl_keyboard*, uint32_t, wl_surface*) {}
+  void keyboardKey(void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t) {
+    static_cast<State*>(data)->failed = true;
+    std::println("unexpected-keyboard-key");
+    std::fflush(stdout);
+  }
+  void keyboardModifiers(
+      void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group
+  ) {
+    auto& state = *static_cast<State*>(data);
+    if (state.keyState == nullptr) {
+      state.failed = true;
+      return;
+    }
+    xkb_state_update_mask(state.keyState, depressed, latched, locked, 0, 0, group);
+    state.ctrl = xkb_state_mod_name_is_active(state.keyState, XKB_MOD_NAME_CTRL, XKB_STATE_MODS_EFFECTIVE) > 0;
+    state.shift = xkb_state_mod_name_is_active(state.keyState, XKB_MOD_NAME_SHIFT, XKB_STATE_MODS_EFFECTIVE) > 0;
+    state.alt = xkb_state_mod_name_is_active(state.keyState, XKB_MOD_NAME_ALT, XKB_STATE_MODS_EFFECTIVE) > 0;
+    reportModifiers(state);
+  }
+  void keyboardRepeat(void*, wl_keyboard*, int32_t, int32_t) {}
+  constexpr wl_keyboard_listener kKeyboardListener{keyboardKeymap, keyboardEnter,     keyboardLeave,
+                                                   keyboardKey,    keyboardModifiers, keyboardRepeat};
+
   void deviceEnter(
       void* data, wl_data_device*, uint32_t serial, wl_surface* surface, wl_fixed_t, wl_fixed_t, wl_data_offer* resource
   ) {
@@ -231,6 +302,9 @@ namespace {
     wl_data_offer_set_actions(resource, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
     wl_display_flush(state.display);
     std::println("drag-enter");
+    if (state.modifierMode) {
+      reportModifiers(state);
+    }
     std::fflush(stdout);
   }
 
@@ -392,6 +466,10 @@ namespace {
 
   void seatCapabilities(void* data, wl_seat* seat, uint32_t capabilities) {
     auto& state = *static_cast<State*>(data);
+    if (state.modifierMode && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0 && state.keyboard == nullptr) {
+      state.keyboard = wl_seat_get_keyboard(seat);
+      wl_keyboard_add_listener(state.keyboard, &kKeyboardListener, &state);
+    }
     if (!state.targetMode && (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0 && state.pointer == nullptr) {
       state.pointer = wl_seat_get_pointer(seat);
       wl_pointer_add_listener(state.pointer, &kPointerListener, &state);
@@ -557,16 +635,23 @@ namespace {
 } // namespace
 
 int main(int argc, char* argv[]) {
-  const bool targetMode = argc >= 2 && std::string_view(argv[1]) == "target";
+  const bool modifierMode = argc >= 2 && std::string_view(argv[1]) == "target-modifiers";
+  const bool targetMode = modifierMode || (argc >= 2 && std::string_view(argv[1]) == "target");
   const bool cursorRefresh = argc == 2 && std::string_view(argv[1]) == "cursor-refresh";
   const bool tearOffMode = argc == 2 && std::string_view(argv[1]) == "tear-off";
   const bool toplevelMode = argc >= 2 && std::string_view(argv[1]) == "toplevel";
   if ((!targetMode && argc > 1 && !cursorRefresh && !tearOffMode && !toplevelMode) || (targetMode && argc > 3)) {
-    std::println(stderr, "usage: drag-client [cursor-refresh | tear-off | target [title] | toplevel [variant]]");
+    std::println(
+        stderr,
+        "usage: drag-client [cursor-refresh | tear-off | target [title] | target-modifiers [title] | toplevel "
+        "[variant]]"
+    );
     return EXIT_FAILURE;
   }
 
   State state;
+  state.modifierMode = modifierMode;
+  state.xkb = modifierMode ? xkb_context_new(XKB_CONTEXT_NO_FLAGS) : nullptr;
   state.toplevelMode = toplevelMode;
   state.existingToplevel = toplevelMode && argc == 3 && std::string_view(argv[2]) == "existing";
   state.attachAfterMap = toplevelMode && argc == 3 && std::string_view(argv[2]) == "after-map";
@@ -749,6 +834,18 @@ int main(int argc, char* argv[]) {
   }
   wl_display_roundtrip(state.display);
 
+  if (state.keyboard != nullptr) {
+    wl_keyboard_destroy(state.keyboard);
+  }
+  if (state.keyState != nullptr) {
+    xkb_state_unref(state.keyState);
+  }
+  if (state.keymap != nullptr) {
+    xkb_keymap_unref(state.keymap);
+  }
+  if (state.xkb != nullptr) {
+    xkb_context_unref(state.xkb);
+  }
   if (state.toplevelDrag != nullptr) {
     xdg_toplevel_drag_v1_destroy(state.toplevelDrag);
   }

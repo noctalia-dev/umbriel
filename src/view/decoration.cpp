@@ -122,7 +122,8 @@ namespace umbriel {
     m_popupBlurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blurPopups.value_or(false),
-        .optimized = rule.blurOptimized,
+        // A popup covers its own window, which the cached wallpaper blur never contains.
+        .optimized = false,
     };
     const auto& appearance = config().appearance;
     const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);

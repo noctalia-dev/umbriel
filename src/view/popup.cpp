@@ -28,6 +28,8 @@ namespace umbriel {
     wl_signal_add(&m_popup->base->surface->events.commit, &m_commit);
     m_reposition.notify = onReposition;
     wl_signal_add(&m_popup->events.reposition, &m_reposition);
+    m_configure.notify = onConfigure;
+    wl_signal_add(&m_popup->base->events.configure, &m_configure);
     m_map.notify = onMap;
     wl_signal_add(&m_popup->base->surface->events.map, &m_map);
     m_unmap.notify = onUnmap;
@@ -42,6 +44,7 @@ namespace umbriel {
     if (m_commit.link.next != nullptr) {
       wl_list_remove(&m_commit.link);
       wl_list_remove(&m_reposition.link);
+      wl_list_remove(&m_configure.link);
       wl_list_remove(&m_map.link);
       wl_list_remove(&m_unmap.link);
       wl_list_remove(&m_destroy.link);
@@ -55,7 +58,12 @@ namespace umbriel {
 
   void Popup::onReposition(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_reposition); // NOLINT(modernize-use-auto)
-    self->unconstrain();
+    self->handleReposition();
+  }
+
+  void Popup::onConfigure(wl_listener* listener, void* /*data*/) {
+    Popup* self = wl_container_of(listener, self, m_configure); // NOLINT(modernize-use-auto)
+    self->handleConfigure();
   }
 
   void Popup::onMap(wl_listener* listener, void* /*data*/) {
@@ -66,6 +74,7 @@ namespace umbriel {
   void Popup::onUnmap(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_unmap); // NOLINT(modernize-use-auto)
     self->m_blur.hide();
+    self->m_repositions.clear();
   }
 
   void Popup::onDestroy(wl_listener* listener, void* /*data*/) {
@@ -136,6 +145,25 @@ namespace umbriel {
     unconstrain();
   }
 
+  void Popup::handleReposition() {
+    unconstrain();
+    // Clients can wait for a particular token before drawing. Preserve each request's placement and token until
+    // wlroots sends its configure, then schedule the next request through the same configure path.
+    m_repositions.push_back(m_popup->scheduled);
+    m_popup->scheduled = m_repositions.front();
+  }
+
+  void Popup::handleConfigure() {
+    if (m_repositions.empty()) {
+      return;
+    }
+    m_repositions.pop_front();
+    if (!m_repositions.empty()) {
+      m_popup->scheduled = m_repositions.front();
+      unconstrain();
+    }
+  }
+
   void Popup::unconstrain() {
     if (LayerSurface* layer = LayerSurface::fromSurface(m_popup->parent)) {
       layer->unconstrainPopup(m_popup);
@@ -164,11 +192,13 @@ namespace umbriel {
   void Popup::handleDestroy() {
     wl_list_remove(&m_commit.link);
     wl_list_remove(&m_reposition.link);
+    wl_list_remove(&m_configure.link);
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);
     wl_list_remove(&m_destroy.link);
     m_commit.link.next = nullptr;
     m_reposition.link.next = nullptr;
+    m_configure.link.next = nullptr;
     m_map.link.next = nullptr;
     m_unmap.link.next = nullptr;
     m_destroy.link.next = nullptr;

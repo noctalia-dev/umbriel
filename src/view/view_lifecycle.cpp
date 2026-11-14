@@ -623,7 +623,7 @@ namespace umbriel {
         && closingWorkspace->active()
         && m_tiled
         && !shellParentRequested()
-        && config().input.focus.followsMouse
+        && config().input.focus.followsMouseEnabled()
         && !m_server->sessionLocked()
         && m_server->exclusiveKeyboardLayer() == nullptr
         && (overview == nullptr || !overview->active())
@@ -772,6 +772,9 @@ namespace umbriel {
     // The click pair outlives the grab machinery, so drop it here; the grab
     // reset below covers any deferred or promoted press.
     m_server->cursor()->forgetView(this);
+    if (m_onActiveWorkspace) {
+      m_server->cursor()->refocusAfterSceneChange();
+    }
     // Detaching a browser's last tab can unmap the origin while a different
     // toplevel is being carried by that same data drag.
     const View* carried = m_server->cursor()->toplevelDragView();

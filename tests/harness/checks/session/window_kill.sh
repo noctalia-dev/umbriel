@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Killing a window terminates its client with SIGKILL, including clients that ignore close requests.
+# harness: xwayland=true
+# Killing a window terminates its native client or X11 connection, including retained X11 resources.
 set -euo pipefail
 
 python3 - <<'PY'
@@ -11,6 +12,7 @@ import time
 
 umbriel = os.environ["UMBRIEL"]
 client = os.environ["UMBRIEL_SEAT_LOG_CLIENT"]
+x11_client = os.environ["UMBRIEL_XWAYLAND_ASSOCIATION_CLIENT"]
 
 
 def action(*words, success=True):
@@ -51,6 +53,29 @@ def assert_killed(process):
     await_windows(lambda state: all(w["pid"] != process.pid for w in state), "killed window to unmap")
 
 
+def spawn_x11(title, *commands):
+    log_path = os.path.join(os.environ["UMBRIEL_RUNTIME_DIR"], title + ".log")
+    with open(log_path, "w") as log:
+        process = subprocess.Popen(
+            [x11_client, title, "479", "353", "managed"],
+            stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT, text=True,
+        )
+    process.stdin.write("\n".join((*commands, "map")) + "\n")
+    process.stdin.flush()
+    state = await_windows(lambda state: any(w["title"] == title and w["xwayland"] for w in state), title)
+    return process, next(w["id"] for w in state if w["title"] == title)
+
+
+def await_x11_removed(process, window_id):
+    await_windows(lambda state: all(w["id"] != window_id for w in state), "killed X11 window to unmap")
+    try:
+        status = process.wait(timeout=4)
+    except subprocess.TimeoutExpired:
+        raise SystemExit("window-kill left the X11 connection open")
+    if status not in (0, -signal.SIGKILL):
+        raise SystemExit(f"X11 connection shutdown returned {status}")
+
+
 # Like window-close, an empty desktop is a successful no-op.
 action("window-kill")
 background, background_id = spawn("kill-background")
@@ -78,5 +103,41 @@ await_windows(lambda state: len(state) == 1 and state[0]["id"] == survivor_id an
 action("window-kill")
 assert_killed(survivor)
 action("window-kill")
-print("focused scratchpad and explicit background targets exited with SIGKILL; other clients survived")
+
+# Keep another X11 client alive so lazy server shutdown cannot remove a stale target for us.
+x11_survivor, x11_survivor_id = spawn_x11("kill-x11-survivor")
+for title, commands in (
+    ("kill-x11-live", ()),
+    ("kill-x11-ignores-close", ("delete-protocol", "retain")),
+):
+    process, window_id = spawn_x11(title, *commands)
+    if commands:
+        action("window-close", window_id)
+        if process.poll() is not None or not any(w["id"] == window_id for w in windows()):
+            raise SystemExit("the X11 client did not ignore the graceful close request")
+    action("window-kill", window_id)
+    await_x11_removed(process, window_id)
+
+# A crashed owner may leave a mapped X11 resource whose saved PID has already been reaped.
+retained, retained_id = spawn_x11("kill-x11-retained", "delete-protocol", "retain")
+await_windows(
+    lambda state: any(w["id"] == retained_id and w["pid"] == retained.pid for w in state),
+    "retained X11 window owner PID",
+)
+retained.kill()
+if retained.wait(timeout=4) != -signal.SIGKILL:
+    raise SystemExit("the retained X11 owner did not die from SIGKILL")
+await_windows(lambda state: any(w["id"] == retained_id for w in state), "X11 resource after its owner exited")
+action("window-close", retained_id)
+if not any(w["id"] == retained_id for w in windows()):
+    raise SystemExit("a graceful close removed an ownerless retained X11 window")
+action("window-kill", retained_id)
+await_windows(lambda state: all(w["id"] != retained_id for w in state), "retained X11 resource to disappear")
+if x11_survivor.poll() is not None:
+    raise SystemExit("killing an X11 window terminated an unrelated X11 client")
+await_windows(
+    lambda state: len(state) == 1 and state[0]["id"] == x11_survivor_id,
+    "unrelated X11 window to survive",
+)
+print("native clients die from SIGKILL; live and ownerless retained X11 windows are removed without affecting another client")
 PY
