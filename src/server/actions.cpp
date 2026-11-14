@@ -1817,7 +1817,7 @@ namespace umbriel {
       if (arg == nullptr) {
         return reject(error, "action carries no workspace transfer target");
       }
-      const auto target = arg->destination == "current"
+      const auto target = arg->destination == kCurrentOutputWord
           ? std::expected<Output*, std::string>(server.outputFromWlr(server.preferredOutput()))
           : resolveOutputSelector(server, arg->destination);
       if (!target) {

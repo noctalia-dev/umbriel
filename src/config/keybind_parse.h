@@ -8,6 +8,8 @@
 #include "layout/layout.h"
 #include "view/window_region.h"
 
+#include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -231,6 +233,30 @@ namespace umbriel {
 
   inline bool validSubmapName(std::string_view name) {
     return !name.empty() && name != "disable" && !name.contains(']');
+  }
+
+  // A positional workspace word is a 1-based index when it is all digits, so a name made only of digits has to go
+  // through `--name`.
+  inline bool allDigits(std::string_view word) {
+    return std::ranges::all_of(word, [](char value) { return value >= '0' && value <= '9'; });
+  }
+
+  // The workspace index a positional word denotes, or nullopt when the word is not a usable one.
+  inline std::optional<size_t> workspaceSelectorIndex(std::string_view word) {
+    if (!allDigits(word)) {
+      return std::nullopt;
+    }
+    size_t index = 0;
+    const auto [end, error] = std::from_chars(word.data(), word.data() + word.size(), index);
+    if (error != std::errc{} || end != word.data() + word.size() || index < 1 || index > kMaxWorkspaces) {
+      return std::nullopt;
+    }
+    return index;
+  }
+
+  // Whether the word grammar accepts a word where it expects a workspace selector.
+  inline bool validWorkspaceSelector(std::string_view word) {
+    return !allDigits(word) || workspaceSelectorIndex(word).has_value();
   }
 
   struct FractionArg {
@@ -457,6 +483,8 @@ namespace umbriel {
   inline constexpr std::string_view kImplicitScratchpad = "default";
   // `workspace-set-layout`'s cycle keyword; the modes it cycles come from `layoutModeNames`.
   inline constexpr std::string_view kLayoutModeToggleWord = "toggle";
+  // `workspace-move-to-output`'s destination word for the output under the pointer.
+  inline constexpr std::string_view kCurrentOutputWord = "current";
   // An argument kind's allowed flags: the bits select, the words are what `--output`, `--window` and `--name` are
   // spelled. `actionAllowedFlags` is the only table that maps a kind to a mask, so the parser rejects exactly the
   // flags shell completion offers.

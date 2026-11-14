@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the completion scripts the binary generates into the directories their shells read. Meson runs this only
-# when the build can execute its own binaries, so a cross build installs none.
+# for a native build, so a cross build installs none.
 set -euo pipefail
 
 binary=$1
