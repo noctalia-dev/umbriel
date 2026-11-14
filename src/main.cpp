@@ -443,7 +443,7 @@ int main(int argc, char** argv) {
         return printConfigSchema(json);
       }
       if (argc >= 3) {
-        const auto* spec = umbriel::findIpcCommand(std::format("config-{}", argv[2]));
+        const auto* spec = umbriel::findIpcCommand(std::format("{}{}", umbriel::kConfigCommandPrefix, argv[2]));
         if (spec != nullptr && spec->group == umbriel::IpcCommandGroup::Config) {
           return runSpecCommand(*spec, argc, argv, 3);
         }
@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
     }
 
     // Not an IpcCommandSpec: the words are parsed here and sent as a structured action request.
-    if (std::strcmp(argv[1], "msg") == 0) {
+    if (argv[1] == umbriel::kCliMsg) {
       if (argc == 3 && isHelpFlag(argv[2])) {
         printActionHelp();
         return EXIT_SUCCESS;

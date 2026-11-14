@@ -259,6 +259,10 @@ UMBRIEL_TEST(flagValuesCompleteFromTheMatchingFamily) {
     const std::vector<std::string> disallowed = complete({"msg", action, flag, ""}, values);
     CHECK(disallowed.empty());
   }
+
+  // The refusal is not a positional shift: `workspace-move-to-output` reads a workspace second, and offering one after
+  // a refused flag would produce a line the parser rejects.
+  CHECK(complete({"msg", "workspace-move-to-output", "--window", ""}, values).empty());
 }
 
 UMBRIEL_TEST(spawnDelegatesToTheShell) {

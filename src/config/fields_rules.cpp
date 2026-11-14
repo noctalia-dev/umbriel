@@ -28,7 +28,7 @@ namespace umbriel {
                   errorAt(node.source(), "{} must be a string", path);
                 } else if (name->empty()) {
                   errorAt(node.source(), "{} must not be empty", path);
-                } else if (*name == "default") {
+                } else if (*name == kImplicitScratchpad) {
                   errorAt(node.source(), "{} 'default' is reserved for the implicit scratchpad", path);
                 } else {
                   target.name = *name;
