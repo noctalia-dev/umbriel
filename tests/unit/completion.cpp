@@ -240,12 +240,20 @@ UMBRIEL_TEST(aWorkspaceIsSelectedOnce) {
   CHECK(contains(complete({"msg", "workspace-switch", "--"}, values), umbriel::kActionFlagNameWord));
   CHECK(contains(complete({"msg", "workspace-switch", ""}, values), "web"));
   CHECK(complete({"msg", "workspace-move-to-output", "DP-1", "--name", "web", ""}, values).empty());
+  CHECK(complete({"msg", "workspace-switch", "web", "--name", ""}, values).empty());
+  // A surplus positional is a line the parser refuses, so its trailing flag has no vocabulary either.
+  CHECK(complete({"msg", "workspace-switch", "web", "extra", "--output", ""}, values).empty());
+  CHECK(!complete({"msg", "workspace-move-to-output", "DP-1", ""}, values).empty());
+  CHECK(complete({"msg", "workspace-move-to-output", "DP-1", "web", ""}, values).empty());
+  CHECK(complete({"msg", "workspace-switch", "web", "--name", "web", "--output", ""}, values).empty());
 }
 
 UMBRIEL_TEST(usedFlagsAreNotOfferedAgain) {
   const CompletionValues values = sampleValues();
   const std::vector<std::string> candidates = complete({"msg", "workspace-switch", "--output", "DP-1", "--"}, values);
   CHECK_EQ(candidates, std::vector<std::string>{"--name"});
+  // A flag twice is a line the parser refuses, so neither the flag nor its value is offered again.
+  CHECK(complete({"msg", "workspace-switch", "--output", "DP-1", "--output", ""}, values).empty());
 }
 
 UMBRIEL_TEST(flagValuesCompleteFromTheMatchingFamily) {
@@ -278,7 +286,7 @@ UMBRIEL_TEST(flagValuesCompleteFromTheMatchingFamily) {
 UMBRIEL_TEST(spawnDelegatesToTheShell) {
   CompletionOutcome outcome = CompletionOutcome::Candidates;
   complete({"msg", "spawn", ""}, {}, &outcome);
-  CHECK(outcome == CompletionOutcome::Delegate);
+  CHECK(outcome == CompletionOutcome::DelegateCommand);
   CHECK(complete({"msg", "spawn", "kit"}).empty());
 
   // A command line carries its own `--` words, which no action flag names.
@@ -287,11 +295,24 @@ UMBRIEL_TEST(spawnDelegatesToTheShell) {
        }) {
     CompletionOutcome delegated = CompletionOutcome::Candidates;
     complete(words, {}, &delegated);
-    CHECK(delegated == CompletionOutcome::Delegate);
+    CHECK(delegated == CompletionOutcome::DelegateCommand);
   }
   CompletionOutcome flagPrefix = CompletionOutcome::Candidates;
   complete({"msg", "spawn", "--verb"}, {}, &flagPrefix);
-  CHECK(flagPrefix == CompletionOutcome::Delegate);
+  CHECK(flagPrefix == CompletionOutcome::DelegateCommand);
+}
+
+UMBRIEL_TEST(topLevelFlagsOwnTheirArguments) {
+  // `-c` takes a configuration path and `-s` a command line; neither is followed by anything else, and a word the
+  // dispatch does not know leaves no vocabulary at all.
+  CompletionOutcome outcome = CompletionOutcome::Candidates;
+  complete({"-c", ""}, {}, &outcome);
+  CHECK(outcome == CompletionOutcome::Delegate);
+  complete({"-s", ""}, {}, &outcome);
+  CHECK(outcome == CompletionOutcome::DelegateCommand);
+  CHECK(complete({"-c", "umbriel.toml", ""}).empty());
+  CHECK(complete({"-s", "kitty", ""}).empty());
+  CHECK(complete({"bogus", ""}).empty());
 }
 
 UMBRIEL_TEST(argumentsStopWhenTheActionTakesNone) {
@@ -354,7 +375,7 @@ UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
 
   CompletionOutcome outcome = CompletionOutcome::Candidates;
   complete({"msg", "spawn", "kitty", ""}, values, &outcome);
-  CHECK(outcome == CompletionOutcome::Delegate);
+  CHECK(outcome == CompletionOutcome::DelegateCommand);
   CHECK(reads.empty());
 
   // A live position reads its own family, and only once however often the value is asked for.
@@ -388,6 +409,10 @@ UMBRIEL_TEST(scriptsDeferToTheBinary) {
   // zsh refuses compadd outside a completion function, so an eval must register instead of running the function body.
   CHECK(zsh.contains("[[ $funcstack[1] == _umbriel ]]"));
   CHECK(umbriel::completionScript(umbriel::CompletionShell::Fish).contains("complete -c umbriel"));
+  // The callback hands a path over with exit 2 and a command line with exit 3, so each script needs both branches.
+  CHECK(umbriel::completionScript(umbriel::CompletionShell::Bash).contains("code == 3"));
+  CHECK(zsh.contains("code == 3"));
+  CHECK(umbriel::completionScript(umbriel::CompletionShell::Fish).contains("code -eq 3"));
 }
 
 UMBRIEL_TEST(shellNamesRoundTrip) {

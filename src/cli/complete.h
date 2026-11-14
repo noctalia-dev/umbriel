@@ -53,8 +53,9 @@ namespace umbriel {
   };
 
   enum class CompletionOutcome : uint8_t {
-    Candidates, // zero or more sink calls; the shell offers them and nothing else
-    Delegate,   // the position belongs to the shell: a command line or a path
+    Candidates,      // zero or more sink calls; the shell offers them and nothing else
+    Delegate,        // the position is a filesystem path: the shell completes paths
+    DelegateCommand, // the position is a command line: the shell completes command names
   };
 
   using CompletionSink = std::function<void(std::string_view value, std::string_view description)>;
