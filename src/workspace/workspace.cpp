@@ -418,9 +418,6 @@ namespace umbriel {
       // Both workspace roots carry the same slide offset and output clip.
       wlr_scene_node_reparent(&m_floatingLayer->node, target);
     }
-    if (m_focusedView != nullptr) {
-      m_focusedView->syncTransientSceneParent();
-    }
   }
 
   void Workspace::raiseFloatingLayer() {
@@ -1019,6 +1016,10 @@ namespace umbriel {
       }
     } heldRelease{*this};
     refreshAloneRuleStates();
+    // Whether the focused tile is lifted above a fullscreen window depends on its column.
+    if (m_focusedView != nullptr) {
+      m_focusedView->syncTransientSceneParent();
+    }
     // Layout math and client configures must run even for hidden workspaces: clients (games especially) change
     // fullscreen state while another workspace is active, and skipping the configure here leaves them with a stale size
     // (fullscreen at tile size, windowed at output size, ...).
@@ -2805,8 +2806,6 @@ namespace umbriel {
     for (View* view : m_views) {
       view->refreshStateRuleEffects();
     }
-    // The focused tile is lifted above a fullscreen window only in scrolling.
-    syncFloatingLayer();
     markArrange();
     refreshDropZonePreview(*m_group->server());
   }

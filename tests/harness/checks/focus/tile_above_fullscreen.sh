@@ -2,7 +2,8 @@
 # A tile focused under a fullscreen window in its column is drawn above it, and goes back under the fullscreen window,
 # and under floats once fullscreen ends, when focus leaves it. Untabbing a group with a fullscreen hidden tab shows the
 # focused tab the same way, and toggling fullscreen there fullscreens that tab. The lift ends when the workspace leaves
-# scrolling, and a tile beside a fullscreen column stays under floats.
+# scrolling, and a tile beside a fullscreen column stays under floats. Consuming the focused tile into a fullscreen
+# column lifts it, and expelling it again drops it back under floats.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -112,6 +113,18 @@ msg window-toggle-fullscreen
 focus tile
 if [[ $(overlap_color tile-float tile) == "255 0 0" ]]; then
   echo "a tile beside a fullscreen column was drawn above a float: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+msg window-consume-left
+if [[ $(shown "$RED") == 0x0 ]]; then
+  echo "a tile consumed into a fullscreen column stayed hidden behind it: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+msg window-consume-or-expel-right
+if [[ $(overlap_color tile-float tile) == "255 0 0" ]]; then
+  echo "a tile expelled from a fullscreen column was drawn above a float: $("$UMBRIEL" windows --json)"
   exit 1
 fi
 
