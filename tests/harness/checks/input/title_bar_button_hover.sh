@@ -41,7 +41,7 @@ background_unfocused = "#000000FF"
 close = "#663319FF"
 maximize = "#663319FF"
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 [output.HEADLESS-1]
 scale = 1
 [[window_rule]]

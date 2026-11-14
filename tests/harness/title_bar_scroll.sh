@@ -21,7 +21,7 @@ enabled = false
 mode = "$mode"
 height = 28
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 CONFIG
 "$UMBRIEL" msg config-reload > /dev/null
 

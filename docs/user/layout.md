@@ -157,7 +157,7 @@ With `center_focused = "on_overflow"`, a column is centered when it and the neig
 
 Closing a focused column moves focus to the nearest surviving column. When that column contains stacked windows, Umbriel restores its most recently focused member instead of always selecting its first row.
 
-With `follows_mouse = true`, closing a focused window beneath the pointer instead focuses the tiled window that occupies that position after the layout reflows. This also applies when another row in the same scrolling column expands into the stationary pointer.
+With `follows_mouse` set to `"sloppy"` or `"always"`, closing a focused window beneath the pointer instead focuses the tiled window that occupies that position after the layout reflows. This also applies when another row in the same scrolling column expands into the stationary pointer.
 
 ## Vertical strips
 

@@ -3788,6 +3788,7 @@ namespace umbriel {
     activate(selected);
     m_server->cursor()->clearConstraint();
     m_server->refocus(m_output);
+    m_server->cursor()->refocusAfterSceneChange();
   }
 
   void WorkspaceGroup::deactivate(Workspace* workspace) {

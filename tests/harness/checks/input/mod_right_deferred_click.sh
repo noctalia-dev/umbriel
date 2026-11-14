@@ -74,7 +74,7 @@ fi
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 pointer move 300 "$y"

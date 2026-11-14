@@ -825,7 +825,8 @@ namespace umbriel {
       wlr_output_state_set_enabled(&state, enabled);
     }
 
-    const bool hdrWasActive = hdrActive();
+    const bool hdrWasActive =
+        hdrActive() || m_server->connectorHdrState().mayHoldHdr(m_output->backend, m_output->name);
     const bool hdrRequested = this->hdrRequested();
 
     // Stage geometry.
@@ -1145,15 +1146,17 @@ namespace umbriel {
       pendingSdr10Fail = seq.sdr10Fail;
       hdrRejected = hdrRequested && !seq.retry && !seq.hdrFail.empty();
     } else {
-      if (!hdrRequested && hdrWasActive) {
-        wlr_output_state_set_image_description(&state, nullptr);
-        wlr_output_state_set_render_format(&state, DRM_FORMAT_XRGB8888);
-      }
       anyCommitted = wlr_output_commit_state(m_output, &state);
     }
 
+    const bool imageDescriptionCommitted = (state.committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) != 0;
     wlr_output_state_finish(&state);
     m_hdrTransition.recordCommit(enabled, hdrRequested, anyCommitted);
+    if (anyCommitted) {
+      m_server->connectorHdrState().recordCommit(
+          m_output->backend, m_output->name, imageDescriptionCommitted, hdrActive()
+      );
+    }
     if (hdrRejected) {
       m_hdrAvailable = false;
     }

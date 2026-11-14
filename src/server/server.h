@@ -9,6 +9,7 @@
 #include "input/pending_releases.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
+#include "output/connector_hdr_state.h"
 #include "output/enable_overrides.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
@@ -301,6 +302,7 @@ namespace umbriel {
     void hideInsertHint();
     uint64_t uptimeMs() const;
     SessionLock* sessionLock() const { return m_sessionLock.get(); }
+    ConnectorHdrState& connectorHdrState() { return m_connectorHdrState; }
     bool sessionLocked() const { return m_sessionLocked; }
     const std::string& activeSubmap() const {
       static const std::string empty;
@@ -1056,6 +1058,7 @@ namespace umbriel {
     // different identified monitors. An output-policy config reload clears
     // them.
     OutputEnableOverrides m_outputEnableOverrides;
+    ConnectorHdrState m_connectorHdrState;
     Dirty m_dirty = Dirty::None;
     ViewRegistry m_registry;
     FocusManager m_focus{*this};
