@@ -18,6 +18,8 @@ height = 40
 button_position = "right"
 button_glyph = "always"
 button_background = true
+# The bar and the title are both black here, so the contrast rule would paint the title white and count as a symbol.
+title_contrast = false
 [colors.title_bar]
 background = "#000000FF"
 background_unfocused = "#000000FF"

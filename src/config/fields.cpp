@@ -68,6 +68,15 @@ namespace umbriel {
     return choices;
   }
 
+  const registry::Choices<TitleBarColorSource>& titleBarColorSources() {
+    static const registry::Choices<TitleBarColorSource> choices{
+        {.name = "fixed", .value = TitleBarColorSource::Fixed},
+        {.name = "window", .value = TitleBarColorSource::Window},
+        {.name = "average", .value = TitleBarColorSource::Average},
+    };
+    return choices;
+  }
+
   const registry::Choices<ContentType>& contentTypes() {
     static const registry::Choices<ContentType> choices{
         {.name = "none", .value = ContentType::None},

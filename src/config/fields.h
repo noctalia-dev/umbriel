@@ -67,6 +67,8 @@ namespace umbriel {
   const registry::Choices<LayoutMode>& layoutModes();
   // Shared by [layout.tabs] and window rules.
   const registry::Choices<ColumnDisplay>& columnDisplays();
+  // Shared by [appearance.title_bar] and the title_bar_color_source window rule.
+  const registry::Choices<TitleBarColorSource>& titleBarColorSources();
   // Shared by [appearance.title_bar] buttons and the title_bar_buttons window rule: an array of distinct buttons, read
   // from the title outward. Unknown or repeated entries are reported and skipped; nullopt when the value is no array.
   std::optional<std::vector<TitleBarButton>> parseTitleBarButtons(const toml::node& node, const std::string& path);

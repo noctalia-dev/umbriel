@@ -28,8 +28,14 @@
 // FOLLOW_CONFIGURES maps at its own size, then redraws at every later configured size, as a real client would; by
 // default the window keeps its own size.
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
-// REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
+// REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer. `b` repaints the
+// body only: the top band keeps its colour and only the rows below it are damaged. `t` repaints the top band fully
+// transparent and leaves the body alone, so a check can tell a readable edge with no colour in it from one that could
+// not be read.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
+// TOP_BAND_COLOR=<ARGB> with TOP_BAND_HEIGHT=<px> paints the top rows of the buffer in another colour, so a check can
+// tell which edge of the content a compositor sampled. A repaint recolours the band too. TOP_BAND_SPLIT=<ARGB> paints
+// the right half of those rows in a second colour, so a check can tell a sampled strip from its average.
 // OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
@@ -129,6 +135,8 @@ namespace {
     bool mapped = false;
     wl_callback* repaintFrame = nullptr;
     uint32_t repaintColor = 0;
+    bool repaintBodyOnly = false;
+    bool repaintBandOnly = false;
     bool closed = false;
     bool redrawOnClose = false;
     bool redrawOnceOnClose = false;
@@ -172,6 +180,11 @@ namespace {
     bool titleUpdated = false;
     int tearingHint = -1;
     uint32_t fillColor = 0xFF5577AA;
+    uint32_t topBandColor = 0;
+    uint32_t topBandSplit = 0;
+    int topBandHeight = 0;
+    // A transparent band is a colour of its own, so the band cannot be keyed off a non-zero colour.
+    bool topBandEnabled = false;
     std::optional<uint32_t> resizeFillColor;
     int configuredWidth = 0;
     int configuredHeight = 0;
@@ -321,6 +334,17 @@ namespace {
       return buffer;
     }
     std::fill_n(static_cast<uint32_t*>(buffer.pixels), buffer.size / sizeof(uint32_t), state.fillColor);
+    if (state.topBandEnabled && state.topBandHeight > 0) {
+      auto* pixels = static_cast<uint32_t*>(buffer.pixels);
+      const int band = std::min(state.topBandHeight, height);
+      for (int row = 0; row < band; ++row) {
+        auto* line = pixels + static_cast<ptrdiff_t>(row) * width;
+        std::fill_n(line, width, state.topBandColor);
+        if (state.topBandSplit != 0) {
+          std::fill_n(line + width / 2, width - width / 2, state.topBandSplit);
+        }
+      }
+    }
 
     wl_shm_pool* pool = wl_shm_create_pool(state.shm, fd, static_cast<int>(buffer.size));
     const uint32_t format = std::getenv("OPAQUE_BUFFER") != nullptr ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888;
@@ -336,13 +360,27 @@ namespace {
     auto& state = *static_cast<State*>(data);
     wl_callback_destroy(callback);
     state.repaintFrame = nullptr;
-    state.fillColor = state.repaintColor;
+    const bool bodyOnly = state.repaintBodyOnly;
+    const bool bandOnly = state.repaintBandOnly;
+    state.repaintBodyOnly = false;
+    state.repaintBandOnly = false;
+    if (!bandOnly) {
+      state.fillColor = state.repaintColor;
+    }
+    if (!bodyOnly) {
+      state.topBandColor = state.repaintColor;
+    }
     Buffer next = createBuffer(state, state.width, state.height);
     if (next.resource == nullptr) {
       std::exit(EXIT_FAILURE);
     }
     wl_surface_attach(state.surface, next.resource, 0, 0);
-    wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    if (bodyOnly) {
+      const int band = std::min(state.topBandHeight, state.height);
+      wl_surface_damage_buffer(state.surface, 0, band, state.width, std::max(0, state.height - band));
+    } else {
+      wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
+    }
     wl_surface_commit(state.surface);
     destroyBuffer(state.buffer);
     state.buffer = next;
@@ -929,6 +967,24 @@ int main(int argc, char** argv) {
       return EXIT_FAILURE;
     }
   }
+  if (const char* band = std::getenv("TOP_BAND_COLOR")) {
+    char* end = nullptr;
+    const auto value = std::strtoul(band, &end, 0);
+    if (end != band) {
+      state.topBandColor = static_cast<uint32_t>(value);
+      state.topBandEnabled = true;
+    }
+  }
+  if (const char* split = std::getenv("TOP_BAND_SPLIT")) {
+    char* end = nullptr;
+    const auto value = std::strtoul(split, &end, 0);
+    if (end != split) {
+      state.topBandSplit = static_cast<uint32_t>(value);
+    }
+  }
+  if (const char* rows = std::getenv("TOP_BAND_HEIGHT")) {
+    state.topBandHeight = static_cast<int>(std::strtol(rows, nullptr, 10));
+  }
   if (const char* fill = std::getenv("FILL_COLOR")) {
     char* end = nullptr;
     errno = 0;
@@ -1262,8 +1318,21 @@ int main(int argc, char** argv) {
         sources[0].revents = 0;
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
-          if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
-            state.repaintColor = command == 'R' ? 0xFFFF0000 : command == 'G' ? 0xFF00FF00 : 0xFF0000FF;
+          if (repaintOnStdin
+              && state.mapped
+              && (command == 'R' || command == 'G' || command == 'B' || command == 'b' || command == 't')) {
+            state.repaintColor = command == 'R' ? 0xFFFF0000
+                : command == 'G'                ? 0xFF00FF00
+                : command == 'B'                ? 0xFF0000FF
+                : command == 't'                ? 0x00000000
+                                                : 0xFFFF8000;
+            state.repaintBodyOnly = command == 'b';
+            if (command == 't') {
+              state.repaintBandOnly = true;
+              state.topBandEnabled = true;
+              // A split band would repaint half of it in its second colour, so the whole band has to go clear.
+              state.topBandSplit = 0;
+            }
             if (state.repaintFrame == nullptr) {
               state.repaintFrame = wl_surface_frame(state.surface);
               wl_callback_add_listener(state.repaintFrame, &kRepaintListener, &state);

@@ -101,6 +101,11 @@ radius = 3
 # button_glyph_size = -1 # Symbol side in logical pixels, 1 to 128; -1 spans half the button.
 # button_glyph_stroke = -1 # Symbol stroke in logical pixels, 0.5 to 16; -1 is one twelfth of the button.
 # button_background = true # Show colored backgrounds behind the symbols.
+# color_source = "fixed" # "window" paints the bar with the top of the window's own content; "average" with its mean color.
+# color_source_height = 1 # Rows of that edge it takes, 1 (one flat color) to 4.
+# title_shadow = true # Dark edge under the title and around the symbols, on any bar color.
+# title_contrast = true # Reverse the title, and a symbol on the bar or on its button color, when it would vanish.
+# title_contrast_sample = false # "window" only, needs title_contrast: sample the edge so the title can reverse there.
 
 # Optional button palette. Glyph colors also apply when button backgrounds are off.
 # [colors.title_bar]
@@ -366,6 +371,12 @@ default_pinned = true
 # [[window_rule]]
 # match.layout = "stacking"
 # title_bar = "on"
+
+# Take the bar's colour from the window's own top edge only where that helps, keeping [appearance.title_bar]
+# color_source = "fixed" for everything else: a program with an ugly header bar, or a Wine application.
+# [[window_rule]]
+# match.app_id = "^my-wine-app$"
+# title_bar_color_source = "window"
 
 # Keep compositor shortcuts available while a virtual machine window is focused.
 # [[window_rule]]

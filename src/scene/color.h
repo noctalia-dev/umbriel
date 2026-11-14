@@ -3,7 +3,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace umbriel {
@@ -92,6 +94,38 @@ namespace umbriel {
     }
     result[3] = 1.0F;
     return result;
+  }
+
+  // Byte order of a packed 32-bit pixel. The X variants carry no alpha and are read as opaque.
+  enum class PixelOrder : uint8_t { Argb, Abgr, Xrgb, Xbgr };
+
+  // Mean of packed 32-bit pixels as Wayland stores them: premultiplied, so the sums are already alpha-weighted and
+  // dividing by the alpha total gives the straight color. Null when nothing is left to show.
+  inline std::optional<std::array<float, 4>> averagePixels(const uint32_t* pixels, size_t count, PixelOrder order) {
+    if (pixels == nullptr || count == 0) {
+      return std::nullopt;
+    }
+    const bool opaque = order == PixelOrder::Xrgb || order == PixelOrder::Xbgr;
+    const bool redLow = order == PixelOrder::Abgr || order == PixelOrder::Xbgr;
+    double alpha = 0.0;
+    double red = 0.0;
+    double green = 0.0;
+    double blue = 0.0;
+    for (size_t index = 0; index < count; ++index) {
+      const uint32_t pixel = pixels[index];
+      alpha += opaque ? 1.0 : ((pixel >> 24U) & 0xFFU) / 255.0;
+      red += (redLow ? (pixel & 0xFFU) : ((pixel >> 16U) & 0xFFU)) / 255.0;
+      green += ((pixel >> 8U) & 0xFFU) / 255.0;
+      blue += (redLow ? ((pixel >> 16U) & 0xFFU) : (pixel & 0xFFU)) / 255.0;
+    }
+    if (alpha <= 0.0) {
+      return std::nullopt;
+    }
+    // Straight color, clamped: malformed input that is not premultiplied could otherwise overshoot.
+    const auto straight = [alpha](double sum) { return static_cast<float>(std::clamp(sum / alpha, 0.0, 1.0)); };
+    return std::array<float, 4>{
+        straight(red), straight(green), straight(blue), static_cast<float>(alpha / static_cast<double>(count))
+    };
   }
 
   inline std::string rgbaHex(const std::array<float, 4>& color) {

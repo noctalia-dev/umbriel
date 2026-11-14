@@ -112,7 +112,10 @@ namespace umbriel {
       m_server->scheduleIpcWindowsEvent();
     }
     if ((titleBarHeight() > 0 || !m_tiled) && m_ssdFrame == nullptr) {
-      m_ssdFrame = std::make_unique<SsdFrame>(chromeParent(), TabLabelCache::shared(), m_sceneTree);
+      m_ssdFrame = std::make_unique<SsdFrame>(
+          chromeParent(), TabLabelCache::shared(), m_sceneTree, m_server->colorManager(),
+          wl_display_get_event_loop(m_server->display())
+      );
     }
     if (m_ssdFrame == nullptr) {
       return;
@@ -122,6 +125,7 @@ namespace umbriel {
         && hints.maxWidth == hints.minWidth
         && hints.maxHeight > 0
         && hints.maxHeight == hints.minHeight;
+    m_ssdFrame->setColorSource(m_titleBarColorSource);
     m_ssdFrame->setTitle(title() != nullptr ? title() : "");
     m_ssdFrame->setResizable(!m_tiled);
     m_ssdFrame->setMaximizeEnabled(!fixed);
@@ -131,6 +135,7 @@ namespace umbriel {
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
+    m_ssdFrame->setContentSurface(rootSurface(), geometryBox());
     const wlr_box content =
         m_presentedBox.width > 0 && m_presentedBox.height > 0 ? m_presentedBox : committedContentBox();
     layoutChromeAttachment(content.width, content.height);

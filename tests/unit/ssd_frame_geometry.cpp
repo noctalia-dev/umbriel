@@ -309,4 +309,172 @@ UMBRIEL_TEST(contentBoxInTileRemovesTitleBar) {
   CHECK_EQ(contentBoxInTile({8, 8, 1264, 704}, 0).height, 704);
 }
 
+UMBRIEL_TEST(stripSourceBoxTakesTheVisibleTopEdge) {
+  const wlr_fbox full{0.0, 0.0, 400.0, 300.0};
+  // No rotation: the buffer's own top rows. A half turn shows the bottom rows instead; a quarter turn shows a
+  // vertical band, which is the buffer's left edge at 90 and its right edge at 270.
+  const wlr_fbox none = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(none.x, 0.0);
+  CHECK_EQ(none.y, 0.0);
+  CHECK_EQ(none.width, 400.0);
+  CHECK_EQ(none.height, 5.0);
+  // The thinnest sample is one logical row: the bar shows a single flat color.
+  const wlr_fbox single = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 1);
+  CHECK_EQ(single.height, 1.0);
+  CHECK_EQ(single.width, 400.0);
+  const wlr_fbox half = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_180, 5);
+  CHECK_EQ(half.x, 0.0);
+  CHECK_EQ(half.y, 295.0);
+  CHECK_EQ(half.width, 400.0);
+  CHECK_EQ(half.height, 5.0);
+  const wlr_fbox left = titleBarStripSourceBox(full, 400, 300, {}, 300, 400, WL_OUTPUT_TRANSFORM_90, 5);
+  CHECK_EQ(left.x, 0.0);
+  CHECK_EQ(left.y, 0.0);
+  CHECK_EQ(left.width, 5.0);
+  CHECK_EQ(left.height, 300.0);
+  const wlr_fbox right = titleBarStripSourceBox(full, 400, 300, {}, 300, 400, WL_OUTPUT_TRANSFORM_270, 5);
+  CHECK_EQ(right.x, 395.0);
+  CHECK_EQ(right.y, 0.0);
+  CHECK_EQ(right.width, 5.0);
+  CHECK_EQ(right.height, 300.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxFollowsTheVisibleCrop) {
+  // A cropped window shows the middle of its buffer, so the strip starts where the visible part does.
+  const wlr_fbox crop =
+      titleBarStripSourceBox({100.0, 120.0, 800.0, 400.0}, 1000, 800, {}, 800, 400, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(crop.x, 100.0);
+  CHECK_EQ(crop.y, 120.0);
+  CHECK_EQ(crop.width, 800.0);
+  CHECK_EQ(crop.height, 5.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxKeepsTheLeadingWidthFraction) {
+  // A readback that covers only the title takes the leading part of the edge: the average and the contrast rule read
+  // the pixels behind the title, not the whole bar.
+  const wlr_fbox full{0.0, 0.0, 400.0, 300.0};
+  const wlr_fbox leading = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5);
+  CHECK_EQ(leading.x, 0.0);
+  CHECK_EQ(leading.width, 200.0);
+  CHECK_EQ(leading.height, 2.0);
+  // The cap follows the visible crop rather than the buffer: a window showing its middle 200 px samples 100 of them.
+  const wlr_fbox cropped =
+      titleBarStripSourceBox({100.0, 120.0, 200.0, 400.0}, 400, 600, {}, 200, 400, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5);
+  CHECK_EQ(cropped.x, 100.0);
+  CHECK_EQ(cropped.width, 100.0);
+  // Upright space caps horizontally whatever the buffer transform does to it: a half turn puts the strip's leading edge
+  // at the buffer's right end, still 200 px wide.
+  const wlr_fbox turned = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_180, 5, 0.5);
+  CHECK_EQ(turned.x, 200.0);
+  CHECK_EQ(turned.y, 295.0);
+  CHECK_EQ(turned.width, 200.0);
+  CHECK_EQ(turned.height, 5.0);
+  // No cap, and a fraction that would exceed the edge, both keep the whole strip.
+  const wlr_fbox whole = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 1.0);
+  CHECK_EQ(whole.width, 400.0);
+  const wlr_fbox over = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 2.0);
+  CHECK_EQ(over.width, 400.0);
+  // A title that is not at the leading edge samples where it sits: start and width are both fractions of the visible
+  // edge, so a right-aligned title takes the last quarter.
+  const wlr_fbox trailing =
+      titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.25, 0.75);
+  CHECK_EQ(trailing.x, 300.0);
+  CHECK_EQ(trailing.width, 100.0);
+  // A start plus a width that would run past the end stops at it.
+  const wlr_fbox clamped =
+      titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5, 0.75);
+  CHECK_EQ(clamped.x, 300.0);
+  CHECK_EQ(clamped.width, 100.0);
+  // Past the end there is nothing to read.
+  const wlr_fbox past = titleBarStripSourceBox(full, 400, 300, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 2, 0.5, 1.0);
+  CHECK_EQ(past.width, 0.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxScalesWithTheBuffer) {
+  // A surface rendered at an output scale keeps 5 logical pixels as a longer run of buffer pixels.
+  const wlr_fbox scaled =
+      titleBarStripSourceBox({0.0, 0.0, 800.0, 600.0}, 800, 600, {}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(scaled.height, 10.0);
+  CHECK_EQ(scaled.width, 800.0);
+  // A window shorter than the strip still yields a real box.
+  const wlr_fbox tiny = titleBarStripSourceBox({0.0, 0.0, 40.0, 3.0}, 40, 3, {}, 40, 3, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(tiny.height, 3.0);
+  // Nothing usable: the caller's own buffer box comes back untouched.
+  const wlr_fbox empty = titleBarStripSourceBox({0.0, 0.0, 0.0, 0.0}, 0, 0, {}, 0, 0, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(empty.width, 0.0);
+}
+
+UMBRIEL_TEST(stripSourceBoxKeepsASubPixelEdgeInsideTheBuffer) {
+  // A viewport can map less than one buffer pixel onto the surface; the strip must stay inside the buffer.
+  const wlr_fbox halfTurn =
+      titleBarStripSourceBox({0.0, 0.0, 100.0, 0.5}, 100, 10, {}, 100, 1, WL_OUTPUT_TRANSFORM_180, 5);
+  CHECK_EQ(halfTurn.x, 0.0);
+  CHECK_EQ(halfTurn.y, 0.0);
+  CHECK_EQ(halfTurn.width, 100.0);
+  CHECK_EQ(halfTurn.height, 0.5);
+  const wlr_fbox quarterTurn =
+      titleBarStripSourceBox({0.0, 0.0, 100.0, 0.5}, 100, 10, {}, 10, 100, WL_OUTPUT_TRANSFORM_90, 5);
+  CHECK_EQ(quarterTurn.x, 0.0);
+  CHECK_EQ(quarterTurn.y, 0.0);
+  CHECK_EQ(quarterTurn.width, 5.0);
+  CHECK_EQ(quarterTurn.height, 0.5);
+}
+
+UMBRIEL_TEST(stripSourceBoxCropsTheWindowGeometryUpright) {
+  // A client-drawn window reports a geometry smaller than its surface: the transparent shadow margin around it stays
+  // out of the strip. Asserted upright, because the buffer axis that carries the surface's top edge depends on the
+  // transform, and cropping before the turn would take the offset off the wrong one.
+  const wlr_fbox full{0.0, 0.0, 400.0, 300.0};
+  const auto uprightOf = [](const wlr_fbox& box, wl_output_transform transform, int bufferWidth, int bufferHeight) {
+    wlr_fbox upright = box;
+    if (transform != WL_OUTPUT_TRANSFORM_NORMAL) {
+      wlr_fbox_transform(&upright, &box, transform, bufferWidth, bufferHeight);
+    }
+    return upright;
+  };
+
+  const wlr_fbox straight =
+      titleBarStripSourceBox(full, 400, 300, {10, 20, 380, 260}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(straight.x, 10.0);
+  CHECK_EQ(straight.y, 20.0);
+  CHECK_EQ(straight.width, 380.0);
+  CHECK_EQ(straight.height, 5.0);
+
+  // Every transform, flips included, and an off-centre geometry: a crop mirrored about the buffer centre would pass a
+  // symmetric one, and a dropped flip bit only shows up once the offset is off-centre.
+  for (const wl_output_transform transform :
+       {WL_OUTPUT_TRANSFORM_90, WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270, WL_OUTPUT_TRANSFORM_FLIPPED,
+        WL_OUTPUT_TRANSFORM_FLIPPED_90, WL_OUTPUT_TRANSFORM_FLIPPED_180, WL_OUTPUT_TRANSFORM_FLIPPED_270}) {
+    const auto rotation = static_cast<wl_output_transform>(transform & 3U);
+    const bool quarterTurn = rotation == WL_OUTPUT_TRANSFORM_90 || rotation == WL_OUTPUT_TRANSFORM_270;
+    const int surfaceWidth = quarterTurn ? 300 : 400;
+    const int surfaceHeight = quarterTurn ? 400 : 300;
+    const wlr_box geometry = quarterTurn ? wlr_box{10, 20, 100, 380} : wlr_box{10, 20, 100, 260};
+    const wlr_fbox strip = titleBarStripSourceBox(full, 400, 300, geometry, surfaceWidth, surfaceHeight, transform, 5);
+    const wlr_fbox upright = uprightOf(strip, transform, 400, 300);
+    CHECK_NEAR(upright.x, 10.0, 0.001);
+    CHECK_NEAR(upright.y, 20.0, 0.001);
+    CHECK_NEAR(upright.width, static_cast<double>(geometry.width), 0.001);
+    CHECK_NEAR(upright.height, 5.0, 0.001);
+  }
+
+  // At an output scale the shadow margin and the strip are both in surface pixels, so both double in the buffer.
+  const wlr_fbox scaled = titleBarStripSourceBox(
+      {0.0, 0.0, 800.0, 600.0}, 800, 600, {10, 20, 280, 380}, 300, 400, WL_OUTPUT_TRANSFORM_90, 5
+  );
+  const wlr_fbox scaledUpright = uprightOf(scaled, WL_OUTPUT_TRANSFORM_90, 800, 600);
+  CHECK_NEAR(scaledUpright.x, 20.0, 0.001);
+  CHECK_NEAR(scaledUpright.y, 40.0, 0.001);
+  CHECK_NEAR(scaledUpright.width, 560.0, 0.001);
+  CHECK_NEAR(scaledUpright.height, 10.0, 0.001);
+
+  // A geometry that misses the visible part leaves the whole surface visible, as an unset one does.
+  const wlr_fbox outside =
+      titleBarStripSourceBox(full, 400, 300, {-40, -60, 10, 10}, 400, 300, WL_OUTPUT_TRANSFORM_NORMAL, 5);
+  CHECK_EQ(outside.x, 0.0);
+  CHECK_EQ(outside.y, 0.0);
+  CHECK_EQ(outside.width, 400.0);
+  CHECK_EQ(outside.height, 5.0);
+}
+
 int main() { return RUN_TESTS(); }

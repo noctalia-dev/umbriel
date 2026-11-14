@@ -37,6 +37,9 @@ namespace umbriel {
 
   enum class TitleBarButtonGlyph : uint8_t { Always, Hover, Never };
 
+  // Where a title bar takes its fill from: the palette, the window's own top edge, or the average of that edge.
+  enum class TitleBarColorSource : uint8_t { Fixed, Window, Average };
+
   enum class ModifierKey {
     Super,
     Alt,
@@ -505,6 +508,8 @@ namespace umbriel {
     std::optional<TitleBarMode> titleBar;
     // Overrides [appearance.title_bar] buttons, read from the title outward.
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    // Overrides [appearance.title_bar] color_source for windows this rule matches.
+    std::optional<TitleBarColorSource> titleBarColorSource;
     // Overrides [colors.border] for windows this rule matches.
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
@@ -573,6 +578,7 @@ namespace umbriel {
           && blurOptimized == other.blurOptimized
           && titleBar == other.titleBar
           && titleBarButtons == other.titleBarButtons
+          && titleBarColorSource == other.titleBarColorSource
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
@@ -624,6 +630,7 @@ namespace umbriel {
     std::optional<bool> blurOptimized;
     std::optional<TitleBarMode> titleBar;
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    std::optional<TitleBarColorSource> titleBarColorSource;
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
@@ -778,6 +785,20 @@ namespace umbriel {
         int buttonGlyphSize = -1;
         double buttonGlyphStroke = -1.0;
         bool buttonBackground = true;
+        // "window" paints the bar with the top strip of the window's own content instead of the palette color, and
+        // "average" paints it with that strip's mean color; the palette stays underneath as the fallback.
+        TitleBarColorSource colorSource = TitleBarColorSource::Fixed;
+        // How many logical pixels of the window's top edge that strip takes. The bar stretches them over its whole
+        // height, so a thinner strip reads as one flat color and a thicker one keeps more of the window's own detail.
+        int colorSourceHeight = 1;
+        // Dark edge under the title and the symbols, on any bar color, in every color_source.
+        bool titleShadow = true;
+        // Reverse the title, and a symbol on the bar or on its button color, to black or white when it would sink into
+        // what is behind it.
+        bool titleContrast = true;
+        // "window" mirrors the edge instead of reading it, so it has no color to judge against. This samples the edge
+        // once per change, trading a readback for a title and symbols that can reverse. No effect on the other sources.
+        bool titleContrastSample = false;
         // Read from the title outward: the last one sits at the bar's edge.
         std::vector<TitleBarButton> buttons{TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close};
         TitleBarButtonGeometry buttonGeometry() const {
