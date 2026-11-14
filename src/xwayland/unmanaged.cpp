@@ -7,6 +7,9 @@
 #include "wlr.h"
 #include "xwayland/xwayland.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace umbriel {
 
   namespace {
@@ -23,6 +26,33 @@ namespace umbriel {
       }
       return !wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLTIP)
           && !wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DND);
+    }
+
+    // Where an unmanaged window is shown, in X coordinates. A window that pokes out of its output only partly is moved
+    // inside, so its edge is not cut off: Steam places its toasts with the unscaled toast size when its UI is scaled
+    // (STEAM_FORCE_DESKTOPUI_SCALING with native-resolution Xwayland), which leaves them hanging off the corner. A
+    // window wholly outside stays there (clients park hidden windows off screen and slide toasts in from beyond the
+    // edge), as does one larger than the output and a drag icon, which has to stay under the pointer. Only the shown
+    // position moves; the X window keeps the geometry its client chose.
+    std::pair<int, int> shownOrigin(const wlr_xwayland_surface* xsurface, const wlr_box& output) {
+      const int x = xsurface->x;
+      const int y = xsurface->y;
+      const int width = xsurface->width;
+      const int height = xsurface->height;
+      const int right = output.x + output.width;
+      const int bottom = output.y + output.height;
+      if (width <= 0
+          || height <= 0
+          || width > output.width
+          || height > output.height
+          || x >= right
+          || y >= bottom
+          || x + width <= output.x
+          || y + height <= output.y
+          || wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DND)) {
+        return {x, y};
+      }
+      return {std::clamp(x, output.x, right - width), std::clamp(y, output.y, bottom - height)};
     }
 
   } // namespace
@@ -190,7 +220,8 @@ namespace umbriel {
 
   void XwaylandUnmanaged::syncPosition() {
     const XwaylandRegion region = m_server.xwayland()->outputs().regionAtX(m_xsurface->x, m_xsurface->y);
-    wlr_scene_node_set_position(&m_tree->node, region.toLayoutX(m_xsurface->x), region.toLayoutY(m_xsurface->y));
+    const auto [x, y] = shownOrigin(m_xsurface, region.x);
+    wlr_scene_node_set_position(&m_tree->node, region.toLayoutX(x), region.toLayoutY(y));
     if (region.scale != m_scale) {
       m_scale = region.scale;
       wlr_scene_subsurface_tree_set_scale(&m_tree->node, m_scale);
