@@ -109,6 +109,8 @@ namespace umbriel {
   // How completion finishes a command's argument words; `None` offers only the JSON flags.
   [[nodiscard]] IpcArgCompletion ipcCommandArgCompletion(std::string_view name);
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+  // The Config group's request names carry this prefix and the CLI spells them as two words; `cliName` splits on it.
+  inline constexpr std::string_view kConfigCommandPrefix = "config-";
   // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
   std::string cliName(const IpcCommandSpec& spec);
 

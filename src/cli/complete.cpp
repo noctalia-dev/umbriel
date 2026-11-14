@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -21,17 +22,17 @@ namespace umbriel {
     struct ArgState {
       std::vector<std::string_view> positional;
       std::string_view pendingFlag;
-      bool hasOutput = false;
-      bool hasWindow = false;
-      bool hasName = false;
+      unsigned seenFlags = 0;
     };
 
-    // `words` are the complete argument words, so a flag at the end is the one whose value is being typed.
-    ArgState scanArgs(std::span<const std::string> words) {
+    // `words` are the complete argument words, so a flag at the end is the one whose value is being typed. A word the
+    // action does not accept is left as a positional, which is what the parser would do with it.
+    ArgState scanArgs(std::span<const std::string> words, unsigned allowed) {
       ArgState state;
       for (size_t index = 0; index < words.size(); ++index) {
         const std::string_view word{words[index]};
-        if (!word.starts_with("--")) {
+        const unsigned mask = actionFlagMask(word);
+        if (mask == 0 || (allowed & mask) == 0) {
           state.positional.push_back(word);
           continue;
         }
@@ -39,14 +40,8 @@ namespace umbriel {
           state.pendingFlag = word;
           return state;
         }
+        state.seenFlags |= mask;
         ++index;
-        if (word == kActionFlagOutputWord) {
-          state.hasOutput = true;
-        } else if (word == kActionFlagWindowWord) {
-          state.hasWindow = true;
-        } else if (word == kActionFlagNameWord) {
-          state.hasName = true;
-        }
       }
       return state;
     }
@@ -68,10 +63,13 @@ namespace umbriel {
       std::string_view partial;
       const ActionSpec* action = nullptr;
       const IpcCommandSpec* command = nullptr;
+      // Words the command's own spelling consumes before its arguments: 0 for a one-word command, 1 for `config set`.
+      size_t argBase = 0;
       ArgState args;
     };
 
     bool isFlagWord(std::string_view word) { return word.starts_with('-'); }
+    bool isJsonFlagWord(std::string_view word) { return word == kCliJsonFlag || word == kCliJsonShortFlag; }
 
     Analysis analyze(std::span<const std::string> words) {
       Analysis analysis;
@@ -92,10 +90,19 @@ namespace umbriel {
           analysis.form = Form::MsgAction;
           return analysis;
         }
-        if (const ActionSpec* spec = findActionSpec(words[1]); spec != nullptr) {
+        // `msg`'s own JSON flags come before the action; everything after it belongs to the action.
+        size_t actionIndex = 1;
+        while (actionIndex < position && isJsonFlagWord(words[actionIndex])) {
+          ++actionIndex;
+        }
+        if (actionIndex >= position) {
+          analysis.form = Form::MsgAction;
+          return analysis;
+        }
+        if (const ActionSpec* spec = findActionSpec(words[actionIndex]); spec != nullptr) {
           analysis.form = Form::MsgArgument;
           analysis.action = spec;
-          analysis.args = scanArgs(completeArgs(2));
+          analysis.args = scanArgs(completeArgs(actionIndex + 1), actionAllowedFlags(spec->argKind));
         } else {
           analysis.form = Form::Nothing;
         }
@@ -113,11 +120,22 @@ namespace umbriel {
         const std::string_view sub{words[1]};
         if (sub == kCliConfigValidate) {
           analysis.form = position >= 2 && words[position - 1] == "-c" ? Form::ConfigPath : Form::ConfigWord;
-        } else if (sub == kCliConfigSchema) {
-          analysis.form = Form::ConfigWord;
-        } else {
-          analysis.form = Form::Nothing;
+          return analysis;
         }
+        if (sub == kCliConfigSchema) {
+          analysis.form = Form::ConfigWord;
+          return analysis;
+        }
+        // The Config group's requests are reached as `config <sub>`; the request name is `config-<sub>`.
+        const std::string name = std::format("{}{}", kConfigCommandPrefix, sub);
+        const IpcCommandSpec* spec = findIpcCommand(name);
+        if (spec != nullptr && spec->group == IpcCommandGroup::Config) {
+          analysis.form = Form::IpcCommand;
+          analysis.command = spec;
+          analysis.argBase = 1;
+          return analysis;
+        }
+        analysis.form = Form::Nothing;
         return analysis;
       }
       if (first == kCliCompletions) {
@@ -159,24 +177,26 @@ namespace umbriel {
       };
 
       const unsigned flags = actionAllowedFlags(spec.argKind);
+      // `scanArgs` only records a flag the action accepts, so a pending flag always names the family to read.
       if (!args.pendingFlag.empty()) {
-        if (args.pendingFlag == kActionFlagOutputWord) {
+        const unsigned pending = actionFlagMask(args.pendingFlag);
+        if (pending == kActionFlagOutput) {
           emitAll(values.outputs.items(), "output");
-        } else if (args.pendingFlag == kActionFlagWindowWord) {
+        } else if (pending == kActionFlagWindow) {
           emitAll(values.windows.items(), "window");
-        } else if (args.pendingFlag == kActionFlagNameWord) {
+        } else {
           emitAll(values.workspaces.items(), "workspace");
         }
         return CompletionOutcome::Candidates;
       }
       if (isFlagWord(partial)) {
-        if ((flags & kActionFlagOutput) != 0 && !args.hasOutput) {
+        if ((flags & kActionFlagOutput) != 0 && (args.seenFlags & kActionFlagOutput) == 0) {
           emit(kActionFlagOutputWord, "target output");
         }
-        if ((flags & kActionFlagWindow) != 0 && !args.hasWindow) {
+        if ((flags & kActionFlagWindow) != 0 && (args.seenFlags & kActionFlagWindow) == 0) {
           emit(kActionFlagWindowWord, "target window");
         }
-        if ((flags & kActionFlagName) != 0 && !args.hasName) {
+        if ((flags & kActionFlagName) != 0 && (args.seenFlags & kActionFlagName) == 0) {
           emit(kActionFlagNameWord, "workspace name");
         }
         return CompletionOutcome::Candidates;
@@ -316,11 +336,25 @@ namespace umbriel {
       emit(kCliVersionUpperFlag, "print the version");
       emit(kCliVersionFlag, "print the version");
       for (const IpcCommandSpec& spec : ipcCommands()) {
+        // The Config group is spelled `config <sub>` on the command line, so `config-replace`'s neighbours must not be
+        // offered as words no dispatch reaches.
+        if (spec.group == IpcCommandGroup::Config) {
+          continue;
+        }
         emit(spec.name, spec.description);
       }
     }
 
     void emitActions(std::string_view partial, const CompletionSink& sink) {
+      if (isFlagWord(partial)) {
+        if (kCliJsonFlag.starts_with(partial)) {
+          sink(kCliJsonFlag, "send the reply as JSON");
+        }
+        if (kCliJsonShortFlag.starts_with(partial)) {
+          sink(kCliJsonShortFlag, "send the reply as JSON");
+        }
+        return;
+      }
       for (const ActionSpec& spec : actionSpecs()) {
         if (spec.name.starts_with(partial)) {
           sink(spec.name, spec.summary);
@@ -346,6 +380,16 @@ namespace umbriel {
         }
         if (partial.empty() || kCliConfigSchema.starts_with(partial)) {
           sink(kCliConfigSchema, "list every configuration key");
+        }
+        // The Config group's commands, offered under the subcommand words the dispatch accepts.
+        for (const IpcCommandSpec& spec : ipcCommands()) {
+          if (spec.group != IpcCommandGroup::Config || !spec.name.starts_with(kConfigCommandPrefix)) {
+            continue;
+          }
+          const std::string_view word = spec.name.substr(kConfigCommandPrefix.size());
+          if (partial.empty() || word.starts_with(partial)) {
+            sink(word, spec.description);
+          }
         }
         return;
       }
@@ -414,7 +458,7 @@ namespace umbriel {
       }
       return CompletionOutcome::Candidates;
     case Form::IpcCommand:
-      emitCommandWords(*analysis.command, words.size() - 1, analysis.partial, sink);
+      emitCommandWords(*analysis.command, words.size() - 1 - analysis.argBase, analysis.partial, sink);
       return CompletionOutcome::Candidates;
     case Form::Nothing:
       return CompletionOutcome::Candidates;

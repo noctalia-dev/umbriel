@@ -1661,9 +1661,8 @@ namespace umbriel {
   }
 
   std::string cliName(const IpcCommandSpec& spec) {
-    constexpr std::string_view kConfigPrefix = "config-";
-    if (spec.group == IpcCommandGroup::Config && spec.name.starts_with(kConfigPrefix)) {
-      return std::format("config {}", spec.name.substr(kConfigPrefix.size()));
+    if (spec.group == IpcCommandGroup::Config && spec.name.starts_with(kConfigCommandPrefix)) {
+      return std::format("config {}", spec.name.substr(kConfigCommandPrefix.size()));
     }
     return std::string(spec.name);
   }
