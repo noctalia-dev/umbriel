@@ -23,6 +23,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <drm_fourcc.h>
@@ -1665,6 +1666,19 @@ namespace umbriel {
     return true;
   }
 
+  namespace {
+    constexpr std::array kRevokeChoices{std::string_view{"all"}};
+
+    struct ArgCompletionEntry {
+      std::string_view name;
+      IpcArgCompletion completion;
+    };
+    constexpr std::array kArgCompletionTable{
+        ArgCompletionEntry{"config-replace", IpcArgCompletion(IpcArgCompletion::Kind::Path)},
+        ArgCompletionEntry{"input-capture-revoke", IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices)},
+    };
+  } // namespace
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"global-shortcuts", "", "inspect live and remembered application shortcuts", IpcCommandGroup::Inspect, false,
        &IpcCommands::globalShortcuts, &printGlobalShortcuts},
@@ -1733,6 +1747,15 @@ namespace umbriel {
   };
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }
+
+  IpcArgCompletion ipcCommandArgCompletion(std::string_view name) {
+    for (const ArgCompletionEntry& entry : kArgCompletionTable) {
+      if (entry.name == name) {
+        return entry.completion;
+      }
+    }
+    return {};
+  }
 
   const IpcCommandSpec* findIpcCommand(std::string_view name) {
     for (const auto& spec : kIpcCommands) {

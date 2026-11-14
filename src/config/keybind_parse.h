@@ -355,9 +355,10 @@ namespace umbriel {
   // Null unless the bind carries that payload alternative.
   template <typename Arg> const Arg* payloadIf(const Keybind& bind) { return std::get_if<Arg>(&bind.payload); }
 
-  // "reset" pops the current submap instead of pushing a new one. Recognised in
-  // both the action and matcher so a default-context bind can be an emergency exit.
-  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
+  // Pops the current submap instead of pushing a new one. Recognised in both the action and matcher so a
+  // default-context bind can be an emergency exit.
+  inline constexpr std::string_view kSubmapResetWord = "reset";
+  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == kSubmapResetWord; }
 
   inline bool isSubmapResetBind(const Keybind& bind) {
     const auto* arg = payloadIf<SubmapArg>(bind);
@@ -449,8 +450,21 @@ namespace umbriel {
   // shell completion read one table each.
   [[nodiscard]] std::span<const std::string_view> layoutModeNames();
   [[nodiscard]] std::span<const std::string_view> columnDisplayNames();
-  // `session-quit`'s only word.
+  // `session-quit`'s only word, and the scratchpad a wordless scratchpad action addresses.
   inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
+  inline constexpr std::string_view kImplicitScratchpad = "default";
+  // `workspace-set-layout`'s cycle keyword; the modes it cycles come from `layoutModeNames`.
+  inline constexpr std::string_view kLayoutModeToggleWord = "toggle";
+  // An argument kind's allowed flags: the bits select, the words are what `--output`, `--window` and `--name` are
+  // spelled. `actionAllowedFlags` is the only table that maps a kind to a mask, so the parser rejects exactly the
+  // flags shell completion offers.
+  inline constexpr std::string_view kActionFlagOutputWord = "--output";
+  inline constexpr std::string_view kActionFlagWindowWord = "--window";
+  inline constexpr std::string_view kActionFlagNameWord = "--name";
+  inline constexpr unsigned kActionFlagOutput = 1U << 0;
+  inline constexpr unsigned kActionFlagWindow = 1U << 1;
+  inline constexpr unsigned kActionFlagName = 1U << 2;
+  [[nodiscard]] unsigned actionAllowedFlags(ActionArgKind kind);
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
   bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.

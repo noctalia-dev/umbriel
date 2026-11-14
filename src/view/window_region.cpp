@@ -9,9 +9,15 @@ extern "C" {
 }
 
 namespace umbriel {
-  std::string_view windowRegionName(WindowRegion region) { return kWindowRegionNames[static_cast<size_t>(region)]; }
+  namespace {
+    constexpr std::array<std::string_view, 8> kWindowRegionNames{"left",        "right",       "top",
+                                                                 "bottom",      "top_left",    "top_right",
+                                                                 "bottom_left", "bottom_right"};
+  }
 
   std::span<const std::string_view> windowRegionNames() { return kWindowRegionNames; }
+
+  std::string_view windowRegionName(WindowRegion region) { return kWindowRegionNames[static_cast<size_t>(region)]; }
 
   std::optional<WindowRegion> windowRegionNamed(std::string_view name) {
     const auto& names = kWindowRegionNames;
