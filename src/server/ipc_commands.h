@@ -3,6 +3,7 @@
 #include "config/value_parse.h"
 #include "scene/effect_audio.h"
 
+#include <cstdint>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <span>
@@ -71,6 +72,27 @@ namespace umbriel {
     Harness,
   };
 
+  // What shell completion offers for a command's argument words. The rules live beside the command table that owns the
+  // ids, so a renamed command cannot keep completion pointing at the old name.
+  struct IpcArgCompletion {
+    enum class Kind : uint8_t {
+      None,
+      Path,   // the shell completes a filesystem path
+      Choice, // one of `choices`
+    };
+
+    constexpr IpcArgCompletion() = default;
+    constexpr explicit IpcArgCompletion(Kind kind, std::span<const std::string_view> choices = {})
+        : m_kind(kind), m_choices(choices) {}
+
+    [[nodiscard]] Kind kind() const { return m_kind; }
+    [[nodiscard]] std::span<const std::string_view> choices() const { return m_choices; }
+
+  private:
+    Kind m_kind = Kind::None;
+    std::span<const std::string_view> m_choices;
+  };
+
   struct IpcCommandSpec {
     std::string_view name;
     std::string_view argSpec;
@@ -84,6 +106,8 @@ namespace umbriel {
   };
 
   std::span<const IpcCommandSpec> ipcCommands();
+  // How completion finishes a command's argument words; `None` offers only the JSON flags.
+  [[nodiscard]] IpcArgCompletion ipcCommandArgCompletion(std::string_view name);
   const IpcCommandSpec* findIpcCommand(std::string_view name);
   // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
   std::string cliName(const IpcCommandSpec& spec);

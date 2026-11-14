@@ -125,10 +125,6 @@ namespace umbriel {
 
     bool isActionSpace(char character) { return kActionSpace.contains(character); }
 
-    constexpr unsigned kFlagOutput = 1U << 0;
-    constexpr unsigned kFlagWindow = 1U << 1;
-    constexpr unsigned kFlagName = 1U << 2;
-
     // An action's argument words, sorted into positional words and the flags its kind allows.
     struct ActionWords {
       std::vector<std::string_view> positional;
@@ -151,11 +147,11 @@ namespace umbriel {
           continue;
         }
         std::optional<std::string_view>* slot = nullptr;
-        if (word == "--output" && (allowed & kFlagOutput) != 0) {
+        if (word == kActionFlagOutputWord && (allowed & kActionFlagOutput) != 0) {
           slot = &result.output;
-        } else if (word == "--window" && (allowed & kFlagWindow) != 0) {
+        } else if (word == kActionFlagWindowWord && (allowed & kActionFlagWindow) != 0) {
           slot = &result.window;
-        } else if (word == "--name" && (allowed & kFlagName) != 0) {
+        } else if (word == kActionFlagNameWord && (allowed & kActionFlagName) != 0) {
           slot = &result.name;
         }
         if (slot == nullptr || slot->has_value() || index + 1 >= words.size() || words[index + 1].empty()) {
@@ -251,12 +247,12 @@ namespace umbriel {
         if (const auto mode = layoutModeNamed(positional.front())) {
           return LayoutModeArg{.mode = mode, .toggleSequence = {}};
         }
-        if (positional.front() == "toggle") {
+        if (positional.front() == kLayoutModeToggleWord) {
           return LayoutModeArg{};
         }
         return std::nullopt;
       }
-      if (positional.front() != "toggle") {
+      if (positional.front() != kLayoutModeToggleWord) {
         return std::nullopt;
       }
       std::vector<LayoutMode> sequence;
@@ -279,7 +275,7 @@ namespace umbriel {
           || kind == ActionArgKind::CursorEffectCycle;
       const bool cursor = kind == ActionArgKind::CursorEffectSet || kind == ActionArgKind::CursorEffectCycle;
       const bool screen = kind == ActionArgKind::ScreenEffectSet || kind == ActionArgKind::ScreenEffectCycle;
-      const unsigned flags = cursor ? 0U : (screen ? kFlagOutput : kFlagWindow);
+      const unsigned flags = actionAllowedFlags(kind);
       const auto split = splitActionWords(words, flags);
       if (!split || split->positional.size() > 1) {
         return std::nullopt;
@@ -298,7 +294,7 @@ namespace umbriel {
     }
 
     std::optional<KeybindPayload> parseSdrWhiteWords(std::span<const std::string> words) {
-      const auto split = splitActionWords(words, kFlagOutput);
+      const auto split = splitActionWords(words, actionAllowedFlags(ActionArgKind::SdrWhite));
       if (!split || split->positional.size() != 1) {
         return std::nullopt;
       }
@@ -312,7 +308,7 @@ namespace umbriel {
     }
 
     std::optional<KeybindPayload> parseWindowMoveToWords(std::span<const std::string> words) {
-      const auto split = splitActionWords(words, kFlagWindow);
+      const auto split = splitActionWords(words, actionAllowedFlags(ActionArgKind::WindowMoveTo));
       if (!split || split->positional.size() != 3) {
         return std::nullopt;
       }
@@ -328,7 +324,7 @@ namespace umbriel {
     }
 
     std::optional<KeybindPayload> parseWindowMoveByWords(std::span<const std::string> words) {
-      const auto split = splitActionWords(words, kFlagWindow);
+      const auto split = splitActionWords(words, actionAllowedFlags(ActionArgKind::WindowMoveBy));
       int deltaX = 0;
       int deltaY = 0;
       if (!split
@@ -696,6 +692,25 @@ namespace umbriel {
     return kNames;
   }
 
+  unsigned actionAllowedFlags(ActionArgKind kind) {
+    switch (kind) {
+    case ActionArgKind::Workspace:
+    case ActionArgKind::WorkspaceMoveToOutput:
+      return kActionFlagOutput | kActionFlagName;
+    case ActionArgKind::WindowMoveTo:
+    case ActionArgKind::WindowMoveBy:
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+      return kActionFlagWindow;
+    case ActionArgKind::SdrWhite:
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+      return kActionFlagOutput;
+    default:
+      return 0U;
+    }
+  }
+
   bool validActionFraction(double fraction) {
     return std::isfinite(fraction) && fraction >= 0.1 && fraction <= kMaxWideFraction;
   }
@@ -900,7 +915,7 @@ namespace umbriel {
         return FractionArg{.fraction = *delta};
       }
       case ActionArgKind::Workspace: {
-        const auto split = splitActionWords(words, kFlagOutput | kFlagName);
+        const auto split = splitActionWords(words, actionAllowedFlags(ActionArgKind::Workspace));
         auto workspace = split ? parseWorkspaceSelector(*split) : std::nullopt;
         if (!workspace) {
           return std::nullopt;
@@ -908,7 +923,7 @@ namespace umbriel {
         return std::move(*workspace);
       }
       case ActionArgKind::WorkspaceMoveToOutput: {
-        auto split = splitActionWords(words, kFlagOutput | kFlagName);
+        auto split = splitActionWords(words, actionAllowedFlags(ActionArgKind::WorkspaceMoveToOutput));
         if (!split || split->positional.empty()) {
           return std::nullopt;
         }
@@ -976,7 +991,8 @@ namespace umbriel {
         if (!word || std::ranges::find(names, *word) == names.end()) {
           return std::nullopt;
         }
-        return ColumnDisplayArg{.display = *word == names[1] ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
+        const auto index = static_cast<size_t>(ColumnDisplay::Tabbed);
+        return ColumnDisplayArg{.display = *word == names[index] ? ColumnDisplay::Tabbed : ColumnDisplay::Normal};
       }
       case ActionArgKind::TabIndex: {
         const auto word = singleWord(words);

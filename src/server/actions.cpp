@@ -1,6 +1,7 @@
 #include "server/actions.h"
 
 #include "config/config.h"
+#include "config/keybind_parse.h"
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "layout/layout.h"
@@ -49,7 +50,7 @@ namespace umbriel {
         return std::nullopt;
       }
 
-      const std::string_view name = arg->name.empty() ? std::string_view("default") : std::string_view(arg->name);
+      const std::string_view name = arg->name.empty() ? kImplicitScratchpad : std::string_view(arg->name);
       if (arg->name.empty() && !config().scratchpads.empty()) {
         if (error != nullptr) {
           *error = "scratchpad name required";

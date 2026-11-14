@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <print>
 #include <string>
 #include <sys/socket.h>
@@ -32,43 +33,74 @@ namespace umbriel {
       return {};
     }
 
-    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 after reporting why.
-    int connectToCompositor() {
+    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 with `error` set.
+    int connectSocket(std::string& error) {
       std::string socketPath = resolveSocketPath();
       if (socketPath.empty()) {
-        std::println(stderr, "error: cannot find umbriel socket (is the compositor running?)");
+        error = "cannot find umbriel socket (is the compositor running?)";
         return -1;
       }
 
       int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
       if (fd < 0) {
-        std::println(stderr, "error: failed to create socket");
+        error = "failed to create socket";
         return -1;
       }
 
       sockaddr_un addr{};
       addr.sun_family = AF_UNIX;
       if (socketPath.size() >= sizeof(addr.sun_path)) {
-        std::println(stderr, "error: socket path too long");
+        error = "socket path too long";
         close(fd);
         return -1;
       }
       socketPath.copy(addr.sun_path, socketPath.size());
 
       if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::println(stderr, "error: cannot connect to umbriel socket (is the compositor running?)");
+        error = "cannot connect to umbriel socket (is the compositor running?)";
         close(fd);
         return -1;
       }
       return fd;
     }
 
-    bool sendAll(int fd, std::string_view payload) {
+    int connectToCompositor() {
+      std::string error;
+      const int fd = connectSocket(error);
+      if (fd < 0) {
+        std::println(stderr, "error: {}", error);
+      }
+      return fd;
+    }
+
+    // One reply line, or nullopt when the peer closed without one. The caller owns `fd` and closes it.
+    std::optional<std::string> receiveLine(int fd) {
+      std::string buf;
+      char chunk[4096];
+      while (true) {
+        const ssize_t received = recv(fd, chunk, sizeof(chunk), 0);
+        if (received <= 0) {
+          break;
+        }
+        buf.append(chunk, static_cast<size_t>(received));
+      }
+      if (buf.empty()) {
+        return std::nullopt;
+      }
+      if (buf.back() == '\n') {
+        buf.pop_back();
+      }
+      return buf;
+    }
+
+    bool sendAll(int fd, std::string_view payload, bool report = true) {
       size_t sent = 0;
       while (sent < payload.size()) {
         const ssize_t written = send(fd, payload.data() + sent, payload.size() - sent, MSG_NOSIGNAL);
         if (written <= 0) {
-          std::println(stderr, "error: failed to send request");
+          if (report) {
+            std::println(stderr, "error: failed to send request");
+          }
           return false;
         }
         sent += static_cast<size_t>(written);
@@ -101,29 +133,14 @@ namespace umbriel {
         return EXIT_FAILURE;
       }
 
-      // Receive.
-      std::string buf;
-      char chunk[4096];
-      while (true) {
-        ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) {
-          break;
-        }
-        buf.append(chunk, static_cast<size_t>(n));
-      }
+      const std::optional<std::string> line = receiveLine(fd);
       close(fd);
-
-      if (buf.empty()) {
+      if (!line) {
         std::println(stderr, "error: malformed response");
         return EXIT_FAILURE;
       }
 
-      // Strip trailing newline.
-      if (buf.back() == '\n') {
-        buf.pop_back();
-      }
-
-      auto resp = nlohmann::json::parse(buf, nullptr, false);
+      auto resp = nlohmann::json::parse(*line, nullptr, false);
       if (resp.is_discarded()) {
         std::println(stderr, "error: malformed response");
         return EXIT_FAILURE;
@@ -238,6 +255,38 @@ namespace umbriel {
       return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
+  }
+
+  std::optional<std::string> queryIpcJson(std::string_view command, int budgetMs) {
+    std::string error;
+    const int fd = connectSocket(error);
+    if (fd < 0) {
+      return std::nullopt;
+    }
+
+    // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
+    timeval tv{};
+    tv.tv_sec = budgetMs / 1000;
+    tv.tv_usec = (budgetMs % 1000) * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    nlohmann::json request;
+    request["cmd"] = command;
+    if (!sendAll(fd, request.dump() + "\n", false)) {
+      close(fd);
+      return std::nullopt;
+    }
+
+    const std::optional<std::string> line = receiveLine(fd);
+    close(fd);
+    if (!line) {
+      return std::nullopt;
+    }
+    const auto resp = nlohmann::json::parse(*line, nullptr, false);
+    if (resp.is_discarded() || !resp.is_object() || !resp.contains("ok")) {
+      return std::nullopt;
+    }
+    return resp["ok"].dump();
   }
 
 } // namespace umbriel
