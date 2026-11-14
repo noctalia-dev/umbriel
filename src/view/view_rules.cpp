@@ -796,8 +796,9 @@ namespace umbriel {
     updateDimBehind();
     updateBlur();
     // updateBlur creates the full node box. Re-apply the owning output's clip immediately, because focus, title, and
-    // app-id rule refreshes do not necessarily produce a later surface commit or layout pass.
-    if (m_workspace != nullptr) {
+    // app-id rule refreshes do not necessarily produce a later surface commit or layout pass. A pending arrange must
+    // first capture the current frame for its motion.
+    if (m_workspace != nullptr && !m_workspace->arrangePending()) {
       m_workspace->syncViewPresentation(this);
     }
     if (m_mapped) {
