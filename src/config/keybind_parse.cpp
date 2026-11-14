@@ -670,10 +670,10 @@ namespace umbriel {
   }
 
   std::optional<LayoutMode> layoutModeNamed(std::string_view name) {
-    for (const LayoutMode mode :
-         {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master, LayoutMode::Stacking}) {
-      if (name == layoutModeName(mode)) {
-        return mode;
+    const std::span<const std::string_view> names = layoutModeNames();
+    for (size_t index = 0; index < names.size(); ++index) {
+      if (name == names[index]) {
+        return static_cast<LayoutMode>(index);
       }
     }
     return std::nullopt;

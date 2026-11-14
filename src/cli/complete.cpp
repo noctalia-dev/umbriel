@@ -78,12 +78,13 @@ namespace umbriel {
     bool isJsonFlagWord(std::string_view word) { return word == kCliJsonFlag || word == kCliJsonShortFlag; }
 
     // `-j` and `--json` are one option under two spellings, so both are offered from here.
-    void emitJsonFlags(std::string_view partial, std::string_view description, const CompletionSink& sink) {
+    void emitJsonFlags(std::string_view partial, const CompletionSink& sink) {
+      constexpr std::string_view kDescription = "print the reply as JSON";
       if (kCliJsonFlag.starts_with(partial)) {
-        sink(kCliJsonFlag, description);
+        sink(kCliJsonFlag, kDescription);
       }
       if (kCliJsonShortFlag.starts_with(partial)) {
-        sink(kCliJsonShortFlag, description);
+        sink(kCliJsonShortFlag, kDescription);
       }
     }
 
@@ -192,33 +193,36 @@ namespace umbriel {
         }
       };
 
-      const unsigned flags = actionAllowedFlags(spec.argKind);
-      if (args.rejected) {
-        return CompletionOutcome::Candidates;
-      }
-      // `scanArgs` only records a flag the action accepts, so a pending flag always names the family to read.
-      if (!args.pendingFlag.empty()) {
-        const unsigned pending = actionFlagMask(args.pendingFlag);
-        if (pending == kActionFlagOutput) {
-          emitAll(values.outputs.items(), "output");
-        } else if (pending == kActionFlagWindow) {
-          emitAll(values.windows.items(), "window");
-        } else {
-          emitAll(values.workspaces.items(), "workspace");
+      // `spawn` hands its whole tail to the shell, so a word of it that starts with "--" is the shell's, not a flag.
+      if (spec.argKind != ActionArgKind::Command) {
+        if (args.rejected) {
+          return CompletionOutcome::Candidates;
         }
-        return CompletionOutcome::Candidates;
-      }
-      if (isFlagWord(partial)) {
-        if ((flags & kActionFlagOutput) != 0 && (args.seenFlags & kActionFlagOutput) == 0) {
-          emit(kActionFlagOutputWord, "target output");
+        // `scanArgs` only records a flag the action accepts, so a pending flag always names the family to read.
+        if (!args.pendingFlag.empty()) {
+          const unsigned pending = actionFlagMask(args.pendingFlag);
+          if (pending == kActionFlagOutput) {
+            emitAll(values.outputs.items(), "output");
+          } else if (pending == kActionFlagWindow) {
+            emitAll(values.windows.items(), "window");
+          } else {
+            emitAll(values.workspaces.items(), "workspace");
+          }
+          return CompletionOutcome::Candidates;
         }
-        if ((flags & kActionFlagWindow) != 0 && (args.seenFlags & kActionFlagWindow) == 0) {
-          emit(kActionFlagWindowWord, "target window");
+        if (isFlagWord(partial)) {
+          const unsigned flags = actionAllowedFlags(spec.argKind);
+          if ((flags & kActionFlagOutput) != 0 && (args.seenFlags & kActionFlagOutput) == 0) {
+            emit(kActionFlagOutputWord, "target output");
+          }
+          if ((flags & kActionFlagWindow) != 0 && (args.seenFlags & kActionFlagWindow) == 0) {
+            emit(kActionFlagWindowWord, "target window");
+          }
+          if ((flags & kActionFlagName) != 0 && (args.seenFlags & kActionFlagName) == 0) {
+            emit(kActionFlagNameWord, "workspace name");
+          }
+          return CompletionOutcome::Candidates;
         }
-        if ((flags & kActionFlagName) != 0 && (args.seenFlags & kActionFlagName) == 0) {
-          emit(kActionFlagNameWord, "workspace name");
-        }
-        return CompletionOutcome::Candidates;
       }
 
       const size_t index = args.positional.size();
@@ -366,7 +370,7 @@ namespace umbriel {
 
     void emitActions(std::string_view partial, const CompletionSink& sink) {
       if (isFlagWord(partial)) {
-        emitJsonFlags(partial, "print the reply as JSON", sink);
+        emitJsonFlags(partial, sink);
         return;
       }
       for (const ActionSpec& spec : actionSpecs()) {
@@ -423,14 +427,14 @@ namespace umbriel {
         const IpcCommandSpec& spec, size_t position, std::string_view partial, const CompletionSink& sink
     ) {
       if (isFlagWord(partial)) {
-        emitJsonFlags(partial, "print the reply as JSON", sink);
+        emitJsonFlags(partial, sink);
         return;
       }
       const IpcArgCompletion completion = ipcCommandArgCompletion(spec.name);
       if (position == 1 && completion.kind() == IpcArgCompletion::Kind::Choice) {
         for (const std::string_view choice : completion.choices()) {
           if (choice.starts_with(partial)) {
-            sink(choice, "every remembered grant");
+            sink(choice, completion.description());
           }
         }
       }

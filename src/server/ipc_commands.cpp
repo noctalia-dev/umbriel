@@ -1675,7 +1675,10 @@ namespace umbriel {
     };
     constexpr std::array kArgCompletionTable{
         ArgCompletionEntry{"config-replace", IpcArgCompletion(IpcArgCompletion::Kind::Path)},
-        ArgCompletionEntry{"input-capture-revoke", IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices)},
+        ArgCompletionEntry{
+            "input-capture-revoke",
+            IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices, "every remembered grant"),
+        },
     };
   } // namespace
 
