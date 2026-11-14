@@ -84,4 +84,9 @@ namespace umbriel {
     bool m_fullscreenOpaque = true;
   };
 
+  // The box a minimizing window collapses to: `resting` scaled to `scale`, with `center` holding the resting centre
+  // and the other anchors putting that edge of the scaled box on the matching edge of `usable`. Never smaller than one
+  // pixel, so the presented box stays valid at every scale.
+  wlr_box minimizeCollapseBox(const wlr_box& resting, double scale, const wlr_box& usable, MinimizeAnchor anchor);
+
 } // namespace umbriel

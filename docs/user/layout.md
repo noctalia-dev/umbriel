@@ -315,6 +315,8 @@ The dialog leaves when it stops being modal or closes, and becomes an ordinary f
 
 Only floating windows minimize: `window-minimize`, the minimize button of Umbriel's [title bar](appearance.md#title-bar) or of the application, or a taskbar can hide one. Tiled, pinned, fullscreen, and scratchpad windows do not minimize, and applications and the title bar offer minimize only while the window floats. Tiling a minimized window, for example by switching its workspace to a tiling layout, shows it again.
 
+Minimizing and restoring animate the live window under [`animation.windows_minimize`](animation.md#event-tables): it shrinks toward its anchor while it fades out, and grows back from the same box. The state itself changes immediately: `minimized` and `visible` report the new value while the window is still leaving.
+
 A minimized window keeps its workspace, position, size, and stacking. It stays in taskbars and in `umbriel windows`, where it reports `minimized` (see [IPC](ipc.md)). When the focused window is minimized, focus moves to another window on the workspace. Focus cycling, directional focus, `window-focus-last`, and the overview skip minimized windows.
 
 A minimized window comes back when:

@@ -41,7 +41,8 @@ namespace umbriel {
   }
 
   bool View::fadeComposited() const {
-    if (!m_fade.animating()) {
+    // A minimize fade runs no effect program in either direction, so it composites plain alpha.
+    if (!m_fade.animating() || minimizeFadeActive()) {
       return false;
     }
     return m_customFade || (!m_inScratchpad && effectRegistry().lifecycleEffect(AnimationEvent::WindowsIn) != nullptr);
@@ -120,6 +121,12 @@ namespace umbriel {
   }
 
   void View::cancelFadeAnimation() {
+    // An unmap or a fresh map abandons a minimize transition. A conceal left the node and box collapsed, and a re-map
+    // may never issue the presentation that would put them back.
+    if (minimizeConcealing()) {
+      abandonMinimizeTransition();
+    }
+    m_minimizePhase = MinimizePhase::None;
     m_fade.snap(1.0);
     setFadeAlpha(1.0F);
     releaseOpeningPresentation();
@@ -754,6 +761,99 @@ namespace umbriel {
     syncAnimationEffects();
   }
 
+  void View::beginMinimizeConceal() {
+    if (minimizeConcealing()) {
+      return;
+    }
+    const auto& animation = config().animation;
+    const auto& minimize = animation.windowsMinimize;
+    const auto [width, height] = floatingSize();
+    m_minimizeResting = {layoutTargetX(), layoutTargetY(), width, height};
+    m_minimizePhase = MinimizePhase::Concealing;
+    animateFadeTo(0.0F, minimize.durationMs, minimize.curve);
+    if (minimize.style == "popin" && width > 0 && height > 0) {
+      const wlr_box collapsed =
+          minimizeCollapseBox(m_minimizeResting, minimize.scale, floatingUsableArea(), minimize.anchor);
+      // The size tween makes the presentation layout-owned, so an arrange mid-flight cannot snap it back to the resting
+      // box; the position tween carries the node to the collapsed origin.
+      m_presentation.animateTo(collapsed.width, collapsed.height, minimize.durationMs, minimize.curve);
+      m_posX.retarget(collapsed.x, minimize.durationMs, minimize.curve);
+      m_posY.retarget(collapsed.y, minimize.durationMs, minimize.curve);
+    }
+    scheduleFrame();
+  }
+
+  void View::finishMinimizeConceal() {
+    if (!m_minimized) {
+      // A restore overtook the conceal: nothing is being hidden, so the window goes back to its resting box instead of
+      // disappearing while it reports itself visible.
+      abandonMinimizeTransition();
+      return;
+    }
+    m_minimizePhase = MinimizePhase::None;
+    setNodeEnabled(false);
+    // Below runs off screen, so the window returns to its resting box and full opacity without a visible snap.
+    setPosition(m_minimizeResting.x, m_minimizeResting.y);
+    finishSizeAnimation();
+    m_fade.snap(1.0);
+    setFadeAlpha(1.0F);
+  }
+
+  void View::beginMinimizeReveal() {
+    const auto& animation = config().animation;
+    const auto& minimize = animation.windowsMinimize;
+    const auto [width, height] = floatingSize();
+    // A conceal already retargeted the live box to its collapsed origin, so the resting box is the one it captured.
+    const bool reversing = minimizeConcealing();
+    const wlr_box captured = reversing && m_minimizeResting.width > 0
+        ? m_minimizeResting
+        : wlr_box{layoutTargetX(), layoutTargetY(), width, height};
+    m_minimizePhase = MinimizePhase::Revealing;
+    setNodeEnabled(true);
+    // A reversal always retargets the box: the conceal moved it, so a reload to `fade` mid-flight must not skip the
+    // tweens back.
+    const bool popin = captured.width > 0 && captured.height > 0 && (minimize.style == "popin" || reversing);
+    if (reversing) {
+      // Reverse from where the window is drawn; snapping to the collapsed box would jump.
+      m_fade.snap(m_fadeAlpha);
+    } else {
+      // Hidden at rest: grow out of the box it left.
+      setFadeAlpha(0.0F);
+      m_fade.snap(0.0);
+      if (popin) {
+        const wlr_box collapsed = minimizeCollapseBox(captured, minimize.scale, floatingUsableArea(), minimize.anchor);
+        m_presentation.setSize(collapsed.width, collapsed.height);
+        setScenePosition(collapsed.x, collapsed.y);
+        m_posX.snap(collapsed.x);
+        m_posY.snap(collapsed.y);
+      }
+    }
+    m_fade.retarget(1.0, minimize.durationMs, minimize.curve);
+    if (popin) {
+      m_presentation.animateTo(captured.width, captured.height, minimize.durationMs, minimize.curve);
+      m_posX.retarget(captured.x, minimize.durationMs, minimize.curve);
+      m_posY.retarget(captured.y, minimize.durationMs, minimize.curve);
+    }
+    scheduleFrame();
+  }
+
+  void View::abandonMinimizeTransition() {
+    if (!minimizeFadeActive()) {
+      return;
+    }
+    const bool wasHiding = minimizeConcealing();
+    m_minimizePhase = MinimizePhase::None;
+    m_fade.snap(1.0);
+    setFadeAlpha(1.0F);
+    if (!wasHiding) {
+      return;
+    }
+    // Put the node and the presented box back before the caller takes over, through the cancel path so no stale tween
+    // outlives it.
+    setPosition(m_minimizeResting.x, m_minimizeResting.y);
+    cancelSizeAnimation();
+  }
+
   void View::animateFadeTo(float toAlpha, int durationMs, const AnimationCurve& curve) {
     m_customFade = m_inScratchpad && effectRegistry().animationEffect(AnimationEvent::Scratchpad) != nullptr;
     m_fade.snap(m_fadeAlpha);
@@ -774,6 +874,10 @@ namespace umbriel {
   }
 
   void View::animateTo(int x, int y) {
+    // A conceal owns the node's position until its fade lands.
+    if (minimizeConcealing()) {
+      return;
+    }
     if (m_mapped && !m_tiled && (layoutTargetX() != x || layoutTargetY() != y)) {
       m_server->scheduleIpcWindowsEvent();
     }
@@ -836,7 +940,10 @@ namespace umbriel {
       m_effects.detach();
       return;
     }
-    if (m_posX.animating() || m_posY.animating() || m_presentation.animating()) {
+    // A minimize transition deforms its own box, so no `windows_move` preset warps it on top.
+    if (minimizeFadeActive()) {
+      clearAnimationEffect(&target->node, AnimationEvent::WindowsMove);
+    } else if (m_posX.animating() || m_posY.animating() || m_presentation.animating()) {
       const auto& movement = m_posX.animating() ? m_posX : (m_posY.animating() ? m_posY : m_presentation.animation());
       bindAnimationEffect(&target->node, AnimationEvent::WindowsMove, movement);
     } else if (
@@ -871,7 +978,13 @@ namespace umbriel {
       m_dragSlotBound = false;
     }
     bindAnimationEffect(&target->node, AnimationEvent::DimUnfocused, m_focusDim);
-    bindAnimationEffect(&target->node, m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn, m_fade);
+    const AnimationEvent fadeEvent = m_inScratchpad ? AnimationEvent::Scratchpad : AnimationEvent::WindowsIn;
+    if (m_inScratchpad || !minimizeFadeActive()) {
+      bindAnimationEffect(&target->node, fadeEvent, m_fade);
+    } else {
+      // Drop a shader an earlier open bound to this node; minimize has no effect slot of its own.
+      clearAnimationEffect(&target->node, fadeEvent);
+    }
     wlr_scene_node_set_animation(
         &target->node, static_cast<unsigned>(m_inScratchpad ? AnimationEvent::WindowsIn : AnimationEvent::Scratchpad),
         nullptr, nullptr
@@ -962,6 +1075,7 @@ namespace umbriel {
               != nullptr;
       const float rawAlpha = std::clamp(static_cast<float>(m_fade.current()), 0.0F, 1.0F);
       const bool builtInSlide = !m_inScratchpad
+          && !minimizeFadeActive()
           && !m_customFade
           && config().animation.windowsIn.style == "slide"
           && effectRegistry().animationEffect(AnimationEvent::WindowsIn) == nullptr;
@@ -1001,6 +1115,14 @@ namespace umbriel {
       }
       active = active || m_fade.animating();
       openingFinished = m_mapped && !m_inScratchpad && !m_fade.animating() && m_fade.target() > m_fade.from();
+    }
+    if (!m_fade.animating() && minimizeFadeActive()) {
+      if (minimizeConcealing()) {
+        finishMinimizeConceal();
+      } else {
+        m_minimizePhase = MinimizePhase::None;
+      }
+      active = true;
     }
     if (m_focusDim.tick(nowMsec)) {
       setFadeAlpha(m_fadeAlpha);
@@ -1075,6 +1197,7 @@ namespace umbriel {
         || m_posY.animating()
         || sizeAnimating()
         || m_fade.animating()
+        || minimizeConcealing()
         || m_borderColorAnim.animating()
         || m_outerBorderColorAnim.animating()
         || m_ruleOpacity.animating()
