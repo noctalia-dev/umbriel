@@ -181,6 +181,18 @@ namespace umbriel {
       };
     }
 
+    // Where a workspace kind reads its positional selector, or nullopt for a kind that takes none.
+    constexpr std::optional<size_t> workspacePositionalIndex(ActionArgKind kind) {
+      switch (kind) {
+      case ActionArgKind::Workspace:
+        return 0;
+      case ActionArgKind::WorkspaceMoveToOutput:
+        return 1;
+      default:
+        return std::nullopt;
+      }
+    }
+
     CompletionOutcome completeActionArguments(
         const ActionSpec& spec, const ArgState& args, std::string_view partial, const CompletionValues& values,
         const CompletionSink& sink
@@ -192,6 +204,12 @@ namespace umbriel {
           emit(value, description);
         }
       };
+
+      // `parseWorkspaceSelector` takes exactly one of a positional workspace or `--name`, so each suppresses the
+      // other's candidates.
+      const std::optional<size_t> workspaceIndex = workspacePositionalIndex(spec.argKind);
+      const bool workspaceByName = (args.seenFlags & kActionFlagName) != 0;
+      const bool workspaceByPosition = workspaceIndex.has_value() && args.positional.size() > *workspaceIndex;
 
       // `spawn` hands its whole tail to the shell, so a word of it that starts with "--" is the shell's, not a flag.
       if (spec.argKind != ActionArgKind::Command) {
@@ -218,7 +236,7 @@ namespace umbriel {
           if ((flags & kActionFlagWindow) != 0 && (args.seenFlags & kActionFlagWindow) == 0) {
             emit(kActionFlagWindowWord, "target window");
           }
-          if ((flags & kActionFlagName) != 0 && (args.seenFlags & kActionFlagName) == 0) {
+          if ((flags & kActionFlagName) != 0 && (args.seenFlags & kActionFlagName) == 0 && !workspaceByPosition) {
             emit(kActionFlagNameWord, "workspace name");
           }
           return CompletionOutcome::Candidates;
@@ -309,14 +327,14 @@ namespace umbriel {
       case ActionArgKind::WindowMoveBy:
         return CompletionOutcome::Candidates;
       case ActionArgKind::Workspace:
-        if (index == 0) {
+        if (index == 0 && !workspaceByName) {
           emitAll(values.workspaces.items(), "workspace");
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WorkspaceMoveToOutput:
         if (index == 0) {
           emitAll(values.outputs.items(), "output");
-        } else if (index == 1) {
+        } else if (index == 1 && !workspaceByName) {
           emitAll(values.workspaces.items(), "workspace");
         }
         return CompletionOutcome::Candidates;

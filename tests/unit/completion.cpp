@@ -232,6 +232,16 @@ UMBRIEL_TEST(flagsFollowTheGrammar) {
   CHECK(complete({"msg", "window-close", "--"}, values).empty());
 }
 
+UMBRIEL_TEST(aWorkspaceIsSelectedOnce) {
+  const CompletionValues values = sampleValues();
+  // `parseWorkspaceSelector` takes exactly one of a positional workspace or `--name`, so neither may follow the other.
+  CHECK(complete({"msg", "workspace-switch", "--name", "web", ""}, values).empty());
+  CHECK(!contains(complete({"msg", "workspace-switch", "web", "--"}, values), umbriel::kActionFlagNameWord));
+  CHECK(contains(complete({"msg", "workspace-switch", "--"}, values), umbriel::kActionFlagNameWord));
+  CHECK(contains(complete({"msg", "workspace-switch", ""}, values), "web"));
+  CHECK(complete({"msg", "workspace-move-to-output", "DP-1", "--name", "web", ""}, values).empty());
+}
+
 UMBRIEL_TEST(usedFlagsAreNotOfferedAgain) {
   const CompletionValues values = sampleValues();
   const std::vector<std::string> candidates = complete({"msg", "workspace-switch", "--output", "DP-1", "--"}, values);
