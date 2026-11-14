@@ -363,6 +363,12 @@ namespace umbriel {
       }
       // Whatever focused a tab, a click on its bar, a keybind, activation, or IPC, puts that tab on show.
       m_tabs.focusChanged(view);
+      // Focus on a covered tile ends the dwindle maximize, so a focused tile is never hidden.
+      const View* maximized = m_dwindleMaximized;
+      syncDwindleMaximize();
+      if (maximized != m_dwindleMaximized) {
+        markArrange();
+      }
     }
   }
 
@@ -492,9 +498,20 @@ namespace umbriel {
       m_focusedView = replacement;
       m_group->server()->scheduleIpcWorkspacesEvent();
     }
+    const DwindleLayout* dwindle = dwindleLayout();
+    const bool dwindleMaximized =
+        view == m_dwindleMaximized || (dwindle != nullptr && dwindle->maximizedView() == view);
     detachFromLayout(view);
     if (std::erase(m_views, view) > 0) {
       m_group->server()->scheduleIpcWorkspacesEvent();
+    }
+    view->setLayoutCovered(false);
+    if (view == m_dwindleMaximized) {
+      m_dwindleMaximized = nullptr;
+    }
+    // The maximize stays with the workspace, so a tile moving away leaves it.
+    if (dwindleMaximized && view->mapped() && view->tiled() && !view->maximizedToEdges()) {
+      view->setMaximizedState(false);
     }
     // Drop the cached holders, so a replacement window is still noticed as new.
     std::erase(m_lastAloneViews, view);
@@ -604,6 +621,59 @@ namespace umbriel {
     }
   }
 
+  void Workspace::exitDwindleMaximize() {
+    DwindleLayout* dwindle = dwindleLayout();
+    if (dwindle == nullptr || dwindle->maximizedView() == nullptr) {
+      return;
+    }
+    const int column = dwindle->columnOf(dwindle->maximizedView());
+    if (const auto it = std::ranges::find(m_views, dwindle->maximizedView()); it != m_views.end()) {
+      if (!(*it)->maximizedToEdges()) {
+        (*it)->setMaximizedState(false);
+      }
+    }
+    dwindle->clearFullWidthState(column);
+    m_dwindleMaximized = nullptr;
+    syncDwindleMaximize();
+    markArrange();
+  }
+
+  void Workspace::syncDwindleMaximize() {
+    const auto inLayout = [this](const View* view) {
+      return view != nullptr && view->tiled() && m_layout->columnOf(view) >= 0;
+    };
+    DwindleLayout* dwindle = dwindleLayout();
+    if (dwindle == nullptr && m_dwindleMaximized == nullptr) {
+      return;
+    }
+    View* maximized = nullptr;
+    if (dwindle != nullptr && dwindle->maximizedView() != nullptr) {
+      const auto it = std::ranges::find(m_views, dwindle->maximizedView());
+      maximized = it != m_views.end() ? *it : nullptr;
+    }
+    View* previous = std::ranges::find(m_views, m_dwindleMaximized) != m_views.end() ? m_dwindleMaximized : nullptr;
+    // A tile maximized without focus (a client's own request) ends as well, since focus stays on another tile.
+    if (maximized != nullptr && m_focusedView != maximized && inLayout(m_focusedView)) {
+      dwindle->clearFullWidthState(dwindle->columnOf(maximized));
+      previous = maximized;
+      maximized = nullptr;
+    }
+    // A floated window keeps its maximize, so only a window still tiled is told it ended.
+    if (previous != maximized
+        && inLayout(previous)
+        && !m_layout->isFullWidth(m_layout->columnOf(previous))
+        && previous->scheduledMaximized()
+        && !previous->maximizedToEdges()) {
+      previous->setMaximizedState(false);
+    }
+    m_dwindleMaximized = maximized;
+    for (View* view : m_views) {
+      if (view != nullptr) {
+        view->setLayoutCovered(maximized != nullptr && view != maximized && inLayout(view));
+      }
+    }
+  }
+
   void Workspace::layoutAttach(
       View* view, std::optional<double> initialExtent, std::optional<int> initialExtentPx, LayoutAttachOrigin origin
   ) {
@@ -623,6 +693,7 @@ namespace umbriel {
     }
     if (origin == LayoutAttachOrigin::OpeningView || origin == LayoutAttachOrigin::MovedView) {
       exitFullscreenForIncomingView(view);
+      exitDwindleMaximize();
     }
     ScrollingLayout* scrolling = scrollingLayout();
     const std::optional<std::string>& name = view->namedScrollingColumnName();
@@ -1001,6 +1072,7 @@ namespace umbriel {
       }
     } heldRelease{*this};
     refreshAloneRuleStates();
+    syncDwindleMaximize();
     // Layout math and client configures must run even for hidden workspaces: clients (games especially) change
     // fullscreen state while another workspace is active, and skipping the configure here leaves them with a stale size
     // (fullscreen at tile size, windowed at output size, ...).
@@ -2021,6 +2093,7 @@ namespace umbriel {
   }
 
   bool Workspace::swapFocusedInCycle(int direction) {
+    exitDwindleMaximize();
     std::vector<View*> ring;
     for (const Column& column : m_layout->columns()) {
       ring.insert(ring.end(), column.views.begin(), column.views.end());
@@ -2045,6 +2118,7 @@ namespace umbriel {
   }
 
   bool Workspace::swapFocusedInDirection(bool horizontal, int direction) {
+    exitDwindleMaximize();
     flushArrange();
     // Geometry only: the focus memory directional focus applies could pick a diagonal tile.
     std::vector<LayoutTarget> targets;
@@ -2164,6 +2238,7 @@ namespace umbriel {
       return m_focusedView->moveFloatingToEdge(direction < 0 ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT);
     }
     if (DwindleLayout* dwindle = dwindleLayout()) {
+      exitDwindleMaximize();
       if (!dwindle->moveView(m_focusedView, true, direction)) {
         return false;
       }
@@ -2180,6 +2255,7 @@ namespace umbriel {
     if (m_focusedView != nullptr && m_focusedView->floating()) {
       return m_focusedView->moveFloatingToEdge(direction < 0 ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
     }
+    exitDwindleMaximize();
     return scrollingVertical() ? moveLaneAlongStrip(direction) : moveWithinLane(direction);
   }
 
@@ -2417,6 +2493,7 @@ namespace umbriel {
     }
     const bool fullWidth = m_layout->toggleFullWidth(column);
     m_focusedView->setMaximizedState(fullWidth);
+    syncDwindleMaximize();
     reevaluateFocusedColumn();
     markArrange();
     return true;

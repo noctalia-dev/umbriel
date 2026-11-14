@@ -316,9 +316,15 @@ namespace umbriel {
     bool requestMinimize();
     // Orders minimized windows by when they were hidden; larger is more recent.
     uint64_t minimizeSerial() const { return m_minimizeSerial; }
-    // True while nothing may show the frame: a tiled opener waiting for the arrange that places it, a hidden tab, or a
-    // minimized window.
-    bool presentationSuppressed() const { return m_tiledOpeningDeferred || m_tabHidden || m_minimized; }
+    // A tile hidden behind a maximized dwindle tile. Like a hidden tab, it keeps its layout slot and stays mapped and
+    // configured at that size, but its frame stays disabled.
+    void setLayoutCovered(bool covered);
+    bool layoutCovered() const { return m_layoutCovered; }
+    // True while nothing may show the frame: a tiled opener waiting for the arrange that places it, a hidden tab, a
+    // covered tile, or a minimized window.
+    bool presentationSuppressed() const {
+      return m_tiledOpeningDeferred || m_tabHidden || m_layoutCovered || m_minimized;
+    }
     // Chrome carried beside the borders, its scene nodes under chromeParent(). Replacing it destroys the previous one.
     void setChromeAttachment(std::unique_ptr<ViewChromeAttachment> attachment);
     ViewChromeAttachment* chromeAttachment() const { return m_chromeAttachment.get(); }
@@ -988,6 +994,7 @@ namespace umbriel {
     int m_chromeContentWidth = 0;
     int m_chromeContentHeight = 0;
     bool m_tabHidden = false;
+    bool m_layoutCovered = false;
     bool m_minimized = false;
     uint64_t m_minimizeSerial = 0;
     ViewEffects m_effects;

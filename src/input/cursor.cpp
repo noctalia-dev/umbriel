@@ -10,6 +10,7 @@
 #include "input/xcursor_matcher.h"
 #include "layer/layer_surface.h"
 #include "layout/drop_target.h"
+#include "layout/dwindle.h"
 #include "layout/layout.h"
 #include "layout/scrolling.h"
 #include "lock/session_lock.h"
@@ -137,6 +138,13 @@ namespace umbriel {
       *sx = (lx - position.x) * scale;
       *sy = (ly - position.y) * scale;
       return true;
+    }
+
+    // The pointer does not resize a maximized dwindle tile.
+    bool dwindleMaximized(View* view) {
+      Workspace* workspace = view->workspace();
+      const DwindleLayout* dwindle = workspace != nullptr ? workspace->dwindleLayout() : nullptr;
+      return dwindle != nullptr && dwindle->maximizedView() == view;
     }
 
   } // namespace
@@ -1192,7 +1200,7 @@ namespace umbriel {
       }
       Layout& layout = workspace->layout();
       uint32_t resolvedEdges = 0;
-      if (edges != 0) {
+      if (edges != 0 && !dwindleMaximized(view)) {
         resolvedEdges = layout.resolveResizeEdges(view, edges, m_cursor->x, m_cursor->y);
       } else {
         resolvedEdges = tiledResizeEdges(view, m_cursor->x, m_cursor->y);
@@ -3521,7 +3529,10 @@ namespace umbriel {
 
   uint32_t Cursor::tiledResizeEdges(View* view, double x, double y) const {
     Workspace* workspace = view->workspace();
-    if (workspace == nullptr || workspace->group() == nullptr || workspace->group()->output() == nullptr) {
+    if (workspace == nullptr
+        || workspace->group() == nullptr
+        || workspace->group()->output() == nullptr
+        || dwindleMaximized(view)) {
       return 0;
     }
     const wlr_box presented = workspace->presentedTiledBox(view);
