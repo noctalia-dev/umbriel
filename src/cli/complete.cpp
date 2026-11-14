@@ -23,18 +23,24 @@ namespace umbriel {
       std::vector<std::string_view> positional;
       std::string_view pendingFlag;
       unsigned seenFlags = 0;
+      // A word the grammar refuses leaves no completable position, because the parser rejects the whole argument list.
+      bool rejected = false;
     };
 
-    // `words` are the complete argument words, so a flag at the end is the one whose value is being typed. A word the
-    // action does not accept is left as a positional, which is what the parser would do with it.
+    // `words` are the complete argument words, so a flag at the end is the one whose value is being typed. Any word
+    // starting with "--" is a flag, as it is for `splitActionWords`; one the action does not accept rejects the list.
     ArgState scanArgs(std::span<const std::string> words, unsigned allowed) {
       ArgState state;
       for (size_t index = 0; index < words.size(); ++index) {
         const std::string_view word{words[index]};
-        const unsigned mask = actionFlagMask(word);
-        if (mask == 0 || (allowed & mask) == 0) {
+        if (!word.starts_with("--")) {
           state.positional.push_back(word);
           continue;
+        }
+        const unsigned mask = actionFlagMask(word);
+        if (mask == 0 || (allowed & mask) == 0) {
+          state.rejected = true;
+          return state;
         }
         if (index + 1 >= words.size()) {
           state.pendingFlag = word;
@@ -70,6 +76,16 @@ namespace umbriel {
 
     bool isFlagWord(std::string_view word) { return word.starts_with('-'); }
     bool isJsonFlagWord(std::string_view word) { return word == kCliJsonFlag || word == kCliJsonShortFlag; }
+
+    // `-j` and `--json` are one option under two spellings, so both are offered from here.
+    void emitJsonFlags(std::string_view partial, std::string_view description, const CompletionSink& sink) {
+      if (kCliJsonFlag.starts_with(partial)) {
+        sink(kCliJsonFlag, description);
+      }
+      if (kCliJsonShortFlag.starts_with(partial)) {
+        sink(kCliJsonShortFlag, description);
+      }
+    }
 
     Analysis analyze(std::span<const std::string> words) {
       Analysis analysis;
@@ -119,7 +135,7 @@ namespace umbriel {
         }
         const std::string_view sub{words[1]};
         if (sub == kCliConfigValidate) {
-          analysis.form = position >= 2 && words[position - 1] == "-c" ? Form::ConfigPath : Form::ConfigWord;
+          analysis.form = position >= 2 && words[position - 1] == kCliConfigFlag ? Form::ConfigPath : Form::ConfigWord;
           return analysis;
         }
         if (sub == kCliConfigSchema) {
@@ -177,6 +193,9 @@ namespace umbriel {
       };
 
       const unsigned flags = actionAllowedFlags(spec.argKind);
+      if (args.rejected) {
+        return CompletionOutcome::Candidates;
+      }
       // `scanArgs` only records a flag the action accepts, so a pending flag always names the family to read.
       if (!args.pendingFlag.empty()) {
         const unsigned pending = actionFlagMask(args.pendingFlag);
@@ -347,12 +366,7 @@ namespace umbriel {
 
     void emitActions(std::string_view partial, const CompletionSink& sink) {
       if (isFlagWord(partial)) {
-        if (kCliJsonFlag.starts_with(partial)) {
-          sink(kCliJsonFlag, "send the reply as JSON");
-        }
-        if (kCliJsonShortFlag.starts_with(partial)) {
-          sink(kCliJsonShortFlag, "send the reply as JSON");
-        }
+        emitJsonFlags(partial, "print the reply as JSON", sink);
         return;
       }
       for (const ActionSpec& spec : actionSpecs()) {
@@ -409,12 +423,7 @@ namespace umbriel {
         const IpcCommandSpec& spec, size_t position, std::string_view partial, const CompletionSink& sink
     ) {
       if (isFlagWord(partial)) {
-        if (kCliJsonFlag.starts_with(partial)) {
-          sink(kCliJsonFlag, "print the reply as JSON");
-        }
-        if (kCliJsonShortFlag.starts_with(partial)) {
-          sink(kCliJsonShortFlag, "print the reply as JSON");
-        }
+        emitJsonFlags(partial, "print the reply as JSON", sink);
         return;
       }
       const IpcArgCompletion completion = ipcCommandArgCompletion(spec.name);
