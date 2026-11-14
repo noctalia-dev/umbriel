@@ -1668,6 +1668,7 @@ namespace umbriel {
 
   namespace {
     constexpr std::array kRevokeChoices{std::string_view{"all"}};
+    constexpr std::array kUnsetChoices{std::string_view{"--all"}};
   } // namespace
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -1691,7 +1692,8 @@ namespace umbriel {
       {"config-get", "<key>", "print the active value of a config key", IpcCommandGroup::Config, true,
        &IpcCommands::configGet, &printConfigValue},
       {"config-unset", "<key|--all>", "drop runtime overrides so the file or default applies again",
-       IpcCommandGroup::Config, true, &IpcCommands::configUnset, nullptr},
+       IpcCommandGroup::Config, true, &IpcCommands::configUnset, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kUnsetChoices, "drop every override")},
       {"effects", "", "inspect effect presets, pools, and owner selections", IpcCommandGroup::Inspect, false,
        &IpcCommands::effects, &printEffects},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
@@ -1739,6 +1741,11 @@ namespace umbriel {
   };
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }
+
+  const IpcCommandSpec* findConfigCommand(std::string_view sub) {
+    const IpcCommandSpec* spec = findIpcCommand(std::format("{}{}", kConfigCommandPrefix, sub));
+    return spec != nullptr && spec->group == IpcCommandGroup::Config ? spec : nullptr;
+  }
 
   const IpcCommandSpec* findIpcCommand(std::string_view name) {
     for (const auto& spec : kIpcCommands) {

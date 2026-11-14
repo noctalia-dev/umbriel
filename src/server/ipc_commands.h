@@ -114,6 +114,8 @@ namespace umbriel {
 
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+  // The Config-group command a `config <sub>` word names, or nullptr for anything else.
+  const IpcCommandSpec* findConfigCommand(std::string_view sub);
   // The Config group's request names carry this prefix and the CLI spells them as two words; `cliName` splits on it.
   inline constexpr std::string_view kConfigCommandPrefix = "config-";
   // How the command line spells a command: `config set` for `config-set`, the request name otherwise.

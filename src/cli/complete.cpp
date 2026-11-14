@@ -155,9 +155,7 @@ namespace umbriel {
           return analysis;
         }
         // The Config group's requests are reached as `config <sub>`; the request name is `config-<sub>`.
-        const std::string name = std::format("{}{}", kConfigCommandPrefix, sub);
-        const IpcCommandSpec* spec = findIpcCommand(name);
-        if (spec != nullptr && spec->group == IpcCommandGroup::Config) {
+        if (const IpcCommandSpec* spec = findConfigCommand(sub); spec != nullptr) {
           analysis.form = Form::IpcCommand;
           analysis.command = spec;
           analysis.argBase = 1;
@@ -230,9 +228,12 @@ namespace umbriel {
     ) {
       std::vector<std::string_view> emitted;
       auto emit = uniqueSink(partial, emitted, sink);
+      // A value the word grammar would read as a flag cannot be a positional, so it is not offered.
       auto emitAll = [&](const std::vector<std::string>& list, std::string_view description) {
         for (const std::string& value : list) {
-          emit(value, description);
+          if (!value.starts_with("--")) {
+            emit(value, description);
+          }
         }
       };
 
@@ -291,7 +292,12 @@ namespace umbriel {
         return args.positional.empty() ? CompletionOutcome::DelegateCommand : CompletionOutcome::Delegate;
       case ActionArgKind::Submap:
         if (index == 0) {
-          emitAll(values.submaps.items(), "submap");
+          // A submap name must pass the parser's own validator, and one beginning with `--` is a flag word instead.
+          for (const std::string& name : values.submaps.items()) {
+            if (!name.starts_with("--") && validSubmapName(name)) {
+              emit(name, "submap");
+            }
+          }
           emit(kSubmapResetWord, "leave one submap level");
         }
         return CompletionOutcome::Candidates;
@@ -489,14 +495,24 @@ namespace umbriel {
     void emitCommandWords(
         const IpcCommandSpec& spec, size_t position, std::string_view partial, const CompletionSink& sink
     ) {
+      const IpcArgCompletion& completion = spec.completion;
+      const bool isChoice = position == 1 && completion.kind() == IpcArgCompletion::Kind::Choice;
+      // A dash-prefixed choice, such as `config unset --all`, is a flag the command accepts, so it completes with the
+      // JSON flags rather than among the positional values.
       if (isFlagWord(partial)) {
         emitJsonFlags(partial, sink);
+        if (isChoice) {
+          for (const std::string_view choice : completion.choices()) {
+            if (isFlagWord(choice) && choice.starts_with(partial)) {
+              sink(choice, completion.description());
+            }
+          }
+        }
         return;
       }
-      const IpcArgCompletion& completion = spec.completion;
-      if (position == 1 && completion.kind() == IpcArgCompletion::Kind::Choice) {
+      if (isChoice) {
         for (const std::string_view choice : completion.choices()) {
-          if (choice.starts_with(partial)) {
+          if (!isFlagWord(choice) && choice.starts_with(partial)) {
             sink(choice, completion.description());
           }
         }
@@ -536,9 +552,15 @@ namespace umbriel {
         }
       }
       return CompletionOutcome::Candidates;
-    case Form::IpcCommand:
-      emitCommandWords(*analysis.command, words.size() - 1 - analysis.argBase, analysis.partial, sink);
+    case Form::IpcCommand: {
+      // `runSpecCommand` strips the JSON flags before reading the arguments, so the position counts the words that
+      // actually reach it and not the command's own spelling.
+      const std::span<const std::string> consumed = words.first(words.size() - 1);
+      const auto reaching =
+          std::ranges::count_if(consumed, [](const std::string& word) { return !isJsonFlagWord(word); });
+      emitCommandWords(*analysis.command, static_cast<size_t>(reaching) - analysis.argBase, analysis.partial, sink);
       return CompletionOutcome::Candidates;
+    }
     case Form::Nothing:
       return CompletionOutcome::Candidates;
     }
